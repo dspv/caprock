@@ -7,7 +7,7 @@ const NAV: { route: Route; label: string; phase?: string }[] = [
   { route: { name: 'now' }, label: 'Now' },
   { route: { name: 'cost' }, label: 'Cost' },
   { route: { name: 'history' }, label: 'History' },
-  { route: { name: 'tasks' }, label: 'Tasks', phase: 'Phase 2' },
+  { route: { name: 'tasks' }, label: 'Tasks' },
 ]
 
 export function Shell({ route, children }: { route: Route; children: ReactNode }) {

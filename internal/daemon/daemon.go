@@ -18,10 +18,12 @@ import (
 
 	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/api"
+	"github.com/dspv/caprock/internal/board"
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/event"
+	"github.com/dspv/caprock/internal/hive"
 	"github.com/dspv/caprock/internal/hookd"
 	"github.com/dspv/caprock/internal/hooks"
 	"github.com/dspv/caprock/internal/ingest"
@@ -46,6 +48,9 @@ type Options struct {
 	IdleAfter time.Duration
 	// EndAfter is the silence threshold before a session is marked ended (default 12h).
 	EndAfter time.Duration
+	// HiveDir enables Phase 2 orchestration (tasks board + Stop-loop) at this path.
+	// Empty ⇒ orchestration off (task endpoints return 501).
+	HiveDir string
 	// OnReady is called once the server is listening (with the bound URL).
 	OnReady func(url string)
 }
@@ -61,6 +66,7 @@ type Daemon struct {
 	det   *loop.Detector
 	tail  *ingest.Tailer
 	mgr   *agents.Manager
+	board *board.Board
 	api   *api.Server
 	rt    config.Runtime
 	start time.Time
@@ -164,14 +170,32 @@ func (d *Daemon) run(ctx context.Context) error {
 		}
 	}
 
+	// Phase 2 board (opt-in via HiveDir).
+	if d.opt.HiveDir != "" {
+		h, err := hive.Open(d.opt.HiveDir)
+		if err != nil {
+			return fmt.Errorf("open hive: %w", err)
+		}
+		d.board = board.New(h, d.store, d.bus, d.log)
+		if err := d.board.Rescan(ctx); err != nil {
+			d.log.Warn("hive rescan", "component", "board", "err", err)
+		}
+	}
+
 	// Hook receiver.
 	hh := &hookd.Handler{Token: rt.Token, Recorder: d.rec, Log: d.log}
+	if d.board != nil {
+		hh.Decide = func(ctx context.Context, p hookd.Payload) []byte {
+			return d.board.StopDecision(ctx, p.SessionID, p.AgentID, "")
+		}
+	}
 
 	// API.
 	d.api = api.New(api.Deps{
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version,
 		Status: d.status, ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
 		Token: rt.Token, Shutdown: cancel, Agents: &agentAdapter{m: d.mgr},
+		Tasks: d.taskController(),
 	})
 	srv := &http.Server{Handler: d.api, ReadHeaderTimeout: 10 * time.Second}
 
@@ -309,6 +333,7 @@ type Status struct {
 	UIBuilt         bool          `json:"ui_built"`
 	ClaudeAvailable bool          `json:"claude_available"`
 	OwnedActive     int           `json:"owned_active"`
+	Orchestration   bool          `json:"orchestration"`
 	LoopK           int           `json:"loop_k"`
 	LoopTMin        int           `json:"loop_t_minutes"`
 	ActiveLoops     int           `json:"active_loops"`
@@ -330,6 +355,7 @@ func (d *Daemon) status(_ context.Context) any {
 		Pricing: PricingStatus{Version: d.table.Version, Source: d.table.Source, FetchedAt: d.table.FetchedAt, UserOverride: d.table.UserOverride, Models: len(d.table.Models)},
 		LoopK:   d.det.K, LoopTMin: int(d.det.Window / time.Minute),
 		ClaudeAvailable: d.mgr.ClaudeAvailable(), OwnedActive: len(d.mgr.List()),
+		Orchestration: d.board != nil,
 	}
 	if d.tail != nil {
 		s := d.tail.Stats()
@@ -383,3 +409,21 @@ func (a *agentAdapter) Term(id string) ([]byte, <-chan []byte, func(), bool) {
 	sub, cancel := ag.Subscribe()
 	return ag.Snapshot(), sub, cancel, true
 }
+
+// taskController returns the API TaskController, or nil when orchestration is off.
+func (d *Daemon) taskController() api.TaskController {
+	if d.board == nil {
+		return nil
+	}
+	return &boardAdapter{b: d.board}
+}
+
+type boardAdapter struct{ b *board.Board }
+
+func (a *boardAdapter) List(ctx context.Context) (any, error)            { return a.b.List(ctx) }
+func (a *boardAdapter) Create(ctx context.Context, req any) (any, error) { return a.b.Create(ctx, req) }
+func (a *boardAdapter) Get(ctx context.Context, id string) (any, error)  { return a.b.Get(ctx, id) }
+func (a *boardAdapter) Approve(ctx context.Context, id string, ok bool) error {
+	return a.b.Approve(ctx, id, ok)
+}
+func (a *boardAdapter) Approvals(ctx context.Context) (any, error) { return a.b.Approvals(ctx) }

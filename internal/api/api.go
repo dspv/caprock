@@ -47,6 +47,17 @@ type Deps struct {
 	Shutdown func()
 	// Agents is the Phase 1 owned-session manager (nil ⇒ endpoints return 501).
 	Agents AgentController
+	// Tasks is the Phase 2 hive-backed task board (nil ⇒ endpoints return 501).
+	Tasks TaskController
+}
+
+// TaskController is the subset of the Phase 2 hive the API needs.
+type TaskController interface {
+	List(ctx context.Context) (any, error)
+	Create(ctx context.Context, req any) (any, error)
+	Get(ctx context.Context, id string) (any, error)
+	Approve(ctx context.Context, id string, approve bool) error
+	Approvals(ctx context.Context) (any, error)
 }
 
 // AgentController is the subset of internal/agents the API needs (interface for tests).
@@ -94,6 +105,12 @@ func New(d Deps) *Server {
 	if d.Hook != nil {
 		m.Handle("POST /v1/hook", d.Hook)
 	}
+	m.HandleFunc("GET /v1/tasks", s.handleTasks)
+	m.HandleFunc("POST /v1/tasks", s.handleCreateTask)
+	m.HandleFunc("GET /v1/tasks/{id}", s.handleGetTask)
+	m.HandleFunc("POST /v1/tasks/{id}/approve", s.handleApprove(true))
+	m.HandleFunc("POST /v1/tasks/{id}/reject", s.handleApprove(false))
+	m.HandleFunc("GET /v1/approvals", s.handleApprovals)
 	m.HandleFunc("POST /v1/agents", s.handleSpawn)
 	m.HandleFunc("POST /v1/agents/{id}/input", s.handleAgentInput)
 	m.HandleFunc("POST /v1/agents/{id}/signal", s.handleAgentSignal)
@@ -463,6 +480,82 @@ func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 	if s.d.Shutdown != nil {
 		go s.d.Shutdown()
 	}
+}
+
+// --- Phase 2: tasks ---
+
+func (s *Server) requireTasks(w http.ResponseWriter) bool {
+	if s.d.Tasks == nil {
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "orchestration is not enabled", "detail": "Phase 2 (tasks/orchestrator) is off in this build/config"})
+		return false
+	}
+	return true
+}
+
+func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request) {
+	if !s.requireTasks(w) {
+		return
+	}
+	out, err := s.d.Tasks.List(r.Context())
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
+	if !s.requireTasks(w) {
+		return
+	}
+	var req map[string]any
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	out, err := s.d.Tasks.Create(r.Context(), req)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) handleGetTask(w http.ResponseWriter, r *http.Request) {
+	if !s.requireTasks(w) {
+		return
+	}
+	out, err := s.d.Tasks.Get(r.Context(), r.PathValue("id"))
+	if err != nil {
+		s.notFoundOrFail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) handleApprove(approve bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.requireTasks(w) {
+			return
+		}
+		if err := s.d.Tasks.Approve(r.Context(), r.PathValue("id"), approve); err != nil {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func (s *Server) handleApprovals(w http.ResponseWriter, r *http.Request) {
+	if !s.requireTasks(w) {
+		return
+	}
+	out, err := s.d.Tasks.Approvals(r.Context())
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // --- Phase 1: owned sessions ---

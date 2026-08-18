@@ -264,3 +264,55 @@ func TestHistoryAndToolDistribution(t *testing.T) {
 		t.Fatalf("history: %+v", h)
 	}
 }
+
+func TestTasksMirrorAndAttribution(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	if err := UpsertTask(ctx, s.db, TaskRow{ID: "t1", Title: "x", Status: "inbox", BudgetUSD: 3}); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpsertTask(ctx, s.db, TaskRow{ID: "t1", Title: "x", Status: "assigned", Assignee: "w1", BudgetUSD: 3}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := GetTask(ctx, s.db, "t1")
+	if got.Status != "assigned" || got.Assignee != "w1" {
+		t.Fatalf("task: %+v", got)
+	}
+	list, _ := ListTasks(ctx, s.db)
+	if len(list) != 1 {
+		t.Fatalf("list: %+v", list)
+	}
+	// Forced-continue guard.
+	for i := 1; i <= 3; i++ {
+		n, err := IncForcedContinue(ctx, s.db, "sess", "t1")
+		if err != nil || n != i {
+			t.Fatalf("forced continue %d: %d %v", i, n, err)
+		}
+	}
+	_ = ResetForcedContinue(ctx, s.db, "sess", "t1")
+	n, _ := IncForcedContinue(ctx, s.db, "sess", "t1")
+	if n != 1 {
+		t.Fatalf("after reset: %d", n)
+	}
+	if err := RecordVerification(ctx, s.db, "t1", 1, "go test ./...", 1, "/out"); err != nil {
+		t.Fatal(err)
+	}
+	// Cost attribution: two turns for the assigned session inside the window.
+	cost := 0.5
+	base := nowMs()
+	_ = OpenAssignment(ctx, s.db, "t1", "sess", base)
+	for i, k := range []string{"a", "b"} {
+		ev := &event.Event{SessionID: "sess", Source: event.SourceTranscript, Kind: event.KindTurnAssistant, Model: "claude-opus-5", CostUSD: &cost, Key: k, Ts: time.UnixMilli(base + int64(i))}
+		if _, err := InsertEvent(ctx, s.db, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	total, err := AttributeTaskCost(ctx, s.db, "t1")
+	if err != nil || total != 1.0 {
+		t.Fatalf("attribution: %v %v", total, err)
+	}
+	got, _ = GetTask(ctx, s.db, "t1")
+	if got.CostUSD != 1.0 {
+		t.Fatalf("task cost: %v", got.CostUSD)
+	}
+}
