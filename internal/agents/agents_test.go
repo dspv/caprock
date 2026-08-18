@@ -23,11 +23,22 @@ func (f *fakePTY) Spawn(ctx context.Context, spec ptyman.Spec) (ptyman.Session, 
 	// Echo the args back so the test can assert --session-id was passed, then read a line, then exit.
 	var real ptyman.Spec
 	if runtime.GOOS == "windows" {
-		real = ptyman.Spec{Command: "cmd.exe", Args: []string{"/V:ON", "/Q", "/C", "echo args:" + join(spec.Args) + " & set /p x=& echo got:!x! & exit /b 7"}, Dir: spec.Dir}
+		// Print the args then exit 7 on its own — ConPTY stdin round-trips are covered
+		// by the -tags smoke Phase 1 test; here we only need spawn + exit recording.
+		sh := lookOr("powershell.exe", `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`)
+		script := "Write-Output 'args:" + join(spec.Args) + "'; Start-Sleep -Milliseconds 200; exit 7"
+		real = ptyman.Spec{Command: sh, Args: []string{"-NoProfile", "-NonInteractive", "-Command", script}, Dir: spec.Dir}
 	} else {
 		real = ptyman.Spec{Command: "/bin/sh", Args: []string{"-c", "echo args:" + join(spec.Args) + "; read x; echo got:$x; exit 7"}, Dir: spec.Dir}
 	}
 	return ptyman.New().Spawn(ctx, real)
+}
+
+func lookOr(name, fallback string) string {
+	if p, err := exec.LookPath(name); err == nil {
+		return p
+	}
+	return fallback
 }
 
 func newMgr(t *testing.T) (*Manager, *store.Store) {
@@ -51,6 +62,7 @@ func TestSpawnForcesSessionIDAndRecordsExit(t *testing.T) {
 		}
 	}
 	m, st := newMgr(t)
+	defer m.Shutdown()
 	ctx := context.Background()
 	exited := make(chan int, 1)
 	m.OnExit = func(_ string, code int) { exited <- code }
@@ -85,9 +97,12 @@ func TestSpawnForcesSessionIDAndRecordsExit(t *testing.T) {
 	if !bytes.Contains(buf.Bytes(), []byte("--session-id fixed-session-id")) || !bytes.Contains(buf.Bytes(), []byte("--model claude-opus-5")) {
 		t.Fatalf("args missing: %q", buf.String())
 	}
-	// Type a line; the fake echoes it and exits 7.
-	if err := m.Input("fixed-session-id", []byte("hi\n")); err != nil {
-		t.Fatal(err)
+	// On POSIX the fake reads a line and echoes it; type it. On Windows the fake
+	// exits on its own (ConPTY stdin round-trips are covered by the smoke test).
+	if runtime.GOOS != "windows" {
+		if err := m.Input("fixed-session-id", []byte("hi\n")); err != nil {
+			t.Fatal(err)
+		}
 	}
 	select {
 	case code := <-exited:

@@ -24,7 +24,9 @@ func fakeClaude(t *testing.T) string {
 	dir := t.TempDir()
 	if runtime.GOOS == "windows" {
 		p := filepath.Join(dir, "claude.cmd")
-		_ = os.WriteFile(p, []byte("@echo off\r\n(echo caprock-fake-claude ready)\r\n:loop\r\nset \"x=\"\r\nset /p x=\r\nif \"%x%\"==\"quit\" exit /b 0\r\necho you-said:%x%\r\ngoto loop\r\n"), 0o755)
+		// A PowerShell REPL: echoes each line, exits on "quit". Reliable under ConPTY.
+		ps := "@echo off\r\npowershell -NoProfile -NonInteractive -Command \"Write-Output 'caprock-fake-claude ready'; while($true){ $l=[Console]::In.ReadLine(); if($l -eq $null -or $l -eq 'quit'){ exit 0 }; Write-Output ('you-said:'+$l) }\"\r\n"
+		_ = os.WriteFile(p, []byte(ps), 0o755)
 		return p
 	}
 	p := filepath.Join(dir, "claude")
