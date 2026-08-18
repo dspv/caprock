@@ -717,6 +717,13 @@ func PruneEventsBefore(ctx context.Context, q Querier, beforeMs int64) (int64, e
 	return n, nil
 }
 
+// CountThrottles counts throttle observations since sinceMs (limit-forecast input).
+func CountThrottles(ctx context.Context, q Querier, sinceMs int64) (int64, error) {
+	var n int64
+	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM throttle_observations WHERE ts >= ?`, sinceMs).Scan(&n)
+	return n, err
+}
+
 // CountEvents returns the total number of stored events (for status/metrics).
 func CountEvents(ctx context.Context, q Querier) (int64, error) {
 	var n int64

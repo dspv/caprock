@@ -112,6 +112,7 @@ export interface Summary {
   savings: Savings
   burn: Burn
   pricing_version: string
+  throttles: number
 }
 
 export interface DailyStat { day: string; project: string; model: string; tokens_total: number; cost_usd: number; sessions: number }

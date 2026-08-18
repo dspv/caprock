@@ -77,7 +77,12 @@ export function CostScreen() {
           </div>
         )}
       </Panel>
-      <div className="text-[11px] text-fg-faint">Limit forecast ("at current pace you hit the 5-hour window in ~N min") arrives in Phase 1, once observed-throttle data exists. Everything here is measured, not estimated.</div>
+      <div className="text-[11px] text-fg-faint">
+        {s && s.throttles > 0
+          ? `${s.throttles} rate-limit / overloaded event${s.throttles === 1 ? "" : "s"} observed in this range (from Claude Code's StopFailure hook).`
+          : "No rate-limit events observed in this range."}{" "}
+        A limit forecast will be modeled once enough throttle data accumulates — until then Caprock reports the count, not a guess. Everything here is measured.
+      </div>
     </div>
   )
 }

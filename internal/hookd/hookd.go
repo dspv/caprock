@@ -40,6 +40,7 @@ type Payload struct {
 	Source         string          `json:"source"`  // SessionStart
 	Model          string          `json:"model"`   // SessionStart (optional)
 	Trigger        string          `json:"trigger"` // PreCompact
+	Error          string          `json:"error"`   // StopFailure / PostToolUseFailure
 }
 
 // ErrUnknownEvent marks hook_event_name values hookd does not consume.
@@ -87,6 +88,10 @@ func Normalize(raw []byte, now time.Time) (*event.Event, rollup.SessionInfo, err
 		ev.Kind = event.KindAgentSpawn
 	case "PreCompact":
 		ev.Kind = event.KindContextCompact
+	case "StopFailure":
+		// A turn failed to complete — rate_limit / overloaded / billing etc. This
+		// is the honest throttle signal (SPEC §8.4 / throttle_observations).
+		ev.Kind = event.KindThrottle
 	default:
 		return nil, info, ErrUnknownEvent
 	}

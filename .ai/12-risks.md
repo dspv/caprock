@@ -51,8 +51,7 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
 - ~~`OQ-01` — What does T5 "parity" compare?~~ Resolved 2026-08-18 (Dima): **parity with Caprock-python was never a project goal** — it was one AC phrasing in the spec, and the legacy repo has no `pricing.json`/fixtures anyway. Source of truth for prices is the Anthropic pricing page (versioned `pricing.json` with date+source); the cache formula from `_savings.py` is unit-tested on our own fixtures. T5's AC is reworded accordingly.
 - **`OQ-02` — Bedrock/Vertex pricing in v0.1?** Partner pricing is separate (regional endpoints carry a 10% premium per the Anthropic pricing page, fetched 2026-08-18); v0.1 tables first-party only.
   - Decided by: Dima, before v0.1.0.
-- **`OQ-03` — Limit-forecast model.** Which observed signals count as a throttle in `throttle_observations`, and how is the forecast derived and labeled?
-  - Decided by: Phase 1 (T14/T16), once data exists.
+- **`OQ-03` — Limit-forecast model.** Partly answered 2026-08-19: the honest throttle signal is Claude Code's `StopFailure` hook (rate_limit / overloaded / billing) — the daemon now consumes it and records each into `throttle_observations`, and the Cost screen reports the *count* per range (a fact, not a forecast). Building an actual "time-to-limit" forecast still waits for enough real throttle data; until then Caprock never guesses. Deciding the forecast model itself: later, on data.
 - **`OQ-04` — caprock.dev cut-over.** Harness front page, python measurer moved to `/stats` with a banner — who edits `caprock-web`, when?
   - Decided by: Dima, at Phase 0 launch.
 - **`OQ-05` — Brand accent hue** (single hue, interactive elements only).

@@ -25,6 +25,10 @@ const (
 	KindTaskDone          Kind = "task.done"
 	KindApprovalRequested Kind = "approval.requested"
 	KindCostTick          Kind = "cost.tick"
+	// KindThrottle is emitted for StopFailure hooks (rate_limit / overloaded /
+	// billing) — the honest throttle signal for the limit forecast.
+	KindThrottle Kind = "throttle"
+
 	// KindContextCompact is emitted for PreCompact hooks (context is about to be
 	// summarized). Not in the spec's original list; consumers may ignore it.
 	KindContextCompact Kind = "context.compact"

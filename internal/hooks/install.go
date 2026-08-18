@@ -15,7 +15,7 @@ import (
 )
 
 // Events the shim registers for (Phase 0). Order is the order written.
-var Events = []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "SubagentStop", "PreCompact"}
+var Events = []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "SubagentStop", "PreCompact", "StopFailure"}
 
 // ShimTimeoutSeconds is the per-hook timeout written into settings.json. The
 // shim itself exits within ~1s; 5s is headroom for a slow disk, and it bounds

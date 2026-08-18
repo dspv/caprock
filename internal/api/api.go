@@ -348,9 +348,10 @@ func (s *Server) rangeFrom(rng string) (int64, string) {
 // SummaryResponse extends the store summary with burn rate and savings.
 type SummaryResponse struct {
 	store.Summary
-	Savings cost.Savings `json:"savings"`
-	Burn    Burn         `json:"burn"`
-	Pricing string       `json:"pricing_version"`
+	Savings   cost.Savings `json:"savings"`
+	Burn      Burn         `json:"burn"`
+	Pricing   string       `json:"pricing_version"`
+	Throttles int64        `json:"throttles"` // rate-limit/overloaded events in range (honest signal, not a forecast)
 }
 
 // Burn is the recent spend rate ("$/hr equivalent, tokens/min") over a short window.
@@ -387,6 +388,9 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 		resp.Burn = Burn{WindowMin: int(win / time.Minute), Turns: recent.Turns,
 			USDPerHour: recent.CostUSD / win.Hours(),
 			TokPerMin:  float64(recent.TokensIn+recent.TokensOut+recent.CacheRead+recent.CacheWrite) / win.Minutes()}
+	}
+	if n, err := store.CountThrottles(ctx, s.d.Store.DB(), from); err == nil {
+		resp.Throttles = n
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

@@ -7,7 +7,7 @@ Conventions that apply to every contract here: JSON casing is **snake_case**; al
 ## Hook shim
 
 - Single Go binary `caprock-hook` (same repo, tiny), installed to Caprock's data dir.
-- Registered in `~/.claude/settings.json` under events: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `SubagentStop`, `PreCompact`. Installer merges JSON non-destructively; `caprock hooks uninstall` reverts; back up the settings file before first write.
+- Registered in `~/.claude/settings.json` under events: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `SubagentStop`, `PreCompact`, `StopFailure`. Installer merges JSON non-destructively; `caprock hooks uninstall` reverts; back up the settings file before first write.
 - Behavior (Phase 0–1: fire-and-forget): read stdin JSON → POST to `http://127.0.0.1:<port>/v1/hook` with `Authorization: Bearer <run-token>` → always exit 0 within a 1s budget. Never print to stdout (a broken shim must not affect the user's Claude session). If the daemon is down, drop silently.
 - One server, one port: `/v1/hook` lives on the same listener as the API and UI (default **4173**); `<data_dir>/runtime.json` holds `{port, token}`, written by the daemon, read by the shim per invocation.
 - Phase 2 extends this protocol for **Stop events only** — request-response with a 5s timeout; see [05-orchestration.md § Stop-hook decision protocol](05-orchestration.md#stop-hook-decision-protocol-shim-upgrade-t19).
@@ -26,6 +26,7 @@ Claude Code sends one JSON object per event on the shim's stdin. Fields common t
 | `SubagentStop`     | `stop_reason`, `last_assistant_message`, `agent_id`        |
 | `SessionStart`     | `source` (`startup`, `resume`, `clear`, `compact`, `fork`) |
 | `PreCompact`       | `trigger` (`manual`, `auto`)                               |
+| `StopFailure`      | `error` / `stop_reason` (rate_limit, overloaded, billing)  |
 
 The daemon stores the raw payload untouched in `events.payload`; unknown events and unknown fields are logged and ignored, never fatal ([06-engineering-rules.md](06-engineering-rules.md)).
 
@@ -33,7 +34,7 @@ The daemon stores the raw payload untouched in `events.payload`; unknown events 
 
 ### settings.json registration shape
 
-The installer writes, for each of the seven events, a matcher-less entry (`matcher` omitted — `UserPromptSubmit` and `Stop` do not accept matchers) of the form `{"hooks":[{"type":"command","command":"<data_dir>/caprock-hook","timeout":5}]}` and leaves every other key, every pre-existing hook, **and the user's key order** untouched (ordered-JSON merge). A path containing spaces is double-quoted. When no `caprock-hook` binary sits beside the `caprock` executable, the registered command is `<caprock> hook` (a hidden subcommand running the same shim code). Uninstall removes only entries whose `command` points at a Caprock shim (exact path, or basename `caprock-hook[.exe]`, or `<caprock> hook`) and drops empty containers it leaves behind. The backup is `settings.json.caprock-backup-<unix-ts>` next to the original, written once before the first modification. An unparsable settings.json is never modified.
+The installer writes, for each of the eight events, a matcher-less entry (`matcher` omitted — `UserPromptSubmit` and `Stop` do not accept matchers) of the form `{"hooks":[{"type":"command","command":"<data_dir>/caprock-hook","timeout":5}]}` and leaves every other key, every pre-existing hook, **and the user's key order** untouched (ordered-JSON merge). A path containing spaces is double-quoted. When no `caprock-hook` binary sits beside the `caprock` executable, the registered command is `<caprock> hook` (a hidden subcommand running the same shim code). Uninstall removes only entries whose `command` points at a Caprock shim (exact path, or basename `caprock-hook[.exe]`, or `<caprock> hook`) and drops empty containers it leaves behind. The backup is `settings.json.caprock-backup-<unix-ts>` next to the original, written once before the first modification. An unparsable settings.json is never modified.
 
 ## HTTP API (daemon, `127.0.0.1:4173`)
 

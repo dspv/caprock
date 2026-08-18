@@ -43,6 +43,7 @@ func TestNormalizeAllSevenEvents(t *testing.T) {
 		{"stop.json", event.KindAgentStop, "", "", ""},
 		{"subagent_stop.json", event.KindAgentStop, "", "", "agent-9"},
 		{"pre_compact.json", event.KindContextCompact, "", "", ""},
+		{"stop_failure.json", event.KindThrottle, "", "", ""},
 	}
 	for _, c := range cases {
 		raw := fixture(t, c.file)
@@ -95,7 +96,7 @@ func post(h http.Handler, token string, body []byte) *httptest.ResponseRecorder 
 
 func TestHandlerStoresAllEventsAndGates(t *testing.T) {
 	h, st := newHandler(t)
-	files := []string{"session_start.json", "user_prompt_submit.json", "pre_tool_use.json", "post_tool_use.json", "stop.json", "subagent_stop.json", "pre_compact.json"}
+	files := []string{"session_start.json", "user_prompt_submit.json", "pre_tool_use.json", "post_tool_use.json", "stop.json", "subagent_stop.json", "pre_compact.json", "stop_failure.json"}
 	for _, f := range files {
 		if rr := post(h, "secret", fixture(t, f)); rr.Code != http.StatusNoContent {
 			t.Fatalf("%s: status %d body %s", f, rr.Code, rr.Body.String())
@@ -105,15 +106,15 @@ func TestHandlerStoresAllEventsAndGates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(evs) != 7 {
-		t.Fatalf("stored %d events, want 7", len(evs))
+	if len(evs) != 8 {
+		t.Fatalf("stored %d events, want 8", len(evs))
 	}
 	// Replayed keyed events dedupe; keyless (Stop) do not.
 	post(h, "secret", fixture(t, "pre_tool_use.json"))
 	post(h, "secret", fixture(t, "stop.json"))
 	evs, _ = store.ListEvents(context.Background(), st.DB(), "sess-abc", 0, 0)
-	if len(evs) != 8 {
-		t.Fatalf("after replay %d events, want 8", len(evs))
+	if len(evs) != 9 {
+		t.Fatalf("after replay %d events, want 9", len(evs))
 	}
 	s, err := store.GetSession(context.Background(), st.DB(), "sess-abc")
 	if err != nil || s.Cwd != "/home/u/proj" || !s.HasHooks || s.Model != "claude-opus-5" || s.TranscriptPath == "" {

@@ -1,0 +1,1 @@
+{"session_id":"sess-abc","prompt_id":"p-1","transcript_path":"/home/u/.claude/projects/-home-u-proj/sess-abc.jsonl","cwd":"/home/u/proj","permission_mode":"default","hook_event_name":"StopFailure","error":"rate_limit","stop_reason":"rate_limit"}

@@ -138,6 +138,11 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 		}
 		res.Stats = st
 
+		if ev.Kind == event.KindThrottle {
+			// Capture the throttle for the limit forecast (SPEC §8.4); model later.
+			_ = store.RecordThrottle(ctx, q, ev.Ts.UnixMilli(), ev.SessionID, "stop_failure", ev.Payload)
+		}
+
 		if ev.Kind == event.KindTurnAssistant {
 			day := ev.Ts.In(r.Location).Format("2006-01-02")
 			var tokens int64

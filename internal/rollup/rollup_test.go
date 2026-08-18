@@ -128,6 +128,19 @@ func TestUnknownModelLeavesCostNil(t *testing.T) {
 	}
 }
 
+func TestThrottleRecorded(t *testing.T) {
+	ctx := context.Background()
+	r, _ := newRecorder(t)
+	ev := &event.Event{SessionID: "s", Source: event.SourceHook, Kind: event.KindThrottle, Payload: json.RawMessage(`{"error":"rate_limit"}`)}
+	if _, err := r.Record(ctx, ev, SessionInfo{}); err != nil {
+		t.Fatal(err)
+	}
+	n, err := store.CountThrottles(ctx, r.Store.DB(), 0)
+	if err != nil || n != 1 {
+		t.Fatalf("throttle not recorded: %d %v", n, err)
+	}
+}
+
 func TestMarkIdle(t *testing.T) {
 	ctx := context.Background()
 	r, sub := newRecorder(t)
