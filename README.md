@@ -5,7 +5,7 @@
 [![docs](https://github.com/dspv/caprock/actions/workflows/docs.yml/badge.svg)](https://github.com/dspv/caprock/actions/workflows/docs.yml)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-> **Status: Phase 1 — Control, in progress (2026-08-18).** Observe (Phase 0) is green on the macOS/Linux/Windows CI matrix. Control (Phase 1) — spawn/type/kill a real `claude` from the UI, auto-pause loops, History — works on macOS; on a branch pending the OS matrix. No tagged release yet. Progress is tracked honestly in [`.ai/14-build-status.md`](.ai/14-build-status.md).
+> **Status: Phase 2 — Orchestrate, in progress (2026-08-18).** Observe (Phase 0) and Control (Phase 1) are merged to master, green on the macOS/Linux/Windows CI matrix. Orchestrate (Phase 2) — a tasks board on disk, mailboxes, the Stop-loop autonomy engine and approvals — is on a branch; the orchestrator agent, verification runner and e2e are next. No tagged release yet. Progress is tracked honestly in [`.ai/14-build-status.md`](.ai/14-build-status.md).
 
 ---
 
@@ -35,7 +35,7 @@ Build from source (Go 1.26, Node 22): `make ui && make build` → `./bin/caprock
 | Session Detail | Event timeline, live `git diff` (Phase 0); live terminal (Phase 1)   | 0 → 1 |
 | Cost & Burn    | $/hr now, today totals, model mix, cache hit-rate, per-project       | 0     |
 | History        | Lifetime stats: cost per project/day/model, tool distribution        | 1     |
-| Tasks          | Kanban over `tasks/*.md`; verification-before-done; approvals queue  | 2     |
+| Tasks          | Kanban over `tasks/*.md`; Stop-loop autonomy; approvals queue        | 2     |
 
 Local-first: loopback only, no servers, no telemetry, all data in SQLite on your disk. Free for solo use, permanently.
 

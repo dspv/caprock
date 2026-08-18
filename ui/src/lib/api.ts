@@ -118,6 +118,10 @@ export interface DailyStat { day: string; project: string; model: string; tokens
 
 export interface ToolCount { tool: string; count: number }
 export interface HistoryTotals { sessions: number; owned_sessions: number; turns: number; tool_calls: number; files_touched: number; cost_usd: number; avg_session_sec: number; days: number }
+export interface Task { id: string; title: string; status: string; assignee: string; budget_usd: number; verify_rounds: number; cost_usd: number; created_at: number; updated_at: number }
+export interface TaskDetail { task: Task; body: string }
+export interface CreateTaskRequest { title: string; budget_usd?: number; done_criteria?: string[]; body?: string }
+
 export interface History { range: string; totals: HistoryTotals; tools: ToolCount[]; daily: DailyStat[]; savings: Savings; summary: Summary }
 
 export interface Status {
@@ -136,6 +140,7 @@ export interface Status {
   loop_k: number
   loop_t_minutes: number
   active_loops: number
+  orchestration: boolean
 }
 
 export interface SpawnRequest { cwd: string; worktree?: string; model?: string; permission_mode?: string; args?: string[] }
@@ -174,6 +179,10 @@ export const api = {
   summary: (range: 'today' | '7d' | '30d' | 'all' = 'today') => get<Summary>(`/v1/stats/summary?range=${range}`),
   daily: (days = 30) => get<DailyStat[]>(`/v1/stats/daily?days=${days}`),
   history: (range: 'today' | '7d' | '30d' | 'all' = 'all') => get<History>(`/v1/history?range=${range}`),
+  tasks: () => get<Task[]>('/v1/tasks'),
+  task: (id: string) => get<TaskDetail>(`/v1/tasks/${encodeURIComponent(id)}`),
+  createTask: (req: CreateTaskRequest) => post<TaskDetail>('/v1/tasks', req),
+  approve: (id: string, approve: boolean) => post<void>(`/v1/tasks/${encodeURIComponent(id)}/${approve ? 'approve' : 'reject'}`, {}),
   status: () => get<Status>('/v1/status'),
   spawn: (req: SpawnRequest) => post<{ session_id: string; cwd: string }>('/v1/agents', req),
   signal: (id: string, action: 'pause' | 'resume' | 'kill') => post<void>(`/v1/agents/${encodeURIComponent(id)}/signal`, { action }),

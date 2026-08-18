@@ -2,19 +2,19 @@
 
 The running log: what is done, what is not, what is next. **Update this file and § Current State in [00-index.md](00-index.md) whenever the state of the world changes.** Dates in absolute form, never "last week". What "done" means per task is defined in [09-execution-plan.md](09-execution-plan.md).
 
-**Last updated: 2026-08-18** · Phase **1 — Control, in progress** · Next: **T10/T16 releases (v0.1.0, v0.2.0) once merged and green on the OS matrix**
+**Last updated: 2026-08-18** · Phase **2 — Orchestrate, in progress** · Next: **T21 orchestrator agent, T22 verification runner, T24 cost attribution, T25 e2e; then releases**
 
 ## Progress by track
 
 Percentages are deliberately coarse — they answer "is this track started, half-built, or done", nothing finer. The same numbers drive the progress bars in [README.md](../README.md); **update both in the same commit.** "90%" means "works, not hardened"; never 100% for anything that has not run in the environment it was built for.
 
-| Track                           | Progress | State                                                        |
-| ------------------------------- | -------- | ------------------------------------------------------------ |
-| Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code            |
-| Phase 0 — Observe (T0–T10)      | 90%      | Works on macOS + CI (macos/ubuntu/windows); T10 release open |
-| Phase 1 — Control (T11–T16)     | 80%      | Spawn/terminal/kill, auto-pause, History work on macOS       |
-| Phase 2 — Orchestrate (T17–T25) | 0%       | Not started                                                  |
-| Phase 3 — Delight               | 0%       | No plan by design                                            |
+| Track                           | Progress | State                                                           |
+| ------------------------------- | -------- | --------------------------------------------------------------- |
+| Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code               |
+| Phase 0 — Observe (T0–T10)      | 90%      | Works on macOS + CI (macos/ubuntu/windows); T10 release open    |
+| Phase 1 — Control (T11–T16)     | 90%      | Merged to master, green on the 3-OS CI matrix                   |
+| Phase 2 — Orchestrate (T17–T25) | 45%      | Hive, board, Stop-loop, approvals; orchestrator/verify/e2e left |
+| Phase 3 — Delight               | 0%       | No plan by design                                               |
 
 ## Milestone status
 
@@ -43,6 +43,10 @@ Percentages are deliberately coarse — they answer "is this track started, half
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and not yet exercised in CI.
 
 ## Log
+
+### 2026-08-18 — Phase 2 (Orchestrate) foundation: hive, board, Stop-loop, approvals (T17–T20)
+
+The trust-gap machinery's base is in and tested. `internal/hive` is the on-disk source of truth (agents/tasks/mailboxes/ledger, single writer, atomic writes, a dependency-free YAML reader/writer for the fixed task schema, validated kanban transitions). `internal/board` bridges it to the SQLite mirror and the API and answers the worker's Stop hook — forcing continuation while the inbox is non-empty, with the N=10 guard escalating to `needs_you`. Approve/reject move the task and notify the orchestrator by mailbox. `caprock up --hive <dir>` turns it on; the task endpoints return 501 otherwise. Verified live on macOS: tasks created via the API become `tasks/*.md` files and render on the kanban. A costly lesson this session: an accidental `git add -A` while Phase 2 files sat in the tree leaked them onto the Phase 1 branch and broke its CI on all three OS; the fix was to reset the branch to its last clean commit and re-apply only the intended changes — a reminder to stage explicitly when multiple phases share a working tree. Phase 1 merged to master green on the matrix (PR #2); Phase 0's T7/T8 merged as PR #1.
 
 ### 2026-08-18 — Phase 1 (Control) lands on a branch: spawn, terminal, control, auto-pause, History
 

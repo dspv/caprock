@@ -61,6 +61,7 @@ func upCmd() *cobra.Command {
 		yes        bool
 		foreground bool
 		dataDirF   string
+		hiveDir    string
 	)
 	c := &cobra.Command{
 		Use:   "up",
@@ -100,9 +101,9 @@ func upCmd() *cobra.Command {
 			}
 
 			if !foreground {
-				return detach(cmd, dir, cfg, noOpen)
+				return detach(cmd, dir, cfg, noOpen, hiveDir)
 			}
-			return runForeground(cmd, dir, cfg, noOpen)
+			return runForeground(cmd, dir, cfg, noOpen, hiveDir)
 		},
 	}
 	c.Flags().IntVar(&port, "port", 0, "listen port (default from config.json, 4173)")
@@ -111,15 +112,16 @@ func upCmd() *cobra.Command {
 	c.Flags().BoolVarP(&yes, "yes", "y", false, "assume yes for the hook install prompt")
 	c.Flags().BoolVar(&foreground, "foreground", false, "run in the foreground (logs to stderr) instead of detaching")
 	c.Flags().StringVar(&dataDirF, "data-dir", "", "override the data directory (also $CAPROCK_DATA_DIR)")
+	c.Flags().StringVar(&hiveDir, "hive", "", "enable Phase 2 orchestration with a hive directory (tasks board + Stop-loop)")
 	return c
 }
 
-func runForeground(cmd *cobra.Command, dir string, cfg config.Config, noOpen bool) error {
+func runForeground(cmd *cobra.Command, dir string, cfg config.Config, noOpen bool, hiveDir string) error {
 	log := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{Level: slog.LevelInfo}))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return daemon.Run(ctx, daemon.Options{
-		DataDir: dir, Config: cfg, Version: version.Version, Log: log,
+		DataDir: dir, Config: cfg, Version: version.Version, Log: log, HiveDir: hiveDir,
 		OnReady: func(url string) {
 			fmt.Fprintf(cmd.OutOrStdout(), "caprock is up at %s  (data: %s)\n", url, dir)
 			if !noOpen && cfg.OpenBrowser {
@@ -132,7 +134,7 @@ func runForeground(cmd *cobra.Command, dir string, cfg config.Config, noOpen boo
 // detach re-executes this binary with `up --foreground` as a background
 // process whose stdout/stderr go to <data_dir>/caprock.log, then waits until
 // runtime.json appears.
-func detach(cmd *cobra.Command, dir string, cfg config.Config, noOpen bool) error {
+func detach(cmd *cobra.Command, dir string, cfg config.Config, noOpen bool, hiveDir string) error {
 	self, err := os.Executable()
 	if err != nil {
 		return err
@@ -142,7 +144,11 @@ func detach(cmd *cobra.Command, dir string, cfg config.Config, noOpen bool) erro
 		return err
 	}
 	defer logf.Close()
-	child := exec.Command(self, "up", "--foreground", "--no-open", "--no-hooks", "--port", fmt.Sprint(cfg.Port))
+	childArgs := []string{"up", "--foreground", "--no-open", "--no-hooks", "--port", fmt.Sprint(cfg.Port)}
+	if hiveDir != "" {
+		childArgs = append(childArgs, "--hive", hiveDir)
+	}
+	child := exec.Command(self, childArgs...)
 	child.Env = append(os.Environ(), config.EnvDataDir+"="+dir)
 	child.Stdout, child.Stderr = logf, logf
 	child.Stdin = nil
