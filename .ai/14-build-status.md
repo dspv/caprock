@@ -2,38 +2,38 @@
 
 The running log: what is done, what is not, what is next. **Update this file and § Current State in [00-index.md](00-index.md) whenever the state of the world changes.** Dates in absolute form, never "last week". What "done" means per task is defined in [09-execution-plan.md](09-execution-plan.md).
 
-**Last updated: 2026-08-18** · Phase **2 — Orchestrate, complete** · Next: **manual real-`claude` orchestrator run with hooks on, then tag v0.1.0 once the whole thing is trusted end-to-end**
+**Last updated: 2026-08-19** · Phase **2 — Orchestrate, complete** · Next: **a live unattended orchestrator run with hooks installed (the tag gate), plus packaging polish; then tag v0.1.0**
 
 ## Progress by track
 
 Percentages are deliberately coarse — they answer "is this track started, half-built, or done", nothing finer. The same numbers drive the progress bars in [README.md](../README.md); **update both in the same commit.** "90%" means "works, not hardened"; never 100% for anything that has not run in the environment it was built for.
 
-| Track                           | Progress | State                                                                                             |
-| ------------------------------- | -------- | ------------------------------------------------------------------------------------------------- |
-| Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code                                                 |
-| Phase 0 — Observe (T0–T10)      | 90%      | Works on macOS + CI (macos/ubuntu/windows); T10 release open                                      |
-| Phase 1 — Control (T11–T16)     | 90%      | Merged to master, green on the 3-OS CI matrix                                                     |
-| Phase 2 — Orchestrate (T17–T25) | 90%      | Hive, board, Stop-loop, orchestrator, verification, e2e all green; real-claude run + release left |
-| Phase 3 — Delight               | 0%       | No plan by design                                                                                 |
+| Track                           | Progress | State                                                        |
+| ------------------------------- | -------- | ------------------------------------------------------------ |
+| Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code            |
+| Phase 0 — Observe (T0–T10)      | 90%      | Works on macOS + CI (macos/ubuntu/windows); T10 release open |
+| Phase 1 — Control (T11–T16)     | 90%      | Merged to master, green on the 3-OS CI matrix                |
+| Phase 2 — Orchestrate (T17–T25) | 95%      | All tasks done; live unattended run (hooks) is the tag gate  |
+| Phase 3 — Delight               | 0%       | No plan by design                                            |
 
 ## Milestone status
 
-| #       | Milestone                   | Status                                     |
-| ------- | --------------------------- | ------------------------------------------ |
-| M0      | Spec migration + loss audit | done                                       |
-| T0      | ConPTY spike                | not started                                |
-| T1      | Repo bootstrap              | done                                       |
-| T2      | store + migrations          | done                                       |
-| T3      | hookd + shim + installer    | done                                       |
-| T4      | ingest                      | done                                       |
-| T5      | rollup + pricing            | done (parity vs formula; OQ-01 open)       |
-| T6      | api + live WS               | done                                       |
-| T7      | UI: Now + Session Detail    | 50% (first cut works; hardening via PR)    |
-| T8      | UI: Cost                    | 50% (first cut works; hardening via PR)    |
-| T9      | Loop detector               | done                                       |
-| T10     | Release hardening → v0.1.0  | 50% (CLI + smoke + CI written; no tag yet) |
-| Phase 1 | T11–T16 → v0.2.0            | not started                                |
-| Phase 2 | T17–T25 → v0.3.0            | not started                                |
+| #       | Milestone                    | Status                                    |
+| ------- | ---------------------------- | ----------------------------------------- |
+| M0      | Spec migration + loss audit  | done                                      |
+| T0      | ConPTY spike                 | done (informational; ptyspike job)        |
+| T1      | Repo bootstrap               | done                                      |
+| T2      | store + migrations           | done                                      |
+| T3      | hookd + shim + installer     | done                                      |
+| T4      | ingest                       | done                                      |
+| T5      | rollup + pricing             | done (parity vs formula; OQ-01 open)      |
+| T6      | api + live WS                | done                                      |
+| T7      | UI: Now + Session Detail     | done                                      |
+| T8      | UI: Cost                     | done (limit forecast deferred, OQ-03)     |
+| T9      | Loop detector                | done                                      |
+| T10     | Release hardening → v0.1.0   | 90% (CLI+smoke+CI+CHANGELOG; tag pending) |
+| T11–T16 | Phase 1 (Control) → v0.2.0   | done                                      |
+| T17–T25 | Phase 2 (Orchestrate)→v0.3.0 | done                                      |
 
 ## What is true right now
 
