@@ -17,6 +17,8 @@ export function StatusScreen() {
     ['pricing', `${s.pricing.version} · ${s.pricing.models} models · fetched ${s.pricing.fetched_at}${s.pricing.user_override ? ' · user override' : ''}`],
     ['pricing source', s.pricing.source],
     ['loop rule', `≥ ${s.loop_k} same-tool calls in ${s.loop_t_minutes} min · ${s.active_loops} active`],
+    ['events stored', `${s.events.toLocaleString()}${s.retention_days > 0 ? ` · pruned after ${s.retention_days}d` : ' · kept forever (set retention_days to cap DB growth)'}`],
+    ['orchestration', s.orchestration ? 'on (--hive)' : 'off'],
     ['dashboard', s.ui_built ? 'embedded build' : 'dev server / placeholder'],
   ]
   if (s.hooks) rows.push(['hooks', `${(s.hooks.installed ?? []).length}/${(s.hooks.installed ?? []).length + (s.hooks.missing ?? []).length} events registered in ${s.hooks.settings_path}${s.hooks.shim_exists ? '' : ' (shim missing)'}`])

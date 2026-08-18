@@ -99,3 +99,46 @@ func TestWriteFileAtomicOverwrites(t *testing.T) {
 		t.Fatalf("temp files left behind: %d entries", len(entries))
 	}
 }
+
+func TestPaths(t *testing.T) {
+	dir := "/data"
+	cases := map[string]string{
+		ConfigPath(dir):       "/data/config.json",
+		RuntimePath(dir):      "/data/runtime.json",
+		DBPath(dir):           "/data/caprock.db",
+		PricingPath(dir):      "/data/pricing.json",
+		LogPath(dir):          "/data/caprock.log",
+		HookDebugLogPath(dir): "/data/hook-debug.log",
+	}
+	for got, want := range cases {
+		if filepath.ToSlash(got) != want {
+			t.Errorf("got %q want %q", got, want)
+		}
+	}
+	// Shim name is platform-correct.
+	base := filepath.Base(ShimPath(dir))
+	if base != "caprock-hook" && base != "caprock-hook.exe" {
+		t.Fatalf("shim name %q", base)
+	}
+}
+
+func TestNewSessionIDIsUUIDv4(t *testing.T) {
+	seen := map[string]bool{}
+	for range 100 {
+		id := NewSessionID()
+		if len(id) != 36 || id[8] != '-' || id[14] != '4' {
+			t.Fatalf("not a v4 uuid: %q", id)
+		}
+		if seen[id] {
+			t.Fatal("duplicate uuid")
+		}
+		seen[id] = true
+	}
+}
+
+func TestDefaultsSane(t *testing.T) {
+	d := Defaults()
+	if d.Port != DefaultPort || d.LoopK != 5 || d.LoopTMinutes != 3 || !d.OpenBrowser || d.RetentionDays != 0 {
+		t.Fatalf("defaults: %+v", d)
+	}
+}

@@ -141,6 +141,8 @@ export interface Status {
   loop_t_minutes: number
   active_loops: number
   orchestration: boolean
+  events: number
+  retention_days: number
 }
 
 export interface SpawnRequest { cwd: string; worktree?: string; model?: string; permission_mode?: string; args?: string[] }
