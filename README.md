@@ -74,9 +74,16 @@ make ui && make build      # → ./bin/caprock, ./bin/caprock-hook
 ./bin/caprock up           # http://127.0.0.1:4173
 ```
 
-Cross-platform release binaries (darwin/linux/windows × amd64/arm64) are produced
-by `goreleaser` on a `v*` tag — see `.goreleaser.yaml`. The full change log is in
-[CHANGELOG.md](CHANGELOG.md).
+Once tagged, install via Homebrew or a release binary:
+
+```bash
+brew install dspv/tap/caprock          # macOS / Linux (universal binary)
+# or download caprock + caprock-hook for your OS/arch from GitHub Releases
+```
+
+Cross-platform binaries (darwin/linux/windows × amd64/arm64, plus a macOS
+universal binary) and the Homebrew cask are produced by `goreleaser` on a `v*`
+tag — see `.goreleaser.yaml`. Full change log: [CHANGELOG.md](CHANGELOG.md).
 
 ## Contributing
 

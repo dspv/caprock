@@ -23,6 +23,14 @@ builds:
     goos: [darwin, linux, windows]
     goarch: [amd64, arm64]
 
+universal_binaries:
+  - id: caprock-universal
+    ids: [caprock]
+    replace: false
+  - id: caprock-hook-universal
+    ids: [caprock-hook]
+    replace: false
+
 archives:
   - id: default
     ids: [caprock, caprock-hook]
@@ -41,6 +49,20 @@ changelog:
   sort: asc
   filters:
     exclude: ["^docs", "^chore", "^ci"]
+
+homebrew_casks:
+  - name: caprock
+    # Tap repo — create dspv/homebrew-tap (public) before the first tag.
+    repository:
+      owner: dspv
+      name: homebrew-tap
+    homepage: "https://caprock.dev"
+    description: "Mission control for Claude Code — watch, control and orchestrate your sessions"
+    # Don't fail a release if the tap repo isn't there yet.
+    skip_upload: auto
+    caveats: |
+      Start it with:  caprock up
+      Then open:      http://127.0.0.1:4173
 
 release:
   draft: true
