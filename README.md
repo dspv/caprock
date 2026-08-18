@@ -5,7 +5,7 @@
 [![docs](https://github.com/dspv/caprock/actions/workflows/docs.yml/badge.svg)](https://github.com/dspv/caprock/actions/workflows/docs.yml)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-> **Status: Phase 0 — Observe, in progress (2026-08-18).** The observe-only pipeline (hooks + transcripts → SQLite → dashboard) runs end-to-end on macOS; Linux/Windows CI is the gate. No release yet. Progress is tracked honestly in [`.ai/14-build-status.md`](.ai/14-build-status.md).
+> **Status: Phase 1 — Control, in progress (2026-08-18).** Observe (Phase 0) is green on the macOS/Linux/Windows CI matrix. Control (Phase 1) — spawn/type/kill a real `claude` from the UI, auto-pause loops, History — works on macOS; on a branch pending the OS matrix. No tagged release yet. Progress is tracked honestly in [`.ai/14-build-status.md`](.ai/14-build-status.md).
 
 ---
 
@@ -34,7 +34,7 @@ Build from source (Go 1.26, Node 22): `make ui && make build` → `./bin/caprock
 | Now            | Per-session narration, plan progress, live burn, health, loop banner | 0     |
 | Session Detail | Event timeline, live `git diff` (Phase 0); live terminal (Phase 1)   | 0 → 1 |
 | Cost & Burn    | $/hr now, today totals, model mix, cache hit-rate, per-project       | 0     |
-| History        | Cross-session stats: cost per project/day/model, tool distribution   | 1     |
+| History        | Lifetime stats: cost per project/day/model, tool distribution        | 1     |
 | Tasks          | Kanban over `tasks/*.md`; verification-before-done; approvals queue  | 2     |
 
 Local-first: loopback only, no servers, no telemetry, all data in SQLite on your disk. Free for solo use, permanently.

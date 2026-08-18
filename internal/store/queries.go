@@ -26,7 +26,11 @@ type Session struct {
 	HasTranscript  bool   `json:"has_transcript"`
 	GitBranch      string `json:"git_branch"`
 	Version        string `json:"version"`
-	Owned          bool   `json:"owned"` // Phase 1 (column arrives with the Phase 1 migration)
+	Owned          bool   `json:"owned"`
+	Worktree       string `json:"worktree,omitempty"`
+	SpawnCommand   string `json:"spawn_command,omitempty"`
+	PID            int    `json:"pid,omitempty"`
+	ExitCode       *int   `json:"exit_code,omitempty"`
 }
 
 // Stats mirrors session_stats.
@@ -178,6 +182,42 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 	return nil
 }
 
+// MarkOwned records that Caprock spawned this session (Phase 1).
+func MarkOwned(ctx context.Context, q Querier, id, worktree, spawnCommand string, pid int) error {
+	_, err := q.ExecContext(ctx, `UPDATE sessions SET owned = 1, worktree = COALESCE(NULLIF(?, ''), worktree), spawn_command = ?, pid = ?, status = 'active' WHERE session_id = ?`, worktree, spawnCommand, pid, id)
+	return err
+}
+
+// SetExit records an owned session's exit code and marks it ended.
+func SetExit(ctx context.Context, q Querier, id string, code int) error {
+	_, err := q.ExecContext(ctx, `UPDATE sessions SET exit_code = ?, status = 'ended', pid = 0 WHERE session_id = ?`, code, id)
+	return err
+}
+
+// ListOwnedActive returns owned sessions that are not ended (for restart bookkeeping).
+func ListOwnedActive(ctx context.Context, q Querier) ([]Session, error) {
+	rows, err := q.QueryContext(ctx, `SELECT `+sessionCols+` FROM sessions WHERE owned = 1 AND status != 'ended' ORDER BY last_event_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Session
+	for rows.Next() {
+		s, err := scanSession(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// RecordThrottle appends a throttle observation (Phase 1: capture now, model later).
+func RecordThrottle(ctx context.Context, q Querier, ts int64, sessionID, kind string, payload []byte) error {
+	_, err := q.ExecContext(ctx, `INSERT INTO throttle_observations(ts, session_id, kind, payload) VALUES(?, ?, ?, ?)`, ts, sessionID, kind, string(payload))
+	return err
+}
+
 // SetSessionStatus forces a status (idle/ended/active).
 func SetSessionStatus(ctx context.Context, q Querier, id, status string) error {
 	_, err := q.ExecContext(ctx, `UPDATE sessions SET status = ? WHERE session_id = ?`, status, id)
@@ -235,13 +275,18 @@ func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, 
 	return ids, nil
 }
 
-const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,'')`
+const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code`
 
 func scanSession(sc interface{ Scan(...any) error }) (Session, error) {
 	var s Session
-	var hh, ht int
-	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version)
-	s.HasHooks, s.HasTranscript = hh != 0, ht != 0
+	var hh, ht, owned int
+	var exit sql.NullInt64
+	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit)
+	s.HasHooks, s.HasTranscript, s.Owned = hh != 0, ht != 0, owned != 0
+	if exit.Valid {
+		v := int(exit.Int64)
+		s.ExitCode = &v
+	}
 	return s, err
 }
 
@@ -588,6 +633,71 @@ func b2i(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// ToolCount is one row of the tool-usage distribution.
+type ToolCount struct {
+	Tool  string `json:"tool"`
+	Count int64  `json:"count"`
+}
+
+// ToolDistribution counts tool.pre events by tool since fromMs (0 = all time).
+func ToolDistribution(ctx context.Context, q Querier, fromMs int64, limit int) ([]ToolCount, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := q.QueryContext(ctx, `SELECT COALESCE(tool,'?'), COUNT(*) FROM events WHERE kind = 'tool.pre' AND ts >= ? GROUP BY tool ORDER BY 2 DESC LIMIT ?`, fromMs, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ToolCount
+	for rows.Next() {
+		var t ToolCount
+		if err := rows.Scan(&t.Tool, &t.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// HistoryTotals is the all-time (or ranged) cross-session summary for the History screen.
+type HistoryTotals struct {
+	Sessions      int64   `json:"sessions"`
+	OwnedSessions int64   `json:"owned_sessions"`
+	Turns         int64   `json:"turns"`
+	ToolCalls     int64   `json:"tool_calls"`
+	FilesTouched  int64   `json:"files_touched"`
+	CostUSD       float64 `json:"cost_usd"`
+	AvgSessionSec float64 `json:"avg_session_sec"`
+	Days          int64   `json:"days"`
+}
+
+// History computes cross-session totals since fromMs.
+func History(ctx context.Context, q Querier, fromMs int64) (HistoryTotals, error) {
+	var h HistoryTotals
+	err := q.QueryRowContext(ctx, `
+		SELECT COUNT(*), COALESCE(SUM(owned),0),
+		       COALESCE(AVG(CASE WHEN last_event_at > started_at THEN (last_event_at - started_at)/1000.0 END),0),
+		       COUNT(DISTINCT date(started_at/1000, 'unixepoch'))
+		FROM sessions WHERE last_event_at >= ?`, fromMs).
+		Scan(&h.Sessions, &h.OwnedSessions, &h.AvgSessionSec, &h.Days)
+	if err != nil {
+		return h, err
+	}
+	err = q.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(CASE WHEN kind='turn.assistant' THEN 1 ELSE 0 END),0),
+		       COALESCE(SUM(CASE WHEN kind='tool.pre' THEN 1 ELSE 0 END),0),
+		       COALESCE(SUM(cost_usd),0)
+		FROM events WHERE ts >= ?`, fromMs).Scan(&h.Turns, &h.ToolCalls, &h.CostUSD)
+	if err != nil {
+		return h, err
+	}
+	if err := q.QueryRowContext(ctx, `SELECT COALESCE(SUM(files_touched),0) FROM session_stats`).Scan(&h.FilesTouched); err != nil {
+		return h, err
+	}
+	return h, nil
 }
 
 // ProjectFromCwd derives the project label from a working directory (its basename).

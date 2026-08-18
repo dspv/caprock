@@ -5,6 +5,7 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -15,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/api"
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/config"
@@ -24,6 +26,7 @@ import (
 	"github.com/dspv/caprock/internal/hooks"
 	"github.com/dspv/caprock/internal/ingest"
 	"github.com/dspv/caprock/internal/loop"
+	"github.com/dspv/caprock/internal/ptyman"
 	"github.com/dspv/caprock/internal/rollup"
 	"github.com/dspv/caprock/internal/store"
 )
@@ -57,6 +60,7 @@ type Daemon struct {
 	rec   *rollup.Recorder
 	det   *loop.Detector
 	tail  *ingest.Tailer
+	mgr   *agents.Manager
 	api   *api.Server
 	rt    config.Runtime
 	start time.Time
@@ -151,6 +155,15 @@ func (d *Daemon) run(ctx context.Context) error {
 	sub := d.bus.Subscribe(4096)
 	go d.observeLoops(ctx, sub)
 
+	// Owned-session manager (Phase 1).
+	d.mgr = agents.NewManager(d.store, d.opt.DataDir, "", d.log)
+	d.mgr.OnExit = func(id string, code int) {
+		if s, err := store.GetSession(ctx, d.store.DB(), id); err == nil {
+			st, _ := store.GetStats(ctx, d.store.DB(), id)
+			d.bus.Publish(bus.Frame{Type: bus.FrameSession, Data: rollup.SessionFrame{Session: s, Stats: st}})
+		}
+	}
+
 	// Hook receiver.
 	hh := &hookd.Handler{Token: rt.Token, Recorder: d.rec, Log: d.log}
 
@@ -158,7 +171,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.api = api.New(api.Deps{
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version,
 		Status: d.status, ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
-		Token: rt.Token, Shutdown: cancel,
+		Token: rt.Token, Shutdown: cancel, Agents: &agentAdapter{m: d.mgr},
 	})
 	srv := &http.Server{Handler: d.api, ReadHeaderTimeout: 10 * time.Second}
 
@@ -198,6 +211,7 @@ func (d *Daemon) run(ctx context.Context) error {
 			return err
 		}
 	}
+	d.mgr.Shutdown()
 	d.api.Close()
 	shutdownCtx, c2 := context.WithTimeout(context.Background(), 5*time.Second)
 	defer c2()
@@ -232,9 +246,20 @@ func (d *Daemon) observeLoops(ctx context.Context, sub *bus.Subscriber) {
 			if a := d.det.Observe(ev); a != nil {
 				d.mu.Lock()
 				d.alerts[a.SessionID] = a
+				autoPause := d.opt.Config.AutoPause
 				d.mu.Unlock()
 				d.log.Warn("loop detected", "component", "loop", "session_id", a.SessionID, "tool", a.Tool, "count", a.Count, "sample", a.Sample)
 				d.bus.Publish(bus.Frame{Type: bus.FrameAlert, Data: a})
+				// Auto-pause is opt-in and OWNED sessions only — we never signal a
+				// process we did not start (.ai/05-orchestration.md).
+				if autoPause {
+					if _, owned := d.mgr.Get(a.SessionID); owned {
+						if err := d.mgr.Signal(a.SessionID, ptyman.SignalPause); err == nil {
+							d.log.Warn("auto-paused looping owned session", "component", "loop", "session_id", a.SessionID)
+							d.bus.Publish(bus.Frame{Type: bus.FrameAlert, Data: map[string]any{"kind": "auto_paused", "session_id": a.SessionID}})
+						}
+					}
+				}
 			}
 		}
 	}
@@ -272,19 +297,21 @@ func (d *Daemon) sweep(ctx context.Context) {
 
 // Status is /v1/status.
 type Status struct {
-	Version     string        `json:"version"`
-	PID         int           `json:"pid"`
-	StartedAt   int64         `json:"started_at"`
-	UptimeS     int64         `json:"uptime_s"`
-	URL         string        `json:"url"`
-	DataDir     string        `json:"data_dir"`
-	Pricing     PricingStatus `json:"pricing"`
-	Ingest      *ingest.Stats `json:"ingest,omitempty"`
-	Hooks       *hooks.Status `json:"hooks,omitempty"`
-	UIBuilt     bool          `json:"ui_built"`
-	LoopK       int           `json:"loop_k"`
-	LoopTMin    int           `json:"loop_t_minutes"`
-	ActiveLoops int           `json:"active_loops"`
+	Version         string        `json:"version"`
+	PID             int           `json:"pid"`
+	StartedAt       int64         `json:"started_at"`
+	UptimeS         int64         `json:"uptime_s"`
+	URL             string        `json:"url"`
+	DataDir         string        `json:"data_dir"`
+	Pricing         PricingStatus `json:"pricing"`
+	Ingest          *ingest.Stats `json:"ingest,omitempty"`
+	Hooks           *hooks.Status `json:"hooks,omitempty"`
+	UIBuilt         bool          `json:"ui_built"`
+	ClaudeAvailable bool          `json:"claude_available"`
+	OwnedActive     int           `json:"owned_active"`
+	LoopK           int           `json:"loop_k"`
+	LoopTMin        int           `json:"loop_t_minutes"`
+	ActiveLoops     int           `json:"active_loops"`
 }
 
 // PricingStatus summarizes the table in force.
@@ -302,6 +329,7 @@ func (d *Daemon) status(_ context.Context) any {
 		URL: d.url, DataDir: d.opt.DataDir, UIBuilt: api.UIBuilt(),
 		Pricing: PricingStatus{Version: d.table.Version, Source: d.table.Source, FetchedAt: d.table.FetchedAt, UserOverride: d.table.UserOverride, Models: len(d.table.Models)},
 		LoopK:   d.det.K, LoopTMin: int(d.det.Window / time.Minute),
+		ClaudeAvailable: d.mgr.ClaudeAvailable(), OwnedActive: len(d.mgr.List()),
 	}
 	if d.tail != nil {
 		s := d.tail.Stats()
@@ -316,4 +344,42 @@ func (d *Daemon) status(_ context.Context) any {
 	st.ActiveLoops = len(d.alerts)
 	d.mu.Unlock()
 	return st
+}
+
+// agentAdapter bridges *agents.Manager to api.AgentController.
+type agentAdapter struct{ m *agents.Manager }
+
+func (a *agentAdapter) Available() bool { return a.m.ClaudeAvailable() }
+
+func (a *agentAdapter) Spawn(ctx context.Context, req any) (string, string, error) {
+	b, err := json.Marshal(req)
+	if err != nil {
+		return "", "", err
+	}
+	var sr agents.SpawnRequest
+	if err := json.Unmarshal(b, &sr); err != nil {
+		return "", "", err
+	}
+	ag, err := a.m.Spawn(ctx, sr)
+	if err != nil {
+		return "", "", err
+	}
+	return ag.SessionID, ag.Cwd, nil
+}
+
+func (a *agentAdapter) Input(id string, data []byte) error     { return a.m.Input(id, data) }
+func (a *agentAdapter) Write(id string, data []byte) error     { return a.m.Input(id, data) }
+func (a *agentAdapter) Resize(id string, cols, rows int) error { return a.m.Resize(id, cols, rows) }
+
+func (a *agentAdapter) Signal(id, action string) error {
+	return a.m.Signal(id, ptyman.Signal(action))
+}
+
+func (a *agentAdapter) Term(id string) ([]byte, <-chan []byte, func(), bool) {
+	ag, ok := a.m.Get(id)
+	if !ok {
+		return nil, nil, nil, false
+	}
+	sub, cancel := ag.Subscribe()
+	return ag.Snapshot(), sub, cancel, true
 }
