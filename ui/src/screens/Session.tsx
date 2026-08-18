@@ -60,10 +60,15 @@ export function SessionScreen({ id, tab }: { id: string; tab?: string }) {
   )
 }
 
+type Filter = 'all' | 'tools' | 'turns'
+
 function Timeline({ id, initial, now }: { id: string; initial: Event[]; now: number }) {
   const [events, setEvents] = useState<Event[]>(initial)
+  const [filter, setFilter] = useState<Filter>('all')
+  const [follow, setFollow] = useState(true)
   const lastId = useRef(initial.length ? initial[initial.length - 1]!.id : 0)
   const bottom = useRef<HTMLDivElement>(null)
+  const list = useRef<HTMLOListElement>(null)
   useEffect(() => { setEvents(initial); lastId.current = initial.length ? initial[initial.length - 1]!.id : 0 }, [initial])
   // Append live events for this session as they arrive.
   useEffect(() => live.onFrame((f) => {
@@ -71,16 +76,31 @@ function Timeline({ id, initial, now }: { id: string; initial: Event[]; now: num
     lastId.current = f.data.id
     setEvents((evs) => [...evs.slice(-499), f.data])
   }), [id])
+  useEffect(() => { if (follow) bottom.current?.scrollIntoView({ block: 'end' }) }, [events, follow])
   const cost = useMemo(() => {
     let acc = 0
     return events.filter((e) => e.kind === 'turn.assistant').map((e) => (acc += e.cost_usd ?? 0))
   }, [events])
+  // tool.post rows from transcripts carry no tool name; resolve it via the matching tool.pre.
+  const toolByUse = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const e of events) if (e.kind === 'tool.pre' && e.tool) { const p = e.payload as { tool_use_id?: string }; if (p?.tool_use_id) m.set(p.tool_use_id, e.tool) }
+    return m
+  }, [events])
+  const visible = events.filter((e) => filter === 'all' || (filter === 'tools' ? e.kind.startsWith('tool.') : e.kind.startsWith('turn.') || e.kind === 'agent.stop'))
   return (
     <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px]">
-      <Panel title={`Events · last ${events.length}`} className="min-w-0 overflow-hidden">
-        <ol className="max-h-[70vh] overflow-auto">
-          {events.length === 0 && <Empty title="No events yet" />}
-          {events.map((e) => <EventRow key={e.id} e={e} now={now} />)}
+      <Panel title={`Events · last ${events.length}`} className="min-w-0 overflow-hidden" right={
+        <span className="inline-flex items-center gap-2">
+          {(['all', 'tools', 'turns'] as Filter[]).map((f) => (
+            <button key={f} onClick={() => setFilter(f)} className={`px-1.5 rounded-sm ${filter === f ? 'bg-panel-2 text-fg' : 'hover:text-fg'}`}>{f}</button>
+          ))}
+          <label className="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} className="accent-[var(--color-accent)]" />follow</label>
+        </span>
+      }>
+        <ol ref={list} className="max-h-[70vh] overflow-auto" onScroll={() => { const el = list.current; if (el && follow && el.scrollTop + el.clientHeight < el.scrollHeight - 40) setFollow(false) }}>
+          {visible.length === 0 && <Empty title="No events yet" />}
+          {visible.map((e) => <EventRow key={e.id} e={e} now={now} toolByUse={toolByUse} />)}
           <div ref={bottom} />
         </ol>
       </Panel>
@@ -98,9 +118,11 @@ function Timeline({ id, initial, now }: { id: string; initial: Event[]; now: num
   )
 }
 
-function EventRow({ e, now }: { e: Event; now: number }) {
+function EventRow({ e, now, toolByUse }: { e: Event; now: number; toolByUse: Map<string, string> }) {
+  const [open, setOpen] = useState(false)
   const p = (e.payload ?? {}) as Record<string, unknown>
-  const label = describe(e, p)
+  const resolved = e.tool || (e.kind === 'tool.post' ? toolByUse.get(String(p.tool_use_id ?? '')) : undefined)
+  const label = describe({ ...e, tool: resolved }, p)
   const kindCls =
     e.kind === 'turn.user' ? 'text-info' :
     e.kind === 'turn.assistant' ? 'text-fg' :
@@ -108,11 +130,16 @@ function EventRow({ e, now }: { e: Event; now: number }) {
     e.kind === 'context.compact' ? 'text-warn' :
     'text-fg-muted'
   return (
-    <li className="flex items-baseline gap-2 px-3 py-[3px] border-b border-border/60 last:border-0 hover:bg-panel-2 animate-flash">
-      <span className="num text-[10px] text-fg-faint w-14 shrink-0">{fmtAgo(e.ts, now)}</span>
-      <span className={`mono text-[10px] w-24 shrink-0 ${kindCls}`}>{e.kind}</span>
-      <span className="truncate text-[12px] min-w-0" title={label}>{label}</span>
-      {e.tokens && <span className="ml-auto num text-[10px] text-fg-faint shrink-0">{fmtTokens(e.tokens.in + e.tokens.cache_read + e.tokens.cache_write)}→{fmtTokens(e.tokens.out)}{e.cost_usd !== undefined ? ` · ${fmtUSD(e.cost_usd)}` : ''}</span>}
+    <li className="border-b border-border/60 last:border-0 hover:bg-panel-2 animate-flash">
+      <button className="w-full text-left flex items-baseline gap-2 px-3 py-[3px]" onClick={() => setOpen(!open)}>
+        <span className="num text-[10px] text-fg-faint w-14 shrink-0">{fmtAgo(e.ts, now)}</span>
+        <span className={`mono text-[10px] w-24 shrink-0 ${kindCls}`}>{e.kind}</span>
+        <span className="truncate text-[12px] min-w-0" title={label}>{label}</span>
+        {e.tokens && <span className="ml-auto num text-[10px] text-fg-faint shrink-0">{fmtTokens(e.tokens.in + e.tokens.cache_read + e.tokens.cache_write)}→{fmtTokens(e.tokens.out)}{e.cost_usd !== undefined ? ` · ${fmtUSD(e.cost_usd)}` : ''}</span>}
+      </button>
+      {open && (
+        <pre className="mono text-[10px] leading-[1.4] text-fg-muted px-3 pb-2 max-h-64 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify({ id: e.id, ts: e.ts, source: e.source, key: e.key, agent_id: e.agent_id, model: e.model, tokens: e.tokens, cost_usd: e.cost_usd, payload: e.payload }, null, 2)}</pre>
+      )}
     </li>
   )
 }
