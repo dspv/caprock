@@ -1,0 +1,166 @@
+[
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 0,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "go test ./...",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 30,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "go test ./...",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 60,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "go test ./...",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Read",
+  "ts_offset_s": 65,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Read",
+   "tool_input": {
+    "file_path": "/proj/main.go"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 90,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "go test ./...",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 120,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "go test ./...",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 150,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "go test ./...",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 180,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "go test ./...",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 210,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "go test ./...",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 240,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "go test ./...",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 270,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "go test ./...",
+    "description": "run"
+   }
+  }
+ }
+]

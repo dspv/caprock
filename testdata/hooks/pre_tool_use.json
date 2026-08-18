@@ -1,0 +1,1 @@
+{"session_id":"sess-abc","prompt_id":"p-1","transcript_path":"/home/u/.claude/projects/-home-u-proj/sess-abc.jsonl","cwd":"/home/u/proj","permission_mode":"default","effort":{"level":"high"},"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"go test ./...","description":"Run tests"},"tool_use_id":"toolu_01"}

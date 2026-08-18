@@ -1,0 +1,52 @@
+{
+  "normal.jsonl": {
+    "turns": 3,
+    "tool_pre": 2,
+    "tool_post": 2,
+    "user_prompts": 1,
+    "tokens_in": 8,
+    "tokens_out": 250,
+    "cache_read": 70300,
+    "cache_write": 5300,
+    "cache_write_1h": 1000,
+    "files_touched": 1,
+    "cost_usd_opus5": 0.078315
+  },
+  "compacted.jsonl": {
+    "turns": 2,
+    "tool_pre": 0,
+    "tool_post": 0,
+    "user_prompts": 2,
+    "tokens_in": 15,
+    "tokens_out": 35,
+    "cache_read": 4000,
+    "cache_write": 2000,
+    "cache_write_1h": 0,
+    "files_touched": 0
+  },
+  "malformed.jsonl": {
+    "turns": 1,
+    "tool_pre": 0,
+    "tool_post": 0,
+    "user_prompts": 1,
+    "tokens_in": 7,
+    "tokens_out": 9,
+    "cache_read": 0,
+    "cache_write": 0,
+    "cache_write_1h": 0,
+    "files_touched": 0,
+    "malformed_lines": 2
+  },
+  "unknown_field.jsonl": {
+    "turns": 1,
+    "tool_pre": 1,
+    "tool_post": 0,
+    "user_prompts": 1,
+    "tokens_in": 4,
+    "tokens_out": 6,
+    "cache_read": 8,
+    "cache_write": 2,
+    "cache_write_1h": 0,
+    "files_touched": 0
+  }
+}

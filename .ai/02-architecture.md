@@ -103,28 +103,46 @@ type Event struct {
 }
 ```
 
-Append-only `events` table + materialized rollups (`session_stats`, `agent_stats`, `daily_stats`). DDL in [03-contracts.md § SQLite schema](03-contracts.md#sqlite-schema-ddl-v1). Note the DDL v1 `events` row carries `source` (`hook` | `transcript`) in addition to the fields above, because the same session is seen through both planes and `ingest` dedupes against hook events by `session_id`.
+Append-only `events` table + materialized rollups (`session_stats`, `agent_stats`, `daily_stats`). DDL in [03-contracts.md § SQLite schema](03-contracts.md#sqlite-schema-ddl-v1). Note the DDL v1 `events` row carries `source` (`hook` | `transcript`) in addition to the fields above, because the same session is seen through both planes; the planes are reconciled by shared dedupe keys ([03-contracts.md § Hook shim](03-contracts.md#hook-shim)). One extra kind exists in code: `context.compact` (PreCompact hooks). `SessionStart` maps to `agent.spawn`, `Stop`/`SubagentStop` to `agent.stop` (subagents carry `agent_id`).
+
+Every producer writes through one path — `internal/rollup.Recorder.Record` — which stores the event, upserts the session, prices assistant turns, updates `session_stats` / `daily_stats` / `session_files` in one transaction, then publishes `event` + `session` frames on the in-process bus (`internal/bus`) that feeds the WebSocket and the loop detector.
 
 ## Loop detector
 
-Rule: ≥ K `tool.pre` events with the same tool + normalized-similar input within T minutes → banner + optional auto-pause. Defaults **K=5, T=3**, configurable. Emits an `alert` frame on the live WebSocket. This is the "session in a loop drains your budget" killer feature. Auto-pause is Phase 1 and applies to owned sessions only — see [09-execution-plan.md § Phase 1](09-execution-plan.md#phase-1--control).
+Rule: ≥ K `tool.pre` events with the same tool + normalized-similar input within T minutes → banner + optional auto-pause. Defaults **K=5, T=3**, configurable (`config.json`: `loop_k`, `loop_t_minutes`). Emits an `alert` frame on the live WebSocket. This is the "session in a loop drains your budget" killer feature. Auto-pause is Phase 1 and applies to owned sessions only — see [09-execution-plan.md § Phase 1](09-execution-plan.md#phase-1--control).
+
+Implementation notes (`internal/loop`): "normalized-similar" = same tool + `tool_input` with numbers, hex hashes, temp paths and whitespace collapsed and free-text bodies (`content`, `old_string`, `new_string`) truncated to their first 200 chars, hashed into a signature; `description`/`timeout` are ignored. One alert per *episode*: after firing, the same signature stays silent while the loop continues and re-arms once it has been quiet for T. Backfilled history never raises alerts (events older than T are skipped). The Now card flips to `looping?` while an alert is younger than T.
+
+## Session lifecycle
+
+`active` on any event → `idle` after 5 minutes of silence (sweeper every 30 s) → `ended` after 12 hours of silence (Phase 1 will also end sessions Caprock kills). `/v1/sessions?active=true` returns everything not ended. Narration ([04-ui.md § Narration map](04-ui.md#narration-map-t7)) is computed server-side in `internal/narrate` from the last 60 events.
 
 ## Repository layout (target)
 
 ```
-cmd/caprock/          # daemon + CLI (up/down/status/hooks …)
-cmd/caprock-hook/     # the shim
-internal/hookd/       # hook receiver
-internal/ingest/      # transcript discovery + tailer + parser
-internal/store/       # sqlite, migrations, queries
-internal/rollup/      # stats + pricing
-internal/api/         # REST + WS + embedded UI handler
+cmd/caprock/          # daemon + CLI (up/down/status/hooks …, hidden `hook` fallback shim)
+cmd/caprock-hook/     # the shim binary (thin main over internal/shim)
+internal/shim/        # shim logic: stdin → POST, silent, Stop request-response
+internal/config/      # data dir, config.json, runtime.json, atomic writes
+internal/event/       # the normalized Event type
+internal/store/       # sqlite (modernc), migrations, all SQL
+internal/cost/        # pricing table lookup, cost + cache-savings math
+internal/rollup/      # single write path: store + session + stats + daily + bus
+internal/bus/         # in-process fan-out for live frames
+internal/hookd/       # hook receiver + payload normalizer
+internal/hooks/       # settings.json installer (ordered-JSON merge, backup, uninstall)
+internal/ingest/      # transcript discovery + tailer (fsnotify + poll) + parser
 internal/loop/        # loop detector
+internal/narrate/     # tool event → phrase, health badge, plan progress
+internal/gitdiff/     # live `git diff` of a session's cwd
+internal/api/         # REST + WS + embedded UI (dist/ built, placeholder/ fallback)
+internal/daemon/      # wiring, runtime.json lifecycle, sweeper
+internal/smoke/       # the DoD scenario (build tag `smoke`), runs on the 3-OS matrix
 internal/ptyman/      # Phase 1
 internal/hive/ internal/router/ internal/orchestrator/   # Phase 2
 ui/                   # React + Vite app; builds into internal/api/dist (go:embed)
-pricing/pricing.json  # embedded pricing table (versioned)
-testdata/             # fixture transcripts, hook payloads, fake claude
+pricing/              # pricing.json + embed.go (versioned pricing table)
+testdata/             # hook payloads, transcript fixtures + expected totals, loop fixtures
 ```
 
 Tooling, versions, CI, and release mechanics: [10-infrastructure.md](10-infrastructure.md).

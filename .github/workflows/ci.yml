@@ -1,0 +1,78 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ui:
+    name: ui (typecheck, test, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci
+        working-directory: ui
+      - run: npm run typecheck
+        working-directory: ui
+      - run: npm test -- --run
+        working-directory: ui
+      - run: npm run build
+        working-directory: ui
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-dist
+          path: internal/api/dist
+          if-no-files-found: error
+
+  go:
+    name: go (${{ matrix.os }})
+    needs: ui
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: ui-dist
+          path: internal/api/dist
+      - name: go vet
+        run: go vet ./...
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+      - name: go test
+        run: go test -count=1 ./...
+      - name: build
+        shell: bash
+        run: |
+          mkdir -p bin
+          go build -trimpath -ldflags "-s -w -X github.com/dspv/caprock/internal/version.Version=${GITHUB_SHA::7}" -o bin/ ./cmd/...
+      - name: smoke (Phase 0 DoD scenario)
+        run: go test -count=1 -tags smoke ./internal/smoke/...
+      - uses: actions/upload-artifact@v4
+        with:
+          name: caprock-${{ matrix.os }}
+          path: bin/

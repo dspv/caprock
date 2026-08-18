@@ -1,0 +1,132 @@
+// /v1/live WebSocket client + a tiny store. Frames: {type: "event"|"session"|"alert"|"stats"|"hello", data}.
+// Reconnects with backoff; exposes connection state so screens can show a
+// staleness dot instead of a spinner (no spinner longer than 300ms).
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import type { Event, LoopAlert, Session, Stats } from './api'
+
+export type Frame =
+  | { type: 'hello'; data: { server_time: number } }
+  | { type: 'event'; data: Event }
+  | { type: 'session'; data: { session: Session; stats: Stats } }
+  | { type: 'alert'; data: LoopAlert }
+  | { type: 'stats'; data: unknown }
+
+export type ConnState = 'connecting' | 'open' | 'closed'
+
+interface LiveState {
+  conn: ConnState
+  lastFrameAt: number
+  /** Monotonic counter bumped on every session/event frame — screens refetch on change. */
+  tick: number
+  alerts: LoopAlert[]
+  lastEvent?: Event
+}
+
+type Listener = () => void
+
+class LiveStore {
+  private state: LiveState = { conn: 'connecting', lastFrameAt: 0, tick: 0, alerts: [] }
+  private listeners = new Set<Listener>()
+  private backoff = 500
+  private timer: number | null = null
+  private started = false
+  /** Per-frame subscribers (session detail wants raw events without re-rendering everything). */
+  private frameSubs = new Set<(f: Frame) => void>()
+
+  getState = () => this.state
+  subscribe = (l: Listener) => {
+    this.listeners.add(l)
+    this.start()
+    return () => { this.listeners.delete(l) }
+  }
+  onFrame = (fn: (f: Frame) => void) => {
+    this.frameSubs.add(fn)
+    return () => { this.frameSubs.delete(fn) }
+  }
+
+  private set(patch: Partial<LiveState>) {
+    this.state = { ...this.state, ...patch }
+    for (const l of this.listeners) l()
+  }
+
+  start() {
+    if (this.started || typeof WebSocket === 'undefined') return
+    this.started = true
+    this.connect()
+  }
+
+  private connect() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws'
+    const url = `${proto}://${location.host}/v1/live`
+    this.set({ conn: 'connecting' })
+    let ws: WebSocket
+    try {
+      ws = new WebSocket(url)
+    } catch {
+      this.scheduleReconnect()
+      return
+    }
+    ws.onopen = () => { this.backoff = 500; this.set({ conn: 'open' }) }
+    ws.onmessage = (m) => {
+      let f: Frame
+      try { f = JSON.parse(String(m.data)) as Frame } catch { return }
+      this.handle(f)
+    }
+    ws.onclose = () => { this.set({ conn: 'closed' }); this.scheduleReconnect() }
+    ws.onerror = () => { ws.close() }
+  }
+
+  private scheduleReconnect() {
+    if (this.timer !== null) return
+    this.timer = window.setTimeout(() => { this.timer = null; this.connect() }, this.backoff)
+    this.backoff = Math.min(this.backoff * 2, 10_000)
+  }
+
+  handle(f: Frame) {
+    const now = Date.now()
+    for (const s of this.frameSubs) s(f)
+    switch (f.type) {
+      case 'alert':
+        this.set({ lastFrameAt: now, alerts: [f.data, ...this.state.alerts].slice(0, 50), tick: this.state.tick + 1 })
+        break
+      case 'event':
+        this.set({ lastFrameAt: now, lastEvent: f.data, tick: this.state.tick + 1 })
+        break
+      case 'session':
+        this.set({ lastFrameAt: now, tick: this.state.tick + 1 })
+        break
+      default:
+        this.set({ lastFrameAt: now })
+    }
+  }
+
+  dismissAlert(sessionId: string) {
+    this.set({ alerts: this.state.alerts.filter((a) => a.session_id !== sessionId) })
+  }
+}
+
+export const live = new LiveStore()
+
+export function useLive(): LiveState {
+  return useSyncExternalStore(live.subscribe, live.getState, live.getState)
+}
+
+/** Debounced "something changed" signal: returns a number that bumps at most every `ms`. */
+export function useLiveTick(ms = 400): number {
+  const { tick } = useLive()
+  const [debounced, setDebounced] = useDebouncedValue(tick, ms)
+  useEffect(() => { setDebounced(tick) }, [tick, setDebounced])
+  return debounced
+}
+
+function useDebouncedValue<T>(initial: T, ms: number): [T, (v: T) => void] {
+  const [v, setV] = useState(initial)
+  const timer = useRef<number | null>(null)
+  const pending = useRef(initial)
+  const set = useCallback((next: T) => {
+    pending.current = next
+    if (timer.current !== null) return
+    timer.current = window.setTimeout(() => { timer.current = null; setV(pending.current) }, ms)
+  }, [ms])
+  return [v, set]
+}

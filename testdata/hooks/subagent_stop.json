@@ -1,0 +1,1 @@
+{"session_id":"sess-abc","prompt_id":"p-1","transcript_path":"/home/u/.claude/projects/-home-u-proj/sess-abc.jsonl","cwd":"/home/u/proj","permission_mode":"default","effort":{"level":"high"},"hook_event_name":"SubagentStop","agent_id":"agent-9","agent_type":"Explore","stop_reason":"end_turn","last_assistant_message":"found it"}

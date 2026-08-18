@@ -29,9 +29,11 @@ Claude Code sends one JSON object per event on the shim's stdin. Fields common t
 
 The daemon stores the raw payload untouched in `events.payload`; unknown events and unknown fields are logged and ignored, never fatal ([06-engineering-rules.md](06-engineering-rules.md)).
 
+**Dedupe keys.** hookd keys events as `pre:<tool_use_id>`, `post:<tool_use_id>`, `prompt:<prompt_id>`; ingest derives the *same* keys from transcript `tool_use` / `tool_result` blocks and `promptId`, and keys assistant turns as `msg:<message.id>`. `(session_id, key)` is unique in the store, so whichever plane arrives first wins and the other is a no-op — this is how "dedupe against hook events by session_id" is implemented, and it also makes re-reading a transcript after restart idempotent. Stop / SubagentStop / SessionStart / PreCompact are keyless (never deduped).
+
 ### settings.json registration shape
 
-The installer writes, for each of the seven events, a matcher-less entry (`matcher` omitted — `UserPromptSubmit` and `Stop` do not accept matchers) of the form `{"hooks":[{"type":"command","command":"<data_dir>/caprock-hook","timeout":5}]}` and leaves every other key and every pre-existing hook untouched. Uninstall removes only entries whose `command` points at the Caprock shim path. The backup is `settings.json.caprock-backup-<unix-ts>` next to the original, written once before the first modification.
+The installer writes, for each of the seven events, a matcher-less entry (`matcher` omitted — `UserPromptSubmit` and `Stop` do not accept matchers) of the form `{"hooks":[{"type":"command","command":"<data_dir>/caprock-hook","timeout":5}]}` and leaves every other key, every pre-existing hook, **and the user's key order** untouched (ordered-JSON merge). A path containing spaces is double-quoted. When no `caprock-hook` binary sits beside the `caprock` executable, the registered command is `<caprock> hook` (a hidden subcommand running the same shim code). Uninstall removes only entries whose `command` points at a Caprock shim (exact path, or basename `caprock-hook[.exe]`, or `<caprock> hook`) and drops empty containers it leaves behind. The backup is `settings.json.caprock-backup-<unix-ts>` next to the original, written once before the first modification. An unparsable settings.json is never modified.
 
 ## HTTP API (daemon, `127.0.0.1:4173`)
 
@@ -48,6 +50,18 @@ POST /v1/hook                          → 204 (shim only, bearer-token gated)
 WS   /v1/live                          → server-push frames: {type:"event"|"session"|"alert", data:…}
 ```
 
+Added during T6 (same conventions; not in the spec's list):
+
+```
+GET  /v1/events?after=…&limit=…        → Event[] across all sessions (live-feed catch-up)
+GET  /v1/status                        → daemon status: version, pid, uptime, data dir, pricing, ingest, hooks
+GET  /v1/pricing                       → the pricing table in force
+POST /v1/shutdown                      → 200 (bearer-token gated; `caprock down`)
+GET  /healthz                          → {status:"ok", version}
+WS   /v1/live                          → first frame is {type:"hello", data:{server_time}}; a "session" frame carries {session, stats}
+```
+
+`SessionSummary` = the `sessions` row + `stats` (session_stats) + `activity` ({phrase, tool, at, health, plan, repeats} from `internal/narrate`) + `savings` (cache math) + `loop` (active alert, if any) + `context` ({tokens, window, pct} — last turn's prompt size vs the model's context window from `pricing.json`). `SessionDetail` adds `files` and the last 60 `events`. `?range=` on `/v1/stats/summary` accepts `today` (default), `7d`, `30d`, `all`, or a Go duration; ranges are calendar-aware in the daemon's local time zone. The summary carries `burn` ($/h and tokens/min over the last 10 minutes) and `pricing_version`.
 ### Phase 1 additions
 
 ```
@@ -112,6 +126,16 @@ CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT);  -- schema_version, pricing_vers
 
 **Migrations:** embedded, sequential, `meta.schema_version` gated.
 
+### DDL v2 (added in T2, `0002_event_keys.sql`)
+
+Additive only; DDL v1 stays verbatim in `0001_init.sql`.
+
+- `events` + `key TEXT` (dedupe handle, see § Hook shim), `model TEXT`, `cache_write_1h INTEGER`, `agent_id TEXT`; `UNIQUE INDEX (session_id, key) WHERE key IS NOT NULL`.
+- `sessions` + `has_hooks`, `has_transcript` (which planes have been seen), `git_branch`, `version` (Claude Code version).
+- `session_files (session_id, path, first_ts, last_ts)` — files touched, so `files_touched` is a real count.
+- `transcript_offsets (path, session_id, offset, updated_at)` — resume tailing after restart.
+- `meta.transcript_schema_version` — parser schema version in force.
+
 ### Phase 1 DDL additions
 
 ```sql
@@ -147,6 +171,8 @@ Not a public contract — the parser is schema-versioned and degrades to hooks-o
 - `assistant` lines: `message.model`, `message.id`, `message.usage` with `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, and `cache_creation.{ephemeral_5m_input_tokens, ephemeral_1h_input_tokens}`; `message.content[]` blocks (`text`, `tool_use`, …).
 - `system` lines with `subtype: "turn_duration"` carry `durationMs`.
 - The transcript is written asynchronously and may lag the in-memory conversation (Claude Code documents this) — hence hooks are the real-time source and transcripts the accounting source.
-- Files live at `~/.claude/projects/<encoded-cwd>/<session-id>.jsonl`; `transcript_path` in hook payloads points at the exact file.
+- Files live at `~/.claude/projects/<encoded-cwd>/<session-id>.jsonl`; `transcript_path` in hook payloads points at the exact file. Subagent transcripts live at `<encoded-cwd>/<session-id>/subagents/agent-<id>.jsonl` and carry the parent `sessionId` plus `agentId`, `isSidechain: true`.
+- **One API response is written as several `assistant` lines** (thinking / text / tool_use blocks split across lines), each repeating the *same* `message.id`, `requestId` and `usage`. Verified 2026-08-18 across 16,210 such groups in local transcripts: usage never differs within a `message.id`. Ingest therefore counts usage once per `message.id` (dedupe key `msg:<id>`); summing per line would over-count cache tokens 2–3×.
+- Lines with `message.model == "<synthetic>"` are Claude Code's own notices, not turns; ignored.
 
 Golden fixtures for the parser (normal, compacted, malformed line, unknown schema field) live in `testdata/transcripts/` once T4 lands.

@@ -62,8 +62,7 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   - Decided by: T19, verified against the hooks reference at implementation time.
 - **`OQ-07` — Context-window sizes per model** for the "context fill %" badge — source and how to keep them current (`pricing.json` carries a `context_window` per model as the first cut).
   - Decided by: T7. **Blocks the badge.**
-- **`OQ-08` — Consent UX for the hook install on `caprock up`.** Prompt every run, once, or `--yes` semantics?
-  - Decided by: T3.
+- ~~`OQ-08` — Consent UX for the hook install on `caprock up`.~~ Decided 2026-08-18 in [ADR-019](08-decisions.md#adr-019--caprock-up-detaches-by-default-hook-install-consent-is-a-tty-prompt-or---yes-sessions-end-after-12h-of-silence): TTY prompt when events are missing, `--yes` for scripts, non-TTY skips with a hint.
 - **`OQ-09` — ConPTY on the CI Windows runner.** Does `windows-latest` expose ConPTY for the spike, or is a self-hosted runner needed?
   - Decided by: T0.
 

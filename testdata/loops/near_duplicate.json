@@ -1,0 +1,77 @@
+[
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 0,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "go test ./... -run TestFoo -count=1  # attempt 0",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 20,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "go test ./... -run TestFoo -count=2  # attempt 1",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 40,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "go test ./... -run TestFoo -count=3  # attempt 2",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 60,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "go test ./... -run TestFoo -count=4  # attempt 3",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 80,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "go test ./... -run TestFoo -count=5  # attempt 4",
+    "description": "run"
+   }
+  }
+ }
+]

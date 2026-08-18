@@ -1,0 +1,74 @@
+/*
+ * Caprock design tokens — the single source of truth (.ai/04-ui.md § Visual direction).
+ * Dark by default (ops-room). Color is semantic only: green = working/verified,
+ * amber = idle/waiting, red = loop/error/over-budget, blue = info/links, gray = everything else.
+ * One brand accent for interactive elements. No decorative color anywhere.
+ */
+@import "tailwindcss";
+
+@theme {
+  /* surfaces */
+  --color-bg: #0b0e14;
+  --color-panel: #10151d;
+  --color-panel-2: #151b25;
+  --color-border: #1f2733;
+  --color-border-strong: #2b3646;
+
+  /* text */
+  --color-fg: #d3dae3;
+  --color-fg-muted: #8b95a3;
+  --color-fg-faint: #5c6675;
+
+  /* semantic */
+  --color-ok: #3fb950;      /* working / verified */
+  --color-warn: #d29922;    /* idle / waiting-on-you */
+  --color-danger: #f85149;  /* loop / error / over budget */
+  --color-info: #58a6ff;    /* info / links */
+
+  /* brand accent — interactive elements only (OQ-05: single hue, picked at T7) */
+  --color-accent: #5ea1ff;
+  --color-accent-strong: #7fb5ff;
+
+  /* type */
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* density */
+  --spacing-row: 0.375rem;
+  --radius-panel: 4px;
+
+  /* motion */
+  --animate-flash: flash 150ms ease-out;
+  @keyframes flash {
+    from { background-color: color-mix(in srgb, var(--color-accent) 22%, transparent); }
+    to { background-color: transparent; }
+  }
+}
+
+:root {
+  color-scheme: dark;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Every number, cost, id, and terminal string is monospace with tabular numerals. */
+.num, .mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "zero" 1;
+}
+
+* { border-color: var(--color-border); }
+a { color: var(--color-info); text-decoration: none; }
+a:hover { text-decoration: underline; }
+::selection { background: color-mix(in srgb, var(--color-accent) 35%, transparent); }
+
+/* Scrollbars in the same gray family. */
+* { scrollbar-width: thin; scrollbar-color: var(--color-border-strong) transparent; }
+
+/* No spinners longer than 300ms — a staleness dot instead. */
+.stale-dot { width: 6px; height: 6px; border-radius: 9999px; background: var(--color-warn); display: inline-block; }

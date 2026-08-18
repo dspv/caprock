@@ -1,0 +1,26 @@
+version: "2"
+run:
+  timeout: 5m
+  build-tags: [smoke]
+linters:
+  default: standard
+  enable:
+    - errorlint
+    - gocritic
+    - misspell
+    - nilerr
+    - unconvert
+    - unparam
+    - revive
+  settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+    gocritic:
+      disabled-checks: [ifElseChain, singleCaseSwitch]
+  exclusions:
+    generated: lax
+    presets: [comments, common-false-positives, std-error-handling]
+formatters:
+  enable: [gofmt, goimports]

@@ -5,7 +5,7 @@
 [![docs](https://github.com/dspv/caprock/actions/workflows/docs.yml/badge.svg)](https://github.com/dspv/caprock/actions/workflows/docs.yml)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-> **Status: Phase 0 — bootstrap (2026-08-18).** Documentation corpus built (90%); code is not built yet. Nothing here runs today. Progress is tracked honestly in [`.ai/14-build-status.md`](.ai/14-build-status.md).
+> **Status: Phase 0 — Observe, in progress (2026-08-18).** The observe-only pipeline (hooks + transcripts → SQLite → dashboard) runs end-to-end on macOS; Linux/Windows CI is the gate. No release yet. Progress is tracked honestly in [`.ai/14-build-status.md`](.ai/14-build-status.md).
 
 ---
 
@@ -18,12 +18,16 @@
 
 Caprock answers each of these with a single static Go binary — macOS / Linux / Windows from day one — that works in **observe-only mode on sessions you start yourself**, before it ever asks you to change your workflow. Full reasoning: [`.ai/01-product.md`](.ai/01-product.md).
 
-## What it will do
+## What it does
 
 ```
 caprock up            # starts the loopback daemon, installs the hook shim (with consent), opens localhost:4173
 claude                # in any terminal, any project — Caprock sees it
+caprock status        # daemon, hooks, ingest, pricing table in force
+caprock down          # stops the daemon; keeps every byte of your data
 ```
+
+Build from source (Go 1.26, Node 22): `make ui && make build` → `./bin/caprock`, `./bin/caprock-hook`.
 
 | Screen         | Shows                                                                | Phase |
 | -------------- | -------------------------------------------------------------------- | ----- |
@@ -42,7 +46,7 @@ Coarse on purpose. Same numbers as [`.ai/14-build-status.md`](.ai/14-build-statu
 | Track                           | Progress         |
 | ------------------------------- | ---------------- |
 | Documentation (`.ai/`)          | `█████████░` 90% |
-| Phase 0 — Observe (T0–T10)      | `░░░░░░░░░░` 0%  |
+| Phase 0 — Observe (T0–T10)      | `█████░░░░░` 50% |
 | Phase 1 — Control (T11–T16)     | `░░░░░░░░░░` 0%  |
 | Phase 2 — Orchestrate (T17–T25) | `░░░░░░░░░░` 0%  |
 

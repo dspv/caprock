@@ -1,0 +1,182 @@
+[
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 0,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "go build ./...",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 25,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "go test ./internal/store",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 50,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "git status",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 75,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "go vet ./...",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 100,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "go test ./internal/store",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 125,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "ls -la",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 150,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "go test ./internal/store",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 175,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "git diff",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 200,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "gofmt -l .",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 225,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "go test ./internal/store",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 250,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "git add -A",
+    "description": "run"
+   }
+  }
+ },
+ {
+  "session_id": "loop-session",
+  "kind": "tool.pre",
+  "tool": "Bash",
+  "ts_offset_s": 275,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "loop-session",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "git commit -m x",
+    "description": "run"
+   }
+  }
+ }
+]

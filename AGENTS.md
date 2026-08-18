@@ -3,7 +3,7 @@
 > **CRITICAL — read this first.**
 > `CLAUDE.md` (repo root) and `.ai/00-index.md` are the authoritative instructions for this project. They define the non-negotiable rules. Everything in this file is supplementary. **If there is any conflict, `CLAUDE.md` wins.**
 
-Caprock is a local, open-source mission control for Claude Code — a single Go binary that watches every `claude` session on the machine (hooks + transcripts), shows live activity/cost/loop alerts in a browser dashboard, and later spawns, controls, and orchestrates sessions with verification-before-done. Currently **Phase 0 — bootstrap** — documentation corpus built (90%), no code built yet.
+Caprock is a local, open-source mission control for Claude Code — a single Go binary that watches every `claude` session on the machine (hooks + transcripts), shows live activity/cost/loop alerts in a browser dashboard, and later spawns, controls, and orchestrates sessions with verification-before-done. Currently **Phase 0 — Observe, in progress** — backend + first dashboard cut running end-to-end on macOS.
 
 ## Start here
 

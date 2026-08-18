@@ -1,0 +1,47 @@
+version: 2
+project_name: caprock
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: caprock
+    main: ./cmd/caprock
+    binary: caprock
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    ldflags: ["-s -w -X github.com/dspv/caprock/internal/version.Version={{.Version}}"]
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+  - id: caprock-hook
+    main: ./cmd/caprock-hook
+    binary: caprock-hook
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    ldflags: ["-s -w -X github.com/dspv/caprock/internal/version.Version={{.Version}}"]
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: default
+    ids: [caprock, caprock-hook]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files: [LICENSE, README.md]
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude: ["^docs", "^chore", "^ci"]
+
+release:
+  draft: true
+  prerelease: auto

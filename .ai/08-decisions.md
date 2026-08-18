@@ -223,3 +223,15 @@ The spec names goreleaser for T10 (v0.1.0 tag + binaries). Each release ships `c
 **Revisit if:** the desktop wrapper (Phase 3) needs installers — goreleaser stays for the binaries.
 
 ---
+
+## ADR-019 — `caprock up` detaches by default; hook-install consent is a TTY prompt (or `--yes`); sessions end after 12h of silence
+
+**Date:** 2026-08-18 · **Status:** accepted · *repo-prep decision (made while building T1–T6; resolves OQ-08)*
+
+`caprock up` re-executes itself as a detached background process logging to `<data_dir>/caprock.log` and returns once `runtime.json` appears; `--foreground` keeps it attached (dev, CI, service managers); `caprock down` asks the daemon to stop over `POST /v1/shutdown` with the per-run token (works identically on Windows, no signals). Hook install: when any of the seven events is missing and stdin is a TTY, `up` explains what it will write and asks `Install now? [Y/n]`; `--yes` answers for scripts; a non-TTY without `--yes` skips with a hint (transcript tailing still works). Session lifecycle: `active` → `idle` after 5 min → `ended` after 12 h without events, so the Now screen shows what is running today rather than every session ever ingested. The `caprock-hook` binary is copied from beside the `caprock` executable into the data dir; if absent, `<caprock> hook` (a hidden subcommand over the same `internal/shim` code) is registered instead, so a single-binary install still works.
+
+**Rules out:** blocking prompts in non-interactive runs; a Unix-signal-only `down`; keeping every historical session in the active list.
+
+**Revisit if:** users want `up` to stay attached by default, or a service-manager integration (launchd/systemd) replaces the detach.
+
+---

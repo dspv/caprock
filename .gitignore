@@ -10,7 +10,6 @@ build/
 out/
 internal/api/dist/*
 !internal/api/dist/.gitkeep
-!internal/api/dist/index.html
 coverage.out
 *.test
 
