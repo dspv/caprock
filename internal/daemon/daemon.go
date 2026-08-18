@@ -28,6 +28,7 @@ import (
 	"github.com/dspv/caprock/internal/hooks"
 	"github.com/dspv/caprock/internal/ingest"
 	"github.com/dspv/caprock/internal/loop"
+	"github.com/dspv/caprock/internal/orchestrator"
 	"github.com/dspv/caprock/internal/ptyman"
 	"github.com/dspv/caprock/internal/rollup"
 	"github.com/dspv/caprock/internal/store"
@@ -51,6 +52,8 @@ type Options struct {
 	// HiveDir enables Phase 2 orchestration (tasks board + Stop-loop) at this path.
 	// Empty ⇒ orchestration off (task endpoints return 501).
 	HiveDir string
+	// RepoCwd is the repo the orchestrator + workers operate on (default: cwd).
+	RepoCwd string
 	// OnReady is called once the server is listening (with the bound URL).
 	OnReady func(url string)
 }
@@ -67,6 +70,7 @@ type Daemon struct {
 	tail  *ingest.Tailer
 	mgr   *agents.Manager
 	board *board.Board
+	orch  *orchestrator.Orchestrator
 	api   *api.Server
 	rt    config.Runtime
 	start time.Time
@@ -180,13 +184,19 @@ func (d *Daemon) run(ctx context.Context) error {
 		if err := d.board.Rescan(ctx); err != nil {
 			d.log.Warn("hive rescan", "component", "board", "err", err)
 		}
+		d.board.RepoCwd = d.opt.RepoCwd
+		d.orch = orchestrator.New(h, d.store, d.mgr, d.repoCwd(), d.log)
 	}
 
 	// Hook receiver.
 	hh := &hookd.Handler{Token: rt.Token, Recorder: d.rec, Log: d.log}
 	if d.board != nil {
 		hh.Decide = func(ctx context.Context, p hookd.Payload) []byte {
-			return d.board.StopDecision(ctx, p.SessionID, p.AgentID, "")
+			agentID := p.AgentID
+			if agentID == "" && d.orch != nil {
+				agentID = d.orch.AgentIDForSession(p.SessionID)
+			}
+			return d.board.StopDecision(ctx, p.SessionID, agentID, "")
 		}
 	}
 
@@ -242,6 +252,14 @@ func (d *Daemon) run(ctx context.Context) error {
 	_ = srv.Shutdown(shutdownCtx)
 	sub.Unsubscribe()
 	return nil
+}
+
+func (d *Daemon) repoCwd() string {
+	if d.opt.RepoCwd != "" {
+		return d.opt.RepoCwd
+	}
+	wd, _ := os.Getwd()
+	return wd
 }
 
 // URL returns the bound base URL (after start).
@@ -415,10 +433,15 @@ func (d *Daemon) taskController() api.TaskController {
 	if d.board == nil {
 		return nil
 	}
-	return &boardAdapter{b: d.board}
+	return &boardAdapter{b: d.board, orch: d.orch}
 }
 
-type boardAdapter struct{ b *board.Board }
+type boardAdapter struct {
+	b    *board.Board
+	orch *orchestrator.Orchestrator
+}
+
+var errOrchDisabled = fmt.Errorf("orchestrator is not available (start caprock with --hive)")
 
 func (a *boardAdapter) List(ctx context.Context) (any, error)            { return a.b.List(ctx) }
 func (a *boardAdapter) Create(ctx context.Context, req any) (any, error) { return a.b.Create(ctx, req) }
@@ -427,3 +450,17 @@ func (a *boardAdapter) Approve(ctx context.Context, id string, ok bool) error {
 	return a.b.Approve(ctx, id, ok)
 }
 func (a *boardAdapter) Approvals(ctx context.Context) (any, error) { return a.b.Approvals(ctx) }
+func (a *boardAdapter) Verify(ctx context.Context, id string) (any, error) {
+	return a.b.VerifyTask(ctx, id)
+}
+
+func (a *boardAdapter) StartOrchestrator(ctx context.Context) (any, error) {
+	if a.orch == nil {
+		return nil, errOrchDisabled
+	}
+	sid, err := a.orch.Start(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]string{"session_id": sid}, nil
+}

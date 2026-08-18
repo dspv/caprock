@@ -2,19 +2,19 @@
 
 The running log: what is done, what is not, what is next. **Update this file and § Current State in [00-index.md](00-index.md) whenever the state of the world changes.** Dates in absolute form, never "last week". What "done" means per task is defined in [09-execution-plan.md](09-execution-plan.md).
 
-**Last updated: 2026-08-18** · Phase **2 — Orchestrate, in progress** · Next: **T21 orchestrator agent, T22 verification runner, T24 cost attribution, T25 e2e; then releases**
+**Last updated: 2026-08-18** · Phase **2 — Orchestrate, complete** · Next: **manual real-`claude` orchestrator run with hooks on, then tag v0.1.0 once the whole thing is trusted end-to-end**
 
 ## Progress by track
 
 Percentages are deliberately coarse — they answer "is this track started, half-built, or done", nothing finer. The same numbers drive the progress bars in [README.md](../README.md); **update both in the same commit.** "90%" means "works, not hardened"; never 100% for anything that has not run in the environment it was built for.
 
-| Track                           | Progress | State                                                           |
-| ------------------------------- | -------- | --------------------------------------------------------------- |
-| Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code               |
-| Phase 0 — Observe (T0–T10)      | 90%      | Works on macOS + CI (macos/ubuntu/windows); T10 release open    |
-| Phase 1 — Control (T11–T16)     | 90%      | Merged to master, green on the 3-OS CI matrix                   |
-| Phase 2 — Orchestrate (T17–T25) | 45%      | Hive, board, Stop-loop, approvals; orchestrator/verify/e2e left |
-| Phase 3 — Delight               | 0%       | No plan by design                                               |
+| Track                           | Progress | State                                                                                             |
+| ------------------------------- | -------- | ------------------------------------------------------------------------------------------------- |
+| Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code                                                 |
+| Phase 0 — Observe (T0–T10)      | 90%      | Works on macOS + CI (macos/ubuntu/windows); T10 release open                                      |
+| Phase 1 — Control (T11–T16)     | 90%      | Merged to master, green on the 3-OS CI matrix                                                     |
+| Phase 2 — Orchestrate (T17–T25) | 90%      | Hive, board, Stop-loop, orchestrator, verification, e2e all green; real-claude run + release left |
+| Phase 3 — Delight               | 0%       | No plan by design                                                                                 |
 
 ## Milestone status
 
@@ -43,6 +43,10 @@ Percentages are deliberately coarse — they answer "is this track started, half
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and not yet exercised in CI.
 
 ## Log
+
+### 2026-08-18 — Phase 2 complete: orchestrator, verification runner, cost attribution, e2e (T21–T25)
+
+The trust gap is closed end to end. `internal/orchestrator` spawns the orchestrator as a real `claude` session with a hive-aware system prompt (`.ai/07-orchestrator.md`, embedded + kept in sync by a test), spawns workers into per-worker git worktrees, and runs the mailbox router; the daemon maps a session id back to its hive agent so the Stop-loop checks the right inbox. `internal/board`'s verification runner runs a task's `done_criteria` in the assigned worker's worktree — all green ⇒ `done` (and cost is attributed to the task via the assignment windows), any red ⇒ bounce the failing output to the worker, escalate to `needs_you` after R=3 rounds. Verified two ways: live on macOS (`caprock up --hive` → `POST /v1/orchestrator/start` spawns a real orchestrator that registers in the hive and gets its prompt), and a scripted `-tags smoke` e2e on a fixture repo (task → assign → failing build → verify fails → bounce → worker fixes → verify passes → done, cost attributed). New endpoints: `POST /v1/orchestrator/start`, `POST /v1/tasks/{id}/verify`; `--hive`/`--repo` flags. What is NOT yet done: a full unattended run driven by a real orchestrator with hooks installed (needs the user's `~/.claude/settings.json`, out of scope for automated tests) — that is the gate before tagging v0.1.0.
 
 ### 2026-08-18 — Phase 2 (Orchestrate) foundation: hive, board, Stop-loop, approvals (T17–T20)
 

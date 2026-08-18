@@ -5,7 +5,7 @@
 [![docs](https://github.com/dspv/caprock/actions/workflows/docs.yml/badge.svg)](https://github.com/dspv/caprock/actions/workflows/docs.yml)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-> **Status: Phase 2 — Orchestrate, in progress (2026-08-18).** Observe (Phase 0) and Control (Phase 1) are merged to master, green on the macOS/Linux/Windows CI matrix. Orchestrate (Phase 2) — a tasks board on disk, mailboxes, the Stop-loop autonomy engine and approvals — is on a branch; the orchestrator agent, verification runner and e2e are next. No tagged release yet. Progress is tracked honestly in [`.ai/14-build-status.md`](.ai/14-build-status.md).
+> **Status: Phase 2 — Orchestrate, complete (2026-08-18).** All three phases are built and green on the macOS/Linux/Windows CI matrix: Observe, Control, and now Orchestrate — a tasks board on disk, mailboxes, the Stop-loop autonomy engine, an orchestrator agent that spawns and coordinates workers, verification-before-done, and approvals. Remaining before a v0.1.0 tag: one full unattended run driven by a real orchestrator with hooks installed. Progress is tracked honestly in [`.ai/14-build-status.md`](.ai/14-build-status.md).
 
 ---
 

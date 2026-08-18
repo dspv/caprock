@@ -25,6 +25,7 @@ export function TasksScreen() {
     <div className="grid gap-3">
       <div className="flex items-center gap-2">
         <button onClick={() => setCreating(true)} className="border border-accent/50 text-accent bg-accent/10 px-2 py-1 rounded-sm text-[12px] hover:bg-accent/20">+ New task</button>
+        <OrchestratorButton available={status.data?.claude_available ?? false} />
         <span className="ml-auto text-[11px] text-fg-faint">Tasks are files on disk (<span className="mono">tasks/&lt;id&gt;.md</span>); the orchestrator moves them. Nothing reaches Done until its <span className="mono">done_criteria</span> pass.</span>
       </div>
       {tasks.error && !tasks.data && <Empty title="Cannot reach the daemon">{tasks.error.message}</Empty>}
@@ -42,6 +43,22 @@ export function TasksScreen() {
       </div>
       {creating && <NewTask onClose={() => { setCreating(false); tasks.refresh() }} />}
     </div>
+  )
+}
+
+function OrchestratorButton({ available }: { available: boolean }) {
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+  const start = async () => {
+    setBusy(true); setMsg('')
+    try { const r = await api.startOrchestrator(); setMsg('orchestrator: ' + r.session_id.slice(0, 8)) }
+    catch (e) { setMsg(String(e)) } finally { setBusy(false) }
+  }
+  return (
+    <span className="inline-flex items-center gap-2">
+      <button disabled={busy || !available} onClick={start} title={available ? 'spawn the orchestrator session' : 'claude not found — cannot spawn'} className="border border-border text-fg-muted px-2 py-1 rounded-sm text-[12px] hover:text-fg disabled:opacity-50">{busy ? 'starting…' : '▶ Start orchestrator'}</button>
+      {msg && <span className="text-[11px] text-fg-faint mono">{msg}</span>}
+    </span>
   )
 }
 

@@ -183,6 +183,7 @@ export const api = {
   task: (id: string) => get<TaskDetail>(`/v1/tasks/${encodeURIComponent(id)}`),
   createTask: (req: CreateTaskRequest) => post<TaskDetail>('/v1/tasks', req),
   approve: (id: string, approve: boolean) => post<void>(`/v1/tasks/${encodeURIComponent(id)}/${approve ? 'approve' : 'reject'}`, {}),
+  startOrchestrator: () => post<{ session_id: string }>('/v1/orchestrator/start', {}),
   status: () => get<Status>('/v1/status'),
   spawn: (req: SpawnRequest) => post<{ session_id: string; cwd: string }>('/v1/agents', req),
   signal: (id: string, action: 'pause' | 'resume' | 'kill') => post<void>(`/v1/agents/${encodeURIComponent(id)}/signal`, { action }),

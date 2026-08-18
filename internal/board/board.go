@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/dspv/caprock/internal/bus"
@@ -27,9 +28,17 @@ type Board struct {
 	Bus   *bus.Bus
 	Log   *slog.Logger
 	Now   func() time.Time
+	// RepoCwd is the repo tasks operate on; verification commands run in the
+	// assigned worker's worktree under it, or in RepoCwd when there is no worktree.
+	RepoCwd string
 }
 
 // New builds a board.
+func dirExists(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.IsDir()
+}
+
 func New(h *hive.Hive, st *store.Store, b *bus.Bus, log *slog.Logger) *Board {
 	if log == nil {
 		log = slog.Default()
@@ -174,6 +183,22 @@ func (b *Board) StopDecision(ctx context.Context, sessionID, agentID, taskID str
 		"hookSpecificOutput": map[string]any{"hookEventName": "Stop", "decision": "block", "reason": reason},
 	})
 	return body
+}
+
+// VerifyTask (controller entry) resolves the worktree for the assigned worker
+// and runs verification.
+func (b *Board) VerifyTask(ctx context.Context, id string) (VerifyResult, error) {
+	t, err := b.Hive.GetTask(id)
+	if err != nil {
+		return VerifyResult{}, err
+	}
+	cwd := b.RepoCwd
+	if t.Assignee != "" && b.RepoCwd != "" {
+		if wt := WorktreePath(b.RepoCwd, t.Assignee); dirExists(wt) {
+			cwd = wt
+		}
+	}
+	return b.Verify(ctx, id, cwd)
 }
 
 // mirror upserts a hive task into SQLite and publishes a live frame.
