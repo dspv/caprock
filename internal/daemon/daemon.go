@@ -28,6 +28,7 @@ import (
 	"github.com/dspv/caprock/internal/hooks"
 	"github.com/dspv/caprock/internal/ingest"
 	"github.com/dspv/caprock/internal/loop"
+	"github.com/dspv/caprock/internal/orchestrator"
 	"github.com/dspv/caprock/internal/ptyman"
 	"github.com/dspv/caprock/internal/rollup"
 	"github.com/dspv/caprock/internal/store"
@@ -67,6 +68,7 @@ type Daemon struct {
 	tail  *ingest.Tailer
 	mgr   *agents.Manager
 	board *board.Board
+	orch  *orchestrator.Orchestrator
 	api   *api.Server
 	rt    config.Runtime
 	start time.Time
@@ -180,13 +182,18 @@ func (d *Daemon) run(ctx context.Context) error {
 		if err := d.board.Rescan(ctx); err != nil {
 			d.log.Warn("hive rescan", "component", "board", "err", err)
 		}
+		d.orch = orchestrator.New(h, d.store, d.mgr, d.opt.HiveDir, d.log)
 	}
 
 	// Hook receiver.
 	hh := &hookd.Handler{Token: rt.Token, Recorder: d.rec, Log: d.log}
 	if d.board != nil {
 		hh.Decide = func(ctx context.Context, p hookd.Payload) []byte {
-			return d.board.StopDecision(ctx, p.SessionID, p.AgentID, "")
+			agentID := p.AgentID
+			if agentID == "" && d.orch != nil {
+				agentID = d.orch.AgentIDForSession(p.SessionID)
+			}
+			return d.board.StopDecision(ctx, p.SessionID, agentID, "")
 		}
 	}
 
@@ -415,10 +422,15 @@ func (d *Daemon) taskController() api.TaskController {
 	if d.board == nil {
 		return nil
 	}
-	return &boardAdapter{b: d.board}
+	return &boardAdapter{b: d.board, orch: d.orch}
 }
 
-type boardAdapter struct{ b *board.Board }
+type boardAdapter struct {
+	b    *board.Board
+	orch *orchestrator.Orchestrator
+}
+
+var errOrchDisabled = fmt.Errorf("orchestrator is not available (start caprock with --hive)")
 
 func (a *boardAdapter) List(ctx context.Context) (any, error)            { return a.b.List(ctx) }
 func (a *boardAdapter) Create(ctx context.Context, req any) (any, error) { return a.b.Create(ctx, req) }
@@ -427,3 +439,13 @@ func (a *boardAdapter) Approve(ctx context.Context, id string, ok bool) error {
 	return a.b.Approve(ctx, id, ok)
 }
 func (a *boardAdapter) Approvals(ctx context.Context) (any, error) { return a.b.Approvals(ctx) }
+func (a *boardAdapter) StartOrchestrator(ctx context.Context) (any, error) {
+	if a.orch == nil {
+		return nil, errOrchDisabled
+	}
+	sid, err := a.orch.Start(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]string{"session_id": sid}, nil
+}

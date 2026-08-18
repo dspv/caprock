@@ -58,6 +58,8 @@ type TaskController interface {
 	Get(ctx context.Context, id string) (any, error)
 	Approve(ctx context.Context, id string, approve bool) error
 	Approvals(ctx context.Context) (any, error)
+	// StartOrchestrator spawns the orchestrator session (T21). Returns its info.
+	StartOrchestrator(ctx context.Context) (any, error)
 }
 
 // AgentController is the subset of internal/agents the API needs (interface for tests).
@@ -111,6 +113,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/tasks/{id}/approve", s.handleApprove(true))
 	m.HandleFunc("POST /v1/tasks/{id}/reject", s.handleApprove(false))
 	m.HandleFunc("GET /v1/approvals", s.handleApprovals)
+	m.HandleFunc("POST /v1/orchestrator/start", s.handleStartOrchestrator)
 	m.HandleFunc("POST /v1/agents", s.handleSpawn)
 	m.HandleFunc("POST /v1/agents/{id}/input", s.handleAgentInput)
 	m.HandleFunc("POST /v1/agents/{id}/signal", s.handleAgentSignal)
@@ -544,6 +547,18 @@ func (s *Server) handleApprove(approve bool) http.HandlerFunc {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+func (s *Server) handleStartOrchestrator(w http.ResponseWriter, r *http.Request) {
+	if !s.requireTasks(w) {
+		return
+	}
+	out, err := s.d.Tasks.StartOrchestrator(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) handleApprovals(w http.ResponseWriter, r *http.Request) {

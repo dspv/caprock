@@ -48,8 +48,7 @@ Prices change; a stale table under-reports spend and users notice on their invoi
 
 Anything the spec did not answer. Do not resolve these by inventing an answer. "Decided by" is a person, an event, or a task — never "later".
 
-- **`OQ-01` — What does T5 "parity" compare?** The legacy repo has no `pricing.json` and no transcript fixtures ([ADR-015](08-decisions.md#adr-015--pricing-source-anthropic-first-party-pricing-page-versioned-the-legacy-repo-has-no-pricingjson)); the spec's AC "within $0.001 vs Caprock-python on shared fixtures" has no artifact to compare against.
-  - Decided by: Dima, before T5 starts. **Blocks T5's AC.**
+- ~~`OQ-01` — What does T5 "parity" compare?~~ Resolved 2026-08-18 (Dima): **parity with Caprock-python was never a project goal** — it was one AC phrasing in the spec, and the legacy repo has no `pricing.json`/fixtures anyway. Source of truth for prices is the Anthropic pricing page (versioned `pricing.json` with date+source); the cache formula from `_savings.py` is unit-tested on our own fixtures. T5's AC is reworded accordingly.
 - **`OQ-02` — Bedrock/Vertex pricing in v0.1?** Partner pricing is separate (regional endpoints carry a 10% premium per the Anthropic pricing page, fetched 2026-08-18); v0.1 tables first-party only.
   - Decided by: Dima, before v0.1.0.
 - **`OQ-03` — Limit-forecast model.** Which observed signals count as a throttle in `throttle_observations`, and how is the forecast derived and labeled?
@@ -60,13 +59,12 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   - Decided by: T7.
 - **`OQ-06` — Stop-decision output shape.** Which forms does current Claude Code accept: top-level `{"decision","reason"}` (spec) or `hookSpecificOutput` (current docs)?
   - Decided by: T19, verified against the hooks reference at implementation time.
-- **`OQ-07` — Context-window sizes per model** for the "context fill %" badge — source and how to keep them current (`pricing.json` carries a `context_window` per model as the first cut).
-  - Decided by: T7. **Blocks the badge.**
+- ~~`OQ-07` — Context-window sizes per model~~ Resolved 2026-08-18 (Dima): kept in `pricing.json` (`context_window` per model), updated by hand alongside prices with a date — consistent with the local-first "no outbound calls from the daemon" rule.
 - ~~`OQ-08` — Consent UX for the hook install on `caprock up`.~~ Decided 2026-08-18 in [ADR-019](08-decisions.md#adr-019--caprock-up-detaches-by-default-hook-install-consent-is-a-tty-prompt-or---yes-sessions-end-after-12h-of-silence): TTY prompt when events are missing, `--yes` for scripts, non-TTY skips with a hint.
 - **`OQ-09` — ConPTY on the CI Windows runner.** Does `windows-latest` expose ConPTY for the spike, or is a self-hosted runner needed?
   - Decided by: T0.
 
-`OQ-01` and `OQ-07` block a task's acceptance criteria; the rest do not block shipping.
+`OQ-01` and `OQ-07` are resolved (see strikethroughs above). No open question currently blocks shipping.
 
 ## What would falsify the whole plan
 

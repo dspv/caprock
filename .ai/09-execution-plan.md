@@ -75,7 +75,7 @@ Discover `~/.claude/projects/**` transcripts, tail JSONL (fsnotify + poll fallba
 
 #### T5 — rollup + pricing (1–2 evenings)
 
-Event → session_stats/daily_stats updates; cost calc from pricing.json (ported from Caprock-python, cross-checked against its output on the same fixture). *AC: parity test vs Caprock-python within $0.001 on shared fixtures.* — AC pending `OQ-01`; see [ADR-015](08-decisions.md#adr-015--pricing-source-anthropic-first-party-pricing-page-versioned-the-legacy-repo-has-no-pricingjson) and [OQ-01](12-risks.md#open-questions) for what "parity" concretely means given the legacy repo's contents.
+Event → session_stats/daily_stats updates; cost calc from pricing.json (ported from Caprock-python, cross-checked against its output on the same fixture). *AC: cost is computed from the versioned `pricing.json` (Anthropic list prices); a golden-file test checks per-turn cost to within $0.001 on `testdata/transcripts` fixtures, and the cache-savings formula (ported from Caprock-python `_savings.py`) is unit-tested on its own numbers.* — Parity with Caprock-python was never a project goal, only spec AC phrasing; resolved in [OQ-01](12-risks.md#open-questions) / [ADR-015](08-decisions.md#adr-015--pricing-source-anthropic-first-party-pricing-page-versioned-the-legacy-repo-has-no-pricingjson).
 
 #### T6 — api + live WS (1–2 evenings)
 
