@@ -18,7 +18,8 @@ import (
 
 func echoSpec() Spec {
 	if runtime.GOOS == "windows" {
-		return Spec{Command: "cmd.exe", Args: []string{"/Q", "/C", "echo hello-from-pty & set /p x=prompt: & echo got:%x% & ping -n 30 127.0.0.1 > nul"}}
+		// /V:ON + !x! — %x% would expand when the line is parsed, before set /p runs.
+		return Spec{Command: "cmd.exe", Args: []string{"/V:ON", "/Q", "/C", "echo hello-from-pty & set /p x=prompt: & echo got:!x! & ping -n 30 127.0.0.1 > nul"}}
 	}
 	return Spec{Command: "/bin/sh", Args: []string{"-c", "echo hello-from-pty; read x; echo got:$x; sleep 30"}}
 }
