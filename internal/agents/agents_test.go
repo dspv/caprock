@@ -1,12 +1,12 @@
 package agents
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,8 +26,7 @@ func (f *fakePTY) Spawn(ctx context.Context, spec ptyman.Spec) (ptyman.Session, 
 		// Print the args then exit 7 on its own — ConPTY stdin round-trips are covered
 		// by the -tags smoke Phase 1 test; here we only need spawn + exit recording.
 		sh := lookOr("powershell.exe", `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`)
-		script := "Write-Output 'args:" + join(spec.Args) + "'; Start-Sleep -Milliseconds 200; exit 7"
-		real = ptyman.Spec{Command: sh, Args: []string{"-NoProfile", "-NonInteractive", "-Command", script}, Dir: spec.Dir}
+		real = ptyman.Spec{Command: sh, Args: []string{"-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Milliseconds 200; exit 7"}, Dir: spec.Dir}
 	} else {
 		real = ptyman.Spec{Command: "/bin/sh", Args: []string{"-c", "echo args:" + join(spec.Args) + "; read x; echo got:$x; exit 7"}, Dir: spec.Dir}
 	}
@@ -41,7 +40,7 @@ func lookOr(name, fallback string) string {
 	return fallback
 }
 
-func newMgr(t *testing.T) (*Manager, *store.Store) {
+func newMgr(t *testing.T) (*Manager, *store.Store, *fakePTY) {
 	t.Helper()
 	st, err := store.Open(context.Background(), ":memory:", nil)
 	if err != nil {
@@ -51,8 +50,7 @@ func newMgr(t *testing.T) (*Manager, *store.Store) {
 	f := &fakePTY{}
 	m := &Manager{pty: f, store: st, log: nil, dataDir: t.TempDir(), claude: "claude", agents: map[string]*Agent{}, NewSessionID: func() string { return "fixed-session-id" }}
 	m.log = discardLogger()
-	_ = f
-	return m, st
+	return m, st, f
 }
 
 func TestSpawnForcesSessionIDAndRecordsExit(t *testing.T) {
@@ -61,7 +59,7 @@ func TestSpawnForcesSessionIDAndRecordsExit(t *testing.T) {
 			t.Skip("no sh")
 		}
 	}
-	m, st := newMgr(t)
+	m, st, f := newMgr(t)
 	defer m.Shutdown()
 	ctx := context.Background()
 	exited := make(chan int, 1)
@@ -78,25 +76,19 @@ func TestSpawnForcesSessionIDAndRecordsExit(t *testing.T) {
 	if !s.Owned || s.PID == 0 {
 		t.Fatalf("not owned: %+v", s)
 	}
-	// Output includes the forced --session-id and --model.
+	// The manager forces --session-id and passes --model (asserted from the exact
+	// argv the PTY was asked to spawn — deterministic, unlike scraping PTY output).
+	gotArgs := join(f.lastSpec.Args)
+	if !strings.Contains(gotArgs, "--session-id fixed-session-id") || !strings.Contains(gotArgs, "--model claude-opus-5") {
+		t.Fatalf("spawn args missing: %q", gotArgs)
+	}
+	// Drain output so the pump never blocks while we drive the session.
 	sub, cancel := a.Subscribe()
 	defer cancel()
-	var buf bytes.Buffer
-	deadline := time.After(5 * time.Second)
-	for !bytes.Contains(buf.Bytes(), []byte("args:")) {
-		select {
-		case b, ok := <-sub:
-			if !ok {
-				t.Fatalf("stream closed early: %q", buf.String())
-			}
-			buf.Write(b)
-		case <-deadline:
-			t.Fatalf("no args line: %q", buf.String())
+	go func() {
+		for range sub {
 		}
-	}
-	if !bytes.Contains(buf.Bytes(), []byte("--session-id fixed-session-id")) || !bytes.Contains(buf.Bytes(), []byte("--model claude-opus-5")) {
-		t.Fatalf("args missing: %q", buf.String())
-	}
+	}()
 	// On POSIX the fake reads a line and echoes it; type it. On Windows the fake
 	// exits on its own (ConPTY stdin round-trips are covered by the smoke test).
 	if runtime.GOOS != "windows" {
@@ -127,7 +119,7 @@ func TestSpawnForcesSessionIDAndRecordsExit(t *testing.T) {
 }
 
 func TestSpawnRejectsBadCwd(t *testing.T) {
-	m, _ := newMgr(t)
+	m, _, _ := newMgr(t)
 	if _, err := m.Spawn(context.Background(), SpawnRequest{Cwd: filepath.Join(t.TempDir(), "nope")}); err == nil {
 		t.Fatal("accepted missing cwd")
 	}
