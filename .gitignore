@@ -1,0 +1,26 @@
+# Environment — never commit secrets
+.env
+.env.local
+.env*.local
+
+# Dependencies
+node_modules/
+vendor/
+
+# Build output
+dist/
+build/
+out/
+.next/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+*.swp
+
+# Python
+__pycache__/
+*.pyc
