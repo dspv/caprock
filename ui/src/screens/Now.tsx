@@ -7,15 +7,26 @@ import { href } from '@/lib/router'
 import { useEffect, useState } from 'react'
 
 export function NowScreen() {
-  const sessions = useApi(() => api.sessions(true), [], { intervalMs: 5000 })
+  const [showEnded, setShowEnded] = useState(false)
+  const sessions = useApi(() => api.sessions(!showEnded), [showEnded], { intervalMs: 5000 })
+  const status = useApi(() => api.status(), [], { live: false, intervalMs: 30000 })
   const summary = useApi(() => api.summary('today'), [], { intervalMs: 5000 })
   const { alerts } = useLive()
   const now = useNow(1000)
   const list = sessions.data ?? []
-  const working = list.filter((s) => s.activity.health === 'working' || s.activity.health === 'looping' || s.activity.health === 'error')
-  const rest = list.filter((s) => !working.includes(s))
+  const working = list.filter((s) => s.activity.health === 'working' || s.activity.health === 'looping' || s.activity.health === 'error' || s.activity.health === 'waiting-on-you')
+  const rest = list.filter((s) => !working.includes(s) && s.status !== 'ended')
+  const ended = list.filter((s) => s.status === 'ended')
+  const hooksMissing = status.data?.hooks && (status.data.hooks.missing ?? []).length > 0
   return (
     <div className="grid gap-3">
+      {hooksMissing && (
+        <div className="border border-warn/50 bg-warn/10 px-3 py-2 text-[12px] rounded-[var(--radius-panel)] flex items-center gap-3">
+          <span className="text-warn font-medium">Hooks not installed</span>
+          <span className="text-fg-muted">Activity is coming from transcripts only (a few seconds late, no tool-level detail for running commands). Run <span className="mono text-fg">caprock hooks install</span> for real-time narration.</span>
+          <a href="#/settings" className="ml-auto text-[11px]">details</a>
+        </div>
+      )}
       {alerts.length > 0 && (
         <div className="grid gap-1.5">
           {alerts.map((a) => (
@@ -51,6 +62,14 @@ export function NowScreen() {
 
       {working.length > 0 && <Section title={`Active · ${working.length}`} items={working} now={now} />}
       {rest.length > 0 && <Section title={`Idle · ${rest.length}`} items={rest} now={now} dim />}
+      {showEnded && ended.length > 0 && <Section title={`Ended · ${ended.length}`} items={ended} now={now} dim />}
+      <div className="flex items-center gap-3 text-[11px] text-fg-faint px-0.5">
+        <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
+          <input type="checkbox" className="accent-[var(--color-accent)]" checked={showEnded} onChange={(e) => setShowEnded(e.target.checked)} />
+          show ended sessions
+        </label>
+        {sessions.loadedAt > 0 && <span className="num ml-auto">refreshed {fmtAgo(sessions.loadedAt, now)}</span>}
+      </div>
     </div>
   )
 }
