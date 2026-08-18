@@ -1,14 +1,18 @@
-# [Project] — build, docs, and deploy targets.
+# Caprock — build, test, docs, and release targets.
 #
-# Corpus ships only the docs targets. Add build/test/deploy targets as the tracks in
-# .ai/14-build-status.md move off 0%.
+# Go module lives at the repo root; the dashboard lives in ui/ and is embedded into
+# the binary from internal/api/dist (built by `make ui`).
 
-# Every markdown file in the repo, excluding vendored trees. Tables anywhere --
-# including READMEs next to code -- are held to the same alignment rule.
 DOCS := $(shell find . -name '*.md' \
           -not -path './node_modules/*' -not -path './.git/*' \
-          -not -path './vendor/*' -not -path './.next/*' \
-          | sort)
+          -not -path './vendor/*' -not -path './ui/node_modules/*' \
+          -not -path './ui/dist/*' | sort)
+
+BIN      := bin
+VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS  := -s -w -X github.com/dspv/caprock/internal/version.Version=$(VERSION)
+GOFLAGS  := -trimpath
+export CGO_ENABLED = 0
 
 .DEFAULT_GOAL := help
 
@@ -17,6 +21,59 @@ DOCS := $(shell find . -name '*.md' \
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 	  | sort | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
+
+# --- build ----------------------------------------------------------------
+.PHONY: build
+build: ui ## Build ./bin/caprock and ./bin/caprock-hook (with the embedded UI)
+	@mkdir -p $(BIN)
+	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN)/caprock ./cmd/caprock
+	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN)/caprock-hook ./cmd/caprock-hook
+
+.PHONY: build-go
+build-go: ## Build the Go binaries only (uses whatever UI is already embedded)
+	@mkdir -p $(BIN)
+	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN)/caprock ./cmd/caprock
+	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN)/caprock-hook ./cmd/caprock-hook
+
+.PHONY: ui
+ui: ## Build the dashboard into internal/api/dist
+	cd ui && npm run build
+
+.PHONY: ui-install
+ui-install: ## npm ci for the dashboard
+	cd ui && npm ci
+
+.PHONY: dev
+dev: ## Run daemon (go run) + vite dev server; UI on :5173 proxies API to :4173
+	@./scripts/dev.sh
+
+# --- test / lint ----------------------------------------------------------
+.PHONY: test
+test: test-go test-ui ## All tests
+
+.PHONY: test-go
+test-go: ## Go tests
+	go test ./...
+
+.PHONY: test-ui
+test-ui: ## Dashboard tests
+	cd ui && npm test -- --run
+
+.PHONY: lint
+lint: lint-go lint-ui ## All linters
+
+.PHONY: lint-go
+lint-go: ## go vet + golangci-lint
+	go vet ./...
+	golangci-lint run
+
+.PHONY: lint-ui
+lint-ui: ## tsc --noEmit
+	cd ui && npm run typecheck
+
+.PHONY: smoke
+smoke: build-go ## Phase 0 Definition-of-Done scenario with the fake claude
+	go test -tags smoke -count=1 ./internal/smoke/...
 
 # --- docs -----------------------------------------------------------------
 .PHONY: docs-fmt
@@ -32,4 +89,4 @@ docs-links: ## Fail if any relative markdown link does not resolve
 	@python3 scripts/check-links.py $(DOCS)
 
 .PHONY: check
-check: docs-check docs-links ## Everything CI runs
+check: docs-check docs-links lint test ## Docs gates + lint + test (what CI runs, minus the OS matrix)

@@ -1,56 +1,56 @@
-# [Project] — AI Agent Context
-
-<!-- SKELETON. Replace every bracketed placeholder. Delete these comments as you go.
-     This file is the map. An agent reads it first and decides what else to read. -->
+# Caprock — AI Agent Context
 
 Read this file first. Then read the task-specific file below.
 
-<!-- One paragraph: what this project is, who it is for, how it works, what makes it
-     unusual. Dense, no marketing. An agent should be able to reason about the project
-     from this paragraph alone. -->
+Caprock is a local, open-source **mission control for Claude Code**: a single static Go binary that runs a loopback daemon, captures every `claude` session on the machine through Claude Code hooks (via a tiny shim) and transcript tailing, normalizes everything into one event stream in SQLite, and serves a dense React dashboard (Now · Session Detail · Cost · History · Tasks) with live activity, token burn, cost, loop alerts, and — in later phases — spawning/typing into sessions and a verified multi-agent orchestrator. Local-first, zero servers, Apache-2.0, free for solo use. Owner: Dima; repo `dspv/caprock`; domain `caprock.dev`.
 
-[What this project is, in one paragraph.]
+| File                                               | Contents                                                        | Read when...                                       |
+| -------------------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------- |
+| [01-product.md](01-product.md)                     | One-liner, prior art, problem, users, traceability, principles  | Always                                             |
+| [02-architecture.md](02-architecture.md)           | Daemon, data planes, cross-platform rules, sources, event model | Touching any Go component                          |
+| [03-contracts.md](03-contracts.md)                 | Shim protocol, HTTP API, WS frames, DDL, pricing, runtime file  | Adding/changing an endpoint, table, or file format |
+| [04-ui.md](04-ui.md)                               | The five screens, visual tokens, narration map                  | Touching `ui/`                                     |
+| [05-orchestration.md](05-orchestration.md)         | Hive, mailboxes, Stop-loop, verification, approvals             | Phase 2 work                                       |
+| [06-engineering-rules.md](06-engineering-rules.md) | Binding rules; definition of green                              | Before writing code                                |
+| [08-decisions.md](08-decisions.md)                 | ADR log                                                         | Before revisiting any decision                     |
+| [09-execution-plan.md](09-execution-plan.md)       | Roadmap, phase DoDs, tasks T0–T25 with AC                       | Picking up or finishing a task                     |
+| [10-infrastructure.md](10-infrastructure.md)       | Versions, CI, release, local dev                                | Toolchain, CI, releases                            |
+| [12-risks.md](12-risks.md)                         | Assumptions, risks, open questions                              | Before expanding scope                             |
+| [14-build-status.md](14-build-status.md)           | What is built, what is not, next action, log                    | Checking progress                                  |
 
-| File                                     | Contents               | Read when...                   |
-| ---------------------------------------- | ---------------------- | ------------------------------ |
-| [01-product.md](01-product.md)           | [What it is, promises] | Always                         |
-| [08-decisions.md](08-decisions.md)       | [ADR log]              | Before revisiting any decision |
-| [12-risks.md](12-risks.md)               | [Risks, assumptions]   | Before expanding scope         |
-| [14-build-status.md](14-build-status.md) | [What is built]        | Checking progress              |
-
-<!-- Add a row per project-specific file. The "Read when" column is what makes this
-     table useful — it is a routing rule, not a description. -->
-
-These files absorb the original specification (`docs/[source-spec].md`). The spec is not a separate source of truth — **these files are**. If a fact appears in both, these win.
+These files absorbed the hand-off specification (`CaprockV2-SPEC.md`, deleted after the loss audit recorded in [docs/migration-audit.md](../docs/migration-audit.md)). The spec is not a separate source of truth — **these files are**.
 
 Supporting directories:
 
-| Path       | Contents                                    |
-| ---------- | ------------------------------------------- |
-| `scripts/` | `align-tables.py` — the table tight-aligner |
-| `docs/`    | [Human-facing docs, the archived spec]      |
+| Path                | Contents                                                       |
+| ------------------- | -------------------------------------------------------------- |
+| `scripts/`          | `align-tables.py`, `check-links.py` — docs tooling             |
+| `docs/`             | Human-facing docs; the migration audit record                  |
+| `cmd/`, `internal/` | Go daemon, CLI, shim (see 02-architecture § Repository layout) |
+| `ui/`               | React + Vite dashboard, embedded into the binary               |
+| `pricing/`          | `pricing.json` — versioned model pricing table                 |
+| `testdata/`         | Transcript fixtures, hook payloads, fake `claude`              |
 
 ## Current State
 
-**Last updated: [YYYY-MM-DD]** · Owner: [name] · Phase: **[phase]**
+**Last updated: 2026-08-18** · Owner: Dima · Phase: **Phase 0 — bootstrap**
 
-<!-- The honest present tense. What exists, what does not, what is unverified.
-     This is the section most likely to go stale and most damaging when it does. -->
-
-- **[What is actually built — or "Nothing is built yet."]**
-- **[What is still unknown or unmeasured, with its OQ/ASSUMPTION id.]**
+- **Documentation:** corpus built from the spec on 2026-08-18; loss audit green; spec deleted.
+- **Code:** see [14-build-status.md](14-build-status.md) for the live per-track state — that file is updated with every state change, this paragraph only points at it.
+- **Unmeasured / undecided:** everything in [12-risks.md § Open questions](12-risks.md#open-questions); `OQ-01` (parity target) and `OQ-07` (context-window table) block acceptance criteria of T5 and T7.
 
 ## Rules of engagement — non-negotiable
 
-<!-- 5-12 rules. Each states the rule AND why, because a rule without a reason gets
-     worked around. Order them by how expensive it is to break them.
-     Below are the four that apply to any project using this system — keep them,
-     add your own project-specific rules around them. -->
-
-1. **[Project-specific rule that outranks everything — usually about scope or shipping order.]**
-2. **All code, commits, PR titles, descriptions and docs in English.** Conventional Commits.
-3. **No invented numbers anywhere public.** Prices, costs, margins, and performance claims come from measurement. A figure you do not have is an open question, not a plausible guess.
-4. **[Add rules specific to this project. State the failure each one prevents.]**
+1. **Phase order is the product.** Observe (Phase 0) ships and works on externally started sessions before any control or orchestration code is user-facing. Read before write; orchestration is additive. Skipping ahead produces a harness nobody can adopt without changing their workflow — the incumbent's exact failure.
+2. **No task is done with a red Windows CI job. No exceptions.** Cross-platform reliability is the moat ([02-architecture.md](02-architecture.md#cross-platform-do-it-right-on-day-one)).
+3. **The shim never breaks a user's Claude session.** Any error path is silent `exit 0` within 1s; no stdout except the Phase 2 Stop decision.
+4. **All data stays on the machine.** Loopback listeners only; no outbound calls; no telemetry. Local-first is the trust story that made the incumbent land.
+5. **All code, commits, PR titles, descriptions and docs in English.** Conventional Commits.
+6. **No invented numbers anywhere public** — prices, costs, forecasts, performance claims. Measured or sourced with a date, else an open question. Forecasts are labeled estimates.
+7. **Every feature traces to a complaint** ([01-product.md § Complaint → feature traceability](01-product.md#complaint--feature-traceability)); a feature with no row is a candidate for cutting.
+8. **We never signal or type into a process we did not start.** Auto-pause and input are for owned sessions only.
+9. **Contracts, DDL, and pricing change only with their docs and a migration/version bump in the same commit** ([06-engineering-rules.md](06-engineering-rules.md)).
+10. **Keep the docs current as you build.** A behaviour change lands with its documentation change — including [14-build-status.md](14-build-status.md) and the README progress bars — in the same commit.
 
 ## Documentation rules
 

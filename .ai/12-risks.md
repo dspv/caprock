@@ -1,53 +1,76 @@
-# [Project] — Risks
+# Caprock — Risks
 
 Open risks, unverified assumptions, and unanswered questions. **Read before expanding scope.** Everything here is a thing that could be wrong; nothing here is a plan.
-
-<!-- SKELETON. Replace the placeholder rows. Delete these comments as you go.
-
-     This is the file that keeps the corpus honest. Without it, every unknown gets
-     silently resolved into a plausible-looking fact somewhere else. -->
 
 ## Assumption register
 
 Assumptions the plan rests on that have not been verified. Each names what would falsify it.
 
-<!-- The "Falsified by" column is the entire point. An assumption without one is a
-     belief, and beliefs do not belong in a plan. If you cannot name what would
-     disprove it, either it is a fact (move it) or it is untestable (say so). -->
+| ID              | Assumption                                                         | Falsified by                                                        |
+| --------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| `ASSUMPTION-01` | The 7 core hook events stay stable across Claude Code releases     | A release renaming/removing one of them (T3 tests break)            |
+| `ASSUMPTION-02` | Users accept a user-level hook in `~/.claude/settings.json`        | Launch feedback asking for per-project-only registration            |
+| `ASSUMPTION-03` | K=5 in T=3 min catches real loops without noisy false positives    | Fixture replays or dogfooding showing >1 false alert per session    |
+| `ASSUMPTION-04` | `aymanbagabas/go-pty` passes the Windows smoke test                | T0 spike red on `windows-latest`                                    |
+| `ASSUMPTION-05` | Phase 0 fits ~15–20 evenings                                       | Build-status log showing T10 not green after 30 evenings            |
+| `ASSUMPTION-06` | Munder Difflin numbers are order-of-magnitude right                | Re-verification before any public quote showing otherwise           |
+| `ASSUMPTION-07` | Transcript `usage` per assistant turn is the billing-relevant unit | A model/turn whose transcript usage disagrees with the Console bill |
+| `ASSUMPTION-08` | Hooks fire for sessions started by other tools (IDE, SDK) too      | A session visible in transcripts but never in `events` from hooks   |
 
-| ID              | Assumption                              | Falsified by                |
-| --------------- | --------------------------------------- | --------------------------- |
-| `ASSUMPTION-01` | [What we believe but have not verified] | [What would prove it wrong] |
+The assumption most likely to mislead is `ASSUMPTION-03`: a detector that fires "sometimes" will look correct on the synthetic fixture and still be wrong on real traffic, because real loops vary their input slightly (paths, retries). The normalizer's similarity rule is what decides this, and only dogfooding tests it.
 
-<!-- Call out the assumption most likely to mislead, and why. Usually the one that
-     will appear to be confirmed by evidence that does not actually test it. -->
+Verified on 2026-08-18 and therefore *not* an assumption: a real Claude Code 2.1.221 transcript carries `message.usage` with input/output/cache-read/cache-write per assistant line, `sessionId`, `cwd`, `timestamp`, and `message.model` ([03-contracts.md § Transcript JSONL](03-contracts.md#transcript-jsonl-observed-shape)); the hooks reference lists the seven events we consume with the fields we read; native `type: "http"` hooks surface a transcript notice on connection failure ([ADR-009](08-decisions.md#adr-009--hook-transport-is-the-caprock-hook-shim-binary-not-claude-codes-native-http-hook-type)).
 
 ## Risks
 
-<!-- One bold-led paragraph each. Name what breaks, how likely it is to matter, and
-     what mitigates it — including "nothing, we accept this". Prose, not a table:
-     a risk needs a sentence, and prose-in-cells is unreadable. -->
+**`RISK-01` — Hooks API churn.**
+~30 events and growing; a rename or payload change silently blanks the Now screen. Mitigation: pin to the stable core set, tolerate unknown events, verify against the official hooks reference each release; unknown events/fields are logged and ignored, never fatal.
 
-**`RISK-01` — [Short name].**
-[What could go wrong, what it would cost, and what mitigates it. If the mitigation is weak, say so — a risk marked mitigated when it is not is worse than an unrecorded one.]
+**`RISK-02` — Transcript format is not a public contract.**
+A schema change breaks token accounting without any error. Mitigation: schema-version the parser, golden fixtures for known shapes, degrade gracefully to hooks-only mode (activity keeps working, cost goes stale and says so).
+
+**`RISK-03` — Limit forecasting accuracy.**
+Anthropic doesn't expose limit state; a confident-looking wrong forecast is worse than none. Mitigation: label forecasts as estimates, learn from observed throttles (`throttle_observations`, Phase 1), and ship the forecast only after there is data — not in Phase 0.
+
+**`RISK-04` — Anthropic ships it themselves.**
+A first-party dashboard would erase the observe-only wedge. Mitigation: multi-agent orchestration + the verification layer are further from their core; move fast on Phase 0; the event model is designed so a first-party activity stream would become another source, not a replacement ([ADR-008](08-decisions.md#adr-008--hooks-are-the-source-of-truth-for-activity-single-normalized-event-stream)).
+
+**`RISK-05` — Attention.**
+Munder Difflin won on story. Phase 0 needs its own hook: "I watched my Claude burn $X in a loop — this tool catches it." Mitigation: the loop detector ships in Phase 0 (cut line: v0.1.1 at the latest) and the launch GIF shows it.
+
+**`RISK-06` — Windows regressions after T0.**
+The spike proves the PTY once; a later dependency bump can break it silently. Mitigation: the three-OS smoke job on every PR and the "no red Windows job" rule; weak point is that GitHub's Windows runner is not every user's Windows.
+
+**`RISK-07` — Cost math drift vs the real bill.**
+Prices change; a stale table under-reports spend and users notice on their invoice. Mitigation: `meta.pricing_version` recorded and never applied retroactively, user override file, a dated `source` in `pricing.json`, and a release-checklist step to re-fetch the pricing page. Accepted residual: partner platforms (Bedrock/Vertex) are not priced in v0.1 ([OQ-02](#open-questions)).
 
 ## Open questions
 
-<!-- Anything the spec did not answer. Do NOT resolve these by inventing an answer;
-     that is the single most damaging thing you can do to a corpus.
-     "Decided by" is a person, an event, or a date — not "later". -->
+Anything the spec did not answer. Do not resolve these by inventing an answer. "Decided by" is a person, an event, or a task — never "later".
 
-| ID      | Question   | Decided by |
-| ------- | ---------- | ---------- |
-| `OQ-01` | [Question] | [Who/when] |
+- **`OQ-01` — What does T5 "parity" compare?** The legacy repo has no `pricing.json` and no transcript fixtures ([ADR-015](08-decisions.md#adr-015--pricing-source-anthropic-first-party-pricing-page-versioned-the-legacy-repo-has-no-pricingjson)); the spec's AC "within $0.001 vs Caprock-python on shared fixtures" has no artifact to compare against.
+  - Decided by: Dima, before T5 starts. **Blocks T5's AC.**
+- **`OQ-02` — Bedrock/Vertex pricing in v0.1?** Partner pricing is separate (regional endpoints carry a 10% premium per the Anthropic pricing page, fetched 2026-08-18); v0.1 tables first-party only.
+  - Decided by: Dima, before v0.1.0.
+- **`OQ-03` — Limit-forecast model.** Which observed signals count as a throttle in `throttle_observations`, and how is the forecast derived and labeled?
+  - Decided by: Phase 1 (T14/T16), once data exists.
+- **`OQ-04` — caprock.dev cut-over.** Harness front page, python measurer moved to `/stats` with a banner — who edits `caprock-web`, when?
+  - Decided by: Dima, at Phase 0 launch.
+- **`OQ-05` — Brand accent hue** (single hue, interactive elements only).
+  - Decided by: T7.
+- **`OQ-06` — Stop-decision output shape.** Which forms does current Claude Code accept: top-level `{"decision","reason"}` (spec) or `hookSpecificOutput` (current docs)?
+  - Decided by: T19, verified against the hooks reference at implementation time.
+- **`OQ-07` — Context-window sizes per model** for the "context fill %" badge — source and how to keep them current (`pricing.json` carries a `context_window` per model as the first cut).
+  - Decided by: T7. **Blocks the badge.**
+- **`OQ-08` — Consent UX for the hook install on `caprock up`.** Prompt every run, once, or `--yes` semantics?
+  - Decided by: T3.
+- **`OQ-09` — ConPTY on the CI Windows runner.** Does `windows-latest` expose ConPTY for the spike, or is a self-hosted runner needed?
+  - Decided by: T0.
 
-<!-- Flag any question that BLOCKS something — shipping, spending, going public.
-     A blocking question buried in a table gets discovered during the incident. -->
+`OQ-01` and `OQ-07` block a task's acceptance criteria; the rest do not block shipping.
 
 ## What would falsify the whole plan
 
-<!-- The two or three outcomes that mean this project should stop rather than pivot.
-     Uncomfortable to write, which is why it is worth writing before there is anything
-     to defend. -->
-
-- [The outcome that means this does not work]
+- Anthropic ships an equivalent first-party mission control before Phase 1 — observe-only loses its reason to exist and only the orchestration/verification layer remains defensible.
+- Windows cannot be made reliable through the PTY layer after the spike and one honest retry — then Phase 1's "control" story is POSIX-only and the moat claim is void.
+- Phase 0 launches (Reddit/HN) and produces neither users nor complaints — no signal means no traceability rows, and the rule says features without rows get cut.

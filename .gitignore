@@ -3,15 +3,23 @@
 .env.local
 .env*.local
 
+# Build output
+bin/
+dist/
+build/
+out/
+internal/api/dist/*
+!internal/api/dist/.gitkeep
+!internal/api/dist/index.html
+coverage.out
+*.test
+
 # Dependencies
 node_modules/
 vendor/
 
-# Build output
-dist/
-build/
-out/
-.next/
+# Local Caprock data (dev)
+.caprock/
 
 # OS
 .DS_Store
@@ -19,8 +27,9 @@ Thumbs.db
 
 # Editors
 .idea/
+.vscode/
 *.swp
 
-# Python
+# Python (docs tooling)
 __pycache__/
 *.pyc

@@ -2,7 +2,7 @@ name: docs
 
 on:
   push:
-    branches: [master, main]
+    branches: [master]
   pull_request:
 
 jobs:
@@ -11,12 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      # `make check` runs docs-check and docs-links. Both are pure-python with no
-      # dependencies, so there is nothing to install.
+      # Both scripts are pure-python with no dependencies.
       - name: Check documentation
-        run: make check
+        run: make docs-check docs-links

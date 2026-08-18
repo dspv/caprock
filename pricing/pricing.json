@@ -1,0 +1,31 @@
+{
+  "version": "2026-08-18.1",
+  "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+  "fetched_at": "2026-08-18",
+  "currency": "USD",
+  "unit": "per_million_tokens",
+  "notes": [
+    "First-party Anthropic API prices. Amazon Bedrock and Google Vertex have separate partner pricing (regional endpoints +10%) and are not covered by this table (OQ-02).",
+    "cache_write_5m = 1.25x input, cache_write_1h = 2x input, cache_read = 0.1x input — per Anthropic's published multipliers.",
+    "Model ids are matched by prefix against the `model` field observed in transcripts (e.g. claude-opus-5, claude-sonnet-4-5-20250929). Longest prefix wins.",
+    "context_window is the model's maximum input context in tokens as published; used for the 'context fill %' badge (OQ-07)."
+  ],
+  "models": [
+    {"id": "claude-fable-5",   "display": "Claude Fable 5",   "input": 10.0, "cache_write_5m": 12.5,  "cache_write_1h": 20.0, "cache_read": 1.0,  "output": 50.0, "context_window": 1000000},
+    {"id": "claude-mythos-5",  "display": "Claude Mythos 5",  "input": 10.0, "cache_write_5m": 12.5,  "cache_write_1h": 20.0, "cache_read": 1.0,  "output": 50.0, "context_window": 1000000},
+    {"id": "claude-opus-5",    "display": "Claude Opus 5",    "input": 5.0,  "cache_write_5m": 6.25,  "cache_write_1h": 10.0, "cache_read": 0.5,  "output": 25.0, "context_window": 1000000},
+    {"id": "claude-opus-4-8",  "display": "Claude Opus 4.8",  "input": 5.0,  "cache_write_5m": 6.25,  "cache_write_1h": 10.0, "cache_read": 0.5,  "output": 25.0, "context_window": 1000000},
+    {"id": "claude-opus-4-7",  "display": "Claude Opus 4.7",  "input": 5.0,  "cache_write_5m": 6.25,  "cache_write_1h": 10.0, "cache_read": 0.5,  "output": 25.0, "context_window": 1000000},
+    {"id": "claude-opus-4-6",  "display": "Claude Opus 4.6",  "input": 5.0,  "cache_write_5m": 6.25,  "cache_write_1h": 10.0, "cache_read": 0.5,  "output": 25.0, "context_window": 1000000},
+    {"id": "claude-opus-4-5",  "display": "Claude Opus 4.5",  "input": 5.0,  "cache_write_5m": 6.25,  "cache_write_1h": 10.0, "cache_read": 0.5,  "output": 25.0, "context_window": 200000},
+    {"id": "claude-opus-4-1",  "display": "Claude Opus 4.1",  "input": 15.0, "cache_write_5m": 18.75, "cache_write_1h": 30.0, "cache_read": 1.5,  "output": 75.0, "context_window": 200000},
+    {"id": "claude-opus-4",    "display": "Claude Opus 4",    "input": 15.0, "cache_write_5m": 18.75, "cache_write_1h": 30.0, "cache_read": 1.5,  "output": 75.0, "context_window": 200000},
+    {"id": "claude-sonnet-5",  "display": "Claude Sonnet 5",  "input": 2.0,  "cache_write_5m": 2.5,   "cache_write_1h": 4.0,  "cache_read": 0.2,  "output": 10.0, "context_window": 1000000},
+    {"id": "claude-sonnet-4-6","display": "Claude Sonnet 4.6","input": 3.0,  "cache_write_5m": 3.75,  "cache_write_1h": 6.0,  "cache_read": 0.3,  "output": 15.0, "context_window": 1000000},
+    {"id": "claude-sonnet-4-5","display": "Claude Sonnet 4.5","input": 3.0,  "cache_write_5m": 3.75,  "cache_write_1h": 6.0,  "cache_read": 0.3,  "output": 15.0, "context_window": 200000},
+    {"id": "claude-sonnet-4",  "display": "Claude Sonnet 4",  "input": 3.0,  "cache_write_5m": 3.75,  "cache_write_1h": 6.0,  "cache_read": 0.3,  "output": 15.0, "context_window": 200000},
+    {"id": "claude-haiku-4-5", "display": "Claude Haiku 4.5", "input": 1.0,  "cache_write_5m": 1.25,  "cache_write_1h": 2.0,  "cache_read": 0.1,  "output": 5.0,  "context_window": 200000},
+    {"id": "claude-haiku-3-5", "display": "Claude Haiku 3.5", "input": 0.8,  "cache_write_5m": 1.0,   "cache_write_1h": 1.6,  "cache_read": 0.08, "output": 4.0,  "context_window": 200000},
+    {"id": "claude-3-5-haiku", "display": "Claude Haiku 3.5", "input": 0.8,  "cache_write_5m": 1.0,   "cache_write_1h": 1.6,  "cache_read": 0.08, "output": 4.0,  "context_window": 200000}
+  ]
+}

@@ -1,14 +1,9 @@
-# [Project] — Agent Onboarding
+# Caprock — Agent Onboarding
 
 > **CRITICAL — read this first.**
 > `CLAUDE.md` (repo root) and `.ai/00-index.md` are the authoritative instructions for this project. They define the non-negotiable rules. Everything in this file is supplementary. **If there is any conflict, `CLAUDE.md` wins.**
 
-<!-- SKELETON. Replace every bracketed placeholder. Delete these comments as you go.
-     This file exists for agents that look for AGENTS.md rather than CLAUDE.md.
-     It duplicates the entry point deliberately — that is the one accepted exception
-     to "one fact, one home", because the two files are read by different tools. -->
-
-[One paragraph: what the project is.] Currently **[phase]** — [what exists].
+Caprock is a local, open-source mission control for Claude Code — a single Go binary that watches every `claude` session on the machine (hooks + transcripts), shows live activity/cost/loop alerts in a browser dashboard, and later spawns, controls, and orchestrates sessions with verification-before-done. Currently **Phase 0 — bootstrap** — documentation corpus built (90%), no code built yet.
 
 ## Start here
 
@@ -19,13 +14,20 @@
 
 ## Documentation map
 
-| File                     | Contents                                       |
-| ------------------------ | ---------------------------------------------- |
-| `.ai/00-index.md`        | Index + current state + rules of engagement    |
-| `.ai/01-product.md`      | [What it is and what it promises]              |
-| `.ai/08-decisions.md`    | ADR log — check before reopening anything      |
-| `.ai/12-risks.md`        | Risks, the assumption register, open questions |
-| `.ai/14-build-status.md` | Running build log, progress, next action       |
+| File                          | Contents                                                        |
+| ----------------------------- | --------------------------------------------------------------- |
+| `.ai/00-index.md`             | Index + current state + rules of engagement                     |
+| `.ai/01-product.md`           | One-liner, prior art, problem, users, traceability, principles  |
+| `.ai/02-architecture.md`      | Daemon, data planes, cross-platform rules, sources, event model |
+| `.ai/03-contracts.md`         | Shim protocol, HTTP API, WS, DDL, pricing, runtime file         |
+| `.ai/04-ui.md`                | Five screens, visual tokens, narration map                      |
+| `.ai/05-orchestration.md`     | Hive, mailboxes, Stop-loop, verification, approvals             |
+| `.ai/06-engineering-rules.md` | Binding engineering rules; definition of green                  |
+| `.ai/08-decisions.md`         | ADR log — check before reopening anything                       |
+| `.ai/09-execution-plan.md`    | Roadmap, phase DoDs, tasks T0–T25                               |
+| `.ai/10-infrastructure.md`    | Versions, CI, release, local dev                                |
+| `.ai/12-risks.md`             | Risks, the assumption register, open questions                  |
+| `.ai/14-build-status.md`      | Running build log, progress, next action                        |
 
 ## Markdown table alignment
 
@@ -53,11 +55,13 @@ The docs are the source of truth, so they go stale the moment code moves without
 - **`.ai/14-build-status.md` and `README.md` progress bars are updated together** — they carry the same numbers.
 - **A closed debate becomes an ADR** in `.ai/08-decisions.md`, with its reasoning. Prose scattered across files is not a decision record.
 - **One fact, one home.** Cross-link rather than restate. If a fact must appear twice, one file owns it and the other links.
-- **Absolute dates.** "2026-08-12", never "last week".
+- **Absolute dates.** "2026-08-18", never "last week".
 
 ## Key rules (summary — full versions in CLAUDE.md)
 
-- [The project's top rule.]
+- Phase order is the product: Observe → Control → Orchestrate.
+- No task is done with a red Windows CI job.
+- The shim never breaks a user's Claude session; all data stays on the machine.
 - English everywhere in code/commits/PRs; Conventional Commits.
 - No invented numbers — a figure you do not have is an open question, not a guess.
-- [Other project-specific rules.]
+- Never signal or type into a process Caprock did not start.

@@ -12,7 +12,9 @@ Checked:
 
 Ignored:
 - Absolute URLs (http://, https://, mailto:, etc.)
-- Pure anchors ([text](#section)) — anchor targets are not resolved.
+- Nothing else: anchors ARE resolved. `file.md#anchor` and `#anchor` must match a
+  heading in the target file, using GitHub's slug rules (lowercase, spaces → `-`,
+  punctuation dropped, duplicate slugs suffixed `-1`, `-2`, …).
 - Links inside fenced code blocks.
 - Bracketed placeholders like [text]([01-...]) left in an unfilled skeleton.
 
@@ -51,17 +53,57 @@ def targets(text: str):
                 yield lineno, target.strip()
 
 
+HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
+INLINE_CODE = re.compile(r"`([^`]*)`")
+MD_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_slug_cache: dict[Path, set[str]] = {}
+
+
+def github_slug(title: str) -> str:
+    """Approximate GitHub's heading → anchor algorithm."""
+    t = MD_LINK.sub(r"\1", title)          # keep link text, drop target
+    t = INLINE_CODE.sub(r"\1", t)         # drop backticks, keep code text
+    t = t.strip().lower()
+    t = re.sub(r"[^\w\- ]", "", t)         # drop punctuation (unicode word chars kept)
+    t = t.replace(" ", "-")
+    return t
+
+
+def anchors_of(path: Path) -> set[str]:
+    if path in _slug_cache:
+        return _slug_cache[path]
+    seen: dict[str, int] = {}
+    slugs: set[str] = set()
+    in_fence = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if FENCE.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        m = HEADING.match(line)
+        if not m:
+            continue
+        base = github_slug(m.group(2))
+        n = seen.get(base, 0)
+        seen[base] = n + 1
+        slugs.add(base if n == 0 else f"{base}-{n}")
+    _slug_cache[path] = slugs
+    return slugs
+
+
 def broken(path: Path) -> list[str]:
     out = []
     for lineno, target in targets(path.read_text(encoding="utf-8")):
-        if target.startswith("#") or SCHEME.match(target) or is_placeholder(target):
+        if SCHEME.match(target) or is_placeholder(target):
             continue
-        # Strip an anchor; the file must exist, the anchor is not resolved.
-        file_part = target.split("#", 1)[0]
-        if not file_part:
-            continue
-        if not (path.parent / file_part).exists():
+        file_part, _, anchor = target.partition("#")
+        dest = path if not file_part else (path.parent / file_part)
+        if not dest.exists():
             out.append(f"{path}:{lineno}: {target}")
+            continue
+        if anchor and dest.suffix == ".md" and anchor not in anchors_of(dest):
+            out.append(f"{path}:{lineno}: {target}  (no such heading)")
     return out
 
 

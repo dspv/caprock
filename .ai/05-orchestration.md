@@ -1,0 +1,79 @@
+# Caprock — Orchestration & the trust gap
+
+Phase 2+ ([09-execution-plan.md § Phase 2](09-execution-plan.md#phase-2--orchestrate)). Design decisions are fixed up front so that Phases 0–1 do not paint us into a corner. The hive file formats below are canonical here; the API/DDL additions are in [03-contracts.md](03-contracts.md).
+
+## Design decisions (fixed up front)
+
+- **Orchestrator = a normal `claude` session** with a dedicated system prompt + its own worktree; talks through the same mailbox files. No special API.
+- **Mailboxes**: per-agent `inbox/` + `outbox/` dirs of markdown files; the router (harness, single writer) moves files and commits. Agents never run git on the hive repo.
+- **The autonomy engine is the Stop hook**: agent stops → hook fires → harness checks inbox → if mail exists, respond with `decision: block` + reason ("process your inbox"), which forces the session to continue. Loop-guard: max N forced continues per task, then escalate to human.
+- **Verification before done (the moat).** A task isn't done because a worker says so. Task frontmatter declares `done_criteria` (commands: tests, typecheck, lint, custom). On worker's "done": harness runs the commands; on failure the task bounces back with the failing output attached. Optionally a reviewer agent reads the diff. Only green checks move a task to `done`.
+- **Escalation policy** (approvals queue): spend above per-task budget, destructive commands, scope change, N failed verification rounds.
+- **Isolation**: one git worktree per agent by default.
+
+## Hive layout
+
+One dir per registered project workspace:
+
+```
+<hive>/
+  agents/<agent-id>/{identity.md, memory.md, inbox/, outbox/}
+  tasks/<task-id>.md
+  approvals/<id>.json
+  ledger.jsonl                # append-only task/state transitions
+```
+
+Files are the source of truth for hive state; SQLite mirrors them for the UI (rebuildable by rescan). All paths via `filepath`, never hardcoded `/` ([02-architecture.md § Cross-platform](02-architecture.md#cross-platform-do-it-right-on-day-one)).
+
+## Task file
+
+```yaml
+---
+id: t-2026-0001
+title: Add /healthz endpoint
+status: inbox | assigned | in_progress | verifying | needs_you | done | failed
+assignee: agent-id | null
+budget_usd: 3.00
+done_criteria:
+  - go test ./...
+  - go vet ./...
+verify_rounds_used: 0
+---
+Free-form description / acceptance notes.
+```
+
+The kanban ([04-ui.md § Tasks](04-ui.md#tasks-kanban)) allows drag only between allowed states.
+
+## Mailbox message
+
+Markdown file, YAML frontmatter `{from, to, ts, task_id?, kind: assign|result|question|escalation}`; body free-form. Router moves `outbox → inbox`, appends to `ledger.jsonl`, commits.
+
+## Stop-hook decision protocol (shim upgrade, T19)
+
+For Stop events only, the shim switches from fire-and-forget to request-response: it waits for the daemon's reply (timeout **5s**) and relays the JSON body (`{"decision":"block","reason":…}` or empty) to stdout, which is how Claude Code consumes hook decisions. All other events remain silent fire-and-forget. Degradation is safe by construction: on timeout or daemon-down the shim prints nothing and exits 0, so the session simply stops normally. Forced-continue counter lives in SQLite per (session, task).
+
+Guards: max **N=10** forced continuations per task (default), then escalate; verification bounces max **R=3** rounds (default), then escalate.
+
+Note (verified against the hooks reference 2026-08-18): the current documented Stop output shape is `{"hookSpecificOutput":{"hookEventName":"Stop","decision":"block","reason":"…"}}` on stdout with exit 0 (exit 2 also blocks). The top-level `{"decision","reason"}` form from the spec is the older shape; T19 must confirm which forms Claude Code accepts at implementation time and emit the accepted one — tracked as [OQ-06](12-risks.md#open-questions).
+
+## Verification runner
+
+On worker's "done", Caprock executes `done_criteria` commands in the worker's worktree with timeouts and output capture; all green ⇒ task → `done`; any red ⇒ task bounces to the worker with failing output attached (max R rounds, default 3, then escalate). Rows land in `verifications` (`task_id`, `round`, `command`, `exit_code`, `output_path`).
+
+## Approvals
+
+Tasks exceeding budget, matching a destructive-command policy (regex list, configurable), or exhausting guards land in `needs-you`; one-click approve/reject feeds back to the orchestrator via the mailbox. Cut line: the approvals policy can start budget-only.
+
+## Cost attribution per task
+
+Join `events` → task via assignment windows (the interval during which a task is assigned to a session); task cards show spend vs budget. Cut line: can slip to v0.3.1.
+
+## Orchestrator prompt
+
+The system prompt is English, lives at `.ai/07-orchestrator.md` (created in T21; the spec's `.ai/orchestrator.md` renamed to a numbered slot per [ADR-016](08-decisions.md#adr-016--corpus-layout-numbered-ai-files-minimal-root-spec-deleted-after-audit)), and is spawned by `ptyman` with its own worktree; spawn/respawn policy and scribing (status transitions written to task files + ledger) are part of T21.
+
+## Auto-pause ownership rule (Phase 1)
+
+This file owns the rule; Phase 1 DoD item 4 in [09-execution-plan.md](09-execution-plan.md#phase-1--control) quotes the spec's wording of the same rule verbatim.
+
+Auto-pause acts on **owned sessions only** (Caprock has the PID and the PTY): per-setting SIGSTOP/SIGCONT (POSIX) / input-hold + warning (Windows, no SIGSTOP), one click to resume. Externally observed sessions stay alert-only — hooks don't give us process ownership, and we never signal a process we didn't start. Default: alert-only everywhere; auto-pause opt-in.
