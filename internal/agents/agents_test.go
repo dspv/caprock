@@ -2,11 +2,12 @@ package agents
 
 import (
 	"context"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,30 +15,101 @@ import (
 	"github.com/dspv/caprock/internal/store"
 )
 
-// fakeManager spawns /bin/sh (or cmd.exe) instead of claude, so tests need no
-// real claude binary. It records the args the "claude" would have received.
-type fakePTY struct{ lastSpec ptyman.Spec }
-
-func (f *fakePTY) Spawn(ctx context.Context, spec ptyman.Spec) (ptyman.Session, error) {
-	f.lastSpec = spec
-	// Echo the args back so the test can assert --session-id was passed, then read a line, then exit.
-	var real ptyman.Spec
-	if runtime.GOOS == "windows" {
-		// Print the args then exit 7 on its own — ConPTY stdin round-trips are covered
-		// by the -tags smoke Phase 1 test; here we only need spawn + exit recording.
-		sh := lookOr("powershell.exe", `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`)
-		real = ptyman.Spec{Command: sh, Args: []string{"-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Milliseconds 200; exit 7"}, Dir: spec.Dir}
-	} else {
-		real = ptyman.Spec{Command: "/bin/sh", Args: []string{"-c", "echo args:" + join(spec.Args) + "; read x; echo got:$x; exit 7"}, Dir: spec.Dir}
-	}
-	return ptyman.New().Spawn(ctx, real)
+// fakePTY is a pure in-process ptyman backend: no shell, no real process, no
+// ConPTY — so the manager's contract (forced --session-id, ownership, input
+// routing, exit recording) is tested identically and deterministically on every
+// OS. Real PTY spawn/stream/kill is covered by the -tags smoke and -tags
+// ptyspike tests.
+type fakePTY struct {
+	lastSpec ptyman.Spec
+	session  *fakeSession
 }
 
-func lookOr(name, fallback string) string {
-	if p, err := exec.LookPath(name); err == nil {
-		return p
+func (f *fakePTY) Spawn(_ context.Context, spec ptyman.Spec) (ptyman.Session, error) {
+	f.lastSpec = spec
+	f.session = &fakeSession{pid: 4242, out: make(chan []byte, 16), done: make(chan struct{}), input: make(chan []byte, 16)}
+	return f.session, nil
+}
+
+// fakeSession implements ptyman.Session in memory. Writing "exit\n" ends it with
+// code 7; Signal(kill) ends it with code -1.
+type fakeSession struct {
+	pid    int
+	out    chan []byte
+	input  chan []byte
+	done   chan struct{}
+	mu     sync.Mutex
+	exit   int
+	closed bool
+	paused bool
+}
+
+func (s *fakeSession) Output() io.Reader { return &chanReader{ch: s.out, done: s.done} }
+func (s *fakeSession) Write(p []byte) (int, error) {
+	if strings.Contains(string(p), "exit") {
+		s.finish(7)
 	}
-	return fallback
+	return len(p), nil
+}
+func (s *fakeSession) Resize(int, int) error { return nil }
+func (s *fakeSession) Signal(sig ptyman.Signal) error {
+	switch sig {
+	case ptyman.SignalPause:
+		s.paused = true
+	case ptyman.SignalResume:
+		s.paused = false
+	case ptyman.SignalKill:
+		s.finish(-1)
+	}
+	return nil
+}
+func (s *fakeSession) Wait() error {
+	<-s.done
+	if s.exit == 7 {
+		return exitErr(7)
+	}
+	return nil
+}
+
+type exitErr int
+
+func (e exitErr) Error() string     { return "exit status 7" }
+func (e exitErr) ExitCode() int     { return int(e) }
+func (s *fakeSession) PID() int     { return s.pid }
+func (s *fakeSession) Paused() bool { return s.paused }
+func (s *fakeSession) Close() error { s.finish(-1); return nil }
+func (s *fakeSession) finish(code int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return
+	}
+	s.closed, s.exit = true, code
+	close(s.done)
+	close(s.out)
+}
+
+type chanReader struct {
+	ch   chan []byte
+	done chan struct{}
+	buf  []byte
+}
+
+func (r *chanReader) Read(p []byte) (int, error) {
+	if len(r.buf) == 0 {
+		select {
+		case b, ok := <-r.ch:
+			if !ok {
+				return 0, io.EOF
+			}
+			r.buf = b
+		case <-r.done:
+			return 0, io.EOF
+		}
+	}
+	n := copy(p, r.buf)
+	r.buf = r.buf[n:]
+	return n, nil
 }
 
 func newMgr(t *testing.T) (*Manager, *store.Store, *fakePTY) {
@@ -54,11 +126,6 @@ func newMgr(t *testing.T) (*Manager, *store.Store, *fakePTY) {
 }
 
 func TestSpawnForcesSessionIDAndRecordsExit(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		if _, err := exec.LookPath("sh"); err != nil {
-			t.Skip("no sh")
-		}
-	}
 	m, st, f := newMgr(t)
 	defer m.Shutdown()
 	ctx := context.Background()
@@ -86,21 +153,9 @@ func TestSpawnForcesSessionIDAndRecordsExit(t *testing.T) {
 	if err := m.Input("external", []byte("x")); err == nil {
 		t.Fatal("wrote into a non-owned session")
 	}
-
-	// The real-process round-trip (type → echo → exit-7 recorded) is timing
-	// sensitive under ConPTY; run it on POSIX. Real PTY spawn/kill on Windows is
-	// covered by the informational -tags ptyspike job.
-	if runtime.GOOS == "windows" {
-		return
-	}
-	// Drain output so the pump never blocks while we drive the session.
-	sub, cancel := a.Subscribe()
-	defer cancel()
-	go func() {
-		for range sub {
-		}
-	}()
-	if err := m.Input("fixed-session-id", []byte("hi\n")); err != nil {
+	_ = a
+	// Typing "exit" ends the in-memory fake with code 7; the manager records it.
+	if err := m.Input("fixed-session-id", []byte("exit\n")); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -108,7 +163,7 @@ func TestSpawnForcesSessionIDAndRecordsExit(t *testing.T) {
 		if code != 7 {
 			t.Fatalf("exit code %d", code)
 		}
-	case <-time.After(10 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("did not exit")
 	}
 	s, _ = store.GetSession(ctx, st.DB(), "fixed-session-id")

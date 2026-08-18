@@ -64,7 +64,7 @@ jobs:
         with:
           version: latest
       - name: go test
-        run: go test -count=1 ./...
+        run: go test -v -count=1 ./...
       - name: build
         shell: bash
         run: |

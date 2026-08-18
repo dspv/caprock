@@ -265,14 +265,22 @@ func (a *Agent) pump(onOutput func(string)) {
 	}
 }
 
+// exitCoder lets a ptyman.Session report an exit code without an *exec.ExitError
+// (used by the in-memory test backend).
+type exitCoder interface{ ExitCode() int }
+
 func (a *Agent) wait(m *Manager) {
 	err := a.sess.Wait()
 	code := 0
 	if err != nil {
 		var ee *exec.ExitError
-		if errors.As(err, &ee) {
+		var ec exitCoder
+		switch {
+		case errors.As(err, &ee):
 			code = ee.ExitCode()
-		} else {
+		case errors.As(err, &ec):
+			code = ec.ExitCode()
+		default:
 			code = -1
 		}
 	}
