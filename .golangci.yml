@@ -1,7 +1,7 @@
 version: "2"
 run:
   timeout: 5m
-  build-tags: [smoke]
+  build-tags: [smoke, ptyspike]
 linters:
   default: standard
   enable:

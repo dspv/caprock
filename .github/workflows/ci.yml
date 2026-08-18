@@ -76,3 +76,24 @@ jobs:
         with:
           name: caprock-${{ matrix.os }}
           path: bin/
+
+  # T0 — ConPTY spike. Informational: it must never redden the required jobs
+  # (ADR-006 / .ai/09-execution-plan.md T0). Its result is the go/no-go for T11.
+  pty-spike:
+    name: pty spike (${{ matrix.os }})
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: spike
+        run: go test -count=1 -v -tags ptyspike ./internal/ptyman/...
