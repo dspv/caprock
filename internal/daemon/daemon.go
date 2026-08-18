@@ -230,6 +230,9 @@ func (d *Daemon) run(ctx context.Context) error {
 	// Idle sweeper (also runs once at start so backfilled history settles immediately).
 	_ = d.rec.MarkIdle(ctx, d.opt.IdleAfter, d.opt.EndAfter)
 	go d.sweep(ctx)
+	if d.opt.Config.RetentionDays > 0 {
+		go d.pruneLoop(ctx)
+	}
 
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
@@ -322,6 +325,35 @@ func (d *Daemon) activeLoop(sessionID string) *loop.Alert {
 	return a
 }
 
+func (d *Daemon) pruneLoop(ctx context.Context) {
+	prune := func() {
+		before := d.rec.Now().AddDate(0, 0, -d.opt.Config.RetentionDays).UnixMilli()
+		var n int64
+		if err := d.store.WithTx(ctx, func(q store.Querier) error {
+			var e error
+			n, e = store.PruneEventsBefore(ctx, q, before)
+			return e
+		}); err != nil {
+			d.log.Warn("event prune", "component", "daemon", "err", err)
+			return
+		}
+		if n > 0 {
+			d.log.Info("pruned old events", "component", "daemon", "removed", n, "retention_days", d.opt.Config.RetentionDays)
+		}
+	}
+	prune() // once at start
+	t := time.NewTicker(6 * time.Hour)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			prune()
+		}
+	}
+}
+
 func (d *Daemon) sweep(ctx context.Context) {
 	t := time.NewTicker(30 * time.Second)
 	defer t.Stop()
@@ -355,6 +387,8 @@ type Status struct {
 	LoopK           int           `json:"loop_k"`
 	LoopTMin        int           `json:"loop_t_minutes"`
 	ActiveLoops     int           `json:"active_loops"`
+	Events          int64         `json:"events"`
+	RetentionDays   int           `json:"retention_days"`
 }
 
 // PricingStatus summarizes the table in force.
@@ -387,6 +421,10 @@ func (d *Daemon) status(_ context.Context) any {
 	d.mu.Lock()
 	st.ActiveLoops = len(d.alerts)
 	d.mu.Unlock()
+	st.RetentionDays = d.opt.Config.RetentionDays
+	if n, err := store.CountEvents(context.Background(), d.store.DB()); err == nil {
+		st.Events = n
+	}
 	return st
 }
 

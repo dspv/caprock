@@ -700,6 +700,30 @@ func History(ctx context.Context, q Querier, fromMs int64) (HistoryTotals, error
 	return h, nil
 }
 
+// PruneEventsBefore deletes events older than beforeMs, keeping session rows and
+// their rollups (session_stats/daily_stats stay — the totals are already
+// materialized). Returns the number of events removed. This is the data-growth
+// safety valve; it never touches sessions the user might still be looking at
+// (callers pass a cutoff well in the past).
+func PruneEventsBefore(ctx context.Context, q Querier, beforeMs int64) (int64, error) {
+	res, err := q.ExecContext(ctx, `DELETE FROM events WHERE ts < ?`, beforeMs)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	// Offsets for transcripts whose events we dropped can stay; re-reading is
+	// deduped by key anyway. Clean orphaned session_files older than the cutoff.
+	_, _ = q.ExecContext(ctx, `DELETE FROM session_files WHERE last_ts < ?`, beforeMs)
+	return n, nil
+}
+
+// CountEvents returns the total number of stored events (for status/metrics).
+func CountEvents(ctx context.Context, q Querier) (int64, error) {
+	var n int64
+	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM events`).Scan(&n)
+	return n, err
+}
+
 // ProjectFromCwd derives the project label from a working directory (its basename).
 func ProjectFromCwd(cwd string) string {
 	cwd = strings.TrimRight(cwd, `/\`)

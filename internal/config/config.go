@@ -31,6 +31,9 @@ type Config struct {
 	AutoPause bool `json:"auto_pause"`
 	// OpenBrowser controls whether `caprock up` opens the dashboard.
 	OpenBrowser bool `json:"open_browser"`
+	// RetentionDays prunes events older than this many days (0 = keep forever).
+	// The database grows ~1 KB per event; set this if you run Caprock constantly.
+	RetentionDays int `json:"retention_days"`
 }
 
 // Defaults returns the built-in configuration (spec: K=5, T=3, port 4173).

@@ -316,3 +316,27 @@ func TestTasksMirrorAndAttribution(t *testing.T) {
 		t.Fatalf("task cost: %v", got.CostUSD)
 	}
 }
+
+func TestPruneEventsBefore(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	old := time.Now().AddDate(0, 0, -100).UnixMilli()
+	recent := time.Now().UnixMilli()
+	for i, ts := range []int64{old, old + 1, recent} {
+		ev := &event.Event{SessionID: "s1", Source: event.SourceHook, Kind: event.KindToolPre, Tool: "Bash", Key: fmt.Sprintf("k%d", i), Ts: time.UnixMilli(ts)}
+		if _, err := InsertEvent(ctx, s.db, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, err := CountEvents(ctx, s.db)
+	if err != nil || n != 3 {
+		t.Fatalf("count: %d %v", n, err)
+	}
+	removed, err := PruneEventsBefore(ctx, s.db, time.Now().AddDate(0, 0, -50).UnixMilli())
+	if err != nil || removed != 2 {
+		t.Fatalf("pruned: %d %v", removed, err)
+	}
+	if n, _ := CountEvents(ctx, s.db); n != 1 {
+		t.Fatalf("remaining: %d", n)
+	}
+}
