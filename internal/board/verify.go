@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/dspv/caprock/internal/hive"
@@ -54,6 +55,25 @@ func (b *Board) Verify(ctx context.Context, taskID, cwd string) (VerifyResult, e
 		return VerifyResult{}, err
 	}
 	res := VerifyResult{TaskID: taskID, Round: t.VerifyRoundsUsed + 1}
+	// Destructive-command policy: never run a dangerous command unattended —
+	// escalate to the human instead (.ai/05-orchestration.md § Approvals).
+	if flagged := ScreenDoneCriteria(t.DoneCriteria); len(flagged) > 0 {
+		updated, err := b.Hive.UpdateTask(taskID, func(x *hive.Task) error {
+			if hive.CanTransition(x.Status, hive.StatusNeedsYou) {
+				x.Status = hive.StatusNeedsYou
+			}
+			return nil
+		})
+		if err != nil {
+			return res, err
+		}
+		res.Status = updated.Status
+		res.Escalated = true
+		_, _ = b.Hive.Send(hive.Message{From: "verifier", To: orchestratorAgentID, Kind: hive.KindEscalation, TaskID: taskID,
+			Body: "Task " + taskID + " has a destructive command in its done_criteria and needs human approval before it runs:\n" + strings.Join(flagged, "\n")})
+		_ = b.mirror(ctx, updated)
+		return res, nil
+	}
 	if len(t.DoneCriteria) == 0 {
 		// No criteria to check: trust the worker, move to done.
 		res.Passed = true

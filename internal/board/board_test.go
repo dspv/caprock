@@ -213,3 +213,28 @@ func TestVerifyNoCriteriaTrustsWorker(t *testing.T) {
 		t.Fatalf("no-criteria: %+v", res)
 	}
 }
+
+func TestVerifyEscalatesDestructiveCriteria(t *testing.T) {
+	ctx := context.Background()
+	b := newBoard(t)
+	_ = b.Hive.RegisterAgent("orchestrator", "o")
+	_ = b.Hive.CreateTask(hive.Task{ID: "t1", Title: "danger", Status: hive.StatusInbox, DoneCriteria: []string{"go test ./...", "sudo rm -rf /tmp/x"}})
+	for _, st := range []string{hive.StatusAssigned, hive.StatusInProgress, hive.StatusVerifying} {
+		_, _ = b.Hive.UpdateTask("t1", func(x *hive.Task) error { x.Status = st; return nil })
+	}
+	res, err := b.Verify(ctx, "t1", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Escalated || res.Status != hive.StatusNeedsYou {
+		t.Fatalf("destructive not escalated: %+v", res)
+	}
+	// The command must NOT have run (no verification rows recorded for it).
+	if len(res.Commands) != 0 {
+		t.Fatalf("ran commands despite destructive policy: %+v", res.Commands)
+	}
+	_, _ = b.Hive.Deliver()
+	if b.Hive.InboxCount("orchestrator") < 1 {
+		t.Fatal("orchestrator not warned about destructive criteria")
+	}
+}
