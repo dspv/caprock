@@ -60,6 +60,8 @@ type TaskController interface {
 	Approvals(ctx context.Context) (any, error)
 	// StartOrchestrator spawns the orchestrator session (T21). Returns its info.
 	StartOrchestrator(ctx context.Context) (any, error)
+	// Verify runs a task's done_criteria (T22). Returns the VerifyResult.
+	Verify(ctx context.Context, id string) (any, error)
 }
 
 // AgentController is the subset of internal/agents the API needs (interface for tests).
@@ -112,6 +114,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/tasks/{id}", s.handleGetTask)
 	m.HandleFunc("POST /v1/tasks/{id}/approve", s.handleApprove(true))
 	m.HandleFunc("POST /v1/tasks/{id}/reject", s.handleApprove(false))
+	m.HandleFunc("POST /v1/tasks/{id}/verify", s.handleVerify)
 	m.HandleFunc("GET /v1/approvals", s.handleApprovals)
 	m.HandleFunc("POST /v1/orchestrator/start", s.handleStartOrchestrator)
 	m.HandleFunc("POST /v1/agents", s.handleSpawn)
@@ -531,6 +534,18 @@ func (s *Server) handleGetTask(w http.ResponseWriter, r *http.Request) {
 	out, err := s.d.Tasks.Get(r.Context(), r.PathValue("id"))
 	if err != nil {
 		s.notFoundOrFail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
+	if !s.requireTasks(w) {
+		return
+	}
+	out, err := s.d.Tasks.Verify(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusOK, out)

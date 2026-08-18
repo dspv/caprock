@@ -52,6 +52,8 @@ type Options struct {
 	// HiveDir enables Phase 2 orchestration (tasks board + Stop-loop) at this path.
 	// Empty ⇒ orchestration off (task endpoints return 501).
 	HiveDir string
+	// RepoCwd is the repo the orchestrator + workers operate on (default: cwd).
+	RepoCwd string
 	// OnReady is called once the server is listening (with the bound URL).
 	OnReady func(url string)
 }
@@ -182,7 +184,8 @@ func (d *Daemon) run(ctx context.Context) error {
 		if err := d.board.Rescan(ctx); err != nil {
 			d.log.Warn("hive rescan", "component", "board", "err", err)
 		}
-		d.orch = orchestrator.New(h, d.store, d.mgr, d.opt.HiveDir, d.log)
+		d.board.RepoCwd = d.opt.RepoCwd
+		d.orch = orchestrator.New(h, d.store, d.mgr, d.repoCwd(), d.log)
 	}
 
 	// Hook receiver.
@@ -249,6 +252,14 @@ func (d *Daemon) run(ctx context.Context) error {
 	_ = srv.Shutdown(shutdownCtx)
 	sub.Unsubscribe()
 	return nil
+}
+
+func (d *Daemon) repoCwd() string {
+	if d.opt.RepoCwd != "" {
+		return d.opt.RepoCwd
+	}
+	wd, _ := os.Getwd()
+	return wd
 }
 
 // URL returns the bound base URL (after start).
@@ -439,6 +450,10 @@ func (a *boardAdapter) Approve(ctx context.Context, id string, ok bool) error {
 	return a.b.Approve(ctx, id, ok)
 }
 func (a *boardAdapter) Approvals(ctx context.Context) (any, error) { return a.b.Approvals(ctx) }
+func (a *boardAdapter) Verify(ctx context.Context, id string) (any, error) {
+	return a.b.VerifyTask(ctx, id)
+}
+
 func (a *boardAdapter) StartOrchestrator(ctx context.Context) (any, error) {
 	if a.orch == nil {
 		return nil, errOrchDisabled

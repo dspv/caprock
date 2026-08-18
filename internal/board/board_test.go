@@ -129,3 +129,87 @@ func indexOf(s, sub string) int {
 	}
 	return -1
 }
+
+func TestVerifyPassMovesToDone(t *testing.T) {
+	ctx := context.Background()
+	b := newBoard(t)
+	_ = b.Hive.RegisterAgent("worker-1", "w")
+	_ = b.Hive.CreateTask(hive.Task{ID: "t1", Title: "x", Status: hive.StatusInbox, DoneCriteria: []string{"true", "true"}})
+	for _, st := range []string{hive.StatusAssigned, hive.StatusInProgress, hive.StatusVerifying} {
+		if _, err := b.Hive.UpdateTask("t1", func(x *hive.Task) error { x.Status = st; x.Assignee = "worker-1"; return nil }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, err := b.Verify(ctx, "t1", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Passed || res.Status != hive.StatusDone || len(res.Commands) != 2 {
+		t.Fatalf("verify pass: %+v", res)
+	}
+	tk, _ := b.Hive.GetTask("t1")
+	if tk.Status != hive.StatusDone {
+		t.Fatalf("task not done: %s", tk.Status)
+	}
+}
+
+func TestVerifyFailBouncesThenEscalates(t *testing.T) {
+	ctx := context.Background()
+	b := newBoard(t)
+	_ = b.Hive.RegisterAgent("worker-1", "w")
+	_ = b.Hive.RegisterAgent("orchestrator", "o")
+	_ = b.Hive.CreateTask(hive.Task{ID: "t1", Title: "x", Status: hive.StatusInbox, DoneCriteria: []string{"false"}})
+	for _, st := range []string{hive.StatusAssigned, hive.StatusInProgress, hive.StatusVerifying} {
+		_, _ = b.Hive.UpdateTask("t1", func(x *hive.Task) error { x.Status = st; x.Assignee = "worker-1"; return nil })
+	}
+	// Rounds 1 and 2: bounce back to in_progress, worker gets the failing output.
+	for round := 1; round <= 2; round++ {
+		_, _ = b.Hive.UpdateTask("t1", func(x *hive.Task) error {
+			if x.Status == hive.StatusInProgress {
+				x.Status = hive.StatusVerifying
+			}
+			return nil
+		})
+		res, err := b.Verify(ctx, "t1", t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Passed || res.Escalated || res.Status != hive.StatusInProgress {
+			t.Fatalf("round %d: %+v", round, res)
+		}
+	}
+	n, _ := b.Hive.Deliver()
+	if n < 1 || b.Hive.InboxCount("worker-1") < 1 {
+		t.Fatalf("worker not bounced: %d", n)
+	}
+	// Round 3: escalate to needs_you, orchestrator notified.
+	_, _ = b.Hive.UpdateTask("t1", func(x *hive.Task) error { x.Status = hive.StatusVerifying; return nil })
+	res, err := b.Verify(ctx, "t1", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Escalated || res.Status != hive.StatusNeedsYou {
+		t.Fatalf("round 3 should escalate: %+v", res)
+	}
+	tk, _ := b.Hive.GetTask("t1")
+	if tk.Status != hive.StatusNeedsYou || tk.VerifyRoundsUsed != 3 {
+		t.Fatalf("task: %+v", tk)
+	}
+	_, _ = b.Hive.Deliver()
+	if b.Hive.InboxCount("orchestrator") < 1 {
+		t.Fatal("orchestrator not notified of escalation")
+	}
+}
+
+func TestVerifyNoCriteriaTrustsWorker(t *testing.T) {
+	ctx := context.Background()
+	b := newBoard(t)
+	_ = b.Hive.CreateTask(hive.Task{ID: "t1", Title: "x", Status: hive.StatusInbox})
+	for _, st := range []string{hive.StatusAssigned, hive.StatusInProgress, hive.StatusVerifying} {
+		_, _ = b.Hive.UpdateTask("t1", func(x *hive.Task) error { x.Status = st; return nil })
+	}
+	res, _ := b.Verify(ctx, "t1", t.TempDir())
+	if !res.Passed || res.Status != hive.StatusDone {
+		t.Fatalf("no-criteria: %+v", res)
+	}
+}
