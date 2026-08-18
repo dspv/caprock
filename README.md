@@ -64,6 +64,20 @@ docs/          human-facing docs, spec-migration audit
 
 Developing with an AI agent? Start at [`CLAUDE.md`](CLAUDE.md). Toolchain, CI, and release mechanics: [`.ai/10-infrastructure.md`](.ai/10-infrastructure.md).
 
+## Install
+
+Not tagged yet. Build from source (Go 1.26, Node 22):
+
+```bash
+git clone git@github.com:dspv/caprock.git && cd caprock
+make ui && make build      # → ./bin/caprock, ./bin/caprock-hook
+./bin/caprock up           # http://127.0.0.1:4173
+```
+
+Cross-platform release binaries (darwin/linux/windows × amd64/arm64) are produced
+by `goreleaser` on a `v*` tag — see `.goreleaser.yaml`. The full change log is in
+[CHANGELOG.md](CHANGELOG.md).
+
 ## Contributing
 
 Issues and PRs welcome once Phase 0 lands. Rules that apply to every change are in [`.ai/06-engineering-rules.md`](.ai/06-engineering-rules.md): English everywhere, Conventional Commits, one task per PR with its acceptance criteria as a checklist, and **no task is done with a red Windows CI job**. Run `make check` before pushing.

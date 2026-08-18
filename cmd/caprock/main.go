@@ -47,7 +47,7 @@ func newRoot() *cobra.Command {
 		SilenceErrors: true,
 		Version:       version.Version,
 	}
-	root.AddCommand(upCmd(), downCmd(), statusCmd(), hooksCmd(), hookCmd(), versionCmd())
+	root.AddCommand(upCmd(), downCmd(), statusCmd(), tasksCmd(), hooksCmd(), hookCmd(), versionCmd())
 	return root
 }
 
@@ -431,6 +431,52 @@ func hookCmd() *cobra.Command {
 		Short:  "Internal: hook shim (reads a Claude Code hook payload on stdin)",
 		Run: func(cmd *cobra.Command, _ []string) {
 			shim.Run(cmd.InOrStdin(), cmd.OutOrStdout())
+		},
+	}
+}
+
+func tasksCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "tasks",
+		Short: "List the Phase 2 task board (requires a daemon started with --hive)",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			dir, err := config.DataDir()
+			if err != nil {
+				return err
+			}
+			rt, err := config.ReadRuntime(dir)
+			if err != nil || !daemonAlive(rt) {
+				return fmt.Errorf("caprock is not running")
+			}
+			resp, err := (&http.Client{Timeout: 3 * time.Second}).Get(fmt.Sprintf("http://127.0.0.1:%d/v1/tasks", rt.Port))
+			if err != nil {
+				return err
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusNotImplemented {
+				fmt.Fprintln(cmd.OutOrStdout(), "orchestration is off (start the daemon with --hive)")
+				return nil
+			}
+			var tasks []struct {
+				ID, Title, Status, Assignee string
+				CostUSD                     float64 `json:"cost_usd"`
+				BudgetUSD                   float64 `json:"budget_usd"`
+			}
+			body, _ := io.ReadAll(resp.Body)
+			_ = json.Unmarshal(body, &tasks)
+			if len(tasks) == 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "no tasks")
+				return nil
+			}
+			out := cmd.OutOrStdout()
+			for _, t := range tasks {
+				assignee := t.Assignee
+				if assignee == "" {
+					assignee = "-"
+				}
+				fmt.Fprintf(out, "%-14s %-12s %-10s $%.2f  %s\n", t.ID, t.Status, assignee, t.CostUSD, t.Title)
+			}
+			return nil
 		},
 	}
 }
