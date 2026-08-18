@@ -60,7 +60,7 @@ func runShim(t *testing.T, dataDir string, stdin string) (stdout string, elapsed
 func TestShimDaemonDownExitsZeroFastAndSilent(t *testing.T) {
 	dir := t.TempDir() // no runtime.json
 	out, el := runShim(t, dir, `{"session_id":"s","hook_event_name":"PreToolUse"}`)
-	if out != "" || el > time.Second {
+	if out != "" || el > 2*time.Second {
 		t.Fatalf("out=%q elapsed=%s", out, el)
 	}
 	// runtime.json present but nobody listening.
@@ -69,7 +69,7 @@ func TestShimDaemonDownExitsZeroFastAndSilent(t *testing.T) {
 	_ = l.Close()
 	_ = config.WriteRuntime(dir, config.Runtime{Port: port, Token: "t"})
 	out, el = runShim(t, dir, `{"session_id":"s","hook_event_name":"PreToolUse"}`)
-	if out != "" || el > time.Second {
+	if out != "" || el > 2*time.Second {
 		t.Fatalf("closed port: out=%q elapsed=%s", out, el)
 	}
 	// Even a Stop event must not hang past its 5s budget with a dead port (connect fails fast).

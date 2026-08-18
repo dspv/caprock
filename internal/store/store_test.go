@@ -4,11 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/dspv/caprock/internal/event"
 )
+
+func eventForTool(session, tool string, ts int64) event.Event {
+	return event.Event{SessionID: session, Source: event.SourceHook, Kind: event.KindToolPre, Tool: tool, Ts: time.UnixMilli(ts), Key: fmt.Sprintf("%s-%d", tool, ts)}
+}
 
 func openTest(t *testing.T) *Store {
 	t.Helper()
@@ -35,7 +40,7 @@ func TestMigrateFromEmptyAndIdempotent(t *testing.T) {
 	if err := s.migrate(ctx); err != nil {
 		t.Fatalf("second migrate: %v", err)
 	}
-	for _, tbl := range []string{"events", "sessions", "session_stats", "daily_stats", "meta", "session_files", "transcript_offsets"} {
+	for _, tbl := range []string{"events", "sessions", "session_stats", "daily_stats", "meta", "session_files", "transcript_offsets", "throttle_observations"} {
 		var n int
 		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, tbl).Scan(&n); err != nil || n != 1 {
 			t.Fatalf("table %s missing (err=%v)", tbl, err)
@@ -201,5 +206,61 @@ func TestProjectFromCwd(t *testing.T) {
 		if got := ProjectFromCwd(in); got != want {
 			t.Errorf("%q → %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestOwnedLifecycle(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	if err := UpsertSession(ctx, s.db, "o1", SessionPatch{Cwd: "/p"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := MarkOwned(ctx, s.db, "o1", "feature-x", "claude --session-id o1", 4242); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := GetSession(ctx, s.db, "o1")
+	if !got.Owned || got.Worktree != "feature-x" || got.PID != 4242 || got.SpawnCommand == "" {
+		t.Fatalf("owned: %+v", got)
+	}
+	list, _ := ListOwnedActive(ctx, s.db)
+	if len(list) != 1 {
+		t.Fatalf("owned active: %+v", list)
+	}
+	if err := SetExit(ctx, s.db, "o1", 137); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = GetSession(ctx, s.db, "o1")
+	if got.Status != StatusEnded || got.ExitCode == nil || *got.ExitCode != 137 || got.PID != 0 {
+		t.Fatalf("exit: %+v", got)
+	}
+	if err := RecordThrottle(ctx, s.db, 1, "o1", "rate_limit", []byte(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHistoryAndToolDistribution(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	base := time.Now().UnixMilli()
+	_ = UpsertSession(ctx, s.db, "h1", SessionPatch{Cwd: "/p/a", Project: "a", StartedAt: base, LastEventAt: base + 60_000})
+	for i, tool := range []string{"Bash", "Bash", "Edit", "Read"} {
+		ev := eventForTool("h1", tool, base+int64(i))
+		if _, err := InsertEvent(ctx, s.db, &ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	td, err := ToolDistribution(ctx, s.db, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(td) != 3 || td[0].Tool != "Bash" || td[0].Count != 2 {
+		t.Fatalf("tool dist: %+v", td)
+	}
+	h, err := History(ctx, s.db, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.Sessions != 1 || h.ToolCalls != 4 || h.AvgSessionSec < 59 || h.AvgSessionSec > 61 {
+		t.Fatalf("history: %+v", h)
 	}
 }

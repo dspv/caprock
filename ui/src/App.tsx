@@ -6,6 +6,7 @@ import { NowScreen } from '@/screens/Now'
 import { SessionScreen } from '@/screens/Session'
 import { CostScreen } from '@/screens/Cost'
 import { StatusScreen } from '@/screens/Status'
+import { HistoryScreen } from '@/screens/History'
 
 export default function App() {
   const route = useRoute()
@@ -16,8 +17,8 @@ export default function App() {
         {route.name === 'session' && <SessionScreen key={route.id} id={route.id} tab={route.tab} />}
         {route.name === 'cost' && <CostScreen />}
         {route.name === 'settings' && <StatusScreen />}
+        {route.name === 'history' && <HistoryScreen />}
       </ErrorBoundary>
-      {route.name === 'history' && <Empty title="History arrives in Phase 1">Cross-session stats: cost per project/day/model, tool distribution, session durations.</Empty>}
       {route.name === 'tasks' && <Empty title="Tasks arrive in Phase 2">Kanban over tasks/*.md, verification-before-done, approvals queue.</Empty>}
     </Shell>
   )

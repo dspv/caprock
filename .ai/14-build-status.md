@@ -2,19 +2,19 @@
 
 The running log: what is done, what is not, what is next. **Update this file and § Current State in [00-index.md](00-index.md) whenever the state of the world changes.** Dates in absolute form, never "last week". What "done" means per task is defined in [09-execution-plan.md](09-execution-plan.md).
 
-**Last updated: 2026-08-18** · Phase **0 — Observe, in progress** · Next: **T0 ConPTY spike (informational CI job) · T7/T8 hardening via PRs · T10 release**
+**Last updated: 2026-08-18** · Phase **1 — Control, in progress** · Next: **T10/T16 releases (v0.1.0, v0.2.0) once merged and green on the OS matrix**
 
 ## Progress by track
 
 Percentages are deliberately coarse — they answer "is this track started, half-built, or done", nothing finer. The same numbers drive the progress bars in [README.md](../README.md); **update both in the same commit.** "90%" means "works, not hardened"; never 100% for anything that has not run in the environment it was built for.
 
-| Track                           | Progress | State                                               |
-| ------------------------------- | -------- | --------------------------------------------------- |
-| Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code   |
-| Phase 0 — Observe (T0–T10)      | 50%      | Backend + first UI cut work end-to-end; T0/T10 open |
-| Phase 1 — Control (T11–T16)     | 0%       | Not started                                         |
-| Phase 2 — Orchestrate (T17–T25) | 0%       | Not started                                         |
-| Phase 3 — Delight               | 0%       | No plan by design                                   |
+| Track                           | Progress | State                                                        |
+| ------------------------------- | -------- | ------------------------------------------------------------ |
+| Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code            |
+| Phase 0 — Observe (T0–T10)      | 90%      | Works on macOS + CI (macos/ubuntu/windows); T10 release open |
+| Phase 1 — Control (T11–T16)     | 80%      | Spawn/terminal/kill, auto-pause, History work on macOS       |
+| Phase 2 — Orchestrate (T17–T25) | 0%       | Not started                                                  |
+| Phase 3 — Delight               | 0%       | No plan by design                                            |
 
 ## Milestone status
 
@@ -43,6 +43,10 @@ Percentages are deliberately coarse — they answer "is this track started, half
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and not yet exercised in CI.
 
 ## Log
+
+### 2026-08-18 — Phase 1 (Control) lands on a branch: spawn, terminal, control, auto-pause, History
+
+Verified end-to-end on macOS: from the dashboard I spawned a real `claude` session into a demo repo, typed a task into its live xterm.js terminal, watched Claude create a file, and controlled it with owned-only pause/resume/kill. `internal/ptyman` (the T0 backend) drives it; `internal/agents` owns spawn/stream/input/signal/exit with `claude --session-id <uuid>` so hooks and transcript land under the id Caprock already knows, and strips inherited Claude/Caprock nesting env so an owned session is a normal top-level session. Two subtle bugs found and fixed while dogfooding: `/v1/status` never populated `claude_available` (spawn worked but the UI showed observe-only), and Spawn used the HTTP request context so the process was killed the instant the response was sent (`signal: killed`) — now `context.WithoutCancel`. Auto-pause is opt-in and owned-only. History (T15) reports lifetime sessions/turns/tool-calls/files/avg-duration/cache-hit/cost plus tool distribution, model mix and top projects. New endpoints: `POST /v1/agents`, `/v1/agents/{id}/input|signal`, `WS /v1/agents/{id}/term`, `GET /v1/history`. Migration 0003 adds `owned`, `worktree`, `throttle_observations` (verbatim) + spawn bookkeeping. Not yet run on the OS matrix for Phase 1.
 
 ### 2026-08-18 — Phase 0 backend + first UI cut land on master (T1–T6, T9; T7/T8/T10 half)
 

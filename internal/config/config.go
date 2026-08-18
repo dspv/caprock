@@ -115,6 +115,16 @@ type Runtime struct {
 	Version   string `json:"version"`
 }
 
+// NewSessionID returns a random RFC-4122-ish v4 UUID for `claude --session-id`.
+func NewSessionID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	h := hex.EncodeToString(b)
+	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:32]
+}
+
 // NewRuntime creates a runtime record with a fresh random token.
 func NewRuntime(port int, version string) (Runtime, error) {
 	buf := make([]byte, 24)

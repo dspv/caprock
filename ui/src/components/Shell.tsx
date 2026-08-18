@@ -6,7 +6,7 @@ import { fmtAgo } from '@/lib/format'
 const NAV: { route: Route; label: string; phase?: string }[] = [
   { route: { name: 'now' }, label: 'Now' },
   { route: { name: 'cost' }, label: 'Cost' },
-  { route: { name: 'history' }, label: 'History', phase: 'Phase 1' },
+  { route: { name: 'history' }, label: 'History' },
   { route: { name: 'tasks' }, label: 'Tasks', phase: 'Phase 2' },
 ]
 

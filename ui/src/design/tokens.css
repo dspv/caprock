@@ -72,3 +72,15 @@ a:hover { text-decoration: underline; }
 
 /* No spinners longer than 300ms — a staleness dot instead. */
 .stale-dot { width: 6px; height: 6px; border-radius: 9999px; background: var(--color-warn); display: inline-block; }
+
+.input {
+  background: var(--color-panel-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 3px;
+  padding: 4px 8px;
+  color: var(--color-fg);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  width: 100%;
+}
+.input:focus { outline: 1px solid var(--color-accent); border-color: var(--color-accent); }

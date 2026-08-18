@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -44,6 +45,19 @@ type Deps struct {
 	Token string
 	// Shutdown is invoked by POST /v1/shutdown (caprock down).
 	Shutdown func()
+	// Agents is the Phase 1 owned-session manager (nil ⇒ endpoints return 501).
+	Agents AgentController
+}
+
+// AgentController is the subset of internal/agents the API needs (interface for tests).
+type AgentController interface {
+	Available() bool
+	Spawn(ctx context.Context, req any) (id string, cwd string, err error)
+	Input(sessionID string, data []byte) error
+	Signal(sessionID, action string) error
+	Resize(sessionID string, cols, rows int) error
+	Term(sessionID string) (snapshot []byte, sub <-chan []byte, cancel func(), ok bool)
+	Write(sessionID string, data []byte) error
 }
 
 // Server is the http.Handler.
@@ -73,12 +87,17 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/stats/summary", s.handleSummary)
 	m.HandleFunc("GET /v1/stats/daily", s.handleDaily)
 	m.HandleFunc("GET /v1/events", s.handleEventsFeed)
+	m.HandleFunc("GET /v1/history", s.handleHistory)
 	m.HandleFunc("GET /v1/status", s.handleStatus)
 	m.HandleFunc("GET /v1/pricing", s.handlePricing)
 	m.HandleFunc("GET /v1/live", s.ws.ServeHTTP)
 	if d.Hook != nil {
 		m.Handle("POST /v1/hook", d.Hook)
 	}
+	m.HandleFunc("POST /v1/agents", s.handleSpawn)
+	m.HandleFunc("POST /v1/agents/{id}/input", s.handleAgentInput)
+	m.HandleFunc("POST /v1/agents/{id}/signal", s.handleAgentSignal)
+	m.HandleFunc("GET /v1/agents/{id}/term", s.ws.serveTerm(s))
 	m.HandleFunc("POST /v1/shutdown", s.handleShutdown)
 	m.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": d.Version})
@@ -366,6 +385,59 @@ func (s *Server) handleDaily(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, rows)
 }
 
+// HistoryResponse is /v1/history.
+type HistoryResponse struct {
+	Range   string              `json:"range"`
+	Totals  store.HistoryTotals `json:"totals"`
+	Tools   []store.ToolCount   `json:"tools"`
+	Daily   []store.DailyStat   `json:"daily"`
+	Savings cost.Savings        `json:"savings"`
+	Summary store.Summary       `json:"summary"`
+}
+
+func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	from, label := s.rangeFrom(r.URL.Query().Get("range"))
+	q := s.d.Store.DB()
+	tot, err := store.History(ctx, q, from)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	tools, err := store.ToolDistribution(ctx, q, from, 40)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	sum, err := store.Summarize(ctx, q, from)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if sum.Models == nil {
+		sum.Models = []store.ModelShare{}
+	}
+	if sum.Projects == nil {
+		sum.Projects = []store.ProjectShare{}
+	}
+	fromDay := time.UnixMilli(from).In(s.d.Now().Location()).Format("2006-01-02")
+	if from == 0 {
+		fromDay = "0000-00-00"
+	}
+	daily, err := store.Daily(ctx, q, fromDay)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if tools == nil {
+		tools = []store.ToolCount{}
+	}
+	if daily == nil {
+		daily = []store.DailyStat{}
+	}
+	writeJSON(w, http.StatusOK, HistoryResponse{Range: label, Totals: tot, Tools: tools, Daily: daily, Summary: sum, Savings: cost.ComputeSavings(sum.TokensIn, sum.CacheRead, sum.CacheWrite)})
+}
+
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	var st any = map[string]any{"version": s.d.Version}
 	if s.d.Status != nil {
@@ -391,6 +463,80 @@ func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 	if s.d.Shutdown != nil {
 		go s.d.Shutdown()
 	}
+}
+
+// --- Phase 1: owned sessions ---
+
+func (s *Server) requireAgents(w http.ResponseWriter) bool {
+	if s.d.Agents == nil || !s.d.Agents.Available() {
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "spawning is unavailable", "detail": "the `claude` binary was not found on PATH; Caprock runs in observe-only mode"})
+		return false
+	}
+	return true
+}
+
+func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAgents(w) {
+		return
+	}
+	var req map[string]any
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	// Spawn with a background context: the process must outlive this HTTP request.
+	id, cwd, err := s.d.Agents.Spawn(context.WithoutCancel(r.Context()), req)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"session_id": id, "cwd": cwd})
+}
+
+func (s *Server) handleAgentInput(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAgents(w) {
+		return
+	}
+	var body struct {
+		Data string `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if err := s.d.Agents.Input(r.PathValue("id"), []byte(body.Data)); err != nil {
+		s.agentErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleAgentSignal(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAgents(w) {
+		return
+	}
+	var body struct {
+		Action string `json:"action"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	switch body.Action {
+	case "pause", "resume", "kill":
+	default:
+		http.Error(w, "action must be pause|resume|kill", http.StatusBadRequest)
+		return
+	}
+	if err := s.d.Agents.Signal(r.PathValue("id"), body.Action); err != nil {
+		s.agentErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) agentErr(w http.ResponseWriter, err error) {
+	writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 }
 
 // --- helpers ---

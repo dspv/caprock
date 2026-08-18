@@ -109,3 +109,65 @@ func (h *wsHub) Close() {
 		_ = c.Close(websocket.StatusGoingAway, "daemon shutting down")
 	}
 }
+
+// serveTerm bridges an owned session's PTY to a bidirectional WebSocket for
+// xterm.js: binary frames both ways, snapshot on connect, closes when the
+// process exits. Returns 501 when the session is not owned / spawning is off.
+func (h *wsHub) serveTerm(s *Server) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.d.Agents == nil || !s.d.Agents.Available() {
+			http.Error(w, "spawning unavailable", http.StatusNotImplemented)
+			return
+		}
+		id := r.PathValue("id")
+		snapshot, sub, cancel, ok := s.d.Agents.Term(id)
+		if !ok {
+			http.Error(w, "session is not owned by caprock", http.StatusConflict)
+			return
+		}
+		defer cancel()
+		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{"localhost:*", "127.0.0.1:*", "[::1]:*"}})
+		if err != nil {
+			return
+		}
+		ctx, cctx := context.WithCancel(r.Context())
+		defer cctx()
+		defer func() { _ = c.CloseNow() }()
+		c.SetReadLimit(1 << 20)
+		if len(snapshot) > 0 {
+			wctx, wc := context.WithTimeout(ctx, 5*time.Second)
+			_ = c.Write(wctx, websocket.MessageBinary, snapshot)
+			wc()
+		}
+		// Reader: typed input → PTY.
+		go func() {
+			for {
+				typ, data, err := c.Read(ctx)
+				if err != nil {
+					cctx()
+					return
+				}
+				if typ == websocket.MessageBinary || typ == websocket.MessageText {
+					_ = s.d.Agents.Write(id, data)
+				}
+			}
+		}()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case chunk, ok := <-sub:
+				if !ok {
+					_ = c.Close(websocket.StatusNormalClosure, "session ended")
+					return
+				}
+				wctx, wc := context.WithTimeout(ctx, 5*time.Second)
+				err := c.Write(wctx, websocket.MessageBinary, chunk)
+				wc()
+				if err != nil {
+					return
+				}
+			}
+		}
+	}
+}

@@ -6,12 +6,13 @@ import { fmtAgo, fmtPct, fmtTokens, fmtUSD, shortId, basename } from '@/lib/form
 import { Badge, Empty, Panel, Sparkline, Stat } from '@/components/ui'
 import { href, navigate } from '@/lib/router'
 import { useNow } from './Now'
+import { TerminalView } from '@/components/Terminal'
 
-type Tab = 'timeline' | 'diff' | 'files'
+type Tab = 'timeline' | 'diff' | 'files' | 'terminal'
 
 export function SessionScreen({ id, tab }: { id: string; tab?: string }) {
   const detail = useApi(() => api.session(id), [id], { intervalMs: 5000 })
-  const active: Tab = tab === 'diff' || tab === 'files' ? tab : 'timeline'
+  const active: Tab = tab === 'diff' || tab === 'files' || tab === 'terminal' ? tab : 'timeline'
   const now = useNow(1000)
   const s = detail.data
   if (detail.error && !s) {
@@ -28,6 +29,7 @@ export function SessionScreen({ id, tab }: { id: string; tab?: string }) {
         <span className="mono text-[11px] text-fg-faint">{s.session_id}</span>
         {s.git_branch && <span className="mono text-[11px] text-fg-muted">{s.git_branch}</span>}
         <Badge health={s.activity.health} />
+        {s.owned && s.status !== 'ended' && <OwnedControls id={id} />}
         <span className="text-[12px] text-fg-muted ml-auto num">{s.cwd}</span>
       </div>
       <div className="text-[13px]">
@@ -46,16 +48,17 @@ export function SessionScreen({ id, tab }: { id: string; tab?: string }) {
         </div>
       </Panel>
       <div className="flex items-center gap-1 border-b border-border">
-        {(['timeline', 'diff', 'files'] as Tab[]).map((t) => (
+        {(['timeline', 'diff', 'files', 'terminal'] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`px-3 py-1.5 text-[12px] border-b-2 -mb-px ${active === t ? 'border-accent text-fg' : 'border-transparent text-fg-muted hover:text-fg'}`}>
-            {t === 'timeline' ? 'Timeline' : t === 'diff' ? 'Live diff' : `Files (${s.files.length})`}
+            {t === 'timeline' ? 'Timeline' : t === 'diff' ? 'Live diff' : t === 'files' ? `Files (${s.files.length})` : 'Terminal'}
           </button>
         ))}
-        <span className="ml-auto text-[11px] text-fg-faint pr-1">terminal arrives in Phase 1</span>
+        {!s.owned && <span className="ml-auto text-[11px] text-fg-faint pr-1">observe-only — terminal is read/write for spawned sessions only</span>}
       </div>
       {active === 'timeline' && <Timeline id={id} initial={s.events} now={now} />}
       {active === 'diff' && <DiffTab id={id} lastEventAt={s.last_event_at} />}
       {active === 'files' && <FilesTab s={s} />}
+      {active === 'terminal' && <Panel className="overflow-hidden"><TerminalView sessionId={id} owned={s.owned && s.status !== 'ended'} /></Panel>}
     </div>
   )
 }
@@ -234,6 +237,22 @@ function FilesTab({ s }: { s: SessionDetail }) {
         ))}
       </ul>
     </Panel>
+  )
+}
+
+function OwnedControls({ id }: { id: string }) {
+  const [busy, setBusy] = useState('')
+  const act = async (action: 'pause' | 'resume' | 'kill') => {
+    setBusy(action)
+    try { await api.signal(id, action) } catch { /* shown via live update */ } finally { setBusy('') }
+  }
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className="text-[10px] uppercase tracking-wider text-ok border border-ok/40 rounded-sm px-1">owned</span>
+      <button disabled={!!busy} onClick={() => act('pause')} className="text-[11px] border border-border px-1.5 rounded-sm text-fg-muted hover:text-fg">pause</button>
+      <button disabled={!!busy} onClick={() => act('resume')} className="text-[11px] border border-border px-1.5 rounded-sm text-fg-muted hover:text-fg">resume</button>
+      <button disabled={!!busy} onClick={() => act('kill')} className="text-[11px] border border-danger/40 text-danger px-1.5 rounded-sm hover:bg-danger/10">kill</button>
+    </span>
   )
 }
 

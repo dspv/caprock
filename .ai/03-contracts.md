@@ -65,12 +65,14 @@ WS   /v1/live                          → first frame is {type:"hello", data:{s
 ### Phase 1 additions
 
 ```
-POST   /v1/agents                    {cwd, worktree?, command?, args?} → AgentSummary
+POST   /v1/agents                    {cwd, worktree?, model?, permission_mode?, command?, args?} → {session_id, cwd}
 POST   /v1/agents/{id}/input         {data}            → 204   (owned PTYs only)
-POST   /v1/agents/{id}/signal        {action: pause|resume|kill} → 204
-WS     /v1/agents/{id}/term          bidirectional byte stream (xterm.js)
-GET    /v1/history/…                 rollup queries for the History screen
+POST   /v1/agents/{id}/signal        {action: pause|resume|kill} → 204 (owned PTYs only)
+WS     /v1/agents/{id}/term          bidirectional binary stream (xterm.js); snapshot on connect, closes on exit
+GET    /v1/history?range=…           lifetime totals + tool distribution + model mix + daily
 ```
+
+Owned sessions are spawned as `claude --session-id <uuid> [--model …] [--permission-mode …]`, so hooks and the transcript arrive under the id Caprock generated; the spawn environment strips inherited `CLAUDE_CODE_CHILD_SESSION` / `CLAUDECODE` / `CLAUDE_CODE_ENTRYPOINT` markers so the session is a normal top-level one. Spawning is unavailable (endpoints return 501, `status.claude_available=false`) when no `claude` binary is found; Caprock then stays observe-only. The manager resolves `claude` via PATH then `~/.local/bin`, `~/.claude/local`, `~/bin`, Homebrew and `/usr/local/bin`. Control operations are refused for sessions Caprock did not spawn.
 
 ### Phase 2 additions
 

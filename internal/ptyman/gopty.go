@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 
@@ -50,7 +52,15 @@ func (GoPTY) Spawn(ctx context.Context, spec Spec) (Session, error) {
 		_ = p.Close()
 		return nil, err
 	}
-	cmd := p.CommandContext(ctx, spec.Command, spec.Args...)
+	// go-pty (like exec) needs a resolvable command; resolve bare names via PATH so
+	// callers can pass "claude" / "sh" as well as an absolute path.
+	command := spec.Command
+	if !filepath.IsAbs(command) {
+		if resolved, err := exec.LookPath(command); err == nil {
+			command = resolved
+		}
+	}
+	cmd := p.CommandContext(ctx, command, spec.Args...)
 	cmd.Dir = spec.Dir
 	if spec.Env != nil {
 		cmd.Env = spec.Env
