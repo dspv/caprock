@@ -2,8 +2,9 @@
 
 **All releases are tagged and published**: v0.1.0 (Observe), v0.2.0 (Control),
 v0.3.0 (Orchestrate), v0.4.0 (post-Orchestrate polish, 2026-08-19), v0.4.1
-(Homebrew hook-shim fix, 2026-08-19). Phase 3 (Delight) has no plan by design.
-This doc is the runbook kept for
+(Homebrew hook-shim fix, 2026-08-19), v0.5.0 (distribution polish — statusLine
+auto-install, honest first-run errors, release CI-gate, 2026-08-20). Phase 3
+(Delight) has no plan by design. This doc is the runbook kept for
 any future release:
 
 ## One-time setup
@@ -50,12 +51,16 @@ any future release:
    prerelease and its formula push is skipped by `skip_upload: auto`, so a
    prerelease never overwrites the stable formula.
 
-   The auto-push flow (`release.draft: false` + `directory: Formula`) was verified
-   end to end on **v0.4.1** (2026-08-20): the tap formula bumped on its own and a
-   clean `brew upgrade` → `caprock up` reads `8/8`. Two release-plumbing bugs were
-   fixed along the way — the formula must install **both** `caprock` and
-   `caprock-hook`, and goreleaser must write to `Formula/` (not the repo root,
-   which `brew` ignores in favour of `Formula/`).
+   The full pipeline — the CI-gate (`verify` job), `release.draft: false`
+   auto-publish, and `directory: Formula` auto-push — was exercised end to end on
+   **v0.5.0** (2026-08-20): the first tag failed the `verify` gate (golangci-lint
+   ran before the UI build, so `//go:embed all:dist` had nothing to embed) and
+   goreleaser was correctly **skipped** — nothing shipped. After fixing the gate
+   (build the UI first) and re-tagging, the release published and the tap formula
+   bumped to 0.5.0 on its own; a clean `brew upgrade` → `caprock up` reads `8/8`.
+   Earlier release-plumbing bugs (v0.4.1): the formula must install **both**
+   `caprock` and `caprock-hook`, and goreleaser must write to `Formula/` (not the
+   repo root, which `brew` ignores in favour of `Formula/`).
 
 ### Re-running a release for an existing tag
 
