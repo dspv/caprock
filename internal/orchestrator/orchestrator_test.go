@@ -174,6 +174,36 @@ func TestTickSpawnsAssignedWorker(t *testing.T) {
 	}
 }
 
+// Spawning a worker for an assigned task opens its cost-attribution window in
+// the store. This is the wiring that makes per-task cost non-zero in a real run;
+// without it, task_assignments stays empty and every task costs $0. The test
+// drives the real tick (not a helper that opens the window), so it catches the
+// regression where OpenAssignment has no production caller.
+func TestTickOpensAssignmentWindow(t *testing.T) {
+	o, _, h := newOrch(t)
+	if err := h.CreateTask(hive.Task{ID: "t1", Title: "x", Status: hive.StatusAssigned, Assignee: "worker-1"}); err != nil {
+		t.Fatal(err)
+	}
+	o.tick(context.Background())
+	// A row must now exist in task_assignments for (t1, the worker's session).
+	var n int
+	row := o.Store.DB().QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM task_assignments WHERE task_id = ? AND to_ts IS NULL`, "t1")
+	if err := row.Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("assignment window not opened for t1: got %d rows, want 1", n)
+	}
+	// Idempotent: a second tick does not open a duplicate window.
+	o.tick(context.Background())
+	_ = o.Store.DB().QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM task_assignments WHERE task_id = ?`, "t1").Scan(&n)
+	if n != 1 {
+		t.Fatalf("duplicate assignment window: %d", n)
+	}
+}
+
 // An inbox-status task (no assignee yet) does not spawn anything.
 func TestTickDoesNotSpawnForUnassigned(t *testing.T) {
 	o, sp, h := newOrch(t)

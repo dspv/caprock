@@ -175,6 +175,71 @@ func TestSpawnForcesSessionIDAndRecordsExit(t *testing.T) {
 	}
 }
 
+// The core rule: Caprock never signals a process it did not start. Every control
+// op on a session it did not spawn must be refused — not just Input, but the
+// destructive ones (pause/resume/kill) and Resize too.
+func TestControlRefusedForNonOwnedSession(t *testing.T) {
+	m, _, _ := newMgr(t)
+	defer m.Shutdown()
+	const external = "not-ours"
+	if err := m.Input(external, []byte("x")); err == nil {
+		t.Fatal("Input into a non-owned session was allowed")
+	}
+	for _, sig := range []ptyman.Signal{ptyman.SignalPause, ptyman.SignalResume, ptyman.SignalKill} {
+		if err := m.Signal(external, sig); err == nil {
+			t.Fatalf("Signal %v on a non-owned session was allowed", sig)
+		}
+	}
+	if err := m.Resize(external, 80, 24); err == nil {
+		t.Fatal("Resize of a non-owned session was allowed")
+	}
+}
+
+// A spawned session must be a normal top-level Claude Code session: the daemon's
+// own Claude/Caprock nesting markers are stripped so transcripts persist and it
+// is not treated as a "child session".
+func TestSpawnStripsNestingEnv(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_CHILD_SESSION", "1")
+	t.Setenv("CLAUDECODE", "1")
+	t.Setenv("CLAUDE_CODE_ENTRYPOINT", "cli")
+	m, _, f := newMgr(t)
+	defer m.Shutdown()
+	if _, err := m.Spawn(context.Background(), SpawnRequest{Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	for _, kv := range f.lastSpec.Env {
+		for _, marker := range []string{"CLAUDE_CODE_CHILD_SESSION=", "CLAUDECODE=", "CLAUDE_CODE_ENTRYPOINT="} {
+			if strings.HasPrefix(kv, marker) {
+				t.Fatalf("nesting marker not stripped from spawn env: %q", kv)
+			}
+		}
+	}
+}
+
+// Spawn pre-accepts the folder-trust dialog for its cwd, so the interactive
+// session does not block on the trust prompt. This guards the integration (a
+// refactor dropping the trustFolder call would be caught here, not just in the
+// helper's own unit test).
+func TestSpawnPreacceptsFolderTrust(t *testing.T) {
+	home := t.TempDir()
+	origHome := userHomeDir
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = origHome })
+	m, _, _ := newMgr(t)
+	defer m.Shutdown()
+	cwd := t.TempDir()
+	if _, err := m.Spawn(context.Background(), SpawnRequest{Cwd: cwd}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(home, ".claude.json"))
+	if err != nil {
+		t.Fatalf("spawn did not write ~/.claude.json (trust not pre-accepted): %v", err)
+	}
+	if !strings.Contains(string(b), "hasTrustDialogAccepted") || !strings.Contains(string(b), cwd) {
+		t.Fatalf("trust not recorded for cwd: %s", b)
+	}
+}
+
 func TestSpawnRejectsBadCwd(t *testing.T) {
 	m, _, _ := newMgr(t)
 	if _, err := m.Spawn(context.Background(), SpawnRequest{Cwd: filepath.Join(t.TempDir(), "nope")}); err == nil {

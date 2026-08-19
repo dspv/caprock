@@ -89,9 +89,17 @@ func RecordVerification(ctx context.Context, q Querier, taskID string, round int
 	return err
 }
 
-// OpenAssignment records that a session started working a task at from_ts.
+// OpenAssignment records that a session started working a task at from_ts. It is
+// a no-op when an open window already exists for that (task, session), so a
+// caller may invoke it every tick without stacking duplicate windows.
 func OpenAssignment(ctx context.Context, q Querier, taskID, sessionID string, fromTs int64) error {
-	_, err := q.ExecContext(ctx, `INSERT OR IGNORE INTO task_assignments(task_id, session_id, from_ts) VALUES(?, ?, ?)`, taskID, sessionID, fromTs)
+	_, err := q.ExecContext(ctx, `
+		INSERT INTO task_assignments(task_id, session_id, from_ts)
+		SELECT ?, ?, ?
+		WHERE NOT EXISTS (
+			SELECT 1 FROM task_assignments
+			WHERE task_id = ? AND session_id = ? AND to_ts IS NULL
+		)`, taskID, sessionID, fromTs, taskID, sessionID)
 	return err
 }
 

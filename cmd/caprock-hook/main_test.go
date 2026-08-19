@@ -79,6 +79,53 @@ func TestShimDaemonDownExitsZeroFastAndSilent(t *testing.T) {
 	}
 }
 
+// A daemon that ACCEPTS the connection but never replies is the path most likely
+// to hang a user's session — the shim must still exit 0, silently, within its
+// budget (the ResponseHeaderTimeout path, not the fast dial-failure path). This
+// guards the "shim never breaks a session" rule against a slow/wedged daemon.
+func TestShimHungDaemonExitsWithinBudget(t *testing.T) {
+	dir := t.TempDir()
+	// A raw TCP listener that accepts and then holds the connection open forever
+	// without sending a single response byte.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		for {
+			conn, err := l.Accept()
+			if err != nil {
+				return
+			}
+			// Hold it open; never write. Close only when the test ends.
+			go func(c net.Conn) { <-done; _ = c.Close() }(conn)
+		}
+	}()
+	port := l.Addr().(*net.TCPAddr).Port
+	_ = config.WriteRuntime(dir, config.Runtime{Port: port, Token: "t"})
+
+	// Non-Stop event: 900ms budget → must return well under the 2s ceiling.
+	out, el := runShim(t, dir, `{"session_id":"s","hook_event_name":"PreToolUse"}`)
+	if out != "" {
+		t.Fatalf("hung daemon produced output: %q", out)
+	}
+	if el > 2*time.Second {
+		t.Fatalf("non-Stop event hung on a wedged daemon: %s", el)
+	}
+
+	// Stop event: 5s budget → must return under ~6s (never hangs the session).
+	out, el = runShim(t, dir, `{"session_id":"s","hook_event_name":"Stop"}`)
+	if out != "" {
+		t.Fatalf("hung daemon Stop produced output: %q", out)
+	}
+	if el > 6*time.Second {
+		t.Fatalf("Stop event hung on a wedged daemon: %s", el)
+	}
+}
+
 func TestShimPostsWithBearerAndRelaysStopDecision(t *testing.T) {
 	dir := t.TempDir()
 	type got struct {

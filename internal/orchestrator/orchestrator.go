@@ -288,11 +288,18 @@ func (o *Orchestrator) spawnAssignedWorkers(ctx context.Context) {
 		default:
 			continue // only spawn for live work
 		}
-		if o.workerLive(t.Assignee) {
+		sid, err := o.SpawnWorker(ctx, t.Assignee) // idempotent: returns the live session
+		if err != nil {
+			o.Log.Warn("router spawn worker", "component", "orchestrator", "worker", t.Assignee, "err", err)
 			continue
 		}
-		if _, err := o.SpawnWorker(ctx, t.Assignee); err != nil {
-			o.Log.Warn("router spawn worker", "component", "orchestrator", "worker", t.Assignee, "err", err)
+		// Open the cost-attribution window for this worker's session on this task.
+		// INSERT OR IGNORE makes it safe to call every tick; the window is closed
+		// (and cost summed) when verification moves the task to done.
+		if o.Store != nil {
+			if err := store.OpenAssignment(ctx, o.Store.DB(), t.ID, sid, o.now().UnixMilli()); err != nil {
+				o.Log.Warn("router open assignment", "component", "orchestrator", "task", t.ID, "err", err)
+			}
 		}
 	}
 }
@@ -387,18 +394,6 @@ func (o *Orchestrator) driveVerification(ctx context.Context) {
 			o.mu.Unlock()
 		}(t.ID)
 	}
-}
-
-// workerLive reports whether a worker's session is currently running.
-func (o *Orchestrator) workerLive(workerID string) bool {
-	o.mu.Lock()
-	sid, ok := o.workers[workerID]
-	o.mu.Unlock()
-	if !ok {
-		return false
-	}
-	_, live := o.Spawner.Get(sid)
-	return live
 }
 
 // wake types a message + carriage return into a session to restart its turn.
