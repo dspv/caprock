@@ -9,6 +9,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.5.1] - 2026-08-20
+
+### Added
+
+- **Windows install via Scoop.** `scoop bucket add dspv
+  https://github.com/dspv/scoop-bucket` then `scoop install caprock` — no more
+  hand-downloading a zip. The manifest is pushed to the bucket on each release,
+  and the README, install guide, and site now show the Windows path alongside
+  Homebrew.
+- **Project map** in the README linking the site, the Homebrew tap, and the Scoop
+  bucket, so any repo in the project points to the rest.
+
 ## [0.5.0] - 2026-08-20
 
 Distribution polish — a smoother first run and a safer release pipeline.

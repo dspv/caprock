@@ -2,7 +2,7 @@
 
 The running log: what is done, what is not, what is next. **Update this file and § Current State in [00-index.md](00-index.md) whenever the state of the world changes.** Dates in absolute form, never "last week". What "done" means per task is defined in [09-execution-plan.md](09-execution-plan.md).
 
-**Last updated: 2026-08-20** · Phase **2 — Orchestrate, complete** · **v0.1.0–v0.5.0 are all tagged and published** (Homebrew formula in `dspv/homebrew-tap` — `brew install dspv/tap/caprock`). The live unattended orchestrator run (the Phase 2 tag gate) is done — a real `claude` orchestrator autonomously assigned a task, spawned a worker, and drove it to green verification. Post-Orchestrate: v0.4.0 = plan-limit windows + orchestrator-lifecycle fixes + Homebrew formula; v0.4.1 = the formula ships the hook shim + honest hook status; **v0.5.0 = distribution polish — statusLine auto-install, honest first-run errors, readable MCP names, a release CI-gate, and CODE_OF_CONDUCT.** Next: Phase 3 (Delight) has no plan by design.
+**Last updated: 2026-08-20** · Phase **2 — Orchestrate, complete** · **v0.1.0–v0.5.1 are all tagged and published** (Homebrew formula in `dspv/homebrew-tap` — `brew install dspv/tap/caprock`). The live unattended orchestrator run (the Phase 2 tag gate) is done — a real `claude` orchestrator autonomously assigned a task, spawned a worker, and drove it to green verification. Post-Orchestrate: v0.4.0 = plan-limit windows + orchestrator-lifecycle fixes + Homebrew formula; v0.4.1 = the formula ships the hook shim + honest hook status; v0.5.0 = distribution polish (statusLine auto-install, honest first-run errors, readable MCP names, a release CI-gate, CODE_OF_CONDUCT); **v0.5.1 = Windows install via Scoop (`dspv/scoop-bucket`) + a README project map.** Next: Phase 3 (Delight) has no plan by design.
 
 ## Progress by track
 
@@ -37,7 +37,7 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## What is true right now
 
-- **All three phases are built and green.** The Go module + `ui/` exist and are exercised by `make check` (Go tests, `go vet`, `golangci-lint`, docs gates, and the UI typecheck/vitest/build) on the 3-OS CI matrix. Phase 2's orchestration loop has been driven end to end by a real `claude` orchestrator (see the Phase 2 log entry). **v0.1.0–v0.5.0 are all tagged and published** (Homebrew formula in `dspv/homebrew-tap`).
+- **All three phases are built and green.** The Go module + `ui/` exist and are exercised by `make check` (Go tests, `go vet`, `golangci-lint`, docs gates, and the UI typecheck/vitest/build) on the 3-OS CI matrix. Phase 2's orchestration loop has been driven end to end by a real `claude` orchestrator (see the Phase 2 log entry). **v0.1.0–v0.5.1 are all tagged and published** (Homebrew formula in `dspv/homebrew-tap`).
 - The Python measurer (`~/dev/caprock-legacy`, PyPI `caprock` 0.3.0) is frozen ([ADR-007](08-decisions.md#adr-007--the-harness-is-caprock-new-go-codebase-in-dspvcaprock-python-measurer-frozen)); the Go binary shipped its first release as **v0.1.0** on 2026-08-19.
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
@@ -45,7 +45,7 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ### 2026-08-20 — Windows install via Scoop; site/README Windows instructions
 
-Windows users had no package-manager path — the site and README named "macOS / Linux / Windows" but only gave a `brew` command and a "download the zip" fallback, so a Windows user had to place binaries on PATH by hand. Added a `scoops` block to `.goreleaser.yaml` (manifest pushed to the new public **`dspv/scoop-bucket`** repo on release, skipped on prerelease), and Windows instructions everywhere: README quickstart, the site's `/install` page and `/install.md`. `scoop bucket add dspv https://github.com/dspv/scoop-bucket` then `scoop install caprock`. **One-time setup still owed:** the `HOMEBREW_TAP_TOKEN` PAT must be granted `Contents: write` on `dspv/scoop-bucket` too, or `skip_upload: auto` skips the Scoop push (documented in RELEASING § One-time setup). winget deferred (needs a PR into `microsoft/winget-pkgs` + their review) until there's real Windows traffic.
+Windows users had no package-manager path — the site and README named "macOS / Linux / Windows" but only gave a `brew` command and a "download the zip" fallback, so a Windows user had to place binaries on PATH by hand. Added a `scoops` block to `.goreleaser.yaml` (manifest pushed to the new public **`dspv/scoop-bucket`** repo on release, skipped on prerelease), and Windows instructions everywhere: README quickstart, the site's `/install` page and `/install.md`. `scoop bucket add dspv https://github.com/dspv/scoop-bucket` then `scoop install caprock`. The `HOMEBREW_TAP_TOKEN` PAT was granted `Contents: write` on `dspv/scoop-bucket` too, so the Scoop push works (verified on v0.5.1 — see the next entry). All project repos now cross-link through a README project map, and all are on `master`. winget deferred (needs a PR into `microsoft/winget-pkgs` + their review) until there's real Windows traffic.
 
 ### 2026-08-20 — v0.5.0 published; the CI-gate caught a broken release before it shipped
 
