@@ -379,4 +379,19 @@ func TestRateLimitSnapshotsAndPace(t *testing.T) {
 	if _, ok, _ := RateLimitPace(ctx, s.db, "five_hour", reset+1); ok {
 		t.Fatal("pace computed across a reset boundary")
 	}
+
+	// A DECLINING window (usage dropping) must not forecast — only a rising slope
+	// can hit a limit. reset+2 isolates this window's history.
+	_ = RecordRateLimit(ctx, s.db, RateLimitSnapshot{Window: "five_hour", Ts: base, UsedPercentage: 40, ResetsAt: reset + 2}, "s1")
+	_ = RecordRateLimit(ctx, s.db, RateLimitSnapshot{Window: "five_hour", Ts: base + 120_000, UsedPercentage: 30, ResetsAt: reset + 2}, "s1")
+	if _, ok, _ := RateLimitPace(ctx, s.db, "five_hour", reset+2); ok {
+		t.Fatal("pace reported for a declining window")
+	}
+
+	// Two rising samples less than 60s apart are too close to trust — no forecast.
+	_ = RecordRateLimit(ctx, s.db, RateLimitSnapshot{Window: "seven_day", Ts: base, UsedPercentage: 10, ResetsAt: reset + 3}, "s1")
+	_ = RecordRateLimit(ctx, s.db, RateLimitSnapshot{Window: "seven_day", Ts: base + 45_000, UsedPercentage: 18, ResetsAt: reset + 3}, "s1")
+	if _, ok, _ := RateLimitPace(ctx, s.db, "seven_day", reset+3); ok {
+		t.Fatal("pace reported from samples <60s apart")
+	}
 }
