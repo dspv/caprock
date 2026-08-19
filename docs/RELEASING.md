@@ -4,11 +4,11 @@ Caprock is not tagged yet. The gate before the first tag is a **live, unattended
 orchestrator run with hooks installed** (see `.ai/14-build-status.md`). Once that
 is trusted end to end, cut a release:
 
-## One-time setup (before the first tag)
+## One-time setup
 
-1. Create a public tap repo **`dspv/homebrew-tap`** (empty is fine). The
-   `homebrew_casks` block in `.goreleaser.yaml` uploads the cask there; until it
-   exists, `skip_upload: auto` skips it without failing the release.
+- ✅ The public tap repo **`dspv/homebrew-tap`** already exists (created
+  2026-08-19). The `homebrew_casks` block in `.goreleaser.yaml` uploads the cask
+  there on release. Nothing else to set up.
 
 ## Cutting a release
 
