@@ -224,14 +224,32 @@ func TestTickVerifiesOncePerVerifying(t *testing.T) {
 		t.Fatal(err)
 	}
 	var calls int32
+	entered := make(chan struct{}, 8) // signals each real entry into Verify
 	release := make(chan struct{})
 	o.Verify = func(_ context.Context, id string) error {
 		atomic.AddInt32(&calls, 1)
+		entered <- struct{}{}
 		<-release // hold the verification "in flight" across several ticks
 		return nil
 	}
-	for i := 0; i < 5; i++ {
+	// First tick launches the verify goroutine; wait until it has actually
+	// entered Verify before ticking again, so the in-flight guard is under test
+	// (not a race between the goroutine starting and the assertion).
+	o.tick(context.Background())
+	select {
+	case <-entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("verify never started after the first tick")
+	}
+	// Further ticks while the first verify is in flight must not start another.
+	for i := 0; i < 4; i++ {
 		o.tick(context.Background())
+	}
+	// Give any (erroneously) launched extra goroutine a chance to enter.
+	select {
+	case <-entered:
+		t.Fatal("verify started a second time while one was in flight")
+	case <-time.After(200 * time.Millisecond):
 	}
 	if got := atomic.LoadInt32(&calls); got != 1 {
 		t.Fatalf("verify fired %d times while in flight, want 1", got)
