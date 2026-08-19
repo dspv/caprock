@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"os"
 	"os/exec"
@@ -235,8 +236,19 @@ func TestSpawnPreacceptsFolderTrust(t *testing.T) {
 	if err != nil {
 		t.Fatalf("spawn did not write ~/.claude.json (trust not pre-accepted): %v", err)
 	}
-	if !strings.Contains(string(b), "hasTrustDialogAccepted") || !strings.Contains(string(b), cwd) {
-		t.Fatalf("trust not recorded for cwd: %s", b)
+	// Parse the JSON rather than substring-matching the path (a Windows path
+	// contains backslashes that JSON escapes, so a raw substring check fails).
+	var root struct {
+		Projects map[string]struct {
+			HasTrustDialogAccepted bool `json:"hasTrustDialogAccepted"`
+		} `json:"projects"`
+	}
+	if err := json.Unmarshal(b, &root); err != nil {
+		t.Fatalf("unparsable ~/.claude.json: %v", err)
+	}
+	entry, ok := root.Projects[cwd]
+	if !ok || !entry.HasTrustDialogAccepted {
+		t.Fatalf("trust not recorded for cwd %q: %s", cwd, b)
 	}
 }
 

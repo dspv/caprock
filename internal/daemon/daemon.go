@@ -308,23 +308,34 @@ func (d *Daemon) observeLoops(ctx context.Context, sub *bus.Subscriber) {
 			if a := d.det.Observe(ev); a != nil {
 				d.mu.Lock()
 				d.alerts[a.SessionID] = a
-				autoPause := d.opt.Config.AutoPause
 				d.mu.Unlock()
 				d.log.Warn("loop detected", "component", "loop", "session_id", a.SessionID, "tool", a.Tool, "count", a.Count, "sample", a.Sample)
 				d.bus.Publish(bus.Frame{Type: bus.FrameAlert, Data: a})
-				// Auto-pause is opt-in and OWNED sessions only — we never signal a
-				// process we did not start (.ai/05-orchestration.md).
-				if autoPause {
-					if _, owned := d.mgr.Get(a.SessionID); owned {
-						if err := d.mgr.Signal(a.SessionID, ptyman.SignalPause); err == nil {
-							d.log.Warn("auto-paused looping owned session", "component", "loop", "session_id", a.SessionID)
-							d.bus.Publish(bus.Frame{Type: bus.FrameAlert, Data: map[string]any{"kind": "auto_paused", "session_id": a.SessionID}})
-						}
-					}
-				}
+				d.maybeAutoPause(a.SessionID)
 			}
 		}
 	}
+}
+
+// maybeAutoPause pauses a looping session only when auto-pause is enabled AND
+// the session is one Caprock spawned — we never signal a process we did not start
+// (.ai/05-orchestration.md). Returns whether it paused (for tests).
+func (d *Daemon) maybeAutoPause(sessionID string) bool {
+	d.mu.Lock()
+	autoPause := d.opt.Config.AutoPause
+	d.mu.Unlock()
+	if !autoPause {
+		return false
+	}
+	if _, owned := d.mgr.Get(sessionID); !owned {
+		return false
+	}
+	if err := d.mgr.Signal(sessionID, ptyman.SignalPause); err != nil {
+		return false
+	}
+	d.log.Warn("auto-paused looping owned session", "component", "loop", "session_id", sessionID)
+	d.bus.Publish(bus.Frame{Type: bus.FrameAlert, Data: map[string]any{"kind": "auto_paused", "session_id": sessionID}})
+	return true
 }
 
 // activeLoop returns the session's alert if it is still within the detector window.
