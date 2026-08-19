@@ -65,6 +65,22 @@ Nothing to change in your workflow — it starts by watching the sessions you al
 
 ## More
 
-[Docs](.ai/00-index.md) · [Changelog](CHANGELOG.md) · [Releasing](docs/RELEASING.md) · Apache-2.0
+[Docs](.ai/00-index.md) · [Changelog](CHANGELOG.md) · [Releasing](docs/RELEASING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Security](SECURITY.md) · Apache-2.0
 
 <sub>Building with an AI agent? Start at [CLAUDE.md](CLAUDE.md).</sub>
+
+## Project map
+
+This repo (**[`dspv/caprock`](https://github.com/dspv/caprock)**) is the home of the
+Caprock binary and its docs. The rest of the project:
+
+| Where                                                         | What                                                               |
+| ------------------------------------------------------------- | ------------------------------------------------------------------ |
+| **[caprock.dev](https://caprock.dev)**                        | Website — landing, install guide, changelog                        |
+| **[dspv/homebrew-tap](https://github.com/dspv/homebrew-tap)** | Homebrew formula (macOS / Linux) — `brew install dspv/tap/caprock` |
+| **[dspv/scoop-bucket](https://github.com/dspv/scoop-bucket)** | Scoop bucket (Windows) — `scoop install caprock`                   |
+| **[Releases](https://github.com/dspv/caprock/releases)**      | Prebuilt binaries for every OS/arch                                |
+
+The Homebrew formula and Scoop manifest are generated and pushed from here on
+each release ([docs/RELEASING.md](docs/RELEASING.md)); the website lives in its
+own repo and deploys to caprock.dev.
