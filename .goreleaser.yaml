@@ -68,7 +68,10 @@ brews:
     homepage: "https://caprock.dev"
     description: "Mission control for Claude Code — watch, control and orchestrate your sessions"
     license: "Apache-2.0"
-    # Skip the formula push on prereleases / when the tap is unavailable.
+    # Push the formula on a normal release; skip only on a prerelease (an -rc /
+    # -beta tag) or when the tap token is unavailable. The release is no longer a
+    # draft (see release.draft below), so a stable tag pushes the formula
+    # automatically — no manual refresh step.
     skip_upload: auto
     install: |
       bin.install "caprock"
@@ -77,5 +80,11 @@ brews:
       Then open:      http://127.0.0.1:4173
 
 release:
-  draft: true
+  # Not a draft: goreleaser publishes the release directly, which is also what
+  # lets it push the Homebrew formula (skip_upload:auto skips on draft). The tag
+  # only builds after CI is green on that commit (release.yml needs ci.yml), and
+  # the binaries are covered by the 3-OS smoke tests, so a draft review gate adds
+  # little. Cutting a `-rc`/`-beta` tag still marks the release a prerelease
+  # (prerelease:auto) and skips the formula push.
+  draft: false
   prerelease: auto

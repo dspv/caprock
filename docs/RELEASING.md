@@ -25,36 +25,33 @@ any future release:
    `make check`, `go test -tags smoke ./internal/smoke/... ./internal/board/...`,
    and `GOOS=windows go build ./...`.
 2. Update `CHANGELOG.md` and the progress in `.ai/14-build-status.md` + README.
-3. Tag and let `goreleaser` build + draft the GitHub release:
+3. Tag and let `goreleaser` build + publish the GitHub release:
 
    ```bash
    git tag v0.1.0 && git push --tags
    ```
 
-   `.github/workflows/release.yml` runs `goreleaser release --clean`, producing:
+   `.github/workflows/release.yml` runs `goreleaser release --clean` (only after
+   `ci.yml` is green on the tagged commit), producing:
    - `caprock` and `caprock-hook` for darwin/linux/windows × amd64/arm64,
    - a macOS **universal** binary,
-   - a Homebrew formula in `dspv/homebrew-tap`,
-   - `checksums.txt`, and a **draft** GitHub release.
-4. Verify the draft's binaries on at least one machine per OS with the Phase 0
-   DoD scenario, then publish the release (`gh release edit vX --draft=false --latest`).
-5. **Update the Homebrew formula.** `skip_upload: auto` makes goreleaser skip the
-   formula push for a **draft** release (every release starts as a draft), so the
-   tap does **not** auto-update. After publishing, refresh
-   `dspv/homebrew-tap/Formula/caprock.rb` to the new version + the four
-   `tar.gz` sha256s from the release's `checksums.txt` (macOS/Linux × amd64/arm64),
-   then verify: `brew untap dspv/tap; brew install dspv/tap/caprock; caprock --version`.
-   This is the one manual step the draft flow leaves; a stale formula ships the
-   previous version to every `brew install` until it is refreshed.
+   - a Homebrew formula pushed to `dspv/homebrew-tap` — **automatically**, because
+     the release is no longer a draft (`release.draft: false`),
+   - `checksums.txt`, and a **published** GitHub release.
+4. Verify the published binaries and the formula:
+   `brew untap dspv/tap 2>/dev/null; brew install dspv/tap/caprock; caprock --version`.
+   No manual formula edit is needed — goreleaser wrote it. (A `-rc`/`-beta` tag is
+   marked a prerelease and its formula push is skipped by `skip_upload: auto`, so
+   a prerelease never overwrites the stable formula.)
 
 ### Re-running a release for an existing tag
 
 If a release job failed partway (e.g. the formula push) after the tag was already
-pushed, delete the draft release and its objects, then re-push the tag to
-retrigger the workflow:
+pushed, delete the release and its objects, then re-push the tag to retrigger the
+workflow:
 
 ```bash
-gh release delete v0.1.0 --yes --cleanup-tag   # removes the draft + the tag
+gh release delete v0.1.0 --yes --cleanup-tag   # removes the release + the tag
 git tag -d v0.1.0                               # local tag, if still present
 git tag -a v0.1.0 -m "…" && git push origin v0.1.0
 ```
