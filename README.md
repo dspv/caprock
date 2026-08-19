@@ -8,7 +8,7 @@
 ![platform](https://img.shields.io/badge/macOS%20·%20Linux%20·%20Windows-informational)
 
 ```bash
-brew install --cask dspv/tap/caprock
+brew install dspv/tap/caprock
 caprock up        # opens localhost:4173
 ```
 

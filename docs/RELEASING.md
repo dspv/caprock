@@ -8,13 +8,13 @@ any future release:
 ## One-time setup
 
 - ✅ The public tap repo **`dspv/homebrew-tap`** already exists (created
-  2026-08-19). The `homebrew_casks` block in `.goreleaser.yaml` uploads the cask
+  2026-08-19). The `brews` block in `.goreleaser.yaml` uploads the formula
   there on release.
 - ✅ The **`HOMEBREW_TAP_TOKEN` secret is configured** on `dspv/caprock` (added
   2026-08-19). It is a fine-grained PAT with **Contents: Read and write** scoped
-  to just `dspv/homebrew-tap`, which the cask push needs because the default
+  to just `dspv/homebrew-tap`, which the formula push needs because the default
   `GITHUB_TOKEN` cannot write to another repository. (Before it was added, the
-  first v0.1.0 run built and uploaded every binary but failed the cask push with
+  first v0.1.0 run built and uploaded every binary but failed the formula push with
   `403 Resource not accessible by integration`.) If it ever expires, regenerate
   the PAT and replace the secret under **Settings → Secrets and variables →
   Actions**.
@@ -34,14 +34,14 @@ any future release:
    `.github/workflows/release.yml` runs `goreleaser release --clean`, producing:
    - `caprock` and `caprock-hook` for darwin/linux/windows × amd64/arm64,
    - a macOS **universal** binary,
-   - a Homebrew cask in `dspv/homebrew-tap` (once that repo exists),
+   - a Homebrew formula in `dspv/homebrew-tap`,
    - `checksums.txt`, and a **draft** GitHub release.
 4. Verify the draft's binaries on at least one machine per OS with the Phase 0
    DoD scenario, then publish the release.
 
 ### Re-running a release for an existing tag
 
-If a release job failed partway (e.g. the cask push) after the tag was already
+If a release job failed partway (e.g. the formula push) after the tag was already
 pushed, delete the draft release and its objects, then re-push the tag to
 retrigger the workflow:
 
@@ -52,7 +52,22 @@ git tag -a v0.1.0 -m "…" && git push origin v0.1.0
 ```
 
 `goreleaser release --clean` is idempotent; with `HOMEBREW_TAP_TOKEN` set it will
-complete the cask push it previously skipped.
+complete the formula push it previously skipped.
+
+## Cask → formula migration (2026-08-19)
+
+Up to and including v0.3.0 the tap shipped a **cask** (`brew install --cask`).
+A CLI binary belongs in a **formula** (casks are for GUI `.app` bundles, and a
+formula also installs on Linux Homebrew), so `.goreleaser.yaml` now uses a
+`brews` block. On the next release:
+
+- The formula lands at `dspv/homebrew-tap/Formula/caprock.rb`; the old
+  `Casks/caprock.rb` should be deleted from the tap so `brew install
+  dspv/tap/caprock` resolves the formula, not the stale cask.
+- Users who installed the cask (`brew install --cask dspv/tap/caprock`) keep a
+  working install; to switch they run `brew uninstall --cask caprock` then
+  `brew install dspv/tap/caprock`. No data is touched — Caprock's SQLite lives
+  in `~/.caprock`, outside Homebrew.
 
 ## Version scheme
 

@@ -50,9 +50,13 @@ changelog:
   filters:
     exclude: ["^docs", "^chore", "^ci"]
 
-homebrew_casks:
+brews:
   - name: caprock
-    # Tap repo dspv/homebrew-tap (public); the cask is pushed here on release.
+    # A CLI binary belongs in a formula, not a cask (casks are for GUI .app
+    # bundles). A formula also installs cleanly on Linux Homebrew. `brews` is the
+    # formula block; newer goreleaser renames it to `homebrew_formulas`, but the
+    # pinned toolchain (see release.yml) still uses `brews`.
+    # Tap repo dspv/homebrew-tap (public); the formula is pushed here on release.
     repository:
       owner: dspv
       name: homebrew-tap
@@ -63,8 +67,11 @@ homebrew_casks:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: "https://caprock.dev"
     description: "Mission control for Claude Code — watch, control and orchestrate your sessions"
-    # Skip the cask push on prereleases / when the tap is unavailable.
+    license: "Apache-2.0"
+    # Skip the formula push on prereleases / when the tap is unavailable.
     skip_upload: auto
+    install: |
+      bin.install "caprock"
     caveats: |
       Start it with:  caprock up
       Then open:      http://127.0.0.1:4173

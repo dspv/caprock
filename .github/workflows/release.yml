@@ -28,12 +28,15 @@ jobs:
       - uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
-          version: "~> v2"
+          # Pinned: the `brews` formula block is valid on 2.17.x. A later v2
+          # renames it to `homebrew_formulas`, so let the pin move deliberately
+          # (with a config edit) rather than float and break a release.
+          version: "2.17.1"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # PAT with contents:write on dspv/homebrew-tap so goreleaser can push
-          # the cask (the default GITHUB_TOKEN cannot write to another repo). The
+          # the formula (the default GITHUB_TOKEN cannot write to another repo). The
           # `|| ''` keeps the env key present (goreleaser's {{ .Env.X }} requires
           # it) so a missing secret degrades to skip, not a hard error.
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN || '' }}

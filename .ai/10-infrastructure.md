@@ -47,7 +47,7 @@ make check       # docs gates + lint + test (what CI runs, minus the OS matrix)
 
 - **`docs.yml`** — on push to `master` and on PRs: `make docs-check docs-links` (tables aligned, links and anchors resolve). The only workflow that runs before code exists.
 - **`ci.yml`** — on push to `master` and on PRs. Jobs: `ui` (ubuntu; `npm ci`, typecheck, vitest, build, upload the `internal/api/dist` artifact), `go` matrix (`ubuntu-latest`, `macos-latest`, `windows-latest`; download the UI artifact, `go vet`, `golangci-lint`, `go test`, `go build` for the OS, the smoke test, upload the binary). Windows job red = task not done.
-- **`release.yml`** — on `v*` tags; goreleaser builds `caprock` + `caprock-hook` for darwin/linux/windows × amd64/arm64 with `CGO_ENABLED=0`, plus a macOS **universal** binary, attaches `checksums.txt`, pushes a **Homebrew cask** to `dspv/homebrew-tap`, and drafts the GitHub release (published by hand after a per-OS spot check). Runs only after `ci.yml` is green on the tagged commit.
+- **`release.yml`** — on `v*` tags; goreleaser builds `caprock` + `caprock-hook` for darwin/linux/windows × amd64/arm64 with `CGO_ENABLED=0`, plus a macOS **universal** binary, attaches `checksums.txt`, pushes a **Homebrew formula** to `dspv/homebrew-tap`, and drafts the GitHub release (published by hand after a per-OS spot check). Runs only after `ci.yml` is green on the tagged commit.
 - Secrets: CI needs none (the default `GITHUB_TOKEN`). The release job additionally needs **`HOMEBREW_TAP_TOKEN`** — a fine-grained PAT with `contents:write` on `dspv/homebrew-tap`, since the default `GITHUB_TOKEN` cannot write to another repository. Configured 2026-08-19; see [docs/RELEASING.md](../docs/RELEASING.md).
 
 ## Local development
