@@ -291,6 +291,12 @@ func statuslineCommandStr() string {
 	if err != nil {
 		return "caprock statusline"
 	}
+	// Quote only the path, not the whole command — else a caprock installed under
+	// a path with spaces produces `"…/caprock statusline"` (one quoted token,
+	// which Claude Code runs as a binary literally named "caprock statusline").
+	if strings.ContainsAny(self, " \t") {
+		return `"` + self + `" statusline`
+	}
 	return self + " statusline"
 }
 

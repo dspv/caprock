@@ -300,3 +300,21 @@ func TestStatuslineRecognisesSelfForm(t *testing.T) {
 		t.Fatal("unrelated command matched as ours")
 	}
 }
+
+// A caprock installed under a path with spaces registers as `"…/caprock"
+// statusline` — the path quoted, the subcommand outside. isOurStatusline must
+// still recognize it (else install/uninstall would duplicate or miss it).
+func TestStatuslineRecognisesQuotedPathForm(t *testing.T) {
+	quoted := `"/Users/My Name/bin/caprock" statusline`
+	if !isOurStatusline(quoted, "/whatever/caprock statusline") {
+		t.Fatalf("quoted-path statusline not recognized: %s", quoted)
+	}
+	// A quoted path that is NOT caprock is not ours.
+	if isOurStatusline(`"/Users/My Name/bin/other" statusline`, "x") {
+		t.Fatal("non-caprock quoted path matched as ours")
+	}
+	// A quoted path with the wrong subcommand is not ours.
+	if isOurStatusline(`"/Users/My Name/bin/caprock" hook`, "x") {
+		t.Fatal("wrong subcommand matched as statusline")
+	}
+}

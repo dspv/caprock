@@ -39,21 +39,44 @@ func StatuslineInstalled(settingsPath, cmdPath string) (ours bool, present bool,
 	return isOurStatusline(cs, cmdPath), true, nil
 }
 
-// isOurStatusline matches our statusline command in either form: the bare/quoted
-// path plus the `statusline` subcommand (`…/caprock statusline`), or any command
-// whose first token's base name is caprock and whose second token is statusline.
+// isOurStatusline matches our statusline command however the path is quoted: an
+// exact match, or a command that ends in the `statusline` subcommand whose
+// program path's base name is caprock. It handles a quoted path with spaces
+// (`"…/caprock" statusline`) as well as a bare path (`…/caprock statusline`).
 func isOurStatusline(cs, cmdPath string) bool {
-	trimmed := strings.Trim(cs, `"`)
-	if trimmed == cmdPath || cs == cmdPath {
+	if cs == cmdPath {
 		return true
 	}
-	fields := strings.Fields(trimmed)
-	if len(fields) == 2 && fields[1] == "statusline" {
-		if b := filepath.Base(fields[0]); b == "caprock" || b == "caprock.exe" {
-			return true
-		}
+	prog, sub, ok := splitCommand(cs)
+	if !ok || sub != "statusline" {
+		return false
 	}
-	return false
+	b := filepath.Base(prog)
+	return b == "caprock" || b == "caprock.exe"
+}
+
+// splitCommand splits a `program subcommand` string into its program path and
+// the single subcommand, honoring a leading double-quoted path (which may
+// contain spaces). Returns ok=false if the shape isn't `<prog> <one-word-sub>`.
+func splitCommand(cs string) (prog, sub string, ok bool) {
+	cs = strings.TrimSpace(cs)
+	if strings.HasPrefix(cs, `"`) {
+		end := strings.IndexByte(cs[1:], '"')
+		if end < 0 {
+			return "", "", false
+		}
+		prog = cs[1 : 1+end]
+		rest := strings.TrimSpace(cs[2+end:])
+		if rest == "" || strings.ContainsAny(rest, " \t") {
+			return "", "", false
+		}
+		return prog, rest, true
+	}
+	fields := strings.Fields(cs)
+	if len(fields) != 2 {
+		return "", "", false
+	}
+	return fields[0], fields[1], true
 }
 
 // InstallStatusline sets settings.json's statusLine to our command, backing the
@@ -76,7 +99,10 @@ func InstallStatusline(settingsPath, cmdPath string) (backup string, err error) 
 	}
 	sl := NewObject()
 	sl.Set("type", "command")
-	sl.Set("command", quoteIfSpaces(cmdPath))
+	// cmdPath is the full command (`<path> statusline`) with any needed quoting on
+	// the path already applied by the caller — store it verbatim. Quoting the whole
+	// command here would wrap the subcommand into the quotes and break execution.
+	sl.Set("command", cmdPath)
 	root.Set("statusLine", sl)
 	if backup, err = backupOnce(settingsPath); err != nil {
 		return "", err
