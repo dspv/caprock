@@ -2,12 +2,41 @@
 
 All notable changes to Caprock. Format: [Keep a Changelog](https://keepachangelog.com/).
 Versions map to the roadmap phases in `.ai/09-execution-plan.md`: **v0.1.0** = Observe,
-**v0.2.0** = Control, **v0.3.0** = Orchestrate. **v0.4.0** is post-Orchestrate polish
-(plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula).
+**v0.2.0** = Control, **v0.3.0** = Orchestrate. **v0.4.x**/**v0.5.0** are post-Orchestrate
+polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, first-run UX).
 
 ## [Unreleased]
 
 Phase 3 (Delight) has no plan by design.
+
+## [0.5.0] - 2026-08-20
+
+Distribution polish — a smoother first run and a safer release pipeline.
+
+### Added
+
+- **Plan limits, set up for you.** `caprock up` now offers to register the
+  `caprock statusline` command (the 5h/7d plan-limit windows on the Cost screen)
+  under the same consent contract as hooks — a TTY prompt, or `--yes` for
+  scripts. New `caprock statusline install` / `caprock statusline uninstall`
+  subcommands manage it explicitly. It backs up `settings.json` once and never
+  touches a status line you set yourself. New users get plan limits without
+  hand-editing any file.
+- **CODE_OF_CONDUCT.md** (Contributor Covenant 2.1), linked from CONTRIBUTING.
+
+### Fixed
+
+- **Honest first-run errors.** When the daemon can't start (most often the port
+  is already taken), `caprock up` now surfaces the real cause — e.g. "port
+  127.0.0.1 is already in use — try `caprock status` / `caprock down`, or
+  `--port <n>`" — instead of a bare "did not report ready" timeout.
+- **Readable MCP tool names.** In History's Tool Usage, `mcp__server__tool` now
+  renders as `server·tool` with the full name on hover, instead of truncating.
+- **Release can't ship a red commit.** The release workflow now runs a `verify`
+  job (`make check` + Windows cross-build on the tagged commit) before goreleaser
+  builds or publishes anything, and writes the Homebrew formula to `Formula/`
+  (not the repo root, which `brew` ignored — a stale formula could otherwise be
+  served).
 
 ## [0.4.1] - 2026-08-19
 
