@@ -1,8 +1,9 @@
 # Releasing Caprock
 
-**All releases are tagged and published** (2026-08-19): v0.1.0 (Observe), v0.2.0
-(Control), v0.3.0 (Orchestrate), v0.4.0 (post-Orchestrate polish). Phase 3 (Delight) has no plan
-by design, so there is no planned next release. This doc is the runbook kept for
+**All releases are tagged and published**: v0.1.0 (Observe), v0.2.0 (Control),
+v0.3.0 (Orchestrate), v0.4.0 (post-Orchestrate polish, 2026-08-19), v0.4.1
+(Homebrew hook-shim fix, 2026-08-19). Phase 3 (Delight) has no plan by design.
+This doc is the runbook kept for
 any future release:
 
 ## One-time setup
