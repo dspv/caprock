@@ -2,7 +2,7 @@
 
 ## What this is
 
-Caprock is a local, open-source mission control for Claude Code: a single static Go binary runs a loopback daemon that captures every `claude` session on the machine (Claude Code hooks via a tiny shim + transcript tailing), normalizes it into one event stream in SQLite, and serves a dense React dashboard — live activity, token burn, cost, loop alerts; later, spawning/typing into sessions and a verified multi-agent orchestrator. Local-first, zero servers, Apache-2.0, free for solo use.
+Caprock is a local, open-source mission control for Claude Code: a single static Go binary runs a loopback daemon that captures every `claude` session on the machine (Claude Code hooks via a tiny shim + transcript tailing), normalizes it into one event stream in SQLite, and serves a dense React dashboard — live activity, token burn, cost, loop alerts, spawning/typing into sessions, and a verified multi-agent orchestrator. Local-first, zero servers, Apache-2.0, free for solo use.
 
 **Status: Phase 2 — Orchestrate, complete; v0.1.0 / v0.2.0 / v0.3.0 all tagged + published (2026-08-19).** All three phases green on the 3-OS CI matrix. Orchestrate = hive, tasks board, Stop-loop, orchestrator agent, verification-before-done, approvals. The Phase 2 tag gate — a real-`claude` unattended run with hooks — passed. See `.ai/14-build-status.md`.
 
@@ -25,7 +25,7 @@ Read `.ai/00-index.md` first. Then read the file for your task:
 | Any Go component, data flow, platform  | `.ai/02-architecture.md`      |
 | Endpoints, WS, DDL, shim, pricing file | `.ai/03-contracts.md`         |
 | The dashboard (`ui/`)                  | `.ai/04-ui.md`                |
-| Phase 2 hive/mailboxes/verification    | `.ai/05-orchestration.md`     |
+| Orchestration internals (hive, verify) | `.ai/05-orchestration.md`     |
 | Before writing code                    | `.ai/06-engineering-rules.md` |
 | Why a decision was made                | `.ai/08-decisions.md`         |
 | Picking up a task (T0–T25), DoD, AC    | `.ai/09-execution-plan.md`    |

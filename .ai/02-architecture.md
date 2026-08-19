@@ -26,7 +26,7 @@ How the system is built: the daemon, its two data planes, cross-platform rules, 
 
 Two data planes, mirroring what works in Munder Difflin, but in Go:
 
-- **Terminal plane** — `ptyman` spawns each agent as a `claude` process in a PTY, streams bytes to the UI (xterm.js in browser), accepts stdin writes. Lands in Phase 1; see [ADR-006](08-decisions.md#adr-006--pty-backend-conpty-capable-wrapper-behind-our-own-ptyman-interface) for the backend choice.
+- **Terminal plane** — `ptyman` spawns each agent as a `claude` process in a PTY, streams bytes to the UI (xterm.js in browser), accepts stdin writes. Shipped in Control (v0.2.0); see [ADR-006](08-decisions.md#adr-006--pty-backend-conpty-capable-wrapper-behind-our-own-ptyman-interface) for the backend choice.
 - **Event plane** — `hookd` is a local HTTP server; a tiny shim registered in each agent's `.claude/settings.json` POSTs hook payloads (PreToolUse, PostToolUse, Stop, SubagentStop, SessionStart, PreCompact, …). **This is the source of truth for "what is the agent doing."**
 
 **Why not Electron:** the only thing Electron buys is bundling Chromium. A Go daemon + browser tab gives the same UI with zero ABI pain, one `go build` per platform, and the option of a TUI later. Desktop wrapper (Tauri/Wails) is a packaging decision for later, not an architecture decision now ([ADR-003](08-decisions.md#adr-003--ui-stack-react--vite-embedded-in-the-go-binary-via-goembed)).
@@ -47,7 +47,7 @@ Two data planes, mirroring what works in Munder Difflin, but in Go:
 | `router`   | Mailbox delivery outbox → inbox, ledger append, `mail.*` events   | 2     |
 | `orchestr` | Orchestrator lifecycle, Stop-loop, verification runner, approvals | 2     |
 
-Phase 0 architecture slice (no `ptyman`; the ConPTY spike still happens in T0 to de-risk Phase 1):
+Phase 0 architecture slice (no `ptyman`; the ConPTY spike ran in T0 to de-risk Control) — historical:
 
 ```
 claude (user-started) ──hooks──► POST /v1/hook (same server as API/UI, token-auth)
@@ -61,7 +61,7 @@ claude (user-started) ──hooks──► POST /v1/hook (same server as API/UI,
                     HTTP API + WebSocket ──► React UI (go:embed)
 ```
 
-Interaction model in Phase 0: the web UI is an observation window; the user keeps talking to Claude in the terminal. The hook shim is registered at the user level (`~/.claude/settings.json`), so **every** `claude` session on the machine is captured, regardless of which terminal or project started it. Spawning and typing into sessions from the UI arrive in Phase 1.
+Interaction model in Phase 0: the web UI is an observation window; the user keeps talking to Claude in the terminal. The hook shim is registered at the user level (`~/.claude/settings.json`), so **every** `claude` session on the machine is captured, regardless of which terminal or project started it. Spawning and typing into sessions from the UI shipped in Control (v0.2.0).
 
 ## Cross-platform: do it right on day one
 
@@ -115,12 +115,12 @@ Implementation notes (`internal/loop`): "normalized-similar" = same tool + `tool
 
 ## Session lifecycle
 
-`active` on any event → `idle` after 5 minutes of silence (sweeper every 30 s) → `ended` after 12 hours of silence (Phase 1 will also end sessions Caprock kills). `/v1/sessions?active=true` returns everything not ended. Narration ([04-ui.md § Narration map](04-ui.md#narration-map-t7)) is computed server-side in `internal/narrate` from the last 60 events.
+`active` on any event → `idle` after 5 minutes of silence (sweeper every 30 s) → `ended` after 12 hours of silence (Caprock also ends sessions it kills). `/v1/sessions?active=true` returns everything not ended. Narration ([04-ui.md § Narration map](04-ui.md#narration-map-t7)) is computed server-side in `internal/narrate` from the last 60 events.
 
-## Repository layout (target)
+## Repository layout
 
 ```
-cmd/caprock/          # daemon + CLI (up/down/status/hooks …, hidden `hook` fallback shim)
+cmd/caprock/          # daemon + CLI (up/down/status/hooks/tasks …, hidden `hook` fallback shim)
 cmd/caprock-hook/     # the shim binary (thin main over internal/shim)
 internal/shim/        # shim logic: stdin → POST, silent, Stop request-response
 internal/config/      # data dir, config.json, runtime.json, atomic writes
@@ -136,10 +136,13 @@ internal/loop/        # loop detector
 internal/narrate/     # tool event → phrase, health badge, plan progress
 internal/gitdiff/     # live `git diff` of a session's cwd
 internal/api/         # REST + WS + embedded UI (dist/ built, placeholder/ fallback)
-internal/daemon/      # wiring, runtime.json lifecycle, sweeper
+internal/daemon/      # wiring, runtime.json lifecycle, sweeper, auto-pause, Stop-decision
 internal/smoke/       # the DoD scenario (build tag `smoke`), runs on the 3-OS matrix
-internal/ptyman/      # Phase 1
-internal/hive/ internal/router/ internal/orchestrator/   # Phase 2
+internal/ptyman/      # PTY backend (go-pty; ConPTY on Windows) — Control
+internal/agents/      # owned-session manager: spawn/stream/input/signal/exit, worktree, folder-trust — Control
+internal/hive/        # on-disk orchestration state: agents/tasks/mailboxes/ledger, YAML — Orchestrate
+internal/board/       # task board: verification runner, destructive-command policy, approvals — Orchestrate
+internal/orchestrator/ # orchestrator + worker lifecycle, the mailbox-router reconciler — Orchestrate
 ui/                   # React + Vite app; builds into internal/api/dist (go:embed)
 pricing/              # pricing.json + embed.go (versioned pricing table)
 testdata/             # hook payloads, transcript fixtures + expected totals, loop fixtures

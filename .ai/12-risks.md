@@ -49,20 +49,16 @@ Prices change; a stale table under-reports spend and users notice on their invoi
 Anything the spec did not answer. Do not resolve these by inventing an answer. "Decided by" is a person, an event, or a task — never "later".
 
 - ~~`OQ-01` — What does T5 "parity" compare?~~ Resolved 2026-08-18 (Dima): **parity with Caprock-python was never a project goal** — it was one AC phrasing in the spec, and the legacy repo has no `pricing.json`/fixtures anyway. Source of truth for prices is the Anthropic pricing page (versioned `pricing.json` with date+source); the cache formula from `_savings.py` is unit-tested on our own fixtures. T5's AC is reworded accordingly.
-- **`OQ-02` — Bedrock/Vertex pricing in v0.1?** Partner pricing is separate (regional endpoints carry a 10% premium per the Anthropic pricing page, fetched 2026-08-18); v0.1 tables first-party only.
-  - Decided by: Dima, before v0.1.0.
-- **`OQ-03` — Limit-forecast model.** Partly answered 2026-08-19: the honest throttle signal is Claude Code's `StopFailure` hook (rate_limit / overloaded / billing) — the daemon now consumes it and records each into `throttle_observations`, and the Cost screen reports the *count* per range (a fact, not a forecast). Building an actual "time-to-limit" forecast still waits for enough real throttle data; until then Caprock never guesses. Deciding the forecast model itself: later, on data.
-- **`OQ-04` — caprock.dev cut-over.** Harness front page, python measurer moved to `/stats` with a banner — who edits `caprock-web`, when?
-  - Decided by: Dima, at Phase 0 launch.
-- **`OQ-05` — Brand accent hue** (single hue, interactive elements only).
-  - Decided by: T7.
+- ~~`OQ-02` — Bedrock/Vertex pricing in v0.1?~~ Resolved 2026-08-19: shipped first-party only across v0.1.0–v0.3.0. Partner pricing (regional endpoints carry a ~10% premium per the Anthropic pricing page) stays out until there is demand; re-open then.
+- **`OQ-03` — Limit-forecast model.** Partly answered 2026-08-19: the honest throttle signal is Claude Code's `StopFailure` hook (rate_limit / overloaded / billing) — the daemon now consumes it and records each into `throttle_observations`, and the Cost screen reports the *count* per range (a fact, not a forecast). Building an actual "time-to-limit" forecast still waits for enough real throttle data; until then Caprock never guesses. **Still open** — this is the one open question left, and it is not a shipping blocker (Caprock shows the count, never a guess).
+- ~~`OQ-04` — caprock.dev cut-over.~~ Resolved 2026-08-19: the site (`caprock-web`, repo `cybrixcc/caprock-web`) was rewritten to the mission-control positioning and deployed to caprock.dev; the retired Python measurer's marketing was removed.
+- ~~`OQ-05` — Brand accent hue~~ Resolved during T7: a single warm amber (`#feb157`), interactive elements only, per the shipped dashboard and site.
 - ~~`OQ-06` — Stop-decision output shape.~~ Resolved 2026-08-19. The canonical, and only documented, shape for Claude Code 2.1.x is the nested `{"hookSpecificOutput":{"hookEventName":"Stop","decision":"block","reason":…}}` on exit 0; the spec's top-level `{"decision","reason"}` is undocumented. `board.StopDecision` emits the nested form, and the live unattended run (2026-08-19) confirmed Claude 2.1.235 continues on it — the orchestrator looped through its Stop hook and drove the task to `done`.
 - ~~`OQ-07` — Context-window sizes per model~~ Resolved 2026-08-18 (Dima): kept in `pricing.json` (`context_window` per model), updated by hand alongside prices with a date — consistent with the local-first "no outbound calls from the daemon" rule.
 - ~~`OQ-08` — Consent UX for the hook install on `caprock up`.~~ Decided 2026-08-18 in [ADR-019](08-decisions.md#adr-019--caprock-up-detaches-by-default-hook-install-consent-is-a-tty-prompt-or---yes-sessions-end-after-12h-of-silence): TTY prompt when events are missing, `--yes` for scripts, non-TTY skips with a hint.
-- **`OQ-09` — ConPTY on the CI Windows runner.** Does `windows-latest` expose ConPTY for the spike, or is a self-hosted runner needed?
-  - Decided by: T0.
+- ~~`OQ-09` — ConPTY on the CI Windows runner.~~ Resolved: `windows-latest` exposes ConPTY; the T0 spike and the full 3-OS matrix (including the `ptyspike` job) are green across all three releases. No self-hosted runner needed.
 
-`OQ-01` and `OQ-07` are resolved (see strikethroughs above). No open question currently blocks shipping.
+Only `OQ-03` (limit-forecast model) remains open, and it is not a shipping blocker — Caprock reports the throttle count, never an invented forecast. Everything else (OQ-01, OQ-02, OQ-04, OQ-05, OQ-06, OQ-07, OQ-08, OQ-09) is resolved.
 
 ## What would falsify the whole plan
 

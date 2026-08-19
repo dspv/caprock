@@ -10,7 +10,7 @@ Conventions that apply to every contract here: JSON casing is **snake_case**; al
 - Registered in `~/.claude/settings.json` under events: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `SubagentStop`, `PreCompact`, `StopFailure`. Installer merges JSON non-destructively; `caprock hooks uninstall` reverts; back up the settings file before first write.
 - Behavior (Phase 0–1: fire-and-forget): read stdin JSON → POST to `http://127.0.0.1:<port>/v1/hook` with `Authorization: Bearer <run-token>` → always exit 0 within a 1s budget. Never print to stdout (a broken shim must not affect the user's Claude session). If the daemon is down, drop silently.
 - One server, one port: `/v1/hook` lives on the same listener as the API and UI (default **4173**); `<data_dir>/runtime.json` holds `{port, token}`, written by the daemon, read by the shim per invocation.
-- Phase 2 extends this protocol for **Stop events only** — request-response with a 5s timeout; see [05-orchestration.md § Stop-hook decision protocol](05-orchestration.md#stop-hook-decision-protocol-shim-upgrade-t19).
+- Phase 2 extended this protocol for **Stop events only** — request-response with a 5s timeout; see [05-orchestration.md § Stop-hook decision protocol](05-orchestration.md#stop-hook-decision-protocol-shim-upgrade-t19).
 - Why a shim binary rather than Claude Code's native `type: "http"` hook: [ADR-009](08-decisions.md#adr-009--hook-transport-is-the-caprock-hook-shim-binary-not-claude-codes-native-http-hook-type).
 
 ### Hook payload (what the shim forwards, verbatim)
@@ -86,7 +86,7 @@ GET      /v1/approvals
 POST     /v1/orchestrator/start       → spawns the orchestrator session → {session_id}
 ```
 
-Live frames gain `mail.*` events (router) in Phase 2.
+Live frames gained `mail.*` events (router) in Phase 2.
 
 ## SQLite schema (DDL v1)
 
@@ -161,7 +161,7 @@ Tables `tasks` (mirror of file state for querying) and `verifications` (`task_id
 - Embedded JSON `pricing/pricing.json` (the spec's "ported from Caprock-python" — authored from the Anthropic pricing page in practice, [ADR-015](08-decisions.md#adr-015--pricing-source-anthropic-first-party-pricing-page-versioned-the-legacy-repo-has-no-pricingjson)); overridable by a user file (`<data_dir>/pricing.json`); `pricing_version` recorded in `meta` so historical cost is never silently recomputed.
 - Cost per assistant turn = `tokens_in × input + cache_write × cache_write_price + cache_read × cache_read_price + tokens_out × output`, all prices per token (table values are per MTok ÷ 1e6).
 - Cache-savings math (ported from Caprock-python `_savings.py`): `billed_with = in + 1.25·cache_write + 0.10·cache_read` in input-token equivalents; `billed_without = in + cache_write + cache_read`; `saved = billed_without − billed_with`; hit-rate reported as `cache_read / (in + cache_read + cache_write)`. Where the transcript reports the 1h-TTL split (`cache_creation.ephemeral_1h_input_tokens`), those tokens are priced at the 1h write price (2×), not 1.25×.
-- **Source of the numbers:** Anthropic first-party pricing page (`platform.claude.com/docs/en/about-claude/pricing`), fetched 2026-08-18. Bedrock/Vertex have separate partner pricing — not covered in v0.1; recorded as [OQ-02](12-risks.md#open-questions).
+- **Source of the numbers:** Anthropic first-party pricing page (`platform.claude.com/docs/en/about-claude/pricing`), fetched 2026-08-18. Bedrock/Vertex have separate partner pricing — first-party only across v0.1–v0.3; recorded as [OQ-02](12-risks.md#open-questions).
 - The parity target and its fixture story: [OQ-01](12-risks.md#open-questions).
 
 ## Runtime file
@@ -181,4 +181,4 @@ Not a public contract — the parser is schema-versioned and degrades to hooks-o
 - **One API response is written as several `assistant` lines** (thinking / text / tool_use blocks split across lines), each repeating the *same* `message.id`, `requestId` and `usage`. Verified 2026-08-18 across 16,210 such groups in local transcripts: usage never differs within a `message.id`. Ingest therefore counts usage once per `message.id` (dedupe key `msg:<id>`); summing per line would over-count cache tokens 2–3×.
 - Lines with `message.model == "<synthetic>"` are Claude Code's own notices, not turns; ignored.
 
-Golden fixtures for the parser (normal, compacted, malformed line, unknown schema field) live in `testdata/transcripts/` once T4 lands.
+Golden fixtures for the parser (normal, compacted, malformed line, unknown schema field) live in `testdata/transcripts/`.

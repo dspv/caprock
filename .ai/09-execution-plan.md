@@ -2,6 +2,8 @@
 
 The roadmap, the phase gates, and the task-by-task plans for Phases 0–2 with their definitions of done and acceptance criteria. Progress against this plan is tracked in [14-build-status.md](14-build-status.md) — this file says what "done" means, that file says what is done. Contracts referenced by tasks live in [03-contracts.md](03-contracts.md); orchestration formats in [05-orchestration.md](05-orchestration.md).
 
+> **Status (2026-08-19): this plan is complete.** All of T0–T25 shipped; Phases 0–2 are released as v0.1.0 / v0.2.0 / v0.3.0. Phase 3 (Delight) has no plan by design. The task bodies below are kept as the record of what "done" meant for each; live per-track state is in [14-build-status.md](14-build-status.md).
+
 ## Roadmap
 
 - **Phase 0 — Observe (2–3 weeks of evenings).** Go daemon: hookd + shim installer + transcript ingest + SQLite + web UI with **Now**, **Session Detail** (terminal read-only + diff — in Phase 0 that is the event timeline + live diff, because PTY bytes exist only for sessions Caprock spawns; the terminal tab arrives with `ptyman` in Phase 1), **Cost**. Works on sessions the user starts manually. *Ship this publicly — it's already a standalone product ("see what your Claude Code is really doing/costing").*

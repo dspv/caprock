@@ -2,7 +2,7 @@
 
 Read this file first. Then read the task-specific file below.
 
-Caprock is a local, open-source **mission control for Claude Code**: a single static Go binary that runs a loopback daemon, captures every `claude` session on the machine through Claude Code hooks (via a tiny shim) and transcript tailing, normalizes everything into one event stream in SQLite, and serves a dense React dashboard (Now · Session Detail · Cost · History · Tasks) with live activity, token burn, cost, loop alerts, and — in later phases — spawning/typing into sessions and a verified multi-agent orchestrator. Local-first, zero servers, Apache-2.0, free for solo use. Owner: Dima; repo `dspv/caprock`; domain `caprock.dev`.
+Caprock is a local, open-source **mission control for Claude Code**: a single static Go binary that runs a loopback daemon, captures every `claude` session on the machine through Claude Code hooks (via a tiny shim) and transcript tailing, normalizes everything into one event stream in SQLite, and serves a dense React dashboard (Now · Session Detail · Cost · History · Tasks) with live activity, token burn, cost, loop alerts, plus spawning/typing into sessions and a verified multi-agent orchestrator. Local-first, zero servers, Apache-2.0, free for solo use. Owner: Dima; repo `dspv/caprock`; domain `caprock.dev`.
 
 | File                                               | Contents                                                        | Read when...                                       |
 | -------------------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------- |
@@ -10,7 +10,7 @@ Caprock is a local, open-source **mission control for Claude Code**: a single st
 | [02-architecture.md](02-architecture.md)           | Daemon, data planes, cross-platform rules, sources, event model | Touching any Go component                          |
 | [03-contracts.md](03-contracts.md)                 | Shim protocol, HTTP API, WS frames, DDL, pricing, runtime file  | Adding/changing an endpoint, table, or file format |
 | [04-ui.md](04-ui.md)                               | The five screens, visual tokens, narration map                  | Touching `ui/`                                     |
-| [05-orchestration.md](05-orchestration.md)         | Hive, mailboxes, Stop-loop, verification, approvals             | Phase 2 work                                       |
+| [05-orchestration.md](05-orchestration.md)         | Hive, mailboxes, Stop-loop, verification, approvals             | Orchestration internals                            |
 | [06-engineering-rules.md](06-engineering-rules.md) | Binding rules; definition of green                              | Before writing code                                |
 | [08-decisions.md](08-decisions.md)                 | ADR log                                                         | Before revisiting any decision                     |
 | [09-execution-plan.md](09-execution-plan.md)       | Roadmap, phase DoDs, tasks T0–T25 with AC                       | Picking up or finishing a task                     |

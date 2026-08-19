@@ -55,7 +55,7 @@ For Stop events only, the shim switches from fire-and-forget to request-response
 
 Guards: max **N=10** forced continuations per task (default), then escalate; verification bounces max **R=3** rounds (default), then escalate.
 
-Note (verified against the hooks reference 2026-08-18): the current documented Stop output shape is `{"hookSpecificOutput":{"hookEventName":"Stop","decision":"block","reason":"…"}}` on stdout with exit 0 (exit 2 also blocks). The top-level `{"decision","reason"}` form from the spec is the older shape; T19 must confirm which forms Claude Code accepts at implementation time and emit the accepted one — tracked as [OQ-06](12-risks.md#open-questions).
+The Stop output shape is `{"hookSpecificOutput":{"hookEventName":"Stop","decision":"block","reason":"…"}}` on stdout with exit 0 (exit 2 also blocks) — the canonical, and only documented, form for Claude Code 2.1.x. `board.StopDecision` emits it, and the live unattended run confirmed Claude 2.1.235 continues on it ([OQ-06](12-risks.md#open-questions) resolved 2026-08-19). The spec's older top-level `{"decision","reason"}` form is undocumented and not used.
 
 ## Verification runner
 
@@ -67,7 +67,7 @@ Tasks exceeding budget, matching a destructive-command policy (regex list, confi
 
 ## Cost attribution per task
 
-Join `events` → task via assignment windows (the interval during which a task is assigned to a session); task cards show spend vs budget. Cut line: can slip to v0.3.1.
+Join `events` → task via assignment windows (the interval during which a task is assigned to a session); task cards show spend vs budget. Shipped in v0.3.0: the router opens an assignment window when it spawns a worker for a task, and verification closes it and sums the cost.
 
 ## Orchestrator prompt
 
