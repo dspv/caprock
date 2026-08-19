@@ -456,8 +456,10 @@ func (s *Server) paceForecast(ctx context.Context, window string, snap store.Rat
 		return ""
 	}
 	hoursToLimit := (100 - snap.UsedPercentage) / pctPerHour
-	// Only forecast if the limit would be hit before the window resets.
-	resetIn := time.Until(time.Unix(snap.ResetsAt, 0))
+	// Only forecast if the limit would be hit before the window resets. Use the
+	// daemon's injectable clock (like the rest of the API) so the forecast is
+	// consistent and deterministic in tests, not tied to raw wall-clock.
+	resetIn := time.Unix(snap.ResetsAt, 0).Sub(s.d.Now())
 	if resetIn <= 0 || hoursToLimit >= resetIn.Hours() {
 		return "" // resets before the limit at current pace — no warning
 	}

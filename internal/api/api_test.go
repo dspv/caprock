@@ -340,3 +340,45 @@ func TestStatuslineEndpointAndSummary(t *testing.T) {
 		t.Fatalf("forecast from a single snapshot: %q", sum.RateLimits.FiveHour.Forecast)
 	}
 }
+
+// paceForecast is the honest "at current pace" gate for plan limits (Rule 6: no
+// invented numbers). It forecasts only when the measured slope would reach the
+// limit before the window resets — and stays silent otherwise. Uses the
+// injectable clock, so this is deterministic.
+func TestPaceForecastHonesty(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, ":memory:", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	// A fixed "now"; the window resets 4 hours later.
+	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	reset := now.Add(4 * time.Hour).Unix()
+	s := New(Deps{Store: st, Version: "test", Token: "tok", Now: func() time.Time { return now }})
+
+	// Seed a rising slope: 40% → 50% over 2 minutes = 300 %/hour (steep). From 50%
+	// that hits 100% in ~10 minutes — well before the 4h reset → a forecast.
+	base := now.Add(-2 * time.Minute).UnixMilli()
+	_ = store.RecordRateLimit(ctx, st.DB(), store.RateLimitSnapshot{Window: "five_hour", Ts: base, UsedPercentage: 40, ResetsAt: reset}, "s1")
+	_ = store.RecordRateLimit(ctx, st.DB(), store.RateLimitSnapshot{Window: "five_hour", Ts: now.UnixMilli(), UsedPercentage: 50, ResetsAt: reset}, "s1")
+	snap := store.RateLimitSnapshot{Window: "five_hour", UsedPercentage: 50, ResetsAt: reset}
+	if f := s.paceForecast(ctx, "five_hour", snap); f == "" || !strings.Contains(f, "limit at current pace") {
+		t.Fatalf("expected a forecast for a steep rising slope, got %q", f)
+	}
+
+	// At 100% used → never a forecast.
+	if f := s.paceForecast(ctx, "five_hour", store.RateLimitSnapshot{Window: "five_hour", UsedPercentage: 100, ResetsAt: reset}); f != "" {
+		t.Fatalf("forecast at 100%%: %q", f)
+	}
+
+	// A gentle slope that resets before the limit → no forecast. 50% → 50.1% over
+	// 2 min = 3 %/hour; from 50% that's ~16h to limit, past the 4h reset.
+	base2 := now.Add(-2 * time.Minute).UnixMilli()
+	_ = store.RecordRateLimit(ctx, st.DB(), store.RateLimitSnapshot{Window: "seven_day", Ts: base2, UsedPercentage: 50, ResetsAt: reset}, "s1")
+	_ = store.RecordRateLimit(ctx, st.DB(), store.RateLimitSnapshot{Window: "seven_day", Ts: now.UnixMilli(), UsedPercentage: 50.1, ResetsAt: reset}, "s1")
+	if f := s.paceForecast(ctx, "seven_day", store.RateLimitSnapshot{Window: "seven_day", UsedPercentage: 50.1, ResetsAt: reset}); f != "" {
+		t.Fatalf("gentle slope that resets first should not forecast, got %q", f)
+	}
+}
