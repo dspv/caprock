@@ -46,6 +46,24 @@ Full engineering rules: [`.ai/06-engineering-rules.md`](.ai/06-engineering-rules
 New to the codebase? Read [`.ai/00-index.md`](.ai/00-index.md) first — it maps
 every doc to when you'd read it.
 
+## Where we're headed
+
+The three phases — Observe, Control, Orchestrate — have shipped (v0.1.0–v0.3.0).
+There's no fixed roadmap after that by design; the direction we care about:
+
+- **Sharper observation** — better narration, richer cost/limit insight, catching
+  more failure modes (loops, runaway spend) earlier.
+- **Trustworthy orchestration** — making verified multi-agent runs more robust and
+  easier to drive; more done_criteria types, better approvals.
+- **Reach** — more platforms and setups working smoothly (all three OS stay a hard
+  gate); packaging that's easy to install.
+- **A team edition** later (shared dashboards, multi-user orchestration) — only
+  once solo use proves out. The local, solo core stays free and Apache-2.0.
+
+Guardrails never move: local-first (no telemetry, no outbound calls), no invented
+numbers, the shim never breaks a session. If a change fights those, it's the wrong
+change. Have an idea? Open an issue — that's how direction gets set.
+
 ## A good PR, concretely
 
 > `fix(ingest): tolerate unknown transcript fields`
