@@ -295,3 +295,48 @@ func TestLiveWebSocketDeliversEvents(t *testing.T) {
 		t.Fatal("foreign origin accepted on /v1/live")
 	}
 }
+
+// The statusline endpoint records rate-limit windows (bearer-gated), and the
+// summary endpoint then surfaces them as current window state.
+func TestStatuslineEndpointAndSummary(t *testing.T) {
+	e := newEnv(t)
+	// Unauthorized without the bearer token.
+	body := `{"session_id":"s1","five_hour":{"used_percentage":23.5,"resets_at":1900000000}}`
+	req, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/v1/statusline", strings.NewReader(body))
+	resp, _ := http.DefaultClient.Do(req)
+	if resp.StatusCode != 401 {
+		t.Fatalf("statusline without token: %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	// With the token → 204.
+	req, _ = http.NewRequest(http.MethodPost, e.srv.URL+"/v1/statusline", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer tok")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil || resp.StatusCode != 204 {
+		t.Fatalf("statusline: %v %d", err, resp.StatusCode)
+	}
+	resp.Body.Close()
+	// Summary now carries the five_hour window (current state, not a forecast).
+	var sum struct {
+		RateLimits *struct {
+			FiveHour *struct {
+				UsedPercentage float64 `json:"used_percentage"`
+				ResetsAt       int64   `json:"resets_at"`
+				Forecast       string  `json:"forecast"`
+			} `json:"five_hour"`
+		} `json:"rate_limits"`
+	}
+	if code := e.get(t, "/v1/stats/summary", &sum); code != 200 {
+		t.Fatalf("summary: %d", code)
+	}
+	if sum.RateLimits == nil || sum.RateLimits.FiveHour == nil {
+		t.Fatalf("summary missing rate_limits: %+v", sum)
+	}
+	if sum.RateLimits.FiveHour.UsedPercentage != 23.5 || sum.RateLimits.FiveHour.ResetsAt != 1900000000 {
+		t.Fatalf("wrong window: %+v", sum.RateLimits.FiveHour)
+	}
+	// One snapshot → no forecast (honest: needs ≥2 rising samples).
+	if sum.RateLimits.FiveHour.Forecast != "" {
+		t.Fatalf("forecast from a single snapshot: %q", sum.RateLimits.FiveHour.Forecast)
+	}
+}

@@ -113,6 +113,18 @@ export interface Summary {
   burn: Burn
   pricing_version: string
   throttles: number
+  rate_limits?: RateLimits
+}
+
+export interface RateWindow {
+  used_percentage: number
+  resets_at: number
+  forecast?: string
+}
+
+export interface RateLimits {
+  five_hour?: RateWindow
+  seven_day?: RateWindow
 }
 
 export interface DailyStat { day: string; project: string; model: string; tokens_total: number; cost_usd: number; sessions: number }

@@ -58,6 +58,7 @@ GET  /v1/events?after=…&limit=…        → Event[] across all sessions (live
 GET  /v1/status                        → daemon status: version, pid, uptime, data dir, pricing, ingest, hooks
 GET  /v1/pricing                       → the pricing table in force
 POST /v1/shutdown                      → 200 (bearer-token gated; `caprock down`)
+POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows
 GET  /healthz                          → {status:"ok", version}
 WS   /v1/live                          → first frame is {type:"hello", data:{server_time}}; a "session" frame carries {session, stats}
 ```
@@ -150,7 +151,20 @@ ALTER TABLE sessions ADD COLUMN worktree TEXT;
 CREATE TABLE throttle_observations (ts INTEGER, session_id TEXT, kind TEXT, payload TEXT);
 ```
 
-`throttle_observations` starts collecting data for the Phase-2+ limit forecast ([04-ui.md § Cost & Burn](04-ui.md#cost--burn)) — capture now, model later.
+`throttle_observations` records each `StopFailure` (rate_limit / overloaded / billing) — a post-hoc "a limit was hit" fact; the Cost screen shows the count per range.
+
+### Rate-limit snapshots DDL (migration 0005)
+
+```sql
+CREATE TABLE rate_limit_latest  (window TEXT PRIMARY KEY, ts INTEGER, session_id TEXT, used_percentage REAL, resets_at INTEGER);
+CREATE TABLE rate_limit_history (ts INTEGER, window TEXT, used_percentage REAL, resets_at INTEGER);
+```
+
+`rate_limit_latest` holds the current state per window (upserted); `rate_limit_history` is a throttled sample (≥30s apart) used to compute an honest "at current pace" forecast. Fed by the statusline (below).
+
+## Statusline
+
+`caprock statusline` is registered as Claude Code's `statusLine.command`. Claude Code pipes its status JSON on stdin (per assistant message, 300ms debounce); the command prints a compact one-line status to stdout (`model · ctx% · $cost · 5h N% resets HH:MM · 7d N%`) and, best-effort, forwards the `rate_limits` windows (`used_percentage` 0–100, `resets_at` unix seconds) to the daemon via `POST /v1/statusline`. Like the shim it is fire-and-forget and can never break the session: it prints from the stdin JSON **first**, then POSTs with a ≤300ms budget, drops silently if the daemon is down, and always exits 0. `rate_limits` is present only for Pro/Max subscribers (absent → the line still renders, no POST). The daemon's `/v1/stats/summary` returns `rate_limits` (current window state) with a `forecast` string only when the measured usage slope is rising and would reach the limit before the window resets — otherwise the fact alone, never a guess.
 
 ### Phase 2 DDL additions
 

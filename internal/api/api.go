@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -122,6 +123,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/agents/{id}/signal", s.handleAgentSignal)
 	m.HandleFunc("GET /v1/agents/{id}/term", s.ws.serveTerm(s))
 	m.HandleFunc("POST /v1/shutdown", s.handleShutdown)
+	m.HandleFunc("POST /v1/statusline", s.handleStatusline)
 	m.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": d.Version})
 	})
@@ -348,10 +350,27 @@ func (s *Server) rangeFrom(rng string) (int64, string) {
 // SummaryResponse extends the store summary with burn rate and savings.
 type SummaryResponse struct {
 	store.Summary
-	Savings   cost.Savings `json:"savings"`
-	Burn      Burn         `json:"burn"`
-	Pricing   string       `json:"pricing_version"`
-	Throttles int64        `json:"throttles"` // rate-limit/overloaded events in range (honest signal, not a forecast)
+	Savings    cost.Savings `json:"savings"`
+	Burn       Burn         `json:"burn"`
+	Pricing    string       `json:"pricing_version"`
+	Throttles  int64        `json:"throttles"`             // rate-limit/overloaded events in range (honest signal, not a forecast)
+	RateLimits *RateLimits  `json:"rate_limits,omitempty"` // live window state from Claude Code's statusline (Pro/Max only); nil when unknown
+}
+
+// RateLimits is the current plan-limit window state (from the statusline feed).
+type RateLimits struct {
+	FiveHour *RateWindow `json:"five_hour,omitempty"`
+	SevenDay *RateWindow `json:"seven_day,omitempty"`
+}
+
+// RateWindow is one window's measured state plus an optional honest forecast.
+type RateWindow struct {
+	UsedPercentage float64 `json:"used_percentage"` // 0..100, measured
+	ResetsAt       int64   `json:"resets_at"`       // unix seconds, from Claude Code
+	// Forecast is a conditional "~Nh to limit at current pace" — present only when
+	// the measured slope is rising and exhaustion is projected before the reset.
+	// nil ⇒ show only the measured fact (no guess).
+	Forecast string `json:"forecast,omitempty"`
 }
 
 // Burn is the recent spend rate ("$/hr equivalent, tokens/min") over a short window.
@@ -392,7 +411,60 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	if n, err := store.CountThrottles(ctx, s.d.Store.DB(), from); err == nil {
 		resp.Throttles = n
 	}
+	// Live rate-limit windows (not range-scoped — this is current state).
+	resp.RateLimits = s.rateLimits(ctx)
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// rateLimits builds the current plan-limit window state from the latest snapshots,
+// attaching an honest "at current pace" forecast only when the measured slope
+// supports it. Returns nil when no windows are known (non-Pro/Max, or no data yet).
+func (s *Server) rateLimits(ctx context.Context) *RateLimits {
+	q := s.d.Store.DB()
+	var out RateLimits
+	any := false
+	for _, window := range []string{"five_hour", "seven_day"} {
+		snap, ok, err := store.LatestRateLimit(ctx, q, window)
+		if err != nil || !ok {
+			continue
+		}
+		rw := &RateWindow{UsedPercentage: snap.UsedPercentage, ResetsAt: snap.ResetsAt}
+		rw.Forecast = s.paceForecast(ctx, window, snap)
+		if window == "five_hour" {
+			out.FiveHour = rw
+		} else {
+			out.SevenDay = rw
+		}
+		any = true
+	}
+	if !any {
+		return nil
+	}
+	return &out
+}
+
+// paceForecast returns "~Nh to limit at current pace" only when the observed
+// usage slope is rising and exhaustion is projected before the window resets;
+// otherwise "" (show only the measured fact). No invented numbers: every input is
+// measured and the projection is explicitly pace-conditional.
+func (s *Server) paceForecast(ctx context.Context, window string, snap store.RateLimitSnapshot) string {
+	if snap.UsedPercentage >= 100 {
+		return ""
+	}
+	pctPerHour, ok, err := store.RateLimitPace(ctx, s.d.Store.DB(), window, snap.ResetsAt)
+	if err != nil || !ok || pctPerHour <= 0 {
+		return ""
+	}
+	hoursToLimit := (100 - snap.UsedPercentage) / pctPerHour
+	// Only forecast if the limit would be hit before the window resets.
+	resetIn := time.Until(time.Unix(snap.ResetsAt, 0))
+	if resetIn <= 0 || hoursToLimit >= resetIn.Hours() {
+		return "" // resets before the limit at current pace — no warning
+	}
+	if hoursToLimit < 1 {
+		return fmt.Sprintf("~%dm to limit at current pace", int(hoursToLimit*60))
+	}
+	return fmt.Sprintf("~%.1fh to limit at current pace", hoursToLimit)
 }
 
 func (s *Server) handleDaily(w http.ResponseWriter, r *http.Request) {
@@ -490,6 +562,42 @@ func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 	if s.d.Shutdown != nil {
 		go s.d.Shutdown()
 	}
+}
+
+// handleStatusline records the rate-limit windows the `caprock statusline` command
+// forwards from Claude Code's status JSON. Bearer-gated, 204 on success. The body
+// carries only rate-limit numbers + session id (no prompts, no cwd/repo).
+func (s *Server) handleStatusline(w http.ResponseWriter, r *http.Request) {
+	if s.d.Token == "" || r.Header.Get("Authorization") != "Bearer "+s.d.Token {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var body struct {
+		SessionID string `json:"session_id"`
+		FiveHour  *struct {
+			UsedPercentage float64 `json:"used_percentage"`
+			ResetsAt       int64   `json:"resets_at"`
+		} `json:"five_hour"`
+		SevenDay *struct {
+			UsedPercentage float64 `json:"used_percentage"`
+			ResetsAt       int64   `json:"resets_at"`
+		} `json:"seven_day"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	now := s.d.Now().UnixMilli()
+	ctx := r.Context()
+	if body.FiveHour != nil {
+		_ = store.RecordRateLimit(ctx, s.d.Store.DB(), store.RateLimitSnapshot{
+			Window: "five_hour", Ts: now, UsedPercentage: body.FiveHour.UsedPercentage, ResetsAt: body.FiveHour.ResetsAt}, body.SessionID)
+	}
+	if body.SevenDay != nil {
+		_ = store.RecordRateLimit(ctx, s.d.Store.DB(), store.RateLimitSnapshot{
+			Window: "seven_day", Ts: now, UsedPercentage: body.SevenDay.UsedPercentage, ResetsAt: body.SevenDay.ResetsAt}, body.SessionID)
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // --- Phase 2: tasks ---

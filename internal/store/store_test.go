@@ -40,7 +40,7 @@ func TestMigrateFromEmptyAndIdempotent(t *testing.T) {
 	if err := s.migrate(ctx); err != nil {
 		t.Fatalf("second migrate: %v", err)
 	}
-	for _, tbl := range []string{"events", "sessions", "session_stats", "daily_stats", "meta", "session_files", "transcript_offsets", "throttle_observations"} {
+	for _, tbl := range []string{"events", "sessions", "session_stats", "daily_stats", "meta", "session_files", "transcript_offsets", "throttle_observations", "rate_limit_latest", "rate_limit_history"} {
 		var n int
 		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, tbl).Scan(&n); err != nil || n != 1 {
 			t.Fatalf("table %s missing (err=%v)", tbl, err)
@@ -338,5 +338,45 @@ func TestPruneEventsBefore(t *testing.T) {
 	}
 	if n, _ := CountEvents(ctx, s.db); n != 1 {
 		t.Fatalf("remaining: %d", n)
+	}
+}
+
+func TestRateLimitSnapshotsAndPace(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	const reset = int64(1_900_000_000)
+
+	// One snapshot: latest is set, but no pace yet (needs ≥2 same-window samples).
+	base := int64(1_000_000)
+	_ = RecordRateLimit(ctx, s.db, RateLimitSnapshot{Window: "five_hour", Ts: base, UsedPercentage: 20, ResetsAt: reset}, "s1")
+	got, ok, err := LatestRateLimit(ctx, s.db, "five_hour")
+	if err != nil || !ok || got.UsedPercentage != 20 || got.ResetsAt != reset {
+		t.Fatalf("latest: %+v ok=%v err=%v", got, ok, err)
+	}
+	if _, ok, _ := RateLimitPace(ctx, s.db, "five_hour", reset); ok {
+		t.Fatal("pace reported from a single sample")
+	}
+
+	// A second, later, higher sample (>60s apart, rising) → honest positive slope.
+	_ = RecordRateLimit(ctx, s.db, RateLimitSnapshot{Window: "five_hour", Ts: base + 120_000, UsedPercentage: 24, ResetsAt: reset}, "s1")
+	pace, ok, err := RateLimitPace(ctx, s.db, "five_hour", reset)
+	if err != nil || !ok {
+		t.Fatalf("pace: ok=%v err=%v", ok, err)
+	}
+	// +4 points over 120s = 4 / (120/3600) h = 120 pct/hour.
+	if pace < 119 || pace > 121 {
+		t.Fatalf("pace = %v pct/hour, want ~120", pace)
+	}
+
+	// A window with a FLAT slope must not produce a pace (no false forecast).
+	_ = RecordRateLimit(ctx, s.db, RateLimitSnapshot{Window: "seven_day", Ts: base, UsedPercentage: 50, ResetsAt: reset}, "s1")
+	_ = RecordRateLimit(ctx, s.db, RateLimitSnapshot{Window: "seven_day", Ts: base + 120_000, UsedPercentage: 50, ResetsAt: reset}, "s1")
+	if _, ok, _ := RateLimitPace(ctx, s.db, "seven_day", reset); ok {
+		t.Fatal("pace reported for a flat (non-rising) usage window")
+	}
+
+	// Samples across a reset boundary (different resets_at) do not form a slope.
+	if _, ok, _ := RateLimitPace(ctx, s.db, "five_hour", reset+1); ok {
+		t.Fatal("pace computed across a reset boundary")
 	}
 }

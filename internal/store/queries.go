@@ -705,6 +705,102 @@ func CountThrottles(ctx context.Context, q Querier, sinceMs int64) (int64, error
 	return n, err
 }
 
+// RateLimitSnapshot is one window's rate-limit state (from Claude Code's
+// statusline `rate_limits`).
+type RateLimitSnapshot struct {
+	Window         string  `json:"window"`
+	Ts             int64   `json:"ts"` // unix ms received
+	UsedPercentage float64 `json:"used_percentage"`
+	ResetsAt       int64   `json:"resets_at"` // unix seconds
+}
+
+// rateLimitHistoryMinIntervalMs throttles history inserts: statusline fires per
+// message, but the slope only needs a sample every so often. We append a history
+// row at most this often per window (the latest-state row is always upserted).
+const rateLimitHistoryMinIntervalMs = 30_000
+
+// RecordRateLimit upserts the latest state for a window and, throttled, appends a
+// history row for the "at current pace" slope. The latest row is always current;
+// history rows are sampled (≥30s apart) to avoid write amplification.
+func RecordRateLimit(ctx context.Context, q Querier, s RateLimitSnapshot, sessionID string) error {
+	if _, err := q.ExecContext(ctx, `
+		INSERT INTO rate_limit_latest(window, ts, session_id, used_percentage, resets_at)
+		VALUES(?, ?, ?, ?, ?)
+		ON CONFLICT(window) DO UPDATE SET
+			ts = excluded.ts, session_id = excluded.session_id,
+			used_percentage = excluded.used_percentage, resets_at = excluded.resets_at`,
+		s.Window, s.Ts, sessionID, s.UsedPercentage, s.ResetsAt); err != nil {
+		return err
+	}
+	// History insert, throttled: only when the newest history row for this window
+	// is older than the min interval (or none exists).
+	var lastTs sql.NullInt64
+	_ = q.QueryRowContext(ctx, `SELECT MAX(ts) FROM rate_limit_history WHERE window = ?`, s.Window).Scan(&lastTs)
+	if !lastTs.Valid || s.Ts-lastTs.Int64 >= rateLimitHistoryMinIntervalMs {
+		if _, err := q.ExecContext(ctx, `
+			INSERT INTO rate_limit_history(ts, window, used_percentage, resets_at) VALUES(?, ?, ?, ?)`,
+			s.Ts, s.Window, s.UsedPercentage, s.ResetsAt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// LatestRateLimit returns the current state for a window, or ok=false when none.
+func LatestRateLimit(ctx context.Context, q Querier, window string) (RateLimitSnapshot, bool, error) {
+	var s RateLimitSnapshot
+	err := q.QueryRowContext(ctx, `
+		SELECT window, ts, used_percentage, resets_at FROM rate_limit_latest WHERE window = ?`, window).
+		Scan(&s.Window, &s.Ts, &s.UsedPercentage, &s.ResetsAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return RateLimitSnapshot{}, false, nil
+	}
+	if err != nil {
+		return RateLimitSnapshot{}, false, err
+	}
+	return s, true, nil
+}
+
+// RateLimitPace returns the observed usage slope (percentage points per hour) for
+// a window's CURRENT reset cycle. ok is false unless there are ≥2 same-window
+// (same resets_at) history samples spanning ≥60s with a strictly rising usage —
+// the honesty gate for the "at current pace" forecast. It never extrapolates
+// across a reset boundary and never reports a flat/declining slope.
+func RateLimitPace(ctx context.Context, q Querier, window string, resetsAt int64) (pctPerHour float64, ok bool, err error) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT ts, used_percentage FROM rate_limit_history
+		WHERE window = ? AND resets_at = ? ORDER BY ts ASC`, window, resetsAt)
+	if err != nil {
+		return 0, false, err
+	}
+	defer rows.Close()
+	var firstTs, lastTs int64
+	var firstPct, lastPct float64
+	n := 0
+	for rows.Next() {
+		var ts int64
+		var pct float64
+		if err := rows.Scan(&ts, &pct); err != nil {
+			return 0, false, err
+		}
+		if n == 0 {
+			firstTs, firstPct = ts, pct
+		}
+		lastTs, lastPct = ts, pct
+		n++
+	}
+	if err := rows.Err(); err != nil {
+		return 0, false, err
+	}
+	spanMs := lastTs - firstTs
+	deltaPct := lastPct - firstPct
+	if n < 2 || spanMs < 60_000 || deltaPct <= 0 {
+		return 0, false, nil // not enough data / not rising → no honest forecast
+	}
+	hours := float64(spanMs) / float64(3_600_000)
+	return deltaPct / hours, true, nil
+}
+
 // CountEvents returns the total number of stored events (for status/metrics).
 func CountEvents(ctx context.Context, q Querier) (int64, error) {
 	var n int64

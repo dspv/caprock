@@ -28,6 +28,7 @@ import (
 	"github.com/dspv/caprock/internal/daemon"
 	"github.com/dspv/caprock/internal/hooks"
 	"github.com/dspv/caprock/internal/shim"
+	"github.com/dspv/caprock/internal/statusline"
 	"github.com/dspv/caprock/internal/version"
 )
 
@@ -47,7 +48,7 @@ func newRoot() *cobra.Command {
 		SilenceErrors: true,
 		Version:       version.Version,
 	}
-	root.AddCommand(upCmd(), downCmd(), statusCmd(), tasksCmd(), hooksCmd(), hookCmd(), versionCmd())
+	root.AddCommand(upCmd(), downCmd(), statusCmd(), tasksCmd(), hooksCmd(), hookCmd(), statuslineCmd(), versionCmd())
 	return root
 }
 
@@ -431,6 +432,19 @@ func hookCmd() *cobra.Command {
 		Short:  "Internal: hook shim (reads a Claude Code hook payload on stdin)",
 		Run: func(cmd *cobra.Command, _ []string) {
 			shim.Run(cmd.InOrStdin(), cmd.OutOrStdout())
+		},
+	}
+}
+
+// statuslineCmd is Claude Code's `statusLine.command`: it reads the status JSON on
+// stdin, prints a one-line status, and best-effort forwards rate-limit windows to
+// the daemon. Register in settings.json as `statusLine: {command: "caprock statusline"}`.
+func statuslineCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "statusline",
+		Short: "Status line for Claude Code (reads its status JSON on stdin, prints one line)",
+		Run: func(cmd *cobra.Command, _ []string) {
+			statusline.Run(cmd.InOrStdin(), cmd.OutOrStdout())
 		},
 	}
 }

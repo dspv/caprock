@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api, type DailyStat } from '@/lib/api'
+import { api, type DailyStat, type RateWindow } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
 import { Empty, Panel, Stat } from '@/components/ui'
@@ -77,12 +77,40 @@ export function CostScreen() {
           </div>
         )}
       </Panel>
+      {s?.rate_limits && (
+        <Panel title="Plan limits">
+          <div className="flex flex-col gap-2">
+            {s.rate_limits.five_hour && <RateLimitRow label="5-hour window" w={s.rate_limits.five_hour} />}
+            {s.rate_limits.seven_day && <RateLimitRow label="7-day window" w={s.rate_limits.seven_day} />}
+          </div>
+          <div className="mt-2 text-[11px] text-fg-faint">
+            Live from Claude Code's status line (Pro/Max). The percentage is your usage of the window; a
+            forecast is shown only when your measured pace would reach the limit before the window resets.
+          </div>
+        </Panel>
+      )}
       <div className="text-[11px] text-fg-faint">
         {s && s.throttles > 0
           ? `${s.throttles} rate-limit / overloaded event${s.throttles === 1 ? "" : "s"} observed in this range (from Claude Code's StopFailure hook).`
           : "No rate-limit events observed in this range."}{" "}
-        A limit forecast will be modeled once enough throttle data accumulates — until then Caprock reports the count, not a guess. Everything here is measured.
+        Everything here is measured — no invented numbers.
       </div>
+    </div>
+  )
+}
+
+function RateLimitRow({ label, w }: { label: string; w: RateWindow }) {
+  const pct = Math.round(w.used_percentage)
+  const color = pct > 85 ? 'text-danger' : pct >= 60 ? 'text-warn' : 'text-fg'
+  const resetsAt = w.resets_at ? new Date(w.resets_at * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null
+  return (
+    <div className="flex items-baseline justify-between gap-3 text-sm">
+      <span className="text-fg-muted">{label}</span>
+      <span className="flex items-baseline gap-3">
+        <span className={`font-mono tabular-nums ${color}`}>{pct}%</span>
+        {resetsAt && <span className="text-fg-faint">resets {resetsAt}</span>}
+        {w.forecast && <span className="text-warn">{w.forecast}</span>}
+      </span>
     </div>
   )
 }
