@@ -87,10 +87,11 @@ brews:
 
 release:
   # Not a draft: goreleaser publishes the release directly, which is also what
-  # lets it push the Homebrew formula (skip_upload:auto skips on draft). The tag
-  # only builds after CI is green on that commit (release.yml needs ci.yml), and
-  # the binaries are covered by the 3-OS smoke tests, so a draft review gate adds
-  # little. Cutting a `-rc`/`-beta` tag still marks the release a prerelease
-  # (prerelease:auto) and skips the formula push.
+  # lets it push the Homebrew formula (skip_upload:auto skips on draft). release.yml
+  # gates goreleaser behind a `verify` job that re-runs `make check` + the Windows
+  # cross-build on the exact tagged commit, so a tag on a red commit never ships.
+  # (The full 3-OS matrix runs on master before the tag is cut.) Cutting a
+  # `-rc`/`-beta` tag still marks the release a prerelease (prerelease:auto) and
+  # skips the formula push.
   draft: false
   prerelease: auto

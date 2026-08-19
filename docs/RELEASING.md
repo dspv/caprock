@@ -31,8 +31,10 @@ any future release:
    git tag v0.1.0 && git push --tags
    ```
 
-   `.github/workflows/release.yml` runs `goreleaser release --clean` (only after
-   `ci.yml` is green on the tagged commit), producing:
+   `.github/workflows/release.yml` gates `goreleaser release --clean` behind a
+   `verify` job that re-runs `make check` + the Windows cross-build on the exact
+   tagged commit (the full 3-OS matrix already ran on master before you tagged);
+   a tag on a red commit never publishes. On success it produces:
    - `caprock` and `caprock-hook` for darwin/linux/windows × amd64/arm64,
    - a macOS **universal** binary,
    - a Homebrew formula pushed to `dspv/homebrew-tap` — **automatically**, because

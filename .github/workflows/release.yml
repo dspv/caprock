@@ -8,7 +8,36 @@ permissions:
   contents: write
 
 jobs:
+  # Gate: re-run the full check suite on the exact tagged commit before anything
+  # is built or published. A tag push does not otherwise re-run ci.yml (it fires
+  # on branches/PRs, not tags), so without this a tag on a red commit would ship
+  # straight to every `brew install`. goreleaser runs only if this passes.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci
+        working-directory: ui
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+      - name: make check (docs + lint + tests + smoke)
+        run: make check
+      - name: windows cross-build
+        run: GOOS=windows go build ./...
+
   goreleaser:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
