@@ -6,16 +6,22 @@ yet — these entries describe what will ship at each tag.
 
 ## [Unreleased]
 
-Everything below is built and green on the macOS / Linux / Windows CI matrix, on
-`master`. The three phase groups are separated for the eventual v0.1.0 / v0.2.0 /
-v0.3.0 tags.
+Phases 1 (Control) and 2 (Orchestrate) below are built and green on the
+macOS / Linux / Windows CI matrix, on `master`, and ship at the v0.2.0 / v0.3.0
+tags. Phase 2's orchestration loop has been driven end to end by a real `claude`
+orchestrator (unattended, with hooks) — see `.ai/14-build-status.md`.
 
-### Phase 0 — Observe (→ v0.1.0)
+## [0.1.0] - 2026-08-19
+
+First tagged release — **Phase 0, Observe**: watch every `claude` session on the
+machine, live, with token burn and cost, entirely on-device.
+
+### Phase 0 — Observe
 
 - Single static Go binary: a loopback daemon (`127.0.0.1:4173`) that serves the
   REST API, a `/v1/live` WebSocket, the hook receiver, and the embedded dashboard.
 - **Hook plane** — a tiny `caprock-hook` shim registered in `~/.claude/settings.json`
-  (non-destructive, backed up, cleanly removable) forwards the 7 core Claude Code
+  (non-destructive, backed up, cleanly removable) forwards the core Claude Code
   hook events; a broken or absent daemon never affects the user's session.
 - **Transcript plane** — tails `~/.claude/projects/**`, schema-versioned parser,
   tolerant of malformed lines and unknown fields; usage counted once per response.
