@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/dspv/caprock/internal/config"
+	"github.com/spf13/cobra"
 )
 
 // The root command must wire every documented subcommand, including the hidden
@@ -18,10 +19,70 @@ func TestRootHasAllSubcommands(t *testing.T) {
 	for _, c := range root.Commands() {
 		have[c.Name()] = true
 	}
-	for _, want := range []string{"up", "down", "status", "tasks", "hooks", "hook", "version"} {
+	for _, want := range []string{"up", "down", "status", "tasks", "hooks", "hook", "statusline", "version"} {
 		if !have[want] {
 			t.Fatalf("root is missing subcommand %q (have %v)", want, have)
 		}
+	}
+	// statusline carries install/uninstall subcommands.
+	var sl *cobra.Command
+	for _, c := range root.Commands() {
+		if c.Name() == "statusline" {
+			sl = c
+		}
+	}
+	if sl == nil {
+		t.Fatal("no statusline command")
+	}
+	slSub := map[string]bool{}
+	for _, c := range sl.Commands() {
+		slSub[c.Name()] = true
+	}
+	if !slSub["install"] || !slSub["uninstall"] {
+		t.Fatalf("statusline missing install/uninstall (have %v)", slSub)
+	}
+}
+
+// lastLogError extracts the actionable cause from the daemon log on a failed
+// start — most importantly the port-in-use footgun — or "" when the log has
+// nothing useful. This keeps `caprock up` from showing a bare timeout.
+func TestLastLogError(t *testing.T) {
+	dir := t.TempDir()
+	write := func(s string) string {
+		p := filepath.Join(dir, "caprock.log")
+		if err := os.WriteFile(p, []byte(s), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	// Port in use → friendly, actionable message.
+	got := lastLogError(write("time=... msg=\"listen tcp 127.0.0.1:4173: bind: address already in use\"\n"))
+	if !strings.Contains(got, "already in use") || !strings.Contains(got, "caprock status") {
+		t.Fatalf("port-in-use not surfaced: %q", got)
+	}
+	// A generic error line is returned verbatim.
+	if got := lastLogError(write("line one\nlevel=error something broke\n")); !strings.Contains(got, "something broke") {
+		t.Fatalf("error line not returned: %q", got)
+	}
+	// A panic is surfaced.
+	if got := lastLogError(write("ok\npanic: boom\n")); !strings.Contains(got, "panic") {
+		t.Fatalf("panic not surfaced: %q", got)
+	}
+	// A clean log yields "".
+	if got := lastLogError(write("time=... msg=\"listening\"\ntime=... msg=\"ready\"\n")); got != "" {
+		t.Fatalf("clean log should yield empty, got %q", got)
+	}
+	// A missing file yields "" (best-effort).
+	if got := lastLogError(filepath.Join(dir, "nope.log")); got != "" {
+		t.Fatalf("missing log should yield empty, got %q", got)
+	}
+}
+
+// statuslineCommandStr is `<self> statusline`.
+func TestStatuslineCommandStr(t *testing.T) {
+	got := statuslineCommandStr()
+	if !strings.HasSuffix(got, " statusline") {
+		t.Fatalf("statusline command should end with ' statusline': %q", got)
 	}
 }
 
