@@ -56,8 +56,7 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   - Decided by: Dima, at Phase 0 launch.
 - **`OQ-05` — Brand accent hue** (single hue, interactive elements only).
   - Decided by: T7.
-- **`OQ-06` — Stop-decision output shape.** Which forms does current Claude Code accept: top-level `{"decision","reason"}` (spec) or `hookSpecificOutput` (current docs)?
-  - Decided by: T19, verified against the hooks reference at implementation time.
+- ~~`OQ-06` — Stop-decision output shape.~~ Resolved 2026-08-19. The canonical, and only documented, shape for Claude Code 2.1.x is the nested `{"hookSpecificOutput":{"hookEventName":"Stop","decision":"block","reason":…}}` on exit 0; the spec's top-level `{"decision","reason"}` is undocumented. `board.StopDecision` emits the nested form, and the live unattended run (2026-08-19) confirmed Claude 2.1.235 continues on it — the orchestrator looped through its Stop hook and drove the task to `done`.
 - ~~`OQ-07` — Context-window sizes per model~~ Resolved 2026-08-18 (Dima): kept in `pricing.json` (`context_window` per model), updated by hand alongside prices with a date — consistent with the local-first "no outbound calls from the daemon" rule.
 - ~~`OQ-08` — Consent UX for the hook install on `caprock up`.~~ Decided 2026-08-18 in [ADR-019](08-decisions.md#adr-019--caprock-up-detaches-by-default-hook-install-consent-is-a-tty-prompt-or---yes-sessions-end-after-12h-of-silence): TTY prompt when events are missing, `--yes` for scripts, non-TTY skips with a hint.
 - **`OQ-09` — ConPTY on the CI Windows runner.** Does `windows-latest` expose ConPTY for the spike, or is a self-hosted runner needed?
