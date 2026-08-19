@@ -5,7 +5,7 @@
 [![docs](https://github.com/dspv/caprock/actions/workflows/docs.yml/badge.svg)](https://github.com/dspv/caprock/actions/workflows/docs.yml)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-> **Status: Phase 2 — Orchestrate, complete (2026-08-18).** All three phases are built and green on the macOS/Linux/Windows CI matrix: Observe, Control, and now Orchestrate — a tasks board on disk, mailboxes, the Stop-loop autonomy engine, an orchestrator agent that spawns and coordinates workers, verification-before-done, and approvals. Remaining before a v0.1.0 tag: one full unattended run driven by a real orchestrator with hooks installed. Progress is tracked honestly in [`.ai/14-build-status.md`](.ai/14-build-status.md).
+> **Status: v0.1.0 tagged (Observe); all three phases built and green (2026-08-19).** Observe, Control, and Orchestrate are complete on the macOS/Linux/Windows CI matrix — a tasks board on disk, mailboxes, the Stop-loop autonomy engine, an orchestrator agent that spawns and coordinates workers, verification-before-done, and approvals. The Phase 2 tag gate passed: a real orchestrator drove a task to green verification unattended, with hooks. v0.1.0 ships Observe; Control and Orchestrate ship at v0.2.0 / v0.3.0. Progress is tracked honestly in [`.ai/14-build-status.md`](.ai/14-build-status.md).
 
 ---
 
@@ -66,19 +66,21 @@ Developing with an AI agent? Start at [`CLAUDE.md`](CLAUDE.md). Toolchain, CI, a
 
 ## Install
 
-Not tagged yet. Build from source (Go 1.26, Node 22):
+Homebrew (macOS / Linux):
+
+```bash
+brew install --cask dspv/tap/caprock
+caprock up                             # http://127.0.0.1:4173
+```
+
+Or grab `caprock` + `caprock-hook` for your OS/arch from
+[GitHub Releases](https://github.com/dspv/caprock/releases). Or build from
+source (Go 1.26, Node 22):
 
 ```bash
 git clone git@github.com:dspv/caprock.git && cd caprock
 make ui && make build      # → ./bin/caprock, ./bin/caprock-hook
 ./bin/caprock up           # http://127.0.0.1:4173
-```
-
-Once tagged, install via Homebrew or a release binary:
-
-```bash
-brew install dspv/tap/caprock          # macOS / Linux (universal binary)
-# or download caprock + caprock-hook for your OS/arch from GitHub Releases
 ```
 
 Cross-platform binaries (darwin/linux/windows × amd64/arm64, plus a macOS
