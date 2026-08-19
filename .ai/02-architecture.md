@@ -120,9 +120,11 @@ Implementation notes (`internal/loop`): "normalized-similar" = same tool + `tool
 ## Repository layout
 
 ```
-cmd/caprock/          # daemon + CLI (up/down/status/hooks/tasks …, hidden `hook` fallback shim)
+cmd/caprock/          # daemon + CLI (up/down/status/hooks/tasks/statusline/version …, hidden `hook` fallback shim)
 cmd/caprock-hook/     # the shim binary (thin main over internal/shim)
 internal/shim/        # shim logic: stdin → POST, silent, Stop request-response
+internal/statusline/  # `caprock statusline`: Claude Code status JSON → one-line render + best-effort rate-limit POST
+internal/version/     # the version string (stamped via -ldflags at build)
 internal/config/      # data dir, config.json, runtime.json, atomic writes
 internal/event/       # the normalized Event type
 internal/store/       # sqlite (modernc), migrations, all SQL

@@ -69,7 +69,7 @@ SQLite via `modernc.org/sqlite` (pure Go — keeps CGO off and cross-compile tri
 
 #### T3 — hookd + shim + installer (2–3 evenings)
 
-HTTP receiver, bearer token, `caprock-hook` binary, settings.json merge/uninstall with backup. *AC: integration test posts fixture payloads for all 7 events → correct rows in `events`; installer test on a fixture settings.json proves non-destructive merge and clean revert; shim exits 0 in <1s even with daemon down.*
+HTTP receiver, bearer token, `caprock-hook` binary, settings.json merge/uninstall with backup. *AC: integration test posts fixture payloads for all 8 events → correct rows in `events`; installer test on a fixture settings.json proves non-destructive merge and clean revert; shim exits 0 in <1s even with daemon down.*
 
 #### T4 — ingest (2–3 evenings)
 

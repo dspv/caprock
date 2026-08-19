@@ -6,7 +6,15 @@ Versions map to the roadmap phases in `.ai/09-execution-plan.md`: **v0.1.0** = O
 
 ## [Unreleased]
 
-Nothing yet. Phase 3 (Delight) has no plan by design.
+- **Plan-limit windows** — `caprock statusline` (register as Claude Code's
+  `statusLine.command`) reads Claude Code's `rate_limits` and shows your 5-hour /
+  7-day window usage and reset time on the Cost screen, with an honest "at current
+  pace" forecast shown only when your measured usage would reach the limit before
+  the window resets. Pro/Max only; absent otherwise. The command also prints a
+  compact one-line status (model · context% · cost · limits) and can never break
+  or slow the session.
+
+Phase 3 (Delight) has no plan by design.
 
 ## [0.3.0] - 2026-08-19
 

@@ -16,7 +16,7 @@ brew install --cask dspv/tap/caprock
 caprock up          # → http://127.0.0.1:4173
 ```
 
-> **Status:** shipped and stable. v0.1.0 (Observe), v0.2.0 (Control), and v0.3.0 (Orchestrate) are released, green on the macOS / Linux / Windows CI matrix, with 110 tests. See the honest per-track state in [`.ai/14-build-status.md`](.ai/14-build-status.md).
+> **Status:** shipped and stable. v0.1.0 (Observe), v0.2.0 (Control), and v0.3.0 (Orchestrate) are released, green on the macOS / Linux / Windows CI matrix, with 116 tests. See the honest per-track state in [`.ai/14-build-status.md`](.ai/14-build-status.md).
 
 ---
 
@@ -43,17 +43,19 @@ caprock down                           # stops the daemon; keeps every byte of y
 
 On first run, `caprock up` offers to register a tiny hook shim in `~/.claude/settings.json` — non-destructive, backed up first, and cleanly removable. Say yes for live activity; if you say no, Caprock still tails your transcripts (a few seconds delayed). Either way, a broken or absent daemon can never break your Claude session.
 
+Optional: set `statusLine.command` to `caprock statusline` in your Claude Code settings to get a compact status in your terminal (model · context · cost · plan-limit windows) and feed plan-limit usage to the Cost screen (Pro/Max plans).
+
 ## What you see
 
 A dense, fast dashboard — five screens, every pixel earning its place:
 
-| Screen         | What it shows                                                                 |
-| -------------- | ----------------------------------------------------------------------------- |
-| Now            | Every live session: human-readable activity, health, plan progress, burn      |
-| Session Detail | Event timeline, live `git diff` of the session's work, an in-browser terminal |
-| Cost & Burn    | $/hr right now, today's totals, model mix, cache hit-rate, per-project        |
-| History        | Lifetime stats: cost per project / day / model, tool distribution             |
-| Tasks          | A kanban over `tasks/*.md`: the Stop-loop autonomy engine and approvals queue |
+| Screen         | What it shows                                                                              |
+| -------------- | ------------------------------------------------------------------------------------------ |
+| Now            | Every live session: human-readable activity, health, plan progress, burn                   |
+| Session Detail | Event timeline, live `git diff` of the session's work, an in-browser terminal              |
+| Cost & Burn    | $/hr right now, today's totals, model mix, cache hit-rate, per-project, plan-limit windows |
+| History        | Lifetime stats: cost per project / day / model, tool distribution                          |
+| Tasks          | A kanban over `tasks/*.md`: the Stop-loop autonomy engine and approvals queue              |
 
 Costs are computed from a dated, sourced pricing table — never invented. On a flat subscription they're an equivalent, not a charge.
 

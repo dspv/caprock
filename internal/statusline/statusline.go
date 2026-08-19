@@ -181,7 +181,7 @@ func debugf(format string, args ...any) {
 	if err != nil {
 		return
 	}
-	f, err := os.OpenFile(dir+"/hook-debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(config.HookDebugLogPath(dir), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return
 	}

@@ -6,20 +6,20 @@ Open risks, unverified assumptions, and unanswered questions. **Read before expa
 
 Assumptions the plan rests on that have not been verified. Each names what would falsify it.
 
-| ID              | Assumption                                                         | Falsified by                                                        |
-| --------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------- |
-| `ASSUMPTION-01` | The 8 core hook events stay stable across Claude Code releases     | A release renaming/removing one of them (T3 tests break)            |
-| `ASSUMPTION-02` | Users accept a user-level hook in `~/.claude/settings.json`        | Launch feedback asking for per-project-only registration            |
-| `ASSUMPTION-03` | K=5 in T=3 min catches real loops without noisy false positives    | Fixture replays or dogfooding showing >1 false alert per session    |
-| `ASSUMPTION-04` | `aymanbagabas/go-pty` passes the Windows smoke test                | T0 spike red on `windows-latest`                                    |
-| `ASSUMPTION-05` | Phase 0 fits ~15–20 evenings                                       | Build-status log showing T10 not green after 30 evenings            |
-| `ASSUMPTION-06` | Munder Difflin numbers are order-of-magnitude right                | Re-verification before any public quote showing otherwise           |
-| `ASSUMPTION-07` | Transcript `usage` per assistant turn is the billing-relevant unit | A model/turn whose transcript usage disagrees with the Console bill |
-| `ASSUMPTION-08` | Hooks fire for sessions started by other tools (IDE, SDK) too      | A session visible in transcripts but never in `events` from hooks   |
+| ID                  | Assumption                                                                               | Falsified by                                                        |
+| ------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `ASSUMPTION-01`     | The 8 core hook events stay stable across Claude Code releases                           | A release renaming/removing one of them (T3 tests break)            |
+| `ASSUMPTION-02`     | Users accept a user-level hook in `~/.claude/settings.json`                              | Launch feedback asking for per-project-only registration            |
+| `ASSUMPTION-03`     | K=5 in T=3 min catches real loops without noisy false positives                          | Fixture replays or dogfooding showing >1 false alert per session    |
+| ~~`ASSUMPTION-04`~~ | Confirmed: `go-pty` green on `windows-latest` (T0 + full matrix, v0.1.0–v0.3.0)          | — (verified)                                                        |
+| ~~`ASSUMPTION-05`~~ | Superseded: all phases shipped; actual pace is in the build-status log, not the estimate | —                                                                   |
+| `ASSUMPTION-06`     | Munder Difflin numbers are order-of-magnitude right                                      | Re-verification before any public quote showing otherwise           |
+| `ASSUMPTION-07`     | Transcript `usage` per assistant turn is the billing-relevant unit                       | A model/turn whose transcript usage disagrees with the Console bill |
+| `ASSUMPTION-08`     | Hooks fire for sessions started by other tools (IDE, SDK) too                            | A session visible in transcripts but never in `events` from hooks   |
 
 The assumption most likely to mislead is `ASSUMPTION-03`: a detector that fires "sometimes" will look correct on the synthetic fixture and still be wrong on real traffic, because real loops vary their input slightly (paths, retries). The normalizer's similarity rule is what decides this, and only dogfooding tests it.
 
-Verified on 2026-08-18 and therefore *not* an assumption: a real Claude Code 2.1.221 transcript carries `message.usage` with input/output/cache-read/cache-write per assistant line, `sessionId`, `cwd`, `timestamp`, and `message.model` ([03-contracts.md § Transcript JSONL](03-contracts.md#transcript-jsonl-observed-shape)); the hooks reference lists the seven events we consume with the fields we read; native `type: "http"` hooks surface a transcript notice on connection failure ([ADR-009](08-decisions.md#adr-009--hook-transport-is-the-caprock-hook-shim-binary-not-claude-codes-native-http-hook-type)).
+Verified on 2026-08-18 and therefore *not* an assumption: a real Claude Code 2.1.221 transcript carries `message.usage` with input/output/cache-read/cache-write per assistant line, `sessionId`, `cwd`, `timestamp`, and `message.model` ([03-contracts.md § Transcript JSONL](03-contracts.md#transcript-jsonl-observed-shape)); the hooks reference lists the eight events we consume with the fields we read; native `type: "http"` hooks surface a transcript notice on connection failure ([ADR-009](08-decisions.md#adr-009--hook-transport-is-the-caprock-hook-shim-binary-not-claude-codes-native-http-hook-type)).
 
 ## Risks
 
@@ -29,8 +29,8 @@ Verified on 2026-08-18 and therefore *not* an assumption: a real Claude Code 2.1
 **`RISK-02` — Transcript format is not a public contract.**
 A schema change breaks token accounting without any error. Mitigation: schema-version the parser, golden fixtures for known shapes, degrade gracefully to hooks-only mode (activity keeps working, cost goes stale and says so).
 
-**`RISK-03` — Limit forecasting accuracy.**
-Anthropic doesn't expose limit state; a confident-looking wrong forecast is worse than none. Mitigation: label forecasts as estimates, learn from observed throttles (`throttle_observations`, Phase 1), and ship the forecast only after there is data — not in Phase 0.
+**`RISK-03` — Limit forecasting accuracy.** *Discharged 2026-08-19.*
+A confident-looking wrong forecast is worse than none. Mitigation shipped exactly as planned (OQ-03): the Cost screen shows the throttle count (a fact) and, from the `caprock statusline` rate-limit feed, the live window state; an "at current pace" forecast appears **only** when the measured slope is rising and would hit the limit before the window resets — otherwise the fact alone, never a guess. The absolute plan threshold is not emitted by Claude Code and is deliberately not shown.
 
 **`RISK-04` — Anthropic ships it themselves.**
 A first-party dashboard would erase the observe-only wedge. Mitigation: multi-agent orchestration + the verification layer are further from their core; move fast on Phase 0; the event model is designed so a first-party activity stream would become another source, not a replacement ([ADR-008](08-decisions.md#adr-008--hooks-are-the-source-of-truth-for-activity-single-normalized-event-stream)).
