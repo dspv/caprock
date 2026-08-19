@@ -235,3 +235,68 @@ func TestUninstallRecognisesSelfHookForm(t *testing.T) {
 		t.Fatalf("self-hook form not removed: removed=%v err=%v", removed, err)
 	}
 }
+
+func TestStatuslineInstallIsIdempotentAndNonDestructive(t *testing.T) {
+	dir := t.TempDir()
+	cmd := "/opt/homebrew/bin/caprock statusline"
+	// Start from a settings file with an unrelated key and existing hooks.
+	p := write(t, dir, `{"model":"opus","hooks":{"Stop":[{"hooks":[{"type":"command","command":"/x/caprock-hook"}]}]}}`)
+
+	// Nothing installed yet.
+	if ours, present, _ := StatuslineInstalled(p, cmd); ours || present {
+		t.Fatalf("statusline reported present before install: ours=%v present=%v", ours, present)
+	}
+	// Install.
+	if _, err := InstallStatusline(p, cmd); err != nil {
+		t.Fatal(err)
+	}
+	if ours, present, _ := StatuslineInstalled(p, cmd); !ours || !present {
+		t.Fatalf("statusline not ours after install: ours=%v present=%v", ours, present)
+	}
+	// Idempotent: second install changes nothing (empty backup).
+	if backup, err := InstallStatusline(p, cmd); err != nil || backup != "" {
+		t.Fatalf("re-install not a no-op: backup=%q err=%v", backup, err)
+	}
+	// The unrelated key and the hooks survived.
+	rb, _ := os.ReadFile(p)
+	root := mustParse(t, string(rb))
+	obj := root.(*Object)
+	if v, _ := obj.Get("model"); v != "opus" {
+		t.Fatalf("unrelated key clobbered: %v", v)
+	}
+	if _, ok := obj.Get("hooks"); !ok {
+		t.Fatal("hooks clobbered by statusline install")
+	}
+	// Uninstall removes only ours.
+	removed, err := UninstallStatusline(p, cmd)
+	if err != nil || !removed {
+		t.Fatalf("uninstall: removed=%v err=%v", removed, err)
+	}
+	if _, present, _ := StatuslineInstalled(p, cmd); present {
+		t.Fatal("statusline still present after uninstall")
+	}
+}
+
+func TestStatuslineDoesNotClobberUsersOwn(t *testing.T) {
+	dir := t.TempDir()
+	cmd := "/opt/homebrew/bin/caprock statusline"
+	p := write(t, dir, `{"statusLine":{"type":"command","command":"/usr/bin/my-prompt"}}`)
+	// Detected as present-but-not-ours.
+	ours, present, err := StatuslineInstalled(p, cmd)
+	if err != nil || ours || !present {
+		t.Fatalf("user statusLine misread: ours=%v present=%v err=%v", ours, present, err)
+	}
+	// Uninstall must NOT remove the user's own.
+	if removed, _ := UninstallStatusline(p, cmd); removed {
+		t.Fatal("uninstall removed the user's own statusLine")
+	}
+}
+
+func TestStatuslineRecognisesSelfForm(t *testing.T) {
+	if !isOurStatusline("/opt/homebrew/bin/caprock statusline", "/somewhere/else/caprock statusline") {
+		t.Fatal("self-form statusline not recognized by base name")
+	}
+	if isOurStatusline("/usr/bin/other-tool status", "x") {
+		t.Fatal("unrelated command matched as ours")
+	}
+}

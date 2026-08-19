@@ -71,6 +71,11 @@ change. Have an idea? Open an issue — that's how direction gets set.
 > `testdata/transcripts/` + a line in `.ai/14-build-status.md` — all in one
 > commit, `make check` green, `Closes #42`.
 
+## Code of Conduct
+
+By participating, you agree to uphold our
+[Code of Conduct](CODE_OF_CONDUCT.md) — be kind, be constructive.
+
 ## License
 
 By contributing, you agree your work ships under [Apache-2.0](LICENSE).

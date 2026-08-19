@@ -100,6 +100,11 @@ func upCmd() *cobra.Command {
 				} else if err := maybeInstallHooks(cmd, dir, yes); err != nil {
 					fmt.Fprintf(cmd.ErrOrStderr(), "warning: hooks not installed: %v\n", err)
 				}
+				// The statusLine feeds plan-limit windows (Pro/Max) to the Cost
+				// screen; offer it the same way as hooks. Non-fatal if declined.
+				if err := maybeInstallStatusline(cmd, yes); err != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "warning: statusline not installed: %v\n", err)
+				}
 			}
 
 			if !foreground {
@@ -176,7 +181,35 @@ func detach(cmd *cobra.Command, dir string, cfg config.Config, noOpen bool, hive
 		}
 		time.Sleep(150 * time.Millisecond)
 	}
+	// The child failed to come up. Surface the real cause from its log (the most
+	// common one is the port already being in use) instead of a bare timeout.
+	if cause := lastLogError(config.LogPath(dir)); cause != "" {
+		return fmt.Errorf("daemon did not start: %s\n(full log: %s)", cause, config.LogPath(dir))
+	}
 	return fmt.Errorf("daemon did not report ready within 10s; see %s", config.LogPath(dir))
+}
+
+// lastLogError returns the most recent error-ish line from the daemon log, made
+// friendly where we recognize it (a taken port is the usual first-run footgun),
+// or "" if nothing useful is there. Best-effort: any read error yields "".
+func lastLogError(logPath string) string {
+	b, err := os.ReadFile(logPath)
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(strings.TrimRight(string(b), "\n"), "\n")
+	// Scan from the end for the last line that looks like a failure.
+	for i := len(lines) - 1; i >= 0 && i >= len(lines)-40; i-- {
+		l := strings.TrimSpace(lines[i])
+		low := strings.ToLower(l)
+		if strings.Contains(low, "address already in use") || strings.Contains(low, "bind:") {
+			return "port 127.0.0.1 is already in use — another caprock may be running (try `caprock status`, or `caprock down`), or pass `--port <n>`"
+		}
+		if strings.Contains(low, "level=error") || strings.Contains(low, "level=fatal") || strings.Contains(low, "panic:") {
+			return l
+		}
+	}
+	return ""
 }
 
 // ensureShim copies caprock-hook from beside this executable into the data dir
@@ -247,6 +280,60 @@ func maybeInstallHooks(cmd *cobra.Command, dir string, yes bool) error {
 		fmt.Fprintf(cmd.OutOrStdout(), "hooks installed (backup: %s)\n", backup)
 	} else {
 		fmt.Fprintln(cmd.OutOrStdout(), "hooks installed")
+	}
+	return nil
+}
+
+// statuslineCommandStr is the command to register as Claude Code's
+// statusLine.command: this executable plus the `statusline` subcommand.
+func statuslineCommandStr() string {
+	self, err := os.Executable()
+	if err != nil {
+		return "caprock statusline"
+	}
+	return self + " statusline"
+}
+
+// maybeInstallStatusline offers to register `caprock statusline` as Claude Code's
+// statusLine command, which feeds plan-limit windows (Pro/Max) to the Cost
+// screen. Same consent contract as hooks: TTY prompt, or `--yes` for scripts. It
+// never clobbers a statusLine the user already set to something else.
+func maybeInstallStatusline(cmd *cobra.Command, yes bool) error {
+	sp, err := hooks.DefaultSettingsPath()
+	if err != nil {
+		return err
+	}
+	cmdStr := statuslineCommandStr()
+	ours, present, err := hooks.StatuslineInstalled(sp, cmdStr)
+	if err != nil {
+		return err
+	}
+	if ours {
+		return nil // already ours
+	}
+	if present {
+		// The user has their own statusLine — don't touch it, just hint.
+		if !yes {
+			fmt.Fprintln(cmd.OutOrStdout(), "You already have a statusLine set; leaving it. For Caprock's plan-limit view, add `caprock statusline` yourself, or run `caprock statusline install`.")
+		}
+		return nil
+	}
+	if !yes {
+		fmt.Fprintf(cmd.OutOrStdout(), "Caprock can also show your plan limits (5h/7d, Pro/Max) on the Cost screen via Claude Code's status line.\n")
+		fmt.Fprintf(cmd.OutOrStdout(), "It sets `statusLine.command` to `%s` in %s (backed up first). Skip if you use your own status line.\n", cmdStr, sp)
+		if !confirm(cmd, "Add it? [Y/n] ") {
+			fmt.Fprintln(cmd.OutOrStdout(), "Skipped. Run `caprock statusline install` later to enable plan limits.")
+			return nil
+		}
+	}
+	backup, err := hooks.InstallStatusline(sp, cmdStr)
+	if err != nil {
+		return err
+	}
+	if backup != "" {
+		fmt.Fprintf(cmd.OutOrStdout(), "statusline installed (backup: %s)\n", backup)
+	} else {
+		fmt.Fprintln(cmd.OutOrStdout(), "statusline installed")
 	}
 	return nil
 }
@@ -440,13 +527,51 @@ func hookCmd() *cobra.Command {
 // stdin, prints a one-line status, and best-effort forwards rate-limit windows to
 // the daemon. Register in settings.json as `statusLine: {command: "caprock statusline"}`.
 func statuslineCmd() *cobra.Command {
-	return &cobra.Command{
+	c := &cobra.Command{
 		Use:   "statusline",
 		Short: "Status line for Claude Code (reads its status JSON on stdin, prints one line)",
 		Run: func(cmd *cobra.Command, _ []string) {
 			statusline.Run(cmd.InOrStdin(), cmd.OutOrStdout())
 		},
 	}
+	c.AddCommand(
+		&cobra.Command{
+			Use:   "install",
+			Short: "Register `caprock statusline` as Claude Code's statusLine (enables plan limits)",
+			RunE: func(cmd *cobra.Command, _ []string) error {
+				sp, err := hooks.DefaultSettingsPath()
+				if err != nil {
+					return err
+				}
+				if ours, _, _ := hooks.StatuslineInstalled(sp, statuslineCommandStr()); ours {
+					fmt.Fprintln(cmd.OutOrStdout(), "statusline already installed")
+					return nil
+				}
+				return maybeInstallStatusline(cmd, true)
+			},
+		},
+		&cobra.Command{
+			Use:   "uninstall",
+			Short: "Remove Caprock's statusLine entry (leaves your own untouched)",
+			RunE: func(cmd *cobra.Command, _ []string) error {
+				sp, err := hooks.DefaultSettingsPath()
+				if err != nil {
+					return err
+				}
+				removed, err := hooks.UninstallStatusline(sp, statuslineCommandStr())
+				if err != nil {
+					return err
+				}
+				if removed {
+					fmt.Fprintln(cmd.OutOrStdout(), "statusline removed from "+sp)
+				} else {
+					fmt.Fprintln(cmd.OutOrStdout(), "nothing to remove")
+				}
+				return nil
+			},
+		},
+	)
+	return c
 }
 
 func tasksCmd() *cobra.Command {

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
-import { fmtDuration, fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
+import { fmtDuration, fmtPct, fmtTokens, fmtUSD, fmtTool } from '@/lib/format'
 import { Empty, Panel, Stat } from '@/components/ui'
 import { groupDays } from './Cost'
 
@@ -40,7 +40,7 @@ export function HistoryScreen() {
           <ul className="py-1">
             {(d?.tools ?? []).slice(0, 18).map((t) => (
               <li key={t.tool} className="flex items-center gap-2 px-3 py-[3px]">
-                <span className="mono text-[12px] w-40 shrink-0 truncate">{t.tool}</span>
+                <span className="mono text-[12px] w-44 shrink-0 truncate" title={t.tool}>{fmtTool(t.tool)}</span>
                 <div className="flex-1 h-2 bg-panel-2 rounded-sm overflow-hidden"><div className="h-full bg-accent/70" style={{ width: `${(100 * t.count) / maxTool}%` }} /></div>
                 <span className="num text-[11px] text-fg-muted w-12 text-right">{fmtTokens(t.count)}</span>
               </li>

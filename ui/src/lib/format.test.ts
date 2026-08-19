@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { basename, fmtAgo, fmtPct, fmtTokens, fmtUSD, shortId } from './format'
+import { basename, fmtAgo, fmtPct, fmtTokens, fmtUSD, shortId, fmtTool } from './format'
 
 describe('format', () => {
   it('formats USD with more precision for tiny amounts', () => {
@@ -27,5 +27,10 @@ describe('format', () => {
     expect(shortId('8e968de8-d2a4-428f')).toBe('8e968de8')
     expect(basename('/a/b/c.go')).toBe('c.go')
     expect(basename('C:\\x\\y.go')).toBe('y.go')
+  })
+  it('shortens mcp tool names, passes plain ones through', () => {
+    expect(fmtTool('mcp__claude-in-chrome__tabs_context_mcp')).toBe('claude-in-chrome·tabs_context_mcp')
+    expect(fmtTool('Bash')).toBe('Bash')
+    expect(fmtTool('mcp__apify__call-actor')).toBe('apify·call-actor')
   })
 })

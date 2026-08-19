@@ -58,3 +58,11 @@ export function basename(p: string): string {
   const i = Math.max(t.lastIndexOf('/'), t.lastIndexOf('\\'))
   return i >= 0 ? t.slice(i + 1) : t
 }
+
+// fmtTool shortens a tool name for display. MCP tools arrive as
+// `mcp__<server>__<tool>`; the `mcp__` prefix is noise and the full name blows
+// past the column, so render it as `<server>·<tool>`. Non-MCP names pass through.
+export function fmtTool(name: string): string {
+  const m = /^mcp__(.+?)__(.+)$/.exec(name)
+  return m ? `${m[1]}·${m[2]}` : name
+}
