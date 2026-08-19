@@ -37,7 +37,15 @@ any future release:
    - a Homebrew formula in `dspv/homebrew-tap`,
    - `checksums.txt`, and a **draft** GitHub release.
 4. Verify the draft's binaries on at least one machine per OS with the Phase 0
-   DoD scenario, then publish the release.
+   DoD scenario, then publish the release (`gh release edit vX --draft=false --latest`).
+5. **Update the Homebrew formula.** `skip_upload: auto` makes goreleaser skip the
+   formula push for a **draft** release (every release starts as a draft), so the
+   tap does **not** auto-update. After publishing, refresh
+   `dspv/homebrew-tap/Formula/caprock.rb` to the new version + the four
+   `tar.gz` sha256s from the release's `checksums.txt` (macOS/Linux × amd64/arm64),
+   then verify: `brew untap dspv/tap; brew install dspv/tap/caprock; caprock --version`.
+   This is the one manual step the draft flow leaves; a stale formula ships the
+   previous version to every `brew install` until it is refreshed.
 
 ### Re-running a release for an existing tag
 
