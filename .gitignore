@@ -32,3 +32,5 @@ Thumbs.db
 # Python (docs tooling)
 __pycache__/
 *.pyc
+/caprock
+/caprock-hook
