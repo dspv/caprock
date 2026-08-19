@@ -3,8 +3,14 @@ package statusline
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/dspv/caprock/internal/config"
 )
 
 // The command prints a status line from the stdin JSON and never fails — malformed
@@ -76,4 +82,55 @@ func TestResetIn(t *testing.T) {
 	if got := resetIn(1_000_000_000); !strings.HasPrefix(got, "resets ") {
 		t.Fatalf("resetIn format: %q", got)
 	}
+}
+
+// post forwards only the whitelisted rate-limit windows to the daemon, with the
+// bearer token, and is fire-and-forget. This exercises the happy path and, more
+// importantly, asserts the whitelist: no prompt/model/cost content is ever sent.
+func TestPostForwardsWhitelistedBodyWithAuth(t *testing.T) {
+	var gotAuth, gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	// Point the statusline at a data dir whose runtime.json names the test server.
+	dir := t.TempDir()
+	t.Setenv(config.EnvDataDir, dir)
+	port, _ := strconv.Atoi(strings.TrimPrefix(srv.URL, "http://127.0.0.1:"))
+	rt, err := config.NewRuntime(port, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := config.WriteRuntime(dir, rt); err != nil {
+		t.Fatal(err)
+	}
+
+	post(forward{
+		SessionID: "sess-1",
+		FiveHour:  &window{UsedPercentage: 42, ResetsAt: 1_900_000_000},
+	})
+
+	if !strings.HasPrefix(gotAuth, "Bearer ") || !strings.Contains(gotAuth, rt.Token) {
+		t.Fatalf("auth header wrong: %q", gotAuth)
+	}
+	if !strings.Contains(gotBody, "sess-1") || !strings.Contains(gotBody, "five_hour") || !strings.Contains(gotBody, "42") {
+		t.Fatalf("body missing whitelisted fields: %q", gotBody)
+	}
+	// The whitelist is a promise: no room for prompt/model/cost content.
+	for _, forbidden := range []string{"prompt", "model", "cost", "display_name"} {
+		if strings.Contains(gotBody, forbidden) {
+			t.Fatalf("forbidden field %q leaked into the forwarded body: %q", forbidden, gotBody)
+		}
+	}
+}
+
+// post must not panic or block when the daemon is down (no runtime.json).
+func TestPostSilentWhenDaemonDown(t *testing.T) {
+	t.Setenv(config.EnvDataDir, t.TempDir()) // no runtime.json
+	post(forward{SessionID: "x", FiveHour: &window{UsedPercentage: 1}})
+	// Reaching here without panic/hang is the assertion.
 }
