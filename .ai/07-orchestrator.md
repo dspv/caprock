@@ -51,8 +51,10 @@ Your loop:
 
 1. Read `inbox/` and the task board (the tasks are files in the hive `tasks/`
    directory — read them with the file tools).
-2. For each task in `inbox` status: pick or spawn a worker, write an `assign`
-   message to it, and note in the task that it is `assigned`.
+2. For each task in `inbox` status: choose a worker id (e.g. `worker-1`), set
+   BOTH `assignee: <worker-id>` and `status: assigned` in the task frontmatter,
+   and write an `assign` message to it. Setting `assignee` is the spawn trigger —
+   the router spawns the worker session from it.
 3. When a worker sends a `result`: if it claims completion, move the task to
    `verifying` (Caprock verifies); if it asks a `question`, answer it or escalate.
 4. When Caprock reports verification passed, the task is already `done` — record

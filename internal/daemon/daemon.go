@@ -186,6 +186,17 @@ func (d *Daemon) run(ctx context.Context) error {
 		}
 		d.board.RepoCwd = d.opt.RepoCwd
 		d.orch = orchestrator.New(h, d.store, d.mgr, d.repoCwd(), d.log)
+		// The router/kick goroutines must run under the daemon-lifetime context,
+		// not the per-request context that starts the orchestrator (which is
+		// cancelled the moment the /orchestrator/start handler returns).
+		d.orch.BaseCtx = ctx
+		// Wire the router's verification step to the board without an import cycle:
+		// the daemon owns both, so a closure over board.VerifyTask is the seam.
+		board := d.board
+		d.orch.Verify = func(ctx context.Context, taskID string) error {
+			_, err := board.VerifyTask(ctx, taskID)
+			return err
+		}
 	}
 
 	// Hook receiver.
@@ -196,7 +207,13 @@ func (d *Daemon) run(ctx context.Context) error {
 			if agentID == "" && d.orch != nil {
 				agentID = d.orch.AgentIDForSession(p.SessionID)
 			}
-			return d.board.StopDecision(ctx, p.SessionID, agentID, "")
+			// The task id arms the per-(session,task) forced-continue guard
+			// (N=10, then escalate). Without it the guard is inert.
+			taskID := ""
+			if d.orch != nil {
+				taskID = d.orch.TaskForAgent(agentID)
+			}
+			return d.board.StopDecision(ctx, p.SessionID, agentID, taskID)
 		}
 	}
 

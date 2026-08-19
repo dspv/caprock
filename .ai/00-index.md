@@ -33,10 +33,10 @@ Supporting directories:
 
 ## Current State
 
-**Last updated: 2026-08-18** · Owner: Dima · Phase: **Phase 0 — bootstrap**
+**Last updated: 2026-08-19** · Owner: Dima · Phase: **Phase 2 — Orchestrate, complete; v0.1.0 tag pending**
 
-- **Documentation:** corpus built from the spec on 2026-08-18; loss audit green; spec deleted.
-- **Code:** see [14-build-status.md](14-build-status.md) for the live per-track state — that file is updated with every state change, this paragraph only points at it.
+- **Documentation:** corpus built from the spec on 2026-08-18; loss audit green; spec deleted; kept current with the code.
+- **Code:** all three phases built and green on the 3-OS CI matrix. The Phase 2 tag gate — a live unattended orchestrator run with hooks — passed on 2026-08-19 (a real `claude` orchestrator drove a task to green verification with no human input). See [14-build-status.md](14-build-status.md) for the live per-track state.
 - **Unmeasured / undecided:** everything in [12-risks.md § Open questions](12-risks.md#open-questions); `OQ-01` (parity target) and `OQ-07` (context-window table) block acceptance criteria of T5 and T7.
 
 ## Rules of engagement — non-negotiable

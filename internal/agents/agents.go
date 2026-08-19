@@ -149,6 +149,12 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 	}
 	args = append(args, req.Args...)
 
+	// Pre-accept the folder-trust dialog so the spawned session does not block on
+	// it (best-effort; a failure here must not stop the spawn).
+	if err := trustFolder(cwd); err != nil {
+		m.log.Warn("pre-trust folder", "component", "agents", "cwd", cwd, "err", err)
+	}
+
 	spec := ptyman.Spec{Command: command, Args: args, Dir: cwd, Env: childEnv(), Cols: req.Cols, Rows: req.Rows}
 	// The PTY process is controlled explicitly via Signal/Close; it must not die
 	// when the caller's context (e.g. an HTTP request) ends.

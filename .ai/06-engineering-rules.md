@@ -27,6 +27,21 @@ These rules are binding. `CLAUDE.md` links here; an agent reads this file before
 - **Commits: Conventional Commits with scope** — `feat(hookd): …`, `fix(ingest): …`, `docs(ai): …`, `ci: …`, `chore(release): …`. Commit bodies explain *why* when the diff does not.
 - **Docs discipline** — tight-aligned tables via `make docs-fmt`, one fact one home, ADRs for closed debates, absolute dates: see [00-index.md § Documentation rules](00-index.md#documentation-rules).
 
+## Council quorum for decisions (agents deciding, not decorating)
+
+When a design or correctness call is non-obvious and the agent is not sure, it convenes a **council** of independent sub-agents and decides by an escalating quorum — so the council actually forces a correct decision rather than rubber-stamping one:
+
+- **Round 1 — ask 3.** Pose the same crisp choice to 3 independent agents. If **all 3 agree**, that is the decision — proceed.
+- **Split → escalate.** If they do **not** all agree (e.g. 2-of-3), the split is a signal the question is genuinely hard: convene **5** agents on the same question. A clear majority of 5 decides.
+- **Still split → escalate again** (7, then 9…), each round adding two agents, until a clear majority holds. If a small council keeps splitting, the question is under-specified — reformulate it or **escalate to the human**, don't force a coin-flip.
+
+Rules that keep it honest:
+
+- **Independent, then counted.** Agents must answer without seeing each other's answers; only then are votes tallied. A council where later agents read earlier ones is theatre.
+- **Adversarial where it matters.** For a correctness or safety claim, at least one council member is tasked to *refute* it, not confirm it. Unanimous "looks fine" from confirmation-only agents is weak evidence.
+- **The parent still owns the outcome.** The quorum informs the decision; it does not launder responsibility. If the majority is wrong on the merits and the parent can see why, the parent overrides and records why.
+- **Scale to the stakes.** Trivial or reversible choices don't need a council at all — pick the obvious option and move. The council is for calls that are hard to reverse or that the docs leave genuinely open.
+
 ## Definition of "green" per task
 
 1. Unit + integration tests pass on ubuntu / macos / windows.

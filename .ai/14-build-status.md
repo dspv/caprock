@@ -2,19 +2,19 @@
 
 The running log: what is done, what is not, what is next. **Update this file and § Current State in [00-index.md](00-index.md) whenever the state of the world changes.** Dates in absolute form, never "last week". What "done" means per task is defined in [09-execution-plan.md](09-execution-plan.md).
 
-**Last updated: 2026-08-19** · Phase **2 — Orchestrate, complete** · Next: **a live unattended orchestrator run with hooks installed (the tag gate), plus packaging polish; then tag v0.1.0**
+**Last updated: 2026-08-19** · Phase **2 — Orchestrate, complete** · The live unattended orchestrator run (the tag gate) is **done** — a real `claude` orchestrator autonomously assigned a task, spawned a worker, and drove it to green verification. Next: **tag v0.1.0**
 
 ## Progress by track
 
 Percentages are deliberately coarse — they answer "is this track started, half-built, or done", nothing finer. The same numbers drive the progress bars in [README.md](../README.md); **update both in the same commit.** "90%" means "works, not hardened"; never 100% for anything that has not run in the environment it was built for.
 
-| Track                           | Progress | State                                                        |
-| ------------------------------- | -------- | ------------------------------------------------------------ |
-| Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code            |
-| Phase 0 — Observe (T0–T10)      | 90%      | Works on macOS + CI (macos/ubuntu/windows); T10 release open |
-| Phase 1 — Control (T11–T16)     | 90%      | Merged to master, green on the 3-OS CI matrix                |
-| Phase 2 — Orchestrate (T17–T25) | 95%      | All tasks done; live unattended run (hooks) is the tag gate  |
-| Phase 3 — Delight               | 0%       | No plan by design                                            |
+| Track                           | Progress | State                                                                |
+| ------------------------------- | -------- | -------------------------------------------------------------------- |
+| Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code                    |
+| Phase 0 — Observe (T0–T10)      | 90%      | Works on macOS + CI (macos/ubuntu/windows); T10 release open         |
+| Phase 1 — Control (T11–T16)     | 90%      | Merged to master, green on the 3-OS CI matrix                        |
+| Phase 2 — Orchestrate (T17–T25) | 100%     | All tasks done; live unattended run with hooks passed (tag gate met) |
+| Phase 3 — Delight               | 0%       | No plan by design                                                    |
 
 ## Milestone status
 
@@ -37,16 +37,19 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## What is true right now
 
-- **Nothing is built.** There is no Go module and no `ui/`; the CI workflows (`docs.yml`, `ci.yml`, `release.yml`), `Makefile`, `.goreleaser.yaml` and `pricing/pricing.json` are written but have never run against code. Everything in [02-architecture.md](02-architecture.md), [03-contracts.md](03-contracts.md), [04-ui.md](04-ui.md) describes intent, not a running system.
-- The Python measurer (`~/dev/caprock-legacy`, PyPI `caprock` 0.3.0) is the only shipped Caprock artifact and is frozen ([ADR-007](08-decisions.md#adr-007--the-harness-is-caprock-new-go-codebase-in-dspvcaprock-python-measurer-frozen)).
-- Unverified: `ASSUMPTION-01`…`08`; blocking open questions `OQ-01`, `OQ-07` ([12-risks.md](12-risks.md)).
-- Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and not yet exercised in CI.
+- **All three phases are built and green.** The Go module + `ui/` exist and are exercised by `make check` (Go tests, `go vet`, `golangci-lint`, docs gates, and the UI typecheck/vitest/build) on the 3-OS CI matrix. Phase 2's orchestration loop has been driven end to end by a real `claude` orchestrator (see the Phase 2 log entry). What remains before v0.1.0 is the tag itself.
+- The Python measurer (`~/dev/caprock-legacy`, PyPI `caprock` 0.3.0) is the only *shipped* Caprock artifact and is frozen ([ADR-007](08-decisions.md#adr-007--the-harness-is-caprock-new-go-codebase-in-dspvcaprock-python-measurer-frozen)); the Go binary is unreleased until the v0.1.0 tag.
+- Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
 ## Log
 
 ### 2026-08-18 — Phase 2 complete: orchestrator, verification runner, cost attribution, e2e (T21–T25)
 
-The trust gap is closed end to end. `internal/orchestrator` spawns the orchestrator as a real `claude` session with a hive-aware system prompt (`.ai/07-orchestrator.md`, embedded + kept in sync by a test), spawns workers into per-worker git worktrees, and runs the mailbox router; the daemon maps a session id back to its hive agent so the Stop-loop checks the right inbox. `internal/board`'s verification runner runs a task's `done_criteria` in the assigned worker's worktree — all green ⇒ `done` (and cost is attributed to the task via the assignment windows), any red ⇒ bounce the failing output to the worker, escalate to `needs_you` after R=3 rounds. Verified two ways: live on macOS (`caprock up --hive` → `POST /v1/orchestrator/start` spawns a real orchestrator that registers in the hive and gets its prompt), and a scripted `-tags smoke` e2e on a fixture repo (task → assign → failing build → verify fails → bounce → worker fixes → verify passes → done, cost attributed). New endpoints: `POST /v1/orchestrator/start`, `POST /v1/tasks/{id}/verify`; `--hive`/`--repo` flags. What is NOT yet done: a full unattended run driven by a real orchestrator with hooks installed (needs the user's `~/.claude/settings.json`, out of scope for automated tests) — that is the gate before tagging v0.1.0.
+The trust gap is closed end to end. `internal/orchestrator` spawns the orchestrator as a real `claude` session with a hive-aware system prompt (`.ai/07-orchestrator.md`, embedded + kept in sync by a test), spawns workers into per-worker git worktrees, and runs the mailbox router; the daemon maps a session id back to its hive agent so the Stop-loop checks the right inbox. `internal/board`'s verification runner runs a task's `done_criteria` in the assigned worker's worktree — all green ⇒ `done` (and cost is attributed to the task via the assignment windows), any red ⇒ bounce the failing output to the worker, escalate to `needs_you` after R=3 rounds. Verified two ways at the time: live on macOS (`caprock up --hive` → `POST /v1/orchestrator/start` spawns a real orchestrator that registers in the hive and gets its prompt), and a scripted `-tags smoke` e2e on a fixture repo (task → assign → failing build → verify fails → bounce → worker fixes → verify passes → done, cost attributed). New endpoints: `POST /v1/orchestrator/start`, `POST /v1/tasks/{id}/verify`; `--hive`/`--repo` flags. The full unattended run followed the next day (see below).
+
+### 2026-08-19 — Tag gate met: real orchestrator drives a task to green, autonomously
+
+The unattended run is done. With hooks installed in a real `~/.claude/settings.json`, `POST /v1/orchestrator/start` spawned a real `claude` orchestrator that read the task board, set `assignee`+`status: assigned`, and wrote an `assign` message; the router materialized that intent — spawned `worker-1` into its worktree, the worker wrote the missing function, reported a `result`, and the orchestrator moved the task to `verifying`; the router ran `go build`/`go vet`, both passed, and the task reached `done` — start to finish with no human input. Getting there closed three real gaps the earlier "complete" hid: (1) the router ran under the per-request context and died the instant `/orchestrator/start` returned — now it runs under the daemon-lifetime `BaseCtx`; (2) a freshly-spawned interactive `claude` waits for a first message and does not react to inbox files landing, so `SpawnWorker` was never triggered and verification was never driven — the router is now a reconciler that spawns a worker per assigned task, runs verification for each `verifying` task (in-flight-guarded), and re-kicks (throttled) any idle session with unread mail; the orchestrator/worker each get one initial typed "kick" to start their first turn; (3) the folder-trust dialog (which `--dangerously-skip-permissions` does not suppress) is pre-accepted in `~/.claude.json` (`hasTrustDialogAccepted`) before spawn, so a session starts in its main loop instead of blocking. Design was decided by an agent council per `.ai/06-engineering-rules.md § Council quorum`. See `.ai/05-orchestration.md § the router is a reconciler`.
 
 ### 2026-08-18 — Phase 2 (Orchestrate) foundation: hive, board, Stop-loop, approvals (T17–T20)
 
