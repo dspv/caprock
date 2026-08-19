@@ -306,3 +306,102 @@ func TestTaskForAgent(t *testing.T) {
 		t.Fatalf("orchestrator should own no task: %q", got)
 	}
 }
+
+// Once a task moves past `assigned` (the orchestrator scribed it to in_progress
+// or beyond), the router retires the worker's fire-once assign message from its
+// inbox. This is the fix for workers stuck in a re-kick/poll loop: a lingering
+// assign kept InboxCount non-zero forever, so the Stop-loop never released. A
+// `result` message for other live work must survive the drain.
+func TestTickDrainsConsumedAssignment(t *testing.T) {
+	o, _, h := newOrch(t)
+	if err := h.RegisterAgent("worker-1", "w"); err != nil {
+		t.Fatal(err)
+	}
+	// worker-1 is a known worker (as if spawned).
+	o.mu.Lock()
+	o.workers["worker-1"] = "sess-w1"
+	o.mu.Unlock()
+	// Task picked up (in_progress) + an assign and an unrelated result in inbox.
+	if err := h.CreateTask(hive.Task{ID: "t1", Title: "x", Status: hive.StatusInProgress, Assignee: "worker-1"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range []hive.Message{
+		{From: "orchestrator", To: "worker-1", Kind: hive.KindAssign, TaskID: "t1", Body: "do t1"},
+		{From: "peer", To: "worker-1", Kind: hive.KindResult, TaskID: "t9", Body: "fyi"},
+	} {
+		if _, err := h.Send(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := h.Deliver(); err != nil {
+		t.Fatal(err)
+	}
+	o.drainConsumedAssignments()
+	if h.InboxCount("worker-1") != 1 {
+		t.Fatalf("inbox after drain: %d, want 1 (assign retired, result kept)", h.InboxCount("worker-1"))
+	}
+	msgs, _ := h.Inbox("worker-1")
+	if len(msgs) != 1 || msgs[0].Kind != hive.KindResult {
+		t.Fatalf("wrong survivor: %+v", msgs)
+	}
+}
+
+// While a task is still `assigned` (not yet picked up), its assign stays put —
+// draining it early would drop the instruction before the worker acts.
+func TestTickKeepsUnpickedAssignment(t *testing.T) {
+	o, _, h := newOrch(t)
+	if err := h.RegisterAgent("worker-1", "w"); err != nil {
+		t.Fatal(err)
+	}
+	o.mu.Lock()
+	o.workers["worker-1"] = "sess-w1"
+	o.mu.Unlock()
+	if err := h.CreateTask(hive.Task{ID: "t1", Title: "x", Status: hive.StatusAssigned, Assignee: "worker-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Send(hive.Message{From: "orchestrator", To: "worker-1", Kind: hive.KindAssign, TaskID: "t1", Body: "do t1"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Deliver(); err != nil {
+		t.Fatal(err)
+	}
+	o.drainConsumedAssignments()
+	if h.InboxCount("worker-1") != 1 {
+		t.Fatalf("assign dropped before pickup: inbox %d", h.InboxCount("worker-1"))
+	}
+}
+
+// A second Start on a live orchestrator does not spawn a duplicate session (which
+// would leak the first and start a second racing router loop); it re-kicks the
+// existing one so it re-reads its inbox and picks up newly-queued tasks.
+func TestStartIdempotent(t *testing.T) {
+	o, sp, _ := newOrch(t)
+	sid1, err := o.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sp.spawns) != 1 {
+		t.Fatalf("first start spawns: %d", len(sp.spawns))
+	}
+	sid2, err := o.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sid2 != sid1 {
+		t.Fatalf("second start returned a new session: %q != %q", sid2, sid1)
+	}
+	if len(sp.spawns) != 1 {
+		t.Fatalf("second start spawned a duplicate orchestrator: %d spawns", len(sp.spawns))
+	}
+	// After a session dies, Start spawns a fresh one.
+	sp.mu.Lock()
+	delete(sp.sessions, sid1)
+	sp.mu.Unlock()
+	sid3, err := o.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sid3 == sid1 || len(sp.spawns) != 2 {
+		t.Fatalf("dead orchestrator not replaced: sid3=%q spawns=%d", sid3, len(sp.spawns))
+	}
+}

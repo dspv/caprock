@@ -136,6 +136,54 @@ func (h *Hive) InboxCount(agentID string) int {
 	return n
 }
 
+// ArchiveInbox drains an agent's inbox of messages for which keep returns false,
+// moving them to a sibling `processed/` dir (an audit trail, not a delete). It
+// returns how many were archived. The router uses this to retire fire-once
+// `assign` messages after the worker has picked the task up, so the Stop-loop —
+// which forces continuation while the inbox is non-empty — releases and the
+// worker can stop cleanly. Without it a consumed assign lingers forever, pinning
+// the worker in a re-kick/poll loop. Agents never run git on the hive, so the
+// router (single writer) owns this move, per .ai/05-orchestration.md.
+func (h *Hive) ArchiveInbox(agentID string, keep func(Message) bool) (int, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	names, err := listDir(h.inbox(agentID))
+	if err != nil {
+		return 0, err
+	}
+	processed := filepath.Join(h.agentDir(agentID), "processed")
+	moved := 0
+	for _, name := range names {
+		if !strings.HasSuffix(name, ".md") {
+			continue
+		}
+		src := filepath.Join(h.inbox(agentID), name)
+		b, err := os.ReadFile(src)
+		if err != nil {
+			continue
+		}
+		m, err := parseMessage(string(b))
+		if err != nil {
+			continue // leave unparseable files in place rather than lose them
+		}
+		if keep(m) {
+			continue
+		}
+		if err := os.MkdirAll(processed, 0o755); err != nil {
+			return moved, err
+		}
+		if err := writeAtomic(filepath.Join(processed, name), b, 0o644); err != nil {
+			return moved, err
+		}
+		if err := os.Remove(src); err != nil {
+			return moved, err
+		}
+		_ = h.appendLedger(LedgerEntry{Kind: "mail.archived", AgentID: agentID, TaskID: m.TaskID, To: agentID, Note: m.Kind})
+		moved++
+	}
+	return moved, nil
+}
+
 func marshalMessage(m Message) string {
 	var b strings.Builder
 	b.WriteString("---\n")

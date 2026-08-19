@@ -88,6 +88,25 @@ func (o *Orchestrator) Start(ctx context.Context) (string, error) {
 	if !o.Spawner.ClaudeAvailable() {
 		return "", fmt.Errorf("orchestrator: claude binary not found; cannot spawn")
 	}
+	// Idempotent: if an orchestrator session is already live, do not spawn a
+	// second one (which would leak the first and start a second router loop that
+	// races the first on the same hive). Instead re-kick the existing session so
+	// it re-reads its inbox and picks up any newly-queued tasks. This is what a
+	// repeated "Start orchestrator" click should do.
+	o.mu.Lock()
+	existing := o.orchestrator
+	o.mu.Unlock()
+	if existing != "" {
+		if _, live := o.Spawner.Get(existing); live {
+			bg := o.BaseCtx
+			if bg == nil {
+				bg = context.WithoutCancel(ctx)
+			}
+			go o.wake(bg, existing, kickMessage)
+			o.Log.Info("orchestrator already running; re-kicked", "component", "orchestrator", "session_id", existing)
+			return existing, nil
+		}
+	}
 	home := filepath.Join(o.Hive.Root, "agents", OrchestratorID)
 	if err := o.Hive.RegisterAgent(OrchestratorID, "# Orchestrator\n"); err != nil {
 		return "", err
@@ -205,7 +224,7 @@ func (o *Orchestrator) SpawnWorker(ctx context.Context, workerID string) (string
 
 // workerKickMessage boots a freshly-spawned worker TUI. Like the orchestrator
 // kick it is declarative and one line.
-const workerKickMessage = "Read your inbox now and do the task assigned to you in the repo. When finished, write a result message to your outbox — do not mark the task done yourself. Do not stop while your inbox has unread mail."
+const workerKickMessage = "Read your inbox now and do the task assigned to you in the repo. When you finish the work, write one result message to your outbox — do not mark the task done yourself — then stop. Keep going only while there is genuinely new work in your inbox; do not re-poll an inbox you have already emptied."
 
 // kickWorker sends the worker its one start signal after its TUI settles.
 func (o *Orchestrator) kickWorker(ctx context.Context, sessionID string) {
@@ -263,11 +282,57 @@ func (o *Orchestrator) tick(ctx context.Context) {
 	} else if woke > 0 {
 		o.Log.Info("mail delivered", "component", "orchestrator", "count", woke)
 	}
+	// (B) Retire fire-once assign messages the worker has already picked up, so
+	// the Stop-loop releases and a finished worker can stop instead of looping.
+	o.drainConsumedAssignments()
 	o.wakeRecipients(ctx)
-	// (B) Spawn a worker for every task the orchestrator assigned.
+	// (C) Spawn a worker for every task the orchestrator assigned.
 	o.spawnAssignedWorkers(ctx)
-	// (C) Run verification for every task scribed to `verifying`.
+	// (D) Run verification for every task scribed to `verifying`.
 	o.driveVerification(ctx)
+}
+
+// drainConsumedAssignments archives each worker's `assign` message once its task
+// has moved past `assigned` (the orchestrator scribed it to in_progress or
+// beyond, so the worker has demonstrably picked it up). An assign is a fire-once
+// instruction; leaving it in the inbox keeps InboxCount non-zero, which pins the
+// worker in the Stop-loop and triggers an endless re-kick. `result`, `question`,
+// and other live mail is kept — only the retired assign is drained. Draining is
+// keyed on task status, not on the worker deleting the file, so it is
+// deterministic and does not depend on the agent's own housekeeping.
+func (o *Orchestrator) drainConsumedAssignments() {
+	tasks, err := o.Hive.ListTasks()
+	if err != nil {
+		o.Log.Warn("router list tasks (drain)", "component", "orchestrator", "err", err)
+		return
+	}
+	// Tasks still awaiting pickup: their assign must stay in the inbox.
+	pending := map[string]bool{}
+	for _, t := range tasks {
+		if t.Status == hive.StatusInbox || t.Status == hive.StatusAssigned {
+			pending[t.ID] = true
+		}
+	}
+	o.mu.Lock()
+	workers := make([]string, 0, len(o.workers))
+	for wid := range o.workers {
+		workers = append(workers, wid)
+	}
+	o.mu.Unlock()
+	for _, wid := range workers {
+		n, err := o.Hive.ArchiveInbox(wid, func(m hive.Message) bool {
+			// Keep everything except an assign whose task has been picked up.
+			if m.Kind != hive.KindAssign {
+				return true
+			}
+			return pending[m.TaskID]
+		})
+		if err != nil {
+			o.Log.Warn("router archive inbox", "component", "orchestrator", "worker", wid, "err", err)
+		} else if n > 0 {
+			o.Log.Info("assign archived", "component", "orchestrator", "worker", wid, "count", n)
+		}
+	}
 }
 
 // spawnAssignedWorkers ensures a session exists for every worker that has live
@@ -456,7 +521,9 @@ func workerPrompt(id, home string) string {
 	return "You are Caprock worker **" + id + "** in a hive. You receive task assignments as " +
 		"mailbox files in your inbox (`" + home + "/inbox/`). Do the assigned work in the repo, then " +
 		"report by writing a `result` message into your outbox (`" + home + "/outbox/`) — never mark a " +
-		"task done yourself; Caprock verifies via the task's done_criteria. Read your inbox every turn; " +
-		"when the Stop hook says you have unread mail, process it before stopping. Ask questions by " +
-		"writing a `question` message. Be terse.\n\nYour hive home is: " + home + "\n"
+		"task done yourself; Caprock verifies via the task's done_criteria. When the Stop hook says you " +
+		"have unread mail, read it and act on it before stopping; once you have handled the work in your " +
+		"inbox and written your result, stop — Caprock retires handled assignments for you, so do not sit " +
+		"in a loop re-listing an inbox you have already emptied. Ask questions by writing a `question` " +
+		"message. Be terse.\n\nYour hive home is: " + home + "\n"
 }

@@ -101,3 +101,53 @@ func TestTransitions(t *testing.T) {
 		t.Fatal("transition table wrong")
 	}
 }
+
+func TestArchiveInbox(t *testing.T) {
+	h, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.RegisterAgent("worker-1", "w"); err != nil {
+		t.Fatal(err)
+	}
+	// Deliver an assign (task t1) and a result (task t2) into the worker's inbox.
+	for _, m := range []Message{
+		{From: "orchestrator", To: "worker-1", Kind: KindAssign, TaskID: "t1", Body: "do t1"},
+		{From: "peer", To: "worker-1", Kind: KindResult, TaskID: "t2", Body: "fyi"},
+	} {
+		if _, err := h.Send(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := h.Deliver(); err != nil {
+		t.Fatal(err)
+	}
+	if h.InboxCount("worker-1") != 2 {
+		t.Fatalf("setup inbox: %d", h.InboxCount("worker-1"))
+	}
+	// Archive only the assign for t1 (keep everything else).
+	n, err := h.ArchiveInbox("worker-1", func(m Message) bool {
+		return m.Kind != KindAssign || m.TaskID != "t1"
+	})
+	if err != nil || n != 1 {
+		t.Fatalf("archive: n=%d err=%v", n, err)
+	}
+	if h.InboxCount("worker-1") != 1 {
+		t.Fatalf("inbox after archive: %d, want 1", h.InboxCount("worker-1"))
+	}
+	msgs, _ := h.Inbox("worker-1")
+	if len(msgs) != 1 || msgs[0].Kind != KindResult {
+		t.Fatalf("wrong message kept: %+v", msgs)
+	}
+	// The archived assign is preserved under processed/ (audit trail, not a delete).
+	proc, err := listDir(filepath.Join(h.Root, "agents", "worker-1", "processed"))
+	if err != nil || len(proc) != 1 {
+		t.Fatalf("processed dir: %v %v", proc, err)
+	}
+	// Idempotent: archiving again moves nothing (the assign is gone).
+	if n, _ := h.ArchiveInbox("worker-1", func(m Message) bool {
+		return m.Kind != KindAssign || m.TaskID != "t1"
+	}); n != 0 {
+		t.Fatalf("re-archive moved %d", n)
+	}
+}
