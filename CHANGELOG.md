@@ -6,10 +6,26 @@ Versions map to the roadmap phases in `.ai/09-execution-plan.md`: **v0.1.0** = O
 
 ## [Unreleased]
 
-Phases 1 (Control) and 2 (Orchestrate) below are built and green on the
-macOS / Linux / Windows CI matrix, on `master`, and ship at the v0.2.0 / v0.3.0
-tags. Phase 2's orchestration loop has been driven end to end by a real `claude`
-orchestrator (unattended, with hooks) — see `.ai/14-build-status.md`.
+Phase 2 (Orchestrate) below is built and green on the macOS / Linux / Windows CI
+matrix, on `master`, and ships at the v0.3.0 tag. Its orchestration loop has been
+driven end to end by a real `claude` orchestrator (unattended, with hooks) — see
+`.ai/14-build-status.md`.
+
+## [0.2.0] - 2026-08-19
+
+**Phase 1, Control**: spawn and drive `claude` sessions from the dashboard.
+
+### Phase 1 — Control
+
+- Spawn real `claude` sessions from the UI into an optional git worktree, with a
+  live xterm.js terminal (bidirectional) in **Session Detail**.
+- Owned-session controls: pause / resume / kill — **only** for sessions Caprock
+  spawned; externally started sessions stay observe-only.
+- Opt-in auto-pause of a looping owned session.
+- **History** screen — lifetime stats: cost per project / day / model, tool
+  distribution, model mix, top projects.
+- New endpoints: `POST /v1/agents`, `/v1/agents/{id}/input|signal`,
+  `WS /v1/agents/{id}/term`, `GET /v1/history`.
 
 ## [0.1.0] - 2026-08-19
 
@@ -34,14 +50,6 @@ machine, live, with token burn and cost, entirely on-device.
   per-project, 30-day), **History** (lifetime stats, tool distribution).
 - CLI: `caprock up | down | status | hooks install|uninstall|status | tasks`.
 - Event retention (`retention_days`, default off) caps database growth.
-
-### Phase 1 — Control (→ v0.2.0)
-
-- Spawn real `claude` sessions from the UI into an optional git worktree, with a
-  live xterm.js terminal (bidirectional) in **Session Detail**.
-- Owned-session controls: pause / resume / kill — **only** for sessions Caprock
-  spawned; externally started sessions stay observe-only.
-- Opt-in auto-pause of a looping owned session.
 
 ### Phase 2 — Orchestrate (→ v0.3.0)
 

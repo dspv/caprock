@@ -12,7 +12,7 @@ Percentages are deliberately coarse — they answer "is this track started, half
 | ------------------------------- | -------- | --------------------------------------------------------------------- |
 | Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code                     |
 | Phase 0 — Observe (T0–T10)      | 100%     | Works on macOS + CI (macos/ubuntu/windows); v0.1.0 tagged + published |
-| Phase 1 — Control (T11–T16)     | 90%      | Merged to master, green on the 3-OS CI matrix                         |
+| Phase 1 — Control (T11–T16)     | 100%     | v0.2.0 tagged + published; green on the 3-OS CI matrix                |
 | Phase 2 — Orchestrate (T17–T25) | 100%     | All tasks done; live unattended run with hooks passed (tag gate met)  |
 | Phase 3 — Delight               | 0%       | No plan by design                                                     |
 

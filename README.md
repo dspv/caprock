@@ -47,7 +47,7 @@ Coarse on purpose. Same numbers as [`.ai/14-build-status.md`](.ai/14-build-statu
 | ------------------------------- | ----------------- |
 | Documentation (`.ai/`)          | `█████████░` 90%  |
 | Phase 0 — Observe (T0–T10)      | `██████████` 100% |
-| Phase 1 — Control (T11–T16)     | `█████████░` 90%  |
+| Phase 1 — Control (T11–T16)     | `██████████` 100% |
 | Phase 2 — Orchestrate (T17–T25) | `██████████` 100% |
 
 ## Repository
