@@ -16,9 +16,9 @@ import (
 	"github.com/dspv/caprock/internal/store"
 )
 
-// orchestratorAgentID is the hive id of the orchestrator (mirror of
-// orchestrator.OrchestratorID; duplicated to avoid an import cycle).
-const orchestratorAgentID = "orchestrator"
+// orchestratorAgentID is the hive id of the orchestrator (shared constant in the
+// hive package, so board and orchestrator agree without an import cycle).
+const orchestratorAgentID = hive.OrchestratorAgentID
 
 // MaxVerifyRounds is the verification-bounce guard (default 3): after this many
 // failed rounds a task escalates to needs_you instead of bouncing again.
@@ -69,7 +69,7 @@ func (b *Board) Verify(ctx context.Context, taskID, cwd string) (VerifyResult, e
 		}
 		res.Status = updated.Status
 		res.Escalated = true
-		_, _ = b.Hive.Send(hive.Message{From: "verifier", To: orchestratorAgentID, Kind: hive.KindEscalation, TaskID: taskID,
+		_, _ = b.Hive.Send(hive.Message{From: hive.VerifierAgentID, To: orchestratorAgentID, Kind: hive.KindEscalation, TaskID: taskID,
 			Body: "Task " + taskID + " has a destructive command in its done_criteria and needs human approval before it runs:\n" + strings.Join(flagged, "\n")})
 		_ = b.mirror(ctx, updated)
 		return res, nil
@@ -136,7 +136,7 @@ func (b *Board) Verify(ctx context.Context, taskID, cwd string) (VerifyResult, e
 		to, kind = orchestratorAgentID, hive.KindEscalation
 	}
 	if to != "" {
-		_, _ = b.Hive.Send(hive.Message{From: "verifier", To: to, Kind: kind, TaskID: taskID, Body: formatFailure(res)})
+		_, _ = b.Hive.Send(hive.Message{From: hive.VerifierAgentID, To: to, Kind: kind, TaskID: taskID, Body: formatFailure(res)})
 	}
 	_ = b.mirror(ctx, updated)
 	return res, nil

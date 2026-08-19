@@ -30,6 +30,14 @@ const (
 	KindEscalation = "escalation"
 )
 
+// Well-known agent ids that appear as a message `from`/`to`. Shared here so the
+// orchestrator and the verifier agree on them without a package cycle or drifting
+// string literals.
+const (
+	OrchestratorAgentID = "orchestrator"
+	VerifierAgentID     = "verifier"
+)
+
 // Send writes a message into the sender's outbox. The router later delivers it.
 func (h *Hive) Send(m Message) (string, error) {
 	if err := validID(m.From); err != nil {

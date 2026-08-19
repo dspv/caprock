@@ -2,6 +2,7 @@ package statusline
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -51,5 +52,28 @@ func TestColorThresholds(t *testing.T) {
 		if !strings.Contains(got, "\x1b["+code+"m") {
 			t.Fatalf("pct %.0f: want SGR %s, got %q", pct, code, got)
 		}
+	}
+}
+
+// A 5-hour window without resets_at must not leave a trailing space that turns
+// the " · " separator into a double space.
+func TestRenderNoTrailingSpaceWithoutReset(t *testing.T) {
+	var in input
+	if err := json.Unmarshal([]byte(`{"rate_limits":{"five_hour":{"used_percentage":40},"seven_day":{"used_percentage":20}}}`), &in); err != nil {
+		t.Fatal(err)
+	}
+	out := render(in)
+	if strings.Contains(out, "  ") {
+		t.Fatalf("double space in render output: %q", out)
+	}
+}
+
+// resetIn is empty for a missing/zero/negative reset time, and formatted otherwise.
+func TestResetIn(t *testing.T) {
+	if resetIn(0) != "" || resetIn(-5) != "" {
+		t.Fatal("resetIn should be empty for non-positive input")
+	}
+	if got := resetIn(1_000_000_000); !strings.HasPrefix(got, "resets ") {
+		t.Fatalf("resetIn format: %q", got)
 	}
 }

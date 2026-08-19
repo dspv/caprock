@@ -14,7 +14,7 @@ import (
 )
 
 // OrchestratorID is the fixed hive agent id for the orchestrator session.
-const OrchestratorID = "orchestrator"
+const OrchestratorID = hive.OrchestratorAgentID
 
 // Spawner is the subset of agents.Manager the orchestrator needs.
 type Spawner interface {
@@ -61,6 +61,7 @@ type Orchestrator struct {
 
 	mu           sync.Mutex
 	orchestrator string               // orchestrator session id, "" if not running
+	starting     bool                 // a spawn is in flight (guards the Start TOCTOU)
 	workers      map[string]string    // hive agent id → session id
 	kicked       bool                 // the orchestrator's kick message was sent once
 	verifying    map[string]bool      // task ids with an in-flight verification
@@ -88,16 +89,21 @@ func (o *Orchestrator) Start(ctx context.Context) (string, error) {
 	if !o.Spawner.ClaudeAvailable() {
 		return "", fmt.Errorf("orchestrator: claude binary not found; cannot spawn")
 	}
-	// Idempotent: if an orchestrator session is already live, do not spawn a
-	// second one (which would leak the first and start a second router loop that
-	// races the first on the same hive). Instead re-kick the existing session so
-	// it re-reads its inbox and picks up any newly-queued tasks. This is what a
-	// repeated "Start orchestrator" click should do.
+	// Idempotent, and safe against a double "Start" click: if an orchestrator
+	// session is already live — or a spawn is in flight — do not spawn a second
+	// one (which would leak the first and start a second router loop racing the
+	// first on the same hive). Instead re-kick the existing session so it re-reads
+	// its inbox and picks up newly-queued tasks. The `starting` flag closes the
+	// check-then-spawn race: two concurrent calls cannot both pass the guard.
 	o.mu.Lock()
 	existing := o.orchestrator
-	o.mu.Unlock()
+	live := false
 	if existing != "" {
-		if _, live := o.Spawner.Get(existing); live {
+		_, live = o.Spawner.Get(existing)
+	}
+	if live || o.starting {
+		o.mu.Unlock()
+		if live {
 			bg := o.BaseCtx
 			if bg == nil {
 				bg = context.WithoutCancel(ctx)
@@ -106,7 +112,16 @@ func (o *Orchestrator) Start(ctx context.Context) (string, error) {
 			o.Log.Info("orchestrator already running; re-kicked", "component", "orchestrator", "session_id", existing)
 			return existing, nil
 		}
+		return "", fmt.Errorf("orchestrator: a start is already in progress")
 	}
+	o.starting = true
+	o.mu.Unlock()
+	// From here on, clear `starting` on every exit path.
+	defer func() {
+		o.mu.Lock()
+		o.starting = false
+		o.mu.Unlock()
+	}()
 	home := filepath.Join(o.Hive.Root, "agents", OrchestratorID)
 	if err := o.Hive.RegisterAgent(OrchestratorID, "# Orchestrator\n"); err != nil {
 		return "", err
@@ -292,26 +307,23 @@ func (o *Orchestrator) tick(ctx context.Context) {
 	o.driveVerification(ctx)
 }
 
-// drainConsumedAssignments archives each worker's `assign` message once its task
-// has moved past `assigned` (the orchestrator scribed it to in_progress or
-// beyond, so the worker has demonstrably picked it up). An assign is a fire-once
-// instruction; leaving it in the inbox keeps InboxCount non-zero, which pins the
-// worker in the Stop-loop and triggers an endless re-kick. `result`, `question`,
-// and other live mail is kept — only the retired assign is drained. Draining is
-// keyed on task status, not on the worker deleting the file, so it is
-// deterministic and does not depend on the agent's own housekeeping.
+// drainConsumedAssignments archives each worker's inbox messages that have been
+// consumed — a picked-up `assign`, or a verify-bounce the worker has since acted
+// on (see keepWorkerMail for the exact rule). A consumed message that lingers
+// keeps InboxCount non-zero, which pins the worker in the Stop-loop and triggers
+// an endless re-kick. Live mail (`question`, peer results, un-acted bounces) is
+// kept. Draining is keyed on task status, not on the worker deleting the file,
+// so it is deterministic and independent of the agent's own housekeeping. It runs
+// before wakeRecipients so a just-emptied inbox is not needlessly re-kicked.
 func (o *Orchestrator) drainConsumedAssignments() {
 	tasks, err := o.Hive.ListTasks()
 	if err != nil {
 		o.Log.Warn("router list tasks (drain)", "component", "orchestrator", "err", err)
 		return
 	}
-	// Tasks still awaiting pickup: their assign must stay in the inbox.
-	pending := map[string]bool{}
+	status := make(map[string]string, len(tasks))
 	for _, t := range tasks {
-		if t.Status == hive.StatusInbox || t.Status == hive.StatusAssigned {
-			pending[t.ID] = true
-		}
+		status[t.ID] = t.Status
 	}
 	o.mu.Lock()
 	workers := make([]string, 0, len(o.workers))
@@ -321,17 +333,44 @@ func (o *Orchestrator) drainConsumedAssignments() {
 	o.mu.Unlock()
 	for _, wid := range workers {
 		n, err := o.Hive.ArchiveInbox(wid, func(m hive.Message) bool {
-			// Keep everything except an assign whose task has been picked up.
-			if m.Kind != hive.KindAssign {
-				return true
-			}
-			return pending[m.TaskID]
+			return keepWorkerMail(m, status[m.TaskID])
 		})
 		if err != nil {
 			o.Log.Warn("router archive inbox", "component", "orchestrator", "worker", wid, "err", err)
 		} else if n > 0 {
-			o.Log.Info("assign archived", "component", "orchestrator", "worker", wid, "count", n)
+			o.Log.Info("worker mail archived", "component", "orchestrator", "worker", wid, "count", n)
 		}
+	}
+}
+
+// keepWorkerMail decides whether a message in a worker's inbox is still live and
+// must stay (true), or has been consumed and may be archived (false). It is the
+// core of the Stop-loop fix: a message that has served its purpose but lingers
+// keeps InboxCount non-zero, pinning the worker in an endless re-kick/poll.
+//
+//   - An `assign` drives pickup: consumed once the task has moved off
+//     inbox/assigned (the worker has taken it up).
+//   - A verify-bounce `result` (from the verifier) drives a fix while the task is
+//     back in_progress: consumed once the task has moved off in_progress again
+//     (the worker acted and it went to verifying/done/needs_you/failed).
+//
+// Every other message — a peer `result`, a `question`, an `escalation`, or a
+// message whose task is unknown/absent — is kept. Draining is keyed on task
+// status (deterministic), never on the agent deleting its own file.
+func keepWorkerMail(m hive.Message, taskStatus string) bool {
+	if taskStatus == "" {
+		return true // unknown task: never drop mail we can't reason about
+	}
+	switch m.Kind {
+	case hive.KindAssign:
+		return taskStatus == hive.StatusInbox || taskStatus == hive.StatusAssigned
+	case hive.KindResult:
+		if m.From != hive.VerifierAgentID {
+			return true // peer/FYI result, not a bounce the worker must act on
+		}
+		return taskStatus == hive.StatusInProgress
+	default:
+		return true
 	}
 }
 

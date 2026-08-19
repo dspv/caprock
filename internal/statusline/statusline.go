@@ -104,7 +104,11 @@ func render(in input) string {
 	}
 	if in.RateLimits != nil {
 		if w := in.RateLimits.FiveHour; w != nil {
-			seg = append(seg, colorPct("5h", w.UsedPercentage)+" "+resetIn(w.ResetsAt))
+			s := colorPct("5h", w.UsedPercentage)
+			if r := resetIn(w.ResetsAt); r != "" {
+				s += " " + r // avoid a trailing space when resets_at is absent
+			}
+			seg = append(seg, s)
 		}
 		if w := in.RateLimits.SevenDay; w != nil {
 			seg = append(seg, colorPct("7d", w.UsedPercentage))

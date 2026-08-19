@@ -26,15 +26,17 @@ and CLI packaging.
 
 ### Fixed
 
-- **Orchestrator: workers now stop cleanly.** A worker's fire-once `assign`
-  message lingered in its inbox after it acted, so the Stop-loop forced
-  continuation forever and the worker was re-kicked into an endless inbox-poll.
-  The router now archives a consumed assign to the agent's `processed/` dir once
-  its task moves past `assigned`.
-- **Orchestrator: `Start` is idempotent.** Starting the orchestrator while a
-  session is already live no longer spawns a duplicate (which leaked the first
-  and raced a second router loop on the same hive); it re-kicks the live session
-  so it picks up newly-queued tasks.
+- **Orchestrator: workers now stop cleanly.** A worker's fire-once mail lingered
+  in its inbox after it acted, so the Stop-loop forced continuation forever and
+  the worker was re-kicked into an endless inbox-poll. The router now archives a
+  consumed message to the agent's `processed/` dir once its task moves past the
+  state that message was driving — both a picked-up `assign` and a verify-bounce
+  the worker has since fixed. Live mail (questions, un-acted bounces) is kept.
+- **Orchestrator: `Start` is idempotent and race-safe.** Starting the
+  orchestrator while a session is already live no longer spawns a duplicate
+  (which leaked the first and raced a second router loop on the same hive); it
+  re-kicks the live session so it picks up newly-queued tasks. A `starting` guard
+  closes the check-then-spawn window so two concurrent starts can't both spawn.
 
 ### Changed
 

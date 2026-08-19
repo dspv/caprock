@@ -27,6 +27,8 @@ type fakeSpawner struct {
 
 func (f *fakeSpawner) ClaudeAvailable() bool { return f.avail }
 func (f *fakeSpawner) Spawn(_ context.Context, req agents.SpawnRequest) (*agents.Agent, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.nextID++
 	id := "sess-" + string(rune('a'+f.nextID))
 	f.spawns = append(f.spawns, req)
@@ -37,6 +39,8 @@ func (f *fakeSpawner) Spawn(_ context.Context, req agents.SpawnRequest) (*agents
 	return &agents.Agent{SessionID: id, Cwd: req.Cwd}, nil
 }
 func (f *fakeSpawner) Get(id string) (*agents.Agent, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.sessions[id] {
 		return &agents.Agent{SessionID: id}, true
 	}
@@ -403,5 +407,106 @@ func TestStartIdempotent(t *testing.T) {
 	}
 	if sid3 == sid1 || len(sp.spawns) != 2 {
 		t.Fatalf("dead orchestrator not replaced: sid3=%q spawns=%d", sid3, len(sp.spawns))
+	}
+}
+
+// keepWorkerMail is the drain predicate; it must retire consumed assign AND
+// consumed verify-bounce results, while keeping live mail. Table-drives every
+// branch so a future edit that drops (or over-drops) a message kind is caught.
+func TestKeepWorkerMail(t *testing.T) {
+	cases := []struct {
+		name   string
+		m      hive.Message
+		status string
+		keep   bool
+	}{
+		{"assign, task assigned → keep", hive.Message{Kind: hive.KindAssign, TaskID: "t"}, hive.StatusAssigned, true},
+		{"assign, task inbox → keep", hive.Message{Kind: hive.KindAssign, TaskID: "t"}, hive.StatusInbox, true},
+		{"assign, task in_progress → drain", hive.Message{Kind: hive.KindAssign, TaskID: "t"}, hive.StatusInProgress, false},
+		{"assign, task done → drain", hive.Message{Kind: hive.KindAssign, TaskID: "t"}, hive.StatusDone, false},
+		{"verifier bounce, in_progress → keep", hive.Message{Kind: hive.KindResult, From: hive.VerifierAgentID, TaskID: "t"}, hive.StatusInProgress, true},
+		{"verifier bounce, verifying → drain", hive.Message{Kind: hive.KindResult, From: hive.VerifierAgentID, TaskID: "t"}, hive.StatusVerifying, false},
+		{"verifier bounce, done → drain", hive.Message{Kind: hive.KindResult, From: hive.VerifierAgentID, TaskID: "t"}, hive.StatusDone, false},
+		{"peer result → always keep", hive.Message{Kind: hive.KindResult, From: "peer", TaskID: "t"}, hive.StatusDone, true},
+		{"question → always keep", hive.Message{Kind: hive.KindQuestion, TaskID: "t"}, hive.StatusDone, true},
+		{"unknown task → keep", hive.Message{Kind: hive.KindAssign, TaskID: "t"}, "", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := keepWorkerMail(c.m, c.status); got != c.keep {
+				t.Fatalf("keepWorkerMail(%+v, %q) = %v, want %v", c.m, c.status, got, c.keep)
+			}
+		})
+	}
+}
+
+// A verify-bounce (KindResult from the verifier) is retired once the worker has
+// acted on it and the task left in_progress. Without this the bounce lingered in
+// the inbox and re-introduced the Stop-loop after every failed verification.
+func TestTickDrainsConsumedBounce(t *testing.T) {
+	o, _, h := newOrch(t)
+	if err := h.RegisterAgent("worker-1", "w"); err != nil {
+		t.Fatal(err)
+	}
+	o.mu.Lock()
+	o.workers["worker-1"] = "sess-w1"
+	o.mu.Unlock()
+	// Task is back in verifying after the worker fixed the bounce.
+	if err := h.CreateTask(hive.Task{ID: "t1", Title: "x", Status: hive.StatusVerifying, Assignee: "worker-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Send(hive.Message{From: hive.VerifierAgentID, To: "worker-1", Kind: hive.KindResult, TaskID: "t1", Body: "tests failed"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Deliver(); err != nil {
+		t.Fatal(err)
+	}
+	o.drainConsumedAssignments()
+	if h.InboxCount("worker-1") != 0 {
+		t.Fatalf("consumed bounce not drained: inbox %d", h.InboxCount("worker-1"))
+	}
+}
+
+// A bounce the worker has NOT yet acted on (task still in_progress) stays put.
+func TestTickKeepsLiveBounce(t *testing.T) {
+	o, _, h := newOrch(t)
+	if err := h.RegisterAgent("worker-1", "w"); err != nil {
+		t.Fatal(err)
+	}
+	o.mu.Lock()
+	o.workers["worker-1"] = "sess-w1"
+	o.mu.Unlock()
+	if err := h.CreateTask(hive.Task{ID: "t1", Title: "x", Status: hive.StatusInProgress, Assignee: "worker-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Send(hive.Message{From: hive.VerifierAgentID, To: "worker-1", Kind: hive.KindResult, TaskID: "t1", Body: "fix this"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Deliver(); err != nil {
+		t.Fatal(err)
+	}
+	o.drainConsumedAssignments()
+	if h.InboxCount("worker-1") != 1 {
+		t.Fatalf("live bounce dropped: inbox %d", h.InboxCount("worker-1"))
+	}
+}
+
+// Two concurrent Start calls must not both spawn — the `starting` guard closes
+// the check-then-spawn race. Exactly one spawns; the other is rejected or
+// re-kicks. Run under -race to catch the data race the guard prevents.
+func TestStartConcurrentNoDuplicate(t *testing.T) {
+	o, sp, _ := newOrch(t)
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); _, _ = o.Start(context.Background()) }()
+	}
+	wg.Wait()
+	// Allow at most one real spawn regardless of how the 8 racers interleave.
+	sp.mu.Lock()
+	n := len(sp.spawns)
+	sp.mu.Unlock()
+	if n != 1 {
+		t.Fatalf("concurrent Start spawned %d orchestrators, want 1", n)
 	}
 }
