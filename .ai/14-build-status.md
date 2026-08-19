@@ -2,43 +2,43 @@
 
 The running log: what is done, what is not, what is next. **Update this file and § Current State in [00-index.md](00-index.md) whenever the state of the world changes.** Dates in absolute form, never "last week". What "done" means per task is defined in [09-execution-plan.md](09-execution-plan.md).
 
-**Last updated: 2026-08-19** · Phase **2 — Orchestrate, complete** · The live unattended orchestrator run (the tag gate) is **done** — a real `claude` orchestrator autonomously assigned a task, spawned a worker, and drove it to green verification. Next: **tag v0.1.0**
+**Last updated: 2026-08-19** · Phase **2 — Orchestrate, complete** · **v0.1.0 tagged and published** (Observe; cask in `dspv/homebrew-tap`). The live unattended orchestrator run (the Phase 2 tag gate) is done — a real `claude` orchestrator autonomously assigned a task, spawned a worker, and drove it to green verification. Next: **v0.2.0 (Control) / v0.3.0 (Orchestrate) tags** as each is signed off on the OS matrix.
 
 ## Progress by track
 
 Percentages are deliberately coarse — they answer "is this track started, half-built, or done", nothing finer. The same numbers drive the progress bars in [README.md](../README.md); **update both in the same commit.** "90%" means "works, not hardened"; never 100% for anything that has not run in the environment it was built for.
 
-| Track                           | Progress | State                                                                |
-| ------------------------------- | -------- | -------------------------------------------------------------------- |
-| Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code                    |
-| Phase 0 — Observe (T0–T10)      | 90%      | Works on macOS + CI (macos/ubuntu/windows); T10 release open         |
-| Phase 1 — Control (T11–T16)     | 90%      | Merged to master, green on the 3-OS CI matrix                        |
-| Phase 2 — Orchestrate (T17–T25) | 100%     | All tasks done; live unattended run with hooks passed (tag gate met) |
-| Phase 3 — Delight               | 0%       | No plan by design                                                    |
+| Track                           | Progress | State                                                                 |
+| ------------------------------- | -------- | --------------------------------------------------------------------- |
+| Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code                     |
+| Phase 0 — Observe (T0–T10)      | 100%     | Works on macOS + CI (macos/ubuntu/windows); v0.1.0 tagged + published |
+| Phase 1 — Control (T11–T16)     | 90%      | Merged to master, green on the 3-OS CI matrix                         |
+| Phase 2 — Orchestrate (T17–T25) | 100%     | All tasks done; live unattended run with hooks passed (tag gate met)  |
+| Phase 3 — Delight               | 0%       | No plan by design                                                     |
 
 ## Milestone status
 
-| #       | Milestone                    | Status                                    |
-| ------- | ---------------------------- | ----------------------------------------- |
-| M0      | Spec migration + loss audit  | done                                      |
-| T0      | ConPTY spike                 | done (informational; ptyspike job)        |
-| T1      | Repo bootstrap               | done                                      |
-| T2      | store + migrations           | done                                      |
-| T3      | hookd + shim + installer     | done                                      |
-| T4      | ingest                       | done                                      |
-| T5      | rollup + pricing             | done (parity vs formula; OQ-01 open)      |
-| T6      | api + live WS                | done                                      |
-| T7      | UI: Now + Session Detail     | done                                      |
-| T8      | UI: Cost                     | done (limit forecast deferred, OQ-03)     |
-| T9      | Loop detector                | done                                      |
-| T10     | Release hardening → v0.1.0   | 90% (CLI+smoke+CI+CHANGELOG; tag pending) |
-| T11–T16 | Phase 1 (Control) → v0.2.0   | done                                      |
-| T17–T25 | Phase 2 (Orchestrate)→v0.3.0 | done                                      |
+| #       | Milestone                    | Status                                                                 |
+| ------- | ---------------------------- | ---------------------------------------------------------------------- |
+| M0      | Spec migration + loss audit  | done                                                                   |
+| T0      | ConPTY spike                 | done (informational; ptyspike job)                                     |
+| T1      | Repo bootstrap               | done                                                                   |
+| T2      | store + migrations           | done                                                                   |
+| T3      | hookd + shim + installer     | done                                                                   |
+| T4      | ingest                       | done                                                                   |
+| T5      | rollup + pricing             | done (parity vs formula; OQ-01 resolved)                               |
+| T6      | api + live WS                | done                                                                   |
+| T7      | UI: Now + Session Detail     | done                                                                   |
+| T8      | UI: Cost                     | done (limit forecast deferred, OQ-03)                                  |
+| T9      | Loop detector                | done                                                                   |
+| T10     | Release hardening → v0.1.0   | done (v0.1.0 tagged + published 2026-08-19; cask in dspv/homebrew-tap) |
+| T11–T16 | Phase 1 (Control) → v0.2.0   | done                                                                   |
+| T17–T25 | Phase 2 (Orchestrate)→v0.3.0 | done                                                                   |
 
 ## What is true right now
 
-- **All three phases are built and green.** The Go module + `ui/` exist and are exercised by `make check` (Go tests, `go vet`, `golangci-lint`, docs gates, and the UI typecheck/vitest/build) on the 3-OS CI matrix. Phase 2's orchestration loop has been driven end to end by a real `claude` orchestrator (see the Phase 2 log entry). What remains before v0.1.0 is the tag itself.
-- The Python measurer (`~/dev/caprock-legacy`, PyPI `caprock` 0.3.0) is the only *shipped* Caprock artifact and is frozen ([ADR-007](08-decisions.md#adr-007--the-harness-is-caprock-new-go-codebase-in-dspvcaprock-python-measurer-frozen)); the Go binary is unreleased until the v0.1.0 tag.
+- **All three phases are built and green.** The Go module + `ui/` exist and are exercised by `make check` (Go tests, `go vet`, `golangci-lint`, docs gates, and the UI typecheck/vitest/build) on the 3-OS CI matrix. Phase 2's orchestration loop has been driven end to end by a real `claude` orchestrator (see the Phase 2 log entry). **v0.1.0 (Observe) is tagged and published** (Homebrew cask in `dspv/homebrew-tap`); Control and Orchestrate ship at v0.2.0 / v0.3.0.
+- The Python measurer (`~/dev/caprock-legacy`, PyPI `caprock` 0.3.0) is frozen ([ADR-007](08-decisions.md#adr-007--the-harness-is-caprock-new-go-codebase-in-dspvcaprock-python-measurer-frozen)); the Go binary shipped its first release as **v0.1.0** on 2026-08-19.
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
 ## Log

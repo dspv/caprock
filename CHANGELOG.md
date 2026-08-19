@@ -1,8 +1,8 @@
 # Changelog
 
 All notable changes to Caprock. Format: [Keep a Changelog](https://keepachangelog.com/).
-Versions map to the roadmap phases in `.ai/09-execution-plan.md`. Nothing is tagged
-yet — these entries describe what will ship at each tag.
+Versions map to the roadmap phases in `.ai/09-execution-plan.md`: **v0.1.0** = Observe
+(tagged 2026-08-19), **v0.2.0** = Control, **v0.3.0** = Orchestrate.
 
 ## [Unreleased]
 

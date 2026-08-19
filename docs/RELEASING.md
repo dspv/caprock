@@ -1,23 +1,22 @@
 # Releasing Caprock
 
-Caprock is not tagged yet. The gate before the first tag is a **live, unattended
-orchestrator run with hooks installed** (see `.ai/14-build-status.md`). Once that
-is trusted end to end, cut a release:
+**v0.1.0 (Observe) is tagged and published** (2026-08-19). The Phase 2 tag gate —
+a live, unattended orchestrator run with hooks — passed. This doc is the runbook
+for cutting the next release (v0.2.0 Control, v0.3.0 Orchestrate):
 
 ## One-time setup
 
 - ✅ The public tap repo **`dspv/homebrew-tap`** already exists (created
   2026-08-19). The `homebrew_casks` block in `.goreleaser.yaml` uploads the cask
   there on release.
-- ⚠️ **A `HOMEBREW_TAP_TOKEN` secret is required** for the cask push. The default
-  `GITHUB_TOKEN` cannot write to another repository, so the first v0.1.0 release
-  built and uploaded every binary but failed the cask push with `403 Resource not
-  accessible by integration`. Fix (do once):
-  1. Create a **fine-grained personal access token** with **Contents: Read and
-     write** scoped to just `dspv/homebrew-tap`.
-  2. Add it as an Actions secret on `dspv/caprock`: **Settings → Secrets and
-     variables → Actions → New repository secret**, name `HOMEBREW_TAP_TOKEN`.
-  3. Re-run the release (see below). Everything else already worked.
+- ✅ The **`HOMEBREW_TAP_TOKEN` secret is configured** on `dspv/caprock` (added
+  2026-08-19). It is a fine-grained PAT with **Contents: Read and write** scoped
+  to just `dspv/homebrew-tap`, which the cask push needs because the default
+  `GITHUB_TOKEN` cannot write to another repository. (Before it was added, the
+  first v0.1.0 run built and uploaded every binary but failed the cask push with
+  `403 Resource not accessible by integration`.) If it ever expires, regenerate
+  the PAT and replace the secret under **Settings → Secrets and variables →
+  Actions**.
 
 ## Cutting a release
 

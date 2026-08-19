@@ -43,12 +43,12 @@ Local-first: loopback only, no servers, no telemetry, all data in SQLite on your
 
 Coarse on purpose. Same numbers as [`.ai/14-build-status.md`](.ai/14-build-status.md).
 
-| Track                           | Progress         |
-| ------------------------------- | ---------------- |
-| Documentation (`.ai/`)          | `█████████░` 90% |
-| Phase 0 — Observe (T0–T10)      | `█████░░░░░` 50% |
-| Phase 1 — Control (T11–T16)     | `░░░░░░░░░░` 0%  |
-| Phase 2 — Orchestrate (T17–T25) | `░░░░░░░░░░` 0%  |
+| Track                           | Progress          |
+| ------------------------------- | ----------------- |
+| Documentation (`.ai/`)          | `█████████░` 90%  |
+| Phase 0 — Observe (T0–T10)      | `██████████` 100% |
+| Phase 1 — Control (T11–T16)     | `█████████░` 90%  |
+| Phase 2 — Orchestrate (T17–T25) | `██████████` 100% |
 
 ## Repository
 
@@ -89,7 +89,7 @@ tag — see `.goreleaser.yaml`. Full change log: [CHANGELOG.md](CHANGELOG.md).
 
 ## Contributing
 
-Issues and PRs welcome once Phase 0 lands. Rules that apply to every change are in [`.ai/06-engineering-rules.md`](.ai/06-engineering-rules.md): English everywhere, Conventional Commits, one task per PR with its acceptance criteria as a checklist, and **no task is done with a red Windows CI job**. Run `make check` before pushing.
+Issues and PRs welcome. Rules that apply to every change are in [`.ai/06-engineering-rules.md`](.ai/06-engineering-rules.md): English everywhere, Conventional Commits, one task per PR with its acceptance criteria as a checklist, and **no task is done with a red Windows CI job**. Run `make check` before pushing.
 
 ## Heritage
 

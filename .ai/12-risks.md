@@ -8,7 +8,7 @@ Assumptions the plan rests on that have not been verified. Each names what would
 
 | ID              | Assumption                                                         | Falsified by                                                        |
 | --------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------- |
-| `ASSUMPTION-01` | The 7 core hook events stay stable across Claude Code releases     | A release renaming/removing one of them (T3 tests break)            |
+| `ASSUMPTION-01` | The 8 core hook events stay stable across Claude Code releases     | A release renaming/removing one of them (T3 tests break)            |
 | `ASSUMPTION-02` | Users accept a user-level hook in `~/.claude/settings.json`        | Launch feedback asking for per-project-only registration            |
 | `ASSUMPTION-03` | K=5 in T=3 min catches real loops without noisy false positives    | Fixture replays or dogfooding showing >1 false alert per session    |
 | `ASSUMPTION-04` | `aymanbagabas/go-pty` passes the Windows smoke test                | T0 spike red on `windows-latest`                                    |

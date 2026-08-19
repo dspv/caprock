@@ -73,14 +73,17 @@ WS     /v1/agents/{id}/term          bidirectional binary stream (xterm.js); sna
 GET    /v1/history?range=…           lifetime totals + tool distribution + model mix + daily
 ```
 
-Owned sessions are spawned as `claude --session-id <uuid> [--model …] [--permission-mode …]`, so hooks and the transcript arrive under the id Caprock generated; the spawn environment strips inherited `CLAUDE_CODE_CHILD_SESSION` / `CLAUDECODE` / `CLAUDE_CODE_ENTRYPOINT` markers so the session is a normal top-level one. Spawning is unavailable (endpoints return 501, `status.claude_available=false`) when no `claude` binary is found; Caprock then stays observe-only. The manager resolves `claude` via PATH then `~/.local/bin`, `~/.claude/local`, `~/bin`, Homebrew and `/usr/local/bin`. Control operations are refused for sessions Caprock did not spawn.
+Owned sessions are spawned as `claude --session-id <uuid> [--model …] [--permission-mode …]`, so hooks and the transcript arrive under the id Caprock generated; the spawn environment strips inherited `CLAUDE_CODE_CHILD_SESSION` / `CLAUDECODE` / `CLAUDE_CODE_ENTRYPOINT` markers so the session is a normal top-level one. Before spawning, Caprock pre-accepts Claude Code's folder-trust dialog for the session's cwd by setting `projects["<cwd>"].hasTrustDialogAccepted = true` in **`~/.claude.json`** (a second user-level Claude Code file, distinct from `settings.json`) — otherwise an interactive session blocks on the trust prompt, which `--dangerously-skip-permissions` does not suppress. The write is best-effort, atomic, preserves all other keys, and is skipped if the folder is already trusted; an unparsable `~/.claude.json` is never modified. Spawning is unavailable (endpoints return 501, `status.claude_available=false`) when no `claude` binary is found; Caprock then stays observe-only. The manager resolves `claude` via PATH then `~/.local/bin`, `~/.claude/local`, `~/bin`, Homebrew and `/usr/local/bin`. Control operations are refused for sessions Caprock did not spawn.
 
 ### Phase 2 additions
 
 ```
 GET/POST /v1/tasks
+GET      /v1/tasks/{id}
 POST     /v1/tasks/{id}/approve | /v1/tasks/{id}/reject
+POST     /v1/tasks/{id}/verify        → runs the task's done_criteria, returns VerifyResult
 GET      /v1/approvals
+POST     /v1/orchestrator/start       → spawns the orchestrator session → {session_id}
 ```
 
 Live frames gain `mail.*` events (router) in Phase 2.

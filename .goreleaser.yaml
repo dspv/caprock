@@ -52,7 +52,7 @@ changelog:
 
 homebrew_casks:
   - name: caprock
-    # Tap repo — create dspv/homebrew-tap (public) before the first tag.
+    # Tap repo dspv/homebrew-tap (public); the cask is pushed here on release.
     repository:
       owner: dspv
       name: homebrew-tap
@@ -63,7 +63,7 @@ homebrew_casks:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: "https://caprock.dev"
     description: "Mission control for Claude Code — watch, control and orchestrate your sessions"
-    # Don't fail a release if the tap repo isn't there yet.
+    # Skip the cask push on prereleases / when the tap is unavailable.
     skip_upload: auto
     caveats: |
       Start it with:  caprock up
