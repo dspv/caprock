@@ -38,19 +38,21 @@ any future release:
    - a Homebrew formula pushed to `dspv/homebrew-tap` — **automatically**, because
      the release is no longer a draft (`release.draft: false`),
    - `checksums.txt`, and a **published** GitHub release.
-4. Verify the published binaries and the formula:
-   `brew untap dspv/tap 2>/dev/null; brew install dspv/tap/caprock; caprock --version`.
-   No manual formula edit is needed — goreleaser wrote it. (A `-rc`/`-beta` tag is
-   marked a prerelease and its formula push is skipped by `skip_upload: auto`, so
-   a prerelease never overwrites the stable formula.)
+4. Verify the published binaries and the formula end to end:
+   `brew untap dspv/tap 2>/dev/null; brew install dspv/tap/caprock; caprock --version`,
+   then `caprock up` and confirm `caprock status` reads `hooks: 8/8` — this catches
+   a formula that installs the wrong binaries or a stale formula path. No manual
+   formula edit is needed — goreleaser writes `Formula/caprock.rb` directly
+   (`directory: Formula` in `.goreleaser.yaml`). A `-rc`/`-beta` tag is marked a
+   prerelease and its formula push is skipped by `skip_upload: auto`, so a
+   prerelease never overwrites the stable formula.
 
-   > **First stable release after 2026-08-19:** the auto-push flow
-   > (`release.draft: false`) has not yet been exercised end to end — v0.4.0 shipped
-   > via the earlier manual-formula path. On the first release cut after this
-   > change, confirm the tap formula version bumped on its own; if it did not,
-   > check the release job's `homebrew` step and the `HOMEBREW_TAP_TOKEN` secret,
-   > then fall back to editing `dspv/homebrew-tap/Formula/caprock.rb` by hand from
-   > `checksums.txt`.
+   The auto-push flow (`release.draft: false` + `directory: Formula`) was verified
+   end to end on **v0.4.1** (2026-08-20): the tap formula bumped on its own and a
+   clean `brew upgrade` → `caprock up` reads `8/8`. Two release-plumbing bugs were
+   fixed along the way — the formula must install **both** `caprock` and
+   `caprock-hook`, and goreleaser must write to `Formula/` (not the repo root,
+   which `brew` ignores in favour of `Formula/`).
 
 ### Re-running a release for an existing tag
 

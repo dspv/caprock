@@ -52,6 +52,11 @@ changelog:
 
 brews:
   - name: caprock
+    # Write the formula to Formula/ (the Homebrew standard). Without this
+    # goreleaser writes caprock.rb to the tap repo root, which `brew install
+    # dspv/tap/caprock` ignores in favour of Formula/caprock.rb — so the tap
+    # would silently serve a stale formula.
+    directory: Formula
     # A CLI binary belongs in a formula, not a cask (casks are for GUI .app
     # bundles). A formula also installs cleanly on Linux Homebrew. `brews` is the
     # formula block; newer goreleaser renames it to `homebrew_formulas`, but the
