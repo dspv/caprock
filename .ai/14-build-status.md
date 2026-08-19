@@ -43,6 +43,10 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-08-20 — Windows install via Scoop; site/README Windows instructions
+
+Windows users had no package-manager path — the site and README named "macOS / Linux / Windows" but only gave a `brew` command and a "download the zip" fallback, so a Windows user had to place binaries on PATH by hand. Added a `scoops` block to `.goreleaser.yaml` (manifest pushed to the new public **`dspv/scoop-bucket`** repo on release, skipped on prerelease), and Windows instructions everywhere: README quickstart, the site's `/install` page and `/install.md`. `scoop bucket add dspv https://github.com/dspv/scoop-bucket` then `scoop install caprock`. **One-time setup still owed:** the `HOMEBREW_TAP_TOKEN` PAT must be granted `Contents: write` on `dspv/scoop-bucket` too, or `skip_upload: auto` skips the Scoop push (documented in RELEASING § One-time setup). winget deferred (needs a PR into `microsoft/winget-pkgs` + their review) until there's real Windows traffic.
+
 ### 2026-08-20 — v0.5.0 published; the CI-gate caught a broken release before it shipped
 
 v0.5.0 is tagged and published. The first tag failed the new `verify` gate — golangci-lint ran before the UI build, so `internal/api/ui.go`'s `//go:embed all:dist` had nothing to embed ("no matching files") — and goreleaser was correctly **skipped**: nothing reached `brew install`. This is exactly what the gate is for. Fixed by building the UI first in the `verify` job, re-tagged, and the second run published cleanly: `verify` green → goreleaser green → the tap formula auto-bumped to 0.5.0 in `Formula/` (both binaries), no manual step. Verified live: `brew upgrade` → `caprock 0.5.0`, `caprock up` offers hooks **and** statusLine, `caprock status` reads `hooks: 8/8`, statusLine set, ~179k events / 52 sessions of history intact.

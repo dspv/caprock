@@ -12,14 +12,21 @@ any future release:
 - ✅ The public tap repo **`dspv/homebrew-tap`** already exists (created
   2026-08-19). The `brews` block in `.goreleaser.yaml` uploads the formula
   there on release.
+- ✅ The public Scoop bucket repo **`dspv/scoop-bucket`** exists (created
+  2026-08-20). The `scoops` block uploads the Windows manifest there on release.
 - ✅ The **`HOMEBREW_TAP_TOKEN` secret is configured** on `dspv/caprock` (added
   2026-08-19). It is a fine-grained PAT with **Contents: Read and write** scoped
-  to just `dspv/homebrew-tap`, which the formula push needs because the default
-  `GITHUB_TOKEN` cannot write to another repository. (Before it was added, the
-  first v0.1.0 run built and uploaded every binary but failed the formula push with
-  `403 Resource not accessible by integration`.) If it ever expires, regenerate
-  the PAT and replace the secret under **Settings → Secrets and variables →
-  Actions**.
+  to the tap, which the formula push needs because the default `GITHUB_TOKEN`
+  cannot write to another repository. (Before it was added, the first v0.1.0 run
+  built and uploaded every binary but failed the formula push with `403 Resource
+  not accessible by integration`.) If it ever expires, regenerate the PAT and
+  replace the secret under **Settings → Secrets and variables → Actions**.
+- ⚠️ **The same PAT must also be granted `Contents: write` on
+  `dspv/scoop-bucket`** (the goreleaser `scoops` block reuses `HOMEBREW_TAP_TOKEN`).
+  Until that scope is added, the Scoop push is skipped by `skip_upload: auto`
+  (the release still succeeds) — so the bucket serves nothing and `scoop install
+  caprock` fails. Add the repo to the PAT's resource list, or issue a new
+  fine-grained PAT covering both `homebrew-tap` and `scoop-bucket`.
 
 ## Cutting a release
 
@@ -39,8 +46,9 @@ any future release:
    a tag on a red commit never publishes. On success it produces:
    - `caprock` and `caprock-hook` for darwin/linux/windows × amd64/arm64,
    - a macOS **universal** binary,
-   - a Homebrew formula pushed to `dspv/homebrew-tap` — **automatically**, because
-     the release is no longer a draft (`release.draft: false`),
+   - a Homebrew formula pushed to `dspv/homebrew-tap` and a Scoop manifest pushed
+     to `dspv/scoop-bucket` — both **automatically**, because the release is no
+     longer a draft (`release.draft: false`); a prerelease skips both,
    - `checksums.txt`, and a **published** GitHub release.
 4. Verify the published binaries and the formula end to end:
    `brew untap dspv/tap 2>/dev/null; brew install dspv/tap/caprock; caprock --version`,

@@ -85,6 +85,24 @@ brews:
       Start it with:  caprock up
       Then open:      http://127.0.0.1:4173
 
+# Windows install via Scoop — the manifest is pushed to dspv/scoop-bucket on a
+# normal release (skipped on a prerelease or when the token is missing), so
+# Windows users run `scoop bucket add dspv https://github.com/dspv/scoop-bucket`
+# then `scoop install caprock` instead of hand-downloading a zip.
+scoops:
+  - name: caprock
+    repository:
+      owner: dspv
+      name: scoop-bucket
+      # Same reason as the tap: the default GITHUB_TOKEN can't write another repo,
+      # so reuse the HOMEBREW_TAP_TOKEN PAT (contents:write). Grant it scope on
+      # dspv/scoop-bucket too. Missing token → empty → skip_upload:auto skips.
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: "https://caprock.dev"
+    description: "Mission control for Claude Code — watch, control and orchestrate your sessions"
+    license: "Apache-2.0"
+    skip_upload: auto
+
 release:
   # Not a draft: goreleaser publishes the release directly, which is also what
   # lets it push the Homebrew formula (skip_upload:auto skips on draft). release.yml
