@@ -56,6 +56,11 @@ homebrew_casks:
     repository:
       owner: dspv
       name: homebrew-tap
+      # The default GITHUB_TOKEN cannot write to another repo (the tap), so use a
+      # dedicated PAT with contents:write on dspv/homebrew-tap, provided as the
+      # HOMEBREW_TAP_TOKEN secret. If the secret is unset the value is empty and
+      # skip_upload:auto below skips the push instead of failing the release.
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: "https://caprock.dev"
     description: "Mission control for Claude Code — watch, control and orchestrate your sessions"
     # Don't fail a release if the tap repo isn't there yet.

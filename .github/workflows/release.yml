@@ -32,3 +32,8 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # PAT with contents:write on dspv/homebrew-tap so goreleaser can push
+          # the cask (the default GITHUB_TOKEN cannot write to another repo). The
+          # `|| ''` keeps the env key present (goreleaser's {{ .Env.X }} requires
+          # it) so a missing secret degrades to skip, not a hard error.
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN || '' }}
