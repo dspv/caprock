@@ -9,6 +9,19 @@ Versions map to the roadmap phases in `.ai/09-execution-plan.md`: **v0.1.0** = O
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.4.1] - 2026-08-19
+
+### Fixed
+
+- **Homebrew install now includes the hook shim.** The formula installed only
+  `caprock`, not `caprock-hook`, so a `brew` install fell back to the
+  `caprock hook` self-command. Both binaries ship now.
+- **Hook status/uninstall recognize the self-hook form.** When hooks were
+  registered as `…/caprock hook` (no sibling shim), `caprock status` read
+  `0/8` and `hooks uninstall` silently left them in place (causing duplicates on
+  reinstall). Inspection now matches both the dedicated shim and the self-hook
+  command, so status is honest and uninstall is clean.
+
 ## [0.4.0] - 2026-08-19
 
 Post-Orchestrate polish: a new plan-limit feature, orchestrator-lifecycle fixes,

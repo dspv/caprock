@@ -259,9 +259,21 @@ func isOurEntry(e *Object, shimPath string) bool {
 		if cs == shimPath || cs == quoteIfSpaces(shimPath) {
 			return true
 		}
-		base := filepath.Base(strings.Trim(cs, `"`))
+		// Recognize our entry regardless of which command form was installed: the
+		// dedicated shim (`…/caprock-hook`) or the fallback self-hook
+		// (`…/caprock hook`). The daemon inspects with the data-dir shim path, but
+		// a formula/`go install` layout with no sibling shim registers the
+		// self-hook form — both are ours, so status must not read 0/N for a
+		// working install.
+		trimmed := strings.Trim(cs, `"`)
+		base := filepath.Base(trimmed)
 		if base == "caprock-hook" || base == "caprock-hook.exe" {
 			return true
+		}
+		if fields := strings.Fields(trimmed); len(fields) == 2 && fields[1] == "hook" {
+			if b := filepath.Base(fields[0]); b == "caprock" || b == "caprock.exe" {
+				return true
+			}
 		}
 	}
 	return false

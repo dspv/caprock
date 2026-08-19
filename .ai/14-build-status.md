@@ -2,7 +2,7 @@
 
 The running log: what is done, what is not, what is next. **Update this file and § Current State in [00-index.md](00-index.md) whenever the state of the world changes.** Dates in absolute form, never "last week". What "done" means per task is defined in [09-execution-plan.md](09-execution-plan.md).
 
-**Last updated: 2026-08-19** · Phase **2 — Orchestrate, complete** · **v0.1.0 (Observe), v0.2.0 (Control), v0.3.0 (Orchestrate), and v0.4.0 (post-Orchestrate polish) are all tagged and published** (Homebrew formula in `dspv/homebrew-tap` — `brew install dspv/tap/caprock`). The live unattended orchestrator run (the Phase 2 tag gate) is done — a real `claude` orchestrator autonomously assigned a task, spawned a worker, and drove it to green verification. v0.4.0 adds plan-limit windows (`caprock statusline`), fixes two orchestrator-lifecycle bugs (workers now stop cleanly; `Start` is idempotent), and ships a Homebrew formula in place of the cask. Next: Phase 3 (Delight) has no plan by design.
+**Last updated: 2026-08-19** · Phase **2 — Orchestrate, complete** · **v0.1.0 (Observe), v0.2.0 (Control), v0.3.0 (Orchestrate), v0.4.0 (post-Orchestrate polish), and v0.4.1 (Homebrew hook-shim fix) are all tagged and published** (Homebrew formula in `dspv/homebrew-tap` — `brew install dspv/tap/caprock`). The live unattended orchestrator run (the Phase 2 tag gate) is done — a real `claude` orchestrator autonomously assigned a task, spawned a worker, and drove it to green verification. v0.4.0 adds plan-limit windows (`caprock statusline`), fixes two orchestrator-lifecycle bugs (workers now stop cleanly; `Start` is idempotent), and ships a Homebrew formula in place of the cask. Next: Phase 3 (Delight) has no plan by design.
 
 ## Progress by track
 
@@ -42,6 +42,10 @@ Percentages are deliberately coarse — they answer "is this track started, half
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
 ## Log
+
+### 2026-08-19 — v0.4.1: Homebrew install ships the hook shim; status/uninstall see the self-hook form
+
+Found by installing v0.4.0 via `brew` on a real machine. Two linked bugs. **(1) The formula installed only `caprock`, not `caprock-hook`** — my `bin.install` stanza omitted the shim, so `hooks install` fell back to the `…/caprock hook` self-command. **(2) `Inspect`/`Uninstall` only recognized the dedicated `caprock-hook` shim**, not the self-hook form, so `caprock status` (which the daemon computes against the data-dir shim path) read `0/8` for a working install, and `hooks uninstall` silently no-op'd, producing duplicate hook entries on the next install. Fix: goreleaser + the tap formula now install both binaries; `isOurEntry` also matches a `…/caprock hook` command (base `caprock` + single arg `hook`). Tests: `TestInspectRecognisesSelfHookForm`, `TestUninstallRecognisesSelfHookForm`. Verified live: after the fix, `caprock status` reads `hooks: 8/8`, backfill done (1463 transcripts), no duplicates. The daemon binds 127.0.0.1:4173; the shim is never the daemon.
 
 ### 2026-08-19 — Orchestrator lifecycle fixes: workers stop cleanly, restart is idempotent
 

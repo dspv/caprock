@@ -75,6 +75,7 @@ brews:
     skip_upload: auto
     install: |
       bin.install "caprock"
+      bin.install "caprock-hook"
     caveats: |
       Start it with:  caprock up
       Then open:      http://127.0.0.1:4173

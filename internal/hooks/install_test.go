@@ -199,3 +199,39 @@ func mustParse(t *testing.T, s string) any {
 	}
 	return v
 }
+
+// The daemon inspects with the data-dir shim path, but a Homebrew / `go install`
+// layout with no sibling caprock-hook registers the self-hook form
+// (`/opt/homebrew/bin/caprock hook`). Inspect must recognize that as ours, or a
+// working install reads as 0/N events registered. This is the bug behind
+// `caprock status` showing 0/8 while `caprock hooks status` showed 8/8.
+func TestInspectRecognisesSelfHookForm(t *testing.T) {
+	dir := t.TempDir()
+	p := write(t, dir, `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"/opt/homebrew/bin/caprock hook","timeout":5}]}]}}`)
+	// Inspect with the data-dir shim path (what the daemon passes) — a different
+	// path from the self-hook command that was actually installed.
+	st, err := Inspect(p, filepath.Join(dir, "caprock-hook"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, ev := range st.Installed {
+		if ev == "Stop" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("self-hook form not recognized as ours: installed=%v", st.Installed)
+	}
+}
+
+// Uninstall must also recognize the self-hook form (`caprock hook`), or a
+// brew/go-install user cannot cleanly remove hooks and ends up with duplicates.
+func TestUninstallRecognisesSelfHookForm(t *testing.T) {
+	dir := t.TempDir()
+	p := write(t, dir, `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"/opt/homebrew/bin/caprock hook","timeout":5}]}]}}`)
+	removed, err := Uninstall(p, filepath.Join(dir, "caprock-hook"))
+	if err != nil || !removed {
+		t.Fatalf("self-hook form not removed: removed=%v err=%v", removed, err)
+	}
+}
