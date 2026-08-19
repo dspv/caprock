@@ -8,6 +8,11 @@ import (
 	"github.com/dspv/caprock/internal/config"
 )
 
+// userHomeDir is indirected so tests can inject a home on every OS (os.UserHomeDir
+// reads %USERPROFILE% on Windows, not $HOME, so t.Setenv("HOME", …) alone would
+// not redirect it).
+var userHomeDir = os.UserHomeDir
+
 // trustFolder pre-accepts Claude Code's folder-trust dialog for dir, so a session
 // Caprock spawns into a fresh directory (the repo, or a worker's worktree) starts
 // straight in its main loop instead of blocking on the interactive
@@ -20,7 +25,7 @@ import (
 // read as a generic map and written back whole, so unrelated keys are preserved
 // (key order in ~/.claude.json is not significant).
 func trustFolder(dir string) error {
-	home, err := os.UserHomeDir()
+	home, err := userHomeDir()
 	if err != nil {
 		return err
 	}

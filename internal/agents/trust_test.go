@@ -9,7 +9,9 @@ import (
 
 func TestTrustFolderPreacceptsAndPreserves(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	origHome := userHomeDir
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = origHome })
 	// A pre-existing config with unrelated keys must survive untouched.
 	cfg := filepath.Join(home, ".claude.json")
 	orig := map[string]any{
@@ -48,7 +50,9 @@ func TestTrustFolderPreacceptsAndPreserves(t *testing.T) {
 
 func TestTrustFolderCreatesConfig(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	origHome := userHomeDir
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = origHome })
 	if err := trustFolder("/repo"); err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +70,9 @@ func TestTrustFolderCreatesConfig(t *testing.T) {
 
 func TestTrustFolderRefusesUnparsableConfig(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	origHome := userHomeDir
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = origHome })
 	cfg := filepath.Join(home, ".claude.json")
 	_ = os.WriteFile(cfg, []byte("{not json"), 0o600)
 	if err := trustFolder("/repo"); err == nil {
