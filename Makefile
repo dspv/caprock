@@ -36,7 +36,8 @@ build-go: ## Build the Go binaries only (uses whatever UI is already embedded)
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN)/caprock-hook ./cmd/caprock-hook
 
 .PHONY: ui
-ui: ## Build the dashboard into internal/api/dist
+ui: ## Build the dashboard into internal/api/dist (installs deps on a fresh clone)
+	cd ui && [ -d node_modules ] || npm ci
 	cd ui && npm run build
 
 .PHONY: ui-install
@@ -72,8 +73,8 @@ lint-ui: ## tsc --noEmit
 	cd ui && npm run typecheck
 
 .PHONY: smoke
-smoke: build-go ## Phase 0 Definition-of-Done scenario with the fake claude
-	go test -tags smoke -count=1 ./internal/smoke/...
+smoke: build-go ## Phase 0 DoD scenario + the Phase 2 e2e (what CI's smoke step runs)
+	go test -tags smoke -count=1 ./internal/smoke/... ./internal/board/...
 
 # --- docs -----------------------------------------------------------------
 .PHONY: docs-fmt
@@ -89,4 +90,4 @@ docs-links: ## Fail if any relative markdown link does not resolve
 	@python3 scripts/check-links.py $(DOCS)
 
 .PHONY: check
-check: docs-check docs-links lint test ## Docs gates + lint + test (what CI runs, minus the OS matrix)
+check: docs-check docs-links lint test smoke ## Docs gates + lint + test + smoke (what CI runs, minus the OS matrix)

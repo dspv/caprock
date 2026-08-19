@@ -17,21 +17,9 @@ Caprock is a local, open-source mission control for Claude Code: a single static
 
 ## How to get context
 
-Read `.ai/00-index.md` first. Then read the file for your task:
-
-| Working on...                          | Read...                       |
-| -------------------------------------- | ----------------------------- |
-| Anything (always)                      | `.ai/01-product.md`           |
-| Any Go component, data flow, platform  | `.ai/02-architecture.md`      |
-| Endpoints, WS, DDL, shim, pricing file | `.ai/03-contracts.md`         |
-| The dashboard (`ui/`)                  | `.ai/04-ui.md`                |
-| Orchestration internals (hive, verify) | `.ai/05-orchestration.md`     |
-| Before writing code                    | `.ai/06-engineering-rules.md` |
-| Why a decision was made                | `.ai/08-decisions.md`         |
-| Picking up a task (T0–T25), DoD, AC    | `.ai/09-execution-plan.md`    |
-| Versions, CI, release, local dev       | `.ai/10-infrastructure.md`    |
-| Risks, assumptions, open questions     | `.ai/12-risks.md`             |
-| Current progress                       | `.ai/14-build-status.md`      |
+Read `.ai/00-index.md` first — its table maps every doc to when you'd read it
+(the one home for that map). Then read the one file your task needs, not the
+whole corpus. Contributing? See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Non-negotiable rules
 
@@ -53,17 +41,17 @@ Read `.ai/00-index.md` first. Then read the file for your task:
 
 9. **Keep the docs current as you build.** A change to behaviour lands with its documentation change in the same commit — including `.ai/14-build-status.md` and the README progress bars.
 
-10. **Every task ends green** (`go vet`, `go test`, lint, UI typecheck/tests, `make check`) locally before push and in CI on three OS. Commit-to-master is allowed until T6; PRs from T7 on (`.ai/08-decisions.md` ADR-014).
+10. **Every task ends green** (`go vet`, `go test`, lint, UI typecheck/tests, `make check`) locally before push and in CI on three OS. Ongoing changes are focused PRs to master (the T0–T25 build is complete; see [ADR-014](.ai/08-decisions.md)).
 
 ## Dev commands
 
 ```bash
 make help        # list targets
-make dev         # daemon + vite dev server on :4173
+make dev         # daemon on :4173 + vite dev server on :5173
 make test lint   # go + ui tests and linters
 make smoke       # the Phase 0 DoD scenario with the fake claude
 make docs-fmt    # tight-align all markdown tables (run after editing any table)
-make check       # docs gates + lint + test (what CI runs)
+make check       # docs + lint + tests + smoke (the CI gate, minus the OS matrix)
 ```
 
 ## Tables

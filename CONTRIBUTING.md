@@ -8,18 +8,26 @@ Prereqs: **Go 1.26**, **Node 22**.
 
 ```bash
 git clone git@github.com:dspv/caprock.git && cd caprock
-make ui && make build      # → ./bin/caprock, ./bin/caprock-hook
-./bin/caprock up           # http://127.0.0.1:4173
-make check                 # tests + lint + typecheck — what CI runs
+make build         # builds the UI (installs its deps on first run) + the binaries
+./bin/caprock up   # http://127.0.0.1:4173
+make check         # docs + lint + tests + smoke — the full CI gate, minus the OS matrix
 ```
+
+`make check` is what CI runs (minus the 3-OS matrix). If it's green locally, CI
+is almost always green — the exception is a platform-specific bug on Windows or
+Linux, which only the CI matrix can catch. Run a single package's tests with
+`go test ./internal/<pkg>/...`.
 
 ## Making a change
 
 1. Open an issue first for anything non-trivial.
-2. Branch; keep the PR small and focused.
-3. Conventional Commits (`feat:`, `fix:`, `docs:` …).
-4. `make check` must pass. **No red Windows CI — no exceptions.**
-5. Fill in the PR checklist.
+2. Branch: `feat/<short-name>`, `fix/<short-name>`, or `docs/<short-name>`.
+3. Keep the PR to **one focused change**.
+4. **Conventional Commits with scope**: `feat(hookd): …`, `fix(ingest): …`,
+   `docs(ai): …`, `ci: …`, `chore(release): …`.
+5. `make check` must pass. **No red Windows CI — no exceptions.**
+6. Reference the issue in the PR body: `Closes #<n>`.
+7. Fill in the PR checklist.
 
 ## Rules that matter
 
@@ -28,8 +36,22 @@ Full engineering rules: [`.ai/06-engineering-rules.md`](.ai/06-engineering-rules
 - **Local-first** — no telemetry, no outbound calls from the daemon.
 - **No invented numbers** — a figure that isn't measured or sourced doesn't ship.
 - **The shim never breaks a user's Claude session** — every error path exits 0.
+- **Contracts change with their docs, together** — a new/changed endpoint, DB
+  table, or price updates [`.ai/03-contracts.md`](.ai/03-contracts.md) (and a
+  migration / `pricing_version` bump) **in the same commit**.
+- **Docs land with the change** — a behaviour change updates its docs, including
+  [`.ai/14-build-status.md`](.ai/14-build-status.md) and the README progress
+  bars, in the same PR.
 
-New to the codebase? Read [`.ai/00-index.md`](.ai/00-index.md) first.
+New to the codebase? Read [`.ai/00-index.md`](.ai/00-index.md) first — it maps
+every doc to when you'd read it.
+
+## A good PR, concretely
+
+> `fix(ingest): tolerate unknown transcript fields`
+> One code file (`internal/ingest/parser.go`) + a fixture in
+> `testdata/transcripts/` + a line in `.ai/14-build-status.md` — all in one
+> commit, `make check` green, `Closes #42`.
 
 ## License
 

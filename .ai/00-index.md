@@ -12,13 +12,16 @@ Caprock is a local, open-source **mission control for Claude Code**: a single st
 | [04-ui.md](04-ui.md)                               | The five screens, visual tokens, narration map                  | Touching `ui/`                                     |
 | [05-orchestration.md](05-orchestration.md)         | Hive, mailboxes, Stop-loop, verification, approvals             | Orchestration internals                            |
 | [06-engineering-rules.md](06-engineering-rules.md) | Binding rules; definition of green                              | Before writing code                                |
+| [07-orchestrator.md](07-orchestrator.md)           | The orchestrator's system prompt (embedded, kept in sync)       | Changing orchestrator behaviour                    |
 | [08-decisions.md](08-decisions.md)                 | ADR log                                                         | Before revisiting any decision                     |
 | [09-execution-plan.md](09-execution-plan.md)       | Roadmap, phase DoDs, tasks T0–T25 with AC                       | Picking up or finishing a task                     |
 | [10-infrastructure.md](10-infrastructure.md)       | Versions, CI, release, local dev                                | Toolchain, CI, releases                            |
 | [12-risks.md](12-risks.md)                         | Assumptions, risks, open questions                              | Before expanding scope                             |
 | [14-build-status.md](14-build-status.md)           | What is built, what is not, next action, log                    | Checking progress                                  |
 
-These files absorbed the hand-off specification (`CaprockV2-SPEC.md`, deleted after the loss audit recorded in [docs/migration-audit.md](../docs/migration-audit.md)). The spec is not a separate source of truth — **these files are**.
+These files absorbed the hand-off specification (`CaprockV2-SPEC.md`, deleted after the loss audit recorded in [docs/migration-audit.md](../docs/migration-audit.md)). The spec is not a separate source of truth — **these files are**. (Numbering is non-contiguous by design — 11 and 13 were never used; nothing is missing.)
+
+**This table is the one home for the doc map.** `CLAUDE.md` and `AGENTS.md` point here rather than restating it.
 
 Supporting directories:
 

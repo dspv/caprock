@@ -7,27 +7,17 @@ Caprock is a local, open-source mission control for Claude Code — a single Go 
 
 ## Start here
 
-1. Read **`CLAUDE.md`** — non-negotiable rules.
-2. Read **`.ai/00-index.md`** — documentation map + current state.
-3. Read **`.ai/14-build-status.md`** — what is actually built right now.
-4. Then read the file specific to your task (map in `CLAUDE.md`).
+1. Read **`CLAUDE.md`** — the non-negotiable rules (Claude Code auto-loads it).
+2. Read **`.ai/00-index.md`** — current state + the doc map (file → when to read it).
+3. Read the **one** file the map names for your task. Don't read the whole corpus.
+4. Contributing code? **`CONTRIBUTING.md`** — build, test (`make check`), PR flow.
 
 ## Documentation map
 
-| File                          | Contents                                                        |
-| ----------------------------- | --------------------------------------------------------------- |
-| `.ai/00-index.md`             | Index + current state + rules of engagement                     |
-| `.ai/01-product.md`           | One-liner, prior art, problem, users, traceability, principles  |
-| `.ai/02-architecture.md`      | Daemon, data planes, cross-platform rules, sources, event model |
-| `.ai/03-contracts.md`         | Shim protocol, HTTP API, WS, DDL, pricing, runtime file         |
-| `.ai/04-ui.md`                | Five screens, visual tokens, narration map                      |
-| `.ai/05-orchestration.md`     | Hive, mailboxes, Stop-loop, verification, approvals             |
-| `.ai/06-engineering-rules.md` | Binding engineering rules; definition of green                  |
-| `.ai/08-decisions.md`         | ADR log — check before reopening anything                       |
-| `.ai/09-execution-plan.md`    | Roadmap, phase DoDs, tasks T0–T25                               |
-| `.ai/10-infrastructure.md`    | Versions, CI, release, local dev                                |
-| `.ai/12-risks.md`             | Risks, the assumption register, open questions                  |
-| `.ai/14-build-status.md`      | Running build log, progress, next action                        |
+The full doc map (every file → when to read it) lives in
+[`.ai/00-index.md`](.ai/00-index.md) — the one home for it. Read the one file
+your task needs, not the whole corpus. To contribute code, see
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Markdown table alignment
 
