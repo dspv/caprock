@@ -43,6 +43,10 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-08-20 — v0.5.1 shipped (Scoop live); test coverage + a spaced-path fix
+
+v0.5.1 published — the full Windows chain worked end to end: tag → verify gate → goreleaser → the Scoop manifest (`caprock.json`, both `.exe`s, 64bit + arm64) auto-pushed to `dspv/scoop-bucket` (the newly-scoped token works), and the Homebrew formula bumped to 0.5.1. Local daemon `brew upgrade`d to 0.5.1, `hooks: 8/8`. Then a round of improvements: CLI tests for `lastLogError` (port-in-use / error / panic / clean / missing-file), the statusline subcommand wiring, and `statuslineCommandStr`; a `post()` test asserting the **whitelist promise** (only rate-limits + session_id leave — no prompt/model/cost); and a real correctness fix — `statuslineCommandStr` now quotes only the path (not the whole command), so a caprock under a spaced path (`/Users/My Name/bin/caprock`) registers as `"…/caprock" statusline` instead of one broken quoted token. Coverage: cmd/caprock 13.5→18%, statusline 62.5→80.6%, hooks →82.3%. Whole project green under `-race`.
+
 ### 2026-08-20 — Windows install via Scoop; site/README Windows instructions
 
 Windows users had no package-manager path — the site and README named "macOS / Linux / Windows" but only gave a `brew` command and a "download the zip" fallback, so a Windows user had to place binaries on PATH by hand. Added a `scoops` block to `.goreleaser.yaml` (manifest pushed to the new public **`dspv/scoop-bucket`** repo on release, skipped on prerelease), and Windows instructions everywhere: README quickstart, the site's `/install` page and `/install.md`. `scoop bucket add dspv https://github.com/dspv/scoop-bucket` then `scoop install caprock`. The `HOMEBREW_TAP_TOKEN` PAT was granted `Contents: write` on `dspv/scoop-bucket` too, so the Scoop push works (verified on v0.5.1 — see the next entry). All project repos now cross-link through a README project map, and all are on `master`. winget deferred (needs a PR into `microsoft/winget-pkgs` + their review) until there's real Windows traffic.
