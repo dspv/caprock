@@ -176,6 +176,21 @@ func TestOrderedJSONRoundTrip(t *testing.T) {
 	}
 }
 
+// Events is a contract: the shim registers for exactly these 8 Claude Code hook
+// events. Pinning them here means dropping or renaming one fails a test instead
+// of silently shrinking what Caprock observes.
+func TestEventsListIsPinned(t *testing.T) {
+	want := []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "SubagentStop", "PreCompact", "StopFailure"}
+	if len(Events) != len(want) {
+		t.Fatalf("event count changed: got %d (%v), want %d", len(Events), Events, len(want))
+	}
+	for i, e := range want {
+		if Events[i] != e {
+			t.Fatalf("event %d: got %q, want %q", i, Events[i], e)
+		}
+	}
+}
+
 func mustParse(t *testing.T, s string) any {
 	t.Helper()
 	v, err := ParseOrdered([]byte(s))

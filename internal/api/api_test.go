@@ -122,6 +122,41 @@ func TestSessionsAndDetail(t *testing.T) {
 	}
 }
 
+// The History screen's endpoint (GET /v1/history) must return the lifetime
+// totals and tool distribution over the range — the store query is tested
+// elsewhere; this covers the HTTP handler (range parse + JSON shape).
+func TestHistoryEndpoint(t *testing.T) {
+	e := newEnv(t)
+	e.seed(t, t.TempDir())
+	var hist struct {
+		Range string `json:"range"`
+		Tools []struct {
+			Tool  string `json:"tool"`
+			Count int    `json:"count"`
+		} `json:"tools"`
+		Totals struct {
+			ToolCalls int `json:"tool_calls"`
+			Turns     int `json:"turns"`
+		} `json:"totals"`
+	}
+	if code := e.get(t, "/v1/history?range=all", &hist); code != 200 {
+		t.Fatalf("history: %d", code)
+	}
+	// The seed produced one Edit tool call and one user turn.
+	var edits int
+	for _, td := range hist.Tools {
+		if td.Tool == "Edit" {
+			edits = td.Count
+		}
+	}
+	if edits != 1 {
+		t.Fatalf("history tool distribution missing Edit: %+v", hist.Tools)
+	}
+	if hist.Totals.ToolCalls < 1 || hist.Totals.Turns < 1 {
+		t.Fatalf("history totals empty: %+v", hist.Totals)
+	}
+}
+
 func TestDiffEndpoint(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
