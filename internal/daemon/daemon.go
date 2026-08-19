@@ -202,19 +202,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	// Hook receiver.
 	hh := &hookd.Handler{Token: rt.Token, Recorder: d.rec, Log: d.log}
 	if d.board != nil {
-		hh.Decide = func(ctx context.Context, p hookd.Payload) []byte {
-			agentID := p.AgentID
-			if agentID == "" && d.orch != nil {
-				agentID = d.orch.AgentIDForSession(p.SessionID)
-			}
-			// The task id arms the per-(session,task) forced-continue guard
-			// (N=10, then escalate). Without it the guard is inert.
-			taskID := ""
-			if d.orch != nil {
-				taskID = d.orch.TaskForAgent(agentID)
-			}
-			return d.board.StopDecision(ctx, p.SessionID, agentID, taskID)
-		}
+		hh.Decide = d.stopDecision
 	}
 
 	// API.
@@ -315,6 +303,28 @@ func (d *Daemon) observeLoops(ctx context.Context, sub *bus.Subscriber) {
 			}
 		}
 	}
+}
+
+// stopDecision answers a worker's Stop hook: it resolves the payload's session
+// to its hive agent and current task, then asks the board whether to force the
+// worker to continue (non-empty inbox) or let it stop. Returns the decision JSON
+// (nil ⇒ allow stop). This is the composed Decide closure, made a method so the
+// resolve → StopDecision chain is testable end to end.
+func (d *Daemon) stopDecision(ctx context.Context, p hookd.Payload) []byte {
+	if d.board == nil {
+		return nil
+	}
+	agentID := p.AgentID
+	if agentID == "" && d.orch != nil {
+		agentID = d.orch.AgentIDForSession(p.SessionID)
+	}
+	// The task id arms the per-(session,task) forced-continue guard (N=10, then
+	// escalate). Without it the guard is inert.
+	taskID := ""
+	if d.orch != nil {
+		taskID = d.orch.TaskForAgent(agentID)
+	}
+	return d.board.StopDecision(ctx, p.SessionID, agentID, taskID)
 }
 
 // maybeAutoPause pauses a looping session only when auto-pause is enabled AND

@@ -1,15 +1,35 @@
 # Changelog
 
 All notable changes to Caprock. Format: [Keep a Changelog](https://keepachangelog.com/).
-Versions map to the roadmap phases in `.ai/09-execution-plan.md`: **v0.1.0** = Observe
-(tagged 2026-08-19), **v0.2.0** = Control, **v0.3.0** = Orchestrate.
+Versions map to the roadmap phases in `.ai/09-execution-plan.md`: **v0.1.0** = Observe,
+**v0.2.0** = Control, **v0.3.0** = Orchestrate — all tagged and published 2026-08-19.
 
 ## [Unreleased]
 
-Phase 2 (Orchestrate) below is built and green on the macOS / Linux / Windows CI
-matrix, on `master`, and ships at the v0.3.0 tag. Its orchestration loop has been
-driven end to end by a real `claude` orchestrator (unattended, with hooks) — see
-`.ai/14-build-status.md`.
+Nothing yet. Phase 3 (Delight) has no plan by design.
+
+## [0.3.0] - 2026-08-19
+
+**Phase 2, Orchestrate**: a verified multi-agent team. Driven end to end by a real
+`claude` orchestrator, unattended, with hooks.
+
+### Phase 2 — Orchestrate
+
+- On-disk hive (agents / tasks / mailboxes / append-only ledger), single writer,
+  atomic writes, dependency-free YAML.
+- **Tasks board** (kanban over `tasks/*.md`), New-task dialog, approvals.
+- **Orchestrator agent** — a real `claude` session with a hive-aware system prompt
+  that spawns and coordinates workers via mailboxes; the router is a reconciler
+  that spawns a worker per assigned task, runs verification, and wakes idle
+  sessions with unread mail.
+- **Stop-loop autonomy** — a worker's Stop hook is answered to force it to keep
+  going while its inbox is non-empty, with a hard guard (N=10) that escalates.
+- **Verification before done** — a task's `done_criteria` run in the worker's
+  worktree; only green checks reach `done`; red bounces the failing output back
+  (R=3 rounds, then escalate). Destructive commands never run unattended (they
+  escalate to `needs_you`). Cost is attributed to the task.
+- New endpoints: `POST /v1/orchestrator/start`, `POST /v1/tasks/{id}/verify`;
+  `--hive` / `--repo` flags.
 
 ## [0.2.0] - 2026-08-19
 
@@ -51,20 +71,7 @@ machine, live, with token burn and cost, entirely on-device.
 - CLI: `caprock up | down | status | hooks install|uninstall|status | tasks`.
 - Event retention (`retention_days`, default off) caps database growth.
 
-### Phase 2 — Orchestrate (→ v0.3.0)
-
-- On-disk hive (agents / tasks / mailboxes / append-only ledger), single writer,
-  atomic writes.
-- **Tasks board** (kanban over `tasks/*.md`), New-task dialog, approvals.
-- **Orchestrator agent** — a real `claude` session with a hive-aware system prompt
-  that spawns and coordinates workers via mailboxes.
-- **Stop-loop autonomy** — a worker's Stop hook is answered to force it to keep
-  going while its inbox is non-empty, with a hard guard (N=10) that escalates.
-- **Verification before done** — a task's `done_criteria` run in the worker's
-  worktree; only green checks reach `done`; red bounces the failing output back
-  (R=3 rounds, then escalate). Cost is attributed to the task.
-
-### Notes
+## Notes (all releases)
 
 - Local-first: loopback only, no telemetry, no outbound calls from the daemon.
 - Prices and context-window sizes live in `pricing/pricing.json` (dated, sourced

@@ -2,7 +2,7 @@
 
 The running log: what is done, what is not, what is next. **Update this file and § Current State in [00-index.md](00-index.md) whenever the state of the world changes.** Dates in absolute form, never "last week". What "done" means per task is defined in [09-execution-plan.md](09-execution-plan.md).
 
-**Last updated: 2026-08-19** · Phase **2 — Orchestrate, complete** · **v0.1.0 tagged and published** (Observe; cask in `dspv/homebrew-tap`). The live unattended orchestrator run (the Phase 2 tag gate) is done — a real `claude` orchestrator autonomously assigned a task, spawned a worker, and drove it to green verification. Next: **v0.2.0 (Control) / v0.3.0 (Orchestrate) tags** as each is signed off on the OS matrix.
+**Last updated: 2026-08-19** · Phase **2 — Orchestrate, complete** · **v0.1.0 (Observe), v0.2.0 (Control), and v0.3.0 (Orchestrate) are all tagged and published** (Homebrew cask in `dspv/homebrew-tap`). The live unattended orchestrator run (the Phase 2 tag gate) is done — a real `claude` orchestrator autonomously assigned a task, spawned a worker, and drove it to green verification. Next: Phase 3 (Delight) has no plan by design.
 
 ## Progress by track
 
@@ -13,7 +13,7 @@ Percentages are deliberately coarse — they answer "is this track started, half
 | Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code                     |
 | Phase 0 — Observe (T0–T10)      | 100%     | Works on macOS + CI (macos/ubuntu/windows); v0.1.0 tagged + published |
 | Phase 1 — Control (T11–T16)     | 100%     | v0.2.0 tagged + published; green on the 3-OS CI matrix                |
-| Phase 2 — Orchestrate (T17–T25) | 100%     | All tasks done; live unattended run with hooks passed (tag gate met)  |
+| Phase 2 — Orchestrate (T17–T25) | 100%     | v0.3.0 tagged + published; live unattended run with hooks passed      |
 | Phase 3 — Delight               | 0%       | No plan by design                                                     |
 
 ## Milestone status
@@ -37,7 +37,7 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## What is true right now
 
-- **All three phases are built and green.** The Go module + `ui/` exist and are exercised by `make check` (Go tests, `go vet`, `golangci-lint`, docs gates, and the UI typecheck/vitest/build) on the 3-OS CI matrix. Phase 2's orchestration loop has been driven end to end by a real `claude` orchestrator (see the Phase 2 log entry). **v0.1.0 (Observe) is tagged and published** (Homebrew cask in `dspv/homebrew-tap`); Control and Orchestrate ship at v0.2.0 / v0.3.0.
+- **All three phases are built and green.** The Go module + `ui/` exist and are exercised by `make check` (Go tests, `go vet`, `golangci-lint`, docs gates, and the UI typecheck/vitest/build) on the 3-OS CI matrix. Phase 2's orchestration loop has been driven end to end by a real `claude` orchestrator (see the Phase 2 log entry). **v0.1.0 (Observe), v0.2.0 (Control), and v0.3.0 (Orchestrate) are all tagged and published** (Homebrew cask in `dspv/homebrew-tap`).
 - The Python measurer (`~/dev/caprock-legacy`, PyPI `caprock` 0.3.0) is frozen ([ADR-007](08-decisions.md#adr-007--the-harness-is-caprock-new-go-codebase-in-dspvcaprock-python-measurer-frozen)); the Go binary shipped its first release as **v0.1.0** on 2026-08-19.
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 

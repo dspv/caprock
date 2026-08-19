@@ -5,7 +5,7 @@
 [![docs](https://github.com/dspv/caprock/actions/workflows/docs.yml/badge.svg)](https://github.com/dspv/caprock/actions/workflows/docs.yml)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-> **Status: v0.1.0 tagged (Observe); all three phases built and green (2026-08-19).** Observe, Control, and Orchestrate are complete on the macOS/Linux/Windows CI matrix — a tasks board on disk, mailboxes, the Stop-loop autonomy engine, an orchestrator agent that spawns and coordinates workers, verification-before-done, and approvals. The Phase 2 tag gate passed: a real orchestrator drove a task to green verification unattended, with hooks. v0.1.0 ships Observe; Control and Orchestrate ship at v0.2.0 / v0.3.0. Progress is tracked honestly in [`.ai/14-build-status.md`](.ai/14-build-status.md).
+> **Status: all three phases shipped (2026-08-19).** v0.1.0 (Observe), v0.2.0 (Control), and v0.3.0 (Orchestrate) are tagged and published on the macOS/Linux/Windows CI matrix — a live dashboard, spawn/control of `claude` sessions from the UI, a tasks board on disk, mailboxes, the Stop-loop autonomy engine, an orchestrator agent that spawns and coordinates workers, verification-before-done, and approvals. The Phase 2 tag gate passed: a real orchestrator drove a task to green verification unattended, with hooks. Progress is tracked honestly in [`.ai/14-build-status.md`](.ai/14-build-status.md).
 
 ---
 

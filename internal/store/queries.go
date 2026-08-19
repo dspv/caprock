@@ -385,25 +385,6 @@ func LastEvents(ctx context.Context, q Querier, sessionID string, n int) ([]even
 	return out, rows.Err()
 }
 
-// RecentToolPre returns tool.pre events for a session since `since` (unix ms),
-// oldest first — the loop detector's window.
-func RecentToolPre(ctx context.Context, q Querier, sessionID string, since int64) ([]event.Event, error) {
-	rows, err := q.QueryContext(ctx, `SELECT `+eventCols+` FROM events WHERE session_id = ? AND kind = 'tool.pre' AND ts >= ? ORDER BY id ASC`, sessionID, since)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []event.Event
-	for rows.Next() {
-		ev, err := scanEvent(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, ev)
-	}
-	return out, rows.Err()
-}
-
 // TouchFile records that a session touched a path. Returns true when the path is new for the session.
 func TouchFile(ctx context.Context, q Querier, sessionID, path string, ts int64) (bool, error) {
 	res, err := q.ExecContext(ctx, `INSERT INTO session_files(session_id, path, first_ts, last_ts) VALUES(?, ?, ?, ?) ON CONFLICT(session_id, path) DO NOTHING`,

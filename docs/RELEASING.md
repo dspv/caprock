@@ -1,8 +1,9 @@
 # Releasing Caprock
 
-**v0.1.0 (Observe) is tagged and published** (2026-08-19). The Phase 2 tag gate —
-a live, unattended orchestrator run with hooks — passed. This doc is the runbook
-for cutting the next release (v0.2.0 Control, v0.3.0 Orchestrate):
+**All three phase releases are tagged and published** (2026-08-19): v0.1.0
+(Observe), v0.2.0 (Control), v0.3.0 (Orchestrate). Phase 3 (Delight) has no plan
+by design, so there is no planned next release. This doc is the runbook kept for
+any future release:
 
 ## One-time setup
 
