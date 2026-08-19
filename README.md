@@ -14,9 +14,9 @@ caprock up        # opens localhost:4173
 
 No brew? Grab a binary from [Releases](https://github.com/dspv/caprock/releases).
 
-![Caprock dashboard](docs/screenshot-now.png)
+![Live activity and cost, right now](docs/shot-now.png)
 
-*Live activity, token burn, and cost for every session — in one place.*
+*What each session is doing, and what it's costing — live.*
 
 ## What it is
 
@@ -29,6 +29,14 @@ One local binary. Your data never leaves your machine.
 - **Steer it** — spawn, pause, and kill sessions from the dashboard.
 - **Trust it** — orchestrate agents that finish only when the tests pass.
 - **Local-first** — loopback only, no servers, no telemetry, no account.
+
+Every session on your machine, at a glance:
+
+![Every session at a glance](docs/shot-sessions.png)
+
+Where the money goes — by model, by project, over time:
+
+![Cost breakdown](docs/shot-cost.png)
 
 ## How it works
 
