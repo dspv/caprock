@@ -44,6 +44,14 @@ any future release:
    marked a prerelease and its formula push is skipped by `skip_upload: auto`, so
    a prerelease never overwrites the stable formula.)
 
+   > **First stable release after 2026-08-19:** the auto-push flow
+   > (`release.draft: false`) has not yet been exercised end to end — v0.4.0 shipped
+   > via the earlier manual-formula path. On the first release cut after this
+   > change, confirm the tap formula version bumped on its own; if it did not,
+   > check the release job's `homebrew` step and the `HOMEBREW_TAP_TOKEN` secret,
+   > then fall back to editing `dspv/homebrew-tap/Formula/caprock.rb` by hand from
+   > `checksums.txt`.
+
 ### Re-running a release for an existing tag
 
 If a release job failed partway (e.g. the formula push) after the tag was already
