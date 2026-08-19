@@ -2,9 +2,19 @@
 
 All notable changes to Caprock. Format: [Keep a Changelog](https://keepachangelog.com/).
 Versions map to the roadmap phases in `.ai/09-execution-plan.md`: **v0.1.0** = Observe,
-**v0.2.0** = Control, **v0.3.0** = Orchestrate — all tagged and published 2026-08-19.
+**v0.2.0** = Control, **v0.3.0** = Orchestrate. **v0.4.0** is post-Orchestrate polish
+(plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula).
 
 ## [Unreleased]
+
+Phase 3 (Delight) has no plan by design.
+
+## [0.4.0] - 2026-08-19
+
+Post-Orchestrate polish: a new plan-limit feature, orchestrator-lifecycle fixes,
+and CLI packaging.
+
+### Added
 
 - **Plan-limit windows** — `caprock statusline` (register as Claude Code's
   `statusLine.command`) reads Claude Code's `rate_limits` and shows your 5-hour /
@@ -14,7 +24,23 @@ Versions map to the roadmap phases in `.ai/09-execution-plan.md`: **v0.1.0** = O
   compact one-line status (model · context% · cost · limits) and can never break
   or slow the session.
 
-Phase 3 (Delight) has no plan by design.
+### Fixed
+
+- **Orchestrator: workers now stop cleanly.** A worker's fire-once `assign`
+  message lingered in its inbox after it acted, so the Stop-loop forced
+  continuation forever and the worker was re-kicked into an endless inbox-poll.
+  The router now archives a consumed assign to the agent's `processed/` dir once
+  its task moves past `assigned`.
+- **Orchestrator: `Start` is idempotent.** Starting the orchestrator while a
+  session is already live no longer spawns a duplicate (which leaked the first
+  and raced a second router loop on the same hive); it re-kicks the live session
+  so it picks up newly-queued tasks.
+
+### Changed
+
+- **Homebrew formula, not cask.** A CLI binary ships as a formula (casks are for
+  GUI apps), so install is now `brew install dspv/tap/caprock` (no `--cask`); the
+  formula also works on Linux Homebrew.
 
 ## [0.3.0] - 2026-08-19
 

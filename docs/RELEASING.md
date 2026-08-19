@@ -1,7 +1,7 @@
 # Releasing Caprock
 
-**All three phase releases are tagged and published** (2026-08-19): v0.1.0
-(Observe), v0.2.0 (Control), v0.3.0 (Orchestrate). Phase 3 (Delight) has no plan
+**All releases are tagged and published** (2026-08-19): v0.1.0 (Observe), v0.2.0
+(Control), v0.3.0 (Orchestrate), v0.4.0 (post-Orchestrate polish). Phase 3 (Delight) has no plan
 by design, so there is no planned next release. This doc is the runbook kept for
 any future release:
 
@@ -72,6 +72,7 @@ formula also installs on Linux Homebrew), so `.goreleaser.yaml` now uses a
 ## Version scheme
 
 Versions map to the roadmap phases: **v0.1.0** = Observe, **v0.2.0** = Control,
-**v0.3.0** = Orchestrate. All three are built; the tags are cut as each is
-signed off. The version is stamped into the binary via
-`-ldflags -X …/internal/version.Version`.
+**v0.3.0** = Orchestrate. Post-phase work bumps the minor for a notable change
+(a feature or a meaningful fix) and the patch for small fixes: **v0.4.0** is
+plan-limit windows + orchestrator-lifecycle fixes + the Homebrew formula. The
+version is stamped into the binary via `-ldflags -X …/internal/version.Version`.

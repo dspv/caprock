@@ -36,10 +36,10 @@ Supporting directories:
 
 ## Current State
 
-**Last updated: 2026-08-19** · Owner: Dima · Phase: **Phase 2 — Orchestrate, complete; v0.1.0 / v0.2.0 / v0.3.0 all tagged + published**
+**Last updated: 2026-08-19** · Owner: Dima · Phase: **Phase 2 — Orchestrate, complete; v0.1.0–v0.4.0 tagged + published**
 
 - **Documentation:** corpus built from the spec on 2026-08-18; loss audit green; spec deleted; kept current with the code.
-- **Code:** all three phases built and green on the 3-OS CI matrix. **v0.1.0 (Observe), v0.2.0 (Control), and v0.3.0 (Orchestrate) are all tagged and published** (2026-08-19; Homebrew cask in `dspv/homebrew-tap`). The Phase 2 tag gate — a live unattended orchestrator run with hooks — passed the same day (a real `claude` orchestrator drove a task to green verification with no human input). See [14-build-status.md](14-build-status.md) for the live per-track state.
+- **Code:** all three phases built and green on the 3-OS CI matrix. **v0.1.0 (Observe), v0.2.0 (Control), v0.3.0 (Orchestrate), and v0.4.0 (post-Orchestrate polish: plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula) are all tagged and published** (2026-08-19; Homebrew formula in `dspv/homebrew-tap` — `brew install dspv/tap/caprock`). The Phase 2 tag gate — a live unattended orchestrator run with hooks — passed the same day (a real `claude` orchestrator drove a task to green verification with no human input). See [14-build-status.md](14-build-status.md) for the live per-track state.
 - **Unmeasured / undecided:** see [12-risks.md § Open questions](12-risks.md#open-questions); `OQ-01`, `OQ-03`, and `OQ-07` are resolved (all open questions OQ-01–09 are closed); no open question blocks shipping.
 
 ## Rules of engagement — non-negotiable
