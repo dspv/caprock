@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -375,5 +376,43 @@ func TestPartialSettingsUpdateKeepsTheRest(t *testing.T) {
 	}
 	if get()["update_checks"] != false {
 		t.Error("an explicit false did not switch the release check off")
+	}
+}
+
+// `newest=1` returns the tail of a session rather than the head.
+//
+// Paging from the start is right for a timeline read forwards and wrong for
+// anything showing recent activity: on a session with thousands of events,
+// `after=0` hands back the first few hundred — hours old — so a caller asking
+// "what just happened" renders an empty window with no indication why. The
+// pulse panel hit exactly that.
+func TestSessionEventsNewestReturnsTheTail(t *testing.T) {
+	e := newEnv(t)
+	base := e.now.Add(-2 * time.Hour)
+	for i := 0; i < 30; i++ {
+		ev := &event.Event{
+			SessionID: "s-tail", Source: event.SourceHook, Kind: event.KindToolPre,
+			Tool: "Bash", Key: "k" + strconv.Itoa(i), Ts: base.Add(time.Duration(i) * time.Minute),
+		}
+		if _, err := store.InsertEvent(context.Background(), e.st.DB(), ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var head, tail []event.Event
+	e.get(t, "/v1/sessions/s-tail/events?after=0&limit=5", &head)
+	e.get(t, "/v1/sessions/s-tail/events?newest=1&limit=5", &tail)
+
+	if len(head) != 5 || len(tail) != 5 {
+		t.Fatalf("head=%d tail=%d; want 5 each", len(head), len(tail))
+	}
+	if !tail[len(tail)-1].Ts.After(head[len(head)-1].Ts) {
+		t.Errorf("newest=1 returned %v, no later than the head's %v", tail[len(tail)-1].Ts, head[len(head)-1].Ts)
+	}
+	// Oldest-first within the page, so a caller can render it left to right.
+	for i := 1; i < len(tail); i++ {
+		if tail[i].Ts.Before(tail[i-1].Ts) {
+			t.Errorf("page is not in chronological order at %d", i)
+		}
 	}
 }

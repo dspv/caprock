@@ -5,6 +5,7 @@ import { fmtAgo, fmtPct, fmtTokens, fmtUSD, shortId } from '@/lib/format'
 import { Badge, Empty, Panel, Skeleton, Stat } from '@/components/ui'
 import { ProjectsPanel } from '@/components/Projects'
 import { ActivityFeed } from '@/components/ActivityFeed'
+import { PulsePanel } from '@/components/Pulse'
 import { Attention } from '@/components/Attention'
 import { findAttention } from '@/lib/attention'
 import { UpdateBanner } from '@/components/UpdateBanner'
@@ -59,6 +60,10 @@ export function NowScreen() {
           <Stat label="Cache hit" value={summary.data ? fmtPct(summary.data.savings.hit_rate * 100) : '—'} sub={summary.data ? `${fmtPct(summary.data.savings.cut_pct)} input cost cut` : undefined} tone={summary.data && summary.data.savings.hit_rate < 0.9 ? 'warn' : undefined} size="compact" />
         </div>
       </Panel>
+
+      {/* The shape of the work, above the detail of it: a glance says which
+        * sessions are busy, which are grinding, and which have gone quiet. */}
+      <PulsePanel sessions={list} now={now} />
 
       {/* What is happening (left) beside what it costs (right). */}
       <div className="grid gap-3 lg:grid-cols-2">

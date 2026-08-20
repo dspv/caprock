@@ -43,7 +43,7 @@ The installer writes, for each of the eight events, a matcher-less entry (`match
 ```
 GET  /v1/sessions?active=true          → SessionSummary[]
 GET  /v1/sessions/{id}                 → SessionDetail (stats + last N events)
-GET  /v1/sessions/{id}/events?after=…  → Event[] (paginated)
+GET  /v1/sessions/{id}/events?after=…  → Event[] (paginated; newest=1 returns the tail)
 GET  /v1/sessions/{id}/notes           → AssistantNote[] — what Claude said, newest first
 GET  /v1/notes?q=…                     → AssistantNote[] — search that prose across sessions
 GET  /v1/sessions/{id}/diff            → { files: FileDiff[] } | 409 not-a-git-repo
@@ -56,6 +56,8 @@ GET  /v1/stats/daily?days=30           → DailyStat[]
 POST /v1/hook                          → 204 (shim only, bearer-token gated)
 WS   /v1/live                          → server-push frames: {type:"event"|"session"|"alert", data:…}
 ```
+
+**`GET /v1/sessions/{id}/events?newest=1` returns the tail rather than the head**, oldest-first within the page. Paging from the start is right for a timeline read forwards and wrong for anything showing recent activity: on a session with thousands of events, `after=0` hands back the first few hundred — hours old — so a caller asking "what just happened" renders an empty window with no indication why.
 
 **An unmatched `/v1/` path is `404` with a JSON body**, not the dashboard. The UI is served from `/` so client-side routes resolve, which previously meant any unknown API path fell through to `index.html` — a caller that mistyped an endpoint, or used one removed in an upgrade, got `200` and a document, then failed later parsing HTML as JSON. Page routes (`/`, `/cost`, `/session/{id}`) still serve the SPA.
 

@@ -363,7 +363,18 @@ func (s *Server) handleSessionEvents(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	after, _ := strconv.ParseInt(r.URL.Query().Get("after"), 10, 64)
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	evs, err := store.ListEvents(r.Context(), s.d.Store.DB(), id, after, limit)
+	// `newest=1` returns the tail rather than the head. Paging from the start is
+	// right for a timeline being read forwards, and wrong for anything showing
+	// recent activity: on a session with thousands of events, `after=0` hands
+	// back the first few hundred — hours old — and a caller that asked for "what
+	// just happened" renders an empty window without knowing why.
+	var evs []event.Event
+	var err error
+	if r.URL.Query().Get("newest") == "1" {
+		evs, err = store.LastEvents(r.Context(), s.d.Store.DB(), id, limit)
+	} else {
+		evs, err = store.ListEvents(r.Context(), s.d.Store.DB(), id, after, limit)
+	}
 	if err != nil {
 		s.fail(w, err)
 		return

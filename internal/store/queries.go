@@ -528,6 +528,9 @@ func LastEvents(ctx context.Context, q Querier, sessionID string, n int) ([]even
 	if n <= 0 {
 		n = 50
 	}
+	if n > MaxEventPage {
+		n = MaxEventPage
+	}
 	rows, err := q.QueryContext(ctx, `SELECT * FROM (SELECT `+eventCols+` FROM events WHERE session_id = ? ORDER BY id DESC LIMIT ?) ORDER BY id ASC`, sessionID, n)
 	if err != nil {
 		return nil, err
