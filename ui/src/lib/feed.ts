@@ -27,19 +27,29 @@ export interface FeedItem {
   tone: 'normal' | 'ok' | 'warn' | 'danger'
 }
 
+// Every field here is arbitrary JSON from a tool call — an MCP server can name
+// a tool `Read` and give `file_path` any shape it likes. The daemon stores the
+// hook body verbatim, so these are untrusted leaves, not a typed contract.
+// internal/narrate does the same job in Go with a typed struct, where a
+// non-string silently becomes ""; this is the TypeScript equivalent.
 interface ToolInput {
-  file_path?: string
-  command?: string
-  description?: string
-  url?: string
-  query?: string
-  skill?: string
-  subagent_type?: string
-  pattern?: string
+  file_path?: unknown
+  command?: unknown
+  description?: unknown
+  url?: unknown
+  query?: unknown
+  skill?: unknown
+  subagent_type?: unknown
+  pattern?: unknown
+}
+
+/** A leaf field is only usable if it really is a string. */
+function str(v: unknown): string {
+  return typeof v === 'string' ? v : ''
 }
 
 interface EventPayload {
-  tool_name?: string
+  tool_name?: unknown
   tool_input?: ToolInput
   is_error?: boolean
   text?: string
@@ -54,7 +64,11 @@ function baseName(p: string): string {
 
 function clip(s: string, n: number): string {
   const flat = s.replace(/\s+/g, ' ').trim()
-  return flat.length > n ? flat.slice(0, n - 1) + '…' : flat
+  // Slice by codepoint: slicing UTF-16 units splits a surrogate pair and the
+  // preview ends in a replacement character. NoteCard already does this; these
+  // two files disagreed on the same problem.
+  const chars = [...flat]
+  return chars.length > n ? chars.slice(0, n - 1).join('') + '…' : flat
 }
 
 // A shell line is mostly path noise: absolute paths crowd out the verb that
@@ -73,23 +87,23 @@ function describeTool(tool: string, input: ToolInput): { icon: string; text: str
   switch (tool) {
     case 'Edit':
     case 'NotebookEdit':
-      return input.file_path ? { icon: '✎', text: 'editing', detail: baseName(input.file_path) } : null
+      return str(input.file_path) ? { icon: '✎', text: 'editing', detail: baseName(str(input.file_path)) } : null
     case 'Write':
-      return input.file_path ? { icon: '✎', text: 'writing', detail: baseName(input.file_path) } : null
+      return str(input.file_path) ? { icon: '✎', text: 'writing', detail: baseName(str(input.file_path)) } : null
     case 'Read':
-      return input.file_path ? { icon: '◇', text: 'reading', detail: baseName(input.file_path) } : null
+      return str(input.file_path) ? { icon: '◇', text: 'reading', detail: baseName(str(input.file_path)) } : null
     case 'Bash':
-      return input.command ? { icon: '$', text: 'running', detail: clip(shortenPaths(input.command), 46) } : null
+      return str(input.command) ? { icon: '$', text: 'running', detail: clip(shortenPaths(str(input.command)), 46) } : null
     case 'Grep':
     case 'Glob':
-      return { icon: '⌕', text: 'searching', detail: clip(input.pattern ?? input.query ?? '', 40) || undefined }
+      return { icon: '⌕', text: 'searching', detail: clip(str(input.pattern) || str(input.query), 40) || undefined }
     case 'WebFetch':
     case 'WebSearch':
-      return { icon: '⇢', text: 'fetching', detail: clip(input.url ?? input.query ?? '', 44) || undefined }
+      return { icon: '⇢', text: 'fetching', detail: clip(str(input.url) || str(input.query), 44) || undefined }
     case 'Agent':
-      return { icon: '⚑', text: 'spawned a subagent', detail: input.subagent_type }
+      return { icon: '⚑', text: 'spawned a subagent', detail: str(input.subagent_type) || undefined }
     case 'Skill':
-      return { icon: '⚑', text: 'invoked skill', detail: input.skill }
+      return { icon: '⚑', text: 'invoked skill', detail: str(input.skill) || undefined }
     case 'TodoWrite':
       return { icon: '☑', text: 'updated its plan' }
     default:
@@ -114,7 +128,7 @@ export function toFeedItem(e: Event, project?: string): FeedItem | null {
 
   switch (e.kind) {
     case 'tool.pre': {
-      const tool = payload.tool_name ?? e.tool ?? ''
+      const tool = str(payload.tool_name) || str(e.tool)
       const d = describeTool(tool, payload.tool_input ?? {})
       return d ? { ...base, ...d, tone: 'normal' } : null
     }
@@ -146,6 +160,8 @@ export function toFeedItem(e: Event, project?: string): FeedItem | null {
 
 /** Newest-first, capped — the feed is a window, never a growing buffer. */
 export function pushItem(items: FeedItem[], item: FeedItem, cap = 60): FeedItem[] {
-  if (items.length > 0 && items[0]!.id === item.id) return items
+  // Dedupe against the whole window, not just the head: an out-of-order or
+  // replayed event id otherwise produces two rows with the same React key.
+  if (items.some((i) => i.id === item.id)) return items
   return [item, ...items].slice(0, cap)
 }

@@ -76,9 +76,10 @@ export function NoteCard({ note, now, showSession = false }: {
   showSession?: boolean
 }) {
   const [open, setOpen] = useState(false)
-  const chars = [...note.text]
+  const text = typeof note.text === 'string' ? note.text : ''
+  const chars = [...text]
   const long = chars.length > PREVIEW_RUNES
-  const body = open || !long ? note.text : chars.slice(0, PREVIEW_RUNES).join('') + '…'
+  const body = open || !long ? text : chars.slice(0, PREVIEW_RUNES).join('') + '…'
 
   return (
     <div className="border border-border bg-panel rounded-[var(--radius-panel)]">

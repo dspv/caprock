@@ -69,3 +69,21 @@ describe('BarReadout', () => {
     expect(screen.getByText('$50.00')).toBeTruthy()
   })
 })
+
+describe('BarChart survives bad data', () => {
+  it('one NaN cost does not blank the entire chart', () => {
+    // Math.max returns NaN if any input is NaN, so every bar height became NaN
+    // and React dropped the style — the whole 30-day chart vanished while the
+    // header still showed a total. One absent cost_usd in a rollup does it.
+    const bad: Bar[] = [
+      { day: '2026-08-18', cost: 10, tokens: 1000 },
+      { day: '2026-08-19', cost: NaN, tokens: 0 },
+      { day: '2026-08-20', cost: 5, tokens: 500 },
+    ]
+    const { container } = render(<BarChart bars={bad} active={null} onActive={vi.fn()} />)
+    const heights = [...container.querySelectorAll('.rounded-t-sm')].map(
+      (el) => (el as HTMLElement).style.height,
+    )
+    expect(heights.every((h) => h !== '' && !h.includes('NaN'))).toBe(true)
+  })
+})

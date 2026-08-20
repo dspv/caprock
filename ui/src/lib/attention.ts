@@ -53,11 +53,16 @@ function ms(v: string | number | undefined): number {
  */
 export function findAttention({ sessions, alerts, now, waitingMs = DEFAULT_WAITING_MS }: AttentionInput): AttentionItem[] {
   const out: AttentionItem[] = []
-  const byId = new Map(sessions.map((s) => [s.session_id, s]))
+  // Defensive: the daemon always sends stats and activity, but this decides
+  // whether to interrupt someone and runs at the top of Now — a version-skewed
+  // or partial response must not take the whole screen down.
+  const list = Array.isArray(sessions) ? sessions.filter(Boolean) : []
+  const live = Array.isArray(alerts) ? alerts.filter(Boolean) : []
+  const byId = new Map(list.map((s) => [s.session_id, s]))
 
   // 1. A loop, with what it has cost so far. The detector already decided this
   // is real; our job is to attach the money and make it actionable.
-  for (const a of alerts) {
+  for (const a of live) {
     const s = byId.get(a.session_id)
     out.push({
       id: `loop-${a.session_id}`,
@@ -65,14 +70,21 @@ export function findAttention({ sessions, alerts, now, waitingMs = DEFAULT_WAITI
       project: s?.project ?? '',
       severity: 'high',
       title: 'Stuck in a loop',
-      detail: `ran ${a.sample || a.tool || 'the same call'} ${a.count}× in ${a.window_min} min`,
-      costUSD: s?.stats.cost_usd,
+      // The banner is the product's loudest surface, so it must never print a
+      // literal "undefined" — assemble only the parts that are actually there.
+      detail: [
+        `ran ${a.sample || a.tool || 'the same call'}`,
+        Number.isFinite(a.count) ? `${a.count}×` : 'repeatedly',
+        Number.isFinite(a.window_min) ? `in ${a.window_min} min` : '',
+      ].filter(Boolean).join(' '),
+      costUSD: s?.stats?.cost_usd,
       since: ms(a.ts) || undefined,
     })
   }
 
-  for (const s of sessions) {
+  for (const s of list) {
     if (s.status === 'ended') continue
+    if (!s.activity) continue
 
     // 2. An errored session is not going to recover on its own.
     if (s.activity.health === 'error') {
@@ -83,7 +95,7 @@ export function findAttention({ sessions, alerts, now, waitingMs = DEFAULT_WAITI
         severity: 'high',
         title: 'Session hit an error',
         detail: s.activity.phrase,
-        costUSD: s.stats.cost_usd,
+        costUSD: s.stats?.cost_usd,
         since: ms(s.activity.at) || s.last_event_at,
       })
       continue

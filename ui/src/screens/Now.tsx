@@ -123,7 +123,7 @@ export function SessionCard({ s, now }: { s: SessionSummary; now: number }) {
       </div>
       {s.activity.plan && s.activity.plan.total > 0 && (
         <div className="px-3 pb-2 flex items-center gap-2 text-[11px] text-fg-muted">
-          <div className="h-1 flex-1 bg-panel-2 rounded-sm overflow-hidden"><div className="h-full bg-accent" style={{ width: `${(100 * s.activity.plan.done) / s.activity.plan.total}%` }} /></div>
+          <div className="h-1 flex-1 bg-panel-2 rounded-sm overflow-hidden"><div className="h-full bg-accent" style={{ width: `${Math.min(100, Math.max(0, (100 * s.activity.plan.done) / s.activity.plan.total))}%` }} /></div>
           <span className="num">{s.activity.plan.done}/{s.activity.plan.total}</span>
           {s.activity.plan.next && <span className="truncate max-w-[50%]">→ {s.activity.plan.next}</span>}
         </div>

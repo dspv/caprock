@@ -30,7 +30,11 @@ export function BarChart({ bars, active, onActive, height = 112, showDayLabels =
   height?: number
   showDayLabels?: boolean
 }) {
-  const max = Math.max(...bars.map((b) => b.cost), 1e-9)
+  // Math.max returns NaN if any input is NaN, which made every bar height NaN
+  // and blanked the whole chart — not just the bad day — while the header total
+  // still showed a number. One absent cost_usd in a rollup row does it.
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+  const max = Math.max(...bars.map((b) => num(b.cost)), 1e-9)
   const barHeight = height - 16
 
   return (
@@ -49,11 +53,11 @@ export function BarChart({ bars, active, onActive, height = 112, showDayLabels =
             onMouseEnter={() => onActive(b.day)}
             onFocus={() => onActive(b.day)}
             onBlur={() => onActive(null)}
-            aria-label={`${b.day}: ${fmtUSD(b.cost)}`}
+            aria-label={`${b.day}: ${fmtUSD(num(b.cost))}`}
           >
             <div
               className={`w-full rounded-t-sm transition-colors ${on ? 'bg-accent' : 'bg-accent/70'}`}
-              style={{ height: Math.max(2, Math.round((barHeight * b.cost) / max)) }}
+              style={{ height: Math.max(2, Math.round((barHeight * num(b.cost)) / max)) }}
             />
             {showDayLabels && (
               <div className={`num text-[9px] ${on ? 'text-fg' : 'text-fg-faint'}`}>{b.day.slice(8)}</div>

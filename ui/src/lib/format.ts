@@ -5,14 +5,24 @@
 const usd2 = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const usd4 = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 4, maximumFractionDigits: 4 })
 
+// A dashboard that prints "$∞" or "NaNh NaNm" has stopped being measured, so
+// every formatter falls back to an em dash rather than rendering garbage.
+// Number.isFinite also rejects a non-number arriving from the wire, which
+// Number.isNaN does not.
+function finite(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
+}
+
 export function fmtUSD(v: number | undefined | null): string {
-  if (v === undefined || v === null || Number.isNaN(v)) return '—'
+  if (finite(v) === null) return '—'
+  v = v as number
   if (v !== 0 && Math.abs(v) < 0.01) return usd4.format(v)
   return usd2.format(v)
 }
 
 export function fmtTokens(v: number | undefined | null): string {
-  if (v === undefined || v === null) return '—'
+  if (finite(v) === null) return '—'
+  v = v as number
   const abs = Math.abs(v)
   if (abs >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(2)}B`
   if (abs >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M`
@@ -21,8 +31,10 @@ export function fmtTokens(v: number | undefined | null): string {
 }
 
 export function fmtPct(v: number | undefined | null, digits = 0): string {
-  if (v === undefined || v === null || Number.isNaN(v)) return '—'
-  return `${v.toFixed(digits)}%`
+  if (finite(v) === null) return '—'
+  // toFixed throws outside 0-100 digits; clamp rather than crash a render.
+  const d = Math.min(100, Math.max(0, Math.trunc(finite(digits) ?? 0)))
+  return `${(v as number).toFixed(d)}%`
 }
 
 export function fmtAgo(iso: string | number | undefined, now = Date.now()): string {
@@ -40,7 +52,10 @@ export function fmtAgo(iso: string | number | undefined, now = Date.now()): stri
 }
 
 export function fmtDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`
+  // Was the only formatter with no guard: an empty range makes avg_session_sec
+  // a 0/0 on the Go side, and the stat tile rendered a literal "NaNh NaNm".
+  if (finite(ms) === null) return '—'
+  if (ms < 1000) return `${Math.round(ms)}ms`
   const s = Math.round(ms / 1000)
   if (s < 60) return `${s}s`
   const m = Math.floor(s / 60)

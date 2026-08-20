@@ -85,7 +85,17 @@ class LiveStore {
 
   handle(f: Frame) {
     const now = Date.now()
-    for (const s of this.frameSubs) s(f)
+    // One throwing subscriber must not starve the others, or stop the state
+    // update below: this runs inside ws.onmessage, outside React, so an
+    // ErrorBoundary never sees it. Unguarded, a single malformed frame froze
+    // the whole dashboard on stale numbers with nothing shown to the user.
+    for (const s of this.frameSubs) {
+      try {
+        s(f)
+      } catch (err) {
+        console.error('[caprock] live frame subscriber failed', err)
+      }
+    }
     switch (f.type) {
       case 'alert':
         this.set({ lastFrameAt: now, alerts: [f.data, ...this.state.alerts].slice(0, 50), tick: this.state.tick + 1 })
