@@ -67,6 +67,12 @@ More seriously, `-race` found a genuine data race: both the `Wait` goroutine and
 
 Worth keeping: coverage says a line executed, not that it was checked. Every one of these was green while testing nothing, and only breaking the code on purpose told them apart.
 
+**`internal/daemon` followed** (6.5% → 22.8% in unit tests). The number understates it: `daemon.Run` — `newDaemon` plus `run`, 200 lines of opening the database, binding the port and starting the goroutines — is driven by the smoke suite on all three OSes, which the default `-cover` run does not count. Measured together, the package is at **58.7%**.
+
+What the new tests pin is the logic the daemon alone owns: a loop alert stops being reported once the detector's window has passed (and is deleted rather than merely hidden, so the map cannot grow for the life of the process); settings survive a round trip to disk, since a dropped field would price usage against the wrong plan; the release-check opt-in follows the user exactly and stays revocable (rule 4); changing the plan does not disturb it; and the background workers return on context cancellation rather than holding the process open at shutdown. Each was verified against a deliberately broken daemon.
+
+The rest of the uncovered surface is adapter plumbing — one-line methods forwarding to `board` and `agents`, already exercised through those packages. Testing them here would assert that a forwarding call forwards.
+
 ### 2026-08-20 — v0.9.8: hierarchy, and four numbers that were quietly wrong
 
 The dashboard was asked to look like the site — large figures, clear at a glance — and the exercise turned up four honesty defects that the redesign itself had nothing to do with.
