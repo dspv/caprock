@@ -43,6 +43,19 @@ with malformed data, rather than by reading the code.
   dozens that then fell to one. It is now bounded to the last 30 minutes.
 - **The Answers tab and search could crash** on a note with no text, and the Now
   screen could crash on a session missing its stats or activity.
+- **A range like `90d` silently meant "today"**, so a longer range reported
+  fewer sessions than a shorter one. Any `<n>d` range now works. The dashboard
+  was never affected — it only offers the four presets.
+
+### Internal
+
+- **The release gate could not see a stale dashboard.** The built UI is
+  committed to the repository so `go install` works without Node, and a check
+  existed to catch it drifting from the source — but it was never wired into
+  `make check`, and it used `git diff`, which does not notice new files. Since
+  a rebuild emits a new filename, it reported a clean tree while an old bundle
+  sat committed beside it. Caught one commit before tagging this release, which
+  would otherwise have shipped a dashboard missing every UI fix listed above.
 
 ## [0.9.1] - 2026-08-20
 

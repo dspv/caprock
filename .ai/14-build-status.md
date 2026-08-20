@@ -55,6 +55,8 @@ The worst was a compound failure no single reading would catch. A transcript lin
 
 The UI equivalent: `toFeedItem` threw on a wrong-typed tool argument, and the throw surfaced inside `ws.onmessage` — outside React, where no ErrorBoundary sees it — starving every later subscriber and stopping the tick that drives refetching. The dashboard froze on stale numbers showing no error. Both halves were fixed: coerce the leaves (Go's narrator already did this with a typed struct; the TypeScript port trusted its types), and isolate a throwing subscriber.
 
+A pre-release check then caught the thing that would have made this release a lie: the built dashboard is committed to the repo so `go install` works without Node, and the committed bundle was several commits stale — so v0.9.2 would have shipped a UI with none of the fixes above while the changelog claimed all of them. The Go half was in the binary; only the UI half was missing, which is the hardest version of this to notice. `dist-check` existed to catch exactly that and had two holes: it was never added to `make check`, and it used `git diff`, which ignores untracked files — a rebuild emits a new hashed filename, so it saw a clean tree while the old bundle sat committed beside it. Both closed.
+
 Also worth recording from the run: reads are capped at ~70 req/s because the store holds a single connection, and `/v1/stats/summary?range=all` costs ~580ms on 183k events and grows linearly with `retention_days` defaulting to keep-forever. Neither is a bug today; both are on the clock.
 
 ### 2026-08-20 — v0.9.1: a sweep for numbers that lie and controls that lead nowhere
