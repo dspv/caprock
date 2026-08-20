@@ -42,7 +42,8 @@ ui: ## Build the dashboard into internal/api/dist (installs deps on a fresh clon
 
 .PHONY: dist-check
 dist-check: ui ## Fail if the committed internal/api/dist/ is stale vs a fresh build (CI gate for `go install`)
-	@git status --porcelain -- internal/api/dist | grep -q . && { \
+	@git status --porcelain --untracked-files=all -- internal/api/dist \
+		| grep -vE '^[MARD] ' | grep -q . && { \
 		echo "internal/api/dist/ is out of date — run 'make ui' and commit the result"; \
 		git --no-pager status --short -- internal/api/dist; exit 1; } || true
 	@echo "dist is in sync with ui/"

@@ -14,3 +14,20 @@ describe('live store', () => {
     expect(live.getState().alerts).toHaveLength(0)
   })
 })
+
+describe('loop alerts are one per session', () => {
+  it('replaces an earlier alert for the same session instead of stacking', () => {
+    // A session that loops twice produced two identical banners — same tool,
+    // same count, same cost — which reads as a rendering bug.
+    const store = new (live.constructor as new () => typeof live)()
+    const alert = (ts: string) => ({
+      type: 'alert' as const,
+      data: { kind: 'loop' as const, session_id: 's1', tool: 'Bash', count: 5, window_min: 3, sample: 'x', first_ts: ts, last_ts: ts, ts },
+    })
+    store.handle(alert('2026-08-20T10:00:00Z'))
+    store.handle(alert('2026-08-20T11:00:00Z'))
+    const { alerts } = store.getState()
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]!.ts).toBe('2026-08-20T11:00:00Z')
+  })
+})

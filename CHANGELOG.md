@@ -9,6 +9,21 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.9.4] - 2026-08-20
+
+### Fixed
+
+- **A session that looped twice showed two identical banners** — same tool,
+  same count, same cost — which reads as a rendering fault and makes the
+  attention strip look untrustworthy. There is now one banner per session,
+  showing the most recent alert.
+- **The Tasks screen explained itself in terms of our internal build phases.**
+  "Phase 2 runs when..." means nothing to anyone outside the repo; it now says
+  what to do.
+- **The favicon and the in-app logo were different marks.** Same colour,
+  different shape, so a browser tab did not read as the product it belongs to.
+  Both are now the triangle from the header, on the site as well.
+
 ## [0.9.3] - 2026-08-20
 
 ### Changed

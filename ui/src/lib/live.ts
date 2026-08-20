@@ -98,7 +98,15 @@ class LiveStore {
     }
     switch (f.type) {
       case 'alert':
-        this.set({ lastFrameAt: now, alerts: [f.data, ...this.state.alerts].slice(0, 50), tick: this.state.tick + 1 })
+        // One banner per session. A session that loops twice used to produce
+        // two identical rows — same tool, same count, same cost — which reads
+        // as a rendering bug and makes the strip look untrustworthy. The newest
+        // alert replaces the older one for that session.
+        this.set({
+          lastFrameAt: now,
+          alerts: [f.data, ...this.state.alerts.filter((a) => a.session_id !== f.data.session_id)].slice(0, 50),
+          tick: this.state.tick + 1,
+        })
         break
       case 'event':
         this.set({ lastFrameAt: now, lastEvent: f.data, tick: this.state.tick + 1 })
