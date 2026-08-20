@@ -42,9 +42,9 @@ ui: ## Build the dashboard into internal/api/dist (installs deps on a fresh clon
 
 .PHONY: dist-check
 dist-check: ui ## Fail if the committed internal/api/dist/ is stale vs a fresh build (CI gate for `go install`)
-	@git diff --quiet -- internal/api/dist || { \
+	@git status --porcelain -- internal/api/dist | grep -q . && { \
 		echo "internal/api/dist/ is out of date — run 'make ui' and commit the result"; \
-		git --no-pager diff --stat -- internal/api/dist; exit 1; }
+		git --no-pager status --short -- internal/api/dist; exit 1; } || true
 	@echo "dist is in sync with ui/"
 
 .PHONY: ui-install
@@ -97,4 +97,4 @@ docs-links: ## Fail if any relative markdown link does not resolve
 	@python3 scripts/check-links.py $(DOCS)
 
 .PHONY: check
-check: docs-check docs-links lint test smoke ## Docs gates + lint + test + smoke (what CI runs, minus the OS matrix)
+check: docs-check docs-links lint test dist-check smoke ## Docs gates + lint + test + dist sync + smoke (what CI runs, minus the OS matrix)
