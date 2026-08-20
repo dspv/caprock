@@ -129,14 +129,16 @@ export function findAttention({ sessions, alerts, now, waitingMs = DEFAULT_WAITI
     }
   }
 
-  // A session that spent real money and produced almost nothing. The other
-  // rules deliberately skip ended sessions, which means the expensive failures
-  // — all of them ended — had no surface at all: finding one meant scanning
-  // dozens of unsorted cards behind a checkbox at the bottom of the page.
+  // A session that cost real money across many turns while touching almost no
+  // files. The other rules deliberately skip ended sessions, so this shape had
+  // no surface at all: finding one meant scanning dozens of unsorted cards
+  // behind a checkbox at the bottom of the page.
   //
-  // Cost alone is still not a rule: spending is the job. It is cost with
-  // nothing to show for it that is worth someone's attention, and both halves
-  // of that are already on every card.
+  // Cost alone is still not a rule — spending is the job. And this is not a
+  // verdict either: reading, investigating and designing all look like this,
+  // and the product has no way to tell them from a session that went nowhere.
+  // It reports the measurement and leaves the judgement to the person who was
+  // there, which is why the wording is descriptive rather than damning.
   for (const s of list) {
     if (!s.stats || !s.activity) continue
     const { cost_usd: cost, turns, files_touched: files } = s.stats
@@ -151,7 +153,12 @@ export function findAttention({ sessions, alerts, now, waitingMs = DEFAULT_WAITI
       sessionId: s.session_id,
       project: s.project,
       severity: 'medium',
-      title: 'Spent with little to show',
+      // Stated as the measurement, not as a verdict. Many turns and few files
+      // is often legitimate — a long investigation, a design conversation,
+      // debugging by reading. The product cannot tell those from a session
+      // that went nowhere, so it reports what it counted and lets the person
+      // who was there decide.
+      title: 'Lots of turns, few files',
       detail: `${turns.toLocaleString()} turns, ${files === 0 ? 'no files' : files === 1 ? '1 file' : `${files} files`} touched`,
       costUSD: cost,
       since: ms(s.activity.at) || s.last_event_at,

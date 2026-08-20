@@ -122,7 +122,7 @@ describe('spent with little to show', () => {
     const s = base({ session_id: 'a', stats: { cost_usd: 78.06, turns: 1401, files_touched: 1 } as never })
     const items = findAttention({ sessions: [s], alerts: [], now: NOW })
     expect(items).toHaveLength(1)
-    expect(items[0]!.title).toBe('Spent with little to show')
+    expect(items[0]!.title).toBe('Lots of turns, few files')
     expect(items[0]!.detail).toContain('1 file')
     expect(items[0]!.costUSD).toBe(78.06)
   })
