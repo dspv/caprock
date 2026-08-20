@@ -9,6 +9,27 @@
 import { useEffect, useRef, useState } from 'react'
 import { geometry, phaseT, pointOnSpoke, ringPositions, type Geometry, type NodePos, type Viewport } from './layout'
 import { ORCHESTRATOR, tasksByWorker, type GraphModel, type GraphTask } from './useGraphModel'
+import { DotMotion, startTicker } from './anim'
+
+// useDotMotion runs one rAF loop that damps every task dot's t toward its
+// status target, re-rendering only while something is moving (it idles when all
+// dots have settled). Returns a getter for the current animated t of a task.
+function useDotMotion(model: GraphModel): (id: string, status: string) => number {
+  const motion = useRef(new DotMotion())
+  const [, force] = useState(0)
+  // Feed targets whenever the model changes.
+  const alive = new Set(model.tasks.keys())
+  for (const t of model.tasks.values()) motion.current.setTarget(t.id, phaseT(t.status))
+  useEffect(() => {
+    const ticker = startTicker((dt) => {
+      const moving = motion.current.step(dt, alive)
+      if (moving) force((v) => v + 1)
+    })
+    return () => ticker.stop()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  return (id, status) => motion.current.get(id) ?? phaseT(status)
+}
 
 // Map a task status to a theme color var. done = the "verified" green (the money
 // shot); needs_you = amber (waiting on you); failed = red; in-flight = accent.
@@ -42,6 +63,7 @@ export function Graph({ model, viewport, centerLabel = 'orchestrator' }: {
   const g: Geometry = geometry(viewport)
   const nodes = ringPositions(model.registry, model.workers, g)
   const byWorker = tasksByWorker(model)
+  const tOf = useDotMotion(model)
 
   return (
     <svg width={viewport.width} height={viewport.height} className="block" role="img" aria-label="orchestration graph">
@@ -50,9 +72,9 @@ export function Graph({ model, viewport, centerLabel = 'orchestrator' }: {
         <Spoke key={`spoke-${n.id}`} node={n} g={g} gateStatus={gateStatusFor(byWorker.get(n.id) ?? [])} />
       ))}
 
-      {/* Task dots at their resting positions along each worker's spoke. */}
+      {/* Task dots — glide along their spoke as status advances (damped rAF). */}
       {nodes.map((n) => (byWorker.get(n.id) ?? []).map((t, i) => {
-        const p = pointOnSpoke(n, g, phaseT(t.status))
+        const p = pointOnSpoke(n, g, tOf(t.id, t.status))
         // Fan multiple dots on the same spoke slightly so they don't overlap.
         const off = (i - ((byWorker.get(n.id)!.length - 1) / 2)) * 9
         const nx = -(n.y - g.cy)
