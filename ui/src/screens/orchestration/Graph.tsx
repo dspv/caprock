@@ -90,14 +90,27 @@ export function Graph({ model, viewport, centerLabel = 'orchestrator' }: {
         )
       }))}
 
-      {/* Worker nodes on the ring. */}
+      {/* Worker nodes on the ring, with what they're working on beside them. */}
       {nodes.map((n) => {
         const tasks = byWorker.get(n.id) ?? []
         const busy = workerBusy(tasks)
+        // Put the caption on the outside of the ring so it never overlaps a spoke.
+        const outward = n.x >= g.cx ? 1 : -1
+        const anchor = outward === 1 ? 'start' : 'end'
+        const lx = outward * (g.nodeR + 10)
+        const current = tasks.find((t) => t.status !== 'done' && t.status !== 'failed') ?? tasks[0]
         return (
           <g key={`node-${n.id}`} transform={`translate(${n.x},${n.y})`}>
-            <circle className={busy ? 'graph-breathe' : undefined} r={g.nodeR} fill="var(--color-panel)" stroke={busy ? 'var(--color-accent)' : 'var(--color-border-strong)'} strokeWidth={busy ? 2 : 1.5} />
-            <text textAnchor="middle" dy="0.32em" fontSize="10" fill="var(--color-fg-muted)" className="mono">{shortWorker(n.id)}</text>
+            <circle className={busy ? 'graph-breathe' : undefined} r={g.nodeR} fill="var(--color-panel)" stroke={busy ? 'var(--color-accent)' : 'var(--color-border-strong)'} strokeWidth={busy ? 2.5 : 1.5} />
+            <text textAnchor="middle" dy="0.32em" fontSize="13" fill="var(--color-fg)" className="mono">{shortWorker(n.id)}</text>
+            {current && (
+              <>
+                <text x={lx} y={-4} textAnchor={anchor} fontSize="12" fill="var(--color-fg)">{truncate(current.title, 26)}</text>
+                <text x={lx} y={12} textAnchor={anchor} fontSize="11" fill={statusColor(current.status)} className="mono">
+                  {statusLabel(current.status)}
+                </text>
+              </>
+            )}
           </g>
         )
       })}
@@ -105,7 +118,7 @@ export function Graph({ model, viewport, centerLabel = 'orchestrator' }: {
       {/* Orchestrator center node — pinned, on top. */}
       <g transform={`translate(${g.cx},${g.cy})`}>
         <circle r={g.nodeR + 6} fill="var(--color-panel-2)" stroke="var(--color-accent)" strokeWidth={2} />
-        <text textAnchor="middle" dy="0.32em" fontSize="10" fill="var(--color-fg)" className="mono">{centerLabel === ORCHESTRATOR ? 'orch' : centerLabel}</text>
+        <text textAnchor="middle" dy="0.32em" fontSize="12" fill="var(--color-fg)" className="mono">{centerLabel === ORCHESTRATOR ? 'orch' : centerLabel}</text>
       </g>
     </svg>
   )
@@ -131,7 +144,7 @@ function TaskDot({ task, cx, cy }: { task: GraphTask; cx: number; cy: number }) 
       className={`graph-dot${pop ? ' graph-verified' : ''}`}
       cx={cx}
       cy={cy}
-      r={5}
+      r={8}
       fill={statusColor(task.status)}
     >
       <title>{`${task.title} · ${task.status}`}</title>
@@ -157,10 +170,10 @@ function Spoke({ node, g, gateStatus }: { node: NodePos; g: Geometry; gateStatus
       {/* verify gate — a small diamond checkpoint on the spoke; green once passed */}
       <rect
         className="graph-gate"
-        x={gate.x - 4}
-        y={gate.y - 4}
-        width={8}
-        height={8}
+        x={gate.x - 7}
+        y={gate.y - 7}
+        width={14}
+        height={14}
         transform={`rotate(45 ${gate.x} ${gate.y})`}
         fill={fill}
         stroke={stroke}
@@ -170,6 +183,24 @@ function Spoke({ node, g, gateStatus }: { node: NodePos; g: Geometry; gateStatus
       </rect>
     </g>
   )
+}
+
+// statusLabel is the human phrase shown under a worker's current task, so the
+// graph reads without a legend: you see what the agent is actually doing.
+function statusLabel(status: string): string {
+  switch (status) {
+    case 'assigned': return 'assigned'
+    case 'in_progress': return 'working…'
+    case 'verifying': return 'running tests…'
+    case 'done': return '✓ verified'
+    case 'needs_you': return 'needs you'
+    case 'failed': return 'failed'
+    default: return status
+  }
+}
+
+function truncate(s: string, n: number): string {
+  return s.length > n ? s.slice(0, n - 1) + '…' : s
 }
 
 // shortWorker turns "worker-3" into "w3", "verifier" into "vfy", else first 4.

@@ -36,8 +36,29 @@ export function OrchestrationScreen() {
     .filter((s) => s.status !== 'ended')
     .map((s) => ({ id: s.session_id, label: shortId(s.session_id), health: s.activity.health }))
 
+  // The headline: what this screen is actually claiming, in numbers.
+  const tasks = Array.from(model.tasks.values())
+  const verified = tasks.filter((t) => t.status === 'done').length
+  const inFlight = tasks.filter((t) => ['assigned', 'in_progress', 'verifying'].includes(t.status)).length
+
   return (
     <div className="grid gap-2">
+      {live && (
+        <div className="flex items-baseline gap-6 border border-border bg-panel rounded-[var(--radius-panel)] px-4 py-3">
+          <span className="flex items-baseline gap-2">
+            <span className="num text-2xl text-ok">{verified}</span>
+            <span className="text-[12px] text-fg-muted">verified — tests passed, not just claimed</span>
+          </span>
+          <span className="flex items-baseline gap-2">
+            <span className="num text-2xl text-accent">{inFlight}</span>
+            <span className="text-[12px] text-fg-muted">in flight</span>
+          </span>
+          <span className="flex items-baseline gap-2">
+            <span className="num text-2xl text-fg">{model.workers.size}</span>
+            <span className="text-[12px] text-fg-muted">workers</span>
+          </span>
+        </div>
+      )}
       <div className="flex items-center gap-2 text-[11px] text-fg-faint px-0.5">
         <Legend orchestration={live} />
         <span className="ml-auto">

@@ -29,8 +29,8 @@ export interface Geometry {
 // Layout constants. MIN_SLOTS keeps a lone worker from sitting alone — the ring
 // always reads as an intentional circle.
 export const MIN_SLOTS = 6
-const MARGIN = 56
-const NODE_R = 26
+const MARGIN = 72
+const NODE_R = 38
 const GATE_T = 0.62
 
 // geometry computes the ring/center sizing for a viewport. Recomputed only on
