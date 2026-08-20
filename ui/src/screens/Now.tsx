@@ -4,6 +4,7 @@ import { live, useLive } from '@/lib/live'
 import { fmtAgo, fmtPct, fmtTokens, fmtUSD, shortId } from '@/lib/format'
 import { Badge, Empty, Panel, Stat } from '@/components/ui'
 import { ProjectsPanel } from '@/components/Projects'
+import { ActivityFeed } from '@/components/ActivityFeed'
 import { href } from '@/lib/router'
 import { useEffect, useState } from 'react'
 
@@ -54,7 +55,11 @@ export function NowScreen() {
         </div>
       </Panel>
 
-      <ProjectsPanel sessions={list} />
+      {/* What is happening (left) beside what it costs (right). */}
+      <div className="grid gap-3 lg:grid-cols-2">
+        <ActivityFeed sessions={list} now={now} />
+        <ProjectsPanel sessions={list} />
+      </div>
 
       {sessions.error && !sessions.data && (
         <Empty title="Cannot reach the daemon">{sessions.error.message} — is <span className="mono">caprock up</span> running?</Empty>
