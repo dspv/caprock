@@ -2,7 +2,7 @@ import { api, type SessionSummary } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { live, useLive } from '@/lib/live'
 import { fmtAgo, fmtPct, fmtTokens, fmtUSD, shortId } from '@/lib/format'
-import { Badge, Empty, Panel, Stat } from '@/components/ui'
+import { Badge, Empty, Panel, Skeleton, Stat } from '@/components/ui'
 import { ProjectsPanel } from '@/components/Projects'
 import { ActivityFeed } from '@/components/ActivityFeed'
 import { Attention } from '@/components/Attention'
@@ -60,6 +60,7 @@ export function NowScreen() {
       {sessions.error && !sessions.data && (
         <Empty title="Cannot reach the daemon">{sessions.error.message} — is <span className="mono">caprock up</span> running?</Empty>
       )}
+      {!sessions.data && !sessions.error && <Skeleton rows={4} className="border border-border rounded-[var(--radius-panel)] bg-panel" />}
       {sessions.data && list.length === 0 && (
         <Empty title="No sessions yet">Start <span className="mono">claude</span> in any terminal — it will show up here within seconds.</Empty>
       )}

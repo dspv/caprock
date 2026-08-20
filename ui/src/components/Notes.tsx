@@ -17,7 +17,7 @@ import { useState } from 'react'
 import { api, type AssistantNote } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtAgo, shortId } from '@/lib/format'
-import { Empty } from '@/components/ui'
+import { Empty, Skeleton } from '@/components/ui'
 import { href } from '@/lib/router'
 
 export function SessionNotes({ id, now }: { id: string; now: number }) {
@@ -32,6 +32,7 @@ export function SessionNotes({ id, now }: { id: string; now: number }) {
   if (q.error && !q.data) {
     return <Empty title="Cannot load notes">{q.error.message}</Empty>
   }
+  if (!q.data) return <Skeleton rows={4} />
   if (notes.length === 0) {
     return (
       <Empty title="Nothing said yet">

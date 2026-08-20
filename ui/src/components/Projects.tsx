@@ -11,7 +11,7 @@ import { useState } from 'react'
 import { api, type ProjectShare, type SessionSummary } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtTokens, fmtUSD } from '@/lib/format'
-import { Panel } from '@/components/ui'
+import { Panel, Skeleton } from '@/components/ui'
 
 type Range = 'today' | '7d' | '30d' | 'all'
 
@@ -60,7 +60,9 @@ export function ProjectsPanel({ sessions }: { sessions: SessionSummary[] }) {
         </span>
       }
     >
-      {all.length === 0 ? (
+      {!summary.data ? (
+        <Skeleton rows={5} />
+      ) : all.length === 0 ? (
         <div className="px-3 py-4 text-[12px] text-fg-muted">
           No spend captured in this range yet.
         </div>

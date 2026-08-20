@@ -13,7 +13,7 @@ import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { useNow } from '@/screens/Now'
 import { NoteCard } from '@/components/Notes'
-import { Empty } from '@/components/ui'
+import { Empty, Skeleton } from '@/components/ui'
 
 export function NotesScreen() {
   const [input, setInput] = useState('')
@@ -75,6 +75,8 @@ export function NotesScreen() {
       </form>
 
       {q.error && !q.data && <Empty title="Cannot search">{q.error.message}</Empty>}
+
+      {!q.data && !q.error && <Skeleton rows={5} className="border border-border rounded-[var(--radius-panel)] bg-panel" />}
 
       {q.data && notes.length === 0 && (
         <Empty title={query ? `Nothing found for "${query}"` : 'No answers captured yet'}>

@@ -139,3 +139,14 @@ a.link:hover { text-decoration: underline; }
   width: 100%;
 }
 .input:focus { outline: 1px solid var(--color-accent); border-color: var(--color-accent); }
+
+/* Loading placeholders: a slow, low-contrast pulse. Deliberately subtle — it
+ * should read as "not ready yet", never compete with real data for attention. */
+.skeleton-pulse { animation: skeletonPulse 1.4s ease-in-out infinite; }
+@keyframes skeletonPulse {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 0.9; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-pulse { animation: none; opacity: 0.6; }
+}

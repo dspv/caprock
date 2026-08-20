@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtDuration, fmtPct, fmtTokens, fmtUSD, fmtTool } from '@/lib/format'
-import { Empty, Panel, Stat } from '@/components/ui'
+import { Empty, Panel, Skeleton, Stat } from '@/components/ui'
 import { groupDays } from './Cost'
 import { BarChart, BarReadout } from '@/components/BarChart'
 
@@ -39,7 +39,7 @@ export function HistoryScreen() {
       </Panel>
       <div className="grid gap-3 lg:grid-cols-2">
         <Panel title="Tool usage" right={<span>by calls</span>}>
-          {d && d.tools.length === 0 && <Empty title="No tool calls yet" />}
+          {!d ? <Skeleton rows={5} /> : d.tools.length === 0 && <Empty title="No tool calls yet" />}
           <ul className="py-1">
             {(d?.tools ?? []).slice(0, 18).map((t) => (
               <li key={t.tool} className="flex items-center gap-2 px-3 py-[3px]">
@@ -52,7 +52,7 @@ export function HistoryScreen() {
         </Panel>
         <div className="grid gap-3 content-start">
           <Panel title="Model mix" right={<span>by cost</span>}>
-            {d && d.summary.models.length === 0 && <Empty title="No priced turns" />}
+            {!d ? <Skeleton rows={3} /> : d.summary.models.length === 0 && <Empty title="No priced turns" />}
             <table className="w-full text-[12px]">
               <tbody>
                 {(d?.summary.models ?? []).map((m) => (
@@ -84,7 +84,7 @@ export function HistoryScreen() {
         title="Daily cost"
         right={<BarReadout bars={days} active={activeDay} total={days.reduce((a, x) => a + x.cost, 0)} />}
       >
-        {days.length === 0 && <Empty title="No history yet" />}
+        {!h.data ? <Skeleton rows={2} /> : days.length === 0 && <Empty title="No history yet" />}
         {days.length > 0 && (
           <BarChart bars={days} active={activeDay} onActive={setActiveDay} height={96} showDayLabels={false} />
         )}

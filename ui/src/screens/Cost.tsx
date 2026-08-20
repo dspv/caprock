@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { api, type DailyStat, type RateWindow } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
-import { Empty, Panel, Stat } from '@/components/ui'
+import { Empty, Panel, Skeleton, Stat } from '@/components/ui'
 import { BarChart, BarReadout } from '@/components/BarChart'
 import { PlanValue } from '@/components/PlanValue'
 import { usePlan } from '@/components/PlanPicker'
@@ -39,7 +39,7 @@ export function CostScreen() {
       </Panel>
       <div className="grid gap-3 lg:grid-cols-2">
         <Panel title="Model mix" right={<span>by cost</span>}>
-          {s && s.models.length === 0 && <Empty title="No priced turns in range" />}
+          {!s ? <Skeleton rows={4} /> : s.models.length === 0 && <Empty title="No priced turns in range" />}
           <table className="w-full text-[12px]">
             <tbody>
               {(s?.models ?? []).map((m) => (
@@ -55,7 +55,7 @@ export function CostScreen() {
           </table>
         </Panel>
         <Panel title="Per project" right={<span>by cost</span>}>
-          {s && s.projects.length === 0 && <Empty title="No priced turns in range" />}
+          {!s ? <Skeleton rows={4} /> : s.projects.length === 0 && <Empty title="No priced turns in range" />}
           <table className="w-full text-[12px]">
             <tbody>
               {(s?.projects ?? []).map((p) => (
@@ -74,7 +74,7 @@ export function CostScreen() {
         title="Last 30 days"
         right={<BarReadout bars={days} active={activeDay} total={days.reduce((a, d) => a + d.cost, 0)} />}
       >
-        {days.length === 0 && <Empty title="No history yet" />}
+        {!daily.data ? <Skeleton rows={2} /> : days.length === 0 && <Empty title="No history yet" />}
         {days.length > 0 && <BarChart bars={days} active={activeDay} onActive={setActiveDay} />}
       </Panel>
       {s?.rate_limits && (

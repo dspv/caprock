@@ -88,6 +88,30 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
   )
 }
 
+/**
+ * Skeleton — placeholder rows while data is on its way.
+ *
+ * Screens used to test `list.length === 0` without asking whether the fetch had
+ * finished, so the first paint of every screen announced "No history yet" and
+ * then replaced it with real numbers. That reads as "this product has nothing
+ * for you", which is the opposite of true and the worst possible first frame.
+ * A shape that matches what is coming says "loading" without a spinner.
+ */
+export function Skeleton({ rows = 3, className = '' }: { rows?: number; className?: string }) {
+  return (
+    <div className={`px-3 py-2 grid gap-2 ${className}`} aria-hidden>
+      {Array.from({ length: rows }, (_, i) => (
+        <div
+          key={i}
+          className="h-3 rounded-sm bg-panel-2 skeleton-pulse"
+          // Vary the widths so it reads as content rather than as a progress bar.
+          style={{ width: `${[92, 74, 83, 61, 88][i % 5]}%` }}
+        />
+      ))}
+    </div>
+  )
+}
+
 export function Kbd({ children }: { children: ReactNode }) {
   return <kbd className="mono text-[10px] border border-border-strong rounded-sm px-1 py-[1px] text-fg-muted">{children}</kbd>
 }
