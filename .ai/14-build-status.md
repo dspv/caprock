@@ -47,6 +47,26 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 The Phase-3 "delight" visualization, chosen over a radar / activity-river by a 5-persona ICP panel (3-1-1, including the adversarial skeptic) because the picture **is** the differentiator: the orchestrator pinned center, workers on a stable ring, tasks flowing through a **verify gate** that turns green only after `done_criteria` pass — the verified-team story the competitor's office can't show. Built in 8 focused commits under `ui/src/screens/orchestration/`: (1) plumbing — the WS `task` frame was emitted but the client dropped it; now handled, plus route + nav; (2) fixed radial layout — a node's slot is its index in the ever-seen sorted registry (grows only) so nothing ever reshuffles (the panel's #1 anti-jitter constraint, **never force-directed**, enforced by test); (3) model reducer; (4) static SVG renderer; (5) the money shot — verify gate + dot go `--color-ok` green with a CSS pop on verifying→done; (6) damped rAF motion — dots glide toward their status target, overshoot-free, a mid-flight verify bounce re-aims smoothly; (7) empty-state — no hive degrades to your live sessions on the ring (never blank); (8) ambient breathing polish. Pure theme-aware SVG (light+dark free), reads the existing live frames + `/v1/tasks`,`/v1/sessions` — **no backend change**. 42 UI tests green. Fast-follows (deferred): real mailbox-pulse frame, cumulative-spend arc, click-through. Docs: [04-ui.md § Graph](04-ui.md).
 
+### 2026-08-20 — tests where a bug reaches the user's machine
+
+`internal/shim` (0% → 88.7%) and `internal/ptyman` (0% → 81.9%) are the two packages where a defect does not degrade Caprock but breaks something of the user's: the shim runs inside every hook of every session, and ptyman owns the processes Caprock spawns.
+
+The tests cover failure paths, not the happy path the smoke suite already drives end to end — no daemon, a stale `runtime.json` pointing at a dead port, malformed and oversized stdin, a daemon that hangs, a non-200, a non-JSON reply, a panic inside `Run`; and for ptyman: an empty command, a missing binary, a non-zero exit, concurrent `Wait`, the paused input-hold, a double `Close`, context cancellation.
+
+**Two real defects surfaced, both in production code rather than in the tests.**
+
+`session.Close()` returned `file already closed` whenever the process had already exited — the `Wait` goroutine closes the PTY first, so an ordinary ending reported an error. Any caller that checked would log a failure for a session that finished exactly as intended. `os.ErrClosed` now maps to nil.
+
+More seriously, `-race` found a genuine data race: both the `Wait` goroutine and an explicit `Close()` call `pty.Close()`, and go-pty's implementation mutates the handle without a lock. Four races on a single run. The PTY now closes through a `sync.Once`.
+
+**Three tests were written, passed, and turned out to prove nothing.** Each was caught by deliberately breaking the code and watching the suite stay green.
+
+- The panic test in the shim passed with `recover()` deleted. Rewritten to drive a panic through a failing reader.
+- The paused-write test asserted only the returned `(n, err)` — which a Write that forwards straight to the PTY also satisfies. Rewritten to feed a shell that echoes what it reads, so the assertion is whether the child ever saw the input.
+- The kill test waited on `Wait()`, but closing the PTY ends a POSIX child in ~100ms on its own (measured), so it passed with the kill removed. No POSIX test can isolate the explicit SIGKILL from the hangup that follows teardown; the test now asserts the property the product needs — no process left in the OS — and says plainly what it cannot prove.
+
+Worth keeping: coverage says a line executed, not that it was checked. Every one of these was green while testing nothing, and only breaking the code on purpose told them apart.
+
 ### 2026-08-20 — v0.9.8: hierarchy, and four numbers that were quietly wrong
 
 The dashboard was asked to look like the site — large figures, clear at a glance — and the exercise turned up four honesty defects that the redesign itself had nothing to do with.
