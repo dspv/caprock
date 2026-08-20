@@ -111,3 +111,17 @@ describe('formatters never render garbage', () => {
     expect(fmtPct(23.456, 1)).toBe('23.5%')
   })
 })
+
+describe('percentages never overstate', () => {
+  it('floors rather than rounding to nearest', () => {
+    // A 99.514% cache hit shown as "100%" reads as a fabricated perfect score.
+    expect(fmtPct(99.514)).toBe('99%')
+    expect(fmtPct(89.9)).toBe('89%')
+    expect(fmtPct(0.7)).toBe('0%')
+    expect(fmtPct(100)).toBe('100%')
+  })
+
+  it('still honours an explicit digit count', () => {
+    expect(fmtPct(99.514, 1)).toBe('99.5%')
+  })
+})

@@ -621,3 +621,46 @@ func TestHistoryCountsByKind(t *testing.T) {
 		t.Errorf("cost = %v, want ~0.75", h.CostUSD)
 	}
 }
+
+// People remember their own question far better than Claude's phrasing of the
+// answer, so searching only the reply misses how memory actually works.
+func TestSearchNotesMatchesThePrompt(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+
+	add := func(kind event.Kind, key, field, text string) {
+		payload, _ := json.Marshal(map[string]any{field: text, "sidechain": false})
+		ev := &event.Event{SessionID: "s1", Source: event.SourceTranscript, Kind: kind,
+			Ts: time.UnixMilli(1000), Key: key, Payload: payload}
+		if _, err := InsertEvent(ctx, s.db, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The question mentions SSO; the answer never does.
+	add(event.KindTurnUser, "u1", "prompt", "why does the SSO header resolve that way?")
+	add(event.KindTurnAssistant, "a1", "text", "Because the room set is checked before the body, and the suffix is applied after.")
+	// An unrelated pair, to prove the match is not session-wide.
+	add(event.KindTurnUser, "u2", "prompt", "run the tests")
+	add(event.KindTurnAssistant, "a2", "text", "All green.")
+	_ = UpsertSession(ctx, s.db, "s1", SessionPatch{Project: "demo"})
+
+	got, err := SearchNotes(ctx, s.db, "SSO", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("searching the prompt returned %d notes, want 1: %+v", len(got), got)
+	}
+	if !strings.Contains(got[0].Text, "room set") {
+		t.Fatalf("returned the wrong note: %q", got[0].Text)
+	}
+
+	// Matching the answer's own words still works.
+	if got, _ = SearchNotes(ctx, s.db, "room set", 0); len(got) != 1 {
+		t.Fatalf("searching the answer returned %d notes, want 1", len(got))
+	}
+	// A word in neither matches nothing.
+	if got, _ = SearchNotes(ctx, s.db, "kubernetes", 0); len(got) != 0 {
+		t.Fatalf("unrelated term returned %d notes", len(got))
+	}
+}

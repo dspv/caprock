@@ -419,12 +419,29 @@ func SearchNotes(ctx context.Context, q Querier, query string, limit int) ([]Ass
 		FROM events e LEFT JOIN sessions se ON se.session_id = e.session_id
 		WHERE ` + assistantTextWhere
 	args := []any{}
-	if strings.TrimSpace(query) != "" {
+	if trimmed := strings.TrimSpace(query); trimmed != "" {
+		// Match the assistant's prose OR the prompt that produced it. People
+		// remember their own question — "the SSO thing", "that Windows CI
+		// question" — far better than Claude's phrasing of the answer, so
+		// searching only the answer misses the way memory actually works. The
+		// row returned is still Claude's reply; the prompt is only a way in.
+		//
 		// LIKE with an escaped pattern: the corpus is one developer's own
 		// sessions, so a scan is cheap, and it avoids an FTS table that would
-		// need migrating and rebuilding for historical rows.
-		sql += ` AND json_extract(e.payload, '$.text') LIKE ? ESCAPE '\'`
-		args = append(args, "%"+escapeLike(strings.TrimSpace(query))+"%")
+		// need migrating and rebuilding for historical rows — and that would
+		// match whole words, losing the fragments people actually search for.
+		pattern := "%" + escapeLike(trimmed) + "%"
+		sql += ` AND (json_extract(e.payload, '$.text') LIKE ? ESCAPE '\'
+		         OR json_extract((
+		              SELECT p.payload FROM events p
+		              WHERE p.session_id = e.session_id AND p.kind = 'turn.user'
+		                AND p.id < e.id AND p.id > e.id - ?
+		              ORDER BY p.id DESC LIMIT 1
+		            ), '$.prompt') LIKE ? ESCAPE '\')`
+		// Only the NEAREST preceding prompt, within a short window: matching any
+		// prompt nearby would return every reply in an exchange rather than the
+		// passage that answers the question.
+		args = append(args, pattern, promptLookback, pattern)
 	}
 	sql += ` ORDER BY e.id DESC LIMIT ?`
 	args = append(args, limit)
@@ -435,6 +452,11 @@ func SearchNotes(ctx context.Context, q Querier, query string, limit int) ([]Ass
 	defer rows.Close()
 	return scanNotes(rows)
 }
+
+// promptLookback is how many events back from a reply a prompt may sit and
+// still count as "the question that produced it". Events are dense — a single
+// turn spans several — so this is a few turns, not a whole session.
+const promptLookback = 60
 
 // escapeLike neutralises LIKE wildcards so a user searching for "100%" or a
 // path with an underscore gets what they typed.

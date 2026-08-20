@@ -32,11 +32,15 @@ export function fmtTokens(v: number | undefined | null): string {
 
 export function fmtPct(v: number | undefined | null, digits = 0): string {
   if (finite(v) === null) return '—'
-  // Never round up to a perfect 100%: a cache hit rate of 99.514% printed as
-  // "100%" reads as a fabricated score in a product whose whole claim is that
-  // its numbers are measured. Only an exact 100 may show as 100.
+  // Round DOWN, not to nearest: a 99.514% cache hit rate shown as "100%" reads
+  // as a fabricated score in a product whose whole claim is that its numbers
+  // are measured. Flooring also means a percentage never overstates what was
+  // actually achieved — 89.9% is 89%, not 90%.
   const n = v as number
-  if (digits === 0 && n > 99 && n < 100) return '99%'
+  if (digits === 0) {
+    const floored = Math.floor(n)
+    return `${Number.isFinite(floored) ? floored : 0}%`
+  }
   // toFixed throws outside 0-100 digits; clamp rather than crash a render.
   const d = Math.min(100, Math.max(0, Math.trunc(finite(digits) ?? 0)))
   return `${(v as number).toFixed(d)}%`
