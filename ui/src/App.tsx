@@ -16,7 +16,7 @@ export default function App() {
     <Shell route={route}>
       <ErrorBoundary label={route.name}>
         {route.name === 'now' && <NowScreen />}
-        {route.name === 'session' && <SessionScreen key={route.id} id={route.id} tab={route.tab} />}
+        {route.name === 'session' && <SessionScreen key={route.id} id={route.id} tab={route.tab} at={route.at} />}
         {route.name === 'cost' && <CostScreen />}
         {route.name === 'settings' && <StatusScreen />}
         {route.name === 'history' && <HistoryScreen />}

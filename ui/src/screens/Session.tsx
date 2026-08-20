@@ -13,7 +13,7 @@ import { usePlan } from '@/components/PlanPicker'
 
 type Tab = 'timeline' | 'notes' | 'diff' | 'files' | 'terminal'
 
-export function SessionScreen({ id, tab }: { id: string; tab?: string }) {
+export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: number }) {
   const detail = useApi(() => api.session(id), [id], { intervalMs: 5000 })
   const active: Tab = tab === 'diff' || tab === 'files' || tab === 'terminal' || tab === 'notes' ? tab : 'timeline'
   const now = useNow(1000)
@@ -65,7 +65,7 @@ export function SessionScreen({ id, tab }: { id: string; tab?: string }) {
         ))}
         {!s.owned && <span className="ml-auto text-[11px] text-fg-faint pr-1">observe-only — terminal is read/write for spawned sessions only</span>}
       </div>
-      {active === 'timeline' && <Timeline id={id} initial={s.events} now={now} />}
+      {active === 'timeline' && <Timeline id={id} initial={s.events} now={now} at={at} />}
       {active === 'notes' && <SessionNotes id={id} now={now} />}
       {active === 'diff' && <DiffTab id={id} lastEventAt={s.last_event_at} />}
       {active === 'files' && <FilesTab s={s} />}
@@ -76,7 +76,7 @@ export function SessionScreen({ id, tab }: { id: string; tab?: string }) {
 
 type Filter = 'all' | 'tools' | 'turns'
 
-function Timeline({ id, initial, now }: { id: string; initial: Event[]; now: number }) {
+function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now: number; at?: number }) {
   const [events, setEvents] = useState<Event[]>(initial)
   const [filter, setFilter] = useState<Filter>('all')
   const [follow, setFollow] = useState(true)
@@ -147,7 +147,9 @@ function Timeline({ id, initial, now }: { id: string; initial: Event[]; now: num
           )}
           {exhausted && <li className="px-3 py-1 text-[11px] text-fg-faint">start of session</li>}
           {visible.length === 0 && <Empty title="No events yet" />}
-          {visible.map((e) => <EventRow key={e.id} e={e} now={now} toolByUse={toolByUse} />)}
+          {visible.map((e) => (
+            <EventRow key={e.id} e={e} now={now} toolByUse={toolByUse} inMinute={at !== undefined && sameMinute(e.ts, at)} />
+          ))}
           <div ref={bottom} />
         </ol>
       </Panel>
@@ -165,8 +167,26 @@ function Timeline({ id, initial, now }: { id: string; initial: Event[]; now: num
   )
 }
 
-function EventRow({ e, now, toolByUse }: { e: Event; now: number; toolByUse: Map<string, string> }) {
+/** True when an event falls inside the minute the caller asked to see. */
+function sameMinute(ts: string, at: number): boolean {
+  const t = Date.parse(ts)
+  return Number.isFinite(t) && Math.floor(t / 60_000) === Math.floor(at / 60_000)
+}
+
+function EventRow({ e, now, toolByUse, inMinute }: {
+  e: Event
+  now: number
+  toolByUse: Map<string, string>
+  /** Arrived here from the pulse: this is one of the events that was clicked. */
+  inMinute?: boolean
+}) {
   const [open, setOpen] = useState(false)
+  const row = useRef<HTMLLIElement>(null)
+  // Scroll the first event of the minute into view once, so landing here from a
+  // click puts you at what you clicked rather than at the top of the session.
+  useEffect(() => {
+    if (inMinute) row.current?.scrollIntoView({ block: 'center' })
+  }, [inMinute])
   const p = (e.payload ?? {}) as Record<string, unknown>
   const resolved = e.tool || (e.kind === 'tool.post' ? toolByUse.get(String(p.tool_use_id ?? '')) : undefined)
   const label = describe({ ...e, tool: resolved }, p)
@@ -185,7 +205,12 @@ function EventRow({ e, now, toolByUse }: { e: Event; now: number; toolByUse: Map
     e.kind === 'context.compact' ? 'text-warn' :
     'text-fg-muted'
   return (
-    <li className="border-b border-border/60 last:border-0 hover:bg-panel-2 animate-flash">
+    <li
+      ref={row}
+      className={`border-b border-border/60 last:border-0 hover:bg-panel-2 animate-flash ${
+        inMinute ? 'bg-accent/10 border-l-2 border-l-accent' : ''
+      }`}
+    >
       <button className="w-full text-left flex items-baseline gap-2 px-3 py-[3px]" onClick={() => setOpen(!open)}>
         <span className="num text-[10px] text-fg-faint w-14 shrink-0">{fmtAgo(e.ts, now)}</span>
         <span className={`mono text-[10px] w-24 shrink-0 ${kindCls}`}>{e.kind}</span>

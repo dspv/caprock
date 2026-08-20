@@ -20,7 +20,7 @@ import { live } from '@/lib/live'
 import { buildPulse, costTier, medianCost, trackState, PULSE_MINUTES, type Pulse as PulseModel } from '@/lib/pulse'
 import { fmtUSD } from '@/lib/format'
 import { Panel } from '@/components/ui'
-import { href } from '@/lib/router'
+import { href, navigate } from '@/lib/router'
 
 /** How many tracks to show. More than this and no single one is readable. */
 const MAX_TRACKS = 6
@@ -135,7 +135,7 @@ function Track({ s, events, now }: { s: SessionSummary; events: Event[]; now: nu
         <div className="text-[13px] font-medium truncate">{s.project || 'unknown project'}</div>
         <div className="text-[10px] text-fg-faint mono truncate">{s.activity?.phrase ?? ''}</div>
       </div>
-      <PulseCanvas pulse={pulse} now={minute * 60_000} />
+      <PulseCanvas pulse={pulse} now={minute * 60_000} sessionID={s.session_id} />
       <div className="num text-[13px] font-semibold text-right">{fmtUSD(s.stats?.cost_usd)}</div>
       <div className={`text-[11px] text-right ${stateCls}`} title={pulse.repeatSample}>
         {state.label}
@@ -156,7 +156,7 @@ const TIER_COLOR = {
  * a bar chart look like a rendering fault; a flat floor looks like silence. */
 const IDLE_COLOR = 'rgba(169,165,158,0.16)'
 
-function PulseCanvas({ pulse, now }: { pulse: PulseModel; now: number }) {
+function PulseCanvas({ pulse, now, sessionID }: { pulse: PulseModel; now: number; sessionID: string }) {
   const ref = useRef<HTMLCanvasElement>(null)
   const [hover, setHover] = useState<number | null>(null)
 
@@ -217,13 +217,24 @@ function PulseCanvas({ pulse, now }: { pulse: PulseModel; now: number }) {
   const bar = hover === null ? null : pulse.bars[hover]
   const at = hover === null ? 0 : now - (pulse.bars.length - 1 - hover) * 60_000
 
+  // Clicking a minute opens the session *at that minute* rather than at the
+  // top. Landing in a session of thousands of events with no indication of
+  // which ones you clicked is the same as not having clicked anything.
+  const onClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (hover === null || !bar || bar.n === 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    navigate({ name: 'session', id: sessionID, at })
+  }
+
   return (
     <div className="relative">
       <canvas
         ref={ref}
-        className="w-full h-[44px] block"
+        className="w-full h-[44px] block cursor-pointer"
         onMouseMove={onMove}
         onMouseLeave={() => setHover(null)}
+        onClick={onClick}
         aria-hidden
       />
       {bar && (
@@ -231,12 +242,13 @@ function PulseCanvas({ pulse, now }: { pulse: PulseModel; now: number }) {
           <span className="num text-[10px] bg-panel-2 border border-border-strong rounded-sm px-1.5 py-0.5 text-fg-muted whitespace-nowrap">
             {new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             {bar.n === 0 ? (
-              ' · nothing'
+              ' · nothing happened'
             ) : (
               <>
                 {` · ${bar.n} event${bar.n === 1 ? '' : 's'}`}
                 {bar.turns > 0 && ` · ${bar.turns} turn${bar.turns === 1 ? '' : 's'}`}
                 {bar.cost > 0 && ` · ${fmtUSD(bar.cost)}`}
+                <span className="text-fg-faint"> · click to open</span>
               </>
             )}
           </span>
