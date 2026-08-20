@@ -532,10 +532,34 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		s.failCode(w, http.StatusNotImplemented, errors.New("settings are not available"))
 		return
 	}
-	var in Settings
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&in); err != nil {
+	// Decoded into pointers so an absent field can be told from one the caller
+	// deliberately cleared. Without that, `PUT {}` decoded to the zero Settings
+	// and wiped everything: a stated plan silently reverted to "not stated" and
+	// the release-check opt-in switched itself off, both answering 200. A
+	// client sending a partial body — or a retry that lost fields — should
+	// change what it named and nothing else.
+	var patch struct {
+		UpdateChecks    *bool    `json:"update_checks"`
+		PlanKind        *string  `json:"plan_kind"`
+		PlanLabel       *string  `json:"plan_label"`
+		PlanUSDPerMonth *float64 `json:"plan_usd_per_month"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&patch); err != nil {
 		s.failCode(w, http.StatusBadRequest, fmt.Errorf("parse body: %w", err))
 		return
+	}
+	in := s.d.Settings.Get()
+	if patch.UpdateChecks != nil {
+		in.UpdateChecks = *patch.UpdateChecks
+	}
+	if patch.PlanKind != nil {
+		in.PlanKind = *patch.PlanKind
+	}
+	if patch.PlanLabel != nil {
+		in.PlanLabel = *patch.PlanLabel
+	}
+	if patch.PlanUSDPerMonth != nil {
+		in.PlanUSDPerMonth = *patch.PlanUSDPerMonth
 	}
 	switch in.PlanKind {
 	case "", "flat", "metered":

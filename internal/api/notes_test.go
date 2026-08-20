@@ -8,10 +8,13 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/dspv/caprock/internal/bus"
+	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/rollup"
 	"github.com/dspv/caprock/internal/store"
@@ -287,5 +290,90 @@ func TestDailyDefaultsWhenUnset(t *testing.T) {
 		if code := e.get(t, "/v1/stats/daily"+q, &rows); code != http.StatusOK {
 			t.Errorf("%q returned %d", q, code)
 		}
+	}
+}
+
+// A partial settings body must change what it names and leave the rest alone.
+//
+// Decoding into a plain struct made an absent field indistinguishable from a
+// cleared one, so `PUT {}` answered 200 and wiped everything: a stated plan
+// reverted to "not stated", and the release-check opt-in switched itself off.
+// That second one is rule 4's only outbound call, and a client that sent a
+// short body — or a retry that lost fields — should not be able to toggle it by
+// omission in either direction.
+func TestPartialSettingsUpdateKeepsTheRest(t *testing.T) {
+	st, err := store.Open(context.Background(), ":memory:", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	tb, _ := cost.Embedded()
+	srv := httptest.NewServer(New(Deps{
+		Store: st, Bus: bus.New(), Table: tb, Version: "test", Now: time.Now,
+		Status:   func(context.Context) any { return map[string]string{} },
+		Settings: &fakeSettings{},
+	}))
+	t.Cleanup(srv.Close)
+
+	put := func(body string) int {
+		req, _ := http.NewRequest(http.MethodPut, srv.URL+"/v1/settings", strings.NewReader(body))
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+	get := func() map[string]any {
+		resp, err := http.Get(srv.URL + "/v1/settings")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var out map[string]any
+		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+
+	if code := put(`{"update_checks":true,"plan_kind":"flat","plan_label":"Max 20x","plan_usd_per_month":200}`); code != http.StatusOK {
+		t.Fatalf("initial settings: %d", code)
+	}
+
+	// An empty body must be a no-op, not a reset.
+	if code := put(`{}`); code != http.StatusOK {
+		t.Fatalf("empty patch: %d", code)
+	}
+	got := get()
+	if got["update_checks"] != true {
+		t.Error("an empty body switched the release check off")
+	}
+	if got["plan_label"] != "Max 20x" || got["plan_usd_per_month"] != float64(200) {
+		t.Errorf("an empty body cleared the plan: %+v", got)
+	}
+
+	// Naming one field changes that field only.
+	if code := put(`{"plan_label":"Pro"}`); code != http.StatusOK {
+		t.Fatalf("single-field patch: %d", code)
+	}
+	got = get()
+	if got["plan_label"] != "Pro" {
+		t.Errorf("plan_label = %v; want the new value", got["plan_label"])
+	}
+	if got["update_checks"] != true {
+		t.Error("changing the label switched the release check off")
+	}
+	if got["plan_kind"] != "flat" {
+		t.Errorf("plan_kind = %v; want it untouched", got["plan_kind"])
+	}
+
+	// And an explicit false is still honoured — this must not become a
+	// write-only setting.
+	if code := put(`{"update_checks":false}`); code != http.StatusOK {
+		t.Fatalf("explicit false: %d", code)
+	}
+	if get()["update_checks"] != false {
+		t.Error("an explicit false did not switch the release check off")
 	}
 }
