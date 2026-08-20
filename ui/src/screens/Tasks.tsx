@@ -26,6 +26,11 @@ export function TasksScreen() {
       <div className="flex items-center gap-2">
         <button onClick={() => setCreating(true)} className="border border-accent/50 text-accent bg-accent/10 px-2 py-1 rounded-sm text-[12px] hover:bg-accent/20">+ New task</button>
         <OrchestratorButton available={status.data?.claude_available ?? false} />
+        {/* The graph is only meaningful while work is actually assigned, so it
+         * is reachable from here rather than from a permanent nav slot. */}
+        {(tasks.data ?? []).some((t) => t.assignee !== '' && t.status !== 'done' && t.status !== 'failed') && (
+          <a href="#/graph" className="link text-[12px] border border-border px-2 py-1 rounded-sm hover:border-border-strong">view graph</a>
+        )}
         <span className="ml-auto text-[11px] text-fg-faint">Tasks are files on disk (<span className="mono">tasks/&lt;id&gt;.md</span>); the orchestrator moves them. Nothing reaches Done until its <span className="mono">done_criteria</span> pass.</span>
       </div>
       {tasks.error && !tasks.data && <Empty title="Cannot reach the daemon">{tasks.error.message}</Empty>}

@@ -9,8 +9,11 @@ const NAV: { route: Route; label: string; phase?: string }[] = [
   { route: { name: 'cost' }, label: 'Cost' },
   { route: { name: 'history' }, label: 'History' },
   { route: { name: 'tasks' }, label: 'Tasks' },
-  { route: { name: 'graph' }, label: 'Graph' },
 ]
+// The graph is deliberately not in NAV. Without a running orchestrator it can
+// only draw session ids around a hub — topology, not work — which costs a
+// permanent nav slot to say nothing. The route stays live at #/graph and Tasks
+// links to it while an orchestration is actually running.
 
 export function Shell({ route, children }: { route: Route; children: ReactNode }) {
   const live = useLive()
