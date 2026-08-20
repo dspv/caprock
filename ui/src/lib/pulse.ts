@@ -156,11 +156,37 @@ export function buildPulse(events: Event[], now: number, minutes = PULSE_MINUTES
 }
 
 /**
- * trackState is what the row says on the right. It never claims a session is
- * stuck: a high repeat count is reported as the count it is.
+ * trackState is what the row says on the right.
+ *
+ * It defers to the daemon's own health for the session rather than inferring
+ * one from the bars. The narrator already distinguishes waiting-on-you from
+ * working — it reads the last event, including the agent.stop that means "your
+ * turn" — and a track that says "working" while Claude is waiting for you to
+ * type is worse than saying nothing. Bars describe the past hour; health
+ * describes this moment, and they are different questions.
+ *
+ * The repeat count still wins when it is high, because it is the one thing the
+ * bars know that health does not. It is never phrased as a verdict.
  */
-export function trackState(p: Pulse): { kind: 'repeat' | 'working' | 'quiet'; label: string } {
+export function trackState(
+  p: Pulse,
+  health?: string,
+): { kind: 'repeat' | 'waiting' | 'working' | 'error' | 'quiet'; label: string } {
   if (p.repeats >= REPEAT_FLOOR) return { kind: 'repeat', label: `×${p.repeats} same call` }
+  switch (health) {
+    case 'waiting-on-you':
+      return { kind: 'waiting', label: 'waiting on you' }
+    case 'error':
+      return { kind: 'error', label: 'error' }
+    case 'looping':
+      return { kind: 'repeat', label: 'looping' }
+    case 'ended':
+      return { kind: 'quiet', label: 'ended' }
+    case 'idle':
+      return { kind: 'quiet', label: 'idle' }
+    case 'working':
+      return { kind: 'working', label: 'working' }
+  }
   const active = p.bars.filter((b) => b.n > 0).length
   if (active === 0) return { kind: 'quiet', label: 'quiet' }
   return { kind: 'working', label: 'working' }

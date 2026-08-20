@@ -179,3 +179,37 @@ describe('cost colouring', () => {
     expect(medianCost(bars)).toBe(2)
   })
 })
+
+describe('track state follows the daemon, not the bars', () => {
+  const busy = buildPulse(
+    Array.from({ length: 10 }, (_, i) => ev({ kind: 'turn.assistant' }, 5 - i * 0.3)),
+    NOW,
+    60,
+  )
+
+  it('says "waiting on you" when Claude has finished and is waiting', () => {
+    // The case that made this necessary: the bars showed a busy hour and the
+    // track said "working" while Claude sat waiting for the user to type.
+    // The bars describe the past hour; health describes this moment.
+    expect(trackState(busy, 'waiting-on-you')).toEqual({ kind: 'waiting', label: 'waiting on you' })
+  })
+
+  it('reports an error rather than calling it work', () => {
+    expect(trackState(busy, 'error').kind).toBe('error')
+  })
+
+  it('calls an ended session ended, however busy its hour was', () => {
+    expect(trackState(busy, 'ended').kind).toBe('quiet')
+  })
+
+  it('still surfaces a high repeat count above the daemon health', () => {
+    // The one thing the bars know that health does not.
+    const repeated = { bars: busy.bars, repeats: 40, repeatSample: 'Read /tmp/x' }
+    expect(trackState(repeated, 'working').label).toBe('×40 same call')
+  })
+
+  it('falls back to the bars when health is unknown', () => {
+    expect(trackState(busy, undefined).kind).toBe('working')
+    expect(trackState({ bars: [{ n: 0, turns: 0, tools: 0, cost: 0 }], repeats: 0, repeatSample: '' }, undefined).kind).toBe('quiet')
+  })
+})

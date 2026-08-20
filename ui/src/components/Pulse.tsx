@@ -114,9 +114,17 @@ function Track({ s, events, now }: { s: SessionSummary; events: Event[]; now: nu
   // rounded to the minute so a per-second clock does not invalidate it.
   const minute = Math.floor(now / 60_000)
   const pulse = useMemo(() => buildPulse(events, minute * 60_000), [events, minute])
-  const state = trackState(pulse)
+  // Health comes from the daemon's narrator, which knows "your turn" from the
+  // agent.stop event. The bars cannot: they describe the hour, not this moment.
+  const state = trackState(pulse, s.activity?.health)
   const stateCls =
-    state.kind === 'repeat' ? 'text-warn' : state.kind === 'quiet' ? 'text-fg-faint' : 'text-ok'
+    state.kind === 'repeat' || state.kind === 'waiting'
+      ? 'text-warn'
+      : state.kind === 'error'
+        ? 'text-danger'
+        : state.kind === 'quiet'
+          ? 'text-fg-faint'
+          : 'text-ok'
 
   return (
     <a
@@ -127,7 +135,7 @@ function Track({ s, events, now }: { s: SessionSummary; events: Event[]; now: nu
         <div className="text-[13px] font-medium truncate">{s.project || 'unknown project'}</div>
         <div className="text-[10px] text-fg-faint mono truncate">{s.activity?.phrase ?? ''}</div>
       </div>
-      <PulseCanvas pulse={pulse} />
+      <PulseCanvas pulse={pulse} now={minute * 60_000} />
       <div className="num text-[13px] font-semibold text-right">{fmtUSD(s.stats?.cost_usd)}</div>
       <div className={`text-[11px] text-right ${stateCls}`} title={pulse.repeatSample}>
         {state.label}
@@ -148,8 +156,9 @@ const TIER_COLOR = {
  * a bar chart look like a rendering fault; a flat floor looks like silence. */
 const IDLE_COLOR = 'rgba(169,165,158,0.16)'
 
-function PulseCanvas({ pulse }: { pulse: PulseModel }) {
+function PulseCanvas({ pulse, now }: { pulse: PulseModel; now: number }) {
   const ref = useRef<HTMLCanvasElement>(null)
+  const [hover, setHover] = useState<number | null>(null)
 
   useEffect(() => {
     const cv = ref.current
@@ -195,5 +204,44 @@ function PulseCanvas({ pulse }: { pulse: PulseModel }) {
     return () => ro.disconnect()
   }, [pulse])
 
-  return <canvas ref={ref} className="w-full h-[44px] block" aria-hidden />
+  // A minute is a small target, so the readout follows the pointer rather than
+  // requiring a hit on the bar itself: hovering a silent minute is a legitimate
+  // question ("was anything happening here?") and must answer it too.
+  const onMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const r = e.currentTarget.getBoundingClientRect()
+    if (r.width === 0) return
+    const i = Math.floor(((e.clientX - r.left) / r.width) * pulse.bars.length)
+    setHover(i >= 0 && i < pulse.bars.length ? i : null)
+  }
+
+  const bar = hover === null ? null : pulse.bars[hover]
+  const at = hover === null ? 0 : now - (pulse.bars.length - 1 - hover) * 60_000
+
+  return (
+    <div className="relative">
+      <canvas
+        ref={ref}
+        className="w-full h-[44px] block"
+        onMouseMove={onMove}
+        onMouseLeave={() => setHover(null)}
+        aria-hidden
+      />
+      {bar && (
+        <div className="absolute -top-1 left-0 right-0 pointer-events-none flex justify-center">
+          <span className="num text-[10px] bg-panel-2 border border-border-strong rounded-sm px-1.5 py-0.5 text-fg-muted whitespace-nowrap">
+            {new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {bar.n === 0 ? (
+              ' · nothing'
+            ) : (
+              <>
+                {` · ${bar.n} event${bar.n === 1 ? '' : 's'}`}
+                {bar.turns > 0 && ` · ${bar.turns} turn${bar.turns === 1 ? '' : 's'}`}
+                {bar.cost > 0 && ` · ${fmtUSD(bar.cost)}`}
+              </>
+            )}
+          </span>
+        </div>
+      )}
+    </div>
+  )
 }
