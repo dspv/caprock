@@ -127,6 +127,18 @@ export interface RateLimits {
   seven_day?: RateWindow
 }
 
+/** One thing Claude said, in prose — not a tool call. */
+export interface AssistantNote {
+  event_id: number
+  session_id: string
+  project: string
+  ts: number
+  model: string
+  text: string
+  /** Mid-thought aside rather than a conclusion; qualifies a final note. */
+  fragment: boolean
+}
+
 export interface Settings {
   update_checks: boolean
   plan_kind: '' | 'flat' | 'metered'
@@ -213,6 +225,8 @@ export const api = {
   session: (id: string) => get<SessionDetail>(`/v1/sessions/${encodeURIComponent(id)}`),
   events: (id: string, after = 0, limit = 500) => get<Event[]>(`/v1/sessions/${encodeURIComponent(id)}/events?after=${after}&limit=${limit}`),
   diff: (id: string) => get<DiffResult>(`/v1/sessions/${encodeURIComponent(id)}/diff`),
+  notes: (id: string, limit = 200) => get<AssistantNote[]>(`/v1/sessions/${encodeURIComponent(id)}/notes?limit=${limit}`),
+  searchNotes: (q: string, limit = 100) => get<AssistantNote[]>(`/v1/notes?q=${encodeURIComponent(q)}&limit=${limit}`),
   settings: () => get<Settings>('/v1/settings'),
   update: () => get<UpdateStatus>('/v1/update'),
   checkUpdate: () => post<UpdateStatus>('/v1/update/check', {}),

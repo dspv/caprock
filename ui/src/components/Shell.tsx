@@ -9,6 +9,7 @@ const NAV: { route: Route; label: string; phase?: string }[] = [
   { route: { name: 'now' }, label: 'Now' },
   { route: { name: 'cost' }, label: 'Cost' },
   { route: { name: 'history' }, label: 'History' },
+  { route: { name: 'notes' }, label: 'Answers' },
   { route: { name: 'tasks' }, label: 'Tasks' },
 ]
 // The graph is deliberately not in NAV. Without a running orchestrator it can

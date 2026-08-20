@@ -9,6 +9,7 @@ export type Route =
   | { name: 'history' }
   | { name: 'tasks' }
   | { name: 'graph' }
+  | { name: 'notes' }
   | { name: 'settings' }
 
 export function parseHash(hash: string): Route {
@@ -31,6 +32,8 @@ export function parseHash(hash: string): Route {
       return { name: 'tasks' }
     case 'graph':
       return { name: 'graph' }
+    case 'notes':
+      return { name: 'notes' }
     case 'settings':
       return { name: 'settings' }
     default:
@@ -46,6 +49,7 @@ export function href(r: Route): string {
     case 'history': return '#/history'
     case 'tasks': return '#/tasks'
     case 'graph': return '#/graph'
+    case 'notes': return '#/notes'
     case 'settings': return '#/settings'
   }
 }

@@ -6,13 +6,14 @@ import { fmtAgo, fmtPct, fmtTokens, fmtUSD, shortId, basename } from '@/lib/form
 import { Badge, Empty, Panel, Sparkline, Stat } from '@/components/ui'
 import { href, navigate } from '@/lib/router'
 import { useNow } from './Now'
+import { SessionNotes } from '@/components/Notes'
 import { TerminalView } from '@/components/Terminal'
 
-type Tab = 'timeline' | 'diff' | 'files' | 'terminal'
+type Tab = 'timeline' | 'notes' | 'diff' | 'files' | 'terminal'
 
 export function SessionScreen({ id, tab }: { id: string; tab?: string }) {
   const detail = useApi(() => api.session(id), [id], { intervalMs: 5000 })
-  const active: Tab = tab === 'diff' || tab === 'files' || tab === 'terminal' ? tab : 'timeline'
+  const active: Tab = tab === 'diff' || tab === 'files' || tab === 'terminal' || tab === 'notes' ? tab : 'timeline'
   const now = useNow(1000)
   const s = detail.data
   if (detail.error && !s) {
@@ -48,14 +49,15 @@ export function SessionScreen({ id, tab }: { id: string; tab?: string }) {
         </div>
       </Panel>
       <div className="flex items-center gap-1 border-b border-border">
-        {(['timeline', 'diff', 'files', 'terminal'] as Tab[]).map((t) => (
+        {(['timeline', 'notes', 'diff', 'files', 'terminal'] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`px-3 py-1.5 text-[12px] border-b-2 -mb-px ${active === t ? 'border-accent text-fg' : 'border-transparent text-fg-muted hover:text-fg'}`}>
-            {t === 'timeline' ? 'Timeline' : t === 'diff' ? 'Live diff' : t === 'files' ? `Files (${s.files.length})` : 'Terminal'}
+            {t === 'timeline' ? 'Timeline' : t === 'notes' ? 'Answers' : t === 'diff' ? 'Live diff' : t === 'files' ? `Files (${s.files.length})` : 'Terminal'}
           </button>
         ))}
         {!s.owned && <span className="ml-auto text-[11px] text-fg-faint pr-1">observe-only — terminal is read/write for spawned sessions only</span>}
       </div>
       {active === 'timeline' && <Timeline id={id} initial={s.events} now={now} />}
+      {active === 'notes' && <SessionNotes id={id} now={now} />}
       {active === 'diff' && <DiffTab id={id} lastEventAt={s.last_event_at} />}
       {active === 'files' && <FilesTab s={s} />}
       {active === 'terminal' && <Panel className="overflow-hidden"><TerminalView sessionId={id} owned={s.owned && s.status !== 'ended'} /></Panel>}
@@ -126,6 +128,10 @@ function EventRow({ e, now, toolByUse }: { e: Event; now: number; toolByUse: Map
   const p = (e.payload ?? {}) as Record<string, unknown>
   const resolved = e.tool || (e.kind === 'tool.post' ? toolByUse.get(String(p.tool_use_id ?? '')) : undefined)
   const label = describe({ ...e, tool: resolved }, p)
+  // The full text of what Claude (or you) wrote, for the expanded view.
+  const prose = e.kind === 'turn.assistant' ? String(p.text ?? '')
+    : e.kind === 'turn.user' ? String(p.prompt ?? '')
+    : ''
   const kindCls =
     e.kind === 'turn.user' ? 'text-info' :
     e.kind === 'turn.assistant' ? 'text-fg' :
@@ -141,7 +147,20 @@ function EventRow({ e, now, toolByUse }: { e: Event; now: number; toolByUse: Map
         {e.tokens && <span className="ml-auto num text-[10px] text-fg-faint shrink-0">{fmtTokens(e.tokens.in + e.tokens.cache_read + e.tokens.cache_write)}→{fmtTokens(e.tokens.out)}{e.cost_usd !== undefined ? ` · ${fmtUSD(e.cost_usd)}` : ''}</span>}
       </button>
       {open && (
-        <pre className="mono text-[10px] leading-[1.4] text-fg-muted px-3 pb-2 max-h-64 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify({ id: e.id, ts: e.ts, source: e.source, key: e.key, agent_id: e.agent_id, model: e.model, tokens: e.tokens, cost_usd: e.cost_usd, payload: e.payload }, null, 2)}</pre>
+        <div className="px-3 pb-2">
+          {/* Prose Claude wrote is shown as prose. Expanding used to reveal raw
+            * JSON, which is complete but unreadable — and the row above it is a
+            * 200-character slice, so a summary had nowhere to be read at all. */}
+          {prose ? (
+            <div className="text-[12px] leading-[1.55] whitespace-pre-wrap break-words max-h-96 overflow-auto border-l-2 border-border-strong pl-3 mb-2">
+              {prose}
+            </div>
+          ) : null}
+          <details>
+            <summary className="text-[10px] text-fg-faint cursor-pointer select-none">raw event</summary>
+            <pre className="mono text-[10px] leading-[1.4] text-fg-muted pt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify({ id: e.id, ts: e.ts, source: e.source, key: e.key, agent_id: e.agent_id, model: e.model, tokens: e.tokens, cost_usd: e.cost_usd, payload: e.payload }, null, 2)}</pre>
+          </details>
+        </div>
       )}
     </li>
   )
