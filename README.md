@@ -87,7 +87,13 @@ One local binary. Your data never leaves your machine.
 
 ## Why
 
-- **See it** — live activity, tokens, cost, and loop alerts per session.
+- **See it** — live activity, tokens, cost, and loop alerts per session, plus
+  what each repository costs you and who is working in it.
+- **Find what Claude said** — the reasoning and the "here's what changed, here's
+  what I still need from you" that otherwise lives only in terminal scrollback,
+  searchable across every session.
+- **Know what it's worth** — your measured usage priced at the API rate, against
+  what your plan actually costs.
 - **Steer it** — spawn, pause, and kill sessions from the dashboard.
 - **Trust it** — orchestrate agents that finish only when the tests pass.
 - **Local-first** — loopback only, no servers, no telemetry, no account. The one thing that can reach the network is an optional check for new releases, off until you turn it on.

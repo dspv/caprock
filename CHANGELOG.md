@@ -9,6 +9,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.9.3] - 2026-08-20
+
+### Changed
+
+- **The README and agent docs now describe what the product actually is.** They
+  still listed the screens as they stood several releases ago, and never
+  mentioned two of the most useful things in it: per-repository cost on the
+  landing screen, and Answers — the prose Claude wrote, searchable across every
+  session. Nothing in the software changed; the descriptions caught up.
+
 ## [0.9.2] - 2026-08-20
 
 Found by running the daemon against hostile input and rendering the dashboard
