@@ -2,13 +2,14 @@
 // Reconnects with backoff; exposes connection state so screens can show a
 // staleness dot instead of a spinner (no spinner longer than 300ms).
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { Event, LoopAlert, Session, Stats } from './api'
+import type { Event, LoopAlert, Session, Stats, TaskFrame } from './api'
 
 export type Frame =
   | { type: 'hello'; data: { server_time: number } }
   | { type: 'event'; data: Event }
   | { type: 'session'; data: { session: Session; stats: Stats } }
   | { type: 'alert'; data: LoopAlert }
+  | { type: 'task'; data: TaskFrame }
   | { type: 'stats'; data: unknown }
 
 export type ConnState = 'connecting' | 'open' | 'closed'
@@ -93,6 +94,11 @@ class LiveStore {
         this.set({ lastFrameAt: now, lastEvent: f.data, tick: this.state.tick + 1 })
         break
       case 'session':
+        this.set({ lastFrameAt: now, tick: this.state.tick + 1 })
+        break
+      case 'task':
+        // The orchestration graph subscribes per-frame via onFrame for smooth
+        // animation; bump tick so snapshot consumers (useApi(api.tasks)) refetch.
         this.set({ lastFrameAt: now, tick: this.state.tick + 1 })
         break
       default:

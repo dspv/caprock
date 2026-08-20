@@ -132,6 +132,10 @@ export interface DailyStat { day: string; project: string; model: string; tokens
 export interface ToolCount { tool: string; count: number }
 export interface HistoryTotals { sessions: number; owned_sessions: number; turns: number; tool_calls: number; files_touched: number; cost_usd: number; avg_session_sec: number; days: number }
 export interface Task { id: string; title: string; status: string; assignee: string; budget_usd: number; verify_rounds: number; cost_usd: number; created_at: number; updated_at: number }
+// The live WS "task" frame carries the on-disk hive.Task (no cost_usd — that's
+// computed for the REST TaskRow). Enough to drive the orchestration graph's
+// node/edge state and animation; cost comes from the /v1/tasks snapshot.
+export interface TaskFrame { id: string; title: string; status: string; assignee: string; budget_usd: number; verify_rounds_used: number; body: string }
 export interface TaskDetail { task: Task; body: string }
 export interface CreateTaskRequest { title: string; budget_usd?: number; done_criteria?: string[]; body?: string }
 

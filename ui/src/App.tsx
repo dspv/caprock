@@ -7,6 +7,7 @@ import { CostScreen } from '@/screens/Cost'
 import { StatusScreen } from '@/screens/Status'
 import { HistoryScreen } from '@/screens/History'
 import { TasksScreen } from '@/screens/Tasks'
+import { OrchestrationScreen } from '@/screens/Orchestration'
 
 export default function App() {
   const route = useRoute()
@@ -19,6 +20,7 @@ export default function App() {
         {route.name === 'settings' && <StatusScreen />}
         {route.name === 'history' && <HistoryScreen />}
         {route.name === 'tasks' && <TasksScreen />}
+        {route.name === 'graph' && <OrchestrationScreen />}
       </ErrorBoundary>
     </Shell>
   )
