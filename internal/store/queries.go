@@ -245,6 +245,14 @@ func MarkIdleSessions(ctx context.Context, q Querier, before int64) ([]string, e
 		}
 		ids = append(ids, id)
 	}
+	// A scan that stopped early (cancelled context, read error) leaves a short
+	// list that looks complete. The UPDATE below changes every matching row, so
+	// reporting a subset would have the daemon emit events for some of the
+	// sessions it just changed and stay silent about the rest.
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
 	_ = rows.Close()
 	if len(ids) == 0 {
 		return nil, nil
@@ -269,6 +277,12 @@ func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, 
 			return nil, err
 		}
 		ids = append(ids, id)
+	}
+	// Same reasoning as MarkIdleSessions: a partial read must not pass for a
+	// complete one when an UPDATE follows it.
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
 	}
 	_ = rows.Close()
 	if len(ids) == 0 {
@@ -737,6 +751,13 @@ func Summarize(ctx context.Context, q Querier, fromMs int64) (Summary, error) {
 			return s, err
 		}
 		s.Models = append(s.Models, m)
+	}
+	// A truncated model list is a wrong number, not a short one: the model mix
+	// is rendered as a share of the total, so a missing row silently reweights
+	// every other model on the Cost screen (rule 6).
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return s, err
 	}
 	_ = rows.Close()
 	rows, err = q.QueryContext(ctx, `

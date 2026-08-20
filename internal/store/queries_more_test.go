@@ -296,3 +296,49 @@ func TestNotesClampAnAbsurdLimit(t *testing.T) {
 		t.Error("returned nothing; the clamp must bound the page, not empty it")
 	}
 }
+
+// A cancelled context must surface as an error rather than an empty-but-clean
+// result, for the sweeps that follow their scan with an UPDATE.
+//
+// What this does *not* prove is the rows.Err() check those functions carry.
+// Deleting it leaves these tests green, because QueryContext validates the
+// context before the query runs and fails there — measured. Reaching the
+// rows.Err() path needs a failure partway through iteration, which is not
+// producible from a test without substituting the driver; the check stays as
+// defence against a truncated scan reporting a short id list as a complete
+// one, and `rowserrcheck` in the linter is what keeps it in place.
+func TestMarkSweepsFailOnACancelledContext(t *testing.T) {
+	s := openTest(t)
+	now := time.Now().UnixMilli()
+	for i := 0; i < 200; i++ {
+		mustSession(t, s, "s-"+strconv.Itoa(i), now-6*3600*1000)
+	}
+	cutoff := now - 3600*1000
+
+	for name, fn := range map[string]func(context.Context, Querier, int64) ([]string, error){
+		"MarkEndedSessions": MarkEndedSessions,
+		"MarkIdleSessions":  MarkIdleSessions,
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			ids, err := fn(ctx, s.db, cutoff)
+			if err == nil {
+				t.Errorf("returned %d ids and no error on a cancelled context", len(ids))
+			}
+			if len(ids) != 0 {
+				t.Errorf("returned %d ids alongside a failure; callers act on this list", len(ids))
+			}
+		})
+	}
+}
+
+// The same for Summarize, whose numbers go straight onto the Cost screen.
+func TestSummarizeFailsOnACancelledContext(t *testing.T) {
+	s := openTest(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := Summarize(ctx, s.db, 0); err == nil {
+		t.Error("Summarize returned no error on a cancelled context")
+	}
+}

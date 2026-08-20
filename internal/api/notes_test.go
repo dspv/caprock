@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dspv/caprock/internal/event"
+	"github.com/dspv/caprock/internal/rollup"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -174,5 +175,117 @@ func TestSearchNotesHonoursLimit(t *testing.T) {
 	e.get(t, "/v1/notes?q=marker&limit=2", &got)
 	if len(got) > 2 {
 		t.Errorf("got %d notes with limit=2", len(got))
+	}
+}
+
+// The dashboard is mounted at "/" so client-side routes resolve, which means an
+// unmatched path falls through to index.html. That is right for a page and
+// wrong for the API: a caller that mistypes an endpoint, or uses one that was
+// removed in an upgrade, would get 200 and a document, then fail somewhere else
+// while parsing HTML as JSON.
+func TestUnknownAPIPathIs404JSON(t *testing.T) {
+	e := newEnv(t)
+	for _, path := range []string{
+		"/v1/nonexistent",
+		"/v1/stats/nope",
+		"/v1/sessions/x/not-a-tab",
+	} {
+		t.Run(path, func(t *testing.T) {
+			resp, err := http.Get(e.srv.URL + path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusNotFound {
+				t.Errorf("status %d for %s; want 404", resp.StatusCode, path)
+			}
+			if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "json") {
+				t.Errorf("Content-Type %q; an API path must not answer with a document", ct)
+			}
+			var body map[string]string
+			if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+				t.Errorf("body is not JSON: %v", err)
+			}
+		})
+	}
+}
+
+// A real endpoint must keep working — the 404 branch must not shadow the mux.
+func TestKnownAPIPathsStillResolve(t *testing.T) {
+	e := newEnv(t)
+	// /v1/settings is deliberately absent: newEnv does not wire a Settings
+	// provider, so it answers 501 here and 200 in a real daemon.
+	for _, path := range []string{"/v1/sessions", "/v1/stats/summary?range=today", "/v1/history?range=today"} {
+		resp, err := http.Get(e.srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("%s returned %d; want 200", path, resp.StatusCode)
+		}
+	}
+}
+
+// The dashboard itself still has to load, including deep links the router
+// handles client-side.
+func TestUIRoutesStillServeThePage(t *testing.T) {
+	e := newEnv(t)
+	for _, path := range []string{"/", "/cost", "/session/abc"} {
+		resp, err := http.Get(e.srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("UI path %s returned %d; the SPA fallback must still work", path, resp.StatusCode)
+		}
+	}
+}
+
+// An out-of-range `days` must clamp to the ceiling, not fall back to the
+// default. Asking for 5000 days and silently getting 30 returns a total that is
+// simply wrong: a caller summing the result sees a fraction of the real spend
+// with nothing indicating it was truncated. Found by summing /v1/stats/daily
+// against /v1/stats/summary on a real database — they disagreed by $1,603.
+func TestDailyClampsToTheCeilingNotTheDefault(t *testing.T) {
+	e := newEnv(t)
+	// daily_stats is written by the recorder, not by a raw event insert, so
+	// these go through the same path the ingest uses.
+	priced := func(id string, ts time.Time) {
+		t.Helper()
+		ev := &event.Event{
+			SessionID: id, Source: event.SourceTranscript, Kind: event.KindTurnAssistant,
+			Key: "msg:" + id, Ts: ts, Model: "claude-opus-5",
+			Tokens:  &event.TokenDelta{In: 100, Out: 200},
+			Payload: json.RawMessage(`{"text":"hi"}`),
+		}
+		if _, err := e.rec.Record(context.Background(), ev, rollup.SessionInfo{Cwd: "/tmp/p"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 45 days apart: inside a 3650-day window, outside a 30-day one.
+	priced("s-old", e.now.AddDate(0, 0, -45))
+	priced("s-new", e.now)
+
+	var huge, def []map[string]any
+	e.get(t, "/v1/stats/daily?days=99999", &huge)
+	e.get(t, "/v1/stats/daily?days=30", &def)
+
+	if len(huge) <= len(def) {
+		t.Errorf("days=99999 returned %d rows and days=30 returned %d; an absurd value must clamp to the ceiling, not to the default",
+			len(huge), len(def))
+	}
+}
+
+// A missing or nonsense value still gets the dashboard's own window.
+func TestDailyDefaultsWhenUnset(t *testing.T) {
+	e := newEnv(t)
+	e.note(t, "s", "x", e.now)
+	for _, q := range []string{"", "?days=0", "?days=-5", "?days=abc"} {
+		var rows []map[string]any
+		if code := e.get(t, "/v1/stats/daily"+q, &rows); code != http.StatusOK {
+			t.Errorf("%q returned %d", q, code)
+		}
 	}
 }

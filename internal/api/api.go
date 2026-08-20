@@ -184,6 +184,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "forbidden origin", http.StatusForbidden)
 			return
 		}
+		// The dashboard is mounted at "/" so client-side routes resolve, which
+		// means an unmatched path falls through to index.html. For a page that
+		// is right; for the API it is a lie — a caller that mistypes an
+		// endpoint, or uses one that was removed, gets 200 and HTML, then fails
+		// while parsing it as JSON. Answer honestly instead.
+		if _, pattern := s.mux.Handler(r); pattern == "/" {
+			writeJSON(w, http.StatusNotFound, map[string]string{
+				"error": "no such endpoint: " + r.URL.Path,
+			})
+			return
+		}
 	}
 	s.mux.ServeHTTP(w, r)
 }
@@ -634,10 +645,21 @@ func (s *Server) paceForecast(ctx context.Context, window string, snap store.Rat
 	return fmt.Sprintf("~%.1fh to limit at current pace", hoursToLimit)
 }
 
+// maxDailyDays bounds the daily query: ten years is far past any real history
+// and keeps one request from scanning an unbounded range.
+const maxDailyDays = 3650
+
 func (s *Server) handleDaily(w http.ResponseWriter, r *http.Request) {
 	days, _ := strconv.Atoi(r.URL.Query().Get("days"))
-	if days <= 0 || days > 3650 {
-		days = 30
+	switch {
+	case days <= 0:
+		days = 30 // unset or nonsense: the dashboard's own window
+	case days > maxDailyDays:
+		// Clamp to the ceiling rather than falling back to the default. Asking
+		// for 5000 days and silently receiving 30 returns a total that is
+		// simply wrong — a caller summing the result gets a fraction of the
+		// real spend with nothing to say it was truncated.
+		days = maxDailyDays
 	}
 	from := s.d.Now().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
 	rows, err := store.Daily(r.Context(), s.d.Store.DB(), from)

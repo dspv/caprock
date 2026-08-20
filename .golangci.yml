@@ -7,6 +7,19 @@ linters:
   enable:
     - errorlint
     - gocritic
+    # A scan that stops early otherwise returns the rows it managed to read as
+    # though they were all of them — a short list that looks complete. Three
+    # such cases existed in internal/store, two of them followed by an UPDATE
+    # that changed every matching row. No test can reach the rows.Err() path
+    # (QueryContext fails on the context before iteration begins), so this
+    # linter is what keeps the check in place.
+    #
+    # Its companion sqlclosecheck is deliberately NOT enabled: it wants every
+    # Close to be deferred, but Summarize runs three queries through one `rows`
+    # variable, where a defer would close only the last and leave the first two
+    # open until the function returns. Every path there already closes its own
+    # rows (verified: three queries, seven Close calls).
+    - rowserrcheck
     - misspell
     - nilerr
     - unconvert
