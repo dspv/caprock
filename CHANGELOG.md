@@ -9,6 +9,41 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.9.2] - 2026-08-20
+
+Found by running the daemon against hostile input and rendering the dashboard
+with malformed data, rather than by reading the code.
+
+### Fixed
+
+- **One bad timestamp could make every session invisible, permanently.** A
+  transcript line stamped in the year 9999 rolls past year 10000 in any
+  positive UTC offset, and Go refuses to serialize that — which aborts the
+  encoding of the whole list it appears in. The API then returned HTTP 200 with
+  an empty body, so the dashboard showed no sessions at all while the database
+  held them, with nothing in the logs. Because the event persists, restarting
+  did not help. Fixed at all three layers: responses are serialized before the
+  status code is sent so a failure is an honest error, impossible timestamps are
+  rejected on the way in, and negative token counts are clamped.
+- **A malformed live event could silently freeze the dashboard.** A tool call
+  is arbitrary JSON, and one with an unexpected shape threw inside the
+  WebSocket handler — outside React, where no error boundary can catch it. That
+  stopped every later update, so the page sat on stale numbers showing no
+  error. Leaf values are now coerced and one failing listener can no longer
+  starve the others.
+- **A single missing daily cost blanked the whole 30-day chart** rather than
+  one bar, while the header still showed a total.
+- **Figures that read as broken:** an empty range rendered "NaNh NaNm" in the
+  Avg session tile; ratios could print "$∞" or "Infinity%"; the plan progress
+  bar overflowed its card when a session reported more steps done than planned;
+  the loop banner could say "ran the same call undefined× in undefined min".
+- **"Active sessions" was wildly inflated during a first run.** A session is
+  marked active on its first event and reaped later, so a backfill counted every
+  historical session at once — a new user's first impression was a count in the
+  dozens that then fell to one. It is now bounded to the last 30 minutes.
+- **The Answers tab and search could crash** on a note with no text, and the Now
+  screen could crash on a session missing its stats or activity.
+
 ## [0.9.1] - 2026-08-20
 
 A sweep for bugs of one particular kind: things that look informative but
