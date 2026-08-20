@@ -61,7 +61,8 @@ describe('orchestration layout', () => {
   })
 
   it('puts the verify gate between center and node', () => {
-    const [node] = ringPositions(['w'], new Set(['w']), g)
+    const positions = ringPositions(['w'], new Set(['w']), g)
+    const node = positions[0]!
     const gate = pointOnSpoke(node, g, g.gateT)
     // Gate is closer to the node than the center along the spoke.
     const dCenter = Math.hypot(gate.x - g.cx, gate.y - g.cy)
