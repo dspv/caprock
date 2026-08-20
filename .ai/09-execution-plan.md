@@ -196,6 +196,15 @@ committed to a release yet; each item still needs its own DoD before it starts.
 
   Scope to settle before building: render assistant prose in the timeline (with a toggle, since some turns are long); make it searchable across sessions, because "which session was it where Claude explained the SSO thing?" is the actual question; and decide what a session-level summary view looks like. Content is per-session and never leaves the machine.
 
+  **Audited 2026-08-20 against 12k events across 20 sessions and 16 projects.** Verdict: the data supports the feature, but four things must be handled, in order.
+
+  - **The text is truncated far more aggressively than intended, and corrupts on the way** — `internal/ingest/parser.go` caps at 2000 **bytes** (`len(joined) > 2000`, `joined[:2000]`), not runes. Cyrillic is 2 bytes per character, so Russian prose is clipped at roughly 1000–1350 characters; one measured summary went from 1856 characters to 1349. Slicing mid-rune leaves a `U+FFFD` at the end of **22% of clipped rows** (confirmed independently: 15 of 53 in one session). Worst of all, the cap lands disproportionately on the **closing summary** — 8 of 12 sampled sessions had their final summary clipped, which is exactly the content this feature exists to show. Fix the cap on runes and raise it; note that payload shape is a contract, so this lands with `.ai/03-contracts.md` (rule 8), and historical rows stay clipped unless re-derived from the on-disk transcripts (`SchemaVersion` in the parser exists for that).
+  - **`GET /v1/sessions/{id}/events` silently returns 500 rows** when `limit > 5000` (`internal/store/queries.go`). A consumer that does not paginate reads the *start* of a session and mistakes an early fragment for the ending. A dedicated "last assistant text" query is probably better than paginating 12k events client-side.
+  - **45% of `turn.assistant` events are subagent sidechains**, so "the last thing Claude said" returns a subagent's words about half the time. `payload.sidechain` and `agent_id` agree perfectly across 12,111 events, so filtering is reliable — but it is mandatory.
+  - **Roughly a quarter to a third of sessions end on a fragment**, not a summary (interrupted or still running). The feature must detect that rather than present "Let me check that" as the conclusion.
+
+  Two findings that make this cheaper than expected: the text comes **only from transcript tailing**, never from hooks, so it works identically for users who declined hooks (53 of 56 local sessions have no hooks and full prose); and **extended thinking is never stored at all** — only `type: "text"` blocks are read — so displaying captured prose cannot leak Claude's reasoning.
+
 - **B2 — Update notifications.** Tell the user in the UI when a newer version is
   published, with the exact upgrade command for their install method (`brew
   upgrade`, `scoop update`, `go install`). **Open decision:** any version check
