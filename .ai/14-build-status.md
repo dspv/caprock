@@ -2,7 +2,7 @@
 
 The running log: what is done, what is not, what is next. **Update this file and § Current State in [00-index.md](00-index.md) whenever the state of the world changes.** Dates in absolute form, never "last week". What "done" means per task is defined in [09-execution-plan.md](09-execution-plan.md).
 
-**Last updated: 2026-08-20** · Phase **2 — Orchestrate, complete** · **v0.1.0–v0.5.1 are all tagged and published** (Homebrew formula in `dspv/homebrew-tap` — `brew install dspv/tap/caprock`). The live unattended orchestrator run (the Phase 2 tag gate) is done — a real `claude` orchestrator autonomously assigned a task, spawned a worker, and drove it to green verification. Post-Orchestrate: v0.4.0 = plan-limit windows + orchestrator-lifecycle fixes + Homebrew formula; v0.4.1 = the formula ships the hook shim + honest hook status; v0.5.0 = distribution polish (statusLine auto-install, honest first-run errors, readable MCP names, a release CI-gate, CODE_OF_CONDUCT); **v0.5.1 = Windows install via Scoop (`dspv/scoop-bucket`) + a README project map.** Next: Phase 3 (Delight) has no plan by design.
+**Last updated: 2026-08-20** · Phase **2 — Orchestrate, complete** · **v0.1.0–v0.6.0 are all tagged and published** (Homebrew formula in `dspv/homebrew-tap` — `brew install dspv/tap/caprock`). The live unattended orchestrator run (the Phase 2 tag gate) is done — a real `claude` orchestrator autonomously assigned a task, spawned a worker, and drove it to green verification. Post-Orchestrate: v0.4.0 = plan-limit windows + orchestrator-lifecycle fixes + Homebrew formula; v0.4.1 = the formula ships the hook shim + honest hook status; v0.5.0 = distribution polish (statusLine auto-install, honest first-run errors, readable MCP names, a release CI-gate, CODE_OF_CONDUCT); **v0.5.1 = Windows install via Scoop (`dspv/scoop-bucket`) + a README project map; **v0.6.0 = light theme + `go install` with a real embedded UI.** Next: Phase 3 (Delight) has no plan by design — a "wow" orchestration-graph visualization is under consideration (an ICP persona panel picked it 3-1-1; build as a fixed radial layout, never force-directed).
 
 ## Progress by track
 
@@ -37,11 +37,15 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## What is true right now
 
-- **All three phases are built and green.** The Go module + `ui/` exist and are exercised by `make check` (Go tests, `go vet`, `golangci-lint`, docs gates, and the UI typecheck/vitest/build) on the 3-OS CI matrix. Phase 2's orchestration loop has been driven end to end by a real `claude` orchestrator (see the Phase 2 log entry). **v0.1.0–v0.5.1 are all tagged and published** (Homebrew formula in `dspv/homebrew-tap`).
+- **All three phases are built and green.** The Go module + `ui/` exist and are exercised by `make check` (Go tests, `go vet`, `golangci-lint`, docs gates, and the UI typecheck/vitest/build) on the 3-OS CI matrix. Phase 2's orchestration loop has been driven end to end by a real `claude` orchestrator (see the Phase 2 log entry). **v0.1.0–v0.6.0 are all tagged and published** (Homebrew formula in `dspv/homebrew-tap`).
 - The Python measurer (`~/dev/caprock-legacy`, PyPI `caprock` 0.3.0) is frozen ([ADR-007](08-decisions.md#adr-007--the-harness-is-caprock-new-go-codebase-in-dspvcaprock-python-measurer-frozen)); the Go binary shipped its first release as **v0.1.0** on 2026-08-19.
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
 ## Log
+
+### 2026-08-20 — v0.6.0: light theme + `go install`
+
+Two shipped-ready additions. **Light theme:** a header toggle (sun/moon) flips the dashboard between dark and light; the light palette redefines the same semantic tokens under `[data-theme="light"]`, so every screen and the xterm terminal follow along (the terminal reads the CSS vars at mount). The choice persists to localStorage and follows `prefers-color-scheme` when unset; an inline pre-paint script avoids a flash. The site got the same treatment — because the landing uses CSS UI primitives (not screenshots), it adapted for free with no images to redo. **`go install`:** the built dashboard is now committed under `internal/api/dist/` (596K, deterministic Vite output) so `go install …/cmd/caprock@latest` embeds a real UI instead of the placeholder; a `make dist-check` + CI step rebuild the UI and fail if the commit is stale. Also: `paceForecast` now uses the injectable daemon clock (consistent + testable, with a Rule-6 honesty test), and `statuslineCommandStr` quotes only the path so a spaced install location registers correctly.
 
 ### 2026-08-20 — v0.5.1 shipped (Scoop live); test coverage + a spaced-path fix
 

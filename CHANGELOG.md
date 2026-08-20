@@ -9,6 +9,24 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.6.0] - 2026-08-20
+
+### Added
+
+- **Light theme.** A header toggle (sun/moon) flips the dashboard between the dark
+  ops-room look and a light theme; the choice is persisted and, when unset,
+  follows your OS preference. Every screen and the live terminal adapt.
+- **`go install` works with a real UI.** `go install
+  github.com/dspv/caprock/cmd/caprock@latest` now embeds the built dashboard (the
+  UI is committed and a CI check keeps it in sync), so a Go install is a full
+  Caprock, not a placeholder page.
+
+### Fixed
+
+- **Plan-limit forecast uses the daemon clock** (consistent + deterministic), and
+  the status-line command quotes only the binary path — so a caprock installed
+  under a path with spaces registers correctly.
+
 ## [0.5.1] - 2026-08-20
 
 ### Added
