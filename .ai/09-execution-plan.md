@@ -190,6 +190,12 @@ committed to a release yet; each item still needs its own DoD before it starts.
   a compact per-project cost roll-up on the landing screen. Data already exists
   (`ProjectShare` in `/v1/stats/summary`); the gap is placement plus "who is in
   this repo right now".
+- **B0 — Claude's own words are captured but hidden (top priority).** Reported by an early user, and confirmed against the data: `turn.assistant` events already carry the assistant's prose in `payload.text`, the store keeps it, and `/v1/sessions/{id}/events` returns it — but the Session timeline renders only the event label (`turn.assistant → Bash`), so the reasoning, the summaries, and the "what changed / what I still need from you" paragraphs are invisible. This is a presentation defect, not a missing feature.
+
+  Why it matters more than it looks: for a large share of sessions the *code* is not the deliverable — the conclusion is ("this is done, but I could not verify X; ask the team and then we finish it"). Today that paragraph survives only in the terminal scrollback, so people copy it into a notepad or lose it and re-derive it in a fresh session. Caprock already stores it and is the natural place to find it again.
+
+  Scope to settle before building: render assistant prose in the timeline (with a toggle, since some turns are long); make it searchable across sessions, because "which session was it where Claude explained the SSO thing?" is the actual question; and decide what a session-level summary view looks like. Content is per-session and never leaves the machine.
+
 - **B2 — Update notifications.** Tell the user in the UI when a newer version is
   published, with the exact upgrade command for their install method (`brew
   upgrade`, `scoop update`, `go install`). **Open decision:** any version check
