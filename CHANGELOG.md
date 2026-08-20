@@ -9,6 +9,62 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.9.9] - 2026-08-21
+
+Bugs found by hunting rather than by tests — comparing every displayed number
+against the database, summing one endpoint against another, and fuzzing every
+endpoint that writes something.
+
+### Fixed
+
+- **"Active days" was undercounting by a third.** The History screen read 21
+  active days on a database with 32 days of events, because it counted the days
+  sessions were *started* rather than days with work in them. One session that
+  ran twelve days contributed one. It also got four times faster along the way
+  (0.37s to 1.63s and back down to 0.36s).
+
+- **A partial settings body wiped the rest.** `PUT /v1/settings` with an empty
+  or short body answered 200 and reset everything: a stated plan reverted to
+  "not stated", and the release-check opt-in switched itself off. The plan
+  decides what every cost figure claims to be, and update checks are the only
+  outbound call Caprock makes — neither may be toggled by omission. Settings are
+  now a patch: a body changes what it names and nothing else.
+
+- **Tasks were silently lost when created together.** Ids were minted from the
+  millisecond alone, so twelve tasks added at once produced four and eight
+  "already exists" rejections. All twelve now succeed.
+
+- **The tasks endpoint accepted tasks nobody could use** — no title, a
+  hundred-thousand-character title, a negative budget, or `1e308`. Each is now
+  refused with a reason.
+
+- **An unknown API path answered 200 with a web page.** The dashboard is served
+  from `/`, so anything unmatched fell through to it — a caller that mistyped an
+  endpoint got a success and HTML, then failed elsewhere parsing it as JSON.
+  Unmatched `/v1/` paths return 404 with a JSON body; the dashboard's own deep
+  links still work.
+
+- **`?days=` out of range returned the wrong total.** Asking `/v1/stats/daily`
+  for everything clamped to the default of 30 days rather than the ceiling, so
+  the answer was a month with nothing to indicate truncation. On a real database
+  that disagreed with the summary endpoint by $1,603.
+
+- **A query that stopped early passed for a complete one.** Three loops ignored
+  the error a partial scan reports, so a cancelled or failed read returned what
+  it managed to fetch as though it were everything — twice followed by an update
+  that changed every matching row.
+
+- **"Files touched" is labelled honestly.** It sums distinct files per session,
+  so a file edited in three sessions counts three times; the tile says so
+  instead of letting the number pass for a count of distinct files.
+
+### Changed
+
+- Test coverage of `internal/` is 80.4%, with the packages where a bug reaches
+  the user's own machine — the hook shim and the process manager — covered
+  first. Two real defects surfaced there: a data race closing a PTY, and a
+  clean exit reported as an error. See `.ai/13-testing.md`.
+
 ## [0.9.8] - 2026-08-20
 
 ### Changed
