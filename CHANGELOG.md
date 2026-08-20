@@ -9,6 +9,45 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.9.0] - 2026-08-20
+
+### Added
+
+- **Answers — what Claude actually said.** For a large share of sessions the
+  deliverable is not the diff but the conclusion: "this is done, but I could
+  not verify X; check with the team and then we finish it." Caprock always
+  stored that paragraph and never showed it — the timeline rendered a
+  200-character slice on one line, so it survived only in terminal scrollback.
+
+  A new **Answers** screen searches Claude's prose across every session, which
+  is the question people actually have ("which session was it where Claude
+  explained the SSO thing?"); each result names its repo and links back. Every
+  session gains an **Answers tab** with its own prose, newest first. And the
+  timeline now expands into readable text with formatting intact, keeping the
+  raw event behind a disclosure instead of offering only JSON.
+
+  Subagent chatter is excluded — about half of all assistant turns are
+  subagents, and presenting their words as the main thread's would be worse
+  than showing nothing. Everything stays on the machine.
+
+- **`GET /v1/sessions/{id}/notes` and `GET /v1/notes?q=`.**
+
+### Fixed
+
+- **Assistant prose was clipped on bytes and corrupted.** The transcript parser
+  capped text at 2000 *bytes* and cut at an arbitrary offset, so non-English
+  prose was clipped at roughly half the intended length and about a fifth of
+  clipped rows ended in a corrupted character — landing hardest on closing
+  summaries, the very thing worth keeping. Text is now clipped on character
+  boundaries at a far higher limit, and **a daemon started against an older
+  database repairs the damaged rows once** from the transcripts still on disk,
+  rewriting only the text and leaving ids, costs and everything else untouched.
+  On the author's machine that took 452 corrupted rows to 3.
+- **Asking the events endpoint for more than its ceiling returned fewer.** A
+  `limit` above the maximum silently fell back to 500, so a caller requesting
+  everything received the *start* of a session and could mistake an early
+  fragment for its ending. It now clamps to the ceiling.
+
 ## [0.8.1] - 2026-08-20
 
 ### Added
