@@ -9,6 +9,41 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.7.0] - 2026-08-20
+
+### Added
+
+- **Per-project spend on Now.** The landing screen opens with a Projects
+  roll-up: one row per repository with its measured cost, tokens, session
+  count, a bar showing its share of the largest project, and a green dot when
+  a session is live in that repo. A session list could not answer "what does
+  this repo cost and who is working in it" — this does. The range selector
+  (`today` / `7d` / `30d` / `all`) defaults to 30d, because "today" is empty
+  most mornings and an empty panel reads as broken rather than as an honest
+  zero. Every figure is measured from captured events at API list price.
+- **`sessions` in each `projects` entry** of `GET /v1/stats/summary` — the
+  count of distinct sessions that touched a project in the range.
+
+### Changed
+
+- **Numbers now carry the cards.** A stat's value sat at 17px against its own
+  10px label, close enough in weight that a card had to be read up close
+  rather than scanned; values are larger throughout.
+- **The orchestration graph left the top nav.** With no orchestrator running
+  it can only draw session ids around a hub — topology rather than work — so a
+  permanent nav slot bought a screen that says nothing to a solo user. The
+  route stays at `#/graph` and the Tasks board links to it while any task is
+  assigned and unfinished.
+- **The graph reads at a glance** when it *is* meaningful: a headline of
+  verified / in-flight / worker counts, each worker labelled with the task it
+  is working on and a plain-language status, and larger nodes and gates.
+
+### Fixed
+
+- **Inline links no longer underline whole cards.** A session card is an
+  `<a>`, so a global hover rule underlined every label and number inside it;
+  underlining is now opt-in for genuine inline links.
+
 ## [0.6.0] - 2026-08-20
 
 ### Added
