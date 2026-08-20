@@ -1,41 +1,42 @@
 /*
  * Caprock design tokens — the single source of truth (.ai/04-ui.md § Visual direction).
- * Dark by default (ops-room). Color is semantic only: green = working/verified,
- * amber = idle/waiting, red = loop/error/over-budget, blue = info/links, gray = everything else.
- * One brand accent for interactive elements. No decorative color anywhere.
+ * ONE BRAND: these are the caprock.dev palette — warm charcoal surfaces, a single
+ * warm-amber accent, Hanken Grotesk + JetBrains Mono — so the dashboard and the
+ * site look like the same product. Color stays semantic: green = working/verified,
+ * amber = the brand accent AND waiting-on-you, red = loop/error/over-budget.
  */
 @import "tailwindcss";
 
 @theme {
-  /* surfaces */
-  --color-bg: #0b0e14;
-  --color-panel: #10151d;
-  --color-panel-2: #151b25;
-  --color-border: #1f2733;
-  --color-border-strong: #2b3646;
+  /* surfaces — warm charcoal strata (matches caprock.dev) */
+  --color-bg: #1b1b1a;
+  --color-panel: #211f1d;
+  --color-panel-2: #262422;
+  --color-border: #2b2927;
+  --color-border-strong: #3a3835;
 
-  /* text */
-  --color-fg: #d3dae3;
-  --color-fg-muted: #8b95a3;
-  --color-fg-faint: #5c6675;
+  /* text — warm whites */
+  --color-fg: #e8e6e2;
+  --color-fg-muted: #a9a59e;
+  --color-fg-faint: #837f78;
 
   /* semantic */
-  --color-ok: #3fb950;      /* working / verified */
-  --color-warn: #d29922;    /* idle / waiting-on-you */
-  --color-danger: #f85149;  /* loop / error / over budget */
-  --color-info: #58a6ff;    /* info / links */
+  --color-ok: #4fbf6b;      /* working / verified */
+  --color-warn: #e0a33c;    /* idle / waiting-on-you */
+  --color-danger: #ff8080;  /* loop / error / over budget */
+  --color-info: #feb157;    /* links — the brand amber, not a stray blue */
 
-  /* brand accent — interactive elements only (OQ-05: single hue, picked at T7) */
-  --color-accent: #5ea1ff;
-  --color-accent-strong: #7fb5ff;
+  /* brand accent — warm amber, one hue for every interactive element */
+  --color-accent: #feb157;
+  --color-accent-strong: #ffcb85;
 
-  /* type */
-  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* type — same faces as the site */
+  --font-sans: "Hanken Grotesk Variable", -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   /* density */
   --spacing-row: 0.375rem;
-  --radius-panel: 4px;
+  --radius-panel: 6px;
 
   /* motion */
   --animate-flash: flash 150ms ease-out;
@@ -52,23 +53,23 @@
  * lib/theme.ts); the default (no attribute) stays dark.
  */
 [data-theme="light"] {
-  --color-bg: #f6f7f9;
+  --color-bg: #faf9f7;
   --color-panel: #ffffff;
-  --color-panel-2: #eef1f5;
-  --color-border: #dde2e9;
-  --color-border-strong: #c4ccd6;
+  --color-panel-2: #f2f0ec;
+  --color-border: #e6e2db;
+  --color-border-strong: #c9c3b8;
 
-  --color-fg: #1b222c;
-  --color-fg-muted: #5a6472;
-  --color-fg-faint: #8a94a2;
+  --color-fg: #24211c;
+  --color-fg-muted: #5f5a51;
+  --color-fg-faint: #8a8479;
 
-  --color-ok: #1a7f37;
+  --color-ok: #2e9e4f;
   --color-warn: #9a6700;
-  --color-danger: #cf222e;
-  --color-info: #0969da;
+  --color-danger: #d64545;
+  --color-info: #b8730d;
 
-  --color-accent: #2f6fed;
-  --color-accent-strong: #1f5fd6;
+  --color-accent: #b8730d;
+  --color-accent-strong: #8f5808;
 }
 
 :root {
@@ -76,7 +77,7 @@
   background: var(--color-bg);
   color: var(--color-fg);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
@@ -91,7 +92,10 @@
 
 * { border-color: var(--color-border); }
 a { color: var(--color-info); text-decoration: none; }
-a:hover { text-decoration: underline; }
+/* Underline only genuine inline text links on hover — never a card that happens
+ * to be an <a> (which used to underline every label and number inside it). A
+ * card opts out with .no-underline; inline links opt in with .link. */
+a.link:hover { text-decoration: underline; }
 ::selection { background: color-mix(in srgb, var(--color-accent) 35%, transparent); }
 
 /* ── Orchestration graph — the "verified" money shot ──────────────────

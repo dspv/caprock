@@ -24,7 +24,7 @@ export function NowScreen() {
         <div className="border border-warn/50 bg-warn/10 px-3 py-2 text-[12px] rounded-[var(--radius-panel)] flex items-center gap-3">
           <span className="text-warn font-medium">Hooks not installed</span>
           <span className="text-fg-muted">Activity is coming from transcripts only (a few seconds late, no tool-level detail for running commands). Run <span className="mono text-fg">caprock hooks install</span> for real-time narration.</span>
-          <a href="#/settings" className="ml-auto text-[11px]">details</a>
+          <a href="#/settings" className="link ml-auto text-[11px]">details</a>
         </div>
       )}
       {alerts.length > 0 && (
@@ -33,7 +33,7 @@ export function NowScreen() {
             <div key={`${a.session_id}-${a.ts}`} className="border border-danger/50 bg-danger/10 text-fg px-3 py-2 flex items-center gap-3 rounded-[var(--radius-panel)]">
               <span className="text-danger font-medium">Loop detected</span>
               <span className="text-[12px]">
-                <a href={href({ name: 'session', id: a.session_id })} className="mono">{shortId(a.session_id)}</a> ran <span className="mono">{a.sample}</span> {a.count}× in {a.window_min} min
+                <a href={href({ name: 'session', id: a.session_id })} className="link mono">{shortId(a.session_id)}</a> ran <span className="mono">{a.sample}</span> {a.count}× in {a.window_min} min
               </span>
               <span className="ml-auto text-[11px] text-fg-muted num">{fmtAgo(a.ts, now)}</span>
               <button className="text-[11px] text-fg-muted hover:text-fg border border-border px-1.5 rounded-sm" onClick={() => live.dismissAlert(a.session_id)}>dismiss</button>

@@ -24,7 +24,7 @@ export function SessionScreen({ id, tab }: { id: string; tab?: string }) {
   return (
     <div className="grid gap-3">
       <div className="flex items-center gap-3 flex-wrap">
-        <a href={href({ name: 'now' })} className="text-fg-muted text-[12px]">← Now</a>
+        <a href={href({ name: 'now' })} className="link text-fg-muted text-[12px]">← Now</a>
         <h1 className="text-[15px] font-medium">{s.project || 'unknown project'}</h1>
         <span className="mono text-[11px] text-fg-faint">{s.session_id}</span>
         {s.git_branch && <span className="mono text-[11px] text-fg-muted">{s.git_branch}</span>}
