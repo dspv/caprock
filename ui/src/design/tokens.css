@@ -94,6 +94,23 @@ a { color: var(--color-info); text-decoration: none; }
 a:hover { text-decoration: underline; }
 ::selection { background: color-mix(in srgb, var(--color-accent) 35%, transparent); }
 
+/* ── Orchestration graph — the "verified" money shot ──────────────────
+ * A task dot / verify gate transitions its color smoothly, and pops once when a
+ * task passes verification (verifying → done). The green comes from --color-ok
+ * ("working / verified"), so it's theme-aware for free. */
+.graph-dot { transition: fill 450ms ease; }
+.graph-gate { transition: fill 450ms ease, stroke 450ms ease; }
+.graph-verified { animation: verifyPop 550ms cubic-bezier(0.2, 0.7, 0.2, 1); transform-box: fill-box; transform-origin: center; }
+@keyframes verifyPop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.55); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .graph-dot, .graph-gate { transition: none; }
+  .graph-verified { animation: none; }
+}
+
 /* Scrollbars in the same gray family. */
 * { scrollbar-width: thin; scrollbar-color: var(--color-border-strong) transparent; }
 

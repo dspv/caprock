@@ -6,6 +6,7 @@
  * traveling-dot animation lands in a later commit; this is the correct static
  * frame everything animates around.
  */
+import { useEffect, useRef, useState } from 'react'
 import { geometry, phaseT, pointOnSpoke, ringPositions, type Geometry, type NodePos, type Viewport } from './layout'
 import { ORCHESTRATOR, tasksByWorker, type GraphModel, type GraphTask } from './useGraphModel'
 
@@ -46,7 +47,7 @@ export function Graph({ model, viewport, centerLabel = 'orchestrator' }: {
     <svg width={viewport.width} height={viewport.height} className="block" role="img" aria-label="orchestration graph">
       {/* Spokes (fixed edges) + verify gates — drawn first, under the nodes. */}
       {nodes.map((n) => (
-        <Spoke key={`spoke-${n.id}`} node={n} g={g} />
+        <Spoke key={`spoke-${n.id}`} node={n} g={g} gateStatus={gateStatusFor(byWorker.get(n.id) ?? [])} />
       ))}
 
       {/* Task dots at their resting positions along each worker's spoke. */}
@@ -58,15 +59,12 @@ export function Graph({ model, viewport, centerLabel = 'orchestrator' }: {
         const ny = n.x - g.cx
         const len = Math.hypot(nx, ny) || 1
         return (
-          <circle
+          <TaskDot
             key={`task-${t.id}`}
+            task={t}
             cx={p.x + (nx / len) * off}
             cy={p.y + (ny / len) * off}
-            r={5}
-            fill={statusColor(t.status)}
-          >
-            <title>{`${t.title} · ${t.status}`}</title>
-          </circle>
+          />
         )
       }))}
 
@@ -91,20 +89,59 @@ export function Graph({ model, viewport, centerLabel = 'orchestrator' }: {
   )
 }
 
-function Spoke({ node, g }: { node: NodePos; g: Geometry }) {
+// TaskDot renders one task dot and fires the "verified" pop exactly on the
+// verifying→done transition (the money shot). Color transitions smoothly via CSS
+// (.graph-dot); the pop is a one-shot class we add for the animation duration.
+function TaskDot({ task, cx, cy }: { task: GraphTask; cx: number; cy: number }) {
+  const prev = useRef(task.status)
+  const [pop, setPop] = useState(false)
+  useEffect(() => {
+    if (prev.current !== 'done' && task.status === 'done') {
+      setPop(true)
+      const id = setTimeout(() => setPop(false), 600)
+      prev.current = task.status
+      return () => clearTimeout(id)
+    }
+    prev.current = task.status
+  }, [task.status])
+  return (
+    <circle
+      className={`graph-dot${pop ? ' graph-verified' : ''}`}
+      cx={cx}
+      cy={cy}
+      r={5}
+      fill={statusColor(task.status)}
+    >
+      <title>{`${task.title} · ${task.status}`}</title>
+    </circle>
+  )
+}
+
+// gateStatusFor summarizes a worker's tasks into the gate's state: a passed task
+// makes the gate green, a task at the gate makes it accent, else neutral.
+export function gateStatusFor(tasks: GraphTask[]): 'done' | 'verifying' | 'idle' {
+  if (tasks.some((t) => t.status === 'done')) return 'done'
+  if (tasks.some((t) => t.status === 'verifying')) return 'verifying'
+  return 'idle'
+}
+
+function Spoke({ node, g, gateStatus }: { node: NodePos; g: Geometry; gateStatus: 'done' | 'verifying' | 'idle' }) {
   const gate = pointOnSpoke(node, g, g.gateT)
+  const fill = gateStatus === 'done' ? 'var(--color-ok)' : gateStatus === 'verifying' ? 'var(--color-accent)' : 'var(--color-bg)'
+  const stroke = gateStatus === 'done' ? 'var(--color-ok)' : gateStatus === 'verifying' ? 'var(--color-accent)' : 'var(--color-border-strong)'
   return (
     <g>
       <line x1={g.cx} y1={g.cy} x2={node.x} y2={node.y} stroke="var(--color-border)" strokeWidth={1.5} />
-      {/* verify gate — a small diamond checkpoint on the spoke */}
+      {/* verify gate — a small diamond checkpoint on the spoke; green once passed */}
       <rect
+        className="graph-gate"
         x={gate.x - 4}
         y={gate.y - 4}
         width={8}
         height={8}
         transform={`rotate(45 ${gate.x} ${gate.y})`}
-        fill="var(--color-bg)"
-        stroke="var(--color-border-strong)"
+        fill={fill}
+        stroke={stroke}
         strokeWidth={1.5}
       >
         <title>verify gate — a task turns green only after its tests pass</title>
