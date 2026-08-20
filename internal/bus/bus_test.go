@@ -14,8 +14,8 @@ func TestPublishFanOutAndDrop(t *testing.T) {
 	if got := <-c.C; got.Data != 1 {
 		t.Fatalf("c got %v", got)
 	}
-	if b.dropped != 2 {
-		t.Fatalf("dropped %d", b.dropped)
+	if b.dropped.Load() != 2 {
+		t.Fatalf("dropped %d", b.dropped.Load())
 	}
 	a.Unsubscribe()
 	a.Unsubscribe() // idempotent

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/dspv/caprock/internal/event"
 )
@@ -228,12 +229,26 @@ func Describe(tool string, input map[string]json.RawMessage) string {
 			}
 		}
 	}
-	s = strings.TrimSpace(s)
-	if len(s) > 120 {
-		s = s[:120] + "…"
-	}
+	// Sample is rendered in the dashboard, so it must not be cut mid-rune —
+	// json silently substitutes U+FFFD rather than erroring.
+	s = clipRunes(strings.TrimSpace(s), 120)
 	if s == "" {
 		return tool
 	}
 	return tool + ": " + s
+}
+
+// clipRunes truncates to at most n runes, never splitting a character.
+func clipRunes(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+	count := 0
+	for i := range s {
+		if count == n {
+			return s[:i] + "…"
+		}
+		count++
+	}
+	return s
 }

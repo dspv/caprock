@@ -380,8 +380,11 @@ const assistantTextWhere = `
 // SessionNotes returns what Claude said in a session, newest first. Sidechains
 // are excluded; the caller gets main-thread prose only.
 func SessionNotes(ctx context.Context, q Querier, sessionID string, limit int) ([]AssistantNote, error) {
-	if limit <= 0 || limit > MaxEventPage {
+	if limit <= 0 {
 		limit = 200
+	}
+	if limit > MaxEventPage {
+		limit = MaxEventPage
 	}
 	rows, err := q.QueryContext(ctx, `
 		SELECT e.id, e.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''),
@@ -400,8 +403,11 @@ func SessionNotes(ctx context.Context, q Querier, sessionID string, limit int) (
 // ask is "which session was it where Claude explained the SSO thing?", not
 // "show me session 17". An empty query returns the most recent notes.
 func SearchNotes(ctx context.Context, q Querier, query string, limit int) ([]AssistantNote, error) {
-	if limit <= 0 || limit > MaxEventPage {
+	if limit <= 0 {
 		limit = 100
+	}
+	if limit > MaxEventPage {
+		limit = MaxEventPage
 	}
 	sql := `
 		SELECT e.id, e.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''),
@@ -699,8 +705,11 @@ func SetOffset(ctx context.Context, q Querier, path, sessionID string, off int64
 
 // Cursor is a stable timeline of events across all sessions (for the live feed catch-up).
 func EventsAfter(ctx context.Context, q Querier, after int64, limit int) ([]event.Event, error) {
-	if limit <= 0 || limit > 5000 {
+	if limit <= 0 {
 		limit = 500
+	}
+	if limit > MaxEventPage {
+		limit = MaxEventPage
 	}
 	rows, err := q.QueryContext(ctx, `SELECT `+eventCols+` FROM events WHERE id > ? ORDER BY id ASC LIMIT ?`, after, limit)
 	if err != nil {
@@ -777,7 +786,7 @@ func History(ctx context.Context, q Querier, fromMs int64) (HistoryTotals, error
 	err := q.QueryRowContext(ctx, `
 		SELECT COUNT(*), COALESCE(SUM(owned),0),
 		       COALESCE(AVG(CASE WHEN last_event_at > started_at THEN (last_event_at - started_at)/1000.0 END),0),
-		       COUNT(DISTINCT date(started_at/1000, 'unixepoch'))
+		       COUNT(DISTINCT date(started_at/1000, 'unixepoch', 'localtime'))
 		FROM sessions WHERE last_event_at >= ?`, fromMs).
 		Scan(&h.Sessions, &h.OwnedSessions, &h.AvgSessionSec, &h.Days)
 	if err != nil {
@@ -791,7 +800,13 @@ func History(ctx context.Context, q Querier, fromMs int64) (HistoryTotals, error
 	if err != nil {
 		return h, err
 	}
-	if err := q.QueryRowContext(ctx, `SELECT COALESCE(SUM(files_touched),0) FROM session_stats`).Scan(&h.FilesTouched); err != nil {
+	// Restrict to the same window as every other total here. Unfiltered, this
+	// reported the lifetime figure under a "today" heading beside five stats
+	// that did move with the range — the one number in the row that lied.
+	if err := q.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(st.files_touched),0)
+		FROM session_stats st JOIN sessions se ON se.session_id = st.session_id
+		WHERE se.last_event_at >= ?`, fromMs).Scan(&h.FilesTouched); err != nil {
 		return h, err
 	}
 	return h, nil

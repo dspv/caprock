@@ -41,7 +41,9 @@ export function SessionScreen({ id, tab }: { id: string; tab?: string }) {
       <Panel>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-border">
           <Stat label="Cost" value={fmtUSD(s.stats.cost_usd)} sub={s.model || '—'} />
-          <Stat label="Tokens" value={fmtTokens(total)} sub={`in ${fmtTokens(s.stats.tokens_in)} · out ${fmtTokens(s.stats.tokens_out)}`} />
+          {/* The total includes cache reads, which are usually 99% of it. Breaking
+              out only in/out made the subtitle contradict the number above it. */}
+          <Stat label="Tokens" value={fmtTokens(total)} sub={`in ${fmtTokens(s.stats.tokens_in)} · out ${fmtTokens(s.stats.tokens_out)} · cache ${fmtTokens(s.stats.cache_read + s.stats.cache_write)}`} />
           <Stat label="Cache" value={fmtPct(s.savings.hit_rate * 100)} sub={`read ${fmtTokens(s.stats.cache_read)} · write ${fmtTokens(s.stats.cache_write)}`} tone={s.savings.hit_rate > 0.5 ? 'ok' : undefined} />
           <Stat label="Context" value={s.context ? fmtPct(s.context.pct) : '—'} sub={s.context ? `${fmtTokens(s.context.tokens)} / ${fmtTokens(s.context.window)}` : 'unknown model'} tone={s.context && s.context.pct >= 85 ? 'danger' : s.context && s.context.pct >= 60 ? 'warn' : undefined} />
           <Stat label="Turns" value={s.stats.turns} sub={`${s.stats.tool_calls} tool calls`} />
@@ -74,12 +76,33 @@ function Timeline({ id, initial, now }: { id: string; initial: Event[]; now: num
   const lastId = useRef(initial.length ? initial[initial.length - 1]!.id : 0)
   const bottom = useRef<HTMLDivElement>(null)
   const list = useRef<HTMLOListElement>(null)
-  useEffect(() => { setEvents(initial); lastId.current = initial.length ? initial[initial.length - 1]!.id : 0 }, [initial])
+  // The session detail ships only the newest events, so a long session opened
+  // to its timeline showed a peephole of its final seconds with no way back.
+  const [loadingEarlier, setLoadingEarlier] = useState(false)
+  const [exhausted, setExhausted] = useState(false)
+  const loadEarlier = async () => {
+    const oldest = events[0]?.id
+    if (oldest === undefined || loadingEarlier) return
+    setLoadingEarlier(true)
+    try {
+      // Ask from the start and keep what precedes what we already have; the
+      // endpoint pages forward from `after`, so this walks backwards in blocks.
+      const earlier = await api.events(id, 0, 1000)
+      const before = earlier.filter((e) => e.id < oldest)
+      if (before.length === 0) setExhausted(true)
+      else setEvents((cur) => [...before, ...cur])
+    } catch {
+      setExhausted(true)
+    } finally {
+      setLoadingEarlier(false)
+    }
+  }
+  useEffect(() => { setEvents(initial); setExhausted(false); lastId.current = initial.length ? initial[initial.length - 1]!.id : 0 }, [initial])
   // Append live events for this session as they arrive.
   useEffect(() => live.onFrame((f) => {
     if (f.type !== 'event' || f.data.session_id !== id || f.data.id <= lastId.current) return
     lastId.current = f.data.id
-    setEvents((evs) => [...evs.slice(-499), f.data])
+    setEvents((evs) => [...evs, f.data].slice(-5000))
   }), [id])
   useEffect(() => { if (follow) bottom.current?.scrollIntoView({ block: 'end' }) }, [events, follow])
   const cost = useMemo(() => {
@@ -95,7 +118,7 @@ function Timeline({ id, initial, now }: { id: string; initial: Event[]; now: num
   const visible = events.filter((e) => filter === 'all' || (filter === 'tools' ? e.kind.startsWith('tool.') : e.kind.startsWith('turn.') || e.kind === 'agent.stop'))
   return (
     <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px]">
-      <Panel title={`Events · last ${events.length}`} className="min-w-0 overflow-hidden" right={
+      <Panel title={`Events · ${events.length} shown`} className="min-w-0 overflow-hidden" right={
         <span className="inline-flex items-center gap-2">
           {(['all', 'tools', 'turns'] as Filter[]).map((f) => (
             <button key={f} onClick={() => setFilter(f)} className={`px-1.5 rounded-sm ${filter === f ? 'bg-panel-2 text-fg' : 'hover:text-fg'}`}>{f}</button>
@@ -104,6 +127,18 @@ function Timeline({ id, initial, now }: { id: string; initial: Event[]; now: num
         </span>
       }>
         <ol ref={list} className="max-h-[70vh] overflow-auto" onScroll={() => { const el = list.current; if (el && follow && el.scrollTop + el.clientHeight < el.scrollHeight - 40) setFollow(false) }}>
+          {!exhausted && events.length > 0 && (
+            <li className="px-3 py-1.5 border-b border-border/60">
+              <button
+                className="text-[11px] text-fg-muted hover:text-fg border border-border px-2 py-0.5 rounded-sm"
+                onClick={() => void loadEarlier()}
+                disabled={loadingEarlier}
+              >
+                {loadingEarlier ? 'loading…' : 'load earlier events'}
+              </button>
+            </li>
+          )}
+          {exhausted && <li className="px-3 py-1 text-[11px] text-fg-faint">start of session</li>}
           {visible.length === 0 && <Empty title="No events yet" />}
           {visible.map((e) => <EventRow key={e.id} e={e} now={now} toolByUse={toolByUse} />)}
           <div ref={bottom} />
@@ -131,6 +166,10 @@ function EventRow({ e, now, toolByUse }: { e: Event; now: number; toolByUse: Map
   // The full text of what Claude (or you) wrote, for the expanded view.
   const prose = e.kind === 'turn.assistant' ? String(p.text ?? '')
     : e.kind === 'turn.user' ? String(p.prompt ?? '')
+    // A failing test tail or a stack trace is the single most useful thing in a
+    // timeline, and the row shows 160 characters of it. Render it as text too,
+    // rather than leaving raw JSON as the only way to read it.
+    : e.kind === 'tool.post' && typeof p.tool_response === 'string' ? p.tool_response
     : ''
   const kindCls =
     e.kind === 'turn.user' ? 'text-info' :
@@ -244,8 +283,19 @@ function Patch({ patch }: { patch: string }) {
 }
 
 function FilesTab({ s }: { s: SessionDetail }) {
+  // The endpoint caps this list, so a busy session shows 100 while the stat
+  // tile above says 132. Presenting a truncated list as the complete answer is
+  // worst exactly here, where someone is auditing what an agent changed.
+  const capped = s.files.length < s.stats.files_touched
   return (
-    <Panel title="Files touched" right={<span className="num">{s.files.length}</span>}>
+    <Panel
+      title="Files touched"
+      right={
+        <span className="num">
+          {capped ? `${s.files.length} of ${s.stats.files_touched} · most recent` : s.files.length}
+        </span>
+      }
+    >
       {s.files.length === 0 && <Empty title="No Edit/Write calls yet" />}
       <ul>
         {s.files.map((f) => (

@@ -720,15 +720,9 @@ func (s *Server) handleStatusline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		SessionID string `json:"session_id"`
-		FiveHour  *struct {
-			UsedPercentage float64 `json:"used_percentage"`
-			ResetsAt       int64   `json:"resets_at"`
-		} `json:"five_hour"`
-		SevenDay *struct {
-			UsedPercentage float64 `json:"used_percentage"`
-			ResetsAt       int64   `json:"resets_at"`
-		} `json:"seven_day"`
+		SessionID string        `json:"session_id"`
+		FiveHour  *rateWindowIn `json:"five_hour"`
+		SevenDay  *rateWindowIn `json:"seven_day"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -736,15 +730,44 @@ func (s *Server) handleStatusline(w http.ResponseWriter, r *http.Request) {
 	}
 	now := s.d.Now().UnixMilli()
 	ctx := r.Context()
-	if body.FiveHour != nil {
-		_ = store.RecordRateLimit(ctx, s.d.Store.DB(), store.RateLimitSnapshot{
-			Window: "five_hour", Ts: now, UsedPercentage: body.FiveHour.UsedPercentage, ResetsAt: body.FiveHour.ResetsAt}, body.SessionID)
+	// Validate before storing. These values are relayed from Claude Code and
+	// were taken on trust, which is how a five-hour window came to claim it
+	// resets in 2030 — a figure the dashboard then presented as a fact.
+	record := func(window string, w *rateWindowIn) {
+		if w == nil || !plausibleRateWindow(*w, now) {
+			return
+		}
+		if err := store.RecordRateLimit(ctx, s.d.Store.DB(), store.RateLimitSnapshot{
+			Window: window, Ts: now, UsedPercentage: w.UsedPercentage, ResetsAt: w.ResetsAt}, body.SessionID); err != nil {
+			s.d.Log.Debug("record rate limit", "component", "api", "window", window, "err", err)
+		}
 	}
-	if body.SevenDay != nil {
-		_ = store.RecordRateLimit(ctx, s.d.Store.DB(), store.RateLimitSnapshot{
-			Window: "seven_day", Ts: now, UsedPercentage: body.SevenDay.UsedPercentage, ResetsAt: body.SevenDay.ResetsAt}, body.SessionID)
-	}
+	record("five_hour", body.FiveHour)
+	record("seven_day", body.SevenDay)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// rateWindowIn is one plan-limit window as relayed by `caprock statusline`.
+type rateWindowIn struct {
+	UsedPercentage float64 `json:"used_percentage"`
+	ResetsAt       int64   `json:"resets_at"`
+}
+
+// plausibleRateWindow rejects a sample that cannot describe a real window: a
+// percentage outside 0-100, or a reset more than eight days out (the longest
+// window Anthropic publishes is seven days). A reset already in the past is
+// kept — it is a legitimately stale sample, and the UI labels it as such.
+func plausibleRateWindow(w rateWindowIn, now int64) bool {
+	if w.UsedPercentage < 0 || w.UsedPercentage > 100 {
+		return false
+	}
+	if w.ResetsAt != 0 {
+		const maxAhead = 8 * 24 * 3600 // seconds
+		if w.ResetsAt*1000 > now+maxAhead*1000 {
+			return false
+		}
+	}
+	return true
 }
 
 // --- Phase 2: tasks ---
@@ -802,7 +825,10 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 	if !s.requireTasks(w) {
 		return
 	}
-	out, err := s.d.Tasks.Verify(r.Context(), r.PathValue("id"))
+	// done_criteria commands run up to five minutes. On the request context a
+	// disconnect killed them mid-run and then failed the bookkeeping that
+	// follows, stranding the task in `verifying` with an open cost window.
+	out, err := s.d.Tasks.Verify(context.WithoutCancel(r.Context()), r.PathValue("id"))
 	if err != nil {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return
@@ -827,7 +853,11 @@ func (s *Server) handleStartOrchestrator(w http.ResponseWriter, r *http.Request)
 	if !s.requireTasks(w) {
 		return
 	}
-	out, err := s.d.Tasks.StartOrchestrator(r.Context())
+	// Spawning outlives the request: the PTY is already detached, but the
+	// ownership write and the worktree creation were not, so a client
+	// disconnect could leave a real claude process running with no owned row
+	// recording it — precisely the state rule 7 exists to prevent.
+	out, err := s.d.Tasks.StartOrchestrator(context.WithoutCancel(r.Context()))
 	if err != nil {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return

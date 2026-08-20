@@ -258,9 +258,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	// One release check at startup when the user enabled it — so the badge is
 	// right on the first page load rather than a day later. Detached and
 	// best-effort: a network failure must never delay or break startup.
-	d.cfgMu.RLock()
-	checks := d.opt.Config.UpdateChecks
-	d.cfgMu.RUnlock()
+	checks := d.config().UpdateChecks
 	if checks {
 		go func() {
 			cctx, ccancel := context.WithTimeout(ctx, 10*time.Second)
@@ -271,7 +269,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		}()
 	}
 	go d.sweep(ctx)
-	if d.opt.Config.RetentionDays > 0 {
+	if d.config().RetentionDays > 0 {
 		go d.pruneLoop(ctx)
 	}
 
@@ -368,7 +366,7 @@ func (d *Daemon) stopDecision(ctx context.Context, p hookd.Payload) []byte {
 // (.ai/05-orchestration.md). Returns whether it paused (for tests).
 func (d *Daemon) maybeAutoPause(sessionID string) bool {
 	d.mu.Lock()
-	autoPause := d.opt.Config.AutoPause
+	autoPause := d.config().AutoPause
 	d.mu.Unlock()
 	if !autoPause {
 		return false
@@ -401,7 +399,7 @@ func (d *Daemon) activeLoop(sessionID string) *loop.Alert {
 
 func (d *Daemon) pruneLoop(ctx context.Context) {
 	prune := func() {
-		before := d.rec.Now().AddDate(0, 0, -d.opt.Config.RetentionDays).UnixMilli()
+		before := d.rec.Now().AddDate(0, 0, -d.config().RetentionDays).UnixMilli()
 		var n int64
 		if err := d.store.WithTx(ctx, func(q store.Querier) error {
 			var e error
@@ -412,7 +410,7 @@ func (d *Daemon) pruneLoop(ctx context.Context) {
 			return
 		}
 		if n > 0 {
-			d.log.Info("pruned old events", "component", "daemon", "removed", n, "retention_days", d.opt.Config.RetentionDays)
+			d.log.Info("pruned old events", "component", "daemon", "removed", n, "retention_days", d.config().RetentionDays)
 		}
 	}
 	prune() // once at start
@@ -495,7 +493,7 @@ func (d *Daemon) status(_ context.Context) any {
 	d.mu.Lock()
 	st.ActiveLoops = len(d.alerts)
 	d.mu.Unlock()
-	st.RetentionDays = d.opt.Config.RetentionDays
+	st.RetentionDays = d.config().RetentionDays
 	if n, err := store.CountEvents(context.Background(), d.store.DB()); err == nil {
 		st.Events = n
 	}
@@ -503,6 +501,17 @@ func (d *Daemon) status(_ context.Context) any {
 }
 
 // agentAdapter bridges *agents.Manager to api.AgentController.
+// config returns a copy of the live configuration under the mutex that guards
+// it. The settings endpoint mutates opt.Config at runtime, and opt.Config is a
+// struct value — so an unguarded read races the four field writes in Set, and
+// PlanLabel being a string makes a torn read a crash risk rather than merely
+// a stale number.
+func (d *Daemon) config() config.Config {
+	d.cfgMu.RLock()
+	defer d.cfgMu.RUnlock()
+	return d.opt.Config
+}
+
 // settingsAdapter persists the user-stated settings to the config file, so a
 // value survives a restart. The daemon keeps an in-memory copy because the API
 // reads it on every summary render.

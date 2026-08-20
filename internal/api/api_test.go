@@ -302,7 +302,10 @@ func TestLiveWebSocketDeliversEvents(t *testing.T) {
 func TestStatuslineEndpointAndSummary(t *testing.T) {
 	e := newEnv(t)
 	// Unauthorized without the bearer token.
-	body := `{"session_id":"s1","five_hour":{"used_percentage":23.5,"resets_at":1900000000}}`
+	// A reset three hours out, on the env's fixed clock. This fixture used to
+	// carry 1900000000 — the year 2030 — which is exactly the implausible
+	// sample the endpoint now rejects.
+	body := `{"session_id":"s1","five_hour":{"used_percentage":23.5,"resets_at":1787227200}}`
 	req, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/v1/statusline", strings.NewReader(body))
 	resp, _ := http.DefaultClient.Do(req)
 	if resp.StatusCode != 401 {
@@ -333,7 +336,7 @@ func TestStatuslineEndpointAndSummary(t *testing.T) {
 	if sum.RateLimits == nil || sum.RateLimits.FiveHour == nil {
 		t.Fatalf("summary missing rate_limits: %+v", sum)
 	}
-	if sum.RateLimits.FiveHour.UsedPercentage != 23.5 || sum.RateLimits.FiveHour.ResetsAt != 1900000000 {
+	if sum.RateLimits.FiveHour.UsedPercentage != 23.5 || sum.RateLimits.FiveHour.ResetsAt != 1787227200 {
 		t.Fatalf("wrong window: %+v", sum.RateLimits.FiveHour)
 	}
 	// One snapshot → no forecast (honest: needs ≥2 rising samples).
@@ -519,5 +522,32 @@ func TestUpdateCheckRequiresOptIn(t *testing.T) {
 	_ = r3.Body.Close()
 	if r3.StatusCode != http.StatusOK || upd.checks != 1 {
 		t.Fatalf("enabled check: status=%d checks=%d", r3.StatusCode, upd.checks)
+	}
+}
+
+// Statusline values are relayed from Claude Code and were stored on trust,
+// which is how a five-hour window came to claim it resets in 2030 — a figure
+// the dashboard then presented as a fact beside a percentage.
+func TestPlausibleRateWindow(t *testing.T) {
+	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC).UnixMilli()
+	sec := func(hours int) int64 { return now/1000 + int64(hours)*3600 }
+
+	cases := []struct {
+		name string
+		in   rateWindowIn
+		want bool
+	}{
+		{"a normal five-hour window", rateWindowIn{UsedPercentage: 23.5, ResetsAt: sec(3)}, true},
+		{"a seven-day window", rateWindowIn{UsedPercentage: 27, ResetsAt: sec(24 * 6)}, true},
+		{"already reset — stale but real, the UI labels it", rateWindowIn{UsedPercentage: 27, ResetsAt: sec(-9)}, true},
+		{"no reset time at all", rateWindowIn{UsedPercentage: 10}, true},
+		{"the year-2030 reset that motivated this", rateWindowIn{UsedPercentage: 23.5, ResetsAt: 1_900_000_000}, false},
+		{"a percentage above 100", rateWindowIn{UsedPercentage: 140, ResetsAt: sec(1)}, false},
+		{"a negative percentage", rateWindowIn{UsedPercentage: -1, ResetsAt: sec(1)}, false},
+	}
+	for _, c := range cases {
+		if got := plausibleRateWindow(c.in, now); got != c.want {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
 	}
 }

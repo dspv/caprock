@@ -8,12 +8,14 @@ import { ActivityFeed } from '@/components/ActivityFeed'
 import { Attention } from '@/components/Attention'
 import { findAttention } from '@/lib/attention'
 import { UpdateBanner } from '@/components/UpdateBanner'
+import { SpawnDialog } from '@/components/SpawnDialog'
 import { usePlan } from '@/components/PlanPicker'
 import { href } from '@/lib/router'
 import { useEffect, useState } from 'react'
 
 export function NowScreen() {
   const [showEnded, setShowEnded] = useState(false)
+  const [spawning, setSpawning] = useState(false)
   const sessions = useApi(() => api.sessions(!showEnded), [showEnded], { intervalMs: 5000 })
   const status = useApi(() => api.status(), [], { live: false, intervalMs: 30000 })
   const summary = useApi(() => api.summary('today'), [], { intervalMs: 5000 })
@@ -66,12 +68,29 @@ export function NowScreen() {
       {rest.length > 0 && <Section title={`Idle · ${rest.length}`} items={rest} now={now} dim />}
       {showEnded && ended.length > 0 && <Section title={`Ended · ${ended.length}`} items={ended} now={now} dim />}
       <div className="flex items-center gap-3 text-[11px] text-fg-faint px-0.5">
+        {/* The spawn dialog existed but nothing rendered it, so the Terminal
+          * tab told people to use a "New session" control that was nowhere on
+          * the dashboard — and no session could ever be owned. */}
+        {status.data?.claude_available && (
+          <button
+            className="text-[11px] border border-accent/50 text-accent bg-accent/10 px-2 py-0.5 rounded-sm hover:bg-accent/20"
+            onClick={() => setSpawning(true)}
+          >
+            + New session
+          </button>
+        )}
         <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
           <input type="checkbox" className="accent-[var(--color-accent)]" checked={showEnded} onChange={(e) => setShowEnded(e.target.checked)} />
           show ended sessions
         </label>
         {sessions.loadedAt > 0 && <span className="num ml-auto">refreshed {fmtAgo(sessions.loadedAt, now)}</span>}
       </div>
+      {spawning && (
+        <SpawnDialog
+          available={status.data?.claude_available ?? false}
+          onClose={() => { setSpawning(false); sessions.refresh() }}
+        />
+      )}
     </div>
   )
 }

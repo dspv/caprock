@@ -18,7 +18,14 @@ export function TasksScreen() {
   const tasks = useApi(() => api.tasks(), [], { intervalMs: 4000 })
   const [creating, setCreating] = useState(false)
   if (status.data && status.data.orchestration === false) {
-    return <Empty title="Orchestration is off">Phase 2 runs when the daemon is started with a hive directory (<span className="mono">caprock up --hive &lt;dir&gt;</span>).</Empty>
+    // "Phase 2" is our internal build order and means nothing to a user; say
+    // what to do instead.
+    return (
+      <Empty title="Orchestration is off">
+        Start the daemon with a hive directory to give Claude tasks that only
+        finish when their tests pass: <span className="mono">caprock up --hive &lt;dir&gt;</span>
+      </Empty>
+    )
   }
   const byCol = (col: string) => (tasks.data ?? []).filter((t) => t.status === col || (col === 'done' && t.status === 'failed'))
   return (

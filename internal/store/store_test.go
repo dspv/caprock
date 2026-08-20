@@ -526,3 +526,52 @@ func TestSearchNotes(t *testing.T) {
 		t.Fatalf("empty query returned %d rows, want 3", len(got))
 	}
 }
+
+// files_touched sat in a row of range-filtered stats but ignored the range,
+// so "today" reported the lifetime figure — the one number in that row that
+// lied, which made the five correct ones beside it suspect too.
+func TestHistoryFilesTouchedRespectsRange(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	now := time.UnixMilli(1_800_000_000_000)
+	old := now.Add(-90 * 24 * time.Hour)
+
+	for _, tc := range []struct {
+		id    string
+		ts    time.Time
+		files int64
+	}{
+		{"recent", now, 3},
+		{"ancient", old, 40},
+	} {
+		ev := &event.Event{SessionID: tc.id, Source: event.SourceHook, Kind: event.KindToolPre,
+			Tool: "Edit", Ts: tc.ts, Key: tc.id + "-k"}
+		if _, err := InsertEvent(ctx, s.db, ev); err != nil {
+			t.Fatal(err)
+		}
+		if err := UpsertSession(ctx, s.db, tc.id, SessionPatch{LastEventAt: tc.ts.UnixMilli()}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.db.ExecContext(ctx,
+			`INSERT INTO session_stats(session_id, files_touched) VALUES(?, ?)
+			 ON CONFLICT(session_id) DO UPDATE SET files_touched = excluded.files_touched`,
+			tc.id, tc.files); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	recent, err := History(ctx, s.db, now.Add(-24*time.Hour).UnixMilli())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recent.FilesTouched != 3 {
+		t.Fatalf("recent range files_touched = %d, want 3 (the 90-day-old session must not count)", recent.FilesTouched)
+	}
+	all, err := History(ctx, s.db, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if all.FilesTouched != 43 {
+		t.Fatalf("all-time files_touched = %d, want 43", all.FilesTouched)
+	}
+}

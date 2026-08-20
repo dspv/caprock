@@ -82,7 +82,10 @@ export function BarReadout({ bars, active, total }: {
       <span className="text-fg-muted">{b.day}</span>
       <span className="text-fg">{fmtUSD(b.cost)}</span>
       <span className="text-fg-faint">{fmtTokens(b.tokens)}</span>
-      {b.sessions !== undefined && (
+      {/* A zero here means the daily rollup has no session count for that day,
+        * not that nobody worked — printing "0 sessions" next to a $257 day
+        * reads as a data bug and taints the two figures beside it. */}
+      {b.sessions !== undefined && b.sessions > 0 && (
         <span className="text-fg-faint">
           {b.sessions} {b.sessions === 1 ? 'session' : 'sessions'}
         </span>

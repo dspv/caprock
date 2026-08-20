@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/dspv/caprock/internal/event"
 )
@@ -184,18 +185,31 @@ func commandHead(cmd string) string {
 	if len(fields) > 6 {
 		cmd = strings.Join(fields[:6], " ") + " …"
 	}
-	if len(cmd) > 60 {
-		cmd = cmd[:60] + "…"
-	}
+	cmd = clipRunes(cmd, 60)
 	return "`" + cmd + "`"
 }
 
 func quote(s string) string {
-	s = strings.TrimSpace(s)
-	if len(s) > 40 {
-		s = s[:40] + "…"
+	return "“" + clipRunes(strings.TrimSpace(s), 40) + "”"
+}
+
+// clipRunes truncates to at most n runes. These strings are serialized straight
+// into the API as a session's activity phrase, and slicing UTF-8 by byte index
+// cut through multi-byte characters — encoding/json does not error on that, it
+// silently substitutes U+FFFD, so a Russian command line rendered as mojibake
+// in the dashboard.
+func clipRunes(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
 	}
-	return "“" + s + "”"
+	count := 0
+	for i := range s {
+		if count == n {
+			return s[:i] + "…"
+		}
+		count++
+	}
+	return s
 }
 
 func host(raw string) string {

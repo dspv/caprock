@@ -25,7 +25,8 @@ export function CostScreen() {
         ))}
         <span className="ml-auto text-[11px] text-fg-faint">Costs are computed at Anthropic API list prices{s ? ` (table ${s.pricing_version})` : ''}. On a Pro/Max plan they are an API-equivalent, not money out of pocket.</span>
       </div>
-      <PlanValue summary={s} plan={plan} days={rangeDays(range)} />
+      {summary.error && !s && <Empty title="Cannot reach the daemon">{summary.error.message}</Empty>}
+      <PlanValue summary={s} plan={plan} days={rangeDays(range, s?.from_ms)} />
       <Panel title={`Totals · ${range}`}>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-border">
           <Stat label="Cost" value={fmtUSD(s?.cost_usd)} sub={s ? `${s.sessions} sessions` : undefined} />
@@ -101,13 +102,24 @@ export function CostScreen() {
 function RateLimitRow({ label, w }: { label: string; w: RateWindow }) {
   const pct = Math.round(w.used_percentage)
   const color = pct > 85 ? 'text-danger' : pct >= 60 ? 'text-warn' : 'text-fg'
-  const resetsAt = w.resets_at ? new Date(w.resets_at * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null
+  // These windows come from Claude Code's status line and go stale the moment a
+  // session stops writing them. A reset time already past, or implausibly far
+  // ahead, is a stale sample rather than a fact — rendering it as a clock had
+  // the 5-hour window confidently announcing a reset in 2030.
+  const resetMs = (w.resets_at ?? 0) * 1000
+  const now = Date.now()
+  const plausible = resetMs > now && resetMs < now + 8 * 24 * 3600 * 1000
+  const resetsAt = plausible
+    ? new Date(resetMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : null
+  const stale = w.resets_at ? !plausible : false
   return (
     <div className="flex items-baseline justify-between gap-3 text-sm">
       <span className="text-fg-muted">{label}</span>
       <span className="flex items-baseline gap-3">
         <span className={`font-mono tabular-nums ${color}`}>{pct}%</span>
         {resetsAt && <span className="text-fg-faint">resets {resetsAt}</span>}
+        {stale && <span className="text-fg-faint" title="Claude Code has not refreshed this window recently">reset time stale</span>}
         {w.forecast && <span className="text-warn">{w.forecast}</span>}
       </span>
     </div>
@@ -129,10 +141,18 @@ export function groupDays(rows: DailyStat[]): { day: string; cost: number; token
 // rangeDays is how many days the selected range covers, used to scale a monthly
 // plan fee to the same window. "all" is treated as 30 so the comparison stays a
 // like-for-like month rather than a number that grows with retention.
-function rangeDays(range: Range): number {
+// rangeDays is how many days the selected range covers, used to scale a monthly
+// plan fee to the same window. "all" is derived from the summary's own start so
+// the comparison stays like-for-like: hardcoding 30 divided all-time usage by a
+// 30-day fee and inflated the headline multiple by however much history exceeds
+// a month, while the caption claimed the denominator was 30 days.
+function rangeDays(range: Range, fromMs?: number): number {
   switch (range) {
     case 'today': return 1
     case '7d': return 7
-    default: return 30
+    case '30d': return 30
+    default:
+      if (!fromMs) return 30
+      return Math.max(1, Math.ceil((Date.now() - fromMs) / 86_400_000))
   }
 }

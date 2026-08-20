@@ -7,6 +7,7 @@ package bus
 import (
 	"encoding/json"
 	"sync"
+	"sync/atomic"
 )
 
 // FrameType matches the WS contract: event | session | alert.
@@ -33,7 +34,7 @@ type Bus struct {
 	mu   sync.RWMutex
 	subs map[*Subscriber]struct{}
 	// Dropped counts frames discarded because a subscriber's buffer was full.
-	dropped uint64
+	dropped atomic.Uint64
 }
 
 // Subscriber receives frames on C. Close it with Unsubscribe.
@@ -75,7 +76,7 @@ func (b *Bus) Publish(f Frame) {
 		select {
 		case s.C <- f:
 		default:
-			b.dropped++
+			b.dropped.Add(1)
 		}
 	}
 }

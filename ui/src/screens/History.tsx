@@ -30,7 +30,9 @@ export function HistoryScreen() {
           <Stat label="Active days" value={d ? d.totals.days : '—'} />
           <Stat label="Turns" value={d ? fmtTokens(d.totals.turns) : '—'} sub={d ? `${fmtTokens(d.totals.tool_calls)} tool calls` : undefined} />
           <Stat label="Files touched" value={d ? fmtTokens(d.totals.files_touched) : '—'} />
-          <Stat label="Avg session" value={d ? fmtDuration(Math.round(d.totals.avg_session_sec * 1000)) : '—'} />
+          {/* This is first-event-to-last-event elapsed time, so a session left open
+            overnight counts its sleeping hours — hence the honest label. */}
+          <Stat label="Avg session span" value={d ? fmtDuration(Math.round(d.totals.avg_session_sec * 1000)) : '—'} sub="first to last event" />
           <Stat label="Cache hit" value={d ? fmtPct(d.savings.hit_rate * 100) : '—'} sub={d ? `${fmtPct(d.savings.cut_pct)} input cost cut` : undefined} tone={d && d.savings.hit_rate > 0.5 ? 'ok' : undefined} />
           <Stat label="Cost" value={fmtUSD(d?.totals.cost_usd)} sub="API-equivalent" />
         </div>

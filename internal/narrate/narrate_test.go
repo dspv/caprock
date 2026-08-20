@@ -2,8 +2,10 @@ package narrate
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/dspv/caprock/internal/event"
 )
@@ -84,5 +86,27 @@ func TestSummarizeHealthAndRepeats(t *testing.T) {
 	}
 	if a := Summarize(nil, Options{SessionEnded: true}); a.Health != HealthEnded {
 		t.Fatalf("ended: %+v", a)
+	}
+}
+
+// These strings go straight into the API as a session's activity phrase.
+// Slicing UTF-8 by byte cut through characters, and encoding/json silently
+// substitutes U+FFFD rather than erroring — so the dashboard showed mojibake.
+func TestNarrateClipsOnRunes(t *testing.T) {
+	long := "эхо " + strings.Repeat("ф", 200)
+	for name, got := range map[string]string{
+		"commandHead": commandHead(long),
+		"quote":       quote(long),
+	} {
+		if !utf8.ValidString(got) {
+			t.Errorf("%s produced invalid UTF-8: %q", name, got)
+		}
+		if strings.ContainsRune(got, utf8.RuneError) {
+			t.Errorf("%s cut through a rune: %q", name, got)
+		}
+	}
+	// Short input is untouched.
+	if q := quote("привет"); q != "“привет”" {
+		t.Errorf("quote clipped a short string: %q", q)
 	}
 }

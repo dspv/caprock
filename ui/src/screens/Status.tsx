@@ -1,7 +1,8 @@
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
-import { fmtDuration } from '@/lib/format'
+import { fmtDuration, fmtUSD } from '@/lib/format'
 import { Empty, Panel } from '@/components/ui'
+import { usePlan } from '@/components/PlanPicker'
 
 export function StatusScreen() {
   const st = useApi(() => api.status(), [], { live: false, intervalMs: 5000 })
@@ -25,6 +26,7 @@ export function StatusScreen() {
   if (s.ingest) rows.push(['ingest', `${s.ingest.files_known} transcripts · ${s.ingest.events_stored} events stored · ${s.ingest.events_deduped} deduped · ${s.ingest.lines_malformed} malformed lines · backfill ${s.ingest.backfill_done ? 'done' : 'running'}`])
   return (
     <div className="grid gap-3 max-w-3xl">
+      <SettingsPanel />
       <Panel title="Daemon">
         <table className="w-full text-[12px]">
           <tbody>
@@ -45,5 +47,49 @@ export function StatusScreen() {
         </Panel>
       )}
     </div>
+  )
+}
+
+/**
+ * The settings a user can actually change. This screen is what the header's
+ * "status" link opens and the hooks banner sends people to, so it read as the
+ * settings screen while offering nothing to set — the plan lived only in a
+ * header chip, and release checks could only be turned on from a banner that
+ * disappears once dismissed.
+ */
+function SettingsPanel() {
+  const [plan, savePlan] = usePlan()
+  if (!plan) return null
+  return (
+    <Panel title="Settings">
+      <div className="grid gap-2 px-3 py-2.5 text-[12px]">
+        <label className="flex items-start gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            className="accent-[var(--color-accent)] mt-0.5"
+            checked={plan.update_checks}
+            onChange={(e) => savePlan({ ...plan, update_checks: e.target.checked })}
+          />
+          <span>
+            <span className="text-fg">Check GitHub for new releases</span>
+            <span className="block text-[11px] text-fg-muted">
+              The only outbound call Caprock makes. No usage data is sent, and it
+              is checked at most once a day.
+            </span>
+          </span>
+        </label>
+        <div className="flex items-baseline gap-2 border-t border-border pt-2">
+          <span className="text-fg-muted w-28 shrink-0">Your plan</span>
+          <span className="mono text-fg">
+            {plan.plan_kind === 'metered'
+              ? `${plan.plan_label || 'API'} · billed per token`
+              : plan.plan_kind === 'flat'
+                ? `${plan.plan_label || 'plan'} · ${fmtUSD(plan.plan_usd_per_month)}/mo`
+                : 'not set'}
+          </span>
+          <span className="text-[11px] text-fg-faint ml-auto">change it in the header</span>
+        </div>
+      </div>
+    </Panel>
   )
 }
