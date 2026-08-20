@@ -575,3 +575,49 @@ func TestHistoryFilesTouchedRespectsRange(t *testing.T) {
 		t.Fatalf("all-time files_touched = %d, want 43", all.FilesTouched)
 	}
 }
+
+// History sums per-kind counts from a GROUP BY rather than CASE expressions,
+// so this pins that the totals still land in the right fields — an easy thing
+// to break when optimising, and one that would silently show wrong numbers.
+func TestHistoryCountsByKind(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	cost := 0.25
+	rows := []struct {
+		kind event.Kind
+		n    int
+	}{
+		{event.KindTurnAssistant, 3},
+		{event.KindToolPre, 5},
+		{event.KindToolPost, 4}, // counted in neither total, but priced at zero
+	}
+	for _, r := range rows {
+		for i := 0; i < r.n; i++ {
+			ev := &event.Event{
+				SessionID: "s1", Source: event.SourceTranscript, Kind: r.kind,
+				Ts: time.UnixMilli(1000), Key: fmt.Sprintf("%s-%d", r.kind, i),
+			}
+			if r.kind == event.KindTurnAssistant {
+				ev.CostUSD = &cost
+			}
+			if _, err := InsertEvent(ctx, s.db, ev); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	_ = UpsertSession(ctx, s.db, "s1", SessionPatch{})
+
+	h, err := History(ctx, s.db, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.Turns != 3 {
+		t.Errorf("turns = %d, want 3", h.Turns)
+	}
+	if h.ToolCalls != 5 {
+		t.Errorf("tool calls = %d, want 5 (tool.post must not count)", h.ToolCalls)
+	}
+	if h.CostUSD < 0.74 || h.CostUSD > 0.76 {
+		t.Errorf("cost = %v, want ~0.75", h.CostUSD)
+	}
+}

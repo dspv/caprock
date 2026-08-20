@@ -1,0 +1,12 @@
+-- Every aggregate on the Cost, History and Now screens filters events by kind
+-- and then by time: turn.assistant for money and tokens, tool.pre for activity.
+-- The existing index covers ts alone, so those queries walked every row in the
+-- range and discarded ~70% of them — tool.pre and tool.post are two thirds of
+-- the table. On a 184k-event database that made /v1/stats/summary take ~500ms
+-- for 30 days and ~820ms for all time, which the dashboard re-runs every five
+-- seconds.
+--
+-- Column order matters: kind first (equality) then ts (range), so SQLite can
+-- seek straight to the slice it needs. Measured on a real database: the main
+-- summary aggregate went from 230ms to 83ms, for about 5MB of index.
+CREATE INDEX IF NOT EXISTS idx_events_kind_ts ON events(kind, ts);

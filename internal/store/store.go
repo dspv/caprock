@@ -31,6 +31,11 @@ const (
 	MetaPricingVersion   = "pricing_version"
 )
 
+// maxOpenConns bounds the pool. Loopback traffic is one dashboard plus the
+// ingest path, so this is about removing a queue rather than scaling out; a
+// small number keeps file descriptors and memory predictable.
+const maxOpenConns = 8
+
 // Store wraps the database handle.
 type Store struct {
 	db  *sql.DB
@@ -53,9 +58,17 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
-	// SQLite is a single-writer database; serialize through one connection to keep
-	// transactions simple and avoid lock thrash. Reads share it too — fine at our rates.
-	db.SetMaxOpenConns(1)
+	// SQLite allows one writer but any number of concurrent readers under WAL,
+	// which is why WAL is on. Capping the pool at one connection threw that
+	// away: every dashboard read queued behind ingest, so an endpoint whose
+	// queries take 150ms was answering in 400-780ms, varying with how busy the
+	// tailer happened to be.
+	//
+	// Reads now get their own connections. Writes still serialize, because the
+	// recorder is the single write path and busy_timeout covers the rest.
+	db.SetMaxOpenConns(maxOpenConns)
+	db.SetMaxIdleConns(maxOpenConns)
+	db.SetConnMaxIdleTime(5 * time.Minute)
 	s := &Store{db: db, log: log}
 	if err := s.migrate(ctx); err != nil {
 		_ = db.Close()
