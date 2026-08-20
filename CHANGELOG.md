@@ -9,6 +9,51 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.9.1] - 2026-08-20
+
+A sweep for bugs of one particular kind: things that look informative but
+mislead, and things that look interactive but aren't. Every figure below was
+checked against real data rather than reasoned from the code.
+
+### Fixed
+
+- **Numbers that lied.** History's "files touched" ignored the selected range,
+  showing the lifetime total under a "today" heading beside five stats that did
+  move with it. "Avg session" reported 32h 59m — it measures first-event to
+  last-event, so a session left open overnight counted its sleeping hours; it
+  is now labelled "Avg session span · first to last event". The plan-value
+  multiple divided all-time usage by a 30-day fee on the "all" range while the
+  caption claimed 30 days. The bar readout announced "0 sessions" next to a
+  $257 day. A session's token subtitle broke out input and output while the
+  total is 99% cache reads.
+- **Asking for more data returned less.** `SessionNotes`, `SearchNotes` and
+  `EventsAfter` fell back to a small default when asked for more than their
+  ceiling — `notes?limit=5001` returned 200 rows where `limit=5000` returned
+  2372. All now clamp.
+- **Stale plan limits presented as facts.** Values relayed by the status line
+  were stored unchecked, so a five-hour window could claim it resets in 2030.
+  Implausible samples are rejected, and a window whose reset has passed is
+  marked stale rather than rendered as a clock.
+- **Active days were counted in UTC** while the daily chart uses local time —
+  "21 active days" beside a 31-bar chart.
+- **Content you could not reach.** The session timeline showed only the newest
+  events with no way back, so a long session opened as a peephole onto its last
+  few seconds; there is now a "load earlier events" control. Tool output — a
+  failing test tail, a stack trace — was a 160-character stub whose only escape
+  was raw JSON, and now renders as text. The Files tab capped at 100 while the
+  stat above said 132, with nothing admitting the list was cut.
+- **Controls that led nowhere.** The spawn dialog was never rendered anywhere,
+  though the Terminal tab told you to use it — so no session could ever be
+  owned. It is now on Now. The settings screen offered nothing to set. The
+  Tasks empty state explained itself in terms of our internal build phases.
+- **Correctness and races.** Starting the orchestrator and running
+  verification used the HTTP request's lifetime, so a browser disconnect could
+  leave a real `claude` process running with nothing recording that Caprock
+  owned it, and could kill a five-minute verification mid-run. Configuration
+  was read without the lock that guards it while the settings endpoint writes
+  it. Two more places sliced UTF-8 by byte, the same fault fixed in the parser
+  last release — activity phrases and loop samples could render as mojibake.
+
 ## [0.9.0] - 2026-08-20
 
 ### Added

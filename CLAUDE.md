@@ -4,7 +4,7 @@
 
 Caprock is a local, open-source mission control for Claude Code: a single static Go binary runs a loopback daemon that captures every `claude` session on the machine (Claude Code hooks via a tiny shim + transcript tailing), normalizes it into one event stream in SQLite, and serves a dense React dashboard — live activity, token burn, cost, loop alerts, spawning/typing into sessions, and a verified multi-agent orchestrator. Local-first, zero servers, Apache-2.0, free for solo use.
 
-**Status: Phase 2 — Orchestrate, complete; v0.1.0–v0.9.0 tagged + published (through 2026-08-20).** All three phases green on the 3-OS CI matrix. Orchestrate = hive, tasks board, Stop-loop, orchestrator agent, verification-before-done, approvals. The Phase 2 tag gate — a real-`claude` unattended run with hooks — passed. v0.4.0 = post-Orchestrate polish (plan-limit windows via `caprock statusline`, orchestrator-lifecycle fixes, Homebrew formula). See `.ai/14-build-status.md`.
+**Status: Phase 2 — Orchestrate, complete; v0.1.0–v0.9.1 tagged + published (through 2026-08-20).** All three phases green on the 3-OS CI matrix. Orchestrate = hive, tasks board, Stop-loop, orchestrator agent, verification-before-done, approvals. The Phase 2 tag gate — a real-`claude` unattended run with hooks — passed. v0.4.0 = post-Orchestrate polish (plan-limit windows via `caprock statusline`, orchestrator-lifecycle fixes, Homebrew formula). See `.ai/14-build-status.md`.
 
 ## Repository structure
 
