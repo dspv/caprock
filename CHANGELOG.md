@@ -9,6 +9,22 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.9.7] - 2026-08-20
+
+### Added
+
+- **The Claude desktop app's plan usage, on the status screen.** If you also
+  use the desktop app for work that never touches a repo, one line now says how
+  much of your plan went there: `8% of the 5-hour window · 5% of the 7-day`.
+
+  It reports percentages and nothing else, because that is all the app records
+  — there are no tokens, no cost and no conversation content in what it writes,
+  so this cannot say what the desktop app *cost*, only how much of a window it
+  consumed. It is also written only while the app is running, so the reading
+  carries its age and says the app has been closed since rather than passing an
+  old figure off as current. Nothing is stored, nothing is polled, and the line
+  is simply absent if you do not use the app.
+
 ## [0.9.6] - 2026-08-20
 
 ### Changed
