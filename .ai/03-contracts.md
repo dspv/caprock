@@ -57,6 +57,10 @@ POST /v1/hook                          → 204 (shim only, bearer-token gated)
 WS   /v1/live                          → server-push frames: {type:"event"|"session"|"alert", data:…}
 ```
 
+**An unmatched `/v1/` path is `404` with a JSON body**, not the dashboard. The UI is served from `/` so client-side routes resolve, which previously meant any unknown API path fell through to `index.html` — a caller that mistyped an endpoint, or used one removed in an upgrade, got `200` and a document, then failed later parsing HTML as JSON. Page routes (`/`, `/cost`, `/session/{id}`) still serve the SPA.
+
+**`GET /v1/stats/daily?days=N` clamps `N` to the ceiling (3650), not to the default.** An out-of-range value used to fall back to 30 days, so a caller asking for everything received a month with nothing indicating truncation — summing that endpoint against `/v1/stats/summary` on a real database disagreed by $1,603. `days` unset, zero, or unparsable still means 30.
+
 Added during T6 (same conventions; not in the spec's list):
 
 ```
@@ -89,6 +93,8 @@ What that file holds bounds what may ever be said about it: a timestamp and two 
 
 `GET /v1/update` returns `{enabled, current, latest, update_available, command, url, checked_at, error}` from cache and **performs no network I/O** — a page load must never cause an outbound call. `POST /v1/update/check` performs one, and returns **403 while `update_checks` is false**: the opt-in is enforced by the server, not merely hidden in the UI, so no page or local script can make Caprock reach the network uninvited. Checks are throttled to once a day unless forced, the request carries no body or credentials, and a failure is reported in `error` rather than as an error status — not knowing about a release must not read as a broken dashboard. `command` is the upgrade command inferred from the running binary's path (Homebrew, Scoop, `go install`); when no package manager owns the binary it is empty and the UI offers `url` instead. `update_available` is never true for a `dev` or `git describe` build. Caprock does not install the update: replacing the running binary would mean the daemon killing the process executing the command, and running a package manager on the user's behalf from a web page is a surface a local tool should not open.
 
+**`PUT /v1/settings` is a patch, not a replace.** Fields are decoded as pointers, so a body changes only the keys it names and leaves the rest as they were; `PUT {}` is a no-op. An explicit `false` is still honoured, so nothing here is write-only. This is not a convenience: decoding into a plain struct made an absent field indistinguishable from a cleared one, so a short body — or a retry that dropped fields — answered 200 while resetting the stated plan *and* switching the release-check opt-in off. The plan decides what every cost figure on the dashboard claims to be, and `update_checks` gates rule 4's single outbound call; neither may be toggled by omission.
+
 `GET`/`PUT /v1/settings` carry `{plan_kind, plan_label, plan_usd_per_month}` — how the user pays for Claude Code. Caprock **cannot detect this and never guesses**: Claude Code does not report the plan, and inferring one from usage would be an invented number (rule 6), so the user states it and it is stored in `config.json` like every other setting. `plan_kind` is `""` (not stated), `"flat"` (Pro/Max/Team seat — usage at API list price is an *equivalent*, so comparing it to the fee is meaningful), or `"metered"` (API key, Bedrock, Vertex, or Enterprise usage billed at API rates — the API-list figure **is** approximately the bill, so it is never framed as a saving). `PUT` validates rather than coerces: an unknown `plan_kind` or a negative/non-finite price is a 400, because a typo would otherwise drive a wrong headline figure. Both return 501 when the daemon has no settings controller.
 
 `SessionSummary` = the `sessions` row + `stats` (session_stats) + `activity` ({phrase, tool, at, health, plan, repeats} from `internal/narrate`) + `savings` (cache math) + `loop` (active alert, if any) + `context` ({tokens, window, pct} — last turn's prompt size vs the model's context window from `pricing.json`). `SessionDetail` adds `files` and the last 60 `events`. `?range=` on `/v1/stats/summary` accepts `today` (default), `7d`, `30d`, `all`, or a Go duration; ranges are calendar-aware in the daemon's local time zone. The summary carries `burn` ($/h and tokens/min over the last 10 minutes) and `pricing_version`. Each entry in `projects` is `{project, tokens, cost_usd, sessions}` — `sessions` counts the distinct sessions that touched the project in the range, so a per-repo roll-up can state both what a repo cost and how many sessions worked in it.
@@ -114,6 +120,10 @@ POST     /v1/tasks/{id}/verify        → runs the task's done_criteria, returns
 GET      /v1/approvals
 POST     /v1/orchestrator/start       → spawns the orchestrator session → {session_id}
 ```
+
+**`POST /v1/tasks` validates before it writes.** A title is required (trimmed, at most 500 characters), the body is capped at 100 KB, and `budget_usd` must be finite, non-negative, and at most 100,000. Each of these was accepted before and produced a task nobody could use: an unnamed row on the board, a hundred-thousand-character title rendered into the task file, a negative budget that breaks every "is there budget left" comparison, and `1e308`, which overflows the moment anything is added to it.
+
+**Task ids carry a per-process sequence** (`t-<unix-ms>-<n>`). The millisecond alone collided: twelve concurrent creates produced four tasks and eight "already exists" rejections, so a user adding several at once silently lost most of them.
 
 Live frames gained `mail.*` events (router) in Phase 2.
 

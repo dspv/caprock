@@ -47,6 +47,26 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 The Phase-3 "delight" visualization, chosen over a radar / activity-river by a 5-persona ICP panel (3-1-1, including the adversarial skeptic) because the picture **is** the differentiator: the orchestrator pinned center, workers on a stable ring, tasks flowing through a **verify gate** that turns green only after `done_criteria` pass — the verified-team story the competitor's office can't show. Built in 8 focused commits under `ui/src/screens/orchestration/`: (1) plumbing — the WS `task` frame was emitted but the client dropped it; now handled, plus route + nav; (2) fixed radial layout — a node's slot is its index in the ever-seen sorted registry (grows only) so nothing ever reshuffles (the panel's #1 anti-jitter constraint, **never force-directed**, enforced by test); (3) model reducer; (4) static SVG renderer; (5) the money shot — verify gate + dot go `--color-ok` green with a CSS pop on verifying→done; (6) damped rAF motion — dots glide toward their status target, overshoot-free, a mid-flight verify bounce re-aims smoothly; (7) empty-state — no hive degrades to your live sessions on the ring (never blank); (8) ambient breathing polish. Pure theme-aware SVG (light+dark free), reads the existing live frames + `/v1/tasks`,`/v1/sessions` — **no backend change**. 42 UI tests green. Fast-follows (deferred): real mailbox-pulse frame, cumulative-spend arc, click-through. Docs: [04-ui.md § Graph](04-ui.md).
 
+### 2026-08-21 — hunting bugs instead of writing tests
+
+With coverage closed, the remaining defects were the ones tests do not reach: wrong numbers, missing validation, and behaviour that only shows on a real database. Eight were found and fixed. The methods mattered more than the count.
+
+**Comparing every displayed number against the database.** Take each figure an endpoint returns and query the same thing directly. Five of six matched on History; "active days" read 21 where 32 days had events, because it counted distinct session *start* dates — a session that ran twelve days contributed one. The sixth, `files_touched`, was not wrong but was mislabelled: it sums distinct files per session, so a file edited in three sessions counts three times (1,703 shown against 1,502 distinct paths). Both readings are defensible; showing one under the other's name is not, so the tile now says "summed per session".
+
+**Summing one endpoint against another.** `/v1/stats/daily` and `/v1/stats/summary` disagreed by $1,603 on the same range, because an out-of-range `days` clamped to the *default* of 30 rather than to the ceiling. The dashboard always asks for 30, so no user saw it; the endpoint was still wrong.
+
+**Fuzzing every mutating endpoint on a running daemon.** Twelve endpoints, eight hostile bodies each. No 5xx anywhere and the daemon survived, but the tasks endpoint accepted a task with no title, a hundred-thousand-character title, a negative budget, and `1e308`; and `PUT /v1/settings` treated an absent field as a cleared one, so `PUT {}` answered 200 while resetting the stated plan and switching the release-check opt-in off. Both are now validated, and settings are a patch rather than a replace.
+
+**A linter for what no test can reach.** Three loops iterated rows without checking `rows.Err()`, so a query that stopped early returned what it managed to read as though it were everything — twice followed by an UPDATE that changed every matching row. `QueryContext` fails on the context before iteration begins, so no test can drive that path; `rowserrcheck` is now in the linter instead. Its companion `sqlclosecheck` is deliberately not enabled, and the config says why.
+
+Three things worth keeping.
+
+**A fix can be a regression.** Counting active days correctly made History four times slower (0.37s → 1.63s) by scanning every event. Reading the same answer from `daily_stats` costs 0.38ms. Measured through the Go driver, not `sqlite3(1)`, where the shell reports 12ms vs 58ms and understates the gap by three orders of magnitude.
+
+**Test setup can be weaker than production.** `:memory:` gives every pooled connection its own empty database, so concurrency surfaced as "no such table" — a convincing impersonation of a product bug. Each `Open` now names its own shared in-memory database. That also switched `foreign_keys` on, which immediately failed a test writing `session_stats` for a session that did not exist: the on-disk database has always enforced this, so the tests had been running in a weaker mode than the product.
+
+**Most alarms were false.** Three apparent defects — a session count of 56 against 51, an identical burn rate across every range, sixty concurrent requests all returning `000` — were errors in the checking, not the code. Verifying the check before reporting the bug is the cheaper order.
+
 ### 2026-08-20 — tests where a bug reaches the user's machine
 
 `internal/shim` (0% → 88.7%) and `internal/ptyman` (0% → 81.9%) are the two packages where a defect does not degrade Caprock but breaks something of the user's: the shim runs inside every hook of every session, and ptyman owns the processes Caprock spawns.

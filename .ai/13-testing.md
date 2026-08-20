@@ -1,12 +1,12 @@
 # Testing — coverage, what it means, and where the gaps are
 
-**Measured 2026-08-20** against master (`ingest` pass included) on macOS/arm64, Go 1.26.
+**Measured 2026-08-21** against master (after the bug-hunting pass) on macOS/arm64, Go 1.26.
 Re-measure with `make test`; the per-package numbers below come from
 `go test ./internal/... -cover`.
 
 ## The honest headline
 
-**79.5% of `internal/` statements**, measured with the smoke tests included
+**80.4% of `internal/` statements**, measured with the smoke tests included
 (`go test -tags smoke ./internal/... -coverpkg=./internal/...`). A plain
 `go test -cover` run reports lower, because the packages that need a running
 daemon or a real subprocess are exercised by suites the default run skips.
@@ -66,6 +66,12 @@ stay green:
 
 **The working rule: a test is finished when removing the code it covers turns it
 red.** Not when it passes.
+
+Two more ways the number misleads, both found on 2026-08-21.
+
+**A linter can guard what no test can reach.** Three loops ignored `rows.Err()`, so a truncated scan passed for a complete one. `QueryContext` fails on the context before iteration begins, so the path is not reachable from a test at all; `rowserrcheck` in `.golangci.yml` is what keeps the check in place. Coverage of those lines was already 100%.
+
+**Test setup can be weaker than the product.** In-memory databases ran with `foreign_keys` off while the on-disk one has always enforced them, so a test wrote `session_stats` for a session that did not exist and passed. Green tests were describing a database Caprock never ships.
 
 The inverse also happens: a test can fail for a reason it creates itself. The
 tailer's live-pickup test timed out for twenty seconds and read exactly like a
