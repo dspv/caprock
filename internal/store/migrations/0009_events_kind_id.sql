@@ -1,0 +1,15 @@
+-- The Answers screen and a session's Answers tab both order by id, so they
+-- could not use idx_events_kind_ts: SQLite read all 55k assistant events and
+-- sorted them in a temp B-tree to return the newest 100. Ordering by ts instead
+-- would be wrong — id is the insertion order, and two events can share a
+-- millisecond.
+--
+-- Measured on a real 184k-event database: browsing notes went from 145ms to
+-- 1ms, and a session's notes from ~2ms regardless of session size.
+--
+-- Search still scans, deliberately. An FTS5 index answers in 6ms instead of
+-- ~165ms, but it matches whole words: searching "chestr" finds 394 rows with
+-- LIKE and 0 with FTS. People search their own sessions for fragments —
+-- half an error message, part of a path — so the scan is the honest choice
+-- until search is slow enough to be worth a second, explicit index.
+CREATE INDEX IF NOT EXISTS idx_events_kind_id ON events(kind, id);
