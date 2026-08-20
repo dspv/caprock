@@ -179,3 +179,59 @@ function shortWorker(id: string): string {
   if (id === 'verifier') return 'vfy'
   return id.slice(0, 4)
 }
+
+// healthColor maps a session's activity health to a theme color (reused from the
+// Now screen's semantics) for the empty-state session ring.
+export function healthColor(health: string): string {
+  switch (health) {
+    case 'working':
+      return 'var(--color-ok)'
+    case 'waiting-on-you':
+      return 'var(--color-warn)'
+    case 'looping':
+    case 'error':
+      return 'var(--color-danger)'
+    case 'ended':
+      return 'var(--color-fg-faint)'
+    default:
+      return 'var(--color-fg-muted)'
+  }
+}
+
+export interface RingSession {
+  id: string
+  label: string
+  health: string
+}
+
+// SessionRing is the empty-state graph: no orchestrator/hive, so hand-started
+// sessions sit on the same ring around a neutral caprock hub. Never a blank
+// screen. Uses the identical layout math for stable, jitter-free slots.
+export function SessionRing({ sessions, viewport }: { sessions: RingSession[]; viewport: Viewport }) {
+  const g: Geometry = geometry(viewport)
+  const ids = sessions.map((s) => s.id).sort()
+  const nodes = ringPositions(ids, new Set(ids), g)
+  const byId = new Map(sessions.map((s) => [s.id, s]))
+  return (
+    <svg width={viewport.width} height={viewport.height} className="block" role="img" aria-label="session graph">
+      {nodes.map((n) => (
+        <line key={`edge-${n.id}`} x1={g.cx} y1={g.cy} x2={n.x} y2={n.y} stroke="var(--color-border)" strokeWidth={1.5} />
+      ))}
+      {nodes.map((n) => {
+        const s = byId.get(n.id)!
+        const color = healthColor(s.health)
+        return (
+          <g key={`sess-${n.id}`} transform={`translate(${n.x},${n.y})`}>
+            <circle r={g.nodeR} fill="var(--color-panel)" stroke={color} strokeWidth={2} />
+            <text textAnchor="middle" dy="0.32em" fontSize="9" fill="var(--color-fg-muted)" className="mono">{s.label}</text>
+            <title>{`${s.label} · ${s.health}`}</title>
+          </g>
+        )
+      })}
+      <g transform={`translate(${g.cx},${g.cy})`}>
+        <circle r={g.nodeR + 4} fill="var(--color-panel-2)" stroke="var(--color-border-strong)" strokeWidth={1.5} />
+        <text textAnchor="middle" dy="0.32em" fontSize="10" fill="var(--color-fg-muted)" className="mono">caprock</text>
+      </g>
+    </svg>
+  )
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { render } from '@testing-library/react'
-import { Graph, gateStatusFor, statusColor } from './Graph'
+import { Graph, SessionRing, gateStatusFor, healthColor, statusColor } from './Graph'
 import { applyTask, emptyModel, type GraphTask } from './useGraphModel'
 
 const T = (id: string, assignee: string, status: string): GraphTask => ({ id, title: id, assignee, status })
@@ -42,5 +42,32 @@ describe('orchestration Graph', () => {
     const { container } = render(<Graph model={m} viewport={{ width: 800, height: 600 }} />)
     const dot = container.querySelector('.graph-dot') as SVGCircleElement
     expect(dot.getAttribute('fill')).toBe('var(--color-ok)')
+  })
+})
+
+describe('SessionRing (empty-state)', () => {
+  it('maps session health to colors', () => {
+    expect(healthColor('working')).toBe('var(--color-ok)')
+    expect(healthColor('waiting-on-you')).toBe('var(--color-warn)')
+    expect(healthColor('looping')).toBe('var(--color-danger)')
+    expect(healthColor('idle')).toBe('var(--color-fg-muted)')
+  })
+
+  it('renders a node per session plus the caprock hub, never blank', () => {
+    const sessions = [
+      { id: 's1', label: 's1', health: 'working' },
+      { id: 's2', label: 's2', health: 'idle' },
+    ]
+    const { container } = render(<SessionRing sessions={sessions} viewport={{ width: 800, height: 600 }} />)
+    const circles = container.querySelectorAll('circle')
+    // 2 session nodes + 1 hub = 3
+    expect(circles.length).toBe(3)
+    // the working session's ring is the ok color
+    expect(Array.from(circles).some((c) => c.getAttribute('stroke') === 'var(--color-ok)')).toBe(true)
+  })
+
+  it('renders the hub even with zero sessions (never blank)', () => {
+    const { container } = render(<SessionRing sessions={[]} viewport={{ width: 800, height: 600 }} />)
+    expect(container.querySelectorAll('circle').length).toBe(1) // just the hub
   })
 })

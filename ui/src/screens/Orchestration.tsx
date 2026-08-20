@@ -6,12 +6,16 @@
  * dashboard. Never force-directed; nodes never reshuffle.
  */
 import { useEffect, useRef, useState } from 'react'
-import { Graph } from './orchestration/Graph'
+import { Graph, SessionRing, type RingSession } from './orchestration/Graph'
 import { hasOrchestration, useGraphModel } from './orchestration/useGraphModel'
 import type { Viewport } from './orchestration/layout'
+import { api } from '@/lib/api'
+import { useApi } from '@/lib/useApi'
+import { shortId } from '@/lib/format'
 
 export function OrchestrationScreen() {
   const model = useGraphModel()
+  const sessionsQ = useApi(() => api.sessions(true), [], { intervalMs: 4000 })
   const host = useRef<HTMLDivElement>(null)
   const [vp, setVp] = useState<Viewport>({ width: 900, height: 560 })
 
@@ -28,26 +32,30 @@ export function OrchestrationScreen() {
   }, [])
 
   const live = hasOrchestration(model)
+  const ringSessions: RingSession[] = (sessionsQ.data ?? [])
+    .filter((s) => s.status !== 'ended')
+    .map((s) => ({ id: s.session_id, label: shortId(s.session_id), health: s.activity.health }))
 
   return (
     <div className="grid gap-2">
       <div className="flex items-center gap-2 text-[11px] text-fg-faint px-0.5">
-        <Legend />
+        <Legend orchestration={live} />
         <span className="ml-auto">
-          {live
-            ? 'live · the orchestrator assigns work; a task turns green only after its tests pass'
-            : 'no orchestrator running — start one with '}
-          {!live && <span className="mono text-fg-muted">caprock up --hive &lt;dir&gt;</span>}
+          {live ? (
+            'live · the orchestrator assigns work; a task turns green only after its tests pass'
+          ) : (
+            <>your live sessions — start an orchestrator with <span className="mono text-fg-muted">caprock up --hive &lt;dir&gt;</span> to see the verified team</>
+          )}
         </span>
       </div>
       <div ref={host} className="relative w-full h-[70vh] rounded-[var(--radius-panel)] border border-border bg-panel/40 overflow-hidden">
-        <Graph model={model} viewport={vp} />
+        {live ? <Graph model={model} viewport={vp} /> : <SessionRing sessions={ringSessions} viewport={vp} />}
       </div>
     </div>
   )
 }
 
-function Legend() {
+function Legend({ orchestration }: { orchestration: boolean }) {
   const item = (color: string, label: string) => (
     <span className="inline-flex items-center gap-1">
       <span className="inline-block w-2 h-2 rounded-full" style={{ background: color }} />
@@ -56,10 +64,21 @@ function Legend() {
   )
   return (
     <span className="inline-flex items-center gap-3">
-      {item('var(--color-accent)', 'in flight')}
-      {item('var(--color-ok)', 'verified')}
-      {item('var(--color-warn)', 'needs you')}
-      {item('var(--color-danger)', 'failed')}
+      {orchestration ? (
+        <>
+          {item('var(--color-accent)', 'in flight')}
+          {item('var(--color-ok)', 'verified')}
+          {item('var(--color-warn)', 'needs you')}
+          {item('var(--color-danger)', 'failed')}
+        </>
+      ) : (
+        <>
+          {item('var(--color-ok)', 'working')}
+          {item('var(--color-warn)', 'waiting on you')}
+          {item('var(--color-danger)', 'loop / error')}
+          {item('var(--color-fg-muted)', 'idle')}
+        </>
+      )}
     </span>
   )
 }
