@@ -30,17 +30,6 @@ type session struct {
 	waited bool
 	paused atomic.Bool
 	closed atomic.Bool
-	// ptyOnce guards the PTY handle: both the Wait goroutine and an explicit
-	// Close() reach it, and go-pty's Close is not safe to call concurrently
-	// (it mutates the handle without a lock — caught by -race).
-	ptyOnce sync.Once
-	ptyErr  error
-}
-
-// closePTY closes the PTY exactly once, whichever goroutine gets there first.
-func (s *session) closePTY() error {
-	s.ptyOnce.Do(func() { s.ptyErr = s.pty.Close() })
-	return s.ptyErr
 }
 
 // Spawn starts spec.Command attached to a fresh PTY.
@@ -108,7 +97,7 @@ func (GoPTY) Spawn(ctx context.Context, spec Spec) (Session, error) {
 		s.waitMu.Unlock()
 		close(s.done)
 		// Give the reader a moment to drain, then close the PTY to end the pump.
-		_ = s.closePTY()
+		_ = p.Close()
 	}()
 	return s, nil
 }
@@ -151,7 +140,7 @@ func (s *session) Close() error {
 	default:
 		_ = s.Signal(SignalKill)
 	}
-	err := s.closePTY()
+	err := s.pty.Close()
 	_ = s.pr.Close()
 	// A process that already exited had its PTY closed by the Wait goroutine
 	// above, so closing again reports "file already closed". That is the normal
