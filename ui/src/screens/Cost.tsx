@@ -3,6 +3,8 @@ import { api, type DailyStat, type RateWindow } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
 import { Empty, Panel, Stat } from '@/components/ui'
+import { PlanValue } from '@/components/PlanValue'
+import { usePlan } from '@/components/PlanPicker'
 
 type Range = 'today' | '7d' | '30d' | 'all'
 
@@ -10,6 +12,7 @@ export function CostScreen() {
   const [range, setRange] = useState<Range>('today')
   const summary = useApi(() => api.summary(range), [range], { intervalMs: 5000 })
   const daily = useApi(() => api.daily(30), [], { intervalMs: 30000 })
+  const [plan] = usePlan()
   const s = summary.data
   const days = groupDays(daily.data ?? [])
   const maxDay = Math.max(...days.map((d) => d.cost), 1e-9)
@@ -21,6 +24,7 @@ export function CostScreen() {
         ))}
         <span className="ml-auto text-[11px] text-fg-faint">Costs are computed at Anthropic API list prices{s ? ` (table ${s.pricing_version})` : ''}. On a Pro/Max plan they are an API-equivalent, not money out of pocket.</span>
       </div>
+      <PlanValue summary={s} plan={plan} days={rangeDays(range)} />
       <Panel title={`Totals · ${range}`}>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-border">
           <Stat label="Cost" value={fmtUSD(s?.cost_usd)} sub={s ? `${s.sessions} sessions` : undefined} />
@@ -125,4 +129,15 @@ export function groupDays(rows: DailyStat[]): { day: string; cost: number; token
     m.set(r.day, d)
   }
   return [...m.values()].sort((a, b) => a.day.localeCompare(b.day))
+}
+
+// rangeDays is how many days the selected range covers, used to scale a monthly
+// plan fee to the same window. "all" is treated as 30 so the comparison stays a
+// like-for-like month rather than a number that grows with retention.
+function rangeDays(range: Range): number {
+  switch (range) {
+    case 'today': return 1
+    case '7d': return 7
+    default: return 30
+  }
 }

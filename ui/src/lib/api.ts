@@ -127,6 +127,12 @@ export interface RateLimits {
   seven_day?: RateWindow
 }
 
+export interface Settings {
+  plan_kind: '' | 'flat' | 'metered'
+  plan_label: string
+  plan_usd_per_month: number
+}
+
 export interface DailyStat { day: string; project: string; model: string; tokens_total: number; cost_usd: number; sessions: number }
 
 export interface ToolCount { tool: string; count: number }
@@ -164,8 +170,8 @@ export interface Status {
 
 export interface SpawnRequest { cwd: string; worktree?: string; model?: string; permission_mode?: string; args?: string[] }
 
-async function post<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+async function post<T>(path: string, body: unknown, method = 'POST'): Promise<T> {
+  const res = await fetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   if (!res.ok) {
     let b: unknown
     try { b = await res.json() } catch { /* */ }
@@ -195,6 +201,8 @@ export const api = {
   session: (id: string) => get<SessionDetail>(`/v1/sessions/${encodeURIComponent(id)}`),
   events: (id: string, after = 0, limit = 500) => get<Event[]>(`/v1/sessions/${encodeURIComponent(id)}/events?after=${after}&limit=${limit}`),
   diff: (id: string) => get<DiffResult>(`/v1/sessions/${encodeURIComponent(id)}/diff`),
+  settings: () => get<Settings>('/v1/settings'),
+  saveSettings: (s: Settings) => post<Settings>('/v1/settings', s, 'PUT'),
   summary: (range: 'today' | '7d' | '30d' | 'all' = 'today') => get<Summary>(`/v1/stats/summary?range=${range}`),
   daily: (days = 30) => get<DailyStat[]>(`/v1/stats/daily?days=${days}`),
   history: (range: 'today' | '7d' | '30d' | 'all' = 'all') => get<History>(`/v1/history?range=${range}`),

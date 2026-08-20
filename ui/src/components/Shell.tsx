@@ -3,6 +3,7 @@ import { useLive } from '@/lib/live'
 import { href, type Route } from '@/lib/router'
 import { fmtAgo } from '@/lib/format'
 import { useTheme } from '@/lib/theme'
+import { PlanChip, usePlan } from '@/components/PlanPicker'
 
 const NAV: { route: Route; label: string; phase?: string }[] = [
   { route: { name: 'now' }, label: 'Now' },
@@ -17,6 +18,7 @@ const NAV: { route: Route; label: string; phase?: string }[] = [
 
 export function Shell({ route, children }: { route: Route; children: ReactNode }) {
   const live = useLive()
+  const [plan, savePlan] = usePlan()
   const active = (r: Route) => (r.name === route.name) || (r.name === 'now' && route.name === 'session')
   return (
     <div className="min-h-screen flex flex-col">
@@ -37,6 +39,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
         </nav>
         <div className="ml-auto flex items-center gap-3 text-[11px] text-fg-muted">
           <ConnDot state={live.conn} lastFrameAt={live.lastFrameAt} />
+          <PlanChip plan={plan} onSave={savePlan} />
           <ThemeToggle />
           <a href="#/settings" className="text-fg-muted hover:text-fg no-underline">status</a>
         </div>

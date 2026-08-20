@@ -382,3 +382,72 @@ func TestPaceForecastHonesty(t *testing.T) {
 		t.Fatalf("gentle slope that resets first should not forecast, got %q", f)
 	}
 }
+
+// fakeSettings is an in-memory SettingsController for the endpoint tests.
+type fakeSettings struct{ cur Settings }
+
+func (f *fakeSettings) Get() Settings        { return f.cur }
+func (f *fakeSettings) Set(s Settings) error { f.cur = s; return nil }
+
+// The settings endpoint must validate rather than coerce: a wrong plan kind or
+// a nonsense price would otherwise drive a wrong headline number on the value
+// screen, which is exactly the class of invented figure rule 6 forbids.
+func TestSettingsValidation(t *testing.T) {
+	st, err := store.Open(context.Background(), ":memory:", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	tb, _ := cost.Embedded()
+	fs := &fakeSettings{}
+	s := New(Deps{Store: st, Bus: bus.New(), Table: tb, Version: "test",
+		Now:      time.Now,
+		Status:   func(context.Context) any { return map[string]string{} },
+		Settings: fs,
+	})
+	srv := httptest.NewServer(s)
+	t.Cleanup(srv.Close)
+
+	put := func(body string) int {
+		req, _ := http.NewRequest(http.MethodPut, srv.URL+"/v1/settings", strings.NewReader(body))
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	if code := put(`{"plan_kind":"flat","plan_label":"Max","plan_usd_per_month":200}`); code != 200 {
+		t.Fatalf("valid flat plan: got %d", code)
+	}
+	if fs.cur.PlanUSDPerMonth != 200 || fs.cur.PlanKind != "flat" {
+		t.Fatalf("not persisted: %+v", fs.cur)
+	}
+	if code := put(`{"plan_kind":"metered"}`); code != 200 {
+		t.Fatalf("metered plan: got %d", code)
+	}
+	for _, bad := range []string{
+		`{"plan_kind":"enterprise-ish"}`,
+		`{"plan_kind":"flat","plan_usd_per_month":-5}`,
+		`{"plan_kind":`,
+	} {
+		if code := put(bad); code != http.StatusBadRequest {
+			t.Fatalf("expected 400 for %s, got %d", bad, code)
+		}
+	}
+
+	// A daemon without settings support answers 501, not a panic.
+	s2 := New(Deps{Store: st, Bus: bus.New(), Table: tb, Version: "test",
+		Now: time.Now, Status: func(context.Context) any { return map[string]string{} }})
+	srv2 := httptest.NewServer(s2)
+	t.Cleanup(srv2.Close)
+	resp, err := http.Get(srv2.URL + "/v1/settings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotImplemented {
+		t.Fatalf("no settings controller: got %d", resp.StatusCode)
+	}
+}

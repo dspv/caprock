@@ -12,6 +12,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -50,6 +51,27 @@ type Deps struct {
 	Agents AgentController
 	// Tasks is the Phase 2 hive-backed task board (nil ⇒ endpoints return 501).
 	Tasks TaskController
+	// Settings reads and persists the user-editable settings (currently the
+	// subscription plan used for the value comparison). nil ⇒ 501.
+	Settings SettingsController
+}
+
+// SettingsController is the subset of config handling the API needs. Values are
+// entered by the user and stored locally; Caprock never fetches them.
+type SettingsController interface {
+	Get() Settings
+	Set(Settings) error
+}
+
+// Settings is the user-editable configuration exposed over the API. Caprock
+// cannot detect how a user pays for Claude Code and never guesses — these
+// values are stated by the user and stored locally.
+type Settings struct {
+	// PlanKind: "" (not stated), "flat" (Pro/Max/Team seat), or "metered"
+	// (API key, Bedrock, Vertex, Enterprise usage at API rates).
+	PlanKind        string  `json:"plan_kind"`
+	PlanLabel       string  `json:"plan_label"`
+	PlanUSDPerMonth float64 `json:"plan_usd_per_month"`
 }
 
 // TaskController is the subset of the Phase 2 hive the API needs.
@@ -101,6 +123,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/sessions/{id}/events", s.handleSessionEvents)
 	m.HandleFunc("GET /v1/sessions/{id}/diff", s.handleSessionDiff)
 	m.HandleFunc("GET /v1/stats/summary", s.handleSummary)
+	m.HandleFunc("GET /v1/settings", s.handleGetSettings)
+	m.HandleFunc("PUT /v1/settings", s.handlePutSettings)
 	m.HandleFunc("GET /v1/stats/daily", s.handleDaily)
 	m.HandleFunc("GET /v1/events", s.handleEventsFeed)
 	m.HandleFunc("GET /v1/history", s.handleHistory)
@@ -379,6 +403,49 @@ type Burn struct {
 	USDPerHour float64 `json:"usd_per_hour"`
 	TokPerMin  float64 `json:"tokens_per_min"`
 	Turns      int64   `json:"turns"`
+}
+
+// handleGetSettings returns the user-stated settings. Absent settings are not
+// an error — they mean "not stated", and the UI simply omits the comparison.
+func (s *Server) handleGetSettings(w http.ResponseWriter, _ *http.Request) {
+	if s.d.Settings == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("settings are not available"))
+		return
+	}
+	writeJSON(w, http.StatusOK, s.d.Settings.Get())
+}
+
+// handlePutSettings stores the user's stated billing. It validates rather than
+// coercing: a plan kind we do not understand, or a negative price, is rejected
+// so a typo cannot silently produce a wrong headline number.
+func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
+	if s.d.Settings == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("settings are not available"))
+		return
+	}
+	var in Settings
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&in); err != nil {
+		s.failCode(w, http.StatusBadRequest, fmt.Errorf("parse body: %w", err))
+		return
+	}
+	switch in.PlanKind {
+	case "", "flat", "metered":
+	default:
+		s.failCode(w, http.StatusBadRequest, fmt.Errorf("unknown plan_kind %q (want \"flat\", \"metered\", or empty)", in.PlanKind))
+		return
+	}
+	if in.PlanUSDPerMonth < 0 || math.IsNaN(in.PlanUSDPerMonth) || math.IsInf(in.PlanUSDPerMonth, 0) {
+		s.failCode(w, http.StatusBadRequest, errors.New("plan_usd_per_month must be a non-negative number"))
+		return
+	}
+	if len(in.PlanLabel) > 64 {
+		in.PlanLabel = in.PlanLabel[:64]
+	}
+	if err := s.d.Settings.Set(in); err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, s.d.Settings.Get())
 }
 
 func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
@@ -789,6 +856,13 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 func (s *Server) fail(w http.ResponseWriter, err error) {
 	s.d.Log.Error("api error", "component", "api", "err", err)
 	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+}
+
+// failCode returns a specific status with the reason visible to the caller.
+// Unlike fail (which hides internal errors), these are the caller's own fault
+// or a capability that is off, so saying why is useful rather than leaky.
+func (s *Server) failCode(w http.ResponseWriter, code int, err error) {
+	writeJSON(w, code, map[string]string{"error": err.Error()})
 }
 
 func (s *Server) notFoundOrFail(w http.ResponseWriter, err error) {

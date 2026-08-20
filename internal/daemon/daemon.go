@@ -75,6 +75,9 @@ type Daemon struct {
 	rt    config.Runtime
 	start time.Time
 
+	// cfgMu guards opt.Config, which the settings endpoint mutates at runtime.
+	cfgMu sync.RWMutex
+
 	mu     sync.Mutex
 	alerts map[string]*loop.Alert // session → last alert (expires after window)
 	url    string
@@ -210,7 +213,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version,
 		Status: d.status, ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
 		Token: rt.Token, Shutdown: cancel, Agents: &agentAdapter{m: d.mgr},
-		Tasks: d.taskController(),
+		Tasks: d.taskController(), Settings: &settingsAdapter{d: d},
 	})
 	srv := &http.Server{Handler: d.api, ReadHeaderTimeout: 10 * time.Second}
 
@@ -467,6 +470,28 @@ func (d *Daemon) status(_ context.Context) any {
 }
 
 // agentAdapter bridges *agents.Manager to api.AgentController.
+// settingsAdapter persists the user-stated settings to the config file, so a
+// value survives a restart. The daemon keeps an in-memory copy because the API
+// reads it on every summary render.
+type settingsAdapter struct{ d *Daemon }
+
+func (a *settingsAdapter) Get() api.Settings {
+	a.d.cfgMu.RLock()
+	defer a.d.cfgMu.RUnlock()
+	c := a.d.opt.Config
+	return api.Settings{PlanKind: c.PlanKind, PlanLabel: c.PlanLabel, PlanUSDPerMonth: c.PlanUSDPerMonth}
+}
+
+func (a *settingsAdapter) Set(in api.Settings) error {
+	a.d.cfgMu.Lock()
+	a.d.opt.Config.PlanKind = in.PlanKind
+	a.d.opt.Config.PlanLabel = in.PlanLabel
+	a.d.opt.Config.PlanUSDPerMonth = in.PlanUSDPerMonth
+	cfg := a.d.opt.Config
+	a.d.cfgMu.Unlock()
+	return config.Save(a.d.opt.DataDir, cfg)
+}
+
 type agentAdapter struct{ m *agents.Manager }
 
 func (a *agentAdapter) Available() bool { return a.m.ClaudeAvailable() }

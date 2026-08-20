@@ -34,6 +34,26 @@ type Config struct {
 	// RetentionDays prunes events older than this many days (0 = keep forever).
 	// The database grows ~1 KB per event; set this if you run Caprock constantly.
 	RetentionDays int `json:"retention_days"`
+	// Billing describes how the user actually pays for Claude Code, so the
+	// dashboard can say something true about what their usage is worth.
+	//
+	// Caprock cannot detect this and never guesses: Claude Code does not report
+	// the plan, and inferring one from usage would be an invented number
+	// (engineering rule 6). The user states it; we store it locally.
+	//
+	// PlanKind is one of:
+	//   ""           not stated — no comparison is shown
+	//   "flat"       a flat subscription (Pro/Max/Team seat): usage priced at
+	//                API list is an equivalent, and comparing it to the fee is
+	//                meaningful
+	//   "metered"    API key, Bedrock, Vertex, or Enterprise usage billed at
+	//                API rates: the API-list figure IS approximately the bill,
+	//                so it must never be framed as a saving
+	// PlanLabel is the user's own words for the plan ("Max", "Team seat").
+	// PlanUSDPerMonth is what they pay per month for one seat; 0 = not stated.
+	PlanKind        string  `json:"plan_kind"`
+	PlanLabel       string  `json:"plan_label"`
+	PlanUSDPerMonth float64 `json:"plan_usd_per_month"`
 }
 
 // Defaults returns the built-in configuration (spec: K=5, T=3, port 4173).

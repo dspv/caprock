@@ -46,6 +46,8 @@ GET  /v1/sessions/{id}                 → SessionDetail (stats + last N events)
 GET  /v1/sessions/{id}/events?after=…  → Event[] (paginated)
 GET  /v1/sessions/{id}/diff            → { files: FileDiff[] } | 409 not-a-git-repo
 GET  /v1/stats/summary?range=today     → totals: tokens, cost, sessions, models
+GET  /v1/settings                      → user-stated settings (plan)
+PUT  /v1/settings                      → store them
 GET  /v1/stats/daily?days=30           → DailyStat[]
 POST /v1/hook                          → 204 (shim only, bearer-token gated)
 WS   /v1/live                          → server-push frames: {type:"event"|"session"|"alert", data:…}
@@ -62,6 +64,8 @@ POST /v1/statusline                    → 204 (bearer-token gated) {session_id,
 GET  /healthz                          → {status:"ok", version}
 WS   /v1/live                          → first frame is {type:"hello", data:{server_time}}; a "session" frame carries {session, stats}
 ```
+
+`GET`/`PUT /v1/settings` carry `{plan_kind, plan_label, plan_usd_per_month}` — how the user pays for Claude Code. Caprock **cannot detect this and never guesses**: Claude Code does not report the plan, and inferring one from usage would be an invented number (rule 6), so the user states it and it is stored in `config.json` like every other setting. `plan_kind` is `""` (not stated), `"flat"` (Pro/Max/Team seat — usage at API list price is an *equivalent*, so comparing it to the fee is meaningful), or `"metered"` (API key, Bedrock, Vertex, or Enterprise usage billed at API rates — the API-list figure **is** approximately the bill, so it is never framed as a saving). `PUT` validates rather than coerces: an unknown `plan_kind` or a negative/non-finite price is a 400, because a typo would otherwise drive a wrong headline figure. Both return 501 when the daemon has no settings controller.
 
 `SessionSummary` = the `sessions` row + `stats` (session_stats) + `activity` ({phrase, tool, at, health, plan, repeats} from `internal/narrate`) + `savings` (cache math) + `loop` (active alert, if any) + `context` ({tokens, window, pct} — last turn's prompt size vs the model's context window from `pricing.json`). `SessionDetail` adds `files` and the last 60 `events`. `?range=` on `/v1/stats/summary` accepts `today` (default), `7d`, `30d`, `all`, or a Go duration; ranges are calendar-aware in the daemon's local time zone. The summary carries `burn` ($/h and tokens/min over the last 10 minutes) and `pricing_version`. Each entry in `projects` is `{project, tokens, cost_usd, sessions}` — `sessions` counts the distinct sessions that touched the project in the range, so a per-repo roll-up can state both what a repo cost and how many sessions worked in it.
 ### Phase 1 additions
