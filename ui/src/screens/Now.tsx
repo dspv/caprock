@@ -5,6 +5,8 @@ import { fmtAgo, fmtPct, fmtTokens, fmtUSD, shortId } from '@/lib/format'
 import { Badge, Empty, Panel, Stat } from '@/components/ui'
 import { ProjectsPanel } from '@/components/Projects'
 import { ActivityFeed } from '@/components/ActivityFeed'
+import { Attention } from '@/components/Attention'
+import { findAttention } from '@/lib/attention'
 import { href } from '@/lib/router'
 import { useEffect, useState } from 'react'
 
@@ -19,6 +21,7 @@ export function NowScreen() {
   const working = list.filter((s) => s.activity.health === 'working' || s.activity.health === 'looping' || s.activity.health === 'error' || s.activity.health === 'waiting-on-you')
   const rest = list.filter((s) => !working.includes(s) && s.status !== 'ended')
   const ended = list.filter((s) => s.status === 'ended')
+  const attention = findAttention({ sessions: list, alerts, now })
   const hooksMissing = status.data?.hooks && (status.data.hooks.missing ?? []).length > 0
   return (
     <div className="grid gap-3">
@@ -29,20 +32,7 @@ export function NowScreen() {
           <a href="#/settings" className="link ml-auto text-[11px]">details</a>
         </div>
       )}
-      {alerts.length > 0 && (
-        <div className="grid gap-1.5">
-          {alerts.map((a) => (
-            <div key={`${a.session_id}-${a.ts}`} className="border border-danger/50 bg-danger/10 text-fg px-3 py-2 flex items-center gap-3 rounded-[var(--radius-panel)]">
-              <span className="text-danger font-medium">Loop detected</span>
-              <span className="text-[12px]">
-                <a href={href({ name: 'session', id: a.session_id })} className="link mono">{shortId(a.session_id)}</a> ran <span className="mono">{a.sample}</span> {a.count}× in {a.window_min} min
-              </span>
-              <span className="ml-auto text-[11px] text-fg-muted num">{fmtAgo(a.ts, now)}</span>
-              <button className="text-[11px] text-fg-muted hover:text-fg border border-border px-1.5 rounded-sm" onClick={() => live.dismissAlert(a.session_id)}>dismiss</button>
-            </div>
-          ))}
-        </div>
-      )}
+      <Attention items={attention} now={now} onDismiss={(id) => live.dismissAlert(id)} />
 
       <Panel title="Today" right={summary.data ? <span className="num">pricing {summary.data.pricing_version} · at API list price</span> : null}>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-border">
