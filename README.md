@@ -51,6 +51,35 @@ settings). Say no and it still reads your history from transcripts.
 *Left: what every session is doing, as it happens. Right: what each repo costs
 you. Real numbers from a real machine.*
 
+## Updating
+
+Use the command that matches how you installed it:
+
+```bash
+brew upgrade caprock                                    # Homebrew
+scoop update caprock                                    # Scoop
+go install github.com/dspv/caprock/cmd/caprock@latest   # go install
+```
+
+Then restart the daemon so the new binary is the one running:
+
+```bash
+caprock down && caprock up
+```
+
+`caprock down` stops the daemon and leaves your database alone — nothing is
+lost, and history from before the upgrade stays exactly where it was. Check
+what you ended up on with `caprock status`.
+
+Caprock can also tell you when a release is out: turn on release checks from
+the banner on the Now screen, or on the status page. That is the only outbound
+call it makes, it is off until you switch it on, and it sends nothing about
+you. It never installs anything by itself — it shows the one command above for
+your install method, and you run it.
+
+Downloaded the binary directly? Replace it with a fresh one from
+[Releases](https://github.com/dspv/caprock/releases) and restart.
+
 ## What it is
 
 Claude Code runs in your terminal. Caprock is the window into it.
