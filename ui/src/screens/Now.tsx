@@ -94,7 +94,7 @@ export function SessionCard({ s, now }: { s: SessionSummary; now: number }) {
   return (
     <a href={href({ name: 'session', id: s.session_id })} className="block border border-border bg-panel rounded-[var(--radius-panel)] hover:border-border-strong no-underline hover:no-underline text-fg">
       <div className="px-3 pt-2 pb-1 flex items-center gap-2">
-        <span className="font-medium truncate">{s.project || 'unknown project'}</span>
+        <span className="font-medium truncate text-[15px]">{s.project || 'unknown project'}</span>
         <span className="mono text-[11px] text-fg-faint">{shortId(s.session_id)}</span>
         {s.git_branch && <span className="mono text-[11px] text-fg-muted truncate">{s.git_branch}</span>}
         <span className="ml-auto"><Badge health={s.activity.health} /></span>

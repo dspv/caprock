@@ -19,9 +19,11 @@ export function Panel({ title, right, children, className = '' }: { title?: Reac
 export function Stat({ label, value, sub, tone }: { label: string; value: ReactNode; sub?: ReactNode; tone?: 'ok' | 'warn' | 'danger' | 'info' }) {
   const toneCls = tone === 'ok' ? 'text-ok' : tone === 'warn' ? 'text-warn' : tone === 'danger' ? 'text-danger' : tone === 'info' ? 'text-info' : 'text-fg'
   return (
-    <div className="px-3 py-2 min-w-0">
+    <div className="px-3 py-2.5 min-w-0">
       <div className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">{label}</div>
-      <div className={`num text-[17px] leading-tight ${toneCls}`}>{value}</div>
+      {/* The value is the reason the card exists — it outweighs its own label
+       * by more than 2x so a card scans from across the desk, not up close. */}
+      <div className={`num text-[22px] leading-[1.15] ${toneCls}`}>{value}</div>
       {sub && <div className="text-[11px] text-fg-muted num truncate">{sub}</div>}
     </div>
   )

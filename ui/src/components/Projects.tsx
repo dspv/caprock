@@ -43,7 +43,7 @@ export function ProjectsPanel({ sessions }: { sessions: SessionSummary[] }) {
       title="Projects"
       right={
         <span className="flex items-center gap-2">
-          <span className="num text-fg-muted">{fmtUSD(total)} total</span>
+          <span className="num text-fg text-[13px]">{fmtUSD(total)} total</span>
           <span className="inline-flex border border-border rounded-sm overflow-hidden">
             {RANGES.map((r) => (
               <button
@@ -92,7 +92,7 @@ function ProjectRow({ p, max, live }: { p: ProjectShare; max: number; live: bool
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           {live && <span className="inline-block w-1.5 h-1.5 rounded-full bg-ok shrink-0" title="a session is live in this project" />}
-          <span className="truncate text-[13px]">{p.project || 'unknown project'}</span>
+          <span className="truncate text-[14px]">{p.project || 'unknown project'}</span>
           <span className="text-[11px] text-fg-faint num shrink-0">
             {p.sessions} {p.sessions === 1 ? 'session' : 'sessions'}
           </span>
@@ -102,7 +102,7 @@ function ProjectRow({ p, max, live }: { p: ProjectShare; max: number; live: bool
         </div>
       </div>
       <div className="text-right shrink-0">
-        <div className="num text-[13px]">{fmtUSD(p.cost_usd)}</div>
+        <div className="num text-[17px] leading-tight">{fmtUSD(p.cost_usd)}</div>
         <div className="num text-[11px] text-fg-faint">{fmtTokens(p.tokens)}</div>
       </div>
     </div>
