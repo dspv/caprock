@@ -4,15 +4,16 @@ import { useApi } from '@/lib/useApi'
 import { fmtDuration, fmtPct, fmtTokens, fmtUSD, fmtTool } from '@/lib/format'
 import { Empty, Panel, Stat } from '@/components/ui'
 import { groupDays } from './Cost'
+import { BarChart, BarReadout } from '@/components/BarChart'
 
 type Range = 'today' | '7d' | '30d' | 'all'
 
 export function HistoryScreen() {
   const [range, setRange] = useState<Range>('all')
+  const [activeDay, setActiveDay] = useState<string | null>(null)
   const h = useApi(() => api.history(range), [range], { intervalMs: 15000 })
   const d = h.data
   const days = groupDays(d?.daily ?? [])
-  const maxDay = Math.max(...days.map((x) => x.cost), 1e-9)
   const maxTool = Math.max(...(d?.tools ?? []).map((t) => t.count), 1)
   return (
     <div className="grid gap-3">
@@ -77,16 +78,13 @@ export function HistoryScreen() {
           </Panel>
         </div>
       </div>
-      <Panel title="Daily cost" right={<span className="num">{fmtUSD(days.reduce((a, x) => a + x.cost, 0))}</span>}>
+      <Panel
+        title="Daily cost"
+        right={<BarReadout bars={days} active={activeDay} total={days.reduce((a, x) => a + x.cost, 0)} />}
+      >
         {days.length === 0 && <Empty title="No history yet" />}
         {days.length > 0 && (
-          <div className="px-3 py-3 flex items-end gap-[2px]">
-            {days.map((x) => (
-              <div key={x.day} className="flex-1 flex flex-col items-center justify-end gap-1 min-w-0" style={{ height: 96 }} title={`${x.day}: ${fmtUSD(x.cost)} · ${fmtTokens(x.tokens)} tokens`}>
-                <div className="w-full bg-accent/70 hover:bg-accent rounded-t-sm" style={{ height: Math.max(2, Math.round((84 * x.cost) / maxDay)) }} />
-              </div>
-            ))}
-          </div>
+          <BarChart bars={days} active={activeDay} onActive={setActiveDay} height={96} showDayLabels={false} />
         )}
       </Panel>
     </div>

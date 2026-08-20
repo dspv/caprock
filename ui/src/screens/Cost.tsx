@@ -3,6 +3,7 @@ import { api, type DailyStat, type RateWindow } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
 import { Empty, Panel, Stat } from '@/components/ui'
+import { BarChart, BarReadout } from '@/components/BarChart'
 import { PlanValue } from '@/components/PlanValue'
 import { usePlan } from '@/components/PlanPicker'
 
@@ -13,9 +14,9 @@ export function CostScreen() {
   const summary = useApi(() => api.summary(range), [range], { intervalMs: 5000 })
   const daily = useApi(() => api.daily(30), [], { intervalMs: 30000 })
   const [plan] = usePlan()
+  const [activeDay, setActiveDay] = useState<string | null>(null)
   const s = summary.data
   const days = groupDays(daily.data ?? [])
-  const maxDay = Math.max(...days.map((d) => d.cost), 1e-9)
   return (
     <div className="grid gap-3">
       <div className="flex items-center gap-1">
@@ -68,18 +69,12 @@ export function CostScreen() {
           </table>
         </Panel>
       </div>
-      <Panel title="Last 30 days" right={<span className="num">{fmtUSD(days.reduce((a, d) => a + d.cost, 0))}</span>}>
+      <Panel
+        title="Last 30 days"
+        right={<BarReadout bars={days} active={activeDay} total={days.reduce((a, d) => a + d.cost, 0)} />}
+      >
         {days.length === 0 && <Empty title="No history yet" />}
-        {days.length > 0 && (
-          <div className="px-3 py-3 flex items-end gap-[3px]">
-            {days.map((d) => (
-              <div key={d.day} className="flex-1 flex flex-col items-center justify-end gap-1 min-w-0" style={{ height: 112 }} title={`${d.day}: ${fmtUSD(d.cost)} · ${fmtTokens(d.tokens)} tokens · ${d.sessions} sessions`}>
-                <div className="w-full bg-accent/70 hover:bg-accent rounded-t-sm" style={{ height: Math.max(2, Math.round((96 * d.cost) / maxDay)) }} />
-                <div className="num text-[9px] text-fg-faint">{d.day.slice(8)}</div>
-              </div>
-            ))}
-          </div>
-        )}
+        {days.length > 0 && <BarChart bars={days} active={activeDay} onActive={setActiveDay} />}
       </Panel>
       {s?.rate_limits && (
         <Panel title="Plan limits">
