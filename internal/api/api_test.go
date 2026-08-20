@@ -572,3 +572,41 @@ func TestWriteJSONFailsHonestly(t *testing.T) {
 		t.Fatalf("normal responses must be unaffected: %d %q", rec2.Code, rec2.Body.String())
 	}
 }
+
+// `range=90d` used to fall through to "today", so a longer range reported
+// FEWER sessions than a shorter one — the kind of wrong answer that looks
+// like a real one.
+func TestRangeFromDaySuffix(t *testing.T) {
+	e := newEnv(t)
+	srv := &Server{d: Deps{Now: func() time.Time { return e.now }}}
+
+	for _, c := range []struct {
+		in    string
+		label string
+	}{
+		{"90d", "90d"},
+		{"1d", "1d"},
+		{"365D", "365D"},
+		{"today", "today"},
+		{"7d", "7d"},
+		{"abc", "today"},    // unreadable: today is the honest fallback
+		{"0d", "today"},     // a zero-day range is meaningless
+		{"-5d", "today"},    // negative likewise
+		{"99999d", "today"}, // beyond the bound
+	} {
+		from, label := srv.rangeFrom(c.in)
+		if label != c.label {
+			t.Errorf("rangeFrom(%q) label = %q, want %q", c.in, label, c.label)
+		}
+		if from > e.now.UnixMilli() {
+			t.Errorf("rangeFrom(%q) starts in the future", c.in)
+		}
+	}
+
+	// The ordering that was broken: a longer range must start earlier.
+	d30, _ := srv.rangeFrom("30d")
+	d90, _ := srv.rangeFrom("90d")
+	if d90 >= d30 {
+		t.Fatalf("90d must start before 30d, got %d vs %d", d90, d30)
+	}
+}

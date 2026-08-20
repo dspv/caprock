@@ -402,6 +402,19 @@ func (s *Server) handleSessionDiff(w http.ResponseWriter, r *http.Request) {
 
 // rangeFrom maps ?range= to a start time. Ranges are calendar-aware in the
 // daemon's local time zone (the user's "today").
+// parseDays reads a plain "<n>d" range. Bounded at ten years so a typo cannot
+// ask for an unbounded scan.
+func parseDays(rng string) (int, bool) {
+	if len(rng) < 2 || (rng[len(rng)-1] != 'd' && rng[len(rng)-1] != 'D') {
+		return 0, false
+	}
+	n, err := strconv.Atoi(rng[:len(rng)-1])
+	if err != nil || n <= 0 || n > 3650 {
+		return 0, false
+	}
+	return n, true
+}
+
 func (s *Server) rangeFrom(rng string) (int64, string) {
 	now := s.d.Now()
 	y, m, d := now.Date()
@@ -418,6 +431,12 @@ func (s *Server) rangeFrom(rng string) (int64, string) {
 	}
 	if d, err := time.ParseDuration(rng); err == nil && d > 0 {
 		return now.Add(-d).UnixMilli(), rng
+	}
+	// A day-suffixed range Go's ParseDuration cannot read ("90d" — durations
+	// stop at hours) used to fall through to today, so `range=90d` quietly
+	// reported FEWER sessions than `30d`. Handle the form people actually type.
+	if n, ok := parseDays(rng); ok {
+		return midnight.AddDate(0, 0, -(n - 1)).UnixMilli(), rng
 	}
 	return midnight.UnixMilli(), "today"
 }
