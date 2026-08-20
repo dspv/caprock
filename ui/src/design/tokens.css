@@ -45,6 +45,32 @@
   }
 }
 
+/*
+ * Light theme — same semantic roles, redefined for a light ops-room. Surfaces
+ * near-white stepping up, text dark, semantic hues darkened for contrast on a
+ * light background. Applied when <html data-theme="light"> is set (see
+ * lib/theme.ts); the default (no attribute) stays dark.
+ */
+[data-theme="light"] {
+  --color-bg: #f6f7f9;
+  --color-panel: #ffffff;
+  --color-panel-2: #eef1f5;
+  --color-border: #dde2e9;
+  --color-border-strong: #c4ccd6;
+
+  --color-fg: #1b222c;
+  --color-fg-muted: #5a6472;
+  --color-fg-faint: #8a94a2;
+
+  --color-ok: #1a7f37;
+  --color-warn: #9a6700;
+  --color-danger: #cf222e;
+  --color-info: #0969da;
+
+  --color-accent: #2f6fed;
+  --color-accent-strong: #1f5fd6;
+}
+
 :root {
   color-scheme: dark;
   background: var(--color-bg);
@@ -54,6 +80,7 @@
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
+[data-theme="light"] { color-scheme: light; }
 
 /* Every number, cost, id, and terminal string is monospace with tabular numerals. */
 .num, .mono {

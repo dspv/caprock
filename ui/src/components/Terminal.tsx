@@ -7,9 +7,17 @@ export function TerminalView({ sessionId, owned }: { sessionId: string; owned: b
   const host = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!host.current || !owned) return
+    // Pull the terminal palette from the theme tokens so it matches light/dark.
+    const css = getComputedStyle(document.documentElement)
+    const v = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback
     const term = new Xterm({
       convertEol: false, cursorBlink: true, fontFamily: 'var(--font-mono)', fontSize: 12,
-      theme: { background: '#0b0e14', foreground: '#d3dae3', cursor: '#5ea1ff', selectionBackground: '#2b3646' },
+      theme: {
+        background: v('--color-bg', '#0b0e14'),
+        foreground: v('--color-fg', '#d3dae3'),
+        cursor: v('--color-accent', '#5ea1ff'),
+        selectionBackground: v('--color-border-strong', '#2b3646'),
+      },
       scrollback: 5000,
     })
     const fit = new FitAddon()

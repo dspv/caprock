@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { useLive } from '@/lib/live'
 import { href, type Route } from '@/lib/router'
 import { fmtAgo } from '@/lib/format'
+import { useTheme } from '@/lib/theme'
 
 const NAV: { route: Route; label: string; phase?: string }[] = [
   { route: { name: 'now' }, label: 'Now' },
@@ -32,11 +33,39 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
         </nav>
         <div className="ml-auto flex items-center gap-3 text-[11px] text-fg-muted">
           <ConnDot state={live.conn} lastFrameAt={live.lastFrameAt} />
+          <ThemeToggle />
           <a href="#/settings" className="text-fg-muted hover:text-fg no-underline">status</a>
         </div>
       </header>
       <main className="flex-1 p-3 max-w-[1600px] w-full mx-auto">{children}</main>
     </div>
+  )
+}
+
+function ThemeToggle() {
+  const [theme, toggle] = useTheme()
+  const dark = theme === 'dark'
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      title={dark ? 'Switch to light theme' : 'Switch to dark theme'}
+      aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'}
+      className="text-fg-muted hover:text-fg inline-flex items-center"
+    >
+      {dark ? (
+        // sun (click for light)
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4" />
+        </svg>
+      ) : (
+        // moon (click for dark)
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+          <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+        </svg>
+      )}
+    </button>
   )
 }
 
