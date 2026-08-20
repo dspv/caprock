@@ -50,6 +50,29 @@ changelog:
   filters:
     exclude: ["^docs", "^chore", "^ci"]
 
+# `brews` is deprecated upstream and we are keeping it on purpose. Read this
+# before "fixing" the warning — the obvious fix breaks Linux installs.
+#
+# goreleaser's replacement is `homebrew_casks` (not `homebrew_formulas`, which
+# an earlier comment here guessed). That is not a rename: casks are macOS-only.
+# Homebrew on Linux refuses them outright —
+# Library/Homebrew/extend/os/linux/cask/installer.rb raises
+# "This cask requires macOS" unless the cask declares supports_linux?, which a
+# goreleaser-generated cask over darwin archives does not. Switching would break
+# `brew install dspv/tap/caprock` on Linux, which the README promises and the
+# shipped formula delivers (it carries on_linux amd64/arm64 blocks).
+#
+# It also reverses a deliberate decision: the tap moved cask → formula on
+# 2026-08-19 for exactly this reason (ADR-023, docs/RELEASING.md).
+#
+# The deprecation is not urgent. Measured on 2026-08-20 with goreleaser 2.17.1,
+# which is the current latest release:
+#   - `goreleaser release` and `goreleaser build` succeed and only warn
+#     (v0.9.8 shipped through this path);
+#   - only `goreleaser check` exits non-zero.
+# Upstream policy removes deprecated options on major versions only, so `brews`
+# holds for all of v2. Revisit when v3 actually ships — at which point Linux
+# likely needs a hand-maintained formula in the tap alongside the cask.
 brews:
   - name: caprock
     # Write the formula to Formula/ (the Homebrew standard). Without this
@@ -58,9 +81,7 @@ brews:
     # would silently serve a stale formula.
     directory: Formula
     # A CLI binary belongs in a formula, not a cask (casks are for GUI .app
-    # bundles). A formula also installs cleanly on Linux Homebrew. `brews` is the
-    # formula block; newer goreleaser renames it to `homebrew_formulas`, but the
-    # pinned toolchain (see release.yml) still uses `brews`.
+    # bundles). A formula also installs cleanly on Linux Homebrew.
     # Tap repo dspv/homebrew-tap (public); the formula is pushed here on release.
     repository:
       owner: dspv

@@ -59,9 +59,13 @@ jobs:
       - uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
-          # Pinned: the `brews` formula block is valid on 2.17.x. A later v2
-          # renames it to `homebrew_formulas`, so let the pin move deliberately
-          # (with a config edit) rather than float and break a release.
+          # Pinned so the toolchain moves deliberately rather than floating
+          # into a broken release. 2.17.1 is also the current latest.
+          #
+          # It warns that `brews` is deprecated; that is expected and the
+          # release still succeeds. The replacement is `homebrew_casks`, which
+          # is macOS-only and would break `brew install` on Linux — see the
+          # long note in .goreleaser.yaml before changing either.
           version: "2.17.1"
           args: release --clean
         env:

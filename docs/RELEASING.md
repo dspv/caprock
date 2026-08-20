@@ -85,6 +85,25 @@ git tag -a v0.1.0 -m "…" && git push origin v0.1.0
 `goreleaser release --clean` is idempotent; with `HOMEBREW_TAP_TOKEN` set it will
 complete the formula push it previously skipped.
 
+## The `brews` deprecation warning is expected (2026-08-20)
+
+Every release logs `DEPRECATED: brews should not be used anymore`. **This is
+known and deliberate — do not "fix" it.** The release still succeeds; v0.9.8
+shipped through this exact path.
+
+goreleaser's replacement is `homebrew_casks`, which is not a rename. Casks are
+macOS-only: Homebrew on Linux raises `This cask requires macOS` unless the cask
+declares `supports_linux?`, which a goreleaser-generated cask does not. Adopting
+it would break `brew install dspv/tap/caprock` on Linux, which the README
+promises and the shipped formula delivers.
+
+Only `goreleaser check` exits non-zero on the warning; `release` and `build`
+merely print it. Upstream removes deprecated options on major versions only, so
+`brews` holds for all of v2 (2.17.1 is the current latest). When v3 ships and
+removes it, Linux will likely need a hand-maintained formula in the tap beside
+the generated cask. See [ADR-018](../.ai/08-decisions.md) and the note at the
+top of the `brews` block in `.goreleaser.yaml`.
+
 ## Cask → formula migration (2026-08-19)
 
 Up to and including v0.3.0 the tap shipped a **cask** (`brew install --cask`).
