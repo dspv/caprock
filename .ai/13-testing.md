@@ -1,6 +1,6 @@
 # Testing — coverage, what it means, and where the gaps are
 
-**Measured 2026-08-20** against master (`683dadc`) on macOS/arm64, Go 1.26.
+**Measured 2026-08-20** against master (`ingest` pass included) on macOS/arm64, Go 1.26.
 Re-measure with `make test`; the per-package numbers below come from
 `go test ./internal/... -cover`.
 
@@ -67,6 +67,14 @@ stay green:
 **The working rule: a test is finished when removing the code it covers turns it
 red.** Not when it passes.
 
+The inverse also happens: a test can fail for a reason it creates itself. The
+tailer's live-pickup test timed out for twenty seconds and read exactly like a
+product bug, until a probe showed the cause was the test polling `GetStats`
+every 10ms — `:memory:` SQLite has a single writer, and the read loop starved
+the ingest it was waiting for. It now polls the tailer's own counter and passes
+in 1.4s. Before reporting a red test as a defect, check that the test is not the
+thing breaking it.
+
 ## Where a bug reaches the user, not just Caprock
 
 Two packages carry a different class of risk, and their tests are written
@@ -86,15 +94,12 @@ accordingly — failure paths first, happy path left to the smoke suite.
 
 ## Known gaps, and why they are open
 
-- **`ingest` at 68.5%** is the largest package with real logic below 70%. It
-  parses Claude Code's transcript format, which is not a contract we control —
-  worth more coverage, and the next place to spend effort.
+- **`cmd/caprock` at 18.2%** is the largest remaining gap, and it is CLI
+  argument wiring rather than logic — the commands it dispatches to are covered
+  in their own packages.
 - **`daemon`'s uncovered remainder** is adapter plumbing: one-line methods
   forwarding to `board` and `agents`, already exercised through those packages.
   A test there would assert that a forwarding call forwards.
-- **`cmd/caprock` at 18.2%** is CLI argument wiring. The commands it dispatches
-  to are covered in their own packages; the gap is flag parsing and output
-  formatting.
 - **`event` and `version` at 0%** are type and constant declarations. There is
   nothing to execute.
 
