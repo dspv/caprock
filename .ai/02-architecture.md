@@ -137,7 +137,7 @@ internal/ingest/      # transcript discovery + tailer (fsnotify + poll) + parser
 internal/loop/        # loop detector
 internal/narrate/     # tool event → phrase, health badge, plan progress
 internal/gitdiff/     # live `git diff` of a session's cwd
-internal/api/         # REST + WS + embedded UI (dist/ built, placeholder/ fallback)
+internal/api/         # REST + WS + embedded UI (dist/ committed for go install, placeholder/ fallback)
 internal/daemon/      # wiring, runtime.json lifecycle, sweeper, auto-pause, Stop-decision
 internal/smoke/       # the DoD scenario (build tag `smoke`), runs on the 3-OS matrix
 internal/ptyman/      # PTY backend (go-pty; ConPTY on Windows) — Control

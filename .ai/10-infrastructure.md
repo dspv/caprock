@@ -26,7 +26,7 @@ Checked against `go.dev/dl`, `proxy.golang.org`, and the npm registry on 2026-08
 
 ## Repository layout
 
-See [02-architecture.md § Repository layout](02-architecture.md#repository-layout). Two build roots: the Go module at the repo root and the npm project in `ui/`. The dashboard builds into `internal/api/dist/` (git-ignored except a committed placeholder `index.html` that keeps `go build` working without Node); `internal/api/ui.go` embeds that directory via `//go:embed`.
+See [02-architecture.md § Repository layout](02-architecture.md#repository-layout). Two build roots: the Go module at the repo root and the npm project in `ui/`. The dashboard builds into `internal/api/dist/`, which **is committed** so `go install github.com/dspv/caprock/cmd/caprock@latest` embeds the real UI (a `dist-check`/CI gate rebuilds it and fails if the commit is stale — run `make ui` and commit after any UI change). `internal/api/ui.go` embeds that directory via `//go:embed`, falling back to a `placeholder/` page only if `dist/` is somehow empty. The Vite build is deterministic (content-hashed filenames), so the committed output is stable across rebuilds.
 
 ## Make targets
 

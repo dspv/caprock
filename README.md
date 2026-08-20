@@ -18,7 +18,9 @@ scoop install caprock
 caprock up        # opens localhost:4173; offers to set up hooks + plan-limit status line
 ```
 
-No brew or Scoop? Grab a binary from [Releases](https://github.com/dspv/caprock/releases).
+Have Go? `go install github.com/dspv/caprock/cmd/caprock@latest` — the dashboard
+is embedded, so it works with no Node build. No package manager? Grab a binary
+from [Releases](https://github.com/dspv/caprock/releases).
 On first run `caprock up` asks before adding its hook and status-line entries to
 `~/.claude/settings.json` (it backs the file up and never touches your other
 settings). Say no and it still reads your history from transcripts.

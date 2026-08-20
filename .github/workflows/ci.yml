@@ -31,6 +31,11 @@ jobs:
         working-directory: ui
       - run: npm run build
         working-directory: ui
+      - name: dist is committed and in sync (so `go install` embeds a real UI)
+        run: |
+          git diff --quiet -- internal/api/dist || {
+            echo "internal/api/dist/ is stale — run 'make ui' and commit the result";
+            git --no-pager diff --stat -- internal/api/dist; exit 1; }
       - uses: actions/upload-artifact@v4
         with:
           name: ui-dist

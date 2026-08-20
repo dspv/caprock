@@ -5,12 +5,14 @@
 
 # Build output
 bin/
-dist/
+/dist/
 build/
 out/
-internal/api/dist/*
-!internal/api/dist/.gitkeep
 coverage.out
+
+# The built dashboard IS committed (internal/api/dist/) so `go install` embeds a
+# real UI instead of the placeholder; a CI check keeps it in sync with ui/. Only
+# the goreleaser root /dist/ above is ignored.
 *.test
 
 # Dependencies

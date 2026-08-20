@@ -40,6 +40,13 @@ ui: ## Build the dashboard into internal/api/dist (installs deps on a fresh clon
 	cd ui && [ -d node_modules ] || npm ci
 	cd ui && npm run build
 
+.PHONY: dist-check
+dist-check: ui ## Fail if the committed internal/api/dist/ is stale vs a fresh build (CI gate for `go install`)
+	@git diff --quiet -- internal/api/dist || { \
+		echo "internal/api/dist/ is out of date — run 'make ui' and commit the result"; \
+		git --no-pager diff --stat -- internal/api/dist; exit 1; }
+	@echo "dist is in sync with ui/"
+
 .PHONY: ui-install
 ui-install: ## npm ci for the dashboard
 	cd ui && npm ci
