@@ -73,6 +73,10 @@ What the new tests pin is the logic the daemon alone owns: a loop alert stops be
 
 The rest of the uncovered surface is adapter plumbing — one-line methods forwarding to `board` and `agents`, already exercised through those packages. Testing them here would assert that a forwarding call forwards.
 
+**`internal/config` (62.8% → 72.3%) and `internal/agents` (67.7% → 75.0%) followed.** The two things worth pinning were the atomic write and the terminal fan-out. `WriteFileAtomic` is what keeps `runtime.json` readable while it is being rewritten — the shim reads that file on every hook, so a torn one silently stops every session from being recorded; the test runs concurrent readers against alternating payload sizes and fails if any of them sees a size that is neither. `Subscribe`/cancel is where a "send on closed channel" would panic the whole daemon rather than fail one request, since `pump` broadcasts while `wait` closes every subscriber and a browser tab can unsubscribe at any moment.
+
+Another test proved less than it claimed, found the same way. `TestRingSnapshotIsACopy` was meant to catch `snapshot()` handing out the ring's internal slice — but it passed with the copy deleted, because `write` rebuilds the slice with `append` rather than editing in place (confirmed by printing the backing pointer: it moves on overflow). A stale reference is therefore never corrupted, and the copy is defence in depth rather than the thing keeping the test green. Rewritten to assert what is actually true — that mutating a snapshot cannot reach into the ring — and the comment now says which of the two it proves.
+
 ### 2026-08-20 — v0.9.8: hierarchy, and four numbers that were quietly wrong
 
 The dashboard was asked to look like the site — large figures, clear at a glance — and the exercise turned up four honesty defects that the redesign itself had nothing to do with.
