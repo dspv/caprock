@@ -348,20 +348,20 @@ func TestSummarizeFailsOnACancelledContext(t *testing.T) {
 // session outlives a day — and they routinely do. On the author's database one
 // session spanned twelve days and contributed one, so the screen read 21 where
 // 32 days had events in them.
+//
+// The count reads daily_stats, which the rollup fills one row per priced turn,
+// so this seeds it the same way rather than inserting raw events.
 func TestHistoryCountsDaysWithWorkNotSessionStarts(t *testing.T) {
 	ctx := context.Background()
 	s := openTest(t)
 
-	// One session opened on day 1 and still going on day 4.
 	day := int64(24 * 3600 * 1000)
 	start := time.Now().Add(-10 * 24 * time.Hour).UnixMilli()
+	// One session opened on day 1 and still going on day 4.
 	mustSession(t, s, "long", start+3*day)
 	for i := 0; i < 4; i++ {
-		ev := event.Event{
-			SessionID: "long", Source: event.SourceHook, Kind: event.KindToolPre,
-			Tool: "Bash", Ts: time.UnixMilli(start + int64(i)*day), Key: "k" + strconv.Itoa(i),
-		}
-		if _, err := InsertEvent(ctx, s.db, &ev); err != nil {
+		d := time.UnixMilli(start + int64(i)*day).Local().Format("2006-01-02")
+		if err := AddDaily(ctx, s.db, d, "proj", "claude-opus-5", 100, 0.5, i == 0); err != nil {
 			t.Fatal(err)
 		}
 	}

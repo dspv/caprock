@@ -889,8 +889,19 @@ func History(ctx context.Context, q Querier, fromMs int64) (HistoryTotals, error
 	// dates undercounts badly once sessions outlive a day: on the author's own
 	// database one session spanned twelve days and contributed one, and the
 	// screen read 21 where 32 days had work in them.
+	//
+	// Read from daily_stats rather than from events. The direct
+	// COUNT(DISTINCT date(ts…)) is correct but costs 1.26s on a 187k-event
+	// database against 0.38ms here — measured through the Go driver, where the
+	// gap is far wider than sqlite3(1) suggests (58ms vs 12ms in the shell).
+	// History is the slowest screen already; this kept it that way.
+	//
+	// The one thing daily_stats cannot see is a day that had tool calls but no
+	// priced assistant turn, since the rollup writes a row per priced turn. On
+	// this database there are zero such days, and a day of tool calls with no
+	// model reply is not a plausible session anyway.
 	if err := q.QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT date(ts/1000, 'unixepoch', 'localtime')) FROM events WHERE ts >= ?`, fromMs).
+		`SELECT COUNT(DISTINCT day) FROM daily_stats WHERE day >= date(?/1000, 'unixepoch', 'localtime')`, fromMs).
 		Scan(&h.Days); err != nil {
 		return h, err
 	}
