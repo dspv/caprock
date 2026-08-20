@@ -177,3 +177,30 @@ Hive layout, task file, mailbox message, Stop-hook decision protocol: [05-orches
 ## Phase 3 — Delight
 
 Avatar/office render mode (only with cleanly licensed assets), packaging (Tauri/Wails or plain binary + `open localhost`), maybe TUI. No plan until Phase 2 traction justifies one.
+
+---
+
+## Backlog — post-v0.6.0
+
+Candidate work, ordered by the value it adds for a solo user. Nothing here is
+committed to a release yet; each item still needs its own DoD before it starts.
+
+- **B1 — Projects on Now (in progress).** Per-repo spend is the first thing a
+  user recognises as their own money, and today it is buried in History. Surface
+  a compact per-project cost roll-up on the landing screen. Data already exists
+  (`ProjectShare` in `/v1/stats/summary`); the gap is placement plus "who is in
+  this repo right now".
+- **B2 — Update notifications.** Tell the user in the UI when a newer version is
+  published, with the exact upgrade command for their install method (`brew
+  upgrade`, `scoop update`, `go install`). **Open decision:** any version check
+  is an outbound call, which Rule 4 (all data stays on the machine) forbids by
+  default. Options: opt-in check with a visible toggle, or a purely local hint
+  derived from the installed package manager. Resolve the principle before
+  building — see [12-risks.md](12-risks.md).
+- **B3 — Claude desktop app usage.** Requested by an early user who also uses
+  the Claude desktop app for non-repo work. Feasibility check done: only
+  `~/Library/Application Support/Claude/plan-usage-history.json` is readable —
+  numeric plan-usage samples (roughly 5-minute granularity), **no tokens, no
+  cost, no conversation content** (content lives in LevelDB and is out of
+  scope). Any surface must be labelled as plan-usage level, never presented as
+  tokens or dollars, or it breaks Rule 6.

@@ -506,11 +506,14 @@ type ModelShare struct {
 	Turns   int64   `json:"turns"`
 }
 
-// ProjectShare is tokens/cost per project (cwd basename).
+// ProjectShare is tokens/cost per project (cwd basename). Sessions is how many
+// distinct sessions touched the project in the range — the "who is working in
+// this repo" half of the question; cost alone does not answer it.
 type ProjectShare struct {
-	Project string  `json:"project"`
-	Tokens  int64   `json:"tokens"`
-	CostUSD float64 `json:"cost_usd"`
+	Project  string  `json:"project"`
+	Tokens   int64   `json:"tokens"`
+	CostUSD  float64 `json:"cost_usd"`
+	Sessions int64   `json:"sessions"`
 }
 
 // Summarize aggregates events since fromMs (0 = all time).
@@ -546,7 +549,7 @@ func Summarize(ctx context.Context, q Querier, fromMs int64) (Summary, error) {
 	}
 	_ = rows.Close()
 	rows, err = q.QueryContext(ctx, `
-		SELECT COALESCE(se.project,''), COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0), COALESCE(SUM(e.cost_usd),0)
+		SELECT COALESCE(se.project,''), COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0), COALESCE(SUM(e.cost_usd),0), COUNT(DISTINCT e.session_id)
 		FROM events e LEFT JOIN sessions se ON se.session_id = e.session_id
 		WHERE e.kind = 'turn.assistant' AND e.ts >= ? GROUP BY se.project ORDER BY 3 DESC`, fromMs)
 	if err != nil {
@@ -555,7 +558,7 @@ func Summarize(ctx context.Context, q Querier, fromMs int64) (Summary, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var p ProjectShare
-		if err := rows.Scan(&p.Project, &p.Tokens, &p.CostUSD); err != nil {
+		if err := rows.Scan(&p.Project, &p.Tokens, &p.CostUSD, &p.Sessions); err != nil {
 			return s, err
 		}
 		s.Projects = append(s.Projects, p)

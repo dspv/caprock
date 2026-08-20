@@ -92,7 +92,7 @@ export interface FileDiff { path: string; status: string; additions: number; del
 export interface DiffResult { root: string; branch: string; files: FileDiff[]; stat: string }
 
 export interface ModelShare { model: string; tokens: number; cost_usd: number; turns: number }
-export interface ProjectShare { project: string; tokens: number; cost_usd: number }
+export interface ProjectShare { project: string; tokens: number; cost_usd: number; sessions: number }
 export interface Burn { window_min: number; usd_per_hour: number; tokens_per_min: number; turns: number }
 
 export interface Summary {

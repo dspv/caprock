@@ -201,6 +201,38 @@ func TestSummarize(t *testing.T) {
 	}
 }
 
+// Sessions in a ProjectShare must count distinct sessions, not events — the
+// panel on Now uses it to say "who is working in this repo".
+func TestSummarizeProjectSessions(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	cost := 0.01
+	// Two sessions in "alpha" (two events each) and one in "beta".
+	for i, tc := range []struct{ sid, project string }{{"a1", "alpha"}, {"a1", "alpha"}, {"a2", "alpha"}, {"a2", "alpha"}, {"b1", "beta"}} {
+		ev := &event.Event{SessionID: tc.sid, Source: event.SourceTranscript, Kind: event.KindTurnAssistant, Model: "claude-opus-5",
+			Ts: time.UnixMilli(2000), Tokens: &event.TokenDelta{In: 1, Out: 1}, CostUSD: &cost}
+		// Unique dedup key per row so both events of a session are stored.
+		ev.Key = fmt.Sprintf("%s-%d", tc.sid, i)
+		if _, err := InsertEvent(ctx, s.db, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = UpsertSession(ctx, s.db, "a1", SessionPatch{Project: "alpha"})
+	_ = UpsertSession(ctx, s.db, "a2", SessionPatch{Project: "alpha"})
+	_ = UpsertSession(ctx, s.db, "b1", SessionPatch{Project: "beta"})
+	sum, err := Summarize(ctx, s.db, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int64{}
+	for _, p := range sum.Projects {
+		got[p.Project] = p.Sessions
+	}
+	if got["alpha"] != 2 || got["beta"] != 1 {
+		t.Fatalf("sessions per project = %v, want alpha=2 beta=1 (%+v)", got, sum.Projects)
+	}
+}
+
 func TestProjectFromCwd(t *testing.T) {
 	for in, want := range map[string]string{"/Users/x/dev/caprock": "caprock", `C:\Users\x\proj\`: "proj", "": "", "solo": "solo"} {
 		if got := ProjectFromCwd(in); got != want {

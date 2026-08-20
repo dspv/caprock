@@ -3,6 +3,7 @@ import { useApi } from '@/lib/useApi'
 import { live, useLive } from '@/lib/live'
 import { fmtAgo, fmtPct, fmtTokens, fmtUSD, shortId } from '@/lib/format'
 import { Badge, Empty, Panel, Stat } from '@/components/ui'
+import { ProjectsPanel } from '@/components/Projects'
 import { href } from '@/lib/router'
 import { useEffect, useState } from 'react'
 
@@ -52,6 +53,8 @@ export function NowScreen() {
           <Stat label="Cache hit" value={summary.data ? fmtPct(summary.data.savings.hit_rate * 100) : '—'} sub={summary.data ? `${fmtPct(summary.data.savings.cut_pct)} input cost cut` : undefined} tone={summary.data && summary.data.savings.hit_rate > 0.5 ? 'ok' : undefined} />
         </div>
       </Panel>
+
+      <ProjectsPanel sessions={list} />
 
       {sessions.error && !sessions.data && (
         <Empty title="Cannot reach the daemon">{sessions.error.message} — is <span className="mono">caprock up</span> running?</Empty>
