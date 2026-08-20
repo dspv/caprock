@@ -210,3 +210,28 @@ func TestRepairSkipsLinesWithoutAMessage(t *testing.T) {
 		t.Fatalf("repaired %d rows, want 1", n)
 	}
 }
+
+// Subagent transcripts nest at varying depths under a session directory, and a
+// row's recorded path may be any of them while the message it needs lives in
+// the main transcript. The sweep must climb to the project directory whatever
+// the depth, and must not escape past it.
+func TestProjectRoot(t *testing.T) {
+	root := filepath.Join("home", ".claude", "projects")
+	project := filepath.Join(root, "-Users-x-dev-app")
+	cases := map[string]string{
+		project: project,
+		filepath.Join(project, "sess-1", "subagents"):                        project,
+		filepath.Join(project, "sess-1", "subagents", "workflows", "wf_abc"): project,
+		filepath.Join(project, "a", "b", "c", "d"):                           project,
+	}
+	for in, want := range cases {
+		if got := projectRoot(in); got != want {
+			t.Errorf("projectRoot(%q) = %q, want %q", in, got, want)
+		}
+	}
+	// With no projects marker anywhere, stay put rather than wander upward.
+	orphan := filepath.Join("tmp", "somewhere", "else")
+	if got := projectRoot(orphan); got != orphan {
+		t.Errorf("projectRoot(%q) = %q, want it unchanged", orphan, got)
+	}
+}

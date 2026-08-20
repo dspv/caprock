@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -70,42 +71,55 @@ func RepairAssistantText(ctx context.Context, db *sql.DB, log *slog.Logger) (rep
 		return 0, nil
 	}
 
+	// Scan each transcript at most once. Sessions frequently point at the same
+	// files, and the sibling sweep below revisits them, so without this the
+	// same multi-megabyte file is parsed repeatedly and rows that need a file
+	// scanned "late" are missed on the pass that could have fixed them.
+	scanned := map[string]bool{}
+	scan := func(file string, wanted map[string]int64, texts map[string]string) {
+		if len(wanted) == 0 || scanned[file] {
+			return
+		}
+		scanned[file] = true
+		found, err := textsByMessageID(file, wanted)
+		if err != nil {
+			if log != nil && !errors.Is(err, os.ErrNotExist) {
+				log.Debug("repair: cannot read transcript", "component", "ingest", "path", file, "err", err)
+			}
+			return
+		}
+		for id, text := range found {
+			texts[id] = text
+		}
+	}
+
 	for path, targets := range byFile {
 		wanted := make(map[string]int64, len(targets))
 		for _, t := range targets {
 			wanted[t.messageID] = t.id
 		}
-		texts, err := textsByMessageID(path, wanted)
-		if err != nil {
-			// A missing or unreadable transcript is not fatal: the rows simply
-			// keep the text they already have.
-			if log != nil && !errors.Is(err, os.ErrNotExist) {
-				log.Debug("repair: cannot read transcript", "component", "ingest", "path", path, "err", err)
-			}
-			continue
-		}
-		// A session's recorded transcript_path is not always where its messages
-		// live: a session whose last line arrived on a subagent transcript has
-		// that file recorded, while the main-thread turns sit in a sibling file
-		// in the same project directory. Sweep the siblings for whatever the
-		// recorded path did not account for.
+		texts := make(map[string]string, len(wanted))
+		scanned = map[string]bool{} // per group: a file may hold ids for several groups
+		scan(path, wanted, texts)
+
+		// A session's recorded transcript_path is frequently NOT where its
+		// messages live: Claude Code records whichever file the last line
+		// arrived on, so main-thread turns end up under a subagent path and
+		// subagent turns under the parent. Sweep the whole project tree for
+		// whatever the recorded path did not account for.
 		if missing := remaining(wanted, texts); len(missing) > 0 {
 			for _, sibling := range siblingTranscripts(path) {
-				found, err := textsByMessageID(sibling, missing)
-				if err != nil {
-					continue
-				}
-				for id, text := range found {
-					texts[id] = text
-					delete(missing, id)
-				}
-				if len(missing) == 0 {
+				scan(sibling, missing, texts)
+				if missing = remaining(wanted, texts); len(missing) == 0 {
 					break
 				}
 			}
 		}
 		for messageID, text := range texts {
-			id := wanted[messageID]
+			id, ok := wanted[messageID]
+			if !ok {
+				continue
+			}
 			n, err := updateText(ctx, db, id, text)
 			if err != nil {
 				return repaired, err
@@ -114,6 +128,26 @@ func RepairAssistantText(ctx context.Context, db *sql.DB, log *slog.Logger) (rep
 		}
 	}
 	return repaired, nil
+}
+
+// projectRoot climbs out of any nesting under a session directory to the
+// project directory itself (the one Claude Code names after the encoded cwd).
+// It stops at the first ancestor whose own parent is the projects root, and
+// gives up rather than escaping the tree if that marker is never found.
+func projectRoot(dir string) string {
+	const marker = "projects"
+	cur := dir
+	for i := 0; i < 8; i++ { // bounded: transcripts are never this deep
+		parent := filepath.Dir(cur)
+		if parent == cur { // reached the filesystem root
+			return dir
+		}
+		if filepath.Base(parent) == marker {
+			return cur
+		}
+		cur = parent
+	}
+	return dir
 }
 
 // remaining returns the wanted ids that a scan did not resolve.
@@ -131,27 +165,17 @@ func remaining(wanted map[string]int64, found map[string]string) map[string]int6
 // newest first. Claude Code keeps a session's main transcript and its subagent
 // transcripts side by side, so a message absent from one is usually in another.
 func siblingTranscripts(path string) []string {
-	entries, err := os.ReadDir(filepath.Dir(path))
-	if err != nil {
-		return nil
-	}
 	type cand struct {
 		path string
 		mod  int64
 	}
 	dir := filepath.Dir(path)
-	// When the recorded path is itself a subagent transcript
-	// (<project>/<session-id>/subagents/agent-*.jsonl), the main-thread turns
-	// live two levels up in the project directory. Search from there, so the
-	// sweep covers the parent and every sibling rather than only descendants.
-	if filepath.Base(dir) == "subagents" {
-		dir = filepath.Dir(filepath.Dir(dir))
-		var err error
-		entries, err = os.ReadDir(dir)
-		if err != nil {
-			return nil
-		}
-	}
+	// A recorded path may sit anywhere under the project directory: subagent
+	// transcripts nest as <session-id>/subagents/agent-*.jsonl and can nest
+	// deeper still (.../subagents/workflows/wf_*/agent-*.jsonl). Climb to the
+	// project directory so the sweep sees the main transcript and every
+	// subagent file, whatever the depth.
+	dir = projectRoot(dir)
 	var out []cand
 	add := func(full string, info os.FileInfo) {
 		if full == path {
@@ -159,42 +183,34 @@ func siblingTranscripts(path string) []string {
 		}
 		out = append(out, cand{path: full, mod: info.ModTime().UnixNano()})
 	}
-	for _, e := range entries {
-		// Subagent transcripts live one level down, in
-		// <session-id>/subagents/agent-*.jsonl, so a flat scan of the project
-		// directory misses every message a subagent turn produced.
-		if e.IsDir() {
-			sub := filepath.Join(dir, e.Name(), "subagents")
-			subEntries, err := os.ReadDir(sub)
-			if err != nil {
-				continue
-			}
-			for _, se := range subEntries {
-				if se.IsDir() || !strings.HasSuffix(se.Name(), ".jsonl") {
-					continue
-				}
-				if info, err := se.Info(); err == nil {
-					add(filepath.Join(sub, se.Name()), info)
-				}
-			}
-			continue
+	// Walk the project directory rather than reading it flat: subagent
+	// transcripts sit under <session-id>/subagents/ and sometimes deeper still
+	// (.../subagents/workflows/wf_*/), and a message missing from one file is
+	// usually in one of those.
+	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil //nolint:nilerr // an unreadable subtree is skipped, not fatal
 		}
-		if !strings.HasSuffix(e.Name(), ".jsonl") {
-			continue
+		if d.IsDir() {
+			return nil
 		}
-		if info, err := e.Info(); err == nil {
-			add(filepath.Join(dir, e.Name()), info)
+		if !strings.HasSuffix(d.Name(), ".jsonl") {
+			return nil
 		}
-	}
+		if info, err := d.Info(); err == nil {
+			add(p, info)
+		}
+		return nil
+	})
+	// Newest first: a message is far more likely to be in a recently written
+	// file, so the scan usually stops early even in a large tree.
 	sort.Slice(out, func(i, j int) bool { return out[i].mod > out[j].mod })
-	// Bound the work: a busy project directory can hold hundreds of files, and
-	// this runs once at startup.
-	const maxSiblings = 200
+	// Deliberately unbounded. A busy project can hold ~900 transcripts, and an
+	// arbitrary cap silently left rows unrepaired — the caller stops as soon as
+	// every wanted id is found, and each file is scanned at most once, so the
+	// usual cost is far below the worst case. This runs once, at startup.
 	paths := make([]string, 0, len(out))
-	for i, c := range out {
-		if i >= maxSiblings {
-			break
-		}
+	for _, c := range out {
 		paths = append(paths, c.path)
 	}
 	return paths
