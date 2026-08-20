@@ -23,6 +23,16 @@ export function StatusScreen() {
     ['dashboard', s.ui_built ? 'embedded build' : 'dev server / placeholder'],
   ]
   if (s.hooks) rows.push(['hooks', `${(s.hooks.installed ?? []).length}/${(s.hooks.installed ?? []).length + (s.hooks.missing ?? []).length} events registered in ${s.hooks.settings_path}${s.hooks.shim_exists ? '' : ' (shim missing)'}`])
+  if (s.desktop) {
+    // Percentages of a plan window, not tokens or cost — the file holds nothing
+    // else, and implying otherwise would be an invented number. The app only
+    // samples while it is running, so a stale reading says so.
+    const d = s.desktop
+    rows.push([
+      'claude desktop',
+      `${d.five_hour_pct}% of the 5-hour window · ${d.seven_day_pct}% of the 7-day${d.stale ? ' · last seen ' + new Date(d.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ', app closed since' : ' · now'}`,
+    ])
+  }
   if (s.ingest) rows.push(['ingest', `${s.ingest.files_known} transcripts · ${s.ingest.events_stored} events stored · ${s.ingest.events_deduped} deduped · ${s.ingest.lines_malformed} malformed lines · backfill ${s.ingest.backfill_done ? 'done' : 'running'}`])
   return (
     <div className="grid gap-3 max-w-3xl">

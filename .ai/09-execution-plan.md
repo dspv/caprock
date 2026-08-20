@@ -222,7 +222,9 @@ committed to a release yet; each item still needs its own DoD before it starts.
   that would mean the daemon killing the process running its own upgrade, and
   running a package manager from a web page is a surface a local tool should
   not open.
-- **B3 — Claude desktop app usage.** Requested by an early user who also uses
+- **B3 — Claude desktop app usage (DONE, cheap variant).** One line on the status screen — the two plan-window percentages and their age — rather than the stored, charted version first sketched. The full version was costed at 7-9 hours and rejected: the file carries no tokens and no cost, so a chart of percentages would answer a question nobody asked, and the samples are full of gaps because the app only writes while running. See [03-contracts.md](03-contracts.md).
+
+  Original note kept for the reasoning: Requested by an early user who also uses
   the Claude desktop app for non-repo work. Feasibility check done: only
   `~/Library/Application Support/Claude/plan-usage-history.json` is readable —
   numeric plan-usage samples (roughly 5-minute granularity), **no tokens, no

@@ -190,6 +190,14 @@ export interface Status {
   orchestration: boolean
   events: number
   retention_days: number
+  /** The Claude desktop app's own plan usage, when this machine has any. */
+  desktop?: {
+    five_hour_pct: number
+    seven_day_pct: number
+    at: number
+    /** The app only writes while running, so an old reading describes the past. */
+    stale: boolean
+  }
 }
 
 export interface SpawnRequest { cwd: string; worktree?: string; model?: string; permission_mode?: string; args?: string[] }

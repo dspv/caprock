@@ -22,6 +22,7 @@ import (
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/cost"
+	"github.com/dspv/caprock/internal/desktop"
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/hive"
 	"github.com/dspv/caprock/internal/hookd"
@@ -461,6 +462,9 @@ type Status struct {
 	ActiveLoops     int           `json:"active_loops"`
 	Events          int64         `json:"events"`
 	RetentionDays   int           `json:"retention_days"`
+	// Desktop is the Claude desktop app's own plan usage, when it has any on
+	// this machine. Omitted entirely otherwise — most people do not use it.
+	Desktop *desktop.Reading `json:"desktop,omitempty"`
 }
 
 // PricingStatus summarizes the table in force.
@@ -484,6 +488,11 @@ func (d *Daemon) status(_ context.Context) any {
 	if d.tail != nil {
 		s := d.tail.Stats()
 		st.Ingest = &s
+	}
+	// Read on request from a file the machine already has: no storage, no
+	// polling, and absence is a normal answer rather than an error.
+	if r, err := desktop.Latest(); err == nil {
+		st.Desktop = &r
 	}
 	if p, err := hooks.DefaultSettingsPath(); err == nil {
 		if hs, err := hooks.Inspect(p, config.ShimPath(d.opt.DataDir)); err == nil {
