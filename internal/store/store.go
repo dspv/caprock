@@ -24,8 +24,11 @@ var migrationFS embed.FS
 
 // Meta keys.
 const (
-	MetaSchemaVersion  = "schema_version"
-	MetaPricingVersion = "pricing_version"
+	MetaSchemaVersion = "schema_version"
+	// MetaTranscriptSchema records the parser version that wrote the events, so
+	// a bump can trigger a one-time re-derivation of affected payloads.
+	MetaTranscriptSchema = "transcript_schema_version"
+	MetaPricingVersion   = "pricing_version"
 )
 
 // Store wraps the database handle.

@@ -134,6 +134,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/sessions", s.handleSessions)
 	m.HandleFunc("GET /v1/sessions/{id}", s.handleSession)
 	m.HandleFunc("GET /v1/sessions/{id}/events", s.handleSessionEvents)
+	m.HandleFunc("GET /v1/sessions/{id}/notes", s.handleSessionNotes)
+	m.HandleFunc("GET /v1/notes", s.handleSearchNotes)
 	m.HandleFunc("GET /v1/sessions/{id}/diff", s.handleSessionDiff)
 	m.HandleFunc("GET /v1/stats/summary", s.handleSummary)
 	m.HandleFunc("GET /v1/update", s.handleUpdate)
@@ -310,6 +312,39 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		last = []event.Event{}
 	}
 	writeJSON(w, http.StatusOK, SessionDetail{SessionSummary: sum, Files: files, Events: last})
+}
+
+// handleSessionNotes returns what Claude said in a session, in prose, newest
+// first. Subagent sidechains are excluded — they are about half of all
+// assistant turns, and presenting a subagent's words as the main thread's is
+// worse than showing nothing.
+func (s *Server) handleSessionNotes(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	notes, err := store.SessionNotes(r.Context(), s.d.Store.DB(), r.PathValue("id"), limit)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if notes == nil {
+		notes = []store.AssistantNote{}
+	}
+	writeJSON(w, http.StatusOK, notes)
+}
+
+// handleSearchNotes searches Claude's prose across every session, because the
+// question people actually have is "which session was it where Claude explained
+// the SSO thing?" rather than "show me session 17". Everything stays local.
+func (s *Server) handleSearchNotes(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	notes, err := store.SearchNotes(r.Context(), s.d.Store.DB(), r.URL.Query().Get("q"), limit)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if notes == nil {
+		notes = []store.AssistantNote{}
+	}
+	writeJSON(w, http.StatusOK, notes)
 }
 
 func (s *Server) handleSessionEvents(w http.ResponseWriter, r *http.Request) {

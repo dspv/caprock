@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -425,5 +426,103 @@ func TestRateLimitSnapshotsAndPace(t *testing.T) {
 	_ = RecordRateLimit(ctx, s.db, RateLimitSnapshot{Window: "seven_day", Ts: base + 45_000, UsedPercentage: 18, ResetsAt: reset + 3}, "s1")
 	if _, ok, _ := RateLimitPace(ctx, s.db, "seven_day", reset+3); ok {
 		t.Fatal("pace reported from samples <60s apart")
+	}
+}
+
+// Notes are the "what did Claude actually say" queries. Two things must hold or
+// the feature misleads: subagent chatter must never be presented as the main
+// thread's words (45% of assistant turns are sidechains), and a mid-thought
+// aside must be distinguishable from a real conclusion.
+func TestSessionNotes(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	summary := strings.Repeat("Here is what changed and what I still need. ", 12)
+
+	rows := []struct {
+		key, text, agentID string
+		sidechain          bool
+	}{
+		{"a", summary, "", false},
+		{"b", "Let me check that.", "", false},                         // fragment
+		{"c", "subagent conclusions here " + summary, "agent-1", true}, // must not surface
+		{"d", "", "", false},                                           // pure tool_use turn
+	}
+	for _, r := range rows {
+		payload, _ := json.Marshal(map[string]any{"text": r.text, "sidechain": r.sidechain})
+		ev := &event.Event{
+			SessionID: "s1", Source: event.SourceTranscript, Kind: event.KindTurnAssistant,
+			Model: "claude-opus-5", Ts: time.UnixMilli(1000), Key: r.key,
+			AgentID: r.agentID, Payload: payload,
+		}
+		if _, err := InsertEvent(ctx, s.db, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = UpsertSession(ctx, s.db, "s1", SessionPatch{Project: "demo"})
+
+	notes, err := SessionNotes(ctx, s.db, "s1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(notes) != 2 {
+		t.Fatalf("got %d notes, want 2 (sidechain and empty excluded): %+v", len(notes), notes)
+	}
+	for _, n := range notes {
+		if strings.Contains(n.Text, "subagent") {
+			t.Fatal("a sidechain note leaked into the main thread")
+		}
+		if n.Project != "demo" {
+			t.Fatalf("project not joined: %+v", n)
+		}
+	}
+	// Newest first: the fragment was inserted after the summary.
+	if !notes[0].Fragment {
+		t.Fatalf("short aside should be marked a fragment: %+v", notes[0])
+	}
+	if notes[1].Fragment {
+		t.Fatalf("a full summary must not be marked a fragment: %d runes", len([]rune(notes[1].Text)))
+	}
+}
+
+func TestSearchNotes(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	texts := []string{
+		"The SSO header resolves to user_id, and the suffix is applied after.",
+		"Deployed. All tests green, ruff clean.",
+		"A discount of 100% would be free, and file_name matched.",
+	}
+	for i, txt := range texts {
+		payload, _ := json.Marshal(map[string]any{"text": txt, "sidechain": false})
+		ev := &event.Event{SessionID: "s1", Source: event.SourceTranscript, Kind: event.KindTurnAssistant,
+			Ts: time.UnixMilli(int64(1000 + i)), Key: fmt.Sprintf("k%d", i), Payload: payload}
+		if _, err := InsertEvent(ctx, s.db, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = UpsertSession(ctx, s.db, "s1", SessionPatch{Project: "demo"})
+
+	got, err := SearchNotes(ctx, s.db, "SSO", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || !strings.Contains(got[0].Text, "SSO header") {
+		t.Fatalf("search for SSO returned %+v", got)
+	}
+
+	// Wildcards a user types must be literal, not LIKE syntax.
+	if got, _ = SearchNotes(ctx, s.db, "100%", 0); len(got) != 1 {
+		t.Fatalf("literal %% search returned %d rows, want 1", len(got))
+	}
+	if got, _ = SearchNotes(ctx, s.db, "file_name", 0); len(got) != 1 {
+		t.Fatalf("literal _ search returned %d rows, want 1", len(got))
+	}
+	// An underscore as a wildcard would also match "file-name"; it must not.
+	if got, _ = SearchNotes(ctx, s.db, "fileXname", 0); len(got) != 0 {
+		t.Fatalf("underscore behaved as a wildcard: %+v", got)
+	}
+	// Empty query returns recent notes rather than nothing.
+	if got, _ = SearchNotes(ctx, s.db, "  ", 0); len(got) != 3 {
+		t.Fatalf("empty query returned %d rows, want 3", len(got))
 	}
 }

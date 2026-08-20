@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/dspv/caprock/internal/event"
 )
@@ -19,7 +20,10 @@ import (
 // SchemaVersion is bumped whenever the parser's expectations of the transcript
 // shape change. Stored with the daemon's meta so a future migration can decide
 // whether historical events need re-derivation.
-const SchemaVersion = 1
+//
+// v2 (2026-08-20): assistant text is clipped on runes rather than bytes, at a
+// much higher limit. Rows written by v1 may be short and may end in U+FFFD.
+const SchemaVersion = 2
 
 // Line is the subset of a transcript line the parser understands.
 type Line struct {
@@ -229,6 +233,31 @@ func (l *Line) Events(fallbackTs time.Time) []event.Event {
 	return out
 }
 
+// MaxAssistantText caps the assistant prose kept per turn. It exists to stop a
+// pathological turn from bloating the database, not to summarise: the value is
+// well above a normal closing summary so the thing people actually come back
+// for — "what changed, and what I still need from you" — is stored whole.
+const MaxAssistantText = 16000
+
+// clipRunes truncates to at most n RUNES. The previous cap counted bytes, which
+// cut multi-byte prose at roughly half the intended length (Cyrillic is 2 bytes
+// per character) and, worse, sliced through the middle of a rune — leaving a
+// U+FFFD at the end of 22% of clipped rows. Truncating on a rune boundary is
+// the only correct way to shorten UTF-8 text.
+func clipRunes(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+	count := 0
+	for i := range s { // ranging a string yields rune-start byte offsets
+		if count == n {
+			return s[:i] + "…"
+		}
+		count++
+	}
+	return s
+}
+
 func assistantPayload(l *Line) json.RawMessage {
 	var text []string
 	var tools []string
@@ -242,10 +271,7 @@ func assistantPayload(l *Line) json.RawMessage {
 			tools = append(tools, b.Name)
 		}
 	}
-	joined := strings.Join(text, "\n")
-	if len(joined) > 2000 {
-		joined = joined[:2000] + "…"
-	}
+	joined := clipRunes(strings.Join(text, "\n"), MaxAssistantText)
 	return mustJSON(map[string]any{
 		"model": l.Message.Model, "message_id": l.Message.ID, "text": joined, "tools": tools,
 		"sidechain": l.IsSidechain, "_from": "transcript",

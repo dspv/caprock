@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/dspv/caprock/internal/event"
 )
@@ -343,10 +344,122 @@ func scanEvent(sc interface{ Scan(...any) error }) (event.Event, error) {
 	return ev, nil
 }
 
+// AssistantNote is one thing Claude actually said, in prose — the reasoning and
+// the closing "here is what changed, here is what I still need from you" that
+// people otherwise copy into a notepad or lose to terminal scrollback.
+type AssistantNote struct {
+	EventID   int64  `json:"event_id"`
+	SessionID string `json:"session_id"`
+	Project   string `json:"project"`
+	Ts        int64  `json:"ts"`
+	Model     string `json:"model"`
+	Text      string `json:"text"`
+	// Fragment marks a note that reads as mid-thought rather than a conclusion
+	// ("Let me check that"), so a caller can avoid presenting it as a summary.
+	Fragment bool `json:"fragment"`
+}
+
+// fragmentMaxRunes is the length under which a note reads as mid-thought rather
+// than a conclusion. Measured against real sessions: closing summaries ran to
+// roughly 800-2400 characters, while interrupted sessions ended on a one-line
+// aside. The label matters when asking "how did this session end" — 60% of all
+// notes are legitimately short mid-session remarks, so a caller should use it
+// to qualify a *final* note, never to hide prose.
+const fragmentMaxRunes = 240
+
+// assistantTextWhere selects assistant turns that carry prose from the MAIN
+// thread. The sidechain filter is not optional: 45% of turn.assistant events
+// are subagent chatter, so without it "the last thing Claude said" returns a
+// subagent's words about half the time.
+const assistantTextWhere = `
+	e.kind = 'turn.assistant'
+	AND COALESCE(e.agent_id, '') = ''
+	AND json_extract(e.payload, '$.sidechain') IS NOT 1
+	AND COALESCE(json_extract(e.payload, '$.text'), '') != ''`
+
+// SessionNotes returns what Claude said in a session, newest first. Sidechains
+// are excluded; the caller gets main-thread prose only.
+func SessionNotes(ctx context.Context, q Querier, sessionID string, limit int) ([]AssistantNote, error) {
+	if limit <= 0 || limit > MaxEventPage {
+		limit = 200
+	}
+	rows, err := q.QueryContext(ctx, `
+		SELECT e.id, e.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''),
+		       COALESCE(json_extract(e.payload, '$.text'), '')
+		FROM events e LEFT JOIN sessions se ON se.session_id = e.session_id
+		WHERE e.session_id = ? AND `+assistantTextWhere+`
+		ORDER BY e.id DESC LIMIT ?`, sessionID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanNotes(rows)
+}
+
+// SearchNotes finds prose across every session — the question people actually
+// ask is "which session was it where Claude explained the SSO thing?", not
+// "show me session 17". An empty query returns the most recent notes.
+func SearchNotes(ctx context.Context, q Querier, query string, limit int) ([]AssistantNote, error) {
+	if limit <= 0 || limit > MaxEventPage {
+		limit = 100
+	}
+	sql := `
+		SELECT e.id, e.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''),
+		       COALESCE(json_extract(e.payload, '$.text'), '')
+		FROM events e LEFT JOIN sessions se ON se.session_id = e.session_id
+		WHERE ` + assistantTextWhere
+	args := []any{}
+	if strings.TrimSpace(query) != "" {
+		// LIKE with an escaped pattern: the corpus is one developer's own
+		// sessions, so a scan is cheap, and it avoids an FTS table that would
+		// need migrating and rebuilding for historical rows.
+		sql += ` AND json_extract(e.payload, '$.text') LIKE ? ESCAPE '\'`
+		args = append(args, "%"+escapeLike(strings.TrimSpace(query))+"%")
+	}
+	sql += ` ORDER BY e.id DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := q.QueryContext(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanNotes(rows)
+}
+
+// escapeLike neutralises LIKE wildcards so a user searching for "100%" or a
+// path with an underscore gets what they typed.
+func escapeLike(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(s)
+}
+
+func scanNotes(rows *sql.Rows) ([]AssistantNote, error) {
+	var out []AssistantNote
+	for rows.Next() {
+		var n AssistantNote
+		if err := rows.Scan(&n.EventID, &n.SessionID, &n.Project, &n.Ts, &n.Model, &n.Text); err != nil {
+			return nil, err
+		}
+		n.Fragment = utf8.RuneCountInString(n.Text) < fragmentMaxRunes
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
+// MaxEventPage is the most events one ListEvents call will return. Callers that
+// need more must paginate with `after`.
+const MaxEventPage = 5000
+
 // ListEvents returns events for a session with id > after, oldest first.
 func ListEvents(ctx context.Context, q Querier, sessionID string, after int64, limit int) ([]event.Event, error) {
-	if limit <= 0 || limit > 5000 {
+	// Asking for more than the ceiling clamps to the ceiling. It used to fall
+	// back to 500 — so a caller requesting "everything" silently received the
+	// *start* of a session and could mistake an early fragment for its ending.
+	if limit <= 0 {
 		limit = 500
+	}
+	if limit > MaxEventPage {
+		limit = MaxEventPage
 	}
 	rows, err := q.QueryContext(ctx, `SELECT `+eventCols+` FROM events WHERE session_id = ? AND id > ? ORDER BY id ASC LIMIT ?`, sessionID, after, limit)
 	if err != nil {

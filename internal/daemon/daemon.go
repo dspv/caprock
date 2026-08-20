@@ -134,7 +134,19 @@ func newDaemon(ctx context.Context, opt Options) (*Daemon, error) {
 		}
 		_ = st.SetMeta(ctx, store.MetaPricingVersion, table.Version)
 	}
-	_ = st.SetMeta(ctx, "transcript_schema_version", strconv.Itoa(ingest.SchemaVersion))
+	// Parser v1 clipped assistant prose on byte boundaries, which cut multi-byte
+	// text at roughly half the intended length and corrupted the tail. Re-derive
+	// the affected rows from the transcripts once, then record the new version.
+	// Best-effort: a failed repair must never stop the daemon from starting.
+	prevSchema, _ := st.GetMeta(ctx, store.MetaTranscriptSchema)
+	if ingest.NeedsTextRepair(prevSchema) {
+		if n, err := ingest.RepairAssistantText(ctx, st.DB(), log); err != nil {
+			log.Warn("could not repair truncated assistant text", "component", "ingest", "err", err)
+		} else if n > 0 {
+			log.Info("repaired truncated assistant text", "component", "ingest", "events", n, "from_schema", prevSchema)
+		}
+	}
+	_ = st.SetMeta(ctx, store.MetaTranscriptSchema, strconv.Itoa(ingest.SchemaVersion))
 
 	b := bus.New()
 	rec := rollup.New(st, table, b, log)

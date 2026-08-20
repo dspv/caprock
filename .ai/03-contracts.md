@@ -44,6 +44,8 @@ The installer writes, for each of the eight events, a matcher-less entry (`match
 GET  /v1/sessions?active=true          → SessionSummary[]
 GET  /v1/sessions/{id}                 → SessionDetail (stats + last N events)
 GET  /v1/sessions/{id}/events?after=…  → Event[] (paginated)
+GET  /v1/sessions/{id}/notes           → AssistantNote[] — what Claude said, newest first
+GET  /v1/notes?q=…                     → AssistantNote[] — search that prose across sessions
 GET  /v1/sessions/{id}/diff            → { files: FileDiff[] } | 409 not-a-git-repo
 GET  /v1/stats/summary?range=today     → totals: tokens, cost, sessions, models
 GET  /v1/settings                      → user-stated settings (plan, update checks)
@@ -66,6 +68,12 @@ POST /v1/statusline                    → 204 (bearer-token gated) {session_id,
 GET  /healthz                          → {status:"ok", version}
 WS   /v1/live                          → first frame is {type:"hello", data:{server_time}}; a "session" frame carries {session, stats}
 ```
+
+`/v1/sessions/{id}/notes` and `/v1/notes` return `AssistantNote[]` — `{event_id, session_id, project, ts, model, text, fragment}` — the prose Claude wrote, as opposed to the tool calls it made. Three rules are baked into the query rather than left to callers. **Subagent sidechains are excluded** (`agent_id = ''` and `payload.sidechain IS NOT 1`): about 45% of assistant turns are subagent chatter, so an unfiltered "what did Claude say" answers with a subagent's words roughly half the time. **`fragment` marks a note shorter than 240 runes** — mid-thought asides like "Let me check that" — so a caller can avoid presenting one as a session's conclusion; ~60% of all notes are legitimately short, so the flag qualifies a *final* note and must never be used to hide prose. **Search is a LIKE scan with wildcards escaped**, so a query containing `%` or `_` matches literally; the corpus is one developer's own sessions, so a scan is cheap and avoids an FTS table that would need rebuilding for historical rows.
+
+`payload.text` on `turn.assistant` is capped at **16000 runes** (`ingest.MaxAssistantText`), clipped on a rune boundary. Parser schema v1 capped at 2000 **bytes** and sliced at an arbitrary offset, which cut multi-byte prose at roughly half the intended length and left `U+FFFD` at the end of about a fifth of clipped rows — disproportionately on closing summaries. `ingest.SchemaVersion` is therefore **2**, and a daemon started against a v1 database re-derives the affected rows once from the transcripts still on disk (`ingest.RepairAssistantText`), rewriting only `payload.text` and leaving every other key, event id, and cost untouched. Rows whose transcript is gone keep what they have. Extended thinking is never stored at all — only `type: "text"` blocks are read — so this content cannot leak Claude's reasoning.
+
+`ListEvents` clamps `limit` to `MaxEventPage` (5000) instead of the old silent fallback to 500, which made a caller asking for everything receive the *start* of a session and mistake an early fragment for its ending.
 
 `GET /v1/update` returns `{enabled, current, latest, update_available, command, url, checked_at, error}` from cache and **performs no network I/O** — a page load must never cause an outbound call. `POST /v1/update/check` performs one, and returns **403 while `update_checks` is false**: the opt-in is enforced by the server, not merely hidden in the UI, so no page or local script can make Caprock reach the network uninvited. Checks are throttled to once a day unless forced, the request carries no body or credentials, and a failure is reported in `error` rather than as an error status — not knowing about a release must not read as a broken dashboard. `command` is the upgrade command inferred from the running binary's path (Homebrew, Scoop, `go install`); when no package manager owns the binary it is empty and the UI offers `url` instead. `update_available` is never true for a `dev` or `git describe` build. Caprock does not install the update: replacing the running binary would mean the daemon killing the process executing the command, and running a package manager on the user's behalf from a web page is a surface a local tool should not open.
 
