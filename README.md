@@ -21,6 +21,27 @@ caprock up        # opens localhost:4173; offers to set up hooks + plan-limit st
 Have Go? `go install github.com/dspv/caprock/cmd/caprock@latest` — the dashboard
 is embedded, so it works with no Node build. No package manager? Grab a binary
 from [Releases](https://github.com/dspv/caprock/releases).
+
+<details>
+<summary><b>Coming from the old Python <code>caprock</code>?</b> Remove it first.</summary>
+
+There was an earlier, unrelated Caprock on PyPI — a command-line stats tool that
+read Claude Code usage from a proxy. This one is a Go binary with a dashboard and
+shares nothing with it: different data, different install, same name. Remove the
+old one so the two `caprock` commands don't shadow each other:
+
+```bash
+pipx uninstall caprock || pip uninstall -y caprock   # whichever you used
+rm -rf ~/.caprock                                    # its old data
+which caprock                                        # should now print nothing
+```
+
+Then install as above. **Nothing is lost:** this version reads the transcripts
+Claude Code already writes, so your whole history appears on first run — no
+migration, no import. (Only `~/.caprock/savings.jsonl` from the old tool is
+dropped; copy it elsewhere first if you want to keep those numbers.)
+
+</details>
 On first run `caprock up` asks before adding its hook and status-line entries to
 `~/.claude/settings.json` (it backs the file up and never touches your other
 settings). Say no and it still reads your history from transcripts.
