@@ -10,8 +10,10 @@ import { findAttention } from '@/lib/attention'
 import { UpdateBanner } from '@/components/UpdateBanner'
 import { SpawnDialog } from '@/components/SpawnDialog'
 import { usePlan } from '@/components/PlanPicker'
+import { costBasis, costBasisLong } from '@/components/CostBasis'
 import { href } from '@/lib/router'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useNow } from '@/lib/useNow'
 
 export function NowScreen() {
   const [showEnded, setShowEnded] = useState(false)
@@ -47,7 +49,7 @@ export function NowScreen() {
           * colour pointed away from the money. The rest are reference figures
           * and step down, which is what makes room for the headline. */}
         <div className="grid grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr] divide-x divide-border">
-          <Stat label="Cost today" value={fmtUSD(summary.data?.cost_usd)} sub="at API list price · not a bill" tone="info" size="hero" />
+          <Stat label="Cost today" value={fmtUSD(summary.data?.cost_usd)} sub={<span title={costBasisLong(plan)}>{costBasis(plan)}</span>} tone="info" size="hero" />
           <Stat label="Burn now" value={summary.data ? `${fmtUSD(summary.data.burn.usd_per_hour)}/h` : '—'} sub={summary.data ? `${fmtTokens(Math.round(summary.data.burn.tokens_per_min))} tok/min · last ${summary.data.burn.window_min}m` : undefined} />
           <Stat label="Sessions" value={summary.data ? summary.data.sessions : '—'} sub={summary.data ? `${summary.data.active_sessions} active` : undefined} size="compact" />
           <Stat label="Turns" value={summary.data ? summary.data.turns : '—'} sub={summary.data ? `${summary.data.tool_calls} tool calls` : undefined} size="compact" />
@@ -151,11 +153,4 @@ export function SessionCard({ s, now }: { s: SessionSummary; now: number }) {
   )
 }
 
-export function useNow(ms: number): number {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), ms)
-    return () => window.clearInterval(id)
-  }, [ms])
-  return now
-}
+export { useNow }

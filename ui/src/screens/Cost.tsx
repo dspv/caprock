@@ -6,6 +6,7 @@ import { Empty, Panel, Skeleton, Stat } from '@/components/ui'
 import { BarChart, BarReadout } from '@/components/BarChart'
 import { PlanValue } from '@/components/PlanValue'
 import { usePlan } from '@/components/PlanPicker'
+import { costBasis, costBasisLong } from '@/components/CostBasis'
 
 type Range = 'today' | '7d' | '30d' | 'all'
 
@@ -27,14 +28,20 @@ export function CostScreen() {
         {(['today', '7d', '30d', 'all'] as Range[]).map((r) => (
           <button key={r} onClick={() => setRange(r)} className={`px-2 py-1 text-[12px] rounded-sm ${range === r ? 'bg-panel-2 text-fg' : 'text-fg-muted hover:text-fg'}`}>{r}</button>
         ))}
-        <span className="ml-auto text-[11px] text-fg-faint">Costs are computed at Anthropic API list prices{s ? ` (table ${s.pricing_version})` : ''}. On a Pro/Max plan they are an API-equivalent, not money out of pocket.</span>
+        <span className="ml-auto text-[11px] text-fg-faint">{costBasisLong(plan)}{s ? ` (table ${s.pricing_version})` : ''}</span>
       </div>
       {summary.error && !s && <Empty title="Cannot reach the daemon">{summary.error.message}</Empty>}
       <PlanValue summary={s} plan={plan} days={rangeDays(range, s?.from_ms)} />
       <Panel title={`Totals · ${range}`}>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-border">
-          <Stat label="Cost" value={fmtUSD(s?.cost_usd)} sub={s ? `${s.sessions} sessions` : undefined} tone="info" size="hero" />
-          <Stat label="Burn now" value={s ? `${fmtUSD(s.burn.usd_per_hour)}/h` : '—'} sub={s ? `${fmtTokens(Math.round(s.burn.tokens_per_min))} tok/min · ${s.burn.turns} turns / ${s.burn.window_min}m` : undefined}  />
+          {/* The basis belongs on the tile, not only in the corner note above:
+              the misreading happens where the number is. */}
+          {/* The basis belongs on the tile, not only in the corner note above:
+              the misreading happens where the number is. The session count used
+              to live here and now does not — appended to the basis it pushed
+              the line past the column and truncated the part that matters. */}
+          <Stat label="Cost" value={fmtUSD(s?.cost_usd)} sub={<span title={costBasisLong(plan)}>{costBasis(plan)}</span>} tone="info" size="hero" />
+          <Stat label="Burn now" value={s ? `${fmtUSD(s.burn.usd_per_hour)}/h` : '—'} sub={s ? `${fmtTokens(Math.round(s.burn.tokens_per_min))} tok/min · ${s.sessions} sessions` : undefined}  />
           <Stat label="Input" value={fmtTokens(s?.tokens_in)} sub="fresh, full price" />
           <Stat label="Output" value={fmtTokens(s?.tokens_out)} sub={s ? `${s.turns} turns` : undefined} />
           <Stat label="Cache read" value={fmtTokens(s?.cache_read)} sub={s ? `${fmtPct(s.savings.hit_rate * 100)} hit rate` : undefined} tone={s && s.savings.hit_rate < 0.9 ? 'warn' : undefined} />

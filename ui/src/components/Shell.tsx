@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { useLive } from '@/lib/live'
 import { href, type Route } from '@/lib/router'
 import { fmtAgo } from '@/lib/format'
+import { useNow } from '@/lib/useNow'
 import { useTheme } from '@/lib/theme'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
@@ -80,11 +81,23 @@ function ThemeToggle() {
   )
 }
 
+/**
+ * The one place that says whether this page is still receiving anything — a
+ * quiet dashboard and a dead one look identical, because nothing moves in
+ * either, and the Attention strip deliberately stays silent when all is well.
+ *
+ * The age of the last frame has to be recomputed on a timer, not only when a
+ * frame arrives: on an idle machine no frame arrives *by definition*, so a
+ * label rendered once froze at "live · now" and kept saying it for hours.
+ * That is the exact reading someone glancing from across the room relies on,
+ * and it was the one case where it was wrong.
+ */
 function ConnDot({ state, lastFrameAt }: { state: 'connecting' | 'open' | 'closed'; lastFrameAt: number }) {
+  const now = useNow(1000)
   const cls = state === 'open' ? 'bg-ok' : state === 'connecting' ? 'bg-warn' : 'bg-danger'
-  const label = state === 'open' ? `live · ${lastFrameAt ? fmtAgo(lastFrameAt) : 'connected'}` : state === 'connecting' ? 'connecting…' : 'disconnected — reconnecting'
+  const label = state === 'open' ? `live · ${lastFrameAt ? fmtAgo(lastFrameAt, now) : 'connected'}` : state === 'connecting' ? 'connecting…' : 'disconnected — reconnecting'
   return (
-    <span className="inline-flex items-center gap-1.5" title="WebSocket /v1/live">
+    <span className="inline-flex items-center gap-1.5" title={state === 'open' ? 'Connected to the daemon. The time is when it last sent anything — on an idle machine that keeps counting up, which is normal.' : 'WebSocket /v1/live'}>
       <span className={`inline-block w-1.5 h-1.5 rounded-full ${cls}`} />
       <span className="num">{label}</span>
     </span>

@@ -5,6 +5,8 @@ import { fmtDuration, fmtPct, fmtTokens, fmtUSD, fmtTool } from '@/lib/format'
 import { Empty, Panel, Skeleton, Stat } from '@/components/ui'
 import { groupDays } from './Cost'
 import { BarChart, BarReadout } from '@/components/BarChart'
+import { costBasis, costBasisLong } from '@/components/CostBasis'
+import { usePlan } from '@/components/PlanPicker'
 
 type Range = 'today' | '7d' | '30d' | 'all'
 
@@ -12,6 +14,7 @@ export function HistoryScreen() {
   const [range, setRange] = useState<Range>('all')
   const [activeDay, setActiveDay] = useState<string | null>(null)
   const h = useApi(() => api.history(range), [range], { intervalMs: 15000 })
+  const [plan] = usePlan()
   const d = h.data
   const days = groupDays(d?.daily ?? [])
   const maxTool = Math.max(...(d?.tools ?? []).map((t) => t.count), 1)
@@ -34,7 +37,10 @@ export function HistoryScreen() {
             overnight counts its sleeping hours — hence the honest label. */}
           <Stat size="compact" label="Avg session span" value={d ? fmtDuration(Math.round(d.totals.avg_session_sec * 1000)) : '—'} sub="first to last event" />
           <Stat size="compact" label="Cache hit" value={d ? fmtPct(d.savings.hit_rate * 100) : '—'} sub={d ? `${fmtPct(d.savings.cut_pct)} input cost cut` : undefined} tone={d && d.savings.hit_rate < 0.9 ? 'warn' : undefined} />
-          <Stat label="Cost" value={fmtUSD(d?.totals.cost_usd)} sub="API-equivalent" tone="info" size="hero" />
+          {/* "API-equivalent" was our jargon on the largest number in the
+              product; it explained nothing to someone meeting it for the
+              first time, and three of five readers took it for a bill. */}
+          <Stat label="Cost" value={fmtUSD(d?.totals.cost_usd)} sub={<span title={costBasisLong(plan)}>{costBasis(plan)}</span>} tone="info" size="hero" />
         </div>
       </Panel>
       <div className="grid gap-3 lg:grid-cols-2">

@@ -8,6 +8,8 @@ import { href, navigate } from '@/lib/router'
 import { useNow } from './Now'
 import { SessionNotes } from '@/components/Notes'
 import { TerminalView } from '@/components/Terminal'
+import { costBasisLong } from '@/components/CostBasis'
+import { usePlan } from '@/components/PlanPicker'
 
 type Tab = 'timeline' | 'notes' | 'diff' | 'files' | 'terminal'
 
@@ -15,6 +17,7 @@ export function SessionScreen({ id, tab }: { id: string; tab?: string }) {
   const detail = useApi(() => api.session(id), [id], { intervalMs: 5000 })
   const active: Tab = tab === 'diff' || tab === 'files' || tab === 'terminal' || tab === 'notes' ? tab : 'timeline'
   const now = useNow(1000)
+  const [plan] = usePlan()
   const s = detail.data
   if (detail.error && !s) {
     return <Empty title={detail.error instanceof ApiError && detail.error.status === 404 ? 'Session not found' : 'Cannot load session'}>{detail.error.message}</Empty>
@@ -40,7 +43,11 @@ export function SessionScreen({ id, tab }: { id: string; tab?: string }) {
       </div>
       <Panel>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-border">
-          <Stat label="Cost" value={fmtUSD(s.stats.cost_usd)} sub={s.model || '—'} />
+          {/* One of six columns, so the basis cannot fit beside the model
+              name without truncating — and it is the basis that would be cut.
+              The model stays visible; the basis is on hover, and stated in
+              full on the screens whose whole subject is money. */}
+          <Stat label="Cost" value={fmtUSD(s.stats.cost_usd)} sub={<span title={costBasisLong(plan)}>{s.model || 'unknown model'}</span>} />
           {/* The total includes cache reads, which are usually 99% of it. Breaking
               out only in/out made the subtitle contradict the number above it. */}
           <Stat label="Tokens" value={fmtTokens(total)} sub={`in ${fmtTokens(s.stats.tokens_in)} · out ${fmtTokens(s.stats.tokens_out)} · cache ${fmtTokens(s.stats.cache_read + s.stats.cache_write)}`} />
