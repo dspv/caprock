@@ -27,7 +27,8 @@ settings). Say no and it still reads your history from transcripts.
 
 ![Live activity and cost, right now](docs/shot-now.png)
 
-*What each session is doing, and what it's costing — live.*
+*Left: what every session is doing, as it happens. Right: what each repo costs
+you. Real numbers from a real machine.*
 
 ## What it is
 
@@ -41,13 +42,14 @@ One local binary. Your data never leaves your machine.
 - **Trust it** — orchestrate agents that finish only when the tests pass.
 - **Local-first** — loopback only, no servers, no telemetry, no account. The one thing that can reach the network is an optional check for new releases, off until you turn it on.
 
-Every session on your machine, at a glance:
+What your usage is actually worth — the same work priced at the API rate,
+against what your plan costs. Nobody else tells you this number:
 
-![Every session at a glance](docs/shot-sessions.png)
+![Plan value and cost breakdown](docs/shot-cost.png)
 
-Where the money goes — by model, by project, over time:
+And everything you have ever run through it — measured, not estimated:
 
-![Cost breakdown](docs/shot-cost.png)
+![Lifetime history](docs/shot-history.png)
 
 ## How it works
 

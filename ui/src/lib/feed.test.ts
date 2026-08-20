@@ -91,3 +91,19 @@ describe('shell lines stay readable', () => {
     expect(it_!.detail).not.toContain('/private/tmp/claude-501')
   })
 })
+
+describe('seeding beside live frames', () => {
+  it('keeps history when a live row already arrived', () => {
+    // A live frame lands first; the seeded history must not be discarded.
+    const liveRow = { id: '99', ts: 500, sessionId: 's', icon: '·', text: 'live', tone: 'normal' as const }
+    const history = [
+      { id: '3', ts: 300, sessionId: 's', icon: '·', text: 'older', tone: 'normal' as const },
+      { id: '4', ts: 400, sessionId: 's', icon: '·', text: 'newer', tone: 'normal' as const },
+    ]
+    const seen = new Set([liveRow].map((i) => i.id))
+    const merged = [liveRow, ...history.filter((i) => !seen.has(i.id))]
+      .sort((a, b) => b.ts - a.ts)
+      .slice(0, 60)
+    expect(merged.map((i) => i.id)).toEqual(['99', '4', '3'])
+  })
+})

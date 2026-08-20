@@ -30,18 +30,31 @@ export function ActivityFeed({ sessions, now }: { sessions: SessionSummary[]; no
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      const recent = sessions.filter((s) => s.status !== 'ended').slice(0, 4)
+      // Seed from the most recently active sessions whether or not they are
+      // still running: on a quiet machine every session is "ended", and an
+      // empty feed reads as broken rather than as a calm morning.
+      const recent = [...sessions]
+        .sort((a, b) => b.last_event_at - a.last_event_at)
+        .slice(0, 4)
       const batches = await Promise.all(
         recent.map((s) => api.events(s.session_id, 0, 60).catch(() => [] as never[])),
       )
       if (cancelled) return
       const seeded = batches
         .flat()
-        .map((e) => toFeedItem(e, projects.current.get(e.session_id)))
+        .map((e) => toFeedItem(e))
         .filter((x): x is FeedItem => x !== null)
         .sort((a, b) => b.ts - a.ts)
         .slice(0, 40)
-      setItems((cur) => (cur.length > 0 ? cur : seeded))
+      // Merge rather than skip: a live frame usually lands before this
+      // resolves, and dropping the seed on that basis left the feed showing a
+      // single line with all the history discarded.
+      setItems((cur) => {
+        const seen = new Set(cur.map((i) => i.id))
+        return [...cur, ...seeded.filter((i) => !seen.has(i.id))]
+          .sort((a, b) => b.ts - a.ts)
+          .slice(0, 60)
+      })
     })()
     return () => { cancelled = true }
     // Seeding once is the point — later updates arrive over the WS.
@@ -51,7 +64,7 @@ export function ActivityFeed({ sessions, now }: { sessions: SessionSummary[]; no
   useEffect(() => {
     return live.onFrame((f) => {
       if (f.type !== 'event' || pausedRef.current) return
-      const item = toFeedItem(f.data, projects.current.get(f.data.session_id))
+      const item = toFeedItem(f.data)
       if (item) setItems((cur) => pushItem(cur, item))
     })
   }, [])
@@ -75,7 +88,7 @@ export function ActivityFeed({ sessions, now }: { sessions: SessionSummary[]; no
       ) : (
         <div className="max-h-[420px] overflow-y-auto">
           {items.map((it) => (
-            <Row key={it.id} it={it} now={now} />
+            <Row key={it.id} it={it} now={now} project={projects.current.get(it.sessionId)} />
           ))}
         </div>
       )}
@@ -92,7 +105,7 @@ function toneClass(tone: FeedItem['tone']): string {
   }
 }
 
-function Row({ it, now }: { it: FeedItem; now: number }) {
+function Row({ it, now, project }: { it: FeedItem; now: number; project?: string }) {
   return (
     <a
       href={href({ name: 'session', id: it.sessionId })}
@@ -100,7 +113,7 @@ function Row({ it, now }: { it: FeedItem; now: number }) {
     >
       <span className={`mono text-[12px] w-3 text-center ${toneClass(it.tone)}`}>{it.icon}</span>
       <span className="mono text-[11px] text-fg-muted truncate max-w-[12ch]">
-        {it.project ?? shortId(it.sessionId)}
+        {project ?? it.project ?? shortId(it.sessionId)}
       </span>
       <span className="text-[12px] truncate">
         <span className="text-fg-muted">{it.text}</span>
