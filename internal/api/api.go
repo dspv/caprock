@@ -5,6 +5,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -953,12 +954,25 @@ func (s *Server) agentErr(w http.ResponseWriter, err error) {
 
 // --- helpers ---
 
+// writeJSON serializes into a buffer BEFORE writing the status line. It used
+// to encode straight to the ResponseWriter after writing 200 and discard the
+// error — so a single unserializable value (one event whose timestamp rolled
+// past year 9999 is enough, because json aborts the whole array) produced
+// HTTP 200 with an empty body. The dashboard then threw parsing it, and the
+// failure was invisible in the logs. A failure here is now an honest 500.
 func writeJSON(w http.ResponseWriter, code int, v any) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"response could not be serialized"}` + "\n"))
+		return
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(code)
-	enc := json.NewEncoder(w)
-	enc.SetEscapeHTML(false)
-	_ = enc.Encode(v)
+	_, _ = w.Write(buf.Bytes())
 }
 
 func (s *Server) fail(w http.ResponseWriter, err error) {

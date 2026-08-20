@@ -57,6 +57,10 @@ type DailyStat struct {
 	Sessions    int64   `json:"sessions"`
 }
 
+// activeWindow bounds the "active now" count: a session whose last event is
+// older than this is not active whatever its stored status says.
+const activeWindow = 30 * time.Minute
+
 // Session status values.
 const (
 	StatusActive = "active"
@@ -649,7 +653,14 @@ func Summarize(ctx context.Context, q Querier, fromMs int64) (Summary, error) {
 	if err != nil {
 		return s, err
 	}
-	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE status = 'active'`).Scan(&s.Active); err != nil {
+	// "Active" means active *now*, so it is deliberately not range-scoped — but
+	// it must still be bounded in time. A session is marked active on its first
+	// event and only reaped later, so during a first-run backfill this counted
+	// every historical session at once: a new user's first impression was an
+	// active count in the dozens that then fell to one.
+	if err := q.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sessions WHERE status = 'active' AND last_event_at >= ?`,
+		nowMs()-int64(activeWindow/time.Millisecond)).Scan(&s.Active); err != nil {
 		return s, err
 	}
 	rows, err := q.QueryContext(ctx, `

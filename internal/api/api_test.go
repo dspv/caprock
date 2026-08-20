@@ -551,3 +551,24 @@ func TestPlausibleRateWindow(t *testing.T) {
 		}
 	}
 }
+
+// writeJSON used to write 200 and then encode, discarding the error — so one
+// unserializable value produced HTTP 200 with an empty body. The dashboard
+// threw parsing that, and nothing appeared in the logs.
+func TestWriteJSONFailsHonestly(t *testing.T) {
+	rec := httptest.NewRecorder()
+	// A channel cannot be marshalled; any encoder failure has the same shape.
+	writeJSON(rec, http.StatusOK, map[string]any{"bad": make(chan int)})
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 rather than a lying 200", rec.Code)
+	}
+	if rec.Body.Len() == 0 {
+		t.Fatal("an error response must still have a body")
+	}
+
+	rec2 := httptest.NewRecorder()
+	writeJSON(rec2, http.StatusOK, map[string]string{"ok": "yes"})
+	if rec2.Code != http.StatusOK || !strings.Contains(rec2.Body.String(), "yes") {
+		t.Fatalf("normal responses must be unaffected: %d %q", rec2.Code, rec2.Body.String())
+	}
+}

@@ -94,10 +94,33 @@ func (l *Line) Ts(fallback time.Time) time.Time {
 		return fallback
 	}
 	t, err := time.Parse(time.RFC3339Nano, l.Timestamp)
-	if err != nil {
+	if err != nil || !plausibleTs(t) {
 		return fallback
 	}
 	return t
+}
+
+// nonNegative clamps a token count that cannot be real.
+func nonNegative(v int64) int64 {
+	if v < 0 {
+		return 0
+	}
+	return v
+}
+
+// plausibleTs rejects a timestamp that cannot describe a real session. This is
+// not pedantry: a year-9999 stamp shifts past year 10000 in any positive UTC
+// offset, and time.Time refuses to marshal that — which aborts the encoding of
+// the WHOLE array it appears in, so one such event made every session
+// invisible. The event persists, so the damage outlived restarts.
+func plausibleTs(t time.Time) bool {
+	// Claude Code did not exist before 2023, and a stamp more than a day ahead
+	// is a clock problem rather than a fact.
+	const minYear = 2023
+	if t.Year() < minYear {
+		return false
+	}
+	return t.Before(time.Now().AddDate(0, 0, 1))
 }
 
 // contentBlock is one element of message.content when it is an array.
@@ -178,9 +201,13 @@ func (l *Line) Events(fallbackTs time.Time) []event.Event {
 			ev.Key = "turn:" + l.UUID
 		}
 		if u := l.Message.Usage; u != nil {
-			td := &event.TokenDelta{In: u.InputTokens, Out: u.OutputTokens, CacheRead: u.CacheReadInputTokens, CacheWrite: u.CacheCreationInputTokens}
+			// A negative count cannot describe usage, and a corrupted transcript
+			// would otherwise surface it verbatim in the dashboard's totals —
+			// rule 6 forbids publishing a number we know to be impossible.
+			td := &event.TokenDelta{In: nonNegative(u.InputTokens), Out: nonNegative(u.OutputTokens),
+				CacheRead: nonNegative(u.CacheReadInputTokens), CacheWrite: nonNegative(u.CacheCreationInputTokens)}
 			if u.CacheCreation != nil {
-				td.CacheWrite1h = u.CacheCreation.Ephemeral1h
+				td.CacheWrite1h = nonNegative(u.CacheCreation.Ephemeral1h)
 			}
 			ev.Tokens = td
 		}

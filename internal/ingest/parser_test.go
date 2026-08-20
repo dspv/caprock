@@ -3,6 +3,7 @@ package ingest
 import (
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 )
 
@@ -55,4 +56,31 @@ func TestClipRunes(t *testing.T) {
 			t.Fatalf("a %d-rune summary was clipped", utf8.RuneCountInString(summary))
 		}
 	})
+}
+
+// A year-9999 timestamp shifts past year 10000 in any positive UTC offset, and
+// time.Time refuses to marshal that — which aborts the encoding of the entire
+// array it appears in. One such event made every session invisible in the API,
+// permanently, because the event persists across restarts.
+func TestImplausibleTimestampsAreRejected(t *testing.T) {
+	fallback := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	cases := map[string]bool{
+		"9999-12-31T23:59:59.000Z": false, // the one that broke /v1/sessions
+		"0001-01-01T00:00:00Z":     false, // before Claude Code existed
+		"1970-01-01T00:00:00Z":     false,
+		"2030-01-01T00:00:00Z":     false, // a clock problem, not a fact
+		"2026-08-20T10:00:00Z":     true,
+		"2023-06-01T00:00:00Z":     true,
+	}
+	for stamp, wantParsed := range cases {
+		l := &Line{Timestamp: stamp}
+		got := l.Ts(fallback)
+		usedFallback := got.Equal(fallback)
+		if wantParsed && usedFallback {
+			t.Errorf("%s: fell back, want it accepted", stamp)
+		}
+		if !wantParsed && !usedFallback {
+			t.Errorf("%s: accepted %v, want the fallback", stamp, got)
+		}
+	}
 }
