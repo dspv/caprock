@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	_ "modernc.org/sqlite" // registers the "sqlite" driver
@@ -44,12 +45,25 @@ type Store struct {
 
 // Open opens (creating if needed) the SQLite database at path and applies pending
 // migrations. Use ":memory:" for tests.
+// memSeq names in-memory databases uniquely; see the ":memory:" branch in Open.
+var memSeq atomic.Int64
+
 func Open(ctx context.Context, path string, log *slog.Logger) (*Store, error) {
 	if log == nil {
 		log = slog.Default()
 	}
-	dsn := path
-	if path != ":memory:" {
+	var dsn string
+	if path == ":memory:" {
+		// A bare ":memory:" gives every pooled connection its own empty
+		// database, so a second connection sees no tables — which surfaces as
+		// "no such table" the moment anything runs concurrently, and reads
+		// exactly like a product bug. cache=shared fixes that, but a shared
+		// *unnamed* database is shared process-wide, so parallel tests would
+		// see each other's rows. A unique name per Open gives each caller one
+		// database that its own pool shares and nobody else can reach.
+		dsn = fmt.Sprintf("file:memdb%d?mode=memory&cache=shared&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)",
+			memSeq.Add(1))
+	} else {
 		// _pragma is modernc's DSN syntax. WAL lets the UI read while ingest writes;
 		// busy_timeout avoids SQLITE_BUSY under the (rare) concurrent writer.
 		dsn = "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)"

@@ -57,10 +57,20 @@ func runShim(t *testing.T, dataDir string, stdin string) (stdout string, elapsed
 	return out.String(), elapsed
 }
 
+// shimBudget is what these tests allow for one shim invocation.
+//
+// Rule 3 caps the shim's own work under a second, but what is measured here is
+// a whole process: fork, exec, Go runtime start, then the shim. Under `go test
+// -race ./...` that overhead alone can exceed two seconds on a loaded machine,
+// and the test failed about one run in three while the shim was doing its job
+// in milliseconds. The generous bound still catches the failure that matters —
+// a shim that blocks on a dead or wedged daemon instead of giving up.
+const shimBudget = 8 * time.Second
+
 func TestShimDaemonDownExitsZeroFastAndSilent(t *testing.T) {
 	dir := t.TempDir() // no runtime.json
 	out, el := runShim(t, dir, `{"session_id":"s","hook_event_name":"PreToolUse"}`)
-	if out != "" || el > 2*time.Second {
+	if out != "" || el > shimBudget {
 		t.Fatalf("out=%q elapsed=%s", out, el)
 	}
 	// runtime.json present but nobody listening.
@@ -69,12 +79,12 @@ func TestShimDaemonDownExitsZeroFastAndSilent(t *testing.T) {
 	_ = l.Close()
 	_ = config.WriteRuntime(dir, config.Runtime{Port: port, Token: "t"})
 	out, el = runShim(t, dir, `{"session_id":"s","hook_event_name":"PreToolUse"}`)
-	if out != "" || el > 2*time.Second {
+	if out != "" || el > shimBudget {
 		t.Fatalf("closed port: out=%q elapsed=%s", out, el)
 	}
 	// Even a Stop event must not hang past its 5s budget with a dead port (connect fails fast).
 	out, el = runShim(t, dir, `{"session_id":"s","hook_event_name":"Stop"}`)
-	if out != "" || el > 2*time.Second {
+	if out != "" || el > shimBudget {
 		t.Fatalf("stop on closed port: out=%q elapsed=%s", out, el)
 	}
 }

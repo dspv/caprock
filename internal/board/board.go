@@ -7,9 +7,13 @@ package board
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/dspv/caprock/internal/bus"
@@ -31,6 +35,11 @@ type Board struct {
 	// RepoCwd is the repo tasks operate on; verification commands run in the
 	// assigned worker's worktree under it, or in RepoCwd when there is no worktree.
 	RepoCwd string
+
+	// idMu guards idSeq, which disambiguates ids created in the same
+	// millisecond — see Create.
+	idMu  sync.Mutex
+	idSeq int64
 }
 
 // New builds a board.
@@ -54,6 +63,42 @@ type CreateRequest struct {
 	DoneCriteria []string `json:"done_criteria"`
 	Body         string   `json:"body"`
 }
+
+// maxTitle bounds a task title. Titles are rendered on the board and written
+// into the task file; a hundred-thousand-character one was accepted before.
+const maxTitle = 500
+
+// maxBody bounds the task body — long enough for a real brief, short enough
+// that one request cannot fill the hive directory.
+const maxBody = 100 << 10
+
+// validate rejects what the board cannot meaningfully hold. Everything here was
+// accepted before: an empty title (an unnamed row on the board), a
+// hundred-thousand-character one, a negative budget (which breaks every
+// "budget left" comparison), and 1e308 (which overflows the moment anything is
+// added to it).
+func (cr *CreateRequest) validate() error {
+	cr.Title = strings.TrimSpace(cr.Title)
+	switch {
+	case cr.Title == "":
+		return errors.New("task title is required")
+	case len([]rune(cr.Title)) > maxTitle:
+		return fmt.Errorf("task title is %d characters; the limit is %d", len([]rune(cr.Title)), maxTitle)
+	case len(cr.Body) > maxBody:
+		return fmt.Errorf("task body is %d bytes; the limit is %d", len(cr.Body), maxBody)
+	case math.IsNaN(cr.BudgetUSD) || math.IsInf(cr.BudgetUSD, 0):
+		return errors.New("budget_usd must be a real number")
+	case cr.BudgetUSD < 0:
+		return fmt.Errorf("budget_usd is %v; a budget cannot be negative", cr.BudgetUSD)
+	case cr.BudgetUSD > maxBudgetUSD:
+		return fmt.Errorf("budget_usd is %v; the ceiling is %v", cr.BudgetUSD, maxBudgetUSD)
+	}
+	return nil
+}
+
+// maxBudgetUSD is a sanity ceiling, not a policy: a five-figure budget on one
+// task is a typo far more often than an intention.
+const maxBudgetUSD = 100_000
 
 // List returns the mirrored task rows.
 func (b *Board) List(ctx context.Context) (any, error) {
@@ -88,8 +133,19 @@ func (b *Board) Create(ctx context.Context, req any) (any, error) {
 	if err := json.Unmarshal(raw, &cr); err != nil {
 		return nil, err
 	}
+	if err := cr.validate(); err != nil {
+		return nil, err
+	}
 	if cr.ID == "" {
-		cr.ID = fmt.Sprintf("t-%d", b.Now().UnixMilli())
+		// Millisecond precision alone collides: twelve concurrent creates
+		// produced four tasks and eight "already exists" rejections, so a user
+		// adding several at once silently lost most of them. The counter makes
+		// the id unique within a millisecond.
+		b.idMu.Lock()
+		b.idSeq++
+		seq := b.idSeq
+		b.idMu.Unlock()
+		cr.ID = fmt.Sprintf("t-%d-%d", b.Now().UnixMilli(), seq)
 	}
 	t := hive.Task{ID: cr.ID, Title: cr.Title, Status: hive.StatusInbox, BudgetUSD: cr.BudgetUSD, DoneCriteria: cr.DoneCriteria, Body: cr.Body}
 	if err := b.Hive.CreateTask(t); err != nil {

@@ -138,6 +138,13 @@ func TestInsertEventDedupeAndSessions(t *testing.T) {
 func TestStatsAndDaily(t *testing.T) {
 	ctx := context.Background()
 	s := openTest(t)
+	// session_stats has a foreign key to sessions. In-memory tests used to run
+	// with foreign_keys off — weaker than the on-disk database, where this
+	// insert would fail — so the session has to exist, as it does in the real
+	// ingest path.
+	if err := UpsertSession(ctx, s.db, "s1", SessionPatch{Project: "p", LastEventAt: 1000, StartedAt: 1000}); err != nil {
+		t.Fatal(err)
+	}
 	st, err := AddStats(ctx, s.db, Stats{SessionID: "s1", Turns: 1, TokensIn: 10, CostUSD: 0.5})
 	if err != nil {
 		t.Fatal(err)
