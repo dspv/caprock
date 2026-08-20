@@ -9,6 +9,36 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.8.0] - 2026-08-20
+
+Three surfaces that answer questions the dashboard could already have answered
+from data it was collecting but never said out loud.
+
+### Added
+
+- **Live activity feed on Now.** One column of what every session on the
+  machine is doing, newest first, fed by the existing live WebSocket and seeded
+  from recent history so it is never empty on open. A session list says what
+  exists; the feed says what is happening. Only events worth reading become
+  lines — successful tool results, assistant turns, cost ticks and mail are
+  dropped, because a feed of raw event kinds is noise. Long absolute paths in
+  shell commands collapse so the verb stays visible. Pause to read.
+- **Plan value.** What your measured usage would have cost at API list price,
+  against what you actually pay. Caprock cannot detect your plan — Claude Code
+  does not report it, and inferring one from usage would be an invented number
+  — so you state it in a header chip that is one click from being changed. On a
+  flat plan (Pro/Max/Team seat) you get a multiple; on metered billing (API
+  key, Bedrock, Vertex, Enterprise at API rates) no multiple is shown at all,
+  because that figure is approximately your real bill. It never says "you
+  saved $X": without the plan you would not have run that much.
+- **Attention strip.** Reports a live loop (with the evidence and what that
+  session has spent), a session that errored, and a session that has been
+  waiting on you long enough to cost you time. There is no "all clear" state —
+  it renders nothing when nothing is wrong. Being expensive is never on its own
+  a reason to fire.
+- **`GET`/`PUT /v1/settings`** for the stated plan, validating rather than
+  coercing so a typo cannot drive a wrong headline figure.
+
 ## [0.7.0] - 2026-08-20
 
 ### Added
