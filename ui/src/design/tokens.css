@@ -106,9 +106,16 @@ a:hover { text-decoration: underline; }
   40%  { transform: scale(1.55); }
   100% { transform: scale(1); }
 }
+/* Ambient: an active node breathes gently so the graph feels alive even at low
+ * session counts (a lone working session should not look static/sad). */
+.graph-breathe { animation: graphBreathe 2.8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes graphBreathe {
+  0%, 100% { opacity: 0.9; }
+  50%      { opacity: 1; filter: drop-shadow(0 0 3px color-mix(in srgb, var(--color-ok) 55%, transparent)); }
+}
 @media (prefers-reduced-motion: reduce) {
   .graph-dot, .graph-gate { transition: none; }
-  .graph-verified { animation: none; }
+  .graph-verified, .graph-breathe { animation: none; }
 }
 
 /* Scrollbars in the same gray family. */

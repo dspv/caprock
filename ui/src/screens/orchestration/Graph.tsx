@@ -1,10 +1,10 @@
 /**
- * SVG renderer for the orchestration graph. Presentational: takes the model +
- * geometry and draws the orchestrator center, fixed worker spokes, verify gates,
- * worker nodes, and task dots at their resting positions. Colors come straight
- * from the theme CSS vars, so light/dark work for free. No motion here — the
- * traveling-dot animation lands in a later commit; this is the correct static
- * frame everything animates around.
+ * SVG renderer for the orchestration graph. Draws the orchestrator center, fixed
+ * worker spokes, verify gates, worker nodes, and task dots. Task dots glide along
+ * their spoke via a damped rAF loop (anim.ts); the verify gate + dot turn the
+ * "verified" green on verifying→done (the money shot); active nodes breathe.
+ * Colors come from the theme CSS vars, so light/dark work for free. Also exports
+ * SessionRing — the empty-state graph when no orchestrator is running.
  */
 import { useEffect, useRef, useState } from 'react'
 import { geometry, phaseT, pointOnSpoke, ringPositions, type Geometry, type NodePos, type Viewport } from './layout'
@@ -76,7 +76,7 @@ export function Graph({ model, viewport, centerLabel = 'orchestrator' }: {
       {nodes.map((n) => (byWorker.get(n.id) ?? []).map((t, i) => {
         const p = pointOnSpoke(n, g, tOf(t.id, t.status))
         // Fan multiple dots on the same spoke slightly so they don't overlap.
-        const off = (i - ((byWorker.get(n.id)!.length - 1) / 2)) * 9
+        const off = (i - ((byWorker.get(n.id)!.length - 1) / 2)) * 12
         const nx = -(n.y - g.cy)
         const ny = n.x - g.cx
         const len = Math.hypot(nx, ny) || 1
@@ -96,7 +96,7 @@ export function Graph({ model, viewport, centerLabel = 'orchestrator' }: {
         const busy = workerBusy(tasks)
         return (
           <g key={`node-${n.id}`} transform={`translate(${n.x},${n.y})`}>
-            <circle r={g.nodeR} fill="var(--color-panel)" stroke={busy ? 'var(--color-accent)' : 'var(--color-border-strong)'} strokeWidth={busy ? 2 : 1.5} />
+            <circle className={busy ? 'graph-breathe' : undefined} r={g.nodeR} fill="var(--color-panel)" stroke={busy ? 'var(--color-accent)' : 'var(--color-border-strong)'} strokeWidth={busy ? 2 : 1.5} />
             <text textAnchor="middle" dy="0.32em" fontSize="10" fill="var(--color-fg-muted)" className="mono">{shortWorker(n.id)}</text>
           </g>
         )
@@ -222,7 +222,7 @@ export function SessionRing({ sessions, viewport }: { sessions: RingSession[]; v
         const color = healthColor(s.health)
         return (
           <g key={`sess-${n.id}`} transform={`translate(${n.x},${n.y})`}>
-            <circle r={g.nodeR} fill="var(--color-panel)" stroke={color} strokeWidth={2} />
+            <circle className={s.health === 'working' ? 'graph-breathe' : undefined} r={g.nodeR} fill="var(--color-panel)" stroke={color} strokeWidth={2} />
             <text textAnchor="middle" dy="0.32em" fontSize="9" fill="var(--color-fg-muted)" className="mono">{s.label}</text>
             <title>{`${s.label} · ${s.health}`}</title>
           </g>
