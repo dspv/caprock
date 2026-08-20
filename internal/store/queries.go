@@ -642,15 +642,54 @@ type ProjectShare struct {
 // Summarize aggregates events since fromMs (0 = all time).
 func Summarize(ctx context.Context, q Querier, fromMs int64) (Summary, error) {
 	s := Summary{FromMs: fromMs}
-	err := q.QueryRowContext(ctx, `
-		SELECT COUNT(DISTINCT session_id),
-		       COALESCE(SUM(CASE WHEN kind = 'turn.assistant' THEN 1 ELSE 0 END),0),
-		       COALESCE(SUM(CASE WHEN kind = 'tool.pre' THEN 1 ELSE 0 END),0),
-		       COALESCE(SUM(tokens_in),0), COALESCE(SUM(tokens_out),0), COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_write),0),
+	// Grouping by kind runs off idx_events_kind_ts; summing CASE expressions
+	// instead forced a read of every row in the range — 197ms against 81ms on a
+	// 184k-event database, and this is the query behind both the Cost screen
+	// and History.
+	//
+	// The distinct session count stays a separate query on purpose: per-kind
+	// counts cannot be summed, because a session appears under several kinds
+	// (it totalled 212 against a true 56 here). That query is ~10ms.
+	rows, err := q.QueryContext(ctx, `
+		SELECT kind, COUNT(*),
+		       COALESCE(SUM(tokens_in),0), COALESCE(SUM(tokens_out),0),
+		       COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_write),0),
 		       COALESCE(SUM(cost_usd),0)
-		FROM events WHERE ts >= ?`, fromMs).
-		Scan(&s.Sessions, &s.Turns, &s.ToolCalls, &s.TokensIn, &s.TokensOut, &s.CacheRead, &s.CacheWrite, &s.CostUSD)
+		FROM events WHERE ts >= ? GROUP BY kind`, fromMs)
 	if err != nil {
+		return s, err
+	}
+	for rows.Next() {
+		var kind string
+		var n, tin, tout, cr, cw int64
+		var cost float64
+		if err := rows.Scan(&kind, &n, &tin, &tout, &cr, &cw, &cost); err != nil {
+			_ = rows.Close()
+			return s, err
+		}
+		// Tokens and cost accrue on assistant turns, but sum every kind so a
+		// future priced event type is not silently dropped from the totals.
+		s.TokensIn += tin
+		s.TokensOut += tout
+		s.CacheRead += cr
+		s.CacheWrite += cw
+		s.CostUSD += cost
+		switch kind {
+		case string(event.KindTurnAssistant):
+			s.Turns = n
+		case string(event.KindToolPre):
+			s.ToolCalls = n
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return s, err
+	}
+	if err := rows.Close(); err != nil {
+		return s, err
+	}
+	if err := q.QueryRowContext(ctx,
+		`SELECT COUNT(DISTINCT session_id) FROM events WHERE ts >= ?`, fromMs).Scan(&s.Sessions); err != nil {
 		return s, err
 	}
 	// "Active" means active *now*, so it is deliberately not range-scoped — but
@@ -663,7 +702,7 @@ func Summarize(ctx context.Context, q Querier, fromMs int64) (Summary, error) {
 		nowMs()-int64(activeWindow/time.Millisecond)).Scan(&s.Active); err != nil {
 		return s, err
 	}
-	rows, err := q.QueryContext(ctx, `
+	rows, err = q.QueryContext(ctx, `
 		SELECT COALESCE(model,''), COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0)),0), COALESCE(SUM(cost_usd),0), COUNT(*)
 		FROM events WHERE kind = 'turn.assistant' AND ts >= ? GROUP BY model ORDER BY 3 DESC`, fromMs)
 	if err != nil {
