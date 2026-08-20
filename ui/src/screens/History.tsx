@@ -32,7 +32,10 @@ export function HistoryScreen() {
           <Stat size="compact" label="Sessions" value={d ? d.totals.sessions : '—'} sub={d ? `${d.totals.owned_sessions} spawned by caprock` : undefined} />
           <Stat size="compact" label="Active days" value={d ? d.totals.days : '—'} />
           <Stat size="compact" label="Turns" value={d ? fmtTokens(d.totals.turns) : '—'} sub={d ? `${fmtTokens(d.totals.tool_calls)} tool calls` : undefined} />
-          <Stat size="compact" label="Files touched" value={d ? fmtTokens(d.totals.files_touched) : '—'} />
+          {/* Summed per session, so a file edited in three sessions counts three
+              times. "Files touched" alone reads as a count of distinct files —
+              on the author's database that is 1,502 against the 1,703 shown. */}
+          <Stat size="compact" label="Files touched" value={d ? fmtTokens(d.totals.files_touched) : '—'} sub="summed per session" />
           {/* This is first-event-to-last-event elapsed time, so a session left open
             overnight counts its sleeping hours — hence the honest label. */}
           <Stat size="compact" label="Avg session span" value={d ? fmtDuration(Math.round(d.totals.avg_session_sec * 1000)) : '—'} sub="first to last event" />

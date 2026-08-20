@@ -342,3 +342,38 @@ func TestSummarizeFailsOnACancelledContext(t *testing.T) {
 		t.Error("Summarize returned no error on a cancelled context")
 	}
 }
+
+// "Active days" on the History screen means days on which work happened. It
+// used to count distinct session *start* dates, which undercounts as soon as a
+// session outlives a day — and they routinely do. On the author's database one
+// session spanned twelve days and contributed one, so the screen read 21 where
+// 32 days had events in them.
+func TestHistoryCountsDaysWithWorkNotSessionStarts(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+
+	// One session opened on day 1 and still going on day 4.
+	day := int64(24 * 3600 * 1000)
+	start := time.Now().Add(-10 * 24 * time.Hour).UnixMilli()
+	mustSession(t, s, "long", start+3*day)
+	for i := 0; i < 4; i++ {
+		ev := event.Event{
+			SessionID: "long", Source: event.SourceHook, Kind: event.KindToolPre,
+			Tool: "Bash", Ts: time.UnixMilli(start + int64(i)*day), Key: "k" + strconv.Itoa(i),
+		}
+		if _, err := InsertEvent(ctx, s.db, &ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	h, err := History(ctx, s.db, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.Sessions != 1 {
+		t.Fatalf("Sessions = %d; want 1", h.Sessions)
+	}
+	if h.Days != 4 {
+		t.Errorf("Days = %d; want 4 — one session spanning four days worked on all of them", h.Days)
+	}
+}

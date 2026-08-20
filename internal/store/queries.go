@@ -878,11 +878,20 @@ func History(ctx context.Context, q Querier, fromMs int64) (HistoryTotals, error
 	var h HistoryTotals
 	err := q.QueryRowContext(ctx, `
 		SELECT COUNT(*), COALESCE(SUM(owned),0),
-		       COALESCE(AVG(CASE WHEN last_event_at > started_at THEN (last_event_at - started_at)/1000.0 END),0),
-		       COUNT(DISTINCT date(started_at/1000, 'unixepoch', 'localtime'))
+		       COALESCE(AVG(CASE WHEN last_event_at > started_at THEN (last_event_at - started_at)/1000.0 END),0)
 		FROM sessions WHERE last_event_at >= ?`, fromMs).
-		Scan(&h.Sessions, &h.OwnedSessions, &h.AvgSessionSec, &h.Days)
+		Scan(&h.Sessions, &h.OwnedSessions, &h.AvgSessionSec)
 	if err != nil {
+		return h, err
+	}
+	// Days is labelled "active days", so it counts days on which something
+	// happened — not days on which a session was opened. Counting session start
+	// dates undercounts badly once sessions outlive a day: on the author's own
+	// database one session spanned twelve days and contributed one, and the
+	// screen read 21 where 32 days had work in them.
+	if err := q.QueryRowContext(ctx,
+		`SELECT COUNT(DISTINCT date(ts/1000, 'unixepoch', 'localtime')) FROM events WHERE ts >= ?`, fromMs).
+		Scan(&h.Days); err != nil {
 		return h, err
 	}
 	// Grouping by kind lets this run off idx_events_kind_ts. Summing CASE
