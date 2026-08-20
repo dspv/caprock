@@ -17,9 +17,10 @@ Caprock is a local, open-source **mission control for Claude Code**: a single st
 | [09-execution-plan.md](09-execution-plan.md)       | Roadmap, phase DoDs, tasks T0–T25 with AC                       | Picking up or finishing a task                     |
 | [10-infrastructure.md](10-infrastructure.md)       | Versions, CI, release, local dev                                | Toolchain, CI, releases                            |
 | [12-risks.md](12-risks.md)                         | Assumptions, risks, open questions                              | Before expanding scope                             |
+| [13-testing.md](13-testing.md)                     | Coverage per package, what it does not mean, known gaps         | Writing tests, judging risk                        |
 | [14-build-status.md](14-build-status.md)           | What is built, what is not, next action, log                    | Checking progress                                  |
 
-These files absorbed the hand-off specification (`CaprockV2-SPEC.md`, deleted after the loss audit recorded in [docs/migration-audit.md](../docs/migration-audit.md)). The spec is not a separate source of truth — **these files are**. (Numbering is non-contiguous by design — 11 and 13 were never used; nothing is missing.)
+These files absorbed the hand-off specification (`CaprockV2-SPEC.md`, deleted after the loss audit recorded in [docs/migration-audit.md](../docs/migration-audit.md)). The spec is not a separate source of truth — **these files are**. (Numbering is non-contiguous by design — 11 was never used; nothing is missing.)
 
 **This table is the one home for the doc map.** `CLAUDE.md` and `AGENTS.md` point here rather than restating it.
 
