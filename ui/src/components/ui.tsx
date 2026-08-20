@@ -4,10 +4,12 @@ import type { Health } from '@/lib/api'
 
 export function Panel({ title, right, children, className = '' }: { title?: ReactNode; right?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className={`border border-border bg-panel rounded-[var(--radius-panel)] min-w-0 ${className}`}>
+    <section className={`border border-border bg-panel rounded-[var(--radius-panel)] shadow-[var(--shadow-panel)] min-w-0 ${className}`}>
       {(title || right) && (
-        <header className="flex items-center justify-between px-3 py-1.5 border-b border-border">
-          <h2 className="text-[11px] uppercase tracking-[0.08em] text-fg-muted font-medium">{title}</h2>
+        // The header sits on panel-2 so chrome reads as a recess rather than
+        // as body text with a rule under it.
+        <header className="flex items-center justify-between px-3 py-2 border-b border-border bg-panel-2/60 rounded-t-[var(--radius-panel)]">
+          <h2 className="text-[11px] uppercase tracking-[0.12em] text-fg-muted font-medium">{title}</h2>
           <div className="text-[11px] text-fg-muted">{right}</div>
         </header>
       )}
@@ -16,14 +18,25 @@ export function Panel({ title, right, children, className = '' }: { title?: Reac
   )
 }
 
-export function Stat({ label, value, sub, tone }: { label: string; value: ReactNode; sub?: ReactNode; tone?: 'ok' | 'warn' | 'danger' | 'info' }) {
+export function Stat({ label, value, sub, tone, size = 'default' }: {
+  label: string
+  value: ReactNode
+  sub?: ReactNode
+  tone?: 'ok' | 'warn' | 'danger' | 'info'
+  /** `compact` for reference figures in dense rows; `hero` for the one number
+   *  a screen is about. Sized uniformly, a row of six is a list, not a
+   *  hierarchy — the eye needs somewhere to land. */
+  size?: 'hero' | 'default' | 'compact'
+}) {
   const toneCls = tone === 'ok' ? 'text-ok' : tone === 'warn' ? 'text-warn' : tone === 'danger' ? 'text-danger' : tone === 'info' ? 'text-info' : 'text-fg'
+  const valueCls = size === 'hero' ? 'text-[34px] leading-[1.05]' : size === 'compact' ? 'text-[17px] leading-tight' : 'text-[24px] leading-[1.1]'
   return (
     <div className="px-3 py-2.5 min-w-0">
-      <div className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">{label}</div>
-      {/* The value is the reason the card exists — it outweighs its own label
-       * by more than 2x so a card scans from across the desk, not up close. */}
-      <div className={`num text-[22px] leading-[1.15] ${toneCls}`}>{value}</div>
+      <div className="text-[10px] uppercase tracking-[0.12em] text-fg-faint">{label}</div>
+      {/* Semibold, not just larger: weight separates a figure from its
+       * neighbours without spending a pixel of density, which is what a dense
+       * dashboard needs. The product had no semibold anywhere. */}
+      <div className={`num font-semibold tracking-[-0.01em] ${valueCls} ${toneCls}`}>{value}</div>
       {sub && <div className="text-[11px] text-fg-muted num truncate">{sub}</div>}
     </div>
   )

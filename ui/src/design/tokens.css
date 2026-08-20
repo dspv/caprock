@@ -34,6 +34,12 @@
   --font-sans: "Hanken Grotesk Variable", -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
+  /* elevation — the panel/background luminance step is 6 of 255, far too small
+   * to read as an edge on its own. The site's cards have carried a shadow from
+   * the start; the dashboard never had one, which is most of why its panels
+   * look drawn rather than placed. */
+  --shadow-panel: 0 12px 32px -18px rgba(0, 0, 0, 0.65);
+
   /* density */
   --spacing-row: 0.375rem;
   --radius-panel: 6px;
@@ -70,6 +76,8 @@
 
   --color-accent: #b8730d;
   --color-accent-strong: #8f5808;
+
+  --shadow-panel: 0 8px 20px -14px rgba(60, 50, 30, 0.22);
 }
 
 :root {
@@ -77,7 +85,10 @@
   background: var(--color-bg);
   color: var(--color-fg);
   font-family: var(--font-sans);
-  font-size: 14px;
+  /* 16px, the browser default the site also uses. This was 14px, which
+   * silently rendered every rem-based Tailwind class 12.5% smaller than the
+   * identical class on the marketing site. */
+  font-size: 16px;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }

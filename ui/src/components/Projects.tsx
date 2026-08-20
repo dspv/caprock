@@ -104,7 +104,7 @@ function ProjectRow({ p, max, live }: { p: ProjectShare; max: number; live: bool
         </div>
       </div>
       <div className="text-right shrink-0">
-        <div className="num text-[17px] leading-tight">{fmtUSD(p.cost_usd)}</div>
+        <div className="num text-[17px] font-semibold leading-tight text-accent">{fmtUSD(p.cost_usd)}</div>
         <div className="num text-[11px] text-fg-faint">{fmtTokens(p.tokens)}</div>
       </div>
     </div>

@@ -10,7 +10,11 @@ import { usePlan } from '@/components/PlanPicker'
 type Range = 'today' | '7d' | '30d' | 'all'
 
 export function CostScreen() {
-  const [range, setRange] = useState<Range>('today')
+  // 30d, matching the Projects panel on Now. On `today` the plan multiple
+  // divides a single heavy day by 1/30th of a monthly fee and reads 87x where
+  // the honest monthly figure is 37x — a headline that halves when you click
+  // another tab is indistinguishable from an invented one.
+  const [range, setRange] = useState<Range>('30d')
   const summary = useApi(() => api.summary(range), [range], { intervalMs: 5000 })
   const daily = useApi(() => api.daily(30), [], { intervalMs: 30000 })
   const [plan] = usePlan()
@@ -29,11 +33,11 @@ export function CostScreen() {
       <PlanValue summary={s} plan={plan} days={rangeDays(range, s?.from_ms)} />
       <Panel title={`Totals · ${range}`}>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-border">
-          <Stat label="Cost" value={fmtUSD(s?.cost_usd)} sub={s ? `${s.sessions} sessions` : undefined} />
-          <Stat label="Burn now" value={s ? `${fmtUSD(s.burn.usd_per_hour)}/h` : '—'} sub={s ? `${fmtTokens(Math.round(s.burn.tokens_per_min))} tok/min · ${s.burn.turns} turns / ${s.burn.window_min}m` : undefined} tone={s && s.burn.usd_per_hour > 0 ? 'info' : undefined} />
+          <Stat label="Cost" value={fmtUSD(s?.cost_usd)} sub={s ? `${s.sessions} sessions` : undefined} tone="info" size="hero" />
+          <Stat label="Burn now" value={s ? `${fmtUSD(s.burn.usd_per_hour)}/h` : '—'} sub={s ? `${fmtTokens(Math.round(s.burn.tokens_per_min))} tok/min · ${s.burn.turns} turns / ${s.burn.window_min}m` : undefined}  />
           <Stat label="Input" value={fmtTokens(s?.tokens_in)} sub="fresh, full price" />
           <Stat label="Output" value={fmtTokens(s?.tokens_out)} sub={s ? `${s.turns} turns` : undefined} />
-          <Stat label="Cache read" value={fmtTokens(s?.cache_read)} sub={s ? `${fmtPct(s.savings.hit_rate * 100)} hit rate` : undefined} tone={s && s.savings.hit_rate > 0.5 ? 'ok' : undefined} />
+          <Stat label="Cache read" value={fmtTokens(s?.cache_read)} sub={s ? `${fmtPct(s.savings.hit_rate * 100)} hit rate` : undefined} tone={s && s.savings.hit_rate < 0.9 ? 'warn' : undefined} />
           <Stat label="Cache write" value={fmtTokens(s?.cache_write)} sub={s ? `${fmtPct(s.savings.cut_pct)} input cost cut by cache` : undefined} />
         </div>
       </Panel>

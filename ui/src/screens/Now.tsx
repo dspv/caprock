@@ -41,13 +41,20 @@ export function NowScreen() {
       <Attention items={attention} now={now} onDismiss={(id) => live.dismissAlert(id)} />
 
       <Panel title="Today" right={summary.data ? <span className="num">pricing {summary.data.pricing_version} · at API list price</span> : null}>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-border">
-          <Stat label="Sessions" value={summary.data ? summary.data.sessions : '—'} sub={summary.data ? `${summary.data.active_sessions} active` : undefined} />
-          <Stat label="Turns" value={summary.data ? summary.data.turns : '—'} sub={summary.data ? `${summary.data.tool_calls} tool calls` : undefined} />
-          <Stat label="Tokens" value={summary.data ? fmtTokens(summary.data.tokens_in + summary.data.tokens_out + summary.data.cache_read + summary.data.cache_write) : '—'} sub={summary.data ? `${fmtTokens(summary.data.cache_read)} cache read` : undefined} />
-          <Stat label="Cost" value={fmtUSD(summary.data?.cost_usd)} sub="API-equivalent" />
-          <Stat label="Burn now" value={summary.data ? `${fmtUSD(summary.data.burn.usd_per_hour)}/h` : '—'} sub={summary.data ? `${fmtTokens(Math.round(summary.data.burn.tokens_per_min))} tok/min · last ${summary.data.burn.window_min}m` : undefined} tone={summary.data && summary.data.burn.usd_per_hour > 0 ? 'info' : undefined} />
-          <Stat label="Cache hit" value={summary.data ? fmtPct(summary.data.savings.hit_rate * 100) : '—'} sub={summary.data ? `${fmtPct(summary.data.savings.cut_pct)} input cost cut` : undefined} tone={summary.data && summary.data.savings.hit_rate > 0.5 ? 'ok' : undefined} />
+        {/* Cost leads and dominates. It sat fourth of six at the same size as
+          * a turn counter, while the two tinted cells were cache hit (a
+          * permanent ~99%) and burn (tinted whenever anything runs) — so
+          * colour pointed away from the money. The rest are reference figures
+          * and step down, which is what makes room for the headline. */}
+        <div className="grid grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr] divide-x divide-border">
+          <Stat label="Cost today" value={fmtUSD(summary.data?.cost_usd)} sub="at API list price · not a bill" tone="info" size="hero" />
+          <Stat label="Burn now" value={summary.data ? `${fmtUSD(summary.data.burn.usd_per_hour)}/h` : '—'} sub={summary.data ? `${fmtTokens(Math.round(summary.data.burn.tokens_per_min))} tok/min · last ${summary.data.burn.window_min}m` : undefined} />
+          <Stat label="Sessions" value={summary.data ? summary.data.sessions : '—'} sub={summary.data ? `${summary.data.active_sessions} active` : undefined} size="compact" />
+          <Stat label="Turns" value={summary.data ? summary.data.turns : '—'} sub={summary.data ? `${summary.data.tool_calls} tool calls` : undefined} size="compact" />
+          {/* Cache hit is ~99% forever on Claude Code, so it is reassurance
+            * rather than news: it keeps its place but not a colour, and only
+            * speaks up when it drops far enough to mean something broke. */}
+          <Stat label="Cache hit" value={summary.data ? fmtPct(summary.data.savings.hit_rate * 100) : '—'} sub={summary.data ? `${fmtPct(summary.data.savings.cut_pct)} input cost cut` : undefined} tone={summary.data && summary.data.savings.hit_rate < 0.9 ? 'warn' : undefined} size="compact" />
         </div>
       </Panel>
 
@@ -129,11 +136,16 @@ export function SessionCard({ s, now }: { s: SessionSummary; now: number }) {
           {s.activity.plan.next && <span className="truncate max-w-[50%]">→ {s.activity.plan.next}</span>}
         </div>
       )}
+      {/* Compact: these are reference figures inside a card, three or four to a
+        * row. At the default size a long cost and a token count collide, and
+        * stepping them down is what leaves room for the screen's headline to
+        * be the biggest thing on the page. The session's own cost keeps the
+        * accent, so the money is still the first thing read in the card. */}
       <div className="grid grid-cols-4 divide-x divide-border border-t border-border">
-        <Stat label="Cost" value={fmtUSD(s.stats.cost_usd)} sub={s.model || '—'} />
-        <Stat label="Tokens" value={fmtTokens(s.stats.tokens_in + s.stats.tokens_out + s.stats.cache_read + s.stats.cache_write)} sub={`${fmtPct(s.savings.hit_rate * 100)} cache hit`} />
-        <Stat label="Context" value={ctx ? fmtPct(ctx.pct) : '—'} sub={ctx ? `${fmtTokens(ctx.tokens)} / ${fmtTokens(ctx.window)}` : 'unknown model'} tone={ctxTone} />
-        <Stat label="Activity" value={s.stats.tool_calls} sub={`${s.stats.turns} turns · ${s.stats.files_touched} files`} />
+        <Stat label="Cost" value={fmtUSD(s.stats.cost_usd)} sub={s.model || '—'} tone="info" size="compact" />
+        <Stat label="Tokens" value={fmtTokens(s.stats.tokens_in + s.stats.tokens_out + s.stats.cache_read + s.stats.cache_write)} sub={`${fmtPct(s.savings.hit_rate * 100)} cache hit`} size="compact" />
+        <Stat label="Context" value={ctx ? fmtPct(ctx.pct) : '—'} sub={ctx ? `${fmtTokens(ctx.tokens)} / ${fmtTokens(ctx.window)}` : 'unknown model'} tone={ctxTone} size="compact" />
+        <Stat label="Activity" value={s.stats.tool_calls} sub={`${s.stats.turns} turns · ${s.stats.files_touched} files`} size="compact" />
       </div>
     </a>
   )
