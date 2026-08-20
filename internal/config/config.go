@@ -51,6 +51,12 @@ type Config struct {
 	//                so it must never be framed as a saving
 	// PlanLabel is the user's own words for the plan ("Max", "Team seat").
 	// PlanUSDPerMonth is what they pay per month for one seat; 0 = not stated.
+	// UpdateChecks enables the one outbound call Caprock makes: asking GitHub
+	// for the latest release tag. Off by default and asked for once — see
+	// internal/update for why this is opt-in and why Caprock never installs
+	// the update itself.
+	UpdateChecks bool `json:"update_checks"`
+
 	PlanKind        string  `json:"plan_kind"`
 	PlanLabel       string  `json:"plan_label"`
 	PlanUSDPerMonth float64 `json:"plan_usd_per_month"`

@@ -7,6 +7,8 @@ import { ProjectsPanel } from '@/components/Projects'
 import { ActivityFeed } from '@/components/ActivityFeed'
 import { Attention } from '@/components/Attention'
 import { findAttention } from '@/lib/attention'
+import { UpdateBanner } from '@/components/UpdateBanner'
+import { usePlan } from '@/components/PlanPicker'
 import { href } from '@/lib/router'
 import { useEffect, useState } from 'react'
 
@@ -21,6 +23,7 @@ export function NowScreen() {
   const working = list.filter((s) => s.activity.health === 'working' || s.activity.health === 'looping' || s.activity.health === 'error' || s.activity.health === 'waiting-on-you')
   const rest = list.filter((s) => !working.includes(s) && s.status !== 'ended')
   const ended = list.filter((s) => s.status === 'ended')
+  const [plan, savePlan] = usePlan()
   const attention = findAttention({ sessions: list, alerts, now })
   const hooksMissing = status.data?.hooks && (status.data.hooks.missing ?? []).length > 0
   return (
@@ -32,6 +35,7 @@ export function NowScreen() {
           <a href="#/settings" className="link ml-auto text-[11px]">details</a>
         </div>
       )}
+      <UpdateBanner plan={plan} onSave={savePlan} now={now} />
       <Attention items={attention} now={now} onDismiss={(id) => live.dismissAlert(id)} />
 
       <Panel title="Today" right={summary.data ? <span className="num">pricing {summary.data.pricing_version} · at API list price</span> : null}>

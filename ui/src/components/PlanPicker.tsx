@@ -46,7 +46,7 @@ export function usePlan(): [Settings | undefined, (s: Settings) => void] {
       inflight = api
         .settings()
         .then((s) => { cached = s })
-        .catch(() => { cached = { plan_kind: '', plan_label: '', plan_usd_per_month: 0 } })
+        .catch(() => { cached = { update_checks: false, plan_kind: '', plan_label: '', plan_usd_per_month: 0 } })
         .finally(() => { inflight = null; emit() })
     }
     return () => { subs.delete(fn) }
@@ -97,6 +97,9 @@ export function PlanChip({ plan, onSave }: { plan?: Settings; onSave: (s: Settin
 
 function PlanMenu({ plan, onSave }: { plan?: Settings; onSave: (s: Settings) => void }) {
   const [custom, setCustom] = useState(String(plan?.plan_usd_per_month || ''))
+  // Carry every other setting through: changing the plan must not silently
+  // reset an unrelated preference such as release checks.
+  const base: Settings = plan ?? { update_checks: false, plan_kind: '', plan_label: '', plan_usd_per_month: 0 }
   return (
     <div className="absolute right-0 top-7 z-20 w-[268px] border border-border-strong bg-panel rounded-[var(--radius-panel)] shadow-lg p-2">
       <div className="text-[11px] text-fg-muted px-1 pb-1.5">
@@ -107,7 +110,7 @@ function PlanMenu({ plan, onSave }: { plan?: Settings; onSave: (s: Settings) => 
         return (
           <button
             key={p.label}
-            onClick={() => onSave({ plan_kind: p.kind, plan_label: p.label, plan_usd_per_month: p.usd })}
+            onClick={() => onSave({ ...base, plan_kind: p.kind, plan_label: p.label, plan_usd_per_month: p.usd })}
             className={`w-full flex items-baseline gap-2 px-1.5 py-1 rounded-sm text-left text-[12px] hover:bg-panel-2 ${
               active ? 'text-accent' : 'text-fg'
             }`}
@@ -133,7 +136,7 @@ function PlanMenu({ plan, onSave }: { plan?: Settings; onSave: (s: Settings) => 
             onClick={() => {
               const usd = Number(custom)
               if (!Number.isFinite(usd) || usd < 0) return
-              onSave({ plan_kind: 'flat', plan_label: 'plan', plan_usd_per_month: usd })
+              onSave({ ...base, plan_kind: 'flat', plan_label: 'plan', plan_usd_per_month: usd })
             }}
           >
             set

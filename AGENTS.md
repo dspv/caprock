@@ -3,7 +3,7 @@
 > **CRITICAL — read this first.**
 > `CLAUDE.md` (repo root) and `.ai/00-index.md` are the authoritative instructions for this project. They define the non-negotiable rules. Everything in this file is supplementary. **If there is any conflict, `CLAUDE.md` wins.**
 
-Caprock is a local, open-source mission control for Claude Code — a single Go binary that watches every `claude` session on the machine (hooks + transcripts), shows live activity/cost/loop alerts in a browser dashboard, and spawns, controls, and orchestrates sessions with verification-before-done. Currently **all three phases (Observe, Control, Orchestrate) complete and green on the 3-OS CI matrix; v0.1.0–v0.8.0 tagged + published through 2026-08-20** (v0.4.0 = post-Orchestrate polish: plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula).
+Caprock is a local, open-source mission control for Claude Code — a single Go binary that watches every `claude` session on the machine (hooks + transcripts), shows live activity/cost/loop alerts in a browser dashboard, and spawns, controls, and orchestrates sessions with verification-before-done. Currently **all three phases (Observe, Control, Orchestrate) complete and green on the 3-OS CI matrix; v0.1.0–v0.8.1 tagged + published through 2026-08-20** (v0.4.0 = post-Orchestrate polish: plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula).
 
 ## Start here
 

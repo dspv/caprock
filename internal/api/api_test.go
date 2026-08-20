@@ -21,6 +21,7 @@ import (
 	"github.com/dspv/caprock/internal/loop"
 	"github.com/dspv/caprock/internal/rollup"
 	"github.com/dspv/caprock/internal/store"
+	"github.com/dspv/caprock/internal/update"
 )
 
 type env struct {
@@ -449,5 +450,74 @@ func TestSettingsValidation(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNotImplemented {
 		t.Fatalf("no settings controller: got %d", resp.StatusCode)
+	}
+}
+
+// fakeUpdate records whether the checker was consulted.
+type fakeUpdate struct {
+	checks int
+	st     update.Status
+}
+
+func (f *fakeUpdate) Status(enabled bool, current string) update.Status {
+	f.st.Enabled, f.st.Current = enabled, current
+	return f.st
+}
+func (f *fakeUpdate) Check(context.Context, bool) error { f.checks++; return nil }
+
+// The opt-in for the one outbound call Caprock makes must be enforced by the
+// server, not merely hidden in the UI: no page and no local script may cause a
+// network call the user did not enable.
+func TestUpdateCheckRequiresOptIn(t *testing.T) {
+	st, err := store.Open(context.Background(), ":memory:", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	tb, _ := cost.Embedded()
+	set := &fakeSettings{}
+	upd := &fakeUpdate{}
+	s := New(Deps{Store: st, Bus: bus.New(), Table: tb, Version: "v0.8.0",
+		Now: time.Now, Status: func(context.Context) any { return map[string]string{} },
+		Settings: set, Update: upd,
+	})
+	srv := httptest.NewServer(s)
+	t.Cleanup(srv.Close)
+
+	// Checks are off by default: the request is refused and nothing is fetched.
+	resp, err := http.Post(srv.URL+"/v1/update/check", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403 while checks are off, got %d", resp.StatusCode)
+	}
+	if upd.checks != 0 {
+		t.Fatalf("a disabled checker was consulted %d times", upd.checks)
+	}
+
+	// Reading status never performs I/O, even once enabled.
+	set.cur.UpdateChecks = true
+	r2, err := http.Get(srv.URL + "/v1/update")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = r2.Body.Close()
+	if r2.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/update: %d", r2.StatusCode)
+	}
+	if upd.checks != 0 {
+		t.Fatal("reading status must not trigger a network call")
+	}
+
+	// With the user's consent, an explicit check runs.
+	r3, err := http.Post(srv.URL+"/v1/update/check", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = r3.Body.Close()
+	if r3.StatusCode != http.StatusOK || upd.checks != 1 {
+		t.Fatalf("enabled check: status=%d checks=%d", r3.StatusCode, upd.checks)
 	}
 }

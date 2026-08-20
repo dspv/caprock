@@ -128,9 +128,21 @@ export interface RateLimits {
 }
 
 export interface Settings {
+  update_checks: boolean
   plan_kind: '' | 'flat' | 'metered'
   plan_label: string
   plan_usd_per_month: number
+}
+
+export interface UpdateStatus {
+  enabled: boolean
+  current: string
+  latest?: string
+  update_available: boolean
+  command?: string
+  url?: string
+  checked_at?: number
+  error?: string
 }
 
 export interface DailyStat { day: string; project: string; model: string; tokens_total: number; cost_usd: number; sessions: number }
@@ -202,6 +214,8 @@ export const api = {
   events: (id: string, after = 0, limit = 500) => get<Event[]>(`/v1/sessions/${encodeURIComponent(id)}/events?after=${after}&limit=${limit}`),
   diff: (id: string) => get<DiffResult>(`/v1/sessions/${encodeURIComponent(id)}/diff`),
   settings: () => get<Settings>('/v1/settings'),
+  update: () => get<UpdateStatus>('/v1/update'),
+  checkUpdate: () => post<UpdateStatus>('/v1/update/check', {}),
   saveSettings: (s: Settings) => post<Settings>('/v1/settings', s, 'PUT'),
   summary: (range: 'today' | '7d' | '30d' | 'all' = 'today') => get<Summary>(`/v1/stats/summary?range=${range}`),
   daily: (days = 30) => get<DailyStat[]>(`/v1/stats/daily?days=${days}`),

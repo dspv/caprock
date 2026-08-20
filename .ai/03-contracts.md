@@ -46,8 +46,10 @@ GET  /v1/sessions/{id}                 → SessionDetail (stats + last N events)
 GET  /v1/sessions/{id}/events?after=…  → Event[] (paginated)
 GET  /v1/sessions/{id}/diff            → { files: FileDiff[] } | 409 not-a-git-repo
 GET  /v1/stats/summary?range=today     → totals: tokens, cost, sessions, models
-GET  /v1/settings                      → user-stated settings (plan)
+GET  /v1/settings                      → user-stated settings (plan, update checks)
 PUT  /v1/settings                      → store them
+GET  /v1/update                        → cached release status (no network I/O)
+POST /v1/update/check                  → check now (403 unless enabled)
 GET  /v1/stats/daily?days=30           → DailyStat[]
 POST /v1/hook                          → 204 (shim only, bearer-token gated)
 WS   /v1/live                          → server-push frames: {type:"event"|"session"|"alert", data:…}
@@ -64,6 +66,8 @@ POST /v1/statusline                    → 204 (bearer-token gated) {session_id,
 GET  /healthz                          → {status:"ok", version}
 WS   /v1/live                          → first frame is {type:"hello", data:{server_time}}; a "session" frame carries {session, stats}
 ```
+
+`GET /v1/update` returns `{enabled, current, latest, update_available, command, url, checked_at, error}` from cache and **performs no network I/O** — a page load must never cause an outbound call. `POST /v1/update/check` performs one, and returns **403 while `update_checks` is false**: the opt-in is enforced by the server, not merely hidden in the UI, so no page or local script can make Caprock reach the network uninvited. Checks are throttled to once a day unless forced, the request carries no body or credentials, and a failure is reported in `error` rather than as an error status — not knowing about a release must not read as a broken dashboard. `command` is the upgrade command inferred from the running binary's path (Homebrew, Scoop, `go install`); when no package manager owns the binary it is empty and the UI offers `url` instead. `update_available` is never true for a `dev` or `git describe` build. Caprock does not install the update: replacing the running binary would mean the daemon killing the process executing the command, and running a package manager on the user's behalf from a web page is a surface a local tool should not open.
 
 `GET`/`PUT /v1/settings` carry `{plan_kind, plan_label, plan_usd_per_month}` — how the user pays for Claude Code. Caprock **cannot detect this and never guesses**: Claude Code does not report the plan, and inferring one from usage would be an invented number (rule 6), so the user states it and it is stored in `config.json` like every other setting. `plan_kind` is `""` (not stated), `"flat"` (Pro/Max/Team seat — usage at API list price is an *equivalent*, so comparing it to the fee is meaningful), or `"metered"` (API key, Bedrock, Vertex, or Enterprise usage billed at API rates — the API-list figure **is** approximately the bill, so it is never framed as a saving). `PUT` validates rather than coerces: an unknown `plan_kind` or a negative/non-finite price is a 400, because a typo would otherwise drive a wrong headline figure. Both return 501 when the daemon has no settings controller.
 

@@ -25,6 +25,7 @@ import (
 	"github.com/dspv/caprock/internal/loop"
 	"github.com/dspv/caprock/internal/narrate"
 	"github.com/dspv/caprock/internal/store"
+	"github.com/dspv/caprock/internal/update"
 )
 
 // Deps is everything the API needs from the daemon.
@@ -51,9 +52,18 @@ type Deps struct {
 	Agents AgentController
 	// Tasks is the Phase 2 hive-backed task board (nil ⇒ endpoints return 501).
 	Tasks TaskController
-	// Settings reads and persists the user-editable settings (currently the
-	// subscription plan used for the value comparison). nil ⇒ 501.
+	// Settings reads and persists the user-editable settings (the subscription
+	// plan and whether release checks are on). nil ⇒ 501.
 	Settings SettingsController
+	// Update reports whether a newer release exists. nil ⇒ 501. It is only
+	// ever consulted when the user enabled checks.
+	Update UpdateController
+}
+
+// UpdateController is the subset of the release checker the API needs.
+type UpdateController interface {
+	Status(enabled bool, current string) update.Status
+	Check(ctx context.Context, force bool) error
 }
 
 // SettingsController is the subset of config handling the API needs. Values are
@@ -67,6 +77,9 @@ type SettingsController interface {
 // cannot detect how a user pays for Claude Code and never guesses — these
 // values are stated by the user and stored locally.
 type Settings struct {
+	// UpdateChecks enables the release check — the only outbound call Caprock
+	// makes, off unless the user turns it on.
+	UpdateChecks bool `json:"update_checks"`
 	// PlanKind: "" (not stated), "flat" (Pro/Max/Team seat), or "metered"
 	// (API key, Bedrock, Vertex, Enterprise usage at API rates).
 	PlanKind        string  `json:"plan_kind"`
@@ -123,6 +136,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/sessions/{id}/events", s.handleSessionEvents)
 	m.HandleFunc("GET /v1/sessions/{id}/diff", s.handleSessionDiff)
 	m.HandleFunc("GET /v1/stats/summary", s.handleSummary)
+	m.HandleFunc("GET /v1/update", s.handleUpdate)
+	m.HandleFunc("POST /v1/update/check", s.handleUpdateCheck)
 	m.HandleFunc("GET /v1/settings", s.handleGetSettings)
 	m.HandleFunc("PUT /v1/settings", s.handlePutSettings)
 	m.HandleFunc("GET /v1/stats/daily", s.handleDaily)
@@ -403,6 +418,34 @@ type Burn struct {
 	USDPerHour float64 `json:"usd_per_hour"`
 	TokPerMin  float64 `json:"tokens_per_min"`
 	Turns      int64   `json:"turns"`
+}
+
+// handleUpdate reports the cached release status. It performs no network I/O:
+// a page load must never trigger an outbound call, even with checks enabled.
+func (s *Server) handleUpdate(w http.ResponseWriter, _ *http.Request) {
+	if s.d.Update == nil || s.d.Settings == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("update checks are not available"))
+		return
+	}
+	writeJSON(w, http.StatusOK, s.d.Update.Status(s.d.Settings.Get().UpdateChecks, s.d.Version))
+}
+
+// handleUpdateCheck performs the check on demand. Refused outright when the
+// user has not enabled checks — the opt-in is enforced here, not just in the
+// UI, so no page and no script can make Caprock reach the network uninvited.
+func (s *Server) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	if s.d.Update == nil || s.d.Settings == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("update checks are not available"))
+		return
+	}
+	if !s.d.Settings.Get().UpdateChecks {
+		s.failCode(w, http.StatusForbidden, errors.New("release checks are off; enable them in settings"))
+		return
+	}
+	// A failed check is reported in the payload, not as an error status: not
+	// knowing about a release must not read as a broken dashboard.
+	_ = s.d.Update.Check(r.Context(), true)
+	writeJSON(w, http.StatusOK, s.d.Update.Status(true, s.d.Version))
 }
 
 // handleGetSettings returns the user-stated settings. Absent settings are not

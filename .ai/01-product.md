@@ -97,7 +97,7 @@ Free OSS through Phases 0–1; the open-core (team/cloud tier) decision is defer
 Promises enforced by code, each with the test that proves it:
 
 - **The hook shim never breaks a user's Claude session** — any error path is silent `exit 0` within a 1s budget; the shim never prints to stdout except the Phase 2 Stop-decision reply. Enforced by the shim's integration test (daemon down → exit 0 in <1s) — see [03-contracts.md § Hook shim](03-contracts.md#hook-shim).
-- **All data stays on the machine** — the daemon binds `127.0.0.1` only; there is no outbound network call in the codebase. Enforced by review + a CI grep for outbound HTTP clients outside allow-listed packages ([06-engineering-rules.md](06-engineering-rules.md)).
+- **All data stays on the machine** — the daemon binds `127.0.0.1` only, and nothing about the user ever leaves. The one outbound call in the codebase is the release check (`internal/update`), which is off unless the user turns it on and asks GitHub for a version tag with no body, credentials, or usage data attached. Enforced by review of any new outbound HTTP client ([06-engineering-rules.md](06-engineering-rules.md)).
 - **We never signal a process we did not start** — auto-pause acts on owned sessions only ([05-orchestration.md](05-orchestration.md), [09-execution-plan.md § Phase 1](09-execution-plan.md#phase-1--control)). Externally observed sessions are alert-only.
 - **`caprock down` removes nothing from user data**; restart restores history from SQLite. Enforced by the Phase 0 DoD smoke test.
 - **Historical cost is never silently recomputed** — costs are computed at write time under `meta.pricing_version` and a pricing bump never rewrites old rows ([03-contracts.md § Pricing table](03-contracts.md#pricing-table)).

@@ -32,6 +32,7 @@ import (
 	"github.com/dspv/caprock/internal/ptyman"
 	"github.com/dspv/caprock/internal/rollup"
 	"github.com/dspv/caprock/internal/store"
+	"github.com/dspv/caprock/internal/update"
 )
 
 // Options configure a daemon run.
@@ -77,6 +78,10 @@ type Daemon struct {
 
 	// cfgMu guards opt.Config, which the settings endpoint mutates at runtime.
 	cfgMu sync.RWMutex
+	// upd checks for newer releases; only ever used when the user opted in.
+	upd *update.Checker
+	// baseCtx is the daemon-lifetime context (not a request's).
+	baseCtx context.Context
 
 	mu     sync.Mutex
 	alerts map[string]*loop.Alert // session → last alert (expires after window)
@@ -134,7 +139,7 @@ func newDaemon(ctx context.Context, opt Options) (*Daemon, error) {
 	b := bus.New()
 	rec := rollup.New(st, table, b, log)
 	det := loop.New(opt.Config.LoopK, time.Duration(opt.Config.LoopTMinutes)*time.Minute)
-	d := &Daemon{opt: opt, log: log, store: st, bus: b, table: table, rec: rec, det: det, alerts: map[string]*loop.Alert{}, start: time.Now()}
+	d := &Daemon{opt: opt, log: log, store: st, bus: b, table: table, rec: rec, det: det, alerts: map[string]*loop.Alert{}, start: time.Now(), upd: update.New()}
 	return d, nil
 }
 
@@ -142,6 +147,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	defer d.store.Close()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	d.baseCtx = ctx
 
 	// Listener.
 	ln := d.opt.Listener
@@ -213,7 +219,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version,
 		Status: d.status, ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
 		Token: rt.Token, Shutdown: cancel, Agents: &agentAdapter{m: d.mgr},
-		Tasks: d.taskController(), Settings: &settingsAdapter{d: d},
+		Tasks: d.taskController(), Settings: &settingsAdapter{d: d}, Update: d.upd,
 	})
 	srv := &http.Server{Handler: d.api, ReadHeaderTimeout: 10 * time.Second}
 
@@ -237,6 +243,21 @@ func (d *Daemon) run(ctx context.Context) error {
 
 	// Idle sweeper (also runs once at start so backfilled history settles immediately).
 	_ = d.rec.MarkIdle(ctx, d.opt.IdleAfter, d.opt.EndAfter)
+	// One release check at startup when the user enabled it — so the badge is
+	// right on the first page load rather than a day later. Detached and
+	// best-effort: a network failure must never delay or break startup.
+	d.cfgMu.RLock()
+	checks := d.opt.Config.UpdateChecks
+	d.cfgMu.RUnlock()
+	if checks {
+		go func() {
+			cctx, ccancel := context.WithTimeout(ctx, 10*time.Second)
+			defer ccancel()
+			if err := d.upd.Check(cctx, false); err != nil {
+				d.log.Debug("release check failed", "component", "update", "err", err)
+			}
+		}()
+	}
 	go d.sweep(ctx)
 	if d.opt.Config.RetentionDays > 0 {
 		go d.pruneLoop(ctx)
@@ -479,16 +500,33 @@ func (a *settingsAdapter) Get() api.Settings {
 	a.d.cfgMu.RLock()
 	defer a.d.cfgMu.RUnlock()
 	c := a.d.opt.Config
-	return api.Settings{PlanKind: c.PlanKind, PlanLabel: c.PlanLabel, PlanUSDPerMonth: c.PlanUSDPerMonth}
+	return api.Settings{
+		UpdateChecks:    c.UpdateChecks,
+		PlanKind:        c.PlanKind,
+		PlanLabel:       c.PlanLabel,
+		PlanUSDPerMonth: c.PlanUSDPerMonth,
+	}
 }
 
 func (a *settingsAdapter) Set(in api.Settings) error {
 	a.d.cfgMu.Lock()
+	justEnabled := in.UpdateChecks && !a.d.opt.Config.UpdateChecks
+	a.d.opt.Config.UpdateChecks = in.UpdateChecks
 	a.d.opt.Config.PlanKind = in.PlanKind
 	a.d.opt.Config.PlanLabel = in.PlanLabel
 	a.d.opt.Config.PlanUSDPerMonth = in.PlanUSDPerMonth
 	cfg := a.d.opt.Config
 	a.d.cfgMu.Unlock()
+	// Turning checks on should show an answer immediately rather than after
+	// the next restart. Runs detached so the PUT stays fast, and under the
+	// daemon's lifetime context so it is not cancelled with the request.
+	if justEnabled {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.WithoutCancel(a.d.baseCtx), 10*time.Second)
+			defer cancel()
+			_ = a.d.upd.Check(ctx, true)
+		}()
+	}
 	return config.Save(a.d.opt.DataDir, cfg)
 }
 

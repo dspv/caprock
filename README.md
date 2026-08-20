@@ -39,7 +39,7 @@ One local binary. Your data never leaves your machine.
 - **See it** — live activity, tokens, cost, and loop alerts per session.
 - **Steer it** — spawn, pause, and kill sessions from the dashboard.
 - **Trust it** — orchestrate agents that finish only when the tests pass.
-- **Local-first** — loopback only, no servers, no telemetry, no account.
+- **Local-first** — loopback only, no servers, no telemetry, no account. The one thing that can reach the network is an optional check for new releases, off until you turn it on.
 
 Every session on your machine, at a glance:
 

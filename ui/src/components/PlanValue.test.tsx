@@ -12,7 +12,7 @@ import type { Settings, Summary } from '@/lib/api'
 const summary = { cost_usd: 7119, pricing_version: '2026-08-18.1' } as Summary
 
 function plan(kind: Settings['plan_kind'], usd = 0, label = 'Max 20×'): Settings {
-  return { plan_kind: kind, plan_label: label, plan_usd_per_month: usd }
+  return { update_checks: false, plan_kind: kind, plan_label: label, plan_usd_per_month: usd }
 }
 
 describe('PlanValue', () => {

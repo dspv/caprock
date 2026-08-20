@@ -36,10 +36,10 @@ Supporting directories:
 
 ## Current State
 
-**Last updated: 2026-08-20** · Owner: Dima · Phase: **Phase 2 — Orchestrate, complete; v0.1.0–v0.8.0 tagged + published**
+**Last updated: 2026-08-20** · Owner: Dima · Phase: **Phase 2 — Orchestrate, complete; v0.1.0–v0.8.1 tagged + published**
 
 - **Documentation:** corpus built from the spec on 2026-08-18; loss audit green; spec deleted; kept current with the code.
-- **Code:** all three phases built and green on the 3-OS CI matrix. **v0.1.0–v0.8.0 are all tagged and published** (through 2026-08-20; Homebrew formula in `dspv/homebrew-tap` — `brew install dspv/tap/caprock`). Post-Orchestrate releases are polish: v0.4.0 (plan-limit windows, orchestrator-lifecycle fixes, formula), v0.4.1 (formula ships the hook shim), v0.5.0 (statusLine auto-install, honest first-run errors, readable MCP names, release CI-gate, CODE_OF_CONDUCT), v0.5.1 (Windows install via Scoop + README project map), v0.6.0 (light theme, `go install` with a real UI), v0.7.0 (per-project spend on Now, larger numbers, graph out of the nav), v0.8.0 (live activity feed, plan value, attention strip). The Phase 2 tag gate — a live unattended orchestrator run with hooks — passed (a real `claude` orchestrator drove a task to green verification with no human input). See [14-build-status.md](14-build-status.md) for the live per-track state.
+- **Code:** all three phases built and green on the 3-OS CI matrix. **v0.1.0–v0.8.1 are all tagged and published** (through 2026-08-20; Homebrew formula in `dspv/homebrew-tap` — `brew install dspv/tap/caprock`). Post-Orchestrate releases are polish: v0.4.0 (plan-limit windows, orchestrator-lifecycle fixes, formula), v0.4.1 (formula ships the hook shim), v0.5.0 (statusLine auto-install, honest first-run errors, readable MCP names, release CI-gate, CODE_OF_CONDUCT), v0.5.1 (Windows install via Scoop + README project map), v0.6.0 (light theme, `go install` with a real UI), v0.7.0 (per-project spend on Now, larger numbers, graph out of the nav), v0.8.0 (live activity feed, plan value, attention strip). The Phase 2 tag gate — a live unattended orchestrator run with hooks — passed (a real `claude` orchestrator drove a task to green verification with no human input). See [14-build-status.md](14-build-status.md) for the live per-track state.
 - **Unmeasured / undecided:** see [12-risks.md § Open questions](12-risks.md#open-questions); `OQ-01`, `OQ-03`, and `OQ-07` are resolved (all open questions OQ-01–09 are closed); no open question blocks shipping.
 
 ## Rules of engagement — non-negotiable
@@ -47,7 +47,7 @@ Supporting directories:
 1. **Phase order is the product.** Observe (Phase 0) ships and works on externally started sessions before any control or orchestration code is user-facing. Read before write; orchestration is additive. Skipping ahead produces a harness nobody can adopt without changing their workflow — the incumbent's exact failure.
 2. **No task is done with a red Windows CI job. No exceptions.** Cross-platform reliability is the moat ([02-architecture.md](02-architecture.md#cross-platform-do-it-right-on-day-one)).
 3. **The shim never breaks a user's Claude session.** Any error path is silent `exit 0` within 1s; no stdout except the Phase 2 Stop decision.
-4. **All data stays on the machine.** Loopback listeners only; no outbound calls; no telemetry. Local-first is the trust story that made the incumbent land.
+4. **All data stays on the machine.** Loopback listeners only; no telemetry; **no outbound calls except the release check the user explicitly turns on** — off by default, asked for once, revocable, and carrying no body, credentials, or usage data (see [02-architecture.md](02-architecture.md) and `internal/update`). Local-first is the trust story that made the incumbent land.
 5. **All code, commits, PR titles, descriptions and docs in English.** Conventional Commits.
 6. **No invented numbers anywhere public** — prices, costs, forecasts, performance claims. Measured or sourced with a date, else an open question. Forecasts are labeled estimates.
 7. **Every feature traces to a complaint** ([01-product.md § Complaint → feature traceability](01-product.md#complaint--feature-traceability)); a feature with no row is a candidate for cutting.

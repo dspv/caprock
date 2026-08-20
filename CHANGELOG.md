@@ -9,6 +9,39 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.8.1] - 2026-08-20
+
+### Added
+
+- **Optional update notice.** When a newer release exists, Now leads with a
+  line naming it and the exact command for how this copy was installed —
+  `brew upgrade caprock`, `scoop update caprock`, or
+  `go install …/cmd/caprock@latest` — one click to copy. When no package
+  manager owns the binary it links to the release page instead.
+
+  There is deliberately **no "update now" button**: upgrading replaces the
+  running binary, so the daemon would be killing the process executing the
+  command, and running a package manager on your behalf from a web page is a
+  surface a local-first tool should not open. You run one line in your own
+  terminal, where you can see exactly what it does.
+
+  The check is **the only outbound call Caprock makes**, so it is off until you
+  turn it on — offered once in plain words, revocable, throttled to once a day,
+  and carrying no body, credentials, or usage data. The opt-in is enforced by
+  the daemon (`POST /v1/update/check` is 403 while checks are off), not merely
+  hidden in the UI, and reading the status never touches the network. A `dev`
+  or source build is never told it is out of date.
+
+- **`GET /v1/update` and `POST /v1/update/check`**; `update_checks` added to
+  `/v1/settings`.
+
+### Changed
+
+- **Engineering rule 4 now states the exception honestly** — "no outbound
+  calls" became "no outbound calls except the release check the user
+  explicitly turns on", in the rules, the product doc, and the README, rather
+  than leaving a promise the code no longer keeps literally.
+
 ## [0.8.0] - 2026-08-20
 
 Three surfaces that answer questions the dashboard could already have answered
