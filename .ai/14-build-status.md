@@ -2,7 +2,7 @@
 
 The running log: what is done, what is not, what is next. **Update this file and § Current State in [00-index.md](00-index.md) whenever the state of the world changes.** Dates in absolute form, never "last week". What "done" means per task is defined in [09-execution-plan.md](09-execution-plan.md).
 
-**Last updated: 2026-08-20** · Phase **2 — Orchestrate, complete** · **v0.1.0–v0.9.7 are all tagged and published** (Homebrew formula in `dspv/homebrew-tap` — `brew install dspv/tap/caprock`). The live unattended orchestrator run (the Phase 2 tag gate) is done — a real `claude` orchestrator autonomously assigned a task, spawned a worker, and drove it to green verification. Post-Orchestrate: v0.4.0 = plan-limit windows + orchestrator-lifecycle fixes + Homebrew formula; v0.4.1 = the formula ships the hook shim + honest hook status; v0.5.0 = distribution polish (statusLine auto-install, honest first-run errors, readable MCP names, a release CI-gate, CODE_OF_CONDUCT); **v0.5.1 = Windows install via Scoop (`dspv/scoop-bucket`) + a README project map; **v0.6.0 = light theme + `go install` with a real embedded UI; **v0.7.0 = per-project spend on Now, larger numbers, and the graph out of the top nav; **v0.8.0 = the three owner-agreed surfaces — a live activity feed, plan value (API-priced usage against the stated subscription), and an attention strip for loops/errors/stalls.** v0.8.1 = the optional update notice (B2 closed). **v0.9.0 = Answers (B0): Claude's own prose, searchable across sessions, plus the byte-truncation repair.** Next: backlog B3 (Claude desktop usage) in [09-execution-plan.md](09-execution-plan.md). The orchestration graph shipped but did not earn a nav slot; see [04-ui.md § Graph](04-ui.md).
+**Last updated: 2026-08-20** · Phase **2 — Orchestrate, complete** · **v0.1.0–v0.9.8 are all tagged and published** (Homebrew formula in `dspv/homebrew-tap` — `brew install dspv/tap/caprock`). The live unattended orchestrator run (the Phase 2 tag gate) is done — a real `claude` orchestrator autonomously assigned a task, spawned a worker, and drove it to green verification. Post-Orchestrate: v0.4.0 = plan-limit windows + orchestrator-lifecycle fixes + Homebrew formula; v0.4.1 = the formula ships the hook shim + honest hook status; v0.5.0 = distribution polish (statusLine auto-install, honest first-run errors, readable MCP names, a release CI-gate, CODE_OF_CONDUCT); **v0.5.1 = Windows install via Scoop (`dspv/scoop-bucket`) + a README project map; **v0.6.0 = light theme + `go install` with a real embedded UI; **v0.7.0 = per-project spend on Now, larger numbers, and the graph out of the top nav; **v0.8.0 = the three owner-agreed surfaces — a live activity feed, plan value (API-priced usage against the stated subscription), and an attention strip for loops/errors/stalls.** v0.8.1 = the optional update notice (B2 closed). **v0.9.0 = Answers (B0): Claude's own prose, searchable across sessions, plus the byte-truncation repair.** **v0.9.8 = interface hierarchy plus four honesty fixes: every cost figure states its basis, percentages floor, and the live indicator no longer freezes.** Next: backlog B3 (Claude desktop usage) in [09-execution-plan.md](09-execution-plan.md). The orchestration graph shipped but did not earn a nav slot; see [04-ui.md § Graph](04-ui.md).
 
 ## Progress by track
 
@@ -37,7 +37,7 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## What is true right now
 
-- **All three phases are built and green.** The Go module + `ui/` exist and are exercised by `make check` (Go tests, `go vet`, `golangci-lint`, docs gates, and the UI typecheck/vitest/build) on the 3-OS CI matrix. Phase 2's orchestration loop has been driven end to end by a real `claude` orchestrator (see the Phase 2 log entry). **v0.1.0–v0.9.7 are all tagged and published** (Homebrew formula in `dspv/homebrew-tap`).
+- **All three phases are built and green.** The Go module + `ui/` exist and are exercised by `make check` (Go tests, `go vet`, `golangci-lint`, docs gates, and the UI typecheck/vitest/build) on the 3-OS CI matrix. Phase 2's orchestration loop has been driven end to end by a real `claude` orchestrator (see the Phase 2 log entry). **v0.1.0–v0.9.8 are all tagged and published** (Homebrew formula in `dspv/homebrew-tap`).
 - The Python measurer (`~/dev/caprock-legacy`, PyPI `caprock` 0.3.0) is frozen ([ADR-007](08-decisions.md#adr-007--the-harness-is-caprock-new-go-codebase-in-dspvcaprock-python-measurer-frozen)); the Go binary shipped its first release as **v0.1.0** on 2026-08-19.
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
@@ -46,6 +46,28 @@ Percentages are deliberately coarse — they answer "is this track started, half
 ### 2026-08-20 — Live Orchestration Graph (the "wow" view) — MVP complete
 
 The Phase-3 "delight" visualization, chosen over a radar / activity-river by a 5-persona ICP panel (3-1-1, including the adversarial skeptic) because the picture **is** the differentiator: the orchestrator pinned center, workers on a stable ring, tasks flowing through a **verify gate** that turns green only after `done_criteria` pass — the verified-team story the competitor's office can't show. Built in 8 focused commits under `ui/src/screens/orchestration/`: (1) plumbing — the WS `task` frame was emitted but the client dropped it; now handled, plus route + nav; (2) fixed radial layout — a node's slot is its index in the ever-seen sorted registry (grows only) so nothing ever reshuffles (the panel's #1 anti-jitter constraint, **never force-directed**, enforced by test); (3) model reducer; (4) static SVG renderer; (5) the money shot — verify gate + dot go `--color-ok` green with a CSS pop on verifying→done; (6) damped rAF motion — dots glide toward their status target, overshoot-free, a mid-flight verify bounce re-aims smoothly; (7) empty-state — no hive degrades to your live sessions on the ring (never blank); (8) ambient breathing polish. Pure theme-aware SVG (light+dark free), reads the existing live frames + `/v1/tasks`,`/v1/sessions` — **no backend change**. 42 UI tests green. Fast-follows (deferred): real mailbox-pulse frame, cumulative-spend arc, click-through. Docs: [04-ui.md § Graph](04-ui.md).
+
+### 2026-08-20 — v0.9.8: hierarchy, and four numbers that were quietly wrong
+
+The dashboard was asked to look like the site — large figures, clear at a glance — and the exercise turned up four honesty defects that the redesign itself had nothing to do with.
+
+**A cost with no basis reads as a bill.** Shown to five readers, three took a hero figure for an amount owed. The qualifier existed on Now and nowhere else: History said `API-equivalent`, our own jargon; Cost and Session said nothing beside the number. The wording now comes from one component so the four screens cannot drift, and it follows the stated plan, because no single sentence is honest for everyone — on a flat plan the figure is explicitly not a bill, on metered billing it *is* approximately the bill, and with no plan stated it names the basis and claims nothing further.
+
+**A percentage that rounds up invents a perfect score.** A 99.5% cache hit displayed as `100%` is a number the data does not support. `fmtPct` floors.
+
+**Cache hit was tinted green permanently.** It sits near 99% forever on Claude Code, so a colour that is always on points attention away from the money rather than at anything. It speaks up only below 90%, where a drop means something broke.
+
+**A liveness label that stops updating is worse than none.** The header dot computed the age of the last frame only when a frame arrived — and on an idle machine no frame arrives *by definition*, so it froze at `live · now` and kept saying it for hours. Exactly the reading someone glancing from across the room relies on, and the one case where it was wrong.
+
+Also: an attention rule for sessions with many turns and few files, and note search that matches the prompt that produced an answer, not only the answer's own text.
+
+Two things worth keeping.
+
+**The rule was reworded after the owner could not judge his own session.** It said "Spent with little to show" — a verdict. Asked whether the flagged session had actually gone wrong, the person who was there said he did not know. If they cannot tell from the outside, the dashboard certainly cannot; it now reports what it counted ("Lots of turns, few files") and leaves the judgement alone.
+
+**Two defects were found only by looking at the rendered page against a real 342MB database.** The Cost subtitle truncated once the basis was appended to the session count — cutting off precisely the part the change existed to add — and the Session tile could not fit the basis beside the model name at one-sixth width. Both invisible to a passing test suite.
+
+An "all clear" banner was considered for the empty attention strip and rejected: an always-on banner is what trains people to stop reading the space where the real warning will appear.
 
 ### 2026-08-20 — v0.9.7: the desktop app's plan usage, and the case for building less
 

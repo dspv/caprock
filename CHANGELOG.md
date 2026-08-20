@@ -9,6 +9,53 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.9.8] - 2026-08-20
+
+### Changed
+
+- **Every cost figure now says what it is.** Shown to five readers, three took
+  a large dollar number for a bill. The explanation existed on one screen and
+  nowhere else — History said `API-equivalent`, which is internal jargon, and
+  Cost and Session said nothing at all beside the number.
+
+  The wording follows your stated plan, because there is no single honest
+  sentence: on Pro/Max/Team it is what the same work would have cost through
+  the API and is explicitly **not a bill**; on API/Bedrock/Vertex it **is**
+  approximately your bill, and calling it an equivalent would be the same
+  error reversed; with no plan set it names the basis and claims nothing more.
+
+- **The dashboard has a visual hierarchy.** Cost leads at the size the number
+  deserves; reference figures step down. Previously the money sat fourth of
+  six at the same size as a turn counter.
+
+- **Percentages round down.** A 99.5% cache hit shown as `100%` is a perfect
+  score the data does not support.
+
+- **Cache hit is no longer permanently green.** It sits near 99% forever, so
+  an always-on colour pointed attention away from the money. It speaks up
+  below 90%, where a drop means something broke.
+
+### Added
+
+- **An attention row for sessions with many turns and few files.** Every other
+  rule skips ended sessions, so this shape had no surface at all. It is worded
+  as the measurement, not a verdict — reading, investigating and designing all
+  look like this from the outside, and only the person who was there can tell
+  them from a session that went nowhere.
+
+- **Note search matches the prompt that produced an answer**, not only the
+  answer's own text — so searching your own words finds what Claude replied.
+
+### Fixed
+
+- **The live indicator stopped updating while nothing was happening.** It
+  computed the age of the last frame only when a frame arrived, and on an idle
+  machine no frame arrives by definition — so it froze at `live · now` and
+  kept claiming that for hours. A stale liveness indicator is worse than none,
+  because it is the one people trust.
+
+- Cost subtitles no longer truncate on the Cost and Session screens.
+
 ## [0.9.7] - 2026-08-20
 
 ### Added
