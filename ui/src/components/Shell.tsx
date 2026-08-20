@@ -3,6 +3,8 @@ import { useLive } from '@/lib/live'
 import { href, type Route } from '@/lib/router'
 import { fmtAgo } from '@/lib/format'
 import { useTheme } from '@/lib/theme'
+import { api } from '@/lib/api'
+import { useApi } from '@/lib/useApi'
 import { PlanChip, usePlan } from '@/components/PlanPicker'
 
 const NAV: { route: Route; label: string; phase?: string }[] = [
@@ -42,6 +44,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           <ConnDot state={live.conn} lastFrameAt={live.lastFrameAt} />
           <PlanChip plan={plan} onSave={savePlan} />
           <ThemeToggle />
+          <VersionChip />
           <a href="#/settings" className="text-fg-muted hover:text-fg no-underline">status</a>
         </div>
       </header>
@@ -85,5 +88,33 @@ function ConnDot({ state, lastFrameAt }: { state: 'connecting' | 'open' | 'close
       <span className={`inline-block w-1.5 h-1.5 rounded-full ${cls}`} />
       <span className="num">{label}</span>
     </span>
+  )
+}
+
+/**
+ * The running version, always visible — the question "which build am I on?"
+ * came up often enough that burying it on the status page was wrong. When a
+ * newer release exists (and only if the user turned release checks on) it says
+ * so here too, linking to the full notice rather than repeating it.
+ */
+function VersionChip() {
+  const st = useApi(() => api.status(), [], { live: false, intervalMs: 60000 })
+  const upd = useApi(() => api.update().catch(() => undefined), [], { live: false, intervalMs: 60000 })
+  const version = st.data?.version
+  if (!version) return null
+  // A source build reports a `git describe` string or "dev"; showing that
+  // verbatim in the header is noise, and it is never "out of date" anyway.
+  const release = /^v?\d+\.\d+\.\d+$/.test(version)
+  const newer = release && upd.data?.update_available ? upd.data.latest : undefined
+  return newer ? (
+    <a
+      href="#/"
+      className="mono text-[11px] text-accent hover:text-accent-strong no-underline"
+      title={`${newer} is available — you are on ${version}`}
+    >
+      {version} → {newer}
+    </a>
+  ) : (
+    <span className="mono text-[11px] text-fg-faint" title={release ? 'the running release' : 'a local build, not a published release'}>{release ? version : 'dev build'}</span>
   )
 }

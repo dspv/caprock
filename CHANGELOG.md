@@ -9,6 +9,17 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.9.5] - 2026-08-20
+
+### Added
+
+- **The running version is in the header.** "Which build am I on?" was a
+  question you had to open the status page to answer. When release checks are
+  on and a newer version exists, the chip shows `v0.9.0 → v0.9.4` and links to
+  the details. A build from source says "dev build" rather than showing a
+  `git describe` string, and is never told it is out of date — it is not a
+  published release, so there is nothing to upgrade to.
+
 ## [0.9.4] - 2026-08-20
 
 ### Fixed
