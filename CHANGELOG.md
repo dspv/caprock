@@ -9,6 +9,42 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.10.0] - 2026-08-21
+
+### Added
+
+- **Live pulse — the shape of the work, one bar per minute.** A track per
+  session on Now, showing the last hour. A bar's height is how much happened in
+  that minute and its colour is what it cost, so the shape of a track is the
+  shape of the work: a task that ramped up and finished draws a bell, steady
+  grinding draws a plateau, working in bursts draws a comb.
+
+  Every pixel corresponds to something recorded — there is no motion that does
+  not. A minute with no events draws a hairline rather than a gap, because a
+  hole in a chart reads as a rendering fault while a flat floor reads as
+  silence.
+
+  Hovering names the minute and what happened in it; clicking opens the session
+  **at that minute**, with those events marked. Landing at the top of a
+  thousand-event timeline is the same as not having clicked.
+
+  On the right, **×N same call** counts the most-repeated identical tool call
+  within six minutes. It is worded as the measurement rather than a verdict:
+  polling a file with repeated reads looks exactly like being stuck, and only
+  the person working knows which it was.
+
+### Fixed
+
+- **The pulse said "working" while Claude was waiting for you.** It inferred a
+  state from the bars instead of using the one the daemon already knew. The
+  bars describe the past hour; health describes this moment, and they answer
+  different questions.
+
+- **`?newest=1` on the session events endpoint.** Paging from the start returns
+  the *oldest* events, so anything showing recent activity rendered an empty
+  window on a busy session — hours of history, none of it recent, with nothing
+  to say why.
+
 ## [0.9.9] - 2026-08-21
 
 Bugs found by hunting rather than by tests — comparing every displayed number
