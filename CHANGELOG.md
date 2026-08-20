@@ -9,6 +9,35 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.9.6] - 2026-08-20
+
+### Changed
+
+- **The dashboard is three to ten times faster on a large history.** Measured on
+  a real 184,000-event database:
+
+|                    | before | after  |
+| ------------------ | ------ | ------ |
+| Session list       | 240 ms | 23 ms  |
+| Answers            | 156 ms | 2 ms   |
+| Cost (all time)    | 818 ms | 230 ms |
+| History (all time) | 828 ms | 340 ms |
+
+  Every screen filtered events by kind and then by time, but only time was
+  indexed — so each query read the whole range and threw away roughly 70% of
+  it. Four indexes now match how the data is actually read, and two totals that
+  summed conditional expressions (which no index can help) group by kind
+  instead. Existing databases are upgraded on first start; nothing is lost and
+  no re-import is needed.
+
+- **Panels show placeholders while loading** instead of announcing "No history
+  yet" and then replacing it with real numbers. An empty state now means the
+  answer really is empty.
+
+  Search deliberately still scans rather than using a word index: people search
+  their own sessions for fragments — half an error message, part of a path —
+  and a faster search that silently misses them would be a different feature.
+
 ## [0.9.5] - 2026-08-20
 
 ### Added
