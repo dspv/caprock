@@ -21,10 +21,12 @@ import type { Event } from './api'
 export interface Bar {
   /** Events in this minute — the bar's height. */
   n: number
-  /** Model turns, which colour the bar amber rather than green. */
+  /** Model turns in this minute. */
   turns: number
   /** Tool calls in this minute. */
   tools: number
+  /** USD spent in this minute — what the bar's colour encodes. */
+  cost: number
 }
 
 export interface Pulse {
@@ -102,7 +104,7 @@ function msOf(ev: Event): number {
  * which would draw a spike that never happened.
  */
 export function buildPulse(events: Event[], now: number, minutes = PULSE_MINUTES): Pulse {
-  const bars: Bar[] = Array.from({ length: minutes }, () => ({ n: 0, turns: 0, tools: 0 }))
+  const bars: Bar[] = Array.from({ length: minutes }, () => ({ n: 0, turns: 0, tools: 0, cost: 0 }))
   const start = now - minutes * 60_000
 
   // Repeat counting needs events in time order; the caller's order is not
@@ -125,6 +127,8 @@ export function buildPulse(events: Event[], now: number, minutes = PULSE_MINUTES
         bar.n++
         if (ev.kind === 'turn.assistant') bar.turns++
         else if (ev.kind === 'tool.pre' || ev.kind === 'tool.post') bar.tools++
+        const c = typeof ev.cost_usd === 'number' && Number.isFinite(ev.cost_usd) ? ev.cost_usd : 0
+        bar.cost += c
       }
     }
 
@@ -160,4 +164,28 @@ export function trackState(p: Pulse): { kind: 'repeat' | 'working' | 'quiet'; la
   const active = p.bars.filter((b) => b.n > 0).length
   if (active === 0) return { kind: 'quiet', label: 'quiet' }
   return { kind: 'working', label: 'working' }
+}
+
+/**
+ * costTier decides a bar's colour. Colour used to encode "mostly model turns
+ * vs mostly tool calls", which sounded meaningful and was not: the ratio sits
+ * near 1:2 almost every minute, so adjacent near-identical minutes came out
+ * different colours and the legend explained a distinction nobody could see.
+ *
+ * Cost per minute does vary — eight-fold across one hour on a real session —
+ * and it is the thing worth noticing. Three tiers, because a continuous
+ * gradient reads as noise at this size.
+ */
+export function costTier(cost: number, median: number): 'low' | 'mid' | 'high' {
+  if (median <= 0) return 'mid'
+  if (cost >= median * 1.8) return 'high'
+  if (cost <= median * 0.5) return 'low'
+  return 'mid'
+}
+
+/** medianCost of the minutes that cost anything, for scaling the tiers. */
+export function medianCost(bars: Bar[]): number {
+  const spent = bars.filter((b) => b.cost > 0).map((b) => b.cost).sort((a, b) => a - b)
+  if (spent.length === 0) return 0
+  return spent[Math.floor(spent.length / 2)] ?? 0
 }

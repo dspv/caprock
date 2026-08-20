@@ -17,7 +17,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type Event, type SessionSummary } from '@/lib/api'
 import { live } from '@/lib/live'
-import { buildPulse, trackState, PULSE_MINUTES, type Pulse as PulseModel } from '@/lib/pulse'
+import { buildPulse, costTier, medianCost, trackState, PULSE_MINUTES, type Pulse as PulseModel } from '@/lib/pulse'
 import { fmtUSD } from '@/lib/format'
 import { Panel } from '@/components/ui'
 import { href } from '@/lib/router'
@@ -82,14 +82,31 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
           <Track key={s.session_id} s={s} events={events.get(s.session_id) ?? []} now={now} />
         ))}
       </div>
-      <div className="px-3 py-2 text-[11px] text-fg-faint border-t border-border">
-        Height is how much happened in that minute; <span className="text-accent">amber</span> is a model turn,{' '}
-        <span className="text-ok">green</span> tool calls. <span className="text-warn">×N same call</span> counts the
-        most-repeated identical tool call within six minutes — a measurement, not a verdict: polling a file looks the
-        same as being stuck.
+      <div className="px-3 py-2 flex items-center gap-4 flex-wrap text-[11px] text-fg-faint border-t border-border">
+        <span className="flex items-center gap-1.5">
+          <Swatch className="bg-[rgba(169,165,158,0.35)] h-[2px]" />nothing happened
+        </span>
+        <span className="flex items-center gap-1.5">
+          <Swatch className="bg-[rgba(79,191,107,0.62)]" />cheap minute
+        </span>
+        <span className="flex items-center gap-1.5">
+          <Swatch className="bg-[rgba(254,177,87,0.72)]" />typical
+        </span>
+        <span className="flex items-center gap-1.5">
+          <Swatch className="bg-[rgba(255,203,133,0.95)]" />expensive
+        </span>
+        <span className="text-fg-faint">· bar height = events that minute</span>
+        <span className="ml-auto">
+          <span className="text-warn">×N same call</span> = most-repeated identical tool call in six minutes
+        </span>
       </div>
     </Panel>
   )
+}
+
+/** A colour chip, so the legend shows the colour rather than naming it. */
+function Swatch({ className }: { className: string }) {
+  return <span className={`inline-block w-3 h-3 rounded-[2px] ${className}`} />
 }
 
 function Track({ s, events, now }: { s: SessionSummary; events: Event[]; now: number }) {
@@ -119,9 +136,17 @@ function Track({ s, events, now }: { s: SessionSummary; events: Event[]; now: nu
   )
 }
 
-/** Bar colours, kept beside the legend that names them. */
-const TURN_COLOR = 'rgba(254,177,87,0.85)'
-const TOOL_COLOR = 'rgba(79,191,107,0.7)'
+/** Bar colours by cost tier, kept beside the legend that names them. */
+const TIER_COLOR = {
+  low: 'rgba(79,191,107,0.62)',    // ok green — a cheap minute
+  mid: 'rgba(254,177,87,0.72)',    // accent amber — typical
+  high: 'rgba(255,203,133,0.95)',  // bright — an expensive minute
+} as const
+
+/** A minute with no events still draws a hairline, so the track reads as a
+ * continuous hour with quiet stretches rather than as a broken chart. Gaps in
+ * a bar chart look like a rendering fault; a flat floor looks like silence. */
+const IDLE_COLOR = 'rgba(169,165,158,0.16)'
 
 function PulseCanvas({ pulse }: { pulse: PulseModel }) {
   const ref = useRef<HTMLCanvasElement>(null)
@@ -143,15 +168,24 @@ function PulseCanvas({ pulse }: { pulse: PulseModel }) {
 
       const bars = pulse.bars
       const max = Math.max(...bars.map((b) => b.n), 1)
+      const median = medianCost(bars)
       const bw = w / bars.length
       for (let i = 0; i < bars.length; i++) {
         const b = bars[i]
-        if (!b || b.n === 0) continue
+        if (!b) continue
+        const x = i * bw
+        const width = Math.max(1, bw - 1)
+        if (b.n === 0) {
+          // Silence, drawn rather than left blank.
+          ctx.fillStyle = IDLE_COLOR
+          ctx.fillRect(x, h - 2, width, 2)
+          continue
+        }
         // Gamma: a quiet minute beside a busy one would otherwise be invisible,
         // and "almost nothing happened" is exactly what you want to see.
-        const bh = Math.max(2, Math.pow(b.n / max, 0.62) * (h - 4))
-        ctx.fillStyle = b.turns > b.tools * 0.45 ? TURN_COLOR : TOOL_COLOR
-        ctx.fillRect(i * bw, h - bh, Math.max(1, bw - 1), bh)
+        const bh = Math.max(3, Math.pow(b.n / max, 0.62) * (h - 4))
+        ctx.fillStyle = TIER_COLOR[costTier(b.cost, median)]
+        ctx.fillRect(x, h - bh, width, bh)
       }
     }
     paint()

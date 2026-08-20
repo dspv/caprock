@@ -5,7 +5,7 @@
  * looping and was worthless because of it.
  */
 import { describe, expect, it } from 'vitest'
-import { buildPulse, signature, trackState, PULSE_MINUTES, REPEAT_FLOOR } from './pulse'
+import { buildPulse, costTier, medianCost, signature, trackState, PULSE_MINUTES, REPEAT_FLOOR } from './pulse'
 import type { Event } from './api'
 
 const NOW = Date.parse('2026-08-21T12:00:00Z')
@@ -128,7 +128,7 @@ describe('trackState', () => {
   it('reports a repeat count as a count, never as a verdict', () => {
     // Polling a file with repeated Reads is legitimate and looks identical to
     // being stuck; only the person working knows which it was.
-    const s = trackState({ bars: [{ n: 1, turns: 0, tools: 1 }], repeats: 48, repeatSample: 'Read /tmp/x' })
+    const s = trackState({ bars: [{ n: 1, turns: 0, tools: 1, cost: 0 }], repeats: 48, repeatSample: 'Read /tmp/x' })
     expect(s.kind).toBe('repeat')
     expect(s.label).toBe('×48 same call')
     expect(s.label.toLowerCase()).not.toContain('stuck')
@@ -136,10 +136,46 @@ describe('trackState', () => {
   })
 
   it('says quiet when nothing happened', () => {
-    expect(trackState({ bars: [{ n: 0, turns: 0, tools: 0 }], repeats: 0, repeatSample: '' }).kind).toBe('quiet')
+    expect(trackState({ bars: [{ n: 0, turns: 0, tools: 0, cost: 0 }], repeats: 0, repeatSample: '' }).kind).toBe('quiet')
   })
 
   it('says working for ordinary activity', () => {
-    expect(trackState({ bars: [{ n: 5, turns: 2, tools: 3 }], repeats: 3, repeatSample: '' }).kind).toBe('working')
+    expect(trackState({ bars: [{ n: 5, turns: 2, tools: 3, cost: 0 }], repeats: 3, repeatSample: '' }).kind).toBe('working')
+  })
+})
+
+describe('cost colouring', () => {
+  it('accumulates what a minute cost', () => {
+    const priced = (usd: number, minutesAgo: number) =>
+      ({ ...ev({ kind: 'turn.assistant' }, minutesAgo), cost_usd: usd }) as Event
+    const p = buildPulse([priced(0.5, 3), priced(0.25, 3)], NOW, 60)
+    const bar = p.bars.find((b) => b.n > 0)!
+    expect(bar.cost).toBeCloseTo(0.75)
+  })
+
+  it('separates an expensive minute from a cheap one', () => {
+    // Colour used to encode turns-vs-tools, which sits near 1:2 almost every
+    // minute — adjacent identical-looking minutes came out different colours
+    // and the legend explained a distinction nobody could see. Cost varies
+    // eight-fold across an hour on a real session, so it is what colour says.
+    const median = 1.0
+    expect(costTier(2.5, median)).toBe('high')
+    expect(costTier(1.1, median)).toBe('mid')
+    expect(costTier(0.2, median)).toBe('low')
+  })
+
+  it('does not claim a tier when nothing was priced', () => {
+    expect(costTier(0, 0)).toBe('mid')
+    expect(medianCost([{ n: 3, turns: 1, tools: 2, cost: 0 }])).toBe(0)
+  })
+
+  it('takes the median of minutes that cost something, ignoring silent ones', () => {
+    const bars = [
+      { n: 0, turns: 0, tools: 0, cost: 0 },
+      { n: 5, turns: 1, tools: 4, cost: 1 },
+      { n: 5, turns: 1, tools: 4, cost: 3 },
+      { n: 5, turns: 1, tools: 4, cost: 2 },
+    ]
+    expect(medianCost(bars)).toBe(2)
   })
 })
