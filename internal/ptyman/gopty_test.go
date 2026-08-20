@@ -27,7 +27,10 @@ import (
 // depend on any binary that might be absent from a CI image.
 func shellSpec(script string) Spec {
 	if runtime.GOOS == "windows" {
-		return Spec{Command: "cmd", Args: []string{"/C", script}}
+		// /Q suppresses command echo. Without it ConPTY paints the console —
+		// a screen clear, cursor moves, a title sequence — and the actual
+		// output is lost among the escapes.
+		return Spec{Command: "cmd.exe", Args: []string{"/Q", "/C", script}}
 	}
 	return Spec{Command: "/bin/sh", Args: []string{"-c", script}}
 }
@@ -46,9 +49,11 @@ func spawn(t *testing.T, spec Spec) Session {
 	return s
 }
 
-// readAllFor drains output until EOF or the deadline, whichever is first. A PTY
-// stays open while the process lives, so an unbounded ReadAll would hang.
-func readAllFor(t *testing.T, r io.Reader, d time.Duration) string {
+// drain reads output until EOF or a short deadline, whichever is first. A PTY
+// stays open while the process lives, so an unbounded ReadAll would hang; the
+// callers here only need the process to have run, not its text.
+func drain(t *testing.T, r io.Reader) string {
+	const d = 5 * time.Second
 	t.Helper()
 	var mu sync.Mutex
 	var buf bytes.Buffer
@@ -70,6 +75,45 @@ func readAllFor(t *testing.T, r io.Reader, d time.Duration) string {
 	}()
 	select {
 	case <-done:
+	case <-time.After(d):
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	return buf.String()
+}
+
+// readUntil drains output until `want` appears or the deadline passes. A fixed
+// window is not enough on Windows: ConPTY emits a screen-painting preamble
+// before the process's own output, so the interesting bytes arrive late.
+func readUntil(t *testing.T, r io.Reader, want string, d time.Duration) string {
+	t.Helper()
+	var mu sync.Mutex
+	var buf bytes.Buffer
+	found := make(chan struct{})
+	go func() {
+		b := make([]byte, 4096)
+		for {
+			n, err := r.Read(b)
+			if n > 0 {
+				mu.Lock()
+				buf.Write(b[:n])
+				hit := strings.Contains(buf.String(), want)
+				mu.Unlock()
+				if hit {
+					select {
+					case found <- struct{}{}:
+					default:
+					}
+					return
+				}
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	select {
+	case <-found:
 	case <-time.After(d):
 	}
 	mu.Lock()
@@ -102,7 +146,7 @@ func TestSpawnFailsOnMissingBinary(t *testing.T) {
 // terminal tab depends on.
 func TestOutputStreamsAndEndsAtExit(t *testing.T) {
 	s := spawn(t, shellSpec("echo caprock-marker"))
-	out := readAllFor(t, s.Output(), 10*time.Second)
+	out := readUntil(t, s.Output(), "caprock-marker", 15*time.Second)
 	if !strings.Contains(out, "caprock-marker") {
 		t.Errorf("output %q does not contain the marker", out)
 	}
@@ -113,7 +157,7 @@ func TestOutputStreamsAndEndsAtExit(t *testing.T) {
 // task green.
 func TestWaitReportsFailureExit(t *testing.T) {
 	s := spawn(t, shellSpec("exit 3"))
-	_ = readAllFor(t, s.Output(), 5*time.Second)
+	_ = drain(t, s.Output())
 	if err := s.Wait(); err == nil {
 		t.Error("Wait returned nil for an exit-3 process; a failure must not read as success")
 	}
@@ -121,7 +165,7 @@ func TestWaitReportsFailureExit(t *testing.T) {
 
 func TestWaitReportsSuccessExit(t *testing.T) {
 	s := spawn(t, shellSpec("exit 0"))
-	_ = readAllFor(t, s.Output(), 5*time.Second)
+	_ = drain(t, s.Output())
 	if err := s.Wait(); err != nil {
 		t.Errorf("Wait = %v for a clean exit; want nil", err)
 	}
@@ -132,7 +176,7 @@ func TestWaitReportsSuccessExit(t *testing.T) {
 // consuming a one-shot result.
 func TestWaitIsRepeatableAndConcurrent(t *testing.T) {
 	s := spawn(t, shellSpec("exit 0"))
-	_ = readAllFor(t, s.Output(), 5*time.Second)
+	_ = drain(t, s.Output())
 
 	var wg sync.WaitGroup
 	errs := make([]error, 4)
@@ -187,7 +231,7 @@ func TestPausedWriteNeverReachesTheProcess(t *testing.T) {
 		t.Fatalf("Write after resume: %v", err)
 	}
 
-	out := readAllFor(t, s.Output(), 5*time.Second)
+	out := drain(t, s.Output())
 	if !strings.Contains(out, "SAW:after-resume") {
 		t.Fatalf("the process never saw input after resume; output=%q", out)
 	}
@@ -200,7 +244,7 @@ func TestPausedWriteNeverReachesTheProcess(t *testing.T) {
 // cleanup above. Calling it twice must not panic or return a spurious error.
 func TestCloseIsIdempotent(t *testing.T) {
 	s := spawn(t, shellSpec("exit 0"))
-	_ = readAllFor(t, s.Output(), 5*time.Second)
+	_ = drain(t, s.Output())
 	if err := s.Close(); err != nil {
 		t.Errorf("first Close = %v", err)
 	}
@@ -287,7 +331,7 @@ func TestZeroSizeGetsUsableDefaults(t *testing.T) {
 	spec := shellSpec("exit 0")
 	spec.Cols, spec.Rows = 0, 0
 	s := spawn(t, spec)
-	_ = readAllFor(t, s.Output(), 5*time.Second)
+	_ = drain(t, s.Output())
 	if err := s.Wait(); err != nil {
 		t.Errorf("a zero-sized spec failed to run: %v", err)
 	}
@@ -297,7 +341,7 @@ func TestZeroSizeGetsUsableDefaults(t *testing.T) {
 // including after the process has already exited.
 func TestResizeAfterExitDoesNotPanic(t *testing.T) {
 	s := spawn(t, shellSpec("exit 0"))
-	_ = readAllFor(t, s.Output(), 5*time.Second)
+	_ = drain(t, s.Output())
 	_ = s.Wait()
 	// The error is immaterial; not panicking is the contract.
 	_ = s.Resize(100, 30)
@@ -326,7 +370,7 @@ func TestExplicitEnvReplacesTheInherited(t *testing.T) {
 	spec.Env = append(osEnvSubset(), marker)
 
 	s := spawn(t, spec)
-	out := readAllFor(t, s.Output(), 10*time.Second)
+	out := readUntil(t, s.Output(), "present", 15*time.Second)
 	if !strings.Contains(out, "present") {
 		t.Errorf("output %q does not show the explicit env var", out)
 	}

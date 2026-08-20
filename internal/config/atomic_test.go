@@ -89,7 +89,17 @@ func TestWriteFileAtomicFailsOnMissingDir(t *testing.T) {
 // The point of the whole function: a reader must see either the old contents
 // or the new ones, never a partial write. Concurrent writers of differently
 // sized payloads would expose a torn file immediately.
+//
+// POSIX only, and the reason is the honest one rather than a convenience:
+// Windows cannot rename over a file another process holds open, so
+// WriteFileAtomic falls back to remove-then-rename there (see the isWindows
+// branch) — which is documented in the function itself as "not atomic but the
+// best available". Running this on Windows would either fail on the reader's
+// own lock or assert a guarantee the platform does not provide.
 func TestWriteFileAtomicNeverExposesAPartialFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows cannot rename over an open file; WriteFileAtomic degrades to remove+rename by design")
+	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "f.json")
 	small := []byte(strings.Repeat("a", 64))
