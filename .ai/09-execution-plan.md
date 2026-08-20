@@ -185,7 +185,7 @@ Avatar/office render mode (only with cleanly licensed assets), packaging (Tauri/
 Candidate work, ordered by the value it adds for a solo user. Nothing here is
 committed to a release yet; each item still needs its own DoD before it starts.
 
-- **B1 — Projects on Now (in progress).** Per-repo spend is the first thing a
+- **B1 — Projects on Now (DONE, v0.7.0).** Per-repo spend is the first thing a
   user recognises as their own money, and today it is buried in History. Surface
   a compact per-project cost roll-up on the landing screen. Data already exists
   (`ProjectShare` in `/v1/stats/summary`); the gap is placement plus "who is in
@@ -211,13 +211,17 @@ committed to a release yet; each item still needs its own DoD before it starts.
 
   Two findings that make this cheaper than expected: the text comes **only from transcript tailing**, never from hooks, so it works identically for users who declined hooks (53 of 56 local sessions have no hooks and full prose); and **extended thinking is never stored at all** — only `type: "text"` blocks are read — so displaying captured prose cannot leak Claude's reasoning.
 
-- **B2 — Update notifications.** Tell the user in the UI when a newer version is
+- **B2 — Update notifications (DONE, v0.8.1).** Tell the user in the UI when a newer version is
   published, with the exact upgrade command for their install method (`brew
-  upgrade`, `scoop update`, `go install`). **Open decision:** any version check
-  is an outbound call, which Rule 4 (all data stays on the machine) forbids by
-  default. Options: opt-in check with a visible toggle, or a purely local hint
-  derived from the installed package manager. Resolve the principle before
-  building — see [12-risks.md](12-risks.md).
+  upgrade`, `scoop update`, `go install`). **Decided:** the check is opt-in —
+  off until the user turns it on, offered once, revocable, throttled to once a
+  day, and carrying no body, credentials or usage data. The opt-in is enforced
+  by the daemon (`POST /v1/update/check` is 403 while off), not merely hidden
+  in the UI. Rule 4 was rewritten to name the exception rather than leave a
+  promise the code no longer kept. Caprock never installs the update itself:
+  that would mean the daemon killing the process running its own upgrade, and
+  running a package manager from a web page is a surface a local tool should
+  not open.
 - **B3 — Claude desktop app usage.** Requested by an early user who also uses
   the Claude desktop app for non-repo work. Feasibility check done: only
   `~/Library/Application Support/Claude/plan-usage-history.json` is readable —
