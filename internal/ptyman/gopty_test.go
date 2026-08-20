@@ -39,6 +39,7 @@ func shellSpec(script string) Spec {
 // cannot leave a process behind on the developer's machine.
 func spawn(t *testing.T, spec Spec) Session {
 	t.Helper()
+	requirePOSIXShell(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	t.Cleanup(cancel)
 	s, err := New().Spawn(ctx, spec)
@@ -119,6 +120,27 @@ func readUntil(t *testing.T, r io.Reader, want string, d time.Duration) string {
 	mu.Lock()
 	defer mu.Unlock()
 	return buf.String()
+}
+
+// requirePOSIXShell gates every test in this file that starts a real shell.
+//
+// This is a real boundary, not a convenience. Under ConPTY a short-lived
+// command races its own console teardown: cmd.exe emits a screen-painting
+// preamble, the process exits, and the PTY closes — so a reader sees escapes,
+// or nothing, or the handle disappears mid-read, and on the CI runner that
+// took the test binary down rather than failing an assertion. Surviving it
+// means keeping the child alive with `ping -n 30` and parsing around the
+// preamble: that is exactly what the **ptyspike** job does, end to end
+// (spawn → stream → write → resize → kill), on all three OSes — so Windows
+// coverage of this package exists, it just lives there.
+//
+// Cross-platform in this file are the checks that never start a process:
+// argument validation and PID on an unstarted session.
+func requirePOSIXShell(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("output assertions race ConPTY teardown; covered end to end by the ptyspike job")
+	}
 }
 
 // An empty command is a caller bug, and it must be refused rather than handed
@@ -369,9 +391,6 @@ func TestPIDIsZeroWithoutAProcess(t *testing.T) {
 // around all three would be testing cmd.exe, not ptyman. The equivalent Windows
 // path is covered by the spike job, which runs a real `set /p` round trip.
 func TestExplicitEnvReplacesTheInherited(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("cmd.exe expands %VAR% at parse time and needs a full environment; see the spike test")
-	}
 	spec := shellSpec("echo $CAPROCK_TEST_MARKER")
 	// PATH is kept so /bin/sh remains runnable.
 	spec.Env = []string{"PATH=" + os.Getenv("PATH"), "CAPROCK_TEST_MARKER=present"}
@@ -386,9 +405,7 @@ func TestExplicitEnvReplacesTheInherited(t *testing.T) {
 // The other half of the contract: a nil Env inherits, so a spawned session sees
 // the daemon's environment rather than an empty one.
 func TestNilEnvInherits(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("same cmd.exe expansion caveat as above")
-	}
+	requirePOSIXShell(t)
 	t.Setenv("CAPROCK_INHERIT_MARKER", "inherited")
 	spec := shellSpec("echo $CAPROCK_INHERIT_MARKER")
 	spec.Env = nil
