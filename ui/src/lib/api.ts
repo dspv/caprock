@@ -95,9 +95,16 @@ export interface ModelShare { model: string; tokens: number; cost_usd: number; t
 /** One directory inside a repository: the second level of the projects roll-up.
  *  `path` is the first segment under the repo root; "." is the root itself. */
 export interface PathShare { path: string; tokens: number; cost_usd: number; sessions: number }
+/** A project's spend over time: one value per fixed-width bucket, cost and
+ *  tokens over the SAME buckets so the panel's measure toggle needs no refetch.
+ *  Bucket i covers [from_ms + i*width_ms, from_ms + (i+1)*width_ms). Absent on
+ *  `range=all`, whose start is the first event ever captured — a fixed bucket
+ *  count would make a column mean a different span on every machine. */
+export interface Spark { from_ms: number; width_ms: number; cost: number[]; tokens: number[] }
 /** One REPOSITORY's spend. `paths` is the per-directory breakdown, absent when
- *  the repository has only one directory (it would restate the row's total). */
-export interface ProjectShare { project: string; tokens: number; cost_usd: number; sessions: number; paths?: PathShare[] }
+ *  the repository has only one directory (it would restate the row's total).
+ *  `spark` is the series behind the row's sparkline. */
+export interface ProjectShare { project: string; tokens: number; cost_usd: number; sessions: number; paths?: PathShare[]; spark?: Spark }
 export interface Burn { window_min: number; usd_per_hour: number; tokens_per_min: number; turns: number }
 
 export interface Summary {

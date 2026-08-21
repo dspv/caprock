@@ -593,10 +593,40 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.d.Settings.Get())
 }
 
+// sparkSpec maps a range label to the bucket grid the Projects sparkline draws.
+//
+// The grid is derived from the SAME calendar-aligned start rangeFrom returns, so
+// a column is a real local day (or hour) rather than a rolling 24h window offset
+// from whenever the page happened to load. "today" is hourly because 24 columns
+// of a day is the only division that shows *when* in the day the work happened;
+// the multi-day ranges are daily for the same reason.
+//
+// "all" gets no sparkline: its start is the first event ever captured, so a
+// fixed bucket count would make one column mean a different span on every
+// machine — and a picture whose x-axis nobody can state is decoration, not data.
+func (s *Server) sparkSpec(label string, from int64) store.SparkSpec {
+	const hourMs = int64(time.Hour / time.Millisecond)
+	dayMs := 24 * hourMs
+	switch label {
+	case "today":
+		return store.SparkSpec{Buckets: 24, WidthMs: hourMs, FromMs: from}
+	case "7d":
+		return store.SparkSpec{Buckets: 7, WidthMs: dayMs, FromMs: from}
+	case "30d":
+		return store.SparkSpec{Buckets: 30, WidthMs: dayMs, FromMs: from}
+	}
+	// A "<n>d" range the user typed gets daily columns too, capped so the
+	// payload stays bounded on a polled endpoint.
+	if n, ok := parseDays(label); ok && n <= 90 {
+		return store.SparkSpec{Buckets: n, WidthMs: dayMs, FromMs: from}
+	}
+	return store.SparkSpec{}
+}
+
 func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	from, label := s.rangeFrom(r.URL.Query().Get("range"))
-	sum, err := store.Summarize(ctx, s.d.Store.DB(), from)
+	sum, err := store.SummarizeSpark(ctx, s.d.Store.DB(), from, s.sparkSpec(label, from))
 	if err != nil {
 		s.fail(w, err)
 		return

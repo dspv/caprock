@@ -43,6 +43,22 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-08-22 — Projects: a measure toggle, a sparkline, and a truncation bug the test found
+
+The Projects panel made cost the headline and tokens an 11px afterthought. On a **flat plan the dollar figure is not money owed** — it is a proxy for consumption — so a `$ / tokens` toggle now swaps which is large, and drives the sparkline and the share bar with it. A bar still scaled on cost under a tokens headline would contradict the figure beside it, and the two orderings genuinely differ: a cheap model burns tokens cheaply.
+
+The share-of-the-largest bar was **replaced** rather than joined. It restated the ranking the sorted numbers already gave — the widest bar sits on the top row by construction — so it spent the row's only free horizontal space on information the reader already had. When the spend happened is in no number on the row: $40 in one afternoon and $40 across three weeks are the same row until you draw them.
+
+**Rejected: `daily_stats` as the source.** It is keyed `(day, project, model)` where `project` is the **label**, and labels collide — on the owner's database one label (`repo`) maps to two distinct roots. Serving the sparkline from it would reintroduce the exact bug the repository-grouping rewrite fixed, one level down, and it cannot answer `today` at all (no sub-day resolution). The series instead comes from the scan the summary already makes, with one extra `GROUP BY` column keyed on `repo_root`.
+
+**Cost, measured through the Go driver on the owner's 191k-event database, best of six:** `30d` 142.4ms → 154.0ms (+11.6ms), `today` 25.9 → 26.6 (+0.8), `7d` 46.1 → 48.6 (+2.5), `all` 197.6 → 215.7 (+18.1). Well inside the ~30ms budget, so no rollup table was needed. The 10-minute burn window calls plain `Summarize`, which builds no series and pays nothing.
+
+**The bug the test found.** SQLite's integer division truncates **toward zero**, so `(ts - from) / width` for an event *before* the grid yields `-0` — bucket 0 — and its spend was painted onto the first column. Reachable whenever the bucket grid starts after the range does. `TestSummarizeSparkSumsToRowTotal` was written with a grid offset one hour into the range specifically to separate "the row total" from "the sum of the columns", and failed on the real code before any mutation was applied. Fixed with a `CASE WHEN ts < from THEN -1` guard; out-of-grid spend still counts toward the row, because dropping it would understate the bill (rule 6).
+
+Tests, each verified **red** under a deliberate mutation before being accepted: `TestSparkSpecBucketBoundaries` (clamping an out-of-range bucket into the last), `TestSummarizeSparkKeepsEmptyBuckets` (allocating a zero-length series), `TestSummarizeSparkSumsToRowTotal` (dropping out-of-grid spend from the row; and reverting the truncation guard), `TestSummarizeSparkPathsStillSumToRepo` (dropping tokens from the path roll-up), `TestSummarizeWithoutSparkCarriesNoSeries` (making the burn path build series). UI: seven `ProjectsPanel measure toggle` cases and twelve in `ui/src/lib/spark.test.ts`, mutated by pinning the headline to cost, scaling the bar on cost, plotting only cost, dropping persistence, freezing the panel total in dollars, removing the empty-bucket flag, removing the gamma, and scaling each row to itself. Two tests were **strengthened after surviving their mutation** — `peak` had its maximum moved to the last row, and the row-total test given an offset grid.
+
+`ui/src/test-setup.ts` now stubs `ResizeObserver`, which jsdom does not implement; without it any canvas component throws inside React's commit phase. Contract and UI docs updated in the same commit ([03-contracts.md](03-contracts.md), [04-ui.md](04-ui.md)). No DDL change and no migration: the series is computed from `events`, not stored.
+
 ### 2026-08-22 — `caprock service`: the daemon survives a reboot
 
 Until now the daemon died on reboot and the user had to run `caprock up` by hand. There was no autostart of any kind — a monitoring tool you must restart manually is one you stop trusting inside a week. `caprock service install|uninstall|status` registers the daemon with the OS's own login supervisor. New package `internal/service` + `cmd/caprock/service.go`; contract in [03-contracts.md § Autostart service files](03-contracts.md#autostart-service-files), user-facing section in [README.md](../README.md).

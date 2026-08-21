@@ -715,12 +715,17 @@ type ModelShare struct {
 // cost $1,662" and "ui was $400 of it", which is the question a budget actually
 // asks. It is present only when the repository has more than one such
 // directory — a single-directory repo would just repeat its own total.
+// Spark is the per-bucket series behind the row's sparkline, present only when
+// the caller asked for one. It is deliberately NOT repeated on PathShare: a
+// sparkline per directory would multiply the payload of a polled endpoint for a
+// picture nobody sees until they expand the row.
 type ProjectShare struct {
 	Project  string      `json:"project"`
 	Tokens   int64       `json:"tokens"`
 	CostUSD  float64     `json:"cost_usd"`
 	Sessions int64       `json:"sessions"`
 	Paths    []PathShare `json:"paths,omitempty"`
+	Spark    *Spark      `json:"spark,omitempty"`
 }
 
 // PathShare is tokens/cost for one directory inside a repository. Path is the
@@ -732,8 +737,98 @@ type PathShare struct {
 	Sessions int64   `json:"sessions"`
 }
 
+// Spark is a project's spend over time, as one value per fixed-width bucket —
+// the series behind the sparkline on the Projects panel. It answers "when did
+// this repo cost that" without shipping the events themselves.
+//
+// Cost and tokens travel together, as two parallel arrays over the SAME
+// buckets, because the panel lets the reader swap which of the two is the
+// headline. Sending only the current measure would make that toggle a network
+// round trip — on a polled endpoint, a control that stalls — and sending events
+// so the client could bucket them itself would be orders of magnitude more
+// payload for a picture 120px wide.
+//
+// Bucket i covers [FromMs + i*WidthMs, FromMs + (i+1)*WidthMs). The last bucket
+// is the one containing "now" and is therefore still filling; it is not
+// extrapolated to a full bucket's worth (rule 6).
+type Spark struct {
+	FromMs  int64     `json:"from_ms"`
+	WidthMs int64     `json:"width_ms"`
+	Cost    []float64 `json:"cost"`
+	Tokens  []int64   `json:"tokens"`
+}
+
+// SparkSpec asks Summarize for per-project time series. Buckets <= 0 disables
+// them entirely, which is the default: /v1/stats/summary computes a second
+// summary for the 10-minute burn figure, and that one has no sparkline to draw.
+type SparkSpec struct {
+	// Buckets is how many columns the panel will paint.
+	Buckets int
+	// WidthMs is one column's width. Callers derive it from the selected range
+	// (a day for 30d/7d, an hour for today) so the picture and the number beside
+	// it always describe the same period.
+	WidthMs int64
+	// FromMs is the first bucket's left edge. It is passed separately from
+	// Summarize's own fromMs because a range is calendar-aligned: "30d" starts
+	// at local midnight 29 days ago, and bucketing from an arbitrary instant
+	// would smear each day across two columns.
+	FromMs int64
+}
+
+// bucket returns the index for an event at ts, and whether it falls in range.
+func (sp SparkSpec) bucket(ts int64) (int, bool) {
+	if sp.Buckets <= 0 || sp.WidthMs <= 0 || ts < sp.FromMs {
+		return 0, false
+	}
+	i := (ts - sp.FromMs) / sp.WidthMs
+	// Past the last bucket is out of range rather than clamped into it: an
+	// event after the window would otherwise draw a spike on the final column
+	// that never happened there. Same reasoning as buildPulse in the UI.
+	if i >= int64(sp.Buckets) {
+		return 0, false
+	}
+	return int(i), true
+}
+
+// sessionBucket is tokens+cost for one session, either in total or within one
+// sparkline bucket.
+type sessionBucket struct {
+	tokens int64
+	cost   float64
+}
+
+// addSpark folds one session's per-bucket totals into a project's series,
+// creating the series on first use. A project whose sessions all fall outside
+// the bucket grid still gets an all-zero series rather than none, so the panel
+// draws a flat line — "no spend in these buckets" — instead of omitting the
+// picture, which would read as a rendering fault.
+func addSpark(p *ProjectShare, spec SparkSpec, series []sessionBucket) {
+	if p.Spark == nil {
+		p.Spark = &Spark{
+			FromMs:  spec.FromMs,
+			WidthMs: spec.WidthMs,
+			Cost:    make([]float64, spec.Buckets),
+			Tokens:  make([]int64, spec.Buckets),
+		}
+	}
+	for i, v := range series {
+		if i >= len(p.Spark.Cost) {
+			break
+		}
+		p.Spark.Cost[i] += v.cost
+		p.Spark.Tokens[i] += v.tokens
+	}
+}
+
 // Summarize aggregates events since fromMs (0 = all time).
 func Summarize(ctx context.Context, q Querier, fromMs int64) (Summary, error) {
+	return SummarizeSpark(ctx, q, fromMs, SparkSpec{})
+}
+
+// SummarizeSpark is Summarize with an optional per-project time series. The
+// series costs one extra GROUP BY column on a scan the summary already makes,
+// so it is nearly free; see the measurement note on the query below.
+func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpec) (Summary, error) {
 	s := Summary{FromMs: fromMs}
 	// Grouping by kind runs off idx_events_kind_ts; summing CASE expressions
 	// instead forced a read of every row in the range — 197ms against 81ms on a
@@ -848,29 +943,81 @@ func Summarize(ctx context.Context, q Querier, fromMs int64) (Summary, error) {
 	// database through the Go driver, best of six: the whole summary took
 	// 210ms before this change and 204ms after, so the second grouping level
 	// is free.
-	rows, err = q.QueryContext(ctx, `
-		SELECT e.session_id,
-		       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0),
-		       COALESCE(SUM(e.cost_usd),0)
-		FROM events e
-		WHERE e.kind = 'turn.assistant' AND e.ts >= ?
-		GROUP BY e.session_id`, fromMs)
+	//
+	// When a sparkline is asked for, the SAME scan additionally groups by
+	// bucket index, computed in SQL so the driver ships one row per
+	// (session, bucket) that had spend rather than one row per event. On the
+	// owner's database that is tens of rows becoming hundreds — still nothing —
+	// while bucketing in Go would have meant selecting every assistant event's
+	// timestamp and carrying ~90k rows across the driver, which is the cost this
+	// query was written to avoid in the first place.
+	//
+	// The arithmetic is integer division on ts, not strftime: a date function
+	// would have to be applied per row and could not use the index, and the
+	// bucket edges are already known to the caller in unix ms.
+	totals := map[string]sessionBucket{}
+	// sparks[session][bucket] — only for sessions that actually spent.
+	sparks := map[string][]sessionBucket{}
+	sparkOn := spark.Buckets > 0 && spark.WidthMs > 0
+	if sparkOn {
+		// The CASE is not decoration. SQLite's integer division truncates
+		// TOWARD ZERO, so an event before the grid's start gives -0 — bucket 0 —
+		// and its spend would be painted onto the first column, which is spend
+		// that did not happen there. That is reachable whenever the grid starts
+		// after the range does. Negative offsets are mapped to -1 so the Go side
+		// can reject them as "in the range, but off the picture".
+		rows, err = q.QueryContext(ctx, `
+			SELECT e.session_id,
+			       CASE WHEN e.ts < ? THEN -1 ELSE (e.ts - ?) / ? END AS bucket,
+			       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0),
+			       COALESCE(SUM(e.cost_usd),0)
+			FROM events e
+			WHERE e.kind = 'turn.assistant' AND e.ts >= ?
+			GROUP BY e.session_id, bucket`, spark.FromMs, spark.FromMs, spark.WidthMs, fromMs)
+	} else {
+		rows, err = q.QueryContext(ctx, `
+			SELECT e.session_id, 0 AS bucket,
+			       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0),
+			       COALESCE(SUM(e.cost_usd),0)
+			FROM events e
+			WHERE e.kind = 'turn.assistant' AND e.ts >= ?
+			GROUP BY e.session_id`, fromMs)
+	}
 	if err != nil {
 		return s, err
 	}
-	type sessionTotal struct {
-		tokens int64
-		cost   float64
-	}
-	totals := map[string]sessionTotal{}
 	for rows.Next() {
 		var id string
-		var t sessionTotal
-		if err := rows.Scan(&id, &t.tokens, &t.cost); err != nil {
+		var b int64
+		var t sessionBucket
+		if err := rows.Scan(&id, &b, &t.tokens, &t.cost); err != nil {
 			_ = rows.Close()
 			return s, err
 		}
-		totals[id] = t
+		// The row totals accumulate across buckets, so a repository's headline
+		// number is the same whether or not a sparkline was requested. The
+		// sparkline must never be able to change the figure it sits beside.
+		cur := totals[id]
+		cur.tokens += t.tokens
+		cur.cost += t.cost
+		totals[id] = cur
+		if !sparkOn {
+			continue
+		}
+		// Out-of-range buckets still count toward the total above — they are
+		// spend inside `fromMs` — but have no column to be drawn in. This
+		// happens when the caller's bucket grid starts after fromMs; it is not
+		// an error, and silently dropping the money would understate the row.
+		if b < 0 || b >= int64(spark.Buckets) {
+			continue
+		}
+		series := sparks[id]
+		if series == nil {
+			series = make([]sessionBucket, spark.Buckets)
+		}
+		series[b].tokens += t.tokens
+		series[b].cost += t.cost
+		sparks[id] = series
 	}
 	// A truncated projects list is a wrong number for the same reason a
 	// truncated model list is (rule 6): the panel renders each bar as a share
@@ -943,6 +1090,9 @@ func Summarize(ctx context.Context, q Querier, fromMs int64) (Summary, error) {
 		// repository and once for its segment: the per-segment counts partition
 		// the repository's sessions and add up without double-counting.
 		p.Sessions++
+		if sparkOn {
+			addSpark(p, spark, sparks[id])
+		}
 		pk := [2]string{key, seg}
 		j, ok := pathIdx[pk]
 		if !ok {
@@ -962,10 +1112,16 @@ func Summarize(ctx context.Context, q Querier, fromMs int64) (Summary, error) {
 	// totals: dropping it would silently understate the bill (rule 6).
 	if len(totals) > 0 {
 		var orphan ProjectShare
-		for _, t := range totals {
+		for id, t := range totals {
 			orphan.Tokens += t.tokens
 			orphan.CostUSD += t.cost
 			orphan.Sessions++
+			// The orphan row gets a sparkline too. Without one it would be the
+			// single row whose picture disagreed with its number — a blank
+			// sparkline beside real money reads as "nothing happened".
+			if sparkOn {
+				addSpark(&orphan, spark, sparks[id])
+			}
 		}
 		s.Projects = append(s.Projects, orphan)
 	}
