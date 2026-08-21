@@ -2,8 +2,12 @@ package main
 
 import (
 	"bytes"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -134,5 +138,140 @@ func TestStatusCommandDaemonDown(t *testing.T) {
 	_ = root.Execute() // may return a non-nil error; must not panic
 	if out.Len() == 0 {
 		t.Fatal("status produced no output with the daemon down")
+	}
+}
+
+// ensureShim installs the binary that runs inside every hook of every session.
+// Rule 3 lives or dies on that binary being present and correct: a missing one
+// means nothing is recorded, and a stale one means the old code keeps running
+// after an upgrade.
+func TestEnsureShimIsIdempotentAndSelfHealing(t *testing.T) {
+	dir := t.TempDir()
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(filepath.Dir(self), filepath.Base(config.ShimPath(dir)))
+
+	// A test binary has no sibling shim, so without this the whole test takes
+	// the "nothing to install" path and asserts nothing — it passed that way
+	// first, which is exactly the kind of green that means nothing. Plant one.
+	if _, err := os.Stat(src); err != nil {
+		if err := os.WriteFile(src, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Skipf("cannot plant a shim beside the test binary: %v", err)
+		}
+		t.Cleanup(func() { _ = os.Remove(src) })
+	}
+
+	if err := ensureShim(dir); err != nil {
+		t.Fatalf("first install: %v", err)
+	}
+	dst := config.ShimPath(dir)
+	first, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatalf("shim was not installed: %v", err)
+	}
+	if fi, err := os.Stat(dst); err != nil || fi.Mode().Perm()&0o100 == 0 {
+		t.Errorf("shim is not executable (mode %v); Claude Code could not run it", fi.Mode())
+	}
+
+	// Running again must not rewrite an identical file — the daemon calls this
+	// on every start.
+	if err := ensureShim(dir); err != nil {
+		t.Fatalf("second install: %v", err)
+	}
+
+	// A stale shim must be replaced, or an upgraded Caprock keeps running the
+	// previous version's hook code.
+	if err := os.WriteFile(dst, []byte("stale"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureShim(dir); err != nil {
+		t.Fatalf("replacing a stale shim: %v", err)
+	}
+	after, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) == "stale" {
+		t.Error("a stale shim survived; an upgrade would keep running old hook code")
+	}
+	if len(after) != len(first) {
+		t.Errorf("replaced shim is %d bytes, original was %d", len(after), len(first))
+	}
+}
+
+// confirm gates the hook install (ADR-019). The rule that matters is what it
+// does when there is nobody to answer: a script or a CI run must not hang, and
+// must not have consent assumed on its behalf.
+func TestConfirmRefusesWithoutATTY(t *testing.T) {
+	cmd := &cobra.Command{}
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+
+	// A pipe is not a terminal, which is what a script looks like.
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Close(); _ = w.Close() })
+	if _, err := w.WriteString("y\n"); err != nil {
+		t.Fatal(err)
+	}
+	cmd.SetIn(r)
+
+	if confirm(cmd, "install hooks? ") {
+		t.Error("consent was assumed from a pipe; a script must not be taken as a yes")
+	}
+	if out.Len() != 0 {
+		t.Errorf("prompted a non-interactive caller: %q", out.String())
+	}
+}
+
+// A reader that is not a file at all — cobra's default in tests — must also be
+// refused rather than panicking on the type assertion.
+func TestConfirmRefusesANonFileReader(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.SetIn(strings.NewReader("y\n"))
+	if confirm(cmd, "install hooks? ") {
+		t.Error("consent was assumed from a plain reader")
+	}
+}
+
+// daemonAlive is how `caprock up` decides whether another instance is already
+// running. A false positive would refuse to start for no reason; a false
+// negative would start a second daemon on the same data directory.
+func TestDaemonAliveOnADeadPort(t *testing.T) {
+	// Bind and release, so the port is almost certainly free.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if daemonAlive(config.Runtime{Port: port}) {
+		t.Error("reported a daemon on a port nothing is listening on")
+	}
+}
+
+func TestDaemonAliveNeedsAHealthyAnswer(t *testing.T) {
+	// Something is listening, but it is not us — a stale runtime.json pointing
+	// at a port another program has since taken.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not caprock", http.StatusNotFound)
+	}))
+	defer srv.Close()
+	_, portStr, err := net.SplitHostPort(strings.TrimPrefix(srv.URL, "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if daemonAlive(config.Runtime{Port: port}) {
+		t.Error("a 404 from an unrelated server was taken for a live daemon")
 	}
 }

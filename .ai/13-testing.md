@@ -100,9 +100,13 @@ accordingly — failure paths first, happy path left to the smoke suite.
 
 ## Known gaps, and why they are open
 
-- **`cmd/caprock` at 18.2%** is the largest remaining gap, and it is CLI
-  argument wiring rather than logic — the commands it dispatches to are covered
-  in their own packages.
+- **`cmd/caprock` at 24.1%** is the largest remaining gap, and what is left is
+  `main`, `detach` and `openBrowser` — functions that spawn processes and
+  launch a browser. Testing those would be testing the operating system. What
+  could be covered now is: `ensureShim` (the binary that runs inside every
+  hook, so rule 3 depends on it being installed and current), `confirm` (which
+  must never take a script for a yes), and `daemonAlive` (a false positive
+  refuses to start, a false negative starts a second daemon on one data dir).
 - **`daemon`'s uncovered remainder** is adapter plumbing: one-line methods
   forwarding to `board` and `agents`, already exercised through those packages.
   A test there would assert that a forwarding call forwards.
