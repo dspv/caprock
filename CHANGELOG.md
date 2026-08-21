@@ -17,6 +17,17 @@ Phase 3 (Delight) has no plan by design.
 
 - **Each project row expands to a per-directory breakdown** — what `ui` cost of `caprock`'s total — because "which part of the monorepo is burning the budget" is the question a per-repo number raises and cannot answer on its own. A repository whose work happened in a single directory has no breakdown, since it would restate the row's own total. The two grouping levels are computed in one pass: measured on a 190k-event database through the Go driver, `/v1/stats/summary` went from 210ms to 193ms (best of six), so the second level costs nothing.
 
+## [0.13.0] - 2026-08-22
+
+### Added
+
+- Each project row carries a sparkline of when its spend happened, bucketed to follow the selected range — 30 days by day, today by hour — so the picture is always consistent with the figure beside it. It replaces the share bar, which restated the ranking the sorted numbers already gave.
+- Rows state both tokens and cost legibly. On a subscription the dollar figure is a proxy for consumption rather than a bill, and the second number used to sit in the faint chrome tone reserved for timestamps.
+
+### Fixed
+
+- The breakdown bar inside an expanded repository scaled on the first row, assuming it was the largest. Rows are sorted by cost while the bar measures tokens, so another row could render past its track — reproduced at 900% width.
+
 ## [0.12.2] - 2026-08-22
 
 ### Added
