@@ -434,8 +434,30 @@ func TestSummarizeKeepsSameBasenameNonRepositoriesApart(t *testing.T) {
 	for _, p := range sum.Projects {
 		byLabel[p.Project] = p.CostUSD
 	}
-	if byLabel["livegraph/scratch"] != 3 || byLabel["orch-live/scratch"] != 7 {
-		t.Errorf("labels/costs = %+v, want livegraph/scratch=$3 and orch-live/scratch=$7", byLabel)
+	// Assert the property, not the exact label: how much elision a path needs
+	// differs between a short /tmp on POSIX and a long
+	// C:\\Users\\RUNNER~1\\AppData\\Local\\Temp on Windows, so pinning the string
+	// pins the runner rather than the behaviour. What must hold everywhere is
+	// that each label carries the segment that tells the two apart — a label
+	// reduced to the shared basename "scratch" is the original bug, and
+	// disambiguation papering over it afterwards is not the same thing.
+	for _, want := range []struct {
+		seg  string
+		cost float64
+	}{{"livegraph", 3}, {"orch-live", 7}} {
+		found := ""
+		for label := range byLabel {
+			if strings.Contains(label, want.seg) {
+				found = label
+			}
+		}
+		if found == "" {
+			t.Errorf("no label contains %q, so the two rows are told apart by something other than their own paths: %+v", want.seg, byLabel)
+			continue
+		}
+		if byLabel[found] != want.cost {
+			t.Errorf("label %q has cost %v, want %v", found, byLabel[found], want.cost)
+		}
 	}
 }
 
