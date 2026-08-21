@@ -129,6 +129,10 @@ POST     /v1/orchestrator/start       → spawns the orchestrator session → {s
 
 **`POST /v1/tasks` validates before it writes.** A title is required (trimmed, at most 500 characters), the body is capped at 100 KB, and `budget_usd` must be finite, non-negative, and at most 100,000. Each of these was accepted before and produced a task nobody could use: an unnamed row on the board, a hundred-thousand-character title rendered into the task file, a negative budget that breaks every "is there budget left" comparison, and `1e308`, which overflows the moment anything is added to it.
 
+**`budget_usd` is enforced, not decorative.** The reconciler tick re-attributes each live task's cost and moves one that has outspent its budget to `needs_you`, with the reason appended to the task body (no column, no DDL — the body is already returned by `GET /v1/tasks/{id}` and rendered by the UI). `0` or unset means no limit. See [05-orchestration.md § Approvals](05-orchestration.md).
+
+**`POST /v1/tasks/{id}/verify` never strands a task.** Verification walks a legal status route rather than skipping a transition it cannot make in one hop, so a verify from any non-`verifying` status still lands the task in `done`, `in_progress` or `needs_you`. Guarding a single hop and no-opping when illegal used to leave the task where it was, after which the next verify failed with `illegal task transition`.
+
 **Task ids carry a per-process sequence** (`t-<unix-ms>-<n>`). The millisecond alone collided: twelve concurrent creates produced four tasks and eight "already exists" rejections, so a user adding several at once silently lost most of them.
 
 Live frames gained `mail.*` events (router) in Phase 2.

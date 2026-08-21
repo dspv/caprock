@@ -119,17 +119,22 @@ func toVerifying(t *testing.T, b *Board, taskID string) {
 	}
 }
 
+// openAssignmentWithCost books spend the way production does: the window and the
+// events are keyed on the worker's *session* id, which is never equal to its hive
+// agent id. Passing the agent id as both (as this helper once did) made the
+// task_assignments ⋈ events join succeed on a key production never uses, and hid
+// the fact that verification closed the window on the wrong identifier.
 func openAssignmentWithCost(t *testing.T, b *Board, taskID, worker string, cost float64) {
 	t.Helper()
 	ctx := context.Background()
 	base := b.Now().UnixMilli()
 	sessionID := "sess-" + worker
 	_ = store.UpsertSession(ctx, b.Store.DB(), sessionID, store.SessionPatch{Cwd: "/repo"})
-	if err := store.OpenAssignment(ctx, b.Store.DB(), taskID, worker, base-1000); err != nil {
+	if err := store.OpenAssignment(ctx, b.Store.DB(), taskID, sessionID, base-1000); err != nil {
 		t.Fatal(err)
 	}
 	c := cost
-	ev := &event.Event{SessionID: worker, Source: event.SourceTranscript, Kind: event.KindTurnAssistant, Model: "claude-opus-5", CostUSD: &c, Key: "e2e", Ts: time.UnixMilli(base)}
+	ev := &event.Event{SessionID: sessionID, Source: event.SourceTranscript, Kind: event.KindTurnAssistant, Model: "claude-opus-5", CostUSD: &c, Key: "e2e", Ts: time.UnixMilli(base)}
 	if _, err := store.InsertEvent(ctx, b.Store.DB(), ev); err != nil {
 		t.Fatal(err)
 	}

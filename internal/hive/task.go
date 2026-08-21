@@ -54,6 +54,39 @@ func CanTransition(from, to string) bool {
 	return false
 }
 
+// TransitionRoute returns the shortest sequence of legal single steps from
+// `from` to `to` (excluding `from`, including `to`), or nil when `to` is
+// unreachable. It exists because UpdateTask validates start-vs-end only: a
+// caller that needs a multi-hop move (verification finishing a task the
+// orchestrator left in `in_progress`, say) must apply the steps one at a time,
+// and a caller that silently skips an illegal move strands the task instead.
+func TransitionRoute(from, to string) []string {
+	if from == to {
+		return []string{}
+	}
+	prev := map[string]string{from: ""}
+	queue := []string{from}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		for _, next := range allowedTransitions[cur] {
+			if _, seen := prev[next]; seen {
+				continue
+			}
+			prev[next] = cur
+			if next == to {
+				var route []string
+				for s := to; s != from; s = prev[s] {
+					route = append([]string{s}, route...)
+				}
+				return route
+			}
+			queue = append(queue, next)
+		}
+	}
+	return nil
+}
+
 // CreateTask writes a new task file in the inbox column and ledgers it.
 func (h *Hive) CreateTask(t Task) error {
 	if err := validID(t.ID); err != nil {

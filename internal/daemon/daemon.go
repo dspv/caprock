@@ -220,6 +220,7 @@ func (d *Daemon) run(ctx context.Context) error {
 			_, err := board.VerifyTask(ctx, taskID)
 			return err
 		}
+		d.orch.OverBudget = board.OverBudget
 	}
 
 	// Hook receiver.

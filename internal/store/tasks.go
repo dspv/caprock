@@ -103,9 +103,14 @@ func OpenAssignment(ctx context.Context, q Querier, taskID, sessionID string, fr
 	return err
 }
 
-// CloseAssignment closes the open window for a task/session at to_ts.
-func CloseAssignment(ctx context.Context, q Querier, taskID, sessionID string, toTs int64) error {
-	_, err := q.ExecContext(ctx, `UPDATE task_assignments SET to_ts = ? WHERE task_id = ? AND session_id = ? AND to_ts IS NULL`, toTs, taskID, sessionID)
+// CloseTaskAssignments closes every open window on a task at to_ts. Windows are
+// keyed by *session* id (AttributeTaskCost joins events.session_id), and the
+// board — which finishes a task — only knows the hive *agent* id, not the
+// session the router spawned for it. Closing by task is the identifier both
+// sides already agree on, and it is correct when a task was worked by more than
+// one session (a reassignment, or a worker respawned after a crash).
+func CloseTaskAssignments(ctx context.Context, q Querier, taskID string, toTs int64) error {
+	_, err := q.ExecContext(ctx, `UPDATE task_assignments SET to_ts = ? WHERE task_id = ? AND to_ts IS NULL`, toTs, taskID)
 	return err
 }
 

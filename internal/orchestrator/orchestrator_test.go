@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dspv/caprock/internal/agents"
+	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/hive"
 	"github.com/dspv/caprock/internal/store"
 )
@@ -21,6 +22,7 @@ type fakeSpawner struct {
 	spawns   []agents.SpawnRequest
 	nextID   int
 	sessions map[string]bool
+	ids      []string // session ids handed out, in spawn order
 	mu       sync.Mutex
 	input    map[string][]byte // session id → concatenated kick bytes
 }
@@ -36,7 +38,18 @@ func (f *fakeSpawner) Spawn(_ context.Context, req agents.SpawnRequest) (*agents
 		f.sessions = map[string]bool{}
 	}
 	f.sessions[id] = true
+	f.ids = append(f.ids, id)
 	return &agents.Agent{SessionID: id, Cwd: req.Cwd}, nil
+}
+
+// lastSession is the session id of the most recent spawn.
+func (f *fakeSpawner) lastSession() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.ids) == 0 {
+		return ""
+	}
+	return f.ids[len(f.ids)-1]
 }
 func (f *fakeSpawner) Get(id string) (*agents.Agent, bool) {
 	f.mu.Lock()
@@ -184,21 +197,28 @@ func TestTickSpawnsAssignedWorker(t *testing.T) {
 // drives the real tick (not a helper that opens the window), so it catches the
 // regression where OpenAssignment has no production caller.
 func TestTickOpensAssignmentWindow(t *testing.T) {
-	o, _, h := newOrch(t)
+	o, sp, h := newOrch(t)
 	if err := h.CreateTask(hive.Task{ID: "t1", Title: "x", Status: hive.StatusAssigned, Assignee: "worker-1"}); err != nil {
 		t.Fatal(err)
 	}
 	o.tick(context.Background())
-	// A row must now exist in task_assignments for (t1, the worker's session).
-	var n int
+	// A row must now exist in task_assignments keyed on the worker's *session*
+	// id — the column AttributeTaskCost joins events.session_id on. Keying it on
+	// the hive agent id ("worker-1") would join nothing and cost $0 forever.
+	sid := sp.lastSession()
+	if sid == "" {
+		t.Fatal("spawner did not report a session id")
+	}
+	var got string
 	row := o.Store.DB().QueryRowContext(context.Background(),
-		`SELECT COUNT(*) FROM task_assignments WHERE task_id = ? AND to_ts IS NULL`, "t1")
-	if err := row.Scan(&n); err != nil {
-		t.Fatal(err)
+		`SELECT session_id FROM task_assignments WHERE task_id = ? AND to_ts IS NULL`, "t1")
+	if err := row.Scan(&got); err != nil {
+		t.Fatalf("assignment window not opened for t1: %v", err)
 	}
-	if n != 1 {
-		t.Fatalf("assignment window not opened for t1: got %d rows, want 1", n)
+	if got != sid {
+		t.Fatalf("assignment keyed on %q, want the session id %q", got, sid)
 	}
+	var n int
 	// Idempotent: a second tick does not open a duplicate window.
 	o.tick(context.Background())
 	_ = o.Store.DB().QueryRowContext(context.Background(),
@@ -508,5 +528,98 @@ func TestStartConcurrentNoDuplicate(t *testing.T) {
 	sp.mu.Unlock()
 	if n != 1 {
 		t.Fatalf("concurrent Start spawned %d orchestrators, want 1", n)
+	}
+}
+
+// budgetTask stands a task up as live work with a budget, spends `cost` inside
+// its assignment window, and ticks the router once.
+func budgetTask(t *testing.T, o *Orchestrator, h *hive.Hive, budget, cost float64) {
+	t.Helper()
+	ctx := context.Background()
+	if err := h.CreateTask(hive.Task{ID: "t1", Title: "x", Status: hive.StatusAssigned, Assignee: "worker-1", BudgetUSD: budget}); err != nil {
+		t.Fatal(err)
+	}
+	o.tick(ctx) // spawns the worker and opens the assignment window
+	sid := o.workerSession(t, "worker-1")
+	base := o.now().UnixMilli()
+	if err := store.UpsertSession(ctx, o.Store.DB(), sid, store.SessionPatch{Cwd: "/repo"}); err != nil {
+		t.Fatal(err)
+	}
+	c := cost
+	ev := &event.Event{SessionID: sid, Source: event.SourceTranscript, Kind: event.KindTurnAssistant,
+		Model: "claude-opus-5", CostUSD: &c, Key: "burn", Ts: time.UnixMilli(base + 1)}
+	if _, err := store.InsertEvent(ctx, o.Store.DB(), ev); err != nil {
+		t.Fatal(err)
+	}
+	o.tick(ctx) // the tick that must notice the overspend
+}
+
+// workerSession is the session id the router mapped a worker to.
+func (o *Orchestrator) workerSession(t *testing.T, agentID string) string {
+	t.Helper()
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	sid := o.workers[agentID]
+	if sid == "" {
+		t.Fatalf("no session for %s", agentID)
+	}
+	return sid
+}
+
+// budget_usd was decorative: validated, stored and rendered, but nothing ever
+// compared it to spend. The router now re-attributes cost on the tick and parks
+// an overspending task in needs_you.
+func TestTickEscalatesTaskOverBudget(t *testing.T) {
+	o, _, h := newOrch(t)
+	budgetTask(t, o, h, 1.0, 2.5)
+	tk, err := h.GetTask("t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tk.Status != hive.StatusNeedsYou {
+		t.Fatalf("over-budget task not escalated: status %q", tk.Status)
+	}
+	// The orchestrator is told why.
+	_, _ = h.Deliver()
+	if h.InboxCount(OrchestratorID) < 1 {
+		t.Fatal("orchestrator not notified of the over-budget escalation")
+	}
+	// And the attributed cost is on the mirrored row, not 0.
+	row, err := store.GetTask(context.Background(), o.Store.DB(), "t1")
+	if err == nil && row.CostUSD < 2.4 {
+		t.Fatalf("cost not attributed on the tick: %v", row.CostUSD)
+	}
+}
+
+// Spend inside the budget leaves the task alone.
+func TestTickLeavesTaskUnderBudgetAlone(t *testing.T) {
+	o, _, h := newOrch(t)
+	budgetTask(t, o, h, 5.0, 0.5)
+	if tk, _ := h.GetTask("t1"); tk.Status != hive.StatusAssigned {
+		t.Fatalf("under-budget task disturbed: status %q", tk.Status)
+	}
+}
+
+// A budget of 0 (or unset) means no limit — any spend is fine.
+func TestTickZeroBudgetMeansNoLimit(t *testing.T) {
+	o, _, h := newOrch(t)
+	budgetTask(t, o, h, 0, 99.0)
+	if tk, _ := h.GetTask("t1"); tk.Status != hive.StatusAssigned {
+		t.Fatalf("zero budget enforced as a limit: status %q", tk.Status)
+	}
+}
+
+// The router routes the escalation through the injected OverBudget seam (which
+// the daemon wires to the board, so the SQLite mirror and the UI follow).
+func TestTickOverBudgetUsesInjectedSeam(t *testing.T) {
+	o, _, h := newOrch(t)
+	var got string
+	o.OverBudget = func(_ context.Context, taskID, reason string) error {
+		got = taskID + ": " + reason
+		return nil
+	}
+	budgetTask(t, o, h, 1.0, 2.5)
+	if !strings.Contains(got, "t1") || !strings.Contains(got, "budget") {
+		t.Fatalf("OverBudget seam not used: %q", got)
 	}
 }

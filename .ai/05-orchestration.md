@@ -67,9 +67,17 @@ On worker's "done", Caprock executes `done_criteria` commands in the worker's wo
 
 Tasks exceeding budget, matching a destructive-command policy (regex list, configurable), or exhausting guards land in `needs-you`; one-click approve/reject feeds back to the orchestrator via the mailbox. Cut line: the approvals policy can start budget-only.
 
+**Budget enforcement** runs on the reconciler tick, not only at verification: the router re-attributes cost for every live task (`assigned`, `in_progress`, `verifying`) and parks one whose spend has passed `budget_usd` in `needs_you`, appending the reason to the task body so the approvals column can explain the pause. `budget_usd: 0` (or unset) means no limit. Attributing on the tick is what makes the number live — it otherwise only ran when a task finished, so a runaway worker was invisible until it was done.
+
 ## Cost attribution per task
 
 Join `events` → task via assignment windows (the interval during which a task is assigned to a session); task cards show spend vs budget. Shipped in v0.3.0: the router opens an assignment window when it spawns a worker for a task, and verification closes it and sums the cost.
+
+`task_assignments.session_id` is a **Caprock session id**, never a hive agent id — `AttributeTaskCost` joins it against `events.session_id`. The router opens a window keyed on the session it spawned for the worker; the board, which finishes the task and knows only the agent id, closes **every open window on the task**. Closing by task is also correct when a task was worked by more than one session (a reassignment, or a worker respawned after a crash). An unclosed window is not a missing number but a growing one: the join has no upper bound, so a finished task keeps absorbing everything that session spends next.
+
+## Status transitions
+
+`hive.CanTransition` validates a single hop and `Hive.UpdateTask` validates start-vs-end only, so a caller needing to move a task several columns must apply the steps one at a time. `hive.TransitionRoute` returns the shortest legal path and `board.moveTo` walks it. Guarding one hop with `CanTransition` and skipping it when illegal is what stranded tasks — verification called from a status the orchestrator never advanced silently no-opped, and the next verify then hard-errored on the illegal jump. An unreachable target is a returned error, never a silent no-op.
 
 ## Orchestrator prompt
 

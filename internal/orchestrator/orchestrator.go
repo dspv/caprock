@@ -47,6 +47,12 @@ type Orchestrator struct {
 	// board.VerifyTask so the orchestrator need not import board. nil ⇒
 	// verification is driven elsewhere (or disabled in tests).
 	Verify func(ctx context.Context, taskID string) error
+	// OverBudget moves a task that outspent its budget to needs_you and mirrors
+	// it, with the reason attached. Injected by the daemon as a closure over
+	// board.OverBudget for the same reason as Verify (the board owns the mirror
+	// and the bus, and importing it here would cycle). nil ⇒ the router does the
+	// hive-side move itself, without a mirror.
+	OverBudget func(ctx context.Context, taskID, reason string) error
 	// WakeThrottle bounds how often an idle session is re-kicked to process new
 	// mail (default 20s), so a still-working agent is not spammed every tick.
 	WakeThrottle time.Duration
@@ -305,6 +311,8 @@ func (o *Orchestrator) tick(ctx context.Context) {
 	o.spawnAssignedWorkers(ctx)
 	// (D) Run verification for every task scribed to `verifying`.
 	o.driveVerification(ctx)
+	// (E) Escalate any live task that has spent past its budget.
+	o.enforceBudgets(ctx)
 }
 
 // drainConsumedAssignments archives each worker's inbox messages that have been
@@ -397,15 +405,82 @@ func (o *Orchestrator) spawnAssignedWorkers(ctx context.Context) {
 			o.Log.Warn("router spawn worker", "component", "orchestrator", "worker", t.Assignee, "err", err)
 			continue
 		}
-		// Open the cost-attribution window for this worker's session on this task.
-		// INSERT OR IGNORE makes it safe to call every tick; the window is closed
-		// (and cost summed) when verification moves the task to done.
+		// Open the cost-attribution window for this worker's *session* — the id
+		// AttributeTaskCost joins events on. The insert is a no-op while a window
+		// for that (task, session) is open, so it is safe every tick; the window
+		// is closed (and cost summed) when verification finishes the task.
 		if o.Store != nil {
 			if err := store.OpenAssignment(ctx, o.Store.DB(), t.ID, sid, o.now().UnixMilli()); err != nil {
 				o.Log.Warn("router open assignment", "component", "orchestrator", "task", t.ID, "err", err)
 			}
 		}
 	}
+}
+
+// enforceBudgets re-attributes cost for every live task and escalates the ones
+// that have spent past `budget_usd` to needs_you, with the reason mailed to the
+// orchestrator (.ai/05-orchestration.md § Approvals). Attribution otherwise only
+// runs when verification finishes a task, so a runaway worker would blow through
+// its budget unnoticed; running it on the tick is what makes the number — and
+// the limit — live. A budget of 0 (or unset) means no limit.
+func (o *Orchestrator) enforceBudgets(ctx context.Context) {
+	if o.Store == nil {
+		return
+	}
+	tasks, err := o.Hive.ListTasks()
+	if err != nil {
+		o.Log.Warn("router list tasks (budget)", "component", "orchestrator", "err", err)
+		return
+	}
+	for _, t := range tasks {
+		if t.BudgetUSD <= 0 {
+			continue // no budget set: no limit
+		}
+		switch t.Status {
+		case hive.StatusAssigned, hive.StatusInProgress, hive.StatusVerifying:
+		default:
+			continue // only live work can overspend
+		}
+		cost, err := store.AttributeTaskCost(ctx, o.Store.DB(), t.ID)
+		if err != nil {
+			o.Log.Warn("router attribute cost", "component", "orchestrator", "task", t.ID, "err", err)
+			continue
+		}
+		if cost <= t.BudgetUSD {
+			continue
+		}
+		reason := fmt.Sprintf("Task %s has spent $%.2f against a budget of $%.2f and is paused for your decision.", t.ID, cost, t.BudgetUSD)
+		if o.OverBudget != nil {
+			if err := o.OverBudget(ctx, t.ID, reason); err != nil {
+				o.Log.Warn("router over budget", "component", "orchestrator", "task", t.ID, "err", err)
+				continue
+			}
+		} else if err := o.parkTask(t.ID, t.Status); err != nil {
+			o.Log.Warn("router over budget", "component", "orchestrator", "task", t.ID, "err", err)
+			continue
+		}
+		_, _ = o.Hive.Send(hive.Message{From: hive.VerifierAgentID, To: OrchestratorID, Kind: hive.KindEscalation, TaskID: t.ID, Body: reason})
+		o.Log.Warn("task over budget; escalated", "component", "orchestrator", "task", t.ID, "cost_usd", cost, "budget_usd", t.BudgetUSD)
+	}
+}
+
+// parkTask moves a task to needs_you one legal step at a time. `assigned` cannot
+// reach needs_you in a single hop, so a direct write would be rejected and the
+// overspending task would keep burning. This is the fallback used only when no
+// OverBudget seam is wired (tests); the daemon's seam goes through the board,
+// which also mirrors and records the reason.
+func (o *Orchestrator) parkTask(taskID, from string) error {
+	route := hive.TransitionRoute(from, hive.StatusNeedsYou)
+	if route == nil {
+		return fmt.Errorf("orchestrator: task %s cannot reach needs_you from %s", taskID, from)
+	}
+	for _, step := range route {
+		s := step
+		if _, err := o.Hive.UpdateTask(taskID, func(x *hive.Task) error { x.Status = s; return nil }); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // wakeRecipients re-kicks any live agent whose inbox is non-empty. A Claude TUI

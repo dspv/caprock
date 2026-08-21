@@ -151,3 +151,41 @@ func TestArchiveInbox(t *testing.T) {
 		t.Fatalf("re-archive moved %d", n)
 	}
 }
+
+// TransitionRoute finds the shortest legal path, which is what lets a caller
+// move a task several columns without either an illegal jump or a silent no-op.
+func TestTransitionRoute(t *testing.T) {
+	cases := []struct {
+		from, to string
+		want     int // steps, -1 = unreachable
+	}{
+		{StatusInbox, StatusDone, 4},        // inbox→assigned→in_progress→verifying→done
+		{StatusVerifying, StatusDone, 1},    // the ordinary one-hop finish
+		{StatusInbox, StatusInbox, 0},       // already there
+		{StatusAssigned, StatusNeedsYou, 2}, // assigned→in_progress→needs_you
+		{StatusDone, StatusInProgress, -1},  // done is terminal
+	}
+	for _, c := range cases {
+		route := TransitionRoute(c.from, c.to)
+		if c.want < 0 {
+			if route != nil {
+				t.Fatalf("%s → %s: expected unreachable, got %v", c.from, c.to, route)
+			}
+			continue
+		}
+		if len(route) != c.want {
+			t.Fatalf("%s → %s: got %v (%d steps), want %d", c.from, c.to, route, len(route), c.want)
+		}
+		// Every step must be legal from the previous one, and it must end at `to`.
+		prev := c.from
+		for _, s := range route {
+			if !CanTransition(prev, s) {
+				t.Fatalf("%s → %s: illegal step %s → %s", c.from, c.to, prev, s)
+			}
+			prev = s
+		}
+		if prev != c.to {
+			t.Fatalf("%s → %s: route ends at %s", c.from, c.to, prev)
+		}
+	}
+}
