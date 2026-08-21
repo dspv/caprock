@@ -20,6 +20,12 @@ Phase 3 (Delight) has no plan by design.
 - **A turn's cost counts toward a directory only when everything that turn touched was in that directory**, so each figure is exact. Work that spanned several directories is never split or estimated between them: it is counted in one clearly marked row, **"repository-wide work"**, which keeps the parts adding up to the repository's own total. That row is usually the largest, and it is not a gap in the data — it is the turns that ran commands, searched the tree, or built rather than editing files in one place, which on real repositories is most of them. It says so on hover instead of being spread across directories it might not have belonged to.
 - **Each directory row shows its tokens, its share, and its cost.** The share is of the whole repository, including the repository-wide row, so the column adds up to 100% and nothing is hidden in the denominator. Shares round down, and a directory with real but very small spend reads `<0.1%` rather than `0%`.
 
+## [0.14.0] - 2026-08-22
+
+### Added
+
+- Cost and tokens per directory inside a repository, taken from the files each turn touched rather than from where the session was launched — so a monorepo shows what each service costs without anyone having to run Claude from inside it. Every figure is measured: a turn counts toward a directory only when all of its work was there, and turns are never split between directories. Turns that ran commands, searched, or built are counted as repository-wide work, named as such and explained on hover, because dividing them up would be an estimate.
+
 ## [0.13.0] - 2026-08-22
 
 ### Added
