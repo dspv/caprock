@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"strconv"
 	"sync"
 	"time"
@@ -444,7 +445,10 @@ func (d *Daemon) sweep(ctx context.Context) {
 
 // Status is /v1/status.
 type Status struct {
-	Version         string        `json:"version"`
+	Version string `json:"version"`
+	// Platform is GOOS/GOARCH — the first thing a bug report needs and the
+	// last thing anyone remembers to include.
+	Platform        string        `json:"platform"`
 	PID             int           `json:"pid"`
 	StartedAt       int64         `json:"started_at"`
 	UptimeS         int64         `json:"uptime_s"`
@@ -478,7 +482,7 @@ type PricingStatus struct {
 
 func (d *Daemon) status(_ context.Context) any {
 	st := Status{
-		Version: d.opt.Version, PID: os.Getpid(), StartedAt: d.start.UnixMilli(), UptimeS: int64(time.Since(d.start).Seconds()),
+		Version: d.opt.Version, Platform: runtime.GOOS + "/" + runtime.GOARCH, PID: os.Getpid(), StartedAt: d.start.UnixMilli(), UptimeS: int64(time.Since(d.start).Seconds()),
 		URL: d.url, DataDir: d.opt.DataDir, UIBuilt: api.UIBuilt(),
 		Pricing: PricingStatus{Version: d.table.Version, Source: d.table.Source, FetchedAt: d.table.FetchedAt, UserOverride: d.table.UserOverride, Models: len(d.table.Models)},
 		LoopK:   d.det.K, LoopTMin: int(d.det.Window / time.Minute),

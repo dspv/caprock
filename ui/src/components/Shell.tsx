@@ -7,6 +7,7 @@ import { useTheme } from '@/lib/theme'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { PlanChip, usePlan } from '@/components/PlanPicker'
+import { FeedbackButton } from '@/components/Feedback'
 
 const NAV: { route: Route; label: string; phase?: string }[] = [
   { route: { name: 'now' }, label: 'Now' },
@@ -19,6 +20,20 @@ const NAV: { route: Route; label: string; phase?: string }[] = [
 // only draw session ids around a hub — topology, not work — which costs a
 // permanent nav slot to say nothing. The route stays live at #/graph and Tasks
 // links to it while an orchestration is actually running.
+
+/** A human name for the current route, for a feedback report. */
+function screenName(r: Route): string {
+  switch (r.name) {
+    case 'now': return 'Now'
+    case 'session': return 'Session detail'
+    case 'cost': return 'Cost'
+    case 'history': return 'History'
+    case 'tasks': return 'Tasks'
+    case 'graph': return 'Graph'
+    case 'notes': return 'Answers'
+    case 'settings': return 'Status'
+  }
+}
 
 export function Shell({ route, children }: { route: Route; children: ReactNode }) {
   const live = useLive()
@@ -42,6 +57,9 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           ))}
         </nav>
         <div className="ml-auto flex items-center gap-3 text-[11px] text-fg-muted">
+          {/* The screen name rides along, so a report never has to answer
+            * "where were you when this happened". */}
+          <FeedbackButton screen={screenName(route)} />
           <ConnDot state={live.conn} lastFrameAt={live.lastFrameAt} />
           <PlanChip plan={plan} onSave={savePlan} />
           <ThemeToggle />

@@ -173,6 +173,8 @@ export interface History { range: string; totals: HistoryTotals; tools: ToolCoun
 
 export interface Status {
   version: string
+  /** GOOS/GOARCH — what a bug report needs and nobody remembers to include. */
+  platform?: string
   pid: number
   started_at: number
   uptime_s: number

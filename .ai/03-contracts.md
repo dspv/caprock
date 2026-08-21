@@ -57,6 +57,8 @@ POST /v1/hook                          → 204 (shim only, bearer-token gated)
 WS   /v1/live                          → server-push frames: {type:"event"|"session"|"alert", data:…}
 ```
 
+`GET /v1/status` gained `platform` (`GOOS/GOARCH`) — the first thing a bug report needs and the last thing anyone remembers to include.
+
 The dashboard route `#/session/{id}?at=<unix-ms>` reveals a moment in the timeline (used by the pulse); it is a client-side concern and needs no endpoint.
 
 **`GET /v1/sessions/{id}/events?newest=1` returns the tail rather than the head**, oldest-first within the page. Paging from the start is right for a timeline read forwards and wrong for anything showing recent activity: on a session with thousands of events, `after=0` hands back the first few hundred — hours old — so a caller asking "what just happened" renders an empty window with no indication why.
