@@ -19,6 +19,10 @@ Phase 3 (Delight) has no plan by design.
 
 ## [0.12.2] - 2026-08-22
 
+### Added
+
+- Projects are grouped by repository instead of by directory name. Work in `~/dev/caprock/ui` counted as a project called "ui"; two unrelated paths ending in the same directory name merged into one row and summed together, so the figure was wrong rather than merely oddly labelled. Each repository expands to show where inside it the spend went, as paths — `/`, `/app`, `/ui/src`.
+
 ### Fixed
 
 - The login agent still throttled the dashboard. 0.12.1 replaced `ProcessType=Background` with `Adaptive`, which measured no better: the process still landed at scheduler priority 4 against a normal 20, and requests still took over a second where the same binary from a terminal took 185ms. Any `ProcessType` puts the job in a managed band, so the key is now omitted entirely. Re-run `caprock service install` to pick up the corrected agent.
