@@ -48,8 +48,9 @@ settings). Say no and it still reads your history from transcripts.
 
 ![Live activity and cost, right now](docs/shot-now.png)
 
-*Left: what every session is doing, as it happens. Right: what each repo costs
-you. Real numbers from a real machine.*
+*Top: the live pulse — one bar per minute of the last hour, per session, so the
+shape of a track is the shape of the work. Below: what every session is doing as
+it happens, and what each repo costs you. Real numbers from a real machine.*
 
 ## Updating
 
@@ -109,7 +110,9 @@ And everything you have ever run through it — measured, not estimated:
 
 ## How it works
 
-- **Observe** — watches every `claude` session via hooks + transcripts.
+- **Observe** — watches every `claude` session via hooks + transcripts, and
+  draws the last hour as a pulse: bar height is how much happened that minute,
+  colour is what it cost.
 - **Control** — run and drive sessions from the browser.
 - **Orchestrate** — a verified multi-agent team; a task is done only when green.
 
