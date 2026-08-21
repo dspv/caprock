@@ -1,0 +1,14 @@
+-- Every /v1/stats/summary counts the distinct sessions in its range, and the
+-- Now screen asks for one on a 30-second interval while the pulse ticks beside
+-- it. The only usable index was (ts), so SQLite read the range and built a temp
+-- B-tree over 190k rows to deduplicate session_id — on every request.
+--
+-- Measured on a real 190k-event database, warm, through the Go driver:
+-- COUNT(DISTINCT session_id) over 30 days went from 311ms to 18ms. The index
+-- is covering for this query, which is what removes the row reads; the temp
+-- B-tree remains in the plan and is cheap once it is fed from the index.
+--
+-- The existing idx_events_session_ts has the columns the other way round and
+-- cannot serve a ts-range scan, which is why this is a new index rather than a
+-- widening of that one.
+CREATE INDEX IF NOT EXISTS idx_events_ts_session ON events(ts, session_id);

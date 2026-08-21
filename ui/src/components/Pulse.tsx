@@ -82,20 +82,26 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
           <Track key={s.session_id} s={s} events={events.get(s.session_id) ?? []} now={now} />
         ))}
       </div>
+      {/* Height and colour answer different questions, and saying so first is
+        * the difference between a legend and a decoration. The tier words are
+        * relative to this session's own median minute — "expensive" next to a
+        * short bar is not a contradiction, it is a quiet minute that spent a
+        * lot of context — so they name the comparison rather than implying an
+        * absolute scale. */}
       <div className="px-3 py-2 flex items-center gap-4 flex-wrap text-[11px] text-fg-faint border-t border-border">
+        <span className="text-fg-muted">bar height = turns and tools · colour = what the minute cost</span>
         <span className="flex items-center gap-1.5">
-          <Swatch className="bg-[rgba(169,165,158,0.35)] h-[2px]" />nothing happened
+          <Swatch className="bg-[rgba(169,165,158,0.35)] h-[2px]" />idle
         </span>
         <span className="flex items-center gap-1.5">
-          <Swatch className="bg-[rgba(79,191,107,0.62)]" />cheap minute
+          <Swatch className="bg-[rgba(79,191,107,0.62)]" />below this session&apos;s median
         </span>
         <span className="flex items-center gap-1.5">
-          <Swatch className="bg-[rgba(254,177,87,0.72)]" />typical
+          <Swatch className="bg-[rgba(254,177,87,0.72)]" />around it
         </span>
         <span className="flex items-center gap-1.5">
-          <Swatch className="bg-[rgba(255,203,133,0.95)]" />expensive
+          <Swatch className="bg-[rgba(255,203,133,0.95)]" />well above it
         </span>
-        <span className="text-fg-faint">· bar height = events that minute</span>
         <span className="ml-auto">
           <span className="text-warn">×N same call</span> = most-repeated identical tool call in six minutes
         </span>
@@ -215,6 +221,10 @@ function PulseCanvas({ pulse, now, sessionID }: { pulse: PulseModel; now: number
   }
 
   const bar = hover === null ? null : pulse.bars[hover]
+  // The colour is a comparison, so the readout states what it compares to.
+  // Without it "expensive" on a short bar looks like a bug rather than a
+  // quiet minute that carried a lot of context.
+  const barMedian = medianCost(pulse.bars)
   const at = hover === null ? 0 : now - (pulse.bars.length - 1 - hover) * 60_000
 
   // Clicking a minute opens the session *at that minute* rather than at the
@@ -248,6 +258,9 @@ function PulseCanvas({ pulse, now, sessionID }: { pulse: PulseModel; now: number
                 {` · ${bar.n} event${bar.n === 1 ? '' : 's'}`}
                 {bar.turns > 0 && ` · ${bar.turns} turn${bar.turns === 1 ? '' : 's'}`}
                 {bar.cost > 0 && ` · ${fmtUSD(bar.cost)}`}
+                {bar.cost > 0 && barMedian > 0 && (
+                  <span className="text-fg-faint">{` (median ${fmtUSD(barMedian)})`}</span>
+                )}
                 <span className="text-fg-faint"> · click to open</span>
               </>
             )}

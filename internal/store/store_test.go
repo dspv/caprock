@@ -671,3 +671,56 @@ func TestSearchNotesMatchesThePrompt(t *testing.T) {
 		t.Fatalf("unrelated term returned %d notes", len(got))
 	}
 }
+
+// The distinct-session count runs on every /v1/stats/summary, and the Now
+// screen asks for one every 30 seconds. Without an index leading on ts, SQLite
+// walks the range and deduplicates session_id in a temp B-tree over every row:
+// 311ms against 18ms on a real 190k-event database, measured warm through the
+// Go driver.
+//
+// This asserts the index exists and can serve a ts-range seek, not that the
+// planner picks it. Which plan wins is a function of table size — at a few
+// hundred rows a full scan of the (session_id, ts) index is genuinely cheaper,
+// because that one arrives pre-grouped — so asserting the plan here would only
+// encode the shape of the fixture. Nor is a duration asserted: the failure
+// worth catching is the index going missing, not a CI runner having a bad
+// minute.
+func TestDistinctSessionIndexExists(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+
+	var sql string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_events_ts_session'`).Scan(&sql)
+	if err != nil {
+		t.Fatalf("idx_events_ts_session is missing; the distinct-session count in every summary falls back to a temp B-tree over the range: %v", err)
+	}
+	// Leading column must be ts, or a range scan cannot use it — which is
+	// exactly why the pre-existing (session_id, ts) index did not help.
+	if !strings.Contains(strings.ReplaceAll(sql, " ", ""), "(ts,session_id)") {
+		t.Errorf("index must lead on ts to serve a range scan, got: %s", sql)
+	}
+
+	// And it must actually answer the query without touching the table.
+	var plan strings.Builder
+	rows, err := s.db.QueryContext(ctx,
+		`EXPLAIN QUERY PLAN SELECT COUNT(DISTINCT session_id) FROM events INDEXED BY idx_events_ts_session WHERE ts >= ?`, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, parent, notused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan.WriteString(detail)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(plan.String(), "COVERING") {
+		t.Errorf("index does not cover the query, so it still reads the table:\n%s", plan.String())
+	}
+}
