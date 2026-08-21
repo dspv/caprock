@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -199,7 +201,10 @@ func TestSummarize(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	_ = UpsertSession(ctx, s.db, "s1", SessionPatch{Cwd: "/p/demo", Project: "demo"})
+	// A real repository on disk, because the project label is now the
+	// repository a cwd belongs to rather than the cwd's basename.
+	demo := newRepo(t, filepath.Join(t.TempDir(), "demo"))
+	_ = UpsertSession(ctx, s.db, "s1", SessionPatch{Cwd: demo})
 	sum, err := Summarize(ctx, s.db, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -241,11 +246,21 @@ func TestSummarizeProjectSessions(t *testing.T) {
 	}
 }
 
+// ProjectFromCwd used to return the cwd's BASENAME, which is what made a
+// subdirectory look like a project. It now returns the repository label; the
+// derivation itself is covered in repo_test.go.
 func TestProjectFromCwd(t *testing.T) {
-	for in, want := range map[string]string{"/Users/x/dev/caprock": "caprock", `C:\Users\x\proj\`: "proj", "": "", "solo": "solo"} {
-		if got := ProjectFromCwd(in); got != want {
-			t.Errorf("%q → %q, want %q", in, got, want)
-		}
+	clearRepoCache()
+	root := newRepo(t, filepath.Join(t.TempDir(), "caprock"))
+	sub := filepath.Join(root, "ui")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := ProjectFromCwd(sub); got != "caprock" {
+		t.Errorf("ProjectFromCwd(%q) = %q, want %q — the basename is not the project", sub, got, "caprock")
+	}
+	if got := ProjectFromCwd(""); got != "" {
+		t.Errorf("ProjectFromCwd(\"\") = %q, want empty", got)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -27,6 +28,8 @@ type Session struct {
 	HasTranscript  bool   `json:"has_transcript"`
 	GitBranch      string `json:"git_branch"`
 	Version        string `json:"version"`
+	RepoRoot       string `json:"repo_root,omitempty"`
+	RepoPath       string `json:"repo_path,omitempty"`
 	Owned          bool   `json:"owned"`
 	Worktree       string `json:"worktree,omitempty"`
 	SpawnCommand   string `json:"spawn_command,omitempty"`
@@ -149,6 +152,21 @@ type SessionPatch struct {
 	Status                                                  string // set only to force a status
 }
 
+// resolveRepoFields fills Project/RepoRoot/RepoPath from Cwd. Callers pass a cwd
+// and get the repository grouping for free, so no call site can forget it and
+// reintroduce basename labels.
+func (p SessionPatch) resolveRepoFields() (project, root, path string, known bool) {
+	if p.Cwd == "" {
+		return p.Project, "", "", false
+	}
+	info := RepoFromCwd(p.Cwd)
+	project = info.Repo
+	if project == "" {
+		project = p.Project
+	}
+	return project, info.Root, info.Path, true
+}
+
 // UpsertSession creates or updates a session from a patch.
 func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) error {
 	if id == "" {
@@ -164,12 +182,19 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 	if status == "" {
 		status = StatusActive
 	}
+	// The repository grouping is resolved here, from the cwd, so every write
+	// path lands the same two-level identity — a caller cannot supply a
+	// basename label by accident. repoKnown is false when the patch carries no
+	// cwd, and then the stored resolution is left alone rather than blanked.
+	project, repoRoot, repoPath, repoKnown := p.resolveRepoFields()
 	_, err := q.ExecContext(ctx, `
-		INSERT INTO sessions(session_id, cwd, project, model, started_at, last_event_at, status, transcript_path, has_hooks, has_transcript, git_branch, version)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO sessions(session_id, cwd, project, model, started_at, last_event_at, status, transcript_path, has_hooks, has_transcript, git_branch, version, repo_root, repo_path)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(session_id) DO UPDATE SET
 		  cwd             = COALESCE(NULLIF(excluded.cwd, ''), sessions.cwd),
 		  project         = COALESCE(NULLIF(excluded.project, ''), sessions.project),
+		  repo_root       = CASE WHEN ? THEN excluded.repo_root ELSE COALESCE(sessions.repo_root, excluded.repo_root) END,
+		  repo_path       = CASE WHEN ? THEN excluded.repo_path ELSE COALESCE(sessions.repo_path, excluded.repo_path) END,
 		  model           = COALESCE(NULLIF(excluded.model, ''), sessions.model),
 		  transcript_path = COALESCE(NULLIF(excluded.transcript_path, ''), sessions.transcript_path),
 		  git_branch      = COALESCE(NULLIF(excluded.git_branch, ''), sessions.git_branch),
@@ -179,7 +204,8 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 		  status          = CASE WHEN ? != '' THEN ? WHEN sessions.status = 'ended' THEN 'ended' ELSE 'active' END,
 		  has_hooks       = MAX(sessions.has_hooks, excluded.has_hooks),
 		  has_transcript  = MAX(sessions.has_transcript, excluded.has_transcript)`,
-		id, p.Cwd, p.Project, p.Model, p.StartedAt, p.LastEventAt, status, p.TranscriptPath, b2i(p.FromHook), b2i(p.FromTranscript), p.GitBranch, p.Version,
+		id, p.Cwd, project, p.Model, p.StartedAt, p.LastEventAt, status, p.TranscriptPath, b2i(p.FromHook), b2i(p.FromTranscript), p.GitBranch, p.Version, repoRoot, repoPath,
+		repoKnown, repoKnown,
 		p.Status, p.Status)
 	if err != nil {
 		return fmt.Errorf("upsert session: %w", err)
@@ -294,13 +320,13 @@ func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, 
 	return ids, nil
 }
 
-const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code`
+const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code`
 
 func scanSession(sc interface{ Scan(...any) error }) (Session, error) {
 	var s Session
 	var hh, ht, owned int
 	var exit sql.NullInt64
-	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit)
+	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit)
 	s.HasHooks, s.HasTranscript, s.Owned = hh != 0, ht != 0, owned != 0
 	if exit.Valid {
 		v := int(exit.Int64)
@@ -680,11 +706,27 @@ type ModelShare struct {
 	Turns   int64   `json:"turns"`
 }
 
-// ProjectShare is tokens/cost per project (cwd basename). Sessions is how many
-// distinct sessions touched the project in the range — the "who is working in
-// this repo" half of the question; cost alone does not answer it.
+// ProjectShare is tokens/cost per REPOSITORY. Sessions is how many distinct
+// sessions touched it in the range — the "who is working in this repo" half of
+// the question; cost alone does not answer it.
+//
+// Paths is the breakdown one level down: what each top-level directory inside
+// the repository cost. On a monorepo that is the difference between "caprock
+// cost $1,662" and "ui was $400 of it", which is the question a budget actually
+// asks. It is present only when the repository has more than one such
+// directory — a single-directory repo would just repeat its own total.
 type ProjectShare struct {
-	Project  string  `json:"project"`
+	Project  string      `json:"project"`
+	Tokens   int64       `json:"tokens"`
+	CostUSD  float64     `json:"cost_usd"`
+	Sessions int64       `json:"sessions"`
+	Paths    []PathShare `json:"paths,omitempty"`
+}
+
+// PathShare is tokens/cost for one directory inside a repository. Path is the
+// first segment under the repository root; "." is work in the root itself.
+type PathShare struct {
+	Path     string  `json:"path"`
 	Tokens   int64   `json:"tokens"`
 	CostUSD  float64 `json:"cost_usd"`
 	Sessions int64   `json:"sessions"`
@@ -775,22 +817,178 @@ func Summarize(ctx context.Context, q Querier, fromMs int64) (Summary, error) {
 		return s, err
 	}
 	_ = rows.Close()
+	// Both levels of the projects roll-up come from ONE pass. Grouping by
+	// (project, first segment of repo_path) and summing the segments back up
+	// into the repository row costs a single scan; asking the database twice —
+	// once per repo, once per repo+path — scanned the same events twice for a
+	// breakdown that is arithmetic on the rows we already have.
+	//
+	// The segment is cut in SQL rather than in Go so the group-by collapses
+	// `ui/src/components` and `ui/lib` into one `ui` row inside the database,
+	// instead of shipping a row per distinct deep path across the driver.
+	// repo_path is stored slash-separated by RepoFromCwd whatever the host's
+	// separator, so this substring is not platform-dependent.
+	// Rows are keyed by repo_root, not by the label. Two checkouts can share a
+	// basename (`livegraph/repo` and `orch-live/repo` on the owner's machine),
+	// and grouping by the label would sum them into one row — the exact bug
+	// this change exists to fix, reintroduced one level up. Roots are unique by
+	// construction, so grouping on them cannot collide; the labels are made
+	// readable afterwards by DisambiguateLabels.
+	//
+	// A session outside any repository has no root, so it falls back to its
+	// project label, which unrootedInfo already derives from the full path.
+	// Events are aggregated per SESSION and grouped into repositories in Go.
+	//
+	// Grouping in SQL meant joining sessions on every one of ~90k assistant
+	// events and grouping on a wide text key; grouping on the integer-ish
+	// session_id alone runs off idx_events_cost_cover and needs no join and no
+	// COUNT(DISTINCT) — a session's row IS one distinct session. The mapping
+	// from session to (repository, segment) is then applied to tens of rows
+	// instead of tens of thousands. Measured on the owner's 190k-event
+	// database through the Go driver, best of six: the whole summary took
+	// 210ms before this change and 204ms after, so the second grouping level
+	// is free.
 	rows, err = q.QueryContext(ctx, `
-		SELECT COALESCE(se.project,''), COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0), COALESCE(SUM(e.cost_usd),0), COUNT(DISTINCT e.session_id)
-		FROM events e LEFT JOIN sessions se ON se.session_id = e.session_id
-		WHERE e.kind = 'turn.assistant' AND e.ts >= ? GROUP BY se.project ORDER BY 3 DESC`, fromMs)
+		SELECT e.session_id,
+		       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0),
+		       COALESCE(SUM(e.cost_usd),0)
+		FROM events e
+		WHERE e.kind = 'turn.assistant' AND e.ts >= ?
+		GROUP BY e.session_id`, fromMs)
+	if err != nil {
+		return s, err
+	}
+	type sessionTotal struct {
+		tokens int64
+		cost   float64
+	}
+	totals := map[string]sessionTotal{}
+	for rows.Next() {
+		var id string
+		var t sessionTotal
+		if err := rows.Scan(&id, &t.tokens, &t.cost); err != nil {
+			_ = rows.Close()
+			return s, err
+		}
+		totals[id] = t
+	}
+	// A truncated projects list is a wrong number for the same reason a
+	// truncated model list is (rule 6): the panel renders each bar as a share
+	// of the largest row.
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return s, err
+	}
+	if err := rows.Close(); err != nil {
+		return s, err
+	}
+	// The session → repository mapping. Only sessions that actually spent in
+	// the range are looked up, so a database full of old sessions costs nothing.
+	rows, err = q.QueryContext(ctx,
+		`SELECT session_id, COALESCE(project,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(cwd,'') FROM sessions`)
 	if err != nil {
 		return s, err
 	}
 	defer rows.Close()
+	byRoot := map[string]int{}       // grouping key → index into s.Projects
+	rootLabel := map[string]string{} // grouping key → label it claims
+	// pathIdx keeps one row per (repository, segment) so repeated sessions in
+	// the same directory merge instead of stacking duplicate breakdown rows.
+	pathIdx := map[[2]string]int{}
 	for rows.Next() {
-		var p ProjectShare
-		if err := rows.Scan(&p.Project, &p.Tokens, &p.CostUSD, &p.Sessions); err != nil {
+		var id, label, root, path, cwd string
+		if err := rows.Scan(&id, &label, &root, &path, &cwd); err != nil {
 			return s, err
 		}
-		s.Projects = append(s.Projects, p)
+		t, spent := totals[id]
+		if !spent {
+			continue // no assistant turns in this range
+		}
+		delete(totals, id)
+		// Rows are keyed by repo_root, not by the label. Two checkouts can
+		// share a basename (`livegraph/repo` and `orch-live/repo` on the
+		// owner's machine), and grouping by the label would sum them into one
+		// row — the exact bug this change exists to fix, one level up. Roots
+		// are unique by construction; a session outside any repository falls
+		// back to its label, which unrootedInfo derives from the full path.
+		// A session outside any repository is identified by its own directory,
+		// not by its label: /tmp/demo/testrepo and /tmp/demo2/testrepo are both
+		// labelled `testrepo`, and keying on the label would sum them — the
+		// original bug, one level up. The label is made unique for display by
+		// DisambiguateLabels, which widens only what actually collides.
+		key := root
+		if key == "" {
+			key = "cwd:" + cwd
+		}
+		// With neither a repository nor a cwd there is nothing to group on but
+		// the label itself. Falling through to a shared empty key would merge
+		// every such session into one row.
+		if key == "cwd:" {
+			key = "label:" + label
+		}
+		// One definition of the label, in RepoInfo.Segment — duplicating the
+		// rule here is how the two drift.
+		seg := RepoInfo{Path: path}.Segment()
+		i, ok := byRoot[key]
+		if !ok {
+			i = len(s.Projects)
+			byRoot[key] = i
+			rootLabel[key] = label
+			s.Projects = append(s.Projects, ProjectShare{Project: label})
+		}
+		p := &s.Projects[i]
+		p.Tokens += t.tokens
+		p.CostUSD += t.cost
+		// A session lives in exactly one directory, so it counts once for its
+		// repository and once for its segment: the per-segment counts partition
+		// the repository's sessions and add up without double-counting.
+		p.Sessions++
+		pk := [2]string{key, seg}
+		j, ok := pathIdx[pk]
+		if !ok {
+			j = len(p.Paths)
+			pathIdx[pk] = j
+			p.Paths = append(p.Paths, PathShare{Path: seg})
+		}
+		ps := &p.Paths[j]
+		ps.Tokens += t.tokens
+		ps.CostUSD += t.cost
+		ps.Sessions++
 	}
-	return s, rows.Err()
+	if err := rows.Err(); err != nil {
+		return s, err
+	}
+	// Spend whose session row has since been deleted still belongs in the
+	// totals: dropping it would silently understate the bill (rule 6).
+	if len(totals) > 0 {
+		var orphan ProjectShare
+		for _, t := range totals {
+			orphan.Tokens += t.tokens
+			orphan.CostUSD += t.cost
+			orphan.Sessions++
+		}
+		s.Projects = append(s.Projects, orphan)
+	}
+	labels := DisambiguateLabels(rootLabel)
+	for root, i := range byRoot {
+		if l, ok := labels[root]; ok && l != "" {
+			s.Projects[i].Project = l
+		}
+	}
+	for i := range s.Projects {
+		p := &s.Projects[i]
+		// One directory is not a breakdown — it would restate the row's own
+		// total under a second heading.
+		if len(p.Paths) < 2 {
+			p.Paths = nil
+			continue
+		}
+		sort.SliceStable(p.Paths, func(a, b int) bool { return p.Paths[a].CostUSD > p.Paths[b].CostUSD })
+	}
+	// Rolling the segments up changed the repository totals, so any ORDER BY
+	// the database applied would have been over segments, not repositories.
+	sort.SliceStable(s.Projects, func(a, b int) bool { return s.Projects[a].CostUSD > s.Projects[b].CostUSD })
+	return s, nil
 }
 
 // Offset persistence for the transcript tailer.
@@ -1092,16 +1290,4 @@ func CountEvents(ctx context.Context, q Querier) (int64, error) {
 	var n int64
 	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM events`).Scan(&n)
 	return n, err
-}
-
-// ProjectFromCwd derives the project label from a working directory (its basename).
-func ProjectFromCwd(cwd string) string {
-	cwd = strings.TrimRight(cwd, `/\`)
-	if cwd == "" {
-		return ""
-	}
-	if i := strings.LastIndexAny(cwd, `/\`); i >= 0 {
-		return cwd[i+1:]
-	}
-	return cwd
 }

@@ -172,7 +172,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 
 	// Persist ownership so a restart knows what Caprock launched.
 	_ = m.store.WithTx(ctx, func(q store.Querier) error {
-		if err := store.UpsertSession(ctx, q, sessionID, store.SessionPatch{Cwd: cwd, Project: store.ProjectFromCwd(cwd)}); err != nil {
+		if err := store.UpsertSession(ctx, q, sessionID, store.SessionPatch{Cwd: cwd}); err != nil {
 			return err
 		}
 		return store.MarkOwned(ctx, q, sessionID, worktree, a.Command, sess.PID())

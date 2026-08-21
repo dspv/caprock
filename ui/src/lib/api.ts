@@ -92,7 +92,12 @@ export interface FileDiff { path: string; status: string; additions: number; del
 export interface DiffResult { root: string; branch: string; files: FileDiff[]; stat: string }
 
 export interface ModelShare { model: string; tokens: number; cost_usd: number; turns: number }
-export interface ProjectShare { project: string; tokens: number; cost_usd: number; sessions: number }
+/** One directory inside a repository: the second level of the projects roll-up.
+ *  `path` is the first segment under the repo root; "." is the root itself. */
+export interface PathShare { path: string; tokens: number; cost_usd: number; sessions: number }
+/** One REPOSITORY's spend. `paths` is the per-directory breakdown, absent when
+ *  the repository has only one directory (it would restate the row's total). */
+export interface ProjectShare { project: string; tokens: number; cost_usd: number; sessions: number; paths?: PathShare[] }
 export interface Burn { window_min: number; usd_per_hour: number; tokens_per_min: number; turns: number }
 
 export interface Summary {

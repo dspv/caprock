@@ -9,6 +9,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **The Projects panel grouped by directory, not by repository.** The label was the basename of the session's cwd, so one repository showed up as several rows (`caprock` and `ui`), a subdirectory posed as a project (`app` under `amarketer`), Caprock's own agent worktrees became projects (`worker-1`), and two unrelated paths ending in the same segment were silently summed into one row — on the owner's own database, two different `testrepo`s and two different `repo`s. A row is now the repository a session's cwd belongs to, resolved by walking up for `.git` (following a linked worktree to the repository that owns it) once per directory at ingest, and stored on the session so historical rows keep a stable label even after their directory is deleted. Existing databases are backfilled on first open.
+
+### Added
+
+- **Each project row expands to a per-directory breakdown** — what `ui` cost of `caprock`'s total — because "which part of the monorepo is burning the budget" is the question a per-repo number raises and cannot answer on its own. A repository whose work happened in a single directory has no breakdown, since it would restate the row's own total. The two grouping levels are computed in one pass: measured on a 190k-event database through the Go driver, `/v1/stats/summary` went from 210ms to 193ms (best of six), so the second level costs nothing.
+
 ## [0.12.2] - 2026-08-22
 
 ### Fixed

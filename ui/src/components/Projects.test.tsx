@@ -4,7 +4,7 @@
  * running session, the bar is a share of the largest project, and the panel
  * degrades to a plain message rather than a broken chart when there is no data.
  */
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ProjectsPanel } from './Projects'
 import type { ProjectShare, SessionSummary } from '@/lib/api'
@@ -57,6 +57,74 @@ describe('ProjectsPanel', () => {
     projects.value = []
     render(<ProjectsPanel sessions={[]} />)
     expect(await screen.findByText(/No spend captured/)).toBeTruthy()
+  })
+
+  it('expands a repository into its per-directory breakdown', async () => {
+    projects.value = [
+      {
+        project: 'caprock',
+        tokens: 1_000,
+        cost_usd: 1662,
+        sessions: 5,
+        paths: [
+          { path: '/ui', tokens: 100, cost_usd: 400, sessions: 2 },
+          { path: '/', tokens: 900, cost_usd: 1262, sessions: 3 },
+        ],
+      },
+    ]
+    render(<ProjectsPanel sessions={[]} />)
+    const row = await screen.findByTitle('caprock: show cost by directory')
+    // Collapsed by default: the repository is the number that matters.
+    expect(screen.queryByText('/ui')).toBeNull()
+    expect(row.getAttribute('aria-expanded')).toBe('false')
+
+    fireEvent.click(row)
+    expect(screen.getByText('/ui')).toBeTruthy()
+    expect(screen.getByText('$400.00')).toBeTruthy()
+    // Work at the repository root reads as the root path, so the column is a
+    // list of paths rather than a mix of paths and a special-case word.
+    expect(screen.getByText('/')).toBeTruthy()
+    expect(row.getAttribute('aria-expanded')).toBe('true')
+
+    fireEvent.click(row)
+    expect(screen.queryByText('/ui')).toBeNull()
+  })
+
+  it('offers no breakdown for a repository with a single directory', async () => {
+    projects.value = [
+      {
+        project: 'solo',
+        tokens: 10,
+        cost_usd: 10,
+        sessions: 1,
+        paths: [{ path: '.', tokens: 10, cost_usd: 10, sessions: 1 }],
+      },
+    ]
+    render(<ProjectsPanel sessions={[]} />)
+    await screen.findByText('solo')
+    // One directory is not a breakdown — it would restate the row's own total.
+    expect(screen.queryByTitle('solo: show cost by directory')).toBeNull()
+  })
+
+  it('expands a repository without disturbing the show-all control', async () => {
+    // The panel already had a "show all N projects" expander; the per-row
+    // expansion is a separate control and the two must not fight.
+    projects.value = Array.from({ length: 9 }, (_, i) => ({
+      project: `p${i}`,
+      tokens: 10,
+      cost_usd: 10 - i,
+      sessions: 1,
+      paths: [
+        { path: 'a', tokens: 5, cost_usd: 4, sessions: 1 },
+        { path: 'b', tokens: 5, cost_usd: 3, sessions: 1 },
+      ],
+    }))
+    render(<ProjectsPanel sessions={[]} />)
+    const showAll = await screen.findByText('show all 9 projects')
+    fireEvent.click(await screen.findByTitle('p0: show cost by directory'))
+    // Expanding a row must not reveal the projects the list is hiding.
+    expect(screen.queryByText('p8')).toBeNull()
+    expect(showAll.textContent).toBe('show all 9 projects')
   })
 
   it('collapses a long list behind a show-all control', async () => {

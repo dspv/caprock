@@ -4,11 +4,18 @@
  * History; this puts it on the landing screen, answering both halves of the
  * real question: what does this repo cost, and who is working in it right now.
  *
+ * A row is a REPOSITORY, not a directory. It used to be the basename of the
+ * session's cwd, which split one repo across several rows (`caprock` and `ui`)
+ * and, worse, summed unrelated repos that happened to share a name. Each row
+ * expands to the breakdown one level down — what `ui` cost of `caprock`'s
+ * total — because "which part of the monorepo is burning the budget" is the
+ * question a per-repo number raises and cannot answer on its own.
+ *
  * Every number here is measured from captured events at API list price — never
  * modelled, never extrapolated (rule 6).
  */
 import { useState } from 'react'
-import { api, type ProjectShare, type SessionSummary } from '@/lib/api'
+import { api, type PathShare, type ProjectShare, type SessionSummary } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtTokens, fmtUSD } from '@/lib/format'
 import { Panel, Skeleton } from '@/components/ui'
@@ -89,15 +96,32 @@ function ProjectRow({ p, max, live }: { p: ProjectShare; max: number; live: bool
   // Bar is share-of-the-largest, so the top repo always fills the row and the
   // rest read as a proportion of it at a glance.
   const pct = max > 0 ? (100 * p.cost_usd) / max : 0
-  return (
-    <div className="grid grid-cols-[1fr_auto] items-center gap-3 px-3 py-1.5 border-t border-border first:border-t-0">
+  // The breakdown is absent for a repository whose work all happened in one
+  // directory: a single child row would restate the parent's own total.
+  const paths = p.paths ?? []
+  const expandable = paths.length > 1
+  const [open, setOpen] = useState(false)
+  const label = p.project || 'unknown project'
+
+  const body = (
+    <div className="grid grid-cols-[1fr_auto] items-center gap-3 w-full text-left">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           {live && <span className="inline-block w-1.5 h-1.5 rounded-full bg-ok shrink-0" title="a session is live in this project" />}
-          <span className="truncate text-[14px]">{p.project || 'unknown project'}</span>
+          <span className="truncate text-[14px]">{label}</span>
           <span className="text-[11px] text-fg-faint num shrink-0">
             {p.sessions} {p.sessions === 1 ? 'session' : 'sessions'}
           </span>
+          {expandable && (
+            // The caret is the only affordance, so it carries the state: a
+            // chevron that turns, in the faint tone used for chrome elsewhere.
+            <span
+              aria-hidden
+              className={`text-[9px] text-fg-faint shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
+            >
+              ▶
+            </span>
+          )}
         </div>
         <div className="h-1 mt-1 bg-panel-2 rounded-sm overflow-hidden">
           <div className="h-full bg-accent/70" style={{ width: `${pct}%` }} />
@@ -106,6 +130,62 @@ function ProjectRow({ p, max, live }: { p: ProjectShare; max: number; live: bool
       <div className="text-right shrink-0">
         <div className="num text-[17px] font-semibold leading-tight text-accent">{fmtUSD(p.cost_usd)}</div>
         <div className="num text-[11px] text-fg-faint">{fmtTokens(p.tokens)}</div>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="border-t border-border first:border-t-0">
+      {expandable ? (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="w-full px-3 py-1.5 hover:bg-panel-2/50"
+          title={`${label}: show cost by directory`}
+        >
+          {body}
+        </button>
+      ) : (
+        <div className="px-3 py-1.5">{body}</div>
+      )}
+      {expandable && open && (
+        <div className="pb-1.5 bg-panel-2/30">
+          {paths.map((q) => (
+            <PathRow key={q.path} q={q} max={paths[0]!.cost_usd} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * One directory inside a repository. Indented and quieter than its parent so
+ * the eye keeps the repository as the unit and reads these as its parts; the
+ * bar is a share of the largest directory, matching how the parent rows work.
+ */
+function PathRow({ q, max }: { q: PathShare; max: number }) {
+  const pct = max > 0 ? (100 * q.cost_usd) / max : 0
+  return (
+    <div className="grid grid-cols-[1fr_auto] items-center gap-3 pl-7 pr-3 py-1">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          {/* "." is the repository root itself, which reads as nothing at all
+              in a list of directory names. */}
+          <span className="truncate text-[12px] text-fg-muted mono">
+            {q.path}
+          </span>
+          <span className="text-[10px] text-fg-faint num shrink-0">
+            {q.sessions} {q.sessions === 1 ? 'session' : 'sessions'}
+          </span>
+        </div>
+        <div className="h-0.5 mt-1 bg-panel-2 rounded-sm overflow-hidden">
+          <div className="h-full bg-accent/40" style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+      <div className="text-right shrink-0">
+        <div className="num text-[12px] text-fg-muted">{fmtUSD(q.cost_usd)}</div>
       </div>
     </div>
   )

@@ -88,9 +88,10 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 		if err != nil {
 			return err
 		}
+		// Project is derived inside UpsertSession from Cwd, so the repository
+		// grouping is resolved in exactly one place.
 		patch := store.SessionPatch{
 			Cwd:            info.Cwd,
-			Project:        store.ProjectFromCwd(info.Cwd),
 			Model:          ev.Model,
 			TranscriptPath: info.TranscriptPath,
 			GitBranch:      info.GitBranch,

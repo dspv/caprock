@@ -88,7 +88,71 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	// Repository grouping needs the filesystem to resolve a root, which SQL
+	// cannot do, so migration 0011's backfill lives here. It is idempotent and
+	// touches only rows the migration left NULL, so a normal open does one
+	// cheap query and stops.
+	if err := s.backfillRepo(ctx); err != nil {
+		// A failed backfill leaves old labels in place — degraded, not broken —
+		// and must never stop the daemon from opening its own database.
+		s.log.Warn("repository backfill incomplete; some projects keep their old labels",
+			"component", "store", "err", err)
+	}
 	return s, nil
+}
+
+// backfillRepo fills repo_root/repo_path (and re-derives project) for sessions
+// written before repository grouping existed.
+//
+// Historical rows are the reason the resolution is stored rather than derived
+// on read: their directories may already be gone, so this records the best
+// answer available now — a real root while the directory exists, a stable
+// path-derived label when it does not — instead of letting a label change every
+// time a scratchpad is cleaned up.
+func (s *Store) backfillRepo(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT session_id, COALESCE(cwd,'') FROM sessions WHERE repo_root IS NULL`)
+	if err != nil {
+		return err
+	}
+	type row struct{ id, cwd string }
+	var pending []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.cwd); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		pending = append(pending, r)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if len(pending) == 0 {
+		return nil
+	}
+	err = s.WithTx(ctx, func(q Querier) error {
+		for _, r := range pending {
+			info := RepoFromCwd(r.cwd)
+			if _, err := q.ExecContext(ctx,
+				`UPDATE sessions SET repo_root = ?, repo_path = ?,
+				 project = CASE WHEN ? != '' THEN ? ELSE project END
+				 WHERE session_id = ?`,
+				info.Root, info.Path, info.Repo, info.Repo, r.id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	s.log.Info("repository grouping backfilled", "component", "store", "sessions", len(pending))
+	return nil
 }
 
 // Close closes the database.

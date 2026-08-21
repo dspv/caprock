@@ -103,7 +103,7 @@ What that file holds bounds what may ever be said about it: a timestamp and two 
 
 `GET`/`PUT /v1/settings` carry `{plan_kind, plan_label, plan_usd_per_month}` — how the user pays for Claude Code. Caprock **cannot detect this and never guesses**: Claude Code does not report the plan, and inferring one from usage would be an invented number (rule 6), so the user states it and it is stored in `config.json` like every other setting. `plan_kind` is `""` (not stated), `"flat"` (Pro/Max/Team seat — usage at API list price is an *equivalent*, so comparing it to the fee is meaningful), or `"metered"` (API key, Bedrock, Vertex, or Enterprise usage billed at API rates — the API-list figure **is** approximately the bill, so it is never framed as a saving). `PUT` validates rather than coerces: an unknown `plan_kind` or a negative/non-finite price is a 400, because a typo would otherwise drive a wrong headline figure. Both return 501 when the daemon has no settings controller.
 
-`SessionSummary` = the `sessions` row + `stats` (session_stats) + `activity` ({phrase, tool, at, health, plan, repeats} from `internal/narrate`) + `savings` (cache math) + `loop` (active alert, if any) + `context` ({tokens, window, pct} — last turn's prompt size vs the model's context window from `pricing.json`). `SessionDetail` adds `files` and the last 60 `events`. `?range=` on `/v1/stats/summary` accepts `today` (default), `7d`, `30d`, `all`, or a Go duration; ranges are calendar-aware in the daemon's local time zone. The summary carries `burn` ($/h and tokens/min over the last 10 minutes) and `pricing_version`. Each entry in `projects` is `{project, tokens, cost_usd, sessions}` — `sessions` counts the distinct sessions that touched the project in the range, so a per-repo roll-up can state both what a repo cost and how many sessions worked in it.
+`SessionSummary` = the `sessions` row + `stats` (session_stats) + `activity` ({phrase, tool, at, health, plan, repeats} from `internal/narrate`) + `savings` (cache math) + `loop` (active alert, if any) + `context` ({tokens, window, pct} — last turn's prompt size vs the model's context window from `pricing.json`). `SessionDetail` adds `files` and the last 60 `events`. `?range=` on `/v1/stats/summary` accepts `today` (default), `7d`, `30d`, `all`, or a Go duration; ranges are calendar-aware in the daemon's local time zone. The summary carries `burn` ($/h and tokens/min over the last 10 minutes) and `pricing_version`. Each entry in `projects` is `{project, tokens, cost_usd, sessions, paths?}` — one row per **repository** (see § Repository grouping DDL), where `sessions` counts the distinct sessions that touched it in the range, so a per-repo roll-up can state both what a repo cost and how many sessions worked in it. `paths` is the breakdown one level down: `{path, tokens, cost_usd, sessions}` per top-level directory inside the repository, where `path` is the first segment under the repo root and `"."` is work at the root itself. It is **omitted for a repository with only one such directory**, which would merely restate the row's own total, and it always sums exactly to the parent row — the panel must never state two different totals for one repository (rule 6).
 ### Phase 1 additions
 
 ```
@@ -200,6 +200,22 @@ CREATE TABLE throttle_observations (ts INTEGER, session_id TEXT, kind TEXT, payl
 ```
 
 `throttle_observations` records each `StopFailure` (rate_limit / overloaded / billing) — a post-hoc "a limit was hit" fact; the Cost screen shows the count per range.
+
+### Repository grouping DDL (migration 0011)
+
+```sql
+ALTER TABLE sessions ADD COLUMN repo_root TEXT;   -- absolute repository root, '' outside a repo
+ALTER TABLE sessions ADD COLUMN repo_path TEXT;   -- location within the repo, '' at its root
+CREATE INDEX IF NOT EXISTS idx_sessions_repo ON sessions(session_id, project, repo_path);
+```
+
+`sessions.project` is the **repository** a session's cwd belongs to, not the cwd's basename. The basename made one repository several rows (`caprock` and `ui`), let a subdirectory pose as a project (`app` under `amarketer`), turned Caprock's own agent worktrees into projects (`worker-1`), and — the silent failure — summed two unrelated paths that happened to end in the same segment into one row.
+
+- **Resolution** — an upward walk for `.git`, done once per distinct cwd behind an in-process cache, at ingest only. A `.git` **file** is a linked worktree: its `gitdir:` pointer is followed to the owning repository, so a worker's spend lands on the repository it is working on. A `gitdir:` under `.git/modules/` is a submodule and stays its own repository.
+- **Stored, not derived on read** — historical sessions point at directories that may no longer exist, so a read-time walk would relabel yesterday's spend according to what is still on disk today; and `/v1/stats/summary` is polled, so a filesystem walk per row is a syscall storm on a hot path.
+- **Backfill** — `Store.backfillRepo` runs immediately after the migration (resolution needs the filesystem, which SQL cannot reach), is idempotent, and only writes rows whose `repo_root` is still NULL. A failure is logged and leaves the old labels in place rather than refusing to open the database.
+- **No repository** — `/tmp`, scratchpads, and deleted directories keep `repo_root = ''`. No repository name is invented; the label is the directory's own name, and the roll-up keys such rows on their **cwd** so two `scratch` directories stay two rows.
+- **Labels vs identity** — rows are grouped by `repo_root` (unique by construction), never by the label. Labels that collide within one response are widened with parent segments (`livegraph/repo`, `orch-live/repo`) until they differ; a unique label is left exactly as the user would say it.
 
 ### Rate-limit snapshots DDL (migration 0005)
 
