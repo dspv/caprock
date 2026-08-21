@@ -27,6 +27,8 @@ type Session struct {
 	HasTranscript  bool   `json:"has_transcript"`
 	GitBranch      string `json:"git_branch"`
 	Version        string `json:"version"`
+	RepoRoot       string `json:"repo_root,omitempty"`
+	RepoPath       string `json:"repo_path,omitempty"`
 	Owned          bool   `json:"owned"`
 	Worktree       string `json:"worktree,omitempty"`
 	SpawnCommand   string `json:"spawn_command,omitempty"`
@@ -149,6 +151,21 @@ type SessionPatch struct {
 	Status                                                  string // set only to force a status
 }
 
+// resolveRepoFields fills Project/RepoRoot/RepoPath from Cwd. Callers pass a cwd
+// and get the repository grouping for free, so no call site can forget it and
+// reintroduce basename labels.
+func (p SessionPatch) resolveRepoFields() (project, root, path string, known bool) {
+	if p.Cwd == "" {
+		return p.Project, "", "", false
+	}
+	info := RepoFromCwd(p.Cwd)
+	project = info.Repo
+	if project == "" {
+		project = p.Project
+	}
+	return project, info.Root, info.Path, true
+}
+
 // UpsertSession creates or updates a session from a patch.
 func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) error {
 	if id == "" {
@@ -164,12 +181,19 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 	if status == "" {
 		status = StatusActive
 	}
+	// The repository grouping is resolved here, from the cwd, so every write
+	// path lands the same two-level identity — a caller cannot supply a
+	// basename label by accident. repoKnown is false when the patch carries no
+	// cwd, and then the stored resolution is left alone rather than blanked.
+	project, repoRoot, repoPath, repoKnown := p.resolveRepoFields()
 	_, err := q.ExecContext(ctx, `
-		INSERT INTO sessions(session_id, cwd, project, model, started_at, last_event_at, status, transcript_path, has_hooks, has_transcript, git_branch, version)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO sessions(session_id, cwd, project, model, started_at, last_event_at, status, transcript_path, has_hooks, has_transcript, git_branch, version, repo_root, repo_path)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(session_id) DO UPDATE SET
 		  cwd             = COALESCE(NULLIF(excluded.cwd, ''), sessions.cwd),
 		  project         = COALESCE(NULLIF(excluded.project, ''), sessions.project),
+		  repo_root       = CASE WHEN ? THEN excluded.repo_root ELSE COALESCE(sessions.repo_root, excluded.repo_root) END,
+		  repo_path       = CASE WHEN ? THEN excluded.repo_path ELSE COALESCE(sessions.repo_path, excluded.repo_path) END,
 		  model           = COALESCE(NULLIF(excluded.model, ''), sessions.model),
 		  transcript_path = COALESCE(NULLIF(excluded.transcript_path, ''), sessions.transcript_path),
 		  git_branch      = COALESCE(NULLIF(excluded.git_branch, ''), sessions.git_branch),
@@ -179,7 +203,8 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 		  status          = CASE WHEN ? != '' THEN ? WHEN sessions.status = 'ended' THEN 'ended' ELSE 'active' END,
 		  has_hooks       = MAX(sessions.has_hooks, excluded.has_hooks),
 		  has_transcript  = MAX(sessions.has_transcript, excluded.has_transcript)`,
-		id, p.Cwd, p.Project, p.Model, p.StartedAt, p.LastEventAt, status, p.TranscriptPath, b2i(p.FromHook), b2i(p.FromTranscript), p.GitBranch, p.Version,
+		id, p.Cwd, project, p.Model, p.StartedAt, p.LastEventAt, status, p.TranscriptPath, b2i(p.FromHook), b2i(p.FromTranscript), p.GitBranch, p.Version, repoRoot, repoPath,
+		repoKnown, repoKnown,
 		p.Status, p.Status)
 	if err != nil {
 		return fmt.Errorf("upsert session: %w", err)
@@ -294,13 +319,13 @@ func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, 
 	return ids, nil
 }
 
-const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code`
+const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code`
 
 func scanSession(sc interface{ Scan(...any) error }) (Session, error) {
 	var s Session
 	var hh, ht, owned int
 	var exit sql.NullInt64
-	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit)
+	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit)
 	s.HasHooks, s.HasTranscript, s.Owned = hh != 0, ht != 0, owned != 0
 	if exit.Valid {
 		v := int(exit.Int64)
@@ -680,11 +705,27 @@ type ModelShare struct {
 	Turns   int64   `json:"turns"`
 }
 
-// ProjectShare is tokens/cost per project (cwd basename). Sessions is how many
-// distinct sessions touched the project in the range — the "who is working in
-// this repo" half of the question; cost alone does not answer it.
+// ProjectShare is tokens/cost per REPOSITORY. Sessions is how many distinct
+// sessions touched it in the range — the "who is working in this repo" half of
+// the question; cost alone does not answer it.
+//
+// Paths is the breakdown one level down: what each top-level directory inside
+// the repository cost. On a monorepo that is the difference between "caprock
+// cost $1,662" and "ui was $400 of it", which is the question a budget actually
+// asks. It is present only when the repository has more than one such
+// directory — a single-directory repo would just repeat its own total.
 type ProjectShare struct {
-	Project  string  `json:"project"`
+	Project  string      `json:"project"`
+	Tokens   int64       `json:"tokens"`
+	CostUSD  float64     `json:"cost_usd"`
+	Sessions int64       `json:"sessions"`
+	Paths    []PathShare `json:"paths,omitempty"`
+}
+
+// PathShare is tokens/cost for one directory inside a repository. Path is the
+// first segment under the repository root; "." is work in the root itself.
+type PathShare struct {
+	Path     string  `json:"path"`
 	Tokens   int64   `json:"tokens"`
 	CostUSD  float64 `json:"cost_usd"`
 	Sessions int64   `json:"sessions"`
@@ -775,22 +816,77 @@ func Summarize(ctx context.Context, q Querier, fromMs int64) (Summary, error) {
 		return s, err
 	}
 	_ = rows.Close()
+	// Both levels of the projects roll-up come from ONE pass. Grouping by
+	// (project, first segment of repo_path) and summing the segments back up
+	// into the repository row costs a single scan; asking the database twice —
+	// once per repo, once per repo+path — scanned the same events twice for a
+	// breakdown that is arithmetic on the rows we already have.
+	//
+	// The segment is cut in SQL rather than in Go so the group-by collapses
+	// `ui/src/components` and `ui/lib` into one `ui` row inside the database,
+	// instead of shipping a row per distinct deep path across the driver.
+	// repo_path is stored slash-separated by RepoFromCwd whatever the host's
+	// separator, so this substring is not platform-dependent.
 	rows, err = q.QueryContext(ctx, `
-		SELECT COALESCE(se.project,''), COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0), COALESCE(SUM(e.cost_usd),0), COUNT(DISTINCT e.session_id)
+		SELECT COALESCE(se.project,''),
+		       CASE
+		         WHEN COALESCE(se.repo_path,'') = '' THEN '.'
+		         WHEN INSTR(se.repo_path, '/') > 0 THEN SUBSTR(se.repo_path, 1, INSTR(se.repo_path, '/') - 1)
+		         ELSE se.repo_path
+		       END,
+		       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0),
+		       COALESCE(SUM(e.cost_usd),0),
+		       COUNT(DISTINCT e.session_id)
 		FROM events e LEFT JOIN sessions se ON se.session_id = e.session_id
-		WHERE e.kind = 'turn.assistant' AND e.ts >= ? GROUP BY se.project ORDER BY 3 DESC`, fromMs)
+		WHERE e.kind = 'turn.assistant' AND e.ts >= ?
+		GROUP BY 1, 2 ORDER BY 4 DESC`, fromMs)
 	if err != nil {
 		return s, err
 	}
 	defer rows.Close()
+	byProject := map[string]int{} // project → index into s.Projects
 	for rows.Next() {
-		var p ProjectShare
-		if err := rows.Scan(&p.Project, &p.Tokens, &p.CostUSD, &p.Sessions); err != nil {
+		var project string
+		var ps PathShare
+		if err := rows.Scan(&project, &ps.Path, &ps.Tokens, &ps.CostUSD, &ps.Sessions); err != nil {
 			return s, err
 		}
-		s.Projects = append(s.Projects, p)
+		i, ok := byProject[project]
+		if !ok {
+			i = len(s.Projects)
+			byProject[project] = i
+			s.Projects = append(s.Projects, ProjectShare{Project: project})
+		}
+		p := &s.Projects[i]
+		p.Tokens += ps.Tokens
+		p.CostUSD += ps.CostUSD
+		// A session lives in exactly one directory, so its cwd falls in exactly
+		// one segment of one repository: the per-segment distinct counts
+		// partition the repository's sessions and add up without
+		// double-counting.
+		p.Sessions += ps.Sessions
+		p.Paths = append(p.Paths, ps)
 	}
-	return s, rows.Err()
+	if err := rows.Err(); err != nil {
+		return s, err
+	}
+	// A truncated projects list is a wrong number for the same reason a
+	// truncated model list is (rule 6): the panel renders each bar as a share
+	// of the largest row.
+	for i := range s.Projects {
+		p := &s.Projects[i]
+		// One directory is not a breakdown — it would restate the row's own
+		// total under a second heading.
+		if len(p.Paths) < 2 {
+			p.Paths = nil
+			continue
+		}
+		sort.SliceStable(p.Paths, func(a, b int) bool { return p.Paths[a].CostUSD > p.Paths[b].CostUSD })
+	}
+	// Rolling the segments up changed the repository totals, so the ORDER BY
+	// the database applied was over segments, not repositories. Sort here.
+	sort.SliceStable(s.Projects, func(a, b int) bool { return s.Projects[a].CostUSD > s.Projects[b].CostUSD })
+	return s, nil
 }
 
 // Offset persistence for the transcript tailer.

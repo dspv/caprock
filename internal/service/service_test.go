@@ -172,8 +172,6 @@ func TestPlistCarriesTheLoadBearingKeys(t *testing.T) {
 		"<key>RunAtLoad</key>",
 		"<key>KeepAlive</key>",
 		"<key>SuccessfulExit</key>",
-		"<key>ProcessType</key>",
-		"<string>Adaptive</string>",
 		"<key>StandardOutPath</key>",
 	} {
 		if !strings.Contains(s, want) {
@@ -593,12 +591,10 @@ func TestPlistDoesNotThrottleTheDashboard(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := string(body)
-	for _, bad := range []string{"<string>Background</string>", "<key>LowPriorityIO</key>"} {
+	for _, bad := range []string{"<key>ProcessType</key>", "<key>LowPriorityIO</key>"} {
 		if strings.Contains(got, bad) {
-			t.Errorf("plist contains %s, which throttles the daemon's I/O and makes the dashboard take seconds to answer", bad)
+			t.Errorf("plist contains %s: any ProcessType puts the job in a managed band and drops it to scheduler priority 4, which made the dashboard answer in 1.2s instead of 185ms", bad)
 		}
 	}
-	if !strings.Contains(got, "<string>Adaptive</string>") {
-		t.Errorf("plist should declare ProcessType=Adaptive so a serving process is promoted out of the background band:\n%s", got)
-	}
+
 }

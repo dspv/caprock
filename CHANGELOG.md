@@ -9,6 +9,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.12.2] - 2026-08-22
+
+### Fixed
+
+- The login agent still throttled the dashboard. 0.12.1 replaced `ProcessType=Background` with `Adaptive`, which measured no better: the process still landed at scheduler priority 4 against a normal 20, and requests still took over a second where the same binary from a terminal took 185ms. Any `ProcessType` puts the job in a managed band, so the key is now omitted entirely. Re-run `caprock service install` to pick up the corrected agent.
+
 ## [0.12.1] - 2026-08-22
 
 ### Fixed

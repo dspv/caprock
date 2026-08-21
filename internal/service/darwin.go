@@ -15,13 +15,14 @@ import (
 //   - KeepAlive/SuccessfulExit=false — restart the daemon when it *crashes*,
 //     but leave it alone when it exits 0. `caprock down` shuts down cleanly, so
 //     without this launchd would fight the user and restart it immediately.
-//   - ProcessType=Adaptive — the daemon is a watcher most of the time, but it
-//     also serves the dashboard, and that half is interactive. Background plus
-//     LowPriorityIO looked right for a watcher and was measured to be wrong:
-//     macOS throttled the I/O of a process it had been told was batch work, and
-//     the same binary answering the same query took 1.2s under launchd against
-//     185ms from a terminal. Adaptive lets a process that starts serving
-//     requests be promoted out of the background band.
+//   - No ProcessType at all. Deliberate, and measured twice. The daemon watches
+//     files, so Background with LowPriorityIO reads like the obviously correct
+//     declaration — and it made the dashboard answer in 1.2s a query the same
+//     binary answered in 185ms from a terminal, because macOS throttles what it
+//     is told is batch work. Adaptive was the next guess and changed nothing:
+//     the process still landed at scheduler priority 4 against a normal 20. Any
+//     ProcessType puts the job in a managed band; omitting the key leaves it in
+//     the standard user class, which is what a process serving a local UI needs.
 //   - StandardOutPath/StandardErrorPath — into the data dir, so a login-time
 //     failure is diagnosable instead of vanishing into launchd's void.
 //
@@ -49,7 +50,6 @@ func renderPlist(p Plan) string {
 
 	b.WriteString("  <key>RunAtLoad</key>\n  <true/>\n")
 	b.WriteString("  <key>KeepAlive</key>\n  <dict>\n    <key>SuccessfulExit</key>\n    <false/>\n  </dict>\n\n")
-	b.WriteString("  <key>ProcessType</key>\n  <string>Adaptive</string>\n\n")
 	b.WriteString("  <key>StandardOutPath</key>\n  <string>" + plistEscape(p.LogPath()) + "</string>\n")
 	b.WriteString("  <key>StandardErrorPath</key>\n  <string>" + plistEscape(p.LogPath()) + "</string>\n")
 	b.WriteString("</dict>\n</plist>\n")
