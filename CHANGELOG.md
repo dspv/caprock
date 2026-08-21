@@ -9,6 +9,23 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.12.0] - 2026-08-22
+
+### Added
+
+- `caprock service install|uninstall|status` — registers the daemon with the OS's own login supervisor so it survives a reboot: a launchd agent on macOS, a systemd user unit on Linux, a Startup-folder script on Windows. All user-level, nothing written outside your home. The service runs with `--no-hooks`; hook and statusline registration stay interactive consent decisions.
+- Budget enforcement on the task board. `budget_usd` was validated, stored and rendered red past the limit while nothing compared cost against it; the reconciler now parks an over-budget task in **needs you** with the reason attached.
+
+### Fixed
+
+- Finished tasks no longer accrue cost forever. The router opened a task's cost window on the session id and verification closed it on the agent id, so the window never closed — and an open window has no upper bound, so a completed task went on absorbing everything that session spent afterwards. A $0.42 task billed $9.42.
+- Verification can no longer strand a task. Both the success and failure paths guarded their transitions in a way that could silently no-op, leaving a task nobody could move and the next verify erroring outright.
+- The model mix is answered from an index. `idx_events_cost_cover` carries `model` but leads on `kind`, so a range query filtering only on `ts` read the table for every matching row — 146ms against 56ms over 30 days on a 190k-event database. Every `/v1/stats/summary` computes this, and the dashboard asks for one on an interval, so overlapping requests could queue faster than they drained and leave a panel waiting.
+
+### Changed
+
+- The pulse legend names what its colours compare against. The tiers are relative to each session's own median minute, but the labels read "cheap" and "expensive" as though absolute, so a short bar marked expensive looked like a contradiction rather than a quiet minute carrying a lot of context. The hover readout now prints the median beside the minute's own cost.
+
 ## [0.11.2] - 2026-08-21
 
 Both reported by the first outside user.
