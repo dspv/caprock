@@ -64,10 +64,34 @@ func New(k int, window time.Duration) *Detector {
 	return &Detector{K: k, Window: window, Cooldown: window, sessions: map[string]*sessionWindow{}}
 }
 
+// readOnlyTools repeat legitimately and cost nothing, so a repetition of one is
+// not the thing this detector exists to catch.
+//
+// Measured on 64,733 tool calls of real history: the detector fired 436 times,
+// and 236 of those — 54% — were a repeated Read of one file. That is ordinary
+// work: re-reading a file after editing it, while searching, while comparing.
+// A tool call is billed at $0 (verified: SUM(cost_usd) over every tool.pre is
+// zero), so none of those alerts warned about money, and every session that
+// produced one finished normally.
+//
+// The package exists to catch "a session in a loop drains your budget". An
+// alert that cannot be about the budget is noise competing with the ones that
+// can, and noise in an attention surface teaches people to stop reading it.
+var readOnlyTools = map[string]bool{
+	"Read":         true,
+	"Glob":         true,
+	"Grep":         true,
+	"ToolSearch":   true,
+	"NotebookRead": true,
+}
+
 // Observe feeds a stored event. It returns an Alert (non-nil) when a loop is
 // detected for the first time in an episode.
 func (d *Detector) Observe(ev event.Event) *Alert {
 	if ev.Kind != event.KindToolPre || ev.SessionID == "" {
+		return nil
+	}
+	if readOnlyTools[ev.Tool] {
 		return nil
 	}
 	sig, sample := Signature(ev.Tool, ev.Payload)
