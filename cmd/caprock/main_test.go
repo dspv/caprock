@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -171,8 +172,12 @@ func TestEnsureShimIsIdempotentAndSelfHealing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("shim was not installed: %v", err)
 	}
-	if fi, err := os.Stat(dst); err != nil || fi.Mode().Perm()&0o100 == 0 {
-		t.Errorf("shim is not executable (mode %v); Claude Code could not run it", fi.Mode())
+	// POSIX only: Windows has no executable bit — what makes a file runnable
+	// there is the .exe extension, which the filename already carries.
+	if runtime.GOOS != "windows" {
+		if fi, err := os.Stat(dst); err != nil || fi.Mode().Perm()&0o100 == 0 {
+			t.Errorf("shim is not executable (mode %v); Claude Code could not run it", fi.Mode())
+		}
 	}
 
 	// Running again must not rewrite an identical file — the daemon calls this
