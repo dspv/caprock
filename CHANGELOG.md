@@ -9,6 +9,21 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.10.1] - 2026-08-21
+
+### Fixed
+
+- **Over half the loop alerts were ordinary work.** Replayed over 64,733 real
+  tool calls, the detector fired 436 times — and 236 of those were a repeated
+  `Read` of one file, which is what re-reading after an edit looks like. Tool
+  calls cost nothing, so those alerts could not have been about the budget the
+  feature exists to protect, and noise in an attention surface teaches people
+  to stop reading it.
+
+  `Read`, `Glob`, `Grep`, `ToolSearch` and `NotebookRead` no longer raise loop
+  alerts. On the same history that is 436 alerts down to 174; what remains is
+  tools that can actually do something.
+
 ## [0.10.0] - 2026-08-21
 
 ### Added
