@@ -9,6 +9,24 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.11.0] - 2026-08-21
+
+### Added
+
+- **A feedback button that files an issue without sending anything.** Two
+  clicks and a sentence: pick whether something is broken, missing or unclear,
+  type what you saw, press the button. A prefilled GitHub issue opens in a new
+  tab and you submit it yourself.
+
+  Nothing is transmitted from the dashboard. You install Caprock because
+  nothing leaves your machine, and a form that quietly posted to a server would
+  break that even with a click in front of it.
+
+  What gets attached is shown before anything happens — version, platform,
+  which screen, how many events, whether hooks are on. Not attached: project
+  names, file paths, or cost. Those are your repositories and your money, and
+  neither helps fix a crooked button.
+
 ## [0.10.1] - 2026-08-21
 
 ### Fixed
