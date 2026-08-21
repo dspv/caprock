@@ -9,6 +9,20 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.11.1] - 2026-08-21
+
+### Added
+
+- **"What did it ask?"** — a session waiting on you now has a button showing the
+  last thing Claude said, so you do not have to go back to the terminal to find
+  out what it wants. It shows the last *complete* thought rather than the newest
+  line: roughly a third of sessions end mid-sentence, and "Let me check that…"
+  is not an answer.
+
+  It reads and does not write. Typing into a session Caprock did not spawn is
+  refused by design, so the footer names where the reply goes instead of
+  offering a box that would fail.
+
 ## [0.11.0] - 2026-08-21
 
 ### Added
