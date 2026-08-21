@@ -9,6 +9,23 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.11.2] - 2026-08-21
+
+Both reported by the first outside user.
+
+### Fixed
+
+- **Answers looked like it had lost your history.** The list loaded a fixed 500
+  notes and stopped, which on a busy machine is half a day — so it showed an
+  answer from 22 hours ago followed immediately by one from 30 days ago, with
+  nothing between. Nothing was lost; the middle had never been fetched. The list
+  now pages backwards on demand, and reaches everything.
+
+- **An answer did not feel connected to its session.** Clicking through opened
+  the session at the top of a timeline holding thousands of events, leaving you
+  to find the passage you had just clicked. It now opens at the moment the
+  answer was written, with those events marked.
+
 ## [0.11.1] - 2026-08-21
 
 ### Added
