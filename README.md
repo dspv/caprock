@@ -90,6 +90,41 @@ your install method, and you run it.
 Downloaded the binary directly? Replace it with a fresh one from
 [Releases](https://github.com/dspv/caprock/releases) and restart.
 
+## Start it at login
+
+By default the daemon stops when you reboot, and nothing records until you run
+`caprock up` again. One command fixes that for good:
+
+```bash
+caprock service install     # start at login, from now on
+caprock service status      # is it registered? is it running? which file says so?
+caprock service uninstall   # undo it
+```
+
+It registers the daemon with **your own operating system's** login supervisor —
+no root, no installer, nothing outside your home directory:
+
+- **macOS** — a LaunchAgent at `~/Library/LaunchAgents/dev.caprock.daemon.plist`,
+  loaded with `launchctl`. It restarts the daemon if it crashes.
+- **Linux** — a systemd *user* unit at `~/.config/systemd/user/caprock.service`,
+  enabled with `systemctl --user enable --now`. It restarts the daemon if it
+  crashes. (No systemd user session? The command says so and tells you what to
+  do instead — it does not leave a file behind that nothing reads.)
+- **Windows** — a logon script in your Startup folder. It starts Caprock at every
+  logon; Windows has no per-user crash supervisor without admin rights, so a
+  mid-session crash is not auto-restarted.
+
+The installed service runs `caprock up --foreground --no-open --no-hooks` on
+your configured port, with your data directory. Three deliberate choices there:
+it stays in the foreground so the supervisor can actually supervise it, it never
+opens a browser tab at login, and it never edits `~/.claude/settings.json` —
+hook and status-line registration stays a decision you make interactively.
+
+`caprock service install` prints the exact path it wrote and the command that
+undoes it, and running it twice is a no-op rather than a second copy. Stopping
+the daemon with `caprock down` keeps it stopped: the service is configured to
+restart it only when it *crashes*, never when you shut it down on purpose.
+
 ## What it is
 
 Claude Code runs in your terminal. Caprock is the window into it.

@@ -1,7 +1,9 @@
 // caprock is the mission-control CLI and daemon: `caprock up` starts the local
 // daemon (hook receiver + transcript ingest + API + dashboard), `caprock down`
 // stops it, `caprock status` reports, `caprock hooks install|uninstall|status`
-// manage the shim in ~/.claude/settings.json.
+// manage the shim in ~/.claude/settings.json, and
+// `caprock service install|uninstall|status` registers the daemon with the OS's
+// login-time supervisor so it survives a reboot.
 package main
 
 import (
@@ -48,7 +50,7 @@ func newRoot() *cobra.Command {
 		SilenceErrors: true,
 		Version:       version.Version,
 	}
-	root.AddCommand(upCmd(), downCmd(), statusCmd(), tasksCmd(), hooksCmd(), hookCmd(), statuslineCmd(), versionCmd())
+	root.AddCommand(upCmd(), downCmd(), statusCmd(), tasksCmd(), hooksCmd(), hookCmd(), statuslineCmd(), serviceCmd(), versionCmd())
 	return root
 }
 

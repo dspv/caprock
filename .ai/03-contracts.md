@@ -226,6 +226,16 @@ Tables `tasks` (mirror of file state for querying) and `verifications` (`task_id
 - **Source of the numbers:** Anthropic first-party pricing page (`platform.claude.com/docs/en/about-claude/pricing`), fetched 2026-08-18. Bedrock/Vertex have separate partner pricing — first-party only across v0.1–v0.3; recorded as [OQ-02](12-risks.md#open-questions).
 - The parity target and its fixture story: [OQ-01](12-risks.md#open-questions).
 
+## Autostart service files
+
+`caprock service install` registers the daemon with the OS's own login supervisor. One user-level mechanism per platform; nothing is written outside the user's home, and never into `~/.claude/`.
+
+- **macOS** — a launchd agent at `~/Library/LaunchAgents/dev.caprock.daemon.plist`, loaded with `launchctl bootstrap gui/<uid>`. `RunAtLoad` starts it at login; `KeepAlive` with `SuccessfulExit=false` restarts a crash but leaves a deliberate `caprock down` alone. `ProcessType=Background` and `LowPriorityIO` keep it out of the way of foreground work.
+- **Linux** — a systemd **user** unit at `~/.config/systemd/user/caprock.service` (honouring `XDG_CONFIG_HOME`), enabled with `systemctl --user enable --now`, `Restart=on-failure`. Without a systemd user session the install fails with an actionable message and writes nothing.
+- **Windows** — a `.cmd` script in the Startup folder. A Scheduled Task cannot be rendered into a temp directory for a test, so verifying one means leaving a real logon task in the runner's store; the Startup script is an ordinary user-owned file, so its generation is unit-tested on every OS. The cost is that Windows restarts the daemon at logon but not mid-session.
+
+The service runs the daemon with `--foreground` (the supervisor owns the process lifetime, so the daemon must not detach), `--no-open`, and `--no-hooks` — hook and statusline registration stay an interactive consent decision, never something a login agent performs.
+
 ## Runtime file
 
 `<data_dir>/runtime.json` = `{"port": 4173, "token": "<random per run>", "pid": <daemon pid>, "started_at": <unix ms>}`; written 0600 by `caprock up`, deleted by `caprock down`; the shim reads it on every invocation. What `<data_dir>` resolves to per OS is owned by [ADR-013](08-decisions.md#adr-013--data-dir-and-config-conventions).

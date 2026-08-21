@@ -24,7 +24,7 @@ func TestRootHasAllSubcommands(t *testing.T) {
 	for _, c := range root.Commands() {
 		have[c.Name()] = true
 	}
-	for _, want := range []string{"up", "down", "status", "tasks", "hooks", "hook", "statusline", "version"} {
+	for _, want := range []string{"up", "down", "status", "tasks", "hooks", "hook", "statusline", "service", "version"} {
 		if !have[want] {
 			t.Fatalf("root is missing subcommand %q (have %v)", want, have)
 		}

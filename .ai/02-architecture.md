@@ -46,6 +46,7 @@ Two data planes, mirroring what works in Munder Difflin, but in Go:
 | `hive`     | Hive dir layout, atomic file ops, single-committer git, ledger    | 2     |
 | `router`   | Mailbox delivery outbox → inbox, ledger append, `mail.*` events   | 2     |
 | `orchestr` | Orchestrator lifecycle, Stop-loop, verification runner, approvals | 2     |
+| `service`  | Autostart: launchd agent / systemd user unit / Startup script     | —     |
 
 Phase 0 architecture slice (no `ptyman`; the ConPTY spike ran in T0 to de-risk Control) — historical:
 
@@ -120,10 +121,11 @@ Implementation notes (`internal/loop`): "normalized-similar" = same tool + `tool
 ## Repository layout
 
 ```
-cmd/caprock/          # daemon + CLI (up/down/status/hooks/tasks/statusline/version …, hidden `hook` fallback shim)
+cmd/caprock/          # daemon + CLI (up/down/status/hooks/tasks/statusline/service/version …, hidden `hook` fallback shim)
 cmd/caprock-hook/     # the shim binary (thin main over internal/shim)
 internal/shim/        # shim logic: stdin → POST, silent, Stop request-response
 internal/statusline/  # `caprock statusline`: Claude Code status JSON → one-line render + best-effort rate-limit POST
+internal/service/     # `caprock service`: autostart via launchd / systemd user unit / Startup folder
 internal/version/     # the version string (stamped via -ldflags at build)
 internal/config/      # data dir, config.json, runtime.json, atomic writes
 internal/event/       # the normalized Event type
