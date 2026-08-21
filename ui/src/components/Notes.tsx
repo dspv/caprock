@@ -85,8 +85,16 @@ export function NoteCard({ note, now, showSession = false }: {
   return (
     <div className="border border-border bg-panel rounded-[var(--radius-panel)]">
       <div className="flex items-baseline gap-2 px-3 pt-2 text-[11px] text-fg-faint">
+        {/* Links to the moment, not the session. Opening a thousand-event
+          * timeline at the top and leaving the reader to find the answer they
+          * just clicked is the same as not linking at all — a reporter said
+          * exactly that: the answers "did not feel connected to the session". */}
         {showSession && (
-          <a href={href({ name: 'session', id: note.session_id })} className="link">
+          <a
+            href={href({ name: 'session', id: note.session_id, at: note.ts })}
+            className="link"
+            title="Open the session at this moment"
+          >
             <span className="text-fg-muted">{note.project || shortId(note.session_id)}</span>
           </a>
         )}

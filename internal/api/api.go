@@ -348,7 +348,8 @@ func (s *Server) handleSessionNotes(w http.ResponseWriter, r *http.Request) {
 // the SSO thing?" rather than "show me session 17". Everything stays local.
 func (s *Server) handleSearchNotes(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	notes, err := store.SearchNotes(r.Context(), s.d.Store.DB(), r.URL.Query().Get("q"), limit)
+	before, _ := strconv.ParseInt(r.URL.Query().Get("before"), 10, 64)
+	notes, err := store.SearchNotes(r.Context(), s.d.Store.DB(), r.URL.Query().Get("q"), limit, before)
 	if err != nil {
 		s.fail(w, err)
 		return

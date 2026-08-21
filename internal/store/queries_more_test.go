@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -375,5 +376,114 @@ func TestHistoryCountsDaysWithWorkNotSessionStarts(t *testing.T) {
 	}
 	if h.Days != 4 {
 		t.Errorf("Days = %d; want 4 — one session spanning four days worked on all of them", h.Days)
+	}
+}
+
+// Paging backwards through the answers.
+//
+// The screen used to load a fixed window and stop, which on a busy machine is
+// half a day of work: one reporter saw an answer from 22 hours ago followed
+// immediately by one from 30 days ago and read it as lost history. Nothing was
+// lost — the middle was never fetched. `before` is what makes the rest
+// reachable.
+func TestSearchNotesPagesBackwards(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	base := time.Now().Add(-10 * time.Hour)
+	mustSession(t, s, "s", base.UnixMilli())
+	for i := 0; i < 25; i++ {
+		ev := event.Event{
+			SessionID: "s", Source: event.SourceTranscript, Kind: event.KindTurnAssistant,
+			Ts: base.Add(time.Duration(i) * time.Minute), Key: "n" + strconv.Itoa(i),
+			Payload: []byte(`{"text":"a note long enough to count as a real answer here"}`),
+		}
+		if _, err := InsertEvent(ctx, s.db, &ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	first, err := SearchNotes(ctx, s.db, "", 10, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first) != 10 {
+		t.Fatalf("first page has %d notes; want 10", len(first))
+	}
+
+	second, err := SearchNotes(ctx, s.db, "", 10, first[len(first)-1].EventID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second) != 10 {
+		t.Fatalf("second page has %d notes; want 10", len(second))
+	}
+
+	// No overlap, and strictly older — a repeated row would duplicate on screen.
+	seen := map[int64]bool{}
+	for _, n := range first {
+		seen[n.EventID] = true
+	}
+	for _, n := range second {
+		if seen[n.EventID] {
+			t.Errorf("note %d appeared on both pages", n.EventID)
+		}
+		if n.EventID >= first[len(first)-1].EventID {
+			t.Errorf("note %d is not older than the first page's last", n.EventID)
+		}
+	}
+
+	// The tail is reachable, and the end is an empty page rather than a repeat.
+	third, err := SearchNotes(ctx, s.db, "", 10, second[len(second)-1].EventID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(third) != 5 {
+		t.Errorf("third page has %d notes; want the remaining 5", len(third))
+	}
+	last, err := SearchNotes(ctx, s.db, "", 10, third[len(third)-1].EventID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(last) != 0 {
+		t.Errorf("got %d notes past the end; want none", len(last))
+	}
+}
+
+// Paging must respect the query, or "load older" would quietly widen a search.
+func TestSearchNotesPagingKeepsTheQuery(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	base := time.Now().Add(-5 * time.Hour)
+	mustSession(t, s, "s", base.UnixMilli())
+	for i := 0; i < 10; i++ {
+		text := "an ordinary answer with plenty of words in it"
+		if i%2 == 0 {
+			text = "this one mentions the migration and backfill in detail"
+		}
+		ev := event.Event{
+			SessionID: "s", Source: event.SourceTranscript, Kind: event.KindTurnAssistant,
+			Ts: base.Add(time.Duration(i) * time.Minute), Key: "q" + strconv.Itoa(i),
+			Payload: []byte(`{"text":"` + text + `"}`),
+		}
+		if _, err := InsertEvent(ctx, s.db, &ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	page, err := SearchNotes(ctx, s.db, "migration", 3, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page) != 3 {
+		t.Fatalf("first page: %d", len(page))
+	}
+	next, err := SearchNotes(ctx, s.db, "migration", 3, page[len(page)-1].EventID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range next {
+		if !strings.Contains(n.Text, "migration") {
+			t.Errorf("paging returned a non-matching note: %q", n.Text)
+		}
 	}
 }

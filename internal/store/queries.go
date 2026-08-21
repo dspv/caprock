@@ -420,7 +420,15 @@ func SessionNotes(ctx context.Context, q Querier, sessionID string, limit int) (
 // SearchNotes finds prose across every session — the question people actually
 // ask is "which session was it where Claude explained the SSO thing?", not
 // "show me session 17". An empty query returns the most recent notes.
-func SearchNotes(ctx context.Context, q Querier, query string, limit int) ([]AssistantNote, error) {
+// SearchNotes returns Claude's prose, newest first. `before` pages backwards:
+// pass the lowest event_id already shown to get the next page, or 0 to start.
+//
+// Paging is not an optimisation here, it is the feature working at all. The
+// screen used to load a fixed 500 and stop, which on a busy machine is half a
+// day — one reporter saw an entry from 22 hours ago followed immediately by one
+// from 30 days ago, and reasonably read it as data loss. Nothing was lost; the
+// middle was never fetched.
+func SearchNotes(ctx context.Context, q Querier, query string, limit int, before int64) ([]AssistantNote, error) {
 	if limit <= 0 {
 		limit = 100
 	}
@@ -456,6 +464,10 @@ func SearchNotes(ctx context.Context, q Querier, query string, limit int) ([]Ass
 		// prompt nearby would return every reply in an exchange rather than the
 		// passage that answers the question.
 		args = append(args, pattern, promptLookback, pattern)
+	}
+	if before > 0 {
+		sql += ` AND e.id < ?`
+		args = append(args, before)
 	}
 	sql += ` ORDER BY e.id DESC LIMIT ?`
 	args = append(args, limit)

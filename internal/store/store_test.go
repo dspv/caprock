@@ -509,7 +509,7 @@ func TestSearchNotes(t *testing.T) {
 	}
 	_ = UpsertSession(ctx, s.db, "s1", SessionPatch{Project: "demo"})
 
-	got, err := SearchNotes(ctx, s.db, "SSO", 0)
+	got, err := SearchNotes(ctx, s.db, "SSO", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -518,18 +518,18 @@ func TestSearchNotes(t *testing.T) {
 	}
 
 	// Wildcards a user types must be literal, not LIKE syntax.
-	if got, _ = SearchNotes(ctx, s.db, "100%", 0); len(got) != 1 {
+	if got, _ = SearchNotes(ctx, s.db, "100%", 0, 0); len(got) != 1 {
 		t.Fatalf("literal %% search returned %d rows, want 1", len(got))
 	}
-	if got, _ = SearchNotes(ctx, s.db, "file_name", 0); len(got) != 1 {
+	if got, _ = SearchNotes(ctx, s.db, "file_name", 0, 0); len(got) != 1 {
 		t.Fatalf("literal _ search returned %d rows, want 1", len(got))
 	}
 	// An underscore as a wildcard would also match "file-name"; it must not.
-	if got, _ = SearchNotes(ctx, s.db, "fileXname", 0); len(got) != 0 {
+	if got, _ = SearchNotes(ctx, s.db, "fileXname", 0, 0); len(got) != 0 {
 		t.Fatalf("underscore behaved as a wildcard: %+v", got)
 	}
 	// Empty query returns recent notes rather than nothing.
-	if got, _ = SearchNotes(ctx, s.db, "  ", 0); len(got) != 3 {
+	if got, _ = SearchNotes(ctx, s.db, "  ", 0, 0); len(got) != 3 {
 		t.Fatalf("empty query returned %d rows, want 3", len(got))
 	}
 }
@@ -651,7 +651,7 @@ func TestSearchNotesMatchesThePrompt(t *testing.T) {
 	add(event.KindTurnAssistant, "a2", "text", "All green.")
 	_ = UpsertSession(ctx, s.db, "s1", SessionPatch{Project: "demo"})
 
-	got, err := SearchNotes(ctx, s.db, "SSO", 0)
+	got, err := SearchNotes(ctx, s.db, "SSO", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -663,11 +663,11 @@ func TestSearchNotesMatchesThePrompt(t *testing.T) {
 	}
 
 	// Matching the answer's own words still works.
-	if got, _ = SearchNotes(ctx, s.db, "room set", 0); len(got) != 1 {
+	if got, _ = SearchNotes(ctx, s.db, "room set", 0, 0); len(got) != 1 {
 		t.Fatalf("searching the answer returned %d notes, want 1", len(got))
 	}
 	// A word in neither matches nothing.
-	if got, _ = SearchNotes(ctx, s.db, "kubernetes", 0); len(got) != 0 {
+	if got, _ = SearchNotes(ctx, s.db, "kubernetes", 0, 0); len(got) != 0 {
 		t.Fatalf("unrelated term returned %d notes", len(got))
 	}
 }

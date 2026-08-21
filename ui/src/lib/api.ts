@@ -238,7 +238,9 @@ export const api = {
   recentEvents: (id: string, limit = 2000) => get<Event[]>(`/v1/sessions/${encodeURIComponent(id)}/events?newest=1&limit=${limit}`),
   diff: (id: string) => get<DiffResult>(`/v1/sessions/${encodeURIComponent(id)}/diff`),
   notes: (id: string, limit = 200) => get<AssistantNote[]>(`/v1/sessions/${encodeURIComponent(id)}/notes?limit=${limit}`),
-  searchNotes: (q: string, limit = 100) => get<AssistantNote[]>(`/v1/notes?q=${encodeURIComponent(q)}&limit=${limit}`),
+  /** `before` pages backwards: pass the lowest event_id already shown. */
+  searchNotes: (q: string, limit = 100, before = 0) =>
+    get<AssistantNote[]>(`/v1/notes?q=${encodeURIComponent(q)}&limit=${limit}${before ? `&before=${before}` : ''}`),
   settings: () => get<Settings>('/v1/settings'),
   update: () => get<UpdateStatus>('/v1/update'),
   checkUpdate: () => post<UpdateStatus>('/v1/update/check', {}),

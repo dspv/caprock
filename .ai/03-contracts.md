@@ -45,7 +45,7 @@ GET  /v1/sessions?active=true          → SessionSummary[]
 GET  /v1/sessions/{id}                 → SessionDetail (stats + last N events)
 GET  /v1/sessions/{id}/events?after=…  → Event[] (paginated; newest=1 returns the tail)
 GET  /v1/sessions/{id}/notes           → AssistantNote[] — what Claude said, newest first
-GET  /v1/notes?q=…                     → AssistantNote[] — search that prose across sessions
+GET  /v1/notes?q=…&before=…            → AssistantNote[] — search that prose across sessions, paged
 GET  /v1/sessions/{id}/diff            → { files: FileDiff[] } | 409 not-a-git-repo
 GET  /v1/stats/summary?range=today     → totals: tokens, cost, sessions, models
 GET  /v1/settings                      → user-stated settings (plan, update checks)
