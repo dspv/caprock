@@ -11,6 +11,25 @@
  * total — because "which part of the monorepo is burning the budget" is the
  * question a per-repo number raises and cannot answer on its own.
  *
+ * The breakdown is charged by WHICH FILES CLAUDE TOUCHED, not by the directory
+ * a session was launched from. Nobody opens a terminal in /services/api to work
+ * on it — they open the repository root and let Claude edit across services —
+ * so the old cwd-keyed rows answered "where was the terminal", and only one
+ * repository on the owner's machine expanded at all.
+ *
+ * Attribution is STRICT: a turn's cost reaches a directory only when every file
+ * that turn touched is in that one directory, so the figure is exact. Turns
+ * that spanned several directories are not split or pro-rated — splitting would
+ * require a model of how much of a turn each file deserved, and no such
+ * measurement exists — they go whole into one row labelled "repository-wide
+ * work". The parts therefore still sum to the repository's total, and nothing
+ * on screen is an estimate (rule 6).
+ *
+ * That row is usually the largest, and it is meant to be: on the owner's data
+ * most turns run commands, search the tree, or build rather than editing one
+ * place. It is named for what that work IS rather than for the tool's failure
+ * to place it — see REPO_WIDE_LABEL.
+ *
  * Two things the row shows are choices worth stating.
  *
  * BOTH figures are shown, always. There used to be a $ / tokens toggle picking
@@ -41,7 +60,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type PathShare, type ProjectShare, type SessionSummary } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
-import { fmtTokens, fmtUSD } from '@/lib/format'
+import { fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
 import { buildSpark, bucketLabel, peak } from '@/lib/spark'
 import { Panel, Skeleton } from '@/components/ui'
 
@@ -68,6 +87,43 @@ const RANGES: { key: Range; label: string }[] = [
  * compare, and that is precisely where matching the headline matters.
  */
 const SPARK_BASIS = 'tokens' as const
+
+/**
+ * What counts as touching a directory, stated where a user can see it — the
+ * breakdown is otherwise a number with an invisible rule behind it.
+ *
+ * Kept in sync with store.TouchRule (Go), which is the definition; this is the
+ * sentence shown on hover.
+ */
+const TOUCH_RULE =
+  'A turn is charged to a directory only when every file it read or wrote is in that directory. ' +
+  'Turns that spanned several directories, touched none, or touched files outside the repository ' +
+  'are counted as repository-wide work rather than split — a split would be an estimate, not a measurement.'
+
+/**
+ * The label for the row that is not a directory, and the sentence that explains
+ * it.
+ *
+ * WHY NOT "unattributed". That word describes the tool's bookkeeping, not the
+ * user's work: it reads as "caprock failed to figure this out", so a reader
+ * whose row is two thirds of the repository concludes the panel is broken. It
+ * is not broken — that spend is real work that genuinely has no one directory.
+ * On the owner's database the tool calls in these turns are overwhelmingly
+ * Bash (17382 of 27158 in `amarketer`, 5246 of 6743 in `caprock`, measured
+ * 2026-08-22): running the test suite, `git log`, `grep -rn` across the tree,
+ * building. That is repository-wide work, and naming it as such tells the truth
+ * about the number instead of apologising for it.
+ *
+ * The hover says WHAT kind of turn lands here in the user's own vocabulary
+ * (commands, searches, builds) and WHY it is not divided up, because a large
+ * number with no explanation is the thing that reads as a defect.
+ */
+const REPO_WIDE_LABEL = 'repository-wide work'
+const REPO_WIDE_RULE =
+  'Turns that ran commands, searched, or built rather than editing files in one directory — ' +
+  'plus any turn whose edits spanned several directories or reached outside the repository. ' +
+  'This is real work with no single home, so it is counted here whole rather than divided ' +
+  'between directories, which would be an estimate rather than a measurement.'
 
 export function ProjectsPanel({ sessions }: { sessions: SessionSummary[] }) {
   // 30d is the default: "today" is near-empty most mornings and would make the
@@ -239,6 +295,16 @@ function ProjectRow({
       )}
       {expandable && open && (
         <div className="pb-1.5 bg-panel-2/30">
+          {/* The basis of the percentage, said in words. The column's base is
+            * the repository total INCLUDING the rows nothing could be
+            * attributed to, so it sums to 100% — and a reader who is not told
+            * the denominator is being asked to guess it (rule 6). */}
+          <div
+            className="pl-7 pr-3 pt-1 pb-0.5 text-[10px] text-fg-faint"
+            title={TOUCH_RULE}
+          >
+            by files touched · share of this repository's tokens
+          </div>
           {/* The largest is computed, not taken as paths[0]: the daemon sorts the
             * breakdown by cost, so the first row is not necessarily the one with
             * the most tokens, and using it as the scale would push another row
@@ -253,44 +319,94 @@ function ProjectRow({
 }
 
 /**
- * One directory inside a repository. Indented and quieter than its parent so
- * the eye keeps the repository as the unit and reads these as its parts; the
- * bar is a share of the largest directory, matching how the parent rows work.
+ * One directory inside a repository — charged by what the repository's TURNS
+ * touched, not by where a session was launched. Indented and quieter than its
+ * parent so the eye keeps the repository as the unit and reads these as its
+ * parts.
  *
  * There is no sparkline here on purpose: a series per directory would multiply
  * the payload of a polled endpoint for a picture that is hidden until the row
  * is expanded, and the question a breakdown answers is "how much", not "when".
  *
- * Both figures appear here too, one step quieter than the parent's pair and on
- * one line rather than stacked — a part cannot be checked against a whole that
- * is stated in a unit the part does not carry, and stacking inside an already
- * indented sub-row would make the breakdown taller than the thing it breaks down.
+ * THE PERCENTAGE. Its base is the REPOSITORY's total, including the
+ * repository-wide row, so the column sums to 100% and the share that belongs to
+ * no one directory is visible as its own number rather than hidden in the
+ * denominator. The header says so in words, because a percentage whose base the
+ * reader has to guess is exactly the kind of number rule 6 exists to prevent.
+ *
+ * It is a share of TOKENS, and it sits with the token figure — not between the
+ * two numbers, where it would read as applying to both. Cost per token varies
+ * by model, so the two shares genuinely differ; the cost share is available on
+ * hover rather than as a fifth column, because two competing percentages side
+ * by side is the ambiguity this was meant to remove.
+ *
+ * Percentages FLOOR (fmtPct): 99.6% is 99%, never 100%. Nothing reads as the
+ * whole until it is the whole. A row with real spend but a tiny share would
+ * floor to "0%", which next to a real dollar figure says two contradictory
+ * things — so anything under 0.1% is rendered "<0.1%" instead.
  */
 function PathRow({ q, max }: { q: PathShare; max: number }) {
   const pct = max > 0 ? (100 * q.tokens) / max : 0
+  const un = q.unattributed === true
   return (
-    <div className="grid grid-cols-[1fr_auto] items-center gap-3 pl-7 pr-3 py-1">
+    <div
+      className={`grid grid-cols-[1fr_auto] items-center gap-3 pl-7 pr-3 py-1 ${
+        un ? 'border-l-2 border-border ml-3' : ''
+      }`}
+    >
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          {/* "." is the repository root itself, which reads as nothing at all
-              in a list of directory names. */}
-          <span className="truncate text-[12px] text-fg-muted mono">
-            {q.path}
-          </span>
+          {/* This row is NOT a directory and must never read as one. It loses
+            * the mono/path treatment, takes the faint chrome tone, and carries
+            * its own explanation — the label says what the work IS
+            * (repository-wide), not that the tool failed to place it. */}
+          {un ? (
+            <span className="truncate text-[12px] text-fg-faint italic" title={REPO_WIDE_RULE}>
+              {REPO_WIDE_LABEL}
+            </span>
+          ) : (
+            <span className="truncate text-[12px] text-fg-muted mono">{q.path}</span>
+          )}
           <span className="text-[10px] text-fg-faint num shrink-0">
-            {q.sessions} {q.sessions === 1 ? 'session' : 'sessions'}
+            {q.turns} {q.turns === 1 ? 'turn' : 'turns'}
           </span>
         </div>
         <div className="h-0.5 mt-1 bg-panel-2 rounded-sm overflow-hidden">
-          <div className="h-full bg-accent/40" style={{ width: `${pct}%` }} />
+          <div
+            className={`h-full ${un ? 'bg-fg-faint/30' : 'bg-accent/40'}`}
+            style={{ width: `${pct}%` }}
+          />
         </div>
       </div>
-      <div className="text-right shrink-0 num text-[12px]">
-        <span className="text-fg-muted">{fmtTokens(q.tokens)}</span>
+      <div
+        className="text-right shrink-0 num text-[12px]"
+        title={`${fmtPctFloor(q.cost_pct)} of this repository's cost`}
+      >
+        <span className={un ? 'text-fg-faint' : 'text-fg-muted'}>{fmtTokens(q.tokens)}</span>
+        {/* The share sits with the tokens it describes, in the faint chrome
+          * tone, so it reads as a qualifier rather than a third quantity. */}
+        <span className="text-fg-faint"> {fmtPctFloor(q.tokens_pct)}</span>
         <span className="text-fg-faint"> · {fmtUSD(q.cost_usd)}</span>
       </div>
     </div>
   )
+}
+
+/**
+ * A share of the repository total, floored — never rounded up — and never shown
+ * as a bare "0%" for a row that really did spend.
+ *
+ * fmtPct already floors (a 99.6% share must not read as the whole). The extra
+ * rule here is the small end: flooring a real 0.04% share to "0%" would put a
+ * zero next to a non-zero dollar figure on the same line, which is a
+ * contradiction rather than a rounding. "<0.1%" is the honest floor: it says
+ * the share is smaller than the panel can express without claiming it is
+ * nothing.
+ */
+function fmtPctFloor(v: number): string {
+  if (!Number.isFinite(v) || v <= 0) return '0%'
+  if (v < 0.1) return '<0.1%'
+  return fmtPct(v)
 }
 
 /**

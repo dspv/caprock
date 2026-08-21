@@ -149,6 +149,23 @@ func newDaemon(ctx context.Context, opt Options) (*Daemon, error) {
 		}
 	}
 	_ = st.SetMeta(ctx, store.MetaTranscriptSchema, strconv.Itoa(ingest.SchemaVersion))
+	// Per-directory attribution links a tool call to the turn that paid for it
+	// by assistant message id. Historical tool.pre rows never stored it, and it
+	// cannot be reconstructed from the database (see BackfillToolMessageIDs), so
+	// it is read back once from the transcripts that still hold it. Rows whose
+	// transcript is gone stay unlinked and report as unattributed — degraded,
+	// never wrong. Best-effort: this must not stop the daemon from starting.
+	if done, _ := st.GetMeta(ctx, store.MetaToolLinkBackfilled); done != "1" {
+		if n, err := ingest.BackfillToolMessageIDs(ctx, st.DB(), log); err != nil {
+			log.Warn("could not link historical tool calls to their turns; some spend reports as unattributed",
+				"component", "ingest", "err", err)
+		} else {
+			if n > 0 {
+				log.Info("linked historical tool calls to their turns", "component", "ingest", "events", n)
+			}
+			_ = st.SetMeta(ctx, store.MetaToolLinkBackfilled, "1")
+		}
+	}
 
 	b := bus.New()
 	rec := rollup.New(st, table, b, log)

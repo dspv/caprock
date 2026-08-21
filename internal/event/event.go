@@ -74,4 +74,17 @@ type Event struct {
 	// Dedupe key: hook payloads carry tool_use_id / prompt_id; transcript lines
 	// carry uuid. Same key + same session ⇒ same logical event.
 	Key string `json:"key,omitempty"`
+	// MsgID is the assistant message this event belongs to. On turn.assistant it
+	// is the message whose usage is billed; on tool.pre it is the message whose
+	// content block asked for the tool. Equal ids therefore mean "this tool call
+	// was paid for by that turn" — the linkage per-directory attribution needs.
+	//
+	// Empty when unknown, which is the honest answer rather than a guess: the
+	// hook plane never sees a message id (the PreToolUse payload does not carry
+	// one), so tool calls captured by hooks before the transcript caught up are
+	// unlinkable and are reported as such instead of being attributed.
+	MsgID string `json:"msg_id,omitempty"`
+	// TouchDir is the directory this tool call touched, resolved at ingest from
+	// the tool's own input. Empty when the tool named no path.
+	TouchDir string `json:"touch_dir,omitempty"`
 }

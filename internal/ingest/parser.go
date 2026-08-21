@@ -200,6 +200,9 @@ func (l *Line) Events(fallbackTs time.Time) []event.Event {
 		if l.Message.ID == "" {
 			ev.Key = "turn:" + l.UUID
 		}
+		// The turn side of the tool→turn linkage. Stored as a column because
+		// the join that charges a directory runs on a polled endpoint.
+		ev.MsgID = l.Message.ID
 		if u := l.Message.Usage; u != nil {
 			// A negative count cannot describe usage, and a corrupted transcript
 			// would otherwise surface it verbatim in the dashboard's totals —
@@ -220,10 +223,28 @@ func (l *Line) Events(fallbackTs time.Time) []event.Event {
 			tp := base(event.KindToolPre)
 			tp.Tool = b.Name
 			tp.Key = "pre:" + b.ID
+			// message_id links this tool call to the turn whose cost paid for
+			// it. It is EXACT, not a heuristic: the tool_use block and the
+			// usage that is billed for it are content blocks of the same
+			// assistant message, so they carry the same id by construction.
+			//
+			// It has to be written here because nothing downstream can
+			// reconstruct it. One API response is written as SEVERAL assistant
+			// lines (thinking / text / tool_use), each repeating the same
+			// usage; the store keys turns on `msg:<id>` and so keeps only the
+			// FIRST. The tool_use blocks arrive on a later line whose turn row
+			// was deduped away, which puts the tool rows AFTER the next
+			// distinct turn's row. Ordering by id therefore attributes a tool
+			// to the following turn: measured against transcript ground truth
+			// on the owner's database, nearest-preceding-turn recovers the true
+			// message id for only 1981 of 5115 tool calls (38.7%). That is a
+			// systematic one-turn shift, not noise, so read-time reconstruction
+			// is not an option.
+			tp.MsgID = l.Message.ID
 			tp.Payload = mustJSON(map[string]any{
 				"hook_event_name": "PreToolUse", "session_id": l.SessionID, "cwd": l.Cwd,
 				"tool_name": b.Name, "tool_input": capRawObj(b.Input, 32<<10), "tool_use_id": b.ID,
-				"_from": "transcript",
+				"message_id": l.Message.ID, "_from": "transcript",
 			})
 			out = append(out, tp)
 		}

@@ -94,7 +94,28 @@ export interface DiffResult { root: string; branch: string; files: FileDiff[]; s
 export interface ModelShare { model: string; tokens: number; cost_usd: number; turns: number }
 /** One directory inside a repository: the second level of the projects roll-up.
  *  `path` is the first segment under the repo root; "." is the root itself. */
-export interface PathShare { path: string; tokens: number; cost_usd: number; sessions: number }
+/** One directory inside a repository, charged by what the repository's TURNS
+ *  touched — which files Claude read and wrote — rather than by the directory a
+ *  session was launched from. `turns` is the count charged to this row; a turn
+ *  belongs to exactly one row, so the column partitions the repository.
+ *
+ *  `unattributed` marks the single row that is NOT a directory: the bucket for
+ *  spend that belongs to the repository but to no one directory in it. Render
+ *  it as its own thing — never as a directory (its `path` is a sentinel, not a
+ *  name).
+ *
+ *  `tokens_pct` / `cost_pct` are shares of the REPOSITORY total including the
+ *  unattributed bucket, so each column sums to 100%. Both are sent because they
+ *  genuinely differ — cost per token varies by model. */
+export interface PathShare {
+  path: string
+  tokens: number
+  cost_usd: number
+  turns: number
+  unattributed?: boolean
+  tokens_pct: number
+  cost_pct: number
+}
 /** A project's spend over time: one value per fixed-width bucket, cost and
  *  tokens over the SAME buckets, so which one the panel plots is a display
  *  choice rather than a request — see components/Projects.tsx SPARK_BASIS.

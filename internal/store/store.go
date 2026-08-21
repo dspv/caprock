@@ -30,6 +30,14 @@ const (
 	// a bump can trigger a one-time re-derivation of affected payloads.
 	MetaTranscriptSchema = "transcript_schema_version"
 	MetaPricingVersion   = "pricing_version"
+	// MetaToolLinkBackfilled marks the one-time recovery of the tool→turn
+	// linkage from the transcripts (ingest.BackfillToolMessageIDs). It lives in
+	// the daemon rather than the store because it needs the transcript files.
+	MetaToolLinkBackfilled = "tool_link_backfilled"
+	// metaTouchBackfilled marks migration 0012's Go-side backfill as finished.
+	// It is needed because a tool call that named no path keeps touch_dir NULL
+	// forever, so the rows themselves cannot say whether the pass has run.
+	metaTouchBackfilled = "touch_backfilled"
 )
 
 // maxOpenConns bounds the pool. Loopback traffic is one dashboard plus the
@@ -98,7 +106,92 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Store, error) {
 		s.log.Warn("repository backfill incomplete; some projects keep their old labels",
 			"component", "store", "err", err)
 	}
+	// Migration 0012's touch_dir is derived in Go for the same reason: the
+	// dirname has to be cut with the SAME path normalization the ingest path
+	// uses, and SQLite has no `reverse` to do it with.
+	if err := s.backfillTouch(ctx); err != nil {
+		// Degraded means "some historical turns report as unattributed", which
+		// is an honest answer, not a wrong one.
+		s.log.Warn("touch backfill incomplete; some historical spend reports as unattributed",
+			"component", "store", "err", err)
+	}
 	return s, nil
+}
+
+// backfillTouch fills events.touch_dir for tool.pre rows written before
+// per-directory attribution existed.
+//
+// The fact is already in the row — tool.pre has always stored
+// `tool_input.file_path` — so this re-reads payloads rather than transcripts
+// and needs no filesystem. It is idempotent: only rows whose touch_dir is still
+// NULL are considered, and a row whose tool named no path is left NULL
+// permanently (the vast majority: Bash alone is half of all tool calls).
+//
+// Rows are processed in id batches so a large historical database does not hold
+// one transaction open over hundreds of thousands of rows.
+func (s *Store) backfillTouch(ctx context.Context) error {
+	done, err := s.GetMeta(ctx, metaTouchBackfilled)
+	if err == nil && done == "1" {
+		return nil
+	}
+	const batch = 5000
+	var lastID int64
+	for {
+		rows, err := s.db.QueryContext(ctx,
+			`SELECT id, payload FROM events
+			  WHERE kind = 'tool.pre' AND touch_dir IS NULL AND id > ?
+			  ORDER BY id LIMIT ?`, lastID, batch)
+		if err != nil {
+			return err
+		}
+		type row struct {
+			id  int64
+			dir string
+		}
+		var pending []row
+		var seen int
+		for rows.Next() {
+			var id int64
+			var payload []byte
+			if err := rows.Scan(&id, &payload); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			seen++
+			lastID = id
+			if d := TouchDir(payload); d != "" {
+				pending = append(pending, row{id, d})
+			}
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+		if len(pending) > 0 {
+			err = s.WithTx(ctx, func(q Querier) error {
+				for _, r := range pending {
+					if _, err := q.ExecContext(ctx,
+						`UPDATE events SET touch_dir = ? WHERE id = ?`, r.dir, r.id); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+		}
+		if seen < batch {
+			break
+		}
+	}
+	// A row with no path stays NULL forever, so "still NULL" cannot be the
+	// resume signal — without this marker every open would rescan every
+	// pathless tool call (half the table) to discover there is nothing to do.
+	return s.SetMeta(ctx, metaTouchBackfilled, "1")
 }
 
 // backfillRepo fills repo_root/repo_path (and re-derives project) for sessions

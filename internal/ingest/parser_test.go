@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 	"unicode/utf8"
+
+	"github.com/dspv/caprock/internal/event"
 )
 
 // The old cap counted bytes and sliced mid-rune, which clipped Cyrillic prose
@@ -82,5 +84,49 @@ func TestImplausibleTimestampsAreRejected(t *testing.T) {
 		if !wantParsed && !usedFallback {
 			t.Errorf("%s: accepted %v, want the fallback", stamp, got)
 		}
+	}
+}
+
+// TestToolPreCarriesItsMessageID is the linkage per-directory attribution rests
+// on. A tool_use block and the usage billed for it are content blocks of the
+// SAME assistant message, so the tool.pre event must carry that message's id —
+// nothing downstream can recover it, because the store keeps only the first of
+// the several transcript lines one response is written as.
+func TestToolPreCarriesItsMessageID(t *testing.T) {
+	const raw = `{"type":"assistant","sessionId":"s1","uuid":"u1","cwd":"/repo",
+	 "message":{"role":"assistant","id":"msg_abc","model":"claude-opus-5",
+	  "usage":{"input_tokens":10,"output_tokens":2},
+	  "content":[{"type":"tool_use","id":"toolu_1","name":"Edit",
+	              "input":{"file_path":"/repo/api/main.go"}}]}}`
+	line, err := ParseLine([]byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs := line.Events(time.Now())
+	var turn, tool *event.Event
+	for i := range evs {
+		switch evs[i].Kind {
+		case event.KindTurnAssistant:
+			turn = &evs[i]
+		case event.KindToolPre:
+			tool = &evs[i]
+		}
+	}
+	if turn == nil || tool == nil {
+		t.Fatalf("want a turn and a tool.pre, got %d events", len(evs))
+	}
+	if turn.MsgID != "msg_abc" {
+		t.Errorf("turn.MsgID = %q, want %q", turn.MsgID, "msg_abc")
+	}
+	if tool.MsgID != "msg_abc" {
+		t.Errorf("tool.MsgID = %q, want %q — the tool cannot be billed to the turn that paid for it", tool.MsgID, "msg_abc")
+	}
+	if turn.MsgID != tool.MsgID {
+		t.Error("the tool and its turn disagree on the message id, so attribution would charge the wrong turn")
+	}
+	// The id is also in the payload, which is what the historical backfill and
+	// any future consumer read.
+	if !strings.Contains(string(tool.Payload), `"message_id":"msg_abc"`) {
+		t.Errorf("tool payload does not carry message_id: %s", tool.Payload)
 	}
 }

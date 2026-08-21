@@ -278,6 +278,11 @@ func TestRepoFromCwdSubmoduleStaysItsOwnRepo(t *testing.T) {
 
 // TestSummarizeGroupsByRepository is the end-to-end shape the Projects panel
 // renders: one row per repository, with the per-directory breakdown inside it.
+//
+// The breakdown is charged by what the turns TOUCHED, so this drives it the way
+// the real thing works — one session at the repository root whose turns edit
+// files in different directories — rather than by launching a session per
+// directory, which is exactly the signal per-directory attribution replaced.
 func TestSummarizeGroupsByRepository(t *testing.T) {
 	clearRepoCache()
 	ctx := context.Background()
@@ -285,29 +290,21 @@ func TestSummarizeGroupsByRepository(t *testing.T) {
 	root := newRepo(t, filepath.Join(t.TempDir(), "caprock"))
 	ui := filepath.Join(root, "ui")
 	internal := filepath.Join(root, "internal", "store")
-	for _, d := range []string{ui, internal} {
-		if err := os.MkdirAll(d, 0o755); err != nil {
-			t.Fatal(err)
-		}
+	if err := UpsertSession(ctx, s.db, "s1", SessionPatch{Cwd: root}); err != nil {
+		t.Fatal(err)
 	}
-	// Three sessions in one repository: the root, ui, and internal/store.
+	// One session, three turns, each touching exactly one directory.
 	for i, spec := range []struct {
-		id   string
-		cwd  string
+		msg  string
+		dir  string
 		cost float64
 	}{
-		{"s-root", root, 1},
-		{"s-ui", ui, 4},
-		{"s-internal", internal, 2},
+		{"m-root", root, 1},
+		{"m-ui", ui, 4},
+		{"m-internal", internal, 2},
 	} {
-		if err := UpsertSession(ctx, s.db, spec.id, SessionPatch{Cwd: spec.cwd}); err != nil {
-			t.Fatal(err)
-		}
-		cost := spec.cost
-		ev := newAssistantEvent(spec.id, int64(i+1), cost)
-		if _, err := InsertEvent(ctx, s.db, ev); err != nil {
-			t.Fatal(err)
-		}
+		addTurn(t, s, "s1", spec.msg, int64(i+1), spec.cost)
+		addTouch(t, s, "s1", spec.msg, int64(i+1), filepath.Join(spec.dir, "f.go"))
 	}
 	sum, err := Summarize(ctx, s.db, 0)
 	if err != nil {
@@ -319,9 +316,6 @@ func TestSummarizeGroupsByRepository(t *testing.T) {
 	p := sum.Projects[0]
 	if p.Project != "caprock" {
 		t.Errorf("Project = %q, want %q", p.Project, "caprock")
-	}
-	if p.Sessions != 3 {
-		t.Errorf("Sessions = %d, want 3", p.Sessions)
 	}
 	if p.CostUSD != 7 {
 		t.Errorf("CostUSD = %v, want 7 (the repository total)", p.CostUSD)
@@ -343,13 +337,13 @@ func TestSummarizeGroupsByRepository(t *testing.T) {
 	// And the parts must add up to the whole, or the panel states two different
 	// totals for the same repository (rule 6).
 	var sumPaths float64
-	var sumSessions int64
+	var sumTurns int64
 	for _, ps := range p.Paths {
 		sumPaths += ps.CostUSD
-		sumSessions += ps.Sessions
+		sumTurns += ps.Turns
 	}
-	if sumPaths != p.CostUSD || sumSessions != p.Sessions {
-		t.Errorf("breakdown sums to $%v/%d sessions, but the row says $%v/%d", sumPaths, sumSessions, p.CostUSD, p.Sessions)
+	if sumPaths != p.CostUSD || sumTurns != 3 {
+		t.Errorf("breakdown sums to $%v/%d turns, but the row says $%v and 3 turns", sumPaths, sumTurns, p.CostUSD)
 	}
 }
 

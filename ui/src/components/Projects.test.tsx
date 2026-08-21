@@ -67,8 +67,8 @@ describe('ProjectsPanel', () => {
         cost_usd: 1662,
         sessions: 5,
         paths: [
-          { path: '/ui', tokens: 100, cost_usd: 400, sessions: 2 },
-          { path: '/', tokens: 900, cost_usd: 1262, sessions: 3 },
+          { path: '/ui', tokens: 100, cost_usd: 400, turns: 2 , tokens_pct: 0, cost_pct: 0 },
+          { path: '/', tokens: 900, cost_usd: 1262, turns: 3 , tokens_pct: 0, cost_pct: 0 },
         ],
       },
     ]
@@ -97,7 +97,7 @@ describe('ProjectsPanel', () => {
         tokens: 10,
         cost_usd: 10,
         sessions: 1,
-        paths: [{ path: '.', tokens: 10, cost_usd: 10, sessions: 1 }],
+        paths: [{ path: '.', tokens: 10, cost_usd: 10, turns: 1 , tokens_pct: 0, cost_pct: 0 }],
       },
     ]
     render(<ProjectsPanel sessions={[]} />)
@@ -115,8 +115,8 @@ describe('ProjectsPanel', () => {
       cost_usd: 10 - i,
       sessions: 1,
       paths: [
-        { path: 'a', tokens: 5, cost_usd: 4, sessions: 1 },
-        { path: 'b', tokens: 5, cost_usd: 3, sessions: 1 },
+        { path: 'a', tokens: 5, cost_usd: 4, turns: 1 , tokens_pct: 0, cost_pct: 0 },
+        { path: 'b', tokens: 5, cost_usd: 3, turns: 1 , tokens_pct: 0, cost_pct: 0 },
       ],
     }))
     render(<ProjectsPanel sessions={[]} />)
@@ -260,17 +260,90 @@ describe('ProjectsPanel figures', () => {
         cost_usd: 300,
         sessions: 2,
         paths: [
-          { path: 'ui', tokens: 900_000, cost_usd: 100, sessions: 1 },
-          { path: 'cmd', tokens: 100_000, cost_usd: 200, sessions: 1 },
+          { path: 'ui', tokens: 900_000, cost_usd: 100, turns: 1, tokens_pct: 90, cost_pct: 33.3 },
+          { path: 'cmd', tokens: 100_000, cost_usd: 200, turns: 1, tokens_pct: 10, cost_pct: 66.6 },
         ],
       },
     ]
     render(<ProjectsPanel sessions={[]} />)
     fireEvent.click(await screen.findByTitle('mono: show cost by directory'))
     // The parts are stated in the same units as the whole, or they cannot be
-    // checked against it — and the row's two numbers must belong to one path.
-    expect(screen.getByText('900.0k').parentElement?.textContent).toBe('900.0k · $100.00')
-    expect(screen.getByText('100.0k').parentElement?.textContent).toBe('100.0k · $200.00')
+    // checked against it — and the row's three numbers must belong to one path.
+    // The share sits with the tokens it describes, not between the two figures
+    // where it would read as qualifying both.
+    expect(screen.getByText('900.0k').parentElement?.textContent).toBe('900.0k 90% · $100.00')
+    expect(screen.getByText('100.0k').parentElement?.textContent).toBe('100.0k 10% · $200.00')
+  })
+
+  it('names the non-directory row as repository-wide work, never as a directory or a defect', async () => {
+    // Strict attribution puts every turn that spanned several directories,
+    // touched none, or touched files outside the repository into ONE labelled
+    // row. Two things must hold at once:
+    //
+    //   - it must not read as a DIRECTORY (the sentinel path never reaches the
+    //     screen), and
+    //   - it must not read as a FAILURE. This row is usually the largest — most
+    //     turns run commands, search, or build — so calling it "unattributed"
+    //     tells a user whose repository is two thirds this row that the tool is
+    //     broken. It is not: that is real repository-wide work.
+    //
+    // Its share must also be visible, so the column adds up.
+    projects.value = [
+      {
+        project: 'mono',
+        tokens: 1_000_000,
+        cost_usd: 100,
+        sessions: 2,
+        paths: [
+          { path: '/services/api', tokens: 200_000, cost_usd: 20, turns: 4, tokens_pct: 20, cost_pct: 20 },
+          { path: '\u0000unattributed', tokens: 800_000, cost_usd: 80, turns: 40, unattributed: true, tokens_pct: 80, cost_pct: 80 },
+        ],
+      },
+    ]
+    render(<ProjectsPanel sessions={[]} />)
+    fireEvent.click(await screen.findByTitle('mono: show cost by directory'))
+    // The real directory keeps its path treatment.
+    expect(screen.getByText('/services/api')).toBeTruthy()
+    // The row says what the work IS, and the sentinel never reaches the screen.
+    expect(screen.getByText('repository-wide work')).toBeTruthy()
+    expect(screen.queryByText('\u0000unattributed')).toBeNull()
+    // The word "unattributed" must not reach a user anywhere in the breakdown:
+    // it describes the tool's bookkeeping rather than their work, and this row
+    // is normally the biggest number on screen.
+    expect(document.body.textContent).not.toMatch(/unattributed/i)
+    // Nor may it read as a directory literally called "several".
+    expect(screen.queryByText('several')).toBeNull()
+    // The explanation rides on the row itself, in the user's vocabulary — a
+    // large number with no stated reason is exactly what reads as a defect.
+    const hover = screen.getByText('repository-wide work').getAttribute('title') ?? ''
+    expect(hover).toMatch(/command/i)
+    expect(hover).toMatch(/search/i)
+    // Its share is stated rather than hidden in the denominator.
+    expect(screen.getByText('800.0k').parentElement?.textContent).toBe('800.0k 80% · $80.00')
+  })
+
+  it('floors a share and never shows a real spend as a bare 0%', async () => {
+    // Percentages floor: 99.9% is 99%, nothing reads as the whole until it is.
+    // But a row with real money must not floor to "0%" — that would put a zero
+    // beside a non-zero dollar figure on the same line.
+    projects.value = [
+      {
+        project: 'mono',
+        tokens: 1_000_000,
+        cost_usd: 100,
+        sessions: 1,
+        paths: [
+          { path: '/big', tokens: 999_000, cost_usd: 99.9, turns: 9, tokens_pct: 99.9, cost_pct: 99.9 },
+          { path: '/tiny', tokens: 1_000, cost_usd: 0.1, turns: 1, tokens_pct: 0.04, cost_pct: 0.1 },
+        ],
+      },
+    ]
+    render(<ProjectsPanel sessions={[]} />)
+    fireEvent.click(await screen.findByTitle('mono: show cost by directory'))
+    // Floored, not rounded up to 100%.
+    expect(screen.getByText('999.0k').parentElement?.textContent).toBe('999.0k 99% · $99.90')
+    // A tiny but real share reads as smaller-than-expressible, not as nothing.
+    expect(screen.getByText('1,000').parentElement?.textContent).toBe('1,000 <0.1% · $0.10')
   })
 
   it('scales a directory bar on the largest by tokens, not on the first row', async () => {
@@ -284,8 +357,8 @@ describe('ProjectsPanel figures', () => {
         cost_usd: 300,
         sessions: 2,
         paths: [
-          { path: 'cmd', tokens: 100_000, cost_usd: 200, sessions: 1 },
-          { path: 'ui', tokens: 900_000, cost_usd: 100, sessions: 1 },
+          { path: 'cmd', tokens: 100_000, cost_usd: 200, turns: 1 , tokens_pct: 0, cost_pct: 0 },
+          { path: 'ui', tokens: 900_000, cost_usd: 100, turns: 1 , tokens_pct: 0, cost_pct: 0 },
         ],
       },
     ]

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -183,9 +184,13 @@ func TestSummarizeSparkPathsStillSumToRepo(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	spend(t, s, "u", from+1000, 10, 4.0)
-	spend(t, s, "c", from+day+1000, 20, 6.0)
-	spend(t, s, "r", from+2*day+1000, 30, 1.0)
+	// The breakdown is charged by what each turn TOUCHED, so each session gets
+	// a turn plus a touch in the directory it is meant to represent. Driving it
+	// through cwd alone would no longer produce three directory rows — which is
+	// the whole point of the change this test now guards.
+	spendTouching(t, s, "u", "mu", from+1000, 10, 4.0, filepath.Join(ui, "a.ts"))
+	spendTouching(t, s, "c", "mc", from+day+1000, 20, 6.0, filepath.Join(cmd, "b.go"))
+	spendTouching(t, s, "r", "mr", from+2*day+1000, 30, 1.0, filepath.Join(root, "c.md"))
 	if err := UpsertSession(ctx, s.db, "u", SessionPatch{Cwd: ui}); err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +216,7 @@ func TestSummarizeSparkPathsStillSumToRepo(t *testing.T) {
 	for _, q := range p.Paths {
 		pc += q.CostUSD
 		pt += q.Tokens
-		ps += q.Sessions
+		ps += q.Turns
 	}
 	if math.Abs(pc-p.CostUSD) > 1e-9 {
 		t.Fatalf("paths sum to %v but the repository says %v", pc, p.CostUSD)
@@ -219,8 +224,11 @@ func TestSummarizeSparkPathsStillSumToRepo(t *testing.T) {
 	if pt != p.Tokens {
 		t.Fatalf("path tokens sum to %d but the repository says %d", pt, p.Tokens)
 	}
-	if ps != p.Sessions {
-		t.Fatalf("path sessions sum to %d but the repository says %d", ps, p.Sessions)
+	// Turns, not sessions: a session can touch several directories, so it
+	// cannot be counted once per row without the column exceeding the
+	// repository's own session count. A turn is charged to exactly one row.
+	if ps != 3 {
+		t.Fatalf("path turns sum to %d but 3 turns were recorded", ps)
 	}
 	// And the sparkline agrees with that same total.
 	var sc float64
@@ -254,5 +262,35 @@ func TestSummarizeWithoutSparkCarriesNoSeries(t *testing.T) {
 	// The totals must be identical either way.
 	if sum.Projects[0].CostUSD != 1.0 || sum.Projects[0].Tokens != 10 {
 		t.Fatalf("totals = (%v, %d), want (1, 10)", sum.Projects[0].CostUSD, sum.Projects[0].Tokens)
+	}
+}
+
+// spendTouching is spend() plus the tool call that says where the money went —
+// the pair the per-directory breakdown is built from.
+func spendTouching(t *testing.T, s *Store, sid, msg string, ts int64, tokens int64, usd float64, file string) {
+	t.Helper()
+	ev := &event.Event{
+		SessionID: sid, Source: event.SourceTranscript, Kind: event.KindTurnAssistant,
+		Model: "claude-opus-5", Ts: time.UnixMilli(ts),
+		Tokens: &event.TokenDelta{In: tokens}, CostUSD: &usd,
+		MsgID: msg, Key: "msg:" + msg,
+	}
+	if _, err := InsertEvent(context.Background(), s.db, ev); err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(map[string]any{
+		"tool_name": "Read", "tool_input": map[string]any{"file_path": file},
+		"tool_use_id": "toolu_" + msg, "message_id": msg,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tp := &event.Event{
+		SessionID: sid, Source: event.SourceTranscript, Kind: event.KindToolPre,
+		Tool: "Read", Ts: time.UnixMilli(ts), Payload: payload,
+		MsgID: msg, Key: "pre:" + msg,
+	}
+	if _, err := InsertEvent(context.Background(), s.db, tp); err != nil {
+		t.Fatal(err)
 	}
 }

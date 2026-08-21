@@ -122,12 +122,22 @@ func InsertEvent(ctx context.Context, q Querier, ev *event.Event) (int64, error)
 	if ev.CostUSD != nil {
 		cost = *ev.CostUSD
 	}
+	// Per-directory attribution is resolved here, once, rather than by parsing
+	// the payload on every read of a polled endpoint (see migration 0012).
+	// TouchDir is derived rather than trusted from the caller so every writer —
+	// transcript, hook, harness — gets the same normalization.
+	touch := any(nil)
+	if ev.Kind == event.KindToolPre {
+		if d := TouchDir(ev.Payload); d != "" {
+			touch = d
+		}
+	}
 	res, err := q.ExecContext(ctx, `
-		INSERT INTO events(ts, session_id, source, kind, tool, payload, tokens_in, tokens_out, cache_read, cache_write, cost_usd, key, model, cache_write_1h, agent_id)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO events(ts, session_id, source, kind, tool, payload, tokens_in, tokens_out, cache_read, cache_write, cost_usd, key, model, cache_write_1h, agent_id, msg_id, touch_dir)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(session_id, key) WHERE key IS NOT NULL DO NOTHING`,
 		ev.Ts.UnixMilli(), ev.SessionID, string(ev.Source), string(ev.Kind), nullStr(ev.Tool), string(ev.Payload),
-		tin, tout, cr, cw, cost, key, nullStr(ev.Model), cw1h, nullStr(ev.AgentID))
+		tin, tout, cr, cw, cost, key, nullStr(ev.Model), cw1h, nullStr(ev.AgentID), nullStr(ev.MsgID), touch)
 	if err != nil {
 		return 0, fmt.Errorf("insert event: %w", err)
 	}
@@ -728,13 +738,52 @@ type ProjectShare struct {
 	Spark    *Spark      `json:"spark,omitempty"`
 }
 
-// PathShare is tokens/cost for one directory inside a repository. Path is the
-// first segment under the repository root; "." is work in the root itself.
+// PathShare is tokens/cost for one directory inside a repository, charged by
+// what the repository's TURNS touched rather than by where a session was
+// launched (see touch.go).
+//
+// Path is the directory relative to the repository root, written from it so it
+// reads as a path — "/", "/services/api". The one value that is NOT a path is
+// UnattributedPath, the bucket for spend that belongs to the repository but to
+// no single directory in it; callers must render it as its own thing and never
+// as a directory (see Unattributed).
+//
+// Turns replaces the old Sessions count. A session touches many directories, so
+// it cannot be counted once per directory row without the column summing to
+// more than the repository's own session count; a TURN is charged to exactly
+// one row by construction, so turns partition and add up.
 type PathShare struct {
-	Path     string  `json:"path"`
-	Tokens   int64   `json:"tokens"`
-	CostUSD  float64 `json:"cost_usd"`
-	Sessions int64   `json:"sessions"`
+	Path    string  `json:"path"`
+	Tokens  int64   `json:"tokens"`
+	CostUSD float64 `json:"cost_usd"`
+	Turns   int64   `json:"turns"`
+	// Unattributed marks the one row that is a bucket rather than a directory,
+	// so the UI does not have to know the sentinel's spelling.
+	Unattributed bool `json:"unattributed,omitempty"`
+	// TokensPct and CostPct are this row's share of the REPOSITORY's total,
+	// including the unattributed bucket — so each column sums to 100% and the
+	// unattributed share is visible as its own number instead of being hidden
+	// in a denominator.
+	//
+	// Both are sent because they genuinely differ: cost per token varies by
+	// model, so a directory worked on by a cheap model is a larger share of the
+	// tokens than of the money. Sending one would leave the reader to assume it
+	// described both.
+	//
+	// They are computed here rather than in the panel because the denominator
+	// is the repository total, which the panel only has after summing rows it
+	// may be truncating. Values are floored to one decimal on the client
+	// (fmtPct), never rounded up.
+	TokensPct float64 `json:"tokens_pct"`
+	CostPct   float64 `json:"cost_pct"`
+}
+
+// turnSpend is one assistant turn's cost and what it touched — the unit
+// per-directory attribution charges.
+type turnSpend struct {
+	tokens  int64
+	cost    float64
+	touched TouchDirs
 }
 
 // Spark is a project's spend over time, as one value per fixed-width bucket —
@@ -1029,6 +1078,16 @@ func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpe
 	if err := rows.Close(); err != nil {
 		return s, err
 	}
+	// Per-directory attribution needs spend at TURN granularity, because a turn
+	// is the unit that can be charged to a directory: its cost is billed as one
+	// amount, and the tools it called are what say where that amount went. The
+	// two queries below are the only extra work this feature adds to the
+	// summary — measured on the owner's database, see § timings in
+	// migration 0012.
+	turns, err := turnSpendBySession(ctx, q, fromMs)
+	if err != nil {
+		return s, err
+	}
 	// The session → repository mapping. Only sessions that actually spent in
 	// the range are looked up, so a database full of old sessions costs nothing.
 	rows, err = q.QueryContext(ctx,
@@ -1073,9 +1132,6 @@ func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpe
 		if key == "cwd:" {
 			key = "label:" + label
 		}
-		// One definition of the label, in RepoInfo.Segment — duplicating the
-		// rule here is how the two drift.
-		seg := RepoInfo{Path: path}.Segment()
 		i, ok := byRoot[key]
 		if !ok {
 			i = len(s.Projects)
@@ -1093,17 +1149,32 @@ func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpe
 		if sparkOn {
 			addSpark(p, spark, sparks[id])
 		}
-		pk := [2]string{key, seg}
-		j, ok := pathIdx[pk]
-		if !ok {
-			j = len(p.Paths)
-			pathIdx[pk] = j
-			p.Paths = append(p.Paths, PathShare{Path: seg})
+		// The per-directory breakdown is charged by what the session's TURNS
+		// touched, not by the directory the session was launched from. The
+		// per-turn figures were gathered above; here they are folded into the
+		// repository this session belongs to.
+		//
+		// root, not key: attribution compares a touched path against a real
+		// repository root, and a session outside any repository ("cwd:…") has
+		// none to compare with — its turns all land unattributed, which is the
+		// honest answer for a directory that is not in a repository.
+		for _, tt := range turns[id] {
+			seg, ok := AttributeDir(tt.touched, root)
+			if !ok {
+				seg = UnattributedPath
+			}
+			pk := [2]string{key, seg}
+			j, ok := pathIdx[pk]
+			if !ok {
+				j = len(p.Paths)
+				pathIdx[pk] = j
+				p.Paths = append(p.Paths, PathShare{Path: seg})
+			}
+			ps := &p.Paths[j]
+			ps.Tokens += tt.tokens
+			ps.CostUSD += tt.cost
+			ps.Turns++
 		}
-		ps := &p.Paths[j]
-		ps.Tokens += t.tokens
-		ps.CostUSD += t.cost
-		ps.Sessions++
 	}
 	if err := rows.Err(); err != nil {
 		return s, err
@@ -1133,13 +1204,40 @@ func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpe
 	}
 	for i := range s.Projects {
 		p := &s.Projects[i]
-		// One directory is not a breakdown — it would restate the row's own
-		// total under a second heading.
+		// A breakdown whose only row is the unattributed bucket says nothing
+		// the repository row does not already say: "all of it, and we cannot
+		// tell you where". Nor does a single directory, which would restate the
+		// row's own total under a second heading.
 		if len(p.Paths) < 2 {
 			p.Paths = nil
 			continue
 		}
-		sort.SliceStable(p.Paths, func(a, b int) bool { return p.Paths[a].CostUSD > p.Paths[b].CostUSD })
+		for j := range p.Paths {
+			ps := &p.Paths[j]
+			ps.Unattributed = ps.Path == UnattributedPath
+			// The denominator is the REPOSITORY total, including the
+			// unattributed bucket, so the column sums to 100% and the share
+			// that could not be attributed is visible as its own percentage
+			// rather than inflating the directories that could. A percentage
+			// whose base the reader has to guess is exactly what rule 6 exists
+			// to prevent.
+			if p.Tokens > 0 {
+				ps.TokensPct = 100 * float64(ps.Tokens) / float64(p.Tokens)
+			}
+			if p.CostUSD > 0 {
+				ps.CostPct = 100 * ps.CostUSD / p.CostUSD
+			}
+		}
+		// Sorted by cost, except that the unattributed bucket is pinned last
+		// however large it is: it is not a competitor to the directories, it is
+		// the remainder, and a reader scanning for the costliest SERVICE should
+		// not have to skip past it.
+		sort.SliceStable(p.Paths, func(a, b int) bool {
+			if p.Paths[a].Unattributed != p.Paths[b].Unattributed {
+				return p.Paths[b].Unattributed
+			}
+			return p.Paths[a].CostUSD > p.Paths[b].CostUSD
+		})
 	}
 	// Rolling the segments up changed the repository totals, so any ORDER BY
 	// the database applied would have been over segments, not repositories.

@@ -312,3 +312,139 @@ func NeedsTextRepair(storedVersion string) bool {
 func HasReplacementChar(s string) bool {
 	return strings.ContainsRune(s, utf8.RuneError)
 }
+
+// BackfillToolMessageIDs recovers the tool→turn linkage for tool.pre rows
+// written before per-directory attribution existed.
+//
+// WHY THIS NEEDS THE TRANSCRIPTS. The link is the assistant message id: a
+// tool_use block and the usage billed for it are content blocks of the same
+// message. Historical tool.pre payloads never stored it — the parser only began
+// writing `message_id` with this change — and it cannot be recovered from the
+// database, because ordering by id does NOT recover it. One response is written
+// as several assistant lines that each repeat the same usage; the store keeps
+// only the first (key `msg:<id>`), so the tool_use blocks land AFTER the next
+// distinct turn's row. Measured against transcript ground truth on the owner's
+// database, nearest-preceding-turn gives the true message id for 1981 of 5115
+// tool calls (38.7%) — a systematic one-turn shift, not noise.
+//
+// So the fact is read back from the file that still holds it. Rows whose
+// transcript is gone keep a NULL msg_id and report as unattributed, which is
+// the honest answer rather than a guessed one.
+//
+// It is idempotent and runs once: the meta marker is set by the caller.
+func BackfillToolMessageIDs(ctx context.Context, db *sql.DB, log *slog.Logger) (linked int, err error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT e.id, COALESCE(json_extract(e.payload,'$.tool_use_id'),''),
+		       COALESCE(se.transcript_path,'')
+		FROM events e JOIN sessions se ON se.session_id = e.session_id
+		WHERE e.kind = 'tool.pre' AND e.msg_id IS NULL
+		  AND e.touch_dir IS NOT NULL
+		  AND COALESCE(se.transcript_path,'') != ''`)
+	if err != nil {
+		return 0, fmt.Errorf("find unlinked tool calls: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	// Only rows that can actually be attributed are worth a file scan:
+	// touch_dir IS NOT NULL above excludes the ~76% of tool calls (Bash and
+	// friends) that name no path and could never charge a directory.
+	byFile := map[string]map[string]int64{} // transcript → tool_use_id → event id
+	for rows.Next() {
+		var id int64
+		var toolUseID, path string
+		if err := rows.Scan(&id, &toolUseID, &path); err != nil {
+			return 0, err
+		}
+		if toolUseID == "" {
+			continue
+		}
+		if byFile[path] == nil {
+			byFile[path] = map[string]int64{}
+		}
+		byFile[path][toolUseID] = id
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if len(byFile) == 0 {
+		return 0, nil
+	}
+	for path, wanted := range byFile {
+		found := map[string]string{} // tool_use_id → message_id
+		scanned := map[string]bool{}
+		scan := func(file string) {
+			if scanned[file] || len(found) == len(wanted) {
+				return
+			}
+			scanned[file] = true
+			got, err := messageIDsByToolUse(file, wanted)
+			if err != nil {
+				if log != nil && !errors.Is(err, os.ErrNotExist) {
+					log.Debug("backfill: cannot read transcript", "component", "ingest", "path", file, "err", err)
+				}
+				return
+			}
+			for k, v := range got {
+				found[k] = v
+			}
+		}
+		scan(path)
+		// A session's recorded transcript_path is often not where its messages
+		// live (subagent files, and the parent's path recorded on a subagent
+		// turn), so sweep the project tree for whatever is still missing.
+		if len(found) < len(wanted) {
+			for _, sibling := range siblingTranscripts(path) {
+				scan(sibling)
+				if len(found) == len(wanted) {
+					break
+				}
+			}
+		}
+		for toolUseID, msgID := range found {
+			id, ok := wanted[toolUseID]
+			if !ok || msgID == "" {
+				continue
+			}
+			res, err := db.ExecContext(ctx, `UPDATE events SET msg_id = ? WHERE id = ? AND msg_id IS NULL`, msgID, id)
+			if err != nil {
+				return linked, err
+			}
+			n, _ := res.RowsAffected()
+			linked += int(n)
+		}
+	}
+	return linked, nil
+}
+
+// messageIDsByToolUse scans one transcript for the assistant messages that
+// issued the given tool_use ids, returning tool_use_id → message_id.
+func messageIDsByToolUse(path string, wanted map[string]int64) (map[string]string, error) {
+	f, err := os.Open(path) //nolint:gosec // a transcript path we recorded ourselves
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	out := map[string]string{}
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
+	for sc.Scan() {
+		line, err := ParseLine(sc.Bytes())
+		if err != nil || line.Type != "assistant" || line.Message == nil || line.Message.ID == "" {
+			continue
+		}
+		for _, b := range line.blocks() {
+			if b.Type != "tool_use" || b.ID == "" {
+				continue
+			}
+			if _, want := wanted[b.ID]; want {
+				out[b.ID] = line.Message.ID
+			}
+		}
+		if len(out) == len(wanted) {
+			break
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return out, err
+	}
+	return out, nil
+}
