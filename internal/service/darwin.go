@@ -15,9 +15,13 @@ import (
 //   - KeepAlive/SuccessfulExit=false — restart the daemon when it *crashes*,
 //     but leave it alone when it exits 0. `caprock down` shuts down cleanly, so
 //     without this launchd would fight the user and restart it immediately.
-//   - ProcessType=Background + LowPriorityIO — this is a watcher, not the
-//     user's foreground work; it must never compete with the editor or with
-//     `claude` itself for I/O.
+//   - ProcessType=Adaptive — the daemon is a watcher most of the time, but it
+//     also serves the dashboard, and that half is interactive. Background plus
+//     LowPriorityIO looked right for a watcher and was measured to be wrong:
+//     macOS throttled the I/O of a process it had been told was batch work, and
+//     the same binary answering the same query took 1.2s under launchd against
+//     185ms from a terminal. Adaptive lets a process that starts serving
+//     requests be promoted out of the background band.
 //   - StandardOutPath/StandardErrorPath — into the data dir, so a login-time
 //     failure is diagnosable instead of vanishing into launchd's void.
 //
@@ -45,8 +49,7 @@ func renderPlist(p Plan) string {
 
 	b.WriteString("  <key>RunAtLoad</key>\n  <true/>\n")
 	b.WriteString("  <key>KeepAlive</key>\n  <dict>\n    <key>SuccessfulExit</key>\n    <false/>\n  </dict>\n\n")
-	b.WriteString("  <key>ProcessType</key>\n  <string>Background</string>\n")
-	b.WriteString("  <key>LowPriorityIO</key>\n  <true/>\n\n")
+	b.WriteString("  <key>ProcessType</key>\n  <string>Adaptive</string>\n\n")
 	b.WriteString("  <key>StandardOutPath</key>\n  <string>" + plistEscape(p.LogPath()) + "</string>\n")
 	b.WriteString("  <key>StandardErrorPath</key>\n  <string>" + plistEscape(p.LogPath()) + "</string>\n")
 	b.WriteString("</dict>\n</plist>\n")

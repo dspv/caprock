@@ -173,7 +173,7 @@ func TestPlistCarriesTheLoadBearingKeys(t *testing.T) {
 		"<key>KeepAlive</key>",
 		"<key>SuccessfulExit</key>",
 		"<key>ProcessType</key>",
-		"<string>Background</string>",
+		"<string>Adaptive</string>",
 		"<key>StandardOutPath</key>",
 	} {
 		if !strings.Contains(s, want) {
@@ -576,5 +576,29 @@ func TestNewPlanMakesTheExecutableAbsolute(t *testing.T) {
 	}
 	if p.Home == "" {
 		t.Error("NewPlan did not resolve a home directory")
+	}
+}
+
+// Background + LowPriorityIO reads like the obviously correct choice for a
+// watcher, and it was in the first version of this file. It is wrong here: the
+// daemon also serves the dashboard, and macOS throttles the I/O of a process it
+// has been told is batch work. Measured on a 190k-event database, the same
+// binary answering the same query took 1.2s under launchd with Background
+// against 185ms from a terminal — a dashboard that felt broken, from one plist
+// key. This pins the reason so the tempting value cannot come back quietly.
+func TestPlistDoesNotThrottleTheDashboard(t *testing.T) {
+	p := testPlan(t, "darwin")
+	body, _, err := p.Render()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(body)
+	for _, bad := range []string{"<string>Background</string>", "<key>LowPriorityIO</key>"} {
+		if strings.Contains(got, bad) {
+			t.Errorf("plist contains %s, which throttles the daemon's I/O and makes the dashboard take seconds to answer", bad)
+		}
+	}
+	if !strings.Contains(got, "<string>Adaptive</string>") {
+		t.Errorf("plist should declare ProcessType=Adaptive so a serving process is promoted out of the background band:\n%s", got)
 	}
 }

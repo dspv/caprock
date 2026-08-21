@@ -9,6 +9,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.12.1] - 2026-08-22
+
+### Fixed
+
+- The dashboard took over a second to answer every request when the daemon ran as a login service, which made the range switches on Cost and Projects appear to stick: a click highlighted the new range while the numbers stayed on the old one, because the request had not come back before the next refresh overwrote it. The launchd agent declared `ProcessType=Background` with `LowPriorityIO` — correct for a watcher, wrong for a process that also serves a UI, since macOS throttles the I/O of anything it has been told is batch work. The same binary answering the same query measured 1.2s under launchd against 185ms from a terminal; `ProcessType=Adaptive` closes the gap. Re-run `caprock service install` to pick up the corrected agent.
+
 ## [0.12.0] - 2026-08-22
 
 ### Added
