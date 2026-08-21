@@ -52,6 +52,15 @@ settings). Say no and it still reads your history from transcripts.
 shape of a track is the shape of the work. Below: what every session is doing as
 it happens, and what each repo costs you. Real numbers from a real machine.*
 
+<details>
+<summary>Light theme</summary>
+
+![The same screen in the light theme](docs/shot-now-light.png)
+
+*It follows your system by default, and the toggle in the header overrides it.*
+
+</details>
+
 ## Updating
 
 Use the command that matches how you installed it:
@@ -113,10 +122,16 @@ And everything you have ever run through it — measured, not estimated:
 - **Observe** — watches every `claude` session via hooks + transcripts, and
   draws the last hour as a pulse: bar height is how much happened that minute,
   colour is what it cost.
-- **Control** — run and drive sessions from the browser.
+- **Control** — run and drive sessions from the browser. When a session is
+  waiting on you, **what did it ask?** shows the last thing Claude said without
+  a trip to the terminal.
 - **Orchestrate** — a verified multi-agent team; a task is done only when green.
 
 Nothing to change in your workflow — it starts by watching the sessions you already run.
+
+Found a bug, or something that did not explain itself? The **feedback** button
+in the header opens a prefilled GitHub issue in your browser — nothing is sent
+from the dashboard, and what gets attached is on screen before you press it.
 
 ## Get involved
 
