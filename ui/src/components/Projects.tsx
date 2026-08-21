@@ -13,12 +13,20 @@
  *
  * Two things the row shows are choices worth stating.
  *
- * The measure toggle ($ / tokens) exists because on a subscription plan dollars
- * are not what the user pays — they are a proxy for consumption, and the number
- * that reflects what was actually consumed is tokens. Cost stays the default
- * because it is the figure people recognise; tokens become the headline for
- * anyone whose bill is flat. Whichever is chosen drives the sparkline too, so
- * the picture can never contradict the number beside it.
+ * BOTH figures are shown, always. There used to be a $ / tokens toggle picking
+ * which one led; it is gone. On a subscription plan dollars are a proxy for
+ * consumption rather than a bill, so neither number answers the question on its
+ * own — and a control that makes the reader re-decide which half to see on every
+ * visit costs more than the column it saves. The row has room for two numbers.
+ *
+ * Tokens lead, cost follows. Tokens are the honest measure of what was consumed
+ * on a flat plan, and the panel header already carries the dollar total, so a
+ * dollar-led row would state the same thing twice while consumption appeared
+ * nowhere large. Cost is not a footnote though: it sits directly beneath at the
+ * size used for a row figure elsewhere (Pulse's per-session cost, 13px) in
+ * `text-fg-muted`, the tone the product uses for text meant to be read.
+ * `text-fg-faint` is reserved for chrome — session counts, timestamps — and that
+ * is exactly what made the old second number a whisper.
  *
  * The sparkline REPLACED a share-of-largest bar. The bar restated the ranking
  * the sorted, right-aligned numbers already gave — the widest bar sat on the
@@ -34,7 +42,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type PathShare, type ProjectShare, type SessionSummary } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtTokens, fmtUSD } from '@/lib/format'
-import { buildSpark, bucketLabel, peak, type Measure } from '@/lib/spark'
+import { buildSpark, bucketLabel, peak } from '@/lib/spark'
 import { Panel, Skeleton } from '@/components/ui'
 
 type Range = 'today' | '7d' | '30d' | 'all'
@@ -46,41 +54,27 @@ const RANGES: { key: Range; label: string }[] = [
   { key: 'all', label: 'all' },
 ]
 
-const MEASURES: { key: Measure; label: string }[] = [
-  { key: 'cost', label: '$' },
-  { key: 'tokens', label: 'tokens' },
-]
-
-/** The measure choice is persisted: it reflects how the user is billed, which
- *  does not change between visits, so re-picking it every reload would be a
- *  chore. The range is not persisted — that is a question you ask per visit.
- *  localStorage is the mechanism the dashboard already uses (see lib/theme.ts). */
-const MEASURE_KEY = 'caprock-projects-measure'
-
-function initialMeasure(): Measure {
-  try {
-    return localStorage.getItem(MEASURE_KEY) === 'tokens' ? 'tokens' : 'cost'
-  } catch {
-    // Private-mode / disabled storage must not take the panel down with it.
-    return 'cost'
-  }
-}
+/**
+ * What the sparkline and the share bar are scaled on. Both series ship in the
+ * payload (`spark.cost` and `spark.tokens`), so this is a display choice, not a
+ * request: SPARK_BASIS names it in one place instead of leaving 'tokens' spelled
+ * at four call sites where nobody could tell whether they were meant to agree.
+ *
+ * Tokens, to match the figure that leads the row — a picture scaled on cost
+ * under a headline in tokens would be a second, silently different ranking. The
+ * choice is close to free either way: the two curves have near-identical SHAPE
+ * for one project, since a project's model mix barely moves within a range; they
+ * diverge only ACROSS projects, which is what the shared ceiling and the bar
+ * compare, and that is precisely where matching the headline matters.
+ */
+const SPARK_BASIS = 'tokens' as const
 
 export function ProjectsPanel({ sessions }: { sessions: SessionSummary[] }) {
   // 30d is the default: "today" is near-empty most mornings and would make the
   // panel look broken on first open, which is exactly the wrong first impression.
   const [range, setRange] = useState<Range>('30d')
-  const [measure, setMeasure] = useState<Measure>(initialMeasure)
   const [expanded, setExpanded] = useState(false)
   const summary = useApi(() => api.summary(range), [range], { intervalMs: 30000 })
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(MEASURE_KEY, measure)
-    } catch {
-      // Nothing to do — the choice simply will not survive the reload.
-    }
-  }, [measure])
 
   const all = summary.data?.projects ?? []
   const shown = expanded ? all : all.slice(0, 6)
@@ -89,41 +83,22 @@ export function ProjectsPanel({ sessions }: { sessions: SessionSummary[] }) {
 
   // The tallest column across the rows on screen, so every sparkline is drawn
   // to one ceiling and the pictures are comparable between rows.
-  const ceiling = useMemo(() => peak(shown.map((p) => p.spark), measure), [shown, measure])
-  // The row scale for the fallback bar, in the selected measure.
-  const maxRow = useMemo(
-    () => shown.reduce((hi, p) => Math.max(hi, measure === 'tokens' ? p.tokens : p.cost_usd), 0),
-    [shown, measure],
-  )
+  const ceiling = useMemo(() => peak(shown.map((p) => p.spark), SPARK_BASIS), [shown])
+  // The row scale for the fallback bar, on the same basis as the sparkline it
+  // stands in for — the two must not rank the rows differently.
+  const maxRow = useMemo(() => shown.reduce((hi, p) => Math.max(hi, p.tokens), 0), [shown])
 
   return (
     <Panel
       title="Projects"
       right={
         <span className="flex items-center gap-2">
-          <span className="num text-fg text-[13px]">
-            {measure === 'tokens' ? `${fmtTokens(totalTokens)} total` : `${fmtUSD(totalCost)} total`}
-          </span>
-          {/* Same chrome as the range buttons: this is the same kind of control
-            * — it changes what the panel shows, not what it is. */}
-          <span className="inline-flex border border-border rounded-sm overflow-hidden" role="group" aria-label="measure">
-            {MEASURES.map((m) => (
-              <button
-                key={m.key}
-                onClick={() => setMeasure(m.key)}
-                aria-pressed={measure === m.key}
-                title={
-                  m.key === 'tokens'
-                    ? 'show tokens as the headline — what was consumed'
-                    : 'show cost as the headline — API list price'
-                }
-                className={`px-1.5 py-0.5 text-[11px] mono ${
-                  measure === m.key ? 'bg-panel-2 text-fg' : 'text-fg-faint hover:text-fg-muted'
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
+          {/* The total is stated in the same relationship as the rows: tokens
+            * first, cost second and quieter. A header that summed only one of
+            * the two columns below it would be answering half the panel. */}
+          <span className="num text-[13px]">
+            <span className="text-fg">{fmtTokens(totalTokens)}</span>
+            <span className="text-fg-muted"> · {fmtUSD(totalCost)} total</span>
           </span>
           <span className="inline-flex border border-border rounded-sm overflow-hidden">
             {RANGES.map((r) => (
@@ -155,7 +130,6 @@ export function ProjectsPanel({ sessions }: { sessions: SessionSummary[] }) {
               p={p}
               max={maxRow}
               ceiling={ceiling}
-              measure={measure}
               live={liveIn(sessions).has(p.project)}
             />
           ))}
@@ -182,13 +156,11 @@ function ProjectRow({
   p,
   max,
   ceiling,
-  measure,
   live,
 }: {
   p: ProjectShare
   max: number
   ceiling: number
-  measure: Measure
   live: boolean
 }) {
   // The breakdown is absent for a repository whose work all happened in one
@@ -197,12 +169,13 @@ function ProjectRow({
   const expandable = paths.length > 1
   const [open, setOpen] = useState(false)
   const label = p.project || 'unknown project'
-  const value = measure === 'tokens' ? p.tokens : p.cost_usd
-  // Share-of-the-largest, in the SELECTED measure. A bar still scaled on cost
-  // while the headline reads tokens would contradict the number above it — the
-  // two orderings genuinely differ, because a cheap model burns tokens cheaply.
-  const pct = max > 0 ? (100 * value) / max : 0
-  const bars = useMemo(() => buildSpark(p.spark, measure, ceiling), [p.spark, measure, ceiling])
+  // Share-of-the-largest, on SPARK_BASIS — the bar stands in for the sparkline
+  // when no series was sent, so it must rank the rows the same way and match the
+  // figure that leads the row. The two orderings genuinely differ: a cheap model
+  // burns tokens cheaply, so the costliest repository is not always the busiest.
+  const pct = max > 0 ? (100 * p.tokens) / max : 0
+  const bars = useMemo(() => buildSpark(p.spark, SPARK_BASIS, ceiling), [p.spark, ceiling])
+  const maxPathTokens = useMemo(() => paths.reduce((hi, q) => Math.max(hi, q.tokens), 0), [paths])
 
   const body = (
     <div className="grid grid-cols-[1fr_128px_auto] items-center gap-3 w-full text-left">
@@ -229,7 +202,7 @@ function ProjectRow({
         * column, so the numbers stay on one right-aligned edge and the pictures
         * on another. Ragged columns are what make a dense table unreadable. */}
       {bars.length > 0 ? (
-        <SparkCanvas bars={bars} widthMs={p.spark?.width_ms ?? 0} measure={measure} label={label} />
+        <SparkCanvas bars={bars} widthMs={p.spark?.width_ms ?? 0} label={label} />
       ) : (
         // `range=all` sends no series (its buckets would have no stated width),
         // so the row keeps the share bar rather than showing an empty gap.
@@ -237,18 +210,14 @@ function ProjectRow({
           <div className="h-full bg-accent/70" style={{ width: `${pct}%` }} />
         </div>
       )}
+      {/* Both figures, stacked and sharing the row's one right edge. Side by side
+        * they would need a second aligned column and read as two ranked lists;
+        * stacked, they read as one quantity described twice. The cost line is a
+        * readable 13px `text-fg-muted` — the size Pulse gives a per-session cost
+        * — not the 11px `text-fg-faint` this panel uses for chrome. */}
       <div className="text-right shrink-0">
-        {measure === 'tokens' ? (
-          <>
-            <div className="num text-[17px] font-semibold leading-tight text-accent">{fmtTokens(p.tokens)}</div>
-            <div className="num text-[11px] text-fg-faint">{fmtUSD(p.cost_usd)}</div>
-          </>
-        ) : (
-          <>
-            <div className="num text-[17px] font-semibold leading-tight text-accent">{fmtUSD(p.cost_usd)}</div>
-            <div className="num text-[11px] text-fg-faint">{fmtTokens(p.tokens)}</div>
-          </>
-        )}
+        <div className="num text-[17px] font-semibold leading-tight text-accent">{fmtTokens(p.tokens)}</div>
+        <div className="num text-[13px] leading-tight text-fg-muted">{fmtUSD(p.cost_usd)}</div>
       </div>
     </div>
   )
@@ -270,13 +239,12 @@ function ProjectRow({
       )}
       {expandable && open && (
         <div className="pb-1.5 bg-panel-2/30">
+          {/* The largest is computed, not taken as paths[0]: the daemon sorts the
+            * breakdown by cost, so the first row is not necessarily the one with
+            * the most tokens, and using it as the scale would push another row
+            * past 100%. */}
           {paths.map((q) => (
-            <PathRow
-              key={q.path}
-              q={q}
-              max={measure === 'tokens' ? paths[0]!.tokens : paths[0]!.cost_usd}
-              measure={measure}
-            />
+            <PathRow key={q.path} q={q} max={maxPathTokens} />
           ))}
         </div>
       )}
@@ -292,10 +260,14 @@ function ProjectRow({
  * There is no sparkline here on purpose: a series per directory would multiply
  * the payload of a polled endpoint for a picture that is hidden until the row
  * is expanded, and the question a breakdown answers is "how much", not "when".
+ *
+ * Both figures appear here too, one step quieter than the parent's pair and on
+ * one line rather than stacked — a part cannot be checked against a whole that
+ * is stated in a unit the part does not carry, and stacking inside an already
+ * indented sub-row would make the breakdown taller than the thing it breaks down.
  */
-function PathRow({ q, max, measure }: { q: PathShare; max: number; measure: Measure }) {
-  const value = measure === 'tokens' ? q.tokens : q.cost_usd
-  const pct = max > 0 ? (100 * value) / max : 0
+function PathRow({ q, max }: { q: PathShare; max: number }) {
+  const pct = max > 0 ? (100 * q.tokens) / max : 0
   return (
     <div className="grid grid-cols-[1fr_auto] items-center gap-3 pl-7 pr-3 py-1">
       <div className="min-w-0">
@@ -313,10 +285,9 @@ function PathRow({ q, max, measure }: { q: PathShare; max: number; measure: Meas
           <div className="h-full bg-accent/40" style={{ width: `${pct}%` }} />
         </div>
       </div>
-      <div className="text-right shrink-0">
-        <div className="num text-[12px] text-fg-muted">
-          {measure === 'tokens' ? fmtTokens(q.tokens) : fmtUSD(q.cost_usd)}
-        </div>
+      <div className="text-right shrink-0 num text-[12px]">
+        <span className="text-fg-muted">{fmtTokens(q.tokens)}</span>
+        <span className="text-fg-faint"> · {fmtUSD(q.cost_usd)}</span>
       </div>
     </div>
   )
@@ -334,12 +305,10 @@ function PathRow({ q, max, measure }: { q: PathShare; max: number; measure: Meas
 function SparkCanvas({
   bars,
   widthMs,
-  measure,
   label,
 }: {
   bars: ReturnType<typeof buildSpark>
   widthMs: number
-  measure: Measure
   label: string
 }) {
   const ref = useRef<HTMLCanvasElement>(null)
@@ -420,7 +389,7 @@ function SparkCanvas({
       ref={ref}
       className="w-full h-[14px] block"
       role="img"
-      aria-label={`${label}: ${measure === 'tokens' ? 'tokens' : 'cost'} over time, ${span}`}
+      aria-label={`${label}: ${SPARK_BASIS} over time, ${span}`}
       title={`${label}: when the spend happened — ${span}`}
     />
   )

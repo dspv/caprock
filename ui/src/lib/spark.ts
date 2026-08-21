@@ -5,10 +5,12 @@
  * draws it, because the interesting part is not the rendering — it is deciding
  * what a column means and how tall it gets.
  *
- * The daemon sends cost and tokens over the same buckets, so switching the
- * panel's headline measure re-scales the picture without a refetch. That is the
- * whole reason both arrays travel together: a toggle that had to wait for the
- * network would stall on a polled endpoint.
+ * The daemon sends cost and tokens over the same buckets, so which of the two a
+ * caller plots is a display choice rather than a request. That is the whole
+ * reason both arrays travel together: re-basing the picture must never cost a
+ * round-trip on a polled endpoint. The Projects panel plots tokens today
+ * (SPARK_BASIS), and this module stays parametric so that stays a one-word
+ * change rather than a rewrite.
  */
 import type { Spark } from './api'
 

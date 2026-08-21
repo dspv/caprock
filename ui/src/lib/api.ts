@@ -96,7 +96,8 @@ export interface ModelShare { model: string; tokens: number; cost_usd: number; t
  *  `path` is the first segment under the repo root; "." is the root itself. */
 export interface PathShare { path: string; tokens: number; cost_usd: number; sessions: number }
 /** A project's spend over time: one value per fixed-width bucket, cost and
- *  tokens over the SAME buckets so the panel's measure toggle needs no refetch.
+ *  tokens over the SAME buckets, so which one the panel plots is a display
+ *  choice rather than a request — see components/Projects.tsx SPARK_BASIS.
  *  Bucket i covers [from_ms + i*width_ms, from_ms + (i+1)*width_ms). Absent on
  *  `range=all`, whose start is the first event ever captured — a fixed bucket
  *  count would make a column mean a different span on every machine. */

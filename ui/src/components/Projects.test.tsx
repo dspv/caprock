@@ -5,7 +5,7 @@
  * degrades to a plain message rather than a broken chart when there is no data.
  */
 import { fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ProjectsPanel } from './Projects'
 import type { ProjectShare, SessionSummary } from '@/lib/api'
 
@@ -22,12 +22,6 @@ vi.mock('@/lib/api', async (orig) => {
 function session(project: string, status: string): SessionSummary {
   return { session_id: `s-${project}`, project, status } as SessionSummary
 }
-
-beforeEach(() => {
-  // The measure choice persists across reloads, so it must not leak between
-  // tests — a stale "tokens" would make the default-mode assertions lie.
-  localStorage.clear()
-})
 
 afterEach(() => {
   projects.value = []
@@ -86,7 +80,7 @@ describe('ProjectsPanel', () => {
 
     fireEvent.click(row)
     expect(screen.getByText('/ui')).toBeTruthy()
-    expect(screen.getByText('$400.00')).toBeTruthy()
+    expect(screen.getByText('· $400.00')).toBeTruthy()
     // Work at the repository root reads as the root path, so the column is a
     // list of paths rather than a mix of paths and a special-case word.
     expect(screen.getByText('/')).toBeTruthy()
@@ -147,15 +141,16 @@ describe('ProjectsPanel', () => {
 })
 
 /**
- * The $ / tokens toggle. On a subscription plan the dollar figure is a proxy
- * for consumption rather than money owed, so the panel must be able to make
- * tokens the headline — and everything scaled to the headline has to follow it,
- * or the picture contradicts the number beside it.
+ * Both figures, always. The panel used to hide one behind a $ / tokens toggle;
+ * it does not any more, so what has to hold is that every row states BOTH what
+ * was consumed and what it was worth, that each number is the row's own, and
+ * that the second one is large enough to read rather than being chrome.
  */
-describe('ProjectsPanel measure toggle', () => {
-  // A project whose cost and token rankings DISAGREE, which is what makes the
-  // toggle observable: a cheap model burns tokens cheaply, so the costliest
-  // repository is not always the one that consumed most.
+describe('ProjectsPanel figures', () => {
+  // Cost and token rankings DISAGREE here, which is what makes each assertion
+  // able to fail: a cheap model burns tokens cheaply, so the costliest
+  // repository is not the one that consumed most, and anything reading the
+  // wrong field or the wrong row lands on a different number.
   const disagreeing: ProjectShare[] = [
     {
       project: 'pricey',
@@ -173,111 +168,91 @@ describe('ProjectsPanel measure toggle', () => {
     },
   ]
 
-  /**
-   * The headline is the large accent figure and the sub-line the faint one
-   * directly beneath it. Both are read from the row's NUMBER column — the
-   * session count is styled the same and lives in the label column, so a
-   * document-wide class lookup would pick it up instead.
-   */
-  function figures(row: HTMLElement): { headline: string; subline: string } {
+  /** The two figures of one row, read from its NUMBER column. The session count
+   *  is styled like the sub-line and lives in the label column, so a
+   *  document-wide class lookup would pick it up instead. */
+  function figures(row: HTMLElement): { tokens: string; cost: string } {
     const col = row.lastElementChild as HTMLElement
     return {
-      headline: col.querySelector('.text-\\[17px\\]')?.textContent ?? '',
-      subline: col.querySelector('.text-\\[11px\\]')?.textContent ?? '',
+      tokens: col.querySelector('.text-\\[17px\\]')?.textContent ?? '',
+      cost: col.querySelector('.text-\\[13px\\]')?.textContent ?? '',
     }
   }
 
-  it('defaults to cost as the headline with tokens beneath', async () => {
+  function rows(container: HTMLElement): HTMLElement[] {
+    return Array.from(container.querySelectorAll('.grid-cols-\\[1fr_128px_auto\\]')) as HTMLElement[]
+  }
+
+  it('states both tokens and cost on every row, each from its own project', async () => {
     projects.value = disagreeing
     const { container } = render(<ProjectsPanel sessions={[]} />)
     await screen.findByText('pricey')
-    const row = container.querySelectorAll('.grid-cols-\\[1fr_128px_auto\\]')[0] as HTMLElement
-    expect(figures(row)).toEqual({ headline: '$900.00', subline: '1.00M' })
+    // Not just "both are present somewhere": each row carries ITS numbers, so a
+    // row reading its neighbour's cost fails here.
+    expect(rows(container).map(figures)).toEqual([
+      { tokens: '1.00M', cost: '$900.00' },
+      { tokens: '9.00M', cost: '$100.00' },
+    ])
   })
 
-  it('swaps the headline and the sub-line when tokens is selected', async () => {
-    projects.value = disagreeing
-    const { container } = render(<ProjectsPanel sessions={[]} />)
-    await screen.findByText('pricey')
-    fireEvent.click(screen.getByTitle(/show tokens as the headline/))
-    const row = container.querySelectorAll('.grid-cols-\\[1fr_128px_auto\\]')[0] as HTMLElement
-    // Tokens are now the large figure and cost the quiet one — the exact
-    // inverse of the default.
-    expect(figures(row)).toEqual({ headline: '1.00M', subline: '$900.00' })
-  })
-
-  it('restates the panel total in the selected measure', async () => {
+  it('shows no control for choosing between the two figures', async () => {
     projects.value = disagreeing
     render(<ProjectsPanel sessions={[]} />)
     await screen.findByText('pricey')
-    expect(screen.getByText('$1,000.00 total')).toBeTruthy()
-    fireEvent.click(screen.getByTitle(/show tokens as the headline/))
-    // 10M tokens, not the dollar total — a header still reading dollars while
-    // the rows read tokens is two different answers to one question.
-    expect(screen.getByText('10.00M total')).toBeTruthy()
+    // The toggle is gone: nothing in the panel asks the reader to pick a unit.
+    expect(screen.queryByRole('button', { name: 'tokens' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '$' })).toBeNull()
   })
 
-  it('re-scales the sparkline to the selected measure', async () => {
+  it('keeps the cost line at reading size rather than in the faint chrome tone', async () => {
     projects.value = disagreeing
     const { container } = render(<ProjectsPanel sessions={[]} />)
     await screen.findByText('pricey')
-    // The canvas states its own contents for assistive tech, which is also the
-    // only readable assertion available: jsdom does not rasterise a canvas.
-    const byCost = container.querySelector('canvas')?.getAttribute('aria-label') ?? ''
-    expect(byCost).toContain('cost over time')
-    fireEvent.click(screen.getByTitle(/show tokens as the headline/))
-    const byTokens = container.querySelector('canvas')?.getAttribute('aria-label') ?? ''
-    expect(byTokens).toContain('tokens over time')
+    // The complaint that removed the toggle was that the second figure was an
+    // 11px `text-fg-faint` whisper. It must be neither.
+    const col = rows(container)[0]!.lastElementChild as HTMLElement
+    const cost = col.querySelector('.text-\\[13px\\]') as HTMLElement
+    expect(cost.textContent).toBe('$900.00')
+    expect(cost.className).toContain('text-fg-muted')
+    expect(col.querySelector('.text-\\[11px\\]')).toBeNull()
+    expect(col.querySelector('.text-fg-faint')).toBeNull()
   })
 
-  it('scales the fallback bar on the selected measure when no series was sent', async () => {
-    // range=all sends no spark, so the row keeps the share bar — and that bar
-    // must follow the toggle too, or it would contradict the headline.
-    projects.value = [
-      { project: 'pricey', tokens: 1_000_000, cost_usd: 900, sessions: 1 },
-      { project: 'chatty', tokens: 9_000_000, cost_usd: 100, sessions: 1 },
-    ]
-    const { container } = render(<ProjectsPanel sessions={[]} />)
-    await screen.findByText('pricey')
-    // Both rows' bars, in order. The bar is a share of the largest row IN THE
-    // SELECTED MEASURE, so the toggle should swap which of the two is full.
-    const widths = () =>
-      Array.from(container.querySelectorAll('.bg-accent\\/70')).map((el) => (el as HTMLElement).style.width)
-    // By cost `pricey` is the largest, so it fills and `chatty` is a ninth.
-    expect(widths()).toEqual(['100%', `${(100 * 100) / 900}%`])
-    fireEvent.click(screen.getByTitle(/show tokens as the headline/))
-    // By tokens the ranking inverts: `chatty` now fills and `pricey` is a
-    // ninth. A bar still scaled on cost would contradict the headline.
-    expect(widths()).toEqual([`${(100 * 1_000_000) / 9_000_000}%`, '100%'])
-  })
-
-  it('remembers the measure across a remount', async () => {
-    projects.value = disagreeing
-    const first = render(<ProjectsPanel sessions={[]} />)
-    await screen.findByText('pricey')
-    fireEvent.click(screen.getByTitle(/show tokens as the headline/))
-    first.unmount()
-
-    const { container } = render(<ProjectsPanel sessions={[]} />)
-    await screen.findByText('pricey')
-    const row = container.querySelectorAll('.grid-cols-\\[1fr_128px_auto\\]')[0] as HTMLElement
-    // How you are billed does not change between visits, so re-picking this
-    // every reload would be a chore.
-    expect(figures(row).headline).toBe('1.00M')
-  })
-
-  it('marks the selected measure as pressed for assistive tech', async () => {
+  it('totals both measures in the panel header', async () => {
     projects.value = disagreeing
     render(<ProjectsPanel sessions={[]} />)
     await screen.findByText('pricey')
-    expect(screen.getByRole('button', { name: '$' }).getAttribute('aria-pressed')).toBe('true')
-    expect(screen.getByRole('button', { name: 'tokens' }).getAttribute('aria-pressed')).toBe('false')
-    fireEvent.click(screen.getByRole('button', { name: 'tokens' }))
-    expect(screen.getByRole('button', { name: 'tokens' }).getAttribute('aria-pressed')).toBe('true')
-    expect(screen.getByRole('button', { name: '$' }).getAttribute('aria-pressed')).toBe('false')
+    // 10M tokens and $1,000 — the header sums both columns beneath it, in the
+    // same order as the rows. A header stating one would answer half the panel.
+    expect(screen.getByText('10.00M')).toBeTruthy()
+    expect(screen.getByText('· $1,000.00 total')).toBeTruthy()
   })
 
-  it('shows a directory breakdown in the selected measure', async () => {
+  it('plots and scales every picture on tokens, matching the leading figure', async () => {
+    projects.value = disagreeing
+    const { container } = render(<ProjectsPanel sessions={[]} />)
+    await screen.findByText('pricey')
+    // jsdom does not rasterise a canvas, so the picture states its own basis for
+    // assistive tech and that is also the only readable assertion available.
+    const labels = Array.from(container.querySelectorAll('canvas')).map((c) => c.getAttribute('aria-label'))
+    expect(labels.every((l) => l?.includes('tokens over time'))).toBe(true)
+  })
+
+  it('scales the fallback bar on tokens when no series was sent', async () => {
+    // range=all sends no spark, so the row keeps the share bar — and the bar
+    // stands in for the sparkline, so it is scaled the same way.
+    projects.value = disagreeing.map(({ spark: _spark, ...p }) => p)
+    const { container } = render(<ProjectsPanel sessions={[]} />)
+    await screen.findByText('pricey')
+    const widths = Array.from(container.querySelectorAll('.bg-accent\\/70')).map(
+      (el) => (el as HTMLElement).style.width,
+    )
+    // By tokens `chatty` is the largest and fills; `pricey` is a ninth. Scaled
+    // on cost the two would be the other way round.
+    expect(widths).toEqual([`${(100 * 1_000_000) / 9_000_000}%`, '100%'])
+  })
+
+  it('states both figures on each directory of the breakdown', async () => {
     projects.value = [
       {
         project: 'mono',
@@ -292,10 +267,33 @@ describe('ProjectsPanel measure toggle', () => {
     ]
     render(<ProjectsPanel sessions={[]} />)
     fireEvent.click(await screen.findByTitle('mono: show cost by directory'))
-    expect(screen.getByText('$100.00')).toBeTruthy()
-    fireEvent.click(screen.getByTitle(/show tokens as the headline/))
-    // The parts must be stated in the same unit as the whole, or they cannot
-    // be checked against it.
-    expect(screen.getByText('900.0k')).toBeTruthy()
+    // The parts are stated in the same units as the whole, or they cannot be
+    // checked against it — and the row's two numbers must belong to one path.
+    expect(screen.getByText('900.0k').parentElement?.textContent).toBe('900.0k · $100.00')
+    expect(screen.getByText('100.0k').parentElement?.textContent).toBe('100.0k · $200.00')
+  })
+
+  it('scales a directory bar on the largest by tokens, not on the first row', async () => {
+    // The daemon sorts the breakdown by COST, so the first path is not
+    // necessarily the one with the most tokens; taking it as the scale would
+    // push another row past 100%.
+    projects.value = [
+      {
+        project: 'mono',
+        tokens: 1_000_000,
+        cost_usd: 300,
+        sessions: 2,
+        paths: [
+          { path: 'cmd', tokens: 100_000, cost_usd: 200, sessions: 1 },
+          { path: 'ui', tokens: 900_000, cost_usd: 100, sessions: 1 },
+        ],
+      },
+    ]
+    const { container } = render(<ProjectsPanel sessions={[]} />)
+    fireEvent.click(await screen.findByTitle('mono: show cost by directory'))
+    const widths = Array.from(container.querySelectorAll('.bg-accent\\/40')).map(
+      (el) => (el as HTMLElement).style.width,
+    )
+    expect(widths).toEqual([`${(100 * 100_000) / 900_000}%`, '100%'])
   })
 })

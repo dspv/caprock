@@ -43,6 +43,20 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-08-22 — Projects: the measure toggle removed, both figures shown
+
+The `$ / tokens` toggle shipped hours earlier is **gone**. Owner review killed it on the ground that it solved the wrong half of the problem: the complaint was never "I cannot see tokens", it was "the second number is a whisper", and a toggle answers that by making the reader re-decide which half to see on every visit. The row has room for two numbers, so it shows two.
+
+**Tokens lead, cost follows, both legible.** Tokens at 17px accent; cost directly beneath at 13px `text-fg-muted` — the size Pulse gives a per-session cost and the tone the product uses for text meant to be read. The old sub-line was 11px `text-fg-faint`, which is the chrome tone used for session counts and timestamps; that is precisely what made it unreadable. Tokens lead because on a flat plan dollars are a proxy for consumption rather than a bill, and because the panel header already carries the dollar total — a dollar-led row would state the same thing twice while consumption appeared nowhere large. The header now states both in the same relationship, and an expanded directory row states both on one line rather than stacked, so the breakdown does not grow taller than the thing it breaks down.
+
+**Sparkline basis: tokens**, named once as `SPARK_BASIS` rather than spelled at four call sites. It matches the figure that leads the row; a picture scaled on cost under a tokens headline would be a second, silently different ranking. The choice is close to free — for one project the two curves have near-identical shape, since its model mix barely moves within a range — but the shared ceiling and the share bar compare *across* projects, which is exactly where the two orderings diverge, so matching the headline is the deliberate call. The contract is unchanged: `spark.cost` and `spark.tokens` both still ship, because re-basing the picture must never cost a round-trip on a polled endpoint.
+
+**A latent bug the removal exposed.** The directory breakdown scaled its bars on `paths[0]`, assuming the first row is the largest. The daemon sorts `paths` by **cost**, so under a tokens basis the first row is not the one with the most tokens and another row could render past 100% — reproduced at 900% under mutation. The maximum is now computed.
+
+**Dead code removed:** `MEASURES`, the `MEASURE_KEY` localStorage key and its `initialMeasure` reader, the persistence `useEffect`, the `measure` state, and the `measure` prop threaded through `ProjectRow`, `PathRow` and `SparkCanvas`. `Measure`/`seriesOf` stay in `lib/spark.ts` — both series still ship and the module stays parametric so the basis is a one-word change.
+
+Tests: the seven `ProjectsPanel measure toggle` cases described behaviour that no longer exists and were deleted; eight `ProjectsPanel figures` cases replace them, each verified **red** under a deliberate mutation — restoring the 11px faint sub-line (two cases red), paying a fixed cost instead of the row's, dropping the cost half of the header total, flipping `SPARK_BASIS` to cost, scaling the share bar on cost, dropping the cost half of a directory row (two cases red), scaling directory bars on `paths[0]` again, and re-adding a pair of toggle buttons.
+
 ### 2026-08-22 — Projects: a measure toggle, a sparkline, and a truncation bug the test found
 
 The Projects panel made cost the headline and tokens an 11px afterthought. On a **flat plan the dollar figure is not money owed** — it is a proxy for consumption — so a `$ / tokens` toggle now swaps which is large, and drives the sparkline and the share bar with it. A bar still scaled on cost under a tokens headline would contradict the figure beside it, and the two orderings genuinely differ: a cheap model burns tokens cheaply.

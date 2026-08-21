@@ -742,8 +742,8 @@ type PathShare struct {
 // this repo cost that" without shipping the events themselves.
 //
 // Cost and tokens travel together, as two parallel arrays over the SAME
-// buckets, because the panel lets the reader swap which of the two is the
-// headline. Sending only the current measure would make that toggle a network
+// buckets, because which of the two the panel plots stays a display choice on
+// the client. Sending only one of them would make re-basing the picture a network
 // round trip — on a polled endpoint, a control that stalls — and sending events
 // so the client could bucket them itself would be orders of magnitude more
 // payload for a picture 120px wide.
