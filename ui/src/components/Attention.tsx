@@ -7,34 +7,48 @@
  * one day appear.
  */
 import type { AttentionItem } from '@/lib/attention'
+import { useState } from 'react'
 import { fmtAgo, fmtUSD, shortId } from '@/lib/format'
+import { LastWord } from '@/components/LastWord'
+import type { SessionSummary } from '@/lib/api'
 import { href } from '@/lib/router'
 
-export function Attention({ items, now, onDismiss }: {
+export function Attention({ items, now, onDismiss, sessions }: {
   items: AttentionItem[]
   now: number
   onDismiss?: (sessionId: string) => void
+  /** Used to answer "what did it ask?" without leaving the screen. */
+  sessions?: SessionSummary[]
 }) {
   if (items.length === 0) return null
   return (
     <div className="grid gap-1.5">
       {items.map((it) => (
-        <Row key={it.id} it={it} now={now} onDismiss={onDismiss} />
+        <Row
+          key={it.id}
+          it={it}
+          now={now}
+          onDismiss={onDismiss}
+          session={sessions?.find((s) => s.session_id === it.sessionId)}
+        />
       ))}
     </div>
   )
 }
 
-function Row({ it, now, onDismiss }: {
+function Row({ it, now, onDismiss, session }: {
   it: AttentionItem
   now: number
   onDismiss?: (sessionId: string) => void
+  session?: SessionSummary
 }) {
+  const [asking, setAsking] = useState(false)
   const high = it.severity === 'high'
   const frame = high
     ? 'border-danger/50 bg-danger/10'
     : 'border-warn/50 bg-warn/10'
   return (
+    <>
     <div className={`border rounded-[var(--radius-panel)] px-3 py-2 flex items-center gap-3 ${frame}`}>
       <span className={`font-medium text-[13px] shrink-0 ${high ? 'text-danger' : 'text-warn'}`}>
         {it.title}
@@ -54,6 +68,14 @@ function Row({ it, now, onDismiss }: {
         {it.since !== undefined && (
           <span className="num text-[11px] text-fg-faint">{fmtAgo(it.since, now)}</span>
         )}
+        {session && it.id.startsWith('waiting-') && (
+          <button
+            className="text-[11px] border border-border px-1.5 py-0.5 rounded-sm hover:border-border-strong text-fg-muted hover:text-fg"
+            onClick={() => setAsking(true)}
+          >
+            what did it ask?
+          </button>
+        )}
         <a
           href={href({ name: 'session', id: it.sessionId })}
           className="text-[11px] border border-border px-1.5 py-0.5 rounded-sm hover:border-border-strong no-underline text-fg-muted hover:text-fg"
@@ -70,5 +92,7 @@ function Row({ it, now, onDismiss }: {
         )}
       </span>
     </div>
+      {asking && session && <LastWord session={session} now={now} onClose={() => setAsking(false)} />}
+    </>
   )
 }

@@ -10,6 +10,7 @@ import { Attention } from '@/components/Attention'
 import { findAttention } from '@/lib/attention'
 import { UpdateBanner } from '@/components/UpdateBanner'
 import { SpawnDialog } from '@/components/SpawnDialog'
+import { LastWord } from '@/components/LastWord'
 import { usePlan } from '@/components/PlanPicker'
 import { costBasis, costBasisLong } from '@/components/CostBasis'
 import { href } from '@/lib/router'
@@ -41,7 +42,7 @@ export function NowScreen() {
         </div>
       )}
       <UpdateBanner plan={plan} onSave={savePlan} now={now} />
-      <Attention items={attention} now={now} onDismiss={(id) => live.dismissAlert(id)} />
+      <Attention items={attention} now={now} onDismiss={(id) => live.dismissAlert(id)} sessions={list} />
 
       <Panel title="Today" right={summary.data ? <span className="num">pricing {summary.data.pricing_version} · at API list price</span> : null}>
         {/* Cost leads and dominates. It sat fourth of six at the same size as
@@ -124,14 +125,32 @@ function Section({ title, items, now, dim }: { title: string; items: SessionSumm
 export function SessionCard({ s, now }: { s: SessionSummary; now: number }) {
   const ctx = s.context
   const ctxTone = ctx ? (ctx.pct >= 85 ? 'danger' : ctx.pct >= 60 ? 'warn' : undefined) : undefined
+  const [asking, setAsking] = useState(false)
+  // A session waiting on you is the one case where the terminal is the only
+  // place the answer lives — and the text is already here.
+  const waiting = s.activity?.health === 'waiting-on-you'
   return (
     <a href={href({ name: 'session', id: s.session_id })} className="block border border-border bg-panel rounded-[var(--radius-panel)] hover:border-border-strong no-underline hover:no-underline text-fg">
       <div className="px-3 pt-2 pb-1 flex items-center gap-2">
         <span className="font-medium truncate text-[15px]">{s.project || 'unknown project'}</span>
         <span className="mono text-[11px] text-fg-faint">{shortId(s.session_id)}</span>
         {s.git_branch && <span className="mono text-[11px] text-fg-muted truncate">{s.git_branch}</span>}
-        <span className="ml-auto"><Badge health={s.activity.health} /></span>
+        <span className="ml-auto flex items-center gap-2">
+          {waiting && (
+            <button
+              className="text-[11px] border border-warn/50 text-warn bg-warn/10 px-1.5 py-0.5 rounded-sm hover:bg-warn/20"
+              onClick={(e) => {
+                e.preventDefault()
+                setAsking(true)
+              }}
+            >
+              what did it ask?
+            </button>
+          )}
+          <Badge health={s.activity.health} />
+        </span>
       </div>
+      {asking && <LastWord session={s} now={now} onClose={() => setAsking(false)} />}
       <div className="px-3 pb-2 text-[13px] truncate" title={s.activity.phrase}>
         <span className={s.activity.health === 'working' ? 'text-fg' : 'text-fg-muted'}>{s.activity.phrase}</span>
         <span className="text-fg-faint num text-[11px] ml-2">{fmtAgo(s.activity.at || s.last_event_at, now)}</span>
