@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -25,6 +26,8 @@ const (
 	sampleSummary = `{
 		"sessions": 4, "turns": 120, "tool_calls": 300, "cost_usd": 640,
 		"pricing_version": "2026-08-18.1",
+		"tokens_in": 127847, "tokens_out": 5000,
+		"cache_read": 15641037806, "cache_write": 900000,
 		"savings": {"hit_rate": 0.9, "cut_pct": 80},
 		"models": [{"model":"claude-opus-5","cost_usd":600,"turns":100}],
 		"projects": [{"project":"alpha","cost_usd":400},{"project":"beta","cost_usd":240}]
@@ -356,4 +359,179 @@ func TestReportWithoutADaemonExplainsItself(t *testing.T) {
 	if !strings.Contains(err.Error(), "not running") {
 		t.Fatalf("unhelpful error with no daemon: %v", err)
 	}
+}
+
+// The /numbers page used to carry the raw token contrast — billions read from
+// cache against a hundred thousand fresh — and it is the most concrete thing in
+// the report: "99% cache hit" is an abstraction, the two counts side by side
+// are a picture. The site dropped the line when it switched to this command as
+// its only source, correctly refusing to publish a figure the command does not
+// print. So the command has to print it.
+//
+// Mutation proof: deleting the `r.CacheRead > 0 || r.TokensIn > 0` block from
+// writeReportText fails with
+//
+//	"the raw cache/fresh token counts are missing from the human output".
+func TestReportPrintsTheRawTokenBasis(t *testing.T) {
+	fakeDaemon(t, reportRoutes(sampleSummary, flatPlan, sampleHistory))
+	out, err := runCLI(t, "report")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "15,641,037,806") || !strings.Contains(out, "127,847") {
+		t.Fatalf("the raw cache/fresh token counts are missing from the human output:\n%s", out)
+	}
+	// One line, because the report is meant to be pasted.
+	var found string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "15,641,037,806") {
+			found = line
+		}
+	}
+	if !strings.Contains(found, "127,847") {
+		t.Fatalf("cache-read and fresh-input counts are on separate lines: %q", found)
+	}
+}
+
+// The counts are published as counts. Dividing one by the other and naming the
+// result would be a second derived number next to the two percentages that
+// already state what the cache did — and a reader would have to work out which
+// one is the real claim.
+//
+// Mutation proof: adding a line such as
+//
+//	fmt.Fprintf(out, "%.0f× more cached than fresh\n", float64(r.CacheRead)/float64(r.TokensIn))
+//
+// to writeReportText fails with "the report derived a ratio between the token
+// counts: ...".
+func TestReportDerivesNoRatioBetweenTheTokenCounts(t *testing.T) {
+	fakeDaemon(t, reportRoutes(sampleSummary, flatPlan, sampleHistory))
+	out, err := runCLI(t, "report")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 15,641,037,806 / 127,847 ≈ 122,341. Any rendering of that quotient — or
+	// the language a ratio would be phrased in — means one was computed.
+	for _, ratio := range []string{"122341", "122,341", "122340", "122,340"} {
+		if strings.Contains(out, ratio) {
+			t.Fatalf("the report derived a ratio between the token counts (%q):\n%s", ratio, out)
+		}
+	}
+	for _, phrase := range []string{"times more", "× more", "x more", "more cached than", "ratio"} {
+		if strings.Contains(strings.ToLower(out), strings.ToLower(phrase)) {
+			t.Fatalf("the report described a ratio between the token counts (%q):\n%s", phrase, out)
+		}
+	}
+	// The only "×" in the output is the plan multiple, which is a different
+	// comparison entirely (cost against fee, not tokens against tokens).
+	if n := strings.Count(out, "×"); n != 1 {
+		t.Fatalf("expected exactly one × (the plan multiple), found %d:\n%s", n, out)
+	}
+}
+
+// The site regenerates its facts block from --json, so the counts have to be
+// their own fields there — deriving them from anything would put the site back
+// in the business of computing figures it should only be carrying.
+//
+// Mutation proof: removing the four assignments from assembleReport fails with
+//
+//	"tokens_in missing from --json".
+func TestReportJSONCarriesTheTokenCountsAsFields(t *testing.T) {
+	fakeDaemon(t, reportRoutes(sampleSummary, flatPlan, sampleHistory))
+	out, err := runCLI(t, "report", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatal(err)
+	}
+	for field, want := range map[string]float64{
+		"tokens_in": 127847, "tokens_out": 5000,
+		"cache_read": 15641037806, "cache_write": 900000,
+	} {
+		v, present := got[field]
+		if !present {
+			t.Fatalf("%s missing from --json", field)
+		}
+		if n, _ := v.(float64); n != want {
+			t.Fatalf("%s = %v, want %v", field, v, want)
+		}
+	}
+}
+
+// --markdown gets the same treatment as every other measure.
+func TestReportMarkdownCarriesTheTokenCounts(t *testing.T) {
+	fakeDaemon(t, reportRoutes(sampleSummary, flatPlan, sampleHistory))
+	out, err := runCLI(t, "report", "--markdown")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range []string{"| Tokens read from cache | 15,641,037,806 |", "| Fresh input tokens | 127,847 |"} {
+		if !strings.Contains(out, row) {
+			t.Fatalf("missing markdown row %q:\n%s", row, out)
+		}
+	}
+}
+
+// The whole point of printing the fee is that the multiple can be checked on
+// sight. A prorated fee is rarely whole, and rounding $233.33 to "$233" made
+// the division a reader actually performs disagree with the printed multiple.
+//
+// Mutation proof: changing the fee back to fmtUSD0 fails with
+//
+//	"the printed fee does not reconcile: 640 / 200 = 3.20, but the report prints 3.2×
+//	 from a true fee of 200.00" — for a window where the fee is fractional, as below.
+func TestReportPrintsAFeeThatReconcilesWithTheMultiple(t *testing.T) {
+	// 2026-07-01 → 2026-08-04 inclusive is 35 days: $200 × 35/30 = $233.33.
+	fakeDaemon(t, reportRoutes(sampleSummary, flatPlan,
+		`{"totals":{"days":20},"daily":[{"day":"2026-07-01"},{"day":"2026-08-04"}]}`))
+
+	out, err := runCLI(t, "report")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "$233.33") {
+		t.Fatalf("the prorated fee was printed without cents, so the division cannot be checked:\n%s", out)
+	}
+
+	// Now do what a reader does: divide the two printed figures and check the
+	// answer against the printed multiple, to one decimal.
+	cost, fee, multiple := parsePrinted(t, out)
+	if got, want := cost/fee, multiple; got < want-0.05 || got > want+0.05 {
+		t.Fatalf("the printed fee does not reconcile: %.0f / %.2f = %.2f, but the report prints %.1f×",
+			cost, fee, got, multiple)
+	}
+}
+
+// parsePrinted pulls the three figures a reader would divide out of the human
+// output: the headline cost, the prorated fee, and the multiple.
+func parsePrinted(t *testing.T, out string) (cost, fee, multiple float64) {
+	t.Helper()
+	num := func(s string) float64 {
+		s = strings.ReplaceAll(strings.ReplaceAll(s, ",", ""), "$", "")
+		var v float64
+		if _, err := fmt.Sscanf(s, "%f", &v); err != nil {
+			t.Fatalf("could not parse %q from the report", s)
+		}
+		return v
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "paid ") {
+			f := strings.Fields(line)
+			fee = num(f[1])
+			cost = num(f[len(f)-1])
+		}
+		if strings.Contains(line, "× the fee") {
+			for _, f := range strings.Fields(line) {
+				if strings.HasSuffix(f, "×") {
+					multiple = num(strings.TrimSuffix(f, "×"))
+				}
+			}
+		}
+	}
+	if cost == 0 || fee == 0 || multiple == 0 {
+		t.Fatalf("could not find cost/fee/multiple in the report:\n%s", out)
+	}
+	return cost, fee, multiple
 }

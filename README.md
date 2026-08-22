@@ -142,22 +142,26 @@ caprock report --json       # machine-readable
 ```
 
 ```
-$9,688 of Claude Code at API list prices on a $200/month plan — 41.5× the fee.
+$9,704 of Claude Code at API list prices on a $200/month plan — 41.6× the fee.
 Priced from captured tokens at Anthropic list prices — what the same work would
 have cost through the API. Not a bill, not a discount received, and not money
 back: without the plan I would not have run this much.
 
 2026-07-19 → 2026-08-22 · 33 active days
-paid $233 over that window · same usage at API list $9,688
-59,435 turns · 57 sessions · 26 projects
+paid $233.33 over that window · same usage at API list $9,704
+59,578 turns · 57 sessions · 26 projects
 99% cache hit · 89% of input cost cut by cache
+15,701,665,082 tokens read from cache · 128,597 fresh input
 ```
 
 The caveat is part of the output, on every shape, because the number is not a
 bill and not money saved — it is what the same work would have cost through the
 API, and it is quotable enough to be worth making hard to quote without that.
 The multiple compares your usage against the plan fee **for the window that was
-measured**, so the report also prints the fee it divided by. Set your plan in
+measured**, so the report also prints the fee it divided by, with cents, so the
+division checks out on sight. The raw token counts sit under the cache
+percentages: they are what those percentages are computed from, and they are the
+half of the cache story a reader can picture. Set your plan in
 the dashboard header first; with no plan stated, `caprock report` says so and
 shows no multiple rather than guessing one.
 

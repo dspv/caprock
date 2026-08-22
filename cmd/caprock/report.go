@@ -56,12 +56,16 @@ type reportShare struct {
 // narrow local DTO in the house style rather than the daemon's own type: the
 // CLI should not break because a field it never reads changed shape.
 type reportSummary struct {
-	Sessions  int64   `json:"sessions"`
-	Turns     int64   `json:"turns"`
-	ToolCalls int64   `json:"tool_calls"`
-	CostUSD   float64 `json:"cost_usd"`
-	Pricing   string  `json:"pricing_version"`
-	Savings   struct {
+	Sessions   int64   `json:"sessions"`
+	Turns      int64   `json:"turns"`
+	ToolCalls  int64   `json:"tool_calls"`
+	CostUSD    float64 `json:"cost_usd"`
+	Pricing    string  `json:"pricing_version"`
+	TokensIn   int64   `json:"tokens_in"`
+	TokensOut  int64   `json:"tokens_out"`
+	CacheRead  int64   `json:"cache_read"`
+	CacheWrite int64   `json:"cache_write"`
+	Savings    struct {
 		HitRate float64 `json:"hit_rate"`
 		CutPct  float64 `json:"cut_pct"`
 	} `json:"savings"`
@@ -135,6 +139,18 @@ type Report struct {
 	// rather than reported as a confident 0%.
 	CacheHitPct *float64 `json:"cache_hit_pct,omitempty"`
 	CacheCutPct *float64 `json:"cache_cut_pct,omitempty"`
+
+	// The raw token counts the percentages above are computed from. They are
+	// the most concrete thing in the report: "99% cache hit" is an abstraction,
+	// while fifteen billion tokens read from cache against a hundred thousand
+	// fresh is a fact a reader can picture. Published as counts only — no ratio
+	// between them is derived anywhere, because the percentages already state
+	// what the cache did and a second derived number would invite the question
+	// of which one is the real claim.
+	TokensIn   int64 `json:"tokens_in"`
+	TokensOut  int64 `json:"tokens_out"`
+	CacheRead  int64 `json:"cache_read"`
+	CacheWrite int64 `json:"cache_write"`
 
 	Window *ReportWindow `json:"window,omitempty"`
 
@@ -282,6 +298,10 @@ func assembleReport(sum reportSummary, plan reportSettings, hist reportHistory, 
 		Turns:          sum.Turns,
 		ToolCalls:      sum.ToolCalls,
 		Projects:       len(sum.Projects),
+		TokensIn:       sum.TokensIn,
+		TokensOut:      sum.TokensOut,
+		CacheRead:      sum.CacheRead,
+		CacheWrite:     sum.CacheWrite,
 	}
 
 	// The plan, and the multiple only if there is a fee to divide by. A flat
@@ -420,9 +440,15 @@ func writeReportText(out io.Writer, r Report) error {
 	// rather than asserted. Over a window longer or shorter than a month the
 	// fee is prorated, and a reader who cannot see it cannot tell whether the
 	// multiple was computed against one month or against the window.
+	// The fee carries cents. It is the denominator of the printed multiple, and
+	// a prorated fee is rarely a whole number: rounding $233.33 to "$233" made
+	// the division a reader does on sight come out at 41.6 against a printed
+	// 41.5. Two extra characters keep the arithmetic checkable, which is the
+	// whole reason the fee is printed at all — a footnote about rounding would
+	// be more noise than the cents it explains.
 	if r.Multiple != nil && r.Plan != nil {
 		fmt.Fprintf(out, "paid %s over that window · same usage at API list %s\n",
-			fmtUSD0(r.FeeUSD), fmtUSD0(r.CostUSD))
+			fmtUSD2(r.FeeUSD), fmtUSD0(r.CostUSD))
 	}
 	fmt.Fprintf(out, "%s turns · %s sessions · %d projects\n",
 		commas(r.Turns), commas(r.Sessions), r.Projects)
@@ -432,6 +458,13 @@ func writeReportText(out io.Writer, r Report) error {
 			line += fmt.Sprintf(" · %.0f%% of input cost cut by cache", *r.CacheCutPct)
 		}
 		fmt.Fprintln(out, line)
+	}
+	// The raw basis for those percentages, on its own line. A reader who does
+	// not think in percentages can picture the two counts side by side, and
+	// they are the concrete half of the cache claim.
+	if r.CacheRead > 0 || r.TokensIn > 0 {
+		fmt.Fprintf(out, "%s tokens read from cache · %s fresh input\n",
+			commas(r.CacheRead), commas(r.TokensIn))
 	}
 	if r.Plan == nil {
 		fmt.Fprintln(out, "No plan stated, so no multiple is shown — set one with the plan picker in the dashboard header.")
@@ -476,7 +509,7 @@ func writeReportMarkdown(out io.Writer, r Report) error {
 		fmt.Fprintf(out, "| Plan | %s, %s/month |\n", label, trimUSD(r.Plan.USDPerMont))
 	}
 	if r.Multiple != nil {
-		fmt.Fprintf(out, "| Paid over the window | %s |\n", fmtUSD0(r.FeeUSD))
+		fmt.Fprintf(out, "| Paid over the window | %s |\n", fmtUSD2(r.FeeUSD))
 		fmt.Fprintf(out, "| Multiple of the fee | %.1f× |\n", *r.Multiple)
 	}
 	fmt.Fprintf(out, "| Window | %s → %s (%d active days) |\n", r.Window.First, r.Window.Last, r.Window.ActiveDays)
@@ -489,10 +522,30 @@ func writeReportMarkdown(out io.Writer, r Report) error {
 	if r.CacheCutPct != nil {
 		fmt.Fprintf(out, "| Input cost cut by cache | %.0f%% |\n", *r.CacheCutPct)
 	}
+	if r.CacheRead > 0 || r.TokensIn > 0 {
+		fmt.Fprintf(out, "| Tokens read from cache | %s |\n", commas(r.CacheRead))
+		fmt.Fprintf(out, "| Fresh input tokens | %s |\n", commas(r.TokensIn))
+	}
 	fmt.Fprintf(out, "| Pricing table | %s |\n", r.PricingVersion)
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, r.Caveat)
 	return nil
+}
+
+// fmtUSD2 formats a dollar figure with thousands separators and always two
+// decimals — for a figure someone is expected to divide by.
+func fmtUSD2(v float64) string {
+	whole := fmt.Sprintf("%.2f", v)
+	dot := strings.LastIndex(whole, ".")
+	intPart, frac := whole[:dot], whole[dot:]
+	var b strings.Builder
+	for i, r := range intPart {
+		if i > 0 && (len(intPart)-i)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(r)
+	}
+	return "$" + b.String() + frac
 }
 
 // trimUSD renders a plan fee without trailing cents when it is a whole number.
