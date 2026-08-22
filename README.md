@@ -168,8 +168,11 @@ Nothing to change in your workflow — it starts by watching the sessions you al
 
 ## Run tasks unattended (advanced, opt-in)
 
+![The task runner, off](docs/shot-tasks.png)
+
 This is the one part of Caprock that starts sessions on its own, so it is off
-unless you ask for it. The honest description is **an unattended task runner
+unless you ask for it. Turn it on from the Tasks screen — the button creates the
+queue directory and starts the board without restarting the daemon. The honest description is **an unattended task runner
 with a test gate**: the closest thing you already know is a git worktree plus a
 shell loop. What it adds is that a worker cannot stop early, a failing check
 bounces back with its output attached, spend is attributed per task against a
