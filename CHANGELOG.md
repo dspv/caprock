@@ -26,6 +26,12 @@ Phase 3 (Delight) has no plan by design.
 - **Per-directory attribution was rebuilt after the first rule proved useless in practice.** The original rule charged a directory only when *every* file a turn touched was in it, which was exact and answered almost nothing: on a real 191k-event database it put **87.6%** of one project's $1735 into "repository-wide work". Asking what a service costs and being told "we could not tell you" for seven eighths of the money is not an answer. The rule now carries forward from the last file touched, and the same project reads `/app` **61%** ($2090.67), `/.ai` 6.8%, `/app/tests` 2.8%. Nothing is split or estimated — each turn still goes whole to one row — but the row it goes to is now decided by a stated rule rather than by whether the turn happened to contain a file edit.
 - **"Repository-wide work" now means one narrow thing**: the opening turns of a session, before Claude has touched any file. It is usually nothing at all, and the row is omitted entirely when it cost nothing rather than showing a puzzling `$0.00`.
 
+## [0.14.2] - 2026-08-22
+
+### Changed
+
+- The Projects panel opens on the last seven days instead of thirty. A project worked on for two days out of thirty drew a sparkline that was almost entirely idle, which reads as no data rather than as a burst of work; a week is dense enough for the shape to mean something.
+
 ## [0.14.1] - 2026-08-22
 
 ### Changed
