@@ -18,14 +18,19 @@ import (
 
 func TestCreateRejectsUnusableInput(t *testing.T) {
 	ctx := context.Background()
+	ok := []string{"go test ./..."} // valid criteria, so each case fails for its own reason
 	cases := map[string]map[string]any{
-		"no title":         {"body": "x"},
-		"empty title":      {"title": "", "body": "x"},
-		"whitespace title": {"title": "   ", "body": "x"},
-		"title too long":   {"title": strings.Repeat("A", 100_000), "body": "x"},
-		"negative budget":  {"title": "t", "budget_usd": -100.0},
-		"absurd budget":    {"title": "t", "budget_usd": 1e308},
-		"NaN budget":       {"title": "t", "budget_usd": math.NaN()},
+		"no title":         {"body": "x", "done_criteria": ok},
+		"empty title":      {"title": "", "body": "x", "done_criteria": ok},
+		"whitespace title": {"title": "   ", "body": "x", "done_criteria": ok},
+		"title too long":   {"title": strings.Repeat("A", 100_000), "body": "x", "done_criteria": ok},
+		"negative budget":  {"title": "t", "budget_usd": -100.0, "done_criteria": ok},
+		"absurd budget":    {"title": "t", "budget_usd": 1e308, "done_criteria": ok},
+		"NaN budget":       {"title": "t", "budget_usd": math.NaN(), "done_criteria": ok},
+		// Unverifiable: Caprock will not mark a task done without criteria, so it
+		// refuses to create one rather than parking it later.
+		"no done_criteria":    {"title": "t", "body": "x"},
+		"blank done_criteria": {"title": "t", "body": "x", "done_criteria": []string{"  ", ""}},
 	}
 	for name, req := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -41,7 +46,7 @@ func TestCreateRejectsUnusableInput(t *testing.T) {
 func TestCreateAcceptsAnOrdinaryTask(t *testing.T) {
 	b := newBoard(t)
 	out, err := b.Create(context.Background(), map[string]any{
-		"title": "Add /healthz", "body": "notes", "budget_usd": 5.0,
+		"title": "Add /healthz", "body": "notes", "budget_usd": 5.0, "done_criteria": []string{"go test ./..."},
 	})
 	if err != nil {
 		t.Fatalf("a normal task was rejected: %v", err)
@@ -56,7 +61,7 @@ func TestCreateAcceptsAnOrdinaryTask(t *testing.T) {
 // routinely carries some.
 func TestCreateTrimsTheTitle(t *testing.T) {
 	b := newBoard(t)
-	out, err := b.Create(context.Background(), map[string]any{"title": "  spaced  ", "body": "x"})
+	out, err := b.Create(context.Background(), map[string]any{"title": "  spaced  ", "body": "x", "done_criteria": []string{"true"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +86,7 @@ func TestConcurrentCreatesAllSucceed(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			out, err := b.Create(ctx, map[string]any{"title": "concurrent", "body": "x"})
+			out, err := b.Create(ctx, map[string]any{"title": "concurrent", "body": "x", "done_criteria": []string{"true"}})
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {

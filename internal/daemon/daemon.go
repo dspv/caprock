@@ -220,6 +220,12 @@ func (d *Daemon) run(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("open hive: %w", err)
 		}
+		// A fresh hive was three empty directories. Seeding it with a README and
+		// one example task makes the directory explain itself; it is a no-op on
+		// a hive that already has one, so it never touches a user's work.
+		if err := h.Seed(); err != nil {
+			d.log.Warn("seed hive", "component", "board", "err", err)
+		}
 		d.board = board.New(h, d.store, d.bus, d.log)
 		if err := d.board.Rescan(ctx); err != nil {
 			d.log.Warn("hive rescan", "component", "board", "err", err)
@@ -238,6 +244,14 @@ func (d *Daemon) run(ctx context.Context) error {
 			return err
 		}
 		d.orch.OverBudget = board.OverBudget
+		// The router must be able to actually stop a session it spawned: parking
+		// an over-budget task in a file does not halt the process that is
+		// spending. Only sessions Caprock owns are reachable here (rule 7) —
+		// agents.Manager refuses anything else.
+		mgr := d.mgr
+		d.orch.Signal = func(sessionID, action string) error {
+			return mgr.Signal(sessionID, ptyman.Signal(action))
+		}
 	}
 
 	// Hook receiver.
@@ -296,6 +310,11 @@ func (d *Daemon) run(ctx context.Context) error {
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
 	d.log.Info("caprock daemon listening", "component", "daemon", "url", d.url, "data_dir", d.opt.DataDir, "version", d.opt.Version)
+	// The log never mentioned the hive, so a detached daemon gave no record of
+	// what it had been started to orchestrate.
+	if d.board != nil {
+		d.log.Info("task runner enabled", "component", "board", "hive", d.opt.HiveDir, "repo", d.repoCwd())
+	}
 	if d.opt.OnReady != nil {
 		d.opt.OnReady(d.url)
 	}
@@ -479,11 +498,17 @@ type Status struct {
 	ClaudeAvailable bool          `json:"claude_available"`
 	OwnedActive     int           `json:"owned_active"`
 	Orchestration   bool          `json:"orchestration"`
-	LoopK           int           `json:"loop_k"`
-	LoopTMin        int           `json:"loop_t_minutes"`
-	ActiveLoops     int           `json:"active_loops"`
-	Events          int64         `json:"events"`
-	RetentionDays   int           `json:"retention_days"`
+	// Hive is the orchestration directory in force, and Repo the checkout its
+	// workers operate on. Both empty when orchestration is off. Without them
+	// there was no way — CLI, API or log — to ask which hive a running daemon
+	// had been started with.
+	Hive          string `json:"hive,omitempty"`
+	Repo          string `json:"repo,omitempty"`
+	LoopK         int    `json:"loop_k"`
+	LoopTMin      int    `json:"loop_t_minutes"`
+	ActiveLoops   int    `json:"active_loops"`
+	Events        int64  `json:"events"`
+	RetentionDays int    `json:"retention_days"`
 	// Desktop is the Claude desktop app's own plan usage, when it has any on
 	// this machine. Omitted entirely otherwise — most people do not use it.
 	Desktop *desktop.Reading `json:"desktop,omitempty"`
@@ -506,6 +531,9 @@ func (d *Daemon) status(_ context.Context) any {
 		LoopK:   d.det.K, LoopTMin: int(d.det.Window / time.Minute),
 		ClaudeAvailable: d.mgr.ClaudeAvailable(), OwnedActive: len(d.mgr.List()),
 		Orchestration: d.board != nil,
+	}
+	if d.board != nil {
+		st.Hive, st.Repo = d.opt.HiveDir, d.repoCwd()
 	}
 	if d.tail != nil {
 		s := d.tail.Stats()
@@ -636,7 +664,48 @@ var errOrchDisabled = fmt.Errorf("orchestrator is not available (start caprock w
 
 func (a *boardAdapter) List(ctx context.Context) (any, error)            { return a.b.List(ctx) }
 func (a *boardAdapter) Create(ctx context.Context, req any) (any, error) { return a.b.Create(ctx, req) }
-func (a *boardAdapter) Get(ctx context.Context, id string) (any, error)  { return a.b.Get(ctx, id) }
+
+// Get returns the board's task detail plus *where the work is*. The board knows
+// the task; only this layer knows the repo, the worker's branch and worktree,
+// and the sessions that spent money on it — and without those the card was a
+// title, an id and a dollar figure, with the diff sitting behind an endpoint
+// nothing linked to. Everything added here is derived, never stored: the branch
+// and worktree are the same strings `agents.createWorktree` builds.
+func (a *boardAdapter) Get(ctx context.Context, id string) (any, error) {
+	out, err := a.b.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	m, ok := out.(map[string]any)
+	if !ok {
+		return out, nil
+	}
+	work := map[string]any{}
+	// The mirror row drops done_criteria, so the card could never show what
+	// "done" is going to mean for this task. Read it back off the hive file.
+	if t, err := a.b.Hive.GetTask(id); err == nil {
+		m["done_criteria"] = t.DoneCriteria
+	}
+	if row, ok := m["task"].(store.TaskRow); ok && row.Assignee != "" {
+		// One worktree per agent: `git worktree add -B caprock/<worker>
+		// <repo>/.caprock-worktrees/<worker>` (internal/agents/worktree.go).
+		work["branch"] = "caprock/" + row.Assignee
+		work["worktree"] = board.WorktreePath(a.b.RepoCwd, row.Assignee)
+	}
+	if a.b.RepoCwd != "" {
+		work["repo"] = a.b.RepoCwd
+	}
+	if sess, err := store.TaskSessions(ctx, a.b.Store.DB(), id); err == nil && len(sess) > 0 {
+		work["sessions"] = sess
+	}
+	if vs, err := store.Verifications(ctx, a.b.Store.DB(), id); err == nil && len(vs) > 0 {
+		work["verifications"] = vs
+	}
+	if len(work) > 0 {
+		m["work"] = work
+	}
+	return m, nil
+}
 func (a *boardAdapter) Approve(ctx context.Context, id string, ok bool) error {
 	return a.b.Approve(ctx, id, ok)
 }
@@ -654,4 +723,13 @@ func (a *boardAdapter) StartOrchestrator(ctx context.Context) (any, error) {
 		return nil, err
 	}
 	return map[string]string{"session_id": sid}, nil
+}
+
+// StopOrchestrator is the emergency stop: kill the orchestrator and every worker
+// it spawned, and latch the router so it does not respawn them next tick.
+func (a *boardAdapter) StopOrchestrator(_ context.Context) (any, error) {
+	if a.orch == nil {
+		return nil, errOrchDisabled
+	}
+	return map[string]int{"stopped": a.orch.StopAll()}, nil
 }

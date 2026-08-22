@@ -623,3 +623,211 @@ func TestTickOverBudgetUsesInjectedSeam(t *testing.T) {
 		t.Fatalf("OverBudget seam not used: %q", got)
 	}
 }
+
+// killRecorder wires o.Signal to a fake that records kills and takes the session
+// out of the spawner's live set, the way a real kill does.
+func killRecorder(o *Orchestrator, sp *fakeSpawner) *[]string {
+	var killed []string
+	o.Signal = func(sessionID, action string) error {
+		sp.mu.Lock()
+		defer sp.mu.Unlock()
+		killed = append(killed, sessionID+":"+action)
+		if action == "kill" {
+			delete(sp.sessions, sessionID)
+		}
+		return nil
+	}
+	return &killed
+}
+
+// Defect regression (panel finding 3): wakeRecipients typed a kick into any live
+// session with a non-empty inbox every WakeThrottle, with no counter and no
+// limit. A message the agent never clears therefore cost one Claude turn every
+// 20 seconds, indefinitely. The throttle bounds the RATE; this test proves the
+// TOTAL is bounded — the router stops waking and surfaces the stall instead.
+func TestWakeIsBoundedNotJustThrottled(t *testing.T) {
+	o, sp, h := newOrch(t)
+	o.MaxWakes = 3
+	sid, err := o.SpawnWorker(context.Background(), "worker-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.CreateTask(hive.Task{ID: "t1", Title: "x", Status: hive.StatusInProgress, Assignee: "worker-1"}); err != nil {
+		t.Fatal(err)
+	}
+	// Mail the worker never clears: exactly the permanently-stuck case.
+	if _, err := h.Send(hive.Message{From: "peer", To: "worker-1", Kind: hive.KindQuestion, TaskID: "t9", Body: "stuck"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Deliver(); err != nil {
+		t.Fatal(err)
+	}
+	base := time.Unix(1_700_000_000, 0)
+	// Walk far past the throttle every iteration, so throttling never hides the
+	// missing ceiling: without a bound this loop wakes the worker 50 times.
+	wakes, prev := 0, ""
+	for i := 0; i < 50; i++ {
+		o.Now = func() time.Time { return base.Add(time.Duration(i) * time.Minute) }
+		o.tick(context.Background())
+		if cur := sp.kickBytes(sid); cur != prev {
+			wakes++
+			prev = cur
+		}
+	}
+	if wakes > o.MaxWakes {
+		t.Fatalf("woke a stuck agent %d times in 50 ticks; the ceiling is %d — an unbounded wake loop", wakes, o.MaxWakes)
+	}
+	if wakes == 0 {
+		t.Fatal("never woke the agent at all; the wake step is off, so this proves nothing")
+	}
+	if !o.stalled("worker-1") {
+		t.Fatal("agent exhausted its wake budget but was not marked stalled")
+	}
+	// The stall is surfaced, not merely dropped: the human hears about it.
+	if _, err := h.Deliver(); err != nil {
+		t.Fatal(err)
+	}
+	if h.InboxCount(OrchestratorID) < 1 {
+		t.Fatal("stalled agent was never escalated to a human")
+	}
+	// And its task is parked, so the board shows the stall.
+	if tk, _ := h.GetTask("t1"); tk.Status != hive.StatusNeedsYou {
+		t.Fatalf("stalled agent's task not parked: %q", tk.Status)
+	}
+}
+
+// An agent that clears its inbox gets its wake budget back — the ceiling must
+// bound a STUCK agent, not a productive one.
+func TestWakeBudgetResetsWhenInboxClears(t *testing.T) {
+	o, sp, h := newOrch(t)
+	o.MaxWakes = 2
+	sid, err := o.SpawnWorker(context.Background(), "worker-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := time.Unix(1_700_000_000, 0)
+	tickAt := func(i int) {
+		o.Now = func() time.Time { return base.Add(time.Duration(i) * time.Minute) }
+		o.tick(context.Background())
+	}
+	send := func() {
+		if _, err := h.Send(hive.Message{From: "peer", To: "worker-1", Kind: hive.KindQuestion, TaskID: "t9", Body: "hi"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Two wakes, then the worker clears its inbox (the drain the router does not
+	// own for a `question`, so do it as the agent would).
+	send()
+	tickAt(1)
+	tickAt(2)
+	if _, err := h.ArchiveInbox("worker-1", func(hive.Message) bool { return false }); err != nil {
+		t.Fatal(err)
+	}
+	tickAt(3) // inbox empty: budget resets
+	before := sp.kickBytes(sid)
+	send()
+	tickAt(4)
+	if sp.kickBytes(sid) == before {
+		t.Fatal("a worker that cleared its inbox was never woken again; the ceiling is permanent")
+	}
+}
+
+// Defect regression (panel finding 4): enforceBudgets rewrote the task file and
+// nothing else — there was no Signal() call anywhere in the path, so the session
+// kept its turn and kept burning tokens. Over budget must STOP the process.
+func TestOverBudgetKillsTheWorkerProcess(t *testing.T) {
+	o, sp, h := newOrch(t)
+	killed := killRecorder(o, sp)
+	budgetTask(t, o, h, 1.0, 2.5)
+	if len(*killed) == 0 {
+		t.Fatal("over-budget task parked the file but never stopped the process that was spending")
+	}
+	if !strings.HasSuffix((*killed)[0], ":kill") {
+		t.Fatalf("worker was not killed: %v", *killed)
+	}
+	// The session is gone, so the next tick cannot keep it alive either.
+	sid := (*killed)[0][:strings.LastIndex((*killed)[0], ":")]
+	if _, live := sp.Get(sid); live {
+		t.Fatalf("session %s still live after the budget stop", sid)
+	}
+	if tk, _ := h.GetTask("t1"); tk.Status != hive.StatusNeedsYou {
+		t.Fatalf("over-budget task not parked: %q", tk.Status)
+	}
+}
+
+// Defect regression (panel finding 8): no path killed all worker sessions.
+// POST /v1/agents/{id}/signal was per-agent and required knowing every session
+// id, so an unattended fleet had no stop. StopAll kills the orchestrator and
+// every worker in one call — and the router must not simply respawn them.
+func TestStopAllStopsEverythingAndDoesNotRespawn(t *testing.T) {
+	o, sp, h := newOrch(t)
+	killed := killRecorder(o, sp)
+	osid, err := o.Start(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"worker-1", "worker-2"} {
+		if err := h.CreateTask(hive.Task{ID: "t-" + id, Title: id, Status: hive.StatusAssigned, Assignee: id, DoneCriteria: []string{"true"}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	o.tick(context.Background()) // spawns both workers
+	w1, w2 := o.workerSession(t, "worker-1"), o.workerSession(t, "worker-2")
+
+	if n := o.StopAll(); n != 3 {
+		t.Fatalf("StopAll stopped %d sessions, want 3 (orchestrator + 2 workers)", n)
+	}
+	for _, sid := range []string{osid, w1, w2} {
+		if _, live := sp.Get(sid); live {
+			t.Fatalf("session %s survived the stop-everything", sid)
+		}
+	}
+	if len(*killed) != 3 {
+		t.Fatalf("kills issued: %v", *killed)
+	}
+	// The tasks are still assigned. Without the latch the very next tick would
+	// respawn a worker for each and re-kick it, so the stop would last one tick.
+	before := len(sp.spawns)
+	for i := 0; i < 5; i++ {
+		o.tick(context.Background())
+	}
+	if len(sp.spawns) != before {
+		t.Fatalf("router respawned %d sessions after a stop-everything", len(sp.spawns)-before)
+	}
+	// Starting again is the deliberate act that resumes work.
+	if _, err := o.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	o.tick(context.Background())
+	if len(sp.spawns) <= before+1 {
+		t.Fatalf("Start did not resume the fleet: spawns %d, was %d", len(sp.spawns), before)
+	}
+}
+
+// Defect regression (panel finding 2, router half): drainConsumedAssignments
+// iterated workers only, so the orchestrator's own inbox was never retired — a
+// consumed message pinned InboxCount > 0 forever, which is what kept it in the
+// forced-continue loop the guard could not see.
+func TestTickDrainsOrchestratorInbox(t *testing.T) {
+	o, _, h := newOrch(t)
+	if _, err := o.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.CreateTask(hive.Task{ID: "t1", Title: "x", Status: hive.StatusDone, Assignee: "worker-1"}); err != nil {
+		t.Fatal(err)
+	}
+	// A verify-bounce for a task that is finished: consumed by the drain rule.
+	if _, err := h.Send(hive.Message{From: hive.VerifierAgentID, To: OrchestratorID, Kind: hive.KindResult, TaskID: "t1", Body: "done"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Deliver(); err != nil {
+		t.Fatal(err)
+	}
+	if h.InboxCount(OrchestratorID) != 1 {
+		t.Fatalf("precondition: orchestrator inbox %d", h.InboxCount(OrchestratorID))
+	}
+	o.drainConsumedAssignments()
+	if h.InboxCount(OrchestratorID) != 0 {
+		t.Fatalf("orchestrator inbox never drained: %d messages still pin the Stop-loop", h.InboxCount(OrchestratorID))
+	}
+}

@@ -25,6 +25,12 @@ import (
 // for one (session, task), Caprock escalates to the human instead (default 10).
 const MaxForcedContinues = 10
 
+// noTaskCounterKey is the reserved task_id under which the forced-continue guard
+// counts a session that owns no task — the orchestrator. Task ids are generated
+// as `t-<ms>-<n>` and hive ids may not contain `/`, so this can never collide
+// with a real one.
+const noTaskCounterKey = "/no-task"
+
 // Board wires the hive, store mirror and bus.
 type Board struct {
 	Hive  *hive.Hive
@@ -77,8 +83,25 @@ const maxBody = 100 << 10
 // hundred-thousand-character one, a negative budget (which breaks every
 // "budget left" comparison), and 1e308 (which overflows the moment anything is
 // added to it).
+//
+// It also refuses a task with no done_criteria. Caprock's central claim is that
+// nothing reaches Done until its done_criteria pass; a task with none is
+// unverifiable, and accepting it meant the verifier passed it unconditionally.
+// The check is here rather than only at verification because the earliest honest
+// answer is the cheapest one: the user finds out while the form is open.
+//
+// A zero budget no longer silently means "unlimited". An unattended session with
+// no ceiling is the unsafe default, so a task created without one gets
+// DefaultBudgetUSD.
 func (cr *CreateRequest) validate() error {
 	cr.Title = strings.TrimSpace(cr.Title)
+	criteria := make([]string, 0, len(cr.DoneCriteria))
+	for _, c := range cr.DoneCriteria {
+		if s := strings.TrimSpace(c); s != "" {
+			criteria = append(criteria, s)
+		}
+	}
+	cr.DoneCriteria = criteria
 	switch {
 	case cr.Title == "":
 		return errors.New("task title is required")
@@ -86,6 +109,8 @@ func (cr *CreateRequest) validate() error {
 		return fmt.Errorf("task title is %d characters; the limit is %d", len([]rune(cr.Title)), maxTitle)
 	case len(cr.Body) > maxBody:
 		return fmt.Errorf("task body is %d bytes; the limit is %d", len(cr.Body), maxBody)
+	case len(cr.DoneCriteria) == 0:
+		return errors.New("done_criteria is required: at least one command that must pass before the task can be done. Caprock cannot verify a task without one, and will not mark it done on the worker's say-so")
 	case math.IsNaN(cr.BudgetUSD) || math.IsInf(cr.BudgetUSD, 0):
 		return errors.New("budget_usd must be a real number")
 	case cr.BudgetUSD < 0:
@@ -93,12 +118,25 @@ func (cr *CreateRequest) validate() error {
 	case cr.BudgetUSD > maxBudgetUSD:
 		return fmt.Errorf("budget_usd is %v; the ceiling is %v", cr.BudgetUSD, maxBudgetUSD)
 	}
+	if cr.BudgetUSD == 0 {
+		cr.BudgetUSD = DefaultBudgetUSD
+	}
 	return nil
 }
 
 // maxBudgetUSD is a sanity ceiling, not a policy: a five-figure budget on one
 // task is a typo far more often than an intention.
 const maxBudgetUSD = 100_000
+
+// DefaultBudgetUSD is applied when a task is created without a budget. It is a
+// stop, not a forecast: unattended sessions run with
+// --dangerously-skip-permissions, and the previous default (0 ⇒ unlimited) meant
+// a runaway worker had no ceiling at all. The safe default must be a finite one;
+// $5 is small enough that hitting it is a pause a human notices rather than a
+// bill they discover, and a user who wants more states it explicitly. It is not
+// a claim about what a task costs (rule 6) — it is the ceiling Caprock enforces
+// when the user named none.
+const DefaultBudgetUSD = 5.0
 
 // List returns the mirrored task rows.
 func (b *Board) List(ctx context.Context) (any, error) {
@@ -204,33 +242,51 @@ func (b *Board) StopDecision(ctx context.Context, sessionID, agentID, taskID str
 		return nil // top-level session, not a managed worker
 	}
 	if b.Hive.InboxCount(agentID) == 0 {
+		// A cleared inbox is genuine progress, so the counter resets — for the
+		// task-keyed counter and for the no-task one alike.
+		_ = store.ResetForcedContinue(ctx, b.Store.DB(), sessionID, noTaskCounterKey)
 		if taskID != "" {
 			_ = store.ResetForcedContinue(ctx, b.Store.DB(), sessionID, taskID)
 		}
 		return nil
 	}
+	// The counter is keyed per (session, task). A session with no task — the
+	// orchestrator, whose TaskForAgent is always "" — used to keep n at 1, so the
+	// guard never tripped and one stuck escalation could pin an unattended
+	// --dangerously-skip-permissions session in an unbounded forced-continue
+	// loop. Bound it too, under a reserved key so it shares the same counter
+	// table and the same limit.
+	key := taskID
+	if key == "" {
+		key = noTaskCounterKey
+	}
 	n := 1
-	if taskID != "" {
-		var err error
-		if err = b.Store.WithTx(ctx, func(q store.Querier) error {
-			var e error
-			n, e = store.IncForcedContinue(ctx, q, sessionID, taskID)
-			return e
-		}); err != nil {
-			b.Log.Warn("forced-continue counter", "component", "board", "err", err)
-		}
+	if err := b.Store.WithTx(ctx, func(q store.Querier) error {
+		var e error
+		n, e = store.IncForcedContinue(ctx, q, sessionID, key)
+		return e
+	}); err != nil {
+		b.Log.Warn("forced-continue counter", "component", "board", "err", err)
 	}
 	if n > MaxForcedContinues {
-		b.Log.Warn("forced-continue guard tripped; escalating", "component", "board", "session_id", sessionID, "task_id", taskID, "count", n)
+		b.Log.Warn("forced-continue guard tripped; escalating", "component", "board", "session_id", sessionID, "task_id", taskID, "agent_id", agentID, "count", n)
 		if taskID != "" {
-			if t, err := b.Hive.UpdateTask(taskID, func(x *hive.Task) error {
-				if hive.CanTransition(x.Status, hive.StatusNeedsYou) {
-					x.Status = hive.StatusNeedsYou
-				}
-				return nil
-			}); err == nil {
+			// moveTo walks a legal route instead of guarding one hop with
+			// CanTransition and silently dropping it when illegal. The old guard
+			// left an `assigned` task exactly where it was: the status change
+			// vanished, the task stayed live, and the router kept the worker
+			// alive and kept waking it — the same silent-no-op bug moveTo was
+			// written to kill.
+			if t, err := b.moveTo(taskID, hive.StatusNeedsYou, nil); err == nil {
 				_ = b.mirror(ctx, t)
+			} else {
+				b.Log.Warn("forced-continue escalation could not move task", "component", "board", "task", taskID, "err", err)
 			}
+		} else {
+			// No task to park (the orchestrator). Tell the human directly, so an
+			// exhausted guard is visible rather than just a session that stopped.
+			_, _ = b.Hive.Send(hive.Message{From: hive.VerifierAgentID, To: orchestratorAgentID, Kind: hive.KindEscalation,
+				Body: fmt.Sprintf("Agent %s (session %s) hit the forced-continue limit of %d with mail it never cleared. Caprock stopped forcing it to continue; its inbox needs a human.", agentID, sessionID, MaxForcedContinues)})
 		}
 		return nil // allow the stop; the human takes over
 	}
@@ -249,9 +305,18 @@ func (b *Board) VerifyTask(ctx context.Context, id string) (VerifyResult, error)
 		return VerifyResult{}, err
 	}
 	cwd := b.RepoCwd
-	if t.Assignee != "" && b.RepoCwd != "" {
-		if wt := WorktreePath(b.RepoCwd, t.Assignee); dirExists(wt) {
-			cwd = wt
+	if t.Assignee != "" {
+		// An assigned task is verified in ITS worker's worktree, or not at all.
+		// Falling back to RepoCwd here was the subtler half of the wrong-directory
+		// defect: RepoCwd exists, so nothing downstream could tell that the
+		// agent's worktree had vanished — the checks ran against a clean main
+		// repo and the task passed for work that was never inspected. An empty
+		// cwd reaches Verify, which escalates rather than verifying.
+		cwd = ""
+		if b.RepoCwd != "" {
+			if wt := WorktreePath(b.RepoCwd, t.Assignee); dirExists(wt) {
+				cwd = wt
+			}
 		}
 	}
 	return b.Verify(ctx, id, cwd)

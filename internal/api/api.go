@@ -97,6 +97,9 @@ type TaskController interface {
 	Approvals(ctx context.Context) (any, error)
 	// StartOrchestrator spawns the orchestrator session (T21). Returns its info.
 	StartOrchestrator(ctx context.Context) (any, error)
+	// StopOrchestrator kills the orchestrator and every worker it spawned, in
+	// one call. Returns how many sessions were stopped.
+	StopOrchestrator(ctx context.Context) (any, error)
 	// Verify runs a task's done_criteria (T22). Returns the VerifyResult.
 	Verify(ctx context.Context, id string) (any, error)
 }
@@ -160,6 +163,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/tasks/{id}/verify", s.handleVerify)
 	m.HandleFunc("GET /v1/approvals", s.handleApprovals)
 	m.HandleFunc("POST /v1/orchestrator/start", s.handleStartOrchestrator)
+	m.HandleFunc("POST /v1/orchestrator/stop", s.handleStopOrchestrator)
 	m.HandleFunc("POST /v1/agents", s.handleSpawn)
 	m.HandleFunc("POST /v1/agents/{id}/input", s.handleAgentInput)
 	m.HandleFunc("POST /v1/agents/{id}/signal", s.handleAgentSignal)
@@ -882,7 +886,9 @@ func plausibleRateWindow(w rateWindowIn, now int64) bool {
 
 func (s *Server) requireTasks(w http.ResponseWriter) bool {
 	if s.d.Tasks == nil {
-		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "orchestration is not enabled", "detail": "Phase 2 (tasks/orchestrator) is off in this build/config"})
+		// "Phase 2" is our internal build order and means nothing to a user;
+		// the detail says what to do instead.
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "orchestration is not enabled", "detail": "start the daemon with `caprock up --hive <dir>` to run tasks unattended"})
 		return false
 	}
 	return true
@@ -973,6 +979,23 @@ func (s *Server) handleStartOrchestrator(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, out)
 }
 
+// handleStopOrchestrator is the emergency stop: it kills the orchestrator and
+// every worker it spawned in one call. Before it existed the only way to halt an
+// unattended fleet was POST /v1/agents/{id}/signal per session, which required
+// knowing every session id — no single control stopped the thing.
+func (s *Server) handleStopOrchestrator(w http.ResponseWriter, r *http.Request) {
+	if !s.requireTasks(w) {
+		return
+	}
+	// Killing must not be abandoned halfway because the client hung up.
+	out, err := s.d.Tasks.StopOrchestrator(context.WithoutCancel(r.Context()))
+	if err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (s *Server) handleApprovals(w http.ResponseWriter, r *http.Request) {
 	if !s.requireTasks(w) {
 		return
@@ -1045,7 +1068,9 @@ func (s *Server) handleAgentSignal(w http.ResponseWriter, r *http.Request) {
 	switch body.Action {
 	case "pause", "resume", "kill":
 	default:
-		http.Error(w, "action must be pause|resume|kill", http.StatusBadRequest)
+		// Name the field, not just the values: the old message ("action must be
+		// pause|resume|kill") left a caller who sent the wrong key guessing.
+		http.Error(w, `body must be {"action": "pause"|"resume"|"kill"}`, http.StatusBadRequest)
 		return
 	}
 	if err := s.d.Agents.Signal(r.PathValue("id"), body.Action); err != nil {

@@ -56,6 +56,16 @@ type Orchestrator struct {
 	// WakeThrottle bounds how often an idle session is re-kicked to process new
 	// mail (default 20s), so a still-working agent is not spammed every tick.
 	WakeThrottle time.Duration
+	// MaxWakes caps how many consecutive wakes one agent gets before it is
+	// declared stalled and escalated (0 ⇒ MaxConsecutiveWakes). The throttle
+	// bounds the rate; this bounds the total, so a message the agent never clears
+	// cannot cost one Claude turn every WakeThrottle forever.
+	MaxWakes int
+	// Signal stops an owned session (the same verbs as POST
+	// /v1/agents/{id}/signal). Injected so the router can actually halt a worker
+	// that has outspent its budget — rewriting the task file does not stop a
+	// process. nil ⇒ the router can only park the task.
+	Signal func(sessionID, action string) error
 	// Now returns the current time (overridable in tests).
 	Now func() time.Time
 	// BaseCtx is the daemon-lifetime context the router and kick goroutines run
@@ -65,13 +75,16 @@ type Orchestrator struct {
 	// back to a non-cancellable copy of the Start context.
 	BaseCtx context.Context
 
-	mu           sync.Mutex
-	orchestrator string               // orchestrator session id, "" if not running
-	starting     bool                 // a spawn is in flight (guards the Start TOCTOU)
-	workers      map[string]string    // hive agent id → session id
-	kicked       bool                 // the orchestrator's kick message was sent once
-	verifying    map[string]bool      // task ids with an in-flight verification
-	lastWake     map[string]time.Time // agent id → last wake re-kick time
+	mu            sync.Mutex
+	orchestrator  string               // orchestrator session id, "" if not running
+	starting      bool                 // a spawn is in flight (guards the Start TOCTOU)
+	workers       map[string]string    // hive agent id → session id
+	kicked        bool                 // the orchestrator's kick message was sent once
+	verifying     map[string]bool      // task ids with an in-flight verification
+	lastWake      map[string]time.Time // agent id → last wake re-kick time
+	wakes         map[string]int       // agent id → consecutive wakes with an uncleared inbox
+	stalledAgents map[string]bool      // agent id → wake budget exhausted, escalated
+	stopped       bool                 // StopAll was called; the router must not resurrect anything
 }
 
 func (o *Orchestrator) now() time.Time {
@@ -121,6 +134,8 @@ func (o *Orchestrator) Start(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("orchestrator: a start is already in progress")
 	}
 	o.starting = true
+	// Starting again is the deliberate act that lifts a previous StopAll.
+	o.stopped = false
 	o.mu.Unlock()
 	// From here on, clear `starting` on every exit path.
 	defer func() {
@@ -295,6 +310,15 @@ func (o *Orchestrator) routerLoop(ctx context.Context) {
 // idle agent that just received mail, and running verification for each task the
 // orchestrator moved to `verifying`.
 func (o *Orchestrator) tick(ctx context.Context) {
+	// A stop-everything is a stop: without this latch the very next tick would
+	// re-spawn a worker for every still-assigned task and re-kick it, so the
+	// emergency stop would last two seconds. Start clears the latch.
+	o.mu.Lock()
+	stopped := o.stopped
+	o.mu.Unlock()
+	if stopped {
+		return
+	}
 	// (A) Deliver outbox → inbox, and remember who just got mail so we can wake
 	// them: a stopped TUI session does not react to a new inbox file on its own.
 	woke, err := o.Hive.Deliver()
@@ -334,9 +358,16 @@ func (o *Orchestrator) drainConsumedAssignments() {
 		status[t.ID] = t.Status
 	}
 	o.mu.Lock()
-	workers := make([]string, 0, len(o.workers))
+	workers := make([]string, 0, len(o.workers)+1)
 	for wid := range o.workers {
 		workers = append(workers, wid)
+	}
+	// The orchestrator's own inbox was never drained, so a consumed assign or a
+	// retired bounce addressed to it pinned InboxCount > 0 forever — which is
+	// exactly what kept it in the forced-continue loop the guard could not see.
+	// It is drained by the same status-keyed rule as a worker.
+	if o.orchestrator != "" {
+		workers = append(workers, OrchestratorID)
 	}
 	o.mu.Unlock()
 	for _, wid := range workers {
@@ -450,6 +481,11 @@ func (o *Orchestrator) enforceBudgets(ctx context.Context) {
 			continue
 		}
 		reason := fmt.Sprintf("Task %s has spent $%.2f against a budget of $%.2f and is paused for your decision.", t.ID, cost, t.BudgetUSD)
+		// Stop the process FIRST, then park the file. Parking alone only rewrote
+		// markdown: the session kept its turn and kept spending, so the "budget"
+		// was an annotation, not a limit. The kill happens before the bookkeeping
+		// so a failure in the bookkeeping cannot leave a runaway session running.
+		o.stopWorkerFor(t.Assignee, "over budget")
 		if o.OverBudget != nil {
 			if err := o.OverBudget(ctx, t.ID, reason); err != nil {
 				o.Log.Warn("router over budget", "component", "orchestrator", "task", t.ID, "err", err)
@@ -460,8 +496,75 @@ func (o *Orchestrator) enforceBudgets(ctx context.Context) {
 			continue
 		}
 		_, _ = o.Hive.Send(hive.Message{From: hive.VerifierAgentID, To: OrchestratorID, Kind: hive.KindEscalation, TaskID: t.ID, Body: reason})
-		o.Log.Warn("task over budget; escalated", "component", "orchestrator", "task", t.ID, "cost_usd", cost, "budget_usd", t.BudgetUSD)
+		o.Log.Warn("task over budget; worker stopped and task escalated", "component", "orchestrator", "task", t.ID, "cost_usd", cost, "budget_usd", t.BudgetUSD)
 	}
+}
+
+// stopWorkerFor kills the owned session running as `agentID`, if any, and
+// forgets it so the router does not treat it as live. Killing is the only thing
+// that actually stops the spend: a Claude session mid-turn does not read the
+// task file it is being parked in. We only ever signal a process Caprock spawned
+// (rule 7) — o.workers holds exactly those.
+func (o *Orchestrator) stopWorkerFor(agentID, why string) {
+	if agentID == "" || o.Signal == nil {
+		return
+	}
+	o.mu.Lock()
+	sid := o.workers[agentID]
+	if sid != "" {
+		delete(o.workers, agentID)
+	}
+	o.mu.Unlock()
+	if sid == "" {
+		return
+	}
+	if err := o.Signal(sid, "kill"); err != nil {
+		o.Log.Warn("stop worker", "component", "orchestrator", "agent", agentID, "session_id", sid, "reason", why, "err", err)
+		return
+	}
+	o.Log.Warn("worker stopped", "component", "orchestrator", "agent", agentID, "session_id", sid, "reason", why)
+}
+
+// StopAll kills the orchestrator session and every worker session it spawned, in
+// one call, and latches the router so it does not immediately respawn them from
+// the still-assigned tasks. It is the emergency stop: an unattended fleet running
+// with --dangerously-skip-permissions previously had no single control that
+// halted it, only per-agent signals a user had to know the session ids for.
+// Returns the number of sessions stopped.
+//
+// Task files are left exactly as they are — the point is to stop processes, not
+// to rewrite the board. Starting the orchestrator again clears the latch and
+// resumes from the files.
+func (o *Orchestrator) StopAll() int {
+	o.mu.Lock()
+	o.stopped = true
+	sids := make([]string, 0, len(o.workers)+1)
+	for wid, sid := range o.workers {
+		sids = append(sids, sid)
+		delete(o.workers, wid)
+	}
+	if o.orchestrator != "" {
+		sids = append(sids, o.orchestrator)
+		o.orchestrator = ""
+	}
+	o.kicked = false
+	o.wakes = map[string]int{}
+	o.stalledAgents = map[string]bool{}
+	o.lastWake = map[string]time.Time{}
+	o.mu.Unlock()
+	stopped := 0
+	for _, sid := range sids {
+		if o.Signal == nil {
+			continue
+		}
+		if err := o.Signal(sid, "kill"); err != nil {
+			o.Log.Warn("stop all: kill", "component", "orchestrator", "session_id", sid, "err", err)
+			continue
+		}
+		stopped++
+	}
+	o.Log.Warn("orchestration stopped by request", "component", "orchestrator", "sessions", stopped)
+	return stopped
 }
 
 // parkTask moves a task to needs_you one legal step at a time. `assigned` cannot
@@ -501,12 +604,26 @@ func (o *Orchestrator) wakeRecipients(ctx context.Context) {
 	o.mu.Unlock()
 	for agentID, sid := range sessions {
 		if o.Hive.InboxCount(agentID) == 0 {
+			// The inbox cleared: the agent is making progress, so the consecutive
+			// wake count starts over.
+			o.resetWakes(agentID)
 			continue
 		}
 		if _, live := o.Spawner.Get(sid); !live {
 			continue
 		}
+		if o.stalled(agentID) {
+			continue // already given up on and escalated; do not keep typing
+		}
 		if !o.shouldWake(agentID) {
+			continue
+		}
+		if n := o.countWake(agentID); n > o.maxWakes() {
+			// Throttling alone bounded the *rate*, not the total: a message the
+			// agent never clears meant one typed kick — one Claude turn — every
+			// WakeThrottle, forever. Stop waking, mark the agent stalled, and put
+			// it in front of the human instead of burning tokens indefinitely.
+			o.markStalled(ctx, agentID, n-1)
 			continue
 		}
 		msg := workerKickMessage
@@ -515,6 +632,18 @@ func (o *Orchestrator) wakeRecipients(ctx context.Context) {
 		}
 		o.wake(ctx, sid, msg)
 	}
+}
+
+// MaxConsecutiveWakes bounds how many times in a row the router will type a kick
+// into one agent whose inbox never clears. Past it the agent is stalled: waking
+// it again is a Claude turn every WakeThrottle with nothing to show for it.
+const MaxConsecutiveWakes = 10
+
+func (o *Orchestrator) maxWakes() int {
+	if o.MaxWakes > 0 {
+		return o.MaxWakes
+	}
+	return MaxConsecutiveWakes
 }
 
 // shouldWake throttles wake re-kicks to at most once per WakeThrottle per agent,
@@ -536,6 +665,65 @@ func (o *Orchestrator) shouldWake(agentID string) bool {
 	}
 	o.lastWake[agentID] = o.now()
 	return true
+}
+
+// countWake bumps and returns the consecutive-wake count for an agent.
+func (o *Orchestrator) countWake(agentID string) int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.wakes == nil {
+		o.wakes = map[string]int{}
+	}
+	o.wakes[agentID]++
+	return o.wakes[agentID]
+}
+
+// resetWakes clears the consecutive-wake count and any stalled mark once the
+// agent's inbox is empty — it did the work, so the ceiling starts fresh.
+func (o *Orchestrator) resetWakes(agentID string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	delete(o.wakes, agentID)
+	delete(o.stalledAgents, agentID)
+}
+
+// stalled reports whether an agent has already exhausted its wake budget.
+func (o *Orchestrator) stalled(agentID string) bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.stalledAgents[agentID]
+}
+
+// markStalled records that an agent exhausted its wake budget and escalates it
+// to the human, once. Its live task (if any) is parked in needs_you so the board
+// shows the stall rather than a task that merely never moves.
+func (o *Orchestrator) markStalled(ctx context.Context, agentID string, wakes int) {
+	o.mu.Lock()
+	if o.stalledAgents == nil {
+		o.stalledAgents = map[string]bool{}
+	}
+	if o.stalledAgents[agentID] {
+		o.mu.Unlock()
+		return
+	}
+	o.stalledAgents[agentID] = true
+	o.mu.Unlock()
+	o.Log.Warn("agent stalled; no longer waking it", "component", "orchestrator", "agent", agentID, "wakes", wakes)
+	reason := fmt.Sprintf("Agent %s was woken %d times and never cleared its inbox. Caprock stopped waking it; it needs a human.", agentID, wakes)
+	if taskID := o.TaskForAgent(agentID); taskID != "" {
+		if o.OverBudget != nil {
+			// The OverBudget seam is "park this task in needs_you with a reason
+			// on it, and mirror it" — exactly what a stall needs too.
+			if err := o.OverBudget(ctx, taskID, reason); err != nil {
+				o.Log.Warn("router park stalled task", "component", "orchestrator", "task", taskID, "err", err)
+			}
+		} else if t, err := o.Hive.GetTask(taskID); err == nil {
+			if err := o.parkTask(taskID, t.Status); err != nil {
+				o.Log.Warn("router park stalled task", "component", "orchestrator", "task", taskID, "err", err)
+			}
+		}
+	}
+	_, _ = o.Hive.Send(hive.Message{From: hive.VerifierAgentID, To: OrchestratorID, Kind: hive.KindEscalation, Body: reason})
 }
 
 // driveVerification runs done_criteria for each task in `verifying`. Verify()

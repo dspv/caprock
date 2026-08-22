@@ -32,6 +32,14 @@ func TestPhase2EndToEnd(t *testing.T) {
 	git(t, repo, "add", "-A")
 	git(t, repo, "commit", "-q", "-m", "init")
 	b.RepoCwd = repo
+	// The worker's worktree, exactly as the router creates it before spawning
+	// (`git worktree add -B caprock/<worker> <repo>/.caprock-worktrees/<worker>`).
+	// An assigned task is verified THERE or not at all — verifying it against the
+	// main repo would check code the worker never touched, so this scenario has
+	// to stand up the same directory production does. The worker's edits below go
+	// into the worktree for the same reason.
+	worktree := WorktreePath(repo, "worker-1")
+	git(t, repo, "worktree", "add", "-q", "-B", "caprock/worker-1", worktree)
 
 	// Orchestrator + worker exist; a task with a real done_criteria.
 	_ = b.Hive.RegisterAgent(orchestratorAgentID, "o")
@@ -58,8 +66,9 @@ func TestPhase2EndToEnd(t *testing.T) {
 		t.Fatalf("worker not bounced with failure output")
 	}
 
-	// Worker fixes the build.
-	write(t, filepath.Join(repo, "main.go"), "package main\nfunc main() {}\n")
+	// Worker fixes the build — in its own worktree, which is where it works and
+	// where verification looks.
+	write(t, filepath.Join(worktree, "main.go"), "package main\nfunc main() {}\n")
 
 	// Re-verify → passes → done, with cost attributed.
 	toVerifying(t, b, "t-e2e")

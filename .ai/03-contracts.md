@@ -125,11 +125,20 @@ POST     /v1/tasks/{id}/approve | /v1/tasks/{id}/reject
 POST     /v1/tasks/{id}/verify        → runs the task's done_criteria, returns VerifyResult
 GET      /v1/approvals
 POST     /v1/orchestrator/start       → spawns the orchestrator session → {session_id}
+POST     /v1/orchestrator/stop        → kills the orchestrator + every worker → {stopped: n}
 ```
+
+**`GET /v1/tasks/{id}` also answers "where is the work, and what proved it".** Alongside `{task, body}` it returns `done_criteria` (read back off the hive file — the SQLite mirror drops it, so nothing the API returned could say what "done" would mean for a task) and a `work` block: `branch`, `worktree`, `repo`, `sessions[]` (`session_id`, `cwd`, `from_ts`, `to_ts`) and `verifications[]` (`round`, `command`, `exit_code`, `output_path`, `ts`). Everything in `work` is derived per request, never stored — `branch` and `worktree` are the same strings `git worktree add -B caprock/<worker> <repo>/.caprock-worktrees/<worker>` was given, and the rest is read from `task_assignments` and `verifications`. It exists because `GET /v1/sessions/{id}/diff` is keyed on a *session* id while the board knew only the hive *agent* id, so no task card could link to the diff of its own work. Assembled in the daemon's `boardAdapter`, which is the only layer that knows the repo.
+
+**`GET /v1/status` reports the hive.** `hive` and `repo` carry the queue directory in force and the checkout its workers operate on; both are omitted when orchestration is off. Which hive a running daemon had been started with was previously reported nowhere — not in `/v1/status`, not in `caprock status`, not in the startup line or the log — so there was no way to ask a live daemon what it was orchestrating.
 
 **`POST /v1/tasks` validates before it writes.** A title is required (trimmed, at most 500 characters), the body is capped at 100 KB, and `budget_usd` must be finite, non-negative, and at most 100,000. Each of these was accepted before and produced a task nobody could use: an unnamed row on the board, a hundred-thousand-character title rendered into the task file, a negative budget that breaks every "is there budget left" comparison, and `1e308`, which overflows the moment anything is added to it.
 
-**`budget_usd` is enforced, not decorative.** The reconciler tick re-attributes each live task's cost and moves one that has outspent its budget to `needs_you`, with the reason appended to the task body (no column, no DDL — the body is already returned by `GET /v1/tasks/{id}` and rendered by the UI). `0` or unset means no limit. See [05-orchestration.md § Approvals](05-orchestration.md).
+**`done_criteria` is required.** At least one non-blank command; blank entries are trimmed away first. An empty list used to pass verification unconditionally ("trust the worker"), which made the product's central claim — nothing reaches `done` until its `done_criteria` pass — false for the easiest task to create. A task that nevertheless reaches verification with no criteria (hand-written into the hive, or created before this rule) escalates to `needs_you`; it never passes. See [05-orchestration.md § Verification runner](05-orchestration.md).
+
+**`budget_usd` is enforced, not decorative, and never defaults to unlimited.** The reconciler tick re-attributes each live task's cost and, when spend passes the budget, **kills the worker session** before moving the task to `needs_you`, with the reason appended to the task body (no column, no DDL — the body is already returned by `GET /v1/tasks/{id}` and rendered by the UI). Parking the file alone left the process spending. `0` or absent on create becomes `board.DefaultBudgetUSD` ($5): an unattended session with no ceiling was the unsafe default. `budget_usd: 0` in a hand-authored hive task file still means no limit — Caprock does not rewrite a user's file. See [05-orchestration.md § Approvals](05-orchestration.md).
+
+**`POST /v1/orchestrator/stop` is the emergency stop.** One call kills the orchestrator and every worker it spawned, and latches the router so it does not respawn them on the next tick; `start` clears the latch. It stops processes and leaves task files untouched. `POST /v1/agents/{id}/signal` remains the per-agent control — it takes `{"action": "pause"|"resume"|"kill"}`, and its 400 names that field, not only the accepted values.
 
 **`POST /v1/tasks/{id}/verify` never strands a task.** Verification walks a legal status route rather than skipping a transition it cannot make in one hop, so a verify from any non-`verifying` status still lands the task in `done`, `in_progress` or `needs_you`. Guarding a single hop and no-opping when illegal used to leave the task where it was, after which the next verify failed with `illegal task transition`.
 
@@ -263,6 +272,8 @@ CREATE TABLE rate_limit_history (ts INTEGER, window TEXT, used_percentage REAL, 
 ### Phase 2 DDL additions
 
 Tables `tasks` (mirror of file state for querying) and `verifications` (`task_id`, `round`, `command`, `exit_code`, `output_path`). Files are the source of truth for hive state; SQLite mirrors them for the UI (rebuildable by rescan). Forced-continue counter for the Stop-loop lives in SQLite per (session, task).
+
+No DDL change was needed for either fix here, only honest use of the existing columns. `verifications.output_path` now holds a real path — `<hive>/verifications/<task-id>/round-<n>-cmd-<i>.log` — instead of the empty string it was always written with, so a green task carries auditable evidence. The forced-continue counter's `task_id` takes the reserved value `/no-task` for a session that owns none (the orchestrator), which is what makes the guard bound it too; a hive id may not contain `/`, so it cannot collide with a real task id.
 
 ## Pricing table
 

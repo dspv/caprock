@@ -35,6 +35,10 @@ type VerifyResult struct {
 	Commands  []CommandRun `json:"commands"`
 	Status    string       `json:"status"` // the task's new status
 	Escalated bool         `json:"escalated"`
+	// Unverifiable is true when the task could not be checked at all (no
+	// done_criteria, or no worktree to run them in). It never means "passed":
+	// the task is parked in needs_you for the human.
+	Unverifiable bool `json:"unverifiable,omitempty"`
 }
 
 // CommandRun is one done_criteria command's result.
@@ -43,6 +47,9 @@ type CommandRun struct {
 	ExitCode int    `json:"exit_code"`
 	Output   string `json:"output"`
 	Passed   bool   `json:"passed"`
+	// OutputPath is the file the full captured output was written to, so a green
+	// result can be audited after the fact (`Output` is tail-capped for the UI).
+	OutputPath string `json:"output_path,omitempty"`
 }
 
 // Verify runs a task's done_criteria in the worker's worktree. All green ⇒ the
@@ -69,18 +76,59 @@ func (b *Board) Verify(ctx context.Context, taskID, cwd string) (VerifyResult, e
 		_ = b.mirror(ctx, updated)
 		return res, nil
 	}
+	// Unverifiable is never verified. A task with no done_criteria cannot be
+	// checked, so it must not reach `done` on the worker's say-so — that was the
+	// hole under the product's central claim ("nothing reaches Done until its
+	// done_criteria pass"). Creation now rejects an empty criteria list, so this
+	// path is only reachable for a task hand-written into the hive or created
+	// before this rule; it escalates to the human rather than silently passing.
 	if len(t.DoneCriteria) == 0 {
-		// No criteria to check: trust the worker, move to done.
-		res.Passed = true
-	} else {
-		res.Passed = true
-		for _, cmd := range t.DoneCriteria {
-			run := b.runCommand(ctx, cmd, cwd)
-			res.Commands = append(res.Commands, run)
-			_ = store.RecordVerification(ctx, b.Store.DB(), taskID, res.Round, cmd, run.ExitCode, "")
-			if !run.Passed {
-				res.Passed = false
-			}
+		updated, err := b.moveTo(taskID, hive.StatusNeedsYou, nil)
+		if err != nil {
+			return res, err
+		}
+		res.Status = updated.Status
+		res.Escalated = true
+		res.Unverifiable = true
+		_, _ = b.Hive.Send(hive.Message{From: hive.VerifierAgentID, To: orchestratorAgentID, Kind: hive.KindEscalation, TaskID: taskID,
+			Body: "Task " + taskID + " has no done_criteria, so Caprock cannot verify it. It is parked for your decision: add criteria and send it back, or approve it yourself."})
+		_ = b.mirror(ctx, updated)
+		return res, nil
+	}
+	// Verification runs in the worker's worktree. A cwd that is not a directory
+	// (a missing or removed worktree) would silently fall back to the daemon's
+	// own working directory — verifying a clean main repo instead of the agent's
+	// work, which passes for the wrong reason. Unverifiable is never verified.
+	if err := checkCwd(cwd); err != nil {
+		updated, merr := b.moveTo(taskID, hive.StatusNeedsYou, nil)
+		if merr != nil {
+			return res, merr
+		}
+		res.Status = updated.Status
+		res.Escalated = true
+		res.Unverifiable = true
+		_, _ = b.Hive.Send(hive.Message{From: hive.VerifierAgentID, To: orchestratorAgentID, Kind: hive.KindEscalation, TaskID: taskID,
+			Body: "Task " + taskID + " cannot be verified: " + err.Error() + ". Its done_criteria were NOT run."})
+		_ = b.mirror(ctx, updated)
+		return res, nil
+	}
+	res.Passed = true
+	for _, cmd := range t.DoneCriteria {
+		run := b.runCommand(ctx, cmd, cwd)
+		res.Commands = append(res.Commands, run)
+		// Persist the command's output so a human can audit a green result: a
+		// pass with no evidence is indistinguishable from a pass that never ran.
+		// The path is what .ai/05-orchestration.md already promised the
+		// `verifications` row carries.
+		outPath, werr := b.writeVerificationOutput(taskID, res.Round, len(res.Commands)-1, run)
+		if werr != nil {
+			b.Log.Warn("write verification output", "component", "board", "task", taskID, "err", werr)
+		}
+		run.OutputPath = outPath
+		res.Commands[len(res.Commands)-1] = run
+		_ = store.RecordVerification(ctx, b.Store.DB(), taskID, res.Round, cmd, run.ExitCode, outPath)
+		if !run.Passed {
+			res.Passed = false
 		}
 	}
 
@@ -205,11 +253,14 @@ func (b *Board) runCommand(ctx context.Context, command, cwd string) CommandRun 
 	} else {
 		cmd = exec.CommandContext(cctx, "/bin/sh", "-c", command)
 	}
-	if cwd != "" {
-		if fi, err := os.Stat(cwd); err == nil && fi.IsDir() {
-			cmd.Dir = cwd
-		}
+	// Never fall back to the daemon's working directory: a command that was meant
+	// to check an agent's worktree must not silently check whatever the daemon
+	// happens to sit in. Verify() screens cwd before calling this, so reaching
+	// here with a bad one is a bug — fail the command rather than run it blind.
+	if err := checkCwd(cwd); err != nil {
+		return CommandRun{Command: command, ExitCode: -1, Output: "[" + err.Error() + "]"}
 	}
+	cmd.Dir = cwd
 	cmd.Env = append(os.Environ(), "CI=1")
 	var buf bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &buf, &buf
@@ -260,4 +311,44 @@ func formatFailure(res VerifyResult) string {
 // how the orchestrator's worker spawn creates it.
 func WorktreePath(repo, workerID string) string {
 	return filepath.Join(repo, ".caprock-worktrees", workerID)
+}
+
+// checkCwd reports why a verification directory cannot be used. An empty cwd is
+// as bad as a missing one: both would run the commands wherever the daemon was
+// launched, which is not the code under test.
+func checkCwd(cwd string) error {
+	if cwd == "" {
+		return errors.New("no directory to verify in (the task has no worktree and the daemon has no repo cwd)")
+	}
+	fi, err := os.Stat(cwd)
+	if err != nil {
+		return fmt.Errorf("verification directory %s is unavailable: %w", cwd, err)
+	}
+	if !fi.IsDir() {
+		return fmt.Errorf("verification directory %s is not a directory", cwd)
+	}
+	return nil
+}
+
+// VerificationOutputDir is where captured done_criteria output is persisted,
+// under the hive so it lives with the task files it explains.
+func (b *Board) VerificationOutputDir(taskID string) string {
+	return filepath.Join(b.Hive.Root, "verifications", taskID)
+}
+
+// writeVerificationOutput persists one command's full output and returns its
+// path (the `output_path` column .ai/05-orchestration.md documents). A green
+// verification with no stored evidence cannot be audited, which is the whole
+// point of verification-before-done.
+func (b *Board) writeVerificationOutput(taskID string, round, idx int, run CommandRun) (string, error) {
+	dir := b.VerificationOutputDir(taskID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, fmt.Sprintf("round-%d-cmd-%d.log", round, idx))
+	header := fmt.Sprintf("$ %s\nexit: %d\n\n", run.Command, run.ExitCode)
+	if err := os.WriteFile(path, []byte(header+run.Output), 0o644); err != nil {
+		return "", err
+	}
+	return path, nil
 }
