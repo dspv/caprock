@@ -1,6 +1,11 @@
 # Caprock
 
-### See, steer, and orchestrate every Claude Code session on your machine.
+### See what your Claude Code is actually doing.
+
+![The live pulse: one bar per minute, coloured by what the minute cost](docs/pulse.gif)
+
+*Real capture, 46 seconds. One session working; the bars advance as the minutes roll over
+and the cost ticks with them.*
 
 [![release](https://img.shields.io/github/v/release/dspv/caprock?color=feb157)](https://github.com/dspv/caprock/releases)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
