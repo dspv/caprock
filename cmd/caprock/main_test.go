@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -278,5 +279,201 @@ func TestDaemonAliveNeedsAHealthyAnswer(t *testing.T) {
 	}
 	if daemonAlive(config.Runtime{Port: port}) {
 		t.Error("a 404 from an unrelated server was taken for a live daemon")
+	}
+}
+
+// fakeDaemon starts a loopback server answering /healthz plus the routes a test
+// needs, and points $CAPROCK_DATA_DIR at a runtime.json describing it. It is how
+// the CLI's HTTP-facing commands are exercised without a real daemon.
+func fakeDaemon(t *testing.T, routes map[string]http.HandlerFunc) {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	for pat, h := range routes {
+		mux.HandleFunc(pat, h)
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{Handler: mux} //nolint:gosec // test server, loopback only
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+
+	dir := t.TempDir()
+	t.Setenv(config.EnvDataDir, dir)
+	rt, err := config.NewRuntime(ln.Addr().(*net.TCPAddr).Port, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := config.WriteRuntime(dir, rt); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func runCLI(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	root := newRoot()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs(args)
+	err := root.Execute()
+	return out.String(), err
+}
+
+// `caprock tasks <anything>` used to ignore its arguments and print the list —
+// a fake success for a command that does not exist. Someone reaching for
+// `caprock tasks create` got the board back and no hint that nothing happened.
+func TestTasksRejectsUnknownArguments(t *testing.T) {
+	fakeDaemon(t, map[string]http.HandlerFunc{
+		"/v1/tasks": func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`[{"id":"t-1","title":"x","status":"inbox"}]`))
+		},
+	})
+	out, err := runCLI(t, "tasks", "create")
+	if err == nil {
+		t.Fatalf("`caprock tasks create` succeeded; want an error. output: %q", out)
+	}
+	if strings.Contains(out, "t-1") {
+		t.Fatalf("`caprock tasks create` printed the board instead of refusing: %q", out)
+	}
+}
+
+// The id column was a hard-coded %-14s against ids generated as
+// `t-<unix-millis>-<n>` — 17 characters — so every row of a real board ran its
+// id into the status column. The width has to be measured, not guessed.
+func TestTasksAlignsColumnsToTheWidestID(t *testing.T) {
+	fakeDaemon(t, map[string]http.HandlerFunc{
+		"/v1/tasks": func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`[
+				{"id":"t-1755000000000-1","title":"long id","status":"done","assignee":"worker-1","cost_usd":1.5},
+				{"id":"t-2","title":"short id","status":"inbox","assignee":"","cost_usd":0}
+			]`))
+		},
+	})
+	out, err := runCLI(t, "tasks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("want two rows, got %d: %q", len(lines), out)
+	}
+	// The status column must start at the same offset on every row.
+	if a, b := strings.Index(lines[0], "done"), strings.Index(lines[1], "inbox"); a != b {
+		t.Fatalf("status column misaligned: %d vs %d\n%s", a, b, out)
+	}
+	if strings.Contains(lines[0], "t-1755000000000-1done") {
+		t.Fatalf("id ran into the status column: %q", lines[0])
+	}
+}
+
+// `caprock task create` is the only way to fill the queue from a script or a
+// terminal; before it, an unattended runner could only be fed through a form in
+// the dashboard.
+func TestTaskCreatePostsTheTask(t *testing.T) {
+	var got map[string]any
+	fakeDaemon(t, map[string]http.HandlerFunc{
+		"POST /v1/tasks": func(w http.ResponseWriter, r *http.Request) {
+			_ = json.NewDecoder(r.Body).Decode(&got)
+			_, _ = w.Write([]byte(`{"task":{"id":"t-9","title":"Add /healthz"}}`))
+		},
+	})
+	out, err := runCLI(t, "task", "create", "--title", "Add /healthz",
+		"--done-criteria", "go test ./...", "--done-criteria", "go vet ./...", "--budget", "2.5")
+	if err != nil {
+		t.Fatalf("create failed: %v (%s)", err, out)
+	}
+	if got["title"] != "Add /healthz" {
+		t.Fatalf("title not sent: %#v", got)
+	}
+	if b, _ := got["budget_usd"].(float64); b != 2.5 {
+		t.Fatalf("budget not sent: %#v", got)
+	}
+	crit, _ := got["done_criteria"].([]any)
+	if len(crit) != 2 || crit[0] != "go test ./..." {
+		t.Fatalf("done_criteria not sent: %#v", got)
+	}
+	if !strings.Contains(out, "t-9") {
+		t.Fatalf("created id not reported: %q", out)
+	}
+}
+
+// A task with no done_criteria cannot be verified, and the runner's whole claim
+// is that nothing is done until its checks pass. Refusing at the flag is
+// cheaper than a task parked in needs_you an hour later.
+func TestTaskCreateRequiresDoneCriteria(t *testing.T) {
+	posted := false
+	fakeDaemon(t, map[string]http.HandlerFunc{
+		"POST /v1/tasks": func(w http.ResponseWriter, _ *http.Request) {
+			posted = true
+			_, _ = w.Write([]byte(`{"task":{"id":"t-9"}}`))
+		},
+	})
+	out, err := runCLI(t, "task", "create", "--title", "no checks")
+	if err == nil {
+		t.Fatalf("create without --done-criteria succeeded; want a refusal (%s)", out)
+	}
+	if posted {
+		t.Fatal("the request was sent anyway")
+	}
+}
+
+// Which hive a running daemon was started with was reported nowhere — not in
+// `caprock status`, not in /v1/status, not on the startup line — so there was no
+// way to ask what it was orchestrating.
+func TestStatusReportsTheHive(t *testing.T) {
+	fakeDaemon(t, map[string]http.HandlerFunc{
+		"/v1/status": func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`{"version":"test","orchestration":true,"hive":"/tmp/my-hive","repo":"/tmp/my-repo","ui_built":true,"pricing":{"version":"1"}}`))
+		},
+	})
+	out, err := runCLI(t, "status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "/tmp/my-hive") {
+		t.Fatalf("status did not name the hive: %q", out)
+	}
+	if !strings.Contains(out, "/tmp/my-repo") {
+		t.Fatalf("status did not name the repo: %q", out)
+	}
+}
+
+// With orchestration off the line must still appear, and say what turns it on —
+// silence there is what made the feature undiscoverable in the first place.
+func TestStatusSaysHowToTurnTheHiveOn(t *testing.T) {
+	fakeDaemon(t, map[string]http.HandlerFunc{
+		"/v1/status": func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`{"version":"test","orchestration":false,"ui_built":true,"pricing":{"version":"1"}}`))
+		},
+	})
+	out, err := runCLI(t, "status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "--hive") {
+		t.Fatalf("status did not say how to enable the task runner: %q", out)
+	}
+}
+
+// "Phase 2" is our internal build order and means nothing to a user. It used to
+// appear in `caprock tasks --help` and on the --hive flag.
+func TestNoInternalPhaseWordingInHelp(t *testing.T) {
+	root := newRoot()
+	for _, c := range root.Commands() {
+		var b bytes.Buffer
+		c.SetOut(&b)
+		c.SetErr(&b)
+		if err := c.Usage(); err != nil {
+			t.Fatal(err)
+		}
+		text := b.String() + c.Short + c.Long
+		if strings.Contains(text, "Phase 2") || strings.Contains(text, "Phase 1") {
+			t.Fatalf("`caprock %s` help leaks an internal phase name:\n%s", c.Name(), text)
+		}
 	}
 }

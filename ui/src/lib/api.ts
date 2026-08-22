@@ -207,7 +207,21 @@ export interface Task { id: string; title: string; status: string; assignee: str
 // computed for the REST TaskRow). Enough to drive the orchestration graph's
 // node/edge state and animation; cost comes from the /v1/tasks snapshot.
 export interface TaskFrame { id: string; title: string; status: string; assignee: string; budget_usd: number; verify_rounds_used: number; body: string }
-export interface TaskDetail { task: Task; body: string }
+/** One session that worked a task. The diff endpoint is keyed on a session id,
+ *  so this is the bridge from a task card to what the worker actually changed. */
+export interface TaskSession { session_id: string; cwd: string; from_ts: number; to_ts?: number }
+/** One recorded `done_criteria` run — the evidence behind a green task. */
+export interface TaskVerification { round: number; command: string; exit_code: number; output_path?: string; ts: number }
+/** Where a task's work lives. Derived by the daemon, never stored: the branch and
+ *  worktree are the same strings `git worktree add` was given. */
+export interface TaskWork {
+  branch?: string
+  worktree?: string
+  repo?: string
+  sessions?: TaskSession[]
+  verifications?: TaskVerification[]
+}
+export interface TaskDetail { task: Task; body: string; done_criteria?: string[]; work?: TaskWork }
 export interface CreateTaskRequest { title: string; budget_usd?: number; done_criteria?: string[]; body?: string }
 
 export interface History { range: string; totals: HistoryTotals; tools: ToolCount[]; daily: DailyStat[]; savings: Savings; summary: Summary }
@@ -231,6 +245,10 @@ export interface Status {
   loop_t_minutes: number
   active_loops: number
   orchestration: boolean
+  /** The queue directory in force, and the checkout its workers operate on.
+   *  Absent when orchestration is off. */
+  hive?: string
+  repo?: string
   events: number
   retention_days: number
   /** The Claude desktop app's own plan usage, when this machine has any. */
@@ -294,6 +312,8 @@ export const api = {
   createTask: (req: CreateTaskRequest) => post<TaskDetail>('/v1/tasks', req),
   approve: (id: string, approve: boolean) => post<void>(`/v1/tasks/${encodeURIComponent(id)}/${approve ? 'approve' : 'reject'}`, {}),
   startOrchestrator: () => post<{ session_id: string }>('/v1/orchestrator/start', {}),
+  // Emergency stop: kills the orchestrator and every worker it spawned.
+  stopOrchestrator: () => post<{ stopped: number }>('/v1/orchestrator/stop', {}),
   status: () => get<Status>('/v1/status'),
   spawn: (req: SpawnRequest) => post<{ session_id: string; cwd: string }>('/v1/agents', req),
   signal: (id: string, action: 'pause' | 'resume' | 'kill') => post<void>(`/v1/agents/${encodeURIComponent(id)}/signal`, { action }),

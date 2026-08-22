@@ -114,7 +114,7 @@ func serviceInstallCmd() *cobra.Command {
 		},
 	}
 	c.Flags().IntVar(&port, "port", 0, "port the service listens on (default: your config.json port)")
-	c.Flags().StringVar(&hiveDir, "hive", "", "also enable Phase 2 orchestration with this hive directory")
+	c.Flags().StringVar(&hiveDir, "hive", "", "also run tasks unattended from this queue directory (see `caprock up --hive`)")
 	return c
 }
 

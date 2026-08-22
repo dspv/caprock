@@ -1,4 +1,5 @@
 // Small presentational primitives. Every color comes from tokens.css.
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Health } from '@/lib/api'
 
@@ -122,6 +123,32 @@ export function Skeleton({ rows = 3, className = '' }: { rows?: number; classNam
         />
       ))}
     </div>
+  )
+}
+
+/**
+ * Copyable — one shell command, click to copy.
+ *
+ * Deliberately not a "run it for me" button. The commands it carries land
+ * branches in a user's repository; executing that from a web page on their
+ * behalf is exactly the surface a local-first tool should not open. They copy
+ * one line and run it in their own terminal, where they can read it first.
+ */
+export function Copyable({ command, className = '' }: { command: string; className?: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      className={`mono text-[12px] bg-panel-2 border border-border px-2 py-0.5 rounded-sm hover:border-border-strong text-fg text-left ${className}`}
+      onClick={() => {
+        void navigator.clipboard?.writeText(command).then(() => {
+          setCopied(true)
+          window.setTimeout(() => setCopied(false), 1500)
+        })
+      }}
+      title="copy to clipboard — run it in your terminal"
+    >
+      {copied ? 'copied' : `$ ${command}`}
+    </button>
   )
 }
 

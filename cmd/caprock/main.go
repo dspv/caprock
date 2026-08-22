@@ -8,6 +8,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -50,7 +51,7 @@ func newRoot() *cobra.Command {
 		SilenceErrors: true,
 		Version:       version.Version,
 	}
-	root.AddCommand(upCmd(), downCmd(), statusCmd(), tasksCmd(), hooksCmd(), hookCmd(), statuslineCmd(), serviceCmd(), versionCmd())
+	root.AddCommand(upCmd(), downCmd(), statusCmd(), tasksCmd(), taskCmd(), hooksCmd(), hookCmd(), statuslineCmd(), serviceCmd(), versionCmd())
 	return root
 }
 
@@ -121,8 +122,8 @@ func upCmd() *cobra.Command {
 	c.Flags().BoolVarP(&yes, "yes", "y", false, "assume yes for the hook install prompt")
 	c.Flags().BoolVar(&foreground, "foreground", false, "run in the foreground (logs to stderr) instead of detaching")
 	c.Flags().StringVar(&dataDirF, "data-dir", "", "override the data directory (also $CAPROCK_DATA_DIR)")
-	c.Flags().StringVar(&hiveDir, "hive", "", "enable Phase 2 orchestration with a hive directory (tasks board + Stop-loop)")
-	c.Flags().StringVar(&repoDir, "repo", "", "the repo the orchestrator + workers operate on (default: current directory)")
+	c.Flags().StringVar(&hiveDir, "hive", "", "run tasks unattended: queue directory for the task runner (created if missing)")
+	c.Flags().StringVar(&repoDir, "repo", "", "the repo workers operate on, one git worktree each (default: current directory)")
 	return c
 }
 
@@ -134,6 +135,7 @@ func runForeground(cmd *cobra.Command, dir string, cfg config.Config, noOpen boo
 		DataDir: dir, Config: cfg, Version: version.Version, Log: log, HiveDir: hiveDir, RepoCwd: repoDir,
 		OnReady: func(url string) {
 			fmt.Fprintf(cmd.OutOrStdout(), "caprock is up at %s  (data: %s)\n", url, dir)
+			printHive(cmd, hiveDir)
 			if !noOpen && cfg.OpenBrowser {
 				openBrowser(url)
 			}
@@ -176,6 +178,7 @@ func detach(cmd *cobra.Command, dir string, cfg config.Config, noOpen bool, hive
 		if rt, err := config.ReadRuntime(dir); err == nil && daemonAlive(rt) {
 			url := fmt.Sprintf("http://127.0.0.1:%d", rt.Port)
 			fmt.Fprintf(cmd.OutOrStdout(), "caprock is up at %s  (pid %d, log: %s)\n", url, rt.PID, config.LogPath(dir))
+			printHive(cmd, hiveDir)
 			if !noOpen && cfg.OpenBrowser {
 				openBrowser(url)
 			}
@@ -448,6 +451,14 @@ func statusCmd() *cobra.Command {
 				fmt.Fprintf(out, "ingest:  %d transcripts, %d events stored, %d deduped, backfill %s\n", st.Ingest.FilesKnown, st.Ingest.EventsStored, st.Ingest.EventsDeduped, map[bool]string{true: "done", false: "running"}[st.Ingest.BackfillDone])
 			}
 			fmt.Fprintf(out, "ui:      %s\n", map[bool]string{true: "embedded", false: "placeholder (built without dashboard)"}[st.UIBuilt])
+			// Which hive is in force was reported nowhere — not here, not in
+			// /v1/status, not in the startup line — so there was no way to ask
+			// a running daemon what it was orchestrating.
+			if st.Orchestration {
+				fmt.Fprintf(out, "hive:    %s (repo: %s)\n", st.Hive, st.Repo)
+			} else {
+				fmt.Fprintln(out, "hive:    off — `caprock up --hive <dir>` to run tasks unattended")
+			}
 			return nil
 		},
 	}
@@ -582,18 +593,30 @@ func statuslineCmd() *cobra.Command {
 	return c
 }
 
+// taskRow is the subset of GET /v1/tasks the CLI prints.
+type taskRow struct {
+	ID        string  `json:"id"`
+	Title     string  `json:"title"`
+	Status    string  `json:"status"`
+	Assignee  string  `json:"assignee"`
+	CostUSD   float64 `json:"cost_usd"`
+	BudgetUSD float64 `json:"budget_usd"`
+}
+
+const hiveOffMessage = "orchestration is off — start the daemon with `caprock up --hive <dir>` to run tasks unattended"
+
 func tasksCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "tasks",
-		Short: "List the Phase 2 task board (requires a daemon started with --hive)",
+		Short: "List the task board (requires a daemon started with --hive)",
+		// `caprock tasks whatever` used to ignore its arguments and print the
+		// list — a fake success for a command that does not exist. Cobra's
+		// NoArgs turns that into an error naming the real command.
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			dir, err := config.DataDir()
+			rt, err := runningDaemon()
 			if err != nil {
 				return err
-			}
-			rt, err := config.ReadRuntime(dir)
-			if err != nil || !daemonAlive(rt) {
-				return fmt.Errorf("caprock is not running")
 			}
 			resp, err := (&http.Client{Timeout: 3 * time.Second}).Get(fmt.Sprintf("http://127.0.0.1:%d/v1/tasks", rt.Port))
 			if err != nil {
@@ -601,14 +624,10 @@ func tasksCmd() *cobra.Command {
 			}
 			defer resp.Body.Close()
 			if resp.StatusCode == http.StatusNotImplemented {
-				fmt.Fprintln(cmd.OutOrStdout(), "orchestration is off (start the daemon with --hive)")
+				fmt.Fprintln(cmd.OutOrStdout(), hiveOffMessage)
 				return nil
 			}
-			var tasks []struct {
-				ID, Title, Status, Assignee string
-				CostUSD                     float64 `json:"cost_usd"`
-				BudgetUSD                   float64 `json:"budget_usd"`
-			}
+			var tasks []taskRow
 			body, _ := io.ReadAll(resp.Body)
 			_ = json.Unmarshal(body, &tasks)
 			if len(tasks) == 0 {
@@ -616,16 +635,135 @@ func tasksCmd() *cobra.Command {
 				return nil
 			}
 			out := cmd.OutOrStdout()
+			// Ids are generated as `t-<unix-millis>-<n>` — 17 characters, against
+			// a hard-coded %-14s width that misaligned every single row. Measure
+			// the column instead of guessing it.
+			w := 2
+			for _, t := range tasks {
+				if len(t.ID) > w {
+					w = len(t.ID)
+				}
+			}
 			for _, t := range tasks {
 				assignee := t.Assignee
 				if assignee == "" {
 					assignee = "-"
 				}
-				fmt.Fprintf(out, "%-14s %-12s %-10s $%.2f  %s\n", t.ID, t.Status, assignee, t.CostUSD, t.Title)
+				fmt.Fprintf(out, "%-*s %-12s %-10s $%.2f  %s\n", w, t.ID, t.Status, assignee, t.CostUSD, t.Title)
 			}
 			return nil
 		},
 	}
+}
+
+// taskCmd groups the single-task verbs. `caprock tasks` lists the board; this is
+// where you act on one. `caprock task create` existed only as a form in the
+// dashboard, so a queue meant for unattended runs could not be filled from a
+// script or a terminal.
+func taskCmd() *cobra.Command {
+	c := &cobra.Command{Use: "task", Short: "Work with a single task on the board"}
+	c.AddCommand(taskCreateCmd())
+	return c
+}
+
+func taskCreateCmd() *cobra.Command {
+	var (
+		title    string
+		budget   float64
+		criteria []string
+		body     string
+	)
+	c := &cobra.Command{
+		Use:   "create",
+		Short: "Add a task to the board (requires a daemon started with --hive)",
+		Long: "Add a task to the board.\n\n" +
+			"--done-criteria are shell commands. Caprock — not the agent — runs them in\n" +
+			"the worker's git worktree when the worker says it is finished, and the task\n" +
+			"only reaches `done` when every one of them exits 0. Repeat the flag, or pass\n" +
+			"a comma-free list, for more than one command.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if strings.TrimSpace(title) == "" {
+				return errors.New("--title is required")
+			}
+			if len(criteria) == 0 {
+				// A task with no criteria cannot be verified, and the whole
+				// point of the runner is that nothing is done until its checks
+				// pass. Refusing here is cheaper than a task parked in
+				// needs_you an hour later.
+				return errors.New("--done-criteria is required: without a command to run, Caprock cannot verify the task")
+			}
+			rt, err := runningDaemon()
+			if err != nil {
+				return err
+			}
+			payload, err := json.Marshal(map[string]any{
+				"title": strings.TrimSpace(title), "budget_usd": budget, "done_criteria": criteria, "body": body,
+			})
+			if err != nil {
+				return err
+			}
+			resp, err := (&http.Client{Timeout: 5 * time.Second}).Post(
+				fmt.Sprintf("http://127.0.0.1:%d/v1/tasks", rt.Port), "application/json", bytes.NewReader(payload))
+			if err != nil {
+				return err
+			}
+			defer resp.Body.Close()
+			raw, _ := io.ReadAll(resp.Body)
+			if resp.StatusCode == http.StatusNotImplemented {
+				return errors.New(hiveOffMessage)
+			}
+			if resp.StatusCode != http.StatusOK {
+				var e struct {
+					Error string `json:"error"`
+				}
+				if json.Unmarshal(raw, &e) == nil && e.Error != "" {
+					return errors.New(e.Error)
+				}
+				return fmt.Errorf("create task: %s", resp.Status)
+			}
+			var detail struct {
+				Task taskRow `json:"task"`
+			}
+			_ = json.Unmarshal(raw, &detail)
+			fmt.Fprintf(cmd.OutOrStdout(), "created %s  %s\n", detail.Task.ID, detail.Task.Title)
+			fmt.Fprintln(cmd.OutOrStdout(), "It sits in the inbox until you start the orchestrator from the Tasks screen.")
+			return nil
+		},
+	}
+	c.Flags().StringVar(&title, "title", "", "what the task is (required)")
+	c.Flags().Float64Var(&budget, "budget", 0, "spend ceiling in USD; the task is parked for your approval above it")
+	c.Flags().StringArrayVar(&criteria, "done-criteria", nil, "shell command that must exit 0 before the task is done (repeatable, required)")
+	c.Flags().StringVar(&body, "body", "", "the brief the worker reads")
+	return c
+}
+
+// printHive names the queue directory on the startup line. Starting with --hive
+// used to print exactly the same line as starting without it, so the one thing a
+// user needed to confirm — that unattended running is on, and against which
+// directory — was invisible at the only moment they were looking.
+func printHive(cmd *cobra.Command, hiveDir string) {
+	if hiveDir == "" {
+		return
+	}
+	abs, err := filepath.Abs(hiveDir)
+	if err != nil {
+		abs = hiveDir
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "task runner is on   (hive: %s)\n", abs)
+}
+
+// runningDaemon resolves the live daemon's runtime, or explains that there is none.
+func runningDaemon() (config.Runtime, error) {
+	dir, err := config.DataDir()
+	if err != nil {
+		return config.Runtime{}, err
+	}
+	rt, err := config.ReadRuntime(dir)
+	if err != nil || !daemonAlive(rt) {
+		return config.Runtime{}, errors.New("caprock is not running")
+	}
+	return rt, nil
 }
 
 func versionCmd() *cobra.Command {

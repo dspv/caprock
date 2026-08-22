@@ -14,6 +14,7 @@
 import { useEffect, useState } from 'react'
 import { api, type Settings, type UpdateStatus } from '@/lib/api'
 import { fmtAgo } from '@/lib/format'
+import { Copyable } from '@/components/ui'
 
 const DISMISS_KEY = 'caprock.update.dismissed'
 
@@ -100,24 +101,6 @@ export function UpdateBanner({ plan, onSave, now }: {
         </button>
       </span>
     </Frame>
-  )
-}
-
-function Copyable({ command }: { command: string }) {
-  const [copied, setCopied] = useState(false)
-  return (
-    <button
-      className="mono text-[12px] bg-panel-2 border border-border px-2 py-0.5 rounded-sm hover:border-border-strong text-fg shrink-0"
-      onClick={() => {
-        void navigator.clipboard?.writeText(command).then(() => {
-          setCopied(true)
-          window.setTimeout(() => setCopied(false), 1500)
-        })
-      }}
-      title="copy to clipboard — run it in your terminal"
-    >
-      {copied ? 'copied' : `$ ${command}`}
-    </button>
   )
 }
 

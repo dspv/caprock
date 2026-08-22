@@ -62,6 +62,69 @@ func GetTask(ctx context.Context, q Querier, id string) (TaskRow, error) {
 	return t, err
 }
 
+// TaskSession is one session that worked a task, newest window first. It is how
+// the UI gets from a task card to the diff endpoint: the diff is keyed on a
+// session id, and the board only ever knew the hive agent id.
+type TaskSession struct {
+	SessionID string `json:"session_id"`
+	Cwd       string `json:"cwd"`
+	FromTs    int64  `json:"from_ts"`
+	ToTs      int64  `json:"to_ts,omitempty"`
+}
+
+// TaskSessions returns the sessions attributed to a task, newest window first.
+func TaskSessions(ctx context.Context, q Querier, taskID string) ([]TaskSession, error) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT a.session_id, COALESCE(s.cwd, ''), a.from_ts, COALESCE(a.to_ts, 0)
+		FROM task_assignments a LEFT JOIN sessions s ON s.session_id = a.session_id
+		WHERE a.task_id = ? ORDER BY a.from_ts DESC`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TaskSession
+	for rows.Next() {
+		var t TaskSession
+		if err := rows.Scan(&t.SessionID, &t.Cwd, &t.FromTs, &t.ToTs); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// VerificationRow is one recorded done_criteria run. Reading these back is what
+// lets the UI show *why* a task is green: which commands ran, and that they
+// exited zero. A pass with no visible evidence is indistinguishable from a pass
+// that never ran.
+type VerificationRow struct {
+	Round      int    `json:"round"`
+	Command    string `json:"command"`
+	ExitCode   int    `json:"exit_code"`
+	OutputPath string `json:"output_path,omitempty"`
+	Ts         int64  `json:"ts"`
+}
+
+// Verifications returns a task's recorded command runs, latest round first.
+func Verifications(ctx context.Context, q Querier, taskID string) ([]VerificationRow, error) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT round, command, exit_code, COALESCE(output_path, ''), ts
+		FROM verifications WHERE task_id = ? ORDER BY round DESC, ts ASC`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []VerificationRow
+	for rows.Next() {
+		var v VerificationRow
+		if err := rows.Scan(&v.Round, &v.Command, &v.ExitCode, &v.OutputPath, &v.Ts); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
 // IncForcedContinue bumps and returns the forced-continue count for (session, task).
 func IncForcedContinue(ctx context.Context, q Querier, sessionID, taskID string) (int, error) {
 	if _, err := q.ExecContext(ctx, `

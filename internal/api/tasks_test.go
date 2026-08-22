@@ -3,9 +3,11 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -17,6 +19,7 @@ type fakeTasks struct {
 	approvals   []string // "id:approve" / "id:reject"
 	verified    []string
 	started     bool
+	stopped     int
 	failVerify  bool
 	failApprove bool
 }
@@ -41,6 +44,10 @@ func (f *fakeTasks) Approve(_ context.Context, id string, approve bool) error {
 func (f *fakeTasks) StartOrchestrator(context.Context) (any, error) {
 	f.started = true
 	return map[string]string{"session_id": "orch-1"}, nil
+}
+func (f *fakeTasks) StopOrchestrator(context.Context) (any, error) {
+	f.stopped++
+	return map[string]int{"stopped": 3}, nil
 }
 func (f *fakeTasks) Verify(_ context.Context, id string) (any, error) {
 	if f.failVerify {
@@ -111,10 +118,51 @@ func TestPhase2EndpointsDisabled(t *testing.T) {
 		{"GET", "/v1/tasks"},
 		{"POST", "/v1/tasks/t1/verify"},
 		{"POST", "/v1/orchestrator/start"},
+		{"POST", "/v1/orchestrator/stop"},
 		{"GET", "/v1/approvals"},
 	} {
 		if code := do(p.m, p.path); code != http.StatusNotImplemented {
 			t.Fatalf("%s %s: want 501, got %d", p.m, p.path, code)
 		}
+	}
+}
+
+// Defect regression (panel finding 8): there was no stop-everything control. The
+// only way to halt an unattended fleet was POST /v1/agents/{id}/signal, per
+// agent, for session ids the user had no list of. One call must reach the
+// orchestrator and every worker it spawned.
+func TestStopOrchestratorEndpoint(t *testing.T) {
+	ft := &fakeTasks{}
+	do := newTasksSrv(t, ft)
+	r := do("POST", "/v1/orchestrator/stop", "")
+	if r.StatusCode != 200 {
+		t.Fatalf("stop: %d — there is no single call that stops orchestration", r.StatusCode)
+	}
+	if ft.stopped != 1 {
+		t.Fatalf("StopOrchestrator called %d times, want 1", ft.stopped)
+	}
+	var body map[string]int
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body["stopped"] != 3 {
+		t.Fatalf("stop count not reported: %v", body)
+	}
+}
+
+// The per-agent signal 400 names the FIELD, not only the values: a caller who
+// sent the right verb under the wrong key was previously left guessing.
+func TestAgentSignalErrorNamesTheField(t *testing.T) {
+	e := newEnv(t)
+	e.srv.Config.Handler = New(Deps{Store: e.st, Version: "t", Token: "tok",
+		Now: func() time.Time { return e.now }, Agents: &fakeAgents{avail: true}})
+	req := httptest.NewRequest("POST", "/v1/agents/s1/signal", bytes.NewBufferString(`{"signal":"kill"}`))
+	rr := httptest.NewRecorder()
+	e.srv.Config.Handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "action") {
+		t.Fatalf("the 400 does not name the field: %q", rr.Body.String())
 	}
 }

@@ -140,7 +140,8 @@ One local binary. Your data never leaves your machine.
 - **Know what it's worth** — your measured usage priced at the API rate, against
   what your plan actually costs.
 - **Steer it** — spawn, pause, and kill sessions from the dashboard.
-- **Trust it** — orchestrate agents that finish only when the tests pass.
+- **Trust it** — an opt-in task runner whose tasks finish only when the checks
+  Caprock runs come back green.
 - **Local-first** — loopback only, no servers, no telemetry, no account. The one thing that can reach the network is an optional check for new releases, off until you turn it on.
 
 What your usage is actually worth — the same work priced at the API rate,
@@ -160,9 +161,95 @@ And everything you have ever run through it — measured, not estimated:
 - **Control** — run and drive sessions from the browser. When a session is
   waiting on you, **what did it ask?** shows the last thing Claude said without
   a trip to the terminal.
-- **Orchestrate** — a verified multi-agent team; a task is done only when green.
+- **Orchestrate** — run queued tasks unattended, with a test gate; a task is done
+  only when green. Opt-in, off by default — see below.
 
 Nothing to change in your workflow — it starts by watching the sessions you already run.
+
+## Run tasks unattended (advanced, opt-in)
+
+This is the one part of Caprock that starts sessions on its own, so it is off
+unless you ask for it. The honest description is **an unattended task runner
+with a test gate**: the closest thing you already know is a git worktree plus a
+shell loop. What it adds is that a worker cannot stop early, a failing check
+bounces back with its output attached, spend is attributed per task against a
+budget, and there is a board showing where everything is.
+
+```bash
+caprock up --hive ~/caprock-tasks --repo ~/dev/myproject
+```
+
+`--hive` is a queue directory; Caprock creates it, and seeds it with a README
+and an example task so it explains itself. `--repo` is the checkout the work
+happens in (default: the current directory). Your own working tree is never
+touched — each worker gets its **own git worktree** at
+`<repo>/.caprock-worktrees/<worker-id>`, on a branch named
+`caprock/<worker-id>`.
+
+```
+~/caprock-tasks/
+├── README.md              # what this directory is
+├── tasks/<id>.md          # one file per task — the source of truth
+├── agents/<id>/           # identity, memory, inbox/, outbox/
+├── approvals/             # decisions waiting on you
+├── verifications/         # captured output of every check that ran
+└── ledger.jsonl           # append-only log of every state change
+```
+
+A task is a markdown file with YAML front matter. This is a complete one:
+
+```yaml
+---
+id: t-healthz
+title: Add a /healthz endpoint
+status: inbox
+assignee: null
+budget_usd: 3
+done_criteria:
+  - go test ./...
+  - go vet ./...
+verify_rounds_used: 0
+---
+Add a GET /healthz returning 200 and {"status":"ok"}. Cover it with a test in
+the existing handler test file.
+```
+
+Create one from the dashboard's Tasks screen, or from a terminal:
+
+```bash
+caprock task create --title "Add a /healthz endpoint" \
+  --done-criteria "go test ./..." --done-criteria "go vet ./..." --budget 3
+caprock tasks          # the board
+caprock status         # includes which hive is in force
+```
+
+Then press **Start orchestrator** on the Tasks screen. Nothing runs until you
+do.
+
+### What `done_criteria` is
+
+Plain shell commands. When a worker reports it has finished, **Caprock** runs
+them — not the agent — in that worker's worktree, with a five-minute ceiling
+each. Every command exits 0 and the task moves to `done`. Any command fails and
+the output bounces straight back to the worker to try again; after three rounds
+it stops and asks you. A task with no `done_criteria` cannot be verified, so it
+is never marked done on a worker's say-so.
+
+They run in a real checkout of your repository, so treat them as commands you
+are running yourself: `go build ./...` will leave a binary behind exactly as it
+would in your own tree.
+
+### Before you turn it on
+
+- **Workers run with permission prompts skipped** (`--dangerously-skip-permissions`),
+  in a worktree of your repo. A task body is acted on without a further
+  confirmation from you. Give each task a budget.
+- **Only for independent tasks.** Nothing here merges branches, and nothing
+  notices two workers editing the same file. Give concurrent tasks separate
+  ground.
+- **You land the work.** When a task is done, open its card: it shows the diff,
+  the checks that passed, the branch, and the git command that merges it. Caprock
+  never writes to your branches itself.
 
 Found a bug, or something that did not explain itself? The **feedback** button
 in the header opens a prefilled GitHub issue in your browser — nothing is sent
