@@ -26,6 +26,22 @@ Phase 3 (Delight) has no plan by design.
 - **Per-directory attribution was rebuilt after the first rule proved useless in practice.** The original rule charged a directory only when *every* file a turn touched was in it, which was exact and answered almost nothing: on a real 191k-event database it put **87.6%** of one project's $1735 into "repository-wide work". Asking what a service costs and being told "we could not tell you" for seven eighths of the money is not an answer. The rule now carries forward from the last file touched, and the same project reads `/app` **61%** ($2090.67), `/.ai` 6.8%, `/app/tests` 2.8%. Nothing is split or estimated — each turn still goes whole to one row — but the row it goes to is now decided by a stated rule rather than by whether the turn happened to contain a file edit.
 - **"Repository-wide work" now means one narrow thing**: the opening turns of a session, before Claude has touched any file. It is usually nothing at all, and the row is omitted entirely when it cost nothing rather than showing a puzzling `$0.00`.
 
+## [0.15.0] - 2026-08-22
+
+### Changed
+
+- Orchestration is now presented as what it is: an unattended task runner with a test gate. A task with an assignee shows its branch, and opens to the diff, the checks that passed, and the git command to take the work — none of which the product showed before, which is why the feature was hard to explain. The README documents it, a fresh hive seeds a README and an example task, and `caprock status` says which hive is active.
+
+### Added
+
+- `caprock task create`, and `POST /v1/orchestrator/stop` to stop the orchestrator and every worker at once.
+
+### Fixed
+
+- A task with no `done_criteria` reached `done` without being checked, contradicting the promise on the screen above it. Criteria are now required, and a task without them escalates instead of passing.
+- Three ways to spend money unattended with nothing to stop it: the orchestrator had no forced-continue limit, the wake loop had a throttle but no ceiling, and an over-budget task was parked as a file while its process kept running. All three now stop.
+- A task whose worktree was missing was verified against the main repository — which is clean, so it passed. Unverifiable is no longer treated as verified, and verification output is kept so a green result can be audited.
+
 ## [0.14.2] - 2026-08-22
 
 ### Changed
