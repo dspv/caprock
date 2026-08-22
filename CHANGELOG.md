@@ -38,6 +38,16 @@ Phase 3 (Delight) has no plan by design.
 - **Per-directory attribution was rebuilt after the first rule proved useless in practice.** The original rule charged a directory only when *every* file a turn touched was in it, which was exact and answered almost nothing: on a real 191k-event database it put **87.6%** of one project's $1735 into "repository-wide work". Asking what a service costs and being told "we could not tell you" for seven eighths of the money is not an answer. The rule now carries forward from the last file touched, and the same project reads `/app` **61%** ($2090.67), `/.ai` 6.8%, `/app/tests` 2.8%. Nothing is split or estimated — each turn still goes whole to one row — but the row it goes to is now decided by a stated rule rather than by whether the turn happened to contain a file edit.
 - **"Repository-wide work" now means one narrow thing**: the opening turns of a session, before Claude has touched any file. It is usually nothing at all, and the row is omitted entirely when it cost nothing rather than showing a puzzling `$0.00`.
 
+## [0.17.0] - 2026-08-23
+
+### Added
+
+- `caprock report` prints your own measured usage in a form ready to publish: what it would have cost at API list prices, against what your plan costs for the same window, with the caveat inline so it cannot be quoted without it. `--json` and `--markdown` for the other places you would paste it. The plan fee is prorated to the window and printed with cents, so the division is checkable on sight rather than asserted.
+
+### Fixed
+
+- In the light theme the pulse's "around it" and "well above it" tiers rendered at a contrast ratio of 1.05 — the same orange — so the legend explained a distinction a light-theme reader could not see. The tier colours were copied from the dark palette instead of reading theme tokens; the legend swatches were a second copy that had already drifted from the canvas they described.
+
 ## [0.16.0] - 2026-08-22
 
 ### Security
