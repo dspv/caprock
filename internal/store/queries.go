@@ -706,6 +706,25 @@ type Summary struct {
 	CostUSD    float64        `json:"cost_usd"`
 	Models     []ModelShare   `json:"models"`
 	Projects   []ProjectShare `json:"projects"`
+	// Unpriced is the volume in this range whose model is not in the pricing
+	// table, so it contributes nothing to CostUSD. Omitted when everything was
+	// priced. Without it the aggregates flattened unknown models into the
+	// COALESCE(SUM(cost_usd),0) total and 61k tokens of a model shipped after
+	// the pricing table rendered as a confident "$0.00" — indistinguishable
+	// from free, and an invented number under rule 6.
+	Unpriced *Unpriced `json:"unpriced,omitempty"`
+}
+
+// Unpriced is the volume that could not be priced, and which models caused it.
+// Naming the models matters: a user who sees an unknown model id can report it
+// (or add a pricing override); "some tokens are unpriced" is not actionable.
+type Unpriced struct {
+	Turns  int64 `json:"turns"`
+	Tokens int64 `json:"tokens"`
+	// Models are the distinct model ids with no pricing row, most volume first.
+	// An empty model id (a turn recorded before its model was known) is
+	// reported as "" and rendered by the UI as "unknown".
+	Models []string `json:"models"`
 }
 
 // ModelShare is tokens/cost per model.
@@ -874,6 +893,47 @@ func addSpark(p *ProjectShare, spec SparkSpec, series []sessionBucket) {
 	}
 }
 
+// queryUnpriced sums the assistant turns since fromMs that carry tokens but no
+// cost, grouped so the caller can name the models responsible. Returns nil when
+// every turn in the range was priced, which is the normal case — the field is
+// omitted from the payload entirely rather than reporting a zero.
+//
+// `cost_usd IS NULL` is exactly the rollup's "model not in pricing table; cost
+// left unknown" path (see internal/rollup). Turns with no tokens are excluded:
+// they cost nothing to price and would inflate the count with noise.
+func queryUnpriced(ctx context.Context, q Querier, fromMs int64) (*Unpriced, error) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT COALESCE(model,''),
+		       COUNT(*),
+		       COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0)),0)
+		FROM events
+		WHERE kind = 'turn.assistant' AND ts >= ? AND cost_usd IS NULL
+		  AND (tokens_in IS NOT NULL OR tokens_out IS NOT NULL OR cache_read IS NOT NULL OR cache_write IS NOT NULL)
+		GROUP BY model ORDER BY 3 DESC`, fromMs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var u Unpriced
+	for rows.Next() {
+		var model string
+		var turns, tokens int64
+		if err := rows.Scan(&model, &turns, &tokens); err != nil {
+			return nil, err
+		}
+		u.Turns += turns
+		u.Tokens += tokens
+		u.Models = append(u.Models, model)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if u.Turns == 0 {
+		return nil, nil
+	}
+	return &u, nil
+}
+
 // Summarize aggregates events since fromMs (0 = all time).
 func Summarize(ctx context.Context, q Querier, fromMs int64) (Summary, error) {
 	return SummarizeSpark(ctx, q, fromMs, SparkSpec{})
@@ -966,6 +1026,15 @@ func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpe
 		return s, err
 	}
 	_ = rows.Close()
+	// Which of those models had no price. The model mix above shows an unpriced
+	// model with cost 0.00, which reads as "this model was free" rather than
+	// "we could not price it" — so the volume is carried out separately and the
+	// UI is able to say which model it could not price.
+	if u, err := queryUnpriced(ctx, q, fromMs); err != nil {
+		return s, err
+	} else {
+		s.Unpriced = u
+	}
 	// Both levels of the projects roll-up come from ONE pass. Grouping by
 	// (project, first segment of repo_path) and summing the segments back up
 	// into the repository row costs a single scan; asking the database twice —
@@ -1372,6 +1441,11 @@ type HistoryTotals struct {
 	CostUSD       float64 `json:"cost_usd"`
 	AvgSessionSec float64 `json:"avg_session_sec"`
 	Days          int64   `json:"days"`
+	// Unpriced is the volume in range with no pricing row, so CostUSD excludes
+	// it. Omitted when everything was priced. History's headline claims the
+	// numbers are "measured, not estimated", which a silently incomplete total
+	// would make false.
+	Unpriced *Unpriced `json:"unpriced,omitempty"`
 }
 
 // History computes cross-session totals since fromMs.
@@ -1450,6 +1524,11 @@ func History(ctx context.Context, q Querier, fromMs int64) (HistoryTotals, error
 		WHERE se.last_event_at >= ?`, fromMs).Scan(&h.FilesTouched); err != nil {
 		return h, err
 	}
+	u, err := queryUnpriced(ctx, q, fromMs)
+	if err != nil {
+		return h, err
+	}
+	h.Unpriced = u
 	return h, nil
 }
 

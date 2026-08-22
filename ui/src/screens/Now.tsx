@@ -9,6 +9,7 @@ import { PulsePanel } from '@/components/Pulse'
 import { Attention } from '@/components/Attention'
 import { findAttention } from '@/lib/attention'
 import { UpdateBanner } from '@/components/UpdateBanner'
+import { UnpricedNote } from '@/components/Unpriced'
 import { SpawnDialog } from '@/components/SpawnDialog'
 import { LastWord } from '@/components/LastWord'
 import { usePlan } from '@/components/PlanPicker'
@@ -32,8 +33,27 @@ export function NowScreen() {
   const [plan, savePlan] = usePlan()
   const attention = findAttention({ sessions: list, alerts, now })
   const hooksMissing = status.data?.hooks && (status.data.hooks.missing ?? []).length > 0
+  // Defect: before any session exists the API returns Go zero values, so a new
+  // user's first screen was a $0.00 hero, three zeroes, and a *warn*-toned
+  // "Cache hit 0%" — the only coloured thing on the page was a warning about a
+  // cache that had never been used. Nothing measured means no number to show.
+  const measured = !!summary.data && summary.data.turns > 0
+  const ingestError = status.data?.ingest_error
   return (
     <div className="grid gap-3">
+      {/* A dead tailer used to be a log line: the daemon reported healthy, the
+        * status said "backfill done", and this screen told the user to start
+        * `claude` and wait for sessions that could never arrive. */}
+      {ingestError && (
+        <div className="border border-danger/50 bg-danger/10 px-3 py-2 text-[12px] rounded-[var(--radius-panel)] flex items-center gap-3">
+          <span className="text-danger font-medium">Ingest stopped</span>
+          <span className="text-fg-muted">
+            No new sessions are being captured. <span className="mono text-fg">{ingestError}</span> — check that
+            <span className="mono text-fg"> ~/.claude</span> is readable, then restart with
+            <span className="mono text-fg"> caprock down &amp;&amp; caprock up</span>.
+          </span>
+        </div>
+      )}
       {hooksMissing && (
         <div className="border border-warn/50 bg-warn/10 px-3 py-2 text-[12px] rounded-[var(--radius-panel)] flex items-center gap-3">
           <span className="text-warn font-medium">Hooks not installed</span>
@@ -51,15 +71,18 @@ export function NowScreen() {
           * colour pointed away from the money. The rest are reference figures
           * and step down, which is what makes room for the headline. */}
         <div className="grid grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr] divide-x divide-border">
-          <Stat label="Cost today" value={fmtUSD(summary.data?.cost_usd)} sub={<span title={costBasisLong(plan)}>{costBasis(plan)}</span>} tone="info" size="hero" />
-          <Stat label="Burn now" value={summary.data ? `${fmtUSD(summary.data.burn.usd_per_hour)}/h` : '—'} sub={summary.data ? `${fmtTokens(Math.round(summary.data.burn.tokens_per_min))} tok/min · last ${summary.data.burn.window_min}m` : undefined} />
-          <Stat label="Sessions" value={summary.data ? summary.data.sessions : '—'} sub={summary.data ? `${summary.data.active_sessions} active` : undefined} size="compact" />
-          <Stat label="Turns" value={summary.data ? summary.data.turns : '—'} sub={summary.data ? `${summary.data.tool_calls} tool calls` : undefined} size="compact" />
+          <Stat label="Cost today" value={measured ? fmtUSD(summary.data?.cost_usd) : '—'} sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : 'nothing measured yet'}</span>} tone="info" size="hero" />
+          <Stat label="Burn now" value={measured ? `${fmtUSD(summary.data!.burn.usd_per_hour)}/h` : '—'} sub={measured ? `${fmtTokens(Math.round(summary.data!.burn.tokens_per_min))} tok/min · last ${summary.data!.burn.window_min}m` : undefined} />
+          <Stat label="Sessions" value={measured ? summary.data!.sessions : '—'} sub={measured ? `${summary.data!.active_sessions} active` : undefined} size="compact" />
+          <Stat label="Turns" value={measured ? summary.data!.turns : '—'} sub={measured ? `${summary.data!.tool_calls} tool calls` : undefined} size="compact" />
           {/* Cache hit is ~99% forever on Claude Code, so it is reassurance
             * rather than news: it keeps its place but not a colour, and only
             * speaks up when it drops far enough to mean something broke. */}
-          <Stat label="Cache hit" value={summary.data ? fmtPct(summary.data.savings.hit_rate * 100) : '—'} sub={summary.data ? `${fmtPct(summary.data.savings.cut_pct)} input cost cut` : undefined} tone={summary.data && summary.data.savings.hit_rate < 0.9 ? 'warn' : undefined} size="compact" />
+          {/* The warn tone fires below 90%, which is true of a zero — so an
+            * untouched cache was styled as a fault on a brand-new install. */}
+          <Stat label="Cache hit" value={measured ? fmtPct(summary.data!.savings.hit_rate * 100) : '—'} sub={measured ? `${fmtPct(summary.data!.savings.cut_pct)} input cost cut` : undefined} tone={measured && summary.data!.savings.hit_rate < 0.9 ? 'warn' : undefined} size="compact" />
         </div>
+        <UnpricedNote u={summary.data?.unpriced} className="mx-3 mb-2.5" />
       </Panel>
 
       {/* The shape of the work, above the detail of it: a glance says which
@@ -87,14 +110,17 @@ export function NowScreen() {
         {/* The spawn dialog existed but nothing rendered it, so the Terminal
           * tab told people to use a "New session" control that was nowhere on
           * the dashboard — and no session could ever be owned. */}
-        {status.data?.claude_available && (
-          <button
-            className="text-[11px] border border-accent/50 text-accent bg-accent/10 px-2 py-0.5 rounded-sm hover:bg-accent/20"
-            onClick={() => setSpawning(true)}
-          >
-            + New session
-          </button>
-        )}
+        {/* The button used to be hidden outright when `claude` was missing, and
+          * the dialog that explains why was only reachable from that button —
+          * so the explanation existed and nobody could ever see it. Show the
+          * control either way and let the dialog do the explaining. */}
+        <button
+          className={`text-[11px] px-2 py-0.5 rounded-sm border ${status.data?.claude_available ? 'border-accent/50 text-accent bg-accent/10 hover:bg-accent/20' : 'border-border text-fg-faint hover:text-fg-muted'}`}
+          onClick={() => setSpawning(true)}
+          title={status.data?.claude_available ? 'start a session Caprock owns' : 'claude was not found on this machine — click for details'}
+        >
+          + New session{status.data && !status.data.claude_available ? ' (claude not found)' : ''}
+        </button>
         <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
           <input type="checkbox" className="accent-[var(--color-accent)]" checked={showEnded} onChange={(e) => setShowEnded(e.target.checked)} />
           show ended sessions

@@ -318,3 +318,95 @@ func TestStatuslineRecognisesQuotedPathForm(t *testing.T) {
 		t.Fatal("wrong subcommand matched as statusline")
 	}
 }
+
+// A "hooks" key that is not a JSON object — null, an array, a string — used to
+// reach hasOurEntry as a nil *Object and panic with a SIGSEGV on `caprock up`,
+// the very first command a new user runs. Realistic: a user who tried hooks and
+// cleared them, or another tool that wrote an empty array. Install must return
+// an error that names the file and what is wrong, and must never overwrite the
+// user's value.
+func TestInstallRefusesNonObjectHooksKey(t *testing.T) {
+	for _, tc := range []struct{ name, content, want string }{
+		{"null", `{"hooks": null}`, "null"},
+		{"array", `{"hooks": []}`, "an array"},
+		{"string", `{"hooks": "caprock-hook"}`, "a string"},
+		{"number", `{"hooks": 1}`, "a number"},
+		{"bool", `{"hooks": true}`, "a boolean"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			p := write(t, dir, tc.content)
+			shim := filepath.Join(dir, "caprock-hook")
+
+			// Must not panic, and must fail loudly.
+			backup, err := Install(p, shim)
+			if err == nil {
+				t.Fatalf("expected an error for hooks=%s, got backup=%q", tc.name, backup)
+			}
+			// The message names the file, the key's actual kind, and the remedy.
+			for _, needle := range []string{p, `"hooks"`, tc.want, "not a JSON object", "will not overwrite"} {
+				if !strings.Contains(err.Error(), needle) {
+					t.Errorf("error message missing %q: %v", needle, err)
+				}
+			}
+			if backup != "" {
+				t.Errorf("no write should have happened, got backup %q", backup)
+			}
+			// The user's file is untouched, byte for byte.
+			if b, _ := os.ReadFile(p); string(b) != tc.content {
+				t.Errorf("settings.json was modified:\n got %s\nwant %s", b, tc.content)
+			}
+			// Inspect already nil-checks; it must stay non-panicking too, and
+			// report every event missing rather than claiming an install.
+			st, err := Inspect(p, shim)
+			if err != nil {
+				t.Fatalf("Inspect: %v", err)
+			}
+			if len(st.Installed) != 0 || len(st.Missing) != len(Events) {
+				t.Fatalf("Inspect on a non-object hooks key: %+v", st)
+			}
+			// Uninstall must be a clean no-op, not a panic.
+			if removed, err := Uninstall(p, shim); removed || err != nil {
+				t.Fatalf("Uninstall: removed=%v err=%v", removed, err)
+			}
+		})
+	}
+}
+
+// On a machine with no ~/.claude/settings.json, `caprock up` runs Install
+// (which creates the file) and then the statusline install, whose backupOnce
+// saw a file that now existed and snapshotted it. The resulting
+// `.caprock-backup-*` held Caprock's own hooks while being named as the user's
+// restore point. There was no original, so there must be no backup.
+func TestFirstRunBackupIsNotOurOwnOutput(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, ".claude", "settings.json")
+	shim := filepath.Join(dir, "caprock-hook")
+	slCmd := filepath.Join(dir, "caprock") + " statusline"
+
+	// No settings.json exists: Install creates it and makes no backup.
+	if backup, err := Install(p, shim); err != nil || backup != "" {
+		t.Fatalf("install on a fresh machine: backup=%q err=%v", backup, err)
+	}
+	// The statusline install follows in the same `caprock up` run.
+	if backup, err := InstallStatusline(p, slCmd); err != nil || backup != "" {
+		t.Fatalf("statusline backed up a file we created ourselves: backup=%q err=%v", backup, err)
+	}
+	matches, _ := filepath.Glob(p + ".caprock-backup-*")
+	if len(matches) != 0 {
+		b, _ := os.ReadFile(matches[0])
+		t.Fatalf("first run left %d backup(s) of our own output: %v\n%s", len(matches), matches, b)
+	}
+
+	// A real user file, by contrast, must still be backed up exactly once.
+	dir2 := t.TempDir()
+	p2 := write(t, dir2, userSettings)
+	shim2 := filepath.Join(dir2, "caprock-hook")
+	backup, err := Install(p2, shim2)
+	if err != nil || backup == "" {
+		t.Fatalf("a pre-existing settings.json must be backed up: backup=%q err=%v", backup, err)
+	}
+	if b, _ := os.ReadFile(backup); string(b) != userSettings {
+		t.Fatalf("backup is not the user's original:\n%s", b)
+	}
+}

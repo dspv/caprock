@@ -93,6 +93,24 @@ type Daemon struct {
 	mu     sync.Mutex
 	alerts map[string]*loop.Alert // session → last alert (expires after window)
 	url    string
+	// ingestErr is the terminal error from the tailer goroutine, if it died.
+	// Ingest is the whole product on Phase 0, so its death is not a log line:
+	// it is reported by /v1/status, `caprock status` and the dashboard.
+	ingestErr error
+}
+
+// setIngestErr records the terminal ingest error for /v1/status.
+func (d *Daemon) setIngestErr(err error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.ingestErr = err
+}
+
+// ingestError returns the terminal ingest error, or nil while ingest is alive.
+func (d *Daemon) ingestError() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.ingestErr
 }
 
 // Run starts the daemon and blocks until ctx is cancelled or a fatal error occurs.
@@ -254,6 +272,14 @@ func (d *Daemon) run(ctx context.Context) error {
 		go func() {
 			if err := d.tail.Run(ctx); err != nil {
 				d.log.Error("ingest stopped", "component", "ingest", "err", err)
+				// Logging alone made a fatal ingest failure invisible: with a
+				// read-only ~/.claude the daemon reported healthy, `caprock
+				// status` said "backfill done", and the dashboard showed "No
+				// sessions yet — start claude in any terminal" forever. Store it
+				// so /v1/status, the CLI and the Now screen can all say so.
+				if ctx.Err() == nil {
+					d.setIngestErr(err)
+				}
 			}
 		}()
 	}
@@ -542,14 +568,20 @@ type Status struct {
 	Version string `json:"version"`
 	// Platform is GOOS/GOARCH — the first thing a bug report needs and the
 	// last thing anyone remembers to include.
-	Platform        string        `json:"platform"`
-	PID             int           `json:"pid"`
-	StartedAt       int64         `json:"started_at"`
-	UptimeS         int64         `json:"uptime_s"`
-	URL             string        `json:"url"`
-	DataDir         string        `json:"data_dir"`
-	Pricing         PricingStatus `json:"pricing"`
-	Ingest          *ingest.Stats `json:"ingest,omitempty"`
+	Platform  string        `json:"platform"`
+	PID       int           `json:"pid"`
+	StartedAt int64         `json:"started_at"`
+	UptimeS   int64         `json:"uptime_s"`
+	URL       string        `json:"url"`
+	DataDir   string        `json:"data_dir"`
+	Pricing   PricingStatus `json:"pricing"`
+	Ingest    *ingest.Stats `json:"ingest,omitempty"`
+	// IngestError is the terminal error that stopped transcript ingest, when
+	// one happened (a read-only ~/.claude, a vanished transcript root). Empty
+	// while ingest is running. Without it the daemon looked healthy while
+	// capturing nothing, and the dashboard told the user to start `claude` and
+	// wait for sessions that could never arrive.
+	IngestError     string        `json:"ingest_error,omitempty"`
 	Hooks           *hooks.Status `json:"hooks,omitempty"`
 	UIBuilt         bool          `json:"ui_built"`
 	ClaudeAvailable bool          `json:"claude_available"`
@@ -611,6 +643,9 @@ func (d *Daemon) status(_ context.Context) any {
 	if d.tail != nil {
 		s := d.tail.Stats()
 		st.Ingest = &s
+	}
+	if err := d.ingestError(); err != nil {
+		st.IngestError = err.Error()
 	}
 	// Read on request from a file the machine already has: no storage, no
 	// polling, and absence is a normal answer rather than an error.

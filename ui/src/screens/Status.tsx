@@ -20,6 +20,11 @@ export function StatusScreen() {
     ['loop rule', `≥ ${s.loop_k} same-tool calls in ${s.loop_t_minutes} min · ${s.active_loops} active`],
     ['events stored', `${s.events.toLocaleString()}${s.retention_days > 0 ? ` · pruned after ${s.retention_days}d` : ' · kept forever (set retention_days to cap DB growth)'}`],
     ['orchestration', s.orchestration ? 'on (--hive)' : 'off'],
+    // Spawning needs the binary. When it is missing every spawn control is
+    // disabled and nothing anywhere said why.
+    ['claude', s.claude_available
+      ? 'found on PATH — Caprock can start sessions for you'
+      : 'not found on PATH — Caprock cannot start sessions, but still observes every session you start yourself'],
     ['dashboard', s.ui_built ? 'embedded build' : 'dev server / placeholder'],
   ]
   if (s.hooks) rows.push(['hooks', `${(s.hooks.installed ?? []).length}/${(s.hooks.installed ?? []).length + (s.hooks.missing ?? []).length} events registered in ${s.hooks.settings_path}${s.hooks.shim_exists ? '' : ' (shim missing)'}`])
@@ -33,6 +38,9 @@ export function StatusScreen() {
       `${d.five_hour_pct}% of the 5-hour window · ${d.seven_day_pct}% of the 7-day${d.stale ? ' · last seen ' + new Date(d.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ', app closed since' : ' · now'}`,
     ])
   }
+  // A distinct key: React renders these rows keyed by name, and the live
+  // ingest row below uses 'ingest'.
+  if (s.ingest_error) rows.push(['ingest error', `STOPPED: ${s.ingest_error} — nothing is being captured`])
   if (s.ingest) rows.push(['ingest', `${s.ingest.files_known} transcripts · ${s.ingest.events_stored} events stored · ${s.ingest.events_deduped} deduped · ${s.ingest.lines_malformed} malformed lines · backfill ${s.ingest.backfill_done ? 'done' : 'running'}`])
   return (
     <div className="grid gap-3 max-w-3xl">
@@ -49,6 +57,26 @@ export function StatusScreen() {
           </tbody>
         </table>
       </Panel>
+      {/* A dead tailer meant nothing was being captured while every other row
+        * on this screen looked healthy. */}
+      {s.ingest_error && (
+        <Panel title="Ingest stopped">
+          <div className="px-3 py-2 text-[12px] text-fg-muted">
+            No new sessions are being captured: <span className="mono text-fg">{s.ingest_error}</span>. Check that
+            <span className="mono text-fg"> ~/.claude</span> is readable, then restart with
+            <span className="mono text-fg"> caprock down &amp;&amp; caprock up</span>.
+          </div>
+        </Panel>
+      )}
+      {!s.claude_available && (
+        <Panel title="claude not found">
+          <div className="px-3 py-2 text-[12px] text-fg-muted">
+            The <span className="mono">claude</span> binary was not found on this machine, so Caprock cannot spawn
+            sessions. It still observes every session you start yourself. Install Claude Code, or make sure
+            <span className="mono"> claude</span> is on the PATH the daemon was started with.
+          </div>
+        </Panel>
+      )}
       {s.hooks && (s.hooks.missing ?? []).length > 0 && (
         <Panel title="Hooks not fully installed">
           <div className="px-3 py-2 text-[12px] text-fg-muted">

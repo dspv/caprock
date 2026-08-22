@@ -3,6 +3,7 @@
 package hooks
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -73,6 +74,14 @@ func Install(settingsPath, shimPath string) (backup string, err error) {
 		return "", err
 	}
 	hooks := hooksObject(root, true)
+	if hooks == nil {
+		// The "hooks" key exists but is not an object (null, an array, a string
+		// — a user who cleared their hooks, or another tool that wrote an empty
+		// array). We never clobber it, and we must not dereference it either:
+		// this used to reach hasOurEntry as a nil *Object and panic on the very
+		// first command a new user runs.
+		return "", fmt.Errorf("%s: the \"hooks\" key is %s, not a JSON object (fix or move the file; Caprock will not overwrite an unparsable settings.json)", settingsPath, jsonKindOf(root))
+	}
 	changed := false
 	for _, ev := range Events {
 		if hasOurEntry(hooks, ev, shimPath) {
@@ -87,11 +96,22 @@ func Install(settingsPath, shimPath string) (backup string, err error) {
 	if !changed {
 		return "", nil
 	}
+	// Whether the user had a settings.json before this write decides both the
+	// backup here and any later one in the same run (statusline), so record it
+	// before writing rather than re-stat'ing a file we just created.
+	_, statErr := os.Stat(settingsPath)
+	preexisting := statErr == nil
 	backup, err = backupOnce(settingsPath)
 	if err != nil {
 		return "", err
 	}
-	return backup, writeSettings(settingsPath, root)
+	if err := writeSettings(settingsPath, root); err != nil {
+		return "", err
+	}
+	if !preexisting {
+		markCreatedByUs(settingsPath)
+	}
+	return backup, nil
 }
 
 // Uninstall removes only entries whose command points at our shim, and drops
@@ -138,6 +158,10 @@ func Uninstall(settingsPath, shimPath string) (removed bool, err error) {
 	if hooks.Len() == 0 {
 		root.Delete("hooks")
 	}
+	// Our hooks are gone, so the "we created this file" marker has served its
+	// purpose; leaving it behind would suppress a legitimate backup if the user
+	// later edits settings.json and reinstalls.
+	_ = os.Remove(createdMarkerPath(settingsPath))
 	return true, writeSettings(settingsPath, root)
 }
 
@@ -176,6 +200,17 @@ func writeSettings(path string, root *Object) error {
 	return config.WriteFileAtomic(path, b, 0o600)
 }
 
+// createdMarker sits next to a settings.json that Caprock itself created. Its
+// presence means "there was no user file here", so a later backup in the same
+// first run would only be snapshotting Caprock's own output.
+func createdMarkerPath(path string) string { return path + ".caprock-created" }
+
+// markCreatedByUs records that settings.json did not exist before we wrote it.
+// Best-effort: failing to write the marker must not fail an install.
+func markCreatedByUs(path string) {
+	_ = os.WriteFile(createdMarkerPath(path), []byte("caprock created this settings.json\n"), 0o600)
+}
+
 // backupOnce copies settings.json to settings.json.caprock-backup-<unix-ts> if no
 // caprock backup exists yet. Returns the backup path or "" when there was no
 // original file / a backup already exists.
@@ -186,6 +221,14 @@ func backupOnce(path string) (string, error) {
 	}
 	if err != nil {
 		return "", err
+	}
+	// The file exists — but if we are the ones who created it moments ago, a
+	// "backup" would capture Caprock's own hooks and be misnamed as a restore
+	// point. `caprock up` on a machine with no settings.json ran Install (which
+	// creates the file) and then maybeInstallStatusline, whose backupOnce
+	// snapshotted the now-hook-laden file.
+	if _, err := os.Stat(createdMarkerPath(path)); err == nil {
+		return "", nil
 	}
 	matches, _ := filepath.Glob(path + ".caprock-backup-*")
 	if len(matches) > 0 {
@@ -215,6 +258,31 @@ func hooksObject(root *Object, create bool) *Object {
 	o := NewObject()
 	root.Set("hooks", o)
 	return o
+}
+
+// jsonKindOf names the JSON type of root["hooks"] for an error message. A user
+// whose settings.json holds `{"hooks": []}` needs to be told which key is wrong
+// and what it currently is, not handed a type assertion failure.
+func jsonKindOf(root *Object) string {
+	v, ok := root.Get("hooks")
+	if !ok {
+		return "absent"
+	}
+	switch v.(type) {
+	case nil:
+		return "null"
+	case []any:
+		return "an array"
+	case string:
+		return "a string"
+	case bool:
+		return "a boolean"
+	// ParseOrdered decodes with UseNumber to keep big integers intact, so a
+	// numeric value arrives as json.Number rather than float64.
+	case json.Number, float64:
+		return "a number"
+	}
+	return "not an object"
 }
 
 func hasOurEntry(hooks *Object, ev, shimPath string) bool {

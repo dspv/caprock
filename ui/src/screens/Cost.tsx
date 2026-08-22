@@ -7,6 +7,7 @@ import { BarChart, BarReadout } from '@/components/BarChart'
 import { PlanValue } from '@/components/PlanValue'
 import { usePlan } from '@/components/PlanPicker'
 import { costBasis, costBasisLong } from '@/components/CostBasis'
+import { UnpricedNote } from '@/components/Unpriced'
 
 type Range = 'today' | '7d' | '30d' | 'all'
 
@@ -21,6 +22,10 @@ export function CostScreen() {
   const [plan] = usePlan()
   const [activeDay, setActiveDay] = useState<string | null>(null)
   const s = summary.data
+  // Before anything has been captured the API returns Go zero values, so this
+  // screen rendered a board of $0.00 / 0 with a warn-toned "0% hit rate" — a
+  // fault light for a cache that has never been used.
+  const measured = !!s && s.turns > 0
   const days = groupDays(daily.data ?? [])
   return (
     <div className="grid gap-3">
@@ -40,13 +45,15 @@ export function CostScreen() {
               the misreading happens where the number is. The session count used
               to live here and now does not — appended to the basis it pushed
               the line past the column and truncated the part that matters. */}
-          <Stat label="Cost" value={fmtUSD(s?.cost_usd)} sub={<span title={costBasisLong(plan)}>{costBasis(plan)}</span>} tone="info" size="hero" />
-          <Stat label="Burn now" value={s ? `${fmtUSD(s.burn.usd_per_hour)}/h` : '—'} sub={s ? `${fmtTokens(Math.round(s.burn.tokens_per_min))} tok/min · ${s.sessions} sessions` : undefined}  />
-          <Stat label="Input" value={fmtTokens(s?.tokens_in)} sub="fresh, full price" />
-          <Stat label="Output" value={fmtTokens(s?.tokens_out)} sub={s ? `${s.turns} turns` : undefined} />
-          <Stat label="Cache read" value={fmtTokens(s?.cache_read)} sub={s ? `${fmtPct(s.savings.hit_rate * 100)} hit rate` : undefined} tone={s && s.savings.hit_rate < 0.9 ? 'warn' : undefined} />
-          <Stat label="Cache write" value={fmtTokens(s?.cache_write)} sub={s ? `${fmtPct(s.savings.cut_pct)} input cost cut by cache` : undefined} />
+          <Stat label="Cost" value={measured ? fmtUSD(s!.cost_usd) : '—'} sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : 'nothing measured in this range'}</span>} tone="info" size="hero" />
+          <Stat label="Burn now" value={measured ? `${fmtUSD(s!.burn.usd_per_hour)}/h` : '—'} sub={measured ? `${fmtTokens(Math.round(s!.burn.tokens_per_min))} tok/min · ${s!.sessions} sessions` : undefined}  />
+          <Stat label="Input" value={measured ? fmtTokens(s!.tokens_in) : '—'} sub="fresh, full price" />
+          <Stat label="Output" value={measured ? fmtTokens(s!.tokens_out) : '—'} sub={measured ? `${s!.turns} turns` : undefined} />
+          <Stat label="Cache read" value={measured ? fmtTokens(s!.cache_read) : '—'} sub={measured ? `${fmtPct(s!.savings.hit_rate * 100)} hit rate` : undefined} tone={measured && s!.savings.hit_rate < 0.9 ? 'warn' : undefined} />
+          <Stat label="Cache write" value={measured ? fmtTokens(s!.cache_write) : '—'} sub={measured ? `${fmtPct(s!.savings.cut_pct)} input cost cut by cache` : undefined} />
         </div>
+        {/* The money screen is exactly where an incomplete total misleads. */}
+        <UnpricedNote u={s?.unpriced} className="mx-3 mb-2.5" />
       </Panel>
       <div className="grid gap-3 lg:grid-cols-2">
         <Panel title="Model mix" right={<span>by cost</span>}>
@@ -58,8 +65,10 @@ export function CostScreen() {
                   <td className="px-3 py-1 mono">{m.model || 'unknown'}</td>
                   <td className="px-3 py-1 num text-right text-fg-muted">{m.turns} turns</td>
                   <td className="px-3 py-1 num text-right text-fg-muted">{fmtTokens(m.tokens)}</td>
-                  <td className="px-3 py-1 num text-right">{fmtUSD(m.cost_usd)}</td>
-                  <td className="px-3 py-1 num text-right text-fg-faint w-14">{s && s.cost_usd > 0 ? fmtPct((100 * m.cost_usd) / s.cost_usd) : '—'}</td>
+                  {/* An unpriced model summed to 0 and rendered "$0.00",
+                      which reads as free. It has no price, so it shows none. */}
+                  <td className="px-3 py-1 num text-right">{(s?.unpriced?.models ?? []).includes(m.model) ? <span className="text-warn" title="this model is not in the pricing table, so its cost is unknown">unpriced</span> : fmtUSD(m.cost_usd)}</td>
+                  <td className="px-3 py-1 num text-right text-fg-faint w-14">{s && s.cost_usd > 0 && !(s.unpriced?.models ?? []).includes(m.model) ? fmtPct((100 * m.cost_usd) / s.cost_usd) : '—'}</td>
                 </tr>
               ))}
             </tbody>

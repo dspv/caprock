@@ -92,6 +92,12 @@ export interface FileDiff { path: string; status: string; additions: number; del
 export interface DiffResult { root: string; branch: string; files: FileDiff[]; stat: string }
 
 export interface ModelShare { model: string; tokens: number; cost_usd: number; turns: number }
+
+/** Volume whose model is not in the pricing table, so it contributes nothing to
+ *  cost_usd. Absent when everything in range was priced. The models are named
+ *  because "some tokens are unpriced" is not something a user can act on,
+ *  whereas an unknown model id is. */
+export interface Unpriced { turns: number; tokens: number; models: string[] }
 /** One directory inside a repository: the second level of the projects roll-up.
  *  `path` is the first segment under the repo root; "." is the root itself. */
 /** One directory inside a repository, charged by what the repository's TURNS
@@ -155,6 +161,8 @@ export interface Summary {
   pricing_version: string
   throttles: number
   rate_limits?: RateLimits
+  /** Present only when some turns could not be priced — see Unpriced. */
+  unpriced?: Unpriced
 }
 
 export interface RateWindow {
@@ -201,7 +209,7 @@ export interface UpdateStatus {
 export interface DailyStat { day: string; project: string; model: string; tokens_total: number; cost_usd: number; sessions: number }
 
 export interface ToolCount { tool: string; count: number }
-export interface HistoryTotals { sessions: number; owned_sessions: number; turns: number; tool_calls: number; files_touched: number; cost_usd: number; avg_session_sec: number; days: number }
+export interface HistoryTotals { sessions: number; owned_sessions: number; turns: number; tool_calls: number; files_touched: number; cost_usd: number; avg_session_sec: number; days: number; unpriced?: Unpriced }
 export interface Task { id: string; title: string; status: string; assignee: string; budget_usd: number; verify_rounds: number; cost_usd: number; created_at: number; updated_at: number }
 // The live WS "task" frame carries the on-disk hive.Task (no cost_usd — that's
 // computed for the REST TaskRow). Enough to drive the orchestration graph's
@@ -238,6 +246,10 @@ export interface Status {
   pricing: { version: string; source: string; fetched_at: string; user_override: boolean; models: number }
   ingest?: { files_known: number; lines_parsed: number; lines_malformed: number; lines_skipped: number; events_stored: number; events_deduped: number; backfill_done: boolean }
   hooks?: { settings_path: string; shim_path: string; installed: string[] | null; missing: string[] | null; shim_exists: boolean }
+  /** The terminal error that stopped transcript ingest, when one happened.
+   *  While this is set nothing new is being captured, however healthy the rest
+   *  of the status looks. */
+  ingest_error?: string
   ui_built: boolean
   claude_available: boolean
   owned_active: number
@@ -281,6 +293,22 @@ export class ApiError extends Error {
   constructor(public status: number, message: string, public body?: unknown) {
     super(message)
   }
+}
+
+/**
+ * The human-readable message behind a failed request. The API answers errors
+ * with `{error, detail}`, where `detail` is the part that tells the user what
+ * to do — `String(e)` threw both away and rendered "Error: 501 Not
+ * Implemented" over a payload that said "the task runner is off ... turn it on
+ * with POST /v1/hive, or start the daemon with caprock up --hive <dir>".
+ */
+export function errText(e: unknown): string {
+  if (e instanceof ApiError) {
+    const b = e.body as { error?: string; detail?: string } | undefined
+    const head = b?.error ?? e.message
+    return b?.detail ? `${head} — ${b.detail}` : head
+  }
+  return e instanceof Error ? e.message : String(e)
 }
 
 async function get<T>(path: string): Promise<T> {

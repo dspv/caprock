@@ -7,6 +7,7 @@ import { groupDays } from './Cost'
 import { BarChart, BarReadout } from '@/components/BarChart'
 import { costBasis, costBasisLong } from '@/components/CostBasis'
 import { usePlan } from '@/components/PlanPicker'
+import { UnpricedNote } from '@/components/Unpriced'
 
 type Range = 'today' | '7d' | '30d' | 'all'
 
@@ -16,6 +17,8 @@ export function HistoryScreen() {
   const h = useApi(() => api.history(range), [range], { intervalMs: 15000 })
   const [plan] = usePlan()
   const d = h.data
+  // "Measured, not estimated" sat above an all-zero board on a fresh install.
+  const measured = !!d && d.totals.turns > 0
   const days = groupDays(d?.daily ?? [])
   const maxTool = Math.max(...(d?.tools ?? []).map((t) => t.count), 1)
   return (
@@ -29,22 +32,25 @@ export function HistoryScreen() {
       {h.error && !d && <Empty title="Cannot reach the daemon">{h.error.message}</Empty>}
       <Panel title={`Lifetime · ${range}`}>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 divide-x divide-border">
-          <Stat size="compact" label="Sessions" value={d ? d.totals.sessions : '—'} sub={d ? `${d.totals.owned_sessions} spawned by caprock` : undefined} />
-          <Stat size="compact" label="Active days" value={d ? d.totals.days : '—'} />
-          <Stat size="compact" label="Turns" value={d ? fmtTokens(d.totals.turns) : '—'} sub={d ? `${fmtTokens(d.totals.tool_calls)} tool calls` : undefined} />
+          <Stat size="compact" label="Sessions" value={measured ? d!.totals.sessions : '—'} sub={measured ? `${d!.totals.owned_sessions} spawned by caprock` : undefined} />
+          <Stat size="compact" label="Active days" value={measured ? d!.totals.days : '—'} />
+          <Stat size="compact" label="Turns" value={measured ? fmtTokens(d!.totals.turns) : '—'} sub={measured ? `${fmtTokens(d!.totals.tool_calls)} tool calls` : undefined} />
           {/* Summed per session, so a file edited in three sessions counts three
               times. "Files touched" alone reads as a count of distinct files —
               on the author's database that is 1,502 against the 1,703 shown. */}
-          <Stat size="compact" label="Files touched" value={d ? fmtTokens(d.totals.files_touched) : '—'} sub="summed per session" />
+          <Stat size="compact" label="Files touched" value={measured ? fmtTokens(d!.totals.files_touched) : '—'} sub="summed per session" />
           {/* This is first-event-to-last-event elapsed time, so a session left open
             overnight counts its sleeping hours — hence the honest label. */}
-          <Stat size="compact" label="Avg session span" value={d ? fmtDuration(Math.round(d.totals.avg_session_sec * 1000)) : '—'} sub="first to last event" />
-          <Stat size="compact" label="Cache hit" value={d ? fmtPct(d.savings.hit_rate * 100) : '—'} sub={d ? `${fmtPct(d.savings.cut_pct)} input cost cut` : undefined} tone={d && d.savings.hit_rate < 0.9 ? 'warn' : undefined} />
+          <Stat size="compact" label="Avg session span" value={measured ? fmtDuration(Math.round(d!.totals.avg_session_sec * 1000)) : '—'} sub="first to last event" />
+          {/* A never-used cache is 0%, which tripped the < 90% warn tone and
+            * painted a fault light onto an empty install. */}
+          <Stat size="compact" label="Cache hit" value={measured ? fmtPct(d!.savings.hit_rate * 100) : '—'} sub={measured ? `${fmtPct(d!.savings.cut_pct)} input cost cut` : undefined} tone={measured && d!.savings.hit_rate < 0.9 ? 'warn' : undefined} />
           {/* "API-equivalent" was our jargon on the largest number in the
               product; it explained nothing to someone meeting it for the
               first time, and three of five readers took it for a bill. */}
-          <Stat label="Cost" value={fmtUSD(d?.totals.cost_usd)} sub={<span title={costBasisLong(plan)}>{costBasis(plan)}</span>} tone="info" size="hero" />
+          <Stat label="Cost" value={measured ? fmtUSD(d!.totals.cost_usd) : '—'} sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : 'nothing measured yet'}</span>} tone="info" size="hero" />
         </div>
+        <UnpricedNote u={d?.totals.unpriced} className="mx-3 mb-2.5" />
       </Panel>
       <div className="grid gap-3 lg:grid-cols-2">
         <Panel title="Tool usage" right={<span>by calls</span>}>

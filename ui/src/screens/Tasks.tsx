@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api, ApiError, type DiffResult, type Status, type Task, type TaskVerification, type TaskWork } from '@/lib/api'
+import { api, ApiError, errText, type DiffResult, type Status, type Task, type TaskVerification, type TaskWork } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtUSD, shortId } from '@/lib/format'
 import { Copyable, Empty, Panel, Skeleton } from '@/components/ui'
@@ -161,7 +161,7 @@ function EnableDialog({ hive, repo, onClose, onDone }: { hive: string; repo: str
       onClose()
       onDone()
     } catch (e) {
-      setError(e instanceof ApiError ? (e.body as { error?: string })?.error ?? e.message : String(e))
+      setError(errText(e))
     } finally { setBusy(false) }
   }
   return (
@@ -202,11 +202,19 @@ function OrchestratorButton({ available }: { available: boolean }) {
   const start = async () => {
     setBusy(true); setMsg('')
     try { const r = await api.startOrchestrator(); setMsg('orchestrator: ' + r.session_id.slice(0, 8)) }
-    catch (e) { setMsg(String(e)) } finally { setBusy(false) }
+    catch (e) { setMsg(errText(e)) } finally { setBusy(false) }
   }
   return (
     <span className="inline-flex items-center gap-2">
       <button disabled={busy || !available} onClick={start} title={available ? 'spawn the orchestrator session' : 'claude not found — cannot spawn'} className="border border-border text-fg-muted px-2 py-1 rounded-sm text-[12px] hover:text-fg disabled:opacity-50">{busy ? 'starting…' : '▶ Start orchestrator'}</button>
+      {/* The reason this button is dead used to live only in a `title`
+        * tooltip, while the visible copy told the user to press it. */}
+      {!available && (
+        <span className="text-[11px] text-fg-muted">
+          <span className="mono">claude</span> was not found on this machine, so Caprock cannot spawn the
+          orchestrator. It still observes every session you start yourself.
+        </span>
+      )}
       {msg && <span className="text-[11px] text-fg-faint mono">{msg}</span>}
     </span>
   )
@@ -448,7 +456,7 @@ export function NewTask({ onClose }: { onClose: () => void }) {
     try {
       await api.createTask({ title: title.trim(), budget_usd: parseFloat(budget) || 0, done_criteria: criteriaList, body })
       onClose()
-    } catch (e) { setError(String(e)) } finally { setBusy(false) }
+    } catch (e) { setError(errText(e)) } finally { setBusy(false) }
   }
   return (
     <div className="fixed inset-0 z-20 bg-black/50 flex items-start justify-center pt-24" onClick={onClose}>

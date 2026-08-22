@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api, ApiError } from '@/lib/api'
+import { api, errText } from '@/lib/api'
 import { navigate } from '@/lib/router'
 
 const MODELS = ['', 'claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5']
@@ -24,7 +24,8 @@ export function SpawnDialog({ available, onClose }: { available: boolean; onClos
       onClose()
       navigate({ name: 'session', id: session_id, tab: 'terminal' })
     } catch (e) {
-      setError(e instanceof ApiError ? (e.body as { error?: string })?.error ?? e.message : String(e))
+      // errText also surfaces `detail`, the half that says what to do about it.
+      setError(errText(e))
     } finally { setBusy(false) }
   }
   return (

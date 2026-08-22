@@ -2,6 +2,8 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -239,5 +241,59 @@ func TestSuggestedHiveIsUnderHome(t *testing.T) {
 	got := suggestedHive()
 	if want := filepath.Join(home, "caprock-tasks"); got != want {
 		t.Fatalf("suggestedHive() = %q, want %q", got, want)
+	}
+}
+
+// A fatal ingest error used to be swallowed into a log line: the daemon
+// reported healthy, `caprock status` printed "backfill done", and the dashboard
+// told the user to start `claude` and wait for sessions that could never
+// arrive. Reproduced with a read-only ~/.claude. The terminal error must reach
+// /v1/status so the CLI and the Now screen can say so.
+func TestStatusReportsATerminalIngestError(t *testing.T) {
+	st, err := store.Open(context.Background(), ":memory:", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	ctx := context.Background()
+	d := &Daemon{
+		store: st, log: log, bus: bus.New(), baseCtx: ctx,
+		mgr:   agents.NewManager(st, t.TempDir(), "", log),
+		opt:   Options{Config: config.Defaults(), DataDir: t.TempDir()},
+		table: &cost.Table{}, det: loop.New(5, time.Minute),
+		start: time.Now(),
+	}
+
+	// While ingest is alive, status says nothing about it.
+	if s := d.status(ctx).(Status); s.IngestError != "" {
+		t.Fatalf("a healthy daemon reported an ingest error: %q", s.IngestError)
+	}
+
+	// The tailer goroutine dies — exactly what a read-only ~/.claude produces.
+	d.setIngestErr(errors.New("mkdir /home/u/.claude: permission denied"))
+
+	s := d.status(ctx).(Status)
+	if s.IngestError == "" {
+		t.Fatal("a dead tailer left /v1/status reporting a healthy daemon; the dashboard would tell the user to wait forever")
+	}
+	if !strings.Contains(s.IngestError, "permission denied") {
+		t.Fatalf("the error does not say what went wrong: %q", s.IngestError)
+	}
+
+	// It must survive the JSON round trip the CLI and the UI both read.
+	b, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back Status
+	if err := json.Unmarshal(b, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.IngestError != s.IngestError {
+		t.Fatalf("ingest_error did not survive the wire: %q vs %q", back.IngestError, s.IngestError)
+	}
+	if !strings.Contains(string(b), `"ingest_error"`) {
+		t.Fatalf("the status payload has no ingest_error field:\n%s", b)
 	}
 }

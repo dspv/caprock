@@ -323,10 +323,11 @@ func maybeInstallStatusline(cmd *cobra.Command, yes bool) error {
 		return nil // already ours
 	}
 	if present {
-		// The user has their own statusLine — don't touch it, just hint.
-		if !yes {
-			fmt.Fprintln(cmd.OutOrStdout(), "You already have a statusLine set; leaving it. For Caprock's plan-limit view, add `caprock statusline` yourself, or run `caprock statusline install`.")
-		}
+		// The user has their own statusLine (ccusage is common) — don't touch
+		// it, but always say so. This line used to be behind `if !yes`, and
+		// `caprock statusline install` calls with yes=true: the subcommand
+		// printed nothing and exited 0, having done nothing at all.
+		fmt.Fprintln(cmd.OutOrStdout(), "You already have a statusLine set; leaving it. For Caprock's plan-limit view, add `caprock statusline` yourself, or run `caprock statusline install`.")
 		return nil
 	}
 	if !yes {
@@ -449,6 +450,20 @@ func statusCmd() *cobra.Command {
 			}
 			if st.Ingest != nil {
 				fmt.Fprintf(out, "ingest:  %d transcripts, %d events stored, %d deduped, backfill %s\n", st.Ingest.FilesKnown, st.Ingest.EventsStored, st.Ingest.EventsDeduped, map[bool]string{true: "done", false: "running"}[st.Ingest.BackfillDone])
+			}
+			// A dead tailer used to be a log line nobody reads: status printed
+			// "backfill done" while nothing was being captured at all.
+			if st.IngestError != "" {
+				fmt.Fprintf(out, "         STOPPED: %s\n", st.IngestError)
+				fmt.Fprintln(out, "         No new sessions are being captured. Check that ~/.claude is readable, then restart with `caprock down && caprock up`.")
+			}
+			// Spawning needs the `claude` binary. When it is missing, every
+			// spawn control is disabled and nothing said why — not here, not in
+			// `caprock up`, not on the dashboard.
+			if st.ClaudeAvailable {
+				fmt.Fprintf(out, "claude:  found on PATH — Caprock can start sessions for you\n")
+			} else {
+				fmt.Fprintf(out, "claude:  not found on PATH — Caprock cannot start sessions, but still observes every session you start yourself\n")
 			}
 			fmt.Fprintf(out, "ui:      %s\n", map[bool]string{true: "embedded", false: "placeholder (built without dashboard)"}[st.UIBuilt])
 			// Which hive is in force was reported nowhere — not here, not in
