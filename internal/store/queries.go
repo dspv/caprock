@@ -743,10 +743,11 @@ type ProjectShare struct {
 // launched (see touch.go).
 //
 // Path is the directory relative to the repository root, written from it so it
-// reads as a path — "/", "/services/api". The one value that is NOT a path is
-// UnattributedPath, the bucket for spend that belongs to the repository but to
-// no single directory in it; callers must render it as its own thing and never
-// as a directory (see Unattributed).
+// reads as a path — "/", "/services/api". Two values are NOT paths:
+// UnattributedPath (turns that ran before their session touched any file) and
+// OutsidePath (turns whose most recent touch was outside the repository).
+// Callers must render both as their own thing and never as a directory — see
+// Unattributed and Outside.
 //
 // Turns replaces the old Sessions count. A session touches many directories, so
 // it cannot be counted once per directory row without the column summing to
@@ -757,9 +758,13 @@ type PathShare struct {
 	Tokens  int64   `json:"tokens"`
 	CostUSD float64 `json:"cost_usd"`
 	Turns   int64   `json:"turns"`
-	// Unattributed marks the one row that is a bucket rather than a directory,
-	// so the UI does not have to know the sentinel's spelling.
+	// Unattributed and Outside mark the two rows that are buckets rather than
+	// directories, so the UI does not have to know the sentinels' spelling.
+	// Unattributed is the turns that ran before their session touched any file;
+	// Outside is the turns whose most recent touch was not in this repository.
+	// Both are rendered as their own thing and never as a path.
 	Unattributed bool `json:"unattributed,omitempty"`
+	Outside      bool `json:"outside,omitempty"`
 	// TokensPct and CostPct are this row's share of the REPOSITORY's total,
 	// including the unattributed bucket — so each column sums to 100% and the
 	// unattributed share is visible as its own number instead of being hidden
@@ -1154,15 +1159,12 @@ func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpe
 		// per-turn figures were gathered above; here they are folded into the
 		// repository this session belongs to.
 		//
-		// root, not key: attribution compares a touched path against a real
+		// root, not key: attribution compares a carried path against a real
 		// repository root, and a session outside any repository ("cwd:…") has
-		// none to compare with — its turns all land unattributed, which is the
-		// honest answer for a directory that is not in a repository.
+		// none to compare with — its turns land in the outside row, which is
+		// the honest answer for work with no repository to be inside of.
 		for _, tt := range turns[id] {
-			seg, ok := AttributeDir(tt.touched, root)
-			if !ok {
-				seg = UnattributedPath
-			}
+			seg, _ := AttributeDir(tt.touched, root)
 			pk := [2]string{key, seg}
 			j, ok := pathIdx[pk]
 			if !ok {
@@ -1204,10 +1206,30 @@ func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpe
 	}
 	for i := range s.Projects {
 		p := &s.Projects[i]
-		// A breakdown whose only row is the unattributed bucket says nothing
-		// the repository row does not already say: "all of it, and we cannot
-		// tell you where". Nor does a single directory, which would restate the
-		// row's own total under a second heading.
+		// Drop a sentinel row that carries no money. Under carry-forward the
+		// repository-wide row means only "turns before the session's first
+		// touch", which for most repositories is nothing at all — and a row
+		// reading $0.00 next to real directories invites the reader to wonder
+		// what went wrong.
+		//
+		// The test is COST, not cost-and-tokens: a turn can carry tokens priced
+		// at zero (an unpriced model, a cached-only turn), which still produces
+		// a row rendering "$0.00" beside real spend. Directory rows are never
+		// dropped — a directory in the list is there because a turn was charged
+		// to it, and a real directory that genuinely cost nothing is a fact
+		// about the repository rather than an artifact of the rule.
+		kept := p.Paths[:0]
+		for _, ps := range p.Paths {
+			if (ps.Path == UnattributedPath || ps.Path == OutsidePath) && ps.CostUSD == 0 {
+				continue
+			}
+			kept = append(kept, ps)
+		}
+		p.Paths = kept
+		// A breakdown whose only row is a bucket says nothing the repository
+		// row does not already say: "all of it, and we cannot tell you where".
+		// Nor does a single directory, which would restate the row's own total
+		// under a second heading.
 		if len(p.Paths) < 2 {
 			p.Paths = nil
 			continue
@@ -1215,6 +1237,7 @@ func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpe
 		for j := range p.Paths {
 			ps := &p.Paths[j]
 			ps.Unattributed = ps.Path == UnattributedPath
+			ps.Outside = ps.Path == OutsidePath
 			// The denominator is the REPOSITORY total, including the
 			// unattributed bucket, so the column sums to 100% and the share
 			// that could not be attributed is visible as its own percentage
@@ -1228,13 +1251,24 @@ func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpe
 				ps.CostPct = 100 * ps.CostUSD / p.CostUSD
 			}
 		}
-		// Sorted by cost, except that the unattributed bucket is pinned last
-		// however large it is: it is not a competitor to the directories, it is
-		// the remainder, and a reader scanning for the costliest SERVICE should
-		// not have to skip past it.
+		// Sorted by cost, except that the two rows which are NOT directories are
+		// pinned last however large they are: they do not compete with the
+		// directories for "which service costs most", and a reader scanning for
+		// the costliest service should not have to skip past them. Outside sits
+		// above repository-wide, since it is the larger and more informative of
+		// the two on real data.
+		rank := func(ps PathShare) int {
+			switch ps.Path {
+			case OutsidePath:
+				return 1
+			case UnattributedPath:
+				return 2
+			}
+			return 0
+		}
 		sort.SliceStable(p.Paths, func(a, b int) bool {
-			if p.Paths[a].Unattributed != p.Paths[b].Unattributed {
-				return p.Paths[b].Unattributed
+			if ra, rb := rank(p.Paths[a]), rank(p.Paths[b]); ra != rb {
+				return ra < rb
 			}
 			return p.Paths[a].CostUSD > p.Paths[b].CostUSD
 		})

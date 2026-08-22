@@ -17,18 +17,29 @@
  * so the old cwd-keyed rows answered "where was the terminal", and only one
  * repository on the owner's machine expanded at all.
  *
- * Attribution is STRICT: a turn's cost reaches a directory only when every file
- * that turn touched is in that one directory, so the figure is exact. Turns
- * that spanned several directories are not split or pro-rated — splitting would
- * require a model of how much of a turn each file deserved, and no such
- * measurement exists — they go whole into one row labelled "repository-wide
- * work". The parts therefore still sum to the repository's total, and nothing
- * on screen is an estimate (rule 6).
+ * Attribution CARRIES FORWARD: a turn counts toward the directory of the most
+ * recent file it touched, and keeps counting there until a touch somewhere else
+ * moves it. Work happens in stretches — after "finish /app" Claude edits, runs
+ * the tests, reads the output, greps, edits again — and that whole stretch is
+ * work on /app.
  *
- * That row is usually the largest, and it is meant to be: on the owner's data
- * most turns run commands, search the tree, or build rather than editing one
- * place. It is named for what that work IS rather than for the tool's failure
- * to place it — see REPO_WIDE_LABEL.
+ * This replaced a STRICT rule that charged a directory only when every file a
+ * turn touched was in it. That rule was exact and useless: it counted only the
+ * minutes containing a direct file edit, discarded the commands in between, and
+ * put 87.6% of the owner's `amarketer` into "repository-wide work" — the user
+ * asked what a service cost and seven eighths of the answer was "we could not
+ * tell". Under carry-forward the same repository reads /app 61%, /.ai 6.8%.
+ *
+ * No cost is split or pro-rated either way: a turn's price goes WHOLE to one
+ * row, so the parts still sum to the repository's total. What changed is the
+ * rule for deciding WHICH row — a stated rule, shown to the reader on hover
+ * (TOUCH_RULE), not a guess at proportions. It is not measured file-by-file
+ * attribution and must never be described as such.
+ *
+ * Two rows are not directories: "outside the repository" (the large one — work
+ * on this project whose files live elsewhere) and "repository-wide work" (now
+ * small — a session's turns before it touched anything). See OUTSIDE_LABEL and
+ * REPO_WIDE_LABEL.
  *
  * Two things the row shows are choices worth stating.
  *
@@ -96,34 +107,50 @@ const SPARK_BASIS = 'tokens' as const
  * sentence shown on hover.
  */
 const TOUCH_RULE =
-  'A turn is charged to a directory only when every file it read or wrote is in that directory. ' +
-  'Turns that spanned several directories, touched none, or touched files outside the repository ' +
-  'are counted as repository-wide work rather than split — a split would be an estimate, not a measurement.'
+  'A turn counts toward the directory of the most recent file it touched, and keeps counting there ' +
+  'until it touches a file somewhere else — so the commands, tests and searches between two edits ' +
+  'count toward the directory being worked on. Reading, editing or writing a file counts as touching ' +
+  'it; running a command does not. Each turn goes whole to one row, never split between two, so the ' +
+  'rows add up to the repository total exactly.'
 
 /**
- * The label for the row that is not a directory, and the sentence that explains
- * it.
+ * The two rows that are NOT directories, and the sentences that explain them.
  *
- * WHY NOT "unattributed". That word describes the tool's bookkeeping, not the
- * user's work: it reads as "caprock failed to figure this out", so a reader
- * whose row is two thirds of the repository concludes the panel is broken. It
- * is not broken — that spend is real work that genuinely has no one directory.
- * On the owner's database the tool calls in these turns are overwhelmingly
- * Bash (17382 of 27158 in `amarketer`, 5246 of 6743 in `caprock`, measured
- * 2026-08-22): running the test suite, `git log`, `grep -rn` across the tree,
- * building. That is repository-wide work, and naming it as such tells the truth
- * about the number instead of apologising for it.
+ * Both are siblings of the directory rows, not footnotes: their spend is real,
+ * it is part of the repository's total, and hiding either would stop the parts
+ * reconciling with the whole (rule 6).
  *
- * The hover says WHAT kind of turn lands here in the user's own vocabulary
- * (commands, searches, builds) and WHY it is not divided up, because a large
- * number with no explanation is the thing that reads as a defect.
+ * OUTSIDE THE REPOSITORY is the large one — 26% of `amarketer` and 29% of
+ * `caprock` on the owner's database (measured 2026-08-22). It is not other
+ * people's work: it is work on THIS project whose files happen to live
+ * elsewhere — Claude's own notes about the project, agent scratchpads, the e2e
+ * run's output directory, occasionally another checkout. A share that large has
+ * to be named for what it is; folding it into repository-wide work would label
+ * a quarter of the bill "no single home" when its home is known and simply not
+ * in the tree, and folding it into the repository root would claim work
+ * happened in the checkout that did not.
+ *
+ * REPOSITORY-WIDE WORK is now the small one, and it means one narrow thing: the
+ * opening turns of a session, before Claude has touched any file. Under the
+ * previous strict rule this row was most of the money (87.6% of `amarketer`)
+ * and had to be explained away; under carry-forward it is $2.39 of $3426 there,
+ * and it is usually absent entirely — the server omits it when it cost nothing.
+ *
+ * Neither label says "unattributed". That word describes the tool's
+ * bookkeeping rather than the user's work, and reads as "caprock failed to
+ * figure this out".
  */
 const REPO_WIDE_LABEL = 'repository-wide work'
 const REPO_WIDE_RULE =
-  'Turns that ran commands, searched, or built rather than editing files in one directory — ' +
-  'plus any turn whose edits spanned several directories or reached outside the repository. ' +
-  'This is real work with no single home, so it is counted here whole rather than divided ' +
-  'between directories, which would be an estimate rather than a measurement.'
+  'Turns from the start of a session, before Claude had touched any file — so there is no ' +
+  'directory yet for them to count toward. Their cost is counted here whole rather than ' +
+  'guessed onto the directory the session reached later.'
+const OUTSIDE_LABEL = 'outside the repository'
+const OUTSIDE_RULE =
+  'Turns whose most recent file touch was outside this repository — Claude’s notes on the ' +
+  'project, agent scratchpads, test-output directories, or another checkout. This is real ' +
+  'work and it counts toward the repository total, but it happened outside the tree, so it ' +
+  'is not charged to any directory inside it.'
 
 export function ProjectsPanel({ sessions }: { sessions: SessionSummary[] }) {
   // 30d is the default: "today" is near-empty most mornings and would make the
@@ -347,22 +374,30 @@ function ProjectRow({
  */
 function PathRow({ q, max }: { q: PathShare; max: number }) {
   const pct = max > 0 ? (100 * q.tokens) / max : 0
+  // The two rows that are not directories. They share one treatment, because to
+  // the reader they are the same KIND of thing — spend that belongs to the
+  // repository but to none of its directories — differing only in why.
   const un = q.unattributed === true
+  const outside = q.outside === true
+  const bucket = un || outside
   return (
     <div
       className={`grid grid-cols-[1fr_auto] items-center gap-3 pl-7 pr-3 py-1 ${
-        un ? 'border-l-2 border-border ml-3' : ''
+        bucket ? 'border-l-2 border-border ml-3' : ''
       }`}
     >
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          {/* This row is NOT a directory and must never read as one. It loses
-            * the mono/path treatment, takes the faint chrome tone, and carries
-            * its own explanation — the label says what the work IS
-            * (repository-wide), not that the tool failed to place it. */}
-          {un ? (
-            <span className="truncate text-[12px] text-fg-faint italic" title={REPO_WIDE_RULE}>
-              {REPO_WIDE_LABEL}
+          {/* These rows are NOT directories and must never read as one. They
+            * lose the mono/path treatment, take the faint chrome tone, and
+            * carry their own explanation — each label says what the work IS,
+            * not that the tool failed to place it. */}
+          {bucket ? (
+            <span
+              className="truncate text-[12px] text-fg-faint italic"
+              title={un ? REPO_WIDE_RULE : OUTSIDE_RULE}
+            >
+              {un ? REPO_WIDE_LABEL : OUTSIDE_LABEL}
             </span>
           ) : (
             <span className="truncate text-[12px] text-fg-muted mono">{q.path}</span>
@@ -373,7 +408,7 @@ function PathRow({ q, max }: { q: PathShare; max: number }) {
         </div>
         <div className="h-0.5 mt-1 bg-panel-2 rounded-sm overflow-hidden">
           <div
-            className={`h-full ${un ? 'bg-fg-faint/30' : 'bg-accent/40'}`}
+            className={`h-full ${bucket ? 'bg-fg-faint/30' : 'bg-accent/40'}`}
             style={{ width: `${pct}%` }}
           />
         </div>
@@ -382,7 +417,7 @@ function PathRow({ q, max }: { q: PathShare; max: number }) {
         className="text-right shrink-0 num text-[12px]"
         title={`${fmtPctFloor(q.cost_pct)} of this repository's cost`}
       >
-        <span className={un ? 'text-fg-faint' : 'text-fg-muted'}>{fmtTokens(q.tokens)}</span>
+        <span className={bucket ? 'text-fg-faint' : 'text-fg-muted'}>{fmtTokens(q.tokens)}</span>
         {/* The share sits with the tokens it describes, in the faint chrome
           * tone, so it reads as a qualifier rather than a third quantity. */}
         <span className="text-fg-faint"> {fmtPctFloor(q.tokens_pct)}</span>

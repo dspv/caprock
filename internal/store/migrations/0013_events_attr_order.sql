@@ -1,0 +1,45 @@
+-- Carry-forward attribution — verbatim from .ai/03-contracts.md § Touch attribution DDL.
+--
+-- THE PROBLEM WITH THE PREVIOUS RULE. Migration 0012 charged a turn to a
+-- directory only when EVERY file that turn touched was in that one directory.
+-- Everything else — including every turn that touched no file at all — became
+-- "repository-wide work". On the owner's database that bucket was 87.6% of
+-- `amarketer`'s $1735: the panel answered "what does this service cost?" with
+-- "we could not tell" for seven eighths of the money, which is technically
+-- defensible and practically worthless.
+--
+-- The rule missed how work actually happens. Work comes in STRETCHES, not in
+-- isolated tool calls: the user says "finish /app", and Claude then edits a
+-- file, runs the tests, reads the output, greps, edits again — for an hour.
+-- That whole stretch is work on /app. Charging only the minutes that contain a
+-- direct file edit discards the rest, which is why Bash-heavy turns (half of
+-- all tool calls) fell out.
+--
+-- THE RULE NOW: carry-forward. A turn belongs to the directory of the most
+-- recent file touch at or before it, within the same session. The attribution
+-- carries forward until a touch in a different directory moves it. No cost is
+-- split, invented, or pro-rated — each turn's price still goes WHOLE to one
+-- row, and the rows still sum exactly to the repository total. What changed is
+-- the rule for deciding WHICH row, and that rule is stated to the user wherever
+-- the breakdown is shown (store.TouchRule).
+--
+-- WHY THIS INDEX. Carry-forward needs per-session state in event order, so the
+-- read is one ordered scan of both tool.pre and turn.assistant rows rather than
+-- the two independent lookups 0012's index served. Ordering by
+-- (session_id, ts, id) over idx_events_kind_ts cost a temp B-tree over 90271
+-- rows — measured through the Go driver on the owner's 191k-event database
+-- (2026-08-22, 30d range): ~290 ms for the scan alone, against a ~250 ms
+-- budget for the whole summary. This index puts the sort order IN the index and
+-- carries every column the scan reads, so the plan becomes a covering scan with
+-- no sort: ~93 ms, and the query it replaces is gone.
+--
+-- The column order is the ORDER BY, then the payload. session_id first groups
+-- the carry, ts and id order within it; kind, msg_id, touch_dir and the
+-- token/cost columns are along for the ride so SQLite never touches the table.
+-- Without ANALYZE (no user database has stats — nothing in the daemon runs it)
+-- SQLite prefers idx_events_kind_ts and reintroduces the sort, so the query
+-- pins this one with INDEXED BY; measured at ~93 ms either way.
+CREATE INDEX IF NOT EXISTS idx_events_attr ON events(
+  session_id, ts, id, kind, msg_id, touch_dir,
+  cost_usd, tokens_in, tokens_out, cache_read, cache_write
+);

@@ -293,7 +293,10 @@ func TestSummarizeGroupsByRepository(t *testing.T) {
 	if err := UpsertSession(ctx, s.db, "s1", SessionPatch{Cwd: root}); err != nil {
 		t.Fatal(err)
 	}
-	// One session, three turns, each touching exactly one directory.
+	// One session, three turns, each placed by a touch in exactly one
+	// directory. The touch precedes the turn it places: attribution carries
+	// forward, and the tool calls Claude makes while working on a file come
+	// before the turn they produce.
 	for i, spec := range []struct {
 		msg  string
 		dir  string
@@ -303,8 +306,8 @@ func TestSummarizeGroupsByRepository(t *testing.T) {
 		{"m-ui", ui, 4},
 		{"m-internal", internal, 2},
 	} {
-		addTurn(t, s, "s1", spec.msg, int64(i+1), spec.cost)
-		addTouch(t, s, "s1", spec.msg, int64(i+1), filepath.Join(spec.dir, "f.go"))
+		addTouch(t, s, "s1", spec.msg, int64(2*i+1), filepath.Join(spec.dir, "f.go"))
+		addTurn(t, s, "s1", spec.msg, int64(2*i+2), spec.cost)
 	}
 	sum, err := Summarize(ctx, s.db, 0)
 	if err != nil {

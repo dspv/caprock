@@ -86,10 +86,16 @@ func onlyProject(t *testing.T, sum Summary) ProjectShare {
 	return sum.Projects[0]
 }
 
-// TestTurnInOneDirectoryIsAttributedExactly is the core promise: a turn whose
-// every touch is in one directory charges that directory its FULL cost, not a
-// share of it.
-func TestTurnInOneDirectoryIsAttributedExactly(t *testing.T) {
+// TestTurnIsChargedWholeToOneDirectory is the core promise: a turn's cost goes
+// WHOLE to exactly one directory, never a share of it.
+//
+// The touches precede the turn they attribute, which is the real order of
+// events: a turn.assistant row is written when the assistant message arrives,
+// and the tool calls it makes are recorded as that message executes. So a turn
+// is placed by the file Claude was working on when it produced that turn. On
+// the owner's database only 4 of 15516 touches sort before a same-millisecond
+// turn (measured 2026-08-22), so this ordering is what real data does.
+func TestTurnIsChargedWholeToOneDirectory(t *testing.T) {
 	clearRepoCache()
 	ctx := context.Background()
 	s := openTest(t)
@@ -98,14 +104,14 @@ func TestTurnInOneDirectoryIsAttributedExactly(t *testing.T) {
 	if err := UpsertSession(ctx, s.db, "s1", SessionPatch{Cwd: root}); err != nil {
 		t.Fatal(err)
 	}
-	addTurn(t, s, "s1", "m1", 1, 3)
-	// Two touches, same directory, different files: still one directory.
-	addTouch(t, s, "s1", "m1", 1, filepath.Join(api, "main.go"))
-	addTouch(t, s, "s1", "m1", 2, filepath.Join(api, "handler.go"))
-	// A second turn elsewhere, so the breakdown has two rows and survives the
+	// Two touches in one directory, then the turn they place.
+	addTouch(t, s, "s1", "m0", 1, filepath.Join(api, "main.go"))
+	addTouch(t, s, "s1", "m0", 2, filepath.Join(api, "handler.go"))
+	addTurn(t, s, "s1", "m1", 3, 3)
+	// A second directory, so the breakdown has two rows and survives the
 	// "one directory is not a breakdown" rule.
-	addTurn(t, s, "s1", "m2", 3, 1)
-	addTouch(t, s, "s1", "m2", 3, filepath.Join(root, "services", "web", "app.ts"))
+	addTouch(t, s, "s1", "m1", 4, filepath.Join(root, "services", "web", "app.ts"))
+	addTurn(t, s, "s1", "m2", 5, 1)
 
 	sum, err := Summarize(ctx, s.db, 0)
 	if err != nil {
@@ -118,12 +124,21 @@ func TestTurnInOneDirectoryIsAttributedExactly(t *testing.T) {
 	if ps := got["/services/api"]; ps.Turns != 1 {
 		t.Errorf("/services/api turns = %d, want 1 — two touches in one directory are one turn", ps.Turns)
 	}
+	if ps := got["/services/web"]; ps.CostUSD != 1 {
+		t.Errorf("/services/web = $%v, want $1 (%+v)", ps.CostUSD, got)
+	}
 }
 
-// TestMultiDirectoryTurnIsNotSplit is the honesty rule: a turn that spans two
-// directories is attributed to NEITHER, and its cost is not divided between
-// them. Splitting would be a modelled number presented as a measured one.
-func TestMultiDirectoryTurnIsNotSplit(t *testing.T) {
+// TestTurnGoesWholeToTheLastDirectoryTouched: a turn that touched files in two
+// directories is charged WHOLE to the last one, never divided between them.
+// Splitting would need a model of how much of the turn each file deserved, and
+// no such measurement exists (rule 6).
+//
+// This replaces TestMultiDirectoryTurnIsNotSplit, which asserted that such a
+// turn was attributed to NEITHER directory. The no-split half of that promise
+// is unchanged and still tested here; only the destination moved, because
+// refusing to place the turn is what produced an 87.6% dumping ground.
+func TestTurnGoesWholeToTheLastDirectoryTouched(t *testing.T) {
 	clearRepoCache()
 	ctx := context.Background()
 	s := openTest(t)
@@ -133,36 +148,26 @@ func TestMultiDirectoryTurnIsNotSplit(t *testing.T) {
 	if err := UpsertSession(ctx, s.db, "s1", SessionPatch{Cwd: root}); err != nil {
 		t.Fatal(err)
 	}
-	// A clean single-directory turn, so there is something to (wrongly) merge into.
-	addTurn(t, s, "s1", "m1", 1, 2)
-	addTouch(t, s, "s1", "m1", 1, filepath.Join(api, "main.go"))
-	// The straddling turn: one touch in each service.
-	addTurn(t, s, "s1", "m2", 2, 10)
-	addTouch(t, s, "s1", "m2", 2, filepath.Join(api, "main.go"))
-	addTouch(t, s, "s1", "m2", 3, filepath.Join(web, "app.ts"))
+	addTouch(t, s, "s1", "m0", 1, filepath.Join(api, "main.go"))
+	addTurn(t, s, "s1", "m1", 2, 2)
+	// The straddle: touches api, then web, before the turn they place. The LAST
+	// touch wins, and the turn's cost is not divided between the two.
+	addTouch(t, s, "s1", "m1", 3, filepath.Join(api, "main.go"))
+	addTouch(t, s, "s1", "m1", 4, filepath.Join(web, "app.ts"))
+	addTurn(t, s, "s1", "m2", 5, 10)
 
 	sum, err := Summarize(ctx, s.db, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := onlyProject(t, sum)
-	got := pathsOf(p)
-	// The clean turn's directory keeps exactly its own $2 — none of the $10.
+	got := pathsOf(onlyProject(t, sum))
+	// Whole, to one row: $10 to web, and api keeps exactly its own $2.
+	if ps := got["/services/web"]; ps.CostUSD != 10 {
+		t.Errorf("/services/web = $%v, want the straddling turn's whole $10 (%+v)", ps.CostUSD, got)
+	}
 	if ps := got["/services/api"]; ps.CostUSD != 2 {
-		t.Errorf("/services/api = $%v, want $2; the straddling turn's cost leaked into it (%+v)", ps.CostUSD, got)
-	}
-	if _, ok := got["/services/web"]; ok {
-		t.Errorf("/services/web has a row, but its only turn also touched another directory (%+v)", got)
-	}
-	un, ok := got[UnattributedPath]
-	if !ok {
-		t.Fatalf("no unattributed row; the straddling turn's $10 vanished (%+v)", got)
-	}
-	if un.CostUSD != 10 {
-		t.Errorf("unattributed = $%v, want the straddling turn's whole $10", un.CostUSD)
-	}
-	if !un.Unattributed {
-		t.Error("the unattributed row is not flagged, so the panel would render it as a directory")
+		t.Errorf("/services/api = $%v, want $2 — the straddling turn's cost was split, not charged whole (%+v)",
+			ps.CostUSD, got)
 	}
 }
 
@@ -177,16 +182,17 @@ func TestBreakdownSumsToRepositoryTotal(t *testing.T) {
 	if err := UpsertSession(ctx, s.db, "s1", SessionPatch{Cwd: root}); err != nil {
 		t.Fatal(err)
 	}
-	addTurn(t, s, "s1", "m1", 1, 2.5)
-	addTouch(t, s, "s1", "m1", 1, filepath.Join(root, "a", "f.go"))
-	addTurn(t, s, "s1", "m2", 2, 4.25)
-	addTouch(t, s, "s1", "m2", 2, filepath.Join(root, "b", "f.go"))
-	// Straddles: unattributed.
-	addTurn(t, s, "s1", "m3", 3, 1.75)
-	addTouch(t, s, "s1", "m3", 3, filepath.Join(root, "a", "f.go"))
-	addTouch(t, s, "s1", "m3", 4, filepath.Join(root, "b", "f.go"))
-	// No touches at all: also unattributed.
-	addTurn(t, s, "s1", "m4", 5, 0.5)
+	// An opening turn with no preceding touch (repository-wide), a turn placed
+	// by a touch in /a, one placed by a straddle ending in /b, and one that
+	// touched nothing and so carries /b forward. Every kind of row, so the sum
+	// covers them all.
+	addTurn(t, s, "s1", "m0", 1, 0.5)
+	addTouch(t, s, "s1", "m0", 2, filepath.Join(root, "a", "f.go"))
+	addTurn(t, s, "s1", "m1", 3, 2.5)
+	addTouch(t, s, "s1", "m1", 4, filepath.Join(root, "a", "f.go"))
+	addTouch(t, s, "s1", "m1", 5, filepath.Join(root, "b", "f.go"))
+	addTurn(t, s, "s1", "m2", 6, 4.25)
+	addTurn(t, s, "s1", "m3", 7, 1.75)
 
 	sum, err := Summarize(ctx, s.db, 0)
 	if err != nil {
@@ -211,11 +217,18 @@ func TestBreakdownSumsToRepositoryTotal(t *testing.T) {
 	}
 }
 
-// TestTouchOutsideRepositoryIsNotCharged: a turn that edits a file in another
-// checkout, or in /tmp, must not invent a directory row under THIS repository.
-// The money still counts toward the repository — it was really spent there —
-// so it lands unattributed.
-func TestTouchOutsideRepositoryIsNotCharged(t *testing.T) {
+// TestCarriedDirectoryOutsideRepositoryGetsItsOwnRow: a turn whose most recent
+// touch was outside the repository — Claude's notes, a scratchpad, another
+// checkout — must not invent a directory row under THIS repository, must not be
+// folded into the repository root (which would claim work happened in the
+// checkout that did not), and must not be dropped (the parts would stop
+// reconciling). It gets its own labelled row.
+//
+// This replaces TestTouchOutsideRepositoryIsNotCharged, which asserted the same
+// spend landed in the repository-wide bucket. On the owner's data this is 26%
+// of `amarketer` and 29% of `caprock` (2026-08-22) — far too large to leave
+// mislabelled as "no single home" when the home is known and simply elsewhere.
+func TestCarriedDirectoryOutsideRepositoryGetsItsOwnRow(t *testing.T) {
 	clearRepoCache()
 	ctx := context.Background()
 	s := openTest(t)
@@ -225,10 +238,10 @@ func TestTouchOutsideRepositoryIsNotCharged(t *testing.T) {
 	if err := UpsertSession(ctx, s.db, "s1", SessionPatch{Cwd: root}); err != nil {
 		t.Fatal(err)
 	}
-	addTurn(t, s, "s1", "m1", 1, 2)
-	addTouch(t, s, "s1", "m1", 1, filepath.Join(root, "in", "f.go"))
-	addTurn(t, s, "s1", "m2", 2, 5)
-	addTouch(t, s, "s1", "m2", 2, filepath.Join(elsewhere, "other.go"))
+	addTouch(t, s, "s1", "m0", 1, filepath.Join(root, "in", "f.go"))
+	addTurn(t, s, "s1", "m1", 2, 2)
+	addTouch(t, s, "s1", "m1", 3, filepath.Join(elsewhere, "other.go"))
+	addTurn(t, s, "s1", "m2", 4, 5)
 
 	sum, err := Summarize(ctx, s.db, 0)
 	if err != nil {
@@ -237,23 +250,44 @@ func TestTouchOutsideRepositoryIsNotCharged(t *testing.T) {
 	p := onlyProject(t, sum)
 	got := pathsOf(p)
 	for path := range got {
-		if path != UnattributedPath && path != "/in" {
+		if path != OutsidePath && path != UnattributedPath && path != "/in" {
 			t.Errorf("breakdown invented the row %q for a path outside the repository (%+v)", path, got)
 		}
 	}
-	if un := got[UnattributedPath]; un.CostUSD != 5 {
-		t.Errorf("unattributed = $%v, want $5 — the outside touch's turn (%+v)", un.CostUSD, got)
+	out, ok := got[OutsidePath]
+	if !ok {
+		t.Fatalf("no outside row; the outside turn's $5 has nowhere to go (%+v)", got)
+	}
+	if out.CostUSD != 5 {
+		t.Errorf("outside = $%v, want the outside turn's whole $5 (%+v)", out.CostUSD, got)
+	}
+	if !out.Outside {
+		t.Error("the outside row is not flagged, so the panel would render the sentinel as a directory path")
+	}
+	// It must be its own row, NOT merged into the repository root.
+	if r, ok := got["/"]; ok && r.CostUSD != 0 {
+		t.Errorf(`the outside turn was folded into the repository root "/" ($%v), `+
+			`claiming work happened in the checkout that did not (%+v)`, r.CostUSD, got)
 	}
 	if p.CostUSD != 7 {
 		t.Errorf("repository total = $%v, want $7; spend must not be dropped just because it left the tree", p.CostUSD)
 	}
 }
 
-// TestTurnWithNoTouchesIsUnattributed: a turn that only ran Bash, or only
-// thought, names no directory. It must not be silently dropped (the repository
-// total would shrink) nor guessed onto the session's cwd (the old, wrong
-// signal).
-func TestTurnWithNoTouchesIsUnattributed(t *testing.T) {
+// TestCarryForwardCoversTurnsWithNoTouches is the whole point of the rule: work
+// happens in stretches. A turn that only ran Bash, or only thought, is charged
+// to the directory being worked on — the one its session most recently touched
+// — instead of falling into a bucket.
+//
+// This replaces TestTurnWithNoTouchesIsUnattributed, whose expectation was the
+// opposite and which is precisely what made the panel useless: Bash is half of
+// all tool calls, so the old rule discarded the commands, tests and searches
+// between two edits.
+//
+// It also still pins the sub-rule that survives unchanged: a path INSIDE a Bash
+// command is not a touch and does not move the carry. Here the Bash command
+// names /other, and the turn must still be charged to /api.
+func TestCarryForwardCoversTurnsWithNoTouches(t *testing.T) {
 	clearRepoCache()
 	ctx := context.Background()
 	s := openTest(t)
@@ -261,12 +295,56 @@ func TestTurnWithNoTouchesIsUnattributed(t *testing.T) {
 	if err := UpsertSession(ctx, s.db, "s1", SessionPatch{Cwd: root}); err != nil {
 		t.Fatal(err)
 	}
-	addTurn(t, s, "s1", "m1", 1, 3)
-	addTouch(t, s, "s1", "m1", 1, filepath.Join(root, "api", "f.go"))
-	// A turn whose only tool is Bash — a path in the command is NOT a touch.
-	addTurn(t, s, "s1", "m2", 2, 8)
-	addTouchTool(t, s, "s1", "m2", 2, "Bash",
-		map[string]any{"command": "go build " + filepath.Join(root, "api") + "/..."})
+	// One touch in /api, then three turns that touch no file: all three are /api.
+	addTouch(t, s, "s1", "m0", 1, filepath.Join(root, "api", "f.go"))
+	addTurn(t, s, "s1", "m1", 2, 3)
+	addTouchTool(t, s, "s1", "m1", 3, "Bash",
+		map[string]any{"command": "go build " + filepath.Join(root, "other") + "/..."})
+	addTurn(t, s, "s1", "m2", 4, 8)
+	addTurn(t, s, "s1", "m3", 5, 4) // pure thinking, no tools at all
+	// A second directory, so the breakdown has two rows.
+	addTouch(t, s, "s1", "m3", 6, filepath.Join(root, "web", "app.ts"))
+	addTurn(t, s, "s1", "m4", 7, 1)
+
+	sum, err := Summarize(ctx, s.db, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := pathsOf(onlyProject(t, sum))
+	// $3 (the edit) + $8 (the Bash turn) + $4 (the thinking turn).
+	if ps := got["/api"]; ps.CostUSD != 15 {
+		t.Errorf("/api = $%v, want $15 — the turns after the edit did not carry forward (%+v)", ps.CostUSD, got)
+	}
+	if ps := got["/api"]; ps.Turns != 3 {
+		t.Errorf("/api turns = %d, want 3 (the edit plus the two that touched nothing)", ps.Turns)
+	}
+	// The Bash command named /other; that must not have created a row.
+	if _, ok := got["/other"]; ok {
+		t.Errorf("/other has a row, but it was only named inside a Bash command (%+v)", got)
+	}
+}
+
+// TestCarryForwardDoesNotCrossSessions: the carry is per session. Charging one
+// session's work to the directory another session happened to leave behind
+// would attribute one piece of work to another's location.
+func TestCarryForwardDoesNotCrossSessions(t *testing.T) {
+	clearRepoCache()
+	ctx := context.Background()
+	s := openTest(t)
+	root := newRepo(t, filepath.Join(t.TempDir(), "mono"))
+	for _, id := range []string{"s1", "s2"} {
+		if err := UpsertSession(ctx, s.db, id, SessionPatch{Cwd: root}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// s1 touches /api and ends.
+	addTouch(t, s, "s1", "m0", 1, filepath.Join(root, "api", "f.go"))
+	addTurn(t, s, "s1", "m1", 2, 3)
+	// s2 opens with a turn that touches nothing. It must NOT inherit /api.
+	addTurn(t, s, "s2", "m2", 3, 7)
+	// so the breakdown has two rows
+	addTouch(t, s, "s2", "m3", 4, filepath.Join(root, "web", "app.ts"))
+	addTurn(t, s, "s2", "m4", 5, 1)
 
 	sum, err := Summarize(ctx, s.db, 0)
 	if err != nil {
@@ -274,10 +352,92 @@ func TestTurnWithNoTouchesIsUnattributed(t *testing.T) {
 	}
 	got := pathsOf(onlyProject(t, sum))
 	if ps := got["/api"]; ps.CostUSD != 3 {
-		t.Errorf("/api = $%v, want $3 — the Bash turn was charged to a directory it merely named (%+v)", ps.CostUSD, got)
+		t.Errorf("/api = $%v, want $3 — a later SESSION's turn carried into it (%+v)", ps.CostUSD, got)
 	}
-	if un := got[UnattributedPath]; un.CostUSD != 8 {
-		t.Errorf("unattributed = $%v, want the Bash turn's $8 (%+v)", un.CostUSD, got)
+	if un := got[UnattributedPath]; un.CostUSD != 7 {
+		t.Errorf("repository-wide = $%v, want $7 — s2's opening turn, which has no touch of its own "+
+			"to carry from (%+v)", un.CostUSD, got)
+	}
+}
+
+// TestTurnsBeforeFirstTouchAreNotCarriedBackward: attribution carries FORWARD
+// only. A session's opening turns, before any file is touched, land in the
+// repository-wide row rather than being charged to the directory the session
+// later reached.
+//
+// Measured both ways on the owner's database (2026-08-22, all time): carrying
+// backward would move $2.39 of $3426 in `amarketer` and $11.45 of $1729 in
+// `caprock` — 0.1% and 0.7%, too little to justify a second rule pointing the
+// opposite way.
+func TestTurnsBeforeFirstTouchAreNotCarriedBackward(t *testing.T) {
+	clearRepoCache()
+	ctx := context.Background()
+	s := openTest(t)
+	root := newRepo(t, filepath.Join(t.TempDir(), "mono"))
+	if err := UpsertSession(ctx, s.db, "s1", SessionPatch{Cwd: root}); err != nil {
+		t.Fatal(err)
+	}
+	// The opening turn: no touch has happened yet anywhere in the session.
+	addTurn(t, s, "s1", "m1", 1, 6)
+	// Only afterwards does the session touch a file.
+	addTouch(t, s, "s1", "m2", 2, filepath.Join(root, "api", "f.go"))
+	addTurn(t, s, "s1", "m3", 3, 2)
+
+	sum, err := Summarize(ctx, s.db, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := pathsOf(onlyProject(t, sum))
+	if ps := got["/api"]; ps.CostUSD != 2 {
+		t.Errorf("/api = $%v, want $2 — the opening turn was carried BACKWARD into a directory "+
+			"the session had not reached yet (%+v)", ps.CostUSD, got)
+	}
+	if un := got[UnattributedPath]; un.CostUSD != 6 {
+		t.Errorf("repository-wide = $%v, want the opening turn's $6 (%+v)", un.CostUSD, got)
+	}
+}
+
+// TestEmptyBucketRowsAreNotRendered: under carry-forward the repository-wide row
+// is usually empty, and a row reading $0.00 beside real directories invites the
+// reader to wonder what went wrong. A bucket with no spend must not be sent.
+func TestEmptyBucketRowsAreNotRendered(t *testing.T) {
+	clearRepoCache()
+	ctx := context.Background()
+	s := openTest(t)
+	root := newRepo(t, filepath.Join(t.TempDir(), "mono"))
+	for _, id := range []string{"s1", "s2"} {
+		if err := UpsertSession(ctx, s.db, id, SessionPatch{Cwd: root}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Three directories, so the breakdown survives on its real rows alone and
+	// an empty bucket cannot hide behind the "fewer than two rows" rule. Every
+	// turn is preceded by a touch inside the repository, so neither bucket has
+	// anything to hold.
+	addTouch(t, s, "s1", "m0", 1, filepath.Join(root, "api", "f.go"))
+	addTurn(t, s, "s1", "m1", 2, 3)
+	addTouch(t, s, "s1", "m1", 3, filepath.Join(root, "web", "app.ts"))
+	addTurn(t, s, "s1", "m2", 4, 5)
+	addTouch(t, s, "s1", "m2", 5, filepath.Join(root, "db", "schema.sql"))
+	addTurn(t, s, "s1", "m3", 6, 2)
+	// A zero-COST opening turn still carries tokens, so the bucket row exists
+	// with $0.00 unless it is suppressed on cost. This is the shape that
+	// actually reaches a user: an unpriced or cached-only turn.
+	addTurn(t, s, "s2", "m4", 7, 0)
+
+	sum, err := Summarize(ctx, s.db, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := pathsOf(onlyProject(t, sum))
+	if _, ok := got[UnattributedPath]; ok {
+		t.Errorf("an empty repository-wide row was sent; it would render as $0.00 (%+v)", got)
+	}
+	if _, ok := got[OutsidePath]; ok {
+		t.Errorf("an empty outside row was sent; it would render as $0.00 (%+v)", got)
+	}
+	if len(got) != 3 {
+		t.Errorf("got %d rows, want exactly the three real directories (%+v)", len(got), got)
 	}
 }
 
@@ -303,9 +463,10 @@ func TestWindowsSeparatorsAttributeTheSame(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := dirOf(tc.path)
-			got, ok := AttributeDir(TouchDirs{Dirs: map[string]struct{}{dir: {}}}, root)
-			if !ok {
-				t.Fatalf("dirOf(%q) = %q, which did not attribute under root %q", tc.path, dir, root)
+			got, _ := AttributeDir(TouchDirs{Dir: dir, HasDir: true}, root)
+			if got == OutsidePath {
+				t.Fatalf("dirOf(%q) = %q, which did not land inside root %q — a Windows-captured "+
+					"session would report every turn as outside the repository", tc.path, dir, root)
 			}
 			if got != tc.want {
 				t.Errorf("AttributeDir = %q, want %q (dir was %q)", got, tc.want, dir)
@@ -314,21 +475,22 @@ func TestWindowsSeparatorsAttributeTheSame(t *testing.T) {
 	}
 }
 
-// TestWindowsAndUnixPathsDoNotSplitOneDirectory: the same directory written
-// with both separators must be ONE directory, or a turn that touched it twice
-// would look like it straddled two and fall into the unattributed bucket.
-func TestWindowsAndUnixPathsDoNotSplitOneDirectory(t *testing.T) {
+// TestWindowsAndUnixPathsAreOneDirectory: the same directory written with both
+// separators must resolve to ONE row. One database routinely holds both shapes,
+// and two spellings of one directory would split its spend across two rows that
+// look like different places.
+func TestWindowsAndUnixPathsAreOneDirectory(t *testing.T) {
 	const root = `C:/work/mono`
-	dirs := map[string]struct{}{
-		dirOf(`C:\work\mono\services\api\a.go`): {},
-		dirOf(`C:/work/mono/services/api/b.go`): {},
+	back := dirOf(`C:\work\mono\services\api\a.go`)
+	fwd := dirOf(`C:/work/mono/services/api/b.go`)
+	if back != fwd {
+		t.Fatalf("one directory became two: %q vs %q", back, fwd)
 	}
-	if len(dirs) != 1 {
-		t.Fatalf("one directory became %d: %v", len(dirs), dirs)
-	}
-	got, ok := AttributeDir(TouchDirs{Dirs: dirs}, root)
-	if !ok || got != "/services/api" {
-		t.Errorf("AttributeDir = %q,%v; want /services/api,true", got, ok)
+	for _, dir := range []string{back, fwd} {
+		got, _ := AttributeDir(TouchDirs{Dir: dir, HasDir: true}, root)
+		if got != "/services/api" {
+			t.Errorf("AttributeDir(%q) = %q, want /services/api", dir, got)
+		}
 	}
 }
 
@@ -344,11 +506,12 @@ func TestPercentagesSumTo100AndIncludeUnattributed(t *testing.T) {
 	if err := UpsertSession(ctx, s.db, "s1", SessionPatch{Cwd: root}); err != nil {
 		t.Fatal(err)
 	}
-	addTurn(t, s, "s1", "m1", 1, 5)
-	addTouch(t, s, "s1", "m1", 1, filepath.Join(root, "a", "f.go"))
-	addTurn(t, s, "s1", "m2", 2, 3)
-	addTouch(t, s, "s1", "m2", 2, filepath.Join(root, "b", "f.go"))
-	addTurn(t, s, "s1", "m3", 3, 2) // no touches: unattributed
+	// The opening turn runs before any touch, so it is repository-wide: $2 of $10.
+	addTurn(t, s, "s1", "m0", 1, 2)
+	addTouch(t, s, "s1", "m0", 2, filepath.Join(root, "a", "f.go"))
+	addTurn(t, s, "s1", "m1", 3, 5)
+	addTouch(t, s, "s1", "m1", 4, filepath.Join(root, "b", "f.go"))
+	addTurn(t, s, "s1", "m2", 5, 3)
 
 	sum, err := Summarize(ctx, s.db, 0)
 	if err != nil {
@@ -390,10 +553,10 @@ func TestTinyShareIsNotReportedAsZeroSpend(t *testing.T) {
 	if err := UpsertSession(ctx, s.db, "s1", SessionPatch{Cwd: root}); err != nil {
 		t.Fatal(err)
 	}
-	addTurn(t, s, "s1", "m1", 1, 10000)
-	addTouch(t, s, "s1", "m1", 1, filepath.Join(root, "big", "f.go"))
-	addTurn(t, s, "s1", "m2", 2, 0.01) // 0.0001% of the total
-	addTouch(t, s, "s1", "m2", 2, filepath.Join(root, "tiny", "f.go"))
+	addTouch(t, s, "s1", "m0", 1, filepath.Join(root, "big", "f.go"))
+	addTurn(t, s, "s1", "m1", 2, 10000)
+	addTouch(t, s, "s1", "m1", 3, filepath.Join(root, "tiny", "f.go"))
+	addTurn(t, s, "s1", "m2", 4, 0.01) // 0.0001% of the total
 
 	sum, err := Summarize(ctx, s.db, 0)
 	if err != nil {
@@ -413,12 +576,16 @@ func TestTinyShareIsNotReportedAsZeroSpend(t *testing.T) {
 	}
 }
 
-// TestUnlinkableToolCallDoesNotAttribute: a tool call captured by the hook
-// plane carries no message id, so it cannot be tied to the turn that paid for
-// it. Its session's turns must report unattributed rather than being charged on
-// the evidence that happens to be linkable — the strict rule applied to its own
-// blind spot.
-func TestUnlinkableToolCallDoesNotAttribute(t *testing.T) {
+// TestHookPlaneTouchWithNoMessageIDStillAttributes: a tool call captured by the
+// hook plane carries no message id. Carry-forward does not need one — it places
+// a turn by WHEN a touch happened relative to it, not by which message the
+// touch belonged to — so such a session attributes normally.
+//
+// This replaces TestUnlinkableToolCallDoesNotAttribute, which asserted the
+// opposite: under the strict rule one unlinkable call forced its entire
+// session's spend into the bucket. That blind spot is simply gone, and the test
+// now guards against it coming back.
+func TestHookPlaneTouchWithNoMessageIDStillAttributes(t *testing.T) {
 	clearRepoCache()
 	ctx := context.Background()
 	s := openTest(t)
@@ -426,31 +593,28 @@ func TestUnlinkableToolCallDoesNotAttribute(t *testing.T) {
 	if err := UpsertSession(ctx, s.db, "s1", SessionPatch{Cwd: root}); err != nil {
 		t.Fatal(err)
 	}
-	addTurn(t, s, "s1", "m1", 1, 4)
-	addTouch(t, s, "s1", "m1", 1, filepath.Join(root, "a", "f.go"))
-	// A hook-plane touch: same session, no message id.
-	addTouchTool(t, s, "s1", "", 2, "Edit", map[string]any{"file_path": filepath.Join(root, "b", "f.go")})
-	// A second session in the same repository, fully linkable, so the
-	// breakdown still has two rows.
-	if err := UpsertSession(ctx, s.db, "s2", SessionPatch{Cwd: root}); err != nil {
-		t.Fatal(err)
-	}
-	addTurn(t, s, "s2", "m2", 3, 6)
-	addTouch(t, s, "s2", "m2", 3, filepath.Join(root, "c", "f.go"))
+	// A hook-plane touch: no message id at all, then the turn it precedes.
+	addTouchTool(t, s, "s1", "", 1, "Edit", map[string]any{"file_path": filepath.Join(root, "a", "f.go")})
+	addTurn(t, s, "s1", "m1", 2, 4)
+	// A second directory so the breakdown has two rows.
+	addTouchTool(t, s, "s1", "", 3, "Edit", map[string]any{"file_path": filepath.Join(root, "b", "f.go")})
+	addTurn(t, s, "s1", "m2", 4, 6)
 
 	sum, err := Summarize(ctx, s.db, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := pathsOf(onlyProject(t, sum))
-	if _, ok := got["/a"]; ok {
-		t.Errorf("/a was attributed, but its session has a touch that could not be linked to any turn (%+v)", got)
+	if ps := got["/a"]; ps.CostUSD != 4 {
+		t.Errorf("/a = $%v, want $4 — a hook-plane touch carries no message id, but carry-forward "+
+			"does not need one (%+v)", ps.CostUSD, got)
 	}
-	if un := got[UnattributedPath]; un.CostUSD != 4 {
-		t.Errorf("unattributed = $%v, want the unlinkable session's $4 (%+v)", un.CostUSD, got)
+	if ps := got["/b"]; ps.CostUSD != 6 {
+		t.Errorf("/b = $%v, want $6 (%+v)", ps.CostUSD, got)
 	}
-	if c := got["/c"]; c.CostUSD != 6 {
-		t.Errorf("/c = $%v, want $6 — a clean session must not be spoiled by another session's blind spot", c.CostUSD)
+	if _, ok := got[UnattributedPath]; ok {
+		t.Errorf("a repository-wide row appeared; the missing message id must not force spend "+
+			"into the bucket any more (%+v)", got)
 	}
 }
 
@@ -523,6 +687,67 @@ func TestTouchMigrationAddsColumnsAndIndex(t *testing.T) {
 	// touch_dir must be IN the index, or the query still reads the table per row.
 	if !strings.Contains(flat, "touch_dir") || !strings.Contains(flat, "msg_id") {
 		t.Errorf("index must carry msg_id and touch_dir to answer the attribution join, got: %s", idx)
+	}
+}
+
+// TestAttributionIndexOrdersTheCarryScan guards migration 0013. Carry-forward
+// reads one scan ordered by (session_id, ts, id); without an index in that
+// order SQLite sorts 90271 rows in a temp B-tree, measured at ~290ms on the
+// owner's database against a ~250ms budget for the entire summary. The index
+// must also COVER every column the scan reads, or the plan falls back to a
+// table lookup per row.
+func TestAttributionIndexOrdersTheCarryScan(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	var idx string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_events_attr'`).Scan(&idx)
+	if err != nil {
+		t.Fatalf("idx_events_attr is missing; the carry scan would sort every row of the range "+
+			"in a temp B-tree (migration 0013 did not run): %v", err)
+	}
+	flat := strings.Join(strings.Fields(idx), "")
+	// The ORDER BY prefix, in order: anything else reintroduces the sort.
+	if !strings.Contains(flat, "(session_id,ts,id") {
+		t.Errorf("index must lead with (session_id, ts, id) — the carry scan's ORDER BY — got: %s", idx)
+	}
+	// The payload the scan reads, so the plan stays covering.
+	for _, c := range []string{"kind", "touch_dir", "cost_usd", "tokens_in", "tokens_out", "cache_read", "cache_write"} {
+		if !strings.Contains(flat, c) {
+			t.Errorf("index must carry %s so the carry scan stays covering, got: %s", c, idx)
+		}
+	}
+	// And the query must actually be planned as a covering scan with no sort.
+	var plan string
+	rows, err := s.db.QueryContext(ctx, `
+		EXPLAIN QUERY PLAN
+		SELECT session_id, kind, COALESCE(touch_dir,''),
+		       COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0),
+		       COALESCE(cost_usd,0)
+		FROM events INDEXED BY idx_events_attr
+		WHERE session_id IS NOT NULL AND ts >= 0
+		  AND kind IN ('tool.pre','turn.assistant')
+		ORDER BY session_id, ts, id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var a, b, c int
+		var detail string
+		if err := rows.Scan(&a, &b, &c, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan += detail + "\n"
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	_ = rows.Close()
+	if strings.Contains(plan, "TEMP B-TREE") {
+		t.Errorf("the carry scan sorts in a temp B-tree instead of reading in index order:\n%s", plan)
+	}
+	if !strings.Contains(plan, "COVERING INDEX idx_events_attr") {
+		t.Errorf("the carry scan is not a covering read of idx_events_attr:\n%s", plan)
 	}
 }
 

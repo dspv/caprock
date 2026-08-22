@@ -112,7 +112,14 @@ export interface PathShare {
   tokens: number
   cost_usd: number
   turns: number
+  /** The turns that ran before their session touched any file — the only ones
+   *  carry-forward cannot place. Rendered as "repository-wide work", never as a
+   *  directory. Usually absent: the server omits a bucket row that cost $0. */
   unattributed?: boolean
+  /** The turns whose most recent file touch was outside the repository:
+   *  Claude's notes on the project, agent scratchpads, test output, another
+   *  checkout. Rendered as its own row, never as a directory. */
+  outside?: boolean
   tokens_pct: number
   cost_pct: number
 }

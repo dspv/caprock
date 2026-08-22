@@ -269,15 +269,11 @@ func TestSummarizeWithoutSparkCarriesNoSeries(t *testing.T) {
 // the pair the per-directory breakdown is built from.
 func spendTouching(t *testing.T, s *Store, sid, msg string, ts int64, tokens int64, usd float64, file string) {
 	t.Helper()
-	ev := &event.Event{
-		SessionID: sid, Source: event.SourceTranscript, Kind: event.KindTurnAssistant,
-		Model: "claude-opus-5", Ts: time.UnixMilli(ts),
-		Tokens: &event.TokenDelta{In: tokens}, CostUSD: &usd,
-		MsgID: msg, Key: "msg:" + msg,
-	}
-	if _, err := InsertEvent(context.Background(), s.db, ev); err != nil {
-		t.Fatal(err)
-	}
+	// The touch is written BEFORE the turn it places, one millisecond earlier.
+	// Attribution carries forward, so a turn is charged to the directory of the
+	// most recent touch at or before it — which is the real order of events: the
+	// tool calls Claude makes while working on a file precede the turn they
+	// produce.
 	payload, err := json.Marshal(map[string]any{
 		"tool_name": "Read", "tool_input": map[string]any{"file_path": file},
 		"tool_use_id": "toolu_" + msg, "message_id": msg,
@@ -287,10 +283,19 @@ func spendTouching(t *testing.T, s *Store, sid, msg string, ts int64, tokens int
 	}
 	tp := &event.Event{
 		SessionID: sid, Source: event.SourceTranscript, Kind: event.KindToolPre,
-		Tool: "Read", Ts: time.UnixMilli(ts), Payload: payload,
+		Tool: "Read", Ts: time.UnixMilli(ts - 1), Payload: payload,
 		MsgID: msg, Key: "pre:" + msg,
 	}
 	if _, err := InsertEvent(context.Background(), s.db, tp); err != nil {
+		t.Fatal(err)
+	}
+	ev := &event.Event{
+		SessionID: sid, Source: event.SourceTranscript, Kind: event.KindTurnAssistant,
+		Model: "claude-opus-5", Ts: time.UnixMilli(ts),
+		Tokens: &event.TokenDelta{In: tokens}, CostUSD: &usd,
+		MsgID: msg, Key: "msg:" + msg,
+	}
+	if _, err := InsertEvent(context.Background(), s.db, ev); err != nil {
 		t.Fatal(err)
 	}
 }

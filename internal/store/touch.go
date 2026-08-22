@@ -22,24 +22,44 @@ import (
 // therefore never charged directly — a TURN is charged, and the turn's cost
 // reaches a directory only through the tool calls that turn made.
 //
-// STRICT ATTRIBUTION (the decision). A turn's cost is charged to a directory
-// only when EVERY path that turn touched is in that one directory. A turn that
-// spans several directories is not split, pro-rated, or assigned to the biggest
-// share — its cost goes whole into an explicitly labelled bucket. This trades
-// completeness for exactness: every per-directory figure on screen is measured,
-// and the parts still sum to the repository's total, so nothing is hidden and
-// nothing is invented (rule 6). Splitting would require a model of how much of
-// a turn each file deserved, and no such measurement exists.
+// CARRY-FORWARD ATTRIBUTION (the decision). A turn belongs to the directory of
+// the MOST RECENT file touch at or before it, within the same session. The
+// attribution carries forward until a touch in a different directory moves it.
+//
+// WHY, AND WHAT THE PREVIOUS RULE COST. The rule used to be strict: a turn was
+// charged to a directory only when EVERY file it touched was in that one
+// directory, and everything else — including every turn that touched no file at
+// all — became "repository-wide work". On the owner's real data that bucket was
+// 87.6% of `amarketer`'s spend. The user asked what a service costs and seven
+// eighths of the answer was "we could not tell".
+//
+// The missing insight is that work happens in STRETCHES, not in isolated tool
+// calls. The user says "finish /app", and Claude then edits a file, runs the
+// tests, reads the output, greps, edits again — for an hour. That whole stretch
+// is work on /app. The strict rule counted only the minutes containing a direct
+// file edit and discarded the rest, which is why Bash-heavy turns (half of all
+// tool calls) fell out.
+//
+// WHY THIS IS NOT AN INVENTED NUMBER (rule 6). No cost is split, pro-rated, or
+// modelled: each turn's price goes WHOLE to exactly one row, and the rows still
+// sum exactly to the repository total. What changed is the rule for deciding
+// which row — a stated rule, not a guess at proportions. It is stated to the
+// user in plain words wherever the breakdown is shown (TouchRule). It must
+// never be described as measured file-by-file attribution, because it is not:
+// the evidence is the last file touched, and a turn that ran only commands is
+// placed by that evidence rather than by evidence of its own.
 
-// TouchDirs is the set of directories one turn touched, and whether anything
-// about that set is unknown.
+// TouchDirs is what one turn's attribution is decided from: the directory
+// carried into it by the most recent file touch in its session.
 type TouchDirs struct {
-	// Dirs are the distinct absolute directories touched, normalized.
-	Dirs map[string]struct{}
-	// Unlinkable records that at least one tool call could not be tied to a
-	// turn (no message id — the hook plane never supplies one). Such a turn is
-	// reported as unattributed rather than attributed on partial evidence.
-	Unlinkable bool
+	// Dir is the absolute, normalized directory carried into this turn — the
+	// directory of the most recent touch at or before it in the same session.
+	// It is "" when no touch preceded the turn in its session (the session's
+	// opening turns), which is the one case carry-forward cannot place.
+	Dir string
+	// HasDir distinguishes "no touch preceded this turn" from a directory that
+	// normalized to the empty string, so the caller never treats the two alike.
+	HasDir bool
 }
 
 // TouchDir extracts the directory a tool call touched from its stored payload.
@@ -55,33 +75,30 @@ func TouchDir(payload []byte) string {
 	return dirOf(p)
 }
 
-// TouchRule is the one-sentence statement of what counts as touching a
-// directory, shown in the UI so the number is not a black box.
+// TouchRule is the statement of how a turn is placed, shown in the UI so the
+// number is not a black box. It is the sentence that makes this honest rather
+// than a guess, so it says exactly what the rule does and claims nothing more.
 //
-// THE RULE: a tool that names a FILE touches that file's directory. Read, Edit
-// and Write do; Bash, Grep and Glob do not.
+// THE RULE, in the user's words: a turn counts toward the directory of the most
+// recent file it touched, and work keeps counting there until it touches a file
+// somewhere else.
+//
+// Why a stretch and not a single call. Work happens in stretches: after "finish
+// /app", Claude edits, runs the tests, reads the output, greps, edits again.
+// Charging only the calls that name a file would count the edit and discard the
+// hour around it.
+//
+// What counts as touching. A tool that names a FILE — Read, Edit, Write,
+// NotebookEdit. Bash does not, even when its command contains a path:
+// `grep -r foo /services` reads a tree and `cd /services/api && go build ./...`
+// names one directory while touching many, so parsing intent out of a command
+// line would be inference presented as measurement. Under carry-forward that
+// costs nothing, because a Bash turn is placed by the file touched before it
+// rather than dropped.
 //
 // Why reading counts. Reading a file to understand it is how most of a turn's
-// tokens get spent — the file's contents enter the prompt and are billed. A
-// rule that counted only writes would report a directory as free right up to
-// the moment it was edited, which is the opposite of what a budget wants to
-// know.
-//
-// Why Bash does not, even when its command contains a path. A path inside a
-// shell string is not a claim about what was touched: `grep -r foo /services`
-// reads a tree, `cd /services/api && go build ./...` names one directory and
-// touches many, and `rm /tmp/x` names a path that is not work at all. Parsing
-// intent out of a command line would be inference presented as measurement.
-// Bash is the biggest tool by volume on the owner's database (32581 of 65915
-// calls), so this is not a rounding decision — it is the reason a large share
-// of spend lands in the unattributed bucket, and the UI says so rather than
-// quietly redistributing it.
-//
-// Why not Grep and Glob. They name a search pattern and a root, not a file that
-// was read; the files they matched are not recorded. Neither appears at all on
-// the owner's database, so including them would add no signal and one more
-// assumption.
-const TouchRule = "A turn is charged to a directory only when every file it read or wrote is in that directory. Tools that name a file (Read, Edit, Write) attribute; Bash, Grep and Glob do not — a path inside a shell command is not a record of what was touched. Everything else is repository-wide work: turns that ran commands, searched, or built rather than editing files in one place."
+// tokens get spent — the contents enter the prompt and are billed.
+const TouchRule = "A turn counts toward the directory of the most recent file it touched; work continues to count there until it touches a file somewhere else. Reading, editing or writing a file counts as touching it; running a command does not, so the commands, tests and searches between two edits count toward the directory being worked on. Each turn's cost goes whole to one directory — never split between them — so the rows add up to the repository total exactly."
 
 // touchPathOf pulls the file path a tool call names out of its payload.
 //
@@ -146,181 +163,165 @@ func dirOf(p string) string {
 	return dir
 }
 
-// AttributeDir decides which directory a turn's cost belongs to, given every
-// directory its tool calls touched and the repository the turn's session sits
-// in.
+// AttributeDir decides which row a turn's cost belongs to, given the directory
+// carried into it and the repository the turn's session sits in.
 //
-// It returns the directory to charge and true, or false when the turn cannot be
-// charged to exactly one. The three unattributable cases are deliberately not
-// distinguished here — they are all "we do not know which one directory this
-// was", and the UI states them as one honest bucket:
+// It always returns a row, because every turn's cost belongs somewhere and the
+// rows must sum to the repository total. There are exactly three outcomes:
 //
-//   - the turn touched several directories (do not split — see the file header)
-//   - the turn touched nothing that names a path (a pure Bash or thinking turn)
-//   - the turn touched a path OUTSIDE the repository
+//   - a directory inside the repository, written relative to its root
+//   - OutsidePath, when the carried directory is real but not in this
+//     repository
+//   - UnattributedPath, when no touch preceded this turn in its session
 //
-// FILES OUTSIDE THE REPOSITORY. A turn that edits /tmp, or a file in an
-// entirely different checkout, is not charged to the repository's directories —
-// the touched directory is not one of them, so claiming it would put spend
-// under a heading it does not belong to. Such a turn still counts toward the
-// repository total (its session is in this repository and the money was really
-// spent there), and lands in the unattributed bucket. That keeps the parts
-// summing to the whole without inventing a row for a directory the repository
-// does not contain.
+// PATHS OUTSIDE THE REPOSITORY get their own row rather than being folded into
+// the repository root or dropped. Folding them into "/" would claim work
+// happened in the checkout when it did not; dropping them would stop the parts
+// reconciling with the total. On the owner's database this is not a rounding
+// error — it is 25.8% of `amarketer` and 28.7% of `caprock` (measured
+// 2026-08-22) — and it is overwhelmingly work ON this project whose files live
+// elsewhere: Claude's own notes under ~/.claude/projects/<project>/memory,
+// subagent scratchpads under the per-session temp directory, and test output
+// directories. A share that large must be named, not hidden.
+//
+// It deliberately does NOT try to tell "another checkout" from "scratch space".
+// The only way to do so would be to ask whether the path sits under some OTHER
+// repository root the database happens to know, and that answer is unstable:
+// `caprock-web` is a real git repository on disk that no session was ever
+// launched from, so it is invisible here — the same path would classify one way
+// today and another tomorrow, silently moving money between rows. One
+// structural question ("is it inside THIS repository?") is answerable from the
+// two paths alone and always gives the same answer.
+//
+// TURNS BEFORE ANY TOUCH land in UnattributedPath rather than carrying BACKWARD
+// from the session's first touch. Measured both ways on the owner's database
+// (2026-08-22, all time): carrying backward moves $2.39 of $3426 in `amarketer`
+// and $11.45 of $1729 in `caprock` — 0.1% and 0.7%. That is far too little to
+// justify a second rule pointing the opposite way, which would make the
+// one-sentence explanation two sentences and let a session's opening question
+// charge a directory it had not reached yet.
 func AttributeDir(t TouchDirs, repoRoot string) (string, bool) {
-	if t.Unlinkable || len(t.Dirs) != 1 {
-		return "", false
+	if !t.HasDir {
+		return UnattributedPath, true
 	}
-	var only string
-	for d := range t.Dirs {
-		only = d
+	if repoRoot == "" || !hasPathPrefix(t.Dir, repoRoot) {
+		return OutsidePath, true
 	}
-	if repoRoot == "" {
-		return "", false
-	}
-	if !hasPathPrefix(only, repoRoot) {
-		return "", false // outside this repository
-	}
-	return RepoInfo{Path: relativeUnder(repoRoot, only)}.Segment(), true
+	return RepoInfo{Path: relativeUnder(repoRoot, t.Dir)}.Segment(), true
 }
 
-// UnattributedPath is the sentinel for spend that belongs to a repository but
-// not to any single directory inside it.
+// UnattributedPath is the sentinel for the turns carry-forward cannot place:
+// those that ran before any file was touched in their session.
 //
 // It is a sentinel, not a path, and it must never reach a user as one: the UI
 // renders it as "repository-wide work" in its own style with the reason
 // attached. It starts with a character no path segment does so that a
 // hypothetical directory of the same name could not collide with it.
 //
-// THE NAME IS INTERNAL ONLY. "Unattributed" describes this package's
-// bookkeeping, not the user's work, and on real data this row is usually the
-// largest — the tool calls behind it are overwhelmingly Bash (17382 of 27158
-// calls in the owner's `amarketer`, measured 2026-08-22): test runs, `git log`,
-// tree-wide greps, builds. Showing a user that word next to two thirds of their
-// spend says the tool failed, when in fact the work simply has no one home. The
-// UI therefore names what the work IS; see REPO_WIDE_LABEL in Projects.tsx.
+// WHAT NOW LANDS HERE, AND WHY THE ROW IS SMALL. Under the previous strict rule
+// this bucket was most of the money — 87.6% of the owner's `amarketer` — and
+// the UI had to work hard to explain that it was not a failure. Under
+// carry-forward it means one narrow, honest thing: a session's opening turns,
+// before Claude has touched any file. On the owner's database that is $2.39 of
+// $3426 in `amarketer` and $11.45 of $1729 in `caprock` (measured 2026-08-22).
+// It is usually zero, and the UI must not render an empty row.
 const UnattributedPath = "\x00unattributed"
 
-// turnTouch is the accumulating state for one turn while its tool calls are
-// read.
-type turnTouch struct {
-	dirs       map[string]struct{}
-	unlinkable bool
-}
-
-// TouchesByTurn reads every tool call in a time range and returns, per session,
-// the set of directories each TURN touched — keyed by the message id that links
-// the tool call to the turn whose cost paid for it.
+// OutsidePath is the sentinel for turns whose carried directory is real but
+// sits outside the repository — Claude's notes about the project, subagent
+// scratchpads, test-output directories, or another checkout entirely.
 //
-// The query reads only indexed columns (kind, ts, session_id, msg_id,
-// touch_dir) and never parses JSON, which is the whole point of resolving
-// touch_dir at ingest: on the owner's database json_extract over the tool.pre
-// rows in a 30-day range costs ~215ms against a ~152ms budget for the entire
-// summary.
-//
-// A tool.pre row with no msg_id cannot be tied to a turn (the hook plane does
-// not carry one). Those rows are counted per session so their sessions can be
-// reported as partially unattributed rather than silently attributed on the
-// evidence that happens to be linkable.
-func TouchesByTurn(ctx context.Context, q Querier, fromMs int64) (map[string]map[string]TouchDirs, error) {
-	rows, err := q.QueryContext(ctx, `
-		SELECT session_id, COALESCE(msg_id, ''), touch_dir
-		FROM events
-		WHERE kind = 'tool.pre' AND ts >= ? AND touch_dir IS NOT NULL`, fromMs)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := map[string]map[string]turnTouch{}
-	for rows.Next() {
-		var sess, msg, dir string
-		if err := rows.Scan(&sess, &msg, &dir); err != nil {
-			return nil, err
-		}
-		bySess := out[sess]
-		if bySess == nil {
-			bySess = map[string]turnTouch{}
-			out[sess] = bySess
-		}
-		if msg == "" {
-			// Unlinkable: a touch we know happened but cannot bill to a turn.
-			// It is recorded against the session under the empty key so the
-			// session's spend is not quietly attributed as if this had not
-			// happened.
-			t := bySess[""]
-			t.unlinkable = true
-			bySess[""] = t
-			continue
-		}
-		t := bySess[msg]
-		if t.dirs == nil {
-			t.dirs = map[string]struct{}{}
-		}
-		t.dirs[dir] = struct{}{}
-		bySess[msg] = t
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	res := make(map[string]map[string]TouchDirs, len(out))
-	for sess, byMsg := range out {
-		m := make(map[string]TouchDirs, len(byMsg))
-		for msg, t := range byMsg {
-			m[msg] = TouchDirs{Dirs: t.dirs, Unlinkable: t.unlinkable}
-		}
-		res[sess] = m
-	}
-	return res, nil
-}
+// It is a row of its own, sibling to the directory rows and to
+// UnattributedPath, because it is neither: the work has a known location and
+// that location is simply not in this tree. Merging it into repository-wide
+// work would mislabel a quarter of the bill as "no single home" when its home
+// is known and named; folding it into the repository root would claim work
+// happened in the checkout that did not. See AttributeDir for the measured
+// shares and for why "another checkout" is not split out separately.
+const OutsidePath = "\x00outside"
 
 // turnSpendBySession returns, per session, one entry per assistant turn in the
-// range: what it cost and which directories it touched.
+// range: what it cost and which directory was carried into it.
 //
-// Turns are keyed by msg_id, the same id that links a tool call to the turn
-// that paid for it. A turn with no msg_id (a transcript line that carried no
-// message id) is kept under a per-turn synthetic key so its spend still reaches
-// the repository total — it simply has no tools to attribute it by, and lands
-// in the unattributed bucket.
+// ONE ORDERED SCAN, NOT A JOIN. Carry-forward is inherently sequential — a
+// turn's directory is a function of everything before it in its session — so
+// the tool calls and the turns are read TOGETHER in event order and the carry
+// is threaded through them in Go. This replaces the two independent queries the
+// strict rule used (a per-turn touch lookup plus a turn scan).
+//
+// Doing the carry in SQL was considered and rejected. A window function could
+// compute `last_value(touch_dir) IGNORE NULLS OVER (PARTITION BY session_id
+// ORDER BY ts, id)`, but deciding whether the carried directory is inside the
+// repository needs the same path normalization the ingest path uses — folding
+// separators so a Windows-captured session groups with the same repository read
+// anywhere else. Re-implementing that in SQL would put a second, silently
+// diverging definition in a second language, the exact trap migration 0012
+// documents for the dirname cut. The scan is O(n) in one pass either way.
+//
+// WHY msg_id NO LONGER GATES ATTRIBUTION. Under the strict rule a tool call
+// without a message id could not be billed to a turn, so its whole session was
+// forced unattributed. Carry-forward does not need the linkage: it places a
+// turn by WHEN a touch happened relative to it, not by which message the touch
+// belonged to. A hook-plane tool call carries no msg_id but does carry a
+// timestamp, which is all the carry needs — so those sessions now attribute
+// normally instead of collapsing into one bucket.
 //
 // COST IS READ, NOT RECOMPUTED. cost_usd on turn.assistant is the priced figure
 // the rest of the dashboard reports; deriving a second number here would give
 // the panel two totals for one repository.
+//
+// INDEXED BY is not a micro-optimization. Without stats — and nothing in the
+// daemon runs ANALYZE, so no user database has them — SQLite prefers
+// idx_events_kind_ts for the `kind IN (…)` predicate and sorts 90271 rows in a
+// temp B-tree: ~290 ms, against a ~250 ms budget for the whole summary. Pinning
+// idx_events_attr makes the plan a covering scan in index order with no sort,
+// measured at ~93 ms on the owner's database (2026-08-22, 30d, Go driver).
 func turnSpendBySession(ctx context.Context, q Querier, fromMs int64) (map[string][]turnSpend, error) {
-	touches, err := TouchesByTurn(ctx, q, fromMs)
-	if err != nil {
-		return nil, err
-	}
 	rows, err := q.QueryContext(ctx, `
-		SELECT session_id, COALESCE(msg_id, ''), id,
+		SELECT session_id, kind, COALESCE(touch_dir, ''),
 		       COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0),
 		       COALESCE(cost_usd,0)
-		FROM events
-		WHERE kind = 'turn.assistant' AND ts >= ?`, fromMs)
+		FROM events INDEXED BY idx_events_attr
+		WHERE session_id IS NOT NULL AND ts >= ?
+		  AND kind IN ('tool.pre', 'turn.assistant')
+		ORDER BY session_id, ts, id`, fromMs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	out := map[string][]turnSpend{}
+	// The carry, valid only within the session named by carrySess. Resetting it
+	// on every session change is what keeps attribution from crossing session
+	// boundaries — one piece of work must never be charged to another's
+	// directory, and the scan's ORDER BY groups sessions so a single variable
+	// suffices.
+	var carrySess, carryDir string
+	var carried bool
 	for rows.Next() {
-		var sess, msg string
-		var id, tokens int64
+		var sess, kind, dir string
+		var tokens int64
 		var cost float64
-		if err := rows.Scan(&sess, &msg, &id, &tokens, &cost); err != nil {
+		if err := rows.Scan(&sess, &kind, &dir, &tokens, &cost); err != nil {
 			return nil, err
 		}
-		ts := turnSpend{tokens: tokens, cost: cost}
-		if msg != "" {
-			ts.touched = touches[sess][msg]
+		if sess != carrySess {
+			carrySess, carryDir, carried = sess, "", false
 		}
-		// A session with an unlinkable tool call cannot be sure any of its
-		// turns is complete: the touch that was lost might belong to this one
-		// and might be in another directory. Marking the turn unlinkable makes
-		// it unattributed rather than attributed on evidence known to be
-		// partial — the strict rule applied to its own blind spot.
-		if u, ok := touches[sess][""]; ok && u.Unlinkable {
-			ts.touched.Unlinkable = true
+		if kind == "tool.pre" {
+			// Only a tool that named a file moves the carry. A pathless call
+			// (Bash, Grep) leaves touch_dir NULL and must NOT clear it — the
+			// commands between two edits are part of the same stretch of work,
+			// which is the whole point of the rule.
+			if dir != "" {
+				carryDir, carried = dir, true
+			}
+			continue
 		}
-		out[sess] = append(out[sess], ts)
+		out[sess] = append(out[sess], turnSpend{
+			tokens:  tokens,
+			cost:    cost,
+			touched: TouchDirs{Dir: carryDir, HasDir: carried},
+		})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

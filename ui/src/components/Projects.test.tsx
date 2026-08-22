@@ -275,19 +275,19 @@ describe('ProjectsPanel figures', () => {
     expect(screen.getByText('100.0k').parentElement?.textContent).toBe('100.0k 10% · $200.00')
   })
 
-  it('names the non-directory row as repository-wide work, never as a directory or a defect', async () => {
-    // Strict attribution puts every turn that spanned several directories,
-    // touched none, or touched files outside the repository into ONE labelled
-    // row. Two things must hold at once:
+  it('names the two non-directory rows for what they are, never as a directory or a defect', async () => {
+    // Carry-forward leaves exactly two rows that are not directories, and each
+    // must satisfy two things at once: it must not read as a DIRECTORY (the
+    // sentinel path never reaches the screen), and it must not read as a
+    // FAILURE — the words describe the user's work, not the tool's bookkeeping.
     //
-    //   - it must not read as a DIRECTORY (the sentinel path never reaches the
-    //     screen), and
-    //   - it must not read as a FAILURE. This row is usually the largest — most
-    //     turns run commands, search, or build — so calling it "unattributed"
-    //     tells a user whose repository is two thirds this row that the tool is
-    //     broken. It is not: that is real repository-wide work.
+    //   - "outside the repository" is the large one on real data (26% of the
+    //     owner's `amarketer`): work on THIS project whose files live
+    //     elsewhere — Claude's notes, agent scratchpads, test output.
+    //   - "repository-wide work" is now small and narrow: a session's opening
+    //     turns, before any file was touched.
     //
-    // Its share must also be visible, so the column adds up.
+    // Their shares must be visible too, so the column adds up.
     projects.value = [
       {
         project: 'mono',
@@ -295,8 +295,9 @@ describe('ProjectsPanel figures', () => {
         cost_usd: 100,
         sessions: 2,
         paths: [
-          { path: '/services/api', tokens: 200_000, cost_usd: 20, turns: 4, tokens_pct: 20, cost_pct: 20 },
-          { path: '\u0000unattributed', tokens: 800_000, cost_usd: 80, turns: 40, unattributed: true, tokens_pct: 80, cost_pct: 80 },
+          { path: '/services/api', tokens: 600_000, cost_usd: 60, turns: 4, tokens_pct: 60, cost_pct: 60 },
+          { path: '\u0000outside', tokens: 300_000, cost_usd: 30, turns: 20, outside: true, tokens_pct: 30, cost_pct: 30 },
+          { path: '\u0000unattributed', tokens: 100_000, cost_usd: 10, turns: 2, unattributed: true, tokens_pct: 10, cost_pct: 10 },
         ],
       },
     ]
@@ -304,22 +305,25 @@ describe('ProjectsPanel figures', () => {
     fireEvent.click(await screen.findByTitle('mono: show cost by directory'))
     // The real directory keeps its path treatment.
     expect(screen.getByText('/services/api')).toBeTruthy()
-    // The row says what the work IS, and the sentinel never reaches the screen.
+    // Both rows say what the work IS, and neither sentinel reaches the screen.
+    expect(screen.getByText('outside the repository')).toBeTruthy()
     expect(screen.getByText('repository-wide work')).toBeTruthy()
+    expect(screen.queryByText('\u0000outside')).toBeNull()
     expect(screen.queryByText('\u0000unattributed')).toBeNull()
     // The word "unattributed" must not reach a user anywhere in the breakdown:
-    // it describes the tool's bookkeeping rather than their work, and this row
-    // is normally the biggest number on screen.
+    // it describes the tool's bookkeeping rather than their work.
     expect(document.body.textContent).not.toMatch(/unattributed/i)
-    // Nor may it read as a directory literally called "several".
-    expect(screen.queryByText('several')).toBeNull()
-    // The explanation rides on the row itself, in the user's vocabulary — a
-    // large number with no stated reason is exactly what reads as a defect.
-    const hover = screen.getByText('repository-wide work').getAttribute('title') ?? ''
-    expect(hover).toMatch(/command/i)
-    expect(hover).toMatch(/search/i)
-    // Its share is stated rather than hidden in the denominator.
-    expect(screen.getByText('800.0k').parentElement?.textContent).toBe('800.0k 80% · $80.00')
+    // Each explanation rides on its own row, and they must say DIFFERENT things
+    // — the whole point of splitting them is that the reasons differ.
+    const outsideHover = screen.getByText('outside the repository').getAttribute('title') ?? ''
+    expect(outsideHover).toMatch(/outside this repository/i)
+    expect(outsideHover).toMatch(/scratchpad|notes|test-output/i)
+    const wideHover = screen.getByText('repository-wide work').getAttribute('title') ?? ''
+    expect(wideHover).toMatch(/before Claude had touched any file/i)
+    expect(wideHover).not.toBe(outsideHover)
+    // Their shares are stated rather than hidden in the denominator.
+    expect(screen.getByText('300.0k').parentElement?.textContent).toBe('300.0k 30% · $30.00')
+    expect(screen.getByText('100.0k').parentElement?.textContent).toBe('100.0k 10% · $10.00')
   })
 
   it('floors a share and never shows a real spend as a bare 0%', async () => {
