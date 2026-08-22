@@ -130,6 +130,41 @@ undoes it, and running it twice is a no-op rather than a second copy. Stopping
 the daemon with `caprock down` keeps it stopped: the service is configured to
 restart it only when it *crashes*, never when you shut it down on purpose.
 
+## Your numbers, ready to publish
+
+`caprock report` prints what your captured usage comes to at Anthropic list
+prices, in a form you can paste somewhere:
+
+```bash
+caprock report              # a block for a post
+caprock report --markdown   # the same facts as a table
+caprock report --json       # machine-readable
+```
+
+```
+$9,688 of Claude Code at API list prices on a $200/month plan — 41.5× the fee.
+Priced from captured tokens at Anthropic list prices — what the same work would
+have cost through the API. Not a bill, not a discount received, and not money
+back: without the plan I would not have run this much.
+
+2026-07-19 → 2026-08-22 · 33 active days
+paid $233 over that window · same usage at API list $9,688
+59,435 turns · 57 sessions · 26 projects
+99% cache hit · 89% of input cost cut by cache
+```
+
+The caveat is part of the output, on every shape, because the number is not a
+bill and not money saved — it is what the same work would have cost through the
+API, and it is quotable enough to be worth making hard to quote without that.
+The multiple compares your usage against the plan fee **for the window that was
+measured**, so the report also prints the fee it divided by. Set your plan in
+the dashboard header first; with no plan stated, `caprock report` says so and
+shows no multiple rather than guessing one.
+
+It reads from the running daemon and only issues GETs. Numbers move as you work,
+so re-running it is the point — a figure you pasted last month is a figure about
+last month.
+
 ## What it is
 
 Claude Code runs in your terminal. Caprock is the window into it.

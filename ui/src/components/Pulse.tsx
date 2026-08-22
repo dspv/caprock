@@ -91,16 +91,16 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
       <div className="px-3 py-2 flex items-center gap-4 flex-wrap text-[11px] text-fg-faint border-t border-border">
         <span className="text-fg-muted" title="They are independent: one call carrying a large context is a short bright bar, twenty greps are a tall dark one.">bar height = turns and tools · colour = what the minute cost</span>
         <span className="flex items-center gap-1.5">
-          <Swatch className="bg-[rgba(169,165,158,0.35)] h-[2px]" />idle
+          <Swatch tier={IDLE_TOKEN} className="h-[2px]" />idle
         </span>
         <span className="flex items-center gap-1.5">
-          <Swatch className="bg-[rgba(79,191,107,0.62)]" />below this session&apos;s median
+          <Swatch tier={TIER_TOKEN.low} />below this session&apos;s median
         </span>
         <span className="flex items-center gap-1.5">
-          <Swatch className="bg-[rgba(254,177,87,0.72)]" />around it
+          <Swatch tier={TIER_TOKEN.mid} />around it
         </span>
         <span className="flex items-center gap-1.5">
-          <Swatch className="bg-[rgba(255,203,133,0.95)]" />well above it
+          <Swatch tier={TIER_TOKEN.high} />well above it
         </span>
         <span className="ml-auto">
           <span className="text-warn">×N same call</span> = most-repeated identical tool call in six minutes
@@ -110,9 +110,28 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
   )
 }
 
-/** A colour chip, so the legend shows the colour rather than naming it. */
-function Swatch({ className }: { className: string }) {
-  return <span className={`inline-block w-3 h-3 rounded-[2px] ${className}`} />
+/**
+ * A colour chip, so the legend shows the colour rather than naming it.
+ *
+ * It is driven by the same token+alpha the canvas paints with, so the legend
+ * cannot drift from the bars: the idle swatch used to be hardcoded at alpha
+ * 0.35 while the canvas drew the hairline at 0.16, and the tier swatches were
+ * three more copies of the dark-theme rgba that the light theme flattened.
+ */
+function Swatch({
+  tier,
+  className = '',
+}: {
+  tier: { token: string; fallback: string; alpha: number }
+  className?: string
+}) {
+  return (
+    <span
+      data-token={tier.token}
+      className={`inline-block w-3 h-3 rounded-[2px] ${className}`}
+      style={{ background: `var(${tier.token}, ${tier.fallback})`, opacity: tier.alpha }}
+    />
+  )
 }
 
 function Track({ s, events, now }: { s: SessionSummary; events: Event[]; now: number }) {
@@ -150,17 +169,45 @@ function Track({ s, events, now }: { s: SessionSummary; events: Event[]; now: nu
   )
 }
 
-/** Bar colours by cost tier, kept beside the legend that names them. */
-const TIER_COLOR = {
-  low: 'rgba(79,191,107,0.62)',    // ok green — a cheap minute
-  mid: 'rgba(254,177,87,0.72)',    // accent amber — typical
-  high: 'rgba(255,203,133,0.95)',  // bright — an expensive minute
+/**
+ * Bar colours by cost tier, as a design token plus the alpha it is drawn at.
+ *
+ * These used to be hardcoded rgba lifted from the *dark* palette, which made
+ * the light theme unreadable: `mid` (#feb157 at 0.72) and `high` (#ffcb85 at
+ * 0.95) composite against a white panel to a contrast ratio of 1.05 — the same
+ * orange to any eye — so the legend named a distinction a light-theme viewer
+ * could not see. Every bar was also near-invisible on white (1.46–1.68 against
+ * the panel). Reading the tokens instead lets each theme supply its own hue:
+ * on dark the tiers climb in brightness, on light they climb in depth, because
+ * light's --color-accent-strong is *darker* than --color-accent, not lighter.
+ *
+ * The alphas are per tier rather than shared: they are what separates two tiers
+ * drawn from neighbouring hues, and they were tuned against the composited
+ * contrast in both themes (worst-case adjacent-tier ratio 1.59, against 1.05
+ * before). Alpha is applied via globalAlpha rather than baked into the colour
+ * string, because the tokens are opaque hex — the same approach SparkCanvas in
+ * Projects.tsx uses.
+ */
+export const TIER_TOKEN = {
+  low: { token: '--color-ok', fallback: '#4fbf6b', alpha: 0.55 },     // a cheap minute
+  mid: { token: '--color-accent', fallback: '#feb157', alpha: 0.85 }, // typical
+  high: { token: '--color-accent-strong', fallback: '#ffcb85', alpha: 1 }, // expensive
 } as const
 
 /** A minute with no events still draws a hairline, so the track reads as a
  * continuous hour with quiet stretches rather than as a broken chart. Gaps in
- * a bar chart look like a rendering fault; a flat floor looks like silence. */
-const IDLE_COLOR = 'rgba(169,165,158,0.16)'
+ * a bar chart look like a rendering fault; a flat floor looks like silence.
+ *
+ * It is deliberately the faintest thing on the track — present, never competing
+ * with a real bar — which is a ratio to the panel, not a fixed grey: the old
+ * fixed value sat at 1.13 against a white panel and disappeared. */
+export const IDLE_TOKEN = { token: '--color-fg-faint', fallback: '#837f78', alpha: 0.3 } as const
+
+/** Resolve a design token against an element, with the dark-theme value as the
+ * fallback for the brief moment before the stylesheet has applied. */
+function token(css: CSSStyleDeclaration, name: string, fallback: string): string {
+  return css.getPropertyValue(name).trim() || fallback
+}
 
 function PulseCanvas({ pulse, now, sessionID }: { pulse: PulseModel; now: number; sessionID: string }) {
   const ref = useRef<HTMLCanvasElement>(null)
@@ -181,6 +228,12 @@ function PulseCanvas({ pulse, now, sessionID }: { pulse: PulseModel; now: number
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.clearRect(0, 0, w, h)
 
+      // Tokens from the stylesheet, so the track follows the theme. A canvas
+      // cannot use a CSS variable directly, so they are resolved once per paint
+      // against the element itself.
+      const css = getComputedStyle(cv)
+      const idle = token(css, IDLE_TOKEN.token, IDLE_TOKEN.fallback)
+
       const bars = pulse.bars
       const max = Math.max(...bars.map((b) => b.n), 1)
       const median = medianCost(bars)
@@ -192,22 +245,33 @@ function PulseCanvas({ pulse, now, sessionID }: { pulse: PulseModel; now: number
         const width = Math.max(1, bw - 1)
         if (b.n === 0) {
           // Silence, drawn rather than left blank.
-          ctx.fillStyle = IDLE_COLOR
+          ctx.globalAlpha = IDLE_TOKEN.alpha
+          ctx.fillStyle = idle
           ctx.fillRect(x, h - 2, width, 2)
           continue
         }
         // Gamma: a quiet minute beside a busy one would otherwise be invisible,
         // and "almost nothing happened" is exactly what you want to see.
         const bh = Math.max(3, Math.pow(b.n / max, 0.62) * (h - 4))
-        ctx.fillStyle = TIER_COLOR[costTier(b.cost, median)]
+        const tier = TIER_TOKEN[costTier(b.cost, median)]
+        ctx.globalAlpha = tier.alpha
+        ctx.fillStyle = token(css, tier.token, tier.fallback)
         ctx.fillRect(x, h - bh, width, bh)
       }
+      ctx.globalAlpha = 1
     }
     paint()
-    // Repaint on resize only — the data itself arrives through the effect deps.
+    // Repaint on resize, and on a theme change — the colours are read from the
+    // stylesheet at paint time, so without this a track keeps the old theme's
+    // palette until its data next changes.
     const ro = new ResizeObserver(paint)
     ro.observe(cv)
-    return () => ro.disconnect()
+    const mo = new MutationObserver(paint)
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+    return () => {
+      ro.disconnect()
+      mo.disconnect()
+    }
   }, [pulse])
 
   // A minute is a small target, so the readout follows the pointer rather than
