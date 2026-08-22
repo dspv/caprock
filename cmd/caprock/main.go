@@ -457,7 +457,7 @@ func statusCmd() *cobra.Command {
 			if st.Orchestration {
 				fmt.Fprintf(out, "hive:    %s (repo: %s)\n", st.Hive, st.Repo)
 			} else {
-				fmt.Fprintln(out, "hive:    off — `caprock up --hive <dir>` to run tasks unattended")
+				fmt.Fprintln(out, "hive:    off — turn the task runner on from the dashboard's Tasks screen, or restart with `caprock up --hive <dir>`")
 			}
 			return nil
 		},
@@ -603,7 +603,7 @@ type taskRow struct {
 	BudgetUSD float64 `json:"budget_usd"`
 }
 
-const hiveOffMessage = "orchestration is off — start the daemon with `caprock up --hive <dir>` to run tasks unattended"
+const hiveOffMessage = "the task runner is off — turn it on from the dashboard's Tasks screen, or start the daemon with `caprock up --hive <dir>`"
 
 func tasksCmd() *cobra.Command {
 	return &cobra.Command{

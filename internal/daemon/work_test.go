@@ -29,6 +29,13 @@ func testBoard(t *testing.T) (*board.Board, *store.Store) {
 	return b, st
 }
 
+// adapterFor wraps a board the way the running daemon does. The adapter resolves
+// the board off the daemon per call (so the runner can be turned on at runtime),
+// so a test cannot hand it a bare board any more.
+func adapterFor(b *board.Board) *boardAdapter {
+	return &boardAdapter{d: &Daemon{board: b}}
+}
+
 // The task card was a title, an id and a dollar figure. Where a worker's output
 // actually went — the branch and the worktree — was constructed at spawn time
 // and then never told to anyone, so the only way to find a finished worker's
@@ -49,7 +56,7 @@ func TestTaskDetailNamesTheBranchAndWorktree(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := (&boardAdapter{b: b}).Get(context.Background(), "t-1")
+	out, err := adapterFor(b).Get(context.Background(), "t-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +89,7 @@ func TestTaskDetailCarriesDoneCriteria(t *testing.T) {
 	if err := b.Rescan(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	out, err := (&boardAdapter{b: b}).Get(context.Background(), "t-2")
+	out, err := adapterFor(b).Get(context.Background(), "t-2")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +114,7 @@ func TestTaskDetailReturnsTheRecordedChecks(t *testing.T) {
 	if err := store.RecordVerification(ctx, st.DB(), "t-3", 1, "go test ./...", 0, "/hive/verifications/t-3/round-1-cmd-0.log"); err != nil {
 		t.Fatal(err)
 	}
-	out, err := (&boardAdapter{b: b}).Get(ctx, "t-3")
+	out, err := adapterFor(b).Get(ctx, "t-3")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +143,7 @@ func TestTaskDetailLinksTheSessionThatDidTheWork(t *testing.T) {
 	if err := store.OpenAssignment(ctx, st.DB(), "t-4", "sess-abc", 1000); err != nil {
 		t.Fatal(err)
 	}
-	out, err := (&boardAdapter{b: b}).Get(ctx, "t-4")
+	out, err := adapterFor(b).Get(ctx, "t-4")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +164,7 @@ func TestTaskDetailReportsNoBranchBeforeAssignment(t *testing.T) {
 	if err := b.Rescan(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	out, err := (&boardAdapter{b: b}).Get(context.Background(), "t-5")
+	out, err := adapterFor(b).Get(context.Background(), "t-5")
 	if err != nil {
 		t.Fatal(err)
 	}

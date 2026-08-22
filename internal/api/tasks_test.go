@@ -22,6 +22,28 @@ type fakeTasks struct {
 	stopped     int
 	failVerify  bool
 	failApprove bool
+	// off makes Enabled report the task runner as not yet turned on, which is
+	// how every task endpoint answers 501 without the controller being nil.
+	off       bool
+	failEnabl bool
+	enabled   []string // "hive|repo" per Enable call
+}
+
+func (f *fakeTasks) Enabled() bool { return !f.off }
+
+func (f *fakeTasks) Enable(_ context.Context, hive, repo string) (any, error) {
+	if f.failEnabl {
+		return nil, errors.New("the task runner is already on (hive: /elsewhere)")
+	}
+	if hive == "" {
+		hive = "/home/u/caprock-tasks"
+	}
+	if repo == "" {
+		repo = "/repo"
+	}
+	f.enabled = append(f.enabled, hive+"|"+repo)
+	f.off = false
+	return map[string]string{"hive": hive, "repo": repo}, nil
 }
 
 func (f *fakeTasks) List(context.Context) (any, error)              { return []any{}, nil }
@@ -124,6 +146,79 @@ func TestPhase2EndpointsDisabled(t *testing.T) {
 		if code := do(p.m, p.path); code != http.StatusNotImplemented {
 			t.Fatalf("%s %s: want 501, got %d", p.m, p.path, code)
 		}
+	}
+}
+
+// The task runner can now be turned on over a running daemon, so "off" is no
+// longer the same thing as "no controller wired": the controller outlives the
+// off state and answers Enabled() instead. Every task endpoint must still be
+// 501 while it is off, or the dashboard would render a board over a hive that
+// does not exist.
+func TestTaskEndpointsAreOffUntilTheRunnerIsEnabled(t *testing.T) {
+	ft := &fakeTasks{off: true}
+	do := newTasksSrv(t, ft)
+	if code := do("GET", "/v1/tasks", "").StatusCode; code != http.StatusNotImplemented {
+		t.Fatalf("GET /v1/tasks with the runner off: want 501, got %d", code)
+	}
+	if code := do("POST", "/v1/orchestrator/start", "").StatusCode; code != http.StatusNotImplemented {
+		t.Fatalf("orchestrator start with the runner off: want 501, got %d", code)
+	}
+	if ft.started {
+		t.Fatal("the orchestrator was spawned while the task runner was off")
+	}
+}
+
+// The off state used to hand the user a command to paste into a terminal,
+// because a flag at startup was the only way in. Turning it on is a request now,
+// and it must reach the daemon with the paths the user confirmed.
+func TestEnableHiveTurnsTheRunnerOn(t *testing.T) {
+	ft := &fakeTasks{off: true}
+	do := newTasksSrv(t, ft)
+	r := do("POST", "/v1/hive", `{"hive":"/tmp/q","repo":"/tmp/repo"}`)
+	if r.StatusCode != 200 {
+		t.Fatalf("POST /v1/hive: %d — the runner cannot be turned on without a restart", r.StatusCode)
+	}
+	if len(ft.enabled) != 1 || ft.enabled[0] != "/tmp/q|/tmp/repo" {
+		t.Fatalf("Enable got %v, want the confirmed hive and repo", ft.enabled)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body["hive"] != "/tmp/q" || body["repo"] != "/tmp/repo" {
+		t.Fatalf("the reply does not name what was opened: %v", body)
+	}
+	// And the endpoints it gates are live immediately — no restart.
+	if code := do("GET", "/v1/tasks", "").StatusCode; code != 200 {
+		t.Fatalf("GET /v1/tasks after enabling: want 200, got %d", code)
+	}
+}
+
+// An empty body means "use the daemon's own suggestion", which is what the
+// dashboard shows in its confirmation. It must not be a 400.
+func TestEnableHiveWithNoBodyUsesTheSuggestion(t *testing.T) {
+	ft := &fakeTasks{off: true}
+	do := newTasksSrv(t, ft)
+	if code := do("POST", "/v1/hive", "").StatusCode; code != 200 {
+		t.Fatalf("POST /v1/hive with no body: want 200, got %d", code)
+	}
+	if len(ft.enabled) != 1 || ft.enabled[0] != "/home/u/caprock-tasks|/repo" {
+		t.Fatalf("Enable got %v, want the daemon's suggestion", ft.enabled)
+	}
+}
+
+// Turning it on twice over a different directory would leave the first board's
+// router running against task files nobody is looking at. It is a conflict.
+func TestEnableHiveTwiceIsAConflict(t *testing.T) {
+	do := newTasksSrv(t, &fakeTasks{failEnabl: true})
+	r := do("POST", "/v1/hive", `{"hive":"/tmp/q"}`)
+	if r.StatusCode != http.StatusConflict {
+		t.Fatalf("enabling twice: want 409, got %d", r.StatusCode)
+	}
+	var body map[string]string
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if !strings.Contains(body["error"], "already on") {
+		t.Fatalf("the 409 does not say why: %v", body)
 	}
 }
 

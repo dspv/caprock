@@ -90,6 +90,15 @@ type Settings struct {
 
 // TaskController is the subset of the Phase 2 hive the API needs.
 type TaskController interface {
+	// Enabled reports whether the task runner is on. It is asked per request
+	// rather than assumed from the controller being non-nil, because the runner
+	// can be turned on while the daemon runs (Enable) — the controller outlives
+	// the off state.
+	Enabled() bool
+	// Enable opens a hive directory and starts the board on a running daemon.
+	// An empty hiveDir/repoCwd means the daemon's own suggestion. Turning it on
+	// twice is an error, not a silent rebuild.
+	Enable(ctx context.Context, hiveDir, repoCwd string) (any, error)
 	List(ctx context.Context) (any, error)
 	Create(ctx context.Context, req any) (any, error)
 	Get(ctx context.Context, id string) (any, error)
@@ -155,6 +164,7 @@ func New(d Deps) *Server {
 	if d.Hook != nil {
 		m.Handle("POST /v1/hook", d.Hook)
 	}
+	m.HandleFunc("POST /v1/hive", s.handleEnableHive)
 	m.HandleFunc("GET /v1/tasks", s.handleTasks)
 	m.HandleFunc("POST /v1/tasks", s.handleCreateTask)
 	m.HandleFunc("GET /v1/tasks/{id}", s.handleGetTask)
@@ -885,13 +895,48 @@ func plausibleRateWindow(w rateWindowIn, now int64) bool {
 // --- Phase 2: tasks ---
 
 func (s *Server) requireTasks(w http.ResponseWriter) bool {
-	if s.d.Tasks == nil {
+	if s.d.Tasks == nil || !s.d.Tasks.Enabled() {
 		// "Phase 2" is our internal build order and means nothing to a user;
-		// the detail says what to do instead.
-		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "orchestration is not enabled", "detail": "start the daemon with `caprock up --hive <dir>` to run tasks unattended"})
+		// the detail says what to do instead. It no longer sends anyone to a
+		// terminal first: POST /v1/hive turns the runner on where they are.
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "the task runner is off", "detail": "turn it on with POST /v1/hive, or start the daemon with `caprock up --hive <dir>`"})
 		return false
 	}
 	return true
+}
+
+// handleEnableHive turns the task runner on over a running daemon: it opens (and
+// creates) the queue directory, seeds it, starts the board, and wires the
+// orchestrator — no restart. Before this the only way in was a command-line
+// flag, so the dashboard could offer a line to copy into a terminal and nothing
+// more, which is not a control.
+//
+// It is deliberately a POST with an explicit body rather than a toggle: enabling
+// this is what makes Caprock able to spawn Claude sessions with permission
+// prompts skipped, so the caller states the directory and the repository it
+// means. Nothing is spawned here — the orchestrator is still a separate,
+// explicit start.
+func (s *Server) handleEnableHive(w http.ResponseWriter, r *http.Request) {
+	if s.d.Tasks == nil {
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "the task runner is not available in this build"})
+		return
+	}
+	var req struct {
+		Hive string `json:"hive"`
+		Repo string `json:"repo"`
+	}
+	// An empty body is legitimate: it means "use the suggestion /v1/status gave".
+	if r.Body != nil {
+		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req)
+	}
+	// Opening a hive touches the filesystem and rescans; a client that hangs up
+	// must not leave the board half-built.
+	out, err := s.d.Tasks.Enable(context.WithoutCancel(r.Context()), strings.TrimSpace(req.Hive), strings.TrimSpace(req.Repo))
+	if err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request) {

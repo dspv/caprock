@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"sync"
@@ -80,6 +81,10 @@ type Daemon struct {
 
 	// cfgMu guards opt.Config, which the settings endpoint mutates at runtime.
 	cfgMu sync.RWMutex
+	// hiveMu guards board, orch and opt.HiveDir/opt.RepoCwd. The task runner can
+	// be turned on after startup (POST /v1/hive), so these are written from a
+	// request goroutine while the API, the hook receiver and /v1/status read them.
+	hiveMu sync.RWMutex
 	// upd checks for newer releases; only ever used when the user opted in.
 	upd *update.Checker
 	// baseCtx is the daemon-lifetime context (not a request's).
@@ -214,58 +219,24 @@ func (d *Daemon) run(ctx context.Context) error {
 		}
 	}
 
-	// Phase 2 board (opt-in via HiveDir).
+	// Phase 2 board (opt-in via HiveDir, or turned on later over the API).
 	if d.opt.HiveDir != "" {
-		h, err := hive.Open(d.opt.HiveDir)
-		if err != nil {
-			return fmt.Errorf("open hive: %w", err)
-		}
-		// A fresh hive was three empty directories. Seeding it with a README and
-		// one example task makes the directory explain itself; it is a no-op on
-		// a hive that already has one, so it never touches a user's work.
-		if err := h.Seed(); err != nil {
-			d.log.Warn("seed hive", "component", "board", "err", err)
-		}
-		d.board = board.New(h, d.store, d.bus, d.log)
-		if err := d.board.Rescan(ctx); err != nil {
-			d.log.Warn("hive rescan", "component", "board", "err", err)
-		}
-		d.board.RepoCwd = d.opt.RepoCwd
-		d.orch = orchestrator.New(h, d.store, d.mgr, d.repoCwd(), d.log)
-		// The router/kick goroutines must run under the daemon-lifetime context,
-		// not the per-request context that starts the orchestrator (which is
-		// cancelled the moment the /orchestrator/start handler returns).
-		d.orch.BaseCtx = ctx
-		// Wire the router's verification step to the board without an import cycle:
-		// the daemon owns both, so a closure over board.VerifyTask is the seam.
-		board := d.board
-		d.orch.Verify = func(ctx context.Context, taskID string) error {
-			_, err := board.VerifyTask(ctx, taskID)
+		if err := d.enableHive(ctx, d.opt.HiveDir, d.opt.RepoCwd); err != nil {
 			return err
-		}
-		d.orch.OverBudget = board.OverBudget
-		// The router must be able to actually stop a session it spawned: parking
-		// an over-budget task in a file does not halt the process that is
-		// spending. Only sessions Caprock owns are reachable here (rule 7) —
-		// agents.Manager refuses anything else.
-		mgr := d.mgr
-		d.orch.Signal = func(sessionID, action string) error {
-			return mgr.Signal(sessionID, ptyman.Signal(action))
 		}
 	}
 
-	// Hook receiver.
-	hh := &hookd.Handler{Token: rt.Token, Recorder: d.rec, Log: d.log}
-	if d.board != nil {
-		hh.Decide = d.stopDecision
-	}
+	// Hook receiver. Decide is wired unconditionally: it is a method that
+	// answers nil while no board exists, so the Stop-loop starts working the
+	// moment the task runner is turned on rather than only on the next restart.
+	hh := &hookd.Handler{Token: rt.Token, Recorder: d.rec, Log: d.log, Decide: d.stopDecision}
 
 	// API.
 	d.api = api.New(api.Deps{
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version,
 		Status: d.status, ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
 		Token: rt.Token, Shutdown: cancel, Agents: &agentAdapter{m: d.mgr},
-		Tasks: d.taskController(), Settings: &settingsAdapter{d: d}, Update: d.upd,
+		Tasks: &boardAdapter{d: d}, Settings: &settingsAdapter{d: d}, Update: d.upd,
 	})
 	srv := &http.Server{Handler: d.api, ReadHeaderTimeout: 10 * time.Second}
 
@@ -310,11 +281,8 @@ func (d *Daemon) run(ctx context.Context) error {
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
 	d.log.Info("caprock daemon listening", "component", "daemon", "url", d.url, "data_dir", d.opt.DataDir, "version", d.opt.Version)
-	// The log never mentioned the hive, so a detached daemon gave no record of
-	// what it had been started to orchestrate.
-	if d.board != nil {
-		d.log.Info("task runner enabled", "component", "board", "hive", d.opt.HiveDir, "repo", d.repoCwd())
-	}
+	// enableHive logs which hive is in force (whether it came from --hive or from
+	// the dashboard), so a detached daemon has a record of what it orchestrates.
 	if d.opt.OnReady != nil {
 		d.opt.OnReady(d.url)
 	}
@@ -341,6 +309,94 @@ func (d *Daemon) repoCwd() string {
 	}
 	wd, _ := os.Getwd()
 	return wd
+}
+
+// hiveState returns the board and orchestrator under the lock that guards them.
+// Both are nil until the task runner is enabled, and both are written from the
+// request goroutine that enables it — so every read outside enableHive goes
+// through here rather than touching the fields.
+func (d *Daemon) hiveState() (*board.Board, *orchestrator.Orchestrator) {
+	d.hiveMu.RLock()
+	defer d.hiveMu.RUnlock()
+	return d.board, d.orch
+}
+
+// enableHive builds the board and the orchestrator over a hive directory and
+// installs them on the daemon. It is called once at startup when `--hive` was
+// given, and again from POST /v1/hive when the user turns the task runner on
+// from the dashboard — nothing here needs the process to restart: the store,
+// bus, session manager and logger it wires together are all already running,
+// and the API resolves the board per request through boardAdapter.
+//
+// Turning it on twice is refused rather than silently rebuilt: a second board
+// over a different directory would leave the first one's router running against
+// task files nobody is looking at.
+func (d *Daemon) enableHive(ctx context.Context, hiveDir, repoCwd string) error {
+	if hiveDir == "" {
+		return errors.New("hive directory is required")
+	}
+	abs, err := filepath.Abs(hiveDir)
+	if err != nil {
+		return fmt.Errorf("resolve hive directory: %w", err)
+	}
+	hiveDir = abs
+	if repoCwd != "" {
+		if abs, err := filepath.Abs(repoCwd); err == nil {
+			repoCwd = abs
+		}
+	}
+	d.hiveMu.Lock()
+	if d.board != nil {
+		cur := d.opt.HiveDir
+		d.hiveMu.Unlock()
+		return fmt.Errorf("the task runner is already on (hive: %s)", cur)
+	}
+	d.hiveMu.Unlock()
+
+	h, err := hive.Open(hiveDir)
+	if err != nil {
+		return fmt.Errorf("open hive: %w", err)
+	}
+	// A fresh hive was three empty directories. Seeding it with a README and
+	// one example task makes the directory explain itself; it is a no-op on
+	// a hive that already has one, so it never touches a user's work.
+	if err := h.Seed(); err != nil {
+		d.log.Warn("seed hive", "component", "board", "err", err)
+	}
+	b := board.New(h, d.store, d.bus, d.log)
+	if err := b.Rescan(ctx); err != nil {
+		d.log.Warn("hive rescan", "component", "board", "err", err)
+	}
+	b.RepoCwd = repoCwd
+	d.hiveMu.Lock()
+	d.opt.HiveDir, d.opt.RepoCwd = hiveDir, repoCwd
+	d.hiveMu.Unlock()
+	o := orchestrator.New(h, d.store, d.mgr, d.repoCwd(), d.log)
+	// The router/kick goroutines must run under the daemon-lifetime context,
+	// not the per-request context that started them (which is cancelled the
+	// moment the handler returns).
+	o.BaseCtx = d.baseCtx
+	// Wire the router's verification step to the board without an import cycle:
+	// the daemon owns both, so a closure over board.VerifyTask is the seam.
+	o.Verify = func(ctx context.Context, taskID string) error {
+		_, err := b.VerifyTask(ctx, taskID)
+		return err
+	}
+	o.OverBudget = b.OverBudget
+	// The router must be able to actually stop a session it spawned: parking
+	// an over-budget task in a file does not halt the process that is
+	// spending. Only sessions Caprock owns are reachable here (rule 7) —
+	// agents.Manager refuses anything else.
+	mgr := d.mgr
+	o.Signal = func(sessionID, action string) error {
+		return mgr.Signal(sessionID, ptyman.Signal(action))
+	}
+
+	d.hiveMu.Lock()
+	d.board, d.orch = b, o
+	d.hiveMu.Unlock()
+	d.log.Info("task runner enabled", "component", "board", "hive", hiveDir, "repo", d.repoCwd())
+	return nil
 }
 
 // URL returns the bound base URL (after start).
@@ -384,20 +440,21 @@ func (d *Daemon) observeLoops(ctx context.Context, sub *bus.Subscriber) {
 // (nil ⇒ allow stop). This is the composed Decide closure, made a method so the
 // resolve → StopDecision chain is testable end to end.
 func (d *Daemon) stopDecision(ctx context.Context, p hookd.Payload) []byte {
-	if d.board == nil {
+	b, orch := d.hiveState()
+	if b == nil {
 		return nil
 	}
 	agentID := p.AgentID
-	if agentID == "" && d.orch != nil {
-		agentID = d.orch.AgentIDForSession(p.SessionID)
+	if agentID == "" && orch != nil {
+		agentID = orch.AgentIDForSession(p.SessionID)
 	}
 	// The task id arms the per-(session,task) forced-continue guard (N=10, then
 	// escalate). Without it the guard is inert.
 	taskID := ""
-	if d.orch != nil {
-		taskID = d.orch.TaskForAgent(agentID)
+	if orch != nil {
+		taskID = orch.TaskForAgent(agentID)
 	}
-	return d.board.StopDecision(ctx, p.SessionID, agentID, taskID)
+	return b.StopDecision(ctx, p.SessionID, agentID, taskID)
 }
 
 // maybeAutoPause pauses a looping session only when auto-pause is enabled AND
@@ -502,8 +559,13 @@ type Status struct {
 	// workers operate on. Both empty when orchestration is off. Without them
 	// there was no way — CLI, API or log — to ask which hive a running daemon
 	// had been started with.
-	Hive          string `json:"hive,omitempty"`
-	Repo          string `json:"repo,omitempty"`
+	Hive string `json:"hive,omitempty"`
+	Repo string `json:"repo,omitempty"`
+	// SuggestedHive and SuggestedRepo are what POST /v1/hive would use if it were
+	// called with no body — the defaults the dashboard shows for confirmation
+	// before turning the runner on. Present only while orchestration is off.
+	SuggestedHive string `json:"suggested_hive,omitempty"`
+	SuggestedRepo string `json:"suggested_repo,omitempty"`
 	LoopK         int    `json:"loop_k"`
 	LoopTMin      int    `json:"loop_t_minutes"`
 	ActiveLoops   int    `json:"active_loops"`
@@ -524,16 +586,27 @@ type PricingStatus struct {
 }
 
 func (d *Daemon) status(_ context.Context) any {
+	b, _ := d.hiveState()
 	st := Status{
 		Version: d.opt.Version, Platform: runtime.GOOS + "/" + runtime.GOARCH, PID: os.Getpid(), StartedAt: d.start.UnixMilli(), UptimeS: int64(time.Since(d.start).Seconds()),
 		URL: d.url, DataDir: d.opt.DataDir, UIBuilt: api.UIBuilt(),
 		Pricing: PricingStatus{Version: d.table.Version, Source: d.table.Source, FetchedAt: d.table.FetchedAt, UserOverride: d.table.UserOverride, Models: len(d.table.Models)},
 		LoopK:   d.det.K, LoopTMin: int(d.det.Window / time.Minute),
 		ClaudeAvailable: d.mgr.ClaudeAvailable(), OwnedActive: len(d.mgr.List()),
-		Orchestration: d.board != nil,
+		Orchestration: b != nil,
 	}
-	if d.board != nil {
-		st.Hive, st.Repo = d.opt.HiveDir, d.repoCwd()
+	if b != nil {
+		d.hiveMu.RLock()
+		st.Hive = d.opt.HiveDir
+		d.hiveMu.RUnlock()
+		st.Repo = d.repoCwd()
+	} else {
+		// With the runner off, the dashboard has to propose a hive and name the
+		// repo it would work on before asking anyone to confirm. Both were only
+		// knowable from the command line, so the screen could offer a command to
+		// copy and nothing else. These are suggestions, not state: nothing is
+		// created until POST /v1/hive.
+		st.SuggestedHive, st.SuggestedRepo = suggestedHive(), d.repoCwd()
 	}
 	if d.tail != nil {
 		s := d.tail.Stats()
@@ -647,23 +720,74 @@ func (a *agentAdapter) Term(id string) ([]byte, <-chan []byte, func(), bool) {
 	return ag.Snapshot(), sub, cancel, true
 }
 
-// taskController returns the API TaskController, or nil when orchestration is off.
-func (d *Daemon) taskController() api.TaskController {
-	if d.board == nil {
-		return nil
+// boardAdapter bridges the board to api.TaskController. It holds the daemon
+// rather than the board itself, because the task runner can be turned on after
+// the API was built (POST /v1/hive) — a captured *board.Board would have been
+// nil forever in that case, and the endpoints would keep answering 501 to a user
+// who had just switched the feature on.
+type boardAdapter struct{ d *Daemon }
+
+// suggestedHive is the queue directory the dashboard offers when the runner is
+// off: `~/caprock-tasks`, the same path the README and the CLI help use. It
+// falls back to a relative name only if the home directory cannot be resolved.
+func suggestedHive() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return "caprock-tasks"
 	}
-	return &boardAdapter{b: d.board, orch: d.orch}
+	return filepath.Join(home, "caprock-tasks")
 }
 
-type boardAdapter struct {
-	b    *board.Board
-	orch *orchestrator.Orchestrator
+var errOrchDisabled = errors.New("the task runner is off — turn it on from the dashboard's Tasks screen, or start caprock with --hive")
+
+// board resolves the live board, or reports that the runner is off.
+func (a *boardAdapter) board() (*board.Board, *orchestrator.Orchestrator, error) {
+	b, o := a.d.hiveState()
+	if b == nil {
+		return nil, nil, errOrchDisabled
+	}
+	return b, o, nil
 }
 
-var errOrchDisabled = fmt.Errorf("orchestrator is not available (start caprock with --hive)")
+// Enabled reports whether the task runner is on, so the API can answer 501 on
+// the task endpoints without holding a nil controller.
+func (a *boardAdapter) Enabled() bool {
+	b, _ := a.d.hiveState()
+	return b != nil
+}
 
-func (a *boardAdapter) List(ctx context.Context) (any, error)            { return a.b.List(ctx) }
-func (a *boardAdapter) Create(ctx context.Context, req any) (any, error) { return a.b.Create(ctx, req) }
+// Enable turns the task runner on over an existing daemon. It is the whole
+// reason the board is resolved per call rather than captured.
+func (a *boardAdapter) Enable(ctx context.Context, hiveDir, repoCwd string) (any, error) {
+	if hiveDir == "" {
+		hiveDir = suggestedHive()
+	}
+	if repoCwd == "" {
+		repoCwd = a.d.repoCwd()
+	}
+	if err := a.d.enableHive(ctx, hiveDir, repoCwd); err != nil {
+		return nil, err
+	}
+	a.d.hiveMu.RLock()
+	defer a.d.hiveMu.RUnlock()
+	return map[string]string{"hive": a.d.opt.HiveDir, "repo": a.d.opt.RepoCwd}, nil
+}
+
+func (a *boardAdapter) List(ctx context.Context) (any, error) {
+	b, _, err := a.board()
+	if err != nil {
+		return nil, err
+	}
+	return b.List(ctx)
+}
+
+func (a *boardAdapter) Create(ctx context.Context, req any) (any, error) {
+	b, _, err := a.board()
+	if err != nil {
+		return nil, err
+	}
+	return b.Create(ctx, req)
+}
 
 // Get returns the board's task detail plus *where the work is*. The board knows
 // the task; only this layer knows the repo, the worker's branch and worktree,
@@ -672,7 +796,11 @@ func (a *boardAdapter) Create(ctx context.Context, req any) (any, error) { retur
 // nothing linked to. Everything added here is derived, never stored: the branch
 // and worktree are the same strings `agents.createWorktree` builds.
 func (a *boardAdapter) Get(ctx context.Context, id string) (any, error) {
-	out, err := a.b.Get(ctx, id)
+	bd, _, err := a.board()
+	if err != nil {
+		return nil, err
+	}
+	out, err := bd.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -683,22 +811,22 @@ func (a *boardAdapter) Get(ctx context.Context, id string) (any, error) {
 	work := map[string]any{}
 	// The mirror row drops done_criteria, so the card could never show what
 	// "done" is going to mean for this task. Read it back off the hive file.
-	if t, err := a.b.Hive.GetTask(id); err == nil {
+	if t, err := bd.Hive.GetTask(id); err == nil {
 		m["done_criteria"] = t.DoneCriteria
 	}
 	if row, ok := m["task"].(store.TaskRow); ok && row.Assignee != "" {
 		// One worktree per agent: `git worktree add -B caprock/<worker>
 		// <repo>/.caprock-worktrees/<worker>` (internal/agents/worktree.go).
 		work["branch"] = "caprock/" + row.Assignee
-		work["worktree"] = board.WorktreePath(a.b.RepoCwd, row.Assignee)
+		work["worktree"] = board.WorktreePath(bd.RepoCwd, row.Assignee)
 	}
-	if a.b.RepoCwd != "" {
-		work["repo"] = a.b.RepoCwd
+	if bd.RepoCwd != "" {
+		work["repo"] = bd.RepoCwd
 	}
-	if sess, err := store.TaskSessions(ctx, a.b.Store.DB(), id); err == nil && len(sess) > 0 {
+	if sess, err := store.TaskSessions(ctx, bd.Store.DB(), id); err == nil && len(sess) > 0 {
 		work["sessions"] = sess
 	}
-	if vs, err := store.Verifications(ctx, a.b.Store.DB(), id); err == nil && len(vs) > 0 {
+	if vs, err := store.Verifications(ctx, bd.Store.DB(), id); err == nil && len(vs) > 0 {
 		work["verifications"] = vs
 	}
 	if len(work) > 0 {
@@ -706,19 +834,40 @@ func (a *boardAdapter) Get(ctx context.Context, id string) (any, error) {
 	}
 	return m, nil
 }
+
 func (a *boardAdapter) Approve(ctx context.Context, id string, ok bool) error {
-	return a.b.Approve(ctx, id, ok)
+	b, _, err := a.board()
+	if err != nil {
+		return err
+	}
+	return b.Approve(ctx, id, ok)
 }
-func (a *boardAdapter) Approvals(ctx context.Context) (any, error) { return a.b.Approvals(ctx) }
+
+func (a *boardAdapter) Approvals(ctx context.Context) (any, error) {
+	b, _, err := a.board()
+	if err != nil {
+		return nil, err
+	}
+	return b.Approvals(ctx)
+}
+
 func (a *boardAdapter) Verify(ctx context.Context, id string) (any, error) {
-	return a.b.VerifyTask(ctx, id)
+	b, _, err := a.board()
+	if err != nil {
+		return nil, err
+	}
+	return b.VerifyTask(ctx, id)
 }
 
 func (a *boardAdapter) StartOrchestrator(ctx context.Context) (any, error) {
-	if a.orch == nil {
+	_, orch, err := a.board()
+	if err != nil {
+		return nil, err
+	}
+	if orch == nil {
 		return nil, errOrchDisabled
 	}
-	sid, err := a.orch.Start(ctx)
+	sid, err := orch.Start(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -728,8 +877,12 @@ func (a *boardAdapter) StartOrchestrator(ctx context.Context) (any, error) {
 // StopOrchestrator is the emergency stop: kill the orchestrator and every worker
 // it spawned, and latch the router so it does not respawn them next tick.
 func (a *boardAdapter) StopOrchestrator(_ context.Context) (any, error) {
-	if a.orch == nil {
+	_, orch, err := a.board()
+	if err != nil {
+		return nil, err
+	}
+	if orch == nil {
 		return nil, errOrchDisabled
 	}
-	return map[string]int{"stopped": a.orch.StopAll()}, nil
+	return map[string]int{"stopped": orch.StopAll()}, nil
 }

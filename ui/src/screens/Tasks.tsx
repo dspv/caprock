@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api, ApiError, type DiffResult, type Task, type TaskVerification, type TaskWork } from '@/lib/api'
+import { api, ApiError, type DiffResult, type Status, type Task, type TaskVerification, type TaskWork } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtUSD, shortId } from '@/lib/format'
 import { Copyable, Empty, Panel, Skeleton } from '@/components/ui'
@@ -19,27 +19,7 @@ export function TasksScreen() {
   const [creating, setCreating] = useState(false)
   const [open, setOpen] = useState<string | null>(null)
   if (status.data && status.data.orchestration === false) {
-    // The old message named a flag and the word "hive" but not the concept, and
-    // hid the three facts that decide whether anyone will run this: the work
-    // happens in a separate git worktree (not their working tree), Caprock runs
-    // the checks (not the agent), and the queue directory is new (their repo is
-    // untouched). "Phase 2" is our internal build order and never appears.
-    return (
-      <Empty title="The task runner is off">
-        <span className="block max-w-[46rem] mx-auto text-left grid gap-1.5">
-          <span className="block">
-            It runs tasks unattended and only calls one done when its checks pass. Each worker
-            gets its own git worktree of your repo — your working tree is untouched — and
-            <em> Caprock</em> runs the checks afterwards, not the agent.
-          </span>
-          <Copyable className="w-fit" command="caprock up --hive ~/caprock-tasks" />
-          <span className="block">
-            That directory is created for you, with a README and an example task in it. Best for
-            independent tasks: nothing here merges branches.
-          </span>
-        </span>
-      </Empty>
-    )
+    return <TaskRunnerOff status={status.data} onEnabled={() => { status.refresh(); tasks.refresh() }} />
   }
   const byCol = (col: string) => (tasks.data ?? []).filter((t) => t.status === col || (col === 'done' && t.status === 'failed'))
   return (
@@ -55,6 +35,17 @@ export function TasksScreen() {
         <span className="ml-auto text-[11px] text-fg-faint">Tasks are files on disk (<span className="mono">tasks/&lt;id&gt;.md</span>); the orchestrator moves them. Nothing reaches Done until its <span className="mono">done_criteria</span> pass.</span>
       </div>
       {tasks.error && !tasks.data && <Empty title="Cannot reach the daemon">{tasks.error.message}</Empty>}
+      {/* Six empty columns and two buttons say nothing about which button comes
+       * first. The order matters — an orchestrator started over an empty board
+       * has nothing to assign — so the empty board says it once, and disappears
+       * the moment there is a task to look at. */}
+      {tasks.data && tasks.data.length === 0 && (
+        <div className="border border-border bg-panel-2/60 rounded-sm px-3 py-2 text-[12px] text-fg-muted">
+          Start here: <span className="text-fg">+ New task</span> — a title and the commands that
+          have to pass. Then <span className="text-fg">▶ Start orchestrator</span>, which assigns it
+          to a worker and keeps going until the checks are green.
+        </div>
+      )}
       <div className="grid gap-2 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
         {COLUMNS.map((c) => (
           <div key={c.key} className="min-w-0">
@@ -69,6 +60,138 @@ export function TasksScreen() {
       </div>
       {creating && <NewTask onClose={() => { setCreating(false); tasks.refresh() }} />}
       {open && <TaskDrawer id={open} onClose={() => { setOpen(null); tasks.refresh() }} />}
+    </div>
+  )
+}
+
+/**
+ * TaskRunnerOff — the off state, which is the only thing most people ever see of
+ * this feature.
+ *
+ * It was three paragraphs and a command to copy into a terminal. Prose is the
+ * wrong shape for "what is this": nobody reads a wall of text to decide whether
+ * to try a button, and a command to paste elsewhere is the opposite of a
+ * control. The explanation is now three labelled steps — you write, Caprock
+ * runs, Caprock checks — carrying the three facts that decide whether anyone
+ * would run this at all:
+ *
+ *   1. the work happens in a separate git worktree, so their working tree is
+ *      untouched;
+ *   2. *Caprock* runs the checks, not the agent, which is the whole claim;
+ *   3. the queue directory is created new, so their repository is untouched.
+ *
+ * "Phase 2" and "hive" are our vocabulary and appear nowhere here.
+ */
+function TaskRunnerOff({ status, onEnabled }: { status: Status; onEnabled: () => void }) {
+  const [confirming, setConfirming] = useState(false)
+  const hive = status.suggested_hive ?? '~/caprock-tasks'
+  const repo = status.suggested_repo ?? ''
+  return (
+    <div className="grid gap-3 max-w-[52rem] mx-auto">
+      <Panel title="Task runner" right={<span className="text-[11px] text-fg-faint">off</span>}>
+        <div className="grid gap-3 px-3 py-3">
+          <ol className="grid gap-2 md:grid-cols-3">
+            <Step n={1} title="You write a task">
+              A title, a budget, and the commands that have to pass.
+            </Step>
+            <Step n={2} title="Caprock runs it">
+              One Claude session per task, in its <span className="text-fg">own git worktree</span> —
+              your working tree is untouched.
+            </Step>
+            <Step n={3} title="Caprock checks it">
+              <span className="text-fg">Caprock</span> runs your commands, not the agent. Only green
+              is done.
+            </Step>
+          </ol>
+          <div className="text-[11px] text-fg-faint">
+            Best for independent tasks — nothing here merges branches. The queue directory is
+            created for you; your repository is not modified.
+          </div>
+        </div>
+        <footer className="px-3 py-2 border-t border-border flex items-center gap-2">
+          <button
+            onClick={() => setConfirming(true)}
+            className="border border-accent bg-accent/15 text-accent px-3 py-1 rounded-sm text-[12px] hover:bg-accent/25"
+          >
+            Turn on the task runner
+          </button>
+          <span className="text-[11px] text-fg-faint">
+            No restart. Nothing runs until you start it.
+          </span>
+        </footer>
+      </Panel>
+      {confirming && (
+        <EnableDialog hive={hive} repo={repo} onClose={() => setConfirming(false)} onDone={onEnabled} />
+      )}
+    </div>
+  )
+}
+
+function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
+  return (
+    <li className="border border-border bg-panel-2/60 rounded-sm px-2.5 py-2 grid gap-1 content-start">
+      <div className="flex items-baseline gap-1.5">
+        <span className="num text-[11px] text-accent">{n}</span>
+        <span className="text-[12px] font-medium">{title}</span>
+      </div>
+      <div className="text-[11px] text-fg-muted leading-[1.45]">{children}</div>
+    </li>
+  )
+}
+
+/**
+ * EnableDialog — the confirmation before the runner is armed.
+ *
+ * Turning this on is what makes Caprock able to spawn Claude sessions with
+ * permission prompts skipped, so it names the two paths it is about to use and
+ * says so in words before anything happens. A one-click that silently arms an
+ * unattended agent fleet is not something a local-first tool should ship, and a
+ * dialog nobody can read is the same thing with an extra step — so the paths are
+ * editable and the button says what it does.
+ */
+function EnableDialog({ hive, repo, onClose, onDone }: { hive: string; repo: string; onClose: () => void; onDone: () => void }) {
+  const [dir, setDir] = useState(hive)
+  const [repoDir, setRepoDir] = useState(repo)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const submit = async () => {
+    setBusy(true); setError('')
+    try {
+      await api.enableHive(dir.trim(), repoDir.trim())
+      onClose()
+      onDone()
+    } catch (e) {
+      setError(e instanceof ApiError ? (e.body as { error?: string })?.error ?? e.message : String(e))
+    } finally { setBusy(false) }
+  }
+  return (
+    <div className="fixed inset-0 z-20 bg-black/50 flex items-start justify-center pt-24" onClick={onClose}>
+      <div className="border border-border-strong bg-panel rounded-[var(--radius-panel)] w-[560px] max-w-[92vw]" onClick={(e) => e.stopPropagation()}>
+        <header className="px-3 py-2 border-b border-border flex items-center">
+          <h2 className="text-[12px] uppercase tracking-[0.08em] text-fg-muted">Turn on the task runner</h2>
+          <button onClick={onClose} className="ml-auto text-fg-muted hover:text-fg">✕</button>
+        </header>
+        <div className="px-4 py-3 grid gap-3 text-[13px]">
+          <ul className="grid gap-1 text-[12px] text-fg-muted">
+            <li>· Creates the queue directory below, with a README and an example task.</li>
+            <li>· Lets Caprock spawn Claude sessions <span className="text-fg">with permission prompts skipped</span>, one git worktree each under the repo below.</li>
+            <li>· Starts nothing yet — you start the orchestrator, and only then does work begin.</li>
+          </ul>
+          <label className="grid gap-1">
+            <span className="text-[11px] text-fg-muted">Queue directory<span className="text-fg-faint"> · created if missing</span></span>
+            <input className="input mono" value={dir} onChange={(e) => setDir(e.target.value)} />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-[11px] text-fg-muted">Repository<span className="text-fg-faint"> · workers branch from here</span></span>
+            <input className="input mono" value={repoDir} onChange={(e) => setRepoDir(e.target.value)} />
+          </label>
+          {error && <div className="text-danger text-[12px]">{error}</div>}
+        </div>
+        <footer className="px-4 py-2 border-t border-border flex gap-2 justify-end">
+          <button onClick={onClose} className="border border-border px-3 py-1 rounded-sm text-fg-muted hover:text-fg">Cancel</button>
+          <button onClick={submit} disabled={busy} className="border border-accent bg-accent/15 text-accent px-3 py-1 rounded-sm hover:bg-accent/25 disabled:opacity-50">{busy ? 'turning on…' : 'Turn it on'}</button>
+        </footer>
+      </div>
     </div>
   )
 }

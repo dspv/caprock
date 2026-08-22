@@ -4,15 +4,20 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/board"
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/config"
+	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/hive"
 	"github.com/dspv/caprock/internal/hookd"
+	"github.com/dspv/caprock/internal/loop"
 	"github.com/dspv/caprock/internal/orchestrator"
 	"github.com/dspv/caprock/internal/store"
 )
@@ -102,5 +107,137 @@ func TestStopDecisionResolvesWorkerAndBlocksOnMail(t *testing.T) {
 	// allowed to stop — the resolve returns "" and StopDecision returns nil.
 	if d.stopDecision(context.Background(), hookd.Payload{SessionID: "unknown"}) != nil {
 		t.Fatal("a top-level/unknown session should be allowed to stop")
+	}
+}
+
+// Turning the task runner on used to require restarting the daemon with a flag,
+// which is why the Tasks screen could only offer a command to paste into a
+// terminal. Everything the board needs — the store, the bus, the session
+// manager, the logger — is already running, so enabling it live must produce a
+// board that actually works: the task endpoints answer, the hive directory is
+// created and seeded, and the Stop-loop starts consulting it.
+func TestEnableHiveTurnsTheRunnerOnWithoutARestart(t *testing.T) {
+	st, err := store.Open(context.Background(), ":memory:", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	ctx := context.Background()
+	d := &Daemon{
+		store: st, log: log, bus: bus.New(), baseCtx: ctx,
+		mgr: agents.NewManager(st, t.TempDir(), "", log),
+		opt: Options{Config: config.Defaults()},
+		// status() reads both unconditionally.
+		table: &cost.Table{}, det: loop.New(5, time.Minute),
+	}
+	ad := &boardAdapter{d: d}
+
+	// Off: the API reports it off, and the Stop hook has no board to consult.
+	if ad.Enabled() {
+		t.Fatal("the task runner reports itself on before anything enabled it")
+	}
+	if reply := d.stopDecision(ctx, hookd.Payload{SessionID: "s1"}); reply != nil {
+		t.Fatalf("the Stop hook decided something with no board: %s", reply)
+	}
+	if _, err := ad.List(ctx); err == nil {
+		t.Fatal("the board answered a list request while the runner was off")
+	}
+
+	// On — over the running daemon, no restart.
+	dir := filepath.Join(t.TempDir(), "queue")
+	repo := t.TempDir()
+	out, err := ad.Enable(ctx, dir, repo)
+	if err != nil {
+		t.Fatalf("enable: %v", err)
+	}
+	if m, _ := out.(map[string]string); m["hive"] != dir || m["repo"] != repo {
+		t.Fatalf("enable did not report what it opened: %v", out)
+	}
+	if !ad.Enabled() {
+		t.Fatal("the runner is still off after being enabled")
+	}
+	// The queue directory is created for the user, seeded so it explains itself.
+	if _, err := os.Stat(filepath.Join(dir, "README.md")); err != nil {
+		t.Fatalf("the queue directory was not created and seeded: %v", err)
+	}
+	// The board is live: it answers, and it can take a task.
+	if _, err := ad.Create(ctx, map[string]any{
+		"title": "x", "done_criteria": []any{"go test ./..."},
+	}); err != nil {
+		t.Fatalf("create on a runner enabled at runtime: %v", err)
+	}
+	list, err := ad.List(ctx)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	// The seeded example task is there too — the point is that the new one is.
+	rows, _ := list.([]store.TaskRow)
+	var found bool
+	for _, r := range rows {
+		if r.Title == "x" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the board does not hold the task it just created: %#v", rows)
+	}
+	// /v1/status must follow, or the dashboard keeps rendering the off state.
+	if s, _ := d.status(ctx).(Status); !s.Orchestration || s.Hive != dir || s.Repo != repo {
+		t.Fatalf("status still reports the runner off: %+v", s)
+	}
+	// And the Stop hook consults the board now, without the daemon restarting —
+	// it is wired unconditionally precisely so this works.
+	if d.board == nil {
+		t.Fatal("no board after enabling")
+	}
+}
+
+// A second Enable over a different directory would leave the first board's
+// router running against task files nobody is looking at.
+func TestEnableHiveRefusesASecondHive(t *testing.T) {
+	st, err := store.Open(context.Background(), ":memory:", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	ctx := context.Background()
+	d := &Daemon{
+		store: st, log: log, bus: bus.New(), baseCtx: ctx,
+		mgr: agents.NewManager(st, t.TempDir(), "", log),
+		opt: Options{Config: config.Defaults()},
+	}
+	first := filepath.Join(t.TempDir(), "one")
+	if _, err := (&boardAdapter{d: d}).Enable(ctx, first, t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	_, err = (&boardAdapter{d: d}).Enable(ctx, filepath.Join(t.TempDir(), "two"), t.TempDir())
+	if err == nil {
+		t.Fatal("a second hive was opened over a running one")
+	}
+	if !strings.Contains(err.Error(), "already on") {
+		t.Fatalf("the refusal does not say why: %v", err)
+	}
+	// The first hive is still the one in force.
+	d.hiveMu.RLock()
+	inForce := d.opt.HiveDir
+	d.hiveMu.RUnlock()
+	if inForce != first {
+		t.Fatalf("hive in force = %q, want the first one %q", inForce, first)
+	}
+}
+
+// The suggestion the dashboard shows in its confirmation must be a real
+// absolute path under the user's home, not a relative name that would create a
+// queue directory wherever the daemon happens to have been started.
+func TestSuggestedHiveIsUnderHome(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		t.Skip("no home directory on this machine")
+	}
+	got := suggestedHive()
+	if want := filepath.Join(home, "caprock-tasks"); got != want {
+		t.Fatalf("suggestedHive() = %q, want %q", got, want)
 	}
 }

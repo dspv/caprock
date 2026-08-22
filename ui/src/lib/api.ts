@@ -249,6 +249,10 @@ export interface Status {
    *  Absent when orchestration is off. */
   hive?: string
   repo?: string
+  /** What `POST /v1/hive` would use if called with no body — the defaults the
+   *  Tasks screen names in its confirmation. Present only while it is off. */
+  suggested_hive?: string
+  suggested_repo?: string
   events: number
   retention_days: number
   /** The Claude desktop app's own plan usage, when this machine has any. */
@@ -307,6 +311,9 @@ export const api = {
   summary: (range: 'today' | '7d' | '30d' | 'all' = 'today') => get<Summary>(`/v1/stats/summary?range=${range}`),
   daily: (days = 30) => get<DailyStat[]>(`/v1/stats/daily?days=${days}`),
   history: (range: 'today' | '7d' | '30d' | 'all' = 'all') => get<History>(`/v1/history?range=${range}`),
+  /** Turns the task runner on over the running daemon — no restart. Empty
+   *  fields mean the daemon's own suggestion (see status.suggested_hive). */
+  enableHive: (hive?: string, repo?: string) => post<{ hive: string; repo: string }>('/v1/hive', { hive: hive ?? '', repo: repo ?? '' }),
   tasks: () => get<Task[]>('/v1/tasks'),
   task: (id: string) => get<TaskDetail>(`/v1/tasks/${encodeURIComponent(id)}`),
   createTask: (req: CreateTaskRequest) => post<TaskDetail>('/v1/tasks', req),
