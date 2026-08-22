@@ -96,6 +96,19 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	// The database holds prompts and responses in cleartext. Tighten it (and
+	// the WAL/shm siblings SQLite just created) to 0600 — on POSIX the default
+	// umask leaves a fresh database 0644, readable by every other account on
+	// the machine, while config.json beside it has always been 0600. Done
+	// after migrate so the files exist; done on every open so a database
+	// created before this, and siblings SQLite recreates, are fixed too.
+	if err := secureDBFiles(path); err != nil {
+		// A filesystem that refuses chmod (a share, a container volume) must
+		// not stop the daemon from opening its own database — but the user
+		// should know their history is readable.
+		s.log.Warn("could not restrict database file permissions; other local accounts may be able to read your session history",
+			"component", "store", "path", path, "err", err)
+	}
 	// Repository grouping needs the filesystem to resolve a root, which SQL
 	// cannot do, so migration 0011's backfill lives here. It is idempotent and
 	// touches only rows the migration left NULL, so a normal open does one

@@ -46,6 +46,8 @@ func TestAgentsEndpoints(t *testing.T) {
 	e.srv.Config.Handler = New(Deps{Store: e.st, Bus: nil, Table: nil, Version: "t", Token: "tok", Now: func() time.Time { return e.now }, Agents: fa})
 	do := func(method, path, body string) *http.Response {
 		req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
+		// The dashboard posts application/json; the origin guard requires it.
+		req.Header.Set("Content-Type", "application/json")
 		rr := httptest.NewRecorder()
 		e.srv.Config.Handler.ServeHTTP(rr, req)
 		return rr.Result()

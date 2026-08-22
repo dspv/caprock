@@ -85,6 +85,10 @@ func newTasksSrv(t *testing.T, ft *fakeTasks) func(method, path, body string) *h
 		Now: func() time.Time { return e.now }, Tasks: ft})
 	return func(method, path, body string) *http.Response {
 		req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
+		// Real clients (the dashboard, `caprock task create`, curl) all send a
+		// JSON content type; the origin guard requires it on a state-changing
+		// request that carries no other proof of provenance. See csrf.go.
+		req.Header.Set("Content-Type", "application/json")
 		rr := httptest.NewRecorder()
 		e.srv.Config.Handler.ServeHTTP(rr, req)
 		return rr.Result()
@@ -132,6 +136,7 @@ func TestPhase2EndpointsDisabled(t *testing.T) {
 	e := newEnv(t) // no Tasks wired
 	do := func(method, path string) int {
 		req := httptest.NewRequest(method, path, nil)
+		req.Header.Set("Content-Type", "application/json")
 		rr := httptest.NewRecorder()
 		e.srv.Config.Handler.ServeHTTP(rr, req)
 		return rr.Result().StatusCode
@@ -252,6 +257,7 @@ func TestAgentSignalErrorNamesTheField(t *testing.T) {
 	e.srv.Config.Handler = New(Deps{Store: e.st, Version: "t", Token: "tok",
 		Now: func() time.Time { return e.now }, Agents: &fakeAgents{avail: true}})
 	req := httptest.NewRequest("POST", "/v1/agents/s1/signal", bytes.NewBufferString(`{"signal":"kill"}`))
+	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	e.srv.Config.Handler.ServeHTTP(rr, req)
 	if rr.Code != http.StatusBadRequest {

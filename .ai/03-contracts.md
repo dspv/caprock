@@ -38,6 +38,23 @@ The installer writes, for each of the eight events, a matcher-less entry (`match
 
 ## HTTP API (daemon, `127.0.0.1:4173`)
 
+### Cross-site request protection
+
+**Binding to loopback is not an authentication boundary against a browser.** Any page the user visits while the daemon runs can send requests to `127.0.0.1`; the same-origin policy stops that page *reading* the response, but not *sending* the request and not what the request does. `POST /v1/agents` executes a command from its body, so an unguarded forgery is remote code execution from a web page.
+
+Guarding only a *present* cross-site `Origin` — the shape `if o != "" && !isLoopbackOrigin(o)` — is therefore wrong, and was the live defect: browsers omit `Origin` entirely on cross-site **simple requests** (an HTML form POST, or `fetch` with a `text/plain` body), so the check was skipped in exactly the case that mattered. **A missing `Origin` is never trusted for a state-changing method.**
+
+Every request under `/v1` passes `checkOrigin` (`internal/api/csrf.go`) before routing. The layers, in order:
+
+- **`Sec-Fetch-Site`** — sent by every current browser and not settable by script, so it is the one signal a forgery cannot fake. `cross-site` or `same-site` is refused on **every** method, reads included: a foreign page must not read the session list either. `same-origin` and `none` (an address-bar navigation or bookmark) are the dashboard itself.
+- **`Origin`** — when present it must be loopback. Parsed as a URL rather than prefix-matched: `http://localhost.evil.example` has the right prefix and is not loopback, so the earlier `strings.HasPrefix` form accepted any hostname an attacker registered under a `localhost.` or `127.0.0.1.` label.
+- **`Host`** — must name this machine, checked only when the request is browser-shaped (`Origin` or `Sec-Fetch-Site` present). This is the DNS-rebinding case: a hostname the attacker controls, pointed at `127.0.0.1`, is genuinely same-origin with the daemon and passes every check above, but the `Host` header still carries the attacker's name. It is not applied to non-browser clients, which legitimately address the daemon by other names (a tunnel, a test harness) with no rebinding risk.
+- **A bearer token, or `Content-Type: application/json`** — required on a state-changing method that carries no browser provenance at all. Either one is sufficient. The per-run token lives in `runtime.json` (mode 0600) and a web page can neither read nor guess it. A JSON content type cannot be set by a cross-site *simple* request: doing so forces a CORS preflight, which this server approves for nothing, so the real request is never sent — while a form POST is limited to the three simple content types and so cannot reach the endpoint at all.
+
+`GET`/`HEAD`/`OPTIONS` are otherwise permissive because every `GET` route on the router is a query. The two that reach a live process — `WS /v1/live` and `WS /v1/agents/{id}/term` — are WebSocket upgrades guarded by coder/websocket's `OriginPatterns`, which already refuses a missing or foreign `Origin`. **A new `GET` with a side effect belongs behind a `POST`**, not on the safe-method list.
+
+Non-browser clients are unaffected, and each in-repo client was checked against its real request shape: the hook shim and `caprock statusline` send JSON + a bearer token, `caprock down` sends a bearer token with no body, `caprock task create` sends JSON, and `caprock tasks`/`status` are plain reads. The dashboard's single mutation helper (`ui/src/lib/api.ts`) already sets `Content-Type: application/json`. `curl` with `-H 'Content-Type: application/json'` works as documented.
+
 ### Phase 0
 
 ```
@@ -92,6 +109,10 @@ Anything added to the summary aggregates should either use these columns or exte
 `ListEvents`, `EventsAfter`, `SessionNotes` and `SearchNotes` all clamp `limit` to `MaxEventPage` (5000) instead of falling back to a small default, which made a caller asking for everything receive a fraction of it — `notes?limit=5001` returned 200 rows where `limit=5000` returned 2372.
 
 Plan-limit windows relayed by `caprock statusline` are **validated before storage**: a percentage outside 0–100, or a reset more than eight days ahead, is dropped rather than recorded. A reset already in the past is kept — that is a legitimately stale sample, and the dashboard labels it as such instead of formatting it as a clock.
+
+`GET /v1/status` carries `ingest_error` — the terminal error that stopped transcript ingest, when one happened — and omits it while ingest is running. The tailer runs in a goroutine whose failure used to be logged and swallowed, so a fatal ingest error (a read-only `~/.claude` reproduces it) left the daemon reporting healthy, `caprock status` printing `backfill done`, and the dashboard showing its "No sessions yet — start `claude` in any terminal" empty state forever, while nothing was being captured at all. `caprock status` and the Now and Status screens all report it.
+
+`/v1/stats/summary` and `/v1/history` carry `unpriced` — `{turns, tokens, models[]}` — the volume in range whose model has no row in the pricing table, and which models caused it. It is **omitted entirely when everything in range was priced**, which is the normal case. A model missing from the table leaves `cost_usd` NULL (the rollup logs "model not in pricing table; cost left unknown"), and every aggregate flattens NULL with `COALESCE(SUM(cost_usd),0)` — so tens of thousands of tokens of an unpriced model summed to exactly `$0.00` and rendered as a confident, indistinguishable-from-free number. That is an invented number (rule 6), and it is certain to occur the day a model ships newer than the pricing table, or on a gateway whose model ids do not normalise. The models are **named**, not merely counted: an unknown model id is something a user can report or add a pricing override for, whereas "some tokens are unpriced" is not actionable. `cost_usd` continues to mean "the cost we could price", so the two are reported side by side and never summed.
 
 `GET /v1/status` may carry `desktop` — `{five_hour_pct, seven_day_pct, at, stale}` — the Claude **desktop app's** own plan usage, read on request from `plan-usage-history.json` in the app's support directory. It is omitted entirely when the app is absent, has never run, or wrote something we cannot parse; most people do not use it, so absence is a normal answer rather than an error.
 
@@ -299,6 +320,16 @@ The service runs the daemon with `--foreground` (the supervisor owns the process
 ## Runtime file
 
 `<data_dir>/runtime.json` = `{"port": 4173, "token": "<random per run>", "pid": <daemon pid>, "started_at": <unix ms>}`; written 0600 by `caprock up`, deleted by `caprock down`; the shim reads it on every invocation. What `<data_dir>` resolves to per OS is owned by [ADR-013](08-decisions.md#adr-013--data-dir-and-config-conventions).
+
+### File permissions
+
+Everything Caprock writes into `<data_dir>` is owner-only on POSIX. The data directory is `0700`; `config.json`, `runtime.json` and the log are `0600`; and **`caprock.db` plus its `-wal`/`-shm` siblings are `0600`**.
+
+The database is included because it stores prompts and responses in cleartext — that is what makes the Answers screen searchable — so a world-readable mode hands every other local account the user's entire session history. It was previously left at whatever the process umask produced, which under a default umask is `0644`, while `config.json` beside it had always been `0600`.
+
+The mode is applied by `store.secureDBFiles` on **every** `store.Open`, not only at creation: a database written by an earlier version keeps its `0644` until something changes it, and SQLite recreates `-wal`/`-shm` on demand under the umask, so a creation-time fix alone would regress on the next open. A filesystem that refuses `chmod` (a network share, a container volume) produces a logged warning and a running daemon rather than a failed start — a permissions limitation must not become an outage.
+
+**Windows is a deliberate no-op**: NTFS has no POSIX mode bits, `os.Chmod` there only toggles the read-only attribute, and applying `0600` would risk a read-only database while achieving nothing. Access is governed by the ACL inherited from the per-user data directory. The permission tests skip on Windows with that reason (rule 2).
 
 ## Transcript JSONL (observed shape)
 

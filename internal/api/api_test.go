@@ -234,6 +234,7 @@ func TestStatusPricingHealthAndUI(t *testing.T) {
 	}
 	// Shutdown gated by token.
 	req, _ = http.NewRequest(http.MethodPost, e.srv.URL+"/v1/shutdown", nil)
+	req.Header.Set("Content-Type", "application/json")
 	resp, _ = http.DefaultClient.Do(req)
 	resp.Body.Close()
 	if resp.StatusCode != 401 {
@@ -307,6 +308,7 @@ func TestStatuslineEndpointAndSummary(t *testing.T) {
 	// sample the endpoint now rejects.
 	body := `{"session_id":"s1","five_hour":{"used_percentage":23.5,"resets_at":1787227200}}`
 	req, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/v1/statusline", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
 	resp, _ := http.DefaultClient.Do(req)
 	if resp.StatusCode != 401 {
 		t.Fatalf("statusline without token: %d", resp.StatusCode)
@@ -414,6 +416,8 @@ func TestSettingsValidation(t *testing.T) {
 
 	put := func(body string) int {
 		req, _ := http.NewRequest(http.MethodPut, srv.URL+"/v1/settings", strings.NewReader(body))
+		// What ui/src/lib/api.ts actually sends; the origin guard requires it.
+		req.Header.Set("Content-Type", "application/json")
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)

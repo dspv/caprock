@@ -5,6 +5,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -485,5 +486,97 @@ func TestSearchNotesPagingKeepsTheQuery(t *testing.T) {
 		if !strings.Contains(n.Text, "migration") {
 			t.Errorf("paging returned a non-matching note: %q", n.Text)
 		}
+	}
+}
+
+// A model with no pricing row leaves cost_usd NULL (the rollup logs "model not
+// in pricing table; cost left unknown"). Every aggregate then flattened it with
+// COALESCE(SUM(cost_usd),0), so tens of thousands of tokens of an unpriced
+// model rendered as a confident "$0.00" — indistinguishable from free, and an
+// invented number under rule 6. The volume must be carried out of the
+// aggregate, and the model that caused it must be named so the user can act.
+func TestSummarizeAndHistoryCarryUnpricedVolume(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	now := time.Now().UnixMilli()
+	mustSession(t, s, "s1", now)
+
+	priced := 0.25
+	// One priced turn, and two turns of a model shipped after the pricing table.
+	mustInsert(t, s, event.Event{
+		SessionID: "s1", Kind: event.KindTurnAssistant, Ts: time.UnixMilli(now),
+		Model: "claude-sonnet-5", Tokens: &event.TokenDelta{In: 100, Out: 200},
+		CostUSD: &priced,
+	})
+	for i := range 2 {
+		mustInsert(t, s, event.Event{
+			SessionID: "s1", Kind: event.KindTurnAssistant, Ts: time.UnixMilli(now + int64(i) + 1),
+			Model: "claude-opus-9-future", Tokens: &event.TokenDelta{In: 30_000, Out: 500},
+			// CostUSD deliberately nil: this is the unpriced path.
+		})
+	}
+
+	sum, err := Summarize(ctx, s.db, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum.Unpriced == nil {
+		t.Fatal("unpriced volume was flattened into the total; the Cost screen would show $0.00 for 61k tokens")
+	}
+	if sum.Unpriced.Turns != 2 {
+		t.Errorf("unpriced turns = %d, want 2", sum.Unpriced.Turns)
+	}
+	if want := int64(2 * (30_000 + 500)); sum.Unpriced.Tokens != want {
+		t.Errorf("unpriced tokens = %d, want %d", sum.Unpriced.Tokens, want)
+	}
+	// Naming the model is the point: "some tokens unpriced" is not actionable.
+	if len(sum.Unpriced.Models) != 1 || sum.Unpriced.Models[0] != "claude-opus-9-future" {
+		t.Errorf("unpriced models = %v, want [claude-opus-9-future]", sum.Unpriced.Models)
+	}
+	// The priced total is unchanged — this reports alongside cost, not instead.
+	if sum.CostUSD != priced {
+		t.Errorf("cost = %v, want %v", sum.CostUSD, priced)
+	}
+
+	h, err := History(ctx, s.db, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.Unpriced == nil || h.Unpriced.Turns != 2 {
+		t.Fatalf("History dropped the unpriced volume under a 'measured, not estimated' headline: %+v", h.Unpriced)
+	}
+
+	// It must reach the wire, and be omitted rather than zero when all is well.
+	b, err := json.Marshal(sum)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"unpriced"`) || !strings.Contains(string(b), "claude-opus-9-future") {
+		t.Fatalf("unpriced volume did not reach the payload:\n%s", b)
+	}
+}
+
+// The common case: everything priced. The field must be absent, not a zero
+// object, so no screen renders an "unpriced" warning on healthy data.
+func TestUnpricedIsAbsentWhenEverythingIsPriced(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	now := time.Now().UnixMilli()
+	mustSession(t, s, "s1", now)
+	c := 0.5
+	mustInsert(t, s, event.Event{
+		SessionID: "s1", Kind: event.KindTurnAssistant, Ts: time.UnixMilli(now),
+		Model: "claude-sonnet-5", Tokens: &event.TokenDelta{In: 10, Out: 20}, CostUSD: &c,
+	})
+	sum, err := Summarize(ctx, s.db, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum.Unpriced != nil {
+		t.Fatalf("a fully priced range reported unpriced volume: %+v", sum.Unpriced)
+	}
+	b, _ := json.Marshal(sum)
+	if strings.Contains(string(b), `"unpriced"`) {
+		t.Fatalf("unpriced must be omitted when empty:\n%s", b)
 	}
 }

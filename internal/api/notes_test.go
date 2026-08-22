@@ -318,6 +318,8 @@ func TestPartialSettingsUpdateKeepsTheRest(t *testing.T) {
 
 	put := func(body string) int {
 		req, _ := http.NewRequest(http.MethodPut, srv.URL+"/v1/settings", strings.NewReader(body))
+		// What ui/src/lib/api.ts actually sends; the origin guard requires it.
+		req.Header.Set("Content-Type", "application/json")
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)

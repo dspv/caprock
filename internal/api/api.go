@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -193,9 +194,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Cache-Control", "no-store")
 	if strings.HasPrefix(r.URL.Path, "/v1/") {
-		// Browser same-origin protects the API; refuse cross-site requests explicitly too.
-		if o := r.Header.Get("Origin"); o != "" && !isLoopbackOrigin(o) {
-			http.Error(w, "forbidden origin", http.StatusForbidden)
+		// Refuse anything that cannot be shown to come from the dashboard
+		// itself or from a real local client. The same-origin policy does NOT
+		// protect this API — it stops a page reading the response, not sending
+		// the request — and POST /v1/agents runs a command from its body. See
+		// csrf.go for the layering and why a missing Origin is not trusted.
+		if reason := checkOrigin(r); reason != "" {
+			http.Error(w, reason, http.StatusForbidden)
 			return
 		}
 		// The dashboard is mounted at "/" so client-side routes resolve, which
@@ -216,9 +221,24 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // Close shuts down live connections.
 func (s *Server) Close() { s.ws.Close() }
 
+// isLoopbackOrigin reports whether an Origin header names this machine.
+//
+// It parses rather than prefix-matches. The prefix form accepted
+// "http://localhost.evil.example" and "http://127.0.0.1.evil.example" — both
+// have the right prefix and neither is loopback — so an attacker only had to
+// register a hostname starting with "localhost." to be treated as the
+// dashboard. Host parsing makes the label boundary explicit.
 func isLoopbackOrigin(origin string) bool {
-	o := strings.ToLower(origin)
-	return strings.HasPrefix(o, "http://localhost") || strings.HasPrefix(o, "http://127.0.0.1") || strings.HasPrefix(o, "http://[::1]")
+	u, err := url.Parse(strings.TrimSpace(origin))
+	if err != nil || u.Host == "" {
+		return false // includes the literal "null" origin (sandboxed iframe, file://)
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "http", "https":
+	default:
+		return false
+	}
+	return isLoopbackHost(u.Host)
 }
 
 // --- DTOs ---
