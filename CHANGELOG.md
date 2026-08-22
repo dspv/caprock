@@ -29,6 +29,21 @@ Phase 3 (Delight) has no plan by design.
 - **Per-directory attribution was rebuilt after the first rule proved useless in practice.** The original rule charged a directory only when *every* file a turn touched was in it, which was exact and answered almost nothing: on a real 191k-event database it put **87.6%** of one project's $1735 into "repository-wide work". Asking what a service costs and being told "we could not tell you" for seven eighths of the money is not an answer. The rule now carries forward from the last file touched, and the same project reads `/app` **61%** ($2090.67), `/.ai` 6.8%, `/app/tests` 2.8%. Nothing is split or estimated — each turn still goes whole to one row — but the row it goes to is now decided by a stated rule rather than by whether the turn happened to contain a file edit.
 - **"Repository-wide work" now means one narrow thing**: the opening turns of a session, before Claude has touched any file. It is usually nothing at all, and the row is omitted entirely when it cost nothing rather than showing a puzzling `$0.00`.
 
+## [0.16.0] - 2026-08-22
+
+### Security
+
+- **Any page open in your browser could reach the API while the daemon was running.** The cross-site check trusted a request that carried no `Origin` header, and browsers omit it on cross-site simple requests — a form post, or `fetch` with `text/plain`. Behind that check, unauthenticated, sat an endpoint that takes a command from the request body and runs it. The check is now layered — `Sec-Fetch-Site`, `Origin`, `Host`, and a JSON content type or the daemon's token — and a missing `Origin` is never trusted. A second hole found while testing the first: the loopback check matched by prefix, so a hostname like `localhost.evil.example` passed.
+- **The database was world-readable.** It holds your prompts and Claude's replies in the clear and was created 0644 while the config beside it was 0600. It and its WAL and SHM siblings are now 0600 on every open. SECURITY.md now says what is stored and how to delete it.
+
+### Fixed
+
+- `caprock up` crashed with a stack trace when `settings.json` held `{"hooks": []}` or `{"hooks": null}` — the first command a new user runs.
+- Tokens from a model that is not in the pricing table displayed as `$0.00`, indistinguishable from free. The unpriced volume is now shown, with the models that caused it.
+- A fatal ingest failure was logged and swallowed: the daemon reported healthy and the dashboard said "no sessions yet" forever.
+- A new install opened on a screen of zeroes whose only coloured element was a cache warning about a cache that had never been used.
+- The explanation for a missing `claude` binary was unreachable, the Tasks screen showed "Error: 501 Not Implemented" instead of the server's actual message, and `caprock statusline install` exited silently when it had done nothing.
+
 ## [0.15.1] - 2026-08-22
 
 ### Added
