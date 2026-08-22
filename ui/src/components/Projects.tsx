@@ -153,9 +153,13 @@ const OUTSIDE_RULE =
   'is not charged to any directory inside it.'
 
 export function ProjectsPanel({ sessions }: { sessions: SessionSummary[] }) {
-  // 30d is the default: "today" is near-empty most mornings and would make the
-  // panel look broken on first open, which is exactly the wrong first impression.
-  const [range, setRange] = useState<Range>('30d')
+  // 7d is the default. "today" is near-empty most mornings and would make the
+  // panel look broken on first open; 30d is the opposite problem — a project
+  // worked on for two days out of thirty draws a sparkline that is almost all
+  // idle hairline, so the picture reads as no data rather than as a burst. A
+  // week is dense enough that the shape means something and long enough to
+  // carry a project that was only touched once.
+  const [range, setRange] = useState<Range>('7d')
   const [expanded, setExpanded] = useState(false)
   const summary = useApi(() => api.summary(range), [range], { intervalMs: 30000 })
 
