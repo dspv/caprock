@@ -106,9 +106,20 @@ func (h *Hive) CreateTask(t Task) error {
 	return h.appendLedger(LedgerEntry{Kind: "task.created", TaskID: t.ID, To: t.Status})
 }
 
-// GetTask reads one task.
+// GetTask reads one task. The id is validated because it is not always
+// user-supplied-and-DB-checked: board.VerifyTask, board.Approve,
+// board.OverBudget and moveTo all reach this directly, and ListTasks returns the
+// `id` parsed from *inside* a task file — so a hand-written file could name
+// `../../x` and turn the next read or UpdateTask write into a path traversal.
 func (h *Hive) GetTask(id string) (Task, error) {
-	b, err := os.ReadFile(h.taskPath(id))
+	if err := validID(id); err != nil {
+		return Task{}, err
+	}
+	path := h.taskPath(id)
+	if err := h.withinRoot(path); err != nil {
+		return Task{}, err
+	}
+	b, err := os.ReadFile(path)
 	if err != nil {
 		return Task{}, err
 	}
@@ -137,8 +148,14 @@ func (h *Hive) ListTasks() ([]Task, error) {
 // UpdateTask applies a mutation under the lock, validating status transitions,
 // and ledgers the change.
 func (h *Hive) UpdateTask(id string, mut func(*Task) error) (Task, error) {
+	if err := validID(id); err != nil {
+		return Task{}, err
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if err := h.withinRoot(h.taskPath(id)); err != nil {
+		return Task{}, err
+	}
 	b, err := os.ReadFile(h.taskPath(id))
 	if err != nil {
 		return Task{}, err

@@ -222,10 +222,7 @@ func TestSpawnStripsNestingEnv(t *testing.T) {
 // refactor dropping the trustFolder call would be caught here, not just in the
 // helper's own unit test).
 func TestSpawnPreacceptsFolderTrust(t *testing.T) {
-	home := t.TempDir()
-	origHome := userHomeDir
-	userHomeDir = func() (string, error) { return home, nil }
-	t.Cleanup(func() { userHomeDir = origHome })
+	home := trustTestHome(t)
 	m, _, _ := newMgr(t)
 	defer m.Shutdown()
 	cwd := t.TempDir()

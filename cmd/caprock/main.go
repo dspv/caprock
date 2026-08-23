@@ -27,6 +27,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/daemon"
 	"github.com/dspv/caprock/internal/hooks"
@@ -519,6 +520,56 @@ func hooksCmd() *cobra.Command {
 				} else {
 					fmt.Fprintln(cmd.OutOrStdout(), "nothing to remove")
 				}
+				// Spawning a session pre-accepts Claude Code's folder-trust dialog for
+				// its cwd. That grant used to be permanent and one-way: uninstall left
+				// a trusted-project entry behind for every worktree Caprock had ever
+				// created, including long-deleted ones. Revoke exactly the folders
+				// Caprock granted, never one the user accepted themselves. Best-effort:
+				// a failure here must not fail the hook uninstall that already
+				// succeeded.
+				if n, err := agents.RevokeTrustGrants(); err != nil {
+					fmt.Fprintln(cmd.ErrOrStderr(), "could not revoke folder-trust grants:", err)
+				} else if n > 0 {
+					fmt.Fprintf(cmd.OutOrStdout(), "revoked %d folder-trust grant(s) from ~/.claude.json\n", n)
+				}
+				return nil
+			},
+		},
+		&cobra.Command{
+			Use:   "restore [backup]",
+			Short: "List Caprock's settings.json backups, or restore one",
+			Long: "Caprock snapshots ~/.claude/settings.json before it first modifies it, and again\n" +
+				"whenever the file has changed since the last snapshot. With no argument this lists\n" +
+				"the snapshots; with one it copies that snapshot back over settings.json.\n\n" +
+				"Restoring takes a fresh snapshot of the current file first, so a restore is itself\n" +
+				"undoable. Which snapshot you want is your call — Caprock never picks for you.",
+			Args: cobra.MaximumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+				sp, err := hooks.DefaultSettingsPath()
+				if err != nil {
+					return err
+				}
+				backups := hooks.ListBackups(sp)
+				if len(args) == 0 {
+					if len(backups) == 0 {
+						fmt.Fprintln(cmd.OutOrStdout(), "no backups of", sp)
+						return nil
+					}
+					fmt.Fprintln(cmd.OutOrStdout(), "backups of", sp+":")
+					for _, b := range backups {
+						ts := "?"
+						if fi, err := os.Stat(b); err == nil {
+							ts = fi.ModTime().Format(time.RFC3339)
+						}
+						fmt.Fprintf(cmd.OutOrStdout(), "  %s  (%s)\n", b, ts)
+					}
+					fmt.Fprintln(cmd.OutOrStdout(), "\nrestore one with: caprock hooks restore <path>")
+					return nil
+				}
+				if err := hooks.Restore(sp, args[0]); err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "restored %s from %s\n", sp, args[0])
 				return nil
 			},
 		},

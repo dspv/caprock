@@ -123,6 +123,27 @@ func validID(id string) error {
 	return nil
 }
 
+// withinRoot reports whether path resolves inside the hive root. It is the
+// second layer behind validID: every path the hive writes is built from an id
+// that validID has already cleared, so this can only fire if that guard is
+// weakened or bypassed by a future change. Belt and braces — the cost of being
+// wrong here is a write to an arbitrary file on the user's machine.
+func (h *Hive) withinRoot(path string) error {
+	root, err := filepath.Abs(h.Root)
+	if err != nil {
+		return err
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(root, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return fmt.Errorf("hive: path %q escapes the hive root", path)
+	}
+	return nil
+}
+
 func writeIfAbsent(path, content string) error {
 	if _, err := os.Stat(path); err == nil {
 		return nil

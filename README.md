@@ -110,6 +110,14 @@ last month.
 Claude Code runs in your terminal. Caprock is the window into it.
 One local binary. Your data never leaves your machine.
 
+**What that database holds.** Everything Claude Code read and wrote: your
+prompts, its replies, and the full output of every tool call. That output is
+where secrets end up — an API key printed by a command, a token in a `.env`
+file that got read. The file is `0600` and nothing sends it anywhere, but it
+is inside your backups, so treat it as you would your shell history: do not
+put it in a bug report, and do not hand it to anyone debugging an issue for
+you. `caprock down` and deleting the data directory removes all of it.
+
 ## Why
 
 - **See it** — live activity, tokens, cost, and loop alerts per session, plus

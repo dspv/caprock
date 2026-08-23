@@ -521,7 +521,16 @@ func (d *Daemon) activeLoop(sessionID string) *loop.Alert {
 
 func (d *Daemon) pruneLoop(ctx context.Context) {
 	prune := func() {
-		before := d.rec.Now().AddDate(0, 0, -d.config().RetentionDays).UnixMilli()
+		// The goroutine is gated on RetentionDays > 0 at startup, but this closure
+		// re-reads the config live. If retention ever reached 0 at runtime,
+		// AddDate(0,0,0) is *now* and PruneEventsBefore would delete the entire
+		// event history. No runtime writer exists today, so this is unreachable —
+		// and it stays one refactor away from catastrophic without this line.
+		days := d.config().RetentionDays
+		if days <= 0 {
+			return
+		}
+		before := d.rec.Now().AddDate(0, 0, -days).UnixMilli()
 		var n int64
 		if err := d.store.WithTx(ctx, func(q store.Querier) error {
 			var e error
@@ -532,7 +541,7 @@ func (d *Daemon) pruneLoop(ctx context.Context) {
 			return
 		}
 		if n > 0 {
-			d.log.Info("pruned old events", "component", "daemon", "removed", n, "retention_days", d.config().RetentionDays)
+			d.log.Info("pruned old events", "component", "daemon", "removed", n, "retention_days", days)
 		}
 	}
 	prune() // once at start

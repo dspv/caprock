@@ -92,10 +92,32 @@ func (h *Hive) Deliver() (int, error) {
 			if err != nil || m.To == "" {
 				continue
 			}
-			if err := os.MkdirAll(h.inbox(m.To), 0o755); err != nil {
+			// The `to:` field is attacker-reachable: the author of an outbox file is
+			// a worker Claude session running with permissions skipped, so a confused
+			// or prompt-injected worker can put anything here. Unvalidated, `to:
+			// ../../../x` made the destination an arbitrary path on the user's
+			// machine — MkdirAll plus a write, i.e. overwriting ~/.zshrc or
+			// ~/.claude/settings.json with partly-controlled content. `from` is
+			// checked too: it is ledgered, and a future change could route on it.
+			// One bad message is skipped rather than failing the whole delivery
+			// pass, so a single malformed file cannot wedge every other agent's mail.
+			if err := validID(m.To); err != nil {
+				h.quarantine(src, from, m, "to")
+				continue
+			}
+			if err := validID(m.From); err != nil {
+				h.quarantine(src, from, m, "from")
+				continue
+			}
+			dstDir := h.inbox(m.To)
+			if err := h.withinRoot(dstDir); err != nil {
+				h.quarantine(src, from, m, "to")
+				continue
+			}
+			if err := os.MkdirAll(dstDir, 0o755); err != nil {
 				return delivered, err
 			}
-			dst := filepath.Join(h.inbox(m.To), name)
+			dst := filepath.Join(dstDir, name)
 			if err := writeAtomic(dst, b, 0o644); err != nil {
 				return delivered, err
 			}
@@ -107,6 +129,34 @@ func (h *Hive) Deliver() (int, error) {
 		}
 	}
 	return delivered, nil
+}
+
+// quarantine moves a message the router refused to deliver into the sender's
+// `rejected/` dir and ledgers why. It neither deletes the evidence (the user may
+// want to see what a worker tried to write) nor leaves it in the outbox, where
+// every later Deliver would retry it forever. Best-effort: a failure to move
+// leaves the file in place, which is safe — it is never delivered either way.
+// Caller holds h.mu.
+func (h *Hive) quarantine(src, agentID string, m Message, field string) {
+	dir := filepath.Join(h.agentDir(agentID), "rejected")
+	if err := h.withinRoot(dir); err != nil {
+		return // agentID itself is untrusted here; never write outside the hive
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+	if b, err := os.ReadFile(src); err == nil {
+		if err := writeAtomic(filepath.Join(dir, filepath.Base(src)), b, 0o644); err != nil {
+			return
+		}
+	}
+	_ = os.Remove(src)
+	_ = h.appendLedger(LedgerEntry{
+		Kind:    "mail.rejected",
+		AgentID: agentID,
+		TaskID:  m.TaskID,
+		Note:    "invalid " + field,
+	})
 }
 
 // Inbox lists an agent's inbox messages, oldest first.

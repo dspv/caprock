@@ -3,11 +3,13 @@
 package hooks
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -211,9 +213,25 @@ func markCreatedByUs(path string) {
 	_ = os.WriteFile(createdMarkerPath(path), []byte("caprock created this settings.json\n"), 0o600)
 }
 
-// backupOnce copies settings.json to settings.json.caprock-backup-<unix-ts> if no
-// caprock backup exists yet. Returns the backup path or "" when there was no
-// original file / a backup already exists.
+// maxBackups bounds how many settings.json snapshots Caprock keeps. A backup is
+// only taken when the file's content differs from every existing one, so this
+// caps a pathological case (a user who edits settings.json between every run),
+// not ordinary use. The oldest are pruned first; the very first backup — the
+// pre-Caprock state, the one most worth having — is always kept.
+const maxBackups = 5
+
+// backupOnce copies settings.json to settings.json.caprock-backup-<unix-ts>
+// when the current content is not already captured by an existing backup.
+// Returns the backup path, or "" when there was no original file or its content
+// is already backed up.
+//
+// It used to return early if *any* backup existed, which made the snapshot
+// permanently stale: on the owner's machine the only backup was dated 10 July
+// while settings.json had been modified 20 August, so the file it would restore
+// no longer resembled the one it was protecting. Content-comparing instead of
+// existence-checking keeps the "don't snapshot our own output twice in one run"
+// property — the content is unchanged within a run — while still refreshing
+// after the user edits their settings.
 func backupOnce(path string) (string, error) {
 	orig, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -231,14 +249,93 @@ func backupOnce(path string) (string, error) {
 		return "", nil
 	}
 	matches, _ := filepath.Glob(path + ".caprock-backup-*")
-	if len(matches) > 0 {
-		return "", nil
+	for _, m := range matches {
+		if b, err := os.ReadFile(m); err == nil && bytes.Equal(b, orig) {
+			return "", nil // this exact content is already preserved
+		}
 	}
-	backup := path + ".caprock-backup-" + strconv.FormatInt(time.Now().Unix(), 10)
+	backup := freeBackupName(path)
 	if err := os.WriteFile(backup, orig, 0o600); err != nil {
 		return "", fmt.Errorf("write backup: %w", err)
 	}
+	pruneBackups(path)
 	return backup, nil
+}
+
+// freeBackupName returns a backup path that does not exist yet. The timestamp
+// has one-second resolution, so two backups inside the same second would
+// otherwise collide and the second would silently overwrite the first —
+// destroying a snapshot while reporting success. A "-2", "-3"… suffix
+// disambiguates; the timestamp still sorts first.
+func freeBackupName(path string) string {
+	base := path + ".caprock-backup-" + strconv.FormatInt(time.Now().Unix(), 10)
+	if _, err := os.Stat(base); os.IsNotExist(err) {
+		return base
+	}
+	for i := 2; i < 1000; i++ {
+		cand := base + "-" + strconv.Itoa(i)
+		if _, err := os.Stat(cand); os.IsNotExist(err) {
+			return cand
+		}
+	}
+	return base
+}
+
+// pruneBackups keeps the oldest backup (the closest thing to a pre-Caprock
+// state) plus the most recent maxBackups-1, deleting the rest. Best-effort:
+// failing to prune leaves extra files, which is harmless.
+func pruneBackups(path string) {
+	matches, _ := filepath.Glob(path + ".caprock-backup-*")
+	if len(matches) <= maxBackups {
+		return
+	}
+	// The timestamp suffix is fixed-width for any plausible date, so a lexical
+	// sort is chronological; sort explicitly by parsed ts to be safe.
+	sort.Slice(matches, func(i, j int) bool { return backupTs(matches[i]) < backupTs(matches[j]) })
+	// Keep matches[0] (oldest) and the last maxBackups-1.
+	for _, m := range matches[1 : len(matches)-(maxBackups-1)] {
+		_ = os.Remove(m)
+	}
+}
+
+// backupTs extracts the unix timestamp from a backup filename, or 0. It
+// tolerates the "-2", "-3"… collision suffix freeBackupName may append.
+func backupTs(name string) int64 {
+	i := strings.LastIndex(name, ".caprock-backup-")
+	if i < 0 {
+		return 0
+	}
+	suffix := name[i+len(".caprock-backup-"):]
+	if dash := strings.IndexByte(suffix, '-'); dash >= 0 {
+		suffix = suffix[:dash]
+	}
+	ts, _ := strconv.ParseInt(suffix, 10, 64)
+	return ts
+}
+
+// ListBackups returns the Caprock backups of settings.json, oldest first.
+func ListBackups(settingsPath string) []string {
+	matches, _ := filepath.Glob(settingsPath + ".caprock-backup-*")
+	sort.Slice(matches, func(i, j int) bool { return backupTs(matches[i]) < backupTs(matches[j]) })
+	return matches
+}
+
+// Restore copies a backup back over settings.json. It takes the backup path
+// explicitly rather than picking one, because choosing which snapshot a user
+// wants is a decision only they can make. Before overwriting it snapshots the
+// current file, so a restore is itself undoable.
+func Restore(settingsPath, backupPath string) error {
+	b, err := os.ReadFile(backupPath)
+	if err != nil {
+		return err
+	}
+	if _, err := ParseOrdered(b); err != nil {
+		return fmt.Errorf("refusing to restore unparsable backup %s: %w", backupPath, err)
+	}
+	if _, err := backupOnce(settingsPath); err != nil {
+		return err
+	}
+	return config.WriteFileAtomic(settingsPath, b, 0o600)
 }
 
 // hooksObject returns root["hooks"] as an ordered object, creating it when
