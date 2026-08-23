@@ -125,6 +125,9 @@ you. `caprock down` and deleting the data directory removes all of it.
 - **Find what Claude said** — the reasoning and the "here's what changed, here's
   what I still need from you" that otherwise lives only in terminal scrollback,
   searchable across every session.
+- **See what it went on** — not just which model or which repository, but what
+  the money was doing: running commands, writing code, reading and searching, or
+  turns that called no tool at all.
 - **Know what it's worth** — your measured usage priced at the API rate, against
   what your plan actually costs.
 - **Steer it** — spawn, pause, and kill sessions from the dashboard.
