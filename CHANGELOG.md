@@ -38,6 +38,18 @@ Phase 3 (Delight) has no plan by design.
 - **Per-directory attribution was rebuilt after the first rule proved useless in practice.** The original rule charged a directory only when *every* file a turn touched was in it, which was exact and answered almost nothing: on a real 191k-event database it put **87.6%** of one project's $1735 into "repository-wide work". Asking what a service costs and being told "we could not tell you" for seven eighths of the money is not an answer. The rule now carries forward from the last file touched, and the same project reads `/app` **61%** ($2090.67), `/.ai` 6.8%, `/app/tests` 2.8%. Nothing is split or estimated — each turn still goes whole to one row — but the row it goes to is now decided by a stated rule rather than by whether the turn happened to contain a file edit.
 - **"Repository-wide work" now means one narrow thing**: the opening turns of a session, before Claude has touched any file. It is usually nothing at all, and the row is omitted entirely when it cost nothing rather than showing a puzzling `$0.00`.
 
+## [0.20.0] - 2026-08-24
+
+### Changed
+
+- Expanding a repository now gives a tree instead of a flat list of full paths. It was 43 rows on a real database with nothing showing that `/ui/src/components` and `/ui/src/lib` both live under `/ui`; it is eight, each opening to what is inside it, three levels deep. Spend below that rolls into the deepest row shown and says so, so the parts still add up to the repository total.
+- The two rows that are not directories — work outside the repository, and work that belongs to no single one — read as part of the same table now rather than as italics from somewhere else.
+
+### Fixed
+
+- Clicking a directory row could land you in an unrelated session. The row was never a link: expanding a repository grew the panel past the activity feed beside it, and the click landed there instead. The tree removes the overshoot, and breakdown rows are now explicitly inert.
+- Plan value spent the right half of a full-width panel on nothing, and its multiple was aligned to the first line of a two-line sentence so the second dropped below it. Plan limits had no padding and ran into its own border. The feedback dialog was sized like a table of figures rather than a box you type a paragraph into.
+
 ## [0.19.0] - 2026-08-23
 
 ### Added
