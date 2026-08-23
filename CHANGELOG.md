@@ -38,6 +38,20 @@ Phase 3 (Delight) has no plan by design.
 - **Per-directory attribution was rebuilt after the first rule proved useless in practice.** The original rule charged a directory only when *every* file a turn touched was in it, which was exact and answered almost nothing: on a real 191k-event database it put **87.6%** of one project's $1735 into "repository-wide work". Asking what a service costs and being told "we could not tell you" for seven eighths of the money is not an answer. The rule now carries forward from the last file touched, and the same project reads `/app` **61%** ($2090.67), `/.ai` 6.8%, `/app/tests` 2.8%. Nothing is split or estimated — each turn still goes whole to one row — but the row it goes to is now decided by a stated rule rather than by whether the turn happened to contain a file edit.
 - **"Repository-wide work" now means one narrow thing**: the opening turns of a session, before Claude has touched any file. It is usually nothing at all, and the row is omitted entirely when it cost nothing rather than showing a puzzling `$0.00`.
 
+## [0.18.0] - 2026-08-23
+
+### Security
+
+- **A task-runner worker could write files anywhere on your machine.** Mailbox delivery built its destination from a field inside a message file without validating it, so a message addressed to `../../../x` wrote above the queue directory. The author of those files is a Claude session running with permission prompts skipped, so a confused worker reached this with no attacker involved. Validated on both ends now, contained to the queue directory as a second layer, and a refused message is quarantined rather than dropped.
+- Task ids reached the filesystem unvalidated, so a hand-written task file could read or write outside the queue directory.
+
+### Fixed
+
+- **`caprock` could destroy commits on your own branches.** Creating a worker's git worktree force-reset a branch of the same name if one already existed. Worker names are predictable and nothing cleaned up after a run, so a second run dropped the first one's commits off the branch tip. It now reattaches to a worktree it already owns and otherwise refuses, naming the branch.
+- Granting folder trust rewrote the whole of `~/.claude.json` to set one field, losing its key order and rounding any integer past 2^53. It now preserves the file, records only the grants it made, and `caprock hooks uninstall` revokes them.
+- The `settings.json` backup was taken once and never refreshed, and nothing could restore it. It refreshes when the file has genuinely changed, keeps the oldest snapshot plus the newest few, and `caprock hooks restore` exists.
+- Retention pruning could have deleted every event if retention were ever set to zero at runtime.
+
 ## [0.17.0] - 2026-08-23
 
 ### Added
