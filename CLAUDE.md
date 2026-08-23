@@ -39,7 +39,15 @@ whole corpus. Contributing? See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 8. **Contracts, DDL, and pricing change only together with `.ai/03-contracts.md`, a migration, or a `pricing_version` bump — in the same commit.**
 
-9. **Keep the docs current as you build.** A change to behaviour lands with its documentation change in the same commit — including `.ai/14-build-status.md` and the README progress bars.
+9. **Keep the docs current as you build.** A change to behaviour lands with its
+   documentation change in the same commit.
+
+   **Never write the current version into prose.** It was in three places, all
+   of them saying "v0.1.0–v0.15.1 are all tagged and published" three releases
+   after that stopped being true. A number that has to be synced is a number
+   that will be wrong; `git describe`, the releases page and `CHANGELOG.md`
+   already answer the question. Naming a version to date a decision — "the
+   v0.17.0 audit found" — is a historical fact and stays.
 
 10. **Every task ends green** (`go vet`, `go test`, lint, UI typecheck/tests, `make check`) locally before push and in CI on three OS. Ongoing changes are focused PRs to master (the T0–T25 build is complete; see [ADR-014](.ai/08-decisions.md)).
 
