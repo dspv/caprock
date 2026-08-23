@@ -38,6 +38,16 @@ Phase 3 (Delight) has no plan by design.
 - **Per-directory attribution was rebuilt after the first rule proved useless in practice.** The original rule charged a directory only when *every* file a turn touched was in it, which was exact and answered almost nothing: on a real 191k-event database it put **87.6%** of one project's $1735 into "repository-wide work". Asking what a service costs and being told "we could not tell you" for seven eighths of the money is not an answer. The rule now carries forward from the last file touched, and the same project reads `/app` **61%** ($2090.67), `/.ai` 6.8%, `/app/tests` 2.8%. Nothing is split or estimated — each turn still goes whole to one row — but the row it goes to is now decided by a stated rule rather than by whether the turn happened to contain a file edit.
 - **"Repository-wide work" now means one narrow thing**: the opening turns of a session, before Claude has touched any file. It is usually nothing at all, and the row is omitted entirely when it cost nothing rather than showing a puzzling `$0.00`.
 
+## [0.19.0] - 2026-08-23
+
+### Added
+
+- The Cost screen shows what the money was spent on — commands, code edits, reading, MCP tools, or turns that called no tool at all — beside the existing splits by model and by project. `caprock report` carries it too, and withholds it rather than guessing when too many tool calls cannot be linked to the turn that paid for them.
+
+### Fixed
+
+- Tool calls that name no file — Bash above all, the most-used tool there is — were never linked to the turn that paid for them, so their spend was reported as "no tool call". On a real database that meant 86.5% of a month attributed to turns that called nothing, where the true figure is 9.4%. The links are recovered on first run, in the background, and verified against the transcripts rather than guessed; a call whose transcript is gone stays unlinked.
+
 ## [0.18.0] - 2026-08-23
 
 ### Security
