@@ -326,6 +326,50 @@ describe('ProjectsPanel figures', () => {
     expect(screen.getByText('100.0k').parentElement?.textContent).toBe('100.0k 10% · $10.00')
   })
 
+  it('reads the two non-directory rows as part of the same table, separated by role', async () => {
+    // They used to render in ITALIC, which separated them by looking like a
+    // different product rather than by saying what they are. They are siblings
+    // of the directory rows — real spend, part of the repository total — so they
+    // must read as table rows and be told apart by ROLE.
+    projects.value = [
+      {
+        project: 'mono',
+        tokens: 1_000_000,
+        cost_usd: 100,
+        sessions: 2,
+        paths: [
+          { path: '/services/api', tokens: 600_000, cost_usd: 60, turns: 4, tokens_pct: 60, cost_pct: 60 },
+          { path: ' outside', tokens: 300_000, cost_usd: 30, turns: 20, outside: true, tokens_pct: 30, cost_pct: 30 },
+          { path: ' unattributed', tokens: 100_000, cost_usd: 10, turns: 2, unattributed: true, tokens_pct: 10, cost_pct: 10 },
+        ],
+      },
+    ]
+    const { container } = render(<ProjectsPanel sessions={[]} />)
+    fireEvent.click(await screen.findByTitle('mono: show cost by directory'))
+    const outside = screen.getByText('outside the repository')
+    const wide = screen.getByText('repository-wide work')
+    // Nothing in the panel is italic any more.
+    expect(container.querySelector('.italic')).toBeNull()
+    expect(outside.className).not.toContain('italic')
+    expect(wide.className).not.toContain('italic')
+    // They read at the same size and in the same tone as a directory row, so
+    // the column is one table rather than two kinds of thing.
+    const dir = screen.getByText('/services/api')
+    for (const el of [outside, wide]) {
+      expect(el.className).toContain('text-[12px]')
+      expect(el.className).toContain('text-fg-muted')
+    }
+    // The difference that remains is the one that is actually true: a path is
+    // monospace because it is a literal string from the machine; a description
+    // of some work is not.
+    expect(dir.className).toContain('mono')
+    expect(outside.className).not.toContain('mono')
+    expect(wide.className).not.toContain('mono')
+    // And the role is stated once, as a heading over the pair, instead of each
+    // row having to signal it by looking strange.
+    expect(screen.getByText('not a directory')).toBeTruthy()
+  })
+
   it('floors a share and never shows a real spend as a bare 0%', async () => {
     // Percentages floor: 99.9% is 99%, nothing reads as the whole until it is.
     // But a row with real money must not floor to "0%" — that would put a zero
@@ -348,6 +392,122 @@ describe('ProjectsPanel figures', () => {
     expect(screen.getByText('999.0k').parentElement?.textContent).toBe('999.0k 99% · $99.90')
     // A tiny but real share reads as smaller-than-expressible, not as nothing.
     expect(screen.getByText('1,000').parentElement?.textContent).toBe('1,000 <0.1% · $0.10')
+  })
+
+  it('does not show a fourth-level directory as its own row', async () => {
+    projects.value = [
+      {
+        project: 'mono',
+        tokens: 200,
+        cost_usd: 200,
+        sessions: 1,
+        paths: [
+          { path: '/ui/src/screens', tokens: 100, cost_usd: 100, turns: 1, tokens_pct: 50, cost_pct: 50 },
+          { path: '/ui/src/screens/orchestration', tokens: 100, cost_usd: 100, turns: 1, tokens_pct: 50, cost_pct: 50 },
+        ],
+      },
+    ]
+    render(<ProjectsPanel sessions={[]} />)
+    fireEvent.click(await screen.findByTitle('mono: show cost by directory'))
+    // `/ui` and `/ui/src` have no spend of their own, so the chain collapses to
+    // the one row that does — the deepest level the cap allows.
+    expect(screen.getByText('/ui/src/screens')).toBeTruthy()
+    // The fourth level has no row anywhere, at any expansion: it is not
+    // expandable, so there is nowhere left to click.
+    expect(screen.queryByText('/ui/src/screens/orchestration')).toBeNull()
+    expect(screen.queryByTitle(/orchestration/)).toBeNull()
+    // But its money is not lost — the row that absorbed it says so, and carries
+    // both its own $100 and the $100 it swallowed.
+    expect(screen.getByText('+1 deeper')).toBeTruthy()
+    // The row's own figures: both its $100 and the $100 it absorbed. (The
+    // repository row above states the same total, which is the point — the
+    // parts still sum to the whole.)
+    const row = screen.getByText('/ui/src/screens').closest('div.grid') as HTMLElement
+    expect((row.lastElementChild as HTMLElement).textContent).toBe('200 100% · $200.00')
+  })
+
+  it('states a parent own spend apart from its subtree total', async () => {
+    // "This directory cost X" and "this subtree cost X" are the same number
+    // only on a leaf; a reader who cannot separate them cannot read the row.
+    projects.value = [
+      {
+        project: 'mono',
+        tokens: 200,
+        cost_usd: 100,
+        sessions: 1,
+        paths: [
+          { path: '/ui', tokens: 100, cost_usd: 7, turns: 1, tokens_pct: 50, cost_pct: 7 },
+          { path: '/ui/src', tokens: 100, cost_usd: 93, turns: 1, tokens_pct: 50, cost_pct: 93 },
+        ],
+      },
+    ]
+    render(<ProjectsPanel sessions={[]} />)
+    fireEvent.click(await screen.findByTitle('mono: show cost by directory'))
+    // The row states the SUBTREE — the whole of /ui, $7 plus $93.
+    const row = screen.getByText('/ui').closest('div.grid') as HTMLElement
+    expect((row.lastElementChild as HTMLElement).textContent).toBe('200 100% · $100.00')
+    // And says in words how much of that was /ui itself.
+    expect(screen.getByText('$7.00 here · $93.00 in 1 subdirectory')).toBeTruthy()
+  })
+
+  it('expands one level at a time rather than listing every directory at once', async () => {
+    // The complaint: 43 rows of full path, at four depths, all at once.
+    projects.value = [
+      {
+        project: 'mono',
+        tokens: 400,
+        cost_usd: 400,
+        sessions: 1,
+        paths: [
+          { path: '/ui/src/components', tokens: 100, cost_usd: 100, turns: 1, tokens_pct: 25, cost_pct: 25 },
+          { path: '/ui/src/lib', tokens: 100, cost_usd: 100, turns: 1, tokens_pct: 25, cost_pct: 25 },
+          { path: '/internal/store', tokens: 100, cost_usd: 100, turns: 1, tokens_pct: 25, cost_pct: 25 },
+          { path: '/internal/api', tokens: 100, cost_usd: 100, turns: 1, tokens_pct: 25, cost_pct: 25 },
+        ],
+      },
+    ]
+    render(<ProjectsPanel sessions={[]} />)
+    fireEvent.click(await screen.findByTitle('mono: show cost by directory'))
+    // First level only: two rows, each carrying its subtree.
+    expect(screen.getByText('/ui/src')).toBeTruthy()
+    expect(screen.getByText('/internal')).toBeTruthy()
+    expect(screen.queryByText('/ui/src/components')).toBeNull()
+    expect(screen.queryByText('/internal/store')).toBeNull()
+    // A second expansion reveals what is inside one of them, and only that one.
+    fireEvent.click(screen.getByTitle('/ui/src: show the directories inside it'))
+    expect(screen.getByText('/ui/src/components')).toBeTruthy()
+    expect(screen.getByText('/ui/src/lib')).toBeTruthy()
+    expect(screen.queryByText('/internal/store')).toBeNull()
+  })
+
+  it('does not link a breakdown row anywhere', async () => {
+    // The owner clicked a directory and arrived at a session in a different
+    // repository, unable to tell what he was looking at. A breakdown row is a
+    // figure; the only thing it may do is expand.
+    projects.value = [
+      {
+        project: 'mono',
+        tokens: 200,
+        cost_usd: 200,
+        sessions: 1,
+        paths: [
+          { path: '/ui/src/lib', tokens: 50, cost_usd: 50, turns: 1, tokens_pct: 25, cost_pct: 25 },
+          { path: '/ui/src/components', tokens: 50, cost_usd: 50, turns: 1, tokens_pct: 25, cost_pct: 25 },
+          { path: '/internal', tokens: 100, cost_usd: 100, turns: 1, tokens_pct: 50, cost_pct: 50 },
+        ],
+      },
+    ]
+    const { container } = render(<ProjectsPanel sessions={[]} />)
+    fireEvent.click(await screen.findByTitle('mono: show cost by directory'))
+    await screen.findByText('/ui/src')
+    // Nothing in the panel navigates: no anchors at all, and in particular
+    // nothing pointing at a session.
+    expect(container.querySelectorAll('a')).toHaveLength(0)
+    expect(container.innerHTML).not.toContain('#/session/')
+    // The one interactive control on a directory row is its expander, and it
+    // says what it will do.
+    const btn = screen.getByTitle('/ui/src: show the directories inside it')
+    expect(btn.getAttribute('aria-expanded')).toBe('false')
   })
 
   it('scales a directory bar on the largest by tokens, not on the first row', async () => {
