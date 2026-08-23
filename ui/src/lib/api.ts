@@ -140,6 +140,24 @@ export interface Spark { from_ms: number; width_ms: number; cost: number[]; toke
  *  the repository has only one directory (it would restate the row's total).
  *  `spark` is the series behind the row's sparkline. */
 export interface ProjectShare { project: string; tokens: number; cost_usd: number; sessions: number; paths?: PathShare[]; spark?: Spark }
+/** The KIND of work one turn did — what the money was spent on, beside the cuts
+ *  by model and by project. A turn belongs to exactly one kind, so the rows sum
+ *  to the range total exactly.
+ *
+ *  `kind` is a stable key, never a display string: the label and the sentence
+ *  explaining it live in components/WorkMix.tsx. `none` is a turn that called no
+ *  tool at all — it is NOT labelled "conversation" or "thinking", because a turn
+ *  that called nothing may have been reasoning, planning or answering and the
+ *  data does not say which. */
+export type WorkKind = 'edit' | 'command' | 'read' | 'web' | 'mcp' | 'other' | 'none'
+export interface WorkShare {
+  kind: WorkKind
+  turns: number
+  tokens: number
+  cost_usd: number
+  tokens_pct: number
+  cost_pct: number
+}
 export interface Burn { window_min: number; usd_per_hour: number; tokens_per_min: number; turns: number }
 
 export interface Summary {
@@ -156,6 +174,15 @@ export interface Summary {
   cost_usd: number
   models: ModelShare[]
   projects: ProjectShare[]
+  /** What the money was spent ON — see WorkShare. Empty when nothing was
+   *  measured in the range. */
+  work: WorkShare[]
+  /** Tool calls in range that could not be attached to any turn, so their cost
+   *  was counted in the "no tool" row instead of the row for the work they did.
+   *  Non-zero means the breakdown understates every other row by up to this
+   *  much, and the panel says so rather than presenting the figures as
+   *  complete. */
+  work_unlinked_calls: number
   savings: Savings
   burn: Burn
   pricing_version: string

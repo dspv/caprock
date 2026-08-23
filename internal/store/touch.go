@@ -276,20 +276,42 @@ const OutsidePath = "\x00outside"
 // temp B-tree: ~290 ms, against a ~250 ms budget for the whole summary. Pinning
 // idx_events_attr makes the plan a covering scan in index order with no sort,
 // measured at ~93 ms on the owner's database (2026-08-22, 30d, Go driver).
-func turnSpendBySession(ctx context.Context, q Querier, fromMs int64) (map[string][]turnSpend, error) {
+// It also returns how many tool calls in the range carried no message id and so
+// could not be attached to any turn — the honest upper bound on how much of the
+// work-kind breakdown's "no tool" row is really unlinked work (see workkind.go).
+func turnSpendBySession(ctx context.Context, q Querier, fromMs int64) (map[string][]turnSpend, int64, error) {
+	// msg_id and tool ride along for the WORK-KIND breakdown, which needs
+	// exactly the rows this scan already reads (see workkind.go). Folding it in
+	// here rather than running a second aggregate is what keeps it free: the
+	// index covers every column below, so the plan stays a covering scan in
+	// index order with no sort and no table access.
 	rows, err := q.QueryContext(ctx, `
-		SELECT session_id, kind, COALESCE(touch_dir, ''),
+		SELECT session_id, kind, COALESCE(touch_dir, ''), COALESCE(msg_id,''), COALESCE(tool,''),
 		       COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0),
 		       COALESCE(cost_usd,0)
-		FROM events INDEXED BY idx_events_attr
+		FROM events INDEXED BY idx_events_attr_work
 		WHERE session_id IS NOT NULL AND ts >= ?
 		  AND kind IN ('tool.pre', 'turn.assistant')
 		ORDER BY session_id, ts, id`, fromMs)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 	out := map[string][]turnSpend{}
+	// Tool calls in range with no message id: they exist, they were paid for,
+	// and nothing says which turn paid. Counted so the breakdown can state its
+	// own uncertainty instead of presenting it as absence of tool use.
+	var unlinkedCalls int64
+	// The work kind of each turn, keyed by its message id. A turn is classified
+	// by its OWN tool calls, so this is a plain grouping rather than a carry —
+	// see workkind.go for why work kind must not carry forward the way a
+	// directory does.
+	//
+	// The key is the bare message id, not (session, message id): the scan is
+	// ordered by session, so the map is CLEARED on every session change and can
+	// never be consulted across one. That keeps a string concatenation out of
+	// the hot path — this loop runs once per tool call on the whole range.
+	kinds := map[string]WorkKind{}
 	// The carry, valid only within the session named by carrySess. Resetting it
 	// on every session change is what keeps attribution from crossing session
 	// boundaries — one piece of work must never be charged to another's
@@ -298,16 +320,36 @@ func turnSpendBySession(ctx context.Context, q Querier, fromMs int64) (map[strin
 	var carrySess, carryDir string
 	var carried bool
 	for rows.Next() {
-		var sess, kind, dir string
+		var sess, kind, dir, msg, tool string
 		var tokens int64
 		var cost float64
-		if err := rows.Scan(&sess, &kind, &dir, &tokens, &cost); err != nil {
-			return nil, err
+		if err := rows.Scan(&sess, &kind, &dir, &msg, &tool, &tokens, &cost); err != nil {
+			return nil, 0, err
 		}
 		if sess != carrySess {
+			// Resolve the OUTGOING session's turns before its message ids are
+			// forgotten. A turn's row is written BEFORE the tool_use blocks of
+			// the same message (they arrive on a later transcript line), so a
+			// turn's own tool calls are still ahead of it when its row is read
+			// — the kinds cannot be applied until the session is complete.
+			// carrySess still names the outgoing session at this point.
+			resolveWork(out[carrySess], kinds)
+			clear(kinds)
 			carrySess, carryDir, carried = sess, "", false
 		}
 		if kind == "tool.pre" {
+			// The work kind of the TURN this call belongs to, keyed by the
+			// message id that links them. A call with no message id cannot be
+			// attached to any turn and is counted rather than guessed at —
+			// that count is Summary.WorkUnlinkedCalls.
+			if msg == "" {
+				unlinkedCalls++
+			} else {
+				k := workKindOf(tool)
+				if cur, seen := kinds[msg]; !seen || workKindRank(k) < workKindRank(cur) {
+					kinds[msg] = k
+				}
+			}
 			// Only a tool that named a file moves the carry. A pathless call
 			// (Bash, Grep) leaves touch_dir NULL and must NOT clear it — the
 			// commands between two edits are part of the same stretch of work,
@@ -317,14 +359,33 @@ func turnSpendBySession(ctx context.Context, q Querier, fromMs int64) (map[strin
 			}
 			continue
 		}
-		out[sess] = append(out[sess], turnSpend{
+		ts := turnSpend{
 			tokens:  tokens,
 			cost:    cost,
 			touched: TouchDirs{Dir: carryDir, HasDir: carried},
-		})
+			msgKey:  msg,
+			hasMsg:  msg != "",
+		}
+		out[sess] = append(out[sess], ts)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return out, nil
+	// The final session has no successor to trigger its resolution.
+	resolveWork(out[carrySess], kinds)
+	return out, unlinkedCalls, nil
+}
+
+// resolveWork stamps each turn with the kind decided from its own tool calls.
+// It runs per session, once that session's rows are all read.
+func resolveWork(spends []turnSpend, kinds map[string]WorkKind) {
+	for i := range spends {
+		s := &spends[i]
+		if !s.hasMsg {
+			continue
+		}
+		if k, ok := kinds[s.msgKey]; ok {
+			s.work, s.hasWork = k, true
+		}
+	}
 }

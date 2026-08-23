@@ -33,7 +33,22 @@ const (
 	// MetaToolLinkBackfilled marks the one-time recovery of the tool→turn
 	// linkage from the transcripts (ingest.BackfillToolMessageIDs). It lives in
 	// the daemon rather than the store because it needs the transcript files.
+	//
+	// It is the marker for the ORIGINAL, path-only pass and is now only read as
+	// history: a database that finished that pass still has every pathless call
+	// unlinked, so it must not be taken to mean the linkage is complete.
 	MetaToolLinkBackfilled = "tool_link_backfilled"
+	// MetaToolLinkCursor is the resume point of the widened backfill (OQ-10):
+	// the highest event id already examined. A separate key from
+	// MetaToolLinkBackfilled because the narrow pass set that one to "1" on
+	// databases where 53293 pathless rows were never even looked at — reusing
+	// it would skip exactly the machines the widening is for. Absent ⇒ start at
+	// 0; the sentinel below ⇒ finished.
+	MetaToolLinkCursor = "tool_link_cursor"
+	// ToolLinkDone is the MetaToolLinkCursor value meaning "no rows left".
+	// A cursor alone cannot say so: the pass ends by reading a short batch, and
+	// new unlinked rows never appear behind the cursor.
+	ToolLinkDone = "done"
 	// metaTouchBackfilled marks migration 0012's Go-side backfill as finished.
 	// It is needed because a tool call that named no path keeps touch_dir NULL
 	// forever, so the rows themselves cannot say whether the pass has run.

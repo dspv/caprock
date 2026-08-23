@@ -535,3 +535,148 @@ func parsePrinted(t *testing.T, out string) (cost, fee, multiple float64) {
 	}
 	return cost, fee, multiple
 }
+
+// workSummaryToolCalls is the tool-call count every case below is measured
+// against, so the unlinked share each test states is a share of a known whole.
+const workSummaryToolCalls = 1000
+
+// workSummary is a summary carrying a work breakdown, for the tests below.
+func workSummary(unlinked int64) reportSummary {
+	var s reportSummary
+	s.ToolCalls = workSummaryToolCalls
+	s.WorkUnlinkedCalls = unlinked
+	s.Work = []struct {
+		Kind    string  `json:"kind"`
+		Turns   int64   `json:"turns"`
+		CostUSD float64 `json:"cost_usd"`
+		CostPct float64 `json:"cost_pct"`
+	}{
+		{Kind: "edit", Turns: 10, CostUSD: 30, CostPct: 30},
+		{Kind: "command", Turns: 20, CostUSD: 50, CostPct: 50},
+		{Kind: "none", Turns: 5, CostUSD: 20, CostPct: 20},
+	}
+	return s
+}
+
+// TestReportWorkIsRankedByCost: the block is pasted into a post, so the row a
+// reader quotes must be the largest one.
+func TestReportWorkIsRankedByCost(t *testing.T) {
+	work, withheld := assembleWork(workSummary(0))
+	if withheld != "" {
+		t.Fatalf("withheld a complete breakdown: %s", withheld)
+	}
+	if len(work) != 3 {
+		t.Fatalf("got %d rows, want 3", len(work))
+	}
+	if work[0].Kind != "command" {
+		t.Errorf("largest row is %q, want the $50 command row", work[0].Kind)
+	}
+	if work[0].Label != "running commands" {
+		t.Errorf("label is %q, want the same words the dashboard uses", work[0].Label)
+	}
+}
+
+// TestReportNeverCallsANoToolTurnConversation pins the label in the CLI as well
+// as the UI: this is the output that gets quoted, and "conversation" would be a
+// claim about what a turn was doing that the capture cannot support.
+func TestReportNeverCallsANoToolTurnConversation(t *testing.T) {
+	work, _ := assembleWork(workSummary(0))
+	var found bool
+	for _, w := range work {
+		if w.Kind == "none" {
+			found = true
+			if w.Label != "no tool call" {
+				t.Errorf("no-tool row is labelled %q, want %q", w.Label, "no tool call")
+			}
+		}
+		for _, bad := range []string{"conversation", "thinking", "planning"} {
+			if strings.Contains(strings.ToLower(w.Label), bad) {
+				t.Errorf("row %q uses the flattering word %q", w.Kind, bad)
+			}
+		}
+	}
+	if !found {
+		t.Error("the no-tool row is missing entirely")
+	}
+}
+
+// TestReportWithholdsWorkWhenLinkageIsPoor is the rule that keeps this command
+// safe to paste. With many tool calls unmatched, the breakdown would report
+// most of the spend as turns that called nothing — a wrong finding that looks
+// exactly like a right one. Nothing is printed but the reason.
+func TestReportWithholdsWorkWhenLinkageIsPoor(t *testing.T) {
+	work, withheld := assembleWork(workSummary(400))
+	if len(work) != 0 {
+		t.Errorf("published %d work rows on a 40%% unlinked database", len(work))
+	}
+	if withheld == "" {
+		t.Fatal("withheld the breakdown but gave no reason")
+	}
+	for _, want := range []string{"400", "1,000", "40%"} {
+		if !strings.Contains(withheld, want) {
+			t.Errorf("the reason does not state %q, so the reader cannot judge it: %s", want, withheld)
+		}
+	}
+}
+
+// TestReportPublishesWorkWhenLinkageIsEssentiallyComplete: the guard must not
+// be so eager that it withholds a good breakdown. A handful of unmatched calls
+// out of a thousand cannot change which row leads.
+func TestReportPublishesWorkWhenLinkageIsEssentiallyComplete(t *testing.T) {
+	work, withheld := assembleWork(workSummary(10))
+	if withheld != "" {
+		t.Errorf("withheld a breakdown that is 99%% linked: %s", withheld)
+	}
+	if len(work) == 0 {
+		t.Error("published no rows despite a sound linkage")
+	}
+}
+
+// TestReportWorkAbsentOnAnEmptyDatabase: nothing measured means nothing to say,
+// not a withholding notice about a breakdown that was never possible.
+func TestReportWorkAbsentOnAnEmptyDatabase(t *testing.T) {
+	work, withheld := assembleWork(reportSummary{})
+	if len(work) != 0 || withheld != "" {
+		t.Errorf("empty summary produced rows=%d withheld=%q", len(work), withheld)
+	}
+}
+
+// TestReportTextCarriesTheWorkBlockAndItsRule: the figures must travel with the
+// sentence that says how a turn was placed, the same contract the dashboard
+// holds — a breakdown whose rule is invisible cannot be checked.
+func TestReportTextCarriesTheWorkBlockAndItsRule(t *testing.T) {
+	var b strings.Builder
+	r := Report{
+		Window: &ReportWindow{First: "2026-08-01", Last: "2026-08-23", ActiveDays: 20},
+		Work: []reportWork{
+			{Kind: "command", Label: "running commands", Turns: 20, CostUSD: 50, CostPct: 50},
+			{Kind: "none", Label: "no tool call", Turns: 5, CostUSD: 20, CostPct: 20},
+		},
+	}
+	if err := writeReportText(&b, r); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	for _, want := range []string{"What it went on", "running commands", "no tool call", "50%",
+		"decided by the tools it called"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the block does not contain %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestReportTextSaysWhyTheWorkBlockIsMissing: silence would read as "this
+// version has no such feature" rather than "your data cannot support it".
+func TestReportTextSaysWhyTheWorkBlockIsMissing(t *testing.T) {
+	var b strings.Builder
+	r := Report{
+		Window:       &ReportWindow{First: "2026-08-01", Last: "2026-08-23", ActiveDays: 20},
+		WorkWithheld: "withheld: 400 of 1,000 tool calls could not be matched",
+	}
+	if err := writeReportText(&b, r); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), "could not be matched") {
+		t.Errorf("the withholding reason is not printed:\n%s", b.String())
+	}
+}

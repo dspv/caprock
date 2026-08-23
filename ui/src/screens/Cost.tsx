@@ -8,6 +8,7 @@ import { PlanValue } from '@/components/PlanValue'
 import { usePlan } from '@/components/PlanPicker'
 import { costBasis, costBasisLong } from '@/components/CostBasis'
 import { UnpricedNote } from '@/components/Unpriced'
+import { WorkMix } from '@/components/WorkMix'
 
 type Range = 'today' | '7d' | '30d' | 'all'
 
@@ -55,7 +56,11 @@ export function CostScreen() {
         {/* The money screen is exactly where an incomplete total misleads. */}
         <UnpricedNote u={s?.unpriced} className="mx-3 mb-2.5" />
       </Panel>
-      <div className="grid gap-3 lg:grid-cols-2">
+      {/* Three cuts of one question — by model, by kind of work, by project —
+          so they sit as equals in one row rather than leaving the third
+          orphaned at half width beside dead space. They collapse to two
+          columns and then to one as the viewport narrows. */}
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <Panel title="Model mix" right={<span>by cost</span>}>
           {!s ? <Skeleton rows={4} /> : s.models.length === 0 && <Empty title="No priced turns in range" />}
           <table className="w-full text-[12px]">
@@ -74,6 +79,10 @@ export function CostScreen() {
             </tbody>
           </table>
         </Panel>
+        {/* The third cut of "where did the money go": by model, by project, and
+            by the KIND of work each turn did. It sits with its siblings rather
+            than on a screen of its own because it answers the same question. */}
+        <WorkMix summary={s} />
         <Panel title="Per project" right={<span>by cost</span>}>
           {!s ? <Skeleton rows={4} /> : s.projects.length === 0 && <Empty title="No priced turns in range" />}
           <table className="w-full text-[12px]">

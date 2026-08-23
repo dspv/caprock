@@ -79,6 +79,13 @@ type reportSummary struct {
 		CostUSD  float64 `json:"cost_usd"`
 		Sessions int64   `json:"sessions"`
 	} `json:"projects"`
+	Work []struct {
+		Kind    string  `json:"kind"`
+		Turns   int64   `json:"turns"`
+		CostUSD float64 `json:"cost_usd"`
+		CostPct float64 `json:"cost_pct"`
+	} `json:"work"`
+	WorkUnlinkedCalls int64 `json:"work_unlinked_calls"`
 }
 
 // reportSettings is the plan half of /v1/settings.
@@ -156,7 +163,57 @@ type Report struct {
 
 	TopProjects []reportShare `json:"top_projects,omitempty"`
 	TopModels   []reportShare `json:"top_models,omitempty"`
+
+	// Work is what the money was spent ON — the breakdown by the kind of work
+	// each turn did. It is ABSENT rather than partial when the tool→turn
+	// linkage in the range is too incomplete to support the ranking: see
+	// workLinkageFloor. A breakdown that silently reports "most of the spend
+	// was turns with no tool" because the tool calls could not be matched would
+	// be an invented finding, and this command exists to be pasted in public
+	// (rule 6).
+	Work []reportWork `json:"work,omitempty"`
+	// WorkWithheld says why the breakdown is absent, so a reader who expected
+	// it learns that the data was insufficient rather than that the feature is
+	// missing. Empty when Work is present.
+	WorkWithheld string `json:"work_withheld,omitempty"`
 }
+
+// reportWork is one kind-of-work row.
+type reportWork struct {
+	Kind    string  `json:"kind"`
+	Label   string  `json:"label"`
+	Turns   int64   `json:"turns"`
+	CostUSD float64 `json:"cost_usd"`
+	CostPct float64 `json:"cost_pct"`
+}
+
+// workLabels are the words the CLI prints for each kind. They mirror the
+// dashboard's labels (ui/src/components/WorkMix.tsx) so the two surfaces cannot
+// describe the same row differently — and, like them, they refuse to flatter:
+// a turn that called no tool is called exactly that, never "conversation" or
+// "thinking", because the capture records which tools ran and not what a turn
+// was doing.
+var workLabels = map[string]string{
+	"edit":    "writing code",
+	"command": "running commands",
+	"read":    "reading and searching",
+	"web":     "web research",
+	"mcp":     "MCP tools",
+	"other":   "other tools",
+	"none":    "no tool call",
+}
+
+// workLinkageFloor is how incomplete the tool→turn linkage may be before the
+// breakdown is withheld entirely.
+//
+// An unlinked tool call leaves the turn that paid for it looking as though it
+// called nothing, so unlinked calls inflate the "no tool call" row and
+// understate every other. At 1% that cannot change which row leads; at 20% it
+// certainly can — and this command's output is written to be pasted into a
+// post, where a wrong ranking becomes someone else's headline. Below the floor
+// the figures print with no caveat of their own; above it nothing prints but
+// the reason.
+const workLinkageFloor = 0.05
 
 // ReportPlan is what the user says they pay.
 type ReportPlan struct {
@@ -353,7 +410,44 @@ func assembleReport(sum reportSummary, plan reportSettings, hist reportHistory, 
 	if len(rep.TopModels) > reportTopN {
 		rep.TopModels = rep.TopModels[:reportTopN]
 	}
+	rep.Work, rep.WorkWithheld = assembleWork(sum)
 	return rep
+}
+
+// assembleWork shapes the work breakdown, or explains why there is none.
+//
+// It is the one place in this command that can REFUSE to publish a figure it
+// was given. The rows always sum to the total, so they are never arithmetically
+// wrong — but their meaning depends entirely on the tool→turn linkage behind
+// them, and that linkage degrades quietly: a database whose transcripts have
+// been pruned still returns a complete-looking breakdown in which most of the
+// money has drifted into "no tool call". Printing that as a finding is exactly
+// the failure rule 6 exists to prevent.
+func assembleWork(sum reportSummary) ([]reportWork, string) {
+	if len(sum.Work) == 0 {
+		return nil, ""
+	}
+	if sum.ToolCalls > 0 {
+		if share := float64(sum.WorkUnlinkedCalls) / float64(sum.ToolCalls); share > workLinkageFloor {
+			return nil, fmt.Sprintf(
+				"withheld: %s of %s tool calls could not be matched to the turn that paid for them (%.0f%%), "+
+					"which would understate every kind of work except \"no tool call\"",
+				commas(sum.WorkUnlinkedCalls), commas(sum.ToolCalls), 100*share)
+		}
+	}
+	out := make([]reportWork, 0, len(sum.Work))
+	for _, w := range sum.Work {
+		label := workLabels[w.Kind]
+		if label == "" {
+			label = w.Kind
+		}
+		out = append(out, reportWork{Kind: w.Kind, Label: label, Turns: w.Turns, CostUSD: w.CostUSD, CostPct: w.CostPct})
+	}
+	// Sorted by cost: this is the one place the breakdown is a ranking rather
+	// than a fixed set of categories, because a reader pasting it wants the
+	// largest row first.
+	sort.SliceStable(out, func(i, j int) bool { return out[i].CostUSD > out[j].CostUSD })
+	return out, ""
 }
 
 // reportWindow takes the first and last day from the daily rows and the
@@ -479,6 +573,23 @@ func writeReportText(out io.Writer, r Report) error {
 			fmt.Fprintf(out, "  %-28s %s\n", p.Name, fmtUSD0(p.CostUSD))
 		}
 	}
+	if len(r.Work) > 0 {
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, "What it went on:")
+		for _, w := range r.Work {
+			// The share is printed beside the money because this breakdown is
+			// read as proportions — "half of it was X" — while the dollar
+			// figure is what makes the proportion concrete.
+			fmt.Fprintf(out, "  %-28s %-9s %4.0f%%  %s turns\n",
+				w.Label, fmtUSD0(w.CostUSD), w.CostPct, commas(w.Turns))
+		}
+		fmt.Fprintln(out, "  Each turn counts toward one kind of work, decided by the tools it called;")
+		fmt.Fprintln(out, "  a turn that called no tool is counted as exactly that.")
+	} else if r.WorkWithheld != "" {
+		fmt.Fprintln(out)
+		fmt.Fprintf(out, "What it went on: %s\n", r.WorkWithheld)
+	}
+
 	if len(r.TopModels) > 0 {
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, "Top models:")
@@ -527,6 +638,20 @@ func writeReportMarkdown(out io.Writer, r Report) error {
 		fmt.Fprintf(out, "| Fresh input tokens | %s |\n", commas(r.TokensIn))
 	}
 	fmt.Fprintf(out, "| Pricing table | %s |\n", r.PricingVersion)
+	if len(r.Work) > 0 {
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, "| what it went on | cost | share | turns |")
+		fmt.Fprintln(out, "| --------------- | ---- | ----- | ----- |")
+		for _, w := range r.Work {
+			fmt.Fprintf(out, "| %s | %s | %.0f%% | %s |\n", w.Label, fmtUSD0(w.CostUSD), w.CostPct, commas(w.Turns))
+		}
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, "Each turn counts toward one kind of work, decided by the tools it called; "+
+			"a turn that called no tool is counted as exactly that.")
+	} else if r.WorkWithheld != "" {
+		fmt.Fprintln(out)
+		fmt.Fprintf(out, "What it went on: %s\n", r.WorkWithheld)
+	}
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, r.Caveat)
 	return nil

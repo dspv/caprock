@@ -331,28 +331,55 @@ func HasReplacementChar(s string) bool {
 // transcript is gone keep a NULL msg_id and report as unattributed, which is
 // the honest answer rather than a guessed one.
 //
-// It is idempotent and runs once: the meta marker is set by the caller.
-func BackfillToolMessageIDs(ctx context.Context, db *sql.DB, log *slog.Logger) (linked int, err error) {
+// WHY PATHLESS CALLS ARE INCLUDED (OQ-10, decided 2026-08-23). The scan
+// originally filtered on `touch_dir IS NOT NULL`, which was right while only
+// per-directory attribution used the linkage: a call naming no file can never
+// charge a directory, so scanning for it bought nothing. The work-kind
+// breakdown joins on the SAME msg_id, and pathless calls are most of the tool
+// calls — on the owner's database 53293 of 69555 tool.pre rows name no path,
+// and Bash alone is 35161 of them. Filtered out, the breakdown reported 86.5%
+// of 30-day spend as "no tool call" against a repaired 9.4%: the feature
+// suppressed itself on exactly the database it was built for. The filter is
+// therefore gone, and the only remaining requirement is a recorded transcript
+// to read the fact back from.
+//
+// THE LINK CANNOT BE WRONG, ONLY MISSING. A tool_use id is unique to the
+// message that issued it: verified across all 1560 transcripts on the owner's
+// machine, none of 69552 distinct tool_use ids appears under two message ids
+// (2026-08-23). So a retry can never produce a different answer, and a row
+// whose id is nowhere on disk keeps NULL rather than a guess.
+//
+// It is idempotent and resumable: rows are taken in id batches, each batch is
+// committed as it completes, and `after` resumes from the last id the caller
+// stored. Only rows still NULL are considered, so a re-run costs a scan and
+// changes nothing. Returns the highest event id examined, which the caller
+// persists as the resume cursor.
+func BackfillToolMessageIDs(ctx context.Context, db *sql.DB, log *slog.Logger, after int64, limit int) (linked int, lastID int64, err error) {
+	lastID = after
 	rows, err := db.QueryContext(ctx, `
 		SELECT e.id, COALESCE(json_extract(e.payload,'$.tool_use_id'),''),
 		       COALESCE(se.transcript_path,'')
 		FROM events e JOIN sessions se ON se.session_id = e.session_id
 		WHERE e.kind = 'tool.pre' AND e.msg_id IS NULL
-		  AND e.touch_dir IS NOT NULL
-		  AND COALESCE(se.transcript_path,'') != ''`)
+		  AND e.id > ?
+		  AND COALESCE(se.transcript_path,'') != ''
+		ORDER BY e.id LIMIT ?`, after, limit)
 	if err != nil {
-		return 0, fmt.Errorf("find unlinked tool calls: %w", err)
+		return 0, lastID, fmt.Errorf("find unlinked tool calls: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	// Only rows that can actually be attributed are worth a file scan:
-	// touch_dir IS NOT NULL above excludes the ~76% of tool calls (Bash and
-	// friends) that name no path and could never charge a directory.
 	byFile := map[string]map[string]int64{} // transcript → tool_use_id → event id
 	for rows.Next() {
 		var id int64
 		var toolUseID, path string
 		if err := rows.Scan(&id, &toolUseID, &path); err != nil {
-			return 0, err
+			return 0, lastID, err
+		}
+		// Every row read advances the cursor, including one this pass cannot
+		// link. A row whose transcript no longer holds the id would otherwise
+		// be re-read by every future batch and the backfill would never finish.
+		if id > lastID {
+			lastID = id
 		}
 		if toolUseID == "" {
 			continue
@@ -363,12 +390,17 @@ func BackfillToolMessageIDs(ctx context.Context, db *sql.DB, log *slog.Logger) (
 		byFile[path][toolUseID] = id
 	}
 	if err := rows.Err(); err != nil {
-		return 0, err
+		return 0, lastID, err
 	}
 	if len(byFile) == 0 {
-		return 0, nil
+		return 0, lastID, nil
 	}
 	for path, wanted := range byFile {
+		if err := ctx.Err(); err != nil {
+			// Interrupted: report what is already committed and where to
+			// resume, rather than discarding a partial pass.
+			return linked, lastID, nil //nolint:nilerr // cancellation is a stop, not a failure
+		}
 		found := map[string]string{} // tool_use_id → message_id
 		scanned := map[string]bool{}
 		scan := func(file string) {
@@ -406,13 +438,13 @@ func BackfillToolMessageIDs(ctx context.Context, db *sql.DB, log *slog.Logger) (
 			}
 			res, err := db.ExecContext(ctx, `UPDATE events SET msg_id = ? WHERE id = ? AND msg_id IS NULL`, msgID, id)
 			if err != nil {
-				return linked, err
+				return linked, lastID, err
 			}
 			n, _ := res.RowsAffected()
 			linked += int(n)
 		}
 	}
-	return linked, nil
+	return linked, lastID, nil
 }
 
 // messageIDsByToolUse scans one transcript for the assistant messages that

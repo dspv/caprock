@@ -172,24 +172,6 @@ func newDaemon(ctx context.Context, opt Options) (*Daemon, error) {
 		}
 	}
 	_ = st.SetMeta(ctx, store.MetaTranscriptSchema, strconv.Itoa(ingest.SchemaVersion))
-	// Per-directory attribution links a tool call to the turn that paid for it
-	// by assistant message id. Historical tool.pre rows never stored it, and it
-	// cannot be reconstructed from the database (see BackfillToolMessageIDs), so
-	// it is read back once from the transcripts that still hold it. Rows whose
-	// transcript is gone stay unlinked and report as unattributed — degraded,
-	// never wrong. Best-effort: this must not stop the daemon from starting.
-	if done, _ := st.GetMeta(ctx, store.MetaToolLinkBackfilled); done != "1" {
-		if n, err := ingest.BackfillToolMessageIDs(ctx, st.DB(), log); err != nil {
-			log.Warn("could not link historical tool calls to their turns; some spend reports as unattributed",
-				"component", "ingest", "err", err)
-		} else {
-			if n > 0 {
-				log.Info("linked historical tool calls to their turns", "component", "ingest", "events", n)
-			}
-			_ = st.SetMeta(ctx, store.MetaToolLinkBackfilled, "1")
-		}
-	}
-
 	b := bus.New()
 	rec := rollup.New(st, table, b, log)
 	det := loop.New(opt.Config.LoopK, time.Duration(opt.Config.LoopTMinutes)*time.Minute)
@@ -300,6 +282,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		}()
 	}
 	go d.sweep(ctx)
+	go d.backfillToolLinks(ctx)
 	if d.config().RetentionDays > 0 {
 		go d.pruneLoop(ctx)
 	}
@@ -553,6 +536,72 @@ func (d *Daemon) pruneLoop(ctx context.Context) {
 			return
 		case <-t.C:
 			prune()
+		}
+	}
+}
+
+// toolLinkBatch is how many unlinked rows one backfill pass claims.
+//
+// The cost of a batch is dominated by the transcripts it opens, not by the row
+// count: each pass re-walks the project tree for the sessions it touches, so
+// SMALLER batches are slower overall, not faster. Measured on the owner's
+// database (53967 unlinked rows, 1560 transcripts, 1 GB, 2026-08-23): 2000 →
+// 48s, 10000 → 30s. The batch is therefore sized to amortise the walk, and it
+// is bounded only so a kill costs one batch of work rather than the whole scan.
+const toolLinkBatch = 10000
+
+// backfillToolLinks recovers the historical tool→turn linkage in the
+// background, after the daemon is already serving.
+//
+// WHY IT IS NOT PART OF STARTUP. It was, while it only looked at tool calls
+// that named a file — a few hundred rows and about 3 seconds on the owner's
+// database. Widening it to pathless calls (OQ-10) turned that into 53967 rows
+// across a 1 GB transcript tree, measured at 34 seconds end to end. Thirty-four
+// seconds before the port opens reads as a hang on the first `caprock up` after
+// an upgrade, and the thing it is repairing is a historical report, not
+// anything the daemon needs in order to serve. So it runs detached: the
+// dashboard is up immediately, the breakdown fills in behind it, and a machine
+// that is killed halfway resumes instead of starting over.
+//
+// The cursor is committed after every batch, so the worst case a kill can cost
+// is one batch of work — never the whole scan, and never a wrong link, because
+// a tool_use id resolves to exactly one message id (see BackfillToolMessageIDs).
+func (d *Daemon) backfillToolLinks(ctx context.Context) {
+	cur, _ := d.store.GetMeta(ctx, store.MetaToolLinkCursor)
+	if cur == store.ToolLinkDone {
+		return
+	}
+	after, _ := strconv.ParseInt(cur, 10, 64)
+	var total int
+	start := time.Now()
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		n, last, err := ingest.BackfillToolMessageIDs(ctx, d.store.DB(), d.log, after, toolLinkBatch)
+		if err != nil {
+			// Degraded, not fatal: the affected rows report as unattributed and
+			// the breakdown says so. The cursor is left where it was so the
+			// next start retries this batch.
+			d.log.Warn("could not link historical tool calls to their turns; some spend reports as unattributed",
+				"component", "ingest", "err", err)
+			return
+		}
+		total += n
+		if last <= after {
+			// No row past the cursor: the backfill is complete. Recorded as a
+			// sentinel so later starts skip the scan entirely.
+			_ = d.store.SetMeta(ctx, store.MetaToolLinkCursor, store.ToolLinkDone)
+			if total > 0 {
+				d.log.Info("linked historical tool calls to their turns",
+					"component", "ingest", "events", total, "took", time.Since(start).Round(time.Millisecond))
+			}
+			return
+		}
+		after = last
+		if err := d.store.SetMeta(ctx, store.MetaToolLinkCursor, strconv.FormatInt(after, 10)); err != nil {
+			d.log.Warn("could not record tool-link backfill progress", "component", "ingest", "err", err)
+			return
 		}
 	}
 }

@@ -706,6 +706,22 @@ type Summary struct {
 	CostUSD    float64        `json:"cost_usd"`
 	Models     []ModelShare   `json:"models"`
 	Projects   []ProjectShare `json:"projects"`
+	// Work is what the money was spent ON — the breakdown by the KIND of work
+	// each turn did, beside the cuts by model and by project. Rows sum exactly
+	// to CostUSD and Tokens; see workkind.go for the rule.
+	Work []WorkShare `json:"work"`
+	// WorkUnlinkedCalls is how many tool calls in the range could not be
+	// attached to any turn, so their cost was counted in the "no tool" row
+	// rather than in the row for the work they actually did.
+	//
+	// It exists because the failure is INVISIBLE otherwise: an unlinked call
+	// leaves its turn looking exactly like a turn that genuinely called
+	// nothing, so a broken linkage quietly inflates "no tool" and understates
+	// every other row. Publishing the breakdown without publishing this would
+	// be publishing a number we know might be wrong (rule 6). The UI says so
+	// whenever it is non-zero, and `caprock report` withholds the breakdown
+	// entirely when the share is large enough to change the ranking.
+	WorkUnlinkedCalls int64 `json:"work_unlinked_calls"`
 	// Unpriced is the volume in this range whose model is not in the pricing
 	// table, so it contributes nothing to CostUSD. Omitted when everything was
 	// priced. Without it the aggregates flattened unknown models into the
@@ -808,6 +824,42 @@ type turnSpend struct {
 	tokens  int64
 	cost    float64
 	touched TouchDirs
+	// work is the kind of work this turn did, and hasWork distinguishes "this
+	// turn called no tool" from "this turn's tool calls could not be linked to
+	// it". The two are indistinguishable in the row itself, which is exactly
+	// why the unlinked count is published beside the breakdown.
+	work    WorkKind
+	hasWork bool
+	// msgKey identifies the turn's assistant message within its session, and
+	// hasMsg says whether it has one at all. Used only to resolve `work` after
+	// the scan; a turn's own tool calls are read after its row.
+	msgKey string
+	hasMsg bool
+}
+
+// WorkShare is tokens/cost for one KIND of work — what the money was spent on,
+// beside the existing cuts by model and by project.
+//
+// Turns, not sessions: a session does many kinds of work, so it cannot be
+// counted once per kind without the column summing to more than the total,
+// while a TURN is charged to exactly one kind by construction (see
+// workkind.go), so turns partition and add up.
+//
+// CostPct and TokensPct are shares of the range total, computed here rather
+// than in the panel because the denominator is the whole range — a percentage
+// whose base the reader has to guess is what rule 6 exists to prevent. Both are
+// sent because they genuinely differ: cost per token varies by model, so a kind
+// of work done by a cheap model is a larger share of the tokens than of the
+// money.
+type WorkShare struct {
+	// Kind is one of the WorkKind constants — a stable key the UI maps to a
+	// label, never a display string.
+	Kind      WorkKind `json:"kind"`
+	Turns     int64    `json:"turns"`
+	Tokens    int64    `json:"tokens"`
+	CostUSD   float64  `json:"cost_usd"`
+	TokensPct float64  `json:"tokens_pct"`
+	CostPct   float64  `json:"cost_pct"`
 }
 
 // Spark is a project's spend over time, as one value per fixed-width bucket —
@@ -1158,7 +1210,7 @@ func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpe
 	// two queries below are the only extra work this feature adds to the
 	// summary — measured on the owner's database, see § timings in
 	// migration 0012.
-	turns, err := turnSpendBySession(ctx, q, fromMs)
+	turns, unlinkedCalls, err := turnSpendBySession(ctx, q, fromMs)
 	if err != nil {
 		return s, err
 	}
@@ -1345,6 +1397,33 @@ func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpe
 	// Rolling the segments up changed the repository totals, so any ORDER BY
 	// the database applied would have been over segments, not repositories.
 	sort.SliceStable(s.Projects, func(a, b int) bool { return s.Projects[a].CostUSD > s.Projects[b].CostUSD })
+
+	// What the money was spent ON. This is the third cut of the same question
+	// the model mix and the project list answer, and it shares their rule: a
+	// turn's cost goes whole to one row, so the rows sum exactly to the total.
+	work, unlinked := workSpend(turns, unlinkedCalls)
+	s.Work, s.WorkUnlinkedCalls = work, unlinked
+	// The denominators are the RANGE totals, so each column sums to 100%. They
+	// are taken from the rows themselves rather than from s.CostUSD/s.Tokens*:
+	// the summary's headline totals sum every event kind (so a future priced
+	// event type is not dropped), while these rows cover assistant turns only.
+	// Dividing one by the other would produce percentages that do not reach
+	// 100% and could not be checked against the rows shown.
+	var workCost float64
+	var workTokens int64
+	for _, w := range s.Work {
+		workCost += w.CostUSD
+		workTokens += w.Tokens
+	}
+	for i := range s.Work {
+		w := &s.Work[i]
+		if workTokens > 0 {
+			w.TokensPct = 100 * float64(w.Tokens) / float64(workTokens)
+		}
+		if workCost > 0 {
+			w.CostPct = 100 * w.CostUSD / workCost
+		}
+	}
 	return s, nil
 }
 

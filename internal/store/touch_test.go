@@ -701,10 +701,10 @@ func TestAttributionIndexOrdersTheCarryScan(t *testing.T) {
 	ctx := context.Background()
 	var idx string
 	err := s.db.QueryRowContext(ctx,
-		`SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_events_attr'`).Scan(&idx)
+		`SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_events_attr_work'`).Scan(&idx)
 	if err != nil {
-		t.Fatalf("idx_events_attr is missing; the carry scan would sort every row of the range "+
-			"in a temp B-tree (migration 0013 did not run): %v", err)
+		t.Fatalf("idx_events_attr_work is missing; the carry scan would sort every row of the range "+
+			"in a temp B-tree (migration 0014 did not run): %v", err)
 	}
 	flat := strings.Join(strings.Fields(idx), "")
 	// The ORDER BY prefix, in order: anything else reintroduces the sort.
@@ -712,7 +712,10 @@ func TestAttributionIndexOrdersTheCarryScan(t *testing.T) {
 		t.Errorf("index must lead with (session_id, ts, id) — the carry scan's ORDER BY — got: %s", idx)
 	}
 	// The payload the scan reads, so the plan stays covering.
-	for _, c := range []string{"kind", "touch_dir", "cost_usd", "tokens_in", "tokens_out", "cache_read", "cache_write"} {
+	// `tool` and `msg_id` are read by the same scan for the work-kind breakdown
+	// (migration 0014); without them in the index the plan falls back to a
+	// table lookup per row — measured at ~578ms against ~80ms covering.
+	for _, c := range []string{"kind", "touch_dir", "msg_id", "tool", "cost_usd", "tokens_in", "tokens_out", "cache_read", "cache_write"} {
 		if !strings.Contains(flat, c) {
 			t.Errorf("index must carry %s so the carry scan stays covering, got: %s", c, idx)
 		}
@@ -721,10 +724,10 @@ func TestAttributionIndexOrdersTheCarryScan(t *testing.T) {
 	var plan string
 	rows, err := s.db.QueryContext(ctx, `
 		EXPLAIN QUERY PLAN
-		SELECT session_id, kind, COALESCE(touch_dir,''),
+		SELECT session_id, kind, COALESCE(touch_dir,''), COALESCE(msg_id,''), COALESCE(tool,''),
 		       COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0),
 		       COALESCE(cost_usd,0)
-		FROM events INDEXED BY idx_events_attr
+		FROM events INDEXED BY idx_events_attr_work
 		WHERE session_id IS NOT NULL AND ts >= 0
 		  AND kind IN ('tool.pre','turn.assistant')
 		ORDER BY session_id, ts, id`)
@@ -746,8 +749,8 @@ func TestAttributionIndexOrdersTheCarryScan(t *testing.T) {
 	if strings.Contains(plan, "TEMP B-TREE") {
 		t.Errorf("the carry scan sorts in a temp B-tree instead of reading in index order:\n%s", plan)
 	}
-	if !strings.Contains(plan, "COVERING INDEX idx_events_attr") {
-		t.Errorf("the carry scan is not a covering read of idx_events_attr:\n%s", plan)
+	if !strings.Contains(plan, "COVERING INDEX idx_events_attr_work") {
+		t.Errorf("the carry scan is not a covering read of idx_events_attr_work:\n%s", plan)
 	}
 }
 
