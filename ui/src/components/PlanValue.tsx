@@ -62,25 +62,38 @@ export function PlanValue({ summary, plan, days }: { summary?: Summary; plan?: S
       title="Plan value"
       right={<span className="num text-[12px] text-fg-muted">{plan.plan_label} · {fmtUSD(plan.plan_usd_per_month)}/mo</span>}
     >
-      <div className="px-3 py-3">
-        <div className="flex items-baseline gap-3 flex-wrap">
-          {multiple > 0 && (
-            <span className="num text-4xl text-ok leading-none">{multiple.toFixed(1)}×</span>
-          )}
-          <span className="text-[13px] text-fg-muted max-w-[52ch]">
-            what the same usage would have cost at API list price, against what
-            your plan costs for the same {days} {dayWord(days)}.
-          </span>
+      {/* Two columns, not three stacked rows. Stacked, every element carried its
+        * own max-width and the right half of a full-width panel sat empty while
+        * the content crowded into a strip on the left. The claim and what it
+        * means belong together; the two figures it is derived from belong
+        * beside them, comparable at a glance rather than found underneath. One
+        * column on a narrow viewport, where stacking is the right answer.
+        *
+        * The figure and its sentence align to the top, not the baseline: the
+        * sentence runs to two lines, so baseline alignment pinned the number to
+        * the first of them and let the second drop below, which read as two
+        * adjacent things rather than one statement. */}
+      <div className="px-3 py-3 grid gap-x-8 gap-y-4 md:grid-cols-[minmax(0,1fr)_auto]">
+        <div>
+          <div className="flex items-start gap-3">
+            {multiple > 0 && (
+              <span className="num text-4xl text-ok leading-tight shrink-0">{multiple.toFixed(1)}×</span>
+            )}
+            <span className="text-[13px] text-fg-muted max-w-[52ch] leading-tight pt-[3px]">
+              what the same usage would have cost at API list price, against what
+              your plan costs for the same {days} {dayWord(days)}.
+            </span>
+          </div>
+          <p className="text-[11px] text-fg-faint mt-3 max-w-[64ch] leading-relaxed">
+            Measured from your own sessions at Anthropic list prices
+            ({summary.pricing_version}) — not a discount you received, and not
+            money back. Without the plan you would not have run this much.
+          </p>
         </div>
-        <div className="mt-3 grid grid-cols-2 max-w-[420px] border-t border-border">
+        <div className="grid grid-cols-2 gap-x-8 self-start md:border-l md:border-border md:pl-8">
           <Line label={`you pay (${days}d)`} value={fmtUSD(fee)} />
           <Line label="same usage at API list" value={fmtUSD(usage)} tone="ok" />
         </div>
-        <p className="text-[11px] text-fg-faint mt-2 max-w-[64ch]">
-          Measured from your own sessions at Anthropic list prices
-          ({summary.pricing_version}) — not a discount you received, and not
-          money back. Without the plan you would not have run this much.
-        </p>
       </div>
     </Panel>
   )

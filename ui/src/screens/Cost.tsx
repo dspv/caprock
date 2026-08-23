@@ -108,11 +108,14 @@ export function CostScreen() {
       </Panel>
       {s?.rate_limits && (
         <Panel title="Plan limits">
-          <div className="flex flex-col gap-2">
+          {/* px-3 like every other panel's body. Without it the rows ran into
+            * the panel border on both sides, which is the one place the eye
+            * reads a table as unfinished rather than dense. */}
+          <div className="flex flex-col gap-2 px-3 pt-1">
             {s.rate_limits.five_hour && <RateLimitRow label="5-hour window" w={s.rate_limits.five_hour} />}
             {s.rate_limits.seven_day && <RateLimitRow label="7-day window" w={s.rate_limits.seven_day} />}
           </div>
-          <div className="mt-2 text-[11px] text-fg-faint">
+          <div className="mt-2 px-3 pb-3 text-[11px] text-fg-faint leading-relaxed">
             Live from Claude Code's status line (Pro/Max). The percentage is your usage of the window; a
             forecast is shown only when your measured pace would reach the limit before the window resets.
           </div>

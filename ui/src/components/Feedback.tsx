@@ -52,11 +52,11 @@ function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => vo
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[520px] border border-border-strong bg-panel rounded-[var(--radius-panel)] shadow-lg"
+        className="w-full max-w-[660px] border border-border-strong bg-panel rounded-[var(--radius-panel)] shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-4 pt-3 pb-2 border-b border-border flex items-center">
-          <span className="text-[13px] font-medium">Tell us what happened</span>
+          <span className="text-[15px] font-medium">Tell us what happened</span>
           <button onClick={onClose} className="ml-auto text-[16px] leading-none text-fg-faint hover:text-fg">
             ×
           </button>
@@ -68,7 +68,7 @@ function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => vo
               <button
                 key={k.id}
                 onClick={() => setKind(k.id)}
-                className={`text-[12px] px-2.5 py-1 rounded-sm border ${
+                className={`text-[13px] px-3 py-1.5 rounded-sm border ${
                   k.id === kind
                     ? 'border-accent/60 bg-accent/10 text-accent'
                     : 'border-border text-fg-muted hover:text-fg'
@@ -86,8 +86,8 @@ function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => vo
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder={active.hint}
-            rows={4}
-            className="input w-full resize-y text-[13px] leading-relaxed"
+            rows={6}
+            className="input w-full resize-y text-[14px] leading-relaxed"
             onKeyDown={(e) => {
               if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') send()
             }}
