@@ -9,6 +9,20 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **Per-directory cost was silently empty for OpenCode sessions.** `touch_dir`
+  is derived from the event payload by the store rather than trusted from the
+  caller, so that no writer can supply a hand-made value; the OpenCode ingester
+  emitted its own field names and every tool call was stored unplaced. The
+  payload is now shaped like a Claude Code hook payload, which also makes
+  work-kind classification and narration work unchanged.
+- **Caprock's pricing table was applied to unpriced OpenCode turns.** The
+  suppression relied on a cost already being present, so a turn OpenCode had
+  not yet priced acquired a figure from different arithmetic — one column
+  holding two costing methods, with nothing on screen to say which produced a
+  given row. No event sourced from OpenCode is priced by Caprock now.
+
 ### Added
 
 - **Caprock now watches OpenCode sessions too, on the same screens.** A machine
