@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"path/filepath"
 	"time"
 
 	"github.com/dspv/caprock/internal/event"
@@ -187,10 +186,22 @@ func (in *Ingester) turn(ctx context.Context, s Session, m Message) error {
 
 // tool stores one tool call.
 func (in *Ingester) tool(ctx context.Context, s Session, m Message, c ToolCall) error {
+	// Shaped like a Claude Code hook payload rather than like OpenCode's own
+	// row. Per-directory attribution derives touch_dir from the payload itself
+	// (store.TouchDir) so that no writer can supply a hand-made value, and the
+	// work-kind and narration code reads the same shape. Emitting OpenCode's
+	// native field names here would leave every OpenCode tool call unplaced
+	// and invisible to the directory breakdown.
+	input := map[string]any{}
+	if c.FilePath != "" {
+		input["file_path"] = c.FilePath
+	}
 	payload, _ := json.Marshal(map[string]any{
-		"tool":      c.RawTool,
-		"file_path": c.FilePath,
-		"status":    c.Status,
+		"tool_name":  c.Tool,
+		"tool_input": input,
+		"status":     c.Status,
+		// The agent's own spelling, kept for anyone inspecting raw events.
+		"opencode_tool": c.RawTool,
 	})
 	ts := c.Start
 	if ts == 0 {
@@ -207,8 +218,7 @@ func (in *Ingester) tool(ctx context.Context, s Session, m Message, c ToolCall) 
 		// The message that requested the call. Equal ids mean "this tool call
 		// was paid for by that turn", which is the linkage per-directory
 		// attribution needs.
-		MsgID:    m.ID,
-		TouchDir: touchDir(c.FilePath),
+		MsgID: m.ID,
 	}
 	res, err := in.rec.Record(ctx, ev, in.info(s))
 	if err != nil {
@@ -218,13 +228,4 @@ func (in *Ingester) tool(ctx context.Context, s Session, m Message, c ToolCall) 
 		in.stats.Events++
 	}
 	return nil
-}
-
-// touchDir is the directory a tool call touched, which is what per-directory
-// attribution groups on. A tool that named no file contributes nothing.
-func touchDir(p string) string {
-	if p == "" {
-		return ""
-	}
-	return filepath.Dir(p)
 }

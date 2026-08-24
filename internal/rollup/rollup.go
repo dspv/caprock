@@ -69,7 +69,13 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 		ev.Model = info.Model
 	}
 	// Price before the tx so a pricing failure never rolls back an event.
-	if ev.Kind == event.KindTurnAssistant && ev.Tokens != nil && ev.CostUSD == nil && r.Table != nil && ev.Model != "" {
+	// OpenCode prices its own turns, so the table is never applied to them.
+	// A turn it has not priced stays unpriced rather than acquiring a figure
+	// from different arithmetic: one column holding two costing methods would
+	// make a session's total depend on which rows happened to be priced by
+	// whom, and nothing on screen would say so.
+	ourCosting := ev.Source != event.SourceOpenCode
+	if ourCosting && ev.Kind == event.KindTurnAssistant && ev.Tokens != nil && ev.CostUSD == nil && r.Table != nil && ev.Model != "" {
 		if usd, ok := r.Table.Price(ev.Model, *ev.Tokens); ok {
 			ev.CostUSD = &usd
 			res.Priced = true

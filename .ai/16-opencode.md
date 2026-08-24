@@ -83,15 +83,15 @@ figure.
 
 Estimated at roughly seven hours for the observation half.
 
-| Step | Work                                                           | Done |
-| ---- | -------------------------------------------------------------- | ---- |
-| 1    | `internal/opencode` — read sessions, messages, tool calls      | yes  |
-| 2    | Migration `0015_agent_source.sql` — `sessions.agent`           | yes  |
-| 3    | `event.SourceOpenCode`                                         | yes  |
-| 4    | Ingester — sessions, turns and tool calls into the store       | yes  |
-| 5    | UI — agent label on OpenCode sessions                          | yes  |
-| 6    | Tests against a live database; portable fixtures still to come | part |
-| 7    | Documentation — this file, `03-contracts.md`, README           | yes  |
+| Step | Work                                                      | Done |
+| ---- | --------------------------------------------------------- | ---- |
+| 1    | `internal/opencode` — read sessions, messages, tool calls | yes  |
+| 2    | Migration `0015_agent_source.sql` — `sessions.agent`      | yes  |
+| 3    | `event.SourceOpenCode`                                    | yes  |
+| 4    | Ingester — sessions, turns and tool calls into the store  | yes  |
+| 5    | UI — agent label on OpenCode sessions                     | yes  |
+| 6    | Tests: portable fixtures plus live checks, 89% coverage   | yes  |
+| 7    | Documentation — this file, `03-contracts.md`, README      | yes  |
 
 Deliberately excluded from the first pass, each a separate piece of work:
 
@@ -147,6 +147,31 @@ non-empty, and a second pass is a no-op. On the owner's machine it imports 70
 sessions and 19,236 events totalling $156.28, matching the source database
 exactly, and attributes them across three repositories.
 
-The test skips where OpenCode is absent, which is most machines and all of CI —
-so **CI does not currently exercise this code**. Portable fixtures are the
-remaining work in step 6.
+Those tests skip where OpenCode is absent, which is most machines and all of
+CI. The portable suite is what CI runs: `fixture_test.go` builds an OpenCode
+database from the schema copied verbatim out of a real installation, and the
+reader and ingester are exercised against it. Coverage is **89.1%, identical
+with and without OpenCode installed** — it was 2.3% in CI before.
+
+The fixture is deliberately built from the real schema rather than from the
+reader's assumptions, including the columns the reader never touches: a fixture
+invented from the same understanding as the code proves only that the code
+agrees with itself.
+
+**Two defects were found by writing these tests**, both of which had shipped:
+
+- **Per-directory attribution was silently empty.** `touch_dir` is derived from
+  the event payload by the store, deliberately, so that no writer can supply a
+  hand-made value. The OpenCode ingester emitted its own field names, so every
+  tool call was stored unplaced. The payload is now shaped like a Claude Code
+  hook payload, which also makes work-kind classification and narration work
+  without changes.
+- **The pricing table was applied to unpriced OpenCode turns.** Suppression
+  relied on `CostUSD` already being set, so a turn OpenCode had not priced
+  acquired a figure from different arithmetic — one column holding two costing
+  methods, with nothing on screen to say which produced a given row.
+  `rollup.Recorder` now refuses to price any event whose source is OpenCode.
+
+The suite is checked by mutation rather than by coverage alone: removing the
+agent tag, dropping OpenCode's cost, removing tool-name normalisation, or
+re-enabling the pricing table each turns it red.
