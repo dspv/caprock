@@ -17,6 +17,9 @@ export interface Session {
   git_branch: string
   version: string
   owned: boolean
+  /** Which coding agent produced this session. Absent means Claude Code,
+   *  which is what every session was before OpenCode support. */
+  agent?: 'claude' | 'opencode'
 }
 
 export interface Stats {

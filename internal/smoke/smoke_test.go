@@ -69,8 +69,11 @@ func startDaemon(t *testing.T, dataDir, root string) (string, context.CancelFunc
 	go func() {
 		done <- daemon.Run(ctx, daemon.Options{
 			DataDir: dataDir, Config: config.Defaults(), Version: "smoke", TranscriptRoot: root, Listener: ln,
-			IdleAfter: 30 * time.Second,
-			OnReady:   func(u string) { ready <- u },
+			// Without this the developer's own OpenCode sessions are imported
+			// into the temporary store and every count below is wrong.
+			OpenCodeDB: "off",
+			IdleAfter:  30 * time.Second,
+			OnReady:    func(u string) { ready <- u },
 		})
 	}()
 	select {

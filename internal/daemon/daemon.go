@@ -31,6 +31,7 @@ import (
 	"github.com/dspv/caprock/internal/hooks"
 	"github.com/dspv/caprock/internal/ingest"
 	"github.com/dspv/caprock/internal/loop"
+	"github.com/dspv/caprock/internal/opencode"
 	"github.com/dspv/caprock/internal/orchestrator"
 	"github.com/dspv/caprock/internal/ptyman"
 	"github.com/dspv/caprock/internal/rollup"
@@ -49,6 +50,12 @@ type Options struct {
 	Listener net.Listener
 	// DisableIngest turns transcript tailing off (tests, or hooks-only mode).
 	DisableIngest bool
+	// OpenCodeDB overrides where OpenCode's database is looked for. Empty means
+	// discover it; "off" disables the reader entirely. Tests must set one or
+	// the other, or a developer's own OpenCode sessions leak into a temporary
+	// store and make assertions about session counts fail on their machine and
+	// pass in CI.
+	OpenCodeDB string
 	// IdleAfter is the silence threshold before a session is marked idle.
 	IdleAfter time.Duration
 	// EndAfter is the silence threshold before a session is marked ended (default 12h).
@@ -72,6 +79,7 @@ type Daemon struct {
 	rec   *rollup.Recorder
 	det   *loop.Detector
 	tail  *ingest.Tailer
+	ocIn  *opencode.Ingester
 	mgr   *agents.Manager
 	board *board.Board
 	orch  *orchestrator.Orchestrator
@@ -264,6 +272,37 @@ func (d *Daemon) run(ctx context.Context) error {
 				}
 			}
 		}()
+	}
+
+	// OpenCode, when this machine has it. A second coding agent keeps its own
+	// SQLite database with cost and tokens already computed, so the daemon
+	// reads it directly rather than installing anything. Its absence is the
+	// normal case and is silent: most machines run Claude Code only.
+	if !d.opt.DisableIngest {
+		p := d.opt.OpenCodeDB
+		if p == "" {
+			p = opencode.DBPath()
+		}
+		if p == "off" {
+			p = ""
+		}
+		if p != "" {
+			ocdb, err := opencode.Open(p)
+			if err != nil {
+				// Read-only import of another program's database is a
+				// convenience, never a reason to fail startup.
+				d.log.Warn("opencode found but not readable", "component", "opencode", "path", p, "err", err)
+			} else {
+				d.ocIn = opencode.NewIngester(ocdb, d.rec, d.log, 5*time.Second)
+				go func() {
+					defer ocdb.Close()
+					if err := d.ocIn.Run(ctx); err != nil {
+						d.log.Error("opencode ingest stopped", "component", "opencode", "err", err)
+					}
+				}()
+				d.log.Info("opencode sessions are being read", "component", "opencode", "db", p)
+			}
+		}
 	}
 
 	// Idle sweeper (also runs once at start so backfilled history settles immediately).

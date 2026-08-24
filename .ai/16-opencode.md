@@ -1,7 +1,9 @@
 # OpenCode support
 
-**Status: decided, groundwork committed, full build not started.** Waiting on an
-explicit go-ahead before the remaining work is done. Everything below was
+**Status: the observation half is built.** Sessions, turns and tool calls are
+imported from OpenCode's database, tagged with their agent, and shown on the
+same screens as Claude Code. Live SSE and session control are not built and are
+scoped below. Everything below was
 measured against a real OpenCode installation, not inferred from documentation;
 where a number appears it came from a live database.
 
@@ -86,10 +88,10 @@ Estimated at roughly seven hours for the observation half.
 | 1    | `internal/opencode` — read sessions, messages, tool calls      | yes  |
 | 2    | Migration `0015_agent_source.sql` — `sessions.agent`           | yes  |
 | 3    | `event.SourceOpenCode`                                         | yes  |
-| 4    | Ingester — sessions, turns and tool calls into the store       | no   |
-| 5    | UI — agent label, filter, combined totals                      | no   |
-| 6    | Tests, fixtures, `make check` green on three operating systems | no   |
-| 7    | Documentation — this file, `03-contracts.md`, README           | part |
+| 4    | Ingester — sessions, turns and tool calls into the store       | yes  |
+| 5    | UI — agent label on OpenCode sessions                          | yes  |
+| 6    | Tests against a live database; portable fixtures still to come | part |
+| 7    | Documentation — this file, `03-contracts.md`, README           | yes  |
 
 Deliberately excluded from the first pass, each a separate piece of work:
 
@@ -110,3 +112,41 @@ carrying a file path — enough to confirm that per-repository and per-directory
 attribution both have the data they need.
 
 Fixture-based tests that run everywhere are step 6 and are not written yet.
+
+## How it works
+
+The daemon looks for OpenCode's database at startup. Finding none is the normal
+case and is silent; finding one starts a poller alongside the transcript tailer.
+
+**Polling, not tailing.** Every five seconds the poller lists sessions and reads
+the ones whose `time_updated` moved since the last pass. That upper bound on
+latency is deliberate: the database is the only source that also carries history
+from before Caprock was installed, and a few seconds on a cost figure does not
+justify holding every screen for the streaming work.
+
+**Idempotent by construction.** Each event is keyed on OpenCode's own identifier
+(`oc-msg:<message id>`, `oc-tool:<part id>`), and `(session_id, key)` is unique
+in the store, so re-reading a session stores nothing new. The live test asserts
+this by running a full second pass and requiring zero new rows.
+
+**Cost is carried, not recomputed.** `rollup.Recorder` prices a turn only when
+`CostUSD` is nil, so setting OpenCode's own figure suppresses the pricing table
+for that row. Two arithmetics over the same tokens would otherwise produce two
+different totals for one session.
+
+**Read-only.** The database is opened `mode=ro`. It belongs to a program that may
+be writing to it, and a monitor that corrupts what it monitors is worse than
+none.
+
+## What is verified
+
+`internal/opencode/ingest_live_test.go` imports whatever OpenCode database is on
+the machine into a throwaway store and asserts what would silently break:
+sessions carry the agent tag, events carry cost, per-repository grouping is
+non-empty, and a second pass is a no-op. On the owner's machine it imports 70
+sessions and 19,236 events totalling $156.28, matching the source database
+exactly, and attributes them across three repositories.
+
+The test skips where OpenCode is absent, which is most machines and all of CI —
+so **CI does not currently exercise this code**. Portable fixtures are the
+remaining work in step 6.

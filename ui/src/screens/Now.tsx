@@ -160,6 +160,15 @@ export function SessionCard({ s, now }: { s: SessionSummary; now: number }) {
       <div className="px-3 pt-2 pb-1 flex items-center gap-2">
         <span className="font-medium truncate text-[15px]">{s.project || 'unknown project'}</span>
         <span className="mono text-[11px] text-fg-faint">{shortId(s.session_id)}</span>
+        {/* Only the second agent is labelled. Marking every Claude Code
+          * session too would put a badge on almost every row on most machines,
+          * which is noise: the label exists to answer "why is this one
+          * different", not to restate the common case. */}
+        {s.agent === 'opencode' && (
+          <span className="text-[10px] uppercase tracking-[0.08em] text-fg-muted border border-border px-1 py-px rounded-sm">
+            opencode
+          </span>
+        )}
         {s.git_branch && <span className="mono text-[11px] text-fg-muted truncate">{s.git_branch}</span>}
         <span className="ml-auto flex items-center gap-2">
           {waiting && (

@@ -45,8 +45,8 @@ const (
 	// them; the source is what tells the reader which arithmetic produced a
 	// figure.
 	SourceOpenCode Source = "opencode"
-	SourcePTY        Source = "pty"
-	SourceHarness    Source = "harness"
+	SourcePTY      Source = "pty"
+	SourceHarness  Source = "harness"
 )
 
 // TokenDelta carries per-turn token usage (turn.assistant only).
