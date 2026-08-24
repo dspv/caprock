@@ -206,8 +206,11 @@ func TestIngestRecordsTouchedDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan: %v", err)
 	}
-	if got != filepath.Dir("/home/dev/api/src/auth.go") {
-		t.Errorf("touch_dir = %q, want the file's directory", got)
+	// The store normalises to forward slashes on every platform, so this is a
+	// literal rather than filepath.Dir — which would expect backslashes on
+	// Windows and fail there while passing everywhere else.
+	if got != "/home/dev/api/src" {
+		t.Errorf("touch_dir = %q, want /home/dev/api/src", got)
 	}
 
 	// bash named no file and must contribute nothing rather than a guess.
