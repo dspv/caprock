@@ -167,6 +167,22 @@ def main():
                 if snapped:
                     h = max(MIN_H, min(HEIGHT, int(snapped) + PAD))
 
+                # Verify the theme actually took before naming the file after
+                # it: a capture saved under the wrong name puts a white
+                # dashboard on a dark page, which is what happened once and is
+                # invisible until someone looks at the published site.
+                got = evaluate(ws, """
+                  (() => {
+                    const bg = getComputedStyle(document.body).backgroundColor;
+                    const m = bg.match(/\\d+/g) || [255, 255, 255];
+                    const lum = (m[0] * 299 + m[1] * 587 + m[2] * 114) / 1000;
+                    return lum > 128 ? 'light' : 'dark';
+                  })()
+                """)
+                if got and got != theme:
+                    raise SystemExit(
+                        f"theme mismatch on {route}: asked for {theme}, page rendered {got}")
+
                 shot = rpc(ws, "Page.captureScreenshot", {
                     "format": "png",
                     "clip": {"x": 0, "y": 0, "width": WIDTH, "height": h, "scale": 1},
