@@ -39,9 +39,42 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 - **All three phases are built and green.** The Go module + `ui/` exist and are exercised by `make check` (Go tests, `go vet`, `golangci-lint`, docs gates, and the UI typecheck/vitest/build) on the 3-OS CI matrix. Phase 2's orchestration loop has been driven end to end by a real `claude` orchestrator (see the Phase 2 log entry). **every phase is tagged and published** (Homebrew formula in `dspv/homebrew-tap`).
 - The Python measurer (`~/dev/caprock-legacy`, PyPI `caprock` 0.3.0) is frozen ([ADR-007](08-decisions.md#adr-007--the-harness-is-caprock-new-go-codebase-in-dspvcaprock-python-measurer-frozen)); the Go binary shipped its first release as **v0.1.0** on 2026-08-19.
+- **OpenCode support is decided and started, but paused before the build.** Groundwork is committed — `internal/opencode` reads OpenCode's SQLite database, migration `0015_agent_source.sql` adds `sessions.agent`, and `event.SourceOpenCode` exists — and the ingester, UI and tests are not written. Do not resume without an explicit go-ahead from the owner. The decisions, the traps that were measured, and the remaining steps are in [16-opencode.md](16-opencode.md).
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
 ## Log
+
+### 2026-08-24 — OpenCode: measured, decided, deliberately not finished
+
+A user asked whether Caprock could watch OpenCode sessions. Rather than estimate
+from documentation, the question was answered against a real installation: 70
+sessions, 10,923 messages and $156 of usage already sitting in
+`~/.local/share/opencode/opencode.db` on the owner's machine.
+
+The finding that set the plan is that OpenCode is **easier to observe than Claude
+Code**, not harder. It keeps one SQLite database in which `cost`, the four token
+counts, `directory` and `model` are already columns — no shim, no config
+injection, no transcript parsing, and no pricing table, because OpenCode prices
+its own turns. `internal/opencode` was written and verified against that database
+in about an hour: per-repository cost, tool-name normalisation (`bash`→`Bash`,
+`task`→`Agent`), and file-path extraction for per-directory attribution all
+work on real data.
+
+Two things were measured that a later implementation would otherwise get wrong.
+Subagent sessions are separate rows carrying their own cost, so a naive
+`SUM(cost)` overstates a project by 1.4% ($156.25 against $154.06 root-only) —
+47 of the 70 sessions are children. And OpenCode's cost is modelled from
+models.dev list rates rather than billed, the same caveat Caprock already states
+about its own figures.
+
+The owner decided the shape: **one screen over both agents** rather than a mode
+switch, because a machine running both has its spend split across two tools that
+each see half of it, and nothing else shows the whole bill. Breadth first — Now,
+Cost and History from the database — with the live SSE stream (`opencode serve`
+exposes one, verified) as a later pass.
+
+Work stopped at the groundwork on purpose: the remaining ~7 hours are scheduled
+for a night the owner will nominate. See [16-opencode.md](16-opencode.md).
 
 ### 2026-08-24 — Projects: the directory breakdown becomes a tree, and a click that went nowhere
 

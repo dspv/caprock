@@ -40,6 +40,11 @@ type Source string
 const (
 	SourceHook       Source = "hook"
 	SourceTranscript Source = "transcript"
+	// SourceOpenCode marks events imported from OpenCode's own database. They
+	// arrive already priced by OpenCode, so the pricing table is not applied to
+	// them; the source is what tells the reader which arithmetic produced a
+	// figure.
+	SourceOpenCode Source = "opencode"
 	SourcePTY        Source = "pty"
 	SourceHarness    Source = "harness"
 )
