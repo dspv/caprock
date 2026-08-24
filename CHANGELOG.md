@@ -9,6 +9,22 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **Caprock now watches OpenCode sessions too, on the same screens.** A machine
+  that runs both agents had its spend split across two tools that each saw half
+  of it; sessions from either now share one stream, tagged with which agent
+  produced them, and project cost sums across both. OpenCode keeps its own
+  SQLite database with cost, tokens, directory and model already computed, so
+  the import needs no shim, no settings file to modify and no transcript
+  parsing — and its cost is carried across rather than recomputed, because two
+  arithmetics over the same tokens would disagree about one session's total.
+  The database is polled every five seconds and opened read-only; events are
+  keyed on OpenCode's own identifiers, so re-reading a session stores nothing.
+  Verified against a real installation: 70 sessions, 19,236 events and $156.28,
+  matching the source exactly. Live streaming and session control are not built
+  (`.ai/16-opencode.md`).
+
 ### Fixed
 
 - **The Projects panel grouped by directory, not by repository.** The label was the basename of the session's cwd, so one repository showed up as several rows (`caprock` and `ui`), a subdirectory posed as a project (`app` under `amarketer`), Caprock's own agent worktrees became projects (`worker-1`), and two unrelated paths ending in the same segment were silently summed into one row — on the owner's own database, two different `testrepo`s and two different `repo`s. A row is now the repository a session's cwd belongs to, resolved by walking up for `.git` (following a linked worktree to the repository that owns it) once per directory at ingest, and stored on the session so historical rows keep a stable label even after their directory is deleted. Existing databases are backfilled on first open.
