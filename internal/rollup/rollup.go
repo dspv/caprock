@@ -22,6 +22,10 @@ import (
 // Empty fields are "unknown", never overwrite.
 type SessionInfo struct {
 	Cwd, TranscriptPath, GitBranch, Version, Model string
+	// Agent names the coding agent this session belongs to. Empty means Claude
+	// Code, which is what every session was before OpenCode support, and what
+	// the column defaults to.
+	Agent string
 }
 
 // Result reports what Record did, for callers that need to fan out further.
@@ -100,6 +104,8 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 			LastEventAt:    ev.Ts.UnixMilli(),
 			FromHook:       ev.Source == event.SourceHook,
 			FromTranscript: ev.Source == event.SourceTranscript,
+
+			Agent: info.Agent,
 		}
 		if ev.Kind == event.KindAgentStop && ev.AgentID == "" {
 			// A top-level Stop means the turn ended, not the session; the session

@@ -35,6 +35,10 @@ type Session struct {
 	SpawnCommand   string `json:"spawn_command,omitempty"`
 	PID            int    `json:"pid,omitempty"`
 	ExitCode       *int   `json:"exit_code,omitempty"`
+	// Agent is which coding agent produced this session. Every session was
+	// Claude Code until OpenCode support, so "claude" is the default and the
+	// UI treats an empty value as such.
+	Agent string `json:"agent,omitempty"`
 }
 
 // Stats mirrors session_stats.
@@ -157,9 +161,13 @@ func InsertEvent(ctx context.Context, q Querier, ev *event.Event) (int64, error)
 // strings mean "no information" and are never written over existing values.
 type SessionPatch struct {
 	Cwd, Project, Model, TranscriptPath, GitBranch, Version string
-	StartedAt, LastEventAt                                  int64
-	FromHook, FromTranscript                                bool
-	Status                                                  string // set only to force a status
+	// Agent is the coding agent that produced the session ("claude",
+	// "opencode"). Empty leaves the column at its default rather than
+	// overwriting a value already stored.
+	Agent                    string
+	StartedAt, LastEventAt   int64
+	FromHook, FromTranscript bool
+	Status                   string // set only to force a status
 }
 
 // resolveRepoFields fills Project/RepoRoot/RepoPath from Cwd. Callers pass a cwd
@@ -198,8 +206,8 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 	// cwd, and then the stored resolution is left alone rather than blanked.
 	project, repoRoot, repoPath, repoKnown := p.resolveRepoFields()
 	_, err := q.ExecContext(ctx, `
-		INSERT INTO sessions(session_id, cwd, project, model, started_at, last_event_at, status, transcript_path, has_hooks, has_transcript, git_branch, version, repo_root, repo_path)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO sessions(session_id, cwd, project, model, started_at, last_event_at, status, transcript_path, has_hooks, has_transcript, git_branch, version, repo_root, repo_path, agent)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), 'claude'))
 		ON CONFLICT(session_id) DO UPDATE SET
 		  cwd             = COALESCE(NULLIF(excluded.cwd, ''), sessions.cwd),
 		  project         = COALESCE(NULLIF(excluded.project, ''), sessions.project),
@@ -213,8 +221,9 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 		  last_event_at   = MAX(sessions.last_event_at, excluded.last_event_at),
 		  status          = CASE WHEN ? != '' THEN ? WHEN sessions.status = 'ended' THEN 'ended' ELSE 'active' END,
 		  has_hooks       = MAX(sessions.has_hooks, excluded.has_hooks),
-		  has_transcript  = MAX(sessions.has_transcript, excluded.has_transcript)`,
-		id, p.Cwd, project, p.Model, p.StartedAt, p.LastEventAt, status, p.TranscriptPath, b2i(p.FromHook), b2i(p.FromTranscript), p.GitBranch, p.Version, repoRoot, repoPath,
+		  has_transcript  = MAX(sessions.has_transcript, excluded.has_transcript),
+		  agent           = COALESCE(NULLIF(excluded.agent, ''), sessions.agent)`,
+		id, p.Cwd, project, p.Model, p.StartedAt, p.LastEventAt, status, p.TranscriptPath, b2i(p.FromHook), b2i(p.FromTranscript), p.GitBranch, p.Version, repoRoot, repoPath, p.Agent,
 		repoKnown, repoKnown,
 		p.Status, p.Status)
 	if err != nil {
@@ -330,13 +339,13 @@ func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, 
 	return ids, nil
 }
 
-const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code`
+const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude')`
 
 func scanSession(sc interface{ Scan(...any) error }) (Session, error) {
 	var s Session
 	var hh, ht, owned int
 	var exit sql.NullInt64
-	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit)
+	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent)
 	s.HasHooks, s.HasTranscript, s.Owned = hh != 0, ht != 0, owned != 0
 	if exit.Valid {
 		v := int(exit.Int64)

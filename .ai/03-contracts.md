@@ -177,7 +177,7 @@ CREATE TABLE events (
   id          INTEGER PRIMARY KEY,          -- rowid, monotonic
   ts          INTEGER NOT NULL,             -- unix ms
   session_id  TEXT NOT NULL,
-  source      TEXT NOT NULL,                -- 'hook' | 'transcript'
+  source      TEXT NOT NULL,                -- 'hook' | 'transcript' | 'opencode'
   kind        TEXT NOT NULL,                -- see 02-architecture.md § Event model
   tool        TEXT,
   payload     TEXT NOT NULL,                -- raw JSON
@@ -195,7 +195,8 @@ CREATE TABLE sessions (
   cwd          TEXT, project TEXT, model TEXT,
   started_at   INTEGER, last_event_at INTEGER,
   status       TEXT NOT NULL DEFAULT 'active',  -- active|idle|ended
-  transcript_path TEXT
+  transcript_path TEXT,
+  agent        TEXT NOT NULL DEFAULT 'claude'   -- claude|opencode (0015)
 );
 
 CREATE TABLE session_stats (       -- rollup, updated on write
