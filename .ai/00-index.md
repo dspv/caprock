@@ -23,6 +23,11 @@ Caprock is a local, open-source **mission control for Claude Code**: a single st
 
 These files absorbed the hand-off specification (`CaprockV2-SPEC.md`, deleted after the loss audit recorded in [docs/migration-audit.md](../docs/migration-audit.md)). The spec is not a separate source of truth — **these files are**. (Numbering is non-contiguous by design — 11 was never used; nothing is missing.)
 
+**Go-to-market lives in [`.gtm/`](../.gtm/00-index.md)** — the channel, what was
+researched about each one, decisions and status. It is a separate directory
+because product and distribution change on different clocks: a release note is
+not a channel decision.
+
 **This table is the one home for the doc map.** `CLAUDE.md` and `AGENTS.md` point here rather than restating it.
 
 Supporting directories:
