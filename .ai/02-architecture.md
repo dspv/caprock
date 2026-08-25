@@ -7,7 +7,7 @@ How the system is built: the daemon, its two data planes, cross-platform rules, 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  Web UI (localhost:PORT, React + Vite, served by core)  │
-│  Now · Tasks · Cost · Session Detail · History          │
+│  Now · Tasks · Cost · Session Detail · Lifetime         │
 └────────────▲───────────────────────────▲────────────────┘
              │ WebSocket (live events)   │ REST (queries)
 ┌────────────┴───────────────────────────┴────────────────┐

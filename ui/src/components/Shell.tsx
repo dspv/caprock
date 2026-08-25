@@ -13,7 +13,11 @@ import { SiteFooter } from '@/components/SiteFooter'
 const NAV: { route: Route; label: string; phase?: string }[] = [
   { route: { name: 'now' }, label: 'Now' },
   { route: { name: 'cost' }, label: 'Cost' },
-  { route: { name: 'history' }, label: 'History' },
+  // 'History' read as a log of past sessions. The screen is the opposite: one
+  // set of lifetime totals — every session, every day, what it all cost —
+  // which is the most quotable number the product has and was hidden behind a
+  // word that promised a list. The panel inside it already said 'Lifetime'.
+  { route: { name: 'history' }, label: 'Lifetime' },
   { route: { name: 'notes' }, label: 'Answers' },
   { route: { name: 'tasks' }, label: 'Tasks' },
 ]
@@ -28,7 +32,7 @@ function screenName(r: Route): string {
     case 'now': return 'Now'
     case 'session': return 'Session detail'
     case 'cost': return 'Cost'
-    case 'history': return 'History'
+    case 'history': return 'Lifetime'
     case 'tasks': return 'Tasks'
     case 'graph': return 'Graph'
     case 'notes': return 'Answers'

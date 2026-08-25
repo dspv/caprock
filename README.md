@@ -171,7 +171,7 @@ from list prices, not a bill.
 **What is not there yet.** Observation only: the dashboard cannot start,
 steer or stop an OpenCode session, and the task runner does not work with it.
 Activity refreshes every few seconds rather than instantly, so the Now screen
-lags a little behind a running session — the Cost and History screens are
+lags a little behind a running session — the Cost and Lifetime screens are
 unaffected. Verified on macOS; it builds and its tests pass on Linux and
 Windows, but it has not been run on either.
 

@@ -5,6 +5,7 @@ import { fmtAgo, fmtPct, fmtTokens, fmtUSD, shortId } from '@/lib/format'
 import { Badge, Empty, Panel, Skeleton, Stat } from '@/components/ui'
 import { ProjectsPanel, AGENTS, type AgentFilter } from '@/components/Projects'
 import { ActivityFeed } from '@/components/ActivityFeed'
+import { LifetimeStrip } from '@/components/Lifetime'
 import { PulsePanel } from '@/components/Pulse'
 import { Attention } from '@/components/Attention'
 import { findAttention } from '@/lib/attention'
@@ -79,6 +80,10 @@ export function NowScreen() {
       )}
       <UpdateBanner plan={plan} onSave={savePlan} now={now} />
       <Attention items={attention} now={now} onDismiss={(id) => live.dismissAlert(id)} sessions={list} />
+
+      {/* Above Today because it is the wider frame Today sits inside: what all
+        * of this has come to, before what happened in the last few hours. */}
+      <LifetimeStrip plan={plan} />
 
       <Panel
         title="Today"

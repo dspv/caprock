@@ -5,9 +5,12 @@ much the screen actually drew, so History and Tasks were two-thirds empty
 background. Here the page is measured after it settles and the capture is
 clipped to that height, which is why each screen gets its own aspect ratio.
 """
-import base64, json, pathlib, sqlite3, subprocess, sys, time, urllib.request
+import base64, json, os, pathlib, sqlite3, subprocess, sys, time, urllib.request
 
-DB = pathlib.Path(__file__).parent / "shotdata" / "caprock.db"
+# Overridable so the fixture can live outside the repository — it is a copy of
+# a real database and has no business sitting in a working tree.
+DB = pathlib.Path(os.environ.get("CAPROCK_SHOT_DB",
+                                 pathlib.Path(__file__).parent / "shotdata" / "caprock.db"))
 THIS_SESSION = "8e968de8-d2a4-428f-a7d9-2658b3e6937f"
 
 # Repository names are as identifying as paths, and rewriting the paths alone
@@ -16,6 +19,26 @@ THIS_SESSION = "8e968de8-d2a4-428f-a7d9-2658b3e6937f"
 # so a name that has never been seen before is anonymised by default rather
 # than published because nobody thought to add it to a block-list.
 KEEP_PROJECTS = {"caprock"}
+
+# The activity feed's phrases are built from a fixed, small set of tool-input
+# fields (see internal/narrate: file_path, command, pattern, url, query). That
+# is what makes this fixable — the rest of a payload is free text nobody can
+# sanitise by substitution, but nothing else reaches the screen. Each field is
+# replaced with something plausible for a generic web service, so the feed
+# still reads like real work rather than a row of blanks.
+FEED_FIELDS = {
+    "file_path": ["src/api/handlers.go", "internal/store/queries.go", "src/app/page.tsx",
+                  "cmd/server/main.go", "pkg/auth/token.go", "web/src/lib/client.ts",
+                  "migrations/0007_orders.sql", "internal/queue/worker.go"],
+    "command": ["go test ./internal/...", "npm run build", "git status --short",
+                "make check", "go build ./cmd/server", "npx tsc --noEmit",
+                "grep -rn TODO internal/", "docker compose up -d"],
+    "pattern": ["func New", "TODO", "handler", "ErrNotFound", "useEffect"],
+    "url": ["https://pkg.go.dev/net/http", "https://react.dev/reference/react",
+            "https://docs.docker.com/engine/", "https://sqlite.org/lang_select.html"],
+    "query": ["go context cancellation", "react suspense streaming",
+              "sqlite wal mode", "http retry backoff"],
+}
 STAND_INS = [
     "acme-api", "acme-web", "payments-core", "billing", "checkout",
     "inventory", "notify-svc", "search-index", "data-pipeline", "auth-gateway",
@@ -83,6 +106,29 @@ def scrub():
             for t, col in cols:
                 c.execute(f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
                           (token, fake, f"%{token}%"))
+        # The feed's own text. Rewritten per row so the list reads as varied
+        # work rather than one command repeated eighty times.
+        c.execute("SELECT rowid, payload FROM events WHERE payload LIKE '%tool_input%'")
+        rows = c.fetchall()
+        touched = 0
+        for i, (rid, blob) in enumerate(rows):
+            try:
+                d = json.loads(blob)
+            except Exception:
+                continue
+            ti = d.get("tool_input")
+            if not isinstance(ti, dict):
+                continue
+            changed = False
+            for field, pool in FEED_FIELDS.items():
+                if field in ti and isinstance(ti[field], str) and ti[field]:
+                    ti[field] = pool[(i + len(field)) % len(pool)]
+                    changed = True
+            if changed:
+                c.execute("UPDATE events SET payload=? WHERE rowid=?",
+                          (json.dumps(d, separators=(",", ":")), rid))
+                touched += 1
+        print(f"  rewrote {touched} feed phrase(s)")
         print(f"  scrubbed {len(names)} project name(s)")
         db.commit(); db.close()
         return True

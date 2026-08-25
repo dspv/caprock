@@ -16,7 +16,7 @@ Utility first. The fun layer (avatars, office floor) is a skin added later on to
 user starts / spawns a claude session
   → hooks + transcript stream events into the daemon (event plane)
   → daemon normalizes → SQLite → rollups (tokens, cost, activity, alerts)
-  → browser dashboard shows Now / Session Detail / Cost / History / Tasks
+  → browser dashboard shows Now / Session Detail / Cost / Lifetime / Tasks
   → user intervenes (message, pause, kill, approve) or lets an orchestrator run
   → verified task results and lifetime stats accumulate locally
 ```
@@ -82,7 +82,7 @@ Every MVP feature must trace to a documented user pain. **Rule: a feature with n
 ## What the user gets
 
 - **Phase 0 (observe):** `caprock up` → `localhost:4173` → every `claude` session on the machine appears live with human-readable activity, token/cost totals, an event timeline, a live `git diff`, and a loop banner when a session repeats itself. Works on sessions started in any terminal, without changing the user's workflow.
-- **Phase 1 (control):** spawn/kill/type into sessions from the UI (real PTY, xterm.js), auto-pause looping sessions Caprock owns, History screen with lifetime stats.
+- **Phase 1 (control):** spawn/kill/type into sessions from the UI (real PTY, xterm.js), auto-pause looping sessions Caprock owns, Lifetime screen with all-time stats.
 - **Phase 2 (orchestrate):** a Tasks board, an orchestrator session that decomposes and routes tasks to workers, mailboxes, Stop-loop autonomy, verification-before-done, and an approvals queue.
 - **Phase 3 (delight):** avatar/office render mode, packaging, maybe TUI — only if Phase 2 traction justifies it.
 

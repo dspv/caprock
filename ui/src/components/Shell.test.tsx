@@ -124,7 +124,7 @@ describe('header nav', () => {
 
   it('leaves the other tabs unmarked and legible', () => {
     render(<Shell route={{ name: 'cost' }}>{null}</Shell>)
-    const other = screen.getByRole('link', { name: 'History' })
+    const other = screen.getByRole('link', { name: 'Lifetime' })
     expect(other).not.toHaveAttribute('aria-current')
     expect(other.className).not.toMatch(/bg-accent/)
     // Full-strength text, not the muted grey the whole row used to sit in.

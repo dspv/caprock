@@ -1,0 +1,65 @@
+/**
+ * The lifetime line states a money figure on the screen people keep open, so
+ * the honesty rules that govern every other cost surface apply here: the basis
+ * is named beside the number, and nothing is claimed before anything has been
+ * captured.
+ */
+import { render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { LifetimeStrip } from './Lifetime'
+import type { History, Settings } from '@/lib/api'
+
+const totals = vi.hoisted(() => ({ value: undefined as unknown }))
+
+vi.mock('@/lib/api', async (orig) => {
+  const actual = await orig<typeof import('@/lib/api')>()
+  return { ...actual, api: { ...actual.api, history: async () => totals.value } }
+})
+
+const history = (over: Partial<History['totals']>): History =>
+  ({
+    totals: {
+      sessions: 129, owned_sessions: 0, turns: 72310, tool_calls: 81587,
+      files_touched: 2467, cost_usd: 10745.61, avg_session_sec: 116432, days: 58,
+      ...over,
+    },
+    tools: [],
+    summary: { models: [], projects: [] },
+  }) as unknown as History
+
+const plan = (kind: Settings['plan_kind']): Settings =>
+  ({ update_checks: false, plan_kind: kind, plan_label: 'Max 20×', plan_usd_per_month: 200 })
+
+describe('LifetimeStrip', () => {
+  it('leads with the total and says what the figure is', async () => {
+    totals.value = history({})
+    render(<LifetimeStrip plan={plan('flat')} />)
+    expect(await screen.findByText('$10,745.61')).toBeTruthy()
+    // The same caveat the Cost screen carries: a flat plan means this is what
+    // the usage would cost through the API, not an amount anyone was billed.
+    expect(document.body.textContent).toMatch(/not a bill/i)
+  })
+
+  it('renders nothing before anything has been captured', async () => {
+    totals.value = history({ sessions: 0, cost_usd: 0, days: 0, turns: 0 })
+    const { container } = render(<LifetimeStrip plan={plan('flat')} />)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(container.textContent).toBe('')
+  })
+
+  it('leaves out sessions-per-day when it would read as less than one', async () => {
+    // 20 sessions over 58 days is 0.34 — "0.3 sessions a day" is a sentence
+    // nobody says, and the figure adds nothing at that scale.
+    totals.value = history({ sessions: 20, days: 58 })
+    render(<LifetimeStrip plan={plan('flat')} />)
+    await screen.findByText('20')
+    expect(screen.queryByText(/sessions a day/)).toBeNull()
+  })
+
+  it('links to the screen holding the rest', async () => {
+    totals.value = history({})
+    render(<LifetimeStrip plan={plan('flat')} />)
+    const link = await screen.findByRole('link')
+    expect(link).toHaveAttribute('href', '#/history')
+  })
+})
