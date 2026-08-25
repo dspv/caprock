@@ -34,6 +34,19 @@ describe('PlanValue', () => {
     expect(screen.getByText('1.4×')).toBeTruthy()
   })
 
+  it('gives the multiple the weight of a figure, not a word in a sentence', () => {
+    render(<PlanValue summary={summary} plan={plan('flat', 200)} days={30} />)
+    // The panel exists to deliver this number. Set inside a paragraph it was
+    // the same size as the prose around it, on a row two thirds of which was
+    // empty — so it is pinned as its own tile, sized like the screen's other
+    // headline figures rather than like body text.
+    const el = screen.getByText('35.6×')
+    expect(el.className).toMatch(/text-\[34px\]/)
+    expect(el.className).toMatch(/font-semibold/)
+    // And it is labelled, so the figure is not left to explain itself.
+    expect(screen.getByText('which is')).toBeTruthy()
+  })
+
   it('never describes the figure as money saved', () => {
     const { container } = render(<PlanValue summary={summary} plan={plan('flat', 200)} days={30} />)
     expect(container.textContent).not.toMatch(/\bsaved\b|\bsavings\b/i)

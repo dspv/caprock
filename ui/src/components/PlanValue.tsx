@@ -16,7 +16,7 @@
  */
 import type { Settings, Summary } from '@/lib/api'
 import { fmtUSD } from '@/lib/format'
-import { Panel } from '@/components/ui'
+import { Panel, Stat } from '@/components/ui'
 
 const dayWord = (n: number) => (n === 1 ? 'day' : 'days')
 
@@ -62,61 +62,43 @@ export function PlanValue({ summary, plan, days }: { summary?: Summary; plan?: S
       title="Plan value"
       right={<span className="num text-[12px] text-fg-muted">{plan.plan_label} · {fmtUSD(plan.plan_usd_per_month)}/mo</span>}
     >
-      {/* The comparison first, the conclusion after it.
+      {/* The same row of tiles every other panel on this screen uses.
         *
-        * Three equal cells made the multiple look like the subject and left a
-        * reader working out which two numbers it came from. It is the other
-        * way round: the money is the fact — what you pay against what the same
-        * work costs billed per token — and the multiple is what that
-        * comparison amounts to. So the two figures sit together as a pair with
-        * "vs" between them, and the multiple follows as the sentence they add
-        * up to. */}
-      <div className="px-3 py-3 grid gap-4 md:grid-cols-[auto_1fr] md:gap-8 md:items-center">
-        <div className="flex items-end gap-4 sm:gap-6">
-          <div>
-            <div className="text-[10px] uppercase tracking-[0.12em] text-fg-faint">
-              you pay · {days}d
-            </div>
-            <div className="num font-semibold tracking-[-0.01em] text-[30px] leading-[1.05] text-fg">
-              {fmtUSD(fee)}
-            </div>
-            <div className="text-[11px] text-fg-muted num">{plan.plan_label}</div>
-          </div>
-
-          <div className="pb-2 text-[13px] text-fg-faint">vs</div>
-
-          <div>
-            <div className="text-[10px] uppercase tracking-[0.12em] text-fg-faint">
-              same usage at API list
-            </div>
-            <div className="num font-semibold tracking-[-0.01em] text-[30px] leading-[1.05] text-ok">
-              {fmtUSD(usage)}
-            </div>
-            <div className="text-[11px] text-fg-muted num">
-              at list prices {summary.pricing_version}
-            </div>
-          </div>
-        </div>
-
-        {/* The conclusion, set apart by a rule rather than by size: it is a
-          * derived figure and should not outshout the money it derives from. */}
-        <div className="md:border-l md:border-border md:pl-8">
-          <p className="text-[15px] leading-snug text-fg-muted max-w-[46ch]">
-            {multiple > 0 ? (
-              <>
-                <span className="num text-ok font-semibold">{multiple.toFixed(1)}×</span> what
-                the same {days} {dayWord(days)} would have cost through the API.
-              </>
-            ) : (
-              <>Not enough measured usage yet to compare.</>
-            )}
-          </p>
-          <p className="mt-2 text-[11px] text-fg-faint max-w-[56ch] leading-relaxed">
-            Not a discount you received, and not money back — without the plan
-            you would not have run this much.
-          </p>
-        </div>
+        * It was a two-column grid whose right column held one 46-character
+        * sentence, so on a full-width panel two thirds of the row was empty —
+        * and the multiple, the figure the whole panel exists to deliver, was
+        * set as a word inside that sentence. Three equal tiles fix both: the
+        * comparison reads left to right as a sentence of its own — you pay
+        * this, the same work costs that, which is this many times over — and
+        * the width is spent on the numbers rather than on air. */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-border">
+        <Stat
+          label={`you pay · ${days}d`}
+          value={fmtUSD(fee)}
+          sub={plan.plan_label}
+        />
+        <Stat
+          label="same usage at API list"
+          value={fmtUSD(usage)}
+          sub={`at list prices ${summary.pricing_version}`}
+          tone="ok"
+        />
+        {/* Hero, and last: it is what the two figures beside it add up to, and
+          * the reason anyone reads the panel. */}
+        <Stat
+          label="which is"
+          value={multiple > 0 ? `${multiple.toFixed(1)}×` : '—'}
+          sub={multiple > 0 ? `what ${days} ${dayWord(days)} would cost through the API` : 'not enough measured usage yet'}
+          tone={multiple > 0 ? 'ok' : undefined}
+          size="hero"
+        />
       </div>
+      {/* Its own rule: the caveat qualifies all three tiles, and sitting flush
+        * under the first one it read as that tile's footnote. */}
+      <p className="border-t border-border px-3 py-2 text-[11px] text-fg-faint leading-relaxed">
+        Not a discount you received, and not money back — without the plan you
+        would not have run this much.
+      </p>
     </Panel>
   )
 }
