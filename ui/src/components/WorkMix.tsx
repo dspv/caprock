@@ -130,3 +130,70 @@ export function WorkMix({ summary }: { summary?: Summary }) {
     </Panel>
   )
 }
+
+/**
+ * The same breakdown, compact enough to ride under the projects list on Now.
+ *
+ * "Which repository" and "what kind of work" are halves of one question, and
+ * asking the second one meant leaving the screen you live on. This shows the
+ * top few kinds as one bar plus a legend rather than a table — the shape of
+ * the answer, with the table on Cost for the figures.
+ *
+ * It renders nothing when the linkage is too degraded to mean anything: on a
+ * `today` range most tool calls have not been attached to their turn yet, so
+ * nearly all cost lands in "no tool call" and the bar would say something
+ * false. A panel that appears only when it can be trusted beats a permanent
+ * one carrying a caveat.
+ */
+export function WorkMixStrip({ summary }: { summary?: Summary }) {
+  const rows = summary?.work ?? []
+  const unlinked = summary?.work_unlinked_calls ?? 0
+  const toolCalls = summary?.tool_calls ?? 0
+  if (rows.length === 0 || toolCalls === 0) return null
+  // A fifth of the calls unattached is the point where the picture stops being
+  // about the work and starts being about the gap.
+  if (unlinked / toolCalls > 0.2) return null
+
+  const top = rows.filter((w) => w.cost_pct >= 1).slice(0, 5)
+  if (top.length === 0) return null
+
+  return (
+    <div className="border-t border-border px-3 py-2.5">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[10px] uppercase tracking-[0.12em] text-fg-faint">
+          what it went on
+        </span>
+        <a href="#/cost" className="text-[10px] text-fg-faint hover:text-accent no-underline">
+          details →
+        </a>
+      </div>
+      <div className="mt-2 flex h-1.5 w-full overflow-hidden rounded-full bg-panel-2" title={WORK_RULE}>
+        {top.map((w, i) => (
+          <span
+            key={w.kind}
+            className="h-full"
+            style={{
+              width: `${w.cost_pct}%`,
+              background: 'var(--color-accent)',
+              opacity: 1 - i * 0.17,
+            }}
+          />
+        ))}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+        {top.map((w, i) => (
+          <span key={w.kind} className="inline-flex items-baseline gap-1.5 text-[11px]">
+            <span
+              className="inline-block h-2 w-2 rounded-[2px] translate-y-[1px]"
+              style={{ background: 'var(--color-accent)', opacity: 1 - i * 0.17 }}
+            />
+            <span className="text-fg-muted" title={LABELS[w.kind]?.title}>
+              {LABELS[w.kind]?.label ?? w.kind}
+            </span>
+            <span className="num text-fg-faint">{fmtPct(w.cost_pct)}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}

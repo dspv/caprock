@@ -7,7 +7,7 @@
  */
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { WorkMix } from './WorkMix'
+import { WorkMix, WorkMixStrip } from './WorkMix'
 import type { Summary, WorkShare } from '@/lib/api'
 
 const work = (over: Partial<WorkShare>): WorkShare => ({
@@ -73,5 +73,59 @@ describe('WorkMix', () => {
   it('says nothing was measured rather than rendering an empty table', () => {
     render(<WorkMix summary={summary({ work: [] })} />)
     expect(screen.getByText(/no priced turns in range/i)).toBeTruthy()
+  })
+})
+
+/**
+ * The strip on Now answers "what was it doing" without leaving the screen you
+ * watch. Its one rule is that it must not answer when it cannot: on a `today`
+ * range most tool calls have not been attached to their turn yet, so nearly
+ * all cost sits in "no tool call" and a bar drawn from it would be a claim
+ * about the work rather than about the gap in the data.
+ */
+describe('WorkMixStrip', () => {
+  it('shows the shape of the work when the linkage holds', () => {
+    render(
+      <WorkMixStrip
+        summary={summary({
+          tool_calls: 1000,
+          work_unlinked_calls: 20,
+          work: [work({ kind: 'command', cost_pct: 54 }), work({ kind: 'edit', cost_pct: 30 })],
+        })}
+      />,
+    )
+    expect(screen.getByText('running commands')).toBeTruthy()
+    expect(screen.getByText('54%')).toBeTruthy()
+  })
+
+  it('renders nothing when too many calls are unattached to mean anything', () => {
+    const { container } = render(
+      <WorkMixStrip
+        summary={summary({
+          tool_calls: 1300,
+          work_unlinked_calls: 1293,   // a real `today` reading
+          work: [work({ kind: 'none', cost_pct: 99.8 })],
+        })}
+      />,
+    )
+    expect(container.textContent).toBe('')
+  })
+
+  it('renders nothing before a summary arrives', () => {
+    const { container } = render(<WorkMixStrip summary={undefined} />)
+    expect(container.textContent).toBe('')
+  })
+
+  it('leaves out slivers rather than drawing a legend nobody can read', () => {
+    render(
+      <WorkMixStrip
+        summary={summary({
+          tool_calls: 1000,
+          work_unlinked_calls: 0,
+          work: [work({ kind: 'command', cost_pct: 97 }), work({ kind: 'mcp', cost_pct: 0.4 })],
+        })}
+      />,
+    )
+    expect(screen.queryByText('MCP tools')).toBeNull()
   })
 })

@@ -97,6 +97,7 @@
  * modelled, never extrapolated (rule 6).
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { WorkMixStrip } from '@/components/WorkMix'
 import { api, type PathShare, type ProjectShare, type SessionSummary } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
@@ -276,6 +277,11 @@ export function ProjectsPanel({ sessions, agent }: { sessions: SessionSummary[];
               {expanded ? 'show less' : `show all ${all.length} projects`}
             </button>
           )}
+          {/* The other half of "where did the money go", on the range already
+            * chosen above and from the summary this panel already fetched. It
+            * was only on Cost, so answering "what was it doing" meant leaving
+            * the screen you watch. */}
+          <WorkMixStrip summary={summary.data} />
         </div>
       )}
     </Panel>
