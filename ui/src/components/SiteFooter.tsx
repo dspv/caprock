@@ -48,19 +48,19 @@ export function SiteFooter() {
         </a>
 
         <span className="ml-auto inline-flex items-center gap-4">
-          {/* Third in the row and styled like the utility links beside it, not
-            * like the team offer above. Two offers at equal weight read as a
-            * sales strip, which is the one thing this footer must not become —
-            * so this is a question, phrased as one, sitting among the other
-            * small links. Nothing is for sale, and the wording says so. */}
+          {/* Legible, but still not a second offer: the team line above keeps
+            * the accent colour and the arrow, this one reads at the weight of
+            * the links beside it. Phrased as a place rather than a question —
+            * "what should paid add?" was both too quiet to read and too vague
+            * to act on, since nothing said where it led. */}
           <a
             href={PREMIUM}
             target="_blank"
             rel="noreferrer"
-            className="text-fg-faint hover:text-fg no-underline"
+            className="text-fg-muted hover:text-fg no-underline"
             title="Nothing is built yet — the page asks what a paid tier should contain"
           >
-            what should paid add?
+            premium
           </a>
           {!starred && (
             <a

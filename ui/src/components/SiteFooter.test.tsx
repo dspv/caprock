@@ -14,12 +14,12 @@ import { SiteFooter } from './SiteFooter'
 describe('SiteFooter', () => {
   beforeEach(() => localStorage.clear())
 
-  it('asks about paid rather than offering a purchase', () => {
+  it('names the premium page without offering a purchase', () => {
     render(<SiteFooter />)
-    const link = screen.getByRole('link', { name: /what should paid add/i })
+    const link = screen.getByRole('link', { name: /^premium$/i })
     expect(link).toHaveAttribute('href', 'https://caprock.dev/premium')
-    // It is a question, not an offer: no buy/upgrade/subscribe verb, and the
-    // hover text says outright that nothing is built.
+    // A destination, not an offer: no buy/upgrade/subscribe verb, and the hover
+    // text says outright that nothing is built.
     expect(link.textContent).not.toMatch(/buy|upgrade|subscribe|get premium/i)
     expect(link.getAttribute('title')).toMatch(/nothing is built/i)
     // No pricing anywhere: the price is deliberately undecided, and a number

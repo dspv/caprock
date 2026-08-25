@@ -15,12 +15,19 @@
  */
 import type { Status } from './api'
 
-export type FeedbackKind = 'bug' | 'idea' | 'question'
+export type FeedbackKind = 'bug' | 'feature' | 'unclear' | 'other'
 
+/**
+ * One word each. "Something is broken / missing / unclear" was three sentences
+ * to read before typing one — and at a glance three near-identical buttons,
+ * since the distinguishing word came last. `other` exists so nobody stalls
+ * deciding which of the three a thought belongs to.
+ */
 export const KINDS: { id: FeedbackKind; label: string; hint: string; gh: string }[] = [
-  { id: 'bug', label: 'Something is broken', hint: 'What did you see?', gh: 'bug' },
-  { id: 'idea', label: 'Something is missing', hint: 'What would you want?', gh: 'enhancement' },
-  { id: 'question', label: 'Something is unclear', hint: 'What did not make sense?', gh: 'question' },
+  { id: 'bug', label: 'bug', hint: 'What did you see?', gh: 'bug' },
+  { id: 'feature', label: 'feature', hint: 'What would you want?', gh: 'enhancement' },
+  { id: 'unclear', label: 'unclear', hint: 'What did not make sense?', gh: 'question' },
+  { id: 'other', label: 'other', hint: 'Anything else — a sentence is enough.', gh: 'question' },
 ]
 
 /** Where issues go. */
@@ -70,7 +77,13 @@ export function title(kind: FeedbackKind, screen: string, body: string): string 
  */
 export function body(kind: FeedbackKind, text: string, ctx: string[]): string {
   const heading =
-    kind === 'bug' ? 'What happened' : kind === 'idea' ? 'What is missing' : 'What is unclear'
+    kind === 'bug'
+      ? 'What happened'
+      : kind === 'feature'
+        ? 'What is missing'
+        : kind === 'unclear'
+          ? 'What is unclear'
+          : 'Feedback'
   const trimmed = text.trim()
   const clipped =
     trimmed.length > maxText

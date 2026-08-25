@@ -68,7 +68,7 @@ function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => vo
               <button
                 key={k.id}
                 onClick={() => setKind(k.id)}
-                className={`text-[13px] px-3 py-1.5 rounded-sm border ${
+                className={`text-[13px] px-3.5 py-1.5 rounded-sm border font-mono ${
                   k.id === kind
                     ? 'border-accent/60 bg-accent/10 text-accent'
                     : 'border-border text-fg-muted hover:text-fg'
@@ -116,14 +116,17 @@ function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => vo
             >
               Open a GitHub issue →
             </button>
-            <span className="text-[11px] text-fg-faint">
-              {ready ? '⌘↵ to open' : 'a sentence is enough'}
+            {/* Louder than the note below it: this is the line that decides
+              * whether someone types at all, and in the same faint grey as the
+              * disclaimer it read as fine print. */}
+            <span className={`text-[12px] ${ready ? 'text-fg-faint' : 'text-fg-muted'}`}>
+              {ready ? '⌘↵ to open' : 'One sentence is enough.'}
             </span>
           </div>
 
           <p className="text-[11px] text-fg-faint leading-relaxed">
-            Nothing is sent from here. The issue opens in your browser with the text above
-            filled in — read it, change it, and submit it yourself.
+            Nothing is sent from here — the issue opens prefilled in your browser
+            for you to submit.
           </p>
         </div>
       </div>

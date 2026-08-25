@@ -73,7 +73,7 @@ describe('title', () => {
   })
 
   it('uses only the first line, since the rest belongs in the body', () => {
-    expect(title('idea', 'Cost', 'add totals\nand also a chart')).toBe('[idea] Cost: add totals')
+    expect(title('feature', 'Cost', 'add totals\nand also a chart')).toBe('[feature] Cost: add totals')
   })
 })
 
@@ -92,8 +92,12 @@ describe('body', () => {
 
   it('heads the section by what kind of report it is', () => {
     expect(body('bug', 'x', [])).toContain('What happened')
-    expect(body('idea', 'x', [])).toContain('What is missing')
-    expect(body('question', 'x', [])).toContain('What is unclear')
+    expect(body('feature', 'x', [])).toContain('What is missing')
+    expect(body('unclear', 'x', [])).toContain('What is unclear')
+    // `other` is the catch-all, so it must not fall through to a bug heading —
+    // a maintainer reading "What happened" assumes something broke.
+    expect(body('other', 'x', [])).toContain('Feedback')
+    expect(body('other', 'x', [])).not.toContain('What happened')
   })
 })
 
@@ -104,8 +108,8 @@ describe('issueURL', () => {
     expect(u).toContain('labels=bug')
   })
 
-  it('maps an idea to the label a maintainer filters on', () => {
-    expect(issueURL('idea', 'Now', 'add a thing', [])).toContain('labels=enhancement')
+  it('maps a feature request to the label a maintainer filters on', () => {
+    expect(issueURL('feature', 'Now', 'add a thing', [])).toContain('labels=enhancement')
   })
 
   it('escapes text that would otherwise break the URL', () => {
