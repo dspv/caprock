@@ -65,25 +65,29 @@ describe('LifetimeStrip', () => {
     expect(screen.queryByText(/sessions a day/)).toBeNull()
   })
 
-  it('shows the tool and model breakdowns without being asked', async () => {
+  it('stays one row until asked, so Today keeps the top of the screen', async () => {
     totals.value = history({})
     render(<LifetimeStrip plan={plan('flat')} />)
-    // Visible on arrival: it shipped behind a toggle styled like the muted
-    // label next to it, which meant nobody found it.
-    expect(await screen.findByText('Most-used tools')).toBeTruthy()
+    await screen.findByText('$10,745.61')
+    // Opening it by default pushed the live panels below the fold, which is
+    // the opposite of what this screen is for.
+    expect(screen.queryByText('Most-used tools')).toBeNull()
+  })
+
+  it('opens the breakdown from a control that reads as one', async () => {
+    totals.value = history({})
+    render(<LifetimeStrip plan={plan('flat')} />)
+    const toggle = await screen.findByRole('button', { name: /tools and models/i })
+    // A bordered button, not the muted caption it first shipped as — that
+    // version looked like a label and nobody clicked it.
+    expect(toggle.className).toMatch(/border/)
+    fireEvent.click(toggle)
+    expect(screen.getByText('Most-used tools')).toBeTruthy()
     expect(screen.getByText('Bash')).toBeTruthy()
     expect(screen.getByText('claude-opus-5')).toBeTruthy()
-    // And still offers the full tables for anything the top few leave out.
     expect(
       screen.getByRole('link', { name: /every tool, model and project/i }),
     ).toHaveAttribute('href', '#/history')
-  })
-
-  it('can be collapsed for anyone who wants the row back', async () => {
-    totals.value = history({})
-    render(<LifetimeStrip plan={plan('flat')} />)
-    fireEvent.click(await screen.findByRole('button', { name: /^hide$/i }))
-    expect(screen.queryByText('Most-used tools')).toBeNull()
   })
 
   it('offers the spend cap beside the total that argues for it', async () => {

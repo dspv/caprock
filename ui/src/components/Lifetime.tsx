@@ -23,10 +23,11 @@ export function LifetimeStrip({ plan }: { plan?: Settings }) {
   // Lifetime totals move slowly; a minute is far more often than they change,
   // and this must never compete with the live panels below it for the socket.
   const h = useApi(() => api.history('all'), [], { intervalMs: 60000 })
-  // Open by default. It shipped closed behind a link styled like the muted
-  // one beside it, so it read as a caption rather than a control and went
-  // unnoticed — the breakdown is most of why the line is worth having.
-  const [open, setOpen] = useState(true)
+  // Closed again. Open, it pushed Today and the live pulse below the fold —
+  // and those are what the screen is opened for. The fix for "nobody found it"
+  // was never to take the top of the screen; it was to make the control look
+  // like one, which it now does.
+  const [open, setOpen] = useState(false)
   const t = h.data?.totals
   if (!t || t.sessions === 0) return null
 
@@ -83,7 +84,7 @@ export function LifetimeStrip({ plan }: { plan?: Settings }) {
           onClick={() => setOpen((v) => !v)}
           className="rounded-sm border border-border px-1.5 py-0.5 text-[11px] text-fg-muted hover:border-border-strong hover:text-fg"
         >
-          {open ? 'hide' : 'tools and models'}
+          {open ? 'hide' : 'tools and models ▾'}
         </button>
       </span>
     </div>
