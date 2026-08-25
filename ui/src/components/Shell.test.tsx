@@ -104,3 +104,39 @@ describe('version chip', () => {
     expect(screen.queryByText(/update available/i)).toBeNull()
   })
 })
+
+/**
+ * Which screen you are on has to be visible without reading. The state used to
+ * be a `bg-panel-2` tint against the header's own `bg-panel` — a few percent of
+ * lightness — with the label one step of grey brighter, and on open nobody
+ * could tell which tab was current. It is now the filled accent pill the agent
+ * filter uses, and these pin that it stays a real difference rather than a
+ * shade of one.
+ */
+describe('header nav', () => {
+  it('marks the current screen for a reader and for a screen reader', () => {
+    render(<Shell route={{ name: 'cost' }}>{null}</Shell>)
+    const current = screen.getByRole('link', { name: 'Cost' })
+    expect(current).toHaveAttribute('aria-current', 'page')
+    // A filled block, not a tint: the accent background is what carries it.
+    expect(current.className).toMatch(/bg-accent/)
+  })
+
+  it('leaves the other tabs unmarked and legible', () => {
+    render(<Shell route={{ name: 'cost' }}>{null}</Shell>)
+    const other = screen.getByRole('link', { name: 'History' })
+    expect(other).not.toHaveAttribute('aria-current')
+    expect(other.className).not.toMatch(/bg-accent/)
+    // Full-strength text, not the muted grey the whole row used to sit in.
+    // `\b` is no good here: it matches inside `text-fg-muted` too, since a
+    // hyphen is a word boundary — the assertion passed on the very thing it
+    // exists to reject.
+    expect(other.className).not.toMatch(/text-fg-(muted|faint|dim)/)
+    expect(other.className.split(/\s+/)).toContain('text-fg')
+  })
+
+  it('keeps a session under its parent screen', () => {
+    render(<Shell route={{ name: 'session', id: 'abc' }}>{null}</Shell>)
+    expect(screen.getByRole('link', { name: 'Now' })).toHaveAttribute('aria-current', 'page')
+  })
+})

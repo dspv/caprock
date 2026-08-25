@@ -102,7 +102,13 @@
 }
 
 * { border-color: var(--color-border); }
-a { color: var(--color-info); text-decoration: none; }
+/* `:where()` so this sets a default without competing with utilities.
+ * At plain `a` it has the same specificity as `.text-panel` and wins on order,
+ * being declared after them — so a colour class on an <a> was silently
+ * ignored, and the header's active tab rendered amber text on its own amber
+ * pill. Inside :where() the specificity is zero and any class takes over. */
+a:where(:not([class*="text-"])) { color: var(--color-info); }
+a { text-decoration: none; }
 /* Underline only genuine inline text links on hover — never a card that happens
  * to be an <a> (which used to underline every label and number inside it). A
  * card opts out with .no-underline; inline links opt in with .link. */

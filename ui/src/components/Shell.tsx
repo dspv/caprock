@@ -48,10 +48,22 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           <span className="font-medium tracking-wide text-[13px]">caprock</span>
           <span className="text-fg-faint text-[11px] hidden sm:inline">mission control</span>
         </a>
-        <nav className="flex items-center gap-1 ml-2">
+        {/* A filled pill for the current screen — the same control the agent
+          * filter on Now uses, and it works for the same reason: a solid
+          * accent block is read before any text is. The previous state was
+          * `bg-panel-2` against the header's own `bg-panel`, a few percent of
+          * lightness apart, with the label one step of grey brighter; on open
+          * there was nothing saying which screen you were on. Inactive labels
+          * move up to full `text-fg` too, since the row was uniformly dim. */}
+        <nav className="inline-flex items-center gap-0.5 ml-2 rounded-md bg-panel-2 p-0.5">
           {NAV.map((n) => (
             <a key={n.label} href={href(n.route)}
-              className={`px-2 py-1 rounded-sm text-[12px] no-underline hover:no-underline ${active(n.route) ? 'bg-panel-2 text-fg' : 'text-fg-muted hover:text-fg'}`}>
+              aria-current={active(n.route) ? 'page' : undefined}
+              className={`px-2.5 py-1 rounded-[5px] text-[12px] no-underline hover:no-underline transition-colors ${
+                active(n.route)
+                  ? 'bg-accent text-panel font-medium'
+                  : 'text-fg hover:text-accent'
+              }`}>
               {n.label}
               {n.phase && <span className="ml-1 text-[9px] uppercase tracking-wider text-fg-faint">{n.phase}</span>}
             </a>
