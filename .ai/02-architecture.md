@@ -31,6 +31,29 @@ Two data planes, mirroring what works in Munder Difflin, but in Go:
 
 **Why not Electron:** the only thing Electron buys is bundling Chromium. A Go daemon + browser tab gives the same UI with zero ABI pain, one `go build` per platform, and the option of a TUI later. Desktop wrapper (Tauri/Wails) is a packaging decision for later, not an architecture decision now ([ADR-003](08-decisions.md#adr-003--ui-stack-react--vite-embedded-in-the-go-binary-via-goembed)).
 
+## A second agent
+
+Caprock reads [OpenCode](https://github.com/sst/opencode) as well as Claude
+Code. The two arrive by completely different routes, and the asymmetry is the
+point:
+
+- **Claude Code** needs a shim in `~/.claude/settings.json` and its JSONL
+  transcripts tailed, because it publishes events and prose but no totals —
+  Caprock joins turns to tool calls and prices them itself.
+- **OpenCode** keeps one SQLite database in which cost, the four token counts,
+  the working directory and the model are already columns. It is opened
+  read-only and polled; nothing is installed, and its own cost figures are
+  carried across rather than recomputed.
+
+Both land in the same `events` and `sessions` tables, distinguished by
+`events.source` and `sessions.agent`. Everything downstream — loop detection,
+narration, work-kind classification, per-directory attribution — works on both
+without knowing there are two, because the OpenCode ingester shapes its
+payloads like a Claude Code hook payload rather than like its own rows.
+
+Full detail, including what is not supported, is in
+[16-opencode.md](16-opencode.md).
+
 ## Components
 
 | Component  | Role                                                              | Phase |

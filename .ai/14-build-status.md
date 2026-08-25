@@ -39,10 +39,45 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 - **All three phases are built and green.** The Go module + `ui/` exist and are exercised by `make check` (Go tests, `go vet`, `golangci-lint`, docs gates, and the UI typecheck/vitest/build) on the 3-OS CI matrix. Phase 2's orchestration loop has been driven end to end by a real `claude` orchestrator (see the Phase 2 log entry). **every phase is tagged and published** (Homebrew formula in `dspv/homebrew-tap`).
 - The Python measurer (`~/dev/caprock-legacy`, PyPI `caprock` 0.3.0) is frozen ([ADR-007](08-decisions.md#adr-007--the-harness-is-caprock-new-go-codebase-in-dspvcaprock-python-measurer-frozen)); the Go binary shipped its first release as **v0.1.0** on 2026-08-19.
-- **OpenCode support is decided and started, but paused before the build.** Groundwork is committed — `internal/opencode` reads OpenCode's SQLite database, migration `0015_agent_source.sql` adds `sessions.agent`, and `event.SourceOpenCode` exists — and the ingester, UI and tests are not written. Do not resume without an explicit go-ahead from the owner. The decisions, the traps that were measured, and the remaining steps are in [16-opencode.md](16-opencode.md).
+- **OpenCode is supported and released.** Caprock reads OpenCode's SQLite
+  database, shows those sessions on the same screens as Claude Code, and the Now
+  screen carries an `all / claude / opencode` switch that applies to the whole
+  screen. Observation only: it cannot start, steer or stop an OpenCode session,
+  and the task runner does not work with it. See [16-opencode.md](16-opencode.md).
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
 ## Log
+
+### 2026-08-25 — OpenCode ships, and the filter that made it usable
+
+The reading half went in overnight and released as v0.21.0. What followed was
+a day of a user's questions turning into defects, which is the pattern worth
+recording: each one looked like a small omission and was actually a thing that
+made the feature not work.
+
+A user upgraded, saw his OpenCode projects appear, and asked how to switch
+between the two agents — because there was nothing to switch between. The
+agent label existed on exactly one surface, the session card at the bottom of
+Now, while the live pulse and the projects list showed OpenCode work unmarked
+(v0.21.3). Marking the rows was still not the ask: he wanted to see each agent
+on its own, so the projects panel gained `both / claude / opencode` (v0.21.4).
+That left a filtered list beside an unfiltered total — the way a reader ends up
+quoting a number that means something other than what the heading says — so the
+filter moved to the screen and reached every panel (v0.22.0). Then the control
+itself proved unreadable at 11px in a bordered strip, and 'both' would become a
+lie the moment a third agent arrives (v0.22.1, v0.22.2).
+
+Two defects were found by writing tests rather than by using the product.
+`touch_dir` is derived from the payload by the store, so the ingester emitting
+OpenCode's own field names left every tool call unplaced and per-directory
+cost silently empty. And spend from a session the filter excluded fell into
+the "orphan" row, which exists for deleted sessions — under a filter that row
+collected the *other* agent's money and showed it, unlabelled, under this
+agent's heading.
+
+Coverage of `internal/opencode` was 2.3% in CI before the fixtures, because
+both tests needed a real OpenCode installation. It is 89% now, identical with
+and without OpenCode present, and checked by mutation.
 
 ### 2026-08-24 — OpenCode: measured, decided, deliberately not finished
 

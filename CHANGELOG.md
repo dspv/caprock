@@ -9,6 +9,45 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **An agent switch on the Now screen.** `all / claude / opencode`, in the
+  middle of the Today header, on a machine that runs both. It applies to the
+  whole screen — today's totals, the live pulse, the activity feed, the
+  projects list and the session cards — because a filtered list beside an
+  unfiltered total is how a reader ends up quoting a number that means
+  something other than what the heading says. Totals filter server-side via
+  `GET /v1/stats/summary?agent=`; an unrecognised value is a 400 rather than
+  everything. Rows from the second agent carry a small `oc` mark.
+- **`caprock status` reports the OpenCode reader.** A machine running both
+  shows those sessions mixed together, so "no OpenCode sessions yet" and
+  "OpenCode is not being read at all" looked identical — and someone who
+  upgraded for the feature had no way to confirm it was working.
+
+### Fixed
+
+- **Spend from a filtered-out session appeared under the other agent.** The
+  projects list has an "orphan" row for spend whose session was deleted; under
+  a filter, excluded sessions looked deleted, so that row collected the other
+  agent's money and showed it unlabelled.
+- **Per-directory cost was silently empty for OpenCode.** `touch_dir` is
+  derived from the event payload by the store rather than trusted from the
+  caller, and the ingester emitted OpenCode's own field names, so every tool
+  call was stored unplaced.
+- **Caprock's pricing table was applied to unpriced OpenCode turns**, putting
+  two costing methods in one column with nothing on screen to say which
+  produced a given row.
+- **Submissions could be lost silently.** Both `/api/waitlist` and
+  `/api/feedback` fired their notification and never read the response: a
+  missing chat id, a network error and a 403 from a revoked token were all
+  indistinguishable from success. Team leads now record the failure onto the
+  stored record; feedback, which has no store behind it, returns 502 so the
+  form can offer the email address instead of thanking someone for a message
+  nobody received.
+- **The activity feed told OpenCode users to start `claude`** when it was empty
+  under an OpenCode filter.
+
+
 ### Fixed
 
 - **Per-directory cost was silently empty for OpenCode sessions.** `touch_dir`

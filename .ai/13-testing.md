@@ -20,6 +20,7 @@ column says what it is when the suite that actually covers it is included.
 | ------------------ | ------- | ----- | ------------------------------------------------------------------------------- |
 | `update`           | 91.4%   |       |                                                                                 |
 | `bus`              | 90.9%   |       |                                                                                 |
+| `opencode`         | 89.1%   |       | Fixtures from the real schema; live checks skip without it                      |
 | `cost`             | 88.9%   |       |                                                                                 |
 | `shim`             | 88.7%   |       | Failure paths pinned; see below                                                 |
 | `gitdiff`          | 84.6%   |       |                                                                                 |
@@ -98,6 +99,29 @@ accordingly — failure paths first, happy path left to the smoke suite.
   defects: a data race on `pty.Close()` between the `Wait` goroutine and an
   explicit `Close()` (four races per run under `-race`), and a clean exit
   reported as `file already closed`.
+
+## Reading another agent's database
+
+`internal/opencode` is tested twice over, for a reason peculiar to it: the code
+reads a file written by a program we do not control.
+
+**Portable fixtures** build an OpenCode database from the schema copied
+verbatim out of a real installation — including columns the reader never
+touches, so an accidental dependency fails in the suite rather than on a user's
+machine. This is what CI runs, and it is what took coverage of this package
+from 2.3% to 89%: before it, both tests needed OpenCode installed, so the code
+shipped exercised on one developer's laptop.
+
+**Live checks** run against whatever OpenCode database is on the machine and
+skip where there is none. A fixture invented from the same understanding as the
+code proves only that the code agrees with itself; the live check is what says
+the understanding matches OpenCode.
+
+Both were verified by mutation rather than by coverage alone: removing the
+agent tag, dropping OpenCode's cost, removing tool-name normalisation or
+re-enabling the pricing table each turns the suite red. Two defects that had
+already shipped were found by writing them (see
+[16-opencode.md](16-opencode.md)).
 
 ## Known gaps, and why they are open
 
