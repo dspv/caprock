@@ -96,6 +96,11 @@ describe('version chip', () => {
     update.value = { enabled: true, current: 'dev', latest: 'v9.9.9', update_available: true }
     renderShell()
     expect(await screen.findByText('dev build')).toBeTruthy()
-    expect(screen.queryByText(/→/)).toBeNull()
+    // Matched on the arrow alone before, which caught any arrow anywhere on
+    // the screen — including the footer's link to the team page. The claim
+    // being tested is that a source build is never offered an upgrade, so
+    // match the upgrade offer itself.
+    expect(screen.queryByText(/v9\.9\.9/)).toBeNull()
+    expect(screen.queryByText(/update available/i)).toBeNull()
   })
 })

@@ -8,6 +8,7 @@ import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { PlanChip, usePlan } from '@/components/PlanPicker'
 import { FeedbackButton } from '@/components/Feedback'
+import { SiteFooter } from '@/components/SiteFooter'
 
 const NAV: { route: Route; label: string; phase?: string }[] = [
   { route: { name: 'now' }, label: 'Now' },
@@ -68,6 +69,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
         </div>
       </header>
       <main className="flex-1 p-3 max-w-[1600px] w-full mx-auto">{children}</main>
+      <SiteFooter />
     </div>
   )
 }
