@@ -692,8 +692,14 @@ type Status struct {
 	Hooks           *hooks.Status `json:"hooks,omitempty"`
 	UIBuilt         bool          `json:"ui_built"`
 	ClaudeAvailable bool          `json:"claude_available"`
-	OwnedActive     int           `json:"owned_active"`
-	Orchestration   bool          `json:"orchestration"`
+	// OpenCode reports what the second agent's reader is doing, or is absent
+	// when OpenCode is not installed. Without it there was no way to tell
+	// whether a machine that runs OpenCode was having those sessions read:
+	// the dashboard shows them mixed in with Claude Code's, so their absence
+	// looks the same as having none.
+	OpenCode      *opencode.Stats `json:"opencode,omitempty"`
+	OwnedActive   int             `json:"owned_active"`
+	Orchestration bool            `json:"orchestration"`
 	// Hive is the orchestration directory in force, and Repo the checkout its
 	// workers operate on. Both empty when orchestration is off. Without them
 	// there was no way — CLI, API or log — to ask which hive a running daemon
@@ -731,6 +737,7 @@ func (d *Daemon) status(_ context.Context) any {
 		URL: d.url, DataDir: d.opt.DataDir, UIBuilt: api.UIBuilt(),
 		Pricing: PricingStatus{Version: d.table.Version, Source: d.table.Source, FetchedAt: d.table.FetchedAt, UserOverride: d.table.UserOverride, Models: len(d.table.Models)},
 		LoopK:   d.det.K, LoopTMin: int(d.det.Window / time.Minute),
+		OpenCode:        d.openCodeStats(),
 		ClaudeAvailable: d.mgr.ClaudeAvailable(), OwnedActive: len(d.mgr.List()),
 		Orchestration: b != nil,
 	}
@@ -1027,4 +1034,13 @@ func (a *boardAdapter) StopOrchestrator(_ context.Context) (any, error) {
 		return nil, errOrchDisabled
 	}
 	return map[string]int{"stopped": orch.StopAll()}, nil
+}
+
+// openCodeStats reports the OpenCode reader, or nil when it is not running.
+func (d *Daemon) openCodeStats() *opencode.Stats {
+	if d.ocIn == nil {
+		return nil
+	}
+	st := d.ocIn.Stats()
+	return &st
 }

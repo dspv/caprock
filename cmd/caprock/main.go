@@ -458,6 +458,12 @@ func statusCmd() *cobra.Command {
 				fmt.Fprintf(out, "         STOPPED: %s\n", st.IngestError)
 				fmt.Fprintln(out, "         No new sessions are being captured. Check that ~/.claude is readable, then restart with `caprock down && caprock up`.")
 			}
+			// A machine that runs OpenCode shows those sessions mixed in with
+			// Claude Code's, so "no OpenCode sessions" and "OpenCode is not
+			// being read" look identical on the dashboard. Say which it is.
+			if st.OpenCode != nil {
+				fmt.Fprintf(out, "opencode: %d sessions read, %d events stored\n", st.OpenCode.Sessions, st.OpenCode.Events)
+			}
 			// Spawning needs the `claude` binary. When it is missing, every
 			// spawn control is disabled and nothing said why — not here, not in
 			// `caprock up`, not on the dashboard.

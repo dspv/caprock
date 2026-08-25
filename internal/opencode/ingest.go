@@ -98,8 +98,8 @@ func (in *Ingester) once(ctx context.Context) error {
 			continue
 		}
 		in.seen[s.ID] = s.Updated
+		in.stats.Sessions = len(in.seen)
 	}
-	in.stats.Sessions = len(in.seen)
 	return nil
 }
 
