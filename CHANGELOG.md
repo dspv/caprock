@@ -9,6 +9,29 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.27.0] - 2026-08-26
+
+### Added
+
+- **The tool and model breakdowns open on Now.** The all-time line offered them
+  behind a link to another screen, which is a strange thing to do with data
+  already in the response that drew the line. Most-used tools by calls and
+  where the money went by cost, expanded in place; the Lifetime screen keeps
+  the full tables. Closed by default, since the total is the point of the line
+  and this screen is mostly live panels.
+- **A spend cap is offered beside the figure that argues for it.** Someone
+  reading their own lifetime total is, at that moment, the person most likely
+  to want a limit on it. It stays a link at the weight of the one next to it —
+  a dashboard is not a checkout, and the price lives on the page it points at.
+
+### Changed
+
+- **Sessions are full-width rows rather than tiles.** Three to a viewport made
+  a session's own figures reference material, small enough that you read the
+  project name and moved on. A session is the unit this screen is about, so
+  each one now gets the width and its numbers come up to the size of the ones
+  in Today.
+
 ## [0.26.0] - 2026-08-25
 
 ### Added
