@@ -9,8 +9,22 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.25.0] - 2026-08-25
+
 ### Added
 
+- **The month reads as a calendar.** A week per row, one square per day, shade
+  carrying cost — so the rhythm of how you actually work is visible without
+  reading a figure. Thirty bars in a row answer "how much on the 14th" and hide
+  "I do not work Sundays". Shades are cut on a square-root scale, because a few
+  heavy days set the maximum and linear buckets would leave every ordinary day
+  in the palest step, making a busy month look empty. The bars remain, one
+  click away, for when the amounts are the question.
+- **The daily bars have a scale.** They are normalised to the tallest day, so
+  without a labelled line a bar's height meant nothing and a $20 day could not
+  be read against a $200 one. Two or three rules, rounded to a 1/2/5×10ⁿ step:
+  a line labelled `$237.83` measures one particular day rather than serving as
+  a ruler for the rest.
 - **An agent switch on the Now screen.** `all / claude / opencode`, in the
   middle of the Today header, on a machine that runs both. It applies to the
   whole screen — today's totals, the live pulse, the activity feed, the
@@ -26,6 +40,28 @@ Phase 3 (Delight) has no plan by design.
 
 ### Fixed
 
+- **The live pulse was empty after a daemon restart, while agents were
+  working.** Stopping the daemon ends every live session, and `ended` was
+  permanent — the session row kept it whatever arrived afterwards — so a
+  working agent stayed marked ended until it happened to start a new session.
+  Anyone upgrading Caprock hit this, on the one screen whose entire job is
+  showing what is happening right now. `ended` is now sticky only against
+  events no newer than the one already stored, which keeps a finished
+  session's transcript from resurrecting it while treating a session that is
+  still emitting as what it is.
+- **The plan-value panel wasted most of its width and buried its own
+  headline.** Two columns on a full-width panel left two thirds of the row
+  empty, and the multiple — the figure the panel exists to deliver — was set
+  as a word inside a sentence at body-text size. Three tiles now read left to
+  right as their own sentence: you pay this, the same work costs that, which
+  is this many times over.
+- **A model's snapshot date broke the column it sat in.**
+  `claude-haiku-4-5-20251001` was the only name that wrapped to a second line;
+  the trailing date is now elided to `…` with the full id on the row's
+  tooltip, where someone reconciling against an invoice can still read it.
+- **Tile captions sat at different heights across a row.** One caption
+  wrapping to two lines dragged its neighbours off the shared baseline, so
+  they read as text stuck to the underside of a number rather than as a row.
 - **Spend from a filtered-out session appeared under the other agent.** The
   projects list has an "orphan" row for spend whose session was deleted; under
   a filter, excluded sessions looked deleted, so that row collected the other
