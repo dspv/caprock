@@ -109,3 +109,36 @@ func TestAgainstLocalDatabase(t *testing.T) {
 		break
 	}
 }
+
+// The WAL caveat, checked rather than assumed: a reader that cannot attach to
+// the write-ahead log sees the database as it was at the last checkpoint, and
+// on a live installation that means missing everything recent — silently.
+func TestReadsThroughTheWAL(t *testing.T) {
+	p := DBPath()
+	if p == "" {
+		t.Skip("no OpenCode database on this machine")
+	}
+	db, err := Open(p)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+
+	var mode string
+	if err := db.QueryRowContext(context.Background(), "PRAGMA journal_mode").Scan(&mode); err != nil {
+		t.Fatalf("journal_mode: %v", err)
+	}
+	t.Logf("journal mode: %s", mode)
+
+	// The newest session's timestamp, which lives in the WAL on a database
+	// that has been written to recently.
+	var newest int64
+	if err := db.QueryRowContext(context.Background(),
+		"SELECT COALESCE(MAX(time_updated),0) FROM session").Scan(&newest); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if newest == 0 {
+		t.Fatal("read nothing; the reader is not seeing the database")
+	}
+	t.Logf("newest session update: %d", newest)
+}

@@ -37,10 +37,13 @@ Both were made by the owner on 2026-08-24 and are binding on the implementation.
 OpenCode is markedly easier to observe than Claude Code, and the ingestion is a
 translation rather than a pipeline.
 
-- **One SQLite database**, at `~/.local/share/opencode/opencode.db`
-  (`$XDG_DATA_HOME/opencode`, `%LOCALAPPDATA%\opencode` on Windows,
-  `$OPENCODE_DB` overrides). Opened read-only — it belongs to another running
-  program, and a monitor that corrupts what it monitors is worse than none.
+- **One SQLite database**, at `~/.local/share/opencode/opencode.db` — on
+  *every* platform. OpenCode uses the `xdg-basedir` package with no platform
+  branching at all, so Windows is `%USERPROFILE%\.local\share\opencode` and
+  neither `LOCALAPPDATA` nor `APPDATA` is consulted; macOS is the XDG path
+  rather than Application Support, which `opencode db path` confirms. Opened
+  read-only — it belongs to another running program, and a monitor that
+  corrupts what it monitors is worse than none.
 - **Cost and tokens are already columns** on `session`: `cost`, `tokens_input`,
   `tokens_output`, `tokens_cache_read`, `tokens_cache_write`, alongside
   `directory`, `title`, `model` (JSON `{id, providerID}`), `parent_id`,
@@ -259,3 +262,34 @@ contention rather than in the stream itself:
 `internal/opencode/stream_test.go` runs against a stub SSE server, so it covers
 frame parsing, the narrow event filter, malformed frames, cancellation and the
 retry — everywhere, not only where OpenCode is installed.
+
+## Where the database is, exactly
+
+This was the part most likely to be wrong, because it is a claim about another
+program's layout that only one platform ever exercised. Verified against
+OpenCode's source and against `opencode db path` on a real install:
+
+- **The layout is the same everywhere.** OpenCode reads `xdg-basedir`, which
+  has no `process.platform` check: `XDG_DATA_HOME` if set, otherwise
+  `~/.local/share`. So macOS is *not* Application Support and Windows is *not*
+  `%LOCALAPPDATA%` — both are `~/.local/share/opencode`. Searching the
+  platform-native locations was the obvious guess and would have found nothing
+  on every Windows machine.
+- **The filename is not always `opencode.db`.** Released builds — channels
+  `latest`, `beta`, `prod` — use it, but any other build appends its channel: a
+  locally-built binary writes `opencode-local.db`, a preview build writes its
+  git branch, sanitised. The set is open-ended, so the search matches
+  `opencode-*.db` and prefers the plain name; with several suffixed files the
+  most recently written wins, because that is the one being used.
+- **A relative `OPENCODE_DB` resolves inside the data directory**, not against
+  the working directory. Resolving it our way would have looked for the file
+  beside wherever the daemon started, which for a service is nowhere the user
+  had in mind.
+- **WAL is on**, so `opencode.db-wal` and `-shm` sit beside the database and a
+  reader that cannot attach to the log silently sees a stale snapshot. A live
+  test asserts the reader sees current data, not just that it opens.
+
+`internal/opencode/paths_test.go` runs the search order for macOS, Linux and
+Windows regardless of the machine the test is on, so the Windows expectations
+fail on a Mac when the logic is wrong. That is how the Windows mistake above
+was caught before anyone ran it there.

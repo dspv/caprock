@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
@@ -351,24 +350,5 @@ func TestDBPathDiscovery(t *testing.T) {
 	want := filepath.Join(ocdir, "opencode.db")
 	if got := DBPath(); got != want {
 		t.Errorf("DBPath() = %q, want %q", got, want)
-	}
-}
-
-func TestDataDirsIncludesPlatformLocation(t *testing.T) {
-	dirs := dataDirs()
-	if len(dirs) == 0 {
-		t.Fatal("no candidate directories")
-	}
-	if runtime.GOOS == "windows" {
-		t.Setenv("LOCALAPPDATA", `C:\Users\dev\AppData\Local`)
-		found := false
-		for _, d := range dataDirs() {
-			if filepath.Base(d) == "opencode" && filepath.VolumeName(d) != "" {
-				found = true
-			}
-		}
-		if !found {
-			t.Error("no LOCALAPPDATA candidate on Windows")
-		}
 	}
 }

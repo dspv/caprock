@@ -45,38 +45,108 @@ func DBPath() string {
 		if p == ":memory:" {
 			return ""
 		}
+		// A relative value is resolved inside OpenCode's data directory, not
+		// against the working directory — that is what OpenCode itself does,
+		// and resolving it our way would look for the file beside whichever
+		// directory the daemon happened to start in.
+		if !filepath.IsAbs(p) {
+			for _, dir := range dataDirs() {
+				cand := filepath.Join(dir, p)
+				if _, err := os.Stat(cand); err == nil {
+					return cand
+				}
+			}
+			return ""
+		}
 		if _, err := os.Stat(p); err == nil {
 			return p
 		}
 		return ""
 	}
 	for _, dir := range dataDirs() {
-		p := filepath.Join(dir, "opencode.db")
-		if _, err := os.Stat(p); err == nil {
+		if p := dbInDir(dir); p != "" {
 			return p
 		}
 	}
 	return ""
 }
 
+// dbInDir finds OpenCode's database inside one data directory.
+//
+// The filename is not always `opencode.db`. Released builds — the `latest`,
+// `beta` and `prod` channels — use that name, but any other build appends its
+// channel: a locally-built binary writes `opencode-local.db`, and a preview
+// build writes the git branch it came from, sanitised. The set is open-ended
+// rather than enumerable, so this looks for the plain name first and falls
+// back to whichever suffixed file exists.
+func dbInDir(dir string) string {
+	plain := filepath.Join(dir, "opencode.db")
+	if _, err := os.Stat(plain); err == nil {
+		return plain
+	}
+	matches, err := filepath.Glob(filepath.Join(dir, "opencode-*.db"))
+	if err != nil || len(matches) == 0 {
+		return ""
+	}
+	// A machine with several channels installed has several files. Newest
+	// wins: it is the one being written to, and picking arbitrarily would
+	// show a stale history with no way to tell.
+	best, bestMod := "", int64(0)
+	for _, m := range matches {
+		// The WAL and SHM files sit beside the database and match nothing
+		// here, but a future suffix could; skip anything that is not a plain
+		// file.
+		fi, err := os.Stat(m)
+		if err != nil || fi.IsDir() {
+			continue
+		}
+		if mod := fi.ModTime().UnixNano(); mod > bestMod {
+			best, bestMod = m, mod
+		}
+	}
+	return best
+}
+
 // dataDirs lists the places OpenCode may keep its data directory, most likely
 // first.
 func dataDirs() []string {
-	var out []string
-	if runtime.GOOS == "windows" {
-		if la := os.Getenv("LOCALAPPDATA"); la != "" {
-			out = append(out, filepath.Join(la, "opencode"))
-		}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = ""
 	}
-	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
+	return dataDirsFor(runtime.GOOS, os.Getenv, home)
+}
+
+// dataDirsFor is dataDirs with the platform and environment passed in, so the
+// search order can be tested for an operating system other than the one the
+// test happens to run on. Every path in here is a claim about another
+// program's layout, and a claim that only one of three platforms ever
+// exercises is a claim nobody checks.
+//
+// OpenCode uses the `xdg-basedir` package with **no platform branching at
+// all** — verified in their source and confirmed by `opencode db path`, which
+// prints `~/.local/share/opencode/opencode.db` on macOS. So the Linux
+// convention applies everywhere, including Windows, where neither
+// LOCALAPPDATA nor APPDATA is consulted. Searching those would have been a
+// reasonable guess and a wrong one.
+func dataDirsFor(goos string, getenv func(string) string, home string) []string {
+	var out []string
+
+	// XDG_DATA_HOME is honoured on every platform, Windows included, because
+	// that is simply what the library reads first.
+	if xdg := getenv("XDG_DATA_HOME"); xdg != "" {
 		out = append(out, filepath.Join(xdg, "opencode"))
 	}
-	if home, err := os.UserHomeDir(); err == nil {
-		out = append(out,
-			filepath.Join(home, ".local", "share", "opencode"),
-			filepath.Join(home, "Library", "Application Support", "opencode"),
-		)
+	if home != "" {
+		out = append(out, filepath.Join(home, ".local", "share", "opencode"))
+		// Not where OpenCode writes today, but the platform-native location a
+		// future version would most plausibly move to. Checking it costs one
+		// stat and would turn a silent "no sessions" into working support.
+		if goos == "darwin" {
+			out = append(out, filepath.Join(home, "Library", "Application Support", "opencode"))
+		}
 	}
+	_ = goos
 	return out
 }
 
