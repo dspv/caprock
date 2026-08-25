@@ -54,6 +54,30 @@ describe('BreakdownPanel', () => {
     expect(container.textContent).toBe('')
   })
 
+  it('gives each row its share of the whole, floored', async () => {
+    data.value = history()
+    render(<BreakdownPanel />)
+    // 40,839 of 42,543 calls is 95.99% — floored to 95, never rounded up into
+    // looking larger than it measured.
+    expect(await screen.findByText('95%')).toBeTruthy()
+    // And the share is of everything, not of the rows on screen: the two
+    // tools here are the whole list, so they must add to 100.
+    expect(screen.getByText('4%')).toBeTruthy()
+  })
+
+  it('marks a sliver rather than rounding it away to 0%', async () => {
+    data.value = {
+      ...history(),
+      tools: [
+        { tool: 'Bash', count: 10_000 },
+        { tool: 'Write', count: 20 },
+      ],
+    } as unknown as History
+    render(<BreakdownPanel />)
+    // 0.2% is not 0% — a row with real calls must not read as having none.
+    expect(await screen.findByText('<1%')).toBeTruthy()
+  })
+
   it('links to the screen holding the full tables', async () => {
     data.value = history()
     render(<BreakdownPanel />)

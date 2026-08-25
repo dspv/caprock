@@ -23,6 +23,11 @@ export function BreakdownPanel() {
 
   const topCalls = tools[0]?.count ?? 0
   const topCost = models[0]?.cost_usd ?? 0
+  // Percentages are of everything, not of the six rows shown — a share that
+  // silently renormalises to the visible slice reads as "Bash is 58% of your
+  // tool calls" when it is 50% of them.
+  const allCalls = (h.data?.tools ?? []).reduce((n, t) => n + t.count, 0)
+  const allCost = (h.data?.summary?.models ?? []).reduce((n, m) => n + m.cost_usd, 0)
 
   return (
     <Panel
@@ -41,6 +46,7 @@ export function BreakdownPanel() {
             key: t.tool,
             label: fmtTool(t.tool),
             value: t.count.toLocaleString('en-US'),
+            share: allCalls > 0 ? (100 * t.count) / allCalls : null,
             frac: topCalls > 0 ? t.count / topCalls : 0,
           }))}
         />
@@ -51,6 +57,7 @@ export function BreakdownPanel() {
             key: m.model,
             label: m.model || 'unknown',
             value: fmtUSD(m.cost_usd),
+            share: allCost > 0 ? (100 * m.cost_usd) / allCost : null,
             frac: topCost > 0 ? m.cost_usd / topCost : 0,
           }))}
         />
@@ -67,7 +74,7 @@ function Bars({
 }: {
   title: string
   note: string
-  rows: { key: string; label: string; value: string; frac: number }[]
+  rows: { key: string; label: string; value: string; share: number | null; frac: number }[]
 }) {
   if (rows.length === 0) return null
   return (
@@ -89,6 +96,12 @@ function Bars({
               />
             </span>
             <span className="num w-20 shrink-0 text-right text-fg">{r.value}</span>
+            {/* The share is what makes the count mean something: 40,961 calls
+              * is a number, half of everything is a finding. Floored, so a
+              * row never rounds up into looking bigger than it is. */}
+            <span className="num w-9 shrink-0 text-right text-fg-faint">
+              {r.share === null ? '' : r.share < 1 ? '<1%' : `${Math.floor(r.share)}%`}
+            </span>
           </div>
         ))}
       </div>

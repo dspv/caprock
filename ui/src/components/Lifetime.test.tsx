@@ -65,10 +65,10 @@ describe('LifetimeStrip', () => {
     expect(screen.queryByText(/sessions a day/)).toBeNull()
   })
 
-  it('offers the spend cap beside the total that argues for it', async () => {
+  it('says what the paid link does rather than naming a feature', async () => {
     totals.value = history({})
     render(<LifetimeStrip plan={plan('flat')} />)
-    const cap = await screen.findByRole('link', { name: /cap this/i })
+    const cap = await screen.findByRole('link', { name: /set a daily limit/i })
     expect(cap).toHaveAttribute('href', 'https://caprock.dev/premium')
     // The offer stays a link, not a price: quoting a figure inside the
     // dashboard turns a tool someone installed into a storefront.

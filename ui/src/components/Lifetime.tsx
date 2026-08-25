@@ -62,9 +62,9 @@ export function LifetimeStrip({ plan }: { plan?: Settings }) {
           target="_blank"
           rel="noreferrer"
           className="text-[11px] text-fg-faint hover:text-accent no-underline"
-          title="A daily spend cap — Caprock pauses its own sessions when the day passes a limit you set"
+          title="Caprock pauses the sessions it started once the day's cost passes a number you choose"
         >
-          cap this →
+          set a daily limit →
         </a>
       </span>
     </div>
