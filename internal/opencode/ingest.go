@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/dspv/caprock/internal/event"
@@ -34,9 +35,18 @@ type Ingester struct {
 	// sessions that changed. Without it every tick re-reads all messages of
 	// every session, which on a real database is tens of thousands of rows a
 	// minute for no new information.
-	seen map[string]int64
-
+	//
+	// Guarded because the live stream writes to it from its own goroutine:
+	// Touch and the poll loop both record what they have read.
+	mu    sync.Mutex
+	seen  map[string]int64
 	stats Stats
+
+	// One import at a time. The poll loop and the live stream both write, and
+	// two concurrent writers make SQLite refuse one of them — which surfaced
+	// as the daemon's own sweeps failing with SQLITE_BUSY, not as a failure in
+	// the importer that caused it.
+	writing sync.Mutex
 }
 
 // Stats is what the daemon reports about OpenCode ingest.
@@ -54,8 +64,46 @@ func NewIngester(db *sql.DB, rec *rollup.Recorder, log *slog.Logger, every time.
 	return &Ingester{db: db, rec: rec, log: log, every: every, seen: map[string]int64{}}
 }
 
+// Touch re-reads one session immediately, out of turn.
+//
+// This is what the live stream calls: an event says a session changed, and the
+// figures still come from the database rather than from the event, because the
+// database is the only place OpenCode's own cost arithmetic lives. Reading the
+// event's payload instead would mean maintaining a second understanding of
+// their schema that drifts from the first.
+func (in *Ingester) Touch(ctx context.Context, sessionID string) {
+	in.writing.Lock()
+	defer in.writing.Unlock()
+
+	s, ok, err := SessionByID(ctx, in.db, sessionID)
+	if err != nil || !ok {
+		if err != nil {
+			in.log.Debug("opencode touch failed", "component", "opencode", "err", err)
+		}
+		return
+	}
+	{
+		if err := in.session(ctx, s); err != nil {
+			in.log.Debug("opencode touch failed", "component", "opencode",
+				"session", sessionID, "err", err)
+			return
+		}
+		// Record what the poll loop would have recorded, so its change
+		// detection does not read this session again on the next tick.
+		in.mu.Lock()
+		in.seen[s.ID] = s.Updated
+		in.stats.Sessions = len(in.seen)
+		in.mu.Unlock()
+		return
+	}
+}
+
 // Stats returns a snapshot of what has been ingested.
-func (in *Ingester) Stats() Stats { return in.stats }
+func (in *Ingester) Stats() Stats {
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	return in.stats
+}
 
 // Run polls until the context is cancelled.
 //
@@ -81,6 +129,9 @@ func (in *Ingester) Run(ctx context.Context) error {
 
 // once reads everything that changed since the last poll.
 func (in *Ingester) once(ctx context.Context) error {
+	in.writing.Lock()
+	defer in.writing.Unlock()
+
 	sessions, err := Sessions(ctx, in.db)
 	if err != nil {
 		return err
@@ -88,7 +139,10 @@ func (in *Ingester) once(ctx context.Context) error {
 	in.stats.LastPoll = time.Now().UnixMilli()
 
 	for _, s := range sessions {
-		if prev, ok := in.seen[s.ID]; ok && prev >= s.Updated {
+		in.mu.Lock()
+		prev, ok := in.seen[s.ID]
+		in.mu.Unlock()
+		if ok && prev >= s.Updated {
 			continue
 		}
 		if err := in.session(ctx, s); err != nil {
@@ -97,8 +151,10 @@ func (in *Ingester) once(ctx context.Context) error {
 				"session", s.ID, "err", err)
 			continue
 		}
+		in.mu.Lock()
 		in.seen[s.ID] = s.Updated
 		in.stats.Sessions = len(in.seen)
+		in.mu.Unlock()
 	}
 	return nil
 }
@@ -179,7 +235,9 @@ func (in *Ingester) turn(ctx context.Context, s Session, m Message) error {
 		return fmt.Errorf("record turn: %w", err)
 	}
 	if res.Stored {
+		in.mu.Lock()
 		in.stats.Events++
+		in.mu.Unlock()
 	}
 	return nil
 }
@@ -225,7 +283,9 @@ func (in *Ingester) tool(ctx context.Context, s Session, m Message, c ToolCall) 
 		return fmt.Errorf("record tool: %w", err)
 	}
 	if res.Stored {
+		in.mu.Lock()
 		in.stats.Events++
+		in.mu.Unlock()
 	}
 	return nil
 }

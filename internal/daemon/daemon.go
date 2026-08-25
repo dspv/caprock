@@ -50,6 +50,9 @@ type Options struct {
 	Listener net.Listener
 	// DisableIngest turns transcript tailing off (tests, or hooks-only mode).
 	DisableIngest bool
+	// OpenCodeURL overrides where OpenCode's headless server is expected.
+	// Empty means the documented default; tests point it at a stub.
+	OpenCodeURL string
 	// OpenCodeDB overrides where OpenCode's database is looked for. Empty means
 	// discover it; "off" disables the reader entirely. Tests must set one or
 	// the other, or a developer's own OpenCode sessions leak into a temporary
@@ -310,6 +313,16 @@ func (d *Daemon) run(ctx context.Context) error {
 						}
 					}()
 					d.log.Info("opencode sessions are being read", "component", "opencode", "db", p)
+
+					// The poller is the floor; the stream removes the latency
+					// on top of it. `opencode serve` runs while a TUI is open
+					// and is gone otherwise, so failing to connect is the
+					// normal case rather than an error — the streamer retries
+					// with backoff and the poller covers the gap either way.
+					st := opencode.NewStreamer(d.opt.OpenCodeURL, d.log)
+					go st.Run(ctx, func(sessionID string) {
+						d.ocIn.Touch(ctx, sessionID)
+					})
 				}
 			}
 		}

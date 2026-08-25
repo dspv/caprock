@@ -130,6 +130,35 @@ type Session struct {
 // owner's machine that is 47 of 70 sessions and a 1.4% overstatement.
 func (s Session) IsChild() bool { return s.ParentID != "" }
 
+// SessionByID returns one session, or false when it is not there.
+//
+// The live path reads one row rather than the whole table: an event names a
+// session, and listing every session to find it turned a per-event read into a
+// full scan — enough, on a busy stream, to hold the store's write lock long
+// enough for the daemon's own sweeps to fail with SQLITE_BUSY.
+func SessionByID(ctx context.Context, db *sql.DB, id string) (Session, bool, error) {
+	const q = `
+		SELECT id, COALESCE(parent_id,''), COALESCE(directory,''), COALESCE(title,''),
+		       COALESCE(model,''), COALESCE(cost,0),
+		       COALESCE(tokens_input,0), COALESCE(tokens_output,0),
+		       COALESCE(tokens_cache_read,0), COALESCE(tokens_cache_write,0),
+		       COALESCE(time_created,0), COALESCE(time_updated,0)
+		FROM session WHERE id = ?`
+	var s Session
+	var modelJSON string
+	err := db.QueryRowContext(ctx, q, id).Scan(&s.ID, &s.ParentID, &s.Directory,
+		&s.Title, &modelJSON, &s.Cost, &s.TokensIn, &s.TokensOut,
+		&s.CacheRead, &s.CacheWrite, &s.Created, &s.Updated)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Session{}, false, nil
+	}
+	if err != nil {
+		return Session{}, false, fmt.Errorf("opencode: session %s: %w", id, err)
+	}
+	s.Model, s.Provider = parseModel(modelJSON)
+	return s, true, nil
+}
+
 // Sessions returns every session, newest activity first.
 func Sessions(ctx context.Context, db *sql.DB) ([]Session, error) {
 	const q = `

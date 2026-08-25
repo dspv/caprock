@@ -95,8 +95,7 @@ Estimated at roughly seven hours for the observation half.
 
 Deliberately excluded from the first pass, each a separate piece of work:
 
-- **Live SSE** (`GET /event`) — around a day and a half, mostly reconnection and
-  deduplication against the database reader.
+- ~~Live SSE~~ — **built.** See "The live stream" below.
 - **Spawning and controlling OpenCode sessions** — around two days;
   `internal/agents` assumes the `claude` binary and its flags throughout.
 - **Verified Windows and Linux behaviour** — the first pass compiles everywhere
@@ -217,3 +216,46 @@ Writing those tests found a defect that had shipped in the projects list: spend
 whose session the filter excluded fell through to the "orphan" row, which
 exists for sessions that were deleted. Under a filter that row collected the
 *other* agent's money and showed it, unlabelled, under this agent's heading.
+
+## The live stream
+
+The poller reads the database every five seconds, which is right for history
+and for cost but visibly late on the Now screen: a session that just answered
+showed up seconds after it did. When `opencode serve` is running — which is
+whenever a TUI is open — Caprock subscribes to its SSE stream and re-reads the
+one session an event names, immediately. Measured on a real installation: a
+change is visible in **0.25s** rather than up to five seconds.
+
+**It does not replace the poller.** The stream exists only while a server is
+running and carries no history, so a machine that has been off all night still
+needs the database read. The poller is the floor; the stream removes the
+latency on top of it. A refused connection is therefore the normal case, not an
+error — it retries with backoff up to thirty seconds and logs at debug level.
+
+**Events are a signal, not data.** An event says "this session changed"; the
+figures still come from the database, which is the only place OpenCode's own
+cost arithmetic lives. Reading the event payload instead would mean maintaining
+a second understanding of their schema that drifts from the first.
+
+**Only eight of their event types are acted on** — the message and session ones.
+OpenCode publishes over a hundred, most saying nothing about what Caprock
+stores: a toast, a TUI selection, an LSP diagnostic. Re-reading a session on
+those is work for nothing, and on a busy session the stream is chatty enough
+that it matters.
+
+`OPENCODE_URL` overrides the server address, which a user on a non-default port
+needs and which the tests point at a stub.
+
+**Two defects surfaced while building it**, both in the shape of database
+contention rather than in the stream itself:
+
+- `Touch` listed every session to find the one an event named, turning a
+  per-event read into a full scan. It reads one row now.
+- The poll loop and the stream both wrote, and SQLite refuses one of two
+  concurrent writers — which surfaced as the daemon's own idle sweeps failing
+  with `SQLITE_BUSY`, not as a failure in the importer that caused it. Imports
+  are serialised; there is no throughput to gain from overlapping them.
+
+`internal/opencode/stream_test.go` runs against a stub SSE server, so it covers
+frame parsing, the narrow event filter, malformed frames, cancellation and the
+retry — everywhere, not only where OpenCode is installed.
