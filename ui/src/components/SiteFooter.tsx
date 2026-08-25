@@ -58,7 +58,7 @@ export function SiteFooter() {
             target="_blank"
             rel="noreferrer"
             className="text-fg-muted hover:text-fg no-underline"
-            title="Nothing is built yet — the page asks what a paid tier should contain"
+            title="A daily spend cap — Caprock pauses its own sessions when the day passes a limit you set"
           >
             premium
           </a>

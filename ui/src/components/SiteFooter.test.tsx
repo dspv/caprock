@@ -14,16 +14,15 @@ import { SiteFooter } from './SiteFooter'
 describe('SiteFooter', () => {
   beforeEach(() => localStorage.clear())
 
-  it('names the premium page without offering a purchase', () => {
+  it('names the premium page without turning the footer into a checkout', () => {
     render(<SiteFooter />)
     const link = screen.getByRole('link', { name: /^premium$/i })
     expect(link).toHaveAttribute('href', 'https://caprock.dev/premium')
-    // A destination, not an offer: no buy/upgrade/subscribe verb, and the hover
-    // text says outright that nothing is built.
-    expect(link.textContent).not.toMatch(/buy|upgrade|subscribe|get premium/i)
-    expect(link.getAttribute('title')).toMatch(/nothing is built/i)
-    // No pricing anywhere: the price is deliberately undecided, and a number
-    // here would be one we invented.
+    // It names a destination and what is there. The price and the card field
+    // live on that page — a dashboard footer that quotes a figure is one step
+    // from being a storefront, which is not what people installed.
+    expect(link.textContent).not.toMatch(/buy|upgrade|subscribe/i)
+    expect(link.getAttribute('title')).toMatch(/daily spend cap/i)
     expect(document.body.textContent).not.toMatch(/\$\d/)
   })
 

@@ -82,6 +82,18 @@ describe('LifetimeStrip', () => {
     expect(screen.getByText('Bash')).toBeTruthy()
     expect(screen.getByText('claude-opus-5')).toBeTruthy()
     // And still offers the full tables for anything the top few leave out.
-    expect(screen.getByRole('link')).toHaveAttribute('href', '#/history')
+    expect(
+      screen.getByRole('link', { name: /every tool, model and project/i }),
+    ).toHaveAttribute('href', '#/history')
+  })
+
+  it('offers the spend cap beside the total that argues for it', async () => {
+    totals.value = history({})
+    render(<LifetimeStrip plan={plan('flat')} />)
+    const cap = await screen.findByRole('link', { name: /cap this/i })
+    expect(cap).toHaveAttribute('href', 'https://caprock.dev/premium')
+    // The offer stays a link, not a price: quoting a figure inside the
+    // dashboard turns a tool someone installed into a storefront.
+    expect(document.body.textContent).not.toMatch(/\$\d+\s*\/\s*(mo|month)/i)
   })
 })

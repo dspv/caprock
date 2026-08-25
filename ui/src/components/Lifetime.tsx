@@ -61,12 +61,28 @@ export function LifetimeStrip({ plan }: { plan?: Settings }) {
       {/* Expands in place rather than sending you to another screen for the
         * two breakdowns people actually ask for. The Lifetime screen keeps the
         * full tables — this is the shape of them, where the total already is. */}
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="ml-auto text-[11px] text-fg-faint hover:text-accent"
-      >
-        {open ? 'hide breakdown' : 'tools and models'}
-      </button>
+      <span className="ml-auto inline-flex items-baseline gap-4">
+        {/* The one place in the product where a paid feature is offered against
+          * a number that makes the case for it. Someone reading their own
+          * lifetime total is, at that moment, the person most likely to want a
+          * limit on it — and it stays a link at the weight of the one beside
+          * it, because a dashboard is not a checkout. */}
+        <a
+          href="https://caprock.dev/premium"
+          target="_blank"
+          rel="noreferrer"
+          className="text-[11px] text-fg-faint hover:text-accent no-underline"
+          title="A daily spend cap — Caprock pauses its own sessions when the day passes a limit you set"
+        >
+          cap this →
+        </a>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="text-[11px] text-fg-faint hover:text-accent"
+        >
+          {open ? 'hide breakdown' : 'tools and models'}
+        </button>
+      </span>
     </div>
 
     {open && (
