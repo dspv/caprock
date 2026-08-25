@@ -9,6 +9,52 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.26.0] - 2026-08-25
+
+### Added
+
+- **The all-time total, on the screen you keep open.** A hundred and twenty-nine
+  sessions across fifty-eight days at ten thousand dollars of usage is the
+  figure people repeat, and it lived two clicks away — so someone who opens the
+  dashboard daily could go weeks without meeting it. It now rides above Today
+  as one line: the total, the three figures that make it mean something, and a
+  link to the rest. Deliberately a summary rather than the screen copied
+  upward; the tool table and the model mix are a screen's worth of reading and
+  stay on their own.
+- **What the money went on, without leaving Now.** "Which repository" and "what
+  kind of work" are two halves of one question, and the second half only
+  existed on the Cost screen. The projects panel now carries both, on the range
+  already chosen there and from the summary it already fetches — no second
+  request, one control for both answers. It renders nothing when the linkage
+  behind it is too thin to mean anything: on a `today` range most tool calls
+  have not yet been attached to the turn that paid for them, so a bar drawn
+  from that would describe a gap in the data rather than the work.
+
+### Changed
+
+- **The `History` tab is now `Lifetime`.** It promised a log and held a total —
+  the panel inside it already called itself Lifetime, and the tab now says the
+  same. Renamed in the docs and in the screen name feedback issues carry.
+- **Every screenshot recaptured**, showing the calendar view, the header's
+  active-tab pill, the plan-value tiles and the work-mix strip — a day of work
+  none of the published images had.
+
+### Fixed
+
+- **A machine with one busy session and one idle one wasted a screen of
+  space.** Each state opened its own three-column grid, so "Active · 1" took a
+  row and left two thirds of it empty, then "Idle · 1" did the same below. The
+  cards now flow through a single grid with each run's label above its first
+  card; grouping reads the same and stops reserving a row per group.
+- **The screenshot anonymiser was written and never called.** Every published
+  image had been anonymised by hand instead — which happened to work, and would
+  have stopped working the first time someone forgot. It now runs before the
+  capture and a failure aborts it. It also rewrites the activity feed's text,
+  which the path rewriting never touched: the feed prints whatever the sessions
+  actually did, and on a working machine that is client material. Only five
+  fields reach the screen (`internal/narrate`), so those are replaced and the
+  rest of the payload is left alone.
+
 ## [0.25.1] - 2026-08-25
 
 ### Fixed
