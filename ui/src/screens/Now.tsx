@@ -6,6 +6,7 @@ import { Badge, Empty, Panel, Skeleton, Stat } from '@/components/ui'
 import { ProjectsPanel, AGENTS, type AgentFilter } from '@/components/Projects'
 import { ActivityFeed } from '@/components/ActivityFeed'
 import { LifetimeStrip } from '@/components/Lifetime'
+import { BreakdownPanel } from '@/components/Breakdown'
 import { PulsePanel } from '@/components/Pulse'
 import { Attention } from '@/components/Attention'
 import { findAttention } from '@/lib/attention'
@@ -160,6 +161,13 @@ export function NowScreen() {
         />
         <ProjectsPanel sessions={list} agent={agent} />
       </div>
+
+      {/* The lifetime figures sit here rather than in the all-time line at the
+        * top: hidden in that line nobody found them, expanded there they
+        * pushed Today and the live pulse below the fold. Between the live
+        * panels and the session rows there is room, and nothing they compete
+        * with. */}
+      <BreakdownPanel />
 
       {sessions.error && !sessions.data && (
         <Empty title="Cannot reach the daemon">{sessions.error.message} — is <span className="mono">caprock up</span> running?</Empty>

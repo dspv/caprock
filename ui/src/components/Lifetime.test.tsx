@@ -4,7 +4,7 @@
  * is named beside the number, and nothing is claimed before anything has been
  * captured.
  */
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { LifetimeStrip } from './Lifetime'
 import type { History, Settings } from '@/lib/api'
@@ -63,31 +63,6 @@ describe('LifetimeStrip', () => {
     render(<LifetimeStrip plan={plan('flat')} />)
     await screen.findByText('20')
     expect(screen.queryByText(/sessions a day/)).toBeNull()
-  })
-
-  it('stays one row until asked, so Today keeps the top of the screen', async () => {
-    totals.value = history({})
-    render(<LifetimeStrip plan={plan('flat')} />)
-    await screen.findByText('$10,745.61')
-    // Opening it by default pushed the live panels below the fold, which is
-    // the opposite of what this screen is for.
-    expect(screen.queryByText('Most-used tools')).toBeNull()
-  })
-
-  it('opens the breakdown from a control that reads as one', async () => {
-    totals.value = history({})
-    render(<LifetimeStrip plan={plan('flat')} />)
-    const toggle = await screen.findByRole('button', { name: /tools and models/i })
-    // A bordered button, not the muted caption it first shipped as — that
-    // version looked like a label and nobody clicked it.
-    expect(toggle.className).toMatch(/border/)
-    fireEvent.click(toggle)
-    expect(screen.getByText('Most-used tools')).toBeTruthy()
-    expect(screen.getByText('Bash')).toBeTruthy()
-    expect(screen.getByText('claude-opus-5')).toBeTruthy()
-    expect(
-      screen.getByRole('link', { name: /every tool, model and project/i }),
-    ).toHaveAttribute('href', '#/history')
   })
 
   it('offers the spend cap beside the total that argues for it', async () => {

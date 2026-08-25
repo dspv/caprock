@@ -11,14 +11,15 @@ Phase 3 (Delight) has no plan by design.
 
 ## [0.27.2] - 2026-08-26
 
-### Fixed
+### Changed
 
-- **The all-time line is one row again.** 0.27.1 opened the breakdown by
-  default to solve "nobody found it", which pushed Today and the live pulse
-  below the fold — those are what the screen is opened for. The fix was never
-  to take the top of the screen; it was to make the control look like one,
-  which it now does: a bordered button with a caret rather than a muted caption
-  the same colour as the label beside it.
+- **The lifetime breakdown is its own panel, between the activity feed and the
+  session rows.** It spent two releases in the wrong place: hidden inside the
+  all-time line nobody found it, and opening it there pushed Today and the live
+  pulse below the fold. Both were the wrong position rather than the wrong
+  default — these are lifetime figures, not something to check between glances
+  at the pulse, so they sit below the live panels where the screen has room and
+  nothing competes with them. The all-time line is one row again.
 
 ## [0.27.1] - 2026-08-26
 
