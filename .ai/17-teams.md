@@ -86,6 +86,40 @@ than to guess at now:
   Coordinating unattended agents across machines is a different product.
 - **Hosted anything.** See above.
 
+## Two tiers, not one
+
+A team licence is a conversation with a lead; a solo developer who likes the
+tool has nobody to have that conversation with and no way to pay. So there are
+two things to sell, and they are sold to different people:
+
+- **Premium** — a solo developer, a few dollars a month, bought in a minute
+  from the dashboard. Extra features on one machine, no server, no enrolment.
+- **Teams** — a lead, hundreds a month, self-hosted, bought after a call.
+
+The free product is the floor under both and is never reduced to make room for
+either. What premium adds has to be something a single machine genuinely cannot
+do today rather than something switched off — the same rule the team tier
+follows, applied at a smaller scale.
+
+**The first candidate is API-key hygiene**, and it is deliberately *hygiene*
+rather than *storage*:
+
+- Which keys and profiles a session used — the variable names, never the
+  values.
+- A warning when a key appears in command output, which happens constantly and
+  which nothing currently catches.
+
+**Not a secret store.** Holding keys would trade the product's foundation for a
+feature: today a bug in Caprock shows a wrong number, and with a vault a bug in
+Caprock leaks credentials. It would also mean competing with 1Password, Vault
+and the OS keychain — tools that do nothing else — and it would put every
+buyer's security review in front of a two-person product. Helping someone not
+leak a key is worth paying for; taking custody of it is a different company.
+
+This is a candidate, not a decision. What premium contains should be settled by
+what the first paying users ask for, which is what the footer link and the
+`/teams` form exist to find out.
+
 ## Open questions
 
 These are decisions, not details, and each changes the work:
