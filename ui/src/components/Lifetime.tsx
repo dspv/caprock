@@ -23,7 +23,10 @@ export function LifetimeStrip({ plan }: { plan?: Settings }) {
   // Lifetime totals move slowly; a minute is far more often than they change,
   // and this must never compete with the live panels below it for the socket.
   const h = useApi(() => api.history('all'), [], { intervalMs: 60000 })
-  const [open, setOpen] = useState(false)
+  // Open by default. It shipped closed behind a link styled like the muted
+  // one beside it, so it read as a caption rather than a control and went
+  // unnoticed — the breakdown is most of why the line is worth having.
+  const [open, setOpen] = useState(true)
   const t = h.data?.totals
   if (!t || t.sessions === 0) return null
 
@@ -78,9 +81,9 @@ export function LifetimeStrip({ plan }: { plan?: Settings }) {
         </a>
         <button
           onClick={() => setOpen((v) => !v)}
-          className="text-[11px] text-fg-faint hover:text-accent"
+          className="rounded-sm border border-border px-1.5 py-0.5 text-[11px] text-fg-muted hover:border-border-strong hover:text-fg"
         >
-          {open ? 'hide breakdown' : 'tools and models'}
+          {open ? 'hide' : 'tools and models'}
         </button>
       </span>
     </div>
