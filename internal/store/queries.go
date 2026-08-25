@@ -774,7 +774,12 @@ type ModelShare struct {
 // sparkline per directory would multiply the payload of a polled endpoint for a
 // picture nobody sees until they expand the row.
 type ProjectShare struct {
-	Project  string      `json:"project"`
+	Project string `json:"project"`
+	// Agent is set when every session in this row came from one agent, so the
+	// dashboard can say which. Empty when a repository was worked on with
+	// both — labelling it either way would be wrong, and the per-session
+	// labels below still answer it.
+	Agent    string      `json:"agent,omitempty"`
 	Tokens   int64       `json:"tokens"`
 	CostUSD  float64     `json:"cost_usd"`
 	Sessions int64       `json:"sessions"`
@@ -1226,7 +1231,7 @@ func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpe
 	// The session → repository mapping. Only sessions that actually spent in
 	// the range are looked up, so a database full of old sessions costs nothing.
 	rows, err = q.QueryContext(ctx,
-		`SELECT session_id, COALESCE(project,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(cwd,'') FROM sessions`)
+		`SELECT session_id, COALESCE(project,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(cwd,''), COALESCE(agent,'claude') FROM sessions`)
 	if err != nil {
 		return s, err
 	}
@@ -1237,8 +1242,8 @@ func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpe
 	// the same directory merge instead of stacking duplicate breakdown rows.
 	pathIdx := map[[2]string]int{}
 	for rows.Next() {
-		var id, label, root, path, cwd string
-		if err := rows.Scan(&id, &label, &root, &path, &cwd); err != nil {
+		var id, label, root, path, cwd, agent string
+		if err := rows.Scan(&id, &label, &root, &path, &cwd, &agent); err != nil {
 			return s, err
 		}
 		t, spent := totals[id]
@@ -1272,9 +1277,13 @@ func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpe
 			i = len(s.Projects)
 			byRoot[key] = i
 			rootLabel[key] = label
-			s.Projects = append(s.Projects, ProjectShare{Project: label})
+			s.Projects = append(s.Projects, ProjectShare{Project: label, Agent: agent})
 		}
 		p := &s.Projects[i]
+		// A repository worked on with both agents carries neither label.
+		if p.Agent != agent {
+			p.Agent = ""
+		}
 		p.Tokens += t.tokens
 		p.CostUSD += t.cost
 		// A session lives in exactly one directory, so it counts once for its

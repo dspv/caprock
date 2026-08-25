@@ -157,7 +157,14 @@ function Track({ s, events, now }: { s: SessionSummary; events: Event[]; now: nu
       className="grid grid-cols-[132px_1fr_92px_104px] items-center gap-3 px-3 py-2 border-t border-border first:border-t-0 hover:bg-panel-2 no-underline text-fg"
     >
       <div className="min-w-0">
-        <div className="text-[13px] font-medium truncate">{s.project || 'unknown project'}</div>
+        <div className="text-[13px] font-medium truncate flex items-center gap-1.5">
+          <span className="truncate">{s.project || 'unknown project'}</span>
+          {s.agent === 'opencode' && (
+            <span className="shrink-0 text-[9px] uppercase tracking-[0.08em] text-fg-faint border border-border px-1 rounded-sm">
+              oc
+            </span>
+          )}
+        </div>
         <div className="text-[10px] text-fg-faint mono truncate">{s.activity?.phrase ?? ''}</div>
       </div>
       <PulseCanvas pulse={pulse} now={minute * 60_000} sessionID={s.session_id} />

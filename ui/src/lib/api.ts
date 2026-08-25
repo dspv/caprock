@@ -142,7 +142,7 @@ export interface Spark { from_ms: number; width_ms: number; cost: number[]; toke
 /** One REPOSITORY's spend. `paths` is the per-directory breakdown, absent when
  *  the repository has only one directory (it would restate the row's total).
  *  `spark` is the series behind the row's sparkline. */
-export interface ProjectShare { project: string; tokens: number; cost_usd: number; sessions: number; paths?: PathShare[]; spark?: Spark }
+export interface ProjectShare { project: string; agent?: string; tokens: number; cost_usd: number; sessions: number; paths?: PathShare[]; spark?: Spark }
 /** The KIND of work one turn did — what the money was spent on, beside the cuts
  *  by model and by project. A turn belongs to exactly one kind, so the rows sum
  *  to the range total exactly.

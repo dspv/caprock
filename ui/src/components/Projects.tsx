@@ -312,6 +312,14 @@ function ProjectRow({
         <div className="flex items-center gap-2">
           {live && <span className="inline-block w-1.5 h-1.5 rounded-full bg-ok shrink-0" title="a session is live in this project" />}
           <span className="truncate text-[14px]">{label}</span>
+          {/* Only the second agent is marked. On most machines every row is
+            * Claude Code, so labelling those too would put a badge on every
+            * line — the mark answers "why is this one different". */}
+          {p.agent === 'opencode' && (
+            <span className="shrink-0 text-[9px] uppercase tracking-[0.08em] text-fg-faint border border-border px-1 rounded-sm">
+              oc
+            </span>
+          )}
           <span className="text-[11px] text-fg-faint num shrink-0">
             {p.sessions} {p.sessions === 1 ? 'session' : 'sessions'}
           </span>
