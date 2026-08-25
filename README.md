@@ -51,6 +51,10 @@ On first run `caprock up` asks before adding its hook and status-line entries to
 `~/.claude/settings.json` (it backs the file up and never touches your other
 settings). Say no and it still reads your history from transcripts.
 
+Run [OpenCode](https://github.com/sst/opencode) too? It is picked up
+automatically and shown on the same screens — see [OpenCode](#opencode) for what
+that covers and what it does not.
+
 ![Live activity and cost, right now](docs/shot-now.png)
 
 *Top: the live pulse — one bar per minute of the last hour, per session, so the
@@ -117,6 +121,30 @@ file that got read. The file is `0600` and nothing sends it anywhere, but it
 is inside your backups, so treat it as you would your shell history: do not
 put it in a bug report, and do not hand it to anyone debugging an issue for
 you. `caprock down` and deleting the data directory removes all of it.
+
+## OpenCode
+
+Caprock also reads [OpenCode](https://github.com/sst/opencode) sessions, on the
+same screens as Claude Code. A machine that runs both has its spend split
+across two tools that each see half of it; here the projects list, the history
+and the cost add up over both, and OpenCode sessions carry an `opencode` label
+so you can still tell them apart.
+
+Nothing to configure. If OpenCode is installed, Caprock finds its database and
+reads it — no shim, no settings file to edit, and the database is opened
+read-only. Sessions from before you installed Caprock are included, because
+OpenCode keeps its own history.
+
+Costs come from OpenCode's own figures rather than being recalculated here, so
+they match what OpenCode reports. Like Caprock's own numbers, they are modelled
+from list prices, not a bill.
+
+**What is not there yet.** Observation only: the dashboard cannot start,
+steer or stop an OpenCode session, and the task runner does not work with it.
+Activity refreshes every few seconds rather than instantly, so the Now screen
+lags a little behind a running session — the Cost and History screens are
+unaffected. Verified on macOS; it builds and its tests pass on Linux and
+Windows, but it has not been run on either.
 
 ## Why
 
