@@ -9,6 +9,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.27.1] - 2026-08-26
+
+### Fixed
+
+- **The tool and model breakdown was hidden behind something that did not look
+  like a control.** It shipped closed behind a toggle styled like the muted
+  caption beside it — same size, same colour, no border — so it read as text
+  and went unfound. It is open on arrival now, with a bordered `hide` for
+  anyone who wants the row back. A feature nobody can see is not a feature.
+
 ## [0.27.0] - 2026-08-26
 
 ### Added
