@@ -9,6 +9,50 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.25.1] - 2026-08-25
+
+### Fixed
+
+- **The header said nothing about which screen you were on.** The active tab
+  was a `bg-panel-2` tint against the header's own `bg-panel` — a few percent
+  of lightness apart — with its label one step of grey brighter than the rest,
+  so on open there was nothing to read. It is now the filled accent pill the
+  agent filter already uses: a solid block of colour is recognised before any
+  text is. The other labels move up to full strength from the muted grey the
+  whole row had been sitting in.
+- **A colour class on a link was silently ignored.** `a { color: … }` carries
+  the same specificity as a `text-*` utility and was declared after them, so it
+  won on order — the first attempt at the tab above rendered amber text on an
+  amber pill, and the same trap waited for any link anyone tried to colour. The
+  default is now at zero specificity, so a class always takes over.
+- **The feedback dialog asked three questions before you could type one.**
+  "Something is broken / missing / unclear" put three sentences in front of the
+  box, and at a glance the buttons were near-identical because the
+  distinguishing word came last in each. One word each now — `bug`, `feature`,
+  `unclear`, `other` — with the catch-all there so nobody stalls deciding which
+  of three a thought belongs to.
+- **"One sentence is enough" was set in the same faint grey as the fine print
+  below it**, so the line that decides whether anyone writes anything at all
+  read as a footnote. The note under it now says the same thing in one line
+  instead of three.
+- **The footer's premium link was unreadable and unclear.** "what should paid
+  add?" was too quiet to see and said nothing about where it led; it reads
+  `premium` now, at a weight that leaves the team line as the only offer on the
+  row.
+
+### Added
+
+- **An install prompt for the agent you already have open.** Everyone
+  installing Caprock has Claude Code running in a terminal, and pasting eleven
+  lines is less work than deciding whether you have Homebrew and what Windows
+  does instead. Not a second install method — underneath it is still brew,
+  scoop or a release binary. It names its sources rather than saying "install
+  caprock", since an unrelated package of the same name sits on PyPI, and it
+  says `caprock up --yes`: consent for the hook is refused rather than assumed
+  when stdin is not a terminal, which is what an agent's shell provides, so
+  without the flag the install completes and the dashboard never sees a
+  session. In the README, on the site, and in `/install.md`.
+
 ## [0.25.0] - 2026-08-25
 
 ### Added
