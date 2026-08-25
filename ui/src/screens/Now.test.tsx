@@ -130,3 +130,49 @@ it('explains a missing claude binary instead of hiding the control that says so'
   const btn = await screen.findByRole('button', { name: /New session/ })
   expect(btn.textContent).toMatch(/claude not found/)
 })
+
+/**
+ * One busy session and one idle one is the ordinary shape of a working
+ * machine, and it used to cost a screen of dead space: each state opened its
+ * own three-column grid, so "Active · 1" claimed a row and left two thirds of
+ * it empty, then "Idle · 1" did the same below.
+ */
+function sess(over: Partial<SessionSummary>): SessionSummary {
+  return {
+    session_id: 'a', project: 'demo', cwd: '/tmp/demo', model: 'claude-opus-5',
+    started_at: 0, last_event_at: 0, status: 'active', agent: 'claude',
+    activity: { phrase: 'working', tool: '', at: '', health: 'working', repeats: 1 },
+    stats: {
+      session_id: 'a', turns: 1, tool_calls: 1, files_touched: 0,
+      tokens_in: 0, tokens_out: 0, cache_read: 0, cache_write: 0, cost_usd: 1,
+    },
+    savings: { billed_with: 0, billed_without: 0, saved: 0, hit_rate: 0, cut_pct: 0 },
+    ...over,
+  } as SessionSummary
+}
+
+it('puts every session in one grid so a single active card does not reserve a row', async () => {
+  state.summary = emptySummary({ sessions: 2 })
+  state.status = { claude_available: true }
+  state.sessions = [
+    sess({ session_id: 'busy' }),
+    sess({
+      session_id: 'quiet',
+      activity: { phrase: 'idle', tool: '', at: '', health: 'idle', repeats: 1 },
+    }),
+  ]
+  render(<NowScreen />)
+
+  const active = await screen.findByText(/Active · 1/)
+  const idle = await screen.findByText(/Idle · 1/)
+
+  // The two cards must be siblings in one multi-column grid. `closest('.grid')`
+  // is no good here — an ancestor further up is also a grid, so it matches
+  // even when each state has its own container, which is the very layout this
+  // rejects. The test is on the cards' shared parent and its column classes.
+  const cardOf = (label: HTMLElement) => label.parentElement!
+  const parent = cardOf(active).parentElement!
+  expect(cardOf(idle).parentElement).toBe(parent)
+  expect(parent.className).toMatch(/grid-cols-1/)
+  expect(parent.className).toMatch(/lg:grid-cols-2/)
+})

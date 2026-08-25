@@ -181,9 +181,25 @@ export function NowScreen() {
         )
       )}
 
-      {working.length > 0 && <Section title={`Active · ${working.length}`} items={working} now={now} />}
-      {rest.length > 0 && <Section title={`Idle · ${rest.length}`} items={rest} now={now} dim />}
-      {showEnded && ended.length > 0 && <Section title={`Ended · ${ended.length}`} items={ended} now={now} dim />}
+      {/* One grid, not three.
+        *
+        * Each state used to open its own section with its own grid, so on a
+        * machine running one busy session and one idle one — the ordinary
+        * case — "Active · 1" took a third of a row and left the rest empty,
+        * then "Idle · 1" did it again below. Two cards, three columns, and a
+        * screen of dead space between them and the panels above.
+        *
+        * The cards now flow through a single grid in the same order, with the
+        * state label riding on the first card of each run. Grouping survives —
+        * it just stops reserving a row per group. */}
+      <SessionGrid
+        groups={[
+          { label: 'Active', items: working },
+          { label: 'Idle', items: rest, dim: true },
+          ...(showEnded ? [{ label: 'Ended', items: ended, dim: true }] : []),
+        ]}
+        now={now}
+      />
       <div className="flex items-center gap-3 text-[11px] text-fg-faint px-0.5">
         {/* The spawn dialog existed but nothing rendered it, so the Terminal
           * tab told people to use a "New session" control that was nowhere on
@@ -215,13 +231,43 @@ export function NowScreen() {
   )
 }
 
-function Section({ title, items, now, dim }: { title: string; items: SessionSummary[]; now: number; dim?: boolean }) {
+/**
+ * Every session in one grid, grouped without a row per group.
+ *
+ * A label is drawn above the card that starts each run rather than above the
+ * run itself, which is what lets a one-card "Active" sit beside a one-card
+ * "Idle" instead of each claiming a row. The label is absolutely positioned so
+ * it costs no height and the cards stay on one baseline.
+ */
+function SessionGrid({
+  groups,
+  now,
+}: {
+  groups: { label: string; items: SessionSummary[]; dim?: boolean }[]
+  now: number
+}) {
+  const cells = groups.flatMap((g) =>
+    g.items.map((s, i) => ({
+      s,
+      dim: g.dim,
+      // Only the first card of a run is labelled; the count goes with it so
+      // "Active · 3" still reads as a count rather than a repeated tag.
+      label: i === 0 ? `${g.label} · ${g.items.length}` : null,
+    })),
+  )
+  if (cells.length === 0) return null
   return (
-    <div>
-      <div className="text-[11px] uppercase tracking-[0.08em] text-fg-faint mb-1.5 px-0.5">{title}</div>
-      <div className={`grid gap-2 grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 ${dim ? 'opacity-80' : ''}`}>
-        {items.map((s) => <SessionCard key={s.session_id} s={s} now={now} />)}
-      </div>
+    <div className="mt-3 grid gap-2 gap-y-6 grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3">
+      {cells.map(({ s, dim, label }) => (
+        <div key={s.session_id} className={`relative ${dim ? 'opacity-80' : ''}`}>
+          {label && (
+            <div className="absolute -top-4 left-0.5 text-[11px] uppercase tracking-[0.08em] text-fg-faint">
+              {label}
+            </div>
+          )}
+          <SessionCard s={s} now={now} />
+        </div>
+      ))}
     </div>
   )
 }
