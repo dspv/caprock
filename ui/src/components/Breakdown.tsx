@@ -12,6 +12,7 @@ import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtTool, fmtUSD } from '@/lib/format'
 import { Panel } from '@/components/ui'
+import { ShareCard } from '@/components/ShareCard'
 
 export function BreakdownPanel() {
   // Lifetime figures move slowly; a minute is far more often than they change,
@@ -33,9 +34,15 @@ export function BreakdownPanel() {
     <Panel
       title="All time"
       right={
-        <a href="#/history" className="text-fg-faint hover:text-accent no-underline">
-          every tool, model and project →
-        </a>
+        <span className="inline-flex items-center gap-3">
+          {/* The one thing here that travels: these figures are the most
+            * persuasive part of the product and they are stuck on one
+            * machine. */}
+          <ShareCard />
+          <a href="#/history" className="text-fg-faint hover:text-accent no-underline">
+            every tool, model and project →
+          </a>
+        </span>
       }
     >
       <div className="grid gap-x-8 gap-y-5 px-3 py-3 md:grid-cols-2">
