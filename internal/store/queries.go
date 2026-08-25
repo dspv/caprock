@@ -219,7 +219,18 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 		  version         = COALESCE(NULLIF(excluded.version, ''), sessions.version),
 		  started_at      = MIN(sessions.started_at, excluded.started_at),
 		  last_event_at   = MAX(sessions.last_event_at, excluded.last_event_at),
-		  status          = CASE WHEN ? != '' THEN ? WHEN sessions.status = 'ended' THEN 'ended' ELSE 'active' END,
+		  -- An explicit status wins. Otherwise 'ended' is sticky only against
+		  -- events no newer than what we already have: re-reading a finished
+		  -- session's transcript must not resurrect it, but a session that is
+		  -- still emitting is alive by definition. Without the timestamp test
+		  -- restarting the daemon — which ends every live session — left a
+		  -- working agent marked ended until it started a new session, and the
+		  -- pulse showed nothing while it worked.
+		  status          = CASE
+		                      WHEN ? != '' THEN ?
+		                      WHEN sessions.status = 'ended' AND excluded.last_event_at <= sessions.last_event_at THEN 'ended'
+		                      ELSE 'active'
+		                    END,
 		  has_hooks       = MAX(sessions.has_hooks, excluded.has_hooks),
 		  has_transcript  = MAX(sessions.has_transcript, excluded.has_transcript),
 		  agent           = COALESCE(NULLIF(excluded.agent, ''), sessions.agent)`,

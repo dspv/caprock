@@ -580,3 +580,57 @@ func TestUnpricedIsAbsentWhenEverythingIsPriced(t *testing.T) {
 		t.Fatalf("unpriced must be omitted when empty:\n%s", b)
 	}
 }
+
+// Restarting the daemon ends every live session, and a session that is still
+// working goes on producing events straight afterwards. Those events have to
+// bring it back: an agent that is demonstrably running must not sit in the
+// dashboard marked ended until its next session starts.
+//
+// The staleness sweep and an explicit SessionEnd still end a session — this
+// only concerns what a *fresh* event means about one already marked ended.
+func TestFreshEventRevivesAnEndedSession(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	now := time.Now().UnixMilli()
+
+	mustSession(t, s, "s1", now-30*1000)
+	if err := SetSessionStatus(ctx, s.db, "s1", StatusEnded); err != nil {
+		t.Fatal(err)
+	}
+
+	// A newer event, exactly as a hook would deliver it: no explicit status.
+	mustSession(t, s, "s1", now)
+
+	sess, err := GetSession(ctx, s.db, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess.Status == StatusEnded {
+		t.Error("a session still emitting events stayed ended; the pulse would show nothing while the agent works")
+	}
+}
+
+// The other half of the same rule: re-reading an old transcript must not
+// resurrect a session that genuinely finished. Only an event newer than what
+// the row already carries counts as a sign of life.
+func TestReplayedOldEventDoesNotReviveAnEndedSession(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	now := time.Now().UnixMilli()
+
+	mustSession(t, s, "s1", now)
+	if err := SetSessionStatus(ctx, s.db, "s1", StatusEnded); err != nil {
+		t.Fatal(err)
+	}
+
+	// A tail re-reading history: older than the last event already stored.
+	mustSession(t, s, "s1", now-10*60*1000)
+
+	sess, err := GetSession(ctx, s.db, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess.Status != StatusEnded {
+		t.Errorf("status = %q; a replayed old event revived a finished session", sess.Status)
+	}
+}

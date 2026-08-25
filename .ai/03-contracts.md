@@ -208,6 +208,18 @@ CREATE TABLE sessions (
   agent        TEXT NOT NULL DEFAULT 'claude'   -- claude|opencode (0015)
 );
 
+**`sessions.status` is derived, and `ended` is sticky only against the past.**
+An explicit status from a caller (a `SessionEnd` hook, `SetExit`, the staleness
+sweep) always wins. Otherwise an upsert marks the session `active` unless it is
+already `ended` *and* the incoming event is no newer than the one stored — so
+re-reading a finished session's transcript cannot resurrect it, while a session
+that is still emitting events is alive by definition.
+
+The timestamp test is the whole rule: without it, `ended` was permanent, and
+since stopping the daemon ends every live session, a restart left a working
+agent marked ended until it happened to start a new session — the pulse showed
+nothing while the agent was visibly working.
+
 CREATE TABLE session_stats (       -- rollup, updated on write
   session_id  TEXT PRIMARY KEY REFERENCES sessions(session_id),
   turns INTEGER, tool_calls INTEGER, files_touched INTEGER,
