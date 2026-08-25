@@ -91,3 +91,37 @@ orders of magnitude in the relevant communities (see
 
 **Reverses if** the measurement well runs dry — but with the product generating
 new data continuously, that is unlikely.
+
+---
+
+## GTM-006 — Premium pricing is left open until there is someone to ask
+
+**Raised 2026-08-25. Deliberately not decided.**
+
+Two numbers are on the table for a solo premium tier, and the argument for each
+is worth keeping rather than resolving now.
+
+**$2.50/month billed annually ($30/year).** The case: it is small enough that
+nobody deliberates, and a large number of small payments is enough for a
+one-person product. It also prices well below anything a team tool would
+charge, which keeps the two tiers clearly separate.
+
+**$9/month or $79/year.** The case against the cheaper number, in three parts:
+
+- **A $30 decision costs the same thought as a $100 one.** The buyer still asks
+  "do I need this"; only the revenue differs. Cheapness does not remove the
+  deliberation, it just removes the upside.
+- **$30 a year does not cover support.** One email exchange consumes an annual
+  subscription, and for a solo product that email lands on the founder.
+- **A low price reads as low value.** Someone already paying $200/month for
+  Claude does not see $2.50 as cheap; they see it as probably not serious.
+
+**Why this stays open.** There are 26 Homebrew installs and no paying users, so
+either number is a guess — and the cheaper one is the harder guess to reverse,
+because raising a price on existing subscribers is a conversation nobody wants.
+The decision belongs after the first few people say what they would pay for,
+which is what the in-product footer and the `/teams` form exist to surface.
+
+**What would settle it:** three conversations with people who installed it and
+asked for something more. Not a survey — the question "would you pay $X" is
+answered generously and honestly only by an invoice.
