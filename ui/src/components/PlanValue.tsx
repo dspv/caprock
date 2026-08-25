@@ -16,7 +16,7 @@
  */
 import type { Settings, Summary } from '@/lib/api'
 import { fmtUSD } from '@/lib/format'
-import { Panel, Stat } from '@/components/ui'
+import { Panel } from '@/components/ui'
 
 const dayWord = (n: number) => (n === 1 ? 'day' : 'days')
 
@@ -62,40 +62,61 @@ export function PlanValue({ summary, plan, days }: { summary?: Summary; plan?: S
       title="Plan value"
       right={<span className="num text-[12px] text-fg-muted">{plan.plan_label} · {fmtUSD(plan.plan_usd_per_month)}/mo</span>}
     >
-      {/* The same divided row of stats the Today panel uses, for the same
-        * reason: three figures of different weight read as a hierarchy when
-        * they share one grid and as a list when each carries its own layout.
+      {/* The comparison first, the conclusion after it.
         *
-        * The multiple leads at hero size because it is what the panel is
-        * about; the two figures it is derived from sit beside it, comparable
-        * at a glance. Previously the multiple was alone on the left at 4xl
-        * while the actual money sat right-aligned at 18px with a column of
-        * empty panel between — the derived number louder than the real ones,
-        * and most of the width spent on nothing. */}
-      <div className="grid grid-cols-2 lg:grid-cols-[1.1fr_1fr_1fr] divide-x divide-border">
-        <Stat
-          label={`worth · ${days}d`}
-          value={multiple > 0 ? `${multiple.toFixed(1)}×` : '—'}
-          tone="ok"
-          size="hero"
-          sub="what the same usage would have cost"
-        />
-        <Stat label={`you pay (${days}d)`} value={fmtUSD(fee)} sub={plan.plan_label} />
-        <Stat
-          label="same usage at API list"
-          value={fmtUSD(usage)}
-          tone="ok"
-          sub={`at list prices ${summary.pricing_version}`}
-        />
+        * Three equal cells made the multiple look like the subject and left a
+        * reader working out which two numbers it came from. It is the other
+        * way round: the money is the fact — what you pay against what the same
+        * work costs billed per token — and the multiple is what that
+        * comparison amounts to. So the two figures sit together as a pair with
+        * "vs" between them, and the multiple follows as the sentence they add
+        * up to. */}
+      <div className="px-3 py-3 grid gap-4 md:grid-cols-[auto_1fr] md:gap-8 md:items-center">
+        <div className="flex items-end gap-4 sm:gap-6">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.12em] text-fg-faint">
+              you pay · {days}d
+            </div>
+            <div className="num font-semibold tracking-[-0.01em] text-[30px] leading-[1.05] text-fg">
+              {fmtUSD(fee)}
+            </div>
+            <div className="text-[11px] text-fg-muted num">{plan.plan_label}</div>
+          </div>
+
+          <div className="pb-2 text-[13px] text-fg-faint">vs</div>
+
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.12em] text-fg-faint">
+              same usage at API list
+            </div>
+            <div className="num font-semibold tracking-[-0.01em] text-[30px] leading-[1.05] text-ok">
+              {fmtUSD(usage)}
+            </div>
+            <div className="text-[11px] text-fg-muted num">
+              at list prices {summary.pricing_version}
+            </div>
+          </div>
+        </div>
+
+        {/* The conclusion, set apart by a rule rather than by size: it is a
+          * derived figure and should not outshout the money it derives from. */}
+        <div className="md:border-l md:border-border md:pl-8">
+          <p className="text-[15px] leading-snug text-fg-muted max-w-[46ch]">
+            {multiple > 0 ? (
+              <>
+                <span className="num text-ok font-semibold">{multiple.toFixed(1)}×</span> what
+                the same {days} {dayWord(days)} would have cost through the API.
+              </>
+            ) : (
+              <>Not enough measured usage yet to compare.</>
+            )}
+          </p>
+          <p className="mt-2 text-[11px] text-fg-faint max-w-[56ch] leading-relaxed">
+            Not a discount you received, and not money back — without the plan
+            you would not have run this much.
+          </p>
+        </div>
       </div>
-      {/* The caveat stays, below the figures rather than beside them: it
-        * qualifies all three, and a reader who quotes the multiple should
-        * find it. */}
-      <p className="px-3 pb-3 text-[11px] text-fg-faint max-w-[72ch] leading-relaxed">
-        Measured from your own sessions at Anthropic list prices — not a discount
-        you received, and not money back. Without the plan you would not have run
-        this much.
-      </p>
     </Panel>
   )
 }

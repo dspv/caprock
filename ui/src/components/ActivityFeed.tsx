@@ -111,10 +111,19 @@ export function ActivityFeed({ sessions, now, emptyHint }: { sessions: SessionSu
           )}
         </div>
       ) : (
-        <div className="max-h-[420px] overflow-y-auto">
+        // A fade at the bottom edge, so a list that continues looks like one.
+        // With the scrollbar hidden and the last row cut off square, a feed
+        // with fifty more entries below looked exactly like a feed that had
+        // ended — the reader has no way to tell without trying to scroll. The
+        // gradient sits above the content and ignores pointer events, so it
+        // hints without taking a click.
+        <div className="relative">
+          <div className="max-h-[420px] overflow-y-auto">
           {items.map((it) => (
             <Row key={it.id} it={it} now={now} project={projects.current.get(it.sessionId)} />
           ))}
+          </div>
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-panel to-transparent" />
         </div>
       )}
     </Panel>
