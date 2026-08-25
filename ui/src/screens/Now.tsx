@@ -232,12 +232,16 @@ export function NowScreen() {
 }
 
 /**
- * Every session in one grid, grouped without a row per group.
+ * Every session as a full-width row, grouped without a row per group.
  *
- * A label is drawn above the card that starts each run rather than above the
- * run itself, which is what lets a one-card "Active" sit beside a one-card
- * "Idle" instead of each claiming a row. The label is absolutely positioned so
- * it costs no height and the cards stay on one baseline.
+ * Tiles three to a viewport made the figures small enough to be reference
+ * material — you read the project name and moved on. A session is the unit
+ * this screen is about, so it gets the width: the numbers come up to the size
+ * of the ones in Today, and the narration sits beside them instead of above a
+ * cramped four-column strip.
+ *
+ * The group label is drawn above the row that starts each run rather than
+ * above the run itself, and absolutely positioned so it costs no height.
  */
 function SessionGrid({
   groups,
@@ -257,7 +261,7 @@ function SessionGrid({
   )
   if (cells.length === 0) return null
   return (
-    <div className="mt-3 grid gap-2 gap-y-6 grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3">
+    <div className="mt-3 grid gap-2 gap-y-6">
       {cells.map(({ s, dim, label }) => (
         <div key={s.session_id} className={`relative ${dim ? 'opacity-80' : ''}`}>
           {label && (
@@ -321,16 +325,15 @@ export function SessionCard({ s, now }: { s: SessionSummary; now: number }) {
           {s.activity.plan.next && <span className="truncate max-w-[50%]">→ {s.activity.plan.next}</span>}
         </div>
       )}
-      {/* Compact: these are reference figures inside a card, three or four to a
-        * row. At the default size a long cost and a token count collide, and
-        * stepping them down is what leaves room for the screen's headline to
-        * be the biggest thing on the page. The session's own cost keeps the
-        * accent, so the money is still the first thing read in the card. */}
-      <div className="grid grid-cols-4 divide-x divide-border border-t border-border">
-        <Stat label="Cost" value={fmtUSD(s.stats.cost_usd)} sub={s.model || '—'} tone="info" size="compact" />
-        <Stat label="Tokens" value={fmtTokens(s.stats.tokens_in + s.stats.tokens_out + s.stats.cache_read + s.stats.cache_write)} sub={`${fmtPct(s.savings.hit_rate * 100)} cache hit`} size="compact" />
-        <Stat label="Context" value={ctx ? fmtPct(ctx.pct) : '—'} sub={ctx ? `${fmtTokens(ctx.tokens)} / ${fmtTokens(ctx.window)}` : 'unknown model'} tone={ctxTone} size="compact" />
-        <Stat label="Activity" value={s.stats.tool_calls} sub={`${s.stats.turns} turns · ${s.stats.files_touched} files`} size="compact" />
+      {/* Default size, not compact. Across a full row there is space for the
+        * figures to be read rather than referred to, and a session's own cost
+        * is the number this screen exists to surface. Cost keeps the accent so
+        * the money is still what the eye lands on first. */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-border border-t border-border">
+        <Stat label="Cost" value={fmtUSD(s.stats.cost_usd)} sub={s.model || '—'} tone="info" />
+        <Stat label="Tokens" value={fmtTokens(s.stats.tokens_in + s.stats.tokens_out + s.stats.cache_read + s.stats.cache_write)} sub={`${fmtPct(s.savings.hit_rate * 100)} cache hit`} />
+        <Stat label="Context" value={ctx ? fmtPct(ctx.pct) : '—'} sub={ctx ? `${fmtTokens(ctx.tokens)} / ${fmtTokens(ctx.window)}` : 'unknown model'} tone={ctxTone} />
+        <Stat label="Activity" value={s.stats.tool_calls} sub={`${s.stats.turns} turns · ${s.stats.files_touched} files`} />
       </div>
     </a>
   )

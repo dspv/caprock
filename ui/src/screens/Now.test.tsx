@@ -166,13 +166,12 @@ it('puts every session in one grid so a single active card does not reserve a ro
   const active = await screen.findByText(/Active · 1/)
   const idle = await screen.findByText(/Idle · 1/)
 
-  // The two cards must be siblings in one multi-column grid. `closest('.grid')`
-  // is no good here — an ancestor further up is also a grid, so it matches
-  // even when each state has its own container, which is the very layout this
-  // rejects. The test is on the cards' shared parent and its column classes.
+  // The rows must be siblings in one container. A grid per state is what put
+  // an "Active · 1" heading on its own row with the next state below it, and
+  // it is the thing this rejects — not any particular column count, which has
+  // since gone to one on purpose.
   const cardOf = (label: HTMLElement) => label.parentElement!
   const parent = cardOf(active).parentElement!
   expect(cardOf(idle).parentElement).toBe(parent)
-  expect(parent.className).toMatch(/grid-cols-1/)
-  expect(parent.className).toMatch(/lg:grid-cols-2/)
+  expect(parent.className).toMatch(/\bgrid\b/)
 })

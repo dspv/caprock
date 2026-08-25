@@ -4,7 +4,7 @@
  * is named beside the number, and nothing is claimed before anything has been
  * captured.
  */
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { LifetimeStrip } from './Lifetime'
 import type { History, Settings } from '@/lib/api'
@@ -23,8 +23,17 @@ const history = (over: Partial<History['totals']>): History =>
       files_touched: 2467, cost_usd: 10745.61, avg_session_sec: 116432, days: 58,
       ...over,
     },
-    tools: [],
-    summary: { models: [], projects: [] },
+    tools: [
+      { tool: 'Bash', count: 40839 },
+      { tool: 'Read', count: 11693 },
+    ],
+    summary: {
+      models: [
+        { model: 'claude-opus-5', tokens: 8_240_000_000, turns: 1, cost_usd: 5398.7 },
+        { model: 'claude-opus-4-8', tokens: 6_360_000_000, turns: 1, cost_usd: 3843.76 },
+      ],
+      projects: [],
+    },
   }) as unknown as History
 
 const plan = (kind: Settings['plan_kind']): Settings =>
@@ -56,10 +65,23 @@ describe('LifetimeStrip', () => {
     expect(screen.queryByText(/sessions a day/)).toBeNull()
   })
 
-  it('links to the screen holding the rest', async () => {
+  it('keeps the breakdown closed until asked', async () => {
     totals.value = history({})
     render(<LifetimeStrip plan={plan('flat')} />)
-    const link = await screen.findByRole('link')
-    expect(link).toHaveAttribute('href', '#/history')
+    await screen.findByText('$10,745.61')
+    // The total is the point of the line; the tables are a click away, so the
+    // strip stays one row on a screen that is mostly live panels.
+    expect(screen.queryByText('Most-used tools')).toBeNull()
+  })
+
+  it('opens the tool and model breakdowns in place', async () => {
+    totals.value = history({})
+    render(<LifetimeStrip plan={plan('flat')} />)
+    fireEvent.click(await screen.findByRole('button', { name: /tools and models/i }))
+    expect(screen.getByText('Most-used tools')).toBeTruthy()
+    expect(screen.getByText('Bash')).toBeTruthy()
+    expect(screen.getByText('claude-opus-5')).toBeTruthy()
+    // And still offers the full tables for anything the top few leave out.
+    expect(screen.getByRole('link')).toHaveAttribute('href', '#/history')
   })
 })
