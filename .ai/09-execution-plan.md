@@ -231,3 +231,31 @@ committed to a release yet; each item still needs its own DoD before it starts.
   cost, no conversation content** (content lives in LevelDB and is out of
   scope). Any surface must be labelled as plan-usage level, never presented as
   tokens or dollars, or it breaks Rule 6.
+
+- **B4 — The paid tier: a daily spend cap (SELLING, not built).** Payment is
+  live on `caprock.dev/premium` — a Stripe product with two prices ($5/month,
+  $30/year) and a page stating what the plan does. The point is to learn
+  whether anyone pays *before* spending on traffic: buying an audience for a
+  funnel that has never converted once is the expensive way to find out it
+  does not.
+
+  What was sold, and therefore what has to be built: a daily cost threshold
+  that **pauses the sessions Caprock spawned** when the day crosses it; a
+  suggested threshold derived from the user's own history rather than guessed
+  at; and an off-machine alert. Sessions the user started by hand are never
+  touched (Rule 7 predates this and survives it).
+
+  The alert is the part with a design constraint rather than an implementation
+  one. A local-first product cannot email anyone about their spend without
+  that spend leaving the machine, which is the promise the whole product rests
+  on. **Resolved: the user configures their own channel** — their Telegram bot
+  token or a webhook URL — and Caprock posts to it directly. Data leaves the
+  machine to its owner, through a channel they control, and nothing reaches
+  Cybrix. Routing it through us would mean shipping cost figures to a server,
+  which is what people install this instead of.
+
+- **B5 — Token-reduction plugins (idea, unscoped).** Owner's note, 2026-08-26:
+  ship or integrate plugins that cut token consumption (the "caveman" style of
+  terse prompting is the example given), offered as part of what a paying
+  customer gets. Nothing costed, nothing designed, and it sits behind B4 —
+  which has customers waiting on it.
