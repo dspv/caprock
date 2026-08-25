@@ -10,6 +10,19 @@ import base64, json, pathlib, sqlite3, subprocess, sys, time, urllib.request
 DB = pathlib.Path(__file__).parent / "shotdata" / "caprock.db"
 THIS_SESSION = "8e968de8-d2a4-428f-a7d9-2658b3e6937f"
 
+# Repository names are as identifying as paths, and rewriting the paths alone
+# left them on screen: an employer's name, a person's surname, a client's
+# project. Anything not on this allow-list is renamed to a neutral stand-in,
+# so a name that has never been seen before is anonymised by default rather
+# than published because nobody thought to add it to a block-list.
+KEEP_PROJECTS = {"caprock"}
+STAND_INS = [
+    "acme-api", "acme-web", "payments-core", "billing", "checkout",
+    "inventory", "notify-svc", "search-index", "data-pipeline", "auth-gateway",
+    "scheduler", "reporting", "admin-panel", "mobile-bff", "worker-pool",
+    "ingest", "catalog", "pricing-svc", "risk-engine", "web-client",
+]
+
 
 def scrub():
     """Hide the capturing session and any real path it reintroduced.
@@ -35,9 +48,47 @@ def scrub():
                                  ("-Users-ds-", "-Users-dev-")):
                 c.execute(f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
                           (old_s, new_s, f"%{old_s}%"))
+        # Rename every project that is not explicitly kept. Done after the
+        # path rewrites so a name reintroduced through a path is caught too.
+        c.execute("SELECT DISTINCT project FROM sessions WHERE project IS NOT NULL AND project != ''")
+        # Longest first. These are substring replacements, so renaming `repo`
+        # before `reporting` turns the latter into `<stand-in>rting` — which is
+        # both wrong and a giveaway that something was rewritten.
+        names = sorted((r[0] for r in c.fetchall() if r[0] not in KEEP_PROJECTS),
+                       key=lambda n: (-len(n), n))
+        # Two passes through a placeholder no repository name contains. A single
+        # pass rewrites into names that later iterations then rewrite again —
+        # `reporting` became `<stand-in>rting` because an earlier round had
+        # already replaced the `repo` inside it.
+        cols = (("sessions", "project"), ("sessions", "cwd"),
+                ("sessions", "repo_root"), ("sessions", "repo_path"),
+                ("sessions", "transcript_path"), ("events", "touch_dir"),
+                ("events", "payload"), ("session_files", "path"))
+        mapping = []
+        for i, real in enumerate(names):
+            fake = STAND_INS[i % len(STAND_INS)]
+            if i >= len(STAND_INS):
+                fake = f"{fake}-{i // len(STAND_INS) + 1}"
+            mapping.append((real, f"~~SCRUB{i}~~", fake))
+        # `payload` is JSON holding the text the feed renders — a command line,
+        # a file path, a fetched URL. A name reaches the screen through those
+        # as readily as through the project column, so the whole blob is
+        # rewritten rather than a chosen field: the alternative is enumerating
+        # every key the UI might ever display.
+        for real, token, _ in mapping:
+            for t, col in cols:
+                c.execute(f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
+                          (real, token, f"%{real}%"))
+        for _, token, fake in mapping:
+            for t, col in cols:
+                c.execute(f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
+                          (token, fake, f"%{token}%"))
+        print(f"  scrubbed {len(names)} project name(s)")
         db.commit(); db.close()
+        return True
     except Exception as e:
-        print(f"  scrub skipped: {e}")
+        print(f"  scrub FAILED: {e}")
+        return False
 
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 PORT = 9222
@@ -68,6 +119,16 @@ def main():
         from websocket import create_connection
     except ImportError:
         print("need websocket-client: pip install websocket-client"); return 1
+
+    # Before anything is captured. `scrub` was defined and never called, so
+    # every run relied on whoever ran it having anonymised the database by
+    # hand — which happened to be true, and would have stopped being true the
+    # first time someone forgot. A failure here is fatal rather than a
+    # warning: publishing a screenshot of real repository names is not a thing
+    # to discover afterwards.
+    if not scrub():
+        print("refusing to shoot: the database was not scrubbed")
+        return 1
 
     proc = subprocess.Popen(
         [CHROME, "--headless=new", f"--remote-debugging-port={PORT}",
