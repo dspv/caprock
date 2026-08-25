@@ -90,3 +90,16 @@ export function fmtTool(name: string): string {
   const m = /^mcp__(.+?)__(.+)$/.exec(name)
   return m ? `${m[1]}·${m[2]}` : name
 }
+
+// fmtModel drops a model's trailing snapshot date, which is the only part that
+// wraps: `claude-haiku-4-5-20251001` is the same model as `claude-haiku-4-5`,
+// and the eight digits push the name onto a second line where every sibling
+// fits on one. Only a trailing run of 6+ digits goes — a version like `4-5` is
+// what distinguishes two models and always stays.
+//
+// The full id is not lost, it moves to the row's tooltip: someone reconciling
+// against an invoice needs the snapshot, and everyone else needs the column to
+// line up.
+export function fmtModel(id: string): string {
+  return id.replace(/-\d{6,}$/, '…')
+}

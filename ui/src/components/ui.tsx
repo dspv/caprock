@@ -40,13 +40,17 @@ export function Stat({ label, value, sub, tone, size = 'default' }: {
   const toneCls = tone === 'ok' ? 'text-ok' : tone === 'warn' ? 'text-warn' : tone === 'danger' ? 'text-danger' : tone === 'info' ? 'text-info' : 'text-fg'
   const valueCls = size === 'hero' ? 'text-[34px] leading-[1.05]' : size === 'compact' ? 'text-[17px] leading-tight' : 'text-[24px] leading-[1.1]'
   return (
-    <div className="px-3 py-2.5 min-w-0">
+    // A column with the caption pushed to the bottom, so captions line up
+    // across a row whatever sits above them. One tile's caption wrapping to two
+    // lines used to drag every neighbour's off the shared baseline, which read
+    // as text stuck to the underside of a number rather than as a row.
+    <div className="flex h-full flex-col px-3 py-2.5 min-w-0">
       <div className="text-[10px] uppercase tracking-[0.12em] text-fg-faint">{label}</div>
       {/* Semibold, not just larger: weight separates a figure from its
        * neighbours without spending a pixel of density, which is what a dense
        * dashboard needs. The product had no semibold anywhere. */}
       <div className={`num font-semibold tracking-[-0.01em] ${valueCls} ${toneCls}`}>{value}</div>
-      {sub && <div className="text-[11px] text-fg-muted num truncate">{sub}</div>}
+      {sub && <div className="mt-auto pt-1 text-[11px] text-fg-muted num truncate">{sub}</div>}
     </div>
   )
 }

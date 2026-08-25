@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { api, type DailyStat, type RateWindow } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
-import { fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
+import { fmtModel, fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
 import { Empty, Panel, Skeleton, Stat } from '@/components/ui'
 import { BarChart, BarReadout } from '@/components/BarChart'
+import { DayGrid } from '@/components/DayGrid'
 import { PlanValue } from '@/components/PlanValue'
 import { usePlan } from '@/components/PlanPicker'
 import { costBasis, costBasisLong } from '@/components/CostBasis'
@@ -22,6 +23,7 @@ export function CostScreen() {
   const daily = useApi(() => api.daily(30), [], { intervalMs: 30000 })
   const [plan] = usePlan()
   const [activeDay, setActiveDay] = useState<string | null>(null)
+  const [dayView, setDayView] = useState<'calendar' | 'bars'>('calendar')
   const s = summary.data
   // Before anything has been captured the API returns Go zero values, so this
   // screen rendered a board of $0.00 / 0 with a warn-toned "0% hit rate" — a
@@ -67,7 +69,7 @@ export function CostScreen() {
             <tbody>
               {(s?.models ?? []).map((m) => (
                 <tr key={m.model} className="border-b border-border/60 last:border-0">
-                  <td className="px-3 py-1 mono">{m.model || 'unknown'}</td>
+                  <td className="px-3 py-1 mono" title={m.model || undefined}>{m.model ? fmtModel(m.model) : 'unknown'}</td>
                   <td className="px-3 py-1 num text-right text-fg-muted">{m.turns} turns</td>
                   <td className="px-3 py-1 num text-right text-fg-muted">{fmtTokens(m.tokens)}</td>
                   {/* An unpriced model summed to 0 and rendered "$0.00",
@@ -99,13 +101,40 @@ export function CostScreen() {
           </table>
         </Panel>
       </div>
-      <Panel
-        title="Last 30 days"
-        right={<BarReadout bars={days} active={activeDay} total={days.reduce((a, d) => a + d.cost, 0)} />}
-      >
-        {!daily.data ? <Skeleton rows={2} /> : days.length === 0 && <Empty title="No history yet" />}
-        {days.length > 0 && <BarChart bars={days} active={activeDay} onActive={setActiveDay} />}
-      </Panel>
+      {/* The month and the limits share a row: the chart does not need full
+          width to be read, and the two limit rows left most of theirs empty.
+          Side by side each one is the size of what it has to say. */}
+      <div className="grid gap-3 lg:grid-cols-3">
+        <Panel
+          className="lg:col-span-2"
+          title="Last 30 days"
+          right={
+            <span className="flex items-center gap-3">
+              <BarReadout bars={days} active={activeDay} total={days.reduce((a, d) => a + d.cost, 0)} />
+              {/* Two readings of the same month: the calendar shows the rhythm
+                * — which weekdays you work — and the bars show the amounts. */}
+              <span className="flex items-center gap-1">
+                {(['calendar', 'bars'] as const).map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => setDayView(v)}
+                    className={`px-1.5 py-0.5 rounded-sm text-[11px] ${dayView === v ? 'bg-panel-2 text-fg' : 'text-fg-faint hover:text-fg'}`}
+                  >
+                    {v}
+                  </button>
+                ))}
+              </span>
+            </span>
+          }
+        >
+          {!daily.data ? <Skeleton rows={2} /> : days.length === 0 && <Empty title="No history yet" />}
+          {days.length > 0 &&
+            (dayView === 'calendar' ? (
+              <DayGrid bars={days} active={activeDay} onActive={setActiveDay} />
+            ) : (
+              <BarChart bars={days} active={activeDay} onActive={setActiveDay} />
+            ))}
+        </Panel>
       {s?.rate_limits && (
         <Panel title="Plan limits">
           {/* px-3 like every other panel's body. Without it the rows ran into
@@ -121,6 +150,7 @@ export function CostScreen() {
           </div>
         </Panel>
       )}
+      </div>
       <div className="text-[11px] text-fg-faint">
         {s && s.throttles > 0
           ? `${s.throttles} rate-limit / overloaded event${s.throttles === 1 ? "" : "s"} observed in this range (from Claude Code's StopFailure hook).`
