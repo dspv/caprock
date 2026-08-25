@@ -28,6 +28,30 @@ is embedded, so it works with no Node build. No package manager? Grab a binary
 from [Releases](https://github.com/dspv/caprock/releases).
 
 <details>
+<summary><b>Or let Claude Code install it</b> — paste one prompt into the session you already have open.</summary>
+
+It picks the right command for your machine, so there is nothing to choose. The
+`--yes` is load-bearing: consent for the hook is refused rather than assumed
+when stdin is not a terminal, which is what an agent's shell gives it, so
+without the flag you would get a dashboard that never sees a session.
+
+```text
+Install Caprock (local dashboard for Claude Code) from
+https://github.com/dspv/caprock — not any similarly-named package on PyPI or npm.
+
+  macOS/Linux:  brew install dspv/tap/caprock
+  Windows:      scoop bucket add dspv https://github.com/dspv/scoop-bucket
+                scoop install caprock
+
+Then run `caprock up --yes` (the flag lets it install its hook; without it your
+non-interactive shell silently skips that) and tell me the URL it prints.
+
+Stuck? https://caprock.dev/install.md — do not start or type into any claude session.
+```
+
+</details>
+
+<details>
 <summary><b>Coming from the old Python <code>caprock</code>?</b> Remove it first.</summary>
 
 There was an earlier, unrelated Caprock on PyPI — a command-line stats tool that
