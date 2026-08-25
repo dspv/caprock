@@ -1,0 +1,116 @@
+# Caprock for Teams
+
+**Status: specified, not built.** This is the design, the boundary and the open
+questions — written before any code so the shape is argued once rather than
+discovered halfway through. Nothing here has shipped.
+
+## What it is
+
+One Caprock, run by the team, that every machine reports into. The single-machine
+product answers "what is my Claude doing"; this answers the same question for
+eight laptops at once, which is the version a lead pays for.
+
+**Self-hosted, not a service we run.** The team installs one server on a box
+they control. This is the only shape that keeps the promise the free product is
+built on — all data stays on machines you own — and that promise is not a
+marketing line but the reason a company installs a tool that reads every
+transcript on every developer's disk. A hosted version would mean shipping
+prompts, replies and tool output to us, and no engineering leader signs that
+off for a cost dashboard.
+
+## What a team cannot see today, and what this shows
+
+The three problems the site already names, and the answer to each:
+
+- **The bill arrives as one number.** Cost per person, per repository, per day,
+  across every machine — from the same transcripts the free product already
+  reads, so the figures are the ones each developer sees locally, added up.
+- **A looping session drains a plan in minutes.** The loop detector runs
+  per-machine today; the team view surfaces it centrally, so someone other than
+  the person at that laptop can see it.
+- **Agents run on eight laptops.** One live screen showing every session in the
+  team: what it is doing, what it has spent, which repository it is in.
+
+## The boundary
+
+**Free stays whole.** Everything the single-machine product does today remains
+Apache-2.0 and unchanged: capture, cost, history, prose search, loop alerts, the
+task runner, the OpenCode reader. A team feature is never carved out of the free
+product to create a reason to pay.
+
+Paid is the *aggregation across machines*, which does not exist today and cannot
+be had by running the free binary harder:
+
+| Free (Apache-2.0)             | Teams (paid)                           |
+| ----------------------------- | -------------------------------------- |
+| One machine, all its sessions | Every machine, one screen              |
+| Your cost, your repositories  | Cost per person and per repository     |
+| Your loop alerts              | Loop alerts anyone on the team can see |
+| Your history and prose search | Team history, searchable across people |
+| Task runner on your machine   | (unchanged — no team task runner yet)  |
+
+## How it works
+
+Three pieces, each already half-built by the free product.
+
+**The agent.** The existing daemon, with an outbound reporter added. It sends
+what it already computes — session identity, totals, activity phrase — to the
+team server on the same cadence the dashboard polls. It never sends prompts,
+replies or tool output. That is not a setting: the payload has no field for
+them, so a misconfiguration cannot leak one.
+
+**The server.** A second binary, or the same binary in a second mode. Receives
+reports, stores them in one SQLite database, and serves a dashboard that is the
+existing UI with a person column added. Runs on one box the team controls; no
+inbound access to any developer's machine is required, which is what makes it
+installable inside a corporate network.
+
+**Enrolment.** A token per team, put in each developer's config. Deliberately
+the dullest possible mechanism for a first version: no accounts, no SSO, no
+invitations. A team that needs SSO is a team that will say so, and building it
+before then is guessing.
+
+## What is deliberately not in the first version
+
+Each of these is a real request that will come, and each is cheaper to add later
+than to guess at now:
+
+- **SSO and roles.** Everyone who has the token sees everything. A ten-person
+  team does not need permissions; a hundred-person one does, and by then the
+  shape of what they want is knowable rather than imagined.
+- **Budget enforcement.** Alerts, yes; automatically stopping someone else's
+  session, no. Killing a colleague's work from a dashboard is a decision with
+  consequences we cannot see, and it is the kind of feature that gets a tool
+  banned rather than adopted.
+- **A team task runner.** The orchestrator is per-machine and stays that way.
+  Coordinating unattended agents across machines is a different product.
+- **Hosted anything.** See above.
+
+## Open questions
+
+These are decisions, not details, and each changes the work:
+
+- **What does a person's identity look like?** A machine name is what the agent
+  knows; a person is what the buyer wants to see. Git author email is the
+  obvious mapping and it is wrong on shared machines and CI.
+- **What happens to a developer who is offline?** Reports queue and catch up, or
+  the gap shows as a gap. The second is more honest and looks broken.
+- **How is it priced?** Per seat is conventional and penalises the team that
+  installs it everywhere, which is exactly what makes the product work. Per
+  team, banded by size, may be better.
+- **Does the free binary carry the reporter?** One binary is simpler to ship and
+  means the free product contains code for a paid feature. A separate build
+  avoids that and doubles the release matrix.
+
+## Why write this before building it
+
+The single-machine product was built by measuring first — the OpenCode work
+started by reading a real database rather than by designing an importer. There
+is no equivalent measurement available here: nobody is running a team version to
+observe. What replaces it is stating the shape plainly enough that its costs are
+visible, so the argument happens now rather than in the middle of an
+implementation.
+
+The commercial decision — whether to build this at all — is still gated on
+demand, per [01-product.md](01-product.md). The form on `/teams` is what
+collects it.

@@ -90,7 +90,9 @@ Full definitions of done per phase: [09-execution-plan.md](09-execution-plan.md)
 
 ## Free tier / limits
 
-Free OSS through Phases 0–1; the open-core (team/cloud tier) decision is deferred until post-Phase-2 traction. **Solo/local mode stays free permanently** ([ADR-005](08-decisions.md#adr-005--monetization-free-oss-through-phases-01-open-core-deferred-solo-mode-free-forever)). There is no cap to enforce: nothing phones home, nothing is metered.
+Free OSS through Phases 0–1. The open-core decision is taken in principle —
+self-hosted team tier, free product never carved up ([ADR-021](08-decisions.md),
+[17-teams.md](17-teams.md)) — while whether to build it remains gated on demand. **Solo/local mode stays free permanently** ([ADR-005](08-decisions.md#adr-005--monetization-free-oss-through-phases-01-open-core-deferred-solo-mode-free-forever)). There is no cap to enforce: nothing phones home, nothing is metered.
 
 ## Trust contract
 
@@ -126,6 +128,10 @@ Promises enforced by code, each with the test that proves it:
 
 - Pixel-art office, avatars, animations — later, as a render mode of the event stream (and only with cleanly licensed assets; Munder Difflin's LimeZu art is non-commercial).
 - Multi-provider engines (codex/gemini/grok) — architecture keeps `command` configurable per agent, but only `claude` is tested/supported in MVP.
-- P2P / team features, cloud anything.
+- Cloud anything, permanently: a hosted tier would mean shipping prompts,
+  replies and tool output off the machine, which is the one thing this product
+  exists not to do. Team features are no longer "out of scope" but "specified,
+  not built" — self-hosted only, shape in [17-teams.md](17-teams.md), and still
+  gated on demand.
 - Semantic memory index — plain markdown memory per agent is enough.
 - Phase 0 non-goals specifically: spawning agents, typing into sessions, tasks/kanban, mailboxes, approvals, avatars.

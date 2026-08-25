@@ -259,3 +259,36 @@ A security audit found five defects sharing one root cause: **Caprock treated fi
 **Rules out:** trusting any field parsed out of a hive file to be a safe path component; force-resetting a branch under any circumstance; deleting a worktree that may hold unmerged work; whole-file rewrites of a user's config through an order-losing codec; one-way changes to files Caprock does not own.
 
 **Revisit if:** the hive gains a legitimate need for hierarchical agent ids (then `validID` needs a defined grammar rather than a character denylist, and `withinRoot` becomes the primary guard); or worktree accumulation becomes a real complaint, in which case the merged-only prune above is the shape to build.
+
+## ADR-021 — The team tier is self-hosted, and the free product is not carved up
+
+**Decided 2026-08-25. Specified, not built.**
+
+A team version aggregates what the single-machine product already computes:
+cost per person and per repository across every machine, one live screen, loop
+alerts anyone can see. Three decisions fix its shape.
+
+**Self-hosted only.** The team runs the server on a box they control. Caprock's
+whole premise is that a binary reading every transcript on a developer's disk
+sends nothing anywhere; a hosted tier would mean shipping prompts, replies and
+tool output to us, and no engineering leader signs that off for a cost
+dashboard. The privacy promise is the product, not a feature of it.
+
+**The free product stays whole.** Everything Apache-2.0 today remains so and
+unchanged. What is paid is the cross-machine aggregation, which does not exist
+and cannot be had by running the free binary harder — so nothing is removed
+from anyone to manufacture a reason to pay.
+
+**The reporter cannot leak prose.** It sends session identity, totals and the
+activity phrase. Prompts, replies and tool output are absent from the payload
+by construction rather than by configuration, so a misconfiguration cannot
+send one.
+
+Deliberately excluded from a first version: SSO, roles, budget enforcement that
+stops someone else's session, a cross-machine task runner. Each is a real
+request that is cheaper to add once asked for than to guess at now — and
+killing a colleague's session from a dashboard is the kind of feature that gets
+a tool banned rather than adopted.
+
+Full shape and the open questions are in [17-teams.md](17-teams.md). Whether to
+build it at all is still gated on demand.

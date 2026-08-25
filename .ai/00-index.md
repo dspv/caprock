@@ -20,6 +20,7 @@ Caprock is a local, open-source **mission control for Claude Code**: a single st
 | [13-testing.md](13-testing.md)                     | Coverage per package, what it does not mean, known gaps         | Writing tests, judging risk                        |
 | [14-build-status.md](14-build-status.md)           | What is built, what is not, next action, log                    | Checking progress                                  |
 | [16-opencode.md](16-opencode.md)                   | OpenCode support: what it gives us, decisions, traps, plan      | Adding or changing OpenCode support                |
+| [17-teams.md](17-teams.md)                         | The team tier: shape, boundary, open questions (not built)      | Working on anything paid                           |
 
 These files absorbed the hand-off specification (`CaprockV2-SPEC.md`, deleted after the loss audit recorded in [docs/migration-audit.md](../docs/migration-audit.md)). The spec is not a separate source of truth — **these files are**. (Numbering is non-contiguous by design — 11 was never used; nothing is missing.)
 
