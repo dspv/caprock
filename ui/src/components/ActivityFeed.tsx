@@ -8,7 +8,7 @@
  * a feed of raw event kinds is noise, and noise is what makes people stop
  * looking.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { api, type SessionSummary } from '@/lib/api'
 import { live } from '@/lib/live'
 import { pushItem, toFeedItem, type FeedItem } from '@/lib/feed'
@@ -16,7 +16,7 @@ import { fmtAgo, shortId } from '@/lib/format'
 import { Panel } from '@/components/ui'
 import { href } from '@/lib/router'
 
-export function ActivityFeed({ sessions, now }: { sessions: SessionSummary[]; now: number }) {
+export function ActivityFeed({ sessions, now, emptyHint }: { sessions: SessionSummary[]; now: number; emptyHint?: ReactNode }) {
   const [items, setItems] = useState<FeedItem[]>([])
   const [paused, setPaused] = useState(false)
   // Held in a ref so the WS subscription never re-subscribes when sessions load.
@@ -103,7 +103,12 @@ export function ActivityFeed({ sessions, now }: { sessions: SessionSummary[]; no
     >
       {items.length === 0 ? (
         <div className="px-3 py-4 text-[12px] text-fg-muted">
-          Nothing yet — start <span className="mono">claude</span> in any terminal.
+          {/* Under an agent filter this is "nothing from that agent", not
+            * "nothing at all" — and telling someone to start `claude` when
+            * they filtered for OpenCode is advice for the wrong program. */}
+          {emptyHint ?? (
+            <>Nothing yet — start <span className="mono">claude</span> in any terminal.</>
+          )}
         </div>
       ) : (
         <div className="max-h-[420px] overflow-y-auto">

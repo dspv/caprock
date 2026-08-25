@@ -88,14 +88,23 @@ export function NowScreen() {
               * that runs one agent these would be three buttons that change
               * nothing. */}
             {hasBoth && (
-              <span className="inline-flex border border-border rounded-sm overflow-hidden">
+              /* Bigger than the range buttons beside it, and the selection is
+                * a filled pill rather than a slightly lighter cell: this
+                * changes what every figure on the screen means, so it has to
+                * be readable at a glance and unmistakable about which one is
+                * on. At 11px in a bordered strip the active state was a shade
+                * of grey — a control whose state you have to squint at is one
+                * people misread. */
+              <span className="inline-flex items-center gap-0.5 rounded-md bg-panel-2 p-0.5">
                 {AGENTS.map((a) => (
                   <button
                     key={a.key}
                     onClick={() => setAgent(a.key)}
                     title={a.key === 'all' ? 'Both agents' : `Only ${a.label}`}
-                    className={`px-1.5 py-0.5 text-[11px] mono ${
-                      agent === a.key ? 'bg-panel-2 text-fg' : 'text-fg-faint hover:text-fg-muted'
+                    className={`px-2.5 py-1 text-[12px] mono rounded-[5px] transition-colors ${
+                      agent === a.key
+                        ? 'bg-accent text-panel font-medium'
+                        : 'text-fg-muted hover:text-fg'
                     }`}
                   >
                     {a.label}
@@ -135,7 +144,17 @@ export function NowScreen() {
 
       {/* What is happening (left) beside what it costs (right). */}
       <div className="grid gap-3 lg:grid-cols-2">
-        <ActivityFeed sessions={list} now={now} />
+        <ActivityFeed
+          sessions={list}
+          now={now}
+          emptyHint={
+            agent === 'all' ? undefined : (
+              <>
+                Nothing from {agent === 'opencode' ? 'OpenCode' : 'Claude Code'} yet.
+              </>
+            )
+          }
+        />
         <ProjectsPanel sessions={list} agent={agent} />
       </div>
 
