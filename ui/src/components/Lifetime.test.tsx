@@ -65,13 +65,16 @@ describe('LifetimeStrip', () => {
     expect(screen.queryByText(/sessions a day/)).toBeNull()
   })
 
-  it('says what the paid link does rather than naming a feature', async () => {
+  it('does not hawk the paid limit on an ordinary day', async () => {
     totals.value = history({})
     render(<LifetimeStrip plan={plan('flat')} />)
-    const cap = await screen.findByRole('link', { name: /set a daily limit/i })
-    expect(cap).toHaveAttribute('href', 'https://caprock.dev/premium')
-    // The offer stays a link, not a price: quoting a figure inside the
-    // dashboard turns a tool someone installed into a storefront.
+    await screen.findByText('$10,745.61')
+    // The offer belongs to the days that argue for it. A permanent link is
+    // wallpaper: read once, ignored after, and faintly grubby on a tool
+    // someone installed for its own sake.
+    expect(screen.queryByText(/set a limit/i)).toBeNull()
+    // And no price anywhere: quoting a figure inside the dashboard turns a
+    // tool someone installed into a storefront.
     expect(document.body.textContent).not.toMatch(/\$\d+\s*\/\s*(mo|month)/i)
   })
 })

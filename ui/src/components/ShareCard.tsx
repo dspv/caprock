@@ -25,12 +25,29 @@ function token(name: string, fallback: string): string {
   return v || fallback
 }
 
+/**
+ * The last round number this machine has passed, if it passed it recently.
+ *
+ * People share milestones, not arbitrary Tuesdays. "Just crossed $10,000" is a
+ * thing someone posts; "$10,847.31" is not. Recent means within a tenth of the
+ * step — cross $10,000 and it is worth mentioning for a while, but by $12,000
+ * the moment has gone and a button still shouting about it is noise.
+ */
+function milestone(cost: number): number | null {
+  const steps = [1000, 5000, 10_000, 25_000, 50_000, 100_000]
+  const passed = steps.filter((v) => cost >= v).pop()
+  if (!passed) return null
+  return cost - passed <= passed * 0.1 ? passed : null
+}
+
 export function ShareCard() {
   const h = useApi(() => api.history('all'), [], { intervalMs: 60000 })
   const [done, setDone] = useState(false)
   const canvas = useRef<HTMLCanvasElement | null>(null)
   const t = h.data?.totals
   if (!t || t.sessions === 0) return null
+
+  const reached = milestone(t.cost_usd)
 
   // No multiple here. It needs the window's calendar span to divide a monthly
   // fee by, and this endpoint reports active days only — dividing by those
@@ -115,12 +132,22 @@ export function ShareCard() {
 
   return (
     <>
+      {/* Louder for a while after a round number is crossed, quiet the rest of
+        * the time. The button is always there; only its volume moves. */}
       <button
         onClick={draw}
-        className="rounded-sm border border-border px-1.5 py-0.5 text-[11px] text-fg-muted hover:border-border-strong hover:text-fg"
+        className={`rounded-sm border px-1.5 py-0.5 text-[11px] ${
+          reached
+            ? 'border-accent/50 bg-accent/10 text-accent hover:bg-accent/20'
+            : 'border-border text-fg-muted hover:border-border-strong hover:text-fg'
+        }`}
         title="Draw a shareable image of these figures. Nothing is uploaded — it saves to your downloads."
       >
-        {done ? 'saved ✓' : 'share these numbers'}
+        {done
+          ? 'saved ✓'
+          : reached
+            ? `you just passed ${fmtUSD(reached)} — share it`
+            : 'share these numbers'}
       </button>
       <canvas ref={canvas} width={W} height={H} className="hidden" />
     </>

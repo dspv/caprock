@@ -545,3 +545,33 @@ describe('ProjectsPanel figures', () => {
     expect(screen.getByText(/projects/i)).toBeTruthy()
   })
 })
+
+/**
+ * The team offer appears only when the machine itself makes the case — a
+ * count of repositories one person does not usually carry alone. Below that
+ * it is a guess about a stranger's situation, made inside their own
+ * dashboard, which is how a tool starts feeling like a funnel.
+ */
+describe('the team hint', () => {
+  const repos = (n: number): ProjectShare[] =>
+    Array.from({ length: n }, (_, i) => ({
+      project: `repo-${i}`,
+      tokens: 1000,
+      cost_usd: 10,
+      sessions: 1,
+    })) as ProjectShare[]
+
+  it('stays away on a machine with a handful of repositories', async () => {
+    projects.value = repos(6)
+    render(<ProjectsPanel sessions={[]} agent="all" />)
+    expect(await screen.findByText('repo-0')).toBeTruthy()
+    expect(screen.queryByText(/repositories on one machine/)).toBeNull()
+  })
+
+  it('appears once the count is one a person does not usually carry alone', async () => {
+    projects.value = repos(25)
+    render(<ProjectsPanel sessions={[]} agent="all" />)
+    expect(await screen.findByText(/25 repositories on one machine\./)).toBeTruthy()
+    expect(screen.getByText(/See them across the team/)).toBeTruthy()
+  })
+})

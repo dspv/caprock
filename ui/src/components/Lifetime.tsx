@@ -52,20 +52,7 @@ export function LifetimeStrip({ plan }: { plan?: Settings }) {
         * two breakdowns people actually ask for. The Lifetime screen keeps the
         * full tables — this is the shape of them, where the total already is. */}
       <span className="ml-auto inline-flex items-baseline gap-4">
-        {/* The one place in the product where a paid feature is offered against
-          * a number that makes the case for it. Someone reading their own
-          * lifetime total is, at that moment, the person most likely to want a
-          * limit on it — and it stays a link at the weight of the one beside
-          * it, because a dashboard is not a checkout. */}
-        <a
-          href="https://caprock.dev/premium"
-          target="_blank"
-          rel="noreferrer"
-          className="text-[11px] text-fg-faint hover:text-accent no-underline"
-          title="Caprock pauses the sessions it started once the day's cost passes a number you choose"
-        >
-          set a daily limit →
-        </a>
+        <CapHint />
       </span>
     </div>
   )
@@ -78,5 +65,48 @@ function Figure({ value, label }: { value: string; label: string }) {
       <span className="num text-[13px] text-fg">{value}</span>
       <span className="text-[11px] text-fg-muted">{label}</span>
     </span>
+  )
+}
+
+/**
+ * The spend-cap offer, shown on the days it would have been worth having.
+ *
+ * A permanent link is wallpaper — read once, ignored after. This appears when
+ * today has already cost half again what a normal day costs on this machine,
+ * which is both when the thought occurs on its own and the only honest moment
+ * to raise it. On an ordinary day it is absent, and the row is quieter for it.
+ *
+ * The comparison is against the median of the last thirty days rather than the
+ * mean: one runaway afternoon drags a mean upward and would then suppress the
+ * hint on exactly the days that follow it.
+ */
+function CapHint() {
+  const daily = useApi(() => api.daily(30), [], { intervalMs: 300000 })
+  const today = useApi(() => api.summary('today'), [], { intervalMs: 30000 })
+
+  const rows = daily.data ?? []
+  if (rows.length === 0) return null
+
+  const byDay = new Map<string, number>()
+  for (const r of rows) byDay.set(r.day, (byDay.get(r.day) ?? 0) + r.cost_usd)
+  const spent = [...byDay.values()].filter((v) => v > 0).sort((a, b) => a - b)
+  // Fewer than a week of data is not a baseline, and a threshold drawn from
+  // two days would fire on the second one.
+  if (spent.length < 7) return null
+
+  const median = spent[Math.floor(spent.length / 2)] ?? 0
+  const cost = today.data?.cost_usd ?? 0
+  if (median <= 0 || cost < median * 1.5) return null
+
+  return (
+    <a
+      href="https://caprock.dev/premium"
+      target="_blank"
+      rel="noreferrer"
+      className="text-[11px] text-warn hover:text-accent no-underline"
+      title="Caprock pauses the sessions it started once the day's cost passes a number you choose"
+    >
+      today is {(cost / median).toFixed(1)}× a normal day — set a limit →
+    </a>
   )
 }

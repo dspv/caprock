@@ -85,4 +85,5 @@ describe('BreakdownPanel', () => {
       await screen.findByRole('link', { name: /every tool, model and project/i }),
     ).toHaveAttribute('href', '#/history')
   })
+
 })

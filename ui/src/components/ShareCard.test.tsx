@@ -45,7 +45,7 @@ describe('ShareCard', () => {
     data.value = history()
     stubCanvas()
     render(<ShareCard />)
-    ;(await screen.findByRole('button', { name: /share these numbers/i })).click()
+    ;(await screen.findByRole('button', { name: /share/i })).click()
 
     const all = drawn.text.join(' ')
     expect(all).toContain('$10,845.61')
@@ -58,7 +58,7 @@ describe('ShareCard', () => {
     data.value = history()
     stubCanvas()
     render(<ShareCard />)
-    ;(await screen.findByRole('button', { name: /share these numbers/i })).click()
+    ;(await screen.findByRole('button', { name: /share/i })).click()
 
     // The endpoint reports active days, not the window's calendar span, so a
     // multiple built here divided 59 days of plan into 95 days of usage and
@@ -70,7 +70,7 @@ describe('ShareCard', () => {
     data.value = history()
     stubCanvas()
     render(<ShareCard />)
-    ;(await screen.findByRole('button', { name: /share these numbers/i })).click()
+    ;(await screen.findByRole('button', { name: /share/i })).click()
 
     const all = drawn.text.join(' ')
     expect(all).not.toMatch(/\//) // no paths
@@ -82,5 +82,21 @@ describe('ShareCard', () => {
     const { container } = render(<ShareCard />)
     await new Promise((r) => setTimeout(r, 0))
     expect(container.textContent).toBe('')
+  })
+})
+
+describe('ShareCard milestones', () => {
+  it('calls out a round number that was just passed', async () => {
+    data.value = history({ cost_usd: 10_400 })
+    render(<ShareCard />)
+    expect(await screen.findByRole('button', { name: /just passed \$10,000/i })).toBeTruthy()
+  })
+
+  it('goes quiet once the milestone is well behind', async () => {
+    // $18,000 is past $10,000 but nowhere near $25,000 — the moment has gone,
+    // and a button still announcing it is noise rather than an invitation.
+    data.value = history({ cost_usd: 18_000 })
+    render(<ShareCard />)
+    expect(await screen.findByRole('button', { name: /^share these numbers$/i })).toBeTruthy()
   })
 })

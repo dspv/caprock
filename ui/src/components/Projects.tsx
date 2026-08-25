@@ -282,6 +282,7 @@ export function ProjectsPanel({ sessions, agent }: { sessions: SessionSummary[];
             * was only on Cost, so answering "what was it doing" meant leaving
             * the screen you watch. */}
           <WorkMixStrip summary={summary.data} />
+          <TeamsHint count={all.length} />
         </div>
       )}
     </Panel>
@@ -767,5 +768,34 @@ function SparkCanvas({
       aria-label={`${label}: ${SPARK_BASIS} over time, ${span}`}
       title={`${label}: when the spend happened — ${span}`}
     />
+  )
+}
+
+/**
+ * The team offer, shown only to someone whose own screen makes the case.
+ *
+ * A permanent link is furniture; this appears when the machine is carrying a
+ * number of repositories one person does not usually carry alone, which is
+ * both the honest signal and the moment the question occurs to them anyway.
+ * Ten is the threshold — below it "your team" is a guess about someone who
+ * may well work alone, and guessing at a stranger's situation in their own
+ * dashboard is how a tool starts feeling like a funnel.
+ */
+function TeamsHint({ count }: { count: number }) {
+  if (count < 10) return null
+  return (
+    <a
+      href="https://caprock.dev/teams"
+      target="_blank"
+      rel="noreferrer"
+      className="flex items-baseline gap-2 border-t border-border px-3 py-1.5 text-[11px] no-underline hover:no-underline"
+    >
+      <span className="text-fg-muted">
+        {count} repositories on one machine.
+      </span>
+      <span className="text-fg-faint hover:text-accent">
+        See them across the team →
+      </span>
+    </a>
   )
 }
