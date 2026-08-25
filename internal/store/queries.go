@@ -1008,8 +1008,42 @@ func Summarize(ctx context.Context, q Querier, fromMs int64) (Summary, error) {
 // SummarizeSpark is Summarize with an optional per-project time series. The
 // series costs one extra GROUP BY column on a scan the summary already makes,
 // so it is nearly free; see the measurement note on the query below.
+
+// AgentFilter restricts a summary to one coding agent. Empty means every agent,
+// which is what every caller wanted before OpenCode existed.
+//
+// The predicate is a subquery on sessions rather than a join, for two reasons:
+// events carries no agent of its own (it belongs to the session), and a join
+// would change the row multiplicity of five separate aggregate queries — a
+// silent way to double a cost. A subquery leaves each query's shape alone.
+type AgentFilter string
+
+// sessionScope returns the SQL predicate and its arguments for an agent
+// filter, written to append to an existing WHERE clause.
+func (a AgentFilter) sessionScope(col string) (string, []any) {
+	if a == "" {
+		return "", nil
+	}
+	return " AND " + col + " IN (SELECT session_id FROM sessions WHERE COALESCE(agent,'claude') = ?)", []any{string(a)}
+}
+
 func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpec) (Summary, error) {
+	return SummarizeSparkFor(ctx, q, fromMs, spark, "")
+}
+
+// SummarizeSparkFor is SummarizeSpark restricted to one agent.
+func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark SparkSpec, agent AgentFilter) (Summary, error) {
 	s := Summary{FromMs: fromMs}
+	// One predicate, appended to every aggregate below. Computing it per query
+	// would be five chances to forget one, and a forgotten filter shows the
+	// other agent's money under this agent's heading.
+	ev, evArgs := agent.sessionScope("session_id")
+	evPrefixed, _ := agent.sessionScope("e.session_id")
+	// The sessions table carries the column itself, so it needs no subquery.
+	sess, sessArgs := "", []any(nil)
+	if agent != "" {
+		sess, sessArgs = " AND COALESCE(agent,'claude') = ?", []any{string(agent)}
+	}
 	// Grouping by kind runs off idx_events_kind_ts; summing CASE expressions
 	// instead forced a read of every row in the range — 197ms against 81ms on a
 	// 184k-event database, and this is the query behind both the Cost screen
@@ -1023,7 +1057,7 @@ func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpe
 		       COALESCE(SUM(tokens_in),0), COALESCE(SUM(tokens_out),0),
 		       COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_write),0),
 		       COALESCE(SUM(cost_usd),0)
-		FROM events WHERE ts >= ? GROUP BY kind`, fromMs)
+		FROM events WHERE ts >= ?`+ev+` GROUP BY kind`, append([]any{fromMs}, evArgs...)...)
 	if err != nil {
 		return s, err
 	}
@@ -1057,7 +1091,7 @@ func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpe
 		return s, err
 	}
 	if err := q.QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT session_id) FROM events WHERE ts >= ?`, fromMs).Scan(&s.Sessions); err != nil {
+		`SELECT COUNT(DISTINCT session_id) FROM events WHERE ts >= ?`+ev, append([]any{fromMs}, evArgs...)...).Scan(&s.Sessions); err != nil {
 		return s, err
 	}
 	// "Active" means active *now*, so it is deliberately not range-scoped — but
@@ -1066,13 +1100,13 @@ func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpe
 	// every historical session at once: a new user's first impression was an
 	// active count in the dozens that then fell to one.
 	if err := q.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM sessions WHERE status = 'active' AND last_event_at >= ?`,
-		nowMs()-int64(activeWindow/time.Millisecond)).Scan(&s.Active); err != nil {
+		`SELECT COUNT(*) FROM sessions WHERE status = 'active' AND last_event_at >= ?`+sess,
+		append([]any{nowMs() - int64(activeWindow/time.Millisecond)}, sessArgs...)...).Scan(&s.Active); err != nil {
 		return s, err
 	}
 	rows, err = q.QueryContext(ctx, `
 		SELECT COALESCE(model,''), COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0)),0), COALESCE(SUM(cost_usd),0), COUNT(*)
-		FROM events WHERE kind = 'turn.assistant' AND ts >= ? GROUP BY model ORDER BY 3 DESC`, fromMs)
+		FROM events WHERE kind = 'turn.assistant' AND ts >= ?`+ev+` GROUP BY model ORDER BY 3 DESC`, append([]any{fromMs}, evArgs...)...)
 	if err != nil {
 		return s, err
 	}
@@ -1161,16 +1195,17 @@ func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpe
 			       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0),
 			       COALESCE(SUM(e.cost_usd),0)
 			FROM events e
-			WHERE e.kind = 'turn.assistant' AND e.ts >= ?
-			GROUP BY e.session_id, bucket`, spark.FromMs, spark.FromMs, spark.WidthMs, fromMs)
+			WHERE e.kind = 'turn.assistant' AND e.ts >= ?`+evPrefixed+`
+			GROUP BY e.session_id, bucket`,
+			append([]any{spark.FromMs, spark.FromMs, spark.WidthMs, fromMs}, evArgs...)...)
 	} else {
 		rows, err = q.QueryContext(ctx, `
 			SELECT e.session_id, 0 AS bucket,
 			       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0),
 			       COALESCE(SUM(e.cost_usd),0)
 			FROM events e
-			WHERE e.kind = 'turn.assistant' AND e.ts >= ?
-			GROUP BY e.session_id`, fromMs)
+			WHERE e.kind = 'turn.assistant' AND e.ts >= ?`+evPrefixed+`
+			GROUP BY e.session_id`, append([]any{fromMs}, evArgs...)...)
 	}
 	if err != nil {
 		return s, err
@@ -1231,7 +1266,8 @@ func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpe
 	// The session → repository mapping. Only sessions that actually spent in
 	// the range are looked up, so a database full of old sessions costs nothing.
 	rows, err = q.QueryContext(ctx,
-		`SELECT session_id, COALESCE(project,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(cwd,''), COALESCE(agent,'claude') FROM sessions`)
+		`SELECT session_id, COALESCE(project,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(cwd,''), COALESCE(agent,'claude') FROM sessions`+
+			map[bool]string{true: " WHERE COALESCE(agent,'claude') = ?", false: ""}[agent != ""], sessArgs...)
 	if err != nil {
 		return s, err
 	}

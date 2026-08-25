@@ -660,7 +660,14 @@ func (s *Server) sparkSpec(label string, from int64) store.SparkSpec {
 func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	from, label := s.rangeFrom(r.URL.Query().Get("range"))
-	sum, err := store.SummarizeSpark(ctx, s.d.Store.DB(), from, s.sparkSpec(label, from))
+	// An unknown agent is rejected rather than silently ignored: returning
+	// everything under a heading that says "opencode" is worse than an error.
+	agent, err := agentFilter(r.URL.Query().Get("agent"))
+	if err != nil {
+		s.failCode(w, http.StatusBadRequest, err)
+		return
+	}
+	sum, err := store.SummarizeSparkFor(ctx, s.d.Store.DB(), from, s.sparkSpec(label, from), agent)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -1190,4 +1197,16 @@ func (s *Server) notFoundOrFail(w http.ResponseWriter, err error) {
 		return
 	}
 	s.fail(w, err)
+}
+
+// agentFilter validates the ?agent= parameter. Empty means every agent.
+func agentFilter(v string) (store.AgentFilter, error) {
+	switch v {
+	case "", "all":
+		return "", nil
+	case "claude", "opencode":
+		return store.AgentFilter(v), nil
+	default:
+		return "", fmt.Errorf("unknown agent %q: use claude, opencode, or omit for both", v)
+	}
 }

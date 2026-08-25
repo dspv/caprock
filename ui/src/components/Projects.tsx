@@ -107,9 +107,9 @@ import { Panel, Skeleton } from '@/components/ui'
 type Range = 'today' | '7d' | '30d' | 'all'
 
 /** Which agent's work to show. Present only when both are on the machine. */
-type AgentFilter = 'all' | 'claude' | 'opencode'
+export type AgentFilter = 'all' | 'claude' | 'opencode'
 
-const AGENTS: { key: AgentFilter; label: string }[] = [
+export const AGENTS: { key: AgentFilter; label: string }[] = [
   { key: 'all', label: 'both' },
   { key: 'claude', label: 'claude' },
   { key: 'opencode', label: 'opencode' },
@@ -190,7 +190,7 @@ const OUTSIDE_RULE =
   'work and it counts toward the repository total, but it happened outside the tree, so it ' +
   'is not charged to any directory inside it.'
 
-export function ProjectsPanel({ sessions }: { sessions: SessionSummary[] }) {
+export function ProjectsPanel({ sessions, agent }: { sessions: SessionSummary[]; agent: AgentFilter }) {
   // 7d is the default. "today" is near-empty most mornings and would make the
   // panel look broken on first open; 30d is the opposite problem — a project
   // worked on for two days out of thirty draws a sparkline that is almost all
@@ -198,19 +198,12 @@ export function ProjectsPanel({ sessions }: { sessions: SessionSummary[] }) {
   // week is dense enough that the shape means something and long enough to
   // carry a project that was only touched once.
   const [range, setRange] = useState<Range>('7d')
-  const [agent, setAgent] = useState<AgentFilter>('all')
   const [expanded, setExpanded] = useState(false)
   const summary = useApi(() => api.summary(range), [range], { intervalMs: 30000 })
 
   const everything = summary.data?.projects ?? []
   // Whether a machine has both agents at all. The filter appears only then:
   // on a Claude-Code-only machine it would be three buttons that do nothing.
-  const hasBoth = useMemo(
-    () =>
-      sessions.some((s) => s.agent === 'opencode') ||
-      everything.some((p) => p.agent === 'opencode'),
-    [sessions, everything],
-  )
   // A repository worked on with both agents has no agent of its own, so it
   // belongs in either filter rather than in neither.
   const all = useMemo(
@@ -240,22 +233,6 @@ export function ProjectsPanel({ sessions }: { sessions: SessionSummary[] }) {
             <span className="text-fg">{fmtTokens(totalTokens)}</span>
             <span className="text-fg-muted"> · {fmtUSD(totalCost)} total</span>
           </span>
-          {/* Only when there is something to choose between. */}
-          {hasBoth && (
-            <span className="inline-flex border border-border rounded-sm overflow-hidden mr-2">
-              {AGENTS.map((a) => (
-                <button
-                  key={a.key}
-                  onClick={() => setAgent(a.key)}
-                  className={`px-1.5 py-0.5 text-[11px] mono ${
-                    agent === a.key ? 'bg-panel-2 text-fg' : 'text-fg-faint hover:text-fg-muted'
-                  }`}
-                >
-                  {a.label}
-                </button>
-              ))}
-            </span>
-          )}
           <span className="inline-flex border border-border rounded-sm overflow-hidden">
             {RANGES.map((r) => (
               <button

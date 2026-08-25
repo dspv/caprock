@@ -265,6 +265,11 @@ export interface CreateTaskRequest { title: string; budget_usd?: number; done_cr
 export interface History { range: string; totals: HistoryTotals; tools: ToolCount[]; daily: DailyStat[]; savings: Savings; summary: Summary }
 
 export interface Status {
+  /** Present when the daemon is reading OpenCode; absent when it is not
+   *  installed. This is what tells the UI whether an agent filter has
+   *  anything to switch between — a session list or a day's summary cannot
+   *  answer it, because either may legitimately be empty. */
+  opencode?: { sessions: number; events: number; last_poll_ms?: number }
   version: string
   /** GOOS/GOARCH — what a bug report needs and nobody remembers to include. */
   platform?: string
@@ -366,7 +371,8 @@ export const api = {
   update: () => get<UpdateStatus>('/v1/update'),
   checkUpdate: () => post<UpdateStatus>('/v1/update/check', {}),
   saveSettings: (s: Settings) => post<Settings>('/v1/settings', s, 'PUT'),
-  summary: (range: 'today' | '7d' | '30d' | 'all' = 'today') => get<Summary>(`/v1/stats/summary?range=${range}`),
+  summary: (range: 'today' | '7d' | '30d' | 'all' = 'today', agent?: string) =>
+    get<Summary>(`/v1/stats/summary?range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}`),
   daily: (days = 30) => get<DailyStat[]>(`/v1/stats/daily?days=${days}`),
   history: (range: 'today' | '7d' | '30d' | 'all' = 'all') => get<History>(`/v1/history?range=${range}`),
   /** Turns the task runner on over the running daemon — no restart. Empty

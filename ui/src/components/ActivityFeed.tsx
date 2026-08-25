@@ -50,20 +50,40 @@ export function ActivityFeed({ sessions, now }: { sessions: SessionSummary[]; no
       // resolves, and dropping the seed on that basis left the feed showing a
       // single line with all the history discarded.
       setItems((cur) => {
-        const seen = new Set(cur.map((i) => i.id))
-        return [...cur, ...seeded.filter((i) => !seen.has(i.id))]
+        // Drop anything from a session that is no longer in scope: a filter
+        // change must clear the other agent's rows rather than merge around
+        // them.
+        const inScope = new Set(recent.map((s) => s.session_id))
+        const kept = cur.filter((i) => !i.sessionId || inScope.has(i.sessionId))
+        const seen = new Set(kept.map((i) => i.id))
+        return [...kept, ...seeded.filter((i) => !seen.has(i.id))]
           .sort((a, b) => b.ts - a.ts)
           .slice(0, 60)
       })
     })()
     return () => { cancelled = true }
-    // Seeding once is the point — later updates arrive over the WS.
+    // Seeding once was the point — later updates arrive over the WS. It now
+    // also re-seeds when the set of sessions changes, which is what an agent
+    // filter does: without it the panel kept the previous agent's history and
+    // only new frames obeyed the filter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessions.length > 0])
+  }, [sessions.map((s) => s.session_id).join(',')])
+
+  // Which sessions this feed is allowed to show. A live frame carries no
+  // agent, only a session id, so the filter has to be applied by membership —
+  // without it a filtered feed refills with the other agent's events within
+  // seconds and silently contradicts the panel beside it.
+  const allowed = useRef(new Set<string>())
+  allowed.current = new Set(sessions.map((s) => s.session_id))
 
   useEffect(() => {
     return live.onFrame((f) => {
       if (f.type !== 'event' || pausedRef.current) return
+      const id = (f.data as { session_id?: string })?.session_id
+      // An unknown id is shown: it is a session that started after this list
+      // was fetched, and hiding new work is worse than briefly showing one
+      // that a filter would have excluded.
+      if (id && projects.current.has(id) && !allowed.current.has(id)) return
       const item = toFeedItem(f.data)
       if (item) setItems((cur) => pushItem(cur, item))
     })

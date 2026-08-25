@@ -40,7 +40,7 @@ describe('Skeleton', () => {
 describe('a panel that has not loaded', () => {
   it('shows placeholders rather than claiming there is no data', async () => {
     projects.delay = true
-    const { container } = render(<ProjectsPanel sessions={[]} />)
+    const { container } = render(<ProjectsPanel sessions={[]} agent="all" />)
     expect(container.querySelectorAll('.skeleton-pulse').length).toBeGreaterThan(0)
     expect(screen.queryByText(/No spend captured/)).toBeNull()
     projects.delay = false
@@ -48,7 +48,7 @@ describe('a panel that has not loaded', () => {
 
   it('says so honestly once the answer really is empty', async () => {
     projects.value = []
-    render(<ProjectsPanel sessions={[]} />)
+    render(<ProjectsPanel sessions={[]} agent="all" />)
     expect(await screen.findByText(/No spend captured/)).toBeTruthy()
   })
 })

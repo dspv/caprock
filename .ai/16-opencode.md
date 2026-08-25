@@ -175,3 +175,45 @@ agrees with itself.
 The suite is checked by mutation rather than by coverage alone: removing the
 agent tag, dropping OpenCode's cost, removing tool-name normalisation, or
 re-enabling the pricing table each turns it red.
+
+## The agent filter
+
+The Now screen carries `both / claude / opencode` beside the pricing note, and
+it applies to the whole screen: today's totals, the live pulse, the activity
+feed, the projects list and the session cards all answer the same question. A
+filtered list beside an unfiltered total is how a reader ends up quoting a
+number that means something other than what the heading says.
+
+**Where the control appears.** Only when the daemon reports it is reading
+OpenCode (`status.opencode`). Neither the session list nor a day's summary can
+answer this on their own: the Now screen fetches only live sessions unless
+"show ended" is ticked, and a machine's OpenCode history is usually all ended
+and older than today, so both are legitimately empty on exactly the machines
+that need the control.
+
+**Where the filtering happens.** Totals come from the server —
+`GET /v1/stats/summary?agent=` — because they are aggregates the browser cannot
+recompute. Everything else is filtered in the browser from data it already has:
+sessions carry their own agent, and the activity feed filters live frames by
+session membership because a frame carries a session id and no agent.
+
+**An unknown agent is a 400.** Returning everything under a heading that says
+`opencode` is worse than an error, because nothing on screen would say so.
+
+**A repository worked on with both agents** carries no agent of its own and
+appears under either filter. Its spend is partly each agent's, so hiding it
+from both would drop money off the screen; claiming it for one would be a
+quiet lie.
+
+**What is verified.** `internal/store/agent_filter_test.go` pins the arithmetic
+rather than the wiring: that claude + opencode equals the unfiltered total for
+cost, sessions, turns, tool calls and tokens; that projects and models never
+appear under the wrong agent; that a shared project survives both filters; that
+the unfiltered entry point is unchanged; and that sessions predating the agent
+column count as Claude Code. The suite is checked by mutation — dropping the
+filter from the event, model or spark queries each turns it red.
+
+Writing those tests found a defect that had shipped in the projects list: spend
+whose session the filter excluded fell through to the "orphan" row, which
+exists for sessions that were deleted. Under a filter that row collected the
+*other* agent's money and showed it, unlabelled, under this agent's heading.

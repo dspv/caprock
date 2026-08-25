@@ -33,7 +33,7 @@ describe('ProjectsPanel', () => {
       { project: 'caprock', tokens: 1_000_000, cost_usd: 941.33, sessions: 12 },
       { project: 'fixel', tokens: 10_000, cost_usd: 50.68, sessions: 1 },
     ]
-    render(<ProjectsPanel sessions={[]} />)
+    render(<ProjectsPanel sessions={[]} agent="all" />)
     expect(await screen.findByText('caprock')).toBeTruthy()
     expect(screen.getByText('12 sessions')).toBeTruthy()
     // A single session must not read as "1 sessions".
@@ -46,7 +46,7 @@ describe('ProjectsPanel', () => {
       { project: 'fixel', tokens: 10, cost_usd: 5, sessions: 1 },
     ]
     const { container } = render(
-      <ProjectsPanel sessions={[session('caprock', 'active'), session('fixel', 'ended')]} />,
+      <ProjectsPanel sessions={[session('caprock', 'active'), session('fixel', 'ended')]} agent="all" />,
     )
     await screen.findByText('caprock')
     const dots = container.querySelectorAll('[title="a session is live in this project"]')
@@ -55,7 +55,7 @@ describe('ProjectsPanel', () => {
 
   it('shows a message instead of an empty chart when nothing was captured', async () => {
     projects.value = []
-    render(<ProjectsPanel sessions={[]} />)
+    render(<ProjectsPanel sessions={[]} agent="all" />)
     expect(await screen.findByText(/No spend captured/)).toBeTruthy()
   })
 
@@ -72,7 +72,7 @@ describe('ProjectsPanel', () => {
         ],
       },
     ]
-    render(<ProjectsPanel sessions={[]} />)
+    render(<ProjectsPanel sessions={[]} agent="all" />)
     const row = await screen.findByTitle('caprock: show cost by directory')
     // Collapsed by default: the repository is the number that matters.
     expect(screen.queryByText('/ui')).toBeNull()
@@ -100,7 +100,7 @@ describe('ProjectsPanel', () => {
         paths: [{ path: '.', tokens: 10, cost_usd: 10, turns: 1 , tokens_pct: 0, cost_pct: 0 }],
       },
     ]
-    render(<ProjectsPanel sessions={[]} />)
+    render(<ProjectsPanel sessions={[]} agent="all" />)
     await screen.findByText('solo')
     // One directory is not a breakdown — it would restate the row's own total.
     expect(screen.queryByTitle('solo: show cost by directory')).toBeNull()
@@ -119,7 +119,7 @@ describe('ProjectsPanel', () => {
         { path: 'b', tokens: 5, cost_usd: 3, turns: 1 , tokens_pct: 0, cost_pct: 0 },
       ],
     }))
-    render(<ProjectsPanel sessions={[]} />)
+    render(<ProjectsPanel sessions={[]} agent="all" />)
     const showAll = await screen.findByText('show all 9 projects')
     fireEvent.click(await screen.findByTitle('p0: show cost by directory'))
     // Expanding a row must not reveal the projects the list is hiding.
@@ -134,7 +134,7 @@ describe('ProjectsPanel', () => {
       cost_usd: 10 - i,
       sessions: 1,
     }))
-    render(<ProjectsPanel sessions={[]} />)
+    render(<ProjectsPanel sessions={[]} agent="all" />)
     expect(await screen.findByText('show all 9 projects')).toBeTruthy()
     expect(screen.queryByText('p8')).toBeNull()
   })
@@ -185,7 +185,7 @@ describe('ProjectsPanel figures', () => {
 
   it('states both tokens and cost on every row, each from its own project', async () => {
     projects.value = disagreeing
-    const { container } = render(<ProjectsPanel sessions={[]} />)
+    const { container } = render(<ProjectsPanel sessions={[]} agent="all" />)
     await screen.findByText('pricey')
     // Not just "both are present somewhere": each row carries ITS numbers, so a
     // row reading its neighbour's cost fails here.
@@ -197,7 +197,7 @@ describe('ProjectsPanel figures', () => {
 
   it('shows no control for choosing between the two figures', async () => {
     projects.value = disagreeing
-    render(<ProjectsPanel sessions={[]} />)
+    render(<ProjectsPanel sessions={[]} agent="all" />)
     await screen.findByText('pricey')
     // The toggle is gone: nothing in the panel asks the reader to pick a unit.
     expect(screen.queryByRole('button', { name: 'tokens' })).toBeNull()
@@ -206,7 +206,7 @@ describe('ProjectsPanel figures', () => {
 
   it('keeps the cost line at reading size rather than in the faint chrome tone', async () => {
     projects.value = disagreeing
-    const { container } = render(<ProjectsPanel sessions={[]} />)
+    const { container } = render(<ProjectsPanel sessions={[]} agent="all" />)
     await screen.findByText('pricey')
     // The complaint that removed the toggle was that the second figure was an
     // 11px `text-fg-faint` whisper. It must be neither.
@@ -220,7 +220,7 @@ describe('ProjectsPanel figures', () => {
 
   it('totals both measures in the panel header', async () => {
     projects.value = disagreeing
-    render(<ProjectsPanel sessions={[]} />)
+    render(<ProjectsPanel sessions={[]} agent="all" />)
     await screen.findByText('pricey')
     // 10M tokens and $1,000 — the header sums both columns beneath it, in the
     // same order as the rows. A header stating one would answer half the panel.
@@ -230,7 +230,7 @@ describe('ProjectsPanel figures', () => {
 
   it('plots and scales every picture on tokens, matching the leading figure', async () => {
     projects.value = disagreeing
-    const { container } = render(<ProjectsPanel sessions={[]} />)
+    const { container } = render(<ProjectsPanel sessions={[]} agent="all" />)
     await screen.findByText('pricey')
     // jsdom does not rasterise a canvas, so the picture states its own basis for
     // assistive tech and that is also the only readable assertion available.
@@ -242,7 +242,7 @@ describe('ProjectsPanel figures', () => {
     // range=all sends no spark, so the row keeps the share bar — and the bar
     // stands in for the sparkline, so it is scaled the same way.
     projects.value = disagreeing.map(({ spark: _spark, ...p }) => p)
-    const { container } = render(<ProjectsPanel sessions={[]} />)
+    const { container } = render(<ProjectsPanel sessions={[]} agent="all" />)
     await screen.findByText('pricey')
     const widths = Array.from(container.querySelectorAll('.bg-accent\\/70')).map(
       (el) => (el as HTMLElement).style.width,
@@ -265,7 +265,7 @@ describe('ProjectsPanel figures', () => {
         ],
       },
     ]
-    render(<ProjectsPanel sessions={[]} />)
+    render(<ProjectsPanel sessions={[]} agent="all" />)
     fireEvent.click(await screen.findByTitle('mono: show cost by directory'))
     // The parts are stated in the same units as the whole, or they cannot be
     // checked against it — and the row's three numbers must belong to one path.
@@ -301,7 +301,7 @@ describe('ProjectsPanel figures', () => {
         ],
       },
     ]
-    render(<ProjectsPanel sessions={[]} />)
+    render(<ProjectsPanel sessions={[]} agent="all" />)
     fireEvent.click(await screen.findByTitle('mono: show cost by directory'))
     // The real directory keeps its path treatment.
     expect(screen.getByText('/services/api')).toBeTruthy()
@@ -344,7 +344,7 @@ describe('ProjectsPanel figures', () => {
         ],
       },
     ]
-    const { container } = render(<ProjectsPanel sessions={[]} />)
+    const { container } = render(<ProjectsPanel sessions={[]} agent="all" />)
     fireEvent.click(await screen.findByTitle('mono: show cost by directory'))
     const outside = screen.getByText('outside the repository')
     const wide = screen.getByText('repository-wide work')
@@ -386,7 +386,7 @@ describe('ProjectsPanel figures', () => {
         ],
       },
     ]
-    render(<ProjectsPanel sessions={[]} />)
+    render(<ProjectsPanel sessions={[]} agent="all" />)
     fireEvent.click(await screen.findByTitle('mono: show cost by directory'))
     // Floored, not rounded up to 100%.
     expect(screen.getByText('999.0k').parentElement?.textContent).toBe('999.0k 99% · $99.90')
@@ -407,7 +407,7 @@ describe('ProjectsPanel figures', () => {
         ],
       },
     ]
-    render(<ProjectsPanel sessions={[]} />)
+    render(<ProjectsPanel sessions={[]} agent="all" />)
     fireEvent.click(await screen.findByTitle('mono: show cost by directory'))
     // `/ui` and `/ui/src` have no spend of their own, so the chain collapses to
     // the one row that does — the deepest level the cap allows.
@@ -441,7 +441,7 @@ describe('ProjectsPanel figures', () => {
         ],
       },
     ]
-    render(<ProjectsPanel sessions={[]} />)
+    render(<ProjectsPanel sessions={[]} agent="all" />)
     fireEvent.click(await screen.findByTitle('mono: show cost by directory'))
     // The row states the SUBTREE — the whole of /ui, $7 plus $93.
     const row = screen.getByText('/ui').closest('div.grid') as HTMLElement
@@ -466,7 +466,7 @@ describe('ProjectsPanel figures', () => {
         ],
       },
     ]
-    render(<ProjectsPanel sessions={[]} />)
+    render(<ProjectsPanel sessions={[]} agent="all" />)
     fireEvent.click(await screen.findByTitle('mono: show cost by directory'))
     // First level only: two rows, each carrying its subtree.
     expect(screen.getByText('/ui/src')).toBeTruthy()
@@ -497,7 +497,7 @@ describe('ProjectsPanel figures', () => {
         ],
       },
     ]
-    const { container } = render(<ProjectsPanel sessions={[]} />)
+    const { container } = render(<ProjectsPanel sessions={[]} agent="all" />)
     fireEvent.click(await screen.findByTitle('mono: show cost by directory'))
     await screen.findByText('/ui/src')
     // Nothing in the panel navigates: no anchors at all, and in particular
@@ -526,7 +526,7 @@ describe('ProjectsPanel figures', () => {
         ],
       },
     ]
-    const { container } = render(<ProjectsPanel sessions={[]} />)
+    const { container } = render(<ProjectsPanel sessions={[]} agent="all" />)
     fireEvent.click(await screen.findByTitle('mono: show cost by directory'))
     const widths = Array.from(container.querySelectorAll('.bg-accent\\/40')).map(
       (el) => (el as HTMLElement).style.width,

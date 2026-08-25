@@ -3,7 +3,7 @@ import { useApi } from '@/lib/useApi'
 import { live, useLive } from '@/lib/live'
 import { fmtAgo, fmtPct, fmtTokens, fmtUSD, shortId } from '@/lib/format'
 import { Badge, Empty, Panel, Skeleton, Stat } from '@/components/ui'
-import { ProjectsPanel } from '@/components/Projects'
+import { ProjectsPanel, AGENTS, type AgentFilter } from '@/components/Projects'
 import { ActivityFeed } from '@/components/ActivityFeed'
 import { PulsePanel } from '@/components/Pulse'
 import { Attention } from '@/components/Attention'
@@ -20,13 +20,29 @@ import { useNow } from '@/lib/useNow'
 
 export function NowScreen() {
   const [showEnded, setShowEnded] = useState(false)
+  // Which agent this whole screen is about. It reaches every panel, so the
+  // figure at the top and the rows underneath always answer the same question
+  // — a filtered list beside an unfiltered total is how a reader ends up
+  // quoting the wrong number.
+  const [agent, setAgent] = useState<AgentFilter>('all')
   const [spawning, setSpawning] = useState(false)
   const sessions = useApi(() => api.sessions(!showEnded), [showEnded], { intervalMs: 5000 })
   const status = useApi(() => api.status(), [], { live: false, intervalMs: 30000 })
-  const summary = useApi(() => api.summary('today'), [], { intervalMs: 5000 })
+  const summary = useApi(() => api.summary('today', agent), [agent], { intervalMs: 5000 })
   const { alerts } = useLive()
   const now = useNow(1000)
-  const list = sessions.data ?? []
+  const everySession = sessions.data ?? []
+  // Sessions carry their own agent, so this needs no second request.
+  const list = agent === 'all'
+    ? everySession
+    : everySession.filter((s) => (s.agent ?? 'claude') === agent)
+  // Whether the control has anything to switch between. Neither the session
+  // list nor today's summary can answer this: the list holds only live
+  // sessions unless "show ended" is ticked, and a machine's OpenCode history
+  // is usually all ended and all older than today. The daemon reports whether
+  // it is reading OpenCode at all, which is the honest test — and it says so
+  // whether or not anything ran in the visible window.
+  const hasBoth = !!status.data?.opencode
   const working = list.filter((s) => s.activity.health === 'working' || s.activity.health === 'looping' || s.activity.health === 'error' || s.activity.health === 'waiting-on-you')
   const rest = list.filter((s) => !working.includes(s) && s.status !== 'ended')
   const ended = list.filter((s) => s.status === 'ended')
@@ -64,7 +80,35 @@ export function NowScreen() {
       <UpdateBanner plan={plan} onSave={savePlan} now={now} />
       <Attention items={attention} now={now} onDismiss={(id) => live.dismissAlert(id)} sessions={list} />
 
-      <Panel title="Today" right={summary.data ? <span className="num">pricing {summary.data.pricing_version} · at API list price</span> : null}>
+      <Panel
+        title="Today"
+        right={
+          <span className="flex items-center gap-3">
+            {/* Only when there is something to choose between: on a machine
+              * that runs one agent these would be three buttons that change
+              * nothing. */}
+            {hasBoth && (
+              <span className="inline-flex border border-border rounded-sm overflow-hidden">
+                {AGENTS.map((a) => (
+                  <button
+                    key={a.key}
+                    onClick={() => setAgent(a.key)}
+                    title={a.key === 'all' ? 'Both agents' : `Only ${a.label}`}
+                    className={`px-1.5 py-0.5 text-[11px] mono ${
+                      agent === a.key ? 'bg-panel-2 text-fg' : 'text-fg-faint hover:text-fg-muted'
+                    }`}
+                  >
+                    {a.label}
+                  </button>
+                ))}
+              </span>
+            )}
+            {summary.data ? (
+              <span className="num">pricing {summary.data.pricing_version} · at API list price</span>
+            ) : null}
+          </span>
+        }
+      >
         {/* Cost leads and dominates. It sat fourth of six at the same size as
           * a turn counter, while the two tinted cells were cache hit (a
           * permanent ~99%) and burn (tinted whenever anything runs) — so
@@ -92,7 +136,7 @@ export function NowScreen() {
       {/* What is happening (left) beside what it costs (right). */}
       <div className="grid gap-3 lg:grid-cols-2">
         <ActivityFeed sessions={list} now={now} />
-        <ProjectsPanel sessions={list} />
+        <ProjectsPanel sessions={list} agent={agent} />
       </div>
 
       {sessions.error && !sessions.data && (
@@ -100,7 +144,19 @@ export function NowScreen() {
       )}
       {!sessions.data && !sessions.error && <Skeleton rows={4} className="border border-border rounded-[var(--radius-panel)] bg-panel" />}
       {sessions.data && list.length === 0 && (
-        <Empty title="No sessions yet">Start <span className="mono">claude</span> in any terminal — it will show up here within seconds.</Empty>
+        agent === 'all' ? (
+          <Empty title="No sessions yet">Start <span className="mono">claude</span> in any terminal — it will show up here within seconds.</Empty>
+        ) : (
+          /* Under a filter this is not "nothing has ever run" but "nothing
+           * from this agent, in this window" — and telling a reader to start
+           * `claude` when they filtered for OpenCode is advice for the wrong
+           * program. */
+          <Empty title={`No ${agent === 'opencode' ? 'OpenCode' : 'Claude Code'} sessions here`}>
+            Nothing from this agent in the current view. Switch to{' '}
+            <button className="link underline" onClick={() => setAgent('all')}>both</button>{' '}
+            to see everything.
+          </Empty>
+        )
       )}
 
       {working.length > 0 && <Section title={`Active · ${working.length}`} items={working} now={now} />}
