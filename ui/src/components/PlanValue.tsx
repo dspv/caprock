@@ -16,7 +16,7 @@
  */
 import type { Settings, Summary } from '@/lib/api'
 import { fmtUSD } from '@/lib/format'
-import { Panel } from '@/components/ui'
+import { Panel, Stat } from '@/components/ui'
 
 const dayWord = (n: number) => (n === 1 ? 'day' : 'days')
 
@@ -62,48 +62,40 @@ export function PlanValue({ summary, plan, days }: { summary?: Summary; plan?: S
       title="Plan value"
       right={<span className="num text-[12px] text-fg-muted">{plan.plan_label} · {fmtUSD(plan.plan_usd_per_month)}/mo</span>}
     >
-      {/* Two columns, not three stacked rows. Stacked, every element carried its
-        * own max-width and the right half of a full-width panel sat empty while
-        * the content crowded into a strip on the left. The claim and what it
-        * means belong together; the two figures it is derived from belong
-        * beside them, comparable at a glance rather than found underneath. One
-        * column on a narrow viewport, where stacking is the right answer.
+      {/* The same divided row of stats the Today panel uses, for the same
+        * reason: three figures of different weight read as a hierarchy when
+        * they share one grid and as a list when each carries its own layout.
         *
-        * The figure and its sentence align to the top, not the baseline: the
-        * sentence runs to two lines, so baseline alignment pinned the number to
-        * the first of them and let the second drop below, which read as two
-        * adjacent things rather than one statement. */}
-      <div className="px-3 py-3 grid gap-x-8 gap-y-4 md:grid-cols-[minmax(0,1fr)_auto]">
-        <div>
-          <div className="flex items-start gap-3">
-            {multiple > 0 && (
-              <span className="num text-4xl text-ok leading-tight shrink-0">{multiple.toFixed(1)}×</span>
-            )}
-            <span className="text-[13px] text-fg-muted max-w-[52ch] leading-tight pt-[3px]">
-              what the same usage would have cost at API list price, against what
-              your plan costs for the same {days} {dayWord(days)}.
-            </span>
-          </div>
-          <p className="text-[11px] text-fg-faint mt-3 max-w-[64ch] leading-relaxed">
-            Measured from your own sessions at Anthropic list prices
-            ({summary.pricing_version}) — not a discount you received, and not
-            money back. Without the plan you would not have run this much.
-          </p>
-        </div>
-        <div className="grid grid-cols-2 gap-x-8 self-start md:border-l md:border-border md:pl-8">
-          <Line label={`you pay (${days}d)`} value={fmtUSD(fee)} />
-          <Line label="same usage at API list" value={fmtUSD(usage)} tone="ok" />
-        </div>
+        * The multiple leads at hero size because it is what the panel is
+        * about; the two figures it is derived from sit beside it, comparable
+        * at a glance. Previously the multiple was alone on the left at 4xl
+        * while the actual money sat right-aligned at 18px with a column of
+        * empty panel between — the derived number louder than the real ones,
+        * and most of the width spent on nothing. */}
+      <div className="grid grid-cols-2 lg:grid-cols-[1.1fr_1fr_1fr] divide-x divide-border">
+        <Stat
+          label={`worth · ${days}d`}
+          value={multiple > 0 ? `${multiple.toFixed(1)}×` : '—'}
+          tone="ok"
+          size="hero"
+          sub="what the same usage would have cost"
+        />
+        <Stat label={`you pay (${days}d)`} value={fmtUSD(fee)} sub={plan.plan_label} />
+        <Stat
+          label="same usage at API list"
+          value={fmtUSD(usage)}
+          tone="ok"
+          sub={`at list prices ${summary.pricing_version}`}
+        />
       </div>
+      {/* The caveat stays, below the figures rather than beside them: it
+        * qualifies all three, and a reader who quotes the multiple should
+        * find it. */}
+      <p className="px-3 pb-3 text-[11px] text-fg-faint max-w-[72ch] leading-relaxed">
+        Measured from your own sessions at Anthropic list prices — not a discount
+        you received, and not money back. Without the plan you would not have run
+        this much.
+      </p>
     </Panel>
-  )
-}
-
-function Line({ label, value, tone }: { label: string; value: string; tone?: 'ok' }) {
-  return (
-    <div className="py-1.5">
-      <div className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">{label}</div>
-      <div className={`num text-[18px] ${tone === 'ok' ? 'text-ok' : 'text-fg'}`}>{value}</div>
-    </div>
   )
 }
