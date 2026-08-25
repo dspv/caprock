@@ -18,6 +18,7 @@ import { useState } from 'react'
 
 const REPO = 'https://github.com/dspv/caprock'
 const TEAMS = 'https://caprock.dev/teams'
+const PREMIUM = 'https://caprock.dev/premium'
 const STAR_KEY = 'caprock.footer.starred'
 
 export function SiteFooter() {
@@ -47,6 +48,20 @@ export function SiteFooter() {
         </a>
 
         <span className="ml-auto inline-flex items-center gap-4">
+          {/* Third in the row and styled like the utility links beside it, not
+            * like the team offer above. Two offers at equal weight read as a
+            * sales strip, which is the one thing this footer must not become —
+            * so this is a question, phrased as one, sitting among the other
+            * small links. Nothing is for sale, and the wording says so. */}
+          <a
+            href={PREMIUM}
+            target="_blank"
+            rel="noreferrer"
+            className="text-fg-faint hover:text-fg no-underline"
+            title="Nothing is built yet — the page asks what a paid tier should contain"
+          >
+            what should paid add?
+          </a>
           {!starred && (
             <a
               href={REPO}

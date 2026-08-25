@@ -125,3 +125,37 @@ which is what the in-product footer and the `/teams` form exist to surface.
 **What would settle it:** three conversations with people who installed it and
 asked for something more. Not a survey — the question "would you pay $X" is
 answered generously and honestly only by an invoice.
+
+---
+
+## GTM-007 — Ask before charging: a signup, not a preorder
+
+**Decided 2026-08-25.**
+
+`/premium` collects an email address and one answer about what a paid tier
+should contain. No payment, no price, no date. The dashboard footer links to it
+as a question rather than an offer.
+
+**Why a signup rather than a preorder.** Taking money now would mean charging
+for something that does not exist, against a price
+[GTM-006](#gtm-006--premium-pricing-is-left-open-until-there-is-someone-to-ask)
+deliberately left open. Both problems are solved by asking first: the answers
+name the feature and the people who answer are the ones to ask about price.
+
+**Why not Stripe yet.** Nothing is built, so there is nothing to sell. Stripe is
+a few hours of work — a payment link, two prices, a webhook — and none of it is
+the hard part. The hard part is knowing what the money buys, which is what this
+form is for.
+
+**Why it reuses the team endpoint.** One Cloudflare Function, one KV namespace,
+one Telegram notification path, already working and already tested. The two
+lists are separated by `source`. A second endpoint would double the surface that
+can silently fail — which is exactly the failure both forms have already had
+once.
+
+**Reverses if** the answers arrive without a pattern. Fifty replies spread evenly
+across five options would mean the question is wrong, and the next instrument is
+conversations rather than a form.
+
+**What it feeds:** GTM-006's open price, and the premium section of
+[`.ai/17-teams.md`](../.ai/17-teams.md).

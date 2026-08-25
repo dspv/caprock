@@ -117,8 +117,23 @@ buyer's security review in front of a two-person product. Helping someone not
 leak a key is worth paying for; taking custody of it is a different company.
 
 This is a candidate, not a decision. What premium contains should be settled by
-what the first paying users ask for, which is what the footer link and the
-`/teams` form exist to find out.
+what the first paying users ask for.
+
+**The instrument for finding that out is `/premium`.** An email field, one
+question — which of five things you would want first — and a free-text box. It
+posts to the same waitlist endpoint the team form uses, separated by
+`source: "site/premium"`, because a second endpoint would be a second thing to
+maintain for no gain.
+
+It is deliberately not a preorder. No money changes hands and no date is
+promised, and a form implying either would be selling something that does not
+exist. The page says "not built yet" above the fold and the button says "keep me
+posted"; what it collects is a demand signal and a specification, not a sale.
+
+The dashboard footer links to it as a question — `what should paid add?` —
+styled like the utility links beside it rather than like the team offer. Two
+offers at equal weight in one footer read as a sales strip, which is the thing
+that footer is written not to become.
 
 ## Open questions
 
