@@ -92,13 +92,27 @@ def main():
 
         for theme in ("dark", "light"):
             for route, name in SHOTS:
-                rpc(ws, "Page.navigate", {"url": f"{BASE}/"})
-                time.sleep(1.5)
-                evaluate(ws, f"localStorage.setItem('caprock-theme','{theme}')")
-                evaluate(ws, "localStorage.setItem('caprock.update.dismissed','offer')")
-                rpc(ws, "Emulation.setEmulatedMedia", {
-                    "features": [{"name": "prefers-color-scheme", "value": theme}]})
                 rpc(ws, "Page.navigate", {"url": f"{BASE}/#/{route}"})
+                time.sleep(1.5)
+                # Dismiss the update banner: a first-run prompt, not a feature,
+                # and it pushes the dashboard down in every capture.
+                evaluate(ws, "try{localStorage.setItem('caprock.update.dismissed','offer')}catch(e){}")
+                # Toggle to the theme we want by clicking the control, which is
+                # what a person does. Writing to storage only takes effect on
+                # the next document load, and a hash navigation is not one.
+                for _ in range(3):
+                    cur = evaluate(ws, "document.documentElement.getAttribute('data-theme')")
+                    if cur == theme:
+                        break
+                    evaluate(ws, """
+                      (() => {
+                        const b = [...document.querySelectorAll('button')].find(
+                          (x) => (x.getAttribute('aria-label') || '').includes('theme'));
+                        if (b) b.click();
+                      })()
+                    """)
+                    time.sleep(0.8)
+
 
                 for _ in range(40):
                     time.sleep(0.4)
@@ -171,17 +185,17 @@ def main():
                 # it: a capture saved under the wrong name puts a white
                 # dashboard on a dark page, which is what happened once and is
                 # invisible until someone looks at the published site.
-                got = evaluate(ws, """
-                  (() => {
-                    const bg = getComputedStyle(document.body).backgroundColor;
-                    const m = bg.match(/\\d+/g) || [255, 255, 255];
-                    const lum = (m[0] * 299 + m[1] * 587 + m[2] * 114) / 1000;
-                    return lum > 128 ? 'light' : 'dark';
-                  })()
-                """)
-                if got and got != theme:
+                # The app records its choice on the root element; body is
+                # transparent, so measuring body's background read as dark
+                # whatever the theme was.
+                for _ in range(20):
+                    time.sleep(0.3)
+                    cur = evaluate(ws, "document.documentElement.getAttribute('data-theme')")
+                    if cur == theme:
+                        break
+                if cur != theme:
                     raise SystemExit(
-                        f"theme mismatch on {route}: asked for {theme}, page rendered {got}")
+                        f"theme mismatch on {route}: asked for {theme}, page rendered {cur}")
 
                 shot = rpc(ws, "Page.captureScreenshot", {
                     "format": "png",

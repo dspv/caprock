@@ -127,8 +127,13 @@ you. `caprock down` and deleting the data directory removes all of it.
 Caprock also reads [OpenCode](https://github.com/sst/opencode) sessions, on the
 same screens as Claude Code. A machine that runs both has its spend split
 across two tools that each see half of it; here the projects list, the history
-and the cost add up over both, and OpenCode sessions carry an `opencode` label
-so you can still tell them apart.
+and the cost add up over both, and OpenCode rows carry an `oc` mark so you can
+still tell them apart.
+
+**Or see one at a time.** The Now screen carries `all / claude / opencode` in
+the middle of its header, and it applies to the whole screen — today's totals,
+the live pulse, the activity feed, the projects list and the session cards all
+answer the same question. It appears only on a machine that runs both.
 
 Nothing to configure. If OpenCode is installed, Caprock finds its database and
 reads it — no shim, no settings file to edit, and the database is opened
