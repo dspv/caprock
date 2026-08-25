@@ -533,4 +533,15 @@ describe('ProjectsPanel figures', () => {
     )
     expect(widths).toEqual([`${(100 * 100_000) / 900_000}%`, '100%'])
   })
+
+  it('renders under an agent filter without losing the panel', () => {
+    // The filter is applied by the screen, not here — this pins that the panel
+    // still renders when it is handed one, which is the regression a prop
+    // rename would cause.
+    projects.value = [
+      { project: 'api', tokens: 10, cost_usd: 1, sessions: 1, agent: 'opencode' },
+    ]
+    render(<ProjectsPanel sessions={[]} agent="opencode" />)
+    expect(screen.getByText(/projects/i)).toBeTruthy()
+  })
 })
