@@ -293,14 +293,24 @@ func (d *Daemon) run(ctx context.Context) error {
 				// convenience, never a reason to fail startup.
 				d.log.Warn("opencode found but not readable", "component", "opencode", "path", p, "err", err)
 			} else {
-				d.ocIn = opencode.NewIngester(ocdb, d.rec, d.log, 5*time.Second)
-				go func() {
-					defer ocdb.Close()
-					if err := d.ocIn.Run(ctx); err != nil {
-						d.log.Error("opencode ingest stopped", "component", "opencode", "err", err)
-					}
-				}()
-				d.log.Info("opencode sessions are being read", "component", "opencode", "db", p)
+				// Announce only after a read succeeds. Opening a file that is
+				// not a database succeeds — SQLite is lazy — so logging on open
+				// promised a user with a corrupt or foreign file that their
+				// sessions were being read while nothing was.
+				if _, err := opencode.Sessions(ctx, ocdb); err != nil {
+					d.log.Warn("opencode database found but not readable; skipping",
+						"component", "opencode", "path", p, "err", err)
+					_ = ocdb.Close()
+				} else {
+					d.ocIn = opencode.NewIngester(ocdb, d.rec, d.log, 5*time.Second)
+					go func() {
+						defer ocdb.Close()
+						if err := d.ocIn.Run(ctx); err != nil {
+							d.log.Error("opencode ingest stopped", "component", "opencode", "err", err)
+						}
+					}()
+					d.log.Info("opencode sessions are being read", "component", "opencode", "db", p)
+				}
 			}
 		}
 	}
