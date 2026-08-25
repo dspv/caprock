@@ -3,14 +3,22 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Health } from '@/lib/api'
 
-export function Panel({ title, right, children, className = '' }: { title?: ReactNode; right?: ReactNode; children: ReactNode; className?: string }) {
+export function Panel({ title, center, right, children, className = '' }: { title?: ReactNode; center?: ReactNode; right?: ReactNode; children: ReactNode; className?: string }) {
   return (
     <section className={`border border-border bg-panel rounded-[var(--radius-panel)] shadow-[var(--shadow-panel)] min-w-0 ${className}`}>
-      {(title || right) && (
+      {(title || center || right) && (
         // The header sits on panel-2 so chrome reads as a recess rather than
         // as body text with a rule under it.
-        <header className="flex items-center justify-between px-3 py-2 border-b border-border bg-panel-2/60 rounded-t-[var(--radius-panel)]">
+        <header className="relative flex items-center justify-between px-3 py-2 border-b border-border bg-panel-2/60 rounded-t-[var(--radius-panel)]">
           <h2 className="text-[11px] uppercase tracking-[0.12em] text-fg-muted font-medium">{title}</h2>
+          {/* A middle slot for a control that governs the panel rather than
+            * annotating it. Absolutely positioned so it centres on the panel,
+            * not on the space left over between the title and the right-hand
+            * note — those two differ in width, and a control that drifts as
+            * the note changes reads as a rendering accident. */}
+          {center ? (
+            <div className="absolute left-1/2 -translate-x-1/2">{center}</div>
+          ) : null}
           <div className="text-[11px] text-fg-muted">{right}</div>
         </header>
       )}

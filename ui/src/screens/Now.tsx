@@ -82,40 +82,38 @@ export function NowScreen() {
 
       <Panel
         title="Today"
+        center={
+          hasBoth ? (
+            /* Centred on the panel rather than tucked beside the pricing
+              * note: this control governs every figure below it, and a
+              * governing control belongs where the eye lands.
+              *
+              * Larger than the range buttons, with the selection as a filled
+              * pill. At 11px in a bordered strip the active state was a
+              * slightly lighter grey — a control whose state you have to
+              * squint at is one people misread. */
+            <span className="inline-flex items-center gap-0.5 rounded-md bg-panel-2 p-0.5">
+              {AGENTS.map((a) => (
+                <button
+                  key={a.key}
+                  onClick={() => setAgent(a.key)}
+                  title={a.key === 'all' ? 'Every agent' : `Only ${a.label}`}
+                  className={`px-2.5 py-1 text-[12px] mono rounded-[5px] transition-colors ${
+                    agent === a.key
+                      ? 'bg-accent text-panel font-medium'
+                      : 'text-fg-muted hover:text-fg'
+                  }`}
+                >
+                  {a.label}
+                </button>
+              ))}
+            </span>
+          ) : null
+        }
         right={
-          <span className="flex items-center gap-3">
-            {/* Only when there is something to choose between: on a machine
-              * that runs one agent these would be three buttons that change
-              * nothing. */}
-            {hasBoth && (
-              /* Bigger than the range buttons beside it, and the selection is
-                * a filled pill rather than a slightly lighter cell: this
-                * changes what every figure on the screen means, so it has to
-                * be readable at a glance and unmistakable about which one is
-                * on. At 11px in a bordered strip the active state was a shade
-                * of grey — a control whose state you have to squint at is one
-                * people misread. */
-              <span className="inline-flex items-center gap-0.5 rounded-md bg-panel-2 p-0.5">
-                {AGENTS.map((a) => (
-                  <button
-                    key={a.key}
-                    onClick={() => setAgent(a.key)}
-                    title={a.key === 'all' ? 'Both agents' : `Only ${a.label}`}
-                    className={`px-2.5 py-1 text-[12px] mono rounded-[5px] transition-colors ${
-                      agent === a.key
-                        ? 'bg-accent text-panel font-medium'
-                        : 'text-fg-muted hover:text-fg'
-                    }`}
-                  >
-                    {a.label}
-                  </button>
-                ))}
-              </span>
-            )}
-            {summary.data ? (
-              <span className="num">pricing {summary.data.pricing_version} · at API list price</span>
-            ) : null}
-          </span>
+          summary.data ? (
+            <span className="num">pricing {summary.data.pricing_version} · at API list price</span>
+          ) : null
         }
       >
         {/* Cost leads and dominates. It sat fourth of six at the same size as
@@ -172,7 +170,7 @@ export function NowScreen() {
            * program. */
           <Empty title={`No ${agent === 'opencode' ? 'OpenCode' : 'Claude Code'} sessions here`}>
             Nothing from this agent in the current view. Switch to{' '}
-            <button className="link underline" onClick={() => setAgent('all')}>both</button>{' '}
+            <button className="link underline" onClick={() => setAgent('all')}>all</button>{' '}
             to see everything.
           </Empty>
         )

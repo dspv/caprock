@@ -110,7 +110,9 @@ type Range = 'today' | '7d' | '30d' | 'all'
 export type AgentFilter = 'all' | 'claude' | 'opencode'
 
 export const AGENTS: { key: AgentFilter; label: string }[] = [
-  { key: 'all', label: 'both' },
+  // 'all' rather than 'both': a third agent would make 'both' a lie, and the
+  // label is the one part of this control a user reads every time.
+  { key: 'all', label: 'all' },
   { key: 'claude', label: 'claude' },
   { key: 'opencode', label: 'opencode' },
 ]
