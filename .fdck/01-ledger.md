@@ -7,16 +7,16 @@ Status is one of: **open** (no decision yet) · **planned** (decided yes, not
 started) · **building** · **shipped** (in a release, with the version) ·
 **declined** (decided no, with the reason in the story).
 
-| Id     | Date       | From | Request                                                    | Status   | Landed in         |
-| ------ | ---------- | ---- | ---------------------------------------------------------- | -------- | ----------------- |
-| FB-008 | 2026-08-26 | Vova | Pay for models from inside Caprock                         | open     | —                 |
-| FB-007 | 2026-08-26 | Vova | Show plan limits where they are actually looked at         | open     | —                 |
-| FB-006 | 2026-08-26 | Vova | Quick chat: a findable "new project" that makes the folder | planned  | —                 |
-| FB-005 | 2026-08-26 | Vova | Third-party model providers, free ones first               | planned  | —                 |
-| FB-004 | 2026-08-26 | Vova | JetBrains Mono in the terminal — Cyrillic was unreadable   | building | —                 |
-| FB-003 | 2026-08-26 | Vova | Would pay $20/mo; $50 with models; $100 with Claude+GPT    | open     | —                 |
-| FB-002 | 2026-08-25 | Vova | Filter the dashboard by agent after OpenCode appeared      | shipped  | v0.21.4           |
-| FB-001 | 2026-08-24 | Alex | Hooks never fired on Windows                               | shipped  | v0.27.3 + v0.27.4 |
+| Id     | Date       | From | Request                                                    | Status  | Landed in         |
+| ------ | ---------- | ---- | ---------------------------------------------------------- | ------- | ----------------- |
+| FB-008 | 2026-08-26 | Vova | Pay for models from inside Caprock                         | open    | —                 |
+| FB-007 | 2026-08-26 | Vova | Show plan limits where they are actually looked at         | shipped | v0.28.0           |
+| FB-006 | 2026-08-26 | Vova | Quick chat: a findable "new project" that makes the folder | shipped | v0.28.0           |
+| FB-005 | 2026-08-26 | Vova | Third-party model providers, free ones first               | planned | —                 |
+| FB-004 | 2026-08-26 | Vova | JetBrains Mono in the terminal — Cyrillic was unreadable   | shipped | v0.28.0           |
+| FB-003 | 2026-08-26 | Vova | Would pay $20/mo; $50 with models; $100 with Claude+GPT    | open    | —                 |
+| FB-002 | 2026-08-25 | Vova | Filter the dashboard by agent after OpenCode appeared      | shipped | v0.21.4           |
+| FB-001 | 2026-08-24 | Alex | Hooks never fired on Windows                               | shipped | v0.27.3 + v0.27.4 |
 
 ## Detail
 
@@ -25,8 +25,20 @@ started) · **building** · **shipped** (in a release, with the version) ·
 Vova wants to buy model credit through Caprock rather than holding a separate
 account with each provider. Unscoped and large: it makes us a payment
 intermediary for someone else's API, which is a different business from a
-local dashboard. **No decision.** Recorded because it arrived alongside the
-willingness-to-pay numbers in FB-003 and the two are probably one thought.
+local dashboard.
+
+**The margin was checked on 2026-08-26 rather than assumed, and it is thin.**
+OpenRouter, which does exactly this, states it passes provider pricing through
+"without any markup on inference pricing" and earns on payment fees — 5.5% via
+Stripe. It has no public affiliate programme. DeepSeek publishes no reseller
+tier either; volume terms exist but are negotiated, and its prices fell far
+enough (a 75% cut made permanent) that a percentage of them is a small number.
+
+So the case for it is not margin. It is that a developer holding accounts with
+three providers finds that painful, and Caprock already counts the money — the
+reselling would be a convenience people pay for, with the fee incidental.
+**Still no decision**, and it needs users whose production traffic we can see;
+today we only see their development.
 
 ### FB-007 — Show plan limits
 

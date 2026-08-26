@@ -9,6 +9,22 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **Paid features unlock from a licence key.** A string carrying its own
+  expiry, pasted into settings, checked on the machine — no signature, no
+  online validation, no machine binding ([ADR-022](.ai/08-decisions.md)). The
+  binary is Apache-2.0, so any check is deletable in five minutes; what an
+  offline check buys instead is that a paying customer's features cannot fail
+  because of a plane, a proxy, or a server of ours being down. Seven days of
+  grace after expiry, announced in words, because a late renewal is a bank's
+  timing rather than a decision to stop paying.
+- **`GET /v1/premium` reports the licence state** alongside what the plan
+  costs, so every surface that mentions the paid version reads one answer.
+- **A lifetime purchase**, $100 once. An ordinary key with a distant date
+  rather than a "never expires" flag: a flag would need a second code path in
+  the daemon, and the design is one path.
+
 ## [0.29.0] - 2026-08-26
 
 ### Added

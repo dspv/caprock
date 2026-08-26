@@ -48,6 +48,38 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-08-26 — The payment path, end to end
+
+Money can now reach us and produce a working feature, which it could not that
+morning: the page thanking a buyer promised an email nothing sent, and there
+was no key for it to carry.
+
+**Licensing is decided and built** ([ADR-022](08-decisions.md)): a key with its
+own expiry, checked offline, seven days of grace. The reasoning is in the ADR;
+the short version is that a check in an Apache-2.0 binary is deletable in five
+minutes whatever it costs to build, so the thing worth engineering against is
+not theft but a customer paying and receiving nothing.
+
+Three defects came out of building it rather than reasoning about it: the
+expiry day itself was not covered, taking a day the customer paid for; the
+grace message named the day features stop rather than the last day they work;
+and `PUT /v1/settings` decodes a named allow-list, so `license_key` was
+accepted with a 200 and silently discarded — a payment that appeared to work
+and did nothing.
+
+**Three tiers**: free, $30/year or $5/month, and $100 once. Lifetime is an
+ordinary key with a date in 2076 rather than a flag, so the daemon keeps one
+code path.
+
+**The welcome email works**, verified by running the real webhook code with the
+real key and reading what arrived. Getting there found a fault no amount of
+reading would have: the Resend key belonged to a different workspace, so the
+dashboard showed `caprock.dev` verified while the API refused every send. A
+domain looks the same from both sides right up until you try it.
+
+**What is not verified**: no real purchase has been made. Everything either
+side of Stripe is exercised; the transaction itself is not.
+
 ### 2026-08-26 — Selling from inside the product, and a panel that was slow
 
 The owner read the dashboard as a buyer would and found nothing to buy. Three
