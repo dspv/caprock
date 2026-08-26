@@ -18,6 +18,7 @@ vi.mock('@/lib/api', async (orig) => {
       premium: async (): Promise<PremiumPricing> => ({
         yearly: { per_month_usd: 2.5, charged_usd: 30, period: 'year', url: 'https://buy/y' },
         monthly: { per_month_usd: 5, charged_usd: 5, period: 'month', url: 'https://buy/m' },
+        lifetime: { per_month_usd: 0, charged_usd: 100, period: 'once', url: 'https://buy/l' },
         info_url: 'https://caprock.dev/premium/',
         license: { active: state.active, in_grace: state.inGrace },
       }),

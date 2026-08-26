@@ -152,3 +152,19 @@ func TestNoKeyReportsNoExpiry(t *testing.T) {
 		t.Errorf("expires_at present with no key: %s", b)
 	}
 }
+
+// A lifetime key is an ordinary key with a distant date, not a special case.
+// The point of choosing that over a "never expires" flag is exactly this: no
+// second code path to get wrong.
+func TestLifetimeKeyIsJustAKey(t *testing.T) {
+	// Captured from the webhook for a one-off $100 payment.
+	const lifetime = "CR-2076-08-26-0CE9104F"
+	s := Parse(lifetime, at("2026-08-26"))
+	if !s.Active || s.InGrace {
+		t.Fatalf("lifetime key not plainly active: %+v", s)
+	}
+	// And still active decades later, which is the whole promise.
+	if s := Parse(lifetime, at("2070-01-01")); !s.Active {
+		t.Errorf("lifetime key expired early: %s", s.Reason)
+	}
+}

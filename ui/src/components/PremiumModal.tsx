@@ -51,7 +51,10 @@ function Price({ p }: { p: PremiumPricing | undefined }) {
     <span className="text-fg">
       <span className="num text-[15px]">${p.yearly.per_month_usd.toFixed(2)}</span>
       <span className="text-fg-muted"> a month</span>
-      <span className="text-fg-faint"> — billed once a year at ${p.yearly.charged_usd}, or ${p.monthly.charged_usd} monthly.</span>
+      <span className="text-fg-faint">
+        {' '}— billed once a year at ${p.yearly.charged_usd}, ${p.monthly.charged_usd} monthly,
+        {p.lifetime?.charged_usd ? ` or $${p.lifetime.charged_usd} once and never again.` : '.'}
+      </span>
     </span>
   )
 }

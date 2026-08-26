@@ -206,7 +206,7 @@ export interface RateWindow {
 export interface PremiumPlan { per_month_usd: number; charged_usd: number; period: string; url: string }
 /** What a licence key grants, decided by the daemon from the key's own date. */
 export interface LicenseState { active: boolean; in_grace: boolean; expires_at?: string; reason?: string }
-export interface PremiumPricing { yearly: PremiumPlan; monthly: PremiumPlan; info_url: string; license?: LicenseState }
+export interface PremiumPricing { yearly: PremiumPlan; monthly: PremiumPlan; lifetime: PremiumPlan; info_url: string; license?: LicenseState }
 
 export interface RateLimits {
   five_hour?: RateWindow

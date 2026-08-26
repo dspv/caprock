@@ -31,9 +31,10 @@ type Plan struct {
 
 // Pricing is every way to buy, plus where to read more.
 type Pricing struct {
-	Yearly  Plan   `json:"yearly"`
-	Monthly Plan   `json:"monthly"`
-	InfoURL string `json:"info_url"`
+	Yearly   Plan   `json:"yearly"`
+	Monthly  Plan   `json:"monthly"`
+	Lifetime Plan   `json:"lifetime"`
+	InfoURL  string `json:"info_url"`
 }
 
 // Current is the live pricing. Changing anything here means changing
@@ -52,6 +53,15 @@ func Current() Pricing {
 			ChargedUSD:  5,
 			Period:      "month",
 			URL:         "https://buy.stripe.com/28E7sLdOobhe6m23bt1sQ0z",
+		},
+		// Bought once. PerMonthUSD is zero because there is no per-month
+		// figure to state — dividing $100 by a lifetime is arithmetic on an
+		// unknown, and inventing a denominator to make a smaller number is
+		// exactly what rule 6 forbids.
+		Lifetime: Plan{
+			ChargedUSD: 100,
+			Period:     "once",
+			URL:        "https://buy.stripe.com/4gM14naCc9967q6h2j1sQ0B",
 		},
 		InfoURL: "https://caprock.dev/premium/",
 	}

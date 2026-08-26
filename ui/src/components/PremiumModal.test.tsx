@@ -11,6 +11,7 @@ import type { PremiumPricing } from '@/lib/api'
 const pricing: PremiumPricing = {
   yearly: { per_month_usd: 2.5, charged_usd: 30, period: 'year', url: 'https://buy.stripe.com/yearly' },
   monthly: { per_month_usd: 5, charged_usd: 5, period: 'month', url: 'https://buy.stripe.com/monthly' },
+  lifetime: { per_month_usd: 0, charged_usd: 100, period: 'once', url: 'https://buy/l' },
   info_url: 'https://caprock.dev/premium/',
 }
 

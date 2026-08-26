@@ -42,19 +42,28 @@ func TestPricingMatchesTheSite(t *testing.T) {
 	}
 
 	p := Current()
-	// The monthly `usd` appears first in the file, then the yearly one.
+	// In file order: monthly, yearly, lifetime. Positional rather than named
+	// because the file is TypeScript, not data — parsing it properly would be
+	// a parser, and this check exists to notice a mismatch, not to be one.
 	all := regexp.MustCompile(`usd:\s*([0-9.]+)`).FindAllStringSubmatch(src, -1)
-	if len(all) != 2 {
-		t.Fatalf("expected two `usd:` prices in %s, found %d", path, len(all))
+	if len(all) != 3 {
+		t.Fatalf("expected three `usd:` prices in %s, found %d — the file's shape changed, so this check is no longer checking what it says", path, len(all))
 	}
-	monthly, _ := strconv.ParseFloat(all[0][1], 64)
-	yearly, _ := strconv.ParseFloat(all[1][1], 64)
-
-	if monthly != p.Monthly.ChargedUSD {
-		t.Errorf("monthly price: site says %.2f, dashboard says %.2f", monthly, p.Monthly.ChargedUSD)
-	}
-	if yearly != p.Yearly.ChargedUSD {
-		t.Errorf("yearly price: site says %.2f, dashboard says %.2f", yearly, p.Yearly.ChargedUSD)
+	for i, want := range []struct {
+		name string
+		usd  float64
+	}{
+		{"monthly", p.Monthly.ChargedUSD},
+		{"yearly", p.Yearly.ChargedUSD},
+		{"lifetime", p.Lifetime.ChargedUSD},
+	} {
+		got, err := strconv.ParseFloat(all[i][1], 64)
+		if err != nil {
+			t.Fatalf("parse %s price: %v", want.name, err)
+		}
+		if got != want.usd {
+			t.Errorf("%s price: site says %.2f, dashboard says %.2f", want.name, got, want.usd)
+		}
 	}
 	if got := num("perMonth"); got != p.Yearly.PerMonthUSD {
 		t.Errorf("yearly per-month: site says %.2f, dashboard says %.2f", got, p.Yearly.PerMonthUSD)
@@ -62,7 +71,7 @@ func TestPricingMatchesTheSite(t *testing.T) {
 
 	// The links matter as much as the figures: a correct price beside a link
 	// to the wrong Stripe product charges the wrong amount.
-	for _, want := range []string{p.Yearly.URL, p.Monthly.URL} {
+	for _, want := range []string{p.Yearly.URL, p.Monthly.URL, p.Lifetime.URL} {
 		if !regexp.MustCompile(regexp.QuoteMeta(want)).MatchString(src) {
 			t.Errorf("payment link %s is not in %s", want, path)
 		}
@@ -77,6 +86,7 @@ func TestPricesArePositive(t *testing.T) {
 		"yearly per month":  p.Yearly.PerMonthUSD,
 		"monthly charged":   p.Monthly.ChargedUSD,
 		"monthly per month": p.Monthly.PerMonthUSD,
+		"lifetime charged":  p.Lifetime.ChargedUSD,
 	} {
 		if v <= 0 {
 			t.Errorf("%s is %.2f", name, v)
