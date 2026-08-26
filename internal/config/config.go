@@ -100,6 +100,15 @@ func ShimPath(dir string) string         { return filepath.Join(dir, shimBinaryN
 func LogPath(dir string) string          { return filepath.Join(dir, "caprock.log") }
 func HookDebugLogPath(dir string) string { return filepath.Join(dir, "hook-debug.log") }
 
+// ChatsDir is where quick chats live — sessions started to ask something
+// rather than to work on a repository.
+//
+// Under the data directory rather than a second `~/.caprock`: one place that
+// holds Caprock's state is one place to back up, clean out and explain. A chat
+// is state, not a user's project, and it has no business being somewhere the
+// user has to discover separately.
+func ChatsDir(dir string) string { return filepath.Join(dir, "chats") }
+
 // Load reads config.json, layering it over Defaults(). Unknown fields are ignored.
 func Load(dir string) (Config, error) {
 	cfg := Defaults()

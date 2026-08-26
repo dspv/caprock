@@ -312,7 +312,7 @@ export interface Status {
   }
 }
 
-export interface SpawnRequest { cwd: string; create?: boolean; worktree?: string; model?: string; permission_mode?: string; args?: string[] }
+export interface SpawnRequest { cwd?: string; chat?: boolean; create?: boolean; worktree?: string; model?: string; permission_mode?: string; args?: string[] }
 
 async function post<T>(path: string, body: unknown, method = 'POST'): Promise<T> {
   const res = await fetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })

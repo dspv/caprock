@@ -375,3 +375,68 @@ func TestSpawnDoesNotCreateUnlessAsked(t *testing.T) {
 		t.Fatal("spawn created the directory without being asked")
 	}
 }
+
+// A quick chat is "I want to ask something", not "I want to work on a repo".
+// It must not demand a directory, and each one needs its own.
+func TestChatDirectories(t *testing.T) {
+	at := func(s string) func() time.Time {
+		ts, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return func() time.Time { return ts }
+	}
+
+	t.Run("names the directory after the moment it started", func(t *testing.T) {
+		data := t.TempDir()
+		m := &Manager{dataDir: data, claude: "claude", agents: map[string]*Agent{}, Now: at("2026-08-26T17:04:05Z")}
+		dir, err := m.newChatDir()
+		if err != nil {
+			t.Fatalf("newChatDir: %v", err)
+		}
+		if got := filepath.Base(dir); got != "2026-08-26-170405" {
+			t.Fatalf("chat directory named %q", got)
+		}
+		if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+			t.Fatalf("chat directory not created: %v", err)
+		}
+	})
+
+	t.Run("two chats in the same second do not share a directory", func(t *testing.T) {
+		// Claude Code keys a transcript by working directory. Two chats in one
+		// directory is two conversations in one transcript, which is both
+		// unreadable and priced as a single session.
+		data := t.TempDir()
+		m := &Manager{dataDir: data, claude: "claude", agents: map[string]*Agent{}, Now: at("2026-08-26T17:04:05Z")}
+		first, err := m.newChatDir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		second, err := m.newChatDir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if first == second {
+			t.Fatalf("both chats landed in %q", first)
+		}
+	})
+
+	t.Run("lives under the data directory, not a second home of its own", func(t *testing.T) {
+		data := t.TempDir()
+		m := &Manager{dataDir: data, claude: "claude", agents: map[string]*Agent{}, Now: at("2026-08-26T17:04:05Z")}
+		dir, err := m.newChatDir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(dir, filepath.Join(data, "chats")+string(filepath.Separator)) {
+			t.Fatalf("chat directory %q is not under the data dir's chats/", dir)
+		}
+	})
+
+	t.Run("reports a missing data directory instead of guessing one", func(t *testing.T) {
+		m := &Manager{claude: "claude", agents: map[string]*Agent{}}
+		if _, err := m.newChatDir(); err == nil {
+			t.Fatal("invented a location with no data directory configured")
+		}
+	})
+}

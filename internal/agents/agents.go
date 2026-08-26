@@ -25,6 +25,7 @@ import (
 // SpawnRequest describes a session to launch.
 type SpawnRequest struct {
 	Cwd            string   `json:"cwd"`
+	Chat           bool     `json:"chat,omitempty"`            // a quick chat: Caprock picks the directory, no repository needed
 	Create         bool     `json:"create,omitempty"`          // make Cwd if it does not exist (one level, under an existing parent)
 	Worktree       string   `json:"worktree,omitempty"`        // git worktree name to create under the repo
 	Model          string   `json:"model,omitempty"`           // --model
@@ -67,6 +68,17 @@ type Manager struct {
 	OnOutput func(sessionID string) // called (throttled by caller) when new bytes arrive
 	// NewSessionID generates a session id; overridable in tests.
 	NewSessionID func() string
+	// Now is the clock chat directory names are stamped from; overridable in
+	// tests so a name can be asserted rather than merely observed to exist.
+	Now func() time.Time
+}
+
+// now is Manager.Now, or the wall clock when a manager was built by hand.
+func (m *Manager) now() time.Time {
+	if m.Now != nil {
+		return m.Now()
+	}
+	return time.Now()
 }
 
 // NewManager builds a manager. claudePath "" resolves "claude" on PATH.
@@ -77,7 +89,7 @@ func NewManager(st *store.Store, dataDir, claudePath string, log *slog.Logger) *
 	if claudePath == "" {
 		claudePath = resolveClaude()
 	}
-	return &Manager{pty: ptyman.New(), store: st, log: log, dataDir: dataDir, claude: claudePath, agents: map[string]*Agent{}, NewSessionID: config.NewSessionID}
+	return &Manager{pty: ptyman.New(), store: st, log: log, dataDir: dataDir, claude: claudePath, agents: map[string]*Agent{}, NewSessionID: config.NewSessionID, Now: time.Now}
 }
 
 // ClaudeAvailable reports whether the resolved claude binary can be launched.
@@ -115,6 +127,47 @@ func resolveClaude() string {
 		}
 	}
 	return "claude"
+}
+
+// newChatDir makes a home for one quick chat.
+//
+// Vova uses Claude to ask things — look something up, talk a problem through —
+// and the spawn dialog demanded an absolute path to a repository before it
+// would start anything. For "just ask a question" that is a wall, so Caprock
+// picks the directory itself.
+//
+// One directory PER CHAT, not one shared `chats/` folder: Claude Code keys a
+// transcript by its working directory, so a shared folder would collapse every
+// conversation the user ever had into a single project row worth thousands of
+// dollars, with no way to tell one from another. Dated names sort themselves,
+// and a chat's own directory is somewhere Claude can write scratch files
+// without touching anyone's repository.
+func (m *Manager) newChatDir() (string, error) {
+	if m.dataDir == "" {
+		return "", errors.New("agents: no data directory, so a chat has nowhere to live")
+	}
+	base := config.ChatsDir(m.dataDir)
+	if err := os.MkdirAll(base, 0o700); err != nil {
+		return "", fmt.Errorf("agents: create chats directory: %w", err)
+	}
+	// Second granularity plus a counter: two chats started inside the same
+	// second would otherwise land in one directory and share a transcript.
+	stamp := m.now().Format("2006-01-02-150405")
+	for i := 0; ; i++ {
+		name := stamp
+		if i > 0 {
+			name = fmt.Sprintf("%s-%d", stamp, i+1)
+		}
+		dir := filepath.Join(base, name)
+		if err := os.Mkdir(dir, 0o700); err == nil {
+			return dir, nil
+		} else if !os.IsExist(err) {
+			return "", fmt.Errorf("agents: create chat directory: %w", err)
+		}
+		if i > 100 {
+			return "", errors.New("agents: could not find a free chat directory name")
+		}
+	}
 }
 
 // makeProjectDir creates a directory for a new project, one level deep.
@@ -156,6 +209,13 @@ func makeProjectDir(dir string) error {
 // with `claude --session-id <uuid>` so hooks and transcript arrive under the id
 // Caprock already knows.
 func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
+	if req.Chat && req.Cwd == "" {
+		dir, err := m.newChatDir()
+		if err != nil {
+			return nil, err
+		}
+		req.Cwd = dir
+	}
 	if req.Cwd == "" {
 		return nil, errors.New("agents: spawn without cwd")
 	}

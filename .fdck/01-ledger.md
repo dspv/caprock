@@ -37,12 +37,20 @@ Confirm with Vova which screen he expected it on before moving anything.
 
 ### FB-006 — Quick chat, and the new-project button
 
-**Two of the three parts are built** (not yet released): the button moved to
-the top of the Now screen at the size of an action, and the spawn dialog grew
-a `create it if it does not exist` checkbox backed by `create` on
-`POST /v1/agents`. Quick chat itself — a way to talk to a session without
-going through the terminal — is still open, and is the part that needs a
-decision about what it actually is.
+**All three parts are built** (not yet released):
+
+- the button moved to the top of the Now screen at the size of an action;
+- the spawn dialog grew `create it if it does not exist`, backed by `create`
+  on `POST /v1/agents`;
+- **Quick chat** starts a session with no directory at all, backed by `chat`.
+  Vova uses Claude to ask things — look something up, talk something through —
+  and being made to name a repository first is a wall in front of a question.
+  Caprock makes a directory per chat under `<data_dir>/chats/`. Default model,
+  changeable inside the session afterwards.
+
+Per chat, not one shared folder: Claude Code keys a transcript by working
+directory, so a shared one would collapse every conversation the user ever had
+into a single project row with a single transcript.
 
 Two things in one request:
 

@@ -15,7 +15,7 @@
  *    healthy while capturing nothing, and this screen told the user to start
  *    `claude` and wait for sessions that could never arrive.
  */
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { NowScreen } from './Now'
 import type { SessionSummary, Status, Summary } from '@/lib/api'
@@ -24,6 +24,7 @@ const state = vi.hoisted(() => ({
   status: {} as Partial<Status>,
   summary: undefined as Partial<Summary> | undefined,
   sessions: [] as SessionSummary[],
+  spawned: [] as unknown[],
 }))
 
 vi.mock('@/lib/api', async (orig) => {
@@ -35,6 +36,7 @@ vi.mock('@/lib/api', async (orig) => {
       status: async () => state.status as Status,
       summary: async () => state.summary as Summary,
       sessions: async () => state.sessions,
+      spawn: async (req: unknown) => { state.spawned.push(req); return { session_id: 'chat-1', cwd: '/data/chats/x' } },
     },
   }
 })
@@ -148,6 +150,36 @@ it('puts the one control that starts something above the session list', async ()
   expect(list, 'session grid did not render').toBeTruthy()
   // Node.compareDocumentPosition: FOLLOWING means the list comes after the button.
   expect(btn.compareDocumentPosition(list!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+})
+
+it('starts a chat without asking where it should live', async () => {
+  state.summary = emptySummary()
+  state.status = { claude_available: true }
+  state.spawned = []
+  render(<NowScreen />)
+
+  // Asking a question is not working on a repository, and demanding an
+  // absolute path before answering one is a wall. The request must carry no
+  // cwd at all — Caprock picks the directory — or this is just the old dialog
+  // with a different label.
+  const btn = await screen.findByRole('button', { name: /Quick chat/ })
+  fireEvent.click(btn)
+  await waitFor(() => expect(state.spawned).toHaveLength(1))
+  const req = state.spawned[0] as { chat?: boolean; cwd?: string }
+  expect(req.chat).toBe(true)
+  expect(req.cwd).toBeUndefined()
+})
+
+it('offers no chat button when claude is missing', async () => {
+  state.summary = emptySummary()
+  state.status = { claude_available: false }
+  render(<NowScreen />)
+
+  // Unlike New session, this button carries no explanation of its own — it
+  // spawns immediately — so showing it without a working binary would just
+  // produce an error where a question was asked.
+  await screen.findByRole('button', { name: /New session/ })
+  expect(screen.queryByRole('button', { name: /Quick chat/ })).toBeNull()
 })
 
 /**

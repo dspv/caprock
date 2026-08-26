@@ -128,12 +128,14 @@ What that file holds bounds what may ever be said about it: a timestamp and two 
 ### Phase 1 additions
 
 ```
-POST   /v1/agents                    {cwd, create?, worktree?, model?, permission_mode?, command?, args?} → {session_id, cwd}
+POST   /v1/agents                    {cwd?, chat?, create?, worktree?, model?, permission_mode?, command?, args?} → {session_id, cwd}
 POST   /v1/agents/{id}/input         {data}            → 204   (owned PTYs only)
 POST   /v1/agents/{id}/signal        {action: pause|resume|kill} → 204 (owned PTYs only)
 WS     /v1/agents/{id}/term          bidirectional binary stream (xterm.js); snapshot on connect, closes on exit
 GET    /v1/history?range=…           lifetime totals + tool distribution + model mix + daily
 ```
+
+**`chat` starts a session without a working directory**, for asking something rather than working on a repository — Caprock creates one under `<data_dir>/chats/<YYYY-MM-DD-HHMMSS>/` and spawns there. `cwd` is required unless `chat` is set. One directory **per chat**, never a shared `chats/` folder: Claude Code keys a transcript by working directory, so a shared folder would collapse every conversation into one project row and one transcript. The name carries a counter when two chats start inside the same second. Chats live under the data directory rather than a second `~/.caprock` — one place holding Caprock's state is one place to back up, clean out and explain.
 
 **`create` makes the working directory, one level, under a parent that already exists.** Starting a new project otherwise meant leaving the dashboard, creating the folder in a terminal, and returning to type its path — a path the user had already typed. It is opt-in and defaults to false: this endpoint executes a command from its body, so a missing directory stays an error unless the caller explicitly asked for it to be made. Deliberately `Mkdir`, never `MkdirAll` — the parent must exist, so a typo in an absolute path fails loudly instead of materialising a chain of directories somewhere the user has never been. The path is cleaned before the parent is checked, so a path that climbs out with `..` is verified against where it actually lands. An existing directory is not an error.
 

@@ -1,5 +1,6 @@
-import { api, type SessionSummary } from '@/lib/api'
+import { api, errText, type SessionSummary } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
+import { navigate } from '@/lib/router'
 import { live, useLive } from '@/lib/live'
 import { fmtAgo, fmtPct, fmtTokens, fmtUSD, shortId } from '@/lib/format'
 import { Badge, Empty, Panel, Skeleton, Stat } from '@/components/ui'
@@ -92,6 +93,7 @@ export function NowScreen() {
           * the last place anyone reading top-down would look. A user who had
           * moved onto Caprock full-time still could not find it. Top of the
           * screen, at the size of an action. */}
+        <QuickChatButton available={status.data?.claude_available} />
         <NewSessionButton available={status.data?.claude_available} onClick={() => setSpawning(true)} />
       </div>
 
@@ -230,6 +232,43 @@ export function NowScreen() {
           onClose={() => { setSpawning(false); sessions.refresh() }}
         />
       )}
+    </div>
+  )
+}
+
+/**
+ * Ask something, without first answering where.
+ *
+ * "New session" demands an absolute path to a repository, which is the right
+ * question for work and a wall for "look this up for me" — the way at least
+ * one user spends much of his time in Claude. This starts a session Caprock
+ * has found a home for, in the data directory, on the default model; the model
+ * can still be changed inside the session afterwards.
+ */
+function QuickChatButton({ available }: { available: boolean | undefined }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  if (available === false) return null
+  const start = async () => {
+    setBusy(true); setError('')
+    try {
+      const { session_id } = await api.spawn({ chat: true })
+      navigate({ name: 'session', id: session_id, tab: 'terminal' })
+    } catch (e) {
+      setError(errText(e))
+    } finally { setBusy(false) }
+  }
+  return (
+    <div className="shrink-0">
+      <button
+        onClick={start}
+        disabled={busy}
+        title="start a session without picking a folder"
+        className="rounded-[var(--radius-panel)] border border-border-strong px-3 py-2 text-[13px] text-fg-muted hover:text-fg hover:border-accent/50 disabled:opacity-50"
+      >
+        {busy ? 'starting…' : 'Quick chat'}
+      </button>
+      {error && <div className="mt-1 max-w-[220px] text-[11px] text-danger">{error}</div>}
     </div>
   )
 }
