@@ -297,13 +297,13 @@ func statuslineCommandStr() string {
 	if err != nil {
 		return "caprock statusline"
 	}
-	// Quote only the path, not the whole command — else a caprock installed under
-	// a path with spaces produces `"…/caprock statusline"` (one quoted token,
-	// which Claude Code runs as a binary literally named "caprock statusline").
-	if strings.ContainsAny(self, " \t") {
-		return `"` + self + `" statusline`
-	}
-	return self + " statusline"
+	// Same treatment as a hook command, through the same function: forward
+	// slashes so bash does not eat a Windows path's backslashes, quotes so a
+	// space cannot split it, and the argument left outside the quotes. This
+	// carried the spaces-only version of the bug that broke every Windows
+	// install's hooks — including its statusLine, which a user had to repair by
+	// hand.
+	return hooks.ShellCommand(self) + " statusline"
 }
 
 // maybeInstallStatusline offers to register `caprock statusline` as Claude Code's

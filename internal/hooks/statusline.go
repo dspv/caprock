@@ -3,7 +3,6 @@ package hooks
 import (
 	"errors"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -51,7 +50,7 @@ func isOurStatusline(cs, cmdPath string) bool {
 	if !ok || sub != "statusline" {
 		return false
 	}
-	b := filepath.Base(prog)
+	b := baseName(prog)
 	return b == "caprock" || b == "caprock.exe"
 }
 

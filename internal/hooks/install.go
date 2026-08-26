@@ -424,7 +424,7 @@ func isOurEntry(e *Object, shimPath string) bool {
 		// Three accepted forms, because an existing install must keep being
 		// recognised: bare (what versions before the always-quote fix wrote on
 		// a path without spaces), and quoted (what every install writes now).
-		if cs == shimPath || cs == shellCommand(shimPath) {
+		if cs == shimPath || cs == ShellCommand(shimPath) {
 			return true
 		}
 		// Recognize our entry regardless of which command form was installed: the
@@ -434,12 +434,12 @@ func isOurEntry(e *Object, shimPath string) bool {
 		// self-hook form — both are ours, so status must not read 0/N for a
 		// working install.
 		trimmed := strings.Trim(cs, `"`)
-		base := filepath.Base(trimmed)
+		base := baseName(trimmed)
 		if base == "caprock-hook" || base == "caprock-hook.exe" {
 			return true
 		}
 		if fields := strings.Fields(trimmed); len(fields) == 2 && fields[1] == "hook" {
-			if b := filepath.Base(fields[0]); b == "caprock" || b == "caprock.exe" {
+			if b := baseName(fields[0]); b == "caprock" || b == "caprock.exe" {
 				return true
 			}
 		}
@@ -450,15 +450,17 @@ func isOurEntry(e *Object, shimPath string) bool {
 func ourEntry(shimPath string) *Object {
 	h := NewObject()
 	h.Set("type", "command")
-	h.Set("command", shellCommand(shimPath))
+	h.Set("command", ShellCommand(shimPath))
 	h.Set("timeout", ShimTimeoutSeconds)
 	e := NewObject()
 	e.Set("hooks", []any{h})
 	return e
 }
 
-// shellCommand renders the registration so the shell Claude Code runs command
-// hooks through neither splits it nor eats it.
+// ShellCommand renders a registration so the shell Claude Code runs it through
+// neither splits it nor eats it. Exported because `statusLine.command` needs
+// exactly the same treatment and had exactly the same bug — two copies of this
+// logic is how one of them ends up fixed and the other does not.
 //
 // Spaces were the original reason (the macOS data dir is "~/Library/Application
 // Support/caprock/…"), but a Windows path needs quoting even without one: the
@@ -469,7 +471,19 @@ func ourEntry(shimPath string) *Object {
 //
 // So: always quote. A quoted path is correct on every platform, and the cost
 // is two characters.
-func shellCommand(p string) string {
+// baseName is filepath.Base that understands both separators, whichever host
+// it runs on. A registration written on Windows carries backslashes, and
+// filepath.Base on a Unix host treats the whole thing as one filename — so a
+// perfectly valid entry read anywhere but Windows looks like a stranger's, and
+// `caprock hooks status` reports a working install as missing.
+func baseName(p string) string {
+	if i := strings.LastIndexAny(p, `/\`); i >= 0 {
+		return p[i+1:]
+	}
+	return p
+}
+
+func ShellCommand(p string) string {
 	if strings.HasPrefix(p, `"`) {
 		return p
 	}

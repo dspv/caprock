@@ -27,9 +27,17 @@ Phase 3 (Delight) has no plan by design.
   breaking again, and forward slashes alone still split on a space.
 
   Found by two users on the same day, one of whose agents diagnosed it and
-  applied the forward-slash fix by hand before this shipped. Entries written by
-  earlier versions are still recognised, so upgrading does not report every
-  hook missing and offer to reinstall what is already there.
+  applied the forward-slash fix by hand before this shipped.
+
+  Two more defects came out of the same thread. **`statusLine.command` had the
+  identical bug** and was broken on the same machines, through a second copy of
+  the same quoting logic — now one shared function, since two copies is how one
+  gets fixed and the other does not. And **an entry written on Windows was not
+  recognised as ours when read anywhere else**: the base-name check used the
+  host's path separator, so a backslash registration looked like a stranger's
+  to a non-Windows reader. Both separators are understood now, on every
+  platform, which is also why an upgrade does not report a working install as
+  missing or overwrite a line a user repaired by hand.
 
 ## [0.27.3] - 2026-08-26
 
