@@ -112,6 +112,15 @@ func normalizeModel(model string) string {
 	if i := strings.Index(m, "@"); i >= 0 {
 		m = m[:i]
 	}
+	// Gateway ids carry the vendor ahead of the model: OpenRouter reports
+	// "minimax/minimax-m3" and "openai/gpt-5.5" for the same models a direct
+	// API calls "MiniMax-M3" and "gpt-5.5". Without this the same model priced
+	// through two routes is two rows, one of them unpriced — which is exactly
+	// what the owner's own database looked like: four spellings of MiniMax,
+	// 38 turns nobody could cost.
+	if i := strings.LastIndex(m, "/"); i >= 0 {
+		m = m[i+1:]
+	}
 	return m
 }
 

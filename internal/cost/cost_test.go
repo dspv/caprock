@@ -102,3 +102,55 @@ func TestLoadOverride(t *testing.T) {
 		t.Fatal("broken override must error, not fall back silently")
 	}
 }
+
+// The same model reported by two routes must price the same.
+//
+// OpenRouter says "minimax/minimax-m3"; a direct MiniMax API says "MiniMax-M3".
+// Before the vendor prefix was stripped, the owner's own database held four
+// spellings of MiniMax and 38 turns nobody could cost — usage that had been
+// paid for and could not appear in a total.
+func TestGatewayPrefixesPriceTheSame(t *testing.T) {
+	tab, err := Load("../../pricing/pricing.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, group := range [][]string{
+		{"minimax-m3", "MiniMax-M3", "minimax/minimax-m3", "MiniMax-M3-Preview"},
+		{"deepseek-v4-pro", "deepseek/deepseek-v4-pro"},
+	} {
+		var want Model
+		for i, id := range group {
+			got, ok := tab.Lookup(id)
+			if !ok {
+				t.Errorf("%q has no price", id)
+				continue
+			}
+			if i == 0 {
+				want = got
+				continue
+			}
+			if got.ID != want.ID {
+				t.Errorf("%q priced as %q, but %q priced as %q — same model, two rows",
+					id, got.ID, group[0], want.ID)
+			}
+		}
+	}
+}
+
+// Every model observed in a real database must be priceable, or a total is not
+// a total. These ids are taken from the owner's machine.
+func TestModelsSeenInTheWildArePriced(t *testing.T) {
+	tab, err := Load("../../pricing/pricing.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{
+		"claude-opus-5", "claude-opus-4-8", "claude-sonnet-5", "claude-fable-5",
+		"claude-haiku-4-5-20251001", "claude-opus-5[1m]",
+		"deepseek-v4-pro", "minimax/minimax-m3", "minimax-m3", "MiniMax-M3", "MiniMax-M2.7",
+	} {
+		if _, ok := tab.Lookup(id); !ok {
+			t.Errorf("%q is used on a real machine and has no price", id)
+		}
+	}
+}

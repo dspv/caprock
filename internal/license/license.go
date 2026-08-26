@@ -14,6 +14,8 @@
 package license
 
 import (
+	cryptorand "crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -64,8 +66,10 @@ func Parse(key string, now time.Time) State {
 		return State{Reason: fmt.Sprintf("a Caprock key starts with %q", Prefix)}
 	}
 	rest := strings.TrimPrefix(k, Prefix)
-	// YYYY-MM-DD- plus at least one character of randomness.
-	if len(rest) < len("2006-01-02-")+1 {
+	// A date is all a key needs. The suffix exists so two keys issued on the
+	// same day can be told apart in an email; nothing verifies it, so a key
+	// dictated over the phone and typed without one still has to work.
+	if len(rest) < len("2006-01-02") {
 		return State{Reason: "key is too short to carry a date"}
 	}
 	day := rest[:len("2006-01-02")]
@@ -73,7 +77,7 @@ func Parse(key string, now time.Time) State {
 	if err != nil {
 		return State{Reason: "key does not carry a readable date"}
 	}
-	if rest[len(day)] != '-' {
+	if len(rest) > len(day) && rest[len(day)] != '-' {
 		return State{Reason: "key is missing the separator after its date"}
 	}
 	// The date names the last day covered, so the key is good until the end of
@@ -98,4 +102,31 @@ func Parse(key string, now time.Time) State {
 	default:
 		return State{ExpiresAt: &exp, Reason: fmt.Sprintf("expired %s", day)}
 	}
+}
+
+// Issue mints a key valid until `until`, in the same format the Stripe webhook
+// produces (caprock-web/functions/api/stripe-webhook.ts).
+//
+// It exists because the webhook was the only thing that could make a key, and
+// that leaves the owner unable to serve the cases payment rails do not cover: a
+// customer who paid another way, a refund reissued, a friend, a conference. A
+// business with no manual override is one that fails its first unusual
+// customer.
+//
+// The randomness is not a secret — nothing verifies it. It exists so two keys
+// issued on the same day are distinguishable when someone quotes one in an
+// email.
+func Issue(until time.Time, rand func() string) string {
+	return Prefix + until.Format("2006-01-02") + "-" + rand()
+}
+
+// RandomSuffix is the default Issue suffix: eight uppercase hex characters.
+func RandomSuffix() string {
+	b := make([]byte, 4)
+	if _, err := cryptorand.Read(b); err != nil {
+		// Cannot happen on any supported platform, and a key that is merely
+		// less distinguishable is better than no key at all.
+		return "00000000"
+	}
+	return strings.ToUpper(hex.EncodeToString(b))
 }

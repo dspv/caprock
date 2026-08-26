@@ -59,13 +59,13 @@ export function HistoryScreen() {
               first time, and three of five readers took it for a bill. */}
           <Stat label="Cost" value={measured ? fmtUSD(d!.totals.cost_usd) : '—'} sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : 'nothing measured yet'}</span>} tone="info" size="hero" />
         </div>
-        {d?.totals.unpriced ? (
-          <div className="mx-3 mb-2.5">
-            <Locked feature="providers" title="Price these too, so the total is the whole total">
-              <UnpricedNote u={d.totals.unpriced} />
-            </Locked>
-          </div>
-        ) : null}
+        {/* Not locked any more. Third-party pricing was going to be the paid
+          * feature until the prices were simply added — DeepSeek, MiniMax and
+          * the rest now cost out for everyone, and charging for something the
+          * free version already does is how a paid tier becomes a hostage.
+          * What is left here is the honest warning for a model we do not know
+          * yet, which is not a feature and not for sale. */}
+        <UnpricedNote u={d?.totals.unpriced} className="mx-3 mb-2.5" />
       </Panel>
       <div className="grid gap-3 lg:grid-cols-2">
         <Panel title="Tool usage" right={<span>by calls</span>}>

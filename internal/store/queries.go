@@ -985,7 +985,12 @@ func queryUnpriced(ctx context.Context, q Querier, fromMs int64) (*Unpriced, err
 		       COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0)),0)
 		FROM events
 		WHERE kind = 'turn.assistant' AND ts >= ? AND cost_usd IS NULL
-		  AND (tokens_in IS NOT NULL OR tokens_out IS NOT NULL OR cache_read IS NOT NULL OR cache_write IS NOT NULL)
+		  -- Tokens greater than zero, not merely present. A turn recorded with
+		  -- explicit zeroes has nothing to price, and warning about it tells a
+		  -- user their total is missing money when it is missing nothing: the
+		  -- owner's database had 38 such turns and a banner saying so.
+		  AND (COALESCE(tokens_in,0) + COALESCE(tokens_out,0)
+		       + COALESCE(cache_read,0) + COALESCE(cache_write,0)) > 0
 		GROUP BY model ORDER BY 3 DESC`, fromMs)
 	if err != nil {
 		return nil, err

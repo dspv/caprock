@@ -65,8 +65,18 @@ describe('the paywall', () => {
   it('locks each paid feature exactly where it will live', () => {
     // Every feature we charge for has to be visible somewhere, or nobody can
     // see what they would be buying.
+    // The list comes from the modal rather than being repeated here: a
+    // hardcoded copy is a second source of truth, and this test failed on one
+    // the moment a feature stopped being sold — for the wrong reason.
+    const modal = read('components/PremiumModal.tsx')
+    const declared = (modal.match(/export type PaidFeature = ([^\n]+)/)?.[1] ?? '')
+      .split('|')
+      .map((s) => s.trim().replace(/'/g, ''))
+      .filter(Boolean)
+    expect(declared.length, 'no paid features are declared').toBeGreaterThan(0)
+
     const all = SCREENS.flatMap((s) => locks(read(s)).map((l) => l.feature))
-    for (const f of ['cap', 'report', 'providers']) {
+    for (const f of declared) {
       expect(all, `"${f}" is sold but shown nowhere in the product`).toContain(f)
     }
   })

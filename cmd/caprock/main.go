@@ -52,7 +52,7 @@ func newRoot() *cobra.Command {
 		SilenceErrors: true,
 		Version:       version.Version,
 	}
-	root.AddCommand(upCmd(), downCmd(), statusCmd(), reportCmd(), tasksCmd(), taskCmd(), hooksCmd(), hookCmd(), statuslineCmd(), serviceCmd(), versionCmd())
+	root.AddCommand(upCmd(), downCmd(), statusCmd(), reportCmd(), tasksCmd(), taskCmd(), hooksCmd(), hookCmd(), statuslineCmd(), licenseCmd(), serviceCmd(), versionCmd())
 	return root
 }
 

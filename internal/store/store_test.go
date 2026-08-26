@@ -767,3 +767,51 @@ func TestSummarizeJoinsRootlessSessionsToTheirRepository(t *testing.T) {
 		t.Fatalf("sessions = %d, want both", got)
 	}
 }
+
+// The unpriced warning must mean "money you cannot see", not "rows that
+// happen to have no cost".
+//
+// A turn recorded with explicit zero tokens has nothing to price. Warning
+// about it tells a user their total is missing money when it is missing
+// nothing — the owner's own dashboard showed 38 such turns and a banner
+// saying the total was incomplete. It was complete.
+func TestUnpricedIgnoresTurnsWithNoTokens(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	zero := 0
+	for i, tc := range []struct {
+		model string
+		in    *int
+		out   *int
+	}{
+		{"ghost-model", &zero, &zero},             // nothing to price
+		{"real-model", intPtr(1000), intPtr(500)}, // genuinely unpriced
+	} {
+		ev := &event.Event{
+			SessionID: fmt.Sprintf("s%d", i), Source: event.SourceTranscript,
+			Kind: event.KindTurnAssistant, Model: tc.model, Ts: time.UnixMilli(2000),
+			Tokens: &event.TokenDelta{In: int64(*tc.in), Out: int64(*tc.out)},
+		}
+		ev.Key = fmt.Sprintf("k%d", i)
+		if _, err := InsertEvent(ctx, s.db, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	u, err := queryUnpriced(ctx, s.db, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u == nil {
+		t.Fatal("expected the genuinely unpriced model to be reported")
+	}
+	for _, m := range u.Models {
+		if m == "ghost-model" {
+			t.Errorf("warned about a turn with no tokens: %v", u.Models)
+		}
+	}
+	if len(u.Models) != 1 || u.Models[0] != "real-model" {
+		t.Errorf("models = %v, want just the one with tokens", u.Models)
+	}
+}
+
+func intPtr(v int) *int { return &v }

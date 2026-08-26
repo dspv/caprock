@@ -168,3 +168,44 @@ func TestLifetimeKeyIsJustAKey(t *testing.T) {
 		t.Errorf("lifetime key expired early: %s", s.Reason)
 	}
 }
+
+// A key we mint must be a key we accept. These are the two halves of the same
+// mechanism, and nothing but this test holds them together — a generator that
+// drifts from the parser hands a paying customer a string their dashboard
+// rejects.
+func TestIssuedKeysParse(t *testing.T) {
+	now := at("2026-08-27")
+	for _, days := range []int{35, 370, 18262} {
+		until := now.AddDate(0, 0, days)
+		key := Issue(until, RandomSuffix)
+		s := Parse(key, now)
+		if !s.Active {
+			t.Errorf("Issue(+%dd) produced %q, which Parse rejects: %s", days, key, s.Reason)
+		}
+		if s.InGrace {
+			t.Errorf("Issue(+%dd) produced a key already in grace", days)
+		}
+	}
+}
+
+// Two keys minted in the same second must differ, or a second customer is
+// handed the first one's string.
+func TestIssuedKeysAreDistinguishable(t *testing.T) {
+	until := at("2027-01-01")
+	seen := map[string]bool{}
+	for i := 0; i < 50; i++ {
+		k := Issue(until, RandomSuffix)
+		if seen[k] {
+			t.Fatalf("Issue produced a duplicate: %s", k)
+		}
+		seen[k] = true
+	}
+}
+
+// The suffix is cosmetic — nothing verifies it — so a key must still work if
+// it is missing entirely. Someone will type one by hand.
+func TestKeyWorksWithoutRandomness(t *testing.T) {
+	if s := Parse("CR-2027-01-01-", at("2026-08-27")); !s.Active {
+		t.Errorf("a hand-typed key with an empty suffix was rejected: %s", s.Reason)
+	}
+}

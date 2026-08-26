@@ -25,7 +25,7 @@ import { useEffect } from 'react'
 import { api, type PremiumPricing } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 
-export type PaidFeature = 'cap' | 'report' | 'providers'
+export type PaidFeature = 'cap' | 'report'
 
 const FEATURES: Record<PaidFeature, { title: string; body: string; built: boolean }> = {
   cap: {
@@ -38,16 +38,10 @@ const FEATURES: Record<PaidFeature, { title: string; body: string; built: boolea
     body: 'Where the week went, by repository and model, delivered to your own Telegram bot or webhook — your channel, not ours, which is the only way a tool that keeps your data local can reach you off the machine.',
     built: false,
   },
-  providers: {
-    title: 'Priced for every provider, not just Anthropic',
-    // Deliberately not "see other providers" — Caprock already shows them, for
-    // free, and selling something the free version does is how a paid tier
-    // starts feeling like a hostage situation. What is missing is the price
-    // table: DeepSeek, MiniMax and the rest show up as usage nobody could
-    // cost, so a total that includes them is not a total.
-    body: 'Caprock already sees sessions that go to DeepSeek, MiniMax, OpenAI and the rest — it cannot price them, so they sit outside your totals. Premium keeps a maintained price table for them, so the number at the top is the whole number.',
-    built: false,
-  },
+  // Third-party pricing was going to live here. It was cheaper to add the
+  // prices than to build a paywall around them, so DeepSeek, MiniMax and the
+  // rest now cost out for everyone — and a feature the free version performs
+  // cannot be sold without the paid tier becoming a hostage.
 }
 
 function Price({ p }: { p: PremiumPricing | undefined }) {
