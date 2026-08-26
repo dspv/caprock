@@ -48,6 +48,51 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-08-26 — A user moved in, and told us what was wrong
+
+The first person to use Caprock as his main working surface replaced the Claude
+Code IDE with it. The terminal is what made that possible — which reframes a
+Phase 1 control feature as the thing that makes Caprock somewhere a person can
+live, and makes a font defect in it not cosmetic.
+
+What he asked for, and what happened:
+
+- **JetBrains Mono in the terminal.** Not a missing font: it was already
+  bundled with all six subsets. xterm.js paints to a canvas and was handed the
+  literal string `var(--font-mono)`, which a canvas context cannot resolve, so
+  every glyph fell back to the system monospace — invisible in Latin, ugly in
+  Cyrillic. Two adjacent defects: the cell was measured against the fallback
+  and never re-measured, and no subset was ever fetched because subsets load
+  when a matching character enters the DOM and canvas text never does.
+- **The new-session button, and creating the folder.** Both done. The button
+  was at the bottom of Now in 11px grey; `create` on `POST /v1/agents` makes
+  the directory, opt-in and one level deep.
+- **Quick chat.** A session with no repository at all, one directory per chat
+  under `<data_dir>/chats/`.
+- **Plan limits he could not find.** They existed, on the Cost screen, under a
+  thirty-day chart — and the panel vanished when there was no data, so the one
+  screen that could explain the absence explained nothing. Now also a line on
+  Now, plus alerts at 90%.
+- **Third-party models** and **paying for models through Caprock** are open:
+  both readings of the first are weeks apart, and the second would make us a
+  payment intermediary for someone else's API. Recorded in
+  [`.fdck/`](../.fdck/00-index.md), not guessed at.
+
+He also priced it, unprompted: $20/month for what exists, $50 with other
+models, $100 with Claude and GPT. Then found the real price — $30 a year — and
+said he would buy after payday. **No money has changed hands**, so this is one
+person's stated intent and not a measurement; it is the first time anyone
+reached the card, which is why it is written down.
+
+`.fdck/` exists as of this entry: the feedback that moved this product used to
+arrive in chat logs and live nowhere, and both the Windows hook break and the
+install-prompt rewrite were reconstructed from memory after the fact.
+
+Two defects found while fixing his, neither reported by anyone: a directory
+counted as two projects when one of its sessions started outside a repository,
+and the screenshot scrubber renamed projects but not the directories above
+them, so published images carried this machine's layout.
+
 ### 2026-08-25 — OpenCode ships, and the filter that made it usable
 
 The reading half went in overnight and released as v0.21.0. What followed was

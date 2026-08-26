@@ -9,6 +9,71 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.28.0] - 2026-08-26
+
+Most of this came from one user, who replaced his Claude Code IDE with Caprock
+and then said what was wrong with it. The rest was found while fixing what he
+reported.
+
+### Added
+
+- **Quick chat.** A session with no repository: click and start asking. The
+  spawn dialog demanded an absolute path before it would do anything, which is
+  the right question for work and a wall in front of "look this up for me".
+  Caprock makes a directory per chat under `<data_dir>/chats/`. One per chat,
+  not one shared folder — Claude Code keys a transcript by working directory,
+  so a shared one would collapse every conversation into a single project row
+  with a single transcript.
+- **`create` on `POST /v1/agents`,** and a checkbox for it in the spawn dialog:
+  starting a new project no longer means leaving the dashboard to make the
+  folder in a terminal. Opt-in, one level deep, under a parent that already
+  exists — a typo in an absolute path fails loudly instead of materialising a
+  chain of directories somewhere you have never been.
+- **Plan-limit alerts.** A warning at 90% of a 5-hour or 7-day window, high
+  severity from 95%, with the reset time. Not at 85%, where the Cost screen
+  turns amber: an alert that fires wherever a colour changes is one people
+  learn to scroll past. A window whose reset clock cannot be believed raises
+  nothing, because an alert built on a stale reading would never clear.
+- **A share offer on a rhythm** — weekly and monthly, drawing the same card
+  over those periods. It previously went loud only at a money milestone, so
+  anyone whose spend never lands on a round number was never actually asked.
+  The offer says what the image contains before anyone clicks: totals only, no
+  project names, no paths, no prose, saved locally, uploaded nowhere.
+- **The paid version is mentioned in the dashboard,** for the first time: a
+  line on Cost and Lifetime that opens with what a day costs on this machine,
+  and a note beside a loop or a session that spent a lot for nothing. Clicking
+  either opens a dialog about that feature, with the price and both a way to
+  read more and a way to subscribe. Never on Now, never over your work, never
+  on an empty dashboard, and dismissible for a month.
+- **`GET /v1/premium`** — what the plan costs, served by the daemon so no price
+  is hardcoded in the UI. It ships in the binary either way (rule 4 forbids
+  fetching it), but it lives once in Go, and a test reads the site's pricing
+  file and fails when the two disagree.
+
+### Fixed
+
+- **The terminal rendered every glyph in the fallback font.** xterm.js paints
+  to a canvas and was handed the literal string `var(--font-mono)`, which a
+  canvas context cannot resolve — invisible in Latin, unreadable in Cyrillic.
+  Two more defects in the same place: the character cell was measured against
+  the fallback and never re-measured, and no subset was ever fetched, because
+  subsets load when a matching character enters the DOM and canvas text never
+  does. All six subsets JetBrains Mono ships are now requested by name.
+- **One directory counted as two projects.** Claude Code records `repo_root`
+  only when it resolves a checkout, so a session started where git could not
+  answer got its own row — labelled with its full filesystem path, since a
+  label is derived from the path when there is no project name.
+- **Plan limits were on a screen nobody looks at for them,** and the panel
+  vanished entirely when there was no data, so the one place that could have
+  explained the absence showed nothing. They are now also a line on Now, and
+  the panel says where the data comes from when it has none.
+- **The control that starts a session** sat at the bottom of Now in 11px grey,
+  beside a checkbox and a timestamp. It is at the top, at the size of an
+  action.
+- **Screenshots leaked the machine's directory layout.** The scrubber renamed
+  projects but not the directories above them, and the Cost screen prefixes
+  parent segments when two checkouts share a basename.
+
 ## [0.27.4] - 2026-08-26
 
 ### Fixed
