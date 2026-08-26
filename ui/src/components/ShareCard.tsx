@@ -103,15 +103,14 @@ export function ShareCard() {
       g.fillText(label, x, 434)
     })
 
-    // Rule 6 travels with the figure: on a flat plan this is what the same
-    // work would have cost per token, and a card without that line is a card
-    // claiming a saving nobody made.
+    // Rule 6 travels with the figure, and at a size someone can read: a
+    // dollar amount posted without this line reads as a bill somebody paid.
+    // The sentence explaining the pricing went — the headline already says "at
+    // API list prices" — leaving one caption with room to be legible instead
+    // of two that were not.
     g.fillStyle = muted
-    g.font = `400 26px ${sans}`
-    g.fillText('What this work would have cost through the API.', 72, 504)
-    g.fillStyle = faint
-    g.font = `400 21px ${sans}`
-    g.fillText('Not a bill, and not money saved — priced from captured tokens.', 72, 540)
+    g.font = `400 30px ${sans}`
+    g.fillText('Not a bill, and not money saved — priced from captured tokens.', 72, 520)
 
     g.fillStyle = faint
     g.font = `500 24px ${mono}`
