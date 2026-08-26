@@ -9,7 +9,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
-## [0.27.3] - 2026-08-26
+## [0.27.4] - 2026-08-26
 
 ### Fixed
 
@@ -30,6 +30,15 @@ Phase 3 (Delight) has no plan by design.
   applied the forward-slash fix by hand before this shipped. Entries written by
   earlier versions are still recognised, so upgrading does not report every
   hook missing and offer to reinstall what is already there.
+
+## [0.27.3] - 2026-08-26
+
+### Fixed
+
+- **Half of the Windows hook fix**, superseded by 0.27.4 an hour later. It
+  quoted the shim path, which stops a space splitting the command but leaves
+  backslashes to be eaten by the shell — so hooks still failed on Windows.
+  Upgrade past it.
 
 ## [0.27.2] - 2026-08-26
 
