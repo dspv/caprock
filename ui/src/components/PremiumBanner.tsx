@@ -24,12 +24,14 @@
 import { useState } from 'react'
 import { fmtUSD } from '@/lib/format'
 import { isDue, markAnswered, type PromptKind } from '@/lib/prompts'
+import { PremiumModal } from './PremiumModal'
 
 const KIND: PromptKind = 'premium-banner'
 
 export function PremiumBanner({ costUSD, days, now }: { costUSD: number; days: number; now: number }) {
   const [shown] = useState(() => isDue(KIND, now))
   const [gone, setGone] = useState(false)
+  const [open, setOpen] = useState(false)
   // Nothing measured, nothing to say. A banner over an empty dashboard is an
   // advertisement to someone who has not seen the product work yet.
   if (!shown || gone || costUSD <= 0 || days <= 0) return null
@@ -47,14 +49,15 @@ export function PremiumBanner({ costUSD, days, now }: { costUSD: number; days: n
         Premium stops a day that runs away from you, and alerts before a plan window does.
       </span>
       <span className="ml-auto flex shrink-0 items-center gap-2">
-        <a
-          href="https://caprock.dev/premium/"
-          target="_blank"
-          rel="noreferrer"
-          className="rounded-sm border border-accent/50 bg-accent/10 px-2 py-0.5 text-accent no-underline hover:bg-accent/20"
+        {/* Opens the explanation rather than the shop. One line cannot say what
+          * someone would be paying for, and sending them straight to a pricing
+          * page to find out is asking them to leave in order to be persuaded. */}
+        <button
+          onClick={() => setOpen(true)}
+          className="rounded-sm border border-accent/50 bg-accent/10 px-2 py-0.5 text-accent hover:bg-accent/20"
         >
           what it does
-        </a>
+        </button>
         <button
           onClick={() => { markAnswered(KIND, Date.now()); setGone(true) }}
           className="rounded-sm border border-border px-1.5 py-0.5 text-[11px] text-fg-faint hover:text-fg-muted"
@@ -63,6 +66,7 @@ export function PremiumBanner({ costUSD, days, now }: { costUSD: number; days: n
           not now
         </button>
       </span>
+      {open && <PremiumModal onClose={() => setOpen(false)} />}
     </div>
   )
 }

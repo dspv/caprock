@@ -15,6 +15,7 @@
  * and the page it opens does the selling.
  */
 import { markAnswered, isDue, type PromptKind } from '@/lib/prompts'
+import { PremiumModal } from './PremiumModal'
 import { useState } from 'react'
 
 const KIND: PromptKind = 'premium-hint'
@@ -22,18 +23,17 @@ const KIND: PromptKind = 'premium-hint'
 export function PremiumHint({ reason, now }: { reason: string; now: number }) {
   const [shown] = useState(() => isDue(KIND, now))
   const [gone, setGone] = useState(false)
+  const [open, setOpen] = useState(false)
   if (!shown || gone) return null
   return (
     <span className="flex shrink-0 items-center gap-2 text-[11px]">
       <span className="text-fg-faint">{reason}</span>
-      <a
-        href="https://caprock.dev/premium/"
-        target="_blank"
-        rel="noreferrer"
-        className="rounded-sm border border-border px-1.5 py-0.5 text-fg-muted no-underline hover:border-border-strong hover:text-fg"
+      <button
+        onClick={() => setOpen(true)}
+        className="rounded-sm border border-border px-1.5 py-0.5 text-fg-muted hover:border-border-strong hover:text-fg"
       >
         a cap that stops this
-      </a>
+      </button>
       <button
         title="hide this for a month"
         onClick={() => { markAnswered(KIND, Date.now()); setGone(true) }}
@@ -41,6 +41,7 @@ export function PremiumHint({ reason, now }: { reason: string; now: number }) {
       >
         ✕
       </button>
+      {open && <PremiumModal onClose={() => setOpen(false)} />}
     </span>
   )
 }
