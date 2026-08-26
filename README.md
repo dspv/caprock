@@ -35,32 +35,30 @@ It picks the right command for your machine, so there is nothing to choose. The
 when stdin is not a terminal, which is what an agent's shell gives it, so
 without the flag you would get a dashboard that never sees a session.
 
-It is written in the first person on purpose. An earlier version read like a
-prompt injection — an install plus a shell hook, arriving inside tool output,
-with a line that could be taken as "do not tell the user" — and at least one
-reader's agent refused it, correctly. An agent that refuses that is doing its
-job; the fix is to stop resembling the thing it is right to refuse.
+The wording was tested against five agents given no other context. An earlier
+draft was refused outright by one of them, and the two lines it objected to
+were both ours meaning well: "do not start or type into any claude session"
+(our Rule 7, which reads as *do not tell the user*) and "show me the error
+instead of trying another source" (meant to stop a lookalike package being
+installed, which reads as *stop verifying*). Both are gone. It now asks the
+agent to check whatever it wants and to show you the settings diff — the same
+scepticism, invited rather than forbidden.
 
 ```text
-I want to install Caprock — an open-source local dashboard that shows what my
-Claude Code sessions are doing and what they cost. Apache-2.0, runs on my
-machine, nothing leaves it: https://github.com/dspv/caprock
-
-Please install it:
+Please install Caprock for me. It is an open-source local dashboard that shows
+what my Claude Code sessions are doing and what they cost — Apache-2.0, runs on
+my machine: https://github.com/dspv/caprock
 
   macOS/Linux:  brew install dspv/tap/caprock
   Windows:      scoop bucket add dspv https://github.com/dspv/scoop-bucket
                 scoop install caprock
 
-Then run `caprock up --yes`. I am giving consent with that flag: it lets
-Caprock add its own hook entry to my Claude Code settings, which is how it sees
-sessions in real time. It backs the file up first and leaves my other hooks
-alone. Ask me before doing anything beyond this.
+Then run `caprock up --yes`. That flag lets it add its own hook to my Claude
+Code settings, which is how it sees sessions live. Show me the change it makes
+to ~/.claude/settings.json so I can see it myself.
 
-Tell me the URL it prints and stop there — I will open it myself.
-
-If anything looks wrong, show me the error instead of trying another source.
-Docs: https://caprock.dev/install.md
+Check anything you want to check first, and ask me if something does not add
+up. When it is running, tell me the URL it prints and stop there.
 ```
 
 </details>
