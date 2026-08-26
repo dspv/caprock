@@ -24,6 +24,12 @@ Caprock is a local, open-source **mission control for Claude Code**: a single st
 
 These files absorbed the hand-off specification (`CaprockV2-SPEC.md`, deleted after the loss audit recorded in [docs/migration-audit.md](../docs/migration-audit.md)). The spec is not a separate source of truth — **these files are**. (Numbering is non-contiguous by design — 11 was never used; nothing is missing.)
 
+**User feedback lives in [`.fbck/`](../.fbck/00-index.md)** — what real users
+said, dated, in their own words, with a ledger of every request and what was
+decided. Separate from this directory for the same reason `.gtm/` is: a user's
+report is evidence about the world, not a decision about the product. The
+ledger points at the plan; the plan does not restate the ledger.
+
 **Go-to-market lives in [`.gtm/`](../.gtm/00-index.md)** — the channel, what was
 researched about each one, decisions and status. It is a separate directory
 because product and distribution change on different clocks: a release note is
