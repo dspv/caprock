@@ -11,7 +11,7 @@
  *  - "this session is expensive" on its own — cost is the job, not a problem
  *  - anything predictive ("this will probably fail")
  */
-import type { LoopAlert, SessionSummary } from '@/lib/api'
+import type { LoopAlert, RateLimits, SessionSummary } from '@/lib/api'
 
 export interface AttentionItem {
   id: string
@@ -32,6 +32,8 @@ export interface AttentionInput {
   sessions: SessionSummary[]
   alerts: LoopAlert[]
   now: number
+  /** Plan-limit windows, when Claude Code's status line is feeding them. */
+  limits?: RateLimits
   /** Sessions idle-but-waiting for this long are surfaced. Default 15 min. */
   waitingMs?: number
 }
@@ -47,6 +49,17 @@ const wastedTurns = 300
 const wastedFiles = 2
 const wastedWindowMs = 24 * 60 * 60 * 1000
 
+// Running out of plan window stops work outright, so it earns an interruption —
+// but only near the end. The Cost screen already colours 85% amber, and an
+// alert that fires wherever a colour changes is an alert people learn to
+// scroll past. 90% is roughly "one more session and you are done".
+const limitPct = 90
+// A reset clock already past, or implausibly far ahead, is a stale sample
+// rather than a fact — the 5-hour window once announced a reset in 2030. An
+// alert built on a stale percentage would never clear, so windows whose clock
+// cannot be believed do not raise one.
+const staleWindowMs = 8 * 24 * 60 * 60 * 1000
+
 // Timestamps arrive as either RFC-3339 strings (activity, alerts) or unix ms
 // (session rows); normalise before any arithmetic.
 function ms(v: string | number | undefined): number {
@@ -60,7 +73,7 @@ function ms(v: string | number | undefined): number {
  * An empty result is the normal case and means the panel should not render —
  * "all clear" is not news, and showing it trains people to ignore the space.
  */
-export function findAttention({ sessions, alerts, now, waitingMs = DEFAULT_WAITING_MS }: AttentionInput): AttentionItem[] {
+export function findAttention({ sessions, alerts, now, limits, waitingMs = DEFAULT_WAITING_MS }: AttentionInput): AttentionItem[] {
   const out: AttentionItem[] = []
   // Defensive: the daemon always sends stats and activity, but this decides
   // whether to interrupt someone and runs at the top of Now — a version-skewed
@@ -168,5 +181,27 @@ export function findAttention({ sessions, alerts, now, waitingMs = DEFAULT_WAITI
   // High severity first; within a severity, the oldest condition first, because
   // the thing that has been wrong longest has cost the most.
   const rank = { high: 0, medium: 1 }
+  // 4. The plan window is nearly spent. Not about one session — this stops
+  // every session at once, which is why it is here rather than a colour on a
+  // number someone has to go and look at.
+  for (const [label, w] of [
+    ['5-hour', limits?.five_hour],
+    ['7-day', limits?.seven_day],
+  ] as const) {
+    if (!w || w.used_percentage < limitPct) continue
+    const resetMs = (w.resets_at ?? 0) * 1000
+    if (!(resetMs > now && resetMs < now + staleWindowMs)) continue
+    const pct = Math.round(w.used_percentage)
+    const resets = new Date(resetMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    out.push({
+      id: `limit-${label}`,
+      sessionId: '',
+      project: '',
+      severity: pct >= 95 ? 'high' : 'medium',
+      title: `${label} plan window ${pct}% used`,
+      detail: `resets at ${resets}${w.forecast ? ` — ${w.forecast}` : ''}`,
+    })
+  }
+
   return out.sort((a, b) => rank[a.severity] - rank[b.severity] || (a.since ?? 0) - (b.since ?? 0))
 }

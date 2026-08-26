@@ -51,7 +51,7 @@ export function NowScreen() {
   const rest = list.filter((s) => !working.includes(s) && s.status !== 'ended')
   const ended = list.filter((s) => s.status === 'ended')
   const [plan, savePlan] = usePlan()
-  const attention = findAttention({ sessions: list, alerts, now })
+  const attention = findAttention({ sessions: list, alerts, now, limits: summary.data?.rate_limits })
   const hooksMissing = status.data?.hooks && (status.data.hooks.missing ?? []).length > 0
   // Defect: before any session exists the API returns Go zero values, so a new
   // user's first screen was a $0.00 hero, three zeroes, and a *warn*-toned

@@ -54,10 +54,15 @@ function Row({ it, now, onDismiss, session }: {
         {it.title}
       </span>
       <span className="text-[12px] text-fg-muted truncate">
-        <a href={href({ name: 'session', id: it.sessionId })} className="link mono text-fg">
-          {it.project || shortId(it.sessionId)}
-        </a>
-        <span className="ml-2">{it.detail}</span>
+        {/* Not every item is about a session. A plan window is about the whole
+          * account, and linking it to `#/session/` with an empty id produced a
+          * dead link labelled with nothing. */}
+        {it.sessionId && (
+          <a href={href({ name: 'session', id: it.sessionId })} className="link mono text-fg">
+            {it.project || shortId(it.sessionId)}
+          </a>
+        )}
+        <span className={it.sessionId ? 'ml-2' : ''}>{it.detail}</span>
       </span>
       <span className="ml-auto flex items-center gap-3 shrink-0">
         {it.costUSD !== undefined && it.costUSD > 0 && (
@@ -77,10 +82,10 @@ function Row({ it, now, onDismiss, session }: {
           </button>
         )}
         <a
-          href={href({ name: 'session', id: it.sessionId })}
+          href={it.sessionId ? href({ name: 'session', id: it.sessionId }) : '#/cost'}
           className="text-[11px] border border-border px-1.5 py-0.5 rounded-sm hover:border-border-strong no-underline text-fg-muted hover:text-fg"
         >
-          open
+          {it.sessionId ? 'open' : 'details'}
         </a>
         {onDismiss && it.id.startsWith('loop-') && (
           <button

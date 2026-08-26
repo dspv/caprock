@@ -152,3 +152,67 @@ describe('spent with little to show', () => {
     expect(findAttention({ sessions: [s], alerts: [], now: NOW })).toEqual([])
   })
 })
+
+/**
+ * Running out of plan window stops every session at once, so it is worth an
+ * interruption — but only near the end, and only when the numbers can be
+ * believed. An alert that fires early, or that can never clear, is one people
+ * learn to scroll past.
+ */
+describe('plan-limit alerts', () => {
+  const soon = (h: number) => (NOW + h * 3600 * 1000) / 1000
+
+  it('warns when a window is nearly spent', () => {
+    const out = findAttention({
+      sessions: [], alerts: [], now: NOW,
+      limits: { five_hour: { used_percentage: 92, resets_at: soon(1) } },
+    })
+    expect(out).toHaveLength(1)
+    expect(out[0]?.title).toMatch(/5-hour.*92%/)
+    expect(out[0]?.severity).toBe('medium')
+  })
+
+  it('is loud once the window is almost gone', () => {
+    const out = findAttention({
+      sessions: [], alerts: [], now: NOW,
+      limits: { seven_day: { used_percentage: 97, resets_at: soon(20) } },
+    })
+    expect(out[0]?.severity).toBe('high')
+  })
+
+  it('stays quiet below the threshold', () => {
+    // The Cost screen already colours 85% amber. Firing wherever a colour
+    // changes trains people to ignore the banner.
+    const out = findAttention({
+      sessions: [], alerts: [], now: NOW,
+      limits: { five_hour: { used_percentage: 86, resets_at: soon(1) } },
+    })
+    expect(out).toEqual([])
+  })
+
+  it('does not fire on a window whose clock cannot be believed', () => {
+    // The 5-hour window once announced a reset in 2030. An alert built on a
+    // stale percentage would never clear, so it is not raised at all.
+    const stale = findAttention({
+      sessions: [], alerts: [], now: NOW,
+      limits: { five_hour: { used_percentage: 99, resets_at: Date.parse('2030-01-01') / 1000 } },
+    })
+    expect(stale).toEqual([])
+
+    const past = findAttention({
+      sessions: [], alerts: [], now: NOW,
+      limits: { seven_day: { used_percentage: 99, resets_at: (NOW - 60_000) / 1000 } },
+    })
+    expect(past).toEqual([])
+  })
+
+  it('is about the account, not a session', () => {
+    // The banner links every item to a session; an account-level item has none,
+    // and an empty id produced a dead link labelled with nothing.
+    const out = findAttention({
+      sessions: [], alerts: [], now: NOW,
+      limits: { five_hour: { used_percentage: 95, resets_at: soon(2) } },
+    })
+    expect(out[0]?.sessionId).toBe('')
+  })
+})
