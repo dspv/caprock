@@ -9,6 +9,49 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.29.0] - 2026-08-26
+
+### Added
+
+- **Share from anywhere.** A `share` control in the header, on every screen,
+  offering the week, the month or all time. Where the browser supports it the
+  image goes straight to the operating system's share sheet; where it does
+  not, the card is saved and the post opens with the text already written —
+  because a browser cannot attach a picture to a tweet, and a button that
+  appears to post and does not is worse than one that says so. The card
+  carries `caprock.dev`, so the link travels with the image.
+- **Paid features are shown where they will live, locked.** The daily spend
+  cap occupies its real place on the Cost screen, behind glass, with your own
+  figures under it and one click to paying. Inert and marked: a preview that
+  responds to a click is a preview that lies.
+- **The paid version is mentioned on Now.** It was deliberately kept to Cost
+  and Lifetime to avoid interrupting anyone at work, which meant a user with
+  no loop and no runaway session never learned a paid version exists at all.
+
+### Fixed
+
+- **The ALL TIME panel was visibly slower than everything around it.**
+  `GET /v1/history?range=all` took 0.76–1.17s against 0.15s for the rest of
+  the screen, and `ToolDistribution` was 60% of it: the index it matched
+  carries `(kind, ts)` but not `tool`, so ~80k rows were read from the table
+  for one column. A covering index makes the same plan covering — 139 ms to
+  46 ms warm, and the cold figure was 1780 ms, which is what a person actually
+  waits through. Migration `0016`.
+
+### Site
+
+- **The landing page can be installed from.** Its final call to action offered
+  `caprock up` — the command you run *after* installing — so a reader who
+  scrolled the whole page to decide yes was handed the one instruction that
+  does nothing on a machine without Caprock on it. It now carries the real
+  install, defaulting to the visitor's platform.
+- **The terminal has a strip of its own.** It is the reason the first
+  full-time user could drop the Claude Code IDE, and the page had never
+  mentioned it.
+- **The teams page is three sections instead of ten**: what you get, where it
+  runs (your VPC — counters leave a machine, content never does), book the
+  call.
+
 ## [0.28.0] - 2026-08-26
 
 Most of this came from one user, who replaced his Claude Code IDE with Caprock

@@ -48,6 +48,35 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-08-26 — Selling from inside the product, and a panel that was slow
+
+The owner read the dashboard as a buyer would and found nothing to buy. Three
+things came out of it, and the first is the one worth remembering.
+
+**The banner was invisible because of a rule I wrote.** It was kept off Now to
+avoid interrupting people at work, which sounds right and meant that a user
+with no loop and no runaway session never learned a paid version exists. The
+caution was so complete it removed the offer. Judgement about restraint is
+still judgement about the product, and it can be wrong in the direction of
+doing nothing.
+
+**Selling through a locked feature beats selling through a sentence.** The
+daily cap now sits in its real place on the Cost screen, behind glass, with
+the reader's own figures under it. It is honest in a way a feature list is
+not: the thing is visibly not working yet, which is exactly true.
+
+**A slow panel was reported by eye before it was measured.** The owner said
+the ALL TIME panel took too long; `GET /v1/history?range=all` was 0.76–1.17s
+against 0.15s elsewhere, and `ToolDistribution` was 60% of it — an index that
+matched `(kind, ts)` and did not carry `tool`, so ~80k rows were read from the
+table for one column. Covering index, 139 ms → 46 ms warm.
+
+The site changed with it: the landing page's final call to action offered
+`caprock up` to people who had not installed anything, the terminal — the
+feature that let the first full-time user drop the Claude Code IDE — had never
+been mentioned, and the teams page argued across ten sections before offering
+a call. It is three now: what you get, where it runs, book the call.
+
 ### 2026-08-26 — A user moved in, and told us what was wrong
 
 The first person to use Caprock as his main working surface replaced the Claude
