@@ -131,6 +131,25 @@ it('explains a missing claude binary instead of hiding the control that says so'
   expect(btn.textContent).toMatch(/claude not found/)
 })
 
+it('puts the one control that starts something above the session list', async () => {
+  state.summary = emptySummary()
+  state.status = { claude_available: true }
+  // Needs at least one session, or the grid renders nothing to be above.
+  state.sessions = [sess({ session_id: 'a', status: 'active' })]
+  const { container } = render(<NowScreen />)
+
+  // A user who had moved onto Caprock as his main surface still could not find
+  // this button: it sat at the very bottom in 11px grey, in a row with a
+  // checkbox and a "refreshed 3s ago" timestamp. Position is the fix, so
+  // position is what is asserted — it must come before the session rows in
+  // document order, not merely exist somewhere on the page.
+  const btn = await screen.findByRole('button', { name: /New session/ })
+  const list = container.querySelector('[data-testid="session-grid"]')
+  expect(list, 'session grid did not render').toBeTruthy()
+  // Node.compareDocumentPosition: FOLLOWING means the list comes after the button.
+  expect(btn.compareDocumentPosition(list!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+})
+
 /**
  * One busy session and one idle one is the ordinary shape of a working
  * machine, and it used to cost a screen of dead space: each state opened its

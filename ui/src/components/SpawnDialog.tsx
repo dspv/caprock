@@ -10,6 +10,7 @@ export function SpawnDialog({ available, onClose }: { available: boolean; onClos
   const [model, setModel] = useState('')
   const [mode, setMode] = useState('')
   const [worktree, setWorktree] = useState('')
+  const [create, setCreate] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const submit = async () => {
@@ -20,6 +21,7 @@ export function SpawnDialog({ available, onClose }: { available: boolean; onClos
       if (model) req.model = model
       if (mode) req.permission_mode = mode
       if (worktree.trim()) req.worktree = worktree.trim()
+      if (create) req.create = true
       const { session_id } = await api.spawn(req)
       onClose()
       navigate({ name: 'session', id: session_id, tab: 'terminal' })
@@ -43,6 +45,15 @@ export function SpawnDialog({ available, onClose }: { available: boolean; onClos
           <div className="px-4 py-3 grid gap-3 text-[13px]">
             <Field label="Working directory" hint="absolute path to the repo or folder">
               <input autoFocus className="input" placeholder="/Users/you/dev/project" value={cwd} onChange={(e) => setCwd(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
+              {/* Starting a new project meant leaving the dashboard, making the
+                * folder in a terminal, and coming back — for a directory whose
+                * name you had already typed here. Off by default: creating a
+                * directory is a side effect, and a typo in an absolute path
+                * should fail rather than quietly take up residence. */}
+              <label className="mt-1.5 inline-flex items-center gap-1.5 cursor-pointer select-none text-[12px] text-fg-muted">
+                <input type="checkbox" className="accent-[var(--color-accent)]" checked={create} onChange={(e) => setCreate(e.target.checked)} />
+                create it if it does not exist
+              </label>
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Model"><select className="input" value={model} onChange={(e) => setModel(e.target.value)}>{MODELS.map((m) => <option key={m} value={m}>{m || 'default'}</option>)}</select></Field>

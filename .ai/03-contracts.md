@@ -128,12 +128,14 @@ What that file holds bounds what may ever be said about it: a timestamp and two 
 ### Phase 1 additions
 
 ```
-POST   /v1/agents                    {cwd, worktree?, model?, permission_mode?, command?, args?} → {session_id, cwd}
+POST   /v1/agents                    {cwd, create?, worktree?, model?, permission_mode?, command?, args?} → {session_id, cwd}
 POST   /v1/agents/{id}/input         {data}            → 204   (owned PTYs only)
 POST   /v1/agents/{id}/signal        {action: pause|resume|kill} → 204 (owned PTYs only)
 WS     /v1/agents/{id}/term          bidirectional binary stream (xterm.js); snapshot on connect, closes on exit
 GET    /v1/history?range=…           lifetime totals + tool distribution + model mix + daily
 ```
+
+**`create` makes the working directory, one level, under a parent that already exists.** Starting a new project otherwise meant leaving the dashboard, creating the folder in a terminal, and returning to type its path — a path the user had already typed. It is opt-in and defaults to false: this endpoint executes a command from its body, so a missing directory stays an error unless the caller explicitly asked for it to be made. Deliberately `Mkdir`, never `MkdirAll` — the parent must exist, so a typo in an absolute path fails loudly instead of materialising a chain of directories somewhere the user has never been. The path is cleaned before the parent is checked, so a path that climbs out with `..` is verified against where it actually lands. An existing directory is not an error.
 
 Owned sessions are spawned as `claude --session-id <uuid> [--model …] [--permission-mode …]`, so hooks and the transcript arrive under the id Caprock generated; the spawn environment strips inherited `CLAUDE_CODE_CHILD_SESSION` / `CLAUDECODE` / `CLAUDE_CODE_ENTRYPOINT` markers so the session is a normal top-level one. Before spawning, Caprock pre-accepts Claude Code's folder-trust dialog for the session's cwd by setting `projects["<cwd>"].hasTrustDialogAccepted = true` in **`~/.claude.json`** (a second user-level Claude Code file, distinct from `settings.json`) — otherwise an interactive session blocks on the trust prompt, which `--dangerously-skip-permissions` does not suppress. The write is best-effort, atomic, and skipped if the folder is already trusted; an unparsable `~/.claude.json` is never modified. It goes through the **ordered-JSON codec**, preserving the user's key order and any integer beyond 2^53 — a `map[string]any` round-trip sorted the whole 200KB file alphabetically and truncated large integers through float64. Each grant Caprock makes is recorded in `<data_dir>/trust-grants.json`, so `caprock hooks uninstall` revokes exactly the folders Caprock trusted and never one the user accepted themselves; a folder already trusted when Caprock found it is never claimed. Spawning is unavailable (endpoints return 501, `status.claude_available=false`) when no `claude` binary is found; Caprock then stays observe-only. The manager resolves `claude` via PATH then `~/.local/bin`, `~/.claude/local`, `~/bin`, Homebrew and `/usr/local/bin`. Control operations are refused for sessions Caprock did not spawn.
 

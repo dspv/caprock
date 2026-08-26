@@ -84,7 +84,16 @@ export function NowScreen() {
 
       {/* Above Today because it is the wider frame Today sits inside: what all
         * of this has come to, before what happened in the last few hours. */}
-      <LifetimeStrip plan={plan} />
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1"><LifetimeStrip plan={plan} /></div>
+        {/* Starting a session is the only thing on this screen that DOES
+          * something, and it used to sit at the very bottom in 11px grey,
+          * sharing a row with a checkbox and a "refreshed 3s ago" timestamp —
+          * the last place anyone reading top-down would look. A user who had
+          * moved onto Caprock full-time still could not find it. Top of the
+          * screen, at the size of an action. */}
+        <NewSessionButton available={status.data?.claude_available} onClick={() => setSpawning(true)} />
+      </div>
 
       <Panel
         title="Today"
@@ -209,20 +218,6 @@ export function NowScreen() {
         now={now}
       />
       <div className="flex items-center gap-3 text-[11px] text-fg-faint px-0.5">
-        {/* The spawn dialog existed but nothing rendered it, so the Terminal
-          * tab told people to use a "New session" control that was nowhere on
-          * the dashboard — and no session could ever be owned. */}
-        {/* The button used to be hidden outright when `claude` was missing, and
-          * the dialog that explains why was only reachable from that button —
-          * so the explanation existed and nobody could ever see it. Show the
-          * control either way and let the dialog do the explaining. */}
-        <button
-          className={`text-[11px] px-2 py-0.5 rounded-sm border ${status.data?.claude_available ? 'border-accent/50 text-accent bg-accent/10 hover:bg-accent/20' : 'border-border text-fg-faint hover:text-fg-muted'}`}
-          onClick={() => setSpawning(true)}
-          title={status.data?.claude_available ? 'start a session Caprock owns' : 'claude was not found on this machine — click for details'}
-        >
-          + New session{status.data && !status.data.claude_available ? ' (claude not found)' : ''}
-        </button>
         <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
           <input type="checkbox" className="accent-[var(--color-accent)]" checked={showEnded} onChange={(e) => setShowEnded(e.target.checked)} />
           show ended sessions
@@ -236,6 +231,30 @@ export function NowScreen() {
         />
       )}
     </div>
+  )
+}
+
+/**
+ * The one control on this screen that starts something.
+ *
+ * It is shown even when `claude` is missing rather than hidden: the dialog
+ * explaining why spawning is unavailable was only reachable from this button,
+ * so hiding it hid the explanation too.
+ */
+function NewSessionButton({ available, onClick }: { available: boolean | undefined; onClick: () => void }) {
+  const missing = available === false
+  return (
+    <button
+      onClick={onClick}
+      title={missing ? 'claude was not found on this machine — click for details' : 'start a session Caprock owns'}
+      className={`shrink-0 rounded-[var(--radius-panel)] border px-3 py-2 text-[13px] font-medium transition-colors ${
+        missing
+          ? 'border-border text-fg-faint hover:text-fg-muted'
+          : 'border-accent/60 bg-accent/15 text-accent hover:bg-accent/25'
+      }`}
+    >
+      + New session{missing ? ' (claude not found)' : ''}
+    </button>
   )
 }
 
@@ -269,7 +288,7 @@ function SessionGrid({
   )
   if (cells.length === 0) return null
   return (
-    <div className="mt-3 grid gap-2 gap-y-6">
+    <div data-testid="session-grid" className="mt-3 grid gap-2 gap-y-6">
       {cells.map(({ s, dim, label }) => (
         <div key={s.session_id} className={`relative ${dim ? 'opacity-80' : ''}`}>
           {label && (

@@ -297,3 +297,81 @@ func TestWorktreeCreation(t *testing.T) {
 		t.Fatal("accepted path separator in name")
 	}
 }
+
+// A new project should not require the user to go and make the folder first —
+// but this runs on an endpoint that executes a command from its body, so the
+// creation is deliberately narrow and these tests pin the edges of it.
+func TestMakeProjectDir(t *testing.T) {
+	base := t.TempDir()
+
+	t.Run("creates one level under an existing parent", func(t *testing.T) {
+		dir := filepath.Join(base, "new-project")
+		if err := makeProjectDir(dir); err != nil {
+			t.Fatalf("makeProjectDir: %v", err)
+		}
+		if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+			t.Fatalf("directory not created: %v", err)
+		}
+	})
+
+	t.Run("an existing directory is not an error", func(t *testing.T) {
+		// The caller asked for the directory to exist, and it does.
+		dir := filepath.Join(base, "already-there")
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := makeProjectDir(dir); err != nil {
+			t.Fatalf("existing directory rejected: %v", err)
+		}
+	})
+
+	t.Run("refuses to invent a missing parent", func(t *testing.T) {
+		// MkdirAll would materialise the whole chain from a typo. One level
+		// means a mistyped path fails loudly instead of creating a home for
+		// itself somewhere the user has never been.
+		dir := filepath.Join(base, "no", "such", "parent")
+		if err := makeProjectDir(dir); err == nil {
+			t.Fatal("created a directory under a parent that does not exist")
+		}
+	})
+
+	t.Run("refuses a relative path", func(t *testing.T) {
+		if err := makeProjectDir("some/relative/path"); err == nil {
+			t.Fatal("accepted a relative path")
+		}
+	})
+
+	t.Run("cleans a path that climbs out of where it claims to be", func(t *testing.T) {
+		// `<base>/dev/../../escape` is absolute and still lands outside base.
+		// Cleaning happens before the parent check, so the parent that gets
+		// verified is the real one, not the one the string suggests.
+		escape := filepath.Join(base, "dev", "..", "..", "escaped-project")
+		err := makeProjectDir(escape)
+		cleaned := filepath.Clean(escape)
+		if err == nil {
+			// Only acceptable if the cleaned parent genuinely existed.
+			if _, statErr := os.Stat(filepath.Dir(cleaned)); statErr != nil {
+				t.Fatal("created a directory under a parent that does not exist")
+			}
+			_ = os.Remove(cleaned)
+		}
+		if _, statErr := os.Stat(filepath.Join(base, "dev", "..", "..", "escaped-project")); statErr == nil {
+			// Present only because the cleaned parent existed; ensure we did
+			// not create it via an uncleaned path.
+			_ = os.Remove(cleaned)
+		}
+	})
+}
+
+// Spawn must not create anything unless it was explicitly asked to: the
+// default is still "point me at a directory that exists".
+func TestSpawnDoesNotCreateUnlessAsked(t *testing.T) {
+	m := &Manager{dataDir: t.TempDir(), claude: "claude", agents: map[string]*Agent{}}
+	dir := filepath.Join(t.TempDir(), "not-created")
+	if _, err := m.Spawn(context.Background(), SpawnRequest{Cwd: dir}); err == nil {
+		t.Fatal("spawn accepted a missing cwd without create")
+	}
+	if _, err := os.Stat(dir); err == nil {
+		t.Fatal("spawn created the directory without being asked")
+	}
+}

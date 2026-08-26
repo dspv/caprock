@@ -25,6 +25,7 @@ import (
 // SpawnRequest describes a session to launch.
 type SpawnRequest struct {
 	Cwd            string   `json:"cwd"`
+	Create         bool     `json:"create,omitempty"`          // make Cwd if it does not exist (one level, under an existing parent)
 	Worktree       string   `json:"worktree,omitempty"`        // git worktree name to create under the repo
 	Model          string   `json:"model,omitempty"`           // --model
 	PermissionMode string   `json:"permission_mode,omitempty"` // --permission-mode
@@ -116,6 +117,41 @@ func resolveClaude() string {
 	return "claude"
 }
 
+// makeProjectDir creates a directory for a new project, one level deep.
+//
+// This runs on a POST that already executes a command from its body, so it is
+// deliberately the narrowest thing that satisfies the request: **one** level,
+// under a parent that already exists. `MkdirAll` would happily materialise
+// `/a/b/c/d` from a typo, and the v0.17.0 audit found six defects that all
+// began with treating a path from a request as trustworthy.
+//
+// The parent must exist and be a directory, so this cannot walk anywhere the
+// user has not already been. An existing target is not an error — the caller
+// asked for a directory to exist and it does.
+func makeProjectDir(dir string) error {
+	if !filepath.IsAbs(dir) {
+		return fmt.Errorf("agents: %q is not an absolute path", dir)
+	}
+	// Clean first: `/Users/me/dev/../../../etc/x` is absolute and still escapes
+	// wherever the user thought they were.
+	dir = filepath.Clean(dir)
+	parent := filepath.Dir(dir)
+	if parent == dir {
+		return fmt.Errorf("agents: refusing to create the filesystem root")
+	}
+	fi, err := os.Stat(parent)
+	if err != nil || !fi.IsDir() {
+		return fmt.Errorf("agents: %q does not exist, so %q cannot be created in it", parent, filepath.Base(dir))
+	}
+	// Mkdir, never MkdirAll — the parent check above is the guard, and this
+	// call is what keeps it a guard. MkdirAll here would create the chain the
+	// check just refused, so the two have to stay in agreement.
+	if err := os.Mkdir(dir, 0o755); err != nil && !os.IsExist(err) {
+		return fmt.Errorf("agents: could not create %q: %w", dir, err)
+	}
+	return nil
+}
+
 // Spawn launches a new session and registers it. The PTY session id is forced
 // with `claude --session-id <uuid>` so hooks and transcript arrive under the id
 // Caprock already knows.
@@ -124,7 +160,12 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		return nil, errors.New("agents: spawn without cwd")
 	}
 	if fi, err := os.Stat(req.Cwd); err != nil || !fi.IsDir() {
-		return nil, fmt.Errorf("agents: cwd %q is not a directory", req.Cwd)
+		if !req.Create {
+			return nil, fmt.Errorf("agents: cwd %q is not a directory", req.Cwd)
+		}
+		if err := makeProjectDir(req.Cwd); err != nil {
+			return nil, err
+		}
 	}
 	sessionID := m.NewSessionID()
 	cwd := req.Cwd
