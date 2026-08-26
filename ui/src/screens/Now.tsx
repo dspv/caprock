@@ -7,6 +7,7 @@ import { Badge, Empty, Panel, Skeleton, Stat } from '@/components/ui'
 import { ProjectsPanel, AGENTS, type AgentFilter } from '@/components/Projects'
 import { ActivityFeed } from '@/components/ActivityFeed'
 import { LifetimeStrip } from '@/components/Lifetime'
+import { PlanLimitsLine } from '@/components/PlanLimits'
 import { BreakdownPanel } from '@/components/Breakdown'
 import { PulsePanel } from '@/components/Pulse'
 import { Attention } from '@/components/Attention'
@@ -96,6 +97,11 @@ export function NowScreen() {
         <QuickChatButton available={status.data?.claude_available} />
         <NewSessionButton available={status.data?.claude_available} onClick={() => setSpawning(true)} />
       </div>
+
+      {/* Between the totals and Today: "can I keep going" is a question about
+        * right now, and it was only answerable on the Cost screen, in the
+        * second column of the bottom row, under a thirty-day chart. */}
+      <PlanLimitsLine limits={summary.data?.rate_limits} now={now} />
 
       <Panel
         title="Today"

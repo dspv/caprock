@@ -30,10 +30,22 @@ willingness-to-pay numbers in FB-003 and the two are probably one thought.
 
 ### FB-007 — Show plan limits
 
-Plan limits already exist on the Cost screen (`ui/src/screens/Cost.tsx`) and
-read live from Claude Code's status line. So the request is not "build this" —
-it is "I did not find it". Treat as a placement problem, not a feature.
-Confirm with Vova which screen he expected it on before moving anything.
+Plan limits already existed, so this was never "build this" — it was "I did not
+find it". A UX review found two reasons why, and both are fixed:
+
+- **They were on the wrong screen.** Cost answers *what has this cost me*; a
+  limit answers *can I keep going*, which is a question about right now. They
+  were in the second column of Cost's bottom row, under a thirty-day chart.
+  Now they are a line on the Now screen too, above Today.
+- **The panel vanished when there was no data.** Anyone whose status line was
+  not feeding Caprock saw nothing at all, so the one screen that could have
+  explained the absence explained nothing — the same shape as the spawn button
+  that used to hide the dialog explaining itself. It now renders either way and
+  names what produces the data.
+
+Both screens share one component: the staleness rule (a reset clock already
+past, or more than eight days out, is a stale sample rather than a fact) is
+subtle enough that a second copy would drift.
 
 ### FB-006 — Quick chat, and the new-project button
 

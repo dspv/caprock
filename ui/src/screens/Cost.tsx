@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api, type DailyStat, type RateWindow } from '@/lib/api'
+import { api, type DailyStat } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtModel, fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
 import { Empty, Panel, Skeleton, Stat } from '@/components/ui'
@@ -8,6 +8,7 @@ import { DayGrid } from '@/components/DayGrid'
 import { PlanValue } from '@/components/PlanValue'
 import { usePlan } from '@/components/PlanPicker'
 import { costBasis, costBasisLong } from '@/components/CostBasis'
+import { RateLimitRow } from '@/components/PlanLimits'
 import { UnpricedNote } from '@/components/Unpriced'
 import { WorkMix } from '@/components/WorkMix'
 
@@ -19,6 +20,10 @@ export function CostScreen() {
   // the honest monthly figure is 37x — a headline that halves when you click
   // another tab is indistinguishable from an invented one.
   const [range, setRange] = useState<Range>('30d')
+  // Only used to judge whether a reset clock is plausible, so a value read at
+  // render is enough — a ticking clock would repaint the whole screen to move
+  // a staleness threshold that is eight days wide.
+  const now = Date.now()
   const summary = useApi(() => api.summary(range), [range], { intervalMs: 5000 })
   const daily = useApi(() => api.daily(30), [], { intervalMs: 30000 })
   const [plan] = usePlan()
@@ -135,15 +140,27 @@ export function CostScreen() {
               <BarChart bars={days} active={activeDay} onActive={setActiveDay} />
             ))}
         </Panel>
-      {s?.rate_limits && (
+      {/* Rendered even with no data. The panel used to vanish when Claude Code
+        * was not feeding the status line, so the one screen that could have
+        * explained why there are no limits showed nothing at all — the same
+        * shape as the spawn button that hid the dialog explaining itself. */}
+      {s && (
         <Panel title="Plan limits">
           {/* px-3 like every other panel's body. Without it the rows ran into
             * the panel border on both sides, which is the one place the eye
             * reads a table as unfinished rather than dense. */}
-          <div className="flex flex-col gap-2 px-3 pt-1">
-            {s.rate_limits.five_hour && <RateLimitRow label="5-hour window" w={s.rate_limits.five_hour} />}
-            {s.rate_limits.seven_day && <RateLimitRow label="7-day window" w={s.rate_limits.seven_day} />}
-          </div>
+          {s.rate_limits ? (
+            <div className="flex flex-col gap-2 px-3 pt-1">
+              {s.rate_limits.five_hour && <RateLimitRow label="5-hour window" w={s.rate_limits.five_hour} now={now} />}
+              {s.rate_limits.seven_day && <RateLimitRow label="7-day window" w={s.rate_limits.seven_day} now={now} />}
+            </div>
+          ) : (
+            <div className="px-3 pt-1 text-sm text-fg-muted">
+              No window state yet. Caprock reads this from Claude Code's status line, so it appears
+              once a Pro or Max session has run with <span className="mono text-fg">caprock statusline</span> registered —
+              <span className="mono text-fg"> caprock up</span> offers to do that. API-billed usage has no windows to report.
+            </div>
+          )}
           <div className="mt-2 px-3 pb-3 text-[11px] text-fg-faint leading-relaxed">
             Live from Claude Code's status line (Pro/Max). The percentage is your usage of the window; a
             forecast is shown only when your measured pace would reach the limit before the window resets.
@@ -157,33 +174,6 @@ export function CostScreen() {
           : "No rate-limit events observed in this range."}{" "}
         Everything here is measured — no invented numbers.
       </div>
-    </div>
-  )
-}
-
-function RateLimitRow({ label, w }: { label: string; w: RateWindow }) {
-  const pct = Math.round(w.used_percentage)
-  const color = pct > 85 ? 'text-danger' : pct >= 60 ? 'text-warn' : 'text-fg'
-  // These windows come from Claude Code's status line and go stale the moment a
-  // session stops writing them. A reset time already past, or implausibly far
-  // ahead, is a stale sample rather than a fact — rendering it as a clock had
-  // the 5-hour window confidently announcing a reset in 2030.
-  const resetMs = (w.resets_at ?? 0) * 1000
-  const now = Date.now()
-  const plausible = resetMs > now && resetMs < now + 8 * 24 * 3600 * 1000
-  const resetsAt = plausible
-    ? new Date(resetMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : null
-  const stale = w.resets_at ? !plausible : false
-  return (
-    <div className="flex items-baseline justify-between gap-3 text-sm">
-      <span className="text-fg-muted">{label}</span>
-      <span className="flex items-baseline gap-3">
-        <span className={`font-mono tabular-nums ${color}`}>{pct}%</span>
-        {resetsAt && <span className="text-fg-faint">resets {resetsAt}</span>}
-        {stale && <span className="text-fg-faint" title="Claude Code has not refreshed this window recently">reset time stale</span>}
-        {w.forecast && <span className="text-warn">{w.forecast}</span>}
-      </span>
     </div>
   )
 }
