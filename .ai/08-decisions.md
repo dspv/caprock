@@ -292,3 +292,47 @@ a tool banned rather than adopted.
 
 Full shape and the open questions are in [17-teams.md](17-teams.md). Whether to
 build it at all is still gated on demand.
+
+## ADR-022 — The licence key is an offline string with an expiry, and nothing more
+
+**Decided 2026-08-26.**
+
+Paid features unlock when a key is present. The key is a plain string carrying
+its own expiry, pasted into the dashboard's settings, checked locally. No
+signature, no online validation, no machine binding.
+
+**No online check, ever.** [Rule 4](../CLAUDE.md) is not a feature of this
+product, it is the argument for it: `/teams/` says counters leave a machine and
+content never does, and that sentence is what turns a security review into a
+conversation. A licence call home would be the first mandatory outbound request
+in a tool sold as local-first, and it would break in exactly the situations
+where a paying customer is least forgiving — on a plane, behind a corporate
+proxy, on an air-gapped machine.
+
+**No cryptography either.** The binary is Apache-2.0. Anyone who wants the
+features can delete the check and rebuild in five minutes; an Ed25519 signature
+would raise that to fifteen. That is not defence, it is a week of work spent
+producing the *feeling* of defence. The key is a convenience for people who
+want to pay, not a lock against people who do not — and it is the same thing
+Ubuntu Pro's `pro attach` is, minus the servers that make theirs enforceable.
+
+**The real risk is the opposite one.** With zero paying customers, the failure
+worth engineering against is not theft; it is someone paying and not receiving
+the feature. Everything above optimises for that: a key that works offline
+cannot fail to work.
+
+**Seven days of grace after expiry.** Features keep running for a week with a
+warning. A card that did not go through, a bank holding a renewal, a changed
+address — none of those are the customer choosing to stop paying, and an angry
+email from someone cut off by their bank's timing costs more than a week of
+features given away.
+
+**When to revisit.** If a key is published somewhere public and we see it, add
+revocation. Not before, and not because someone might. That is an open question
+in [12-risks.md](12-risks.md), not a promise of future work.
+
+**What this constrains.** Paid features must be things the local binary can
+switch on. Anything that needs our infrastructure — cross-machine aggregation,
+the weekly report's delivery — is enforced by that infrastructure and needs no
+key at all, which is the tier boundary [ADR-021](#adr-021--the-team-tier-is-self-hosted-and-the-free-product-is-not-carved-up)
+already draws.

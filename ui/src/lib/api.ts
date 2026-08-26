@@ -204,7 +204,9 @@ export interface RateWindow {
 /** What the paid plan costs. Served by the daemon so no price is hardcoded in
  *  the UI — one edit in Go changes every place it appears. */
 export interface PremiumPlan { per_month_usd: number; charged_usd: number; period: string; url: string }
-export interface PremiumPricing { yearly: PremiumPlan; monthly: PremiumPlan; info_url: string }
+/** What a licence key grants, decided by the daemon from the key's own date. */
+export interface LicenseState { active: boolean; in_grace: boolean; expires_at?: string; reason?: string }
+export interface PremiumPricing { yearly: PremiumPlan; monthly: PremiumPlan; info_url: string; license?: LicenseState }
 
 export interface RateLimits {
   five_hour?: RateWindow
@@ -228,6 +230,8 @@ export interface Settings {
   plan_kind: '' | 'flat' | 'metered'
   plan_label: string
   plan_usd_per_month: number
+  /** The paid key, checked locally against the expiry it carries. */
+  license_key?: string
 }
 
 export interface UpdateStatus {

@@ -24,6 +24,7 @@ import (
 	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/gitdiff"
+	"github.com/dspv/caprock/internal/license"
 	"github.com/dspv/caprock/internal/loop"
 	"github.com/dspv/caprock/internal/narrate"
 	"github.com/dspv/caprock/internal/premium"
@@ -88,6 +89,9 @@ type Settings struct {
 	PlanKind        string  `json:"plan_kind"`
 	PlanLabel       string  `json:"plan_label"`
 	PlanUSDPerMonth float64 `json:"plan_usd_per_month"`
+	// LicenseKey unlocks the paid features, checked locally against the expiry
+	// it carries (ADR-022). Empty is the ordinary state.
+	LicenseKey string `json:"license_key,omitempty"`
 }
 
 // TaskController is the subset of the Phase 2 hive the API needs.
@@ -595,6 +599,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		PlanKind        *string  `json:"plan_kind"`
 		PlanLabel       *string  `json:"plan_label"`
 		PlanUSDPerMonth *float64 `json:"plan_usd_per_month"`
+		LicenseKey      *string  `json:"license_key"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&patch); err != nil {
 		s.failCode(w, http.StatusBadRequest, fmt.Errorf("parse body: %w", err))
@@ -606,6 +611,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.PlanKind != nil {
 		in.PlanKind = *patch.PlanKind
+	}
+	if patch.LicenseKey != nil {
+		in.LicenseKey = *patch.LicenseKey
 	}
 	if patch.PlanLabel != nil {
 		in.PlanLabel = *patch.PlanLabel
@@ -848,7 +856,21 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePremium(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, premium.Current())
+	// Pricing and licence state in one response: every surface that mentions
+	// the paid version needs both, and two requests to draw one banner is two
+	// chances for them to disagree about what the user has.
+	type resp struct {
+		premium.Pricing
+		License license.State `json:"license"`
+	}
+	key := ""
+	if s.d.Settings != nil {
+		key = s.d.Settings.Get().LicenseKey
+	}
+	writeJSON(w, http.StatusOK, resp{
+		Pricing: premium.Current(),
+		License: license.Parse(key, s.d.Now()),
+	})
 }
 
 func (s *Server) handlePricing(w http.ResponseWriter, _ *http.Request) {

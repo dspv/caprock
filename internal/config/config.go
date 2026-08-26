@@ -60,6 +60,11 @@ type Config struct {
 	PlanKind        string  `json:"plan_kind"`
 	PlanLabel       string  `json:"plan_label"`
 	PlanUSDPerMonth float64 `json:"plan_usd_per_month"`
+
+	// LicenseKey unlocks the paid features. Checked locally against its own
+	// embedded expiry — no network call, no signature (ADR-022). Empty is the
+	// normal state: the free product is the whole product for one person.
+	LicenseKey string `json:"license_key,omitempty"`
 }
 
 // Defaults returns the built-in configuration (spec: K=5, T=3, port 4173).

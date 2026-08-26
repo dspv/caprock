@@ -18,6 +18,8 @@
  *    feature's own place on the screen, the way a greyed-out menu item is.
  */
 import { useState, type ReactNode } from 'react'
+import { api } from '@/lib/api'
+import { useApi } from '@/lib/useApi'
 import { PremiumModal, type PaidFeature } from './PremiumModal'
 
 export function Locked({
@@ -30,6 +32,12 @@ export function Locked({
   children: ReactNode
 }) {
   const [open, setOpen] = useState(false)
+  const premium = useApi(() => api.premium(), [])
+  // A paid key unlocks the feature: the glass comes off and the children are
+  // live. Until the feature itself is built this is the whole difference a
+  // subscription makes on this panel, and it has to work — someone who paid
+  // and still sees a lock has been charged for nothing.
+  if (premium.data?.license?.active) return <>{children}</>
   return (
     <div className="relative overflow-hidden rounded-[var(--radius-panel)] border border-border">
       {/* The feature as it will look, behind glass. Inert: a preview that

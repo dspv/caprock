@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -820,6 +821,7 @@ func (a *settingsAdapter) Get() api.Settings {
 		PlanKind:        c.PlanKind,
 		PlanLabel:       c.PlanLabel,
 		PlanUSDPerMonth: c.PlanUSDPerMonth,
+		LicenseKey:      c.LicenseKey,
 	}
 }
 
@@ -830,6 +832,10 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	a.d.opt.Config.PlanKind = in.PlanKind
 	a.d.opt.Config.PlanLabel = in.PlanLabel
 	a.d.opt.Config.PlanUSDPerMonth = in.PlanUSDPerMonth
+	// Trimmed on the way in: a key pasted with a stray newline is the most
+	// likely way the one interaction that turns a payment into a working
+	// feature goes wrong, and storing it dirty makes every later read wrong.
+	a.d.opt.Config.LicenseKey = strings.TrimSpace(in.LicenseKey)
 	cfg := a.d.opt.Config
 	a.d.cfgMu.Unlock()
 	// Turning checks on should show an answer immediately rather than after

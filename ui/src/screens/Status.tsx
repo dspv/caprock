@@ -3,6 +3,7 @@ import { useApi } from '@/lib/useApi'
 import { fmtDuration, fmtUSD } from '@/lib/format'
 import { Empty, Panel } from '@/components/ui'
 import { usePlan } from '@/components/PlanPicker'
+import { LicenseField } from '@/components/LicenseField'
 
 export function StatusScreen() {
   const st = useApi(() => api.status(), [], { live: false, intervalMs: 5000 })
@@ -127,6 +128,7 @@ function SettingsPanel() {
           </span>
           <span className="text-[11px] text-fg-faint ml-auto">change it in the header</span>
         </div>
+              <LicenseField plan={plan} save={savePlan} />
       </div>
     </Panel>
   )
