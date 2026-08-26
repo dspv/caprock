@@ -1274,6 +1274,32 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	if err != nil {
 		return s, err
 	}
+	// Every repository root any session reported. Needed before the rows below
+	// are walked, because a session with no root of its own is joined to a root
+	// that another session reported for the same directory — and rows arrive in
+	// no particular order, so deciding as we go would join or split the same
+	// pair depending on which the driver happened to return first. One scan of
+	// a column that has one value per session; the mapping loop below is tens
+	// of rows either way.
+	roots := map[string]bool{}
+	rr, err := q.QueryContext(ctx,
+		`SELECT DISTINCT repo_root FROM sessions WHERE repo_root IS NOT NULL AND repo_root != ''`)
+	if err != nil {
+		return s, err
+	}
+	for rr.Next() {
+		var r string
+		if err := rr.Scan(&r); err != nil {
+			rr.Close()
+			return s, err
+		}
+		roots[r] = true
+	}
+	if err := rr.Err(); err != nil {
+		rr.Close()
+		return s, err
+	}
+	rr.Close()
 	// The session → repository mapping. Only sessions that actually spent in
 	// the range are looked up, so a database full of old sessions costs nothing.
 	rows, err = q.QueryContext(ctx,
@@ -1311,7 +1337,18 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 		// DisambiguateLabels, which widens only what actually collides.
 		key := root
 		if key == "" {
-			key = "cwd:" + cwd
+			// A session outside any repository whose directory IS a repository
+			// another session reported belongs with that one. Claude Code only
+			// records repo_root when it resolves a checkout, so running once in
+			// a repo and once where git could not answer split one project into
+			// two rows — the second labelled with its full path, because
+			// unrootedInfo derives a label from the path when there is no
+			// project name to use. Same directory, same work, one row.
+			if roots[cwd] {
+				key = cwd
+			} else {
+				key = "cwd:" + cwd
+			}
 		}
 		// With neither a repository nor a cwd there is nothing to group on but
 		// the label itself. Falling through to a shared empty key would merge

@@ -710,3 +710,60 @@ func TestModelMixIndexLeadsOnTs(t *testing.T) {
 		t.Errorf("index must lead on ts and carry cost_usd to answer the aggregate, got: %s", sql)
 	}
 }
+
+// One directory is one project, even when only some of its sessions knew they
+// were in a repository.
+//
+// Claude Code reports repo_root only when it resolves a checkout, so running
+// once inside a repo and once where git could not answer produced two rows for
+// the same directory — and the rootless one was labelled with its full
+// filesystem path, since a label is derived from the path when there is no
+// project name. It looked like a second project nobody had.
+func TestSummarizeJoinsRootlessSessionsToTheirRepository(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	cost := 0.01
+	const dir = "/Users/dev/dev/acme-web"
+	for i, sid := range []string{"rooted", "rootless"} {
+		ev := &event.Event{SessionID: sid, Source: event.SourceTranscript, Kind: event.KindTurnAssistant,
+			Model: "claude-opus-5", Ts: time.UnixMilli(2000),
+			Tokens: &event.TokenDelta{In: 1, Out: 1}, CostUSD: &cost}
+		ev.Key = fmt.Sprintf("%s-%d", sid, i)
+		if _, err := InsertEvent(ctx, s.db, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The same directory, reported two ways — which is exactly what happens
+	// when one session starts in the checkout and another in a path git does
+	// not resolve. repo_root is derived from cwd by SessionPatch, so the
+	// rootless form is written directly: that is the state on disk, and it is
+	// the state the roll-up has to cope with.
+	_ = UpsertSession(ctx, s.db, "rooted", SessionPatch{Cwd: dir})
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE sessions SET project='acme-web', repo_root=?, repo_path='' WHERE session_id='rooted'`, dir); err != nil {
+		t.Fatal(err)
+	}
+	_ = UpsertSession(ctx, s.db, "rootless", SessionPatch{Cwd: dir})
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE sessions SET project='', repo_root='', repo_path='' WHERE session_id='rootless'`); err != nil {
+		t.Fatal(err)
+	}
+
+	sum, err := Summarize(ctx, s.db, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sum.Projects) != 1 {
+		labels := make([]string, 0, len(sum.Projects))
+		for _, p := range sum.Projects {
+			labels = append(labels, p.Project)
+		}
+		t.Fatalf("one directory produced %d projects: %v", len(sum.Projects), labels)
+	}
+	if got := sum.Projects[0].Project; got != "acme-web" {
+		t.Fatalf("project label = %q, want the repository name", got)
+	}
+	if got := sum.Projects[0].Sessions; got != 2 {
+		t.Fatalf("sessions = %d, want both", got)
+	}
+}
