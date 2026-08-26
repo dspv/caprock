@@ -424,7 +424,7 @@ func isOurEntry(e *Object, shimPath string) bool {
 		// Three accepted forms, because an existing install must keep being
 		// recognised: bare (what versions before the always-quote fix wrote on
 		// a path without spaces), and quoted (what every install writes now).
-		if cs == shimPath || cs == quoteForShell(shimPath) {
+		if cs == shimPath || cs == shellCommand(shimPath) {
 			return true
 		}
 		// Recognize our entry regardless of which command form was installed: the
@@ -450,15 +450,15 @@ func isOurEntry(e *Object, shimPath string) bool {
 func ourEntry(shimPath string) *Object {
 	h := NewObject()
 	h.Set("type", "command")
-	h.Set("command", quoteForShell(shimPath))
+	h.Set("command", shellCommand(shimPath))
 	h.Set("timeout", ShimTimeoutSeconds)
 	e := NewObject()
 	e.Set("hooks", []any{h})
 	return e
 }
 
-// quoteForShell wraps the shim path in double quotes so the shell Claude Code
-// runs command hooks through neither splits it nor eats it.
+// shellCommand renders the registration so the shell Claude Code runs command
+// hooks through neither splits it nor eats it.
 //
 // Spaces were the original reason (the macOS data dir is "~/Library/Application
 // Support/caprock/…"), but a Windows path needs quoting even without one: the
@@ -469,15 +469,32 @@ func ourEntry(shimPath string) *Object {
 //
 // So: always quote. A quoted path is correct on every platform, and the cost
 // is two characters.
-func quoteForShell(p string) string {
+func shellCommand(p string) string {
 	if strings.HasPrefix(p, `"`) {
 		return p
 	}
-	// The fallback registration is `<exe> hook` — a path *and* an argument.
-	// Quoting the whole string would send bash looking for a binary literally
-	// named "…caprock.exe hook", so only the path half is quoted.
+	// The fallback registration is `<exe> hook` — a path *and* an argument, so
+	// only the path half is treated as one.
 	if strings.HasSuffix(p, " hook") {
-		return `"` + strings.TrimSuffix(p, " hook") + `" hook`
+		return forShell(strings.TrimSuffix(p, " hook")) + " hook"
 	}
-	return `"` + p + `"`
+	return forShell(p)
+}
+
+// forShell makes one path survive the POSIX shell Claude Code runs hooks
+// through. Two problems, two fixes, and both are needed:
+//
+//   - **Backslashes are escapes.** Bare
+//     `C:\Users\Volas\AppData\…\caprock-hook.exe` reaches the shell as
+//     `C:UsersVolasAppData…caprock-hook.exe`. Windows accepts forward slashes
+//     in every API, so they are written instead — a fix a user's own agent
+//     found and applied by hand before we shipped ours.
+//   - **Spaces split the command.** `C:/Program Files/…` is still two words,
+//     and the macOS data dir is `~/Library/Application Support/caprock/…`, so
+//     the result is quoted as well.
+//
+// Quoting alone would have left the Windows path intact but fragile: any
+// consumer that unquotes before running would hit the escape problem again.
+func forShell(p string) string {
+	return `"` + strings.ReplaceAll(p, `\`, "/") + `"`
 }

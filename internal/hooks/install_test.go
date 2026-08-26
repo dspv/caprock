@@ -432,11 +432,14 @@ func TestWindowsShimPathIsQuoted(t *testing.T) {
 	got, _ := os.ReadFile(p)
 	s := string(got)
 
-	// The command must appear quoted. In JSON the backslashes are escaped, so
-	// the byte sequence to look for is `"C:\\Users\\…`.
-	quoted := `\"` + strings.ReplaceAll(shim, `\`, `\\`) + `\"`
-	if !strings.Contains(s, quoted) {
-		t.Errorf("shim path not quoted in settings.json:\n%s", s)
+	// Quoted *and* written with forward slashes: bash reads a backslash as an
+	// escape, so a quoted backslash path is one unquoting away from breaking
+	// again, and Windows accepts forward slashes in every API.
+	if want := `\"C:/Users/las/AppData/Roaming/caprock/caprock-hook.exe\"`; !strings.Contains(s, want) {
+		t.Errorf("expected a quoted forward-slash path:\n%s", s)
+	}
+	if strings.Contains(s, `caprock\\caprock-hook`) {
+		t.Errorf("backslashes survived into the command:\n%s", s)
 	}
 
 	// And the install must still be recognised as ours, or `caprock status`
@@ -490,8 +493,7 @@ func TestSelfHookFormQuotesOnlyThePath(t *testing.T) {
 		t.Fatal(err)
 	}
 	s, _ := os.ReadFile(p)
-	esc := strings.ReplaceAll(`C:\Program Files\caprock\caprock.exe`, `\`, `\\`)
-	if want := `\"` + esc + `\" hook`; !strings.Contains(string(s), want) {
+	if want := `\"C:/Program Files/caprock/caprock.exe\" hook`; !strings.Contains(string(s), want) {
 		t.Errorf("expected the path quoted and `hook` left outside:\n%s", s)
 	}
 	// Still ours, or status reports a working install as broken.
