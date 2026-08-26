@@ -9,6 +9,22 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.27.3] - 2026-08-26
+
+### Fixed
+
+- **Hooks never fired on Windows.** The shim path was quoted only when it
+  contained a space, which is true of the macOS data directory and false of
+  every Windows path — and Claude Code runs command hooks through bash, which
+  reads each backslash as an escape. So
+  `C:\Users\…\caprock-hook.exe` reached the shell as
+  `C:Users…caprock-hook.exe`, every hook failed, and the only symptom was a
+  single "command not found" line in a Stop hook. The dashboard still filled
+  from transcript tailing, so nothing looked broken. Reported from a real
+  install on the day it happened. The path is always quoted now — correct on
+  every platform, two characters — and entries written by earlier versions are
+  still recognised, so upgrading does not report every hook missing.
+
 ## [0.27.2] - 2026-08-26
 
 ### Changed

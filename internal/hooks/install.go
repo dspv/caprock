@@ -421,7 +421,10 @@ func isOurEntry(e *Object, shimPath string) bool {
 		if cs == "" {
 			continue
 		}
-		if cs == shimPath || cs == quoteIfSpaces(shimPath) {
+		// Three accepted forms, because an existing install must keep being
+		// recognised: bare (what versions before the always-quote fix wrote on
+		// a path without spaces), and quoted (what every install writes now).
+		if cs == shimPath || cs == quoteForShell(shimPath) {
 			return true
 		}
 		// Recognize our entry regardless of which command form was installed: the
@@ -447,19 +450,28 @@ func isOurEntry(e *Object, shimPath string) bool {
 func ourEntry(shimPath string) *Object {
 	h := NewObject()
 	h.Set("type", "command")
-	h.Set("command", quoteIfSpaces(shimPath))
+	h.Set("command", quoteForShell(shimPath))
 	h.Set("timeout", ShimTimeoutSeconds)
 	e := NewObject()
 	e.Set("hooks", []any{h})
 	return e
 }
 
-// quoteIfSpaces wraps a path containing spaces in double quotes so the shell
-// Claude Code uses to run command hooks does not split it (macOS data dir is
-// "~/Library/Application Support/caprock/…").
-func quoteIfSpaces(p string) string {
-	if strings.ContainsAny(p, " \t") && !strings.HasPrefix(p, `"`) {
-		return `"` + p + `"`
+// quoteForShell wraps the shim path in double quotes so the shell Claude Code
+// runs command hooks through neither splits it nor eats it.
+//
+// Spaces were the original reason (the macOS data dir is "~/Library/Application
+// Support/caprock/…"), but a Windows path needs quoting even without one: the
+// shell is bash, and bare `C:\Users\las\AppData\Roaming\caprock\caprock-hook.exe`
+// arrives as `C:UserslasAppDataRoamingcaprockcaprock-hook.exe` because every
+// backslash is read as an escape. Reported from a real install — hooks never
+// fired, and the only evidence was one "command not found" in a Stop hook.
+//
+// So: always quote. A quoted path is correct on every platform, and the cost
+// is two characters.
+func quoteForShell(p string) string {
+	if strings.HasPrefix(p, `"`) {
+		return p
 	}
-	return p
+	return `"` + p + `"`
 }

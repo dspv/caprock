@@ -410,3 +410,70 @@ func TestFirstRunBackupIsNotOurOwnOutput(t *testing.T) {
 		t.Fatalf("backup is not the user's original:\n%s", b)
 	}
 }
+
+// A Windows shim path has no spaces and is still destroyed unquoted: Claude
+// Code runs command hooks through bash, which reads every backslash as an
+// escape. Reported from a real install, where the whole of
+// `C:\Users\las\AppData\Roaming\caprock\caprock-hook.exe` reached the shell as
+// `C:UserslasAppDataRoamingcaprockcaprock-hook.exe` and every hook silently
+// failed — the only symptom being one "command not found" line.
+//
+// Written with a literal Windows path rather than filepath.Join so it runs the
+// same on every OS: the bug is in what we write into settings.json, not in how
+// the host resolves paths.
+func TestWindowsShimPathIsQuoted(t *testing.T) {
+	dir := t.TempDir()
+	p := write(t, dir, userSettings)
+	const shim = `C:\Users\las\AppData\Roaming\caprock\caprock-hook.exe`
+
+	if _, err := Install(p, shim); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(p)
+	s := string(got)
+
+	// The command must appear quoted. In JSON the backslashes are escaped, so
+	// the byte sequence to look for is `"C:\\Users\\…`.
+	quoted := `\"` + strings.ReplaceAll(shim, `\`, `\\`) + `\"`
+	if !strings.Contains(s, quoted) {
+		t.Errorf("shim path not quoted in settings.json:\n%s", s)
+	}
+
+	// And the install must still be recognised as ours, or `caprock status`
+	// reports 0/N hooks on a machine where they are installed correctly.
+	st, err := Inspect(p, shim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Missing) != 0 {
+		t.Errorf("quoted entry not recognised; missing = %v", st.Missing)
+	}
+}
+
+// An entry written before the always-quote fix — bare, no spaces in the path —
+// must keep being recognised, or upgrading reports every hook missing and
+// offers to install what is already there.
+func TestUnquotedLegacyEntryStillRecognised(t *testing.T) {
+	dir := t.TempDir()
+	const shim = `C:\Users\las\AppData\Roaming\caprock\caprock-hook.exe`
+
+	// Hand-write the pre-fix shape: command with no surrounding quotes.
+	legacy := `{"hooks":{`
+	for i, ev := range Events {
+		if i > 0 {
+			legacy += ","
+		}
+		legacy += `"` + ev + `":[{"hooks":[{"type":"command","command":"` +
+			strings.ReplaceAll(shim, `\`, `\\`) + `","timeout":5}]}]`
+	}
+	legacy += `}}`
+	p := write(t, dir, legacy)
+
+	st, err := Inspect(p, shim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Missing) != 0 {
+		t.Errorf("legacy unquoted entry not recognised; missing = %v", st.Missing)
+	}
+}
