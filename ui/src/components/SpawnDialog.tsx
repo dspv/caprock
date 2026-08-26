@@ -65,6 +65,15 @@ export function SpawnDialog({ available, onClose }: { available: boolean; onClos
             {error && <div className="text-danger text-[12px]">{error}</div>}
           </div>
         )}
+        {/* Said here because there is nowhere else a person would find it: the
+          * agent filter only appears once OpenCode sessions exist, so someone
+          * who has never run it cannot learn that Caprock would watch it. */}
+        {available && (
+          <div className="px-4 pb-3 text-[11px] leading-relaxed text-fg-faint">
+            Caprock watches OpenCode sessions too — start one however you
+            normally do and it appears here, priced, alongside these.
+          </div>
+        )}
         {available && (
           <footer className="px-4 py-2 border-t border-border flex gap-2 justify-end">
             <button onClick={onClose} className="border border-border px-3 py-1 rounded-sm text-fg-muted hover:text-fg">Cancel</button>
