@@ -26,6 +26,7 @@ import (
 	"github.com/dspv/caprock/internal/gitdiff"
 	"github.com/dspv/caprock/internal/loop"
 	"github.com/dspv/caprock/internal/narrate"
+	"github.com/dspv/caprock/internal/premium"
 	"github.com/dspv/caprock/internal/store"
 	"github.com/dspv/caprock/internal/update"
 )
@@ -160,6 +161,11 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/events", s.handleEventsFeed)
 	m.HandleFunc("GET /v1/history", s.handleHistory)
 	m.HandleFunc("GET /v1/status", s.handleStatus)
+	// What the paid plan costs, so the dashboard can say it without guessing
+	// and without an outbound call. Static — it is compiled in — but served
+	// rather than duplicated in the UI, so one edit in Go changes every place
+	// a price appears.
+	m.HandleFunc("GET /v1/premium", s.handlePremium)
 	m.HandleFunc("GET /v1/pricing", s.handlePricing)
 	m.HandleFunc("GET /v1/live", s.ws.ServeHTTP)
 	if d.Hook != nil {
@@ -839,6 +845,10 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		st = s.d.Status(r.Context())
 	}
 	writeJSON(w, http.StatusOK, st)
+}
+
+func (s *Server) handlePremium(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, premium.Current())
 }
 
 func (s *Server) handlePricing(w http.ResponseWriter, _ *http.Request) {

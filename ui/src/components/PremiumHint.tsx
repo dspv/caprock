@@ -41,7 +41,7 @@ export function PremiumHint({ reason, now }: { reason: string; now: number }) {
       >
         ✕
       </button>
-      {open && <PremiumModal onClose={() => setOpen(false)} />}
+      {open && <PremiumModal feature="cap" onClose={() => setOpen(false)} />}
     </span>
   )
 }

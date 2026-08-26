@@ -90,6 +90,7 @@ Added during T6 (same conventions; not in the spec's list):
 GET  /v1/events?after=…&limit=…        → Event[] across all sessions (live-feed catch-up)
 GET  /v1/status                        → daemon status: version, pid, uptime, data dir, pricing, ingest, hooks
 GET  /v1/pricing                       → the pricing table in force
+GET  /v1/premium                       → what the paid plan costs and where to buy it
 POST /v1/shutdown                      → 200 (bearer-token gated; `caprock down`)
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows
 GET  /healthz                          → {status:"ok", version}
@@ -134,6 +135,8 @@ POST   /v1/agents/{id}/signal        {action: pause|resume|kill} → 204 (owned 
 WS     /v1/agents/{id}/term          bidirectional binary stream (xterm.js); snapshot on connect, closes on exit
 GET    /v1/history?range=…           lifetime totals + tool distribution + model mix + daily
 ```
+
+**`GET /v1/premium` is what the paid plan costs**, so the dashboard can state a price without an outbound call and without a second copy of the figure. It is compiled in — rule 4 forbids fetching it — but it lives once, in `internal/premium`, and `TestPricingMatchesTheSite` reads the site's `src/content/pricing.ts` and fails when the two disagree. A price copied into the UI eventually contradicts the one that charges the card; this makes that a red build rather than a support email. The response carries `yearly` and `monthly` (`per_month_usd`, `charged_usd`, `period`, `url`) plus `info_url`. Changing a price means changing both files in the same commit.
 
 **`chat` starts a session without a working directory**, for asking something rather than working on a repository — Caprock creates one under `<data_dir>/chats/<YYYY-MM-DD-HHMMSS>/` and spawns there. `cwd` is required unless `chat` is set. One directory **per chat**, never a shared `chats/` folder: Claude Code keys a transcript by working directory, so a shared folder would collapse every conversation into one project row and one transcript. The name carries a counter when two chats start inside the same second. Chats live under the data directory rather than a second `~/.caprock` — one place holding Caprock's state is one place to back up, clean out and explain.
 

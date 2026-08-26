@@ -66,7 +66,7 @@ export function PremiumBanner({ costUSD, days, now }: { costUSD: number; days: n
           not now
         </button>
       </span>
-      {open && <PremiumModal onClose={() => setOpen(false)} />}
+      {open && <PremiumModal feature="cap" onClose={() => setOpen(false)} />}
     </div>
   )
 }

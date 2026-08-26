@@ -201,6 +201,11 @@ export interface RateWindow {
   forecast?: string
 }
 
+/** What the paid plan costs. Served by the daemon so no price is hardcoded in
+ *  the UI — one edit in Go changes every place it appears. */
+export interface PremiumPlan { per_month_usd: number; charged_usd: number; period: string; url: string }
+export interface PremiumPricing { yearly: PremiumPlan; monthly: PremiumPlan; info_url: string }
+
 export interface RateLimits {
   five_hour?: RateWindow
   seven_day?: RateWindow
@@ -374,6 +379,7 @@ export const api = {
   summary: (range: 'today' | '7d' | '30d' | 'all' = 'today', agent?: string) =>
     get<Summary>(`/v1/stats/summary?range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}`),
   daily: (days = 30) => get<DailyStat[]>(`/v1/stats/daily?days=${days}`),
+  premium: () => get<PremiumPricing>('/v1/premium'),
   history: (range: 'today' | '7d' | '30d' | 'all' = 'all') => get<History>(`/v1/history?range=${range}`),
   /** Turns the task runner on over the running daemon — no restart. Empty
    *  fields mean the daemon's own suggestion (see status.suggested_hive). */
