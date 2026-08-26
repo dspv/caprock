@@ -71,6 +71,51 @@ def scrub():
                                  ("-Users-ds-", "-Users-dev-")):
                 c.execute(f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
                           (old_s, new_s, f"%{old_s}%"))
+        # Flatten every repository onto /Users/dev/dev/<name> before renaming
+        # anything. Renaming only the project label leaves the directories ABOVE
+        # the checkout intact, and those reach the screen: when two checkouts
+        # share a basename the Cost screen disambiguates them by prefixing
+        # parent segments, so a scrubbed capture published
+        # `demo2/notify-svc-2/.caprock-worktrees/inventory-2` — the leaf renamed,
+        # the machine's own layout printed above it. Re-rooting removes the
+        # parents entirely, so there is nothing left to disambiguate with.
+        # Both columns, because a session OUTSIDE any repository has no
+        # repo_root at all and its label is derived from cwd instead — which is
+        # most of the capture, since the orchestrator runs agents in worktrees
+        # under a scratchpad. Re-rooting only repo_root left exactly those rows
+        # printing the machine's layout.
+        c.execute("SELECT DISTINCT repo_root FROM sessions "
+                  "WHERE repo_root IS NOT NULL AND repo_root != '' "
+                  "UNION SELECT DISTINCT cwd FROM sessions "
+                  "WHERE (repo_root IS NULL OR repo_root = '') "
+                  "AND cwd IS NOT NULL AND cwd != ''")
+        roots = sorted((r[0] for r in c.fetchall()), key=lambda r: (-len(r), r))
+        for root in roots:
+            leaf = root.rstrip("/").rsplit("/", 1)[-1]
+            flat = f"/Users/dev/dev/{leaf}"
+            if root == flat:
+                continue
+            for t, col in (("sessions", "cwd"), ("sessions", "repo_root"),
+                           ("sessions", "repo_path"), ("sessions", "transcript_path"),
+                           ("events", "touch_dir"), ("events", "payload"),
+                           ("session_files", "path")):
+                c.execute(f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
+                          (root, flat, f"%{root}%"))
+
+        # A session can sit in a hidden directory UNDER its repository — the
+        # orchestrator puts each agent in `<repo>/.caprock-worktrees/<name>` —
+        # and re-rooting the repository leaves that suffix intact. The Cost
+        # screen prints the segment below the root, so the capture advertised
+        # Caprock's own worktree layout. Collapse any session whose path
+        # descends through a dot-directory back onto its repository root.
+        c.execute("SELECT session_id, cwd, repo_root FROM sessions "
+                  "WHERE cwd LIKE '%/.%/%'")
+        for sid, cwd, root in c.fetchall():
+            head = cwd.split("/.", 1)[0]
+            dest = root if root else head
+            c.execute("UPDATE sessions SET cwd=?, repo_path=? WHERE session_id=?",
+                      (dest, dest, sid))
+
         # Rename every project that is not explicitly kept. Done after the
         # path rewrites so a name reintroduced through a path is caught too.
         c.execute("SELECT DISTINCT project FROM sessions WHERE project IS NOT NULL AND project != ''")
