@@ -28,7 +28,7 @@ is embedded, so it works with no Node build. No package manager? Grab a binary
 from [Releases](https://github.com/dspv/caprock/releases).
 
 <details>
-<summary><b>Or let Claude Code install it</b> — paste one prompt into the session you already have open.</summary>
+<summary><b>Or let Claude Code install it</b> — paste one prompt into a fresh Claude Code message.</summary>
 
 It picks the right command for your machine, so there is nothing to choose. The
 `--yes` is load-bearing: consent for the hook is refused rather than assumed
