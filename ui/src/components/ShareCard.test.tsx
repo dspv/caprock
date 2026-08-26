@@ -100,3 +100,22 @@ describe('ShareCard milestones', () => {
     expect(await screen.findByRole('button', { name: /^share these numbers$/i })).toBeTruthy()
   })
 })
+
+/**
+ * The "saved" flash clears itself 2.5 seconds after a download. Left running,
+ * it fires into a component that no longer exists — in CI that surfaced as
+ * `window is not defined`, blamed on a screen that never mentions this
+ * component. The release gate caught it; running one test file at a time
+ * did not.
+ *
+ * There is no honest component-level test for it: jsdom has no canvas, so the
+ * draw path that schedules the timer never runs, and a test that simulates the
+ * timer proves only that the simulation works. What IS worth pinning is that
+ * no test in this suite leaves an unhandled error behind — which is exactly
+ * what `make check` asserts by running every file in one environment, and why
+ * the gate found this and a single-file run could not.
+ *
+ * The guard that keeps it fixed is therefore the gate, not a unit test. This
+ * note exists so the next person does not delete the cleanup believing a test
+ * covers it.
+ */

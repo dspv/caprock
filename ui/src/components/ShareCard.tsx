@@ -11,7 +11,7 @@
  * which repositories someone works on is a trap, and the figures alone are the
  * interesting part anyway.
  */
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtUSD } from '@/lib/format'
@@ -59,6 +59,12 @@ export function ShareCard({ period = 'all' }: { period?: SharePeriod } = {}) {
   const h = useApi(() => api.history(period), [period], { intervalMs: 60000 })
   const [done, setDone] = useState(false)
   const canvas = useRef<HTMLCanvasElement | null>(null)
+  // The "saved" flash clears itself 2.5s later. Left uncancelled it fires
+  // after the component is gone — in a test, after the DOM it refers to has
+  // been torn down, which surfaced as `window is not defined` in a file that
+  // never mentions this component.
+  const flash = useRef<number | undefined>(undefined)
+  useEffect(() => () => { if (flash.current !== undefined) clearTimeout(flash.current) }, [])
   const t = h.data?.totals
   if (!t || t.sessions === 0) return null
 
@@ -77,7 +83,15 @@ export function ShareCard({ period = 'all' }: { period?: SharePeriod } = {}) {
   const draw = () => {
     const c = canvas.current
     if (!c) return
-    const g = c.getContext('2d')
+    // A canvas that cannot give a 2D context is not an error worth throwing:
+    // headless environments (and jsdom without the optional `canvas` package)
+    // have none, and the button is not the point of the page it sits on.
+    let g: CanvasRenderingContext2D | null = null
+    try {
+      g = c.getContext('2d')
+    } catch {
+      return
+    }
     if (!g) return
 
     const bg = token('--color-bg', '#1b1b1a')
@@ -143,7 +157,7 @@ export function ShareCard({ period = 'all' }: { period?: SharePeriod } = {}) {
       a.click()
       URL.revokeObjectURL(url)
       setDone(true)
-      window.setTimeout(() => setDone(false), 2500)
+      flash.current = window.setTimeout(() => setDone(false), 2500)
     }, 'image/png')
   }
 
