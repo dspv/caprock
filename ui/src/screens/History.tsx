@@ -7,6 +7,7 @@ import { groupDays } from './Cost'
 import { BarChart, BarReadout } from '@/components/BarChart'
 import { costBasis, costBasisLong } from '@/components/CostBasis'
 import { usePlan } from '@/components/PlanPicker'
+import { PremiumBanner } from '@/components/PremiumBanner'
 import { UnpricedNote } from '@/components/Unpriced'
 
 type Range = 'today' | '7d' | '30d' | 'all'
@@ -29,6 +30,13 @@ export function HistoryScreen() {
         ))}
         <span className="ml-auto text-[11px] text-fg-faint">Everything you ever ran through Caprock. Measured, not estimated.</span>
       </div>
+
+      {/* Below the range row, above the figures: this screen is where someone
+        * came to think about what all of this has cost, which is the one
+        * moment a paid spend control is a relevant thing to mention. */}
+      {measured && d && (
+        <PremiumBanner costUSD={d.totals.cost_usd} days={d.totals.days} now={Date.now()} />
+      )}
       {h.error && !d && <Empty title="Cannot reach the daemon">{h.error.message}</Empty>}
       <Panel title={`Lifetime · ${range}`}>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 divide-x divide-border">

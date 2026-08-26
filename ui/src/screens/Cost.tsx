@@ -9,6 +9,7 @@ import { PlanValue } from '@/components/PlanValue'
 import { usePlan } from '@/components/PlanPicker'
 import { costBasis, costBasisLong } from '@/components/CostBasis'
 import { RateLimitRow } from '@/components/PlanLimits'
+import { PremiumBanner } from '@/components/PremiumBanner'
 import { UnpricedNote } from '@/components/Unpriced'
 import { WorkMix } from '@/components/WorkMix'
 
@@ -44,6 +45,16 @@ export function CostScreen() {
         <span className="ml-auto text-[11px] text-fg-faint">{costBasisLong(plan)}{s ? ` (table ${s.pricing_version})` : ''}</span>
       </div>
       {summary.error && !s && <Empty title="Cannot reach the daemon">{summary.error.message}</Empty>}
+      {/* Not on `today`: one day is not an average, and a banner that says
+        * "$212 a day across 1 active day" is arithmetic dressed as insight. */}
+      {range !== 'today' && s && (
+        <PremiumBanner
+          costUSD={days.reduce((a, d) => a + d.cost, 0)}
+          days={days.filter((d) => d.cost > 0).length}
+          now={now}
+        />
+      )}
+
       <PlanValue summary={s} plan={plan} days={rangeDays(range, s?.from_ms)} />
       <Panel title={`Totals · ${range}`}>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-border">

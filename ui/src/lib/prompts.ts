@@ -16,7 +16,7 @@
  * something to send anywhere. Rule 4: all data stays on the machine.
  */
 
-export type PromptKind = 'share-week' | 'share-month' | 'premium-hint'
+export type PromptKind = 'share-week' | 'share-month' | 'premium-hint' | 'premium-banner'
 
 const KEY = 'caprock-prompts'
 
@@ -27,6 +27,7 @@ const PERIOD_MS: Record<PromptKind, number> = {
   // tool someone installed for its own sake, and the tolerance for seeing it
   // again is lower than for being offered a card of your own numbers.
   'premium-hint': 30 * 24 * 60 * 60 * 1000,
+  'premium-banner': 30 * 24 * 60 * 60 * 1000,
 }
 
 type Store = Partial<Record<PromptKind, number>>
