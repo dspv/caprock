@@ -12,7 +12,7 @@ started) · **building** · **shipped** (in a release, with the version) ·
 | FB-008 | 2026-08-26 | Vova | Pay for models from inside Caprock                         | open    | —                 |
 | FB-007 | 2026-08-26 | Vova | Show plan limits where they are actually looked at         | shipped | v0.28.0           |
 | FB-006 | 2026-08-26 | Vova | Quick chat: a findable "new project" that makes the folder | shipped | v0.28.0           |
-| FB-005 | 2026-08-26 | Vova | Third-party model providers, free ones first               | planned | —                 |
+| FB-005 | 2026-08-26 | Vova | Third-party model providers, free ones first               | part    | v0.30.0           |
 | FB-004 | 2026-08-26 | Vova | JetBrains Mono in the terminal — Cyrillic was unreadable   | shipped | v0.28.0           |
 | FB-003 | 2026-08-26 | Vova | Would pay $20/mo; $50 with models; $100 with Claude+GPT    | open    | —                 |
 | FB-002 | 2026-08-25 | Vova | Filter the dashboard by agent after OpenCode appeared      | shipped | v0.21.4           |
@@ -88,6 +88,16 @@ Two things in one request:
   directory made for him.
 
 ### FB-005 — Third-party model providers
+
+**Half of it shipped in v0.30.0, and it was the half nobody asked about
+explicitly.** Caprock already saw DeepSeek, MiniMax and OpenAI arriving through
+OpenCode — it could not price them, so $155 of the owner's own spend sat
+outside his total. The providers' published prices are now in the table, so a
+total is a total whichever agent ran the work.
+
+That is the observing reading of the request. The other reading — running
+non-Claude models *from inside* Caprock — is untouched, and still needs Vova to
+say which he meant.
 
 "Free ones first." **Ambiguous in a way that matters** — it could mean either:
 

@@ -9,6 +9,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.30.0] - 2026-08-27
+
+The release where the paid tier became something you can see, buy, and hand
+over — and where one of its features was given away instead.
+
 ### Added
 
 - **Paid features unlock from a licence key.** A string carrying its own
@@ -24,6 +29,40 @@ Phase 3 (Delight) has no plan by design.
 - **A lifetime purchase**, $100 once. An ordinary key with a distant date
   rather than a "never expires" flag: a flag would need a second code path in
   the daemon, and the design is one path.
+- **`caprock license`** — show, set, clear, and issue keys from the terminal.
+  Issuing exists because the Stripe webhook was the only thing that could mint
+  one, which left no way to serve a customer who paid another way, a refund
+  reissued, or a friend. `license set` refuses a key that will not work rather
+  than storing it and leaving someone to wonder why nothing happened.
+- **Every paid feature is visible in the product**, in the place it will
+  occupy, behind glass, with one click to paying. `Paywall.test.tsx` enforces
+  the rule that makes this honest rather than hostile: a lock may only cover a
+  feature that does not exist yet, and never a panel showing measured data.
+
+### Changed
+
+- **Third-party models are priced for everyone, and Premium lost a feature.**
+  DeepSeek, MiniMax and OpenAI arrive through OpenCode as usage nobody could
+  cost — $155 of the author's own spend sat outside his total. Adding the
+  providers' published prices was cheaper than building a paywall around them,
+  so `providers` is no longer a paid feature: charging for something the free
+  version performs is how a paid tier becomes a hostage.
+
+### Fixed
+
+- **The unpriced warning fired on turns with nothing to price.** It tested for
+  tokens being present rather than greater than zero, so turns recorded with
+  explicit zeroes were reported as usage outside the total. The dashboard was
+  telling users money was missing when none was.
+- **The same model reported by two routes was two rows**, one unpriced:
+  `minimax/minimax-m3` from OpenRouter and `MiniMax-M3` from the direct API.
+  Gateway vendor prefixes are stripped.
+- **A quick chat was labelled `2026-08-26-212735`** — the directory name that
+  keeps two chats from colliding, shown as an identity. It reads
+  `chat · Aug 26, 21:27` now, and a migration renames the ones already stored.
+- **"Stuck in a loop … open" landed on the session's default view.** For a loop
+  three hours old that is the wrong end of a long list. It opens the timeline
+  at the moment the repetition started.
 
 ## [0.29.0] - 2026-08-26
 

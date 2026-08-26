@@ -331,6 +331,22 @@ features given away.
 revocation. Not before, and not because someone might. That is an open question
 in [12-risks.md](12-risks.md), not a promise of future work.
 
+**A paid feature must be one that does not exist yet.** The free product is the
+whole product for one person, and the moment a lock covers something that used
+to work, the free tier becomes a hostage and every promise on the site reads as
+a sales tactic. `ui/src/components/Paywall.test.tsx` enforces it by reading the
+screens: a lock may only wrap a feature marked unbuilt, it may never wrap a
+panel that reads live data, and every feature we charge for must be visible
+somewhere so people can see what they would be buying.
+
+It has already been decided against us twice. The cap's locked preview showed
+today's real spend behind glass — a figure the same screen gives away for free
+at the top, so a user would have seen their own number blurred and read it,
+correctly, as something taken away. And third-party pricing was going to be
+paid until the prices turned out to be cheaper to add than to gate: DeepSeek
+and MiniMax now cost out for everyone, and the feature was removed from the
+paid list rather than kept as a claim.
+
 **What this constrains.** Paid features must be things the local binary can
 switch on. Anything that needs our infrastructure — cross-machine aggregation,
 the weekly report's delivery — is enforced by that infrastructure and needs no

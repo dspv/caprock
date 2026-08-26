@@ -318,6 +318,30 @@ Found a bug, or something that did not explain itself? The **feedback** button
 in the header opens a prefilled GitHub issue in your browser — nothing is sent
 from the dashboard, and what gets attached is on screen before you press it.
 
+## Premium
+
+Everything above is free, Apache-2.0, and stays that way — including the cost
+of every provider Caprock can see, Anthropic or not.
+
+Premium adds the things that act on what you are looking at: a daily cap that
+pauses the sessions Caprock started when the day passes a number you set, and a
+weekly report of where the money went, sent to your own Telegram bot or
+webhook. Neither is built yet, and the pages that sell them say so.
+
+$5/month, $30/year, or $100 once — [caprock.dev/premium](https://caprock.dev/premium/).
+
+A key arrives by email and goes in the dashboard's settings, or:
+
+```bash
+caprock license set CR-2027-01-01-A1B2C3D4
+caprock license                 # what is in force
+```
+
+The key carries its own expiry and is checked on your machine. Caprock makes no
+request to us to verify it, now or ever — there is nothing to verify against.
+Paid features keep working for seven days after a key expires, so a late
+renewal does not interrupt you.
+
 ## Updating
 
 Use the command that matches how you installed it:

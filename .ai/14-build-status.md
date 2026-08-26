@@ -48,6 +48,37 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-08-27 — The paid tier gets a boundary, and gives one feature back
+
+Three things, and the middle one is the one worth keeping.
+
+**Keys can be issued by hand.** The Stripe webhook was the only thing that
+could mint one, which meant no way to serve a customer who paid another way, a
+refund reissued, or a friend at a conference. `caprock license issue` closes
+that. Building it found two defects: a key with no random suffix was rejected
+although its date was complete — so one dictated over the phone would not have
+worked — and `license set` stored whatever it was given, turning a typo into a
+support email instead of an error message.
+
+**A feature was removed from the paid tier because it became free.**
+Third-party pricing was going to be sold: DeepSeek and MiniMax arrive through
+OpenCode as usage nobody could cost, and $155 of the owner's own spend sat
+outside his total. Then adding the providers' published prices turned out to be
+an afternoon's work, less than building a paywall around them would have been.
+Charging for something the free version performs is how a paid tier becomes a
+hostage, so the feature was deleted from the list rather than kept as a claim.
+
+That is now a rule with a test behind it ([ADR-022](08-decisions.md)): a lock
+may only cover a feature that does not exist yet, never a panel showing
+measured data. It has already been decided against us twice — the cap's preview
+was blurring out today's real spend, a figure the same screen gives away for
+free.
+
+**The unpriced warning was lying.** It fired on turns recorded with explicit
+zero tokens, because the query tested for NOT NULL rather than for a number
+greater than zero. The dashboard told users their total was missing money when
+it was missing nothing.
+
 ### 2026-08-26 — The payment path, end to end
 
 Money can now reach us and produce a working feature, which it could not that
