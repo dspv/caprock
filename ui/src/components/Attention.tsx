@@ -12,6 +12,7 @@ import { fmtAgo, fmtUSD, shortId } from '@/lib/format'
 import { LastWord } from '@/components/LastWord'
 import type { SessionSummary } from '@/lib/api'
 import { href } from '@/lib/router'
+import { PremiumHint } from './PremiumHint'
 
 export function Attention({ items, now, onDismiss, sessions }: {
   items: AttentionItem[]
@@ -87,6 +88,14 @@ function Row({ it, now, onDismiss, session }: {
         >
           {it.sessionId ? 'open' : 'details'}
         </a>
+        {/* Only on the two items a spend cap would actually have acted on: a
+          * loop burning money and a session that spent a lot for nothing.
+          * Deliberately NOT on the plan-window item — a plan limit is
+          * Anthropic's, and no amount of money we take moves it, so selling a
+          * cap beside it would be selling the wrong thing. */}
+        {(it.id.startsWith('loop-') || it.id.startsWith('spent-')) && (
+          <PremiumHint reason="this is what a cap stops" now={now} />
+        )}
         {onDismiss && it.id.startsWith('loop-') && (
           <button
             className="text-[11px] text-fg-faint hover:text-fg border border-border px-1.5 py-0.5 rounded-sm"

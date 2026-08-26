@@ -40,14 +40,32 @@ function milestone(cost: number): number | null {
   return cost - passed <= passed * 0.1 ? passed : null
 }
 
-export function ShareCard() {
-  const h = useApi(() => api.history('all'), [], { intervalMs: 60000 })
+/** What a card is about. `all` is the lifetime figure; the others are periods. */
+export type SharePeriod = 'all' | '7d' | '30d'
+
+const PERIOD_LABEL: Record<SharePeriod, string> = {
+  all: 'CLAUDE CODE · MEASURED ON ONE MACHINE',
+  '7d': 'CLAUDE CODE · ONE WEEK ON ONE MACHINE',
+  '30d': 'CLAUDE CODE · ONE MONTH ON ONE MACHINE',
+}
+
+const PERIOD_CAPTION: Record<SharePeriod, string> = {
+  all: 'of Claude Code at API list prices',
+  '7d': 'of Claude Code in the last 7 days, at API list prices',
+  '30d': 'of Claude Code in the last 30 days, at API list prices',
+}
+
+export function ShareCard({ period = 'all' }: { period?: SharePeriod } = {}) {
+  const h = useApi(() => api.history(period), [period], { intervalMs: 60000 })
   const [done, setDone] = useState(false)
   const canvas = useRef<HTMLCanvasElement | null>(null)
   const t = h.data?.totals
   if (!t || t.sessions === 0) return null
 
-  const reached = milestone(t.cost_usd)
+  // A milestone is a lifetime fact. "You just passed $1,000" makes no sense
+  // about one week, and a period card is offered on a rhythm rather than
+  // because a number was crossed.
+  const reached = period === 'all' ? milestone(t.cost_usd) : null
 
   // No multiple here. It needs the window's calendar span to divide a monthly
   // fee by, and this endpoint reports active days only — dividing by those
@@ -76,7 +94,7 @@ export function ShareCard() {
 
     g.fillStyle = faint
     g.font = `500 22px ${mono}`
-    g.fillText('CLAUDE CODE · MEASURED ON ONE MACHINE', 72, 92)
+    g.fillText(PERIOD_LABEL[period], 72, 92)
 
     // The headline: what the usage would have cost at API list prices.
     g.fillStyle = accent
@@ -85,7 +103,7 @@ export function ShareCard() {
 
     g.fillStyle = muted
     g.font = `400 30px ${sans}`
-    g.fillText('of Claude Code at API list prices', 72, 286)
+    g.fillText(PERIOD_CAPTION[period], 72, 286)
 
     // The three figures that give the headline a scale.
     const cells: [string, string][] = [
@@ -121,7 +139,7 @@ export function ShareCard() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = 'caprock.png'
+      a.download = period === 'all' ? 'caprock.png' : `caprock-${period}.png`
       a.click()
       URL.revokeObjectURL(url)
       setDone(true)

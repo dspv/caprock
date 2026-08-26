@@ -8,6 +8,7 @@ import { ProjectsPanel, AGENTS, type AgentFilter } from '@/components/Projects'
 import { ActivityFeed } from '@/components/ActivityFeed'
 import { LifetimeStrip } from '@/components/Lifetime'
 import { PlanLimitsLine } from '@/components/PlanLimits'
+import { SharePrompt } from '@/components/SharePrompt'
 import { BreakdownPanel } from '@/components/Breakdown'
 import { PulsePanel } from '@/components/Pulse'
 import { Attention } from '@/components/Attention'
@@ -102,6 +103,10 @@ export function NowScreen() {
         * right now, and it was only answerable on the Cost screen, in the
         * second column of the bottom row, under a thirty-day chart. */}
       <PlanLimitsLine limits={summary.data?.rate_limits} now={now} />
+
+      {/* Only when something has actually been measured: offering to draw a
+        * card of zero sessions is asking someone to post an empty page. */}
+      {measured && <SharePrompt now={now} />}
 
       <Panel
         title="Today"
