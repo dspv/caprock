@@ -477,3 +477,29 @@ func TestUnquotedLegacyEntryStillRecognised(t *testing.T) {
 		t.Errorf("legacy unquoted entry not recognised; missing = %v", st.Missing)
 	}
 }
+
+// The fallback registration is `<exe> hook`: a path and an argument. Quoting
+// the whole string sends bash after a binary literally named
+// "…/caprock.exe hook", which exists nowhere — so only the path is quoted.
+func TestSelfHookFormQuotesOnlyThePath(t *testing.T) {
+	dir := t.TempDir()
+	p := write(t, dir, userSettings)
+	const shim = `C:\Program Files\caprock\caprock.exe hook`
+
+	if _, err := Install(p, shim); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := os.ReadFile(p)
+	esc := strings.ReplaceAll(`C:\Program Files\caprock\caprock.exe`, `\`, `\\`)
+	if want := `\"` + esc + `\" hook`; !strings.Contains(string(s), want) {
+		t.Errorf("expected the path quoted and `hook` left outside:\n%s", s)
+	}
+	// Still ours, or status reports a working install as broken.
+	st, err := Inspect(p, shim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Missing) != 0 {
+		t.Errorf("self-hook entry not recognised; missing = %v", st.Missing)
+	}
+}

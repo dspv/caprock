@@ -473,5 +473,11 @@ func quoteForShell(p string) string {
 	if strings.HasPrefix(p, `"`) {
 		return p
 	}
+	// The fallback registration is `<exe> hook` — a path *and* an argument.
+	// Quoting the whole string would send bash looking for a binary literally
+	// named "…caprock.exe hook", so only the path half is quoted.
+	if strings.HasSuffix(p, " hook") {
+		return `"` + strings.TrimSuffix(p, " hook") + `" hook`
+	}
 	return `"` + p + `"`
 }
