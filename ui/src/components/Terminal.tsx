@@ -11,7 +11,13 @@ export function TerminalView({ sessionId, owned }: { sessionId: string; owned: b
     const css = getComputedStyle(document.documentElement)
     const v = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback
     const term = new Xterm({
-      convertEol: false, cursorBlink: true, fontFamily: 'var(--font-mono)', fontSize: 12,
+      // The resolved stack, not `var(--font-mono)`. xterm renders glyphs onto a
+      // canvas and hands this string to the 2D context, which does not resolve
+      // CSS custom properties — it saw an invalid family and fell back to the
+      // system monospace. On Cyrillic that fallback is a different face
+      // entirely, which is what made the terminal unreadable for the one user
+      // who moved onto it full-time.
+      convertEol: false, cursorBlink: true, fontFamily: v('--font-mono', 'monospace'), fontSize: 12,
       theme: {
         background: v('--color-bg', '#0b0e14'),
         foreground: v('--color-fg', '#d3dae3'),
@@ -24,6 +30,27 @@ export function TerminalView({ sessionId, owned }: { sessionId: string; owned: b
     term.loadAddon(fit)
     term.open(host.current)
     try { fit.fit() } catch { /* not yet laid out */ }
+    // Ask for every subset the face ships, by name.
+    //
+    // Subsets load lazily, triggered by a matching character appearing in the
+    // DOM — but the terminal paints to a canvas, so its text never enters the
+    // DOM and the request is never made. The dashboard's own chrome is
+    // English, so the first non-Latin line would render in the fallback face
+    // forever. One character per range is enough to make the browser fetch it.
+    //
+    // These six are everything JetBrains Mono covers. CJK, Arabic, Hebrew and
+    // Thai are NOT in the face at all and cannot be turned on here — they fall
+    // through to the stack in --font-mono, which is why that stack has to keep
+    // a real system monospace at the end rather than ending at the webfont.
+    for (const sample of ['A', 'ā', 'Ы', 'Ѣ', 'Ω', 'ế']) {
+      document.fonts?.load('12px "JetBrains Mono Variable"', sample)
+        .catch(() => { /* face unavailable; the fallback still renders */ })
+    }
+    // xterm measures the cell from the font that is loaded WHEN IT OPENS. The
+    // webfont usually is not yet, so it measures the fallback and keeps that
+    // cell size after the real face arrives — every column lands slightly off.
+    // Re-fitting once the faces are ready re-measures against them.
+    document.fonts?.ready.then(() => { try { fit.fit() } catch { /* gone */ } })
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
     const ws = new WebSocket(`${proto}://${location.host}/v1/agents/${encodeURIComponent(sessionId)}/term`)
     ws.binaryType = 'arraybuffer'
