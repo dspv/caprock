@@ -26,6 +26,14 @@ export interface AttentionItem {
   costUSD?: number
   /** Age of the condition, unix ms, when known. */
   since?: number
+  /**
+   * The moment worth looking at, unix ms — where "open" should land.
+   *
+   * Without it the link opened a session at whatever the timeline happened to
+   * show, which for a loop that started three hours ago is the wrong end of a
+   * long list: the banner named a problem and then handed over a haystack.
+   */
+  at?: number
 }
 
 export interface AttentionInput {
@@ -101,6 +109,10 @@ export function findAttention({ sessions, alerts, now, limits, waitingMs = DEFAU
       ].filter(Boolean).join(' '),
       costUSD: s?.stats?.cost_usd,
       since: ms(a.ts) || undefined,
+      // Where the repetition STARTED, not where the detector noticed it. The
+      // first call is the one that explains what the session was trying to do;
+      // the fifth is just the fifth.
+      at: ms(a.first_ts) || ms(a.ts) || undefined,
     })
   }
 

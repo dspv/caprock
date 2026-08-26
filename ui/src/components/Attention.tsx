@@ -82,8 +82,16 @@ function Row({ it, now, onDismiss, session }: {
             what did it ask?
           </button>
         )}
+        {/* Straight to the timeline at the moment in question. "Open" used to
+          * land on the session's default view, which for a three-hour-old loop
+          * is the wrong end of a long list — the banner named a problem and
+          * then handed over a haystack. */}
         <a
-          href={it.sessionId ? href({ name: 'session', id: it.sessionId }) : '#/cost'}
+          href={
+            it.sessionId
+              ? href({ name: 'session', id: it.sessionId, tab: 'timeline', at: it.at })
+              : '#/cost'
+          }
           className="text-[11px] border border-border px-1.5 py-0.5 rounded-sm hover:border-border-strong no-underline text-fg-muted hover:text-fg"
         >
           {it.sessionId ? 'open' : 'details'}

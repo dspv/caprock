@@ -550,3 +550,31 @@ func TestBackfillRepoLabelsHistoricalSessions(t *testing.T) {
 		t.Errorf("project = %q, want %q — a vanished directory still gets its own name as a label", goneSession.Project, "testrepo")
 	}
 }
+
+// A quick chat has no repository, so its label is derived from its directory —
+// and that directory is named `2026-08-26-212735` because two chats started in
+// the same second must not collide. That name was never meant to be read: the
+// dashboard showed it beside repositories with names, and a bare timestamp
+// presented as an identity tells a user nothing about what they are looking at.
+func TestQuickChatIsLabelledAsOne(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		cwd  string
+		want string
+	}{
+		{"a chat we created", "/Users/dev/Library/Application Support/caprock/chats/2026-08-26-212735", "chat · Aug 26, 21:27"},
+		{"a second chat in the same second", "/Users/dev/Library/Application Support/caprock/chats/2026-08-26-212735-2", "chat"},
+		{"a chat directory we did not name", "/data/caprock/chats/whatever", "chat"},
+		// A directory called `chats` that is somebody's actual repository must
+		// not be renamed out from under them: it is the PARENT that identifies
+		// a chat, not the word appearing anywhere in the path.
+		{"a repo that happens to be called chats", "/Users/dev/dev/chats", "chats"},
+		{"an ordinary directory", "/Users/dev/dev/acme-web", "acme-web"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := unrootedInfo(tc.cwd).Repo; got != tc.want {
+				t.Errorf("label = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

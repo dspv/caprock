@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Repository grouping — why the row is the repo, not the basename.
@@ -349,11 +350,41 @@ func lastSegments(p string, n int) string {
 // separately by the caller), and DisambiguateLabels widens the label only for
 // the directories that actually collide in a given view.
 func unrootedInfo(cwd string) RepoInfo {
+	if label, ok := chatLabel(cwd); ok {
+		return RepoInfo{Root: "", Repo: label, Path: ""}
+	}
 	label := lastSegment(cwd)
 	if label == "" {
 		label = shortPathLabel(cwd)
 	}
 	return RepoInfo{Root: "", Repo: label, Path: ""}
+}
+
+// chatLabel names a quick chat, which has no repository by design.
+//
+// Chats live in `<data_dir>/chats/<YYYY-MM-DD-HHMMSS>/`, and that directory
+// name was chosen so two chats started in the same second cannot collide. It
+// was never meant to be read: the dashboard showed a session called
+// `2026-08-26-212735` beside repositories with names, and the owner's reaction
+// on seeing one was "не очень понятно что это" — which is the correct reaction
+// to a timestamp presented as an identity.
+//
+// The date is still what distinguishes one chat from another, so it stays —
+// but as a readable time behind a word that says what the thing is.
+func chatLabel(cwd string) (string, bool) {
+	cwd = normalizeCwd(cwd)
+	name := lastSegment(cwd)
+	parent := lastSegment(strings.TrimSuffix(cwd, "/"+name))
+	if parent != "chats" {
+		return "", false
+	}
+	t, err := time.Parse("2006-01-02-150405", name)
+	if err != nil {
+		// A chat directory with a name we did not write. Still a chat, and
+		// still better called one than shown as a bare string.
+		return "chat", true
+	}
+	return "chat · " + t.Format("Jan 2, 15:04"), true
 }
 
 // shortPathLabel renders a non-repository directory compactly while keeping it
