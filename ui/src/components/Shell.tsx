@@ -8,6 +8,7 @@ import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { PlanChip, usePlan } from '@/components/PlanPicker'
 import { FeedbackButton } from '@/components/Feedback'
+import { ShareButton } from '@/components/Share'
 import { SiteFooter } from '@/components/SiteFooter'
 
 const NAV: { route: Route; label: string; phase?: string }[] = [
@@ -76,6 +77,11 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
         <div className="ml-auto flex items-center gap-3 text-[11px] text-fg-muted">
           {/* The screen name rides along, so a report never has to answer
             * "where were you when this happened". */}
+          {/* Beside feedback rather than buried in a panel on one screen: a
+            * user asked where the button to share was, having been looking at
+            * a control labelled "share these numbers" in 11px grey inside the
+            * all-time panel. Available from every screen, at any time. */}
+          <ShareButton />
           <FeedbackButton screen={screenName(route)} />
           <ConnDot state={live.conn} lastFrameAt={live.lastFrameAt} />
           <PlanChip plan={plan} onSave={savePlan} />

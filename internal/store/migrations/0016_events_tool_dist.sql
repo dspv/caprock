@@ -1,0 +1,34 @@
+-- A covering index for the tool distribution — verbatim from
+-- .ai/03-contracts.md § Tool distribution DDL.
+--
+-- THE SYMPTOM. The ALL TIME panel on the Now screen took visibly longer to
+-- appear than everything around it: the user watching his own dashboard said
+-- so before any measurement did. `GET /v1/history?range=all` answered in
+-- 0.76–1.17s against 0.15s for every other endpoint on the same screen.
+--
+-- WHERE IT WENT. Timed per query through the Go driver on the owner's
+-- 233k-event database (2026-08-26, range=all):
+--
+--   * History            199 ms
+--   * ToolDistribution  1780 ms   <- 60% of the request
+--   * Summarize          867 ms
+--   * Daily                1 ms
+--
+-- WHY. `SELECT tool, COUNT(*) FROM events WHERE kind='tool.pre' AND ts >= ?
+-- GROUP BY tool` matched idx_events_kind_ts on (kind, ts) — but `tool` is not
+-- in that index, so SQLite fetched each of ~80k matching rows from the table
+-- to read one column. EXPLAIN QUERY PLAN said SEARCH, not COVERING SEARCH.
+--
+-- Adding `tool` to the key's tail makes the same plan covering. Measured on a
+-- copy of the same database, best of three with the page cache warm:
+--
+--   * before: 139 ms
+--   * after:   46 ms
+--
+-- Threefold on a warm cache, and the 1780 ms figure above is what a cold one
+-- costs — which is the number the user actually experiences, because this
+-- panel is drawn once when the screen opens.
+--
+-- The existing idx_events_kind_ts is left alone: it serves every other
+-- kind+range query, and none of them want `tool` along for the ride.
+CREATE INDEX IF NOT EXISTS idx_events_kind_ts_tool ON events(kind, ts, tool);

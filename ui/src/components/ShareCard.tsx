@@ -12,7 +12,7 @@
  * interesting part anyway.
  */
 import { useEffect, useRef, useState } from 'react'
-import { api } from '@/lib/api'
+import { api, type History } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtUSD } from '@/lib/format'
 
@@ -55,6 +55,93 @@ const PERIOD_CAPTION: Record<SharePeriod, string> = {
   '30d': 'of Claude Code in the last 30 days, at API list prices',
 }
 
+/** Everything that goes on the canvas. Shared by the button and the dialog. */
+function paintCard(g: CanvasRenderingContext2D, t: History['totals'], period: SharePeriod) {
+  const bg = token('--color-bg', '#1b1b1a')
+  const fg = token('--color-fg', '#e8e6e2')
+  const muted = token('--color-fg-muted', '#a9a59e')
+  const faint = token('--color-fg-faint', '#837f78')
+  const accent = token('--color-accent', '#feb157')
+
+  g.fillStyle = bg
+  g.fillRect(0, 0, W, H)
+
+  const mono = '"JetBrains Mono", ui-monospace, monospace'
+  const sans = '"Hanken Grotesk", ui-sans-serif, system-ui, sans-serif'
+
+  g.fillStyle = faint
+  g.font = `500 22px ${mono}`
+  g.fillText(PERIOD_LABEL[period], 72, 92)
+
+  // The headline: what the usage would have cost at API list prices.
+  g.fillStyle = accent
+  g.font = `600 132px ${sans}`
+  g.fillText(fmtUSD(t.cost_usd), 72, 232)
+
+  g.fillStyle = muted
+  g.font = `400 30px ${sans}`
+  g.fillText(PERIOD_CAPTION[period], 72, 286)
+
+  // The three figures that give the headline a scale.
+  const cells: [string, string][] = [
+    [t.days.toLocaleString('en-US'), 'active days'],
+    [t.sessions.toLocaleString('en-US'), 'sessions'],
+    [t.turns.toLocaleString('en-US'), 'turns'],
+  ]
+  cells.forEach(([value, label], i) => {
+    const x = 72 + i * 250
+    g.fillStyle = fg
+    g.font = `600 54px ${sans}`
+    g.fillText(value, x, 400)
+    g.fillStyle = faint
+    g.font = `400 24px ${sans}`
+    g.fillText(label, x, 434)
+  })
+
+  // Rule 6 travels with the figure, and at a size someone can read: a
+  // dollar amount posted without this line reads as a bill somebody paid.
+  // The sentence explaining the pricing went — the headline already says "at
+  // API list prices" — leaving one caption with room to be legible instead
+  // of two that were not.
+  g.fillStyle = muted
+  g.font = `400 30px ${sans}`
+  g.fillText('Not a bill, and not money saved — priced from captured tokens.', 72, 520)
+
+  g.fillStyle = faint
+  g.font = `500 24px ${mono}`
+  g.fillText('caprock.dev', 72, H - 48)
+}
+
+/**
+ * Draw the card and hand back a PNG, with no component around it.
+ *
+ * The drawing used to live inside ShareCard, bound to its refs and its
+ * "saved" flash — so the only way to produce this image was to render that
+ * button somewhere and click it. A share dialog that offers three periods and
+ * a native share sheet needs the picture, not the button, so the picture is
+ * its own function now.
+ *
+ * Returns null when the browser cannot draw (jsdom, and any headless context
+ * without a canvas). Callers say so rather than failing silently.
+ */
+export async function drawShareCard(t: History['totals'], period: SharePeriod): Promise<Blob | null> {
+  const c = document.createElement('canvas')
+  c.width = W
+  c.height = H
+  let g: CanvasRenderingContext2D | null = null
+  try {
+    g = c.getContext('2d')
+  } catch {
+    return null
+  }
+  if (!g) return null
+  paintCard(g, t, period)
+  return await new Promise<Blob | null>((resolve) => {
+    if (typeof c.toBlob !== 'function') { resolve(null); return }
+    c.toBlob((b) => resolve(b), 'image/png')
+  })
+}
+
 export function ShareCard({ period = 'all' }: { period?: SharePeriod } = {}) {
   const h = useApi(() => api.history(period), [period], { intervalMs: 60000 })
   const [done, setDone] = useState(false)
@@ -94,59 +181,7 @@ export function ShareCard({ period = 'all' }: { period?: SharePeriod } = {}) {
     }
     if (!g) return
 
-    const bg = token('--color-bg', '#1b1b1a')
-    const fg = token('--color-fg', '#e8e6e2')
-    const muted = token('--color-fg-muted', '#a9a59e')
-    const faint = token('--color-fg-faint', '#837f78')
-    const accent = token('--color-accent', '#feb157')
-
-    g.fillStyle = bg
-    g.fillRect(0, 0, W, H)
-
-    const mono = '"JetBrains Mono", ui-monospace, monospace'
-    const sans = '"Hanken Grotesk", ui-sans-serif, system-ui, sans-serif'
-
-    g.fillStyle = faint
-    g.font = `500 22px ${mono}`
-    g.fillText(PERIOD_LABEL[period], 72, 92)
-
-    // The headline: what the usage would have cost at API list prices.
-    g.fillStyle = accent
-    g.font = `600 132px ${sans}`
-    g.fillText(fmtUSD(t.cost_usd), 72, 232)
-
-    g.fillStyle = muted
-    g.font = `400 30px ${sans}`
-    g.fillText(PERIOD_CAPTION[period], 72, 286)
-
-    // The three figures that give the headline a scale.
-    const cells: [string, string][] = [
-      [t.days.toLocaleString('en-US'), 'active days'],
-      [t.sessions.toLocaleString('en-US'), 'sessions'],
-      [t.turns.toLocaleString('en-US'), 'turns'],
-    ]
-    cells.forEach(([value, label], i) => {
-      const x = 72 + i * 250
-      g.fillStyle = fg
-      g.font = `600 54px ${sans}`
-      g.fillText(value, x, 400)
-      g.fillStyle = faint
-      g.font = `400 24px ${sans}`
-      g.fillText(label, x, 434)
-    })
-
-    // Rule 6 travels with the figure, and at a size someone can read: a
-    // dollar amount posted without this line reads as a bill somebody paid.
-    // The sentence explaining the pricing went — the headline already says "at
-    // API list prices" — leaving one caption with room to be legible instead
-    // of two that were not.
-    g.fillStyle = muted
-    g.font = `400 30px ${sans}`
-    g.fillText('Not a bill, and not money saved — priced from captured tokens.', 72, 520)
-
-    g.fillStyle = faint
-    g.font = `500 24px ${mono}`
-    g.fillText('caprock.dev', 72, H - 48)
+    paintCard(g, t, period)
 
     c.toBlob((blob) => {
       if (!blob) return

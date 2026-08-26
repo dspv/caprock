@@ -9,6 +9,7 @@ import { ActivityFeed } from '@/components/ActivityFeed'
 import { LifetimeStrip } from '@/components/Lifetime'
 import { PlanLimitsLine } from '@/components/PlanLimits'
 import { SharePrompt } from '@/components/SharePrompt'
+import { PremiumBanner } from '@/components/PremiumBanner'
 import { BreakdownPanel } from '@/components/Breakdown'
 import { PulsePanel } from '@/components/Pulse'
 import { Attention } from '@/components/Attention'
@@ -34,6 +35,10 @@ export function NowScreen() {
   const sessions = useApi(() => api.sessions(!showEnded), [showEnded], { intervalMs: 5000 })
   const status = useApi(() => api.status(), [], { live: false, intervalMs: 30000 })
   const summary = useApi(() => api.summary('today', agent), [agent], { intervalMs: 5000 })
+  // All-time totals, for the one line that mentions the paid version. Slow
+  // enough to be worth a long interval and cheap enough to share with the
+  // strip below, which asks for the same thing.
+  const lifetime = useApi(() => api.history('all'), [], { intervalMs: 60000 })
   const { alerts } = useLive()
   const now = useNow(1000)
   const everySession = sessions.data ?? []
@@ -107,6 +112,19 @@ export function NowScreen() {
       {/* Only when something has actually been measured: offering to draw a
         * card of zero sessions is asking someone to post an empty page. */}
       {measured && <SharePrompt now={now} />}
+
+      {/* Now too, not only Cost and Lifetime. Keeping it off the screen people
+        * actually live in meant a user with no loop and no runaway session
+        * never saw that a paid version exists at all — the caution was so
+        * complete it removed the offer. Still one line, still dismissible for
+        * a month, still nothing on an empty dashboard. */}
+      {measured && lifetime.data?.totals && (
+        <PremiumBanner
+          costUSD={lifetime.data.totals.cost_usd}
+          days={lifetime.data.totals.days}
+          now={now}
+        />
+      )}
 
       <Panel
         title="Today"

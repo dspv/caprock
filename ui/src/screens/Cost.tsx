@@ -10,6 +10,7 @@ import { usePlan } from '@/components/PlanPicker'
 import { costBasis, costBasisLong } from '@/components/CostBasis'
 import { RateLimitRow } from '@/components/PlanLimits'
 import { PremiumBanner } from '@/components/PremiumBanner'
+import { Locked } from '@/components/Locked'
 import { UnpricedNote } from '@/components/Unpriced'
 import { WorkMix } from '@/components/WorkMix'
 
@@ -155,6 +156,28 @@ export function CostScreen() {
         * was not feeding the status line, so the one screen that could have
         * explained why there are no limits showed nothing at all — the same
         * shape as the spawn button that hid the dialog explaining itself. */}
+      {/* The cap sits beside the limits it complements: one is Anthropic's
+        * ceiling, the other is yours. Showing it here, locked, is the whole
+        * pitch — the panel is where it will be, with real figures behind it. */}
+      <Locked feature="cap" title="Stop the day at a number you choose">
+        <Panel title="Daily spend cap">
+          <div className="grid gap-2 px-3 py-3 text-[13px]">
+            <div className="flex items-baseline justify-between">
+              <span className="text-fg-muted">Cap</span>
+              <span className="num text-fg">$150.00 / day</span>
+            </div>
+            <div className="flex items-baseline justify-between">
+              <span className="text-fg-muted">Today</span>
+              <span className="num text-fg">{s ? fmtUSD(s.cost_usd) : '—'}</span>
+            </div>
+            <div className="flex items-baseline justify-between">
+              <span className="text-fg-muted">When it is reached</span>
+              <span className="text-fg">pause the sessions Caprock started</span>
+            </div>
+          </div>
+        </Panel>
+      </Locked>
+
       {s && (
         <Panel title="Plan limits">
           {/* px-3 like every other panel's body. Without it the rows ran into
