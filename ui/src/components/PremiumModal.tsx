@@ -39,8 +39,13 @@ const FEATURES: Record<PaidFeature, { title: string; body: string; built: boolea
     built: false,
   },
   providers: {
-    title: 'Models from other providers',
-    body: 'Run and observe sessions that do not go to Anthropic directly.',
+    title: 'Priced for every provider, not just Anthropic',
+    // Deliberately not "see other providers" — Caprock already shows them, for
+    // free, and selling something the free version does is how a paid tier
+    // starts feeling like a hostage situation. What is missing is the price
+    // table: DeepSeek, MiniMax and the rest show up as usage nobody could
+    // cost, so a total that includes them is not a total.
+    body: 'Caprock already sees sessions that go to DeepSeek, MiniMax, OpenAI and the rest — it cannot price them, so they sit outside your totals. Premium keeps a maintained price table for them, so the number at the top is the whole number.',
     built: false,
   },
 }

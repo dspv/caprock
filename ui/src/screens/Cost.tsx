@@ -166,9 +166,13 @@ export function CostScreen() {
               <span className="text-fg-muted">Cap</span>
               <span className="num text-fg">$150.00 / day</span>
             </div>
+            {/* No live figure here. Today's cost is free and shown at the top
+              * of this very screen — putting it behind glass reads as taking
+              * something away, which is the one thing a preview of an unbuilt
+              * feature must never do. */}
             <div className="flex items-baseline justify-between">
-              <span className="text-fg-muted">Today</span>
-              <span className="num text-fg">{s ? fmtUSD(s.cost_usd) : '—'}</span>
+              <span className="text-fg-muted">Checked</span>
+              <span className="text-fg">as each session spends</span>
             </div>
             <div className="flex items-baseline justify-between">
               <span className="text-fg-muted">When it is reached</span>

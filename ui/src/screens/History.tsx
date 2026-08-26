@@ -8,6 +8,7 @@ import { BarChart, BarReadout } from '@/components/BarChart'
 import { costBasis, costBasisLong } from '@/components/CostBasis'
 import { usePlan } from '@/components/PlanPicker'
 import { PremiumBanner } from '@/components/PremiumBanner'
+import { Locked } from '@/components/Locked'
 import { UnpricedNote } from '@/components/Unpriced'
 
 type Range = 'today' | '7d' | '30d' | 'all'
@@ -58,7 +59,13 @@ export function HistoryScreen() {
               first time, and three of five readers took it for a bill. */}
           <Stat label="Cost" value={measured ? fmtUSD(d!.totals.cost_usd) : '—'} sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : 'nothing measured yet'}</span>} tone="info" size="hero" />
         </div>
-        <UnpricedNote u={d?.totals.unpriced} className="mx-3 mb-2.5" />
+        {d?.totals.unpriced ? (
+          <div className="mx-3 mb-2.5">
+            <Locked feature="providers" title="Price these too, so the total is the whole total">
+              <UnpricedNote u={d.totals.unpriced} />
+            </Locked>
+          </div>
+        ) : null}
       </Panel>
       <div className="grid gap-3 lg:grid-cols-2">
         <Panel title="Tool usage" right={<span>by calls</span>}>
@@ -74,6 +81,10 @@ export function HistoryScreen() {
           </ul>
         </Panel>
         <div className="grid gap-3 content-start">
+          {/* Locked around the note, not the panel: the model mix itself is
+            * free and stays free — Caprock sees every provider. What is paid is
+            * being able to PRICE the ones it cannot, which is exactly what this
+            * note is complaining about. */}
           <Panel title="Model mix" right={<span>by cost</span>}>
             {!d ? <Skeleton rows={3} /> : d.summary.models.length === 0 && <Empty title="No priced turns" />}
             <table className="w-full text-[12px]">
@@ -88,7 +99,29 @@ export function HistoryScreen() {
               </tbody>
             </table>
           </Panel>
-          <Panel title="Top projects" right={<span>by cost</span>}>
+          {/* The weekly report belongs beside the figures it would contain: this
+          * screen already answers "where did it go", and the paid half is
+          * having that answer arrive without coming here to look. */}
+        <Locked feature="report" title="Get this every Monday, without opening the dashboard">
+          <Panel title="Weekly report">
+            <div className="grid gap-2 px-3 py-3 text-[13px]">
+              <div className="flex items-baseline justify-between">
+                <span className="text-fg-muted">Sent</span>
+                <span className="text-fg">Mondays, 09:00</span>
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-fg-muted">To</span>
+                <span className="text-fg">your Telegram bot or webhook</span>
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-fg-muted">Contains</span>
+                <span className="text-fg">the week by repository and model</span>
+              </div>
+            </div>
+          </Panel>
+        </Locked>
+
+        <Panel title="Top projects" right={<span>by cost</span>}>
             <table className="w-full text-[12px]">
               <tbody>
                 {(d?.summary.projects ?? []).slice(0, 8).map((p) => (
