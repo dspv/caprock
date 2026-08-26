@@ -10,7 +10,7 @@ Caprock is a local, open-source mission control for Claude Code: a single static
 
 - `.ai/` — full documentation, **source of truth**. Read before any task.
 - `.gtm/` — go-to-market: the channel, channel research, decisions, status.
-- `.fbck/` — user feedback: dated stories in users' own words, request ledger.
+- `.fdck/` — user feedback: dated stories in users' own words, request ledger.
 - `cmd/`, `internal/` — Go daemon, CLI, hook shim (layout in `.ai/02-architecture.md`).
 - `ui/` — React + Vite dashboard, embedded into the binary via `go:embed`.
 - `pricing/` — versioned model pricing table. `testdata/` — fixtures, fake `claude`.
