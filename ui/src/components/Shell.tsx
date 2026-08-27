@@ -1,10 +1,11 @@
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { useLive } from '@/lib/live'
 import { href, type Route } from '@/lib/router'
 import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { useTheme } from '@/lib/theme'
-import { api } from '@/lib/api'
+import { api, type UpdateStatus } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { PlanChip, usePlan } from '@/components/PlanPicker'
 import { FeedbackButton } from '@/components/Feedback'
@@ -147,29 +148,156 @@ function ConnDot({ state, lastFrameAt }: { state: 'connecting' | 'open' | 'close
 }
 
 /**
- * The running version, always visible — the question "which build am I on?"
- * came up often enough that burying it on the status page was wrong. When a
- * newer release exists (and only if the user turned release checks on) it says
- * so here too, linking to the full notice rather than repeating it.
+ * The running version — and, in one click, how to move off it.
+ *
+ * This used to be a label: the version, and when a newer one existed, an
+ * arrow to it. That answered "am I current?" and then stopped, which is the
+ * half of the question nobody needs help with. The owner, on a machine with
+ * a stale build, put it plainly: there is no clear update button that either
+ * shows how to do it or does it.
+ *
+ * Doing it is not ours to do. Caprock is installed by Homebrew, `go install`
+ * or a downloaded binary, and a daemon that overwrites its own executable —
+ * unprompted, as root on some of those paths — is a far worse thing to own
+ * than a stale version. So this shows the exact command for how *this* copy
+ * was installed (the daemon already works that out) and copies it in one
+ * click. One paste, and the shell does something the user can see.
  */
 function VersionChip() {
   const st = useApi(() => api.status(), [], { live: false, intervalMs: 60000 })
   const upd = useApi(() => api.update().catch(() => undefined), [], { live: false, intervalMs: 60000 })
+  const [open, setOpen] = useState(false)
   const version = st.data?.version
   if (!version) return null
   // A source build reports a `git describe` string or "dev"; showing that
   // verbatim in the header is noise, and it is never "out of date" anyway.
   const release = /^v?\d+\.\d+\.\d+$/.test(version)
   const newer = release && upd.data?.update_available ? upd.data.latest : undefined
-  return newer ? (
-    <a
-      href="#/"
-      className="mono text-[11px] text-accent hover:text-accent-strong no-underline"
-      title={`${newer} is available — you are on ${version}`}
-    >
-      {version} → {newer}
-    </a>
-  ) : (
-    <span className="mono text-[11px] text-fg-faint" title={release ? 'the running release' : 'a local build, not a published release'}>{release ? version : 'dev build'}</span>
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className={
+          newer
+            ? 'mono text-[11px] text-accent hover:text-accent-strong'
+            : 'mono text-[11px] text-fg-faint hover:text-fg'
+        }
+        title={newer ? `${newer} is available — you are on ${version}` : 'version and updates'}
+      >
+        {newer ? `${version} → ${newer}` : release ? version : 'dev build'}
+      </button>
+      {open && <UpdateDialog onClose={() => setOpen(false)} />}
+    </>
+  )
+}
+
+/** Version, what is published, and the one command that closes the gap. */
+function UpdateDialog({ onClose }: { onClose: () => void }) {
+  const st = useApi(() => api.status(), [], { live: false, intervalMs: 0 })
+  const upd = useApi(() => api.update().catch(() => undefined), [], { live: false, intervalMs: 0 })
+  const [checking, setChecking] = useState(false)
+  const [fresh, setFresh] = useState<UpdateStatus | undefined>(undefined)
+  const [copied, setCopied] = useState(false)
+  const u = fresh ?? upd.data
+  const version = st.data?.version ?? ''
+  const release = /^v?\d+\.\d+\.\d+$/.test(version)
+  // The daemon fills this in from the path it is running from, so it is right
+  // for Homebrew, `go install` and a downloaded binary alike. It only arrives
+  // with an available update, so fall back to the release page when it is
+  // absent — better a page to click than a blank space.
+  const cmd = u?.command
+
+  const check = async () => {
+    setChecking(true)
+    try {
+      setFresh(await api.checkUpdate())
+    } catch {
+      // A failed check is never fatal; the dialog keeps showing what it knew.
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const copy = () => {
+    if (!cmd) return
+    void navigator.clipboard.writeText(cmd)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1600)
+  }
+
+  return (
+    <div className="fixed inset-0 z-30 bg-black/50 flex items-start justify-center pt-[14vh] px-4" onClick={onClose}>
+      <div
+        className="w-full max-w-[460px] border border-border-strong bg-panel rounded-[var(--radius-panel)] shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-label="Version and updates"
+      >
+        <div className="px-4 pt-3 pb-2 border-b border-border flex items-center">
+          <span className="text-[15px] font-medium">Version</span>
+          <button onClick={onClose} className="ml-auto text-[16px] leading-none text-fg-faint hover:text-fg">×</button>
+        </div>
+        <div className="p-4 grid gap-3">
+          <div className="flex items-baseline gap-2 text-[13px]">
+            <span className="text-fg-muted">running</span>
+            <span className="mono text-fg">{release ? version : `${version} (local build)`}</span>
+          </div>
+
+          {u?.update_available ? (
+            <>
+              <div className="text-[15px] text-fg">
+                <span className="mono text-accent">{u.latest}</span> is out.
+              </div>
+              {cmd && (
+                <div className="grid gap-1.5">
+                  <div className="text-[12px] text-fg-muted">Run this to update:</div>
+                  <div className="flex items-center gap-2">
+                    <code className="mono flex-1 truncate rounded-sm border border-border bg-bg px-2 py-1.5 text-[13px] text-fg">{cmd}</code>
+                    <button
+                      onClick={copy}
+                      className="rounded-md border border-accent/45 bg-accent/[0.08] px-3 py-1.5 text-[13px] text-accent hover:bg-accent/[0.16]"
+                    >
+                      {copied ? 'copied' : 'copy'}
+                    </button>
+                  </div>
+                  {/* Caprock will not overwrite its own binary. Saying why,
+                    * once, beats a user wondering where the button is. */}
+                  <div className="text-[11px] text-fg-faint">
+                    Caprock does not update itself — it would have to overwrite its own binary while running.
+                  </div>
+                </div>
+              )}
+            </>
+          ) : u?.enabled === false ? (
+            <div className="text-[13px] text-fg-muted">
+              Release checks are off, so this copy never asks GitHub what the latest version is. Turn them on in{' '}
+              <a href="#/status" onClick={onClose} className="text-accent no-underline hover:text-accent-strong">status</a>.
+            </div>
+          ) : (
+            <div className="text-[13px] text-fg-muted">
+              {u?.latest ? `Up to date — ${u.latest} is the latest release.` : 'No newer release found.'}
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              onClick={check}
+              disabled={checking}
+              className="rounded-md border border-border px-3 py-1.5 text-[13px] text-fg-muted hover:text-fg disabled:opacity-50"
+            >
+              {checking ? 'checking…' : 'check now'}
+            </button>
+            <a
+              href={u?.url ?? 'https://github.com/dspv/caprock/releases/latest'}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[12px] text-fg-faint no-underline hover:text-accent"
+            >
+              release notes →
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }

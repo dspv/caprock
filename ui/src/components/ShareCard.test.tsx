@@ -4,13 +4,15 @@
  * caveat travels with the figure (Rule 6), and nothing identifying travels at
  * all.
  */
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { ShareCard, cardFilename } from './ShareCard'
+import { cardFilename, collectCardData, drawShareCard } from './ShareCard'
+import { ShareCard } from './Share'
 import type { History } from '@/lib/api'
 
 const data = vi.hoisted(() => ({ value: undefined as unknown }))
 const drawn = vi.hoisted(() => ({ text: [] as string[] }))
+const calls = vi.hoisted(() => ({ n: 0 }))
 
 const summary = vi.hoisted(() => ({
   cost_usd: 1234.5, sessions: 3, tokens_in: 1e6, tokens_out: 2e6,
@@ -26,7 +28,7 @@ vi.mock('@/lib/api', async (orig) => {
     ...actual,
     api: {
       ...actual.api,
-      history: async () => data.value,
+      history: async () => { calls.n++; return data.value },
       summary: async () => summary as never,
     },
   }
@@ -68,16 +70,15 @@ function stubCanvas() {
     set font(_v: string) {},
     set textAlign(_v: string) {},
   })) as unknown as typeof HTMLCanvasElement.prototype.getContext
-  HTMLCanvasElement.prototype.toBlob = vi.fn()
+  // Must call back, or every await on drawShareCard hangs to the timeout.
+  HTMLCanvasElement.prototype.toBlob = vi.fn((cb: BlobCallback) => cb(new Blob()))
 }
 
 describe('ShareCard', () => {
   it('carries the caveat with the figure', async () => {
     data.value = history()
     stubCanvas()
-    render(<ShareCard />)
-    ;(await screen.findByRole('button', { name: /share/i })).click()
-    await waitFor(() => expect(drawn.text.length).toBeGreaterThan(0))
+    await drawShareCard(await collectCardData())
 
     const all = drawn.text.join(' ')
     // The all-time figure, which is the one the card leads its tiles with.
@@ -90,9 +91,7 @@ describe('ShareCard', () => {
   it('states no multiple, which it cannot compute from these figures', async () => {
     data.value = history()
     stubCanvas()
-    render(<ShareCard />)
-    ;(await screen.findByRole('button', { name: /share/i })).click()
-    await waitFor(() => expect(drawn.text.length).toBeGreaterThan(0))
+    await drawShareCard(await collectCardData())
 
     // The endpoint reports active days, not the window's calendar span, so a
     // multiple built here divided 59 days of plan into 95 days of usage and
@@ -103,9 +102,7 @@ describe('ShareCard', () => {
   it('puts no project or session names on an image meant to be posted', async () => {
     data.value = history()
     stubCanvas()
-    render(<ShareCard />)
-    ;(await screen.findByRole('button', { name: /share/i })).click()
-    await waitFor(() => expect(drawn.text.length).toBeGreaterThan(0))
+    await drawShareCard(await collectCardData())
 
     const all = drawn.text.join(' ')
     // Model ids are the only names on the card now, and they are public
@@ -123,9 +120,7 @@ describe('ShareCard', () => {
     summary.models = [{ model: 'minimax/minimax-m3', cost_usd: 900 }]
     data.value = history()
     stubCanvas()
-    render(<ShareCard />)
-    ;(await screen.findByRole('button', { name: /share/i })).click()
-    await waitFor(() => expect(drawn.text.length).toBeGreaterThan(0))
+    await drawShareCard(await collectCardData())
 
     const all = drawn.text.join(' ')
     expect(all).not.toMatch(/\//)
@@ -139,9 +134,7 @@ describe('ShareCard', () => {
     // stop meaning anything the moment that is in doubt.
     data.value = history()
     stubCanvas()
-    render(<ShareCard />)
-    ;(await screen.findByRole('button', { name: /share/i })).click()
-    await waitFor(() => expect(drawn.text.length).toBeGreaterThan(0))
+    await drawShareCard(await collectCardData())
 
     const year = String(new Date().getFullYear())
     expect(drawn.text.join(' ')).toContain(year)
@@ -182,5 +175,68 @@ describe('the share button', () => {
       expect(await screen.findByRole('button', { name: /share these numbers/i })).toBeTruthy()
       unmount()
     }
+  })
+})
+
+/**
+ * One press, one card.
+ *
+ * The dialog had a single `busy` flag doing two jobs: labelling the button
+ * "drawing…" and disabling it. Clearing it early — so the label would stop
+ * lying while the OS share sheet sat open — also re-enabled the button
+ * underneath that sheet, and the owner got two images out of one share.
+ *
+ * Counted at the API rather than at the canvas: jsdom has no 2d context, so
+ * drawing bails before it ever reaches `toBlob` and a canvas-level counter
+ * stays at zero no matter how many times the button is pressed — green for
+ * the wrong reason. Every press calls `history` exactly once, so that is the
+ * honest place to count presses that got through.
+ */
+describe('the share dialog', () => {
+  it('starts one draw however fast the button is pressed', async () => {
+    data.value = history()
+    calls.n = 0
+    render(<ShareCard />)
+    fireEvent.click(await screen.findByRole('button', { name: /share these numbers/i }))
+    // The mounted button itself fetches history once; count only from here.
+    const before = calls.n
+    const save = await screen.findByRole('button', { name: /save the image/i })
+    fireEvent.click(save)
+    fireEvent.click(save)
+    fireEvent.click(save)
+    await waitFor(() => expect(calls.n).toBeGreaterThan(before))
+    // One press = one build(), and build() makes exactly two history calls
+    // (the card's own collection plus the caption's totals). Three presses
+    // through an unguarded button would be six.
+    expect(calls.n - before).toBe(2)
+  })
+})
+
+/**
+ * The native share sends the picture and nothing else. Pairing `files` with
+ * `text` let the receiving app decide what two payloads mean, and the macOS
+ * share sheet's Copy resolved it as two items — the owner got the card twice.
+ */
+describe('the native share', () => {
+  it('hands over the file alone, never a file plus a caption', async () => {
+    data.value = history()
+    const shared: unknown[] = []
+    const nav = navigator as unknown as Record<string, unknown>
+    const origShare = nav.share
+    const origCan = nav.canShare
+    nav.canShare = () => true
+    nav.share = async (payload: unknown) => { shared.push(payload) }
+
+    render(<ShareCard />)
+    fireEvent.click(await screen.findByRole('button', { name: /share these numbers/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /send it somewhere/i }))
+    await waitFor(() => expect(shared.length).toBe(1))
+
+    const payload = shared[0] as { files?: unknown[]; text?: string }
+    expect(payload.files?.length).toBe(1)
+    expect(payload.text).toBeUndefined()
+
+    nav.share = origShare
+    nav.canShare = origCan
   })
 })

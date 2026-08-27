@@ -7,7 +7,7 @@ import { Badge, Empty, Panel, Skeleton, Stat } from '@/components/ui'
 import { ProjectsPanel, AGENTS, type AgentFilter } from '@/components/Projects'
 import { ActivityFeed } from '@/components/ActivityFeed'
 import { LifetimeStrip } from '@/components/Lifetime'
-import { PlanLimitsLine } from '@/components/PlanLimits'
+import { PlanLimitsStat } from '@/components/PlanLimits'
 import { PremiumBanner } from '@/components/PremiumBanner'
 import { BreakdownPanel } from '@/components/Breakdown'
 import { PulsePanel } from '@/components/Pulse'
@@ -103,11 +103,6 @@ export function NowScreen() {
         <NewSessionButton available={status.data?.claude_available} onClick={() => setSpawning(true)} />
       </div>
 
-      {/* Between the totals and Today: "can I keep going" is a question about
-        * right now, and it was only answerable on the Cost screen, in the
-        * second column of the bottom row, under a thirty-day chart. */}
-      <PlanLimitsLine limits={summary.data?.rate_limits} now={now} />
-
       {/* The share offer lives beside the figures it is about, in the ALL TIME
         * panel — see ShareNudge. It used to be a second banner here, which put
         * two invitations one above the other and made the screen read as a
@@ -167,7 +162,7 @@ export function NowScreen() {
           * permanent ~99%) and burn (tinted whenever anything runs) — so
           * colour pointed away from the money. The rest are reference figures
           * and step down, which is what makes room for the headline. */}
-        <div className="grid grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr] divide-x divide-border">
+        <div className="grid grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr_1fr] divide-x divide-border">
           <Stat label="Cost today" value={measured ? fmtUSD(summary.data?.cost_usd) : '—'} sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : 'nothing measured yet'}</span>} tone="info" size="hero" />
           <Stat label="Burn now" value={measured ? `${fmtUSD(summary.data!.burn.usd_per_hour)}/h` : '—'} sub={measured ? `${fmtTokens(Math.round(summary.data!.burn.tokens_per_min))} tok/min · last ${summary.data!.burn.window_min}m` : undefined} />
           <Stat label="Sessions" value={measured ? summary.data!.sessions : '—'} sub={measured ? `${summary.data!.active_sessions} active` : undefined} size="compact" />
@@ -177,6 +172,11 @@ export function NowScreen() {
             * speaks up when it drops far enough to mean something broke. */}
           {/* The warn tone fires below 90%, which is true of a zero — so an
             * untouched cache was styled as a fault on a brand-new install. */}
+          {/* "Can I keep going" belongs beside "what is it costing me",
+            * at the size of its neighbours — it had a full-width panel of its
+            * own above this row, which made two stale percentages look like a
+            * headline. */}
+          <PlanLimitsStat limits={summary.data?.rate_limits} now={now} />
           <Stat label="Cache hit" value={measured ? fmtPct(summary.data!.savings.hit_rate * 100) : '—'} sub={measured ? `${fmtPct(summary.data!.savings.cut_pct)} input cost cut` : undefined} tone={measured && summary.data!.savings.hit_rate < 0.9 ? 'warn' : undefined} size="compact" />
         </div>
         <UnpricedNote u={summary.data?.unpriced} className="mx-3 mb-2.5" />

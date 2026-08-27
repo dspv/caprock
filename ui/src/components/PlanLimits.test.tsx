@@ -5,7 +5,7 @@
  */
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { PlanLimitsLine, readWindow } from './PlanLimits'
+import { PlanLimitsStat, readWindow } from './PlanLimits'
 import type { RateLimits } from '@/lib/api'
 
 const NOW = Date.parse('2026-08-26T12:00:00Z')
@@ -39,17 +39,31 @@ describe('readWindow', () => {
   })
 })
 
-describe('PlanLimitsLine', () => {
-  it('shows both windows so "can I keep going" is answerable on Now', () => {
-    render(<PlanLimitsLine limits={limits()} now={NOW} />)
-    expect(screen.getByText('24%')).toBeTruthy()
+describe('PlanLimitsStat', () => {
+  it('leads with the window closest to its limit, and still names the other', () => {
+    // One cell in a dense row, so it cannot print both windows at full size.
+    // The one that will stop the work is the one worth the headline.
+    render(<PlanLimitsStat limits={limits()} now={NOW} />)
     expect(screen.getByText('27%')).toBeTruthy()
+    expect(screen.getByText(/24%/)).toBeTruthy()
+  })
+
+  it('says the figures are old rather than printing them as facts', () => {
+    // Claude Code writes these to its status line and stops when no session
+    // runs. The owner's machine showed a 5-hour window resetting in 2030: a
+    // stale sample, and a percentage from an unknown time ago is not a fact.
+    const stale = {
+      five_hour: { used_percentage: 24, resets_at: Math.floor(NOW / 1000) - 3600 },
+      seven_day: { used_percentage: 27, resets_at: Math.floor(NOW / 1000) - 7200 },
+    }
+    render(<PlanLimitsStat limits={stale} now={NOW} />)
+    expect(screen.getByText(/last reported a while ago/i)).toBeTruthy()
   })
 
   it('renders nothing at all when there is no window state', () => {
     // Now is a live screen, not where someone learns a feature exists — the
     // Cost screen carries that explanation instead.
-    const { container } = render(<PlanLimitsLine limits={undefined} now={NOW} />)
+    const { container } = render(<PlanLimitsStat limits={undefined} now={NOW} />)
     expect(container.textContent).toBe('')
   })
 })

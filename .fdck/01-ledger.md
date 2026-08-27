@@ -7,19 +7,71 @@ Status is one of: **open** (no decision yet) · **planned** (decided yes, not
 started) · **building** · **shipped** (in a release, with the version) ·
 **declined** (decided no, with the reason in the story).
 
-| Id     | Date       | From | Request                                                    | Status  | Landed in         |
-| ------ | ---------- | ---- | ---------------------------------------------------------- | ------- | ----------------- |
-| FB-009 | 2026-08-27 | Vova | Shift+Enter in the terminal, for multi-line prompts        | shipped | v0.30.1           |
-| FB-008 | 2026-08-26 | Vova | Pay for models from inside Caprock                         | open    | —                 |
-| FB-007 | 2026-08-26 | Vova | Show plan limits where they are actually looked at         | shipped | v0.28.0           |
-| FB-006 | 2026-08-26 | Vova | Quick chat: a findable "new project" that makes the folder | shipped | v0.28.0           |
-| FB-005 | 2026-08-26 | Vova | Third-party model providers, free ones first               | part    | v0.30.0           |
-| FB-004 | 2026-08-26 | Vova | JetBrains Mono in the terminal — Cyrillic was unreadable   | shipped | v0.28.0           |
-| FB-003 | 2026-08-26 | Vova | Would pay $20/mo; $50 with models; $100 with Claude+GPT    | open    | —                 |
-| FB-002 | 2026-08-25 | Vova | Filter the dashboard by agent after OpenCode appeared      | shipped | v0.21.4           |
-| FB-001 | 2026-08-24 | Alex | Hooks never fired on Windows                               | shipped | v0.27.3 + v0.27.4 |
+| Id     | Date       | From | Request                                                      | Status  | Landed in         |
+| ------ | ---------- | ---- | ------------------------------------------------------------ | ------- | ----------------- |
+| FB-013 | 2026-08-27 | Dima | Sharing a card produced two images, downloading produced one | shipped | v0.31.1           |
+| FB-012 | 2026-08-27 | Dima | Plan limits looked odd and belonged to nothing on the screen | shipped | v0.31.1           |
+| FB-011 | 2026-08-27 | Dima | No clear way to update; the share button was easy to miss    | shipped | v0.31.1           |
+| FB-010 | 2026-08-27 | Dima | The share dialog explained too much and read as a hang       | shipped | v0.31.0           |
+| FB-009 | 2026-08-27 | Vova | Shift+Enter in the terminal, for multi-line prompts          | shipped | v0.30.1           |
+| FB-008 | 2026-08-26 | Vova | Pay for models from inside Caprock                           | open    | —                 |
+| FB-007 | 2026-08-26 | Vova | Show plan limits where they are actually looked at           | shipped | v0.28.0           |
+| FB-006 | 2026-08-26 | Vova | Quick chat: a findable "new project" that makes the folder   | shipped | v0.28.0           |
+| FB-005 | 2026-08-26 | Vova | Third-party model providers, free ones first                 | part    | v0.30.0           |
+| FB-004 | 2026-08-26 | Vova | JetBrains Mono in the terminal — Cyrillic was unreadable     | shipped | v0.28.0           |
+| FB-003 | 2026-08-26 | Vova | Would pay $20/mo; $50 with models; $100 with Claude+GPT      | open    | —                 |
+| FB-002 | 2026-08-25 | Vova | Filter the dashboard by agent after OpenCode appeared        | shipped | v0.21.4           |
+| FB-001 | 2026-08-24 | Alex | Hooks never fired on Windows                                 | shipped | v0.27.3 + v0.27.4 |
 
 ## Detail
+
+### FB-013 — Two images from one share
+
+Sharing the card put two copies of it wherever it landed; saving it to disk put
+one. That split was the whole diagnosis: the download path draws once and
+writes one file, so the duplicate could only come from the native path, which
+called `navigator.share({files, text})`. Two payloads, and the receiving side
+decides what they mean — macOS's Copy resolved it as two items. The card
+already carries every figure and the caveat, so the caption was never
+load-bearing; the file now travels alone.
+
+A second, independent way to get two cards was fixed in the same change: one
+`busy` flag both labelled the button and disabled it, and clearing it early
+(so the label would stop saying "drawing…" while the OS sheet sat open)
+re-enabled the button underneath that sheet.
+
+### FB-012 — Plan limits belonged to nothing
+
+A full-width panel holding two percentages, three rows above the money. On the
+owner's machine both windows were stale — the 5-hour one claimed a reset in
+2030 — so the band spent its width explaining that the figures beside it meant
+nothing. It is now a cell in the Today row beside burn, sessions and cache hit:
+the same question ("can I keep going") at the size of its neighbours.
+
+### FB-011 — No obvious way to update
+
+Two findings from one session. The version chip said a newer release existed
+and stopped there, which answers the half of the question nobody needs help
+with; the owner, on a stale build, could not tell how to move off it. It is now
+a button opening a dialog with the exact command for how *this* copy was
+installed — the daemon already worked that out — and a copy button.
+
+**Caprock will not update itself.** A daemon that overwrites its own running
+binary, as root on some install paths, is a worse thing to own than a stale
+version. The dialog says so rather than leaving a person hunting for a button
+that should not exist.
+
+The share button was the second finding: grey 11px lowercase between "feedback"
+and the build label, invisible enough that the person who commissioned the
+feature could not find it. Bordered and in the accent colour now.
+
+### FB-010 — What does Share actually do
+
+Three paragraphs of caveats above a button labelled "Share…", and the owner
+could not tell what pressing it would do. An ellipsis is not a destination.
+Rewritten to two large buttons, each naming where the picture goes, with the
+privacy line moved below them — it answers "is this safe to post", which only
+arises once "what happens if I press it" is settled.
 
 ### FB-009 — Shift+Enter in the terminal
 

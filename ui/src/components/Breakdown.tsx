@@ -12,7 +12,7 @@ import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtTool, fmtUSD } from '@/lib/format'
 import { Panel } from '@/components/ui'
-import { ShareCard } from '@/components/ShareCard'
+import { ShareCard } from '@/components/Share'
 import { ShareNudge } from '@/components/ShareNudge'
 
 export function BreakdownPanel() {

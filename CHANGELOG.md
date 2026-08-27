@@ -9,6 +9,56 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.31.1] - 2026-08-27
+
+### Fixed
+
+- **Sharing the card produced two images; saving it produced one.** That split
+  was the whole diagnosis — the download path draws once and writes one file,
+  so the duplicate could only come from the native share, which handed the OS
+  `{files, text}`. Two payloads leave the receiving app to decide what they
+  mean, and macOS's Copy resolved it as two items. The card already carries
+  every figure and its caveat, so the caption was never load-bearing; the file
+  now travels alone.
+
+- **A second way to get two cards, fixed in the same change.** One flag both
+  labelled the share button "Drawing the card…" and disabled it. Clearing it
+  early — so the label would stop lying while the OS share sheet sat open —
+  also re-enabled the button underneath that sheet, and a second press drew a
+  second card. Labelling and locking are now separate states.
+
+### Added
+
+- **The version chip is a button, and it tells you how to update.** It used to
+  say a newer release existed and stop there, which answers the half of the
+  question nobody needs help with. It now opens a dialog with the running
+  version, what is published, a check-now, and the exact command for how this
+  copy was installed — `brew upgrade caprock`, `go install …@latest`, or the
+  release page for a downloaded binary — with a copy button.
+
+  **Caprock does not update itself, and the dialog says so.** A daemon that
+  overwrites its own running binary, as root on some install paths, is a worse
+  thing to own than a stale version. Saying it once beats leaving someone
+  hunting for a button that should not exist.
+
+- **`make reload`** builds the dashboard and binaries, installs them over
+  whatever copy is on `PATH`, and restarts the daemon. Testing a UI change
+  against a running daemon took four commands and getting one wrong meant
+  looking at a stale build and drawing conclusions from it.
+
+### Changed
+
+- **Plan limits moved into the Today row.** They had a full-width panel holding
+  two percentages, three rows above the money, which made a reference figure
+  look like a headline — and when both windows were stale, spent a band of the
+  screen explaining that the figures beside it meant nothing. Now one cell
+  beside burn, sessions and cache hit, leading with whichever window is closest
+  to its limit, since that is the one that will stop the work.
+
+- **The share button in the header is visible.** Grey 11px lowercase between
+  "feedback" and the build label — invisible enough that the person who
+  commissioned the feature could not find it on his own dashboard.
+
 ## [0.31.0] - 2026-08-27
 
 ### Changed

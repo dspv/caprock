@@ -12,6 +12,7 @@
  * and the copy that drifts is the one nobody is looking at.
  */
 import type { RateLimits, RateWindow } from '@/lib/api'
+import { Stat } from '@/components/ui'
 
 /** A window's percentage, and whether its reset clock can be believed. */
 export function readWindow(w: RateWindow, now: number) {
@@ -48,33 +49,55 @@ export function RateLimitRow({ label, w, now }: { label: string; w: RateWindow; 
 }
 
 /**
- * The compact form for Now: one line, both windows, no panel.
+ * The compact form for Now: a cell in the Today row, not a band of its own.
  *
- * Renders nothing when there is no data — but unlike the Cost panel, that is
- * the right answer here rather than a hiding place. Now is not where someone
- * would go to learn the feature exists; the Cost screen says so instead.
+ * It was a full-width panel holding two percentages. On the owner's machine
+ * both windows were stale — a 5-hour window claiming a reset in 2030 — so the
+ * band spent its width on a sentence explaining that the two figures beside it
+ * meant nothing, three rows above the money. "It looks strange and it is not
+ * part of anything," which is what a lone panel around a reference figure
+ * reads as.
+ *
+ * Now it sits in the Today grid with burn, sessions and cache hit: the same
+ * question ("can I keep going") asked at the same size as its neighbours, and
+ * when the numbers are stale it says the short version of why.
  */
-export function PlanLimitsLine({ limits, now }: { limits: RateLimits | undefined; now: number }) {
+export function PlanLimitsStat({ limits, now }: { limits: RateLimits | undefined; now: number }) {
   const windows: [string, RateWindow][] = []
   if (limits?.five_hour) windows.push(['5h', limits.five_hour])
   if (limits?.seven_day) windows.push(['7d', limits.seven_day])
   if (windows.length === 0) return null
+
+  const read = windows.map(([label, w]) => ({ label, ...readWindow(w, now) }))
+  // A window whose clock cannot be believed is not a small caveat on a
+  // percentage — it means the percentage is old too, and 24% from an unknown
+  // time ago is not a fact about anything.
+  const live = read.filter((r) => !r.stale)
+  const allStale = live.length === 0
+  // The cell leads with whichever window is closest to its limit, because
+  // that is the one that will stop the work.
+  const lead = (live.length ? live : read).reduce((a, b) => (b.pct > a.pct ? b : a))
+  const other = read.find((r) => r.label !== lead.label)
+
   return (
-    <div className="flex items-baseline gap-4 px-0.5 text-[12px]">
-      <span className="uppercase tracking-[0.08em] text-fg-faint">Plan limits</span>
-      {windows.map(([label, w]) => {
-        const { pct, color, resetsAt, stale } = readWindow(w, now)
-        return (
-          <span key={label} className="flex items-baseline gap-1.5">
-            <span className="text-fg-muted">{label}</span>
-            <span className={`mono tabular-nums ${color}`}>{pct}%</span>
-            {resetsAt && <span className="text-fg-faint">resets {resetsAt}</span>}
-            {stale && <span className="text-fg-faint" title="Claude Code has not refreshed this window recently">stale</span>}
-            {w.forecast && <span className="text-warn">{w.forecast}</span>}
+    <Stat
+      label="Plan limits"
+      value={<span className={allStale ? 'text-fg-faint' : lead.color}>{lead.pct}%</span>}
+      sub={
+        allStale ? (
+          <span title="Claude Code writes these to its status line; they stop updating when no session is running">
+            last reported a while ago
+          </span>
+        ) : (
+          <span>
+            {lead.label} window
+            {lead.resetsAt ? ` · resets ${lead.resetsAt}` : ''}
+            {other ? ` · ${other.label} ${other.pct}%` : ''}
           </span>
         )
-      })}
-      <a href="#/cost" className="link ml-auto text-[11px] text-fg-faint hover:text-fg-muted">details</a>
-    </div>
+      }
+      tone={allStale ? undefined : lead.pct > 85 ? 'danger' : lead.pct >= 60 ? 'warn' : undefined}
+      size="compact"
+    />
   )
 }

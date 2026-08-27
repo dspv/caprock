@@ -3,7 +3,7 @@
  * not a release and must not be dressed up as one, and an available update is
  * only ever mentioned when the user turned release checks on.
  */
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { Shell } from './Shell'
 
@@ -88,6 +88,50 @@ describe('version chip', () => {
     update.value = { enabled: true, current: 'v0.9.0', latest: 'v0.9.4', update_available: true }
     renderShell()
     await waitFor(() => expect(screen.getByText(/v0\.9\.0 → v0\.9\.4/)).toBeTruthy())
+  })
+
+  it('hands over the command for how this copy was installed', async () => {
+    // The chip used to be a label and nothing else: it said a newer version
+    // existed and left the user to work out how to get it. The owner hit
+    // exactly that on a stale build. The command is per-install-method and
+    // comes from the daemon, so what matters here is that it reaches the
+    // screen at all rather than what it says.
+    status.version = 'v0.9.0'
+    update.value = {
+      enabled: true,
+      current: 'v0.9.0',
+      latest: 'v0.9.4',
+      update_available: true,
+      command: 'brew upgrade caprock',
+    }
+    renderShell()
+    const chip = await screen.findByText(/v0\.9\.0 → v0\.9\.4/)
+    fireEvent.click(chip)
+    expect(await screen.findByText('brew upgrade caprock')).toBeTruthy()
+  })
+
+  it('does not pretend it can update itself', async () => {
+    // A daemon that overwrites its own running binary is a worse thing to own
+    // than a stale version, so the dialog says who does the updating.
+    status.version = 'v0.9.0'
+    update.value = {
+      enabled: true,
+      current: 'v0.9.0',
+      latest: 'v0.9.4',
+      update_available: true,
+      command: 'brew upgrade caprock',
+    }
+    renderShell()
+    fireEvent.click(await screen.findByText(/v0\.9\.0 → v0\.9\.4/))
+    expect(await screen.findByText(/does not update itself/i)).toBeTruthy()
+  })
+
+  it('says where to turn checks on when they are off', async () => {
+    status.version = 'v0.9.4'
+    update.value = { enabled: false, current: 'v0.9.4', update_available: false }
+    renderShell()
+    fireEvent.click(await screen.findByText('v0.9.4'))
+    expect(await screen.findByText(/release checks are off/i)).toBeTruthy()
   })
 
   it('never claims a source build is out of date', async () => {

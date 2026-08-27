@@ -11,9 +11,7 @@
  * which repositories someone works on is a trap, and the figures alone are the
  * interesting part anyway.
  */
-import { useEffect, useRef, useState } from 'react'
 import { api } from '@/lib/api'
-import { useApi } from '@/lib/useApi'
 import { fmtUSD } from '@/lib/format'
 
 const W = 1200
@@ -296,60 +294,4 @@ export async function drawShareCard(data: CardData): Promise<Blob | null> {
     if (typeof c.toBlob !== 'function') { resolve(null); return }
     c.toBlob((b) => resolve(b), 'image/png')
   })
-}
-
-export function ShareCard({ period = 'all' }: { period?: SharePeriod } = {}) {
-  const h = useApi(() => api.history(period), [period], { intervalMs: 60000 })
-  const [done, setDone] = useState(false)
-  const canvas = useRef<HTMLCanvasElement | null>(null)
-  // The "saved" flash clears itself 2.5s later. Left uncancelled it fires
-  // after the component is gone — in a test, after the DOM it refers to has
-  // been torn down, which surfaced as `window is not defined` in a file that
-  // never mentions this component.
-  const flash = useRef<number | undefined>(undefined)
-  useEffect(() => () => { if (flash.current !== undefined) clearTimeout(flash.current) }, [])
-  const t = h.data?.totals
-  if (!t || t.sessions === 0) return null
-
-
-  // No multiple here. It needs the window's calendar span to divide a monthly
-  // fee by, and this endpoint reports active days only — dividing by those
-  // priced 59 days of plan against 95 days of usage and printed 27.6× where
-  // every other surface says 17.1×. A figure that cannot be checked does not
-  // belong on an image someone posts; the cache line below is measured
-  // directly and needs no denominator.
-
-  const draw = async () => {
-    // One path to the picture: the dialog and this button draw the same card
-    // from the same data, so they cannot drift into two designs.
-    const blob = await drawShareCard(await collectCardData())
-    if (!blob) return
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = cardFilename()
-    a.click()
-    URL.revokeObjectURL(url)
-    setDone(true)
-    flash.current = window.setTimeout(() => setDone(false), 2500)
-  }
-
-  return (
-    <>
-      {/* One job now: be findable. The milestone shouting moved to ShareNudge,
-        * which knows about occasions this button has no business judging — and
-        * a control that changes its own label is one people stop recognising.
-        *
-        * Accent-bordered rather than grey: the previous version was 11px muted
-        * text that read as a caption, and nobody clicks a caption. */}
-      <button
-        onClick={draw}
-        className="rounded-md border border-accent/45 bg-accent/[0.08] px-2.5 py-1 text-[12px] text-accent hover:bg-accent/[0.16]"
-        title="Draw a shareable image of these figures. Nothing is uploaded — it saves to your downloads."
-      >
-        {done ? 'saved ✓' : 'Share these numbers'}
-      </button>
-      <canvas ref={canvas} width={W} height={H} className="hidden" />
-    </>
-  )
 }

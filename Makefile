@@ -99,3 +99,11 @@ docs-links: ## Fail if any relative markdown link does not resolve
 
 .PHONY: check
 check: docs-check docs-links lint test dist-check smoke ## Docs gates + lint + test + dist sync + smoke (what CI runs, minus the OS matrix)
+
+.PHONY: reload
+reload: build ## Build the dashboard + binaries and restart the running daemon on this machine
+	@$(BIN)/caprock down >/dev/null 2>&1 || true
+	@install -m 0755 $(BIN)/caprock $(shell dirname $(shell command -v caprock 2>/dev/null || echo $(BIN)/caprock))/caprock
+	@install -m 0755 $(BIN)/caprock-hook $(shell dirname $(shell command -v caprock 2>/dev/null || echo $(BIN)/caprock))/caprock-hook
+	@caprock up --no-open >/dev/null 2>&1 || true
+	@echo "reloaded → $$(caprock --version)"
