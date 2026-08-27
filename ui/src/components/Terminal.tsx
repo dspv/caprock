@@ -56,7 +56,26 @@ export function TerminalView({ sessionId, owned }: { sessionId: string; owned: b
     ws.binaryType = 'arraybuffer'
     ws.onmessage = (e) => { term.write(typeof e.data === 'string' ? e.data : new Uint8Array(e.data)) }
     ws.onclose = () => term.write('\r\n\x1b[2m[session ended]\x1b[0m\r\n')
-    const dataSub = term.onData((d) => { if (ws.readyState === WebSocket.OPEN) ws.send(d) })
+    const send = (d: string) => { if (ws.readyState === WebSocket.OPEN) ws.send(d) }
+    const dataSub = term.onData(send)
+
+    // Shift+Enter, so a prompt can have more than one line.
+    //
+    // A terminal cannot tell Shift+Enter from Enter: both are carriage return,
+    // ASCII 13, and have been since the teletype. Claude Code asks for the
+    // modern encoding instead — CSI u, `ESC [ 13 ; 2 u` — which every terminal
+    // that supports multi-line prompts is configured to send. xterm.js does not
+    // send it by default, so a user typing a numbered list here got their first
+    // line submitted and the rest of the thought lost.
+    //
+    // Intercepted before xterm turns the key into bytes: returning false stops
+    // it emitting the plain carriage return it otherwise would.
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== 'keydown' || e.key !== 'Enter') return true
+      if (!e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return true
+      send('\x1b[13;2u')
+      return false
+    })
     const ro = new ResizeObserver(() => { try { fit.fit() } catch { /* */ } })
     ro.observe(host.current)
     return () => { ro.disconnect(); dataSub.dispose(); ws.close(); term.dispose() }

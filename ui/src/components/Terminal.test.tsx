@@ -8,6 +8,9 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 const ctor = vi.hoisted(() => vi.fn())
 
+type KeyHandler = (e: KeyboardEvent) => boolean
+const keyHandler = vi.hoisted((): { fn: KeyHandler | null } => ({ fn: null }))
+
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
     constructor(opts: unknown) { ctor(opts) }
@@ -15,6 +18,7 @@ vi.mock('@xterm/xterm', () => ({
     open() {}
     write() {}
     onData() { return { dispose() {} } }
+    attachCustomKeyEventHandler(fn: (e: KeyboardEvent) => boolean) { keyHandler.fn = fn }
     dispose() {}
   },
 }))
@@ -73,5 +77,76 @@ describe('TerminalView', () => {
     ] as const) {
       expect(asked, `no character asked for from ${range}`).toMatch(re)
     }
+  })
+})
+
+/**
+ * Shift+Enter, so a prompt can be more than one line.
+ *
+ * A terminal cannot tell Shift+Enter from Enter — both are carriage return,
+ * ASCII 13. Claude Code asks for CSI u instead. Without it, a user typing a
+ * numbered list had their first line submitted and the rest of the thought
+ * thrown away, which is how this was reported.
+ *
+ * The risk in fixing it is breaking plain Enter, which would be far worse than
+ * the bug, so that is what most of this tests.
+ */
+describe('Shift+Enter', () => {
+  const sent: string[] = []
+
+  function mount(): KeyHandler {
+    sent.length = 0
+    keyHandler.fn = null
+    vi.stubGlobal('WebSocket', class {
+      static OPEN = 1
+      readyState = 1
+      binaryType = ''
+      send(d: string) { sent.push(d) }
+      close() {}
+    })
+    render(<TerminalView sessionId="s-keys" owned />)
+    const fn = keyHandler.fn
+    if (!fn) throw new Error('no key handler was installed')
+    return fn
+  }
+
+  const key = (over: Partial<KeyboardEvent>) =>
+    ({ type: 'keydown', key: 'Enter', shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, ...over }) as KeyboardEvent
+
+  it('sends the escape sequence Claude Code listens for', () => {
+    const h = mount()
+    expect(h(key({ shiftKey: true }))).toBe(false)  // xterm must not also send \r
+    expect(sent).toEqual(['\x1b[13;2u'])
+  })
+
+  it('leaves plain Enter alone', () => {
+    // Breaking submit would be far worse than the bug being fixed.
+    const h = mount()
+    expect(h(key({}))).toBe(true)
+    expect(sent).toEqual([])
+  })
+
+  it('leaves other Enter modifiers alone', () => {
+    // Ctrl+Enter and Alt+Enter mean things in other programs; only Shift is ours.
+    const h = mount()
+    for (const mod of ['ctrlKey', 'altKey', 'metaKey'] as const) {
+      expect(h(key({ shiftKey: true, [mod]: true }))).toBe(true)
+    }
+    expect(sent).toEqual([])
+  })
+
+  it('leaves every other key alone', () => {
+    const h = mount()
+    for (const k of ['a', 'Escape', 'Tab', 'ArrowUp']) {
+      expect(h(key({ key: k, shiftKey: true }))).toBe(true)
+    }
+    expect(sent).toEqual([])
+  })
+
+  it('ignores keyup, so one press sends one sequence', () => {
+    const h = mount()
+    h(key({ shiftKey: true }))
+    h(key({ shiftKey: true, type: 'keyup' }))
+    expect(sent).toEqual(['\x1b[13;2u'])
   })
 })
