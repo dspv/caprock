@@ -4,7 +4,7 @@
 -- directory only when EVERY file that turn touched was in that one directory.
 -- Everything else — including every turn that touched no file at all — became
 -- "repository-wide work". On the owner's database that bucket was 87.6% of
--- `amarketer`'s $1735: the panel answered "what does this service cost?" with
+-- one repository's $1735: the panel answered "what does this service cost?" with
 -- "we could not tell" for seven eighths of the money, which is technically
 -- defensible and practically worthless.
 --

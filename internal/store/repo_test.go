@@ -195,8 +195,8 @@ func TestRepoFromCwdSameBasenameDifferentPaths(t *testing.T) {
 // way a person says it, so widening only happens on an actual collision.
 func TestDisambiguateLabelsLeavesUniqueLabelsAlone(t *testing.T) {
 	in := map[string]string{
-		"/Users/x/dev/caprock":   "caprock",
-		"/Users/x/dev/amarketer": "amarketer",
+		"/Users/x/dev/caprock":  "caprock",
+		"/Users/x/dev/shopmono": "shopmono",
 	}
 	got := DisambiguateLabels(in)
 	for root, want := range in {
@@ -492,7 +492,7 @@ func TestBackfillRepoLabelsHistoricalSessions(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "caprock.db")
-	repo := newRepo(t, filepath.Join(dir, "amarketer"))
+	repo := newRepo(t, filepath.Join(dir, "shopmono"))
 	app := filepath.Join(repo, "app")
 	if err := os.MkdirAll(app, 0o755); err != nil {
 		t.Fatal(err)
@@ -530,8 +530,8 @@ func TestBackfillRepoLabelsHistoricalSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Project != "amarketer" {
-		t.Errorf("backfilled project = %q, want %q — a subdirectory is not a project", got.Project, "amarketer")
+	if got.Project != "shopmono" {
+		t.Errorf("backfilled project = %q, want %q — a subdirectory is not a project", got.Project, "shopmono")
 	}
 	if got.RepoPath != "app" {
 		t.Errorf("backfilled repo_path = %q, want %q", got.RepoPath, "app")

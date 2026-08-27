@@ -2,7 +2,7 @@
 --
 -- sessions.project used to hold the BASENAME of the cwd, so one repository
 -- became several rows (caprock, ui), a subdirectory posed as a project (app
--- under amarketer), agent worktrees became projects (worker-1), and two
+-- under a monorepo), agent worktrees became projects (worker-1), and two
 -- unrelated paths ending in the same segment silently summed into one row
 -- (two testrepo, two repo on the owner's real database).
 --

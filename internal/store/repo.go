@@ -13,7 +13,7 @@ import (
 //
 // The Projects panel used to label a session by the BASENAME of its cwd, so one
 // repository showed up as several rows (`caprock` and `ui`), a subdirectory
-// posed as a project (`app` under amarketer), Caprock's own agent worktrees
+// posed as a project (`app` under a monorepo), Caprock's own agent worktrees
 // became projects (`worker-1`), and — worst, because it is silently wrong
 // rather than merely ugly — two unrelated absolute paths ending in the same
 // segment summed into one row (two `testrepo`s, two `repo`s on the owner's real
