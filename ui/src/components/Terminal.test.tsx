@@ -113,10 +113,29 @@ describe('Shift+Enter', () => {
   const key = (over: Partial<KeyboardEvent>) =>
     ({ type: 'keydown', key: 'Enter', shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, ...over }) as KeyboardEvent
 
-  it('sends the escape sequence Claude Code listens for', () => {
+  // Claude Code accepts four ways of asking for a newline and a person reaches
+  // for whichever one they learned elsewhere. This shipped supporting only
+  // Shift+Enter, and the first user to try it reported back that Option+Enter
+  // was the one he knew — which is what Claude Code's own macOS docs tell
+  // people to enable. Each row is the exact byte sequence Claude Code expects
+  // to receive over the PTY for that key.
+  it.each([
+    ['Shift+Enter', { shiftKey: true }, '\x1b[13;2u'],
+    ['Option+Enter', { altKey: true }, '\x1b\r'],
+    ['Ctrl+Enter', { ctrlKey: true }, '\n'],
+  ])('%s sends what Claude Code listens for', (_name, mods, want) => {
     const h = mount()
-    expect(h(key({ shiftKey: true }))).toBe(false)  // xterm must not also send \r
-    expect(sent).toEqual(['\x1b[13;2u'])
+    expect(h(key(mods))).toBe(false)  // xterm must not also send \r
+    expect(sent).toEqual([want])
+  })
+
+  it('sends a newline for Ctrl+J, the one that needs no terminal setup', () => {
+    // Not an Enter key at all: Ctrl+J is line feed, and it is the combination
+    // that works in every terminal with no configuration whatsoever. If
+    // everything else here failed, this would still give someone a newline.
+    const h = mount()
+    expect(h(key({ key: 'j', ctrlKey: true }))).toBe(false)
+    expect(sent).toEqual(['\n'])
   })
 
   it('leaves plain Enter alone', () => {
@@ -126,12 +145,20 @@ describe('Shift+Enter', () => {
     expect(sent).toEqual([])
   })
 
-  it('leaves other Enter modifiers alone', () => {
-    // Ctrl+Enter and Alt+Enter mean things in other programs; only Shift is ours.
+  it('leaves combinations of modifiers alone', () => {
+    // Two modifiers is somebody else's binding — a window manager, the
+    // browser, an OS shortcut. Only a single modifier means "newline" here.
     const h = mount()
-    for (const mod of ['ctrlKey', 'altKey', 'metaKey'] as const) {
-      expect(h(key({ shiftKey: true, [mod]: true }))).toBe(true)
-    }
+    expect(h(key({ shiftKey: true, altKey: true }))).toBe(true)
+    expect(h(key({ ctrlKey: true, metaKey: true }))).toBe(true)
+    expect(h(key({ shiftKey: true, ctrlKey: true, altKey: true }))).toBe(true)
+    expect(sent).toEqual([])
+  })
+
+  it('leaves Cmd+Enter alone', () => {
+    // Cmd is the browser's and the OS's, never ours.
+    const h = mount()
+    expect(h(key({ metaKey: true }))).toBe(true)
     expect(sent).toEqual([])
   })
 
@@ -148,5 +175,32 @@ describe('Shift+Enter', () => {
     h(key({ shiftKey: true }))
     h(key({ shiftKey: true, type: 'keyup' }))
     expect(sent).toEqual(['\x1b[13;2u'])
+  })
+})
+
+/**
+ * The hint under the terminal.
+ *
+ * Shift+Enter worked from v0.30.1 and the first user to want a second line
+ * still could not find it: he pressed Enter, watched half a thought get sent,
+ * and concluded multi-line prompts were not possible. A feature nobody can
+ * discover is not shipped.
+ */
+describe('the multi-line hint', () => {
+  it('names the combinations, so nobody has to guess one', () => {
+    render(<TerminalView sessionId="s-hint" owned />)
+    const text = document.body.textContent ?? ''
+    expect(text).toMatch(/Shift/)
+    expect(text).toMatch(/Option/)
+    // Ctrl+J earns its place by needing no terminal configuration at all — it
+    // is the answer when the others are eaten by the OS or the browser.
+    expect(text).toMatch(/Ctrl/)
+    expect(text).toMatch(/new line/i)
+  })
+
+  it('says nothing on a session Caprock does not own', () => {
+    // There is no terminal to type into, so a hint about typing is noise.
+    render(<TerminalView sessionId="s-observed" owned={false} />)
+    expect(document.body.textContent).not.toMatch(/new line/i)
   })
 })

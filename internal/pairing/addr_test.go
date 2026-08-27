@@ -1,6 +1,7 @@
 package pairing
 
 import (
+	"errors"
 	"net"
 	"testing"
 )
@@ -74,7 +75,7 @@ func TestVirtualInterfacesAreNotPreferred(t *testing.T) {
 func TestBindAddrNeverReturnsAPublicAddress(t *testing.T) {
 	addr, err := BindAddr()
 	if err != nil {
-		if err != ErrNoLAN {
+		if !errors.Is(err, ErrNoLAN) {
 			t.Fatalf("BindAddr: %v", err)
 		}
 		t.Skip("no private network on this machine")
@@ -147,7 +148,7 @@ func TestPick(t *testing.T) {
 	for _, c := range cases {
 		got, err := pick(c.cands)
 		if c.err != nil {
-			if err != c.err {
+			if !errors.Is(err, c.err) {
 				t.Errorf("%s: err = %v, want %v", c.name, err, c.err)
 			}
 			continue

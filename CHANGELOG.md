@@ -9,6 +9,28 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **Every way of asking for a newline now works in the web terminal.** This
+  shipped supporting Shift+Enter alone, and the first user to want a second
+  line reported back that Option+Enter was the one he pressed — which is what
+  Claude Code's own macOS documentation tells people to enable. Claude Code
+  accepts four ways of asking for a newline and a person reaches for whichever
+  one they learned elsewhere, so all four are handled, each sending exactly
+  what Claude Code expects over the PTY: Shift+Enter sends CSI u, Option+Enter
+  sends ESC then CR, Ctrl+Enter and Ctrl+J send a line feed, and backslash-Enter
+  needs nothing from us.
+
+  **Ctrl+J is the one that cannot fail** — a line feed works in every terminal
+  with no configuration at all, which is why it is named in the hint.
+
+### Added
+
+- **A line under the terminal saying how to get a newline.** Shift+Enter had
+  worked since v0.30.1 and the user who wanted it still could not find it: he
+  pressed Enter, watched half a thought get submitted, and concluded multi-line
+  prompts were not possible. A feature nobody can discover is not shipped.
+
 ## [0.31.2] - 2026-08-27
 
 ### Fixed

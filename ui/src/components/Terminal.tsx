@@ -59,22 +59,47 @@ export function TerminalView({ sessionId, owned }: { sessionId: string; owned: b
     const send = (d: string) => { if (ws.readyState === WebSocket.OPEN) ws.send(d) }
     const dataSub = term.onData(send)
 
-    // Shift+Enter, so a prompt can have more than one line.
+    // A newline in the prompt, however the user asks for one.
     //
     // A terminal cannot tell Shift+Enter from Enter: both are carriage return,
-    // ASCII 13, and have been since the teletype. Claude Code asks for the
-    // modern encoding instead — CSI u, `ESC [ 13 ; 2 u` — which every terminal
-    // that supports multi-line prompts is configured to send. xterm.js does not
-    // send it by default, so a user typing a numbered list here got their first
-    // line submitted and the rest of the thought lost.
+    // ASCII 13, and have been since the teletype. Claude Code therefore
+    // accepts four different ways of asking for a newline, and which of them a
+    // person reaches for depends on what they use elsewhere. This first
+    // shipped supporting only Shift+Enter, and a user reported back that
+    // Option+Enter was the one that worked for him — because he had learned it
+    // in his own terminal, where it is what Claude Code documents for macOS.
+    //
+    // So all four are handled, and each sends exactly what Claude Code expects
+    // to receive over a PTY:
+    //
+    //   Ctrl+J        line feed, 0x0A. Works in every terminal with no setup
+    //                 at all, which makes it the one that cannot fail.
+    //   Option+Enter  ESC then CR — the meta-prefixed return a terminal sends
+    //                 with "use Option as Meta" enabled. On macOS this is what
+    //                 Claude Code's own docs tell people to turn on.
+    //   Shift+Enter   CSI u, `ESC [ 13 ; 2 u`. The modern encoding, which only
+    //                 terminals speaking the kitty keyboard protocol send.
+    //                 Native support is why `/terminal-setup` exists.
+    //   \ then Enter  needs nothing from us: the backslash is already in the
+    //                 line and Claude Code reads the pair itself.
     //
     // Intercepted before xterm turns the key into bytes: returning false stops
     // it emitting the plain carriage return it otherwise would.
     term.attachCustomKeyEventHandler((e) => {
-      if (e.type !== 'keydown' || e.key !== 'Enter') return true
-      if (!e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return true
-      send('\x1b[13;2u')
-      return false
+      if (e.type !== 'keydown') return true
+      // Ctrl+J is a newline everywhere, and is not an Enter key at all.
+      if (e.ctrlKey && !e.altKey && !e.metaKey && (e.key === 'j' || e.key === 'J')) {
+        send('\n')
+        return false
+      }
+      if (e.key !== 'Enter') return true
+      // Exactly one modifier, or this is some other binding we should not eat.
+      const mods = [e.shiftKey, e.altKey, e.ctrlKey, e.metaKey].filter(Boolean).length
+      if (mods !== 1) return true
+      if (e.shiftKey) { send('\x1b[13;2u'); return false }
+      if (e.altKey) { send('\x1b\r'); return false }
+      if (e.ctrlKey) { send('\n'); return false }
+      return true
     })
     const ro = new ResizeObserver(() => { try { fit.fit() } catch { /* */ } })
     ro.observe(host.current)
@@ -88,5 +113,27 @@ export function TerminalView({ sessionId, owned }: { sessionId: string; owned: b
       </div>
     )
   }
-  return <div ref={host} className="h-[70vh] bg-bg" />
+  return (
+    <>
+      <div ref={host} className="h-[70vh] bg-bg" />
+      {/* Said once, under the terminal, because there is no way to discover it.
+        *
+        * A user who wants a second line presses Enter, watches half a thought
+        * get submitted, and concludes multi-line prompts are not possible
+        * here. Shift+Enter has worked since v0.30.1 and he still could not
+        * find it — which is a discovery problem, not a missing feature.
+        *
+        * Shift+Enter leads because it is what people expect; Ctrl+J is named
+        * because it is the one that works in every terminal with no setup, so
+        * it is the answer when someone's keyboard or OS eats the others. */}
+      <div className="border-t border-border px-3 py-1.5 text-[11px] text-fg-faint">
+        <span className="mono text-fg-muted">Shift</span>+
+        <span className="mono text-fg-muted">Enter</span> for a new line —{' '}
+        <span className="mono text-fg-muted">Option</span>+
+        <span className="mono text-fg-muted">Enter</span> and{' '}
+        <span className="mono text-fg-muted">Ctrl</span>+
+        <span className="mono text-fg-muted">J</span> do the same.
+      </div>
+    </>
+  )
 }

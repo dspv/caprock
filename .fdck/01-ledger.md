@@ -7,27 +7,49 @@ Status is one of: **open** (no decision yet) · **planned** (decided yes, not
 started) · **building** · **shipped** (in a release, with the version) ·
 **declined** (decided no, with the reason in the story).
 
-| Id     | Date       | From  | Request                                                          | Status  | Landed in         |
-| ------ | ---------- | ----- | ---------------------------------------------------------------- | ------- | ----------------- |
-| FB-017 | 2026-08-27 | Dima  | Wanted an update button, or at least clear steps per OS          | shipped | v0.31.2           |
-| FB-016 | 2026-08-27 | Almas | brew said "already installed" for a release that was already out | shipped | v0.31.2           |
-| FB-015 | 2026-08-27 | Dima  | Hover invisible, caveat too wordy, two buttons out of line       | shipped | v0.31.2           |
-| FB-014 | 2026-08-27 | Dima  | The premium banner's line was a metaphor, not an explanation     | shipped | v0.31.1           |
-| FB-013 | 2026-08-27 | Dima  | Sharing a card produced two images, downloading produced one     | shipped | v0.31.1           |
-| FB-012 | 2026-08-27 | Dima  | Plan limits looked odd and belonged to nothing on the screen     | shipped | v0.31.1           |
-| FB-011 | 2026-08-27 | Dima  | No clear way to update; the share button was easy to miss        | shipped | v0.31.1           |
-| FB-010 | 2026-08-27 | Dima  | The share dialog explained too much and read as a hang           | shipped | v0.31.0           |
-| FB-009 | 2026-08-27 | Vova  | Shift+Enter in the terminal, for multi-line prompts              | shipped | v0.30.1           |
-| FB-008 | 2026-08-26 | Vova  | Pay for models from inside Caprock                               | open    | —                 |
-| FB-007 | 2026-08-26 | Vova  | Show plan limits where they are actually looked at               | shipped | v0.28.0           |
-| FB-006 | 2026-08-26 | Vova  | Quick chat: a findable "new project" that makes the folder       | shipped | v0.28.0           |
-| FB-005 | 2026-08-26 | Vova  | Third-party model providers, free ones first                     | part    | v0.30.0           |
-| FB-004 | 2026-08-26 | Vova  | JetBrains Mono in the terminal — Cyrillic was unreadable         | shipped | v0.28.0           |
-| FB-003 | 2026-08-26 | Vova  | Would pay $20/mo; $50 with models; $100 with Claude+GPT          | open    | —                 |
-| FB-002 | 2026-08-25 | Vova  | Filter the dashboard by agent after OpenCode appeared            | shipped | v0.21.4           |
-| FB-001 | 2026-08-24 | Alex  | Hooks never fired on Windows                                     | shipped | v0.27.3 + v0.27.4 |
+| Id     | Date       | From  | Request                                                            | Status  | Landed in         |
+| ------ | ---------- | ----- | ------------------------------------------------------------------ | ------- | ----------------- |
+| FB-018 | 2026-08-27 | Vova  | Shift+Enter did not work for him; Option+Enter was what he pressed | shipped | unreleased        |
+| FB-017 | 2026-08-27 | Dima  | Wanted an update button, or at least clear steps per OS            | shipped | v0.31.2           |
+| FB-016 | 2026-08-27 | Almas | brew said "already installed" for a release that was already out   | shipped | v0.31.2           |
+| FB-015 | 2026-08-27 | Dima  | Hover invisible, caveat too wordy, two buttons out of line         | shipped | v0.31.2           |
+| FB-014 | 2026-08-27 | Dima  | The premium banner's line was a metaphor, not an explanation       | shipped | v0.31.1           |
+| FB-013 | 2026-08-27 | Dima  | Sharing a card produced two images, downloading produced one       | shipped | v0.31.1           |
+| FB-012 | 2026-08-27 | Dima  | Plan limits looked odd and belonged to nothing on the screen       | shipped | v0.31.1           |
+| FB-011 | 2026-08-27 | Dima  | No clear way to update; the share button was easy to miss          | shipped | v0.31.1           |
+| FB-010 | 2026-08-27 | Dima  | The share dialog explained too much and read as a hang             | shipped | v0.31.0           |
+| FB-009 | 2026-08-27 | Vova  | Shift+Enter in the terminal, for multi-line prompts                | shipped | v0.30.1           |
+| FB-008 | 2026-08-26 | Vova  | Pay for models from inside Caprock                                 | open    | —                 |
+| FB-007 | 2026-08-26 | Vova  | Show plan limits where they are actually looked at                 | shipped | v0.28.0           |
+| FB-006 | 2026-08-26 | Vova  | Quick chat: a findable "new project" that makes the folder         | shipped | v0.28.0           |
+| FB-005 | 2026-08-26 | Vova  | Third-party model providers, free ones first                       | part    | v0.30.0           |
+| FB-004 | 2026-08-26 | Vova  | JetBrains Mono in the terminal — Cyrillic was unreadable           | shipped | v0.28.0           |
+| FB-003 | 2026-08-26 | Vova  | Would pay $20/mo; $50 with models; $100 with Claude+GPT            | open    | —                 |
+| FB-002 | 2026-08-25 | Vova  | Filter the dashboard by agent after OpenCode appeared              | shipped | v0.21.4           |
+| FB-001 | 2026-08-24 | Alex  | Hooks never fired on Windows                                       | shipped | v0.27.3 + v0.27.4 |
 
 ## Detail
+
+### FB-018 — Option+Enter, not Shift+Enter
+
+FB-009 shipped Shift+Enter in v0.30.1. Vova came back: the combination that
+worked for him was **Option+Enter**, and he only found it by trying.
+
+Checked against Claude Code's own documentation rather than guessed. It accepts
+four ways of asking for a newline — Shift+Enter (CSI u, needs a terminal that
+speaks the kitty keyboard protocol, which is why `/terminal-setup` exists),
+Option+Enter (ESC then CR, what macOS users are told to enable), Ctrl+J (a line
+feed, working in **every** terminal with no configuration at all), and
+backslash-Enter. Which one a person reaches for depends on what they learned
+elsewhere.
+
+Implementing one of four was the mistake, and the one implemented was the most
+fragile of them. All four are handled now.
+
+**The second half of the fix is a line under the terminal saying so.** It had
+worked for a month and he could not find it: he pressed Enter, watched half a
+thought get submitted, and concluded multi-line prompts were not possible here.
+A feature nobody can discover is not shipped.
 
 ### FB-017 — "Can it update itself, or at least tell me how"
 

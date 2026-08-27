@@ -1,6 +1,7 @@
 package pairing
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -73,7 +74,7 @@ func TestACodeWorksOnce(t *testing.T) {
 	if _, err := s.Redeem(code, "first"); err != nil {
 		t.Fatalf("first redeem: %v", err)
 	}
-	if _, err := s.Redeem(code, "second"); err != ErrNoCode {
+	if _, err := s.Redeem(code, "second"); !errors.Is(err, ErrNoCode) {
 		t.Errorf("second redeem: err = %v, want ErrNoCode", err)
 	}
 }
@@ -83,7 +84,7 @@ func TestCodeExpires(t *testing.T) {
 	s, now := clock(t)
 	code, _ := s.NewCode()
 	*now = now.Add(CodeTTL + time.Second)
-	if _, err := s.Redeem(code, "late"); err != ErrNoCode {
+	if _, err := s.Redeem(code, "late"); !errors.Is(err, ErrNoCode) {
 		t.Errorf("err = %v, want ErrNoCode once the code has expired", err)
 	}
 	if active, _ := s.CodeActive(); active {
@@ -106,22 +107,22 @@ func TestGuessingBurnsTheCode(t *testing.T) {
 	s, _ := clock(t)
 	code, _ := s.NewCode()
 	for i := 0; i < MaxAttempts; i++ {
-		if _, err := s.Redeem("000000", "attacker"); err != ErrBadCode {
+		if _, err := s.Redeem("000000", "attacker"); !errors.Is(err, ErrBadCode) {
 			t.Fatalf("attempt %d: err = %v, want ErrBadCode", i, err)
 		}
 	}
 	// The real code is now worthless too — that is the point.
-	if _, err := s.Redeem(code, "the owner"); err != ErrNoCode {
+	if _, err := s.Redeem(code, "the owner"); !errors.Is(err, ErrNoCode) {
 		t.Errorf("after %d wrong guesses: err = %v, want the code burned", MaxAttempts, err)
 	}
 }
 
 func TestUnknownTokenIsRefused(t *testing.T) {
 	s, _ := clock(t)
-	if _, err := s.Check("not-a-token"); err != ErrUnknownDevice {
+	if _, err := s.Check("not-a-token"); !errors.Is(err, ErrUnknownDevice) {
 		t.Errorf("err = %v, want ErrUnknownDevice", err)
 	}
-	if _, err := s.Check(""); err != ErrUnknownDevice {
+	if _, err := s.Check(""); !errors.Is(err, ErrUnknownDevice) {
 		t.Errorf("empty token: err = %v, want ErrUnknownDevice", err)
 	}
 }
@@ -135,7 +136,7 @@ func TestRevokeTakesEffectImmediately(t *testing.T) {
 	if !s.Revoke(d.ID) {
 		t.Fatal("Revoke returned false for a device that exists")
 	}
-	if _, err := s.Check(d.Token); err != ErrUnknownDevice {
+	if _, err := s.Check(d.Token); !errors.Is(err, ErrUnknownDevice) {
 		t.Errorf("err = %v, want the revoked token refused at once", err)
 	}
 	if s.Revoke(d.ID) {
@@ -153,7 +154,7 @@ func TestRevokeAllClearsCodeToo(t *testing.T) {
 	if n := s.RevokeAll(); n != 1 {
 		t.Errorf("RevokeAll = %d, want 1", n)
 	}
-	if _, err := s.Redeem(c2, "sneaking in"); err != ErrNoCode {
+	if _, err := s.Redeem(c2, "sneaking in"); !errors.Is(err, ErrNoCode) {
 		t.Errorf("err = %v, want the outstanding code cleared as well", err)
 	}
 }
@@ -212,7 +213,7 @@ func TestLoadSkipsDevicesWithoutTokens(t *testing.T) {
 	if len(s.Devices()) != 0 {
 		t.Error("a device with no token was loaded")
 	}
-	if _, err := s.Check(""); err != ErrUnknownDevice {
+	if _, err := s.Check(""); !errors.Is(err, ErrUnknownDevice) {
 		t.Error("an empty token matched a loaded device")
 	}
 }
