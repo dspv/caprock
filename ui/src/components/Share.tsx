@@ -23,18 +23,12 @@
  */
 import { useState } from 'react'
 import { api, type History } from '@/lib/api'
-import { drawShareCard, type SharePeriod } from './ShareCard'
+import { cardFilename, collectCardData, drawShareCard } from './ShareCard'
 import { fmtUSD } from '@/lib/format'
 
-const PERIODS: { id: SharePeriod; label: string }[] = [
-  { id: '7d', label: 'this week' },
-  { id: '30d', label: 'this month' },
-  { id: 'all', label: 'all time' },
-]
-
 /** The words that travel with the image. Measured figures, no adjectives. */
-function caption(t: History['totals'], period: SharePeriod): string {
-  const span = period === '7d' ? 'in a week' : period === '30d' ? 'in a month' : `over ${t.days} active days`
+function caption(t: History['totals']): string {
+  const span = `over ${t.days} active days`
   return `${fmtUSD(t.cost_usd)} of Claude Code ${span}, across ${t.sessions.toLocaleString('en-US')} sessions — measured on my own machine with Caprock. https://caprock.dev`
 }
 
@@ -55,14 +49,16 @@ export function ShareButton() {
 }
 
 function ShareDialog({ onClose }: { onClose: () => void }) {
-  const [period, setPeriod] = useState<SharePeriod>('7d')
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState('')
 
   const build = async () => {
-    const h = await api.history(period)
-    const blob = await drawShareCard(h.totals, period)
-    return { blob, text: caption(h.totals, period) }
+    // No period to choose any more: the card shows today, the week, the month
+    // and all time at once, which is what made the picker redundant rather
+    // than a feature worth keeping.
+    const [d, h] = await Promise.all([collectCardData(), api.history('all')])
+    const blob = await drawShareCard(d)
+    return { blob, text: caption(h.totals) }
   }
 
   /** The good path: hand the file to the OS and let it offer every app. */
@@ -71,7 +67,7 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
     try {
       const { blob, text } = await build()
       if (!blob) { setNote('Could not draw the card in this browser.'); return }
-      const file = new File([blob], `caprock-${period}.png`, { type: 'image/png' })
+      const file = new File([blob], cardFilename(), { type: 'image/png' })
       await navigator.share({ files: [file], text })
       onClose()
     } catch (e) {
@@ -89,7 +85,7 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `caprock-${period}.png`
+      a.download = cardFilename()
       a.click()
       URL.revokeObjectURL(url)
       if (to === 'download') { setNote('Saved to your downloads.'); return }
@@ -119,20 +115,6 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
         </header>
 
         <div className="px-4 py-3 text-[13px]">
-          <div className="inline-flex rounded-md bg-panel-2 p-0.5">
-            {PERIODS.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => setPeriod(p.id)}
-                className={`rounded-[5px] px-2.5 py-1 text-[12px] transition-colors ${
-                  period === p.id ? 'bg-accent font-medium text-panel' : 'text-fg-muted hover:text-fg'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-
           {/* Said before anything happens, not in a footnote afterwards. */}
           <p className="mt-3 text-[12px] leading-relaxed text-fg-muted">
             A card of the totals — cost, sessions, turns — carrying{' '}
