@@ -9,6 +9,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.30.1] - 2026-08-27
+
+### Fixed
+
+- **Shift+Enter in the terminal, for prompts longer than one line.** A terminal
+  cannot tell Shift+Enter from Enter — both are carriage return, ASCII 13, and
+  have been since the teletype — so typing a numbered list submitted the first
+  line and threw the rest away. Terminals that support multi-line prompts send
+  CSI u instead (`ESC [ 13 ; 2 u`), which is what Claude Code listens for;
+  xterm.js does not send it by default, so Caprock now does. Reported by the
+  user who noticed it works in a normal terminal and not here.
+
 ## [0.30.0] - 2026-08-27
 
 The release where the paid tier became something you can see, buy, and hand

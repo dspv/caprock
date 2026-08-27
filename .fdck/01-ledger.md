@@ -9,6 +9,7 @@ started) · **building** · **shipped** (in a release, with the version) ·
 
 | Id     | Date       | From | Request                                                    | Status  | Landed in         |
 | ------ | ---------- | ---- | ---------------------------------------------------------- | ------- | ----------------- |
+| FB-009 | 2026-08-27 | Vova | Shift+Enter in the terminal, for multi-line prompts        | shipped | v0.30.1           |
 | FB-008 | 2026-08-26 | Vova | Pay for models from inside Caprock                         | open    | —                 |
 | FB-007 | 2026-08-26 | Vova | Show plan limits where they are actually looked at         | shipped | v0.28.0           |
 | FB-006 | 2026-08-26 | Vova | Quick chat: a findable "new project" that makes the folder | shipped | v0.28.0           |
@@ -19,6 +20,16 @@ started) · **building** · **shipped** (in a release, with the version) ·
 | FB-001 | 2026-08-24 | Alex | Hooks never fired on Windows                               | shipped | v0.27.3 + v0.27.4 |
 
 ## Detail
+
+### FB-009 — Shift+Enter in the terminal
+
+He noticed it works when he opens `claude` in a normal terminal and not in
+Caprock's, which was the whole diagnosis: a terminal cannot tell Shift+Enter
+from Enter, and the ones that support multi-line prompts are configured to send
+CSI u instead. xterm.js does not by default.
+
+**A user comparing our behaviour against the thing we wrap is the most useful
+bug report there is** — he had already isolated the variable.
 
 ### FB-008 — Pay for models from inside Caprock
 
