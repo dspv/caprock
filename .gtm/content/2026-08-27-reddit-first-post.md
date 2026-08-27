@@ -3,7 +3,7 @@
 **Where:** r/ClaudeAI
 **Who posts:** Dima, personal account, no surname
 **When:** a weekday morning US time (that is evening in Israel)
-**Status:** draft — needs Dima's read and one number confirmed
+**Status:** ready — figures re-read 2026-08-27 with `caprock report` on v0.31.3
 
 ---
 
@@ -11,7 +11,7 @@
 
 Every figure in it is measured on Dima's own machine and can be checked by
 anyone who installs the thing. That is the entire asset: a competitor can copy
-the dashboard, and cannot copy having spent $11,166 through it.
+the dashboard, and cannot copy having spent $11,488 through it.
 
 It leads with the finding, not the product. People come for the number and
 find the tool underneath it — the reverse does not work on Reddit, where a
@@ -21,17 +21,22 @@ post that opens with a product gets read as an ad and downvoted.
 and it decides on whether the author answers like a person. Dima should plan
 to be around for a couple of hours after posting.
 
-## What needs confirming before this goes out
+## The span question, answered
 
-- The multiple. $11,166 over **two** calendar months of a $200 plan is 27.9×;
-  over three it is 18.6×. The post below avoids the multiple entirely for that
-  reason, but if Dima wants it in, we need the real span.
+It was open because nobody had counted the calendar days behind the 60 active
+ones. `caprock report` now prints both: the window runs 24 May to 27 August —
+**96 calendar days**, 60 of them with activity — so the plan fee for it is
+$200 × 96 ÷ 30 = **$640**, and the multiple is **18×**.
+
+The post still leads with the total rather than the multiple. A multiple
+invites the reader to argue about the denominator; a total invites them to
+check their own.
 
 ---
 
 ## The post
 
-**Title:** I measured what my Claude Code actually costs. $11,166 in 60 days — on a $200/month plan.
+**Title:** I measured what my Claude Code actually costs. $11,488 over three months — on a $200/month plan.
 
 **Body:**
 
@@ -40,21 +45,22 @@ Not "roughly" — I mean the plan is flat, so nothing itemises. You pay $200 and
 the usage is invisible.
 
 So I wrote something to read the transcripts Claude Code already writes to
-disk, price every turn at Anthropic's list rates, and add it up. Sixty active
-days later:
+disk, price every turn at Anthropic's list rates, and add it up. Three months
+later — 96 calendar days, 60 of them with any activity on them:
 
-    $11,166.06   priced at API list rates — not a bill
-    130          sessions
-    73,755       turns
-    82,906       tool calls
+    $11,488      priced at API list rates — not a bill
+    $640         what I actually paid over the same window
+    131          sessions
+    74,874       turns
+    83,755       tool calls
     99%          cache hit rate
 
 A few things I did not expect.
 
-**Bash is half of everything.** 41,000 calls — running tests, running builds,
-running `git status` for the hundredth time. Reading and editing files together
-are about a quarter of it. I assumed writing code was the expensive part. It
-is not; running it is.
+**Bash is half of everything.** 42,775 calls, 51% of every tool call I have
+made — running tests, running builds, running `git status` for the hundredth
+time. Reading is 14% and editing 9%. I assumed writing code was the expensive
+part. It is not; running it is.
 
 **The cache is doing enormous work.** 99% hit rate, which is where most of the
 gap between "what this would cost through the API" and "what I actually pay"
@@ -62,9 +68,9 @@ comes from. If you are on a flat plan you are not seeing this at all.
 
 **A session can start repeating itself and nothing tells you.** One of mine
 ran the same tool call five times in three minutes. The session it happened in
-had $3,157 of list-price usage on it by then — I am not claiming the loop spent
-all of that, I am saying I had no idea either was happening until I went
-looking afterwards.
+had thousands of dollars of list-price usage on it by then — I am not claiming
+the loop spent all of that, I am saying I had no idea either was happening
+until I went looking afterwards.
 
 That last one is why the thing stopped being a script. It now sits open on a
 second monitor and shows every session on the machine — including the ones I
@@ -88,7 +94,7 @@ does it is right there.
 - Never claim it saves money. It does not; it shows where money went.
 - Never quote a figure not on this page. If someone asks something we have not
   measured, say we have not measured it.
-- The $3,157 is the SESSION's cost, not the loop's. Caprock cannot price a
-  loop separately, and saying otherwise is the kind of small overclaim that
-  loses the room on Reddit.
+- A session's cost is not the loop's cost. Caprock cannot price a loop
+  separately, and saying otherwise is the kind of small overclaim that loses
+  the room on Reddit.
 - No "we". One person made this.

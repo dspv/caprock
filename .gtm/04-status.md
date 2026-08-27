@@ -17,11 +17,22 @@ first post.
 
 ## Next actions
 
-1. **Pick a name** (owner). Blocks everything else.
-2. Register the Telegram channel and the X handle, checking availability by hand.
-3. First three posts drafted in Russian with X versions, for the owner to edit
-   into his own voice.
+1. **Post to r/ClaudeAI** — ready to go, `content/2026-08-27-reddit-first-post.md`.
+   It needs no channel and no name: it goes out under the owner's own account.
+   The one requirement is that he is reachable for a couple of hours after
+   posting, because Reddit decides in the first hour and decides on whether the
+   author answers like a person.
+2. **Pick a name** (owner). Blocks the channels, not the posts — which is why
+   it is no longer first on this list. Reddit and Hacker News go out under a
+   personal account; a channel is for repetition, not for the first shot.
+3. Register the Telegram channel and the X handle once the name exists.
 4. Publish weekly for six weeks before evaluating anything.
+
+## The one measured fact so far
+
+17% of a cold audience copied the install command (2026-08-24, below). That is
+a high enough conversion that the page is not the problem — the problem is that
+nobody is arriving at it. Everything on this list is about arrival.
 
 ## Measured results
 
