@@ -9,7 +9,7 @@ started) · **building** · **shipped** (in a release, with the version) ·
 
 | Id     | Date       | From  | Request                                                            | Status  | Landed in         |
 | ------ | ---------- | ----- | ------------------------------------------------------------------ | ------- | ----------------- |
-| FB-018 | 2026-08-27 | Vova  | Shift+Enter did not work for him; Option+Enter was what he pressed | shipped | unreleased        |
+| FB-018 | 2026-08-27 | Vova  | Shift+Enter did not work for him; Option+Enter was what he pressed | shipped | v0.31.3           |
 | FB-017 | 2026-08-27 | Dima  | Wanted an update button, or at least clear steps per OS            | shipped | v0.31.2           |
 | FB-016 | 2026-08-27 | Almas | brew said "already installed" for a release that was already out   | shipped | v0.31.2           |
 | FB-015 | 2026-08-27 | Dima  | Hover invisible, caveat too wordy, two buttons out of line         | shipped | v0.31.2           |

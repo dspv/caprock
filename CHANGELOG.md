@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.31.3] - 2026-08-27
+
 ### Fixed
 
 - **Every way of asking for a newline now works in the web terminal.** This
