@@ -48,7 +48,7 @@ export function ShareButton() {
   )
 }
 
-function ShareDialog({ onClose }: { onClose: () => void }) {
+export function ShareDialog({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState('')
 

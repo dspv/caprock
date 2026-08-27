@@ -58,6 +58,9 @@ function stubCanvas() {
     closePath: vi.fn(),
     fill: vi.fn(),
     stroke: vi.fn(),
+    // The heading measures its own text to place the domain and date, so a
+    // stub without this stops the paint at the first word.
+    measureText: vi.fn((t: string) => ({ width: t.length * 16 })),
     set fillStyle(_v: string) {},
     set strokeStyle(_v: string) {},
     set lineWidth(_v: number) {},
@@ -166,37 +169,18 @@ describe('cardFilename', () => {
   })
 })
 
-describe('ShareCard milestones', () => {
-  it('calls out a round number that was just passed', async () => {
-    data.value = history({ cost_usd: 10_400 })
-    render(<ShareCard />)
-    expect(await screen.findByRole('button', { name: /just passed \$10,000/i })).toBeTruthy()
-  })
-
-  it('goes quiet once the milestone is well behind', async () => {
-    // $18,000 is past $10,000 but nowhere near $25,000 — the moment has gone,
-    // and a button still announcing it is noise rather than an invitation.
-    data.value = history({ cost_usd: 18_000 })
-    render(<ShareCard />)
-    expect(await screen.findByRole('button', { name: /^share these numbers$/i })).toBeTruthy()
+/**
+ * Milestones moved to ShareNudge, which knows about occasions this button has
+ * no business judging — and a control that renames itself is one people stop
+ * recognising. What matters here is that the button is always the same button.
+ */
+describe('the share button', () => {
+  it('says the same thing whatever the figures are', async () => {
+    for (const cost of [10_400, 18_000, 12.5]) {
+      data.value = history({ cost_usd: cost })
+      const { unmount } = render(<ShareCard />)
+      expect(await screen.findByRole('button', { name: /share these numbers/i })).toBeTruthy()
+      unmount()
+    }
   })
 })
-
-/**
- * The "saved" flash clears itself 2.5 seconds after a download. Left running,
- * it fires into a component that no longer exists — in CI that surfaced as
- * `window is not defined`, blamed on a screen that never mentions this
- * component. The release gate caught it; running one test file at a time
- * did not.
- *
- * There is no honest component-level test for it: jsdom has no canvas, so the
- * draw path that schedules the timer never runs, and a test that simulates the
- * timer proves only that the simulation works. What IS worth pinning is that
- * no test in this suite leaves an unhandled error behind — which is exactly
- * what `make check` asserts by running every file in one environment, and why
- * the gate found this and a single-file run could not.
- *
- * The guard that keeps it fixed is therefore the gate, not a unit test. This
- * note exists so the next person does not delete the cleanup believing a test
- * covers it.
- */

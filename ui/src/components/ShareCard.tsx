@@ -25,21 +25,6 @@ function token(name: string, fallback: string): string {
   return v || fallback
 }
 
-/**
- * The last round number this machine has passed, if it passed it recently.
- *
- * People share milestones, not arbitrary Tuesdays. "Just crossed $10,000" is a
- * thing someone posts; "$10,847.31" is not. Recent means within a tenth of the
- * step — cross $10,000 and it is worth mentioning for a while, but by $12,000
- * the moment has gone and a button still shouting about it is noise.
- */
-function milestone(cost: number): number | null {
-  const steps = [1000, 5000, 10_000, 25_000, 50_000, 100_000]
-  const passed = steps.filter((v) => cost >= v).pop()
-  if (!passed) return null
-  return cost - passed <= passed * 0.1 ? passed : null
-}
-
 /** What a card is about. `all` is the lifetime figure; the others are periods. */
 export type SharePeriod = 'all' | '7d' | '30d'
 
@@ -143,12 +128,36 @@ function paintCard(g: CanvasRenderingContext2D, d: CardData) {
     g.fillText(s, x, y)
   }
 
-  text(64, 78, 'My stats on caprock.dev', 32, fg, sans, 600)
-  // Beside the heading rather than in the footer: a reader deciding whether
-  // these numbers are current should not have to hunt for the date.
-  text(1136, 78, d.takenAt.toLocaleDateString('en-GB', {
+  // One heading, read left to right: whose, what, where, when.
+  //
+  // The domain and the date used to sit in opposite corners in small type, and
+  // neither could be read at the size a card appears in a feed. Both belong on
+  // the line someone actually looks at — and the domain is the only part that
+  // has to survive a screenshot being reposted, so it is the only part in the
+  // accent colour.
+  //
+  // Widths are measured rather than guessed: the fonts differ between themes
+  // and platforms, and a hand-tuned offset is a gap that is right on one
+  // machine and wrong on the next.
+  const headSize = 32
+  g.font = `600 ${headSize}px ${sans}`
+  // No trailing space in the lead: measureText already returns the width up to
+  // the last glyph, so a space there is a second gap on top of the measured
+  // one — which is where the hole between "on" and the domain came from.
+  const lead = 'My stats on'
+  const space = g.measureText(' ').width
+  const leadW = g.measureText(lead).width
+  text(64, 78, lead, headSize, fg, sans, 600)
+  const domainX = 64 + leadW + space
+  text(domainX, 78, 'caprock.dev', headSize, accent, sans, 600)
+  const domainW = g.measureText('caprock.dev').width
+  // The date is part of the heading, not a footnote to it: same weight, same
+  // family, one size down so it reads as the tail of the sentence. An en dash,
+  // because a hyphen between words is a typo and an em dash is a pause.
+  const date = d.takenAt.toLocaleDateString('en-GB', {
     day: 'numeric', month: 'short', year: 'numeric',
-  }), 15, faint, mono, 400, 'right')
+  })
+  text(domainX + domainW + space * 2, 78, `– ${date}`, 26, faint, sans, 600)
 
   const tiles: [string, string, string, string][] = [
     ['TODAY', fmtUSD(d.today.cost), `${d.today.sessions} sessions`, accent],
@@ -188,7 +197,11 @@ function paintCard(g: CanvasRenderingContext2D, d: CardData) {
       text(x + 20, yy, r.label, 14, muted, mono)
       g.fillStyle = accent
       g.globalAlpha = 0.85
-      roundRect(barX, yy - 10, Math.max(2, barW * (r.cost / top)), 10, 3)
+      // A corner radius wider than the bar itself draws a squiggle rather than
+      // a bar: haiku at $0.59 is two pixels next to opus at $5,338, and the
+      // 3px rounding turned it into a hook. Cap the radius at half the width.
+      const w = Math.max(2, barW * (r.cost / top))
+      roundRect(barX, yy - 10, w, 10, Math.min(3, w / 2))
       g.fill()
       g.globalAlpha = 1
       text(x + width - 62, yy, fmtUSD(r.cost), 14, fg, mono, 400, 'right')
@@ -203,12 +216,14 @@ function paintCard(g: CanvasRenderingContext2D, d: CardData) {
   const h = bars(64, 372, d.models, 'WHERE THE MONEY WENT')
   bars(612, 372, d.work, 'WHAT IT WENT ON')
 
-  const footY = 372 + h + 34
-  text(64, footY, 'caprock.dev', 16, accent, mono, 600)
   // The full caveat, not the short one. A dollar figure posted without it
   // reads as a bill somebody paid, and "not money saved" is the half that
   // stops a flat-plan reader thinking this is a discount they received.
-  text(1136, footY, 'at API list prices — not a bill, and not money saved', 14, faint, sans, 400, 'right')
+  //
+  // On the left, where a reader's eye returns — it was in the right corner
+  // opposite a domain nobody could read either.
+  const footY = 372 + h + 34
+  text(64, footY, 'at API list prices — not a bill, and not money saved', 14, faint)
   g.textAlign = 'left'
 }
 
@@ -296,10 +311,6 @@ export function ShareCard({ period = 'all' }: { period?: SharePeriod } = {}) {
   const t = h.data?.totals
   if (!t || t.sessions === 0) return null
 
-  // A milestone is a lifetime fact. "You just passed $1,000" makes no sense
-  // about one week, and a period card is offered on a rhythm rather than
-  // because a number was crossed.
-  const reached = period === 'all' ? milestone(t.cost_usd) : null
 
   // No multiple here. It needs the window's calendar span to divide a monthly
   // fee by, and this endpoint reports active days only — dividing by those
@@ -325,22 +336,18 @@ export function ShareCard({ period = 'all' }: { period?: SharePeriod } = {}) {
 
   return (
     <>
-      {/* Louder for a while after a round number is crossed, quiet the rest of
-        * the time. The button is always there; only its volume moves. */}
+      {/* One job now: be findable. The milestone shouting moved to ShareNudge,
+        * which knows about occasions this button has no business judging — and
+        * a control that changes its own label is one people stop recognising.
+        *
+        * Accent-bordered rather than grey: the previous version was 11px muted
+        * text that read as a caption, and nobody clicks a caption. */}
       <button
         onClick={draw}
-        className={`rounded-sm border px-1.5 py-0.5 text-[11px] ${
-          reached
-            ? 'border-accent/50 bg-accent/10 text-accent hover:bg-accent/20'
-            : 'border-border text-fg-muted hover:border-border-strong hover:text-fg'
-        }`}
+        className="rounded-md border border-accent/45 bg-accent/[0.08] px-2.5 py-1 text-[12px] text-accent hover:bg-accent/[0.16]"
         title="Draw a shareable image of these figures. Nothing is uploaded — it saves to your downloads."
       >
-        {done
-          ? 'saved ✓'
-          : reached
-            ? `you just passed ${fmtUSD(reached)} — share it`
-            : 'share these numbers'}
+        {done ? 'saved ✓' : 'Share these numbers'}
       </button>
       <canvas ref={canvas} width={W} height={H} className="hidden" />
     </>

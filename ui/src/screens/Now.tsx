@@ -8,7 +8,6 @@ import { ProjectsPanel, AGENTS, type AgentFilter } from '@/components/Projects'
 import { ActivityFeed } from '@/components/ActivityFeed'
 import { LifetimeStrip } from '@/components/Lifetime'
 import { PlanLimitsLine } from '@/components/PlanLimits'
-import { SharePrompt } from '@/components/SharePrompt'
 import { PremiumBanner } from '@/components/PremiumBanner'
 import { BreakdownPanel } from '@/components/Breakdown'
 import { PulsePanel } from '@/components/Pulse'
@@ -109,9 +108,10 @@ export function NowScreen() {
         * second column of the bottom row, under a thirty-day chart. */}
       <PlanLimitsLine limits={summary.data?.rate_limits} now={now} />
 
-      {/* Only when something has actually been measured: offering to draw a
-        * card of zero sessions is asking someone to post an empty page. */}
-      {measured && <SharePrompt now={now} />}
+      {/* The share offer lives beside the figures it is about, in the ALL TIME
+        * panel — see ShareNudge. It used to be a second banner here, which put
+        * two invitations one above the other and made the screen read as a
+        * page that wants something from you. */}
 
       {/* Now too, not only Cost and Lifetime. Keeping it off the screen people
         * actually live in meant a user with no loop and no runaway session

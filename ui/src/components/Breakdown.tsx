@@ -13,6 +13,7 @@ import { useApi } from '@/lib/useApi'
 import { fmtTool, fmtUSD } from '@/lib/format'
 import { Panel } from '@/components/ui'
 import { ShareCard } from '@/components/ShareCard'
+import { ShareNudge } from '@/components/ShareNudge'
 
 export function BreakdownPanel() {
   // Lifetime figures move slowly; a minute is far more often than they change,
@@ -38,6 +39,10 @@ export function BreakdownPanel() {
           {/* The one thing here that travels: these figures are the most
             * persuasive part of the product and they are stuck on one
             * machine. */}
+          {/* Always here, whatever the figures say: whether they are worth
+            * posting is the reader's call, not ours. The nudge beside it is
+            * the part that waits for an occasion. */}
+          <ShareNudge now={Date.now()} />
           <ShareCard />
           <a href="#/history" className="text-fg-faint hover:text-accent no-underline">
             every tool, model and project →
