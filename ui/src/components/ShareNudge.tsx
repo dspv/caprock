@@ -31,7 +31,8 @@ export function ShareNudge({ now }: { now: number }) {
   const occasion = findOccasion(hist.data.totals, hist.data.daily ?? [], week.data)
   if (!occasion) return null
 
-  const answer = () => { markAnswered(KIND, Date.now()); setGone(true) }
+  /* The injected `now`, not the wall clock — see PremiumBanner. */
+  const answer = () => { markAnswered(KIND, now); setGone(true) }
 
   return (
     <>

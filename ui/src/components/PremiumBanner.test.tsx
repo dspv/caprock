@@ -62,3 +62,31 @@ describe('PremiumBanner', () => {
     expect(screen.getByText(/a cap that stops this/)).toBeTruthy()
   })
 })
+
+/**
+ * Dismissal is stamped with the `now` this component was handed, not with the
+ * wall clock.
+ *
+ * These read `Date.now()` on the dismiss click while every other decision used
+ * the prop, so the two disagreed by however far the fixed test clock sat from
+ * today. The suite passed for a year and then began failing on the date they
+ * crossed, with nobody having touched the file. Testing the boundary exactly
+ * is what makes that impossible rather than merely unlikely.
+ */
+describe('the dismissal clock', () => {
+  it('records the dismissal at the moment it was given, to the millisecond', () => {
+    const { unmount } = render(<PremiumBanner costUSD={620} days={20} now={NOW} />)
+    fireEvent.click(screen.getByRole('button', { name: /not now/ }))
+    unmount()
+
+    const MONTH = 30 * 24 * 3600 * 1000
+    // One millisecond before the month is up: still silent.
+    render(<PremiumBanner costUSD={620} days={20} now={NOW + MONTH - 1} />)
+    expect(screen.queryByText(/what it does/)).toBeNull()
+
+    // Exactly a month after the `now` that was passed in — not after the
+    // instant the click happened to land in real time.
+    render(<PremiumBanner costUSD={620} days={20} now={NOW + MONTH} />)
+    expect(screen.getByText(/what it does/)).toBeTruthy()
+  })
+})

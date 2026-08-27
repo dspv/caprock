@@ -222,6 +222,19 @@ function paintCard(g: CanvasRenderingContext2D, d: CardData) {
   // opposite a domain nobody could read either.
   const footY = 372 + h + 34
   text(64, footY, 'at API list prices — not a bill, and not money saved', 14, faint)
+
+  // The invitation, opposite the caveat.
+  //
+  // The card carried a figure and a domain and stopped there: a reader saw
+  // somebody else's $11,442 and had no reason to think it was a thing they
+  // could do too. The loop this product grows by is see it → want yours →
+  // install → post yours, and nothing on the card started it.
+  //
+  // A question rather than a command. "brew install …" on a picture is an
+  // advertisement and reads as one; "What's yours?" is the thing a person
+  // actually wonders when they see a number like this, said out loud. The
+  // domain in the heading is where they go to find out.
+  text(W - 64, footY, "What's yours?", 15, accent, sans, 600, 'right')
   g.textAlign = 'left'
 }
 

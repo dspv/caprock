@@ -9,6 +9,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **The share card asks the reader what theirs is.** It carried a figure and a
+  domain and stopped there — someone seeing another person's total had no
+  reason to think it was a thing they could do too. A question, not an install
+  line: a command on a picture is an advertisement and reads as one, and the
+  domain in the heading is where a person who wonders goes to find out.
+
+### Fixed
+
+- **Dismissing a banner recorded the wrong time.** The premium banner, the
+  premium hint and the share nudge all stamped the dismissal with a fresh
+  `Date.now()` while every other decision in them used the clock they were
+  handed. The two disagreed by however long the render had been on screen —
+  invisible in production, but it meant the test suite passed for a year and
+  then began failing on the day the fixed test clock and the wall clock
+  crossed, with nobody having touched the files. All three use the clock they
+  are given, and the boundary is now tested to the millisecond.
+
 ## [0.31.3] - 2026-08-27
 
 ### Fixed

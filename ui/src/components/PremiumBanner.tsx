@@ -67,7 +67,15 @@ export function PremiumBanner({ costUSD, days, now }: { costUSD: number; days: n
           what it does
         </button>
         <button
-          onClick={() => { markAnswered(KIND, Date.now()); setGone(true) }}
+          /* The `now` this component was given, not a fresh Date.now().
+           *
+           * It read the wall clock here while every other decision in the
+           * component used the prop, so dismissing at one instant and testing
+           * against another silently disagreed by however long the render had
+           * been on screen. In a test with a fixed `now` that gap was a whole
+           * day, and the suite began failing on the date the two crossed —
+           * a year after it was written, with nobody touching this file. */
+          onClick={() => { markAnswered(KIND, now); setGone(true) }}
           className="rounded-sm border border-border px-1.5 py-0.5 text-[11px] text-fg-faint hover:text-fg-muted"
           title="hide this for a month"
         >

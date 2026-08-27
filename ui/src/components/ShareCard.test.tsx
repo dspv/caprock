@@ -88,6 +88,23 @@ describe('ShareCard', () => {
     expect(all).toMatch(/not money saved/i)
   })
 
+  it('asks the reader what theirs is', async () => {
+    // The loop this product grows by is: see somebody's figure, want your
+    // own, install, post yours. The card carried a number and a domain and
+    // started none of it — a reader saw someone else's total with no reason
+    // to think it was a thing they could do too.
+    data.value = history()
+    stubCanvas()
+    await drawShareCard(await collectCardData())
+
+    const all = drawn.text.join(' ')
+    expect(all).toMatch(/what's yours/i)
+    // A question, not a command: an install line on a picture is an
+    // advertisement and reads as one. The domain in the heading is where
+    // someone who wonders goes to find out.
+    expect(all).not.toMatch(/brew install/i)
+  })
+
   it('states no multiple, which it cannot compute from these figures', async () => {
     data.value = history()
     stubCanvas()

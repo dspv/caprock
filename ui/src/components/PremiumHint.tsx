@@ -36,7 +36,11 @@ export function PremiumHint({ reason, now }: { reason: string; now: number }) {
       </button>
       <button
         title="hide this for a month"
-        onClick={() => { markAnswered(KIND, Date.now()); setGone(true) }}
+        /* The injected `now`, not the wall clock — see PremiumBanner: reading
+         * a fresh Date.now() here while every other decision uses the prop
+         * makes the dismissal and the check disagree, and the disagreement
+         * only shows up on whichever date the two happen to cross. */
+        onClick={() => { markAnswered(KIND, now); setGone(true) }}
         className="text-fg-faint hover:text-fg-muted"
       >
         ✕
