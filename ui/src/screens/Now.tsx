@@ -7,6 +7,7 @@ import { Badge, Empty, Panel, Skeleton, Stat } from '@/components/ui'
 import { ProjectsPanel, AGENTS, type AgentFilter } from '@/components/Projects'
 import { ActivityFeed } from '@/components/ActivityFeed'
 import { LifetimeStrip } from '@/components/Lifetime'
+import { CacheStat } from '@/components/CacheStat'
 import { PlanLimitsStat } from '@/components/PlanLimits'
 import { PremiumBanner } from '@/components/PremiumBanner'
 import { BreakdownPanel } from '@/components/Breakdown'
@@ -177,7 +178,7 @@ export function NowScreen() {
             * own above this row, which made two stale percentages look like a
             * headline. */}
           <PlanLimitsStat limits={summary.data?.rate_limits} now={now} />
-          <Stat label="Cache hit" value={measured ? fmtPct(summary.data!.savings.hit_rate * 100) : '—'} sub={measured ? `${fmtPct(summary.data!.savings.cut_pct)} input cost cut` : undefined} tone={measured && summary.data!.savings.hit_rate < 0.9 ? 'warn' : undefined} size="compact" />
+          <CacheStat hitRate={summary.data?.savings.hit_rate} cutPct={summary.data?.savings.cut_pct} measured={measured} />
         </div>
         <UnpricedNote u={summary.data?.unpriced} className="mx-3 mb-2.5" />
       </Panel>

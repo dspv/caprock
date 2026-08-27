@@ -11,6 +11,21 @@ Phase 3 (Delight) has no plan by design.
 
 ### Added
 
+- **The cache hit rate now says what it means.** It was a bare percentage,
+  amber below 90% and identical above — so 99% and 91% read the same and
+  neither said anything, on a figure that runs from 6% to 99.6% across real
+  sessions. One word sits beside it: outstanding at 99%+, good from 95, ok
+  from 85, low below. The bands are set against the observed spread rather
+  than picked for roundness, so *outstanding* lands on about one session in
+  nine and is worth reading.
+
+  It describes a state, not a performance — the cache is Claude Code's doing
+  and Caprock only reads it — and `low` is a fact rather than a verdict: a
+  short session has little to reuse. Nothing animates; this dashboard sits
+  open all day, and motion here means live data and nothing else.
+
+### Added
+
 - **The share card asks the reader what theirs is.** It carried a figure and a
   domain and stopped there — someone seeing another person's total had no
   reason to think it was a thing they could do too. A question, not an install

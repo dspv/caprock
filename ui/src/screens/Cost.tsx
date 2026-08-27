@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api, type DailyStat } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
+import { cacheLevel } from '@/lib/cachelevel'
 import { fmtModel, fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
 import { Empty, Panel, Skeleton, Stat } from '@/components/ui'
 import { BarChart, BarReadout } from '@/components/BarChart'
@@ -69,7 +70,24 @@ export function CostScreen() {
           <Stat label="Burn now" value={measured ? `${fmtUSD(s!.burn.usd_per_hour)}/h` : '—'} sub={measured ? `${fmtTokens(Math.round(s!.burn.tokens_per_min))} tok/min · ${s!.sessions} sessions` : undefined}  />
           <Stat label="Input" value={measured ? fmtTokens(s!.tokens_in) : '—'} sub="fresh, full price" />
           <Stat label="Output" value={measured ? fmtTokens(s!.tokens_out) : '—'} sub={measured ? `${s!.turns} turns` : undefined} />
-          <Stat label="Cache read" value={measured ? fmtTokens(s!.cache_read) : '—'} sub={measured ? `${fmtPct(s!.savings.hit_rate * 100)} hit rate` : undefined} tone={measured && s!.savings.hit_rate < 0.9 ? 'warn' : undefined} />
+          {/* The word goes in the sub-line here, not beside the value: on
+            * this screen the headline figure is the token count and the hit
+            * rate is already the caption. Same bands as everywhere else. */}
+          <Stat
+            label="Cache read"
+            value={measured ? fmtTokens(s!.cache_read) : '—'}
+            sub={
+              measured ? (
+                <span className="inline-flex items-baseline gap-1.5">
+                  <span>{fmtPct(s!.savings.hit_rate * 100)} hit rate</span>
+                  {(() => {
+                    const lvl = cacheLevel(s!.savings.hit_rate * 100)
+                    return lvl ? <span className={lvl.color || 'text-fg-faint'}>{lvl.label}</span> : null
+                  })()}
+                </span>
+              ) : undefined
+            }
+          />
           <Stat label="Cache write" value={measured ? fmtTokens(s!.cache_write) : '—'} sub={measured ? `${fmtPct(s!.savings.cut_pct)} input cost cut by cache` : undefined} />
         </div>
         {/* The money screen is exactly where an incomplete total misleads. */}

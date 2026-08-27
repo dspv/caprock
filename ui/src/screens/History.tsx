@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
-import { fmtDuration, fmtPct, fmtTokens, fmtUSD, fmtTool } from '@/lib/format'
+import { fmtDuration, fmtTokens, fmtUSD, fmtTool } from '@/lib/format'
+import { CacheStat } from '@/components/CacheStat'
 import { Empty, Panel, Skeleton, Stat } from '@/components/ui'
 import { groupDays } from './Cost'
 import { BarChart, BarReadout } from '@/components/BarChart'
@@ -53,7 +54,7 @@ export function HistoryScreen() {
           <Stat size="compact" label="Avg session span" value={measured ? fmtDuration(Math.round(d!.totals.avg_session_sec * 1000)) : '—'} sub="first to last event" />
           {/* A never-used cache is 0%, which tripped the < 90% warn tone and
             * painted a fault light onto an empty install. */}
-          <Stat size="compact" label="Cache hit" value={measured ? fmtPct(d!.savings.hit_rate * 100) : '—'} sub={measured ? `${fmtPct(d!.savings.cut_pct)} input cost cut` : undefined} tone={measured && d!.savings.hit_rate < 0.9 ? 'warn' : undefined} />
+          <CacheStat hitRate={d?.savings.hit_rate} cutPct={d?.savings.cut_pct} measured={measured} />
           {/* "API-equivalent" was our jargon on the largest number in the
               product; it explained nothing to someone meeting it for the
               first time, and three of five readers took it for a bill. */}
