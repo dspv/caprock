@@ -60,6 +60,59 @@ in the first six weeks.
 
 ---
 
+## GTM-009 — No cold DMs, and no scraping chat members
+
+**Decided 2026-08-27.** Considered and rejected: harvesting the member lists of
+Telegram groups the owner belongs to, and writing to those people individually.
+
+**Why not.** Telegram bans accounts for exactly this, and quickly — the first
+few reports are enough. What gets lost is not a throwaway: it is the owner's
+own number and the personal channel the whole strategy in
+[01-channel.md](01-channel.md) is built on. Trading the asset for a week of
+outreach is a bad trade at any conversion rate.
+
+The second reason stands on its own. People in those groups joined a group;
+they did not agree to be collected into a list. However well a message is
+personalised, being in someone's scraped database is the thing spam is, and it
+reads that way.
+
+**What replaces it.** Answering in the group, in public, with his own figures,
+when someone asks a question the numbers answer. Whoever is interested writes
+first. Slower, and it costs nothing that cannot be replaced.
+
+**Reverses if** never, for the automated form. A human conversation with
+someone who has just asked about Claude Code is a different thing and always
+was.
+
+---
+
+## GTM-010 — A Telegram bot that stores nothing
+
+**Decided 2026-08-27.** A bot is worth building as an entry point, and the
+thing that decides whether it can exist is what it does with data.
+
+It takes what a person chooses to paste — the output of `caprock report`, which
+is already the shape they would post publicly — draws the share card, and keeps
+nothing. No transcripts, no prompts, no code, no history. The card comes back
+and the input is gone.
+
+**Why this shape and not a better one.** A bot that ingested transcripts would
+be more useful and would need no install at all — and it would take the user's
+prompts and their code onto a server we run, which contradicts rule 4 and the
+three places the site says nothing leaves your machine. The version that stores
+nothing is weaker and is the only one that can be built without rewriting what
+the product claims to be.
+
+**What it buys.** Advertising in Telegram can point at "message a bot" rather
+than "install a binary", which is a far lower step, and it is advertising
+rather than outreach — see [GTM-009](#gtm-009--no-cold-dms-and-no-scraping-chat-members).
+
+**Not started.** No user has asked for it; it is a channel idea, and it queues
+behind the six weeks of posts in [06-content-plan.md](06-content-plan.md) that
+cost nothing to run.
+
+---
+
 ## GTM-002 — First name, no surname
 
 **Decided 2026-08-24.**
