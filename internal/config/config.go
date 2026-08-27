@@ -61,19 +61,6 @@ type Config struct {
 	PlanLabel       string  `json:"plan_label"`
 	PlanUSDPerMonth float64 `json:"plan_usd_per_month"`
 
-	// LAN turns on access from other devices on the same network — a tablet,
-	// a phone — instead of loopback only.
-	//
-	// Off by default and never inferred. Bound to loopback, nothing outside
-	// this machine can connect at all; bound to the LAN, everything on that
-	// network can try, and a pairing code is what stands between them and the
-	// dashboard. That is a real reduction in safety, so it is a decision the
-	// user makes rather than a convenience we switch on for them.
-	//
-	// Rule 4 still holds: this reaches no server of ours, registers no name,
-	// and opens no tunnel. The traffic never leaves the user's own network.
-	LAN bool `json:"lan"`
-
 	// LicenseKey unlocks the paid features. Checked locally against its own
 	// embedded expiry — no network call, no signature (ADR-022). Empty is the
 	// normal state: the free product is the whole product for one person.

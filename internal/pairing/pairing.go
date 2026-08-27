@@ -1,6 +1,18 @@
 // Package pairing lets a second device — a tablet, a phone — reach a daemon
 // that is otherwise bound to loopback.
 //
+// NOTHING USES THIS YET. No listener is opened, no endpoint is served, and no
+// screen offers to pair anything. It was built and tested first because it is
+// the part that decides who gets in, and then the feature it belongs to was
+// put on hold: nobody has asked to reach Caprock from a phone, and the three
+// ways of arranging it differ so much in what they cost the user that
+// choosing one before anyone wants it would be guessing. See FB-019 in
+// .fdck/01-ledger.md.
+//
+// Kept rather than deleted because the reasoning here — single-use codes,
+// constant-time comparison, immediate revocation, never binding 0.0.0.0 — is
+// the expensive part to get right and does not change whichever route wins.
+//
 // The rule that shapes everything here is rule 4: all data stays on the
 // machine. Nothing in this package reaches the network, registers a name, or
 // opens a tunnel. What it does is narrower: when the user explicitly turns it

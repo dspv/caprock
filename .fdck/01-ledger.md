@@ -9,6 +9,7 @@ started) · **building** · **shipped** (in a release, with the version) ·
 
 | Id     | Date       | From  | Request                                                            | Status  | Landed in         |
 | ------ | ---------- | ----- | ------------------------------------------------------------------ | ------- | ----------------- |
+| FB-019 | 2026-08-27 | Dima  | Reach Caprock from a tablet or phone, the way Claude Code is       | open    | —                 |
 | FB-018 | 2026-08-27 | Vova  | Shift+Enter did not work for him; Option+Enter was what he pressed | shipped | v0.31.3           |
 | FB-017 | 2026-08-27 | Dima  | Wanted an update button, or at least clear steps per OS            | shipped | v0.31.2           |
 | FB-016 | 2026-08-27 | Almas | brew said "already installed" for a release that was already out   | shipped | v0.31.2           |
@@ -29,6 +30,39 @@ started) · **building** · **shipped** (in a release, with the version) ·
 | FB-001 | 2026-08-24 | Alex  | Hooks never fired on Windows                                       | shipped | v0.27.3 + v0.27.4 |
 
 ## Detail
+
+### FB-019 — Reach it from a tablet
+
+Dima's idea, not a user request — which is why it is open rather than planned.
+The picture is a Mac mini running Caprock and a tablet as the pane of glass.
+
+**Nobody has asked for this.** Vova replaced his IDE with Caprock and never
+mentioned a phone; Almas asked how to upgrade. Before any of the three routes
+below is worth building, the question is whether anyone wants it at all.
+
+The premise needs correcting too: **Claude Code has no tunnel of its own.**
+People who drive it from a phone install Tailscale, ngrok, or forward a port
+over SSH — the product does not do it for them. What people picture when they
+say "like Claude Code from my phone" is usually claude.ai, which is a hosted
+product with Anthropic's servers behind it, not Claude Code on their machine.
+
+Three routes, and they are not variations on one thing:
+
+- **LAN.** The daemon also listens on a private address, a device pairs with a
+  short code. Works at home and in the office, not from a café. Nothing leaves
+  the network. The safety core for this is built and tested
+  (`internal/pairing`); no listener is wired up.
+- **Our own relay.** Works anywhere. Sessions — what Claude wrote, which files
+  it touched — would pass through a machine we run, which contradicts rule 4
+  and the three places the site says nothing leaves your machine. Also servers,
+  cost, and responsibility for other people's code.
+- **Someone else's tunnel (Tailscale).** Works anywhere, traffic goes directly
+  between the user's own devices, encrypted, with no server of ours. The user
+  installs it — which is what people already do with Claude Code. Our part
+  would be a page explaining it and a dashboard that helps: show the address,
+  check the tunnel is up, offer a QR.
+
+Held until somebody asks.
 
 ### FB-018 — Option+Enter, not Shift+Enter
 
