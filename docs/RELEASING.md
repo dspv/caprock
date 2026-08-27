@@ -85,6 +85,36 @@ git tag -a v0.1.0 -m "…" && git push origin v0.1.0
 `goreleaser release --clean` is idempotent; with `HOMEBREW_TAP_TOKEN` set it will
 complete the formula push it previously skipped.
 
+## Never move a tag that has already run (2026-08-27)
+
+`release.draft: false` means the first `goreleaser` run **publishes** — the
+release and its assets exist the moment the workflow succeeds at that step.
+Force-moving the tag afterwards does not replace them: the second run finds the
+release already there and every upload fails with
+
+```
+422 Validation Failed [{Resource:ReleaseAsset Field:name Code:already_exists}]
+```
+
+and the published release keeps binaries built from the **earlier** commit,
+while `CHANGELOG.md` describes the later one. The tap formula points at those
+older tarballs by sha, so `brew install` serves them too.
+
+**Finish every change before tagging.** If a tag has to be re-cut anyway,
+delete the release and the remote tag first, and check the download counts
+before you do:
+
+```bash
+gh api repos/dspv/caprock/releases/<id> --jq '.assets[] | "\(.name) \(.download_count)"'
+gh release delete vX.Y.Z --yes
+git push origin :refs/tags/vX.Y.Z
+git tag -d vX.Y.Z && git tag -a vX.Y.Z -m "…" && git push origin vX.Y.Z
+```
+
+Deleting a release people have already downloaded is a different decision and
+needs asking first — zero downloads is what makes the delete safe, not the fact
+that it is broken.
+
 ## The `brews` deprecation warning is expected (2026-08-20)
 
 Every release logs `DEPRECATED: brews should not be used anymore`. **This is
