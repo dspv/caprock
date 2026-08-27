@@ -48,6 +48,38 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-08-27 — The share card, decided by looking at it
+
+The card was a poster: a heading, one enormous number, three figures and a
+disclaimer. Nobody shares a poster about their own work — what people post is a
+screenshot of the thing working, which is what the owner said and what the
+rebuild follows.
+
+**Three layouts were drawn on real figures and looked at, not described.** The
+one that read as a cropped screenshot was rejected on sight — panels of
+differing heights, bars running under their own numbers — and the one that won
+is the dashboard's own shape: eight tiles over two breakdowns.
+
+**What the card does not carry is the part worth remembering.** The
+instantaneous burn rate read $7.33 one minute and $33.54 the next; a figure
+true for ninety seconds does not belong on an image that lives in a feed for
+weeks. Turns and tool calls went because nobody has a feel for them, and the
+session count went because it was the same problem in another unit — replaced
+by cost per million tokens, the only tile that answers *dear or cheap*.
+
+**Three defects were found by looking at the real output rather than a
+mockup**: thin bars drew as hooks (a corner radius wider than the bar), the
+caveat had been dropped in the rewrite, and gateway model ids carry a slash
+that on a posted image is indistinguishable from a repository path. The SVG
+mockups showed none of them — canvas rounds corners differently, and the
+mockups used ids that happened to have no slash.
+
+The button that produces it was the word "share" in 11px grey between
+"feedback" and "status". It is now in the ALL TIME panel beside the figures,
+and the nudging moved to a separate control that waits for an occasion — a
+button that renames itself to shout about a milestone is one people stop
+recognising.
+
 ### 2026-08-27 — The paid tier gets a boundary, and gives one feature back
 
 Three things, and the middle one is the one worth keeping.

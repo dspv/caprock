@@ -9,6 +9,53 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.31.0] - 2026-08-27
+
+### Changed
+
+- **The share card looks like the dashboard, not like an advert.** What people
+  post is a screenshot of the thing working; the old card was a poster with one
+  enormous number on it. It now carries eight tiles — today, the week, the
+  month, all time, the daily average, tokens, cost per million and the cache
+  rate — over two breakdowns: where the money went by model and what it went on
+  by kind of work, each with a percentage beside the figure.
+
+  Three figures were deliberately dropped. The instantaneous burn rate read
+  $7.33 one minute and $33.54 the next, and a card that lives in a feed for
+  weeks must not carry a number that was true for ninety seconds. Turns and
+  tool calls are counts of things nobody has a feel for; tokens sit next to the
+  money and explain it. The session count was the same problem in another unit,
+  and became cost per million tokens — the one figure that answers "dear or
+  cheap" rather than "how much".
+
+  The card is dated, and so is the file: saving two otherwise leaves you with
+  `caprock.png` and `caprock (1).png`.
+
+- **The share button can be found.** It was the word "share" in 11px grey in
+  the header, between "feedback" and "status". It is now an accent-bordered
+  button in the ALL TIME panel, beside the figures it offers to post, and it is
+  always there — whether someone's numbers are worth posting is their call.
+
+### Added
+
+- **A nudge when there is something worth saying**, separate from the button.
+  Three occasions, each reaching a different kind of user: a round number
+  crossed, the first full week of data, and a week clear of every week before
+  it. A record needs to beat the previous best by a fifth — while usage grows,
+  "highest ever" is true nearly every week, and a prompt that fires every week
+  is one people stop reading. At most once a week, dismissible.
+
+### Fixed
+
+- **Thin bars on the share card were drawn as hooks.** A corner radius wider
+  than the bar itself: haiku at $0.59 is two pixels beside opus at $5,338, and
+  3px rounding turned it into a squiggle.
+- **The card had lost its caveat** while being rewritten. A dollar figure
+  posted without "not a bill, and not money saved" reads as a bill somebody
+  paid.
+- **Model ids from a gateway carried a slash** — `minimax/minimax-m3` — which
+  on an image about to be posted is indistinguishable from a repository path.
+
 ## [0.30.1] - 2026-08-27
 
 ### Fixed
