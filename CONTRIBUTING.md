@@ -68,6 +68,12 @@ the only real check on what is about to be public is a person seeing it.
 This is not a CI job on purpose. CI has no real database, and generating a
 plausible one would put invented figures in front of the public — rule 6.
 
+**Refresh them on a minor version, not on every patch.** The header carries the
+running version, so a screenshot taken on v0.31.2 says v0.31.2 after v0.31.3
+ships — and that is fine. Re-shooting for a hotfix costs a review of eight
+images to change one digit nobody is reading. Shoot when a screen actually
+changed.
+
 The site keeps its own copies in `caprock-web/public/shots/` rather than
 pulling from this repository's `master`, so refreshing the README cannot change
 what is published on caprock.dev. Copy them across and commit them separately
