@@ -100,10 +100,19 @@ docs-links: ## Fail if any relative markdown link does not resolve
 .PHONY: check
 check: docs-check docs-links lint test dist-check smoke ## Docs gates + lint + test + dist sync + smoke (what CI runs, minus the OS matrix)
 
+.PHONY: shots
+shots: ## Re-take the documented screenshots and open a PR (needs a real database)
+	@bash scripts/refresh-shots.sh
+
 .PHONY: reload
 reload: build ## Build the dashboard + binaries and restart the running daemon on this machine
+	@# Runs ./bin/caprock rather than installing over the copy on PATH.
+	@#
+	@# It used to `install` over whatever `command -v caprock` found, which on a
+	@# Homebrew machine replaces brew's symlink with a plain file: `brew upgrade`
+	@# then reports success while PATH still resolves to the dev build, and the
+	@# next `brew doctor` complains. Exactly the breakage the update dialog warns
+	@# about, caused by our own dev loop. Recovering meant `brew link --overwrite`.
 	@$(BIN)/caprock down >/dev/null 2>&1 || true
-	@install -m 0755 $(BIN)/caprock $(shell dirname $(shell command -v caprock 2>/dev/null || echo $(BIN)/caprock))/caprock
-	@install -m 0755 $(BIN)/caprock-hook $(shell dirname $(shell command -v caprock 2>/dev/null || echo $(BIN)/caprock))/caprock-hook
-	@caprock up --no-open >/dev/null 2>&1 || true
-	@echo "reloaded → $$(caprock --version)"
+	@$(BIN)/caprock up --no-open >/dev/null 2>&1 || true
+	@echo "reloaded → $$($(BIN)/caprock --version) (from ./bin; the copy on PATH is untouched)"

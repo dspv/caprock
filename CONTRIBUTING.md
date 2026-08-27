@@ -46,6 +46,33 @@ Full engineering rules: [`.ai/06-engineering-rules.md`](.ai/06-engineering-rules
 New to the codebase? Read [`.ai/00-index.md`](.ai/00-index.md) first — it maps
 every doc to when you'd read it.
 
+## Screenshots
+
+The README's screenshots are taken from a real database, which is what makes
+them worth showing — and also what makes them dangerous. `scripts/shots.py`
+scrubs the copy it captures from: project directories are renamed unless they
+are on a short allow-list, so a name it has never seen is anonymised by default
+rather than published because nobody thought to block it. The script refuses to
+run if the scrub fails.
+
+```bash
+make shots              # capture, commit to a branch, open a PR
+```
+
+It snapshots your database with sqlite's own `.backup` (never a `cp` — copying
+a file being written to yields one that may not open), serves the copy on a
+throwaway daemon on port 4290 with `--no-hooks`, captures both themes, and
+opens a PR. **Look at the images before merging.** The scrubber is careful, but
+the only real check on what is about to be public is a person seeing it.
+
+This is not a CI job on purpose. CI has no real database, and generating a
+plausible one would put invented figures in front of the public — rule 6.
+
+The site keeps its own copies in `caprock-web/public/shots/` rather than
+pulling from this repository's `master`, so refreshing the README cannot change
+what is published on caprock.dev. Copy them across and commit them separately
+when you want the site to move.
+
 ## Where we're headed
 
 The three phases — Observe, Control, Orchestrate — have shipped (v0.1.0–v0.3.0).
