@@ -56,6 +56,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      # The release body is what the dashboard shows under "what's new", and
+      # goreleaser's default is a list of commit subjects with their hashes.
+      # CHANGELOG.md already says what changed in prose; use that. A missing
+      # section fails here rather than shipping an empty "what's new".
+      - name: Release notes from CHANGELOG
+        run: python3 scripts/release-notes.py "${GITHUB_REF_NAME}" > /tmp/release-notes.md
       - uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
@@ -67,7 +73,7 @@ jobs:
           # is macOS-only and would break `brew install` on Linux — see the
           # long note in .goreleaser.yaml before changing either.
           version: "2.17.1"
-          args: release --clean
+          args: release --clean --release-notes /tmp/release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # PAT with contents:write on dspv/homebrew-tap so goreleaser can push

@@ -7,25 +7,60 @@ Status is one of: **open** (no decision yet) · **planned** (decided yes, not
 started) · **building** · **shipped** (in a release, with the version) ·
 **declined** (decided no, with the reason in the story).
 
-| Id     | Date       | From | Request                                                      | Status  | Landed in         |
-| ------ | ---------- | ---- | ------------------------------------------------------------ | ------- | ----------------- |
-| FB-015 | 2026-08-27 | Dima | Hover invisible, caveat too wordy, two buttons out of line   | shipped | unreleased        |
-| FB-014 | 2026-08-27 | Dima | The premium banner's line was a metaphor, not an explanation | shipped | v0.31.1           |
-| FB-013 | 2026-08-27 | Dima | Sharing a card produced two images, downloading produced one | shipped | v0.31.1           |
-| FB-012 | 2026-08-27 | Dima | Plan limits looked odd and belonged to nothing on the screen | shipped | v0.31.1           |
-| FB-011 | 2026-08-27 | Dima | No clear way to update; the share button was easy to miss    | shipped | v0.31.1           |
-| FB-010 | 2026-08-27 | Dima | The share dialog explained too much and read as a hang       | shipped | v0.31.0           |
-| FB-009 | 2026-08-27 | Vova | Shift+Enter in the terminal, for multi-line prompts          | shipped | v0.30.1           |
-| FB-008 | 2026-08-26 | Vova | Pay for models from inside Caprock                           | open    | —                 |
-| FB-007 | 2026-08-26 | Vova | Show plan limits where they are actually looked at           | shipped | v0.28.0           |
-| FB-006 | 2026-08-26 | Vova | Quick chat: a findable "new project" that makes the folder   | shipped | v0.28.0           |
-| FB-005 | 2026-08-26 | Vova | Third-party model providers, free ones first                 | part    | v0.30.0           |
-| FB-004 | 2026-08-26 | Vova | JetBrains Mono in the terminal — Cyrillic was unreadable     | shipped | v0.28.0           |
-| FB-003 | 2026-08-26 | Vova | Would pay $20/mo; $50 with models; $100 with Claude+GPT      | open    | —                 |
-| FB-002 | 2026-08-25 | Vova | Filter the dashboard by agent after OpenCode appeared        | shipped | v0.21.4           |
-| FB-001 | 2026-08-24 | Alex | Hooks never fired on Windows                                 | shipped | v0.27.3 + v0.27.4 |
+| Id     | Date       | From  | Request                                                          | Status  | Landed in         |
+| ------ | ---------- | ----- | ---------------------------------------------------------------- | ------- | ----------------- |
+| FB-017 | 2026-08-27 | Dima  | Wanted an update button, or at least clear steps per OS          | shipped | v0.31.2           |
+| FB-016 | 2026-08-27 | Almas | brew said "already installed" for a release that was already out | shipped | v0.31.2           |
+| FB-015 | 2026-08-27 | Dima  | Hover invisible, caveat too wordy, two buttons out of line       | shipped | v0.31.2           |
+| FB-014 | 2026-08-27 | Dima  | The premium banner's line was a metaphor, not an explanation     | shipped | v0.31.1           |
+| FB-013 | 2026-08-27 | Dima  | Sharing a card produced two images, downloading produced one     | shipped | v0.31.1           |
+| FB-012 | 2026-08-27 | Dima  | Plan limits looked odd and belonged to nothing on the screen     | shipped | v0.31.1           |
+| FB-011 | 2026-08-27 | Dima  | No clear way to update; the share button was easy to miss        | shipped | v0.31.1           |
+| FB-010 | 2026-08-27 | Dima  | The share dialog explained too much and read as a hang           | shipped | v0.31.0           |
+| FB-009 | 2026-08-27 | Vova  | Shift+Enter in the terminal, for multi-line prompts              | shipped | v0.30.1           |
+| FB-008 | 2026-08-26 | Vova  | Pay for models from inside Caprock                               | open    | —                 |
+| FB-007 | 2026-08-26 | Vova  | Show plan limits where they are actually looked at               | shipped | v0.28.0           |
+| FB-006 | 2026-08-26 | Vova  | Quick chat: a findable "new project" that makes the folder       | shipped | v0.28.0           |
+| FB-005 | 2026-08-26 | Vova  | Third-party model providers, free ones first                     | part    | v0.30.0           |
+| FB-004 | 2026-08-26 | Vova  | JetBrains Mono in the terminal — Cyrillic was unreadable         | shipped | v0.28.0           |
+| FB-003 | 2026-08-26 | Vova  | Would pay $20/mo; $50 with models; $100 with Claude+GPT          | open    | —                 |
+| FB-002 | 2026-08-25 | Vova  | Filter the dashboard by agent after OpenCode appeared            | shipped | v0.21.4           |
+| FB-001 | 2026-08-24 | Alex  | Hooks never fired on Windows                                     | shipped | v0.27.3 + v0.27.4 |
 
 ## Detail
+
+### FB-017 — "Can it update itself, or at least tell me how"
+
+Asked twice, and my first answer conflated two things. Self-updating is not
+impossible — a daemon can fetch a new binary, put it in place and restart. What
+makes it wrong here is ownership: where Homebrew, Scoop or `go install` owns
+the binary, replacing it behind their back breaks the next upgrade, and on
+macOS a binary fetched outside that path loses its notarisation.
+
+So: no button, and the dialog now says why rather than leaving someone hunting
+for one. What it does instead is answer the whole question — tabs for macOS,
+Linux and Windows, the routes each has, and three numbered steps (update,
+restart, check) with their own copy buttons. The platform choice is remembered.
+Where the daemon's own reading of the binary path contradicts the browser's
+user-agent, the daemon wins.
+
+Also asked for and shipped: **"what's new" beside the version** — the release's
+own notes in a dialog, from the same response that already carries the version.
+
+### FB-016 — Homebrew said "already installed" for a release that was out
+
+Almas ran `brew upgrade caprock` and got `0.31.0 already installed` hours after
+0.31.1 shipped.
+
+**Nothing was broken — the tap was stale on his machine.** A tap is not served
+by the Homebrew API; it is read from a local git clone that `brew upgrade`
+refreshes only through auto-update, which runs at most once every 24 hours. He
+had run some brew command earlier that day, so the window had closed.
+
+The sting is that Caprock itself hands people that command. Every place that
+names it now says `brew update && brew upgrade caprock`: the dashboard dialog,
+the README, and the install page on the site. A test pins the reason so it does
+not get "simplified" back into the broken form.
 
 ### FB-015 — Three things the eye caught
 

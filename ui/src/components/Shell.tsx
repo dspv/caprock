@@ -6,6 +6,17 @@ import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { useTheme } from '@/lib/theme'
 import { api, type UpdateStatus } from '@/lib/api'
+import {
+  PLATFORMS,
+  commandContradicts,
+  guessPlatform,
+  platformFromCommand,
+  routeFromCommand,
+  routesFor,
+  savePlatform,
+  savedPlatform,
+  type Platform,
+} from '@/lib/updatesteps'
 import { useApi } from '@/lib/useApi'
 import { PlanChip, usePlan } from '@/components/PlanPicker'
 import { FeedbackButton } from '@/components/Feedback'
@@ -167,6 +178,7 @@ function VersionChip() {
   const st = useApi(() => api.status(), [], { live: false, intervalMs: 60000 })
   const upd = useApi(() => api.update().catch(() => undefined), [], { live: false, intervalMs: 60000 })
   const [open, setOpen] = useState(false)
+  const [notes, setNotes] = useState(false)
   const version = st.data?.version
   if (!version) return null
   // A source build reports a `git describe` string or "dev"; showing that
@@ -186,26 +198,115 @@ function VersionChip() {
       >
         {newer ? `${version} → ${newer}` : release ? version : 'dev build'}
       </button>
+      {/* "What's new" beside the version, always — not only on the day a
+        * release lands. Someone who has just upgraded wants to read what they
+        * got, and that is exactly the moment they go looking. It never opens
+        * on its own: a modal that appears uninvited on a dashboard someone
+        * keeps open all day is a tax, not a courtesy. */}
+      {upd.data?.notes && (
+        <button
+          onClick={() => setNotes(true)}
+          className="text-[11px] text-fg-faint hover:text-accent"
+          title={`what changed in ${upd.data.notes_for ?? 'the latest release'}`}
+        >
+          what&apos;s new
+        </button>
+      )}
       {open && <UpdateDialog onClose={() => setOpen(false)} />}
+      {notes && upd.data && <NotesDialog u={upd.data} onClose={() => setNotes(false)} />}
     </>
   )
 }
 
 /** Version, what is published, and the one command that closes the gap. */
+/**
+ * What changed in the published release, in the release's own words.
+ *
+ * The text comes from GitHub, in the same response that already tells us the
+ * latest tag — so this costs no extra request and no further exposure, and it
+ * is never fetched at all unless the user turned release checks on.
+ *
+ * Rendered as plain text rather than parsed as Markdown. Release bodies are
+ * written by us, but they are still remote content, and a dialog that renders
+ * remote markup is a surface a local-first tool has no reason to open. The
+ * headings and bullets read perfectly well as the lines they already are.
+ */
+function NotesDialog({ u, onClose }: { u: UpdateStatus; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-30 bg-black/50 flex items-start justify-center pt-[10vh] px-4" onClick={onClose}>
+      <div
+        className="w-full max-w-[620px] max-h-[76vh] flex flex-col border border-border-strong bg-panel rounded-[var(--radius-panel)] shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-label="What's new"
+      >
+        <div className="px-4 pt-3 pb-2 border-b border-border flex items-baseline gap-2">
+          <span className="text-[15px] font-medium">What&apos;s new</span>
+          {u.notes_for && <span className="mono text-[12px] text-accent">{u.notes_for}</span>}
+          <button onClick={onClose} className="ml-auto text-[16px] leading-none text-fg-faint hover:text-fg">×</button>
+        </div>
+        <div className="overflow-y-auto px-4 py-3">
+          <pre className="whitespace-pre-wrap break-words font-sans text-[13px] leading-relaxed text-fg-muted">
+            {u.notes}
+          </pre>
+        </div>
+        <div className="border-t border-border px-4 py-2.5">
+          <a
+            href={u.url ?? 'https://github.com/dspv/caprock/releases/latest'}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[12px] text-fg-faint no-underline hover:text-accent"
+          >
+            the full release on GitHub →
+          </a>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function UpdateDialog({ onClose }: { onClose: () => void }) {
   const st = useApi(() => api.status(), [], { live: false, intervalMs: 0 })
   const upd = useApi(() => api.update().catch(() => undefined), [], { live: false, intervalMs: 0 })
   const [checking, setChecking] = useState(false)
   const [fresh, setFresh] = useState<UpdateStatus | undefined>(undefined)
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState('')
+  // The opening tab is a guess the user can overrule, and their choice sticks:
+  // a person who runs Caprock on a Linux box from a Mac browser should not
+  // re-pick Linux every time.
+  const [platform, setPlatform] = useState<Platform>(
+    () => savedPlatform() ?? guessPlatform(navigator.userAgent, (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform),
+  )
+  const [picked, setPicked] = useState(false)
   const u = fresh ?? upd.data
   const version = st.data?.version ?? ''
   const release = /^v?\d+\.\d+\.\d+$/.test(version)
-  // The daemon fills this in from the path it is running from, so it is right
-  // for Homebrew, `go install` and a downloaded binary alike. It only arrives
-  // with an available update, so fall back to the release page when it is
-  // absent — better a page to click than a blank space.
-  const cmd = u?.command
+
+  // The daemon read the binary's real path; the browser only guessed. When the
+  // guess cannot be right — a `brew` command on a tab showing Scoop — the
+  // daemon wins, unless the reader has deliberately picked a platform, in
+  // which case they are looking up another machine and should be left alone.
+  const contradicted = !picked && commandContradicts(u?.command, platform)
+  const shown: Platform = contradicted
+    ? (platformFromCommand(u?.command) ?? (platform === 'windows' ? 'macos' : platform))
+    : platform
+  const routes = routesFor(shown)
+  // The daemon knows the binary's real path and derives a command from it, so
+  // when it has an opinion the dialog opens on the way this copy was actually
+  // installed rather than on whatever is first in the list.
+  const guessed = routeFromCommand(u?.command, routes)
+  const [routeLabel, setRouteLabel] = useState<string | undefined>(undefined)
+  const route = routes.find((r) => r.label === routeLabel) ?? guessed ?? routes[0]
+
+  const pick = (p: Platform) => {
+    setPlatform(p)
+    setPicked(true)
+    savePlatform(p)
+    // The chosen route belongs to the old platform's list; drop it so the new
+    // tab opens on its own first route rather than falling through to one that
+    // does not exist there.
+    setRouteLabel(undefined)
+  }
 
   const check = async () => {
     setChecking(true)
@@ -218,17 +319,16 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
     }
   }
 
-  const copy = () => {
-    if (!cmd) return
+  const copy = (cmd: string) => {
     void navigator.clipboard.writeText(cmd)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1600)
+    setCopied(cmd)
+    setTimeout(() => setCopied(''), 1600)
   }
 
   return (
-    <div className="fixed inset-0 z-30 bg-black/50 flex items-start justify-center pt-[14vh] px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-30 bg-black/50 flex items-start justify-center pt-[10vh] px-4" onClick={onClose}>
       <div
-        className="w-full max-w-[460px] border border-border-strong bg-panel rounded-[var(--radius-panel)] shadow-lg"
+        className="w-full max-w-[560px] max-h-[80vh] overflow-y-auto border border-border-strong bg-panel rounded-[var(--radius-panel)] shadow-lg"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-label="Version and updates"
@@ -237,60 +337,102 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
           <span className="text-[15px] font-medium">Version</span>
           <button onClick={onClose} className="ml-auto text-[16px] leading-none text-fg-faint hover:text-fg">×</button>
         </div>
-        <div className="p-4 grid gap-3">
+        <div className="p-4 grid gap-3.5">
           <div className="flex items-baseline gap-2 text-[13px]">
             <span className="text-fg-muted">running</span>
             <span className="mono text-fg">{release ? version : `${version} (local build)`}</span>
+            {u?.update_available && <span className="mono text-accent">→ {u.latest} is out</span>}
           </div>
 
-          {u?.update_available ? (
-            <>
-              <div className="text-[15px] text-fg">
-                <span className="mono text-accent">{u.latest}</span> is out.
-              </div>
-              {cmd && (
-                <div className="grid gap-1.5">
-                  <div className="text-[12px] text-fg-muted">Run this to update:</div>
-                  <div className="flex items-center gap-2">
-                    <code className="mono flex-1 truncate rounded-sm border border-border bg-bg px-2 py-1.5 text-[13px] text-fg">{cmd}</code>
-                    <button
-                      onClick={copy}
-                      className="rounded-md border border-accent/45 bg-accent/[0.08] px-3 py-1.5 text-[13px] text-accent hover:bg-accent/[0.16]"
-                    >
-                      {copied ? 'copied' : 'copy'}
-                    </button>
-                  </div>
-                  {/* Caprock will not overwrite its own binary. Saying why,
-                    * once, beats a user wondering where the button is. */}
-                  <div className="text-[11px] text-fg-faint">
-                    Caprock does not update itself — it would have to overwrite its own binary while running.
-                  </div>
-                </div>
-              )}
-              {/* A downloaded binary or a container: no package manager owns
-                * this copy, so `InstallCommand` returns "" rather than name a
-                * command that might do the wrong thing. Without this branch
-                * the dialog announced a new version and then said nothing
-                * about how to get it — the exact gap it exists to close. */}
-              {!cmd && (
-                <div className="text-[13px] text-fg-muted">
-                  This copy was not installed by a package manager, so there is no one command to give you.
-                  Download the new binary from the release page below and replace this one.
-                </div>
-              )}
-            </>
-          ) : u?.enabled === false ? (
+          {u?.enabled === false ? (
             <div className="text-[13px] text-fg-muted">
               Release checks are off, so this copy never asks GitHub what the latest version is. Turn them on in{' '}
               <a href="#/status" onClick={onClose} className="text-accent no-underline hover:text-accent-strong">status</a>.
             </div>
-          ) : (
+          ) : !u?.update_available ? (
             <div className="text-[13px] text-fg-muted">
               {u?.latest ? `Up to date — ${u.latest} is the latest release.` : 'No newer release found.'}
             </div>
-          )}
+          ) : null}
 
-          <div className="flex items-center gap-3 pt-1">
+          {/* The steps are shown whether or not an update is pending: someone
+            * who opens this dialog wants to know how updating works, and
+            * hiding the answer until the day a release lands means they read
+            * it for the first time in a hurry. */}
+          <div className="grid gap-2">
+            <div className="flex items-center gap-1">
+              {PLATFORMS.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => pick(p.id)}
+                  className={`rounded-sm px-2.5 py-1 text-[12px] transition-colors ${
+                    shown === p.id ? 'bg-accent text-panel font-medium' : 'text-fg-muted hover:text-fg'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+              {routes.length > 1 && (
+                <span className="ml-auto flex items-center gap-1">
+                  {routes.map((r) => (
+                    <button
+                      key={r.label}
+                      onClick={() => setRouteLabel(r.label)}
+                      className={`rounded-sm px-2 py-1 text-[11px] transition-colors ${
+                        route.label === r.label ? 'text-accent' : 'text-fg-faint hover:text-fg-muted'
+                      }`}
+                      title={r.label === guessed?.label ? 'how this copy appears to be installed' : undefined}
+                    >
+                      {r.label}
+                      {r.label === guessed?.label ? ' ·' : ''}
+                    </button>
+                  ))}
+                </span>
+              )}
+            </div>
+
+            <ol className="grid gap-2.5">
+              {route.steps.map((step, i) => (
+                <li key={i} className="grid gap-1">
+                  <div className="flex items-baseline gap-2">
+                    <span className="mono text-[11px] text-fg-faint">{i + 1}</span>
+                    {step.cmd ? (
+                      <>
+                        <code className="mono flex-1 truncate rounded-sm border border-border bg-bg px-2 py-1.5 text-[13px] text-fg">
+                          {step.cmd}
+                        </code>
+                        <button
+                          onClick={() => copy(step.cmd)}
+                          className="shrink-0 rounded-md border border-accent/45 bg-accent/[0.08] px-2.5 py-1.5 text-[12px] text-accent hover:bg-accent/[0.16]"
+                        >
+                          {copied === step.cmd ? 'copied' : 'copy'}
+                        </button>
+                      </>
+                    ) : (
+                      <a
+                        href={u?.url ?? 'https://github.com/dspv/caprock/releases/latest'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 rounded-sm border border-border bg-bg px-2 py-1.5 text-[13px] text-accent no-underline hover:text-accent-strong"
+                      >
+                        Open the release page →
+                      </a>
+                    )}
+                  </div>
+                  <p className="pl-5 text-[11px] leading-relaxed text-fg-faint">{step.note}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          {/* Said once, plainly. Without it people look for the button that
+            * does this for them and conclude it is hidden. */}
+          <div className="text-[11px] leading-relaxed text-fg-faint border-t border-border pt-3">
+            Caprock does not update itself: it would have to overwrite its own binary while running, and where a
+            package manager owns that binary, replacing it behind their back breaks the next upgrade.
+          </div>
+
+          <div className="flex items-center gap-3">
             <button
               onClick={check}
               disabled={checking}

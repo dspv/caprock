@@ -243,6 +243,10 @@ export interface UpdateStatus {
   url?: string
   checked_at?: number
   error?: string
+  /** The published release's own description of what changed. */
+  notes?: string
+  /** The version `notes` describes — never assume it is `latest`. */
+  notes_for?: string
 }
 
 export interface DailyStat { day: string; project: string; model: string; tokens_total: number; cost_usd: number; sessions: number }

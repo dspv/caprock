@@ -9,7 +9,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.31.2] - 2026-08-27
+
 ### Fixed
+
+- **Homebrew reported "already installed" for a release that was already out.**
+  A tap is not served by the Homebrew API: it is read from a local git clone
+  that `brew upgrade` refreshes only through auto-update, which runs at most
+  once every 24 hours. A user who ran any brew command earlier the same day was
+  told `0.31.0 already installed` hours after 0.31.1 shipped — and the command
+  Caprock itself had given them appeared to be broken. Every place that names
+  the command now says `brew update && brew upgrade caprock`, with a test
+  pinning the reason so it does not get "simplified" back.
 
 - **Hovering "Save the image" now shows something.** It changed only its border
   colour — one step of grey against a dark panel — so pointing at it looked
@@ -21,7 +32,32 @@ Phase 3 (Delight) has no plan by design.
   flex row. The error message that wrapper existed for is positioned absolutely
   now, so a rare failure cannot change the height of the row.
 
+### Added
+
+- **The version chip tells you how to update, in steps.** It used to print one
+  line — the command for however the daemon guessed this copy was installed —
+  and stop, which answers only the first of three questions: run what, then
+  what, and how do I know it worked. It now shows tabs for macOS, Linux and
+  Windows with the routes each one has, the way this copy appears to be
+  installed opened first, and three numbered steps with their own copy buttons:
+  update, restart, check. The platform choice is remembered.
+
+  When the daemon's answer and the browser's guess disagree — a `brew` command
+  on a tab showing Scoop — the daemon wins. It read the binary's real path; the
+  browser read a user-agent string.
+
+- **"What's new" beside the version.** The published release's own notes, in a
+  dialog, without leaving the dashboard. The text arrives with the version in
+  `GET /v1/update` — the same GitHub response, so no extra request and no
+  further exposure — and it is rendered as text, never parsed as markup.
+
 ### Changed
+
+- **Release notes come from `CHANGELOG.md`, not from commit subjects.** The
+  dashboard shows that text under "what's new", and a generated list of
+  `1c836d5: fix(ui): …` lines is not something anyone reads. A version with no
+  changelog section now fails the release build rather than shipping an empty
+  "what's new".
 
 - **The share dialog's guarantees are two bullets, not a paragraph.** A reader
   scanning for what does and does not leave their machine should not have to

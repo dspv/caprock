@@ -44,6 +44,15 @@ archives:
 checksum:
   name_template: checksums.txt
 
+# The release body is CHANGELOG.md's entry for this version, not a list of
+# commit subjects.
+#
+# The dashboard shows this text under "what's new" (GET /v1/update carries it),
+# and a generated list of `1c836d5: fix(ui): …` lines is not something anyone
+# reads. CHANGELOG.md already says what changed in prose, which is the thing
+# worth putting in front of a person. `scripts/release-notes.py` extracts the
+# section for the tag being built; release.yml writes it to a file and passes
+# it as --release-notes.
 changelog:
   use: github
   sort: asc

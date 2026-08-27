@@ -347,10 +347,15 @@ renewal does not interrupt you.
 Use the command that matches how you installed it:
 
 ```bash
-brew upgrade caprock                                    # Homebrew
+brew update && brew upgrade caprock                     # Homebrew
 scoop update caprock                                    # Scoop
 go install github.com/dspv/caprock/cmd/caprock@latest   # go install
 ```
+
+`brew update` first is not decoration: a tap is read from a local git clone
+that `brew upgrade` refreshes only through auto-update, which runs at most once
+a day. Without it, Homebrew can report `already installed` for a release that
+has been public for hours.
 
 Then restart the daemon so the new binary is the one running:
 

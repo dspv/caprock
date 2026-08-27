@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -44,9 +45,9 @@ func TestNewer(t *testing.T) {
 // this binary, so an unknown install must produce no command at all.
 func TestCommandForPath(t *testing.T) {
 	cases := []struct{ exe, want string }{
-		{"/opt/homebrew/Cellar/caprock/0.8.0/bin/caprock", "brew upgrade caprock"},
-		{"/usr/local/Cellar/caprock/0.8.0/bin/caprock", "brew upgrade caprock"},
-		{"/home/linuxbrew/.linuxbrew/bin/caprock", "brew upgrade caprock"},
+		{"/opt/homebrew/Cellar/caprock/0.8.0/bin/caprock", "brew update && brew upgrade caprock"},
+		{"/usr/local/Cellar/caprock/0.8.0/bin/caprock", "brew update && brew upgrade caprock"},
+		{"/home/linuxbrew/.linuxbrew/bin/caprock", "brew update && brew upgrade caprock"},
 		{`C:\Users\x\scoop\apps\caprock\0.8.0\caprock.exe`, "scoop update caprock"},
 		{"/Users/x/go/bin/caprock", "go install github.com/dspv/caprock/cmd/caprock@latest"},
 		// No package manager owns these — say nothing.
@@ -137,5 +138,72 @@ func TestCheckFailureIsNotFatal(t *testing.T) {
 	}
 	if st.Error == "" {
 		t.Fatal("the failure should be visible to the user")
+	}
+}
+
+// A tap is not served by the Homebrew API: it is read from a local git clone
+// that `brew upgrade` refreshes only through auto-update, which runs at most
+// once every 24 hours. Without `brew update` first, a user who ran any brew
+// command earlier that day is told "already installed" for a release that has
+// been public for hours — and the command Caprock gave them looks broken.
+// Reported by a user on the day v0.31.1 shipped.
+func TestBrewCommandRefreshesTheTapFirst(t *testing.T) {
+	for _, exe := range []string{
+		"/opt/homebrew/Cellar/caprock/0.8.0/bin/caprock",
+		"/usr/local/Cellar/caprock/0.8.0/bin/caprock",
+		"/home/linuxbrew/.linuxbrew/bin/caprock",
+	} {
+		got := commandForPath(exe)
+		if !strings.HasPrefix(got, "brew update") {
+			t.Errorf("commandForPath(%q) = %q, want it to refresh the tap first", exe, got)
+		}
+	}
+}
+
+// The release notes ride along with the tag: GitHub returns both in one
+// response, so showing "what's new" costs no extra request and no extra
+// exposure. What matters is that a long body is cut to something a dialog can
+// hold, and cut at a line rather than mid-word.
+func TestTrimNotes(t *testing.T) {
+	if got := trimNotes("  hello\r\nworld  "); got != "hello\nworld" {
+		t.Errorf("trimNotes = %q, want CRLF normalised and trimmed", got)
+	}
+	if got := trimNotes(""); got != "" {
+		t.Errorf("trimNotes(\"\") = %q, want empty", got)
+	}
+
+	// A body far past the limit is cut at a line boundary. The bound is stated
+	// as a fixed number rather than as `notesLimit`, because comparing the
+	// constant against itself passes however the constant is changed — which
+	// is a test that cannot fail.
+	long := strings.Repeat("a line of release notes\n", 5000)
+	got := trimNotes(long)
+	if len(got) >= len(long) {
+		t.Errorf("trimNotes kept all %d bytes, want it cut", len(got))
+	}
+	if len(got) > 8000 {
+		t.Errorf("trimNotes kept %d bytes, want a dialog-sized excerpt", len(got))
+	}
+	if strings.HasSuffix(got, "a li") || strings.HasSuffix(got, "a lin") {
+		t.Errorf("trimNotes cut mid-word: %q", got[len(got)-20:])
+	}
+
+	// One enormous line with nowhere to cut still has to be bounded.
+	if got := trimNotes(strings.Repeat("x", 100_000)); len(got) > 8000 {
+		t.Errorf("trimNotes kept %d bytes of an unbroken line, want it bounded", len(got))
+	}
+}
+
+// A note must never be shown beside a version it does not describe: the
+// version it belongs to travels with it.
+func TestStatusPairsNotesWithTheirVersion(t *testing.T) {
+	c := New()
+	c.latest, c.notes, c.checkedAt = "v9.9.9", "* fixed a thing", c.Now()
+	st := c.Status(true, "v0.1.0")
+	if st.Notes != "* fixed a thing" {
+		t.Errorf("Notes = %q, want the release body", st.Notes)
+	}
+	if st.NotesFor != "v9.9.9" {
+		t.Errorf("NotesFor = %q, want the version the notes describe", st.NotesFor)
 	}
 }

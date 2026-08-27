@@ -54,6 +54,14 @@ type Status struct {
 	CheckedAt int64 `json:"checked_at,omitempty"`
 	// Error is the last failure, if any. A failed check is never fatal.
 	Error string `json:"error,omitempty"`
+	// Notes is the published release's own description of what changed, as
+	// written on GitHub. It arrives in the same response as the tag — asking
+	// for the version and then asking again for the notes would be a second
+	// request for something we already had.
+	Notes string `json:"notes,omitempty"`
+	// NotesFor is the version Notes describes. Without it a stale note could
+	// be shown beside a different version after a failed check.
+	NotesFor string `json:"notes_for,omitempty"`
 }
 
 // Checker holds the cached result. It never checks on its own: the caller
@@ -69,6 +77,7 @@ type Checker struct {
 
 	mu        sync.Mutex
 	latest    string
+	notes     string
 	checkedAt time.Time
 	lastErr   string
 }
@@ -100,6 +109,10 @@ func (c *Checker) Status(enabled bool, current string) Status {
 		st.UpdateAvailable = true
 		st.Command = InstallCommand()
 	}
+	// Offered whether or not an update is pending: someone who just upgraded
+	// wants to read what they got, and that is the moment the question is
+	// actually asked.
+	st.Notes, st.NotesFor = c.notes, c.latest
 	return st
 }
 
@@ -114,21 +127,23 @@ func (c *Checker) Check(ctx context.Context, force bool) error {
 	}
 	c.mu.Unlock()
 
-	tag, err := fetchLatestTag(ctx, c.HTTPClient, LatestURL)
+	tag, notes, err := fetchLatestRelease(ctx, c.HTTPClient, LatestURL)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if err != nil {
 		c.lastErr = err.Error()
 		return err
 	}
-	c.latest, c.lastErr, c.checkedAt = tag, "", c.Now()
+	c.latest, c.notes, c.lastErr, c.checkedAt = tag, notes, "", c.Now()
 	return nil
 }
 
-func fetchLatestTag(ctx context.Context, hc *http.Client, url string) (string, error) {
+// fetchLatestRelease returns the newest published tag and the notes that came
+// with it. Both live in one response, so reading the notes costs nothing.
+func fetchLatestRelease(ctx context.Context, hc *http.Client, url string) (tag, notes string, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	// No auth, no cookies, no body — nothing that identifies this machine
 	// beyond the IP any HTTP request necessarily carries.
@@ -136,22 +151,45 @@ func fetchLatestTag(ctx context.Context, hc *http.Client, url string) (string, e
 	req.Header.Set("User-Agent", "caprock")
 	resp, err := hc.Do(req)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("release check: HTTP %d", resp.StatusCode)
+		return "", "", fmt.Errorf("release check: HTTP %d", resp.StatusCode)
 	}
 	var body struct {
 		TagName string `json:"tag_name"`
+		Body    string `json:"body"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(nil, resp.Body, 1<<20)).Decode(&body); err != nil {
-		return "", fmt.Errorf("release check: %w", err)
+		return "", "", fmt.Errorf("release check: %w", err)
 	}
 	if body.TagName == "" {
-		return "", errors.New("release check: no tag in response")
+		return "", "", errors.New("release check: no tag in response")
 	}
-	return body.TagName, nil
+	return body.TagName, trimNotes(body.Body), nil
+}
+
+// notesLimit keeps a release description to something a dialog can hold. Ours
+// run long — the changelog entries are prose — and a modal is not where anyone
+// reads three screens of it; the release page is one click away for that.
+const notesLimit = 4000
+
+// trimNotes normalises a release body for display: CRLF out, trailing space
+// gone, and cut to a length a dialog can show without becoming the page.
+func trimNotes(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.TrimSpace(s)
+	if len(s) <= notesLimit {
+		return s
+	}
+	// Cut at a line boundary rather than mid-word, so the last thing shown is
+	// a whole thought.
+	cut := strings.LastIndex(s[:notesLimit], "\n")
+	if cut < notesLimit/2 {
+		cut = notesLimit
+	}
+	return strings.TrimSpace(s[:cut])
 }
 
 // Newer reports whether latest is a strictly newer release than current.
@@ -221,7 +259,16 @@ func commandForPath(exe string) string {
 	// Homebrew: /opt/homebrew/... (Apple silicon), /usr/local/Cellar/... (Intel),
 	// or a linuxbrew prefix.
 	case strings.Contains(p, "/Cellar/") || strings.Contains(p, "/homebrew/") || strings.Contains(p, "/linuxbrew/"):
-		return "brew upgrade caprock"
+		// `brew update` first, and it is not decoration.
+		//
+		// A tap is not served by the Homebrew API — it is read from a local
+		// git clone that `brew upgrade` only refreshes through auto-update,
+		// which runs at most once every 24 hours. A user who ran any brew
+		// command earlier the same day gets "0.31.0 already installed" for a
+		// release that has been published for hours, and the command we told
+		// them to run appears to be broken. Reported by a user on the day
+		// v0.31.1 shipped.
+		return "brew update && brew upgrade caprock"
 	// Scoop keeps apps under <scoop root>/apps/<name>/<version>.
 	case strings.Contains(lower, "/scoop/apps/"):
 		return "scoop update caprock"
