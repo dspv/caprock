@@ -20,6 +20,44 @@ explicit that he wants a personal blog, not a marketing channel.
 **Reverses if** the personal format proves impossible to sustain under the
 constraint that his surname cannot appear anywhere.
 
+**Superseded 2026-08-27 by GTM-008.** Not because the reasoning was wrong — it
+still holds — but because it made "pick a name" the thing blocking every
+account, and nothing had been published for three days as a result.
+
+---
+
+## GTM-008 — Product accounts first, the personal channel when it has a name
+
+**Decided 2026-08-27.** Supersedes GTM-001 on sequencing, not on substance.
+
+X, LinkedIn and YouTube are registered as **caprock** — the product's own
+accounts. The personal channel is still wanted and still the more durable
+asset; it waits for a name, and it does not hold up anything else while it
+waits. Telegram stays the owner's own, in Russian, in his voice.
+
+**Why.** GTM-001 made a naming decision the gate on every channel, and the
+consequence was that nothing shipped: `04-status.md` read "pick a name — blocks
+everything else" for three days. The product's name exists, is registered, and
+carries no surname. Publishing under it costs nothing that the personal channel
+can't recover later — an audience that arrived for measured numbers follows the
+person who measured them.
+
+**What each account is for**
+
+- **caprock on X** — the findings, in English. One number per post.
+- **caprock on LinkedIn** — the same findings, written for people who buy
+  tools rather than build them.
+- **caprock on YouTube** — screen recordings. No face, no surname.
+- **The owner's Telegram** — his own voice, in Russian, personal and
+  unpackaged. Not a product channel and not scheduled.
+- **Reddit and Hacker News** — his personal account, never the product's. A
+  brand account posting to r/ClaudeAI is an advertisement; a person posting a
+  measurement is a post.
+
+**Reverses if** the product accounts read as marketing and get no engagement
+while the same material does well from a person — which is the thing to watch
+in the first six weeks.
+
 ---
 
 ## GTM-002 — First name, no surname

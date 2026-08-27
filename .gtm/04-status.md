@@ -6,14 +6,15 @@
 ([01-channel.md](01-channel.md)) and the name is the open item blocking the
 first post.
 
-| Surface        | State                                                                  |
-| -------------- | ---------------------------------------------------------------------- |
-| caprock.dev    | Live. Analytics on (Umami), `copy-command` event instrumented          |
-| GitHub repo    | Live, public, screenshots and description current                      |
-| Telegram       | Not created — name undecided                                           |
-| X              | Not created — handle undecided                                         |
-| YouTube        | Not started. Video only once a post has landed                         |
-| Paid promotion | Deliberately held until 15–20 posts exist ([GTM-004](03-decisions.md)) |
+| Surface        | State                                                                   |
+| -------------- | ----------------------------------------------------------------------- |
+| caprock.dev    | Live. Analytics on (Umami), `copy-command` event instrumented           |
+| GitHub repo    | Live, public, screenshots and description current                       |
+| Telegram       | The owner's own, in Russian. Not a product channel                      |
+| X              | Register as `caprock` — the handle is the product's, so no name to pick |
+| LinkedIn       | Register as `caprock`                                                   |
+| YouTube        | Not started. Video only once a post has landed                          |
+| Paid promotion | Deliberately held until 15–20 posts exist ([GTM-004](03-decisions.md))  |
 
 ## Next actions
 
@@ -22,11 +23,14 @@ first post.
    The one requirement is that he is reachable for a couple of hours after
    posting, because Reddit decides in the first hour and decides on whether the
    author answers like a person.
-2. **Pick a name** (owner). Blocks the channels, not the posts — which is why
-   it is no longer first on this list. Reddit and Hacker News go out under a
-   personal account; a channel is for repetition, not for the first shot.
-3. Register the Telegram channel and the X handle once the name exists.
-4. Publish weekly for six weeks before evaluating anything.
+2. **Register `caprock` on X, LinkedIn and YouTube.** No name to pick — the
+   product already has one, and it carries no surname ([GTM-008](03-decisions.md)).
+3. **Record the first video**: 60–90 seconds, the dashboard and one finding,
+   screen only. Scrub project names before recording — a video cannot be
+   replaced after posting the way a screenshot can.
+4. Publish weekly for six weeks against [06-content-plan.md](06-content-plan.md),
+   then evaluate. A personal channel is still wanted and still waits for a name;
+   it no longer blocks anything.
 
 ## The one measured fact so far
 

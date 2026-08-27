@@ -8,12 +8,15 @@ exists because the two change on different clocks and for different reasons — 
 release note is not a channel decision, and a positioning change does not touch
 the daemon.
 
-| File                               | Contents                                                       | Read when                          |
-| ---------------------------------- | -------------------------------------------------------------- | ---------------------------------- |
-| [01-channel.md](01-channel.md)     | The personal channel: position, topics, rhythm, two platforms  | Writing or planning content        |
-| [02-research.md](02-research.md)   | What was checked about each channel, with dates and numbers    | Considering where to spend effort  |
-| [03-decisions.md](03-decisions.md) | Decisions made, with the reasoning and what would reverse them | Before re-opening a settled choice |
-| [04-status.md](04-status.md)       | What is live, what is next, measured results                   | Checking where things stand        |
+| File                                     | Contents                                                       | Read when                             |
+| ---------------------------------------- | -------------------------------------------------------------- | ------------------------------------- |
+| [01-channel.md](01-channel.md)           | The personal channel: position, topics, rhythm, two platforms  | Writing or planning content           |
+| [02-research.md](02-research.md)         | What was checked about each channel, with dates and numbers    | Considering where to spend effort     |
+| [03-decisions.md](03-decisions.md)       | Decisions made, with the reasoning and what would reverse them | Before re-opening a settled choice    |
+| [04-status.md](04-status.md)             | What is live, what is next, measured results                   | Checking where things stand           |
+| [05-launch-posts.md](05-launch-posts.md) | Drafted launch posts, with every figure dated                  | Publishing to a new surface           |
+| [06-content-plan.md](06-content-plan.md) | Six weeks of posts, and the findings each is built on          | Before writing anything for a channel |
+| [content/](content/)                     | Individual posts, one file each, dated                         | Publishing a specific post            |
 
 ## Rules for this directory
 
