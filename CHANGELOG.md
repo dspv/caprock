@@ -9,6 +9,26 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **Hovering "Save the image" now shows something.** It changed only its border
+  colour — one step of grey against a dark panel — so pointing at it looked
+  identical to not pointing at it. A control the eye cannot confirm it is on
+  reads as disabled. It fills instead.
+
+- **"Quick chat" and "+ New session" line up.** Quick chat sat inside a wrapper
+  div next to a bare button, which made them two different boxes in the same
+  flex row. The error message that wrapper existed for is positioned absolutely
+  now, so a rare failure cannot change the height of the row.
+
+### Changed
+
+- **The share dialog's guarantees are two bullets, not a paragraph.** A reader
+  scanning for what does and does not leave their machine should not have to
+  read a sentence to find out. Bigger type, one claim per line — and pinned by
+  a test, because this is the copy that gets reworded whenever the dialog is
+  tightened.
+
 ## [0.31.1] - 2026-08-27
 
 ### Fixed

@@ -288,17 +288,28 @@ function QuickChatButton({ available }: { available: boolean | undefined }) {
     } finally { setBusy(false) }
   }
   return (
-    <div className="shrink-0">
+    <>
+      {/* No wrapper div around the button.
+        *
+        * It sat in a `shrink-0` div beside a bare `+ New session` button, so
+        * the two were different boxes in the same flex row and did not line
+        * up. The error, which is the only reason a wrapper existed, is
+        * positioned absolutely instead — it appears rarely and must not
+        * change the height of the row when it does. */}
       <button
         onClick={start}
         disabled={busy}
         title="start a session without picking a folder"
-        className="rounded-[var(--radius-panel)] border border-border-strong px-3 py-2 text-[13px] text-fg-muted hover:text-fg hover:border-accent/50 disabled:opacity-50"
+        className="relative shrink-0 rounded-[var(--radius-panel)] border border-border-strong px-3 py-2 text-[13px] leading-5 text-fg-muted hover:text-fg hover:border-accent/50 disabled:opacity-50"
       >
         {busy ? 'starting…' : 'Quick chat'}
+        {error && (
+          <span className="absolute right-0 top-full mt-1 block max-w-[220px] text-right text-[11px] text-danger">
+            {error}
+          </span>
+        )}
       </button>
-      {error && <div className="mt-1 max-w-[220px] text-[11px] text-danger">{error}</div>}
-    </div>
+    </>
   )
 }
 
@@ -315,7 +326,7 @@ function NewSessionButton({ available, onClick }: { available: boolean | undefin
     <button
       onClick={onClick}
       title={missing ? 'claude was not found on this machine — click for details' : 'start a session Caprock owns'}
-      className={`shrink-0 rounded-[var(--radius-panel)] border px-3 py-2 text-[13px] font-medium transition-colors ${
+      className={`shrink-0 rounded-[var(--radius-panel)] border px-3 py-2 text-[13px] leading-5 font-medium transition-colors ${
         missing
           ? 'border-border text-fg-faint hover:text-fg-muted'
           : 'border-accent/60 bg-accent/15 text-accent hover:bg-accent/25'

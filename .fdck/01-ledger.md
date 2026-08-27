@@ -9,6 +9,7 @@ started) · **building** · **shipped** (in a release, with the version) ·
 
 | Id     | Date       | From | Request                                                      | Status  | Landed in         |
 | ------ | ---------- | ---- | ------------------------------------------------------------ | ------- | ----------------- |
+| FB-015 | 2026-08-27 | Dima | Hover invisible, caveat too wordy, two buttons out of line   | shipped | unreleased        |
 | FB-014 | 2026-08-27 | Dima | The premium banner's line was a metaphor, not an explanation | shipped | v0.31.1           |
 | FB-013 | 2026-08-27 | Dima | Sharing a card produced two images, downloading produced one | shipped | v0.31.1           |
 | FB-012 | 2026-08-27 | Dima | Plan limits looked odd and belonged to nothing on the screen | shipped | v0.31.1           |
@@ -25,6 +26,21 @@ started) · **building** · **shipped** (in a release, with the version) ·
 | FB-001 | 2026-08-24 | Alex | Hooks never fired on Windows                                 | shipped | v0.27.3 + v0.27.4 |
 
 ## Detail
+
+### FB-015 — Three things the eye caught
+
+Reported from screenshots, all of them things a test cannot see.
+
+- **Hover did nothing visible.** "Save the image" changed only its border
+  colour against a dark panel. A control you cannot confirm you are pointing at
+  reads as disabled; it fills now.
+- **The caveat was a paragraph.** Two sentences of small grey prose, where the
+  reader is scanning for what leaves the machine. Two bullets, larger, one
+  claim per line — now pinned by a test, since this is exactly the copy that
+  gets reworded whenever the dialog is tightened, and the card's "not a bill"
+  caveat was lost that way once already.
+- **Quick chat and + New session did not line up.** Quick chat sat in a wrapper
+  div beside a bare button, so they were two different boxes in one flex row.
 
 ### FB-014 — The premium banner was a metaphor
 

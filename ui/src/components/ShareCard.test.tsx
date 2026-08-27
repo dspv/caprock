@@ -240,3 +240,24 @@ describe('the native share', () => {
     nav.canShare = origCan
   })
 })
+
+/**
+ * The privacy claims survive a rewrite.
+ *
+ * They are the reason someone is willing to post the card at all, and they sit
+ * in the one part of this dialog that gets reworded whenever the copy is
+ * tightened — which is exactly how the card's "not a bill" caveat was lost
+ * once already.
+ */
+describe('the share dialog’s guarantees', () => {
+  it('still says what does and does not leave the machine', async () => {
+    data.value = history()
+    render(<ShareCard />)
+    fireEvent.click(await screen.findByRole('button', { name: /share these numbers/i }))
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.textContent).toMatch(/totals only/i)
+    expect(dialog.textContent).toMatch(/no names/i)
+    expect(dialog.textContent).toMatch(/nothing claude wrote/i)
+    expect(dialog.textContent).toMatch(/uploaded nowhere/i)
+  })
+})

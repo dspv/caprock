@@ -167,10 +167,16 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
                 </span>
               </button>
             )}
+            {/* Hover is a fill, not a border shade.
+              *
+              * This changed only its border colour, one step of grey against a
+              * dark panel — the owner hovered it and could not tell anything
+              * had happened. A control the eye cannot confirm it is pointing
+              * at reads as disabled. */}
             <button
               onClick={() => shareVia('download')}
               disabled={locked}
-              className="rounded-md border border-border px-4 py-3 text-[14px] text-fg hover:border-border-strong disabled:opacity-50"
+              className="rounded-md border border-border bg-transparent px-4 py-3 text-[14px] text-fg transition-colors hover:border-border-strong hover:bg-panel-2 disabled:opacity-50"
             >
               {drawing && !canNative ? 'Drawing the card…' : 'Save the image'}
               <span className="mt-0.5 block text-[12px] text-fg-muted">
@@ -179,13 +185,16 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
             </button>
           </div>
 
-          {/* One line, after the buttons: it answers "is this safe to post",
-            * which is a second question and only arises once the first is
-            * settled. */}
-          <p className="mt-4 text-[12px] leading-relaxed text-fg-faint">
-            Totals only — no project names, no paths, nothing Claude wrote.
-            Drawn on your machine and uploaded nowhere.
-          </p>
+          {/* Two bullets, not a paragraph.
+            *
+            * This was two sentences of 12px grey prose, and prose is the wrong
+            * shape for a list of guarantees: the reader is scanning for what
+            * does and does not leave the machine, and a sentence makes them
+            * read it to find out. Bigger, and one claim per line. */}
+          <ul className="mt-4 grid gap-1 text-[13px] text-fg-muted">
+            <li>Totals only — no names, no paths, nothing Claude wrote.</li>
+            <li>Drawn on your machine. Uploaded nowhere.</li>
+          </ul>
           {note && <p className="mt-2 text-[12px] text-fg-muted">{note}</p>}
         </div>
       </div>
