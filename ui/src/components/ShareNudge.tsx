@@ -36,7 +36,7 @@ export function ShareNudge({ now }: { now: number }) {
   return (
     <>
       <span className="inline-flex items-center gap-2.5 rounded-lg border border-accent/35 bg-accent/[0.07] py-1.5 pl-3.5 pr-2 text-[13px]">
-        <span className="text-fg-muted">{occasion.line} Show it off —</span>
+        <span className="text-fg-muted">{occasion.line} Don&rsquo;t be shy and share it off —</span>
         <button
           onClick={() => { setOpen(true); answer() }}
           className="rounded-[5px] bg-accent px-3 py-1 font-medium text-panel hover:bg-accent/90"
