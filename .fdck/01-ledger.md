@@ -9,6 +9,7 @@ started) · **building** · **shipped** (in a release, with the version) ·
 
 | Id     | Date       | From | Request                                                      | Status  | Landed in         |
 | ------ | ---------- | ---- | ------------------------------------------------------------ | ------- | ----------------- |
+| FB-014 | 2026-08-27 | Dima | The premium banner's line was a metaphor, not an explanation | shipped | v0.31.1           |
 | FB-013 | 2026-08-27 | Dima | Sharing a card produced two images, downloading produced one | shipped | v0.31.1           |
 | FB-012 | 2026-08-27 | Dima | Plan limits looked odd and belonged to nothing on the screen | shipped | v0.31.1           |
 | FB-011 | 2026-08-27 | Dima | No clear way to update; the share button was easy to miss    | shipped | v0.31.1           |
@@ -24,6 +25,18 @@ started) · **building** · **shipped** (in a release, with the version) ·
 | FB-001 | 2026-08-24 | Alex | Hooks never fired on Windows                                 | shipped | v0.27.3 + v0.27.4 |
 
 ## Detail
+
+### FB-014 — The premium banner was a metaphor
+
+"Premium stops a day that runs away from you, and alerts before a plan window
+does." One line, two claims, neither a thing the reader can picture — the
+verdict was simply "непонятно". The modal behind the button already said it
+plainly ("set a number for the day; when the cost crosses it, Caprock pauses
+the sessions it started"), so the banner now uses those words: **Premium pauses
+sessions when the day crosses a limit you set.**
+
+A banner has one line to name something concrete. Writing around the mechanism
+because the plain version sounds ordinary makes it unreadable instead.
 
 ### FB-013 — Two images from one share
 

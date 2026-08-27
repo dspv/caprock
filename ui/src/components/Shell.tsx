@@ -267,6 +267,17 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
                   </div>
                 </div>
               )}
+              {/* A downloaded binary or a container: no package manager owns
+                * this copy, so `InstallCommand` returns "" rather than name a
+                * command that might do the wrong thing. Without this branch
+                * the dialog announced a new version and then said nothing
+                * about how to get it — the exact gap it exists to close. */}
+              {!cmd && (
+                <div className="text-[13px] text-fg-muted">
+                  This copy was not installed by a package manager, so there is no one command to give you.
+                  Download the new binary from the release page below and replace this one.
+                </div>
+              )}
             </>
           ) : u?.enabled === false ? (
             <div className="text-[13px] text-fg-muted">

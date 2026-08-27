@@ -45,8 +45,16 @@ export function PremiumBanner({ costUSD, days, now }: { costUSD: number; days: n
         <span className="num">{fmtUSD(perDay)}</span>
         <span className="text-fg-muted"> a day, on average, across {days} active {days === 1 ? 'day' : 'days'}.</span>
       </span>
+      {/* Says what the feature does, in the words the modal uses.
+        *
+        * This read "Premium stops a day that runs away from you, and alerts
+        * before a plan window does" — a metaphor for a mechanism, and the
+        * owner's verdict was simply "непонятно". A banner has one line to
+        * name a thing the reader can picture; "pauses sessions when the day
+        * crosses a limit you set" is that thing, and it is what the modal
+        * behind the button goes on to explain. */}
       <span className="text-fg-muted">
-        Premium stops a day that runs away from you, and alerts before a plan window does.
+        Premium pauses sessions when the day crosses a limit you set.
       </span>
       <span className="ml-auto flex shrink-0 items-center gap-2">
         {/* Opens the explanation rather than the shop. One line cannot say what

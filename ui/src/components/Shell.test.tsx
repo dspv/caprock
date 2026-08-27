@@ -184,3 +184,18 @@ describe('header nav', () => {
     expect(screen.getByRole('link', { name: 'Now' })).toHaveAttribute('aria-current', 'page')
   })
 })
+
+describe('the update dialog without a package manager', () => {
+  it('still says how to get the new version', async () => {
+    // `InstallCommand` returns "" for a downloaded binary or a container
+    // rather than guess at a command. The dialog must not then announce a new
+    // release and fall silent about what to do — that is the gap it exists to
+    // close.
+    status.version = 'v0.9.0'
+    update.value = { enabled: true, current: 'v0.9.0', latest: 'v0.9.4', update_available: true }
+    renderShell()
+    fireEvent.click(await screen.findByText(/v0\.9\.0 → v0\.9\.4/))
+    expect(await screen.findByText(/not installed by a package manager/i)).toBeTruthy()
+    expect(screen.getByText(/release notes/i)).toBeTruthy()
+  })
+})

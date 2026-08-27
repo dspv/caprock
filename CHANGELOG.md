@@ -36,6 +36,10 @@ Phase 3 (Delight) has no plan by design.
   copy was installed — `brew upgrade caprock`, `go install …@latest`, or the
   release page for a downloaded binary — with a copy button.
 
+  For a downloaded binary or a container, where no package manager owns the
+  copy, there is no honest command to name — so the dialog says that and points
+  at the release page rather than announcing a new version and falling silent.
+
   **Caprock does not update itself, and the dialog says so.** A daemon that
   overwrites its own running binary, as root on some install paths, is a worse
   thing to own than a stale version. Saying it once beats leaving someone
@@ -58,6 +62,13 @@ Phase 3 (Delight) has no plan by design.
 - **The share button in the header is visible.** Grey 11px lowercase between
   "feedback" and the build label — invisible enough that the person who
   commissioned the feature could not find it on his own dashboard.
+
+- **The premium banner says what the feature does.** It read "Premium stops a
+  day that runs away from you, and alerts before a plan window does" — a
+  metaphor for a mechanism, and the verdict on it was "непонятно". A banner has
+  one line to name something the reader can picture, so it now says what the
+  modal behind it goes on to explain: sessions pause when the day crosses a
+  limit you set.
 
 ## [0.31.0] - 2026-08-27
 
