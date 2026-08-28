@@ -3,7 +3,17 @@
 **Where:** r/ClaudeAI
 **Who posts:** Dima, personal account, no surname
 **When:** a weekday morning US time (that is evening in Israel)
-**Status:** ready to post — figures re-read 2026-08-28 with `caprock report` on v0.33.0
+**Status:** POSTED 2026-08-28 to r/claudecode and r/claudeskills, under Dima's
+own account. Figures read that morning with `caprock report` on v0.33.0.
+
+The text that went out is the short version below, not the long one this file
+first carried. The long one read as slop — "Not 'roughly' — I mean", "A few
+things I did not expect", "I am not claiming X, I am saying Y" — hedging that
+belongs in a document and reads as marketing in a post. Cut to about a third.
+
+The headline carries the finding rather than only the total: *half of it was
+running commands, not writing code*. A number invites a scroll; a claim people
+disagree with invites a comment, and comments are what move a post.
 
 ---
 

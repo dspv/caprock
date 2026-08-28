@@ -18,11 +18,10 @@ first post.
 
 ## Next actions
 
-1. **Post to r/ClaudeAI** — ready to go, `content/2026-08-27-reddit-first-post.md`.
-   It needs no channel and no name: it goes out under the owner's own account.
-   The one requirement is that he is reachable for a couple of hours after
-   posting, because Reddit decides in the first hour and decides on whether the
-   author answers like a person.
+1. ~~Post to r/ClaudeAI~~ — **posted 2026-08-28** to r/claudecode and
+   r/claudeskills. Watch Umami for the `copy-command` event: the one number
+   that matters is how many arrivals copy the install line, against the 17%
+   the Telegram repost produced.
 2. **Register `caprock` on X, LinkedIn and YouTube.** No name to pick — the
    product already has one, and it carries no surname ([GTM-008](03-decisions.md)).
 3. **Record the first video**: 60–90 seconds, the dashboard and one finding,
