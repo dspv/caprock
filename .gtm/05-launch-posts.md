@@ -40,18 +40,22 @@ Caprock is one Go binary that reads the transcripts Claude Code already writes
 plus a small hook shim, and serves a dashboard on 127.0.0.1:4173. Nothing
 leaves the machine — no account, no server, no telemetry.
 
-The thing I did not expect from my own data, 59 active days:
+The thing I did not expect, from 61 active days of my own usage:
 
-  running commands   $5,450   50%
-  no tool call       $1,573   15%
-  writing code       $1,451   13%
-  MCP tools            $918    8%
+  running commands   $5,455   46%
+  no tool call       $2,521   21%
+  writing code       $1,451   12%
+  MCP tools            $918    7%
 
-Half the money goes to running commands. The part everyone pictures — writing
-code — is an eighth of it. Cache hit is 99%, which cuts 89% of input cost, and
-the same usage at API list prices is $10,818 against $633 of subscription over
-that window. That figure is what the work would have cost through the API, not
-a saving and not a bill.
+Nearly half goes to running commands. The part everyone pictures — the model
+writing code — is an eighth of it. What that row really measures is reading
+output back into context: bash is cheap to call and expensive to read.
+
+Cache hit is 99%, cutting 89% of what input would otherwise cost. Over the same
+window the usage priced at API list rates is $11,780, against $647 of
+subscription actually paid. The big figure is what the work would have cost
+through the API — not a saving, not a bill, and the dashboard says so next to
+it.
 
 It also detects loops (the same tool call repeating), shows cost per repo, and
 has an opt-in runner that only marks a task done when the checks you named come
@@ -61,10 +65,32 @@ brew install dspv/tap/caprock, or scoop on Windows. Apache-2.0.
 https://github.com/dspv/caprock
 ```
 
-**Rules for the day it goes up:** post in the morning US time, then stay at the
-keyboard for four hours and answer everything. An unanswered Show HN dies. Do
-not upvote-beg anywhere, and do not post it to Reddit the same day — one
-audience at a time, so a bad reception in one does not poison the other.
+**What the Show HN rules actually require** (read 2026-08-28 from
+news.ycombinator.com/showhn.html):
+
+- **Something people can try.** "Show HN is for something you've made that
+  other people can play with" — explicitly not blog posts, sign-up pages or
+  reading material, because those cannot be tried out. A local binary that
+  installs in one command qualifies exactly.
+- **The title must begin with `Show HN:`.** Ours is 66 characters, no emoji, no
+  exclamation.
+- **No barriers.** "Please make it easy for users to try your thing out,
+  ideally without barriers such as signups or emails." No account, no server,
+  nothing to sign up for — this is the part Caprock is strongest on and the
+  post should not bury it.
+- **No upvote-begging.** "Please don't ask friends to upvote or comment."
+- **A release is not a Show HN.** "New features and upgrades ('Foo 1.3.1 is
+  out') generally aren't substantive enough." This is a first showing, not a
+  version announcement, and the post must not read like one.
+
+**Link post, not text post.** The URL is the GitHub repository — nothing in the
+guidelines restricts that, and for a project people are meant to run, the code
+is the thing they want to reach first.
+
+**The day it goes up:** post in the morning US time, then stay at the keyboard
+for four hours and answer everything. An unanswered Show HN dies. Do not post
+it to Reddit the same day — one audience at a time, so a bad reception in one
+does not poison the other.
 
 ---
 
