@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.32.0] - 2026-08-28
+
 ### Added
 
 - **The cache hit rate now says what it means.** It was a bare percentage,

@@ -9,6 +9,7 @@ started) · **building** · **shipped** (in a release, with the version) ·
 
 | Id     | Date       | From  | Request                                                            | Status  | Landed in         |
 | ------ | ---------- | ----- | ------------------------------------------------------------------ | ------- | ----------------- |
+| FB-020 | 2026-08-28 | Dima  | Show what a cache hit rate actually means, without shouting        | shipped | v0.32.0           |
 | FB-019 | 2026-08-27 | Dima  | Reach Caprock from a tablet or phone, the way Claude Code is       | open    | —                 |
 | FB-018 | 2026-08-27 | Vova  | Shift+Enter did not work for him; Option+Enter was what he pressed | shipped | v0.31.3           |
 | FB-017 | 2026-08-27 | Dima  | Wanted an update button, or at least clear steps per OS            | shipped | v0.31.2           |
@@ -30,6 +31,26 @@ started) · **building** · **shipped** (in a release, with the version) ·
 | FB-001 | 2026-08-24 | Alex  | Hooks never fired on Windows                                       | shipped | v0.27.3 + v0.27.4 |
 
 ## Detail
+
+### FB-020 — What does a good cache rate look like?
+
+The dashboard showed the percentage and coloured it amber below 90%, so
+everything above read identically — 99% and 91% looked the same. Dima asked for
+levels: green above 85, "outstanding" at 99, something that says this is good.
+
+He wanted it agreed in text before it was built, and that was the right call:
+the first draft of the wording said *worth a look* for the bottom band and he
+cut it to **low**, which is better — it states a fact instead of hinting at a
+chore.
+
+Thresholds came from his own data rather than from a designer's instinct: 122
+sessions, 6% to 99.6%, median 93.6%. `outstanding` lands on about one session
+in nine.
+
+**He also suggested a flash or an animation, and that was not built.** The
+dashboard sits open all day; a celebration is charming once and an irritation
+by the afternoon, and this product reserves motion for live data. A coloured
+word costs nothing to read and nothing to ignore.
 
 ### FB-019 — Reach it from a tablet
 
