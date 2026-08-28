@@ -9,6 +9,7 @@ started) · **building** · **shipped** (in a release, with the version) ·
 
 | Id     | Date       | From  | Request                                                                      | Status  | Landed in         |
 | ------ | ---------- | ----- | ---------------------------------------------------------------------------- | ------- | ----------------- |
+| FB-022 | 2026-08-28 | Dima  | Make the web terminal good enough to live in, like iTerm2                    | shipped | v0.33.0           |
 | FB-021 | 2026-08-28 | Vova  | Shift+Enter inserts a newline on an empty prompt, submits once there is text | shipped | v0.32.1           |
 | FB-020 | 2026-08-28 | Dima  | Show what a cache hit rate actually means, without shouting                  | shipped | v0.32.0           |
 | FB-019 | 2026-08-27 | Dima  | Reach Caprock from a tablet or phone, the way Claude Code is                 | open    | —                 |
@@ -32,6 +33,35 @@ started) · **building** · **shipped** (in a release, with the version) ·
 | FB-001 | 2026-08-24 | Alex  | Hooks never fired on Windows                                                 | shipped | v0.27.3 + v0.27.4 |
 
 ## Detail
+
+### FB-022 — A terminal you can live in
+
+A written milestone rather than a bug report: raw interactivity, a newline that
+works, sane copy/paste, no perceptible lag. Its own diagnosis was that input
+was line-buffered and submitting on Enter — *"treat P1 as the root cause until
+proven otherwise"*.
+
+**It was worth checking before building, and it was wrong.** `term.onData` had
+always sent every keystroke straight to the PTY. What was actually broken was
+the size: `Resize` was declared on the agents interface and called from
+nowhere, so a PTY kept 120x40 for its whole life while Claude Code laid its
+menus out to it. That is the same defect behind [FB-021](#fb-021--shiftenter-submits-as-soon-as-there-is-text).
+
+Everything in the note shipped:
+
+- **Raw input** was already there; the size was not, and now is.
+- **Newline** — see FB-021. Two wrong guesses, then the answer read off disk.
+- **Copy and paste** — VS Code's rule, because it is the one people have in
+  their fingers: Ctrl+C copies with a selection, interrupts without one.
+- **Rendering** — WebGL with a fallback to canvas, scrollback 5k → 10k.
+- **Paste a file** — bytes to the daemon, path into the session.
+
+**Two tests passed while proving nothing, and both were caught by breaking the
+code they covered.** The WebGL fallback test matched on `constructor.name`,
+and the real addon minifies to `l`, so the branch never fired — the component
+would have died on any machine without WebGL. And the text-paste test checked
+that no upload happened rather than that the event was not swallowed, so
+intercepting every paste passed it.
 
 ### FB-021 — Shift+Enter submits as soon as there is text
 

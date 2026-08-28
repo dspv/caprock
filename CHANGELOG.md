@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.33.0] - 2026-08-28
+
 ### Added
 
 - **Copy and paste in the terminal.** There was none: every key went to the
