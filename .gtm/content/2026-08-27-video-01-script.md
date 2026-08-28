@@ -37,7 +37,13 @@ Timings are guides, not marks. Read it at the pace of talking, not presenting.
 
 **0:00–0:08 — the number, cold open**
 
-> On screen: the Now page, ALL TIME strip filling the top.
+> On screen: **Lifetime**, range `all`. Not Now.
+>
+> Now's TODAY row is empty before the day has any work in it, and empty cells
+> read as a broken product on camera — the one thing a viewer will not give
+> the benefit of the doubt. Lifetime is never empty, and it happens to put the
+> finding on screen already: the tool-usage bars have Bash at 43.3k against
+> Read at 11.7k, which is the thing being said out loud.
 
 "Three months of Claude Code. Eleven thousand seven hundred of usage at
 list prices. I paid six hundred and forty-seven."
