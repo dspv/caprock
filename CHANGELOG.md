@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.32.1] - 2026-08-28
+
 ### Fixed
 
 - **The terminal now tells the daemon how big it is.** `fit()` resized the

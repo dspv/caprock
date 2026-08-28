@@ -9,7 +9,7 @@ started) · **building** · **shipped** (in a release, with the version) ·
 
 | Id     | Date       | From  | Request                                                                      | Status  | Landed in         |
 | ------ | ---------- | ----- | ---------------------------------------------------------------------------- | ------- | ----------------- |
-| FB-021 | 2026-08-28 | Vova  | Shift+Enter inserts a newline on an empty prompt, submits once there is text | shipped | unreleased        |
+| FB-021 | 2026-08-28 | Vova  | Shift+Enter inserts a newline on an empty prompt, submits once there is text | shipped | v0.32.1           |
 | FB-020 | 2026-08-28 | Dima  | Show what a cache hit rate actually means, without shouting                  | shipped | v0.32.0           |
 | FB-019 | 2026-08-27 | Dima  | Reach Caprock from a tablet or phone, the way Claude Code is                 | open    | —                 |
 | FB-018 | 2026-08-27 | Vova  | Shift+Enter did not work for him; Option+Enter was what he pressed           | shipped | v0.31.3           |
