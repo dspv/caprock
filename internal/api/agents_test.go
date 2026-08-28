@@ -3,8 +3,12 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -216,4 +220,137 @@ func waitFor(t *testing.T, cond func() bool) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatal("timed out waiting for the socket handler")
+}
+
+// POST /v1/paste writes a file and hands back its path.
+//
+// A browser gives an image's bytes and never a path — there is no path for
+// something copied out of a screenshot tool — and Claude Code reads files by
+// path. So the bytes become a file here, which makes this the one endpoint
+// that writes to disk on a web page's say-so. Most of what follows is about
+// what it refuses.
+func TestPasteWritesAFileAndRefusesTheRest(t *testing.T) {
+	e := newEnv(t)
+	dir := t.TempDir()
+	e.srv.Config.Handler = New(Deps{Store: e.st, Version: "t", Token: "tok",
+		Now: func() time.Time { return e.now }, DataDir: dir})
+
+	post := func(mime string, data []byte) *http.Response {
+		b, _ := json.Marshal(map[string]string{"type": mime, "data": base64.StdEncoding.EncodeToString(data)})
+		req := httptest.NewRequest("POST", "/v1/paste", bytes.NewReader(b))
+		// application/json is what the forgery guard requires, and requiring
+		// it is why the bytes travel base64 inside JSON rather than as a raw
+		// body: a cross-site simple request cannot set this header, and
+		// `image/png` is a simple type — a raw upload would have been an
+		// endpoint any web page could use to write into the data directory.
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		e.srv.Config.Handler.ServeHTTP(rr, req)
+		return rr.Result()
+	}
+
+	png := []byte("\x89PNG\r\n\x1a\nfake")
+	r := post("image/png", png)
+	if r.StatusCode != 200 {
+		t.Fatalf("png: %d", r.StatusCode)
+	}
+	var got struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(got.Path, dir) || !strings.HasSuffix(got.Path, ".png") {
+		t.Errorf("path = %q, want a .png under %q", got.Path, dir)
+	}
+	if b, err := os.ReadFile(got.Path); err != nil || !bytes.Equal(b, png) {
+		t.Errorf("the file on disk does not match what was sent: %v %q", err, b)
+	}
+
+	// An allow-list, so a type nobody thought about is refused by default.
+	if r := post("application/x-sh", []byte("#!/bin/sh\nrm -rf /")); r.StatusCode != http.StatusUnsupportedMediaType {
+		t.Errorf("a shell script was accepted: %d", r.StatusCode)
+	}
+	if r := post("", []byte("no type at all")); r.StatusCode != http.StatusUnsupportedMediaType {
+		t.Errorf("a typeless body was accepted: %d", r.StatusCode)
+	}
+
+	// Over the cap is refused rather than truncated: half a screenshot on
+	// disk is worse than none.
+	if r := post("image/png", bytes.Repeat([]byte("x"), (10<<20)+1)); r.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Errorf("an oversized file was accepted: %d", r.StatusCode)
+	}
+	if r := post("image/png", nil); r.StatusCode != http.StatusBadRequest {
+		t.Errorf("an empty file was accepted: %d", r.StatusCode)
+	}
+}
+
+// The endpoint is behind the same forgery guard as every other state-changing
+// route. Without it, `image/png` is a simple content type and any web page in
+// the browser could write files into the user's data directory.
+func TestPasteRefusesARawUpload(t *testing.T) {
+	e := newEnv(t)
+	e.srv.Config.Handler = New(Deps{Store: e.st, Version: "t", Token: "tok",
+		Now: func() time.Time { return e.now }, DataDir: t.TempDir()})
+	req := httptest.NewRequest("POST", "/v1/paste", bytes.NewReader([]byte("raw bytes")))
+	req.Header.Set("Content-Type", "image/png")
+	rr := httptest.NewRecorder()
+	e.srv.Config.Handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("status %d, want 403 — a simple content type must not reach this", rr.Code)
+	}
+}
+
+// The filename is ours entirely: nothing the caller sends reaches the
+// filesystem, so there is no path to traverse and no extension to smuggle.
+func TestPasteNamesTheFileItself(t *testing.T) {
+	e := newEnv(t)
+	dir := t.TempDir()
+	e.srv.Config.Handler = New(Deps{Store: e.st, Version: "t", Token: "tok",
+		Now: func() time.Time { return e.now }, DataDir: dir})
+
+	b, _ := json.Marshal(map[string]string{
+		"type": "image/png",
+		"data": base64.StdEncoding.EncodeToString([]byte("data")),
+		// Fields a caller might hope influence the name. The handler reads
+		// neither, and this is here so that adding a `name` field later has
+		// to face this test.
+		"name": "../../../../etc/passwd",
+		"path": "/tmp/evil.sh",
+	})
+	req := httptest.NewRequest("POST", "/v1/paste", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	e.srv.Config.Handler.ServeHTTP(rr, req)
+	if rr.Code != 200 {
+		t.Fatalf("status %d", rr.Code)
+	}
+	var got struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(got.Path) != filepath.Join(dir, "paste") {
+		t.Errorf("path escaped the paste directory: %q", got.Path)
+	}
+	if strings.Contains(got.Path, "passwd") || strings.Contains(got.Path, "evil") {
+		t.Errorf("a caller-supplied name reached the filesystem: %q", got.Path)
+	}
+}
+
+// Without a data directory there is nowhere to write, and saying so beats
+// writing somewhere arbitrary.
+func TestPasteWithoutADataDir(t *testing.T) {
+	e := newEnv(t)
+	e.srv.Config.Handler = New(Deps{Store: e.st, Version: "t", Token: "tok",
+		Now: func() time.Time { return e.now }})
+	b, _ := json.Marshal(map[string]string{"type": "image/png", "data": "eA=="})
+	req := httptest.NewRequest("POST", "/v1/paste", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	e.srv.Config.Handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNotImplemented {
+		t.Errorf("status %d, want 501", rr.Code)
+	}
 }

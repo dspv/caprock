@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Terminal as Xterm } from '@xterm/xterm'
+import { api } from '@/lib/api'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
@@ -226,9 +227,63 @@ export function TerminalView({ sessionId, owned }: { sessionId: string; owned: b
       })
     }
 
+    // Paste an image, get a path.
+    //
+    // A browser hands over an image's bytes and never a path — there is no
+    // path for something copied out of a screenshot tool — and Claude Code
+    // reads files by path. So the bytes go to the daemon, which writes them
+    // into its own data directory, and the path it returns is typed into the
+    // session as if the user had typed it.
+    //
+    // The path is quoted, because a data directory on macOS contains spaces
+    // ("Application Support") and an unquoted path there is two arguments.
+    const sendFile = async (file: File) => {
+      const type = file.type || 'application/octet-stream'
+      const buf = new Uint8Array(await file.arrayBuffer())
+      // btoa over a large array in one call blows the argument limit, so the
+      // string is built in chunks. 8k is well under any engine's cap.
+      let bin = ''
+      for (let i = 0; i < buf.length; i += 8192) {
+        bin += String.fromCharCode(...buf.subarray(i, i + 8192))
+      }
+      try {
+        const { path } = await api.paste(type, btoa(bin))
+        // Typed, not pasted: the user is about to talk about this file, and a
+        // path in the prompt is what Claude Code reads.
+        send(JSON.stringify(path) + ' ')
+      } catch (err) {
+        term.write(`\r\n\x1b[33m[caprock: ${err instanceof Error ? err.message : 'could not save that file'}]\x1b[0m\r\n`)
+      }
+    }
+
+    const onPaste = (e: ClipboardEvent) => {
+      const file = [...(e.clipboardData?.items ?? [])]
+        .find((i) => i.kind === 'file')?.getAsFile()
+      if (!file) return  // ordinary text: xterm's own handling is correct
+      e.preventDefault()
+      void sendFile(file)
+    }
+    const onDrop = (e: DragEvent) => {
+      const file = e.dataTransfer?.files?.[0]
+      if (!file) return
+      e.preventDefault()
+      void sendFile(file)
+    }
+    // preventDefault on dragover, or the browser navigates away to the file.
+    const onDragOver = (e: DragEvent) => { e.preventDefault() }
+    const el = host.current
+    el.addEventListener('paste', onPaste)
+    el.addEventListener('drop', onDrop)
+    el.addEventListener('dragover', onDragOver)
+
     const ro = new ResizeObserver(() => { try { fit.fit() } catch { /* */ } })
     ro.observe(host.current)
-    return () => { ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); ws.close(); term.dispose() }
+    return () => {
+      el.removeEventListener('paste', onPaste)
+      el.removeEventListener('drop', onDrop)
+      el.removeEventListener('dragover', onDragOver)
+      ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); ws.close(); term.dispose()
+    }
   }, [sessionId, owned])
   if (!owned) {
     return (

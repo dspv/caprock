@@ -9,6 +9,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 const ctor = vi.hoisted(() => vi.fn())
 
 type KeyHandler = (e: KeyboardEvent) => boolean
+const pasteCalls = vi.hoisted(() => [] as { type: string; data: string }[])
 const selection = vi.hoisted(() => ({ text: '' }))
 const pasted = vi.hoisted(() => [] as string[])
 const opened = vi.hoisted(() => ({ fn: undefined as (() => void) | undefined }))
@@ -47,6 +48,19 @@ vi.mock('@xterm/xterm', () => ({
   },
 }))
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit() {} } }))
+vi.mock('@/lib/api', async (orig) => {
+  const actual = await orig<typeof import('@/lib/api')>()
+  return {
+    ...actual,
+    api: {
+      ...actual.api,
+      paste: async (type: string, data: string) => {
+        pasteCalls.push({ type, data })
+        return { path: '/data/paste/x.png' }
+      },
+    },
+  }
+})
 vi.mock('@xterm/addon-webgl', () => ({
   WebglAddon: class { __webgl = true; onContextLoss() {} dispose() {} },
 }))
@@ -344,6 +358,55 @@ describe('Shift+Enter', () => {
     clipboard.text = 'first line\nsecond line'
     expect(h(key({ key: 'v', ctrlKey: true, shiftKey: true }))).toBe(false)
     await vi.waitFor(() => expect(pasted).toEqual(['first line\nsecond line']))
+  })
+
+  /**
+   * A pasted image becomes a path.
+   *
+   * A browser hands over an image's bytes and never a path — there is no path
+   * for something copied out of a screenshot tool — and Claude Code reads
+   * files by path. The bytes go to the daemon, which writes them, and the path
+   * it returns is typed into the session.
+   */
+  it('sends a pasted image to the daemon and types the path it gets back', async () => {
+    const h = mount()
+    void h
+    const file = new File([new Uint8Array([1, 2, 3])], 'shot.png', { type: 'image/png' })
+    // jsdom's File has no arrayBuffer(); a browser's does. Supplying it keeps
+    // the test about what the component does with the bytes rather than about
+    // what jsdom is missing.
+    Object.defineProperty(file, 'arrayBuffer', {
+      value: async () => new Uint8Array([1, 2, 3]).buffer,
+    })
+    const ev = new Event('paste') as ClipboardEvent
+    Object.defineProperty(ev, 'clipboardData', {
+      value: { items: [{ kind: 'file', getAsFile: () => file }] },
+    })
+    // The listener is on the element the terminal mounts into, which is the
+    // div the component renders — found by ref in the component, and here by
+    // taking the last one, since the hint below it renders divs too.
+    const host = [...document.querySelectorAll('div')].find((d) => d.className.includes('bg-bg'))
+    host?.dispatchEvent(ev)
+    await vi.waitFor(() => expect(pasteCalls.length).toBe(1))
+    expect(pasteCalls[0]?.type).toBe('image/png')
+    // Quoted: a data directory on macOS contains "Application Support", and an
+    // unquoted path there is two arguments rather than one.
+    await vi.waitFor(() => expect(sent.some((x) => x.includes('"/data/paste/x.png"'))).toBe(true))
+  })
+
+  it('leaves an ordinary text paste to xterm', () => {
+    // Text pasting already works and already applies bracketed paste;
+    // intercepting it would break multi-line pastes.
+    pasteCalls.length = 0
+    mount()
+    const ev = new Event('paste', { cancelable: true }) as ClipboardEvent
+    Object.defineProperty(ev, 'clipboardData', { value: { items: [{ kind: 'string' }] } })
+    const host2 = [...document.querySelectorAll('div')].find((d) => d.className.includes('bg-bg'))
+    host2?.dispatchEvent(ev)
+    expect(pasteCalls).toEqual([])
+    // And the event is not swallowed: xterm's own paste handling has to run,
+    // or a multi-line text paste stops arriving as one bracketed paste.
+    expect(ev.defaultPrevented).toBe(false)
   })
 
 })

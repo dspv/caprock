@@ -114,6 +114,18 @@ func HookDebugLogPath(dir string) string { return filepath.Join(dir, "hook-debug
 // user has to discover separately.
 func ChatsDir(dir string) string { return filepath.Join(dir, "chats") }
 
+// PasteDir is where a file pasted or dropped into the terminal is written.
+//
+// A browser hands over an image's *bytes*, never its path — there is no path
+// to hand over for something copied from a screenshot tool. Claude Code reads
+// files by path, so the bytes have to become a file somewhere before its path
+// can be typed into the session.
+//
+// Under the data directory for the same reason chats are: it is Caprock's
+// state, it is one place to back up and clear out, and it is not somewhere the
+// user has to go looking for.
+func PasteDir(dir string) string { return filepath.Join(dir, "paste") }
+
 // Load reads config.json, layering it over Defaults(). Unknown fields are ignored.
 func Load(dir string) (Config, error) {
 	cfg := Defaults()

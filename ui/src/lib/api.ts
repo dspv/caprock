@@ -402,5 +402,15 @@ export const api = {
   status: () => get<Status>('/v1/status'),
   spawn: (req: SpawnRequest) => post<{ session_id: string; cwd: string }>('/v1/agents', req),
   signal: (id: string, action: 'pause' | 'resume' | 'kill') => post<void>(`/v1/agents/${encodeURIComponent(id)}/signal`, { action }),
+  /**
+   * Write a pasted or dropped file and get back the path Claude Code can read.
+   *
+   * Base64 inside JSON rather than a raw upload, because the daemon's forgery
+   * guard turns away a state-changing request that is not `application/json` —
+   * and `image/png` is a simple content type, so a raw upload would have been
+   * an endpoint any page in the browser could use to write files into the
+   * user's data directory.
+   */
+  paste: (type: string, data: string) => post<{ path: string }>('/v1/paste', { type, data }),
   agentInput: (id: string, data: string) => post<void>(`/v1/agents/${encodeURIComponent(id)}/input`, { data }),
 }

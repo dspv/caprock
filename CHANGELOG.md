@@ -29,6 +29,19 @@ Phase 3 (Delight) has no plan by design.
   fall back rather than failing — a slower terminal is a cost, a blank one is
   a broken product.
 
+- **Paste or drop a file into the terminal.** A browser hands over an image's
+  bytes and never a path — there is no path for something copied out of a
+  screenshot tool — while Claude Code reads files by path. The bytes now go to
+  the daemon, which writes them into its own data directory, and the path is
+  typed into the session so Claude can read the file.
+
+  The bytes travel base64 inside JSON rather than as a raw upload, and that is
+  the security design rather than an inconvenience: `image/png` is a *simple*
+  content type, so a raw endpoint would have been reachable by any page in the
+  browser without a preflight. Types are an allow-list, the cap is 10 MB, and
+  the filename is generated entirely by the daemon — nothing a caller sends
+  reaches the filesystem.
+
 - **Scrollback is 10,000 lines**, up from 5,000. A build log passes five
   thousand easily, and losing the start of what you are reading is where a
   terminal stops being one you can work in.

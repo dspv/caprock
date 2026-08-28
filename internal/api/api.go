@@ -7,6 +7,9 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,11 +19,14 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/dspv/caprock/internal/bus"
+	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/gitdiff"
@@ -62,6 +68,10 @@ type Deps struct {
 	// Update reports whether a newer release exists. nil ⇒ 501. It is only
 	// ever consulted when the user enabled checks.
 	Update UpdateController
+	// DataDir is where Caprock keeps its own state. Needed so a file pasted
+	// into the terminal can be written somewhere Claude Code can read it by
+	// path. Empty ⇒ POST /v1/paste returns 501.
+	DataDir string
 }
 
 // UpdateController is the subset of the release checker the API needs.
@@ -188,6 +198,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/agents", s.handleSpawn)
 	m.HandleFunc("POST /v1/agents/{id}/input", s.handleAgentInput)
 	m.HandleFunc("POST /v1/agents/{id}/signal", s.handleAgentSignal)
+	m.HandleFunc("POST /v1/paste", s.handlePaste)
 	m.HandleFunc("GET /v1/agents/{id}/term", s.ws.serveTerm(s))
 	m.HandleFunc("POST /v1/shutdown", s.handleShutdown)
 	m.HandleFunc("POST /v1/statusline", s.handleStatusline)
@@ -1156,6 +1167,100 @@ func (s *Server) handleAgentInput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// pasteLimit caps a pasted file. Ten megabytes is far past any screenshot and
+// well short of anything that would fill a disk by accident.
+const pasteLimit = 10 << 20
+
+// pasteTypes is what may be written, keyed by the MIME type the caller
+// declares, with the extension the file gets.
+//
+// An allow-list rather than a sanitiser: this endpoint writes a file to disk on
+// the say-so of a web page, so the safe design names what is permitted rather
+// than guessing what is dangerous. The extension comes from this table and
+// never from the request, so a name cannot smuggle in a path or an executable
+// suffix.
+var pasteTypes = map[string]string{
+	"image/png":       ".png",
+	"image/jpeg":      ".jpg",
+	"image/gif":       ".gif",
+	"image/webp":      ".webp",
+	"application/pdf": ".pdf",
+	"text/plain":      ".txt",
+}
+
+// handlePaste writes a pasted or dropped file and returns the path to it.
+//
+// A browser hands over bytes, never a path — there is no path for something
+// copied out of a screenshot tool. Claude Code reads files by path, so the
+// bytes become a file here and the dashboard types its path into the session.
+//
+// **The bytes arrive base64 inside JSON, not as a raw body**, and that is the
+// security design rather than an inconvenience. The forgery guard turns a
+// state-changing request away unless it is `application/json`, because a
+// cross-site *simple* request cannot set that header — it would force a
+// preflight this server never answers. `image/png` is a simple type, so a raw
+// upload would have been an endpoint any web page could use to write files
+// into the user's data directory. Base64 costs a third more bytes and keeps
+// the endpoint behind the same guard as everything else.
+func (s *Server) handlePaste(w http.ResponseWriter, r *http.Request) {
+	if s.d.DataDir == "" {
+		http.Error(w, "paste unavailable", http.StatusNotImplemented)
+		return
+	}
+	var body struct {
+		// Type is the MIME type, matched against the allow-list.
+		Type string `json:"type"`
+		// Data is the file, base64-encoded.
+		Data string `json:"data"`
+	}
+	// The limit is on the encoded form, which is about a third larger than
+	// the file — so the 10 MB cap on the file is a ~13.4 MB cap here, plus
+	// room for the JSON around it.
+	if err := json.NewDecoder(io.LimitReader(r.Body, 14<<20)).Decode(&body); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	ext, ok := pasteTypes[body.Type]
+	if !ok {
+		http.Error(w, "unsupported file type", http.StatusUnsupportedMediaType)
+		return
+	}
+	raw, err := base64.StdEncoding.DecodeString(body.Data)
+	if err != nil {
+		http.Error(w, "data is not valid base64", http.StatusBadRequest)
+		return
+	}
+	if len(raw) == 0 {
+		http.Error(w, "empty file", http.StatusBadRequest)
+		return
+	}
+	if len(raw) > pasteLimit {
+		http.Error(w, "file is larger than 10 MB", http.StatusRequestEntityTooLarge)
+		return
+	}
+
+	dir := config.PasteDir(s.d.DataDir)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		http.Error(w, "cannot write", http.StatusInternalServerError)
+		return
+	}
+	// The name is ours entirely: a timestamp and random bytes, with the
+	// extension from the allow-list. Nothing the caller sent reaches the
+	// filesystem, so there is no path to traverse and no name to collide.
+	var suffix [4]byte
+	if _, err := rand.Read(suffix[:]); err != nil {
+		http.Error(w, "cannot write", http.StatusInternalServerError)
+		return
+	}
+	name := fmt.Sprintf("%s-%s%s", s.d.Now().UTC().Format("20060102-150405"), hex.EncodeToString(suffix[:]), ext)
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		http.Error(w, "cannot write", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"path": path})
 }
 
 func (s *Server) handleAgentSignal(w http.ResponseWriter, r *http.Request) {

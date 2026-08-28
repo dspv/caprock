@@ -51,6 +51,10 @@ Every request under `/v1` passes `checkOrigin` (`internal/api/csrf.go`) before r
 - **`Host`** — must name this machine, checked only when the request is browser-shaped (`Origin` or `Sec-Fetch-Site` present). This is the DNS-rebinding case: a hostname the attacker controls, pointed at `127.0.0.1`, is genuinely same-origin with the daemon and passes every check above, but the `Host` header still carries the attacker's name. It is not applied to non-browser clients, which legitimately address the daemon by other names (a tunnel, a test harness) with no rebinding risk.
 - **A bearer token, or `Content-Type: application/json`** — required on a state-changing method that carries no browser provenance at all. Either one is sufficient. The per-run token lives in `runtime.json` (mode 0600) and a web page can neither read nor guess it. A JSON content type cannot be set by a cross-site *simple* request: doing so forces a CORS preflight, which this server approves for nothing, so the real request is never sent — while a form POST is limited to the three simple content types and so cannot reach the endpoint at all.
 
+**`POST /v1/paste` takes base64 inside JSON, not a raw body — and that is the security design.** A browser hands over an image's bytes and never a path (there is no path for something copied out of a screenshot tool), while Claude Code reads files by path, so the bytes have to become a file. That makes this the one endpoint that writes to disk on a web page's say-so.
+
+`image/png` is a *simple* content type, so a raw upload would have been reachable by any page in the browser without a preflight. Wrapping the bytes in JSON puts the endpoint behind the same forgery guard as everything else, at the cost of a third more bytes. The type is checked against an **allow-list** (png, jpeg, gif, webp, pdf, plain text), the file is capped at **10 MB**, and **the filename is generated entirely by the daemon** — a timestamp, random bytes, and an extension from the table — so nothing a caller sends reaches the filesystem. Files land in `<data_dir>/paste/`. Returns 501 when the daemon has no data directory.
+
 **`WS /v1/agents/{id}/term` carries two things, told apart by frame type.** A **binary** frame is what the user typed, written to the PTY byte for byte. A **text** frame is a control message — today only `{"resize":{"cols":N,"rows":N}}`, which resizes the PTY; a non-zero pair is required and anything else is ignored.
 
 Everything on this socket used to be treated as keystrokes, so there was no way to tell the daemon the window had changed size: `Resize` was declared on the interface and called by nothing, and a PTY kept the size it was born with — 120×40 by default — for its whole life. Claude Code lays its menus out to the terminal size, so on any other window it drew an interface for a screen that was not there. Arrow keys moved a selection nobody could see, which is what the first user reported as "only Enter works".
@@ -139,6 +143,7 @@ POST   /v1/agents                    {cwd?, chat?, create?, worktree?, model?, p
 POST   /v1/agents/{id}/input         {data}            → 204   (owned PTYs only)
 POST   /v1/agents/{id}/signal        {action: pause|resume|kill} → 204 (owned PTYs only)
 WS     /v1/agents/{id}/term          bidirectional stream (xterm.js): binary = keystrokes, text = control; snapshot on connect, closes on exit
+POST   /v1/paste                     {type, data:base64} → {path}; writes a pasted file so Claude Code can read it
 GET    /v1/history?range=…           lifetime totals + tool distribution + model mix + daily
 ```
 
