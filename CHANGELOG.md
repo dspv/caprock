@@ -9,6 +9,30 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **Copy and paste in the terminal.** There was none: every key went to the
+  process, so Ctrl+C was always SIGINT and nothing could be copied off the
+  screen. It now follows VS Code's rule, which is the one people already have
+  in their fingers — **Ctrl+C copies when something is selected and interrupts
+  when nothing is.** On macOS the question never arises, since Cmd+C and
+  Ctrl+C are different keys. Ctrl+Shift+C/V elsewhere.
+
+  A paste goes through the terminal rather than straight to the socket, so
+  bracketed paste applies and a multi-line paste arrives as one paste rather
+  than as several submitted lines.
+
+- **WebGL rendering, with a fallback to canvas.** The canvas renderer repaints
+  the whole grid; WebGL draws from a texture atlas, which is the difference
+  between a build log scrolling smoothly and the tab stuttering. A machine
+  without WebGL, a driver that refuses, and a GPU context lost on sleep all
+  fall back rather than failing — a slower terminal is a cost, a blank one is
+  a broken product.
+
+- **Scrollback is 10,000 lines**, up from 5,000. A build log passes five
+  thousand easily, and losing the start of what you are reading is where a
+  terminal stops being one you can work in.
+
 ## [0.32.1] - 2026-08-28
 
 ### Fixed

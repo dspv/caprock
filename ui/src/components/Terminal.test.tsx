@@ -9,6 +9,8 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 const ctor = vi.hoisted(() => vi.fn())
 
 type KeyHandler = (e: KeyboardEvent) => boolean
+const selection = vi.hoisted(() => ({ text: '' }))
+const pasted = vi.hoisted(() => [] as string[])
 const opened = vi.hoisted(() => ({ fn: undefined as (() => void) | undefined }))
 const resizeHandler = vi.hoisted(() => ({ fn: undefined as ((s: { cols: number; rows: number }) => void) | undefined }))
 const keyHandler = vi.hoisted((): { fn: KeyHandler | null } => ({ fn: null }))
@@ -16,7 +18,15 @@ const keyHandler = vi.hoisted((): { fn: KeyHandler | null } => ({ fn: null }))
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
     constructor(opts: unknown) { ctor(opts) }
-    loadAddon() {}
+    // The real xterm throws here when an addon cannot initialise, which is
+    // what WebGL does on a machine without it — jsdom is such a machine. A
+    // mock that swallowed it would let a missing fallback ship: the component
+    // would die in a browser and pass every test here.
+    loadAddon(a: unknown) {
+      if ((a as { __webgl?: boolean })?.__webgl) {
+        throw new Error('WebGL is not supported in this environment')
+      }
+    }
     open() {}
     write() {}
     onData() { return { dispose() {} } }
@@ -26,11 +36,20 @@ vi.mock('@xterm/xterm', () => ({
     cols = 120
     rows = 40
     onResize(fn: (s: { cols: number; rows: number }) => void) { resizeHandler.fn = fn; return { dispose() {} } }
+    // Selection and paste, for the copy/paste rules. `selection.text` is what
+    // a test says is highlighted; `pasted` records what reached the terminal,
+    // which is where a paste has to land so bracketed paste is applied.
+    getSelection() { return selection.text }
+    clearSelection() { selection.text = '' }
+    paste(t: string) { pasted.push(t) }
     attachCustomKeyEventHandler(fn: (e: KeyboardEvent) => boolean) { keyHandler.fn = fn }
     dispose() {}
   },
 }))
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit() {} } }))
+vi.mock('@xterm/addon-webgl', () => ({
+  WebglAddon: class { __webgl = true; onContextLoss() {} dispose() {} },
+}))
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}))
 
 import { TerminalView } from './Terminal'
@@ -251,6 +270,82 @@ describe('Shift+Enter', () => {
     // `{"resize":…}` into the session as keystrokes.
     expect(frames).toEqual(['binary', 'text'])
   })
+
+  /**
+   * Copy and paste in a terminal you live in.
+   *
+   * xterm.js gives you neither: every key goes to the process, so Ctrl+C is
+   * always SIGINT and nothing copies. The rule here is VS Code's, because it is
+   * the one people already have in their fingers — Ctrl+C copies when something
+   * is selected and interrupts when nothing is.
+   */
+  const setPlatform = (p: string) => {
+    Object.defineProperty(navigator, 'platform', { value: p, configurable: true })
+  }
+  const clipboard = { written: [] as string[], text: '' }
+
+  beforeEach(() => {
+    selection.text = ''
+    pasted.length = 0
+    clipboard.written.length = 0
+    clipboard.text = ''
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: (t: string) => { clipboard.written.push(t); return Promise.resolve() },
+        readText: () => Promise.resolve(clipboard.text),
+      },
+    })
+  })
+
+  it('copies with Ctrl+C when there is a selection, and does not interrupt', () => {
+    setPlatform('Linux x86_64')
+    const h = mount()
+    selection.text = 'some output'
+    // false = xterm must not also send 0x03; a person who just dragged across
+    // output means copy, not stop.
+    expect(h(key({ key: 'c', ctrlKey: true }))).toBe(false)
+    expect(clipboard.written).toEqual(['some output'])
+  })
+
+  it('interrupts with Ctrl+C when nothing is selected', () => {
+    // The far more common case, and the one that must never be taken away:
+    // Ctrl+C is how you stop a runaway command.
+    setPlatform('Linux x86_64')
+    const h = mount()
+    selection.text = ''
+    expect(h(key({ key: 'c', ctrlKey: true }))).toBe(true)
+    expect(clipboard.written).toEqual([])
+  })
+
+  it('uses Cmd+C and Cmd+V on macOS, where they collide with nothing', () => {
+    setPlatform('MacIntel')
+    const h = mount()
+    selection.text = 'copied on a mac'
+    expect(h(key({ key: 'c', metaKey: true }))).toBe(false)
+    expect(clipboard.written).toEqual(['copied on a mac'])
+  })
+
+  it('leaves Ctrl+C alone on macOS even with a selection', () => {
+    // On a Mac the two are different keys, so the overload never arises and
+    // Ctrl+C stays what it has always been.
+    setPlatform('MacIntel')
+    const h = mount()
+    selection.text = 'still selected'
+    expect(h(key({ key: 'c', ctrlKey: true }))).toBe(true)
+    expect(clipboard.written).toEqual([])
+  })
+
+  it('pastes through the terminal, not straight to the socket', async () => {
+    // Bracketed paste has to be applied, so a multi-line paste arrives as one
+    // paste rather than as N submitted lines.
+    setPlatform('Linux x86_64')
+    const h = mount()
+    clipboard.text = 'first line\nsecond line'
+    expect(h(key({ key: 'v', ctrlKey: true, shiftKey: true }))).toBe(false)
+    await vi.waitFor(() => expect(pasted).toEqual(['first line\nsecond line']))
+  })
+
 })
 
 
@@ -278,5 +373,31 @@ describe('the multi-line hint', () => {
     // There is no terminal to type into, so a hint about typing is noise.
     render(<TerminalView sessionId="s-observed" owned={false} />)
     expect(document.body.textContent).not.toMatch(/new line/i)
+  })
+})
+
+/**
+ * The WebGL renderer, and what happens when it is not there.
+ *
+ * A machine with no WebGL, a driver that refuses, or a GPU reset mid-session
+ * must all leave a working terminal behind — a slower terminal is a cost, a
+ * blank one is a broken product. jsdom has no WebGL at all, which makes it the
+ * exact environment this has to survive.
+ */
+describe('rendering', () => {
+  it('still renders when WebGL is unavailable', () => {
+    // If the addon threw and nothing caught it, the terminal would never
+    // reach the DOM and this would find nothing.
+    const { container } = render(<TerminalView sessionId="s-webgl" owned />)
+    expect(container.querySelector('div')).toBeTruthy()
+    expect(document.body.textContent).toMatch(/new line/i)
+  })
+
+  it('keeps ten thousand lines of scrollback', () => {
+    // A build log scrolls past five thousand easily, and losing the start of
+    // what you are reading is where a terminal stops being one you can work
+    // in.
+    render(<TerminalView sessionId="s-scroll" owned />)
+    expect((ctor.mock.calls[0]?.[0] as { scrollback?: number })?.scrollback).toBe(10000)
   })
 })

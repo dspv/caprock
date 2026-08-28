@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Terminal as Xterm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 /** Live terminal for an owned session over /v1/agents/:id/term (Phase 1). */
 export function TerminalView({ sessionId, owned }: { sessionId: string; owned: boolean }) {
@@ -24,11 +25,39 @@ export function TerminalView({ sessionId, owned }: { sessionId: string; owned: b
         cursor: v('--color-accent', '#5ea1ff'),
         selectionBackground: v('--color-border-strong', '#2b3646'),
       },
-      scrollback: 5000,
+      // 10k lines: a build log or a long `claude` session scrolls past 5k
+      // easily, and losing the start of what you are reading is the moment a
+      // terminal stops being one you can work in.
+      scrollback: 10000,
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(host.current)
+
+    // WebGL rendering, where the machine has it.
+    //
+    // The canvas renderer repaints the whole grid; the WebGL one uploads a
+    // texture atlas once and draws from it, which is the difference between
+    // a build log scrolling smoothly and the tab stuttering. Loaded after
+    // `open` because it needs the canvas to exist.
+    //
+    // Every failure path falls back rather than throwing: a machine with no
+    // WebGL, a driver that refuses, or a context lost when the GPU is reset
+    // must all leave a working terminal behind. A slower terminal is a cost;
+    // a blank one is a broken product.
+    try {
+      const webgl = new WebglAddon()
+      webgl.onContextLoss(() => {
+        // The GPU dropped the context — a sleep/wake or a driver reset.
+        // Disposing the addon returns xterm to its canvas renderer rather
+        // than leaving a terminal that has stopped painting.
+        webgl.dispose()
+      })
+      term.loadAddon(webgl)
+    } catch {
+      // No WebGL here. The canvas renderer is already what xterm falls back
+      // to, so there is nothing to do and nothing worth telling the user.
+    }
     try { fit.fit() } catch { /* not yet laid out */ }
     // Ask for every subset the face ships, by name.
     //
@@ -126,6 +155,30 @@ export function TerminalView({ sessionId, owned }: { sessionId: string; owned: b
     const NEWLINE = '\\n'
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown') return true
+
+      // Cmd+C / Cmd+V on macOS: the platform's own keys, and they never
+      // collide with anything the process wants.
+      if (isMac && e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (e.key === 'c') return !copySelection()  // nothing selected → let it through
+        if (e.key === 'v') { pasteFromClipboard(); return false }
+      }
+      // Ctrl+Shift+C / Ctrl+Shift+V elsewhere: the terminal convention,
+      // deliberately distinct from Ctrl+C so SIGINT keeps its key.
+      if (!isMac && e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
+        if (e.key === 'C' || e.key === 'c') { copySelection(); return false }
+        if (e.key === 'V' || e.key === 'v') { pasteFromClipboard(); return false }
+      }
+      // Ctrl+C with a selection copies; without one it is SIGINT and belongs
+      // to the process. This is what VS Code does, and it is what people
+      // expect without being told.
+      if (!isMac && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && (e.key === 'c' || e.key === 'C')) {
+        if (copySelection()) {
+          term.clearSelection()
+          return false
+        }
+        return true
+      }
+
       // Ctrl+J is not an Enter key at all, and is the combination Claude
       // Code's documentation names as working in every terminal.
       if (e.ctrlKey && !e.altKey && !e.metaKey && (e.key === 'j' || e.key === 'J')) {
@@ -142,6 +195,37 @@ export function TerminalView({ sessionId, owned }: { sessionId: string; owned: b
       send(NEWLINE)
       return false
     })
+    // Copy and paste, and who owns Ctrl+C.
+    //
+    // xterm.js gives you neither by default: every key goes to the process, so
+    // Ctrl+C is always SIGINT and there is no way to copy what is on screen.
+    // In a terminal you live in, that is missing rather than minimal.
+    //
+    // The rule is the one VS Code uses, because it is the one people already
+    // have in their fingers: **Ctrl+C copies when there is a selection and
+    // interrupts when there is not.** A person who has just dragged across
+    // some output means copy; a person who has not means stop.
+    //
+    // On macOS the question does not arise — Cmd+C is copy and Ctrl+C is
+    // interrupt, and they are different keys — so the rule only applies where
+    // the platform overloaded them.
+    const isMac = /Mac|iP(hone|ad)/.test(navigator.platform || navigator.userAgent)
+    const copySelection = () => {
+      const sel = term.getSelection()
+      if (!sel) return false
+      void navigator.clipboard?.writeText(sel)
+      return true
+    }
+    const pasteFromClipboard = () => {
+      // The paste goes through xterm rather than straight to the socket so
+      // that bracketed paste is applied if the process asked for it — a
+      // multi-line paste has to arrive as one paste, not as N submits.
+      void navigator.clipboard?.readText().then((t) => { if (t) term.paste(t) }).catch(() => {
+        // Denied or unavailable: the browser's own Cmd/Ctrl+V still works
+        // through xterm's textarea, so there is nothing to report.
+      })
+    }
+
     const ro = new ResizeObserver(() => { try { fit.fit() } catch { /* */ } })
     ro.observe(host.current)
     return () => { ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); ws.close(); term.dispose() }
