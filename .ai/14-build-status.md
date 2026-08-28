@@ -48,6 +48,48 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-08-28 — A terminal you can live in, and two tests that proved nothing
+
+The written milestone diagnosed its own root cause — input is line-buffered,
+submitting on Enter — and told us to treat that as true until disproved.
+Checking first was the whole value of the day: `term.onData` had always sent
+every keystroke straight to the PTY. What was broken was the **size**.
+`Resize` was declared on the agents interface and called from nowhere, so a
+PTY kept 120×40 for its entire life while Claude Code laid its menus out to
+it. Arrow keys moved a selection that was off screen, which is precisely what
+a user means by *"only Enter works"*.
+
+**Shift+Enter took two wrong answers before the right one.** CSI u
+(`ESC [ 13 ; 2 u`) is sent only after negotiating the kitty keyboard protocol,
+which this terminal never does, so it did nothing. A bare line feed looked
+safe — the documentation says Ctrl+J works everywhere and Ctrl+J *is* a line
+feed — but Claude Code reads a lone line feed as **submit**. Vova's report
+contained the tell: on an empty prompt it looked like a newline, because there
+was nothing to submit. The answer was on disk the whole time: `/terminal-setup`
+writes a binding into iTerm2 that sends `5c 6e` — a backslash and the letter
+n. **When a product configures a terminal for itself, read the configuration
+instead of inferring the protocol from prose.**
+
+Shipped with it: copy/paste on VS Code's rule (Ctrl+C copies with a selection,
+interrupts without), WebGL rendering with a canvas fallback, scrollback 5k →
+10k, and paste-a-file — bytes to `POST /v1/paste`, path typed into the session.
+
+**Two tests passed while proving nothing, and both were caught by breaking the
+code they covered.** The WebGL fallback test matched on `constructor.name`,
+and the real addon minifies to `l`, so the branch never fired — the component
+would have died on every machine without WebGL and passed here. The text-paste
+test asserted no upload happened rather than that the event was not swallowed,
+so intercepting *every* paste passed it. A test that cannot fail is worse than
+no test: it is a claim of coverage.
+
+**And a security decision that arrived as a failing test.** `POST /v1/paste`
+first took a raw body with the image's own content type, and its test returned
+403 — the forgery guard working exactly as designed. `image/png` is a *simple*
+content type, so a raw endpoint would have been reachable by any page in the
+browser without a preflight; an endpoint that writes files to disk must not be
+that. Base64 inside JSON costs a third more bytes and keeps it behind the same
+guard as everything else.
+
 ### 2026-08-27 — The share card, decided by looking at it
 
 The card was a poster: a heading, one enormous number, three figures and a
