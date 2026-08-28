@@ -147,25 +147,26 @@ describe('Shift+Enter', () => {
     ['Shift+Enter', { shiftKey: true }],
     ['Option+Enter', { altKey: true }],
     ['Ctrl+Enter', { ctrlKey: true }],
-  ])('%s sends a line feed', (_name, mods) => {
-    // All of them send 0x0A, and that is the point rather than a shortcut.
-    // Shift+Enter used to send CSI u, which a terminal only sends after
-    // negotiating the kitty keyboard protocol — a negotiation this terminal
-    // never performs, so the binding could fail silently. A line feed is what
-    // Claude Code's documentation states works in every terminal with no
-    // setup at all.
+  ])('%s sends the backslash pair', (_name, mods) => {
+    // `5c 6e` — a backslash and the letter n, exactly what the binding
+    // `/terminal-setup` writes into iTerm2 sends. Read off disk rather than
+    // guessed, after two guesses that both failed invisibly: CSI u needs the
+    // kitty protocol negotiated, and a bare line feed is read as *submit* —
+    // which looked like a newline on an empty prompt and sent the message the
+    // moment there was one.
     const h = mount()
     expect(h(key(mods))).toBe(false)  // xterm must not also send \r
-    expect(sent).toEqual(['\n'])
+    expect(sent).toEqual(['\\n'])
+    expect([...(sent[0] ?? '')].map((c) => c.charCodeAt(0))).toEqual([0x5c, 0x6e])
   })
 
-  it('sends a newline for Ctrl+J, the one that needs no terminal setup', () => {
+  it('sends the same pair for Ctrl+J', () => {
     // Not an Enter key at all: Ctrl+J is line feed, and it is the combination
     // that works in every terminal with no configuration whatsoever. If
     // everything else here failed, this would still give someone a newline.
     const h = mount()
     expect(h(key({ key: 'j', ctrlKey: true }))).toBe(false)
-    expect(sent).toEqual(['\n'])
+    expect(sent).toEqual(['\\n'])
   })
 
   it('leaves plain Enter alone', () => {
@@ -204,7 +205,7 @@ describe('Shift+Enter', () => {
     const h = mount()
     h(key({ shiftKey: true }))
     h(key({ shiftKey: true, type: 'keyup' }))
-    expect(sent).toEqual(['\n'])
+    expect(sent).toEqual(['\\n'])
   })
 
   /**
@@ -244,7 +245,7 @@ describe('Shift+Enter', () => {
     const h = mount()
     h(key({ shiftKey: true }))
     resizeHandler.fn?.({ cols: 100, rows: 30 })
-    expect(sent).toEqual(['\n', '{"resize":{"cols":100,"rows":30}}'])
+    expect(sent).toEqual(['\\n', '{"resize":{"cols":100,"rows":30}}'])
     // The frame type is the whole protocol: binary is what the user typed,
     // text is a message about the terminal. Swap them and the daemon writes
     // `{"resize":…}` into the session as keystrokes.

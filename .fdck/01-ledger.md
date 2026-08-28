@@ -7,30 +7,61 @@ Status is one of: **open** (no decision yet) · **planned** (decided yes, not
 started) · **building** · **shipped** (in a release, with the version) ·
 **declined** (decided no, with the reason in the story).
 
-| Id     | Date       | From  | Request                                                            | Status  | Landed in         |
-| ------ | ---------- | ----- | ------------------------------------------------------------------ | ------- | ----------------- |
-| FB-020 | 2026-08-28 | Dima  | Show what a cache hit rate actually means, without shouting        | shipped | v0.32.0           |
-| FB-019 | 2026-08-27 | Dima  | Reach Caprock from a tablet or phone, the way Claude Code is       | open    | —                 |
-| FB-018 | 2026-08-27 | Vova  | Shift+Enter did not work for him; Option+Enter was what he pressed | shipped | v0.31.3           |
-| FB-017 | 2026-08-27 | Dima  | Wanted an update button, or at least clear steps per OS            | shipped | v0.31.2           |
-| FB-016 | 2026-08-27 | Almas | brew said "already installed" for a release that was already out   | shipped | v0.31.2           |
-| FB-015 | 2026-08-27 | Dima  | Hover invisible, caveat too wordy, two buttons out of line         | shipped | v0.31.2           |
-| FB-014 | 2026-08-27 | Dima  | The premium banner's line was a metaphor, not an explanation       | shipped | v0.31.1           |
-| FB-013 | 2026-08-27 | Dima  | Sharing a card produced two images, downloading produced one       | shipped | v0.31.1           |
-| FB-012 | 2026-08-27 | Dima  | Plan limits looked odd and belonged to nothing on the screen       | shipped | v0.31.1           |
-| FB-011 | 2026-08-27 | Dima  | No clear way to update; the share button was easy to miss          | shipped | v0.31.1           |
-| FB-010 | 2026-08-27 | Dima  | The share dialog explained too much and read as a hang             | shipped | v0.31.0           |
-| FB-009 | 2026-08-27 | Vova  | Shift+Enter in the terminal, for multi-line prompts                | shipped | v0.30.1           |
-| FB-008 | 2026-08-26 | Vova  | Pay for models from inside Caprock                                 | open    | —                 |
-| FB-007 | 2026-08-26 | Vova  | Show plan limits where they are actually looked at                 | shipped | v0.28.0           |
-| FB-006 | 2026-08-26 | Vova  | Quick chat: a findable "new project" that makes the folder         | shipped | v0.28.0           |
-| FB-005 | 2026-08-26 | Vova  | Third-party model providers, free ones first                       | part    | v0.30.0           |
-| FB-004 | 2026-08-26 | Vova  | JetBrains Mono in the terminal — Cyrillic was unreadable           | shipped | v0.28.0           |
-| FB-003 | 2026-08-26 | Vova  | Would pay $20/mo; $50 with models; $100 with Claude+GPT            | open    | —                 |
-| FB-002 | 2026-08-25 | Vova  | Filter the dashboard by agent after OpenCode appeared              | shipped | v0.21.4           |
-| FB-001 | 2026-08-24 | Alex  | Hooks never fired on Windows                                       | shipped | v0.27.3 + v0.27.4 |
+| Id     | Date       | From  | Request                                                                      | Status  | Landed in         |
+| ------ | ---------- | ----- | ---------------------------------------------------------------------------- | ------- | ----------------- |
+| FB-021 | 2026-08-28 | Vova  | Shift+Enter inserts a newline on an empty prompt, submits once there is text | shipped | unreleased        |
+| FB-020 | 2026-08-28 | Dima  | Show what a cache hit rate actually means, without shouting                  | shipped | v0.32.0           |
+| FB-019 | 2026-08-27 | Dima  | Reach Caprock from a tablet or phone, the way Claude Code is                 | open    | —                 |
+| FB-018 | 2026-08-27 | Vova  | Shift+Enter did not work for him; Option+Enter was what he pressed           | shipped | v0.31.3           |
+| FB-017 | 2026-08-27 | Dima  | Wanted an update button, or at least clear steps per OS                      | shipped | v0.31.2           |
+| FB-016 | 2026-08-27 | Almas | brew said "already installed" for a release that was already out             | shipped | v0.31.2           |
+| FB-015 | 2026-08-27 | Dima  | Hover invisible, caveat too wordy, two buttons out of line                   | shipped | v0.31.2           |
+| FB-014 | 2026-08-27 | Dima  | The premium banner's line was a metaphor, not an explanation                 | shipped | v0.31.1           |
+| FB-013 | 2026-08-27 | Dima  | Sharing a card produced two images, downloading produced one                 | shipped | v0.31.1           |
+| FB-012 | 2026-08-27 | Dima  | Plan limits looked odd and belonged to nothing on the screen                 | shipped | v0.31.1           |
+| FB-011 | 2026-08-27 | Dima  | No clear way to update; the share button was easy to miss                    | shipped | v0.31.1           |
+| FB-010 | 2026-08-27 | Dima  | The share dialog explained too much and read as a hang                       | shipped | v0.31.0           |
+| FB-009 | 2026-08-27 | Vova  | Shift+Enter in the terminal, for multi-line prompts                          | shipped | v0.30.1           |
+| FB-008 | 2026-08-26 | Vova  | Pay for models from inside Caprock                                           | open    | —                 |
+| FB-007 | 2026-08-26 | Vova  | Show plan limits where they are actually looked at                           | shipped | v0.28.0           |
+| FB-006 | 2026-08-26 | Vova  | Quick chat: a findable "new project" that makes the folder                   | shipped | v0.28.0           |
+| FB-005 | 2026-08-26 | Vova  | Third-party model providers, free ones first                                 | part    | v0.30.0           |
+| FB-004 | 2026-08-26 | Vova  | JetBrains Mono in the terminal — Cyrillic was unreadable                     | shipped | v0.28.0           |
+| FB-003 | 2026-08-26 | Vova  | Would pay $20/mo; $50 with models; $100 with Claude+GPT                      | open    | —                 |
+| FB-002 | 2026-08-25 | Vova  | Filter the dashboard by agent after OpenCode appeared                        | shipped | v0.21.4           |
+| FB-001 | 2026-08-24 | Alex  | Hooks never fired on Windows                                                 | shipped | v0.27.3 + v0.27.4 |
 
 ## Detail
+
+### FB-021 — Shift+Enter submits as soon as there is text
+
+The most useful bug report of the project so far, because of one clause: **on
+an empty prompt it inserted a newline, and with text in it the same key sent
+the message.**
+
+That is not a key that fails to arrive. It is a key that arrives and is read as
+*submit* — invisible on an empty prompt, because there is nothing to submit.
+
+It took two wrong answers to get here, both of which passed their tests.
+
+1. **CSI u** (`ESC [ 13 ; 2 u`). A terminal only sends it after negotiating the
+   kitty keyboard protocol; Caprock writes into a PTY directly and never
+   negotiates, so it did nothing at all.
+2. **A bare line feed** (`0x0A`). Claude Code's documentation states that
+   Ctrl+J works in every terminal with no setup, and Ctrl+J is a line feed —
+   so this looked like the safe answer. It is not: Claude Code reads a lone
+   line feed as submit. Vova's report is what exposed it.
+
+**The answer was on disk the whole time.** `/terminal-setup` writes a binding
+into iTerm2, where Shift+Enter works natively, and the binding says: Send Text,
+`5c 6e` — a backslash and the letter n. Claude Code sees the backslash before
+the line ends and turns the pair into a newline. That is the same `\` + Enter
+the docs describe, delivered as one keystroke.
+
+**The lesson, which was cheaper than the two rounds it cost:** when a product
+configures a terminal for itself, read that configuration. Inferring a wire
+protocol from prose documentation put a plausible wrong answer into two
+releases.
 
 ### FB-020 — What does a good cache rate look like?
 

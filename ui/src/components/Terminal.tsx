@@ -90,39 +90,44 @@ export function TerminalView({ sessionId, owned }: { sessionId: string; owned: b
     // A newline in the prompt, however the user asks for one.
     //
     // A terminal cannot tell Shift+Enter from Enter: both are carriage return,
-    // ASCII 13, and have been since the teletype. Which byte sequence means
-    // "newline, do not submit" is therefore a convention, and the conventions
-    // disagree.
+    // ASCII 13, and have been since the teletype. So every terminal that
+    // supports multi-line prompts sends something else instead, and the
+    // question is only which something.
     //
-    // **We send a line feed for all of them, and that is deliberate.**
+    // **Read out of a terminal that works.** `/terminal-setup` writes a
+    // binding into iTerm2, and that binding is on disk and can simply be
+    // read. It is Send Text, and the text is two bytes: `5c 6e` — a backslash
+    // and the letter n. Not a line feed, not CSI u. Claude Code sees the
+    // backslash at the end of the line and turns the pair into a newline,
+    // which is the same `\` + Enter its documentation says works everywhere.
     //
-    // The obvious binding for Shift+Enter is CSI u — `ESC [ 13 ; 2 u` — which
-    // is what a terminal speaking the kitty keyboard protocol sends, and what
-    // this originally did. But a terminal only sends it after negotiating that
-    // protocol, and this one does not negotiate: we write into a PTY
-    // directly. Claude Code's own documentation never states that CSI u is
-    // accepted unnegotiated, it lists Shift+Enter as working natively in some
-    // terminals and needing `/terminal-setup` in others, and there is an open
-    // report of the sequence arriving as literal text rather than a newline.
-    // A binding that depends on a negotiation we never performed is a binding
-    // that fails silently.
+    // Two earlier guesses were wrong, and both failed in a way nobody could
+    // see from the code:
     //
-    // What the documentation does state, flatly, is that **Ctrl+J works in
-    // every terminal with no setup at all**. Ctrl+J is a line feed, 0x0A. So
-    // every one of these keys sends a line feed: the key the user pressed is
-    // their business, and the byte that reaches Claude Code is ours.
+    //   CSI u (`ESC [ 13 ; 2 u`) is what a terminal sends *after* negotiating
+    //   the kitty keyboard protocol. We never negotiate, so it arrived as
+    //   nothing at all.
     //
-    //   Shift+Enter · Option+Enter · Ctrl+Enter · Ctrl+J  →  \n
-    //   \ then Enter  needs nothing from us: the backslash is already in the
-    //                 line and Claude Code reads the pair itself.
+    //   A bare line feed (`0x0A`) is what Ctrl+J sends, and the documentation
+    //   does say Ctrl+J works — but Claude Code reads a lone line feed as
+    //   *submit*. The user who reported it saw exactly that: on an empty
+    //   prompt it looked like a newline, because there was nothing to submit,
+    //   and the moment he typed anything the same key sent his message.
+    //
+    // So all of these send the backslash pair, which is what a terminal
+    // Claude Code itself configured sends.
+    //
+    //   Shift+Enter · Option+Enter · Ctrl+Enter · Ctrl+J  →  \n (5c 6e)
     //
     // Intercepted before xterm turns the key into bytes: returning false stops
     // it emitting the plain carriage return it otherwise would.
-    const NEWLINE = '\n'
+    // Two printable characters, `5c 6e` — a backslash and the letter n.
+    // Read straight out of the iTerm2 binding `/terminal-setup` writes.
+    const NEWLINE = '\\n'
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown') return true
-      // Ctrl+J is not an Enter key at all, and is the one that is documented
-      // to work everywhere.
+      // Ctrl+J is not an Enter key at all, and is the combination Claude
+      // Code's documentation names as working in every terminal.
       if (e.ctrlKey && !e.altKey && !e.metaKey && (e.key === 'j' || e.key === 'J')) {
         send(NEWLINE)
         return false
