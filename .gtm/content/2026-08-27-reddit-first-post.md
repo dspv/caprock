@@ -3,7 +3,7 @@
 **Where:** r/ClaudeAI
 **Who posts:** Dima, personal account, no surname
 **When:** a weekday morning US time (that is evening in Israel)
-**Status:** ready — figures re-read 2026-08-27 with `caprock report` on v0.31.3
+**Status:** ready to post — figures re-read 2026-08-28 with `caprock report` on v0.33.0
 
 ---
 
@@ -11,7 +11,7 @@
 
 Every figure in it is measured on Dima's own machine and can be checked by
 anyone who installs the thing. That is the entire asset: a competitor can copy
-the dashboard, and cannot copy having spent $11,488 through it.
+the dashboard, and cannot copy having spent $11,711 through it.
 
 It leads with the finding, not the product. People come for the number and
 find the tool underneath it — the reverse does not work on Reddit, where a
@@ -25,8 +25,8 @@ to be around for a couple of hours after posting.
 
 It was open because nobody had counted the calendar days behind the 60 active
 ones. `caprock report` now prints both: the window runs 24 May to 27 August —
-**96 calendar days**, 60 of them with activity — so the plan fee for it is
-$200 × 96 ÷ 30 = **$640**, and the multiple is **18×**.
+**97 calendar days**, 61 of them with activity — so the plan fee for it is
+$200 × 97 ÷ 30 = **$647**, and the multiple is **18×**.
 
 The post still leads with the total rather than the multiple. A multiple
 invites the reader to argue about the denominator; a total invites them to
@@ -36,7 +36,7 @@ check their own.
 
 ## The post
 
-**Title:** I measured what my Claude Code actually costs. $11,488 over three months — on a $200/month plan.
+**Title:** I measured what my Claude Code actually costs. $11,711 over three months — on a $200/month plan.
 
 **Body:**
 
@@ -46,18 +46,18 @@ the usage is invisible.
 
 So I wrote something to read the transcripts Claude Code already writes to
 disk, price every turn at Anthropic's list rates, and add it up. Three months
-later — 96 calendar days, 60 of them with any activity on them:
+later — 97 calendar days, 61 of them with any activity on them:
 
-    $11,488      priced at API list rates — not a bill
-    $640         what I actually paid over the same window
+    $11,711      priced at API list rates — not a bill
+    $647         what I actually paid over the same window
     131          sessions
-    74,874       turns
-    83,755       tool calls
+    75,397       turns
+    84,247       tool calls
     99%          cache hit rate
 
 A few things I did not expect.
 
-**Bash is half of everything.** 42,775 calls, 51% of every tool call I have
+**Bash is half of everything.** 43,163 calls, 51% of every tool call I have
 made — running tests, running builds, running `git status` for the hundredth
 time. Reading is 14% and editing 9%. I assumed writing code was the expensive
 part. It is not; running it is.
