@@ -24,6 +24,10 @@ in a minute.
 - [ ] **Rename the projects.** `amarketer`, `intentprobe`, `newhope3` are real
       and go on camera otherwise. A screenshot can be replaced after posting;
       a video cannot.
+- [ ] **Set the Cost screen's range to `all`.** It opens on 30 days, where the
+      same split reads 44% and 7% — true, but not the figures said out loud.
+      A number on screen that contradicts the voiceover is the one thing a
+      viewer will notice.
 - [ ] Dark theme, browser chrome hidden, one window
 - [ ] Nothing else on screen — no other tabs, no notifications
 
@@ -50,8 +54,8 @@ list prices. I paid six hundred and forty-seven."
 
 > On screen: the "what it went on" rows, cursor resting on the top one.
 
-"Half of it — forty-eight percent — went on running commands. Tests, builds,
-`git status` for the hundredth time. Writing code was thirteen."
+"Nearly half — forty-six percent — went on running commands. Tests, builds,
+`git status` for the hundredth time. Writing code was twelve."
 
 "I had this backwards. I assumed the expensive part was the model writing
 things. It is not. The expensive part is running what it wrote."
@@ -99,11 +103,11 @@ Re-read before recording — these move every day the machine is on.
 
 | Fact                      | Value                           |
 | ------------------------- | ------------------------------- |
-| Usage at API list prices  | $11,711                         |
+| Usage at API list prices  | $11,780                         |
 | Paid over the same window | $647 (a $200/month plan)        |
 | Window                    | 24 May – 28 Aug, 61 active days |
-| Running commands          | $5,455 — 48%                    |
-| Writing code              | $1,451 — 13%                    |
+| Running commands          | $5,455 — 46%                    |
+| Writing code              | $1,451 — 12%                    |
 | Bash share of tool calls  | 43,163 of 84,247 — 51%          |
 | Cache                     | 99% hit, cutting 89% of input   |
 
