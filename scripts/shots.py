@@ -90,9 +90,19 @@ def scrub():
                   "WHERE (repo_root IS NULL OR repo_root = '') "
                   "AND cwd IS NOT NULL AND cwd != ''")
         roots = sorted((r[0] for r in c.fetchall()), key=lambda r: (-len(r), r))
+        # Flattening can collide, and a collision reintroduces exactly what
+        # this function exists to remove. Two different paths ending in the
+        # same leaf both become /Users/dev/dev/<leaf>, and the dashboard's
+        # DisambiguateLabels then prints parent segments to tell them
+        # apart — printing the machine's own layout, e.g. `ds/dev/caprock`,
+        # with the username in it. So a leaf that is already taken gets a
+        # number rather than a shared root.
+        taken: dict[str, int] = {}
         for root in roots:
             leaf = root.rstrip("/").rsplit("/", 1)[-1]
-            flat = f"/Users/dev/dev/{leaf}"
+            n = taken.get(leaf, 0)
+            taken[leaf] = n + 1
+            flat = f"/Users/dev/dev/{leaf}" if n == 0 else f"/Users/dev/dev/{leaf}-{n + 1}"
             if root == flat:
                 continue
             for t, col in (("sessions", "cwd"), ("sessions", "repo_root"),

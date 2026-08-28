@@ -40,7 +40,7 @@ fi
 cleanup() {
   echo
   echo "→ stopping the recording stand"
-  CAPROCK_DATA_DIR="$WORK/data" "$BIN" down >/dev/null 2>&1 || true
+  HOME="$WORK/home" CAPROCK_DATA_DIR="$WORK/data" "$BIN" down >/dev/null 2>&1 || true
   rm -rf "$WORK"
 }
 trap cleanup EXIT INT TERM
@@ -69,8 +69,26 @@ if not m.scrub():
 PY
 
 echo "→ starting the stand on :$PORT"
-# --no-hooks so a throwaway daemon never edits the user's Claude Code settings.
-"$BIN" up --no-open --no-hooks --port "$PORT" --data-dir "$WORK/data" >/dev/null 2>&1 || true
+# A HOME of its own, with an empty ~/.claude/projects.
+#
+# This is the part that took three wrong theories to find. The daemon reads
+# transcripts from $HOME/.claude/projects and backfills whatever it finds — so
+# a stand started on a scrubbed copy immediately re-ingested the real
+# transcripts and put every real path straight back. The scrub was working
+# perfectly; the daemon was undoing it a second later.
+#
+# Pointing HOME at an empty directory leaves it nothing to read, so the copy
+# stays exactly as the scrub left it.
+mkdir -p "$WORK/home/.claude/projects"
+
+# Hooks are installed into that throwaway HOME rather than suppressed.
+#
+# The dashboard shows a "hooks not installed" banner when they are missing,
+# and it is telling the truth — so the fix is to not be missing them, not to
+# hide the warning. Editing the real ~/.claude/settings.json for a recording
+# would be unacceptable; editing one inside a temp directory that is deleted
+# on Ctrl-C is free.
+HOME="$WORK/home" "$BIN" up --no-open --yes --port "$PORT" --data-dir "$WORK/data" >/dev/null 2>&1 || true
 for _ in $(seq 1 20); do
   curl -sf "http://127.0.0.1:$PORT/v1/status" >/dev/null 2>&1 && break
   sleep 1
