@@ -3,7 +3,7 @@
 **Length:** 60–90 seconds
 **Shows:** the dashboard, screen only — no face, no surname
 **Where:** YouTube (as a Short), X, LinkedIn
-**Status:** ready to record
+**Status:** ready to record — figures re-read 2026-08-28
 
 ---
 
@@ -35,8 +35,8 @@ Timings are guides, not marks. Read it at the pace of talking, not presenting.
 
 > On screen: the Now page, ALL TIME strip filling the top.
 
-"Three months of Claude Code. Eleven and a half thousand dollars of usage at
-list prices. I paid six hundred and forty."
+"Three months of Claude Code. Eleven thousand seven hundred of usage at
+list prices. I paid six hundred and forty-seven."
 
 **0:08–0:20 — the turn**
 
@@ -93,18 +93,18 @@ first run, for every session they have ever run, not from installation onward.
 - No feature list. One finding. Everything else is the next video.
 - Nothing that `caprock report` does not print.
 
-## The figures, as of 2026-08-27
+## The figures, as of 2026-08-28
 
 Re-read before recording — these move every day the machine is on.
 
 | Fact                      | Value                           |
 | ------------------------- | ------------------------------- |
-| Usage at API list prices  | $11,500                         |
-| Paid over the same window | $640 (a $200/month plan)        |
-| Window                    | 24 May – 27 Aug, 60 active days |
+| Usage at API list prices  | $11,711                         |
+| Paid over the same window | $647 (a $200/month plan)        |
+| Window                    | 24 May – 28 Aug, 61 active days |
 | Running commands          | $5,455 — 48%                    |
 | Writing code              | $1,451 — 13%                    |
-| Bash share of tool calls  | 42,775 of 83,755 — 51%          |
+| Bash share of tool calls  | 43,163 of 84,247 — 51%          |
 | Cache                     | 99% hit, cutting 89% of input   |
 
 ## Cuts for each surface

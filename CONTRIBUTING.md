@@ -76,7 +76,12 @@ changed.
 
 The site keeps its own copies in `caprock-web/public/shots/` rather than
 pulling from this repository's `master`, so refreshing the README cannot change
-what is published on caprock.dev. Copy them across and commit them separately
+what is published on caprock.dev.
+
+**Recording video? `make record`.** It serves the same scrubbed database on
+:4291 and holds it open until you stop it. Record from that window, never from
+the live dashboard on :4173 — a screenshot can be replaced after posting and a
+video cannot, and the live one has real repository names on it. Copy them across and commit them separately
 when you want the site to move.
 
 ## Where we're headed

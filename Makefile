@@ -104,6 +104,10 @@ check: docs-check docs-links lint test dist-check smoke ## Docs gates + lint + t
 shots: ## Re-take the documented screenshots and open a PR (needs a real database)
 	@bash scripts/refresh-shots.sh
 
+.PHONY: record
+record: ## Serve a scrubbed dashboard on :4291 to record video from (Ctrl-C to stop)
+	@bash scripts/record-stand.sh
+
 .PHONY: reload
 reload: build ## Build the dashboard + binaries and restart the running daemon on this machine
 	@# Runs ./bin/caprock rather than installing over the copy on PATH.
