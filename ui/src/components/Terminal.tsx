@@ -90,44 +90,52 @@ export function TerminalView({ sessionId, owned }: { sessionId: string; owned: b
     // A newline in the prompt, however the user asks for one.
     //
     // A terminal cannot tell Shift+Enter from Enter: both are carriage return,
-    // ASCII 13, and have been since the teletype. Claude Code therefore
-    // accepts four different ways of asking for a newline, and which of them a
-    // person reaches for depends on what they use elsewhere. This first
-    // shipped supporting only Shift+Enter, and a user reported back that
-    // Option+Enter was the one that worked for him — because he had learned it
-    // in his own terminal, where it is what Claude Code documents for macOS.
+    // ASCII 13, and have been since the teletype. Which byte sequence means
+    // "newline, do not submit" is therefore a convention, and the conventions
+    // disagree.
     //
-    // So all four are handled, and each sends exactly what Claude Code expects
-    // to receive over a PTY:
+    // **We send a line feed for all of them, and that is deliberate.**
     //
-    //   Ctrl+J        line feed, 0x0A. Works in every terminal with no setup
-    //                 at all, which makes it the one that cannot fail.
-    //   Option+Enter  ESC then CR — the meta-prefixed return a terminal sends
-    //                 with "use Option as Meta" enabled. On macOS this is what
-    //                 Claude Code's own docs tell people to turn on.
-    //   Shift+Enter   CSI u, `ESC [ 13 ; 2 u`. The modern encoding, which only
-    //                 terminals speaking the kitty keyboard protocol send.
-    //                 Native support is why `/terminal-setup` exists.
+    // The obvious binding for Shift+Enter is CSI u — `ESC [ 13 ; 2 u` — which
+    // is what a terminal speaking the kitty keyboard protocol sends, and what
+    // this originally did. But a terminal only sends it after negotiating that
+    // protocol, and this one does not negotiate: we write into a PTY
+    // directly. Claude Code's own documentation never states that CSI u is
+    // accepted unnegotiated, it lists Shift+Enter as working natively in some
+    // terminals and needing `/terminal-setup` in others, and there is an open
+    // report of the sequence arriving as literal text rather than a newline.
+    // A binding that depends on a negotiation we never performed is a binding
+    // that fails silently.
+    //
+    // What the documentation does state, flatly, is that **Ctrl+J works in
+    // every terminal with no setup at all**. Ctrl+J is a line feed, 0x0A. So
+    // every one of these keys sends a line feed: the key the user pressed is
+    // their business, and the byte that reaches Claude Code is ours.
+    //
+    //   Shift+Enter · Option+Enter · Ctrl+Enter · Ctrl+J  →  \n
     //   \ then Enter  needs nothing from us: the backslash is already in the
     //                 line and Claude Code reads the pair itself.
     //
     // Intercepted before xterm turns the key into bytes: returning false stops
     // it emitting the plain carriage return it otherwise would.
+    const NEWLINE = '\n'
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown') return true
-      // Ctrl+J is a newline everywhere, and is not an Enter key at all.
+      // Ctrl+J is not an Enter key at all, and is the one that is documented
+      // to work everywhere.
       if (e.ctrlKey && !e.altKey && !e.metaKey && (e.key === 'j' || e.key === 'J')) {
-        send('\n')
+        send(NEWLINE)
         return false
       }
       if (e.key !== 'Enter') return true
-      // Exactly one modifier, or this is some other binding we should not eat.
+      // Exactly one modifier, or this is somebody else's binding — a window
+      // manager, the browser, an OS shortcut — and not ours to eat.
       const mods = [e.shiftKey, e.altKey, e.ctrlKey, e.metaKey].filter(Boolean).length
       if (mods !== 1) return true
-      if (e.shiftKey) { send('\x1b[13;2u'); return false }
-      if (e.altKey) { send('\x1b\r'); return false }
-      if (e.ctrlKey) { send('\n'); return false }
-      return true
+      // Cmd is the browser's and the OS's, never ours.
+      if (e.metaKey) return true
+      send(NEWLINE)
+      return false
     })
     const ro = new ResizeObserver(() => { try { fit.fit() } catch { /* */ } })
     ro.observe(host.current)

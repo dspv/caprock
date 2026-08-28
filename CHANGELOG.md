@@ -29,6 +29,16 @@ Phase 3 (Delight) has no plan by design.
   turned out to be wrong, and checking it before building was what found the
   real cause.
 
+- **Shift+Enter sends a line feed, not CSI u.** It sent `ESC [ 13 ; 2 u`, which
+  is what a terminal speaking the kitty keyboard protocol sends — and this
+  terminal never negotiates that protocol, because it writes into a PTY
+  directly. Claude Code's documentation does not state that the sequence is
+  accepted unnegotiated, and there is an open report of it arriving as literal
+  text. What the documentation does state flatly is that Ctrl+J works in every
+  terminal with no setup, and Ctrl+J is a line feed — so Shift+Enter,
+  Option+Enter, Ctrl+Enter and Ctrl+J all send `0x0A`. The key a person presses
+  is their business; the byte Claude Code receives is ours.
+
 ## [0.32.0] - 2026-08-28
 
 ### Added

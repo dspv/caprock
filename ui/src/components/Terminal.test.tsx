@@ -144,13 +144,19 @@ describe('Shift+Enter', () => {
   // people to enable. Each row is the exact byte sequence Claude Code expects
   // to receive over the PTY for that key.
   it.each([
-    ['Shift+Enter', { shiftKey: true }, '\x1b[13;2u'],
-    ['Option+Enter', { altKey: true }, '\x1b\r'],
-    ['Ctrl+Enter', { ctrlKey: true }, '\n'],
-  ])('%s sends what Claude Code listens for', (_name, mods, want) => {
+    ['Shift+Enter', { shiftKey: true }],
+    ['Option+Enter', { altKey: true }],
+    ['Ctrl+Enter', { ctrlKey: true }],
+  ])('%s sends a line feed', (_name, mods) => {
+    // All of them send 0x0A, and that is the point rather than a shortcut.
+    // Shift+Enter used to send CSI u, which a terminal only sends after
+    // negotiating the kitty keyboard protocol — a negotiation this terminal
+    // never performs, so the binding could fail silently. A line feed is what
+    // Claude Code's documentation states works in every terminal with no
+    // setup at all.
     const h = mount()
     expect(h(key(mods))).toBe(false)  // xterm must not also send \r
-    expect(sent).toEqual([want])
+    expect(sent).toEqual(['\n'])
   })
 
   it('sends a newline for Ctrl+J, the one that needs no terminal setup', () => {
@@ -198,7 +204,7 @@ describe('Shift+Enter', () => {
     const h = mount()
     h(key({ shiftKey: true }))
     h(key({ shiftKey: true, type: 'keyup' }))
-    expect(sent).toEqual(['\x1b[13;2u'])
+    expect(sent).toEqual(['\n'])
   })
 
   /**
@@ -238,7 +244,7 @@ describe('Shift+Enter', () => {
     const h = mount()
     h(key({ shiftKey: true }))
     resizeHandler.fn?.({ cols: 100, rows: 30 })
-    expect(sent).toEqual(['\x1b[13;2u', '{"resize":{"cols":100,"rows":30}}'])
+    expect(sent).toEqual(['\n', '{"resize":{"cols":100,"rows":30}}'])
     // The frame type is the whole protocol: binary is what the user typed,
     // text is a message about the terminal. Swap them and the daemon writes
     // `{"resize":…}` into the session as keystrokes.
