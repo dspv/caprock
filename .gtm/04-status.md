@@ -22,12 +22,15 @@ first post.
    r/claudeskills. Watch Umami for the `copy-command` event: the one number
    that matters is how many arrivals copy the install line, against the 17%
    the Telegram repost produced.
-2. **Register `caprock` on X, LinkedIn and YouTube.** No name to pick — the
+2. ~~Show HN~~ — **posted 2026-08-28**, link to the repository, short body.
+   Same day as Reddit, which the launch notes advise against; done anyway
+   because the figures were fresh and the owner was at the keyboard for both.
+3. **Register `caprock` on X, LinkedIn and YouTube.** No name to pick — the
    product already has one, and it carries no surname ([GTM-008](03-decisions.md)).
-3. **Record the first video**: 60–90 seconds, the dashboard and one finding,
+4. **Record the first video**: 60–90 seconds, the dashboard and one finding,
    screen only. Scrub project names before recording — a video cannot be
    replaced after posting the way a screenshot can.
-4. Publish weekly for six weeks against [06-content-plan.md](06-content-plan.md),
+5. Publish weekly for six weeks against [06-content-plan.md](06-content-plan.md),
    then evaluate. A personal channel is still wanted and still waits for a name;
    it no longer blocks anything.
 
