@@ -56,8 +56,36 @@ export function TerminalView({ sessionId, owned }: { sessionId: string; owned: b
     ws.binaryType = 'arraybuffer'
     ws.onmessage = (e) => { term.write(typeof e.data === 'string' ? e.data : new Uint8Array(e.data)) }
     ws.onclose = () => term.write('\r\n\x1b[2m[session ended]\x1b[0m\r\n')
-    const send = (d: string) => { if (ws.readyState === WebSocket.OPEN) ws.send(d) }
+    // Input goes as binary, control as text.
+    //
+    // Everything used to go as text and the daemon treated all of it as
+    // keystrokes, which left no way to tell it the window had changed size —
+    // so the PTY kept the size it was born with, 120x40, forever. Claude Code
+    // lays its menus out to that size, so on any other window the interface
+    // was drawn for a screen that was not there: arrows moved a selection
+    // nobody could see, which is what "only Enter works" looks like.
+    const enc = new TextEncoder()
+    const send = (d: string) => { if (ws.readyState === WebSocket.OPEN) ws.send(enc.encode(d)) }
     const dataSub = term.onData(send)
+
+    // Tell the daemon the size, on connect and whenever it changes.
+    //
+    // `fit()` only resizes the canvas; without this the two disagree and every
+    // line wraps in the wrong place. Sent on `onResize` rather than from the
+    // ResizeObserver directly, because that is the point at which xterm has
+    // settled on a column count — the observer fires mid-layout, sometimes
+    // with a width of zero.
+    const sendSize = (cols: number, rows: number) => {
+      if (ws.readyState !== WebSocket.OPEN || cols <= 0 || rows <= 0) return
+      ws.send(JSON.stringify({ resize: { cols, rows } }))
+    }
+    const sizeSub = term.onResize(({ cols, rows }) => sendSize(cols, rows))
+    ws.onopen = () => {
+      // The PTY was created before this socket existed, so the first thing it
+      // hears has to be the size the window actually is.
+      try { fit.fit() } catch { /* not laid out yet */ }
+      sendSize(term.cols, term.rows)
+    }
 
     // A newline in the prompt, however the user asks for one.
     //
@@ -103,7 +131,7 @@ export function TerminalView({ sessionId, owned }: { sessionId: string; owned: b
     })
     const ro = new ResizeObserver(() => { try { fit.fit() } catch { /* */ } })
     ro.observe(host.current)
-    return () => { ro.disconnect(); dataSub.dispose(); ws.close(); term.dispose() }
+    return () => { ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); ws.close(); term.dispose() }
   }, [sessionId, owned])
   if (!owned) {
     return (

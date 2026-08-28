@@ -51,6 +51,12 @@ Every request under `/v1` passes `checkOrigin` (`internal/api/csrf.go`) before r
 - **`Host`** — must name this machine, checked only when the request is browser-shaped (`Origin` or `Sec-Fetch-Site` present). This is the DNS-rebinding case: a hostname the attacker controls, pointed at `127.0.0.1`, is genuinely same-origin with the daemon and passes every check above, but the `Host` header still carries the attacker's name. It is not applied to non-browser clients, which legitimately address the daemon by other names (a tunnel, a test harness) with no rebinding risk.
 - **A bearer token, or `Content-Type: application/json`** — required on a state-changing method that carries no browser provenance at all. Either one is sufficient. The per-run token lives in `runtime.json` (mode 0600) and a web page can neither read nor guess it. A JSON content type cannot be set by a cross-site *simple* request: doing so forces a CORS preflight, which this server approves for nothing, so the real request is never sent — while a form POST is limited to the three simple content types and so cannot reach the endpoint at all.
 
+**`WS /v1/agents/{id}/term` carries two things, told apart by frame type.** A **binary** frame is what the user typed, written to the PTY byte for byte. A **text** frame is a control message — today only `{"resize":{"cols":N,"rows":N}}`, which resizes the PTY; a non-zero pair is required and anything else is ignored.
+
+Everything on this socket used to be treated as keystrokes, so there was no way to tell the daemon the window had changed size: `Resize` was declared on the interface and called by nothing, and a PTY kept the size it was born with — 120×40 by default — for its whole life. Claude Code lays its menus out to the terminal size, so on any other window it drew an interface for a screen that was not there. Arrow keys moved a selection nobody could see, which is what the first user reported as "only Enter works".
+
+A text frame that is not valid control JSON is still written through as input, so a dashboard that predates this against a newer daemon keeps typing rather than going mute.
+
 `GET`/`HEAD`/`OPTIONS` are otherwise permissive because every `GET` route on the router is a query. The two that reach a live process — `WS /v1/live` and `WS /v1/agents/{id}/term` — are WebSocket upgrades guarded by coder/websocket's `OriginPatterns`, which already refuses a missing or foreign `Origin`. **A new `GET` with a side effect belongs behind a `POST`**, not on the safe-method list.
 
 Non-browser clients are unaffected, and each in-repo client was checked against its real request shape: the hook shim and `caprock statusline` send JSON + a bearer token, `caprock down` sends a bearer token with no body, `caprock task create` sends JSON, and `caprock tasks`/`status` are plain reads. The dashboard's single mutation helper (`ui/src/lib/api.ts`) already sets `Content-Type: application/json`. `curl` with `-H 'Content-Type: application/json'` works as documented.
@@ -132,7 +138,7 @@ What that file holds bounds what may ever be said about it: a timestamp and two 
 POST   /v1/agents                    {cwd?, chat?, create?, worktree?, model?, permission_mode?, command?, args?} → {session_id, cwd}
 POST   /v1/agents/{id}/input         {data}            → 204   (owned PTYs only)
 POST   /v1/agents/{id}/signal        {action: pause|resume|kill} → 204 (owned PTYs only)
-WS     /v1/agents/{id}/term          bidirectional binary stream (xterm.js); snapshot on connect, closes on exit
+WS     /v1/agents/{id}/term          bidirectional stream (xterm.js): binary = keystrokes, text = control; snapshot on connect, closes on exit
 GET    /v1/history?range=…           lifetime totals + tool distribution + model mix + daily
 ```
 

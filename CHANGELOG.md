@@ -9,6 +9,26 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **The terminal now tells the daemon how big it is.** `fit()` resized the
+  canvas and nothing else, so the PTY kept whatever size it was created with —
+  120×40 by default — for its whole life. Claude Code lays its menus out to the
+  terminal size, so on any other window it drew an interface for a screen that
+  was not there: arrow keys moved a selection nobody could see, which is what
+  the first user reported as *"only Enter works"*.
+
+  The socket now carries two things, told apart by frame type: **binary** is
+  what you typed, written byte for byte, and **text** is a control message —
+  today only `{"resize":{"cols":N,"rows":N}}`. A text frame that is not valid
+  control JSON is still written through as input, so an older dashboard
+  against a newer daemon keeps typing rather than going mute.
+
+  Keystroke passthrough itself was never the problem: `term.onData` has always
+  sent every key straight to the PTY. The diagnosis in the milestone note
+  turned out to be wrong, and checking it before building was what found the
+  real cause.
+
 ## [0.32.0] - 2026-08-28
 
 ### Added

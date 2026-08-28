@@ -9,6 +9,8 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 const ctor = vi.hoisted(() => vi.fn())
 
 type KeyHandler = (e: KeyboardEvent) => boolean
+const opened = vi.hoisted(() => ({ fn: undefined as (() => void) | undefined }))
+const resizeHandler = vi.hoisted(() => ({ fn: undefined as ((s: { cols: number; rows: number }) => void) | undefined }))
 const keyHandler = vi.hoisted((): { fn: KeyHandler | null } => ({ fn: null }))
 
 vi.mock('@xterm/xterm', () => ({
@@ -18,6 +20,12 @@ vi.mock('@xterm/xterm', () => ({
     open() {}
     write() {}
     onData() { return { dispose() {} } }
+    // The size the daemon is told about. A real terminal reports these after
+    // it has measured its own cell; the fake reports a plausible pair so the
+    // resize path can be exercised.
+    cols = 120
+    rows = 40
+    onResize(fn: (s: { cols: number; rows: number }) => void) { resizeHandler.fn = fn; return { dispose() {} } }
     attachCustomKeyEventHandler(fn: (e: KeyboardEvent) => boolean) { keyHandler.fn = fn }
     dispose() {}
   },
@@ -93,15 +101,31 @@ describe('TerminalView', () => {
  */
 describe('Shift+Enter', () => {
   const sent: string[] = []
+  // Which frame each send used. The daemon tells keystrokes from control
+  // messages by frame type, so a test that only checks the decoded text would
+  // pass with the two swapped — and the session would fill with JSON.
+  const frames: string[] = []
 
   function mount(): KeyHandler {
     sent.length = 0
+    frames.length = 0
     keyHandler.fn = null
     vi.stubGlobal('WebSocket', class {
       static OPEN = 1
       readyState = 1
       binaryType = ''
-      send(d: string) { sent.push(d) }
+      // Input now goes as bytes, because the socket also carries control
+      // messages as text and the daemon tells them apart by frame type.
+      // Decoding here keeps the assertions about what reaches the PTY rather
+      // than about how it was framed — a control message is recorded as the
+      // JSON it is, so a test can tell the two apart.
+      send(d: string | Uint8Array) {
+        sent.push(typeof d === 'string' ? d : new TextDecoder().decode(d))
+        frames.push(typeof d === 'string' ? 'text' : 'binary')
+      }
+      // Captured so a test can open the socket itself: the size has to be
+      // sent the moment it opens, because the PTY was created before it.
+      set onopen(fn: () => void) { opened.fn = fn }
       close() {}
     })
     render(<TerminalView sessionId="s-keys" owned />)
@@ -176,7 +200,52 @@ describe('Shift+Enter', () => {
     h(key({ shiftKey: true, type: 'keyup' }))
     expect(sent).toEqual(['\x1b[13;2u'])
   })
+
+  /**
+   * The daemon has to be told how big the window is.
+   *
+   * `fit()` resizes the canvas and nothing else, so the PTY kept whatever size
+   * it was created with — 120x40 by default — for its whole life. Claude Code
+   * lays its menus out to the terminal size, so on any other window it drew an
+   * interface for a screen that was not there: arrow keys moved a selection
+   * nobody could see, which is what the first user reported as "only Enter
+   * works".
+   */
+  it('tells the daemon the size as soon as the socket opens', () => {
+    mount()
+    opened.fn?.()
+    expect(sent).toContain('{"resize":{"cols":120,"rows":40}}')
+  })
+
+  it('tells it again when the terminal is resized', () => {
+    mount()
+    resizeHandler.fn?.({ cols: 143, rows: 38 })
+    expect(sent).toContain('{"resize":{"cols":143,"rows":38}}')
+  })
+
+  it('never sends a zero size', () => {
+    // The ResizeObserver fires mid-layout, sometimes with no width at all. A
+    // zero reaching the kernel is a terminal with no columns.
+    mount()
+    resizeHandler.fn?.({ cols: 0, rows: 0 })
+    resizeHandler.fn?.({ cols: 80, rows: 0 })
+    expect(sent.filter((x) => x.includes('resize'))).toEqual([])
+  })
+
+  it('sends keystrokes as bytes and the size as text', () => {
+    // The daemon tells input from control apart by frame type; if the size
+    // went as a binary frame it would be typed into the session as JSON.
+    const h = mount()
+    h(key({ shiftKey: true }))
+    resizeHandler.fn?.({ cols: 100, rows: 30 })
+    expect(sent).toEqual(['\x1b[13;2u', '{"resize":{"cols":100,"rows":30}}'])
+    // The frame type is the whole protocol: binary is what the user typed,
+    // text is a message about the terminal. Swap them and the daemon writes
+    // `{"resize":…}` into the session as keystrokes.
+    expect(frames).toEqual(['binary', 'text'])
+  })
 })
+
 
 /**
  * The hint under the terminal.

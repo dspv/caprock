@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -139,7 +140,19 @@ func (h *wsHub) serveTerm(s *Server) http.HandlerFunc {
 			_ = c.Write(wctx, websocket.MessageBinary, snapshot)
 			wc()
 		}
-		// Reader: typed input → PTY.
+		// Reader: typed input → PTY, and control messages → the PTY's size.
+		//
+		// Two frame types, because the socket has to carry two different
+		// things and everything arriving on it used to be treated as
+		// keystrokes. Binary is input, byte for byte. Text is a control
+		// message — today only `{"resize":{"cols":N,"rows":N}}`.
+		//
+		// Without this the PTY kept whatever size it was born with, 120x40 by
+		// default, for its whole life. Claude Code draws its menus to the
+		// terminal's size, so on any window that was not exactly 120x40 the
+		// interface was laid out for a screen the user did not have — arrow
+		// keys moved a selection that was off-screen, which is what "only
+		// Enter works" looks like from the outside.
 		go func() {
 			for {
 				typ, data, err := c.Read(ctx)
@@ -147,7 +160,26 @@ func (h *wsHub) serveTerm(s *Server) http.HandlerFunc {
 					cctx()
 					return
 				}
-				if typ == websocket.MessageBinary || typ == websocket.MessageText {
+				switch typ {
+				case websocket.MessageBinary:
+					_ = s.d.Agents.Write(id, data)
+				case websocket.MessageText:
+					// A control message, or — from a client that predates
+					// this — typed input. Anything that is not valid control
+					// JSON is written through, so an older dashboard against
+					// a newer daemon keeps working rather than going mute.
+					var msg struct {
+						Resize *struct {
+							Cols int `json:"cols"`
+							Rows int `json:"rows"`
+						} `json:"resize"`
+					}
+					if err := json.Unmarshal(data, &msg); err == nil && msg.Resize != nil {
+						if msg.Resize.Cols > 0 && msg.Resize.Rows > 0 {
+							_ = s.d.Agents.Resize(id, msg.Resize.Cols, msg.Resize.Rows)
+						}
+						continue
+					}
 					_ = s.d.Agents.Write(id, data)
 				}
 			}
