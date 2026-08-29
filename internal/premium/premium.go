@@ -29,12 +29,35 @@ type Plan struct {
 	URL string `json:"url"`
 }
 
+// Compare is a price someone is already paying, for scale.
+//
+// Caprock's own price means nothing on its own — $30 is only cheap or dear
+// against something. The thing every user of this dashboard is already paying
+// for is a Claude subscription, so that is the ruler.
+//
+// It is a quoted price with a source and a date, per rule 6. It is not a claim
+// that the two are substitutes: a Claude plan buys the model, Caprock buys a
+// view of what the model did. The comparison is of magnitude, and the UI has
+// to say so rather than implying an either/or.
+type Compare struct {
+	// What the plan is called on the vendor's own page.
+	Plan string `json:"plan"`
+	// USD per month, billed monthly.
+	MonthlyUSD float64 `json:"monthly_usd"`
+	// Where the figure was read, and when. Shown to the user — an unsourced
+	// number about someone else's pricing is the kind rule 6 exists to stop.
+	Source string `json:"source"`
+	ReadOn string `json:"read_on"`
+}
+
 // Pricing is every way to buy, plus where to read more.
 type Pricing struct {
 	Yearly   Plan   `json:"yearly"`
 	Monthly  Plan   `json:"monthly"`
 	Lifetime Plan   `json:"lifetime"`
 	InfoURL  string `json:"info_url"`
+	// Compare is what a Claude Pro subscription costs, for scale.
+	Compare Compare `json:"compare"`
 }
 
 // Current is the live pricing. Changing anything here means changing
@@ -64,5 +87,15 @@ func Current() Pricing {
 			URL:        "https://buy.stripe.com/4gM14naCc9967q6h2j1sQ0B",
 		},
 		InfoURL: "https://caprock.dev/premium/",
+		// Read off claude.com/pricing on the date below. Pro billed monthly;
+		// the annual plan is cheaper per month and Max starts at $100, so this
+		// is the *lowest* monthly figure a Claude Code user is likely paying —
+		// which is the conservative choice for a comparison in our favour.
+		Compare: Compare{
+			Plan:       "Claude Pro",
+			MonthlyUSD: 20,
+			Source:     "claude.com/pricing",
+			ReadOn:     "2026-08-28",
+		},
 	}
 }

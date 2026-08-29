@@ -11,14 +11,37 @@
  * being handed a generic upgrade page instead is how a specific interest turns
  * into a closed tab.
  *
+ * **The order is the argument.** An earlier version put every true statement on
+ * screen at the same weight, and the loudest element on it was a bordered box
+ * reading "Not built yet" — the first thing the eye landed on was a reason not
+ * to buy. Three prices sat where a decision belonged, and Subscribe was styled
+ * as one of three equal buttons. Every fact on it was honest and the screen
+ * still argued against itself.
+ *
+ * **A price needs a ruler.** $30 is neither cheap nor dear on its own, and the
+ * one number every reader of this dialog is already paying is their Claude
+ * subscription. So the comparison is stated outright — a year of Caprock
+ * against a month and a half of Claude Pro — with the source and the date it
+ * was read on the screen, because an unsourced number about someone else's
+ * pricing is exactly what rule 6 forbids. It is a comparison of magnitude, not
+ * a suggestion that one replaces the other, and the line says so.
+ *
+ * So: what you get, then what it costs against what you already pay, then the
+ * caveats — each at the weight it deserves. The unbuilt notice stays (selling ahead of the build is a
+ * decision; letting someone find out afterwards is not), but it reads as a
+ * condition of the sale rather than the headline. Two prices are offered as
+ * buttons — $30 a year and $100 once — because those are the two real
+ * decisions; $5 monthly stays as a line under them for anyone who wants the
+ * smallest commitment.
+ *
  * The price comes from the daemon (`GET /v1/premium`), not from a constant
  * here: a figure copied into the UI eventually contradicts the one that
  * charges the card. It is still compiled into the binary — rule 4 forbids
  * fetching it from anywhere — but there is one copy of it, in Go, with a test
  * that reads the site's pricing file and fails when the two disagree.
  *
- * Both buttons open a new tab. Nobody should lose the dashboard to read about
- * a subscription, and nobody should be dropped into a card form without having
+ * Both links open a new tab. Nobody should lose the dashboard to read about a
+ * subscription, and nobody should be dropped into a card form without having
  * been offered the longer explanation first.
  */
 import { useEffect } from 'react'
@@ -27,15 +50,33 @@ import { useApi } from '@/lib/useApi'
 
 export type PaidFeature = 'cap' | 'report'
 
-const FEATURES: Record<PaidFeature, { title: string; body: string; built: boolean }> = {
+/**
+ * `points` is what the feature does for you, in the fewest words that still
+ * mean something. The prose body says what it is; these say why you would
+ * want it. A paragraph of grey text was carrying both jobs and doing neither.
+ */
+const FEATURES: Record<
+  PaidFeature,
+  { title: string; body: string; points: string[]; built: boolean }
+> = {
   cap: {
     title: 'A daily cap that pauses sessions',
-    body: 'Set a number for the day. When the cost crosses it, Caprock pauses the sessions it started — while the spend is happening, not in a summary the next morning. Sessions you started yourself are never touched.',
+    body: 'Set a number for the day. When the cost crosses it, Caprock pauses the sessions it started — while the spend is happening, not in a summary the next morning.',
+    points: [
+      'Stops the spend as it happens, not the next morning',
+      'Only sessions Caprock started — yours are never touched',
+      'One number, set once',
+    ],
     built: false,
   },
   report: {
     title: 'A weekly report, sent where you are',
     body: 'Where the week went, by repository and model, delivered to your own Telegram bot or webhook — your channel, not ours, which is the only way a tool that keeps your data local can reach you off the machine.',
+    points: [
+      'The week by repository and model, every Monday',
+      'Your own Telegram bot or webhook — never our server',
+      'Arrives without opening the dashboard',
+    ],
     built: false,
   },
   // Third-party pricing was going to live here. It was cheaper to add the
@@ -44,17 +85,69 @@ const FEATURES: Record<PaidFeature, { title: string; body: string; built: boolea
   // cannot be sold without the paid tier becoming a hostage.
 }
 
-function Price({ p }: { p: PremiumPricing | undefined }) {
-  if (!p) return <span className="text-fg-faint">…</span>
+/**
+ * What it costs, against what the reader is already paying.
+ *
+ * The comparison comes first because it is what makes the figure mean
+ * anything. Both real ways to buy are then offered as buttons of equal weight
+ * — a year, or once and never again — since a single "Subscribe" hides the
+ * lifetime option behind a page load, and it is the one people ask about.
+ */
+function Price({ p, onClose }: { p: PremiumPricing | undefined; onClose: () => void }) {
+  if (!p) return <div className="h-[132px] text-[13px] text-fg-faint">…</div>
+
+  const c = p.compare
+  // How many months of the compared plan a year of Caprock costs. Stated as a
+  // ratio rather than a percentage: "a month and a half" is a thing people can
+  // picture, and it does not survive rounding into a slogan.
+  const months = c ? p.yearly.charged_usd / c.monthly_usd : 0
+
   return (
-    <span className="text-fg">
-      <span className="num text-[15px]">${p.yearly.per_month_usd.toFixed(2)}</span>
-      <span className="text-fg-muted"> a month</span>
-      <span className="text-fg-faint">
-        {' '}— billed once a year at ${p.yearly.charged_usd}, ${p.monthly.charged_usd} monthly,
-        {p.lifetime?.charged_usd ? ` or $${p.lifetime.charged_usd} once and never again.` : '.'}
-      </span>
-    </span>
+    <>
+      {c && (
+        <div className="rounded-sm border border-border bg-panel-2 px-3 py-2.5">
+          <div className="flex items-baseline justify-between gap-3 text-[13px]">
+            <span className="text-fg-muted">{c.plan}</span>
+            <span className="num text-fg-muted">${c.monthly_usd.toFixed(0)} / month</span>
+          </div>
+          <div className="mt-1.5 flex items-baseline justify-between gap-3 text-[13px]">
+            <span className="text-fg">Caprock Premium</span>
+            <span className="num text-accent">
+              ${(p.yearly.charged_usd / 12).toFixed(2)} / month
+            </span>
+          </div>
+          <p className="mt-2 border-t border-border pt-2 text-[12px] leading-relaxed text-fg-faint">
+            A whole year of Caprock costs about {months < 2 ? 'a month and a half' : `${Math.round(months)} months`} of {c.plan}.
+            Different things — one buys the model, one shows you what it did.
+          </p>
+        </div>
+      )}
+
+      <div className="mt-3.5 grid grid-cols-2 gap-2">
+        <a
+          href={p.yearly.url}
+          target="_blank"
+          rel="noreferrer"
+          onClick={onClose}
+          className="rounded-sm bg-accent px-3 py-2 text-center text-[13px] font-medium text-bg no-underline hover:brightness-110"
+        >
+          ${p.yearly.charged_usd} / year
+        </a>
+        <a
+          href={p.lifetime?.url}
+          target="_blank"
+          rel="noreferrer"
+          onClick={onClose}
+          className="rounded-sm border border-accent px-3 py-2 text-center text-[13px] font-medium text-accent no-underline hover:bg-accent/15"
+        >
+          ${p.lifetime?.charged_usd} once
+        </a>
+      </div>
+
+      <p className="mt-2 text-center text-[12px] text-fg-faint">
+        Or ${p.monthly.charged_usd} a month, cancel whenever.
+      </p>
+    </>
   )
 }
 
@@ -80,58 +173,78 @@ export function PremiumModal({ feature, onClose }: { feature: PaidFeature; onClo
       aria-label="Caprock Premium"
     >
       <div
-        className="w-[480px] max-w-full rounded-[var(--radius-panel)] border border-border-strong bg-panel"
+        className="w-[440px] max-w-full rounded-[var(--radius-panel)] border border-border-strong bg-panel"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="flex items-center border-b border-border px-4 py-3">
-          <h2 className="text-[13px] font-medium text-fg">{f.title}</h2>
-          <button onClick={onClose} className="ml-auto text-fg-muted hover:text-fg" aria-label="Close">✕</button>
+        <header className="flex items-start gap-3 px-5 pt-4">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-accent">Caprock Premium</p>
+            <h2 className="mt-1 text-[16px] font-medium leading-snug text-fg">{f.title}</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="-mr-1 ml-auto text-fg-muted hover:text-fg"
+            aria-label="Close"
+          >
+            ✕
+          </button>
         </header>
 
-        <div className="px-4 py-3 text-[13px]">
-          <p className="leading-relaxed text-fg-muted">{f.body}</p>
+        <div className="px-5 pt-3">
+          <p className="text-[13px] leading-relaxed text-fg-muted">{f.body}</p>
 
-          {/* Named as unbuilt, on the surface someone pays from. Selling ahead
-            * of the build is a decision; letting someone find out afterwards
-            * is not. */}
-          {!f.built && (
-            <p className="mt-3 rounded-sm border border-border bg-panel-2 px-2.5 py-1.5 text-[12px] text-fg-faint">
-              Not built yet. Subscribing is what decides whether it gets built, and in which order.
-            </p>
-          )}
-
-          <div className="mt-4 border-t border-border pt-3">
-            <Price p={p} />
-          </div>
-
-          <p className="mt-3 text-[12px] leading-relaxed text-fg-faint">
-            Everything Caprock does today stays free and Apache-2.0. Premium adds
-            to that and never removes from it — and nothing about how you use it
-            reaches us either way.
-          </p>
+          <ul className="mt-3 space-y-1.5">
+            {f.points.map((point) => (
+              <li key={point} className="flex gap-2 text-[13px] leading-snug text-fg">
+                <span aria-hidden className="text-accent">·</span>
+                <span>{point}</span>
+              </li>
+            ))}
+          </ul>
         </div>
 
-        <footer className="flex items-center gap-2 border-t border-border px-4 py-3">
-          <a
-            href={p?.yearly.url}
-            target="_blank"
-            rel="noreferrer"
-            onClick={onClose}
-            className={`rounded-sm border border-accent bg-accent/15 px-3 py-1 text-[13px] text-accent no-underline hover:bg-accent/25 ${p ? '' : 'pointer-events-none opacity-50'}`}
-          >
-            Subscribe
-          </a>
-          <a
-            href={p?.info_url ?? 'https://caprock.dev/premium/'}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-sm border border-border px-3 py-1 text-[13px] text-fg-muted no-underline hover:border-border-strong hover:text-fg"
-          >
-            Read more
-          </a>
-          <span className="text-[11px] text-fg-faint">both open a new tab</span>
-          <button onClick={onClose} className="ml-auto text-[12px] text-fg-muted hover:text-fg">Close</button>
+        <div className="mt-4 border-t border-border px-5 py-4">
+          <Price p={p} onClose={onClose} />
+
+          {/* Named as unbuilt on the surface someone pays from — but under the
+            * buttons, as a condition of the sale, not above them as the
+            * headline. It was the loudest element on the screen and it argued
+            * for closing the tab. */}
+          {!f.built && (
+            <p className="mt-3 border-t border-border pt-2.5 text-center text-[12px] leading-relaxed text-fg-faint">
+              Not built yet — subscribing is what decides whether it gets built,
+              and in which order.
+            </p>
+          )}
+        </div>
+
+        <footer className="border-t border-border px-5 py-3 text-[12px]">
+          <div className="flex items-center gap-3">
+            <a
+              href={p?.info_url ?? 'https://caprock.dev/premium/'}
+              target="_blank"
+              rel="noreferrer"
+              className="whitespace-nowrap text-fg-muted no-underline hover:text-fg"
+            >
+              Read more
+            </a>
+            <span className="whitespace-nowrap text-fg-faint">opens a new tab</span>
+            <button onClick={onClose} className="ml-auto text-fg-muted hover:text-fg">
+              Close
+            </button>
+          </div>
+          {p?.compare && (
+            <p className="mt-1.5 text-[11px] text-fg-faint">
+              {p.compare.plan} price: {p.compare.source}, read {p.compare.read_on}
+            </p>
+          )}
         </footer>
+
+        <p className="border-t border-border px-5 py-2.5 text-[11px] leading-relaxed text-fg-faint">
+          Everything Caprock does today stays free and Apache-2.0. Premium adds to
+          that and never removes from it — and nothing about how you use it reaches
+          us either way.
+        </p>
       </div>
     </div>
   )

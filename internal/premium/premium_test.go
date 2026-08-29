@@ -69,6 +69,31 @@ func TestPricingMatchesTheSite(t *testing.T) {
 		t.Errorf("yearly per-month: site says %.2f, dashboard says %.2f", got, p.Yearly.PerMonthUSD)
 	}
 
+	// The Claude price we compare against lives in the site's facts.ts, with
+	// its own source and date. The dashboard states the same figure, so the
+	// two can drift — and a comparison built on a stale competitor price is
+	// worse than no comparison, because it reads as a claim about them.
+	factsPath := filepath.Join("..", "..", "..", "caprock-web", "src", "content", "facts.ts")
+	if fb, err := os.ReadFile(factsPath); err == nil {
+		facts := string(fb)
+		m := regexp.MustCompile(`proMonthlyUsd:\s*([0-9.]+)`).FindStringSubmatch(facts)
+		if m == nil {
+			t.Fatalf("could not find proMonthlyUsd in %s — the file's shape changed, so this check is no longer checking anything", factsPath)
+		}
+		got, err := strconv.ParseFloat(m[1], 64)
+		if err != nil {
+			t.Fatalf("parse proMonthlyUsd: %v", err)
+		}
+		if got != p.Compare.MonthlyUSD {
+			t.Errorf("Claude Pro price: site says %.2f, dashboard says %.2f", got, p.Compare.MonthlyUSD)
+		}
+		// The date too: a figure that is still correct but was read a year ago
+		// is a different claim from one read last week, and the UI shows it.
+		if !regexp.MustCompile(regexp.QuoteMeta(p.Compare.ReadOn)).MatchString(facts) {
+			t.Errorf("comparison date %s is not in %s — one of the two was updated without the other", p.Compare.ReadOn, factsPath)
+		}
+	}
+
 	// The links matter as much as the figures: a correct price beside a link
 	// to the wrong Stripe product charges the wrong amount.
 	for _, want := range []string{p.Yearly.URL, p.Monthly.URL, p.Lifetime.URL} {
