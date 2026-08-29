@@ -9,6 +9,10 @@ started) · **building** · **shipped** (in a release, with the version) ·
 
 | Id     | Date       | From  | Request                                                                      | Status  | Landed in         |
 | ------ | ---------- | ----- | ---------------------------------------------------------------------------- | ------- | ----------------- |
+| FB-026 | 2026-08-29 | Alex  | The dollar figures read as "what you'd pay if you were foolish"              | open    | —                 |
+| FB-025 | 2026-08-29 | Alex  | `make build` does not work on Windows out of the box                         | planned | —                 |
+| FB-024 | 2026-08-29 | Alex  | Ship through winget, and install into %USERPROFILE%\.local\bin               | planned | —                 |
+| FB-023 | 2026-08-29 | Alex  | The SQLite database reached half a gigabyte on ordinary use                  | planned | —                 |
 | FB-022 | 2026-08-28 | Dima  | Make the web terminal good enough to live in, like iTerm2                    | shipped | v0.33.0           |
 | FB-021 | 2026-08-28 | Vova  | Shift+Enter inserts a newline on an empty prompt, submits once there is text | shipped | v0.32.1           |
 | FB-020 | 2026-08-28 | Dima  | Show what a cache hit rate actually means, without shouting                  | shipped | v0.32.0           |
@@ -33,6 +37,78 @@ started) · **building** · **shipped** (in a release, with the version) ·
 | FB-001 | 2026-08-24 | Alex  | Hooks never fired on Windows                                                 | shipped | v0.27.3 + v0.27.4 |
 
 ## Detail
+
+### FB-026 — The dollar figures read as an insult
+
+His words: the dollar figures are all *"about if you were a fool and paid for
+tokens instead of a subscription"*. He is on a subscription, so every number on
+the screen described a bill he was never going to get.
+
+**He is reading the screen correctly, and the screen is at fault.** List price
+is not a claim about what anyone paid — it is the only common ruler there is. A
+subscription gives no breakdown at all: not per repository, not per kind of
+work. Priced at list, the same sessions show that 46% of the spend went on
+running commands and 12% on writing code, which is the finding the whole
+product exists to surface. That reading survives whatever you actually pay,
+because it is a ratio.
+
+None of that is on the screen. The number is large, in dollars, and unlabelled
+as to whose dollars — so a subscriber reads it as an accusation of waste. The
+fix is framing, not arithmetic: lead with the split, not the total.
+
+**Open**, because the right wording is not obvious and this is one person's
+reaction. Not a bug in the data; a bug in what the data appears to say.
+
+### FB-025 — `make build` breaks on Windows
+
+Confirmed: the `build` target opens with `mkdir -p`, and three more shell-isms
+follow. Under Git Bash it works, which is why it has never been noticed — CI
+builds on Windows through Go directly and never invokes `make`.
+
+Rule 2 in `CLAUDE.md` says cross-platform reliability is the moat. A contributor
+on Windows hitting an error on the first command is exactly the failure that
+rule exists to prevent.
+
+### FB-024 — winget, and the install path
+
+Two Windows packaging requests from the first Windows user who built from
+source.
+
+**winget** was deferred deliberately — [ADR-014](../.ai/08-decisions.md) records
+it as waiting "until there is real Windows demand", with Scoop shipped instead.
+This is that demand, from the second Windows user we have ever had. It needs a
+PR into `microsoft/winget-pkgs` and their review, so it is not the one command
+he expects, but the manifest generation genuinely is.
+
+**`%USERPROFILE%\.local\bin`** is the convention he expects binaries to land
+in. Worth doing alongside.
+
+### FB-023 — The database reaches half a gigabyte
+
+*"sqlite база у меня сожрала сразу полгига, а я даже не вайб-кодер"*, with a
+diagnosis attached: at least three redundant indexes, and payloads that would
+compress roughly threefold under zstd with a pre-trained dictionary.
+
+**Measured on Dima's own database before deciding anything, because a report
+with numbers in it deserves numbers back.** 598 MB, 239,862 events:
+
+- **Payloads are 335 MB — 56% of the entire file.** Average 1,465 bytes.
+- **Data is 73% of the file; every index together is 27%.** The three largest
+  are `idx_events_attr_work` (27 MB), `idx_events_touch` (21 MB) and
+  `idx_events_session_key` (20 MB).
+- **zstd, trained on a 3,000-payload sample from real data:** x1.93 with no
+  dictionary, **x2.94 with one**, x3.30 at level 19. Cost: +0.6 ms per row.
+
+**He is right about the remedy and wrong about the cause.** Dropping indexes
+cannot win much — they are a quarter of the file, and each one is load-bearing
+for a screen. Compressing payloads is where the file actually is, and his own
+suggestion is the one that pays: 335 MB becomes roughly 115 MB, taking the
+database from 598 MB to about 380 MB.
+
+**Planned, not built.** Compression touches how every event is written and
+read, so it lands with `.ai/03-contracts.md` and a migration in the same commit
+(rule 8), and it needs a decision on the dictionary: shipped with the binary,
+or trained per install and stored in the database.
 
 ### FB-022 — A terminal you can live in
 

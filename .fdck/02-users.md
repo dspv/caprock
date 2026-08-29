@@ -33,6 +33,13 @@ was not: the hook registration was broken for **every** Windows install
 hypothesis about frequency, not a finding. Alex's report was nearly filed as
 his own peculiarity.
 
+**On 2026-08-29 he came back, having built from source and read the schema.**
+Four requests: winget packaging, the install path, a `make build` that works on
+Windows, and a measured claim about database size that held up when checked
+(FB-023 to FB-026). He is the first person outside Dima to treat Caprock as a
+codebase rather than a tool — which also means "light user on Windows" was
+never an accurate description of him.
+
 ## What we do not have
 
 No user we did not personally recruit. No user outside Dima's circle. Nobody
