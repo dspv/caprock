@@ -9,6 +9,35 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.34.0] - 2026-08-29
+
+### Changed
+
+- **The premium dialog now measures its price against a Claude subscription.**
+  Every statement on it was true and the screen still argued against itself:
+  the loudest element was a bordered box reading *"Not built yet"*, so the
+  first thing the eye landed on was a reason not to buy. Three prices sat where
+  a decision belonged, and Subscribe was styled as one of three equal buttons.
+
+  The order is now what the feature does, then what it costs against what you
+  already pay, then the caveats. **$30 is neither cheap nor dear on its own** —
+  the one price every reader of that dialog is already paying is a Claude
+  subscription, so a year of Caprock is stated against a month and a half of
+  Claude Pro. The comparison carries its source and the date it was read, on
+  screen, because [rule 6](CLAUDE.md) applies to other people's prices too,
+  and it says outright that the two are different things: one buys the model,
+  one shows you what it did.
+
+  Two buy buttons rather than one — **$30 a year** and **$100 once** — because
+  those are the two real decisions, and the lifetime option was previously
+  reachable only by leaving the dashboard for the site. $5 monthly stays as a
+  line beneath them. The unbuilt notice stays too, under the buttons as a
+  condition of the sale rather than as the headline.
+
+  The compared figure lives in `internal/premium` beside our own, and the
+  drift test that reads the site's pricing now reads its `facts.ts` as well,
+  failing when either the price or the date it was read disagrees.
+
 ## [0.33.0] - 2026-08-28
 
 ### Added
