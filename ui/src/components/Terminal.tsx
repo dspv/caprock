@@ -1,11 +1,24 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Terminal as Xterm } from '@xterm/xterm'
 import { api } from '@/lib/api'
+import { SpawnDialog } from './SpawnDialog'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 /** Live terminal for an owned session over /v1/agents/:id/term (Phase 1). */
-export function TerminalView({ sessionId, owned }: { sessionId: string; owned: boolean }) {
+export function TerminalView({
+  sessionId,
+  owned,
+  // The directory this session runs in, so the offer to start one can be taken
+  // in a single click rather than sending someone to another screen to retype
+  // a path they can see.
+  cwd,
+}: {
+  sessionId: string
+  owned: boolean
+  cwd?: string
+}) {
+  const [spawning, setSpawning] = useState(false)
   const host = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!host.current || !owned) return
@@ -299,12 +312,18 @@ export function TerminalView({ sessionId, owned }: { sessionId: string; owned: b
     return (
       <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
         <p className="text-[14px] text-fg">You started this session yourself, so it has no terminal here.</p>
-        <a
-          href="#/"
-          className="rounded-sm bg-accent px-3.5 py-2 text-[13px] font-medium text-bg no-underline hover:brightness-110"
+        {/* Opens the dialog here, already pointed at this repository.
+          *
+          * It used to be a link to the main screen, which is not an action —
+          * it moved someone away from what they were doing and left them to
+          * find the button themselves. */}
+        <button
+          onClick={() => setSpawning(true)}
+          className="rounded-sm bg-accent px-3.5 py-2 text-[13px] font-medium text-bg hover:brightness-110"
         >
-          Start a session in Caprock →
-        </a>
+          Start one here{cwd ? ' in this repository' : ''} →
+        </button>
+        {spawning && <SpawnDialog available onClose={() => setSpawning(false)} initialCwd={cwd ?? ''} />}
         <p className="max-w-[46ch] text-[12px] leading-relaxed text-fg-faint">
           Sessions started from “New session” get a full terminal. Caprock never
           types into a process it did not start — including this one, which

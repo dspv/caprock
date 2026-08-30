@@ -69,7 +69,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
       {active === 'notes' && <SessionNotes id={id} now={now} />}
       {active === 'diff' && <DiffTab id={id} lastEventAt={s.last_event_at} />}
       {active === 'files' && <FilesTab s={s} />}
-      {active === 'terminal' && <Panel className="overflow-hidden"><TerminalView sessionId={id} owned={s.owned && s.status !== 'ended'} /></Panel>}
+      {active === 'terminal' && <Panel className="overflow-hidden"><TerminalView sessionId={id} owned={s.owned && s.status !== 'ended'} cwd={s.cwd} /></Panel>}
     </div>
   )
 }

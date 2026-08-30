@@ -140,13 +140,24 @@ describe('a session Caprock did not start', () => {
     // "I have no idea what is being asked of me."
     render(<TerminalView sessionId="s1" owned={false} />)
 
-    // A way out, not just an explanation.
-    expect(screen.getByRole('link', { name: /start a session in caprock/i })).toBeTruthy()
+    // A way out, not just an explanation — and an action rather than a link.
+    // It was a link to the main screen, which is navigation dressed as an
+    // offer: it moved the reader away from what they were doing and left them
+    // to find the real button themselves.
+    expect(screen.getByRole('button', { name: /start one here/i })).toBeTruthy()
+    expect(screen.queryByRole('link', { name: /start/i })).toBeNull()
 
     // And none of the vocabulary that only makes sense from inside.
     for (const jargon of [/externally started/i, /does not own/i, /spawn/i]) {
       expect(document.body.textContent).not.toMatch(jargon)
     }
+  })
+
+  it('offers to start in the repository already on screen', () => {
+    // Asking for the working directory, on a screen that is showing it, is
+    // asking someone to retype what they are looking at.
+    render(<TerminalView sessionId="s1" owned={false} cwd="/Users/x/dev/thing" />)
+    expect(screen.getByRole('button', { name: /in this repository/i })).toBeTruthy()
   })
 })
 

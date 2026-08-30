@@ -9,6 +9,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.37.4] - 2026-08-30
+
+### Fixed
+
+- **"Start a session in Caprock" now starts a session.** It was a link to the
+  main screen — navigation dressed as an offer, which moved the reader away
+  from what they were doing and left them to find the real button themselves.
+  It opens the New session dialog in place, **already pointed at the repository
+  on screen**, so the one thing it promises takes one click. Asking for a
+  working directory on a screen that is displaying it was asking someone to
+  retype what they were looking at.
+
 ## [0.37.3] - 2026-08-30
 
 ### Fixed

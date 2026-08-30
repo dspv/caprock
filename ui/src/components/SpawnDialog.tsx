@@ -5,8 +5,19 @@ import { navigate } from '@/lib/router'
 const MODELS = ['', 'claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5']
 const MODES = ['', 'default', 'plan', 'acceptEdits', 'bypassPermissions']
 
-export function SpawnDialog({ available, onClose }: { available: boolean; onClose: () => void }) {
-  const [cwd, setCwd] = useState('')
+export function SpawnDialog({
+  available,
+  onClose,
+  // Where to start, when the caller already knows. Opening this from a session
+  // whose repository is on screen and then asking for the directory again is
+  // asking someone to retype what they are looking at.
+  initialCwd = '',
+}: {
+  available: boolean
+  onClose: () => void
+  initialCwd?: string
+}) {
+  const [cwd, setCwd] = useState(initialCwd)
   const [model, setModel] = useState('')
   const [mode, setMode] = useState('')
   const [worktree, setWorktree] = useState('')
