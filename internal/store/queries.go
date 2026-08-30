@@ -1854,3 +1854,43 @@ func CountEvents(ctx context.Context, q Querier) (int64, error) {
 	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM events`).Scan(&n)
 	return n, err
 }
+
+// RecentDirDetail is a directory sessions have run in, for the folder picker.
+type RecentDirDetail struct {
+	Dir         string
+	Sessions    int64
+	LastEventAt int64
+}
+
+// RecentDirs lists the directories sessions have run in, most recently active
+// first.
+//
+// The repository someone wants to start in next is almost always one they were
+// in yesterday, so this is the half of the folder picker that needs no browsing
+// at all. Grouped by repository root where one is known and by working
+// directory otherwise: two sessions started from different subdirectories of
+// one repository are one entry, because they are one project to the person
+// choosing.
+func RecentDirs(ctx context.Context, q Querier, limit int) ([]RecentDirDetail, error) {
+	if limit <= 0 {
+		limit = 8
+	}
+	rows, err := q.QueryContext(ctx, `
+		SELECT d, COUNT(*), MAX(last_event_at) FROM (
+			SELECT COALESCE(NULLIF(repo_root,''), cwd) AS d, last_event_at FROM sessions
+			WHERE COALESCE(NULLIF(repo_root,''), cwd) != ''
+		) GROUP BY d ORDER BY 3 DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RecentDirDetail
+	for rows.Next() {
+		var d RecentDirDetail
+		if err := rows.Scan(&d.Dir, &d.Sessions, &d.LastEventAt); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}

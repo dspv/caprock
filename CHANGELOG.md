@@ -9,6 +9,38 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.38.0] - 2026-08-30
+
+### Added
+
+- **Pick a folder instead of typing its path.** Starting a session meant typing
+  an absolute path from memory into a dashboard that is already showing the
+  repositories you work in every day.
+
+  Two lists, in the order they are useful. **Recent** is where sessions have
+  already run, newest first — for most people that is the whole picker, since
+  the next session is almost always in a repository you were in yesterday.
+  **Browse** walks down from one root for the first session in a new project;
+  repositories are marked and sorted first, because a repository is what you
+  are looking for and everything else is the route to it.
+
+  The text field stays: it is the fastest input for anyone who knows the path,
+  it is what a paste goes into, and the lists write into it rather than
+  replacing it, so what will actually be used stays visible and editable.
+
+  **The root is yours to set** — `browse_root`, defaulting to your home
+  directory. It is a setting because "where I keep my code" is personal, and
+  because the narrower it is, the less the daemon's directory listing can be
+  asked for.
+
+  Browsing is the only thing in Caprock that reads the filesystem for a web
+  page, so the boundary is the feature: directories and names only, never
+  contents; symlinks resolved **before** the containment check, so a link
+  inside the root pointing out of it does not slip through; dotfile directories
+  never listed; and "outside the root" and "does not exist" answering with the
+  identical 404, so it cannot be used to test whether a path exists. Each of
+  those is covered by a test that was verified by breaking it.
+
 ## [0.37.5] - 2026-08-30
 
 ### Fixed

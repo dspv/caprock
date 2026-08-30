@@ -102,6 +102,14 @@ type Settings struct {
 	// LicenseKey unlocks the paid features, checked locally against the expiry
 	// it carries (ADR-022). Empty is the ordinary state.
 	LicenseKey string `json:"license_key,omitempty"`
+	// BrowseRoot is the only directory the folder picker may look inside, and
+	// the boundary every path it returns is checked against. Empty means the
+	// user's home directory.
+	//
+	// It is a setting rather than a constant because "where I keep my code" is
+	// personal — ~/dev for one person, ~/src or /work for another — and because
+	// the narrower it is, the less this endpoint can be asked. See browse.go.
+	BrowseRoot string `json:"browse_root,omitempty"`
 }
 
 // TaskController is the subset of the Phase 2 hive the API needs.
@@ -177,6 +185,10 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/stats/daily", s.handleDaily)
 	m.HandleFunc("GET /v1/events", s.handleEventsFeed)
 	m.HandleFunc("GET /v1/history", s.handleHistory)
+	// Picking a folder without typing its path: see browse.go for what stops
+	// this being a filesystem-read API.
+	m.HandleFunc("GET /v1/browse", s.handleBrowse)
+	m.HandleFunc("GET /v1/recent-dirs", s.handleRecentDirs)
 	m.HandleFunc("GET /v1/status", s.handleStatus)
 	// What the paid plan costs, so the dashboard can say it without guessing
 	// and without an outbound call. Static — it is compiled in — but served

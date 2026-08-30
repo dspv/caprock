@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { DirPicker } from './DirPicker'
 import { api, errText } from '@/lib/api'
 import { navigate } from '@/lib/router'
 
@@ -54,8 +55,13 @@ export function SpawnDialog({
           </div>
         ) : (
           <div className="px-4 py-3 grid gap-3 text-[13px]">
-            <Field label="Working directory" hint="absolute path to the repo or folder">
+            <Field label="Working directory" hint="pick one, or type a path">
               <input autoFocus className="input" placeholder="/Users/you/dev/project" value={cwd} onChange={(e) => setCwd(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
+              {/* The lists write into the field above rather than replacing it,
+                * so what will actually be used stays visible and editable. */}
+              <div className="mt-1.5">
+                <DirPicker value={cwd} onPick={setCwd} />
+              </div>
               {/* Starting a new project meant leaving the dashboard, making the
                 * folder in a terminal, and coming back — for a directory whose
                 * name you had already typed here. Off by default: creating a

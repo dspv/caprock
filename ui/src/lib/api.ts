@@ -230,6 +230,8 @@ export interface AssistantNote {
 }
 
 export interface Settings {
+  /** Where the folder picker may look. Empty means the home directory. */
+  browse_root?: string
   update_checks: boolean
   plan_kind: '' | 'flat' | 'metered'
   plan_label: string
@@ -329,6 +331,12 @@ export interface Status {
   }
 }
 
+/** One directory the folder picker may offer. */
+export interface BrowseEntry { name: string; path: string; repo: boolean }
+export interface BrowseResponse { dir: string; parent: string; root: string; entries: BrowseEntry[] }
+/** A directory Caprock has already seen sessions run in. */
+export interface RecentDir { dir: string; name: string; sessions: number; last_event_at: number }
+
 export interface SpawnRequest { cwd?: string; chat?: boolean; create?: boolean; worktree?: string; model?: string; permission_mode?: string; args?: string[] }
 
 async function post<T>(path: string, body: unknown, method = 'POST'): Promise<T> {
@@ -392,6 +400,8 @@ export const api = {
     get<Summary>(`/v1/stats/summary?range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}`),
   daily: (days = 30) => get<DailyStat[]>(`/v1/stats/daily?days=${days}`),
   premium: () => get<PremiumPricing>('/v1/premium'),
+  browse: (dir = '') => get<BrowseResponse>(`/v1/browse${dir ? `?dir=${encodeURIComponent(dir)}` : ''}`),
+  recentDirs: () => get<RecentDir[]>('/v1/recent-dirs'),
   history: (range: 'today' | '7d' | '30d' | 'all' = 'all') => get<History>(`/v1/history?range=${range}`),
   /** Turns the task runner on over the running daemon — no restart. Empty
    *  fields mean the daemon's own suggestion (see status.suggested_hive). */

@@ -29,6 +29,18 @@ type env struct {
 	rec *rollup.Recorder
 	st  *store.Store
 	now time.Time
+	// settings backs /v1/settings and the folder picker's root.
+	settings *fakeSettings
+}
+
+// setBrowseRoot points the folder picker at a directory the test controls.
+func (e *env) setBrowseRoot(t *testing.T, dir string) {
+	t.Helper()
+	cur := e.settings.Get()
+	cur.BrowseRoot = dir
+	if err := e.settings.Set(cur); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func newEnv(t *testing.T) *env {
@@ -46,7 +58,10 @@ func newEnv(t *testing.T) *env {
 	rec.Location = time.UTC
 	hh := &hookd.Handler{Token: "tok", Recorder: rec}
 	var loops = map[string]*loop.Alert{}
-	s := New(Deps{Store: st, Bus: b, Table: tb, Hook: hh, Version: "test", Token: "tok",
+	// A settings controller, so tests that need one (the folder picker's root)
+	// do not have to build a second server.
+	settings := &fakeSettings{}
+	s := New(Deps{Store: st, Bus: b, Table: tb, Hook: hh, Version: "test", Token: "tok", Settings: settings,
 		Now:         func() time.Time { return now.Add(30 * time.Second) },
 		ActiveLoops: func(id string) *loop.Alert { return loops[id] },
 		Status:      func(context.Context) any { return map[string]string{"ok": "yes"} },
@@ -54,7 +69,7 @@ func newEnv(t *testing.T) *env {
 	loops["looper"] = &loop.Alert{Kind: "loop", SessionID: "looper", Tool: "Bash", Count: 5, LastTs: now}
 	srv := httptest.NewServer(s)
 	t.Cleanup(srv.Close)
-	return &env{srv: srv, rec: rec, st: st, now: now}
+	return &env{srv: srv, rec: rec, st: st, now: now, settings: settings}
 }
 
 func (e *env) get(t *testing.T, path string, out any) int {
