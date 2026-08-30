@@ -26,6 +26,11 @@ DOCS := $(shell find . -name '*.md' \
 ifeq ($(OS),Windows_NT)
   SHELL := $(shell where bash 2>NUL | findstr /R "." || echo bash)
   .SHELLFLAGS := -c
+  # `go build -o bin/caprock` writes exactly that name, with no extension —
+  # `go build` only appends .exe when it is choosing the name itself. The
+  # result is a file Windows will not run by name, which is a broken build that
+  # exits 0. The CI job added with this fix is what caught it.
+  EXE := .exe
 endif
 
 BIN      := bin
@@ -46,14 +51,14 @@ help: ## Show this help
 .PHONY: build
 build: ui ## Build ./bin/caprock and ./bin/caprock-hook (with the embedded UI)
 	@mkdir -p $(BIN)
-	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN)/caprock ./cmd/caprock
-	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN)/caprock-hook ./cmd/caprock-hook
+	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN)/caprock$(EXE) ./cmd/caprock
+	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN)/caprock-hook$(EXE) ./cmd/caprock-hook
 
 .PHONY: build-go
 build-go: ## Build the Go binaries only (uses whatever UI is already embedded)
 	@mkdir -p $(BIN)
-	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN)/caprock ./cmd/caprock
-	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN)/caprock-hook ./cmd/caprock-hook
+	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN)/caprock$(EXE) ./cmd/caprock
+	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN)/caprock-hook$(EXE) ./cmd/caprock-hook
 
 .PHONY: ui
 ui: ## Build the dashboard into internal/api/dist (installs deps on a fresh clone)

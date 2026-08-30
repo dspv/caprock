@@ -49,13 +49,15 @@ describe('PremiumModal', () => {
     render(<PremiumModal feature="cap" onClose={() => {}} />)
     // The per-month equivalent of the yearly plan — the number people compare.
     await waitFor(() => expect(document.body.textContent).toMatch(/\$2\.50/))
-    // Every way to pay stays reachable, so the smaller commitment is not
-    // hidden behind the one we would rather sell. Matched on the figures
-    // alone: the previous version asserted the exact phrasing, and rewording
-    // the line failed a test about *what is offered*.
+    // A year or a lifetime, and deliberately not the monthly plan.
+    //
+    // At $5 the monthly option is the cheapest way to hold a licence key for a
+    // month, which is a worse deal for the buyer than either commitment beside
+    // it. It still exists on the site for anyone who wants it; it is not what
+    // this dialog offers.
     expect(document.body.textContent).toMatch(/\$30/)
-    expect(document.body.textContent).toMatch(/\$5/)
     expect(document.body.textContent).toMatch(/\$100/)
+    expect(document.body.textContent).not.toMatch(/\$5 a month/)
   })
 
   it('sells the product rather than disclaiming it', async () => {

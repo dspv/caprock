@@ -74,18 +74,18 @@ const FEATURES: Record<
     title: 'A daily cap that pauses sessions',
     body: 'Set a number for the day. When the cost crosses it, Caprock pauses the sessions it started — while the spend is happening, not in a summary the next morning.',
     points: [
-      'Stops the spend as it happens, not the next morning',
-      'Only sessions Caprock started — yours are never touched',
-      'One number, set once',
+      'A runaway loop stops at $40 instead of finishing at $400',
+      'It happens while you are asleep, not in tomorrow\u2019s summary',
+      'Your own sessions are never touched — only the ones Caprock started',
     ],
   },
   report: {
     title: 'A weekly report, sent where you are',
     body: 'Where the week went, by repository and model, delivered to your own Telegram bot or webhook — your channel, not ours, which is the only way a tool that keeps your data local can reach you off the machine.',
     points: [
-      'The week by repository and model, every Monday',
-      'Your own Telegram bot or webhook — never our server',
-      'Arrives without opening the dashboard',
+      'Monday morning: what last week cost, and which repository ate it',
+      'Lands in your Telegram before you open a terminal',
+      'Through your own bot — the report leaves your machine only for you',
     ],
   },
   // Third-party pricing was going to live here. It was cheaper to add the
@@ -121,7 +121,7 @@ function Price({ p, onClose }: { p: PremiumPricing | undefined; onClose: () => v
           </div>
           <div className="mt-1.5 flex items-baseline justify-between gap-3 text-[13px]">
             <span className="text-fg">Caprock Premium</span>
-            <span className="num text-accent">
+            <span className="num text-premium-strong">
               ${(p.yearly.charged_usd / 12).toFixed(2)} / month
             </span>
           </div>
@@ -132,13 +132,20 @@ function Price({ p, onClose }: { p: PremiumPricing | undefined; onClose: () => v
         </div>
       )}
 
+      {/* A year or a lifetime, and nothing else.
+        *
+        * The monthly plan was here as a third line and it is the wrong thing
+        * to offer on this screen: at $5 it is the cheapest way to hold a key
+        * for a month, which is a worse deal for the buyer and a worse
+        * relationship for us than either commitment above it. It still exists
+        * for anyone who seeks it out on the site. */}
       <div className="mt-3.5 grid grid-cols-2 gap-2">
         <a
           href={p.yearly.url}
           target="_blank"
           rel="noreferrer"
           onClick={onClose}
-          className="rounded-sm bg-accent px-3 py-2 text-center text-[13px] font-medium text-bg no-underline hover:brightness-110"
+          className="rounded-sm bg-premium px-3 py-2.5 text-center text-[14px] font-medium text-white no-underline hover:brightness-110"
         >
           ${p.yearly.charged_usd} / year
         </a>
@@ -147,15 +154,11 @@ function Price({ p, onClose }: { p: PremiumPricing | undefined; onClose: () => v
           target="_blank"
           rel="noreferrer"
           onClick={onClose}
-          className="rounded-sm border border-accent px-3 py-2 text-center text-[13px] font-medium text-accent no-underline hover:bg-accent/15"
+          className="rounded-sm border border-premium px-3 py-2.5 text-center text-[14px] font-medium text-premium no-underline hover:bg-premium/10"
         >
-          ${p.lifetime?.charged_usd} once
+          ${p.lifetime?.charged_usd} once, forever
         </a>
       </div>
-
-      <p className="mt-2 text-center text-[12px] text-fg-faint">
-        Or ${p.monthly.charged_usd} a month, cancel whenever.
-      </p>
     </>
   )
 }
@@ -187,7 +190,7 @@ export function PremiumModal({ feature, onClose }: { feature: PaidFeature; onClo
       >
         <header className="flex items-start gap-3 px-5 pt-4">
           <div>
-            <p className="text-[11px] uppercase tracking-wide text-accent">Caprock Premium</p>
+            <p className="text-[11px] uppercase tracking-wide text-premium-strong">Caprock Premium</p>
             <h2 className="mt-1 text-[16px] font-medium leading-snug text-fg">{f.title}</h2>
           </div>
           <button
@@ -205,7 +208,7 @@ export function PremiumModal({ feature, onClose }: { feature: PaidFeature; onClo
           <ul className="mt-3 space-y-1.5">
             {f.points.map((point) => (
               <li key={point} className="flex gap-2 text-[13px] leading-snug text-fg">
-                <span aria-hidden className="text-accent">·</span>
+                <span aria-hidden className="text-premium-strong">·</span>
                 <span>{point}</span>
               </li>
             ))}

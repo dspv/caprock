@@ -30,6 +30,19 @@
   --color-accent: #feb157;
   --color-accent-strong: #ffcb85;
 
+  /* Premium — ultramarine, and the ONE place the amber rule is broken.
+   *
+   * Everything interactive in this product is amber, which is what makes the
+   * paid surfaces indistinguishable from the free ones: a subscribe button
+   * looked exactly like a range filter. Paid is a different kind of thing, so
+   * it gets a different hue — deliberately cool against a warm interface, so
+   * it reads as separate rather than as another control.
+   *
+   * Use it ONLY where money is involved. An ultramarine that spreads to
+   * ordinary controls is just a second accent, and then nothing is marked. */
+  --color-premium: #4d5cf0;
+  --color-premium-strong: #6f7bff;
+
   /* type — same faces as the site */
   --font-sans: "Hanken Grotesk Variable", -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -76,6 +89,10 @@
 
   --color-accent: #b8730d;
   --color-accent-strong: #8f5808;
+
+  /* Darker on white, or ultramarine on a light panel is unreadable. */
+  --color-premium: #3341d8;
+  --color-premium-strong: #232fb0;
 
   --shadow-panel: 0 8px 20px -14px rgba(60, 50, 30, 0.22);
 }
