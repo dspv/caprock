@@ -72,7 +72,7 @@ const FEATURES: Record<
 > = {
   cap: {
     title: 'A daily cap that pauses sessions',
-    body: 'Set a number for the day. When the cost crosses it, Caprock pauses the sessions it started — while the spend is happening, not in a summary the next morning.',
+    body: 'A number for the day. Cross it and Caprock stops its own sessions.',
     points: [
       'A runaway loop stops at $40 instead of finishing at $400',
       'It happens while you are asleep, not in tomorrow\u2019s summary',
@@ -81,7 +81,7 @@ const FEATURES: Record<
   },
   report: {
     title: 'A weekly report, sent where you are',
-    body: 'Where the week went, by repository and model, delivered to your own Telegram bot or webhook — your channel, not ours, which is the only way a tool that keeps your data local can reach you off the machine.',
+    body: 'Where the week went, in your Telegram — not on our server.',
     points: [
       'Monday morning: what last week cost, and which repository ate it',
       'Lands in your Telegram before you open a terminal',
@@ -103,49 +103,40 @@ const FEATURES: Record<
  * lifetime option behind a page load, and it is the one people ask about.
  */
 function Price({ p, onClose }: { p: PremiumPricing | undefined; onClose: () => void }) {
-  if (!p) return <div className="h-[132px] text-[13px] text-fg-faint">…</div>
+  if (!p) return <div className="h-[92px] text-[13px] text-fg-faint">…</div>
 
   const c = p.compare
-  // How many months of the compared plan a year of Caprock costs. Stated as a
-  // ratio rather than a percentage: "a month and a half" is a thing people can
-  // picture, and it does not survive rounding into a slogan.
-  const months = c ? p.yearly.charged_usd / c.monthly_usd : 0
+  // What each price is worth in the thing the reader already buys.
+  //
+  // This was a two-row table above the buttons — "Claude Pro $20/month" over
+  // "Caprock Premium $2.50/month" — and it read as a strange comparison of two
+  // unrelated numbers before you got to what you were paying. The comparison
+  // belongs *under* each button, attached to the price it explains: not "here
+  // is our monthly rate against theirs", but "this button costs you a month
+  // and a half of Claude Pro".
+  const asMonths = (usd: number) => (c ? usd / c.monthly_usd : 0)
+  const say = (n: number) => {
+    if (n < 1.25) return 'about a month'
+    if (n < 1.75) return 'about six weeks'
+    if (n < 2.5) return 'about two months'
+    return `about ${Math.round(n)} months`
+  }
 
   return (
     <>
-      {c && (
-        <div className="rounded-sm border border-border bg-panel-2 px-3 py-2.5">
-          <div className="flex items-baseline justify-between gap-3 text-[13px]">
-            <span className="text-fg-muted">{c.plan}</span>
-            <span className="num text-fg-muted">${c.monthly_usd.toFixed(0)} / month</span>
-          </div>
-          <div className="mt-1.5 flex items-baseline justify-between gap-3 text-[13px]">
-            <span className="text-fg">Caprock Premium</span>
-            <span className="num text-premium-strong">
-              ${(p.yearly.charged_usd / 12).toFixed(2)} / month
-            </span>
-          </div>
-          <p className="mt-2 border-t border-border pt-2 text-[12px] leading-relaxed text-fg-faint">
-            A whole year of Caprock costs about {months < 2 ? 'a month and a half' : `${Math.round(months)} months`} of {c.plan}.
-            Different things — one buys the model, one shows you what it did.
-          </p>
-        </div>
-      )}
-
-      {/* A year or a lifetime, and nothing else.
-        *
-        * The monthly plan was here as a third line and it is the wrong thing
-        * to offer on this screen: at $5 it is the cheapest way to hold a key
-        * for a month, which is a worse deal for the buyer and a worse
-        * relationship for us than either commitment above it. It still exists
-        * for anyone who seeks it out on the site. */}
-      <div className="mt-3.5 grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-2">
+        {/* Both filled, and the lifetime one brighter.
+          *
+          * An outlined second button reads as the lesser option, which is
+          * backwards: someone weighing the year should see the lifetime as the
+          * step up from it. Two solid buttons of ascending brightness make the
+          * upgrade legible without a word of copy. */}
         <a
           href={p.yearly.url}
           target="_blank"
           rel="noreferrer"
           onClick={onClose}
-          className="rounded-sm bg-premium px-3 py-2.5 text-center text-[14px] font-medium text-white no-underline hover:brightness-110"
+          className="rounded-sm bg-premium/75 px-3 py-2.5 text-center text-[14px] font-medium text-white no-underline hover:bg-premium"
         >
           ${p.yearly.charged_usd} / year
         </a>
@@ -154,11 +145,18 @@ function Price({ p, onClose }: { p: PremiumPricing | undefined; onClose: () => v
           target="_blank"
           rel="noreferrer"
           onClick={onClose}
-          className="rounded-sm border border-premium px-3 py-2.5 text-center text-[14px] font-medium text-premium no-underline hover:bg-premium/10"
+          className="rounded-sm bg-premium-strong px-3 py-2.5 text-center text-[14px] font-medium text-white no-underline hover:brightness-110"
         >
-          ${p.lifetime?.charged_usd} once, forever
+          ${p.lifetime?.charged_usd} forever
         </a>
       </div>
+
+      {c && (
+        <div className="mt-2 grid grid-cols-2 gap-2 text-center text-[11px] leading-snug text-fg-faint">
+          <span>{say(asMonths(p.yearly.charged_usd))} of {c.plan}</span>
+          <span>{say(asMonths(p.lifetime?.charged_usd ?? 0))} of {c.plan}</span>
+        </div>
+      )}
     </>
   )
 }
@@ -243,9 +241,8 @@ export function PremiumModal({ feature, onClose }: { feature: PaidFeature; onClo
         </footer>
 
         <p className="border-t border-border px-5 py-2.5 text-[11px] leading-relaxed text-fg-faint">
-          Everything Caprock does today stays free and Apache-2.0. Premium adds to
-          that and never removes from it — and nothing about how you use it reaches
-          us either way.
+          Everything Caprock does today stays free and Apache-2.0. Nothing about
+          how you use it reaches us.
         </p>
       </div>
     </div>

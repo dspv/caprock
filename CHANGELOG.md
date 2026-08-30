@@ -9,6 +9,26 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.36.1] - 2026-08-30
+
+### Changed
+
+- **The premium dialog says the same thing in half the words.** The paragraph
+  above the bullets repeated what the bullets said, and the footer explained
+  the licence twice.
+
+- **Both prices are buttons now, and the lifetime one is brighter.** An
+  outlined second button reads as the lesser option, which is backwards:
+  someone weighing the year should see the lifetime as the step up from it. Two
+  filled buttons of ascending brightness make that legible without a word of
+  copy.
+
+- **The comparison moved under the buttons, one line each.** It was a two-row
+  table above them — "Claude Pro $20/month" over "Caprock Premium $2.50/month"
+  — two unrelated numbers standing where a price belonged. Each button now
+  carries what it is worth in the plan the reader already pays for: about six
+  weeks of Claude Pro for the year, about five months for the lifetime.
+
 ## [0.36.0] - 2026-08-30
 
 ### Changed

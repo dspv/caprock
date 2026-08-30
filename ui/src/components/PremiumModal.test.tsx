@@ -47,8 +47,11 @@ describe('PremiumModal', () => {
 
   it('states the price rather than sending someone away to find it', async () => {
     render(<PremiumModal feature="cap" onClose={() => {}} />)
-    // The per-month equivalent of the yearly plan — the number people compare.
-    await waitFor(() => expect(document.body.textContent).toMatch(/\$2\.50/))
+    // The prices that are actually charged. The per-month equivalent used to
+    // sit here too, in a row against Claude Pro's monthly rate — two unrelated
+    // numbers above the buttons, which read as a strange comparison rather
+    // than as a price. What each button is worth now sits under it.
+    await waitFor(() => expect(document.body.textContent).toMatch(/\$30/))
     // A year or a lifetime, and deliberately not the monthly plan.
     //
     // At $5 the monthly option is the cheapest way to hold a licence key for a
@@ -80,7 +83,9 @@ describe('PremiumModal', () => {
     // failed for a rewording while the thing it guards was intact.
     await waitFor(() => expect(screen.getByRole('link', { name: /year/i })).toBeInTheDocument())
     const year = screen.getByRole('link', { name: /year/i })
-    const once = screen.getByRole('link', { name: /once/i })
+    // Located by its price, not its wording — the label has been reworded
+    // twice and the thing it guards has not changed.
+    const once = screen.getByRole('link', { name: /\$100/ })
     const more = screen.getByRole('link', { name: /read more/i })
     expect(year.getAttribute('href')).toBe(pricing.yearly.url)
     // Lifetime is a button of its own. It is the option people ask about, and
@@ -97,11 +102,15 @@ describe('PremiumModal', () => {
     // Named twice on purpose: once in the comparison, once crediting the
     // source, so getAllByText rather than a query that forbids the second.
     await waitFor(() => expect(screen.getAllByText(/Claude Pro/).length).toBeGreaterThan(0))
-    expect(document.body.textContent).toMatch(/\$20 \/ month/)
+    // Each price is measured in months of the plan the reader already pays
+    // for, under the button it explains: $30/year is about six weeks of Claude
+    // Pro, $100 about five months.
+    expect(document.body.textContent).toMatch(/about six weeks of Claude Pro/)
+    expect(document.body.textContent).toMatch(/about 5 months of Claude Pro/)
+    // The figure is someone else's price, so it carries its source and date —
+    // rule 6 applies to their numbers as much as ours.
     expect(document.body.textContent).toMatch(/claude\.com\/pricing/)
     expect(document.body.textContent).toMatch(/2026-08-28/)
-    // And it must not imply the two are substitutes.
-    expect(document.body.textContent).toMatch(/Different things/i)
   })
 
   it('closes on Escape, on the backdrop, and on both close controls', () => {
@@ -122,7 +131,7 @@ describe('PremiumModal', () => {
   it('does not close when the dialog body itself is clicked', () => {
     const onClose = vi.fn()
     render(<PremiumModal feature="cap" onClose={onClose} />)
-    fireEvent.click(screen.getByText(/Set a number for the day/))
+    fireEvent.click(screen.getByText(/A number for the day/))
     expect(onClose).not.toHaveBeenCalled()
   })
 })
