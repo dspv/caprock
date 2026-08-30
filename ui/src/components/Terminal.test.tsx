@@ -144,8 +144,12 @@ describe('a session Caprock did not start', () => {
     // It was a link to the main screen, which is navigation dressed as an
     // offer: it moved the reader away from what they were doing and left them
     // to find the real button themselves.
-    expect(screen.getByRole('button', { name: /start one here/i })).toBeTruthy()
-    expect(screen.queryByRole('link', { name: /start/i })).toBeNull()
+    expect(screen.getByRole('button', { name: /launch a new claude code session/i })).toBeTruthy()
+    expect(screen.queryByRole('link', { name: /start|launch/i })).toBeNull()
+
+    // And it must say what happens to the session already running, because the
+    // reasonable fear about a button on this screen is that it disturbs it.
+    expect(document.body.textContent).toMatch(/keeps running, untouched/i)
 
     // And none of the vocabulary that only makes sense from inside.
     for (const jargon of [/externally started/i, /does not own/i, /spawn/i]) {
@@ -157,7 +161,9 @@ describe('a session Caprock did not start', () => {
     // Asking for the working directory, on a screen that is showing it, is
     // asking someone to retype what they are looking at.
     render(<TerminalView sessionId="s1" owned={false} cwd="/Users/x/dev/thing" />)
-    expect(screen.getByRole('button', { name: /in this repository/i })).toBeTruthy()
+    // The path itself, not the words "this repository": a reader should be
+    // able to check where it will run before clicking, not after.
+    expect(screen.getByText('/Users/x/dev/thing')).toBeTruthy()
   })
 })
 

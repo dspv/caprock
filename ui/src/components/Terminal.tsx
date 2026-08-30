@@ -312,22 +312,33 @@ export function TerminalView({
     return (
       <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
         <p className="text-[14px] text-fg">You started this session yourself, so it has no terminal here.</p>
-        {/* Opens the dialog here, already pointed at this repository.
+
+        {/* The button names the thing it creates, and the line under it says
+          * what happens to what is already running.
           *
-          * It used to be a link to the main screen, which is not an action —
-          * it moved someone away from what they were doing and left them to
-          * find the button themselves. */}
+          * Two passes at this were still too vague. "Start a session in
+          * Caprock" was a link to the main screen. "Start one here" replaced it
+          * with an action but left "one" undefined — a reader could reasonably
+          * expect it to attach to, restart, or take over the session they were
+          * looking at. It does none of those: it launches a second `claude`
+          * process. Anything that runs a program and touches nothing else has
+          * to say both halves. */}
         <button
           onClick={() => setSpawning(true)}
           className="rounded-sm bg-accent px-3.5 py-2 text-[13px] font-medium text-bg hover:brightness-110"
         >
-          Start one here{cwd ? ' in this repository' : ''} →
+          Launch a new Claude Code session here →
         </button>
+        <p className="max-w-[52ch] text-[12px] leading-relaxed text-fg-faint">
+          Runs a second <span className="mono">claude</span> in{' '}
+          {cwd ? <span className="mono text-fg-muted">{cwd}</span> : 'this repository'} and gives it a
+          terminal you can type in. This session keeps running, untouched.
+        </p>
         {spawning && <SpawnDialog available onClose={() => setSpawning(false)} initialCwd={cwd ?? ''} />}
-        <p className="max-w-[46ch] text-[12px] leading-relaxed text-fg-faint">
-          Sessions started from “New session” get a full terminal. Caprock never
-          types into a process it did not start — including this one, which
-          stays visible here and keeps being measured.
+
+        <p className="mt-1 max-w-[52ch] text-[12px] leading-relaxed text-fg-faint">
+          Caprock never types into a process it did not start — including this
+          one, which stays visible here and keeps being measured.
         </p>
       </div>
     )

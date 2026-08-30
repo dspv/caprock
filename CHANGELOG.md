@@ -9,6 +9,22 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.37.5] - 2026-08-30
+
+### Fixed
+
+- **The button on a session Caprock did not start now says what it does.**
+  "Start one here" named an action and left *one* undefined — a reader could
+  reasonably expect it to attach to, restart, or take over the session in front
+  of them. It does none of those.
+
+  It reads **"Launch a new Claude Code session here"**, and the line under it
+  states the two things a reader needs before clicking: it runs a second
+  `claude` in the directory shown, and **the session already running is left
+  untouched**. Anything that starts a program and disturbs nothing has to say
+  both halves, and the path is on screen so it can be checked before the click
+  rather than after.
+
 ## [0.37.4] - 2026-08-30
 
 ### Fixed
