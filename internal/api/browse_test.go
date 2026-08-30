@@ -64,6 +64,14 @@ func TestResolveInRootRefusesEverythingOutside(t *testing.T) {
 		{"a traversal out of the root", filepath.Join(root, "..")},
 		{"a traversal disguised by a real segment", filepath.Join(inside, "..", "..", "..")},
 		{"the filesystem root", string(filepath.Separator)},
+		// Windows: a leading separator with no volume is *relative* to the
+		// current drive, so IsAbs is false and this used to be joined onto the
+		// root instead of refused. Listed on every OS, but only Windows CI can
+		// actually fail on it — on Unix these are plain absolute paths caught
+		// by the containment check, so removing the guard leaves this green
+		// here and red there. The Windows job is the test.
+		{"a drive-relative path", `\Windows\System32`},
+		{"a drive-relative path, forward slashes", "/Windows/System32"},
 		{"a path that does not exist", filepath.Join(root, "nope", "deeper")},
 	} {
 		t.Run("refuses "+tc.name, func(t *testing.T) {

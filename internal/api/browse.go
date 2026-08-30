@@ -112,7 +112,20 @@ func resolveInRoot(root, req string) (string, error) {
 	if req == "" {
 		return root, nil
 	}
+	// A rooted-but-not-absolute path is refused rather than joined.
+	//
+	// On Windows `\Windows\System32` has no volume, so filepath.IsAbs reports
+	// false — it means "that path on the current drive". Joining it onto the
+	// root produced `<root>\Windows\System32`, which is inside the root and so
+	// passed every later check: the request escaped nothing, but it was also
+	// not the directory anyone asked for. Found by the Windows CI job.
+	//
+	// Nothing legitimate sends one: the UI only ever echoes paths this endpoint
+	// returned, and those are absolute.
 	if !filepath.IsAbs(req) {
+		if strings.HasPrefix(req, "/") || strings.HasPrefix(req, `\`) {
+			return "", errOutsideRoot
+		}
 		req = filepath.Join(root, req)
 	}
 	abs, err := filepath.Abs(req)
