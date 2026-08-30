@@ -9,6 +9,31 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.35.1] - 2026-08-30
+
+### Changed
+
+- **The main screen's heaviest request went from 0.61s to 0.001s.** `/v1/history`
+  answers "everything, ever" — four aggregates over the whole events table —
+  and **five components on that one screen ask for it on their own timers**:
+  the lifetime strip, the breakdown panel, the share card, the share nudge, and
+  the screen itself. A single open tab produced bursts of identical requests
+  and each one was computed from scratch.
+
+  Requests for the same range that arrive while one is already running now wait
+  for it and share its result, and a settled result is reused for three seconds
+  — shorter than the fastest poller, so nothing on screen is visibly behind.
+  Errors are never cached, and a caller hanging up no longer takes the answer
+  away from the callers waiting behind it.
+
+  Two smaller fixes found by the same measurements: the session count is
+  grouped rather than `COUNT(DISTINCT)`, which runs off a covering index
+  instead of sorting every row into a temp B-tree (0.14s → 0.02s at
+  `range=all`, no slower at any other range); and idle database connections are
+  kept rather than reaped after five minutes. Each connection carries its own
+  page cache, and a fresh one is cold — the same query measured 378ms on a
+  connection's first use and 26ms on its second.
+
 ## [0.35.0] - 2026-08-30
 
 ### Added

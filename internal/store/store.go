@@ -89,7 +89,19 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Store, error) {
 	} else {
 		// _pragma is modernc's DSN syntax. WAL lets the UI read while ingest writes;
 		// busy_timeout avoids SQLITE_BUSY under the (rare) concurrent writer.
-		dsn = "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)"
+		// cache_size is negative to mean kibibytes rather than pages: 64 MiB,
+		// against SQLite's 2 MiB default.
+		//
+		// The default is sized for a small database, and this one is not: the
+		// owner's is 600 MB after three months, and the aggregates behind
+		// /v1/history scan the whole events table. With 2 MiB of page cache
+		// every scan re-reads from disk — the same query measured 0.02s in the
+		// sqlite3 CLI and 0.55s through this connection, and the difference was
+		// pages, not SQL.
+		//
+		// 64 MiB is a ceiling, not an allocation: SQLite grows into it only as
+		// pages are touched, so a small database still costs a small process.
+		dsn = "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)&_pragma=cache_size(-65536)&_pragma=mmap_size(268435456)"
 	}
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -105,7 +117,20 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Store, error) {
 	// recorder is the single write path and busy_timeout covers the rest.
 	db.SetMaxOpenConns(maxOpenConns)
 	db.SetMaxIdleConns(maxOpenConns)
-	db.SetConnMaxIdleTime(5 * time.Minute)
+	// Idle connections are kept, not reaped.
+	//
+	// Each connection carries its own SQLite page cache, and a fresh one is
+	// cold: the same aggregate measured 378ms on a connection's first use and
+	// 26ms on its second, against a 600 MB database. Retiring idle connections
+	// after five minutes meant the dashboard paid that first-use cost again
+	// and again — the main screen polls /v1/history from three components at
+	// once, so three cold connections turned a 40ms answer into a second.
+	//
+	// There is no remote server to hold connections open against and no
+	// credential to expire; the pool is bounded at maxOpenConns, so keeping
+	// them costs a fixed handful of file descriptors and the page cache we
+	// wanted anyway.
+	db.SetConnMaxIdleTime(0)
 	s := &Store{db: db, log: log}
 	if err := s.migrate(ctx); err != nil {
 		_ = db.Close()

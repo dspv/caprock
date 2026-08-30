@@ -145,6 +145,9 @@ type Server struct {
 	d   Deps
 	mux *http.ServeMux
 	ws  *wsHub
+	// hist collapses the burst of identical /v1/history requests one open
+	// screen produces. See histcache.go.
+	hist *historyCache
 }
 
 // New builds the router.
@@ -158,7 +161,7 @@ func New(d Deps) *Server {
 	if d.IdleAfter <= 0 {
 		d.IdleAfter = 5 * time.Minute
 	}
-	s := &Server{d: d, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log)}
+	s := &Server{d: d, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log), hist: newHistoryCache(historyTTL, d.Now)}
 	m := s.mux
 	m.HandleFunc("GET /v1/sessions", s.handleSessions)
 	m.HandleFunc("GET /v1/sessions/{id}", s.handleSession)
@@ -816,23 +819,36 @@ type HistoryResponse struct {
 }
 
 func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	from, label := s.rangeFrom(r.URL.Query().Get("range"))
+	// Keyed by the resolved range rather than the raw query string, so
+	// "?range=" and "?range=today" — the same question spelled two ways —
+	// share one answer.
+	v, err := s.hist.get(r.Context(), label, func() (any, error) {
+		return s.buildHistory(context.WithoutCancel(r.Context()), from, label)
+	})
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
+// buildHistory computes one history response. Split out of the handler so the
+// cache above has something to call, and so the queries are testable without
+// an HTTP round trip.
+func (s *Server) buildHistory(ctx context.Context, from int64, label string) (HistoryResponse, error) {
 	q := s.d.Store.DB()
 	tot, err := store.History(ctx, q, from)
 	if err != nil {
-		s.fail(w, err)
-		return
+		return HistoryResponse{}, err
 	}
 	tools, err := store.ToolDistribution(ctx, q, from, 40)
 	if err != nil {
-		s.fail(w, err)
-		return
+		return HistoryResponse{}, err
 	}
 	sum, err := store.Summarize(ctx, q, from)
 	if err != nil {
-		s.fail(w, err)
-		return
+		return HistoryResponse{}, err
 	}
 	if sum.Models == nil {
 		sum.Models = []store.ModelShare{}
@@ -846,8 +862,7 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	daily, err := store.Daily(ctx, q, fromDay)
 	if err != nil {
-		s.fail(w, err)
-		return
+		return HistoryResponse{}, err
 	}
 	if tools == nil {
 		tools = []store.ToolCount{}
@@ -855,7 +870,7 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	if daily == nil {
 		daily = []store.DailyStat{}
 	}
-	writeJSON(w, http.StatusOK, HistoryResponse{Range: label, Totals: tot, Tools: tools, Daily: daily, Summary: sum, Savings: cost.ComputeSavings(sum.TokensIn, sum.CacheRead, sum.CacheWrite)})
+	return HistoryResponse{Range: label, Totals: tot, Tools: tools, Daily: daily, Summary: sum, Savings: cost.ComputeSavings(sum.TokensIn, sum.CacheRead, sum.CacheWrite)}, nil
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
