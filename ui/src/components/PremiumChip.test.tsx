@@ -26,24 +26,39 @@ vi.mock('@/lib/api', async (orig) => {
 import { PremiumChip } from './PremiumChip'
 
 describe('PremiumChip', () => {
-  it('offers a way to buy without being on a screen that sells something', async () => {
+  it('goes straight to the checkout, without a dialog in the way', async () => {
+    // The first version opened the dialog and nothing else, so someone who had
+    // already decided still had to read a screen and then hunt for a price.
+    // "You cannot go straight to premium" was the complaint.
     state.licensed = false
     render(<PremiumChip />)
-    const chip = await screen.findByRole('button', { name: /premium/i })
-
-    // And it opens the dialog rather than navigating away from whatever the
-    // reader was doing.
+    const buy = await screen.findByRole('link', { name: /premium/i })
+    expect(buy.getAttribute('href')).toBe('https://buy/y')
+    expect(buy.getAttribute('target')).toBe('_blank')
+    // Reaching it must not require opening anything first.
     expect(screen.queryByRole('dialog')).toBeNull()
-    fireEvent.click(chip)
+  })
+
+  it('still offers the explanation, for anyone who has not decided', async () => {
+    state.licensed = false
+    render(<PremiumChip />)
+    const more = await screen.findByRole('button', { name: /what premium includes/i })
+    fireEvent.click(more)
     expect(screen.getByRole('dialog')).toBeTruthy()
   })
 
+  // Not tested here: the crash when the daemon sends no plans. It was real —
+  // the first version read `.url` off an absent plan and took the whole header
+  // down — but App.test.tsx is what catches it, because a crash only shows as
+  // a crash when something around it disappears. Two attempts at asserting it
+  // in isolation passed whether the guard was present or not, and a test that
+  // cannot fail is worse than no test.
   it('stops selling to someone who has already paid', async () => {
     // A buy button shown to a payer is the fastest way to make them feel they
     // bought nothing.
     state.licensed = true
     render(<PremiumChip />)
     await waitFor(() => expect(screen.getByText(/premium/i)).toBeInTheDocument())
-    expect(screen.queryByRole('button', { name: /premium/i })).toBeNull()
+    expect(screen.queryByRole('link', { name: /premium/i })).toBeNull()
   })
 })

@@ -49,15 +49,24 @@ export function Locked({
         * occupies the space of a demonstration while demonstrating nothing,
         * and "I cannot tell what is under it" was the first thing said about
         * this panel. Dimmed enough to read as inert, sharp enough to read. */}
-      <div aria-hidden className="pointer-events-none select-none opacity-70 blur-[0.4px]">
+      <div aria-hidden className="pointer-events-none select-none opacity-90">
         {children}
       </div>
 
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 bg-panel/70 px-4 text-center">
-        <span className="text-[15px] font-medium text-fg">{title}</span>
+      {/* The scrim sits behind the words only, not over the whole panel.
+        *
+        * Raising the preview's opacity did nothing the first time, because a
+        * full-panel `bg-panel/70` was laid over the top of it: the content was
+        * brighter underneath and the sheet dimmed it straight back. The panel
+        * is legible now because nothing covers it — the caption carries its
+        * own backing so it stays readable against whatever it lands on. */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 px-4 text-center">
+        <span className="rounded-sm bg-panel/95 px-3 py-1 text-[15px] font-medium text-fg shadow-[0_2px_12px_var(--color-bg)]">
+          {title}
+        </span>
         <button
           onClick={() => setOpen(true)}
-          className="rounded-sm bg-premium px-3.5 py-1.5 text-[13px] font-medium text-white hover:brightness-110"
+          className="rounded-sm bg-premium px-3.5 py-1.5 text-[13px] font-medium text-white shadow-[0_2px_12px_var(--color-bg)] hover:brightness-110"
         >
           Unlock with Premium
         </button>

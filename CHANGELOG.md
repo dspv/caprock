@@ -9,6 +9,26 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.37.2] - 2026-08-30
+
+### Fixed
+
+- **Buying takes one click.** The header chip opened the dialog and nothing
+  else, so someone who had already decided still had to read a screen and then
+  find a price. It is now the price itself — `premium $30/yr`, straight to the
+  checkout — with a separate chevron for anyone who wants the explanation
+  first. People who are ready should not be routed through a pitch.
+
+- **The locked preview really is legible now.** Raising its opacity in 0.37.1
+  changed nothing visible, because a full-panel scrim was laid over the top of
+  it: the content was brighter underneath and the sheet dimmed it straight
+  back. The scrim is gone; the caption and the button carry their own backing
+  instead, so the panel behind them can be read.
+
+- **A missing plan no longer takes the header down.** The chip read `.url` off
+  the yearly plan without checking it was there — an older daemon, or any
+  response without it, crashed every screen rather than hiding one chip.
+
 ## [0.37.1] - 2026-08-30
 
 ### Fixed

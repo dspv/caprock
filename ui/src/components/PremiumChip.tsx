@@ -13,6 +13,14 @@
  * it shout — it is the only element in the header that is not amber, so the
  * eye lands on it exactly when it is looking for the thing about money.
  *
+ * **It buys directly.** The first version opened the dialog, which meant
+ * someone who had already decided still had to read a screen and then find a
+ * price — "you cannot go straight to premium" was the complaint, and it was
+ * right. The chip is now two controls: the price goes to the checkout, and a
+ * separate arrow opens the explanation for anyone who has not decided. The
+ * ordering is deliberate: people who are ready should not be routed through a
+ * pitch.
+ *
  * When a licence is active it says so instead, and stops selling. Someone who
  * has paid being shown a buy button is the fastest way to make them feel they
  * bought nothing.
@@ -29,20 +37,43 @@ export function PremiumChip() {
   // Nothing until the daemon has answered: a chip that appears a beat after
   // everything else draws attention to itself by moving, which is the one
   // thing this must not do.
-  if (!premium.data) return null
+  //
+  // The yearly plan is checked too, not just the response. An older daemon —
+  // or any response missing it — would otherwise read `.url` off undefined and
+  // take the whole header down with it, which is how this first went wrong:
+  // one optional field crashed every screen rather than hiding one chip.
+  if (!premium.data?.yearly?.url) return null
 
   if (premium.data.license?.active) {
     return <span className="text-premium-strong">premium</span>
   }
 
+  const p = premium.data
+
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className="rounded-sm border border-premium/60 px-2 py-0.5 text-premium-strong hover:bg-premium/10"
-      >
-        premium
-      </button>
+      <span className="inline-flex items-center overflow-hidden rounded-sm border border-premium/60">
+        {/* Straight to the checkout, at the price most people should take. */}
+        <a
+          href={p.yearly.url}
+          target="_blank"
+          rel="noreferrer"
+          className="bg-premium px-2 py-0.5 text-white no-underline hover:brightness-110"
+        >
+          premium ${p.yearly.charged_usd}/yr
+        </a>
+        {/* And a way to read first, for anyone who has not decided. Marked
+          * with a chevron rather than words: the header has no room for a
+          * second label, and the target of this one is a dialog, not a page. */}
+        <button
+          onClick={() => setOpen(true)}
+          aria-label="What Premium includes"
+          title="What Premium includes"
+          className="px-1.5 py-0.5 text-premium-strong hover:bg-premium/10"
+        >
+          ›
+        </button>
+      </span>
       {/* The cap, not the report: it is the feature people arrive worried
         * about, and the one a runaway session makes them want. */}
       {open && <PremiumModal feature="cap" onClose={() => setOpen(false)} />}
