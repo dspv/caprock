@@ -23,8 +23,12 @@ const history = (over: Partial<History> = {}): History =>
       { tool: 'mcp__claude-in-chrome__computer', count: 1704 },
     ],
     summary: {
-      models: [{ model: 'claude-opus-5', tokens: 1, turns: 1, cost_usd: 5398.7 }],
+      models: [{ model: 'claude-opus-5', tokens: 10_082_171_962, turns: 1, cost_usd: 5398.7 }],
       projects: [],
+      tokens_in: 38_927_644,
+      tokens_out: 25_636_758,
+      cache_read: 21_939_135_685,
+      cache_write: 233_082_627,
     },
     ...over,
   }) as unknown as History
@@ -86,4 +90,42 @@ describe('BreakdownPanel', () => {
     ).toHaveAttribute('href', '#/history')
   })
 
+  it('states the size of the spend, not only how it divides', async () => {
+    // A share says how the money split and nothing about how much there was:
+    // "opus-5, 54%" reads the same at forty dollars and at four thousand. The
+    // absolute figures were a screen away on Cost.
+    data.value = history()
+    render(<BreakdownPanel />)
+    await screen.findByText('claude-opus-5')
+    // Tokens beside the cost, in the units the vendor bills in.
+    expect(screen.getByText('10.08B')).toBeTruthy()
+  })
+
+  it('splits input from output, which no per-model row can show', async () => {
+    // Output costs five times input, so the ratio is the explanation of the
+    // bill. Cache read sits beside them because it dwarfs both here and would
+    // otherwise make the two look like they should sum to the total.
+    data.value = history()
+    render(<BreakdownPanel />)
+    await screen.findByText('claude-opus-5')
+    expect(screen.getByText('input')).toBeTruthy()
+    expect(screen.getByText('38.93M')).toBeTruthy()
+    expect(screen.getByText('output')).toBeTruthy()
+    expect(screen.getByText('25.64M')).toBeTruthy()
+    expect(screen.getByText('cache read')).toBeTruthy()
+  })
+
+  it('omits the token line rather than showing four zeroes', async () => {
+    // Zeroes claim "you used nothing", which is a different statement from
+    // "this build does not report it".
+    data.value = history({
+      summary: {
+        models: [{ model: 'claude-opus-5', tokens: 0, turns: 1, cost_usd: 5398.7 }],
+        projects: [],
+      },
+    } as unknown as Partial<History>)
+    render(<BreakdownPanel />)
+    await screen.findByText('claude-opus-5')
+    expect(screen.queryByText('cache read')).toBeNull()
+  })
 })

@@ -9,6 +9,30 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.35.0] - 2026-08-30
+
+### Added
+
+- **Prices can now carry the dates they applied, and a turn is costed at the
+  price it actually ran under.** Sonnet 5 launched at an introductory $2/$10
+  and reverts to $3/$15 on 2026-08-31. With one row per model the only way to
+  record that is to overwrite the figure — which would have silently restated
+  every August turn at a price nobody was charged, growing a month's reported
+  spend by half overnight. That is rule 6's "no invented numbers" pointed at
+  our own history.
+
+  A superseded price now keeps its own row with `until` (the last date it
+  applied, inclusive, UTC), the current price is the row with no `until`, and
+  each turn is priced by the row in force at its timestamp. Tests cover all
+  four boundaries and were verified by breaking them.
+
+- **The size of the spend on the main screen, not only how it divides.** Each
+  model row carries its token count beside its cost, and the panel gained an
+  input / output / cache read / cache write line. A share says how the money
+  split and nothing about how much there was: "opus-5, 54%" reads the same at
+  forty dollars and at four thousand. Output costs five times input, so the
+  ratio is the explanation of the bill, and it was a screen away on Cost.
+
 ## [0.34.1] - 2026-08-30
 
 ### Changed

@@ -1,15 +1,16 @@
 {
-  "version": "2026-08-27.1",
+  "version": "2026-08-30.1",
   "source": "https://platform.claude.com/docs/en/about-claude/pricing",
   "fetched_at": "2026-08-18",
   "currency": "USD",
   "unit": "per_million_tokens",
   "notes": [
     "First-party Anthropic API prices. Amazon Bedrock and Google Vertex have separate partner pricing (regional endpoints +10%) and are not covered by this table (OQ-02).",
-    "cache_write_5m = 1.25x input, cache_write_1h = 2x input, cache_read = 0.1x input \u2014 per Anthropic's published multipliers.",
+    "cache_write_5m = 1.25x input, cache_write_1h = 2x input, cache_read = 0.1x input — per Anthropic's published multipliers.",
     "Model ids are matched by prefix against the `model` field observed in transcripts (e.g. claude-opus-5, claude-sonnet-4-5-20250929). Longest prefix wins.",
     "context_window is the model's maximum input context in tokens as published; used for the 'context fill %' badge (OQ-07).",
-    "Non-Anthropic rows are the providers' own published list prices, fetched 2026-08-27: DeepSeek V4 Pro $0.435/$0.87 per 1M (its 75% cut, made permanent); MiniMax M3 $0.30/$1.20 per 1M standard tier with $0.06 cache read (its permanent 50% off). They are priced so a total that includes non-Anthropic usage is a total; Caprock still does not charge for any of it and cannot see a bill."
+    "Non-Anthropic rows are the providers' own published list prices, fetched 2026-08-27: DeepSeek V4 Pro $0.435/$0.87 per 1M (its 75% cut, made permanent); MiniMax M3 $0.30/$1.20 per 1M standard tier with $0.06 cache read (its permanent 50% off). They are priced so a total that includes non-Anthropic usage is a total; Caprock still does not charge for any of it and cannot see a bill.",
+    "A model may have more than one row: a price that has been superseded keeps its own row with `until` (the last date it applied, inclusive, UTC), and the current price is the row with no `until`. Rows for one id are ordered oldest-first and a turn is priced by the row in force when it ran, so an expiring introductory rate never restates history at a price nobody was charged. Sonnet 5 is the first: $2/$10 introductory through 2026-08-30, $3/$15 from 2026-08-31 (claude.com/pricing, read 2026-08-30)."
   ],
   "models": [
     {
@@ -110,6 +111,17 @@
       "cache_write_1h": 4.0,
       "cache_read": 0.2,
       "output": 10.0,
+      "context_window": 1000000,
+      "until": "2026-08-30"
+    },
+    {
+      "id": "claude-sonnet-5",
+      "display": "Claude Sonnet 5",
+      "input": 3.0,
+      "cache_write_5m": 3.75,
+      "cache_write_1h": 6.0,
+      "cache_read": 0.3,
+      "output": 15.0,
       "context_window": 1000000
     },
     {

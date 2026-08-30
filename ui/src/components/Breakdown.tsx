@@ -7,10 +7,16 @@
  * summary, not something to check between glances at the pulse, so they belong
  * below the live panels and above the session rows, where the screen has room
  * and nothing is competing for attention.
+ *
+ * **Each row carries its absolute figure, not only its share.** A percentage
+ * says how the spend divides and nothing about its size: "opus-5, 54%" is the
+ * same line whether the month cost forty dollars or four thousand. The
+ * dollars and the token count were a screen away on Cost, which is one screen
+ * too far for the number people actually quote.
  */
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
-import { fmtTool, fmtUSD } from '@/lib/format'
+import { fmtTokens, fmtTool, fmtUSD } from '@/lib/format'
 import { Panel } from '@/components/ui'
 import { ShareCard } from '@/components/Share'
 import { ShareNudge } from '@/components/ShareNudge'
@@ -30,6 +36,15 @@ export function BreakdownPanel() {
   // tool calls" when it is 50% of them.
   const allCalls = (h.data?.tools ?? []).reduce((n, t) => n + t.count, 0)
   const allCost = (h.data?.summary?.models ?? []).reduce((n, m) => n + m.cost_usd, 0)
+
+  // Absent rather than zeroed when the daemon sends no token counts: four
+  // zeroes read as "you used nothing", which is a different claim from "this
+  // build does not report it".
+  const sum = h.data?.summary
+  const tok =
+    sum && (sum.tokens_in || sum.tokens_out || sum.cache_read || sum.cache_write)
+      ? { in: sum.tokens_in, out: sum.tokens_out, cacheRead: sum.cache_read, cacheWrite: sum.cache_write }
+      : null
 
   return (
     <Panel
@@ -69,11 +84,38 @@ export function BreakdownPanel() {
             key: m.model,
             label: m.model || 'unknown',
             value: fmtUSD(m.cost_usd),
+            sub: fmtTokens(m.tokens),
             share: allCost > 0 ? (100 * m.cost_usd) / allCost : null,
             frac: topCost > 0 ? m.cost_usd / topCost : 0,
           }))}
         />
       </div>
+
+      {/* The in/out split, which the per-model rows cannot show: a model row
+        * has one token total, and input against output is the ratio that
+        * explains the bill. Output costs five times input, so a small output
+        * number beside a large input one is the whole story of why a month
+        * cost what it did. Cache read is stated beside them because on this
+        * workload it dwarfs both and would otherwise make the two look like
+        * they should add up to the total. */}
+      {tok && (
+        <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-t border-border px-3 py-2 text-[11px]">
+          <span className="text-[10px] uppercase tracking-[0.12em] text-fg-faint">Tokens</span>
+          <span className="text-fg-muted">
+            input <span className="num text-fg">{fmtTokens(tok.in)}</span>
+          </span>
+          <span className="text-fg-muted">
+            output <span className="num text-fg">{fmtTokens(tok.out)}</span>
+          </span>
+          <span className="text-fg-muted">
+            cache read <span className="num text-fg">{fmtTokens(tok.cacheRead)}</span>
+          </span>
+          <span className="text-fg-muted">
+            cache write <span className="num text-fg">{fmtTokens(tok.cacheWrite)}</span>
+          </span>
+          <span className="ml-auto text-fg-faint">fresh input is billed at full price</span>
+        </div>
+      )}
     </Panel>
   )
 }
@@ -86,7 +128,16 @@ function Bars({
 }: {
   title: string
   note: string
-  rows: { key: string; label: string; value: string; share: number | null; frac: number }[]
+  rows: {
+    key: string
+    label: string
+    value: string
+    /** A second figure for the same row — tokens beside a cost. Optional
+     *  because a tool call has no meaningful token count of its own. */
+    sub?: string
+    share: number | null
+    frac: number
+  }[]
 }) {
   if (rows.length === 0) return null
   return (
@@ -108,6 +159,9 @@ function Bars({
               />
             </span>
             <span className="num w-20 shrink-0 text-right text-fg">{r.value}</span>
+            {/* Tokens sit between the figure and the share: the volume that
+              * produced the cost, in the same units the vendor bills in. */}
+            <span className="num w-16 shrink-0 text-right text-fg-faint">{r.sub ?? ''}</span>
             {/* The share is what makes the count mean something: 40,961 calls
               * is a number, half of everything is a finding. Floored, so a
               * row never rounds up into looking bigger than it is. */}

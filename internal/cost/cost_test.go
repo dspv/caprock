@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/dspv/caprock/internal/event"
 )
@@ -151,6 +152,77 @@ func TestModelsSeenInTheWildArePriced(t *testing.T) {
 	} {
 		if _, ok := tab.Lookup(id); !ok {
 			t.Errorf("%q is used on a real machine and has no price", id)
+		}
+	}
+}
+
+// A price change is not retroactive, and this is the test that says so.
+//
+// Sonnet 5 launched at an introductory $2/$10 and reverts to $3/$15 on
+// 2026-08-31. Before dated rows existed, the only way to record that was to
+// overwrite the figure — which would have restated every August turn at a
+// price nobody was charged, growing a month's reported spend by half overnight.
+func TestPriceUsesTheRowInForceWhenTheTurnRan(t *testing.T) {
+	tbl, err := Embedded()
+	if err != nil {
+		t.Fatalf("embedded table: %v", err)
+	}
+
+	// One million input tokens, so the USD figure is the per-MTok price itself.
+	d := event.TokenDelta{In: 1_000_000}
+
+	for _, tc := range []struct {
+		name string
+		at   time.Time
+		want float64
+	}{
+		{"during the introductory price", time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC), 2.0},
+		{"the last day it applied", time.Date(2026, 8, 30, 23, 59, 59, 0, time.UTC), 2.0},
+		{"the day it lapsed", time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC), 3.0},
+		{"well after", time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC), 3.0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := tbl.PriceAt("claude-sonnet-5", d, tc.at)
+			if !ok {
+				t.Fatal("claude-sonnet-5 not priced")
+			}
+			if got != tc.want {
+				t.Errorf("1M input tokens at %s: got $%.2f, want $%.2f", tc.at.Format("2006-01-02"), got, tc.want)
+			}
+		})
+	}
+
+	// No timestamp means "now", which must never resolve to a lapsed price.
+	got, ok := tbl.Price("claude-sonnet-5", d)
+	if !ok {
+		t.Fatal("claude-sonnet-5 not priced without a timestamp")
+	}
+	if got != 3.0 {
+		t.Errorf("undated lookup got $%.2f, want the current $3.00", got)
+	}
+}
+
+// Every other model has exactly one row, and a typo that gave one an `until`
+// would silently make it unpriceable at today's date. This is cheap insurance
+// on a file that is edited by hand.
+func TestEveryModelHasExactlyOneCurrentPrice(t *testing.T) {
+	tbl, err := Embedded()
+	if err != nil {
+		t.Fatalf("embedded table: %v", err)
+	}
+	current := map[string]int{}
+	for _, m := range tbl.Models {
+		if m.Until == "" {
+			current[m.ID]++
+			continue
+		}
+		if _, err := time.Parse("2006-01-02", m.Until); err != nil {
+			t.Errorf("%s: until %q is not YYYY-MM-DD", m.ID, m.Until)
+		}
+	}
+	for _, m := range tbl.Models {
+		if n := current[m.ID]; n != 1 {
+			t.Errorf("%s has %d current rows (exactly one row must have no `until`)", m.ID, n)
 		}
 	}
 }

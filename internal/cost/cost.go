@@ -9,6 +9,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/pricing"
@@ -24,6 +25,22 @@ type Model struct {
 	CacheRead     float64 `json:"cache_read"`
 	Output        float64 `json:"output"`
 	ContextWindow int64   `json:"context_window"`
+
+	// Until is the last date this row's prices applied, "YYYY-MM-DD"
+	// inclusive, in UTC. Empty means "still current" — almost every row.
+	//
+	// A vendor's introductory price is a real price for the turns that ran
+	// while it was live, and a different real price afterwards. Sonnet 5
+	// launched at $2/$10 and reverts to $3/$15 on 2026-08-31; overwriting the
+	// figure on that date would silently restate every August turn at a price
+	// nobody was charged, which is rule 6's "no invented numbers" applied to
+	// our own history. So a superseded price stays in the table with the date
+	// it stopped applying, and Lookup picks the row that was in force when the
+	// turn happened.
+	//
+	// Rows for one model id are ordered oldest-first in the JSON; the current
+	// row is the one with no Until.
+	Until string `json:"until,omitempty"`
 }
 
 // Table is the parsed pricing table.
@@ -90,16 +107,66 @@ func Load(overridePath string) (*Table, error) {
 // Matching is by longest id prefix after stripping known provider prefixes. ok is
 // false when nothing matches — the caller must then leave cost nil, never zero.
 func (t *Table) Lookup(model string) (Model, bool) {
+	return t.LookupAt(model, time.Time{})
+}
+
+// LookupAt is Lookup for a turn that happened at a particular instant, which is
+// what pricing a historical turn requires.
+//
+// Prices change, and a change is not retroactive: turns that ran under an
+// introductory price were charged that price forever, and turns after it were
+// not. A table with one row per model can only express "the price now", so
+// restating history is the unavoidable side effect of every price change —
+// August's spend would silently grow on the morning Sonnet 5's introductory
+// rate expired.
+//
+// So a model may have several rows, oldest first, each carrying the date its
+// price stopped applying (`until`, inclusive, UTC). This returns the first row
+// whose window contains `at`. A zero `at` means "price it as of now", which is
+// what Lookup does and what anything without a timestamp gets.
+//
+// Matching is still by longest id prefix after normalisation; the date only
+// chooses between rows that already matched.
+func (t *Table) LookupAt(model string, at time.Time) (Model, bool) {
 	m := normalizeModel(model)
 	if m == "" {
 		return Model{}, false
 	}
 	for _, row := range t.Models {
-		if strings.HasPrefix(m, row.ID) {
+		if !strings.HasPrefix(m, row.ID) {
+			continue
+		}
+		if row.appliesAt(at) {
 			return row, true
 		}
 	}
 	return Model{}, false
+}
+
+// appliesAt reports whether this row's prices were in force at `at`.
+//
+// A row with no Until is the current one and applies to everything at or after
+// its predecessor. A row with an Until applies through the end of that day: an
+// expiry is announced as a date, not an instant, and the vendor's own switch
+// happens at midnight UTC.
+func (m Model) appliesAt(at time.Time) bool {
+	if m.Until == "" {
+		return true
+	}
+	if at.IsZero() {
+		// No timestamp means "now". A superseded row is never the answer.
+		return false
+	}
+	end, err := time.Parse("2006-01-02", m.Until)
+	if err != nil {
+		// An unparseable date must not silently price a turn at a rate that
+		// expired. Treat the row as not applying and fall through to the
+		// current one, which is the safe direction: today's price for a turn
+		// whose date we cannot place, rather than an expired price for
+		// everything.
+		return false
+	}
+	return at.UTC().Before(end.AddDate(0, 0, 1))
 }
 
 func normalizeModel(model string) string {
@@ -126,10 +193,17 @@ func normalizeModel(model string) string {
 
 const perMTok = 1_000_000
 
-// Price returns the USD cost of a token delta for a model. ok is false when the
-// model is unknown to the table.
+// Price returns the USD cost of a token delta for a model, at today's prices.
+// ok is false when the model is unknown to the table.
 func (t *Table) Price(model string, d event.TokenDelta) (float64, bool) {
-	row, ok := t.Lookup(model)
+	return t.PriceAt(model, d, time.Time{})
+}
+
+// PriceAt is Price for a turn that ran at a particular instant, so a turn from
+// before a price change is costed at the price it actually ran under. See
+// LookupAt. A zero `at` prices at today's rates.
+func (t *Table) PriceAt(model string, d event.TokenDelta, at time.Time) (float64, bool) {
+	row, ok := t.LookupAt(model, at)
 	if !ok {
 		return 0, false
 	}

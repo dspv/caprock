@@ -76,7 +76,11 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 	// whom, and nothing on screen would say so.
 	ourCosting := ev.Source != event.SourceOpenCode
 	if ourCosting && ev.Kind == event.KindTurnAssistant && ev.Tokens != nil && ev.CostUSD == nil && r.Table != nil && ev.Model != "" {
-		if usd, ok := r.Table.Price(ev.Model, *ev.Tokens); ok {
+		// Priced at the turn's own timestamp, not at today's rates: an
+		// introductory price that has since expired was the real price for the
+		// turns that ran under it, and repricing them on the morning it lapsed
+		// would restate a month of history nobody was charged (rule 6).
+		if usd, ok := r.Table.PriceAt(ev.Model, *ev.Tokens, ev.Ts); ok {
 			ev.CostUSD = &usd
 			res.Priced = true
 		} else {
