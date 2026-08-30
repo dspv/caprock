@@ -54,12 +54,18 @@ export function SpawnDialog({
             The <span className="mono">claude</span> binary was not found on this machine, so Caprock cannot spawn sessions. It still observes every session you start yourself.
           </div>
         ) : (
-          <div className="px-4 py-3 grid gap-3 text-[13px]">
+          // min-w-0 here and on every Field below: a grid item will not shrink
+          // below its content by default, so the long paths in the picker
+          // widened the dialog itself — 738px of list inside a 520px panel,
+          // running past its border. Clipping inside the picker cannot fix
+          // that; the container has to be allowed to be narrower than what it
+          // holds.
+          <div className="px-4 py-3 grid min-w-0 gap-3 text-[13px]">
             <Field label="Working directory" hint="pick one, or type a path">
               <input autoFocus className="input" placeholder="/Users/you/dev/project" value={cwd} onChange={(e) => setCwd(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
               {/* The lists write into the field above rather than replacing it,
                 * so what will actually be used stays visible and editable. */}
-              <div className="mt-1.5">
+              <div className="mt-1.5 min-w-0 max-w-full">
                 <DirPicker value={cwd} onPick={setCwd} />
               </div>
               {/* Starting a new project meant leaving the dashboard, making the
@@ -104,7 +110,7 @@ export function SpawnDialog({
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <label className="grid gap-1">
+    <label className="grid min-w-0 gap-1">
       <span className="text-[11px] text-fg-muted">{label}{hint && <span className="text-fg-faint"> · {hint}</span>}</span>
       {children}
     </label>

@@ -9,6 +9,23 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.38.1] - 2026-08-30
+
+### Fixed
+
+- **The folder picker ran past the edge of its dialog.** A long path — the ones
+  under `~/Library/Application Support` are the worst — made the list 738px
+  wide inside a 520px panel, so rows spilled over the border. A grid item does
+  not shrink below its own content unless told to, so no amount of clipping
+  inside the picker could fix it: the containers above it had to be allowed to
+  be narrower than what they hold. Paths now truncate with the full one on
+  hover.
+
+- **The picker looked like a different surface from the field above it.** It
+  sat on a transparent background with the lighter border, directly beneath an
+  input that had neither, and the two read as two panels at different
+  opacities. It now matches the input exactly.
+
 ## [0.38.0] - 2026-08-30
 
 ### Added

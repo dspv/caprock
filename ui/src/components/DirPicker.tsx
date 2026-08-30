@@ -44,9 +44,13 @@ export function DirPicker({ value, onPick }: { value: string; onPick: (dir: stri
     if (recent.data && recent.data.length === 0) setTab('browse')
   }, [recent.data])
 
+  // The surface matches the .input above it — panel-2 on border-strong, same
+  // radius. It sat on a transparent background with the lighter border,
+  // directly beneath a field that had neither, and the two read as separate
+  // surfaces at different opacities rather than as one control.
   return (
-    <div className="rounded-sm border border-border">
-      <div className="flex items-center gap-1 border-b border-border px-2 py-1.5 text-[12px]">
+    <div className="rounded-[3px] border border-border-strong bg-panel-2">
+      <div className="flex items-center gap-1 border-b border-border-strong px-2 py-1.5 text-[12px]">
         <Tab on={tab === 'recent'} onClick={() => setTab('recent')}>
           Recent
         </Tab>
@@ -54,7 +58,7 @@ export function DirPicker({ value, onPick }: { value: string; onPick: (dir: stri
           Browse
         </Tab>
         {tab === 'browse' && browse.data && (
-          <span className="mono ml-auto truncate pl-2 text-[11px] text-fg-faint" title={browse.data.dir}>
+          <span className="mono ml-auto min-w-0 truncate pl-2 text-[11px] text-fg-faint" title={browse.data.dir}>
             {shorten(browse.data.dir, browse.data.root)}
           </span>
         )}
@@ -62,7 +66,11 @@ export function DirPicker({ value, onPick }: { value: string; onPick: (dir: stri
 
       {/* A fixed height, so the dialog does not jump as lists of different
         * lengths replace each other under the cursor. */}
-      <div className="h-[168px] overflow-y-auto">
+      {/* overflow-x-hidden as well as -y: a path like
+        * /Users/x/Library/Application Support/... is wider than the dialog, and
+        * with only vertical clipping the row grew past the panel's own border
+        * rather than being truncated inside it. */}
+      <div className="h-[168px] overflow-y-auto overflow-x-hidden">
         {tab === 'recent' ? (
           <RecentList rows={recent.data} value={value} onPick={onPick} />
         ) : (
@@ -108,8 +116,8 @@ function RecentList({
     <ul>
       {rows.map((r) => (
         <Row key={r.dir} selected={value === r.dir} onClick={() => onPick(r.dir)}>
-          <span className="truncate text-fg">{r.name}</span>
-          <span className="mono ml-2 flex-1 truncate text-[11px] text-fg-faint" title={r.dir}>
+          <span className="shrink-0 text-fg">{r.name}</span>
+          <span className="mono ml-2 min-w-0 flex-1 truncate text-[11px] text-fg-faint" title={r.dir}>
             {r.dir}
           </span>
           <span className="shrink-0 pl-2 text-[11px] text-fg-faint">{fmtAgo(r.last_event_at)}</span>
@@ -153,7 +161,7 @@ function BrowseList({
           // reachable either way — the arrow descends, the name picks.
           onClick={() => (e.repo ? onPick(e.path) : onOpen(e.path))}
         >
-          <span className={e.repo ? 'text-fg' : 'text-fg-muted'}>{e.name}</span>
+          <span className={`min-w-0 truncate ${e.repo ? 'text-fg' : 'text-fg-muted'}`}>{e.name}</span>
           {e.repo && <span className="ml-2 shrink-0 text-[10px] uppercase tracking-wide text-accent">repo</span>}
           <span className="flex-1" />
           <button
@@ -187,7 +195,7 @@ function Row({
       <button
         type="button"
         onClick={onClick}
-        className={`flex w-full items-center px-2.5 py-1 text-left text-[12px] hover:bg-panel-2 ${
+        className={`flex w-full min-w-0 items-center px-2.5 py-1 text-left text-[12px] hover:bg-panel ${
           selected ? 'bg-accent/10' : ''
         }`}
       >
