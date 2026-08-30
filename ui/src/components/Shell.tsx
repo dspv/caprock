@@ -21,6 +21,7 @@ import { useApi } from '@/lib/useApi'
 import { PlanChip, usePlan } from '@/components/PlanPicker'
 import { FeedbackButton } from '@/components/Feedback'
 import { ShareButton } from '@/components/Share'
+import { PremiumChip } from '@/components/PremiumChip'
 import { SiteFooter } from '@/components/SiteFooter'
 
 const NAV: { route: Route; label: string; phase?: string }[] = [
@@ -94,6 +95,15 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
             * a control labelled "share these numbers" in 11px grey inside the
             * all-time panel. Available from every screen, at any time. */}
           <ShareButton />
+          {/* Buying is reachable from every screen, not only from the two that
+            * happen to host a locked panel.
+            *
+            * Someone on the Now screen — where people spend their time — had
+            * no path to paying at all: the only entry points were the glass
+            * panels on Cost and Lifetime. "How do I even buy this?" was asked
+            * while looking at the main screen. Same reasoning as the share
+            * button beside it, which moved here for the same complaint. */}
+          <PremiumChip />
           <FeedbackButton screen={screenName(route)} />
           <ConnDot state={live.conn} lastFrameAt={live.lastFrameAt} />
           <PlanChip plan={plan} onSave={savePlan} />

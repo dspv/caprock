@@ -9,6 +9,23 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.37.1] - 2026-08-30
+
+### Fixed
+
+- **There was no way to buy from the main screen.** The only entry points to
+  paying were the two panels behind glass, on Cost and on Lifetime — so the
+  screen where people actually sit offered no path at all. `premium` now sits
+  in the header on every screen: the one element there that is not amber, so
+  the eye finds it when it is looking for the thing about money and not
+  otherwise. It stops selling once a licence is active.
+
+- **The locked preview was unreadable.** At `opacity-35` it was the worst of
+  both — occupying the space of a demonstration while demonstrating nothing,
+  so a reader could see that *something* was under the glass but not what. It
+  is now legible through it, and the caption, which is the sales line on that
+  panel, is larger than the body text it sits over rather than smaller.
+
 ## [0.37.0] - 2026-08-30
 
 ### Changed

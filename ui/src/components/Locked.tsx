@@ -42,15 +42,22 @@ export function Locked({
     <div className="relative overflow-hidden rounded-[var(--radius-panel)] border border-border">
       {/* The feature as it will look, behind glass. Inert: a preview that
         * responds to a click is a preview that lies. */}
-      <div aria-hidden className="pointer-events-none select-none opacity-35 blur-[1.5px]">
+      {/* Legible through the glass, not merely suggested by it.
+        *
+        * At opacity-35 the preview was a grey smear: the reader could see that
+        * *something* was there and not what. That is the worst of both — it
+        * occupies the space of a demonstration while demonstrating nothing,
+        * and "I cannot tell what is under it" was the first thing said about
+        * this panel. Dimmed enough to read as inert, sharp enough to read. */}
+      <div aria-hidden className="pointer-events-none select-none opacity-70 blur-[0.4px]">
         {children}
       </div>
 
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-panel/55 px-4 text-center">
-        <span className="text-[12px] font-medium text-fg">{title}</span>
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 bg-panel/70 px-4 text-center">
+        <span className="text-[15px] font-medium text-fg">{title}</span>
         <button
           onClick={() => setOpen(true)}
-          className="rounded-sm border border-accent bg-accent/15 px-3 py-1 text-[12px] text-accent hover:bg-accent/25"
+          className="rounded-sm bg-premium px-3.5 py-1.5 text-[13px] font-medium text-white hover:brightness-110"
         >
           Unlock with Premium
         </button>

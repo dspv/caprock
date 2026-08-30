@@ -9,6 +9,7 @@ started) · **building** · **shipped** (in a release, with the version) ·
 
 | Id     | Date       | From  | Request                                                                      | Status   | Landed in         |
 | ------ | ---------- | ----- | ---------------------------------------------------------------------------- | -------- | ----------------- |
+| FB-028 | 2026-08-30 | Dima  | No way to buy from the main screen; the locked preview was unreadable        | shipped  | v0.37.1           |
 | FB-027 | 2026-08-30 | Panel | Five readers priced the premium dialog and none of them bought               | shipped  | v0.37.0           |
 | FB-026 | 2026-08-29 | Alex  | The dollar figures read as "what you'd pay if you were foolish"              | open     | —                 |
 | FB-025 | 2026-08-29 | Alex  | `make build` does not work on Windows out of the box                         | shipped  | v0.36.0           |
@@ -38,6 +39,27 @@ started) · **building** · **shipped** (in a release, with the version) ·
 | FB-001 | 2026-08-24 | Alex  | Hooks never fired on Windows                                                 | shipped  | v0.27.3 + v0.27.4 |
 
 ## Detail
+
+### FB-028 — No way to buy, and nothing legible to buy
+
+Two defects found on the same pass, both about the same thing: the paid
+surfaces were present but not usable.
+
+**"How do I even buy this?", asked while looking at the Now screen.** He was
+right — there was no path. The only entry points to paying were the two glass
+panels, on Cost and on Lifetime, so the screen where people actually spend
+their time offered nothing. `premium` now sits in the header on every screen,
+the one element there that is not amber. It is the same complaint, and the same
+fix, as the share button that moved into the header for being buried in a panel
+on one screen.
+
+**"You can't tell what's underneath it, and the text is tiny."** The locked
+preview rendered at `opacity-35`, which is the worst of both: it occupied the
+space of a demonstration while demonstrating nothing, and a reader could see
+that *something* was there without being able to read it. Now `opacity-70` with
+a fraction of the blur, and the caption — which is the sales line on that panel
+— went from 12px to 15px, larger than the body text it sits over rather than
+smaller.
 
 ### FB-027 — Five readers, no buyers
 
