@@ -33,7 +33,14 @@ any future release:
 `winget install dspv.caprock` is the third packaging channel, after the
 Homebrew tap and the Scoop bucket, and it is the only one we do not own.
 
-Two things must exist or goreleaser skips it silently (`skip_upload: auto`):
+**`WINGET_TOKEN` must be defined in `release.yml` even when the secret is
+unset**, as `${{ secrets.WINGET_TOKEN || '' }}`. goreleaser resolves
+`{{ .Env.WINGET_TOKEN }}` *before* it consults `skip_upload`, so an undefined
+key fails the entire release rather than skipping winget — which is what
+v0.36.0's first release run did, after the binaries and the tap had already
+published.
+
+Two more things must exist, or goreleaser skips winget quietly:
 
 - **A fork at `dspv/winget-pkgs`** of `microsoft/winget-pkgs`. goreleaser
   pushes a branch there and opens the pull request from it.

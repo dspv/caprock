@@ -81,3 +81,8 @@ jobs:
           # `|| ''` keeps the env key present (goreleaser's {{ .Env.X }} requires
           # it) so a missing secret degrades to skip, not a hard error.
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN || '' }}
+          # Always defined, even when the secret is unset. goreleaser resolves
+          # `{{ .Env.WINGET_TOKEN }}` before it consults skip_upload, so an
+          # absent key fails the whole release rather than skipping winget —
+          # which is exactly what v0.36.0's first release run did.
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN || '' }}
