@@ -286,10 +286,30 @@ export function TerminalView({ sessionId, owned }: { sessionId: string; owned: b
     }
   }, [sessionId, owned])
   if (!owned) {
+    // Says what to do first, and why second.
+    //
+    // It used to open with "This is an externally started session — Caprock
+    // observes it but never writes into a terminal it does not own", which is
+    // an accurate sentence written for the people who built this. A reader saw
+    // a wall of text where a terminal should be, could not tell what was being
+    // asked of them, and had no idea whether they had done something wrong.
+    // Nothing here is the reader's fault and nothing needs fixing — there is
+    // simply one button that produces a terminal, so that button is the
+    // message.
     return (
-      <div className="px-4 py-8 text-center text-fg-muted text-[13px]">
-        This is an externally started session — Caprock observes it but never writes into a terminal it does not own.
-        <div className="text-fg-faint text-[12px] mt-1">Spawn a session from “New session” to get an interactive terminal.</div>
+      <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+        <p className="text-[14px] text-fg">You started this session yourself, so it has no terminal here.</p>
+        <a
+          href="#/"
+          className="rounded-sm bg-accent px-3.5 py-2 text-[13px] font-medium text-bg no-underline hover:brightness-110"
+        >
+          Start a session in Caprock →
+        </a>
+        <p className="max-w-[46ch] text-[12px] leading-relaxed text-fg-faint">
+          Sessions started from “New session” get a full terminal. Caprock never
+          types into a process it did not start — including this one, which
+          stays visible here and keeps being measured.
+        </p>
       </div>
     )
   }

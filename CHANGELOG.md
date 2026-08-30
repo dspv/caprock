@@ -9,6 +9,21 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.37.3] - 2026-08-30
+
+### Fixed
+
+- **The terminal panel on a session you started yourself now says what to do.**
+  It opened with *"This is an externally started session — Caprock observes it
+  but never writes into a terminal it does not own"*: accurate, and written for
+  the people who built it. A reader saw a wall of text where a terminal should
+  be and could not tell what was being asked of them, or whether they had done
+  something wrong.
+
+  Nothing is the reader's fault and nothing needs fixing — there is one button
+  that produces a terminal, so that button is the message. The rule is still
+  stated, in one line underneath, where it belongs.
+
 ## [0.37.2] - 2026-08-30
 
 ### Fixed

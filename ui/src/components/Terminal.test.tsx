@@ -3,7 +3,7 @@
  * and it renders to a canvas rather than the DOM — which is what made both of
  * these defects invisible until someone read Russian output on it.
  */
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 const ctor = vi.hoisted(() => vi.fn())
@@ -132,6 +132,24 @@ describe('TerminalView', () => {
  * The risk in fixing it is breaking plain Enter, which would be far worse than
  * the bug, so that is what most of this tests.
  */
+describe('a session Caprock did not start', () => {
+  it('offers the one action that produces a terminal, and blames nobody', () => {
+    // The panel used to open with "This is an externally started session —
+    // Caprock observes it but never writes into a terminal it does not own":
+    // true, and written for the people who built it. The reader's reaction was
+    // "I have no idea what is being asked of me."
+    render(<TerminalView sessionId="s1" owned={false} />)
+
+    // A way out, not just an explanation.
+    expect(screen.getByRole('link', { name: /start a session in caprock/i })).toBeTruthy()
+
+    // And none of the vocabulary that only makes sense from inside.
+    for (const jargon of [/externally started/i, /does not own/i, /spawn/i]) {
+      expect(document.body.textContent).not.toMatch(jargon)
+    }
+  })
+})
+
 describe('Shift+Enter', () => {
   const sent: string[] = []
   // Which frame each send used. The daemon tells keystrokes from control
