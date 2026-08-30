@@ -33,12 +33,19 @@ any future release:
 `winget install dspv.caprock` is the third packaging channel, after the
 Homebrew tap and the Scoop bucket, and it is the only one we do not own.
 
-**`WINGET_TOKEN` must be defined in `release.yml` even when the secret is
-unset**, as `${{ secrets.WINGET_TOKEN || '' }}`. goreleaser resolves
-`{{ .Env.WINGET_TOKEN }}` *before* it consults `skip_upload`, so an undefined
-key fails the entire release rather than skipping winget — which is what
-v0.36.0's first release run did, after the binaries and the tap had already
-published.
+**Two separate traps, both of which failed a release after it had already
+published its binaries, formula and bucket:**
+
+- `WINGET_TOKEN` must be *defined* in `release.yml` even when the secret is
+  unset, as `${{ secrets.WINGET_TOKEN || '' }}` — goreleaser resolves
+  `{{ .Env.WINGET_TOKEN }}` before it consults `skip_upload`, so an undefined
+  key is a template error (v0.36.0).
+- Defining it as an empty string is not enough either. `skip_upload: auto`
+  skips on a prerelease or a draft; it never asks whether the token works. An
+  empty token is a *bad credential* to the GitHub API, not an absent one, so
+  goreleaser calls the API, gets a 401, and fails (v0.36.1). `skip_upload` is
+  therefore templated on the token's presence, which makes setting the secret
+  the switch that turns winget on.
 
 Two more things must exist, or goreleaser skips winget quietly:
 

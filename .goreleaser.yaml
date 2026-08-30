@@ -168,7 +168,17 @@ winget:
           owner: microsoft
           name: winget-pkgs
           branch: master
-    skip_upload: auto
+    # Skipped unless WINGET_TOKEN is set, not merely `auto`.
+    #
+    # `auto` skips on a prerelease and on a draft — it does not look at whether
+    # the token is usable. An empty token is not "no token" to the GitHub API;
+    # it is a bad credential, so goreleaser calls the API, gets a 401, and
+    # fails the whole release *after* the binaries, the formula and the bucket
+    # have already published. Both v0.36.0 and v0.36.1 ended that way.
+    #
+    # This makes the presence of the secret the switch: no token, no winget,
+    # and the release finishes. Set WINGET_TOKEN and it turns itself on.
+    skip_upload: '{{ if .Env.WINGET_TOKEN }}auto{{ else }}true{{ end }}'
 
 release:
   # Not a draft: goreleaser publishes the release directly, which is also what
