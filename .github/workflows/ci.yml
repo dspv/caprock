@@ -102,3 +102,36 @@ jobs:
           cache: true
       - name: spike
         run: go test -count=1 -v -tags ptyspike ./internal/ptyman/...
+
+  # `make build` on Windows, which nothing else here checks.
+  #
+  # Every other job invokes go and npm directly, so the Windows matrix stayed
+  # green for months while the first command in CONTRIBUTING.md failed on a
+  # Windows clone (FB-025). A green matrix is not the same as a working
+  # repository, and the only way to keep this fixed is to run the thing a
+  # contributor actually runs.
+  make-windows:
+    name: make build (windows-latest)
+    runs-on: windows-latest
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      # The default shell here is PowerShell; a contributor's is whatever their
+      # terminal is. What is being tested is that make itself works, so invoke
+      # it the plainest way and let the Makefile pick its own shell.
+      - name: make build
+        run: make build
+      - name: the binaries exist
+        run: |
+          if (-not (Test-Path bin/caprock.exe)) { throw "bin/caprock.exe missing" }
+          if (-not (Test-Path bin/caprock-hook.exe)) { throw "bin/caprock-hook.exe missing" }

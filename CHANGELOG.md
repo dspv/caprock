@@ -9,6 +9,35 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.36.0] - 2026-08-30
+
+### Added
+
+- **winget.** `winget install dspv.caprock`, once Microsoft has merged the
+  manifest for a release — the package manager already present on every Windows
+  10 and 11 machine, with no bucket to add first. Deferred until there was
+  Windows demand ([ADR-014](.ai/08-decisions.md)); the first Windows user to
+  build from source asked for it by name.
+
+  Unlike the Homebrew tap and the Scoop bucket, that repository is not ours:
+  Microsoft reviews and merges every manifest, so a release reaches winget
+  hours or days after it reaches everywhere else. That lag is the channel, not
+  a fault to fix.
+
+### Fixed
+
+- **`make build` works on Windows.** It did not, and the very first command in
+  `CONTRIBUTING.md` failed on a fresh Windows clone: make with no `sh` on PATH
+  falls back to cmd.exe, which understands none of `mkdir -p`, `[ -d ]`,
+  single-quoted `-ldflags`, or `2>/dev/null`. It now uses the Bash that Git for
+  Windows already installs.
+
+  **The Windows CI job was green throughout** — because CI never ran `make`. It
+  invokes `go build` and `go test` directly, so every badge said the repository
+  worked on Windows while its documented first step did not. A green matrix is
+  not the same as a working repository, so this ships with a CI job that runs
+  `make build` on Windows and checks the binaries exist.
+
 ## [0.35.1] - 2026-08-30
 
 ### Changed

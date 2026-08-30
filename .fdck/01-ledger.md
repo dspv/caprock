@@ -7,34 +7,34 @@ Status is one of: **open** (no decision yet) · **planned** (decided yes, not
 started) · **building** · **shipped** (in a release, with the version) ·
 **declined** (decided no, with the reason in the story).
 
-| Id     | Date       | From  | Request                                                                      | Status  | Landed in         |
-| ------ | ---------- | ----- | ---------------------------------------------------------------------------- | ------- | ----------------- |
-| FB-026 | 2026-08-29 | Alex  | The dollar figures read as "what you'd pay if you were foolish"              | open    | —                 |
-| FB-025 | 2026-08-29 | Alex  | `make build` does not work on Windows out of the box                         | planned | —                 |
-| FB-024 | 2026-08-29 | Alex  | Ship through winget, and install into %USERPROFILE%\.local\bin               | planned | —                 |
-| FB-023 | 2026-08-29 | Alex  | The SQLite database reached half a gigabyte on ordinary use                  | planned | —                 |
-| FB-022 | 2026-08-28 | Dima  | Make the web terminal good enough to live in, like iTerm2                    | shipped | v0.33.0           |
-| FB-021 | 2026-08-28 | Vova  | Shift+Enter inserts a newline on an empty prompt, submits once there is text | shipped | v0.32.1           |
-| FB-020 | 2026-08-28 | Dima  | Show what a cache hit rate actually means, without shouting                  | shipped | v0.32.0           |
-| FB-019 | 2026-08-27 | Dima  | Reach Caprock from a tablet or phone, the way Claude Code is                 | open    | —                 |
-| FB-018 | 2026-08-27 | Vova  | Shift+Enter did not work for him; Option+Enter was what he pressed           | shipped | v0.31.3           |
-| FB-017 | 2026-08-27 | Dima  | Wanted an update button, or at least clear steps per OS                      | shipped | v0.31.2           |
-| FB-016 | 2026-08-27 | Almas | brew said "already installed" for a release that was already out             | shipped | v0.31.2           |
-| FB-015 | 2026-08-27 | Dima  | Hover invisible, caveat too wordy, two buttons out of line                   | shipped | v0.31.2           |
-| FB-014 | 2026-08-27 | Dima  | The premium banner's line was a metaphor, not an explanation                 | shipped | v0.31.1           |
-| FB-013 | 2026-08-27 | Dima  | Sharing a card produced two images, downloading produced one                 | shipped | v0.31.1           |
-| FB-012 | 2026-08-27 | Dima  | Plan limits looked odd and belonged to nothing on the screen                 | shipped | v0.31.1           |
-| FB-011 | 2026-08-27 | Dima  | No clear way to update; the share button was easy to miss                    | shipped | v0.31.1           |
-| FB-010 | 2026-08-27 | Dima  | The share dialog explained too much and read as a hang                       | shipped | v0.31.0           |
-| FB-009 | 2026-08-27 | Vova  | Shift+Enter in the terminal, for multi-line prompts                          | shipped | v0.30.1           |
-| FB-008 | 2026-08-26 | Vova  | Pay for models from inside Caprock                                           | open    | —                 |
-| FB-007 | 2026-08-26 | Vova  | Show plan limits where they are actually looked at                           | shipped | v0.28.0           |
-| FB-006 | 2026-08-26 | Vova  | Quick chat: a findable "new project" that makes the folder                   | shipped | v0.28.0           |
-| FB-005 | 2026-08-26 | Vova  | Third-party model providers, free ones first                                 | part    | v0.30.0           |
-| FB-004 | 2026-08-26 | Vova  | JetBrains Mono in the terminal — Cyrillic was unreadable                     | shipped | v0.28.0           |
-| FB-003 | 2026-08-26 | Vova  | Would pay $20/mo; $50 with models; $100 with Claude+GPT                      | open    | —                 |
-| FB-002 | 2026-08-25 | Vova  | Filter the dashboard by agent after OpenCode appeared                        | shipped | v0.21.4           |
-| FB-001 | 2026-08-24 | Alex  | Hooks never fired on Windows                                                 | shipped | v0.27.3 + v0.27.4 |
+| Id     | Date       | From  | Request                                                                      | Status   | Landed in         |
+| ------ | ---------- | ----- | ---------------------------------------------------------------------------- | -------- | ----------------- |
+| FB-026 | 2026-08-29 | Alex  | The dollar figures read as "what you'd pay if you were foolish"              | open     | —                 |
+| FB-025 | 2026-08-29 | Alex  | `make build` does not work on Windows out of the box                         | shipped  | v0.36.0           |
+| FB-024 | 2026-08-29 | Alex  | Ship through winget, and install into %USERPROFILE%\.local\bin               | shipped  | v0.36.0           |
+| FB-023 | 2026-08-29 | Alex  | The SQLite database reached half a gigabyte on ordinary use                  | declined | —                 |
+| FB-022 | 2026-08-28 | Dima  | Make the web terminal good enough to live in, like iTerm2                    | shipped  | v0.33.0           |
+| FB-021 | 2026-08-28 | Vova  | Shift+Enter inserts a newline on an empty prompt, submits once there is text | shipped  | v0.32.1           |
+| FB-020 | 2026-08-28 | Dima  | Show what a cache hit rate actually means, without shouting                  | shipped  | v0.32.0           |
+| FB-019 | 2026-08-27 | Dima  | Reach Caprock from a tablet or phone, the way Claude Code is                 | open     | —                 |
+| FB-018 | 2026-08-27 | Vova  | Shift+Enter did not work for him; Option+Enter was what he pressed           | shipped  | v0.31.3           |
+| FB-017 | 2026-08-27 | Dima  | Wanted an update button, or at least clear steps per OS                      | shipped  | v0.31.2           |
+| FB-016 | 2026-08-27 | Almas | brew said "already installed" for a release that was already out             | shipped  | v0.31.2           |
+| FB-015 | 2026-08-27 | Dima  | Hover invisible, caveat too wordy, two buttons out of line                   | shipped  | v0.31.2           |
+| FB-014 | 2026-08-27 | Dima  | The premium banner's line was a metaphor, not an explanation                 | shipped  | v0.31.1           |
+| FB-013 | 2026-08-27 | Dima  | Sharing a card produced two images, downloading produced one                 | shipped  | v0.31.1           |
+| FB-012 | 2026-08-27 | Dima  | Plan limits looked odd and belonged to nothing on the screen                 | shipped  | v0.31.1           |
+| FB-011 | 2026-08-27 | Dima  | No clear way to update; the share button was easy to miss                    | shipped  | v0.31.1           |
+| FB-010 | 2026-08-27 | Dima  | The share dialog explained too much and read as a hang                       | shipped  | v0.31.0           |
+| FB-009 | 2026-08-27 | Vova  | Shift+Enter in the terminal, for multi-line prompts                          | shipped  | v0.30.1           |
+| FB-008 | 2026-08-26 | Vova  | Pay for models from inside Caprock                                           | open     | —                 |
+| FB-007 | 2026-08-26 | Vova  | Show plan limits where they are actually looked at                           | shipped  | v0.28.0           |
+| FB-006 | 2026-08-26 | Vova  | Quick chat: a findable "new project" that makes the folder                   | shipped  | v0.28.0           |
+| FB-005 | 2026-08-26 | Vova  | Third-party model providers, free ones first                                 | part     | v0.30.0           |
+| FB-004 | 2026-08-26 | Vova  | JetBrains Mono in the terminal — Cyrillic was unreadable                     | shipped  | v0.28.0           |
+| FB-003 | 2026-08-26 | Vova  | Would pay $20/mo; $50 with models; $100 with Claude+GPT                      | open     | —                 |
+| FB-002 | 2026-08-25 | Vova  | Filter the dashboard by agent after OpenCode appeared                        | shipped  | v0.21.4           |
+| FB-001 | 2026-08-24 | Alex  | Hooks never fired on Windows                                                 | shipped  | v0.27.3 + v0.27.4 |
 
 ## Detail
 
@@ -61,29 +61,56 @@ reaction. Not a bug in the data; a bug in what the data appears to say.
 
 ### FB-025 — `make build` breaks on Windows
 
-Confirmed: the `build` target opens with `mkdir -p`, and three more shell-isms
-follow. Under Git Bash it works, which is why it has never been noticed — CI
-builds on Windows through Go directly and never invokes `make`.
+**Shipped in v0.36.0.** On Windows, make now uses the Bash that Git for Windows
+already installs, rather than falling back to cmd.exe — which understands none
+of `mkdir -p`, `[ -d ]`, single-quoted `-ldflags`, or `2>/dev/null`. Rewriting
+twenty recipes in a dialect nobody here can test would have been the worse
+trade.
 
-Rule 2 in `CLAUDE.md` says cross-platform reliability is the moat. A contributor
-on Windows hitting an error on the first command is exactly the failure that
-rule exists to prevent.
+**The reason it survived this long is worth keeping.** Rule 2 says no task is
+done with a red Windows CI job, and the Windows job was green the whole time —
+because CI never ran `make`. It invokes `go build` and `go test` directly, so
+the very first command in `CONTRIBUTING.md` was broken on Windows while every
+badge said otherwise. A green matrix is not the same as a working repository.
+So the fix ships with a CI job that runs `make build` on Windows and checks
+that the two binaries exist; without it this regresses the moment someone adds
+another POSIX-ism.
 
 ### FB-024 — winget, and the install path
 
-Two Windows packaging requests from the first Windows user who built from
-source.
+**Shipped in v0.36.0.** goreleaser now generates a winget manifest and opens a
+pull request against `microsoft/winget-pkgs` from a fork we own.
 
-**winget** was deferred deliberately — [ADR-014](../.ai/08-decisions.md) records
-it as waiting "until there is real Windows demand", with Scoop shipped instead.
-This is that demand, from the second Windows user we have ever had. It needs a
-PR into `microsoft/winget-pkgs` and their review, so it is not the one command
-he expects, but the manifest generation genuinely is.
+**One honest caveat, which is the channel rather than a defect:** unlike the
+Homebrew tap and the Scoop bucket, this repository is not ours. Microsoft
+reviews and merges every manifest, so a release reaches winget hours or days
+after it reaches everywhere else. Nothing about that is fixable from here.
 
-**`%USERPROFILE%\.local\bin`** is the convention he expects binaries to land
-in. Worth doing alongside.
+**The `%USERPROFILE%\.local\bin` half needs no code.** Where the binary lands is
+the package manager's decision — Scoop uses its shims directory, winget its own
+— and Caprock has never chosen an install path. Shipping through winget is what
+that request actually amounts to.
+
+Recorded when it arrived: winget was deferred deliberately —
+[ADR-014](../.ai/08-decisions.md) has it waiting "until there is real Windows
+demand", with Scoop shipped instead. This was that demand, from the second
+Windows user we have ever had.
 
 ### FB-023 — The database reaches half a gigabyte
+
+**Declined on 2026-08-30, by Dima, with the measurements in hand.** Not because
+the analysis was wrong — it was right, and the numbers below confirm it — but
+because half a gigabyte for three months of full session history is a price
+worth paying, and compression is not free: it touches how every event is
+written and read, needs a migration and a dictionary strategy, and puts a
+decode step in front of the full-text search over Claude's own prose. That is a
+large change to the most load-bearing code in the product, to save disk that
+nobody has run out of.
+
+**What would reopen it:** someone actually running out of space, or the file
+growing faster than usage does. The measurement below stands, so if that day
+comes the work starts from numbers rather than from scratch.
+
 
 *"sqlite база у меня сожрала сразу полгига, а я даже не вайб-кодер"*, with a
 diagnosis attached: at least three redundant indexes, and payloads that would

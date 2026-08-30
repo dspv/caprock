@@ -8,6 +8,26 @@ DOCS := $(shell find . -name '*.md' \
           -not -path './vendor/*' -not -path './ui/node_modules/*' \
           -not -path './ui/dist/*' | sort)
 
+# Every recipe below is POSIX shell: pipelines, `[ -d ]`, single-quoted
+# -ldflags, `2>/dev/null`. On Windows, GNU make with no `sh` on PATH falls back
+# to cmd.exe, which understands none of it — the first Windows contributor to
+# clone the repo hit `mkdir -p` on the very first command in CONTRIBUTING.md
+# (FB-025).
+#
+# CI never caught it because CI does not use make on Windows: it runs `go build`
+# and `go test` directly, so the Windows job is green while `make build` is
+# broken. A green matrix is not the same as a working repository.
+#
+# Rather than rewrite ~20 recipes in a dialect no one here can test, point make
+# at the Bash that is already on every Windows dev machine: Git for Windows
+# ships one, and Go and Node are prerequisites anyway. If it is on PATH under
+# any of its usual names, use it; otherwise fall back and let the recipe fail
+# with a clear message rather than a mangled one.
+ifeq ($(OS),Windows_NT)
+  SHELL := $(shell where bash 2>NUL | findstr /R "." || echo bash)
+  .SHELLFLAGS := -c
+endif
+
 BIN      := bin
 VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS  := -s -w -X github.com/dspv/caprock/internal/version.Version=$(VERSION)
@@ -37,7 +57,7 @@ build-go: ## Build the Go binaries only (uses whatever UI is already embedded)
 
 .PHONY: ui
 ui: ## Build the dashboard into internal/api/dist (installs deps on a fresh clone)
-	cd ui && [ -d node_modules ] || npm ci
+	cd ui && { [ -d node_modules ] || npm ci; }
 	cd ui && npm run build
 
 .PHONY: dist-check

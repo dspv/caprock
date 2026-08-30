@@ -28,6 +28,26 @@ any future release:
   caprock` fails. Add the repo to the PAT's resource list, or issue a new
   fine-grained PAT covering both `homebrew-tap` and `scoop-bucket`.
 
+## winget needs a fork and a token (2026-08-30)
+
+`winget install dspv.caprock` is the third packaging channel, after the
+Homebrew tap and the Scoop bucket, and it is the only one we do not own.
+
+Two things must exist or goreleaser skips it silently (`skip_upload: auto`):
+
+- **A fork at `dspv/winget-pkgs`** of `microsoft/winget-pkgs`. goreleaser
+  pushes a branch there and opens the pull request from it.
+- **A `WINGET_TOKEN` secret** with `contents:write` on that fork and permission
+  to open a pull request against `microsoft/winget-pkgs`.
+
+**A release does not appear in winget when it is tagged.** Microsoft reviews
+and merges every manifest, so expect hours to days, and expect a first
+submission to attract review comments that a later one will not. That lag is
+the channel; nothing in this repository changes it. Until a manifest has been
+merged at least once, do not advertise the winget command anywhere except as
+"once Microsoft has merged it" — an install command that fails is worse than an
+install command that is missing.
+
 ## Cutting a release
 
 1. Make sure `master` is green locally: `go test ./...`, `golangci-lint run ./...`,

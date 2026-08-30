@@ -133,6 +133,43 @@ scoops:
     license: "Apache-2.0"
     skip_upload: auto
 
+# winget, the package manager already present on every Windows 10 and 11
+# machine — no bucket to add first, unlike Scoop.
+#
+# Deferred until there was Windows demand (ADR-014). The first Windows user to
+# build Caprock from source asked for it by name (FB-024), which is that demand.
+#
+# Unlike the tap and the bucket, this one is not ours to publish into: the
+# manifest goes as a pull request to microsoft/winget-pkgs, reviewed and merged
+# by Microsoft. A release therefore reaches winget hours or days after it
+# reaches everywhere else. That lag is the channel, not a fault to fix.
+#
+# The PR is opened from a fork we own. WINGET_TOKEN needs contents:write on
+# dspv/winget-pkgs and the ability to open a PR against microsoft/winget-pkgs;
+# a missing token leaves it empty and skip_upload:auto skips, as with the other
+# two.
+winget:
+  - name: caprock
+    publisher: dspv
+    package_identifier: dspv.caprock
+    short_description: "Mission control for Claude Code — watch, control and orchestrate your sessions"
+    license: "Apache-2.0"
+    homepage: "https://caprock.dev"
+    publisher_url: "https://caprock.dev"
+    repository:
+      owner: dspv
+      name: winget-pkgs
+      branch: "caprock-{{ .Version }}"
+      token: "{{ .Env.WINGET_TOKEN }}"
+      pull_request:
+        enabled: true
+        draft: false
+        base:
+          owner: microsoft
+          name: winget-pkgs
+          branch: master
+    skip_upload: auto
+
 release:
   # Not a draft: goreleaser publishes the release directly, which is also what
   # lets it push the Homebrew formula (skip_upload:auto skips on draft). release.yml
