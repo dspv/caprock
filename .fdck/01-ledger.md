@@ -9,6 +9,7 @@ started) · **building** · **shipped** (in a release, with the version) ·
 
 | Id     | Date       | From  | Request                                                                      | Status   | Landed in         |
 | ------ | ---------- | ----- | ---------------------------------------------------------------------------- | -------- | ----------------- |
+| FB-027 | 2026-08-30 | Panel | Five readers priced the premium dialog and none of them bought               | shipped  | v0.37.0           |
 | FB-026 | 2026-08-29 | Alex  | The dollar figures read as "what you'd pay if you were foolish"              | open     | —                 |
 | FB-025 | 2026-08-29 | Alex  | `make build` does not work on Windows out of the box                         | shipped  | v0.36.0           |
 | FB-024 | 2026-08-29 | Alex  | Ship through winget, and install into %USERPROFILE%\.local\bin               | shipped  | v0.36.0           |
@@ -37,6 +38,53 @@ started) · **building** · **shipped** (in a release, with the version) ·
 | FB-001 | 2026-08-24 | Alex  | Hooks never fired on Windows                                                 | shipped  | v0.27.3 + v0.27.4 |
 
 ## Detail
+
+### FB-027 — Five readers, no buyers
+
+Five people were walked through the premium dialog and asked what it offered,
+what confused them, and whether they would pay: a sceptical senior engineer, a
+solo developer who buys lifetime deals, an engineering manager with a company
+card, a privacy-minded open-source contributor, and a junior developer who
+skims.
+
+**None of them bought, and none of them named the price.** Three said $30 was
+nothing to them; one buys lifetime deals as a habit. The verdict was the same
+sentence in five voices: *"I am paying for delivery of something I already see
+for free."*
+
+**Four defects each of them found independently, all now fixed:**
+
+- **"$100 forever" — forever what?** Asked by all five. This one feature, or
+  everything Premium ever gains? Two said they would have bought had it been
+  answered. Both prices now say what they cover.
+- **The Claude Pro comparison argued against us.** Four of five. It made $100
+  read as five months of a tool they cannot work without, and invited "yours
+  sends a message, theirs writes the code". Removed.
+- **"Through your own bot" was the most alarming line on the screen.** Four of
+  five. Creating a Telegram bot is work, and it was dressed as a feature. Now
+  stated as a cost: one message to BotFather, about two minutes.
+- **"Everything Caprock does today stays free"** — the contributor read
+  *today* as lawyered: free now, unspecified later. Now "now … Premium only
+  ever adds".
+
+**And one change the dialog alone cannot make.** The bullets described a
+digest of figures the dashboard already shows, which is why every reader
+reached the same verdict. The copy now promises what *moved* — the repository
+that cost 3× its usual week, this week against last — because that is the
+thing a week of data can say and a live screen cannot. **That is a promise
+about what gets built**, recorded in
+[03-contracts.md](../.ai/03-contracts.md): a weekly report that ships as a
+digest of current figures would be this feedback ignored.
+
+**What was not fixed, deliberately.** The manager wanted Slack rather than
+Telegram and said he would buy on the spot — held, on Dima's call. Two readers
+wanted a free sample report before paying, which is a real idea and a larger
+one than a dialog change.
+
+**The honest limit of this exercise:** these were five constructed readers, not
+five people who have used Caprock for a month. They are good at finding what a
+screen fails to say. They cannot tell us whether anyone will pay — only a card
+can do that.
 
 ### FB-026 — The dollar figures read as an insult
 

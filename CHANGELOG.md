@@ -9,6 +9,35 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.37.0] - 2026-08-30
+
+### Changed
+
+- **The premium dialog, after five readers were asked to buy from it and none
+  did.** Not one of them named the price — three said $30 was nothing to them.
+  The verdict was the same sentence in five voices: *"I am paying for delivery
+  of something I already see for free."*
+
+  - **Both prices now say what they cover.** "$100 forever" was the most-asked
+    question on the screen — forever *what*, this one feature or everything
+    Premium ever gains? Two readers said they would have bought had it been
+    answered.
+  - **The Claude Pro comparison is gone.** Four of five said it argued against
+    us: it made $100 read as five months of a tool they cannot work without,
+    and invited "yours sends a message, theirs writes the code".
+  - **The Telegram bot is named as a cost, not a feature.** "Through your own
+    bot" was called the most alarming line on the screen while it sat among the
+    benefits. It now says: one message to BotFather, about two minutes.
+  - **"Everything Caprock does today stays free"** read as lawyered — free now,
+    unspecified later. It says "now", and that Premium only ever adds.
+
+  **And the report itself is sold on what changed, not on what happened** — the
+  repository that cost 3× its usual week, this week against last. A digest of
+  figures the dashboard already shows is a notification; what moved is what a
+  week of data can say and a live screen cannot. That is a promise about what
+  gets built, and it is written into `.ai/03-contracts.md` so the feature
+  cannot quietly ship as a digest.
+
 ## [0.36.1] - 2026-08-30
 
 ### Changed

@@ -68,7 +68,7 @@ export type PaidFeature = 'cap' | 'report'
  */
 const FEATURES: Record<
   PaidFeature,
-  { title: string; body: string; points: string[] }
+  { title: string; body: string; points: string[]; setup?: string }
 > = {
   cap: {
     title: 'A daily cap that pauses sessions',
@@ -81,12 +81,24 @@ const FEATURES: Record<
   },
   report: {
     title: 'A weekly report, sent where you are',
-    body: 'Where the week went, in your Telegram — not on our server.',
+    body: 'Monday morning, before you open a terminal.',
+    // What changed, not what happened.
+    //
+    // Every reader of the old bullets reached the same verdict: this is the
+    // dashboard's numbers, delivered — and delivery is not worth paying for
+    // when the dashboard is free and open on a second monitor. A digest of
+    // figures you already have is a notification; the thing you cannot get by
+    // looking is what MOVED, which is what a week's worth of data can say and
+    // a live screen cannot.
     points: [
-      'Monday morning: what last week cost, and which repository ate it',
-      'Lands in your Telegram before you open a terminal',
-      'Through your own bot — the report leaves your machine only for you',
+      'What moved: the repository that cost 3× its usual week',
+      'Last week against the one before it, per repository and model',
+      'Through your own Telegram bot — nothing passes our server',
     ],
+    // Named because it is work, and unnamed work is the thing people discover
+    // after paying. Readers called this the most alarming line on the screen
+    // while it was dressed as a feature.
+    setup: 'Setup: one message to BotFather, about two minutes.',
   },
   // Third-party pricing was going to live here. It was cheaper to add the
   // prices than to build a paywall around them, so DeepSeek, MiniMax and the
@@ -104,23 +116,6 @@ const FEATURES: Record<
  */
 function Price({ p, onClose }: { p: PremiumPricing | undefined; onClose: () => void }) {
   if (!p) return <div className="h-[92px] text-[13px] text-fg-faint">…</div>
-
-  const c = p.compare
-  // What each price is worth in the thing the reader already buys.
-  //
-  // This was a two-row table above the buttons — "Claude Pro $20/month" over
-  // "Caprock Premium $2.50/month" — and it read as a strange comparison of two
-  // unrelated numbers before you got to what you were paying. The comparison
-  // belongs *under* each button, attached to the price it explains: not "here
-  // is our monthly rate against theirs", but "this button costs you a month
-  // and a half of Claude Pro".
-  const asMonths = (usd: number) => (c ? usd / c.monthly_usd : 0)
-  const say = (n: number) => {
-    if (n < 1.25) return 'about a month'
-    if (n < 1.75) return 'about six weeks'
-    if (n < 2.5) return 'about two months'
-    return `about ${Math.round(n)} months`
-  }
 
   return (
     <>
@@ -147,16 +142,25 @@ function Price({ p, onClose }: { p: PremiumPricing | undefined; onClose: () => v
           onClick={onClose}
           className="rounded-sm bg-premium-strong px-3 py-2.5 text-center text-[14px] font-medium text-white no-underline hover:brightness-110"
         >
-          ${p.lifetime?.charged_usd} forever
+          ${p.lifetime?.charged_usd} once
         </a>
       </div>
 
-      {c && (
-        <div className="mt-2 grid grid-cols-2 gap-2 text-center text-[11px] leading-snug text-fg-faint">
-          <span>{say(asMonths(p.yearly.charged_usd))} of {c.plan}</span>
-          <span>{say(asMonths(p.lifetime?.charged_usd ?? 0))} of {c.plan}</span>
-        </div>
-      )}
+      {/* What each price actually covers.
+        *
+        * "$100 forever" was the single most-asked question on this screen:
+        * forever *what* — this one feature, or everything Premium ever gains?
+        * The answer is the latter and saying so is free, where leaving it
+        * ambiguous costs the sale to the people most inclined to buy.
+        *
+        * What used to sit here was each price measured in months of Claude
+        * Pro. It argued against us: it made $100 feel like five months of a
+        * tool people cannot work without, and it invited the comparison
+        * "yours sends a message, theirs writes the code". */}
+      <div className="mt-2 grid grid-cols-2 gap-2 text-center text-[11px] leading-snug text-fg-faint">
+        <span>Every Premium feature, renews yearly</span>
+        <span>Every Premium feature, now and future — no renewal</span>
+      </div>
     </>
   )
 }
@@ -211,6 +215,10 @@ export function PremiumModal({ feature, onClose }: { feature: PaidFeature; onClo
               </li>
             ))}
           </ul>
+
+          {f.setup && (
+            <p className="mt-2.5 text-[12px] text-fg-faint">{f.setup}</p>
+          )}
         </div>
 
         <div className="mt-4 border-t border-border px-5 py-4">
@@ -233,16 +241,11 @@ export function PremiumModal({ feature, onClose }: { feature: PaidFeature; onClo
               Close
             </button>
           </div>
-          {p?.compare && (
-            <p className="mt-1.5 text-[11px] text-fg-faint">
-              {p.compare.plan} price: {p.compare.source}, read {p.compare.read_on}
-            </p>
-          )}
         </footer>
 
         <p className="border-t border-border px-5 py-2.5 text-[11px] leading-relaxed text-fg-faint">
-          Everything Caprock does today stays free and Apache-2.0. Nothing about
-          how you use it reaches us.
+          Everything Caprock does now stays free and Apache-2.0 — Premium only
+          ever adds.
         </p>
       </div>
     </div>

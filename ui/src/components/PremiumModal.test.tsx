@@ -70,7 +70,7 @@ describe('PremiumModal', () => {
     // terms refund the period for any feature described as being built and
     // then abandoned. This asserts the hedge stays off the screen.
     render(<PremiumModal feature="cap" onClose={() => {}} />)
-    await waitFor(() => expect(screen.getAllByText(/Claude Pro/).length).toBeGreaterThan(0))
+    await waitFor(() => expect(document.body.textContent).toMatch(/\$30/))
     for (const hedge of [/not built/i, /coming soon/i, /not yet/i, /planned/i]) {
       expect(document.body.textContent).not.toMatch(hedge)
     }
@@ -95,22 +95,30 @@ describe('PremiumModal', () => {
     for (const a of [year, once, more]) expect(a.getAttribute('target')).toBe('_blank')
   })
 
-  it('measures the price against one the reader already pays, with its source', async () => {
-    // A price with no ruler means nothing, and a number about someone else's
-    // pricing with no source is what rule 6 forbids. Both halves are the test.
+  it('says what each price buys, and does not price itself against Claude', async () => {
+    // "$100 forever" was the most-asked question on this screen — forever
+    // *what*, this feature or everything Premium ever gains? Two readers said
+    // they would have bought had it been answered.
     render(<PremiumModal feature="cap" onClose={() => {}} />)
-    // Named twice on purpose: once in the comparison, once crediting the
-    // source, so getAllByText rather than a query that forbids the second.
-    await waitFor(() => expect(screen.getAllByText(/Claude Pro/).length).toBeGreaterThan(0))
-    // Each price is measured in months of the plan the reader already pays
-    // for, under the button it explains: $30/year is about six weeks of Claude
-    // Pro, $100 about five months.
-    expect(document.body.textContent).toMatch(/about six weeks of Claude Pro/)
-    expect(document.body.textContent).toMatch(/about 5 months of Claude Pro/)
-    // The figure is someone else's price, so it carries its source and date —
-    // rule 6 applies to their numbers as much as ours.
-    expect(document.body.textContent).toMatch(/claude\.com\/pricing/)
-    expect(document.body.textContent).toMatch(/2026-08-28/)
+    await waitFor(() => expect(document.body.textContent).toMatch(/\$100/))
+    expect(document.body.textContent).toMatch(/now and future/i)
+    expect(document.body.textContent).toMatch(/no renewal/i)
+
+    // The Claude Pro comparison used to sit above the buttons. Four of five
+    // readers said it argued against us: it made $100 read as five months of a
+    // tool they cannot work without, and invited "yours sends a message,
+    // theirs writes the code". Its absence is the assertion.
+    expect(document.body.textContent).not.toMatch(/Claude Pro/)
+    expect(document.body.textContent).not.toMatch(/months of/i)
+  })
+
+  it('states the setup a paid feature demands, before it is paid for', async () => {
+    // "Through your own bot" was called the most alarming line on the screen
+    // while it was dressed as a bullet point. Creating a Telegram bot is work,
+    // and unnamed work is what people discover after paying.
+    render(<PremiumModal feature="report" onClose={() => {}} />)
+    expect(screen.getByText(/BotFather/)).toBeTruthy()
+    expect(document.body.textContent).toMatch(/two minutes/i)
   })
 
   it('closes on Escape, on the backdrop, and on both close controls', () => {
