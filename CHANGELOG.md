@@ -11,6 +11,27 @@ Phase 3 (Delight) has no plan by design.
 
 ## [0.36.0] - 2026-08-30
 
+### Changed
+
+- **Premium is ultramarine now.** Every interactive element in this product is
+  the brand amber, which left a subscribe button looking exactly like a range
+  filter. Paid is a different kind of thing, so it gets a different hue —
+  deliberately cool against a warm interface. Reserved strictly for surfaces
+  where money is involved; an ultramarine that spread to ordinary controls
+  would just be a second accent, and then nothing would be marked.
+
+- **The premium dialog offers a year or a lifetime, and not a month.** At $5
+  the monthly plan is the cheapest way to hold a licence key for a month, which
+  is a worse deal for the buyer than either commitment beside it. It remains on
+  the site for anyone who seeks it out.
+
+- **The weekly report shows what would arrive, not a description of it.** It
+  was three rows reading "Sent / To / Contains", which describes an email
+  without showing one — and behind glass that is a blurred settings screen. It
+  now previews the message itself, with this machine's own repository names in
+  it. Deliberately without figures: those are already free two panels down, and
+  locking them would take something away rather than preview something new.
+
 ### Added
 
 - **winget.** `winget install dspv.caprock`, once Microsoft has merged the
