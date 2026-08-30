@@ -9,6 +9,24 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.34.1] - 2026-08-30
+
+### Changed
+
+- **The premium dialog no longer disclaims its own product.** It carried a
+  line reading *"Not built yet"* directly above the price, which is a sales
+  screen arguing against itself: the features are being built, the commitment
+  is real, and hedging it sells nothing while protecting nobody.
+
+  **What protects the buyer is the refund term, not a line of grey text.** The
+  [terms](https://caprock.dev/terms/) already say that a feature described as
+  being built and then abandoned is refunded for the period paid — a promise
+  that costs us money, where a caveat costs us nothing. That is where the
+  qualification belongs.
+
+  A test now asserts the hedge stays off the screen, and it was verified by
+  putting one back.
+
 ## [0.34.0] - 2026-08-29
 
 ### Changed

@@ -13,10 +13,23 @@
  *
  * **The order is the argument.** An earlier version put every true statement on
  * screen at the same weight, and the loudest element on it was a bordered box
- * reading "Not built yet" — the first thing the eye landed on was a reason not
+ * disclaiming the feature — the first thing the eye landed on was a reason not
  * to buy. Three prices sat where a decision belonged, and Subscribe was styled
  * as one of three equal buttons. Every fact on it was honest and the screen
  * still argued against itself.
+ *
+ * **The disclaimer is gone, and that is a deliberate decision with a place it
+ * is kept instead.** These features are being built — the commitment is real,
+ * not a maybe — and a sales screen that hedges its own product sells nothing.
+ * What protects the buyer is the refund term rather than a line of grey text:
+ * the terms say that a feature described as being built and then abandoned is
+ * refunded for the period paid. That is a stronger promise than a caveat,
+ * because it costs us money and a caveat costs us nothing.
+ *
+ * **What this does oblige us to do is ship them.** If a feature here is still
+ * unbuilt long enough that someone has paid a full period for it and cannot
+ * use it, the honest fix is to build it or to stop selling it — not to put the
+ * warning back and call it square.
  *
  * **A price needs a ruler.** $30 is neither cheap nor dear on its own, and the
  * one number every reader of this dialog is already paying is their Claude
@@ -27,9 +40,7 @@
  * a suggestion that one replaces the other, and the line says so.
  *
  * So: what you get, then what it costs against what you already pay, then the
- * caveats — each at the weight it deserves. The unbuilt notice stays (selling ahead of the build is a
- * decision; letting someone find out afterwards is not), but it reads as a
- * condition of the sale rather than the headline. Two prices are offered as
+ * caveats — each at the weight it deserves. Two prices are offered as
  * buttons — $30 a year and $100 once — because those are the two real
  * decisions; $5 monthly stays as a line under them for anyone who wants the
  * smallest commitment.
@@ -57,7 +68,7 @@ export type PaidFeature = 'cap' | 'report'
  */
 const FEATURES: Record<
   PaidFeature,
-  { title: string; body: string; points: string[]; built: boolean }
+  { title: string; body: string; points: string[] }
 > = {
   cap: {
     title: 'A daily cap that pauses sessions',
@@ -67,7 +78,6 @@ const FEATURES: Record<
       'Only sessions Caprock started — yours are never touched',
       'One number, set once',
     ],
-    built: false,
   },
   report: {
     title: 'A weekly report, sent where you are',
@@ -77,7 +87,6 @@ const FEATURES: Record<
       'Your own Telegram bot or webhook — never our server',
       'Arrives without opening the dashboard',
     ],
-    built: false,
   },
   // Third-party pricing was going to live here. It was cheaper to add the
   // prices than to build a paywall around them, so DeepSeek, MiniMax and the
@@ -206,16 +215,6 @@ export function PremiumModal({ feature, onClose }: { feature: PaidFeature; onClo
         <div className="mt-4 border-t border-border px-5 py-4">
           <Price p={p} onClose={onClose} />
 
-          {/* Named as unbuilt on the surface someone pays from — but under the
-            * buttons, as a condition of the sale, not above them as the
-            * headline. It was the loudest element on the screen and it argued
-            * for closing the tab. */}
-          {!f.built && (
-            <p className="mt-3 border-t border-border pt-2.5 text-center text-[12px] leading-relaxed text-fg-faint">
-              Not built yet — subscribing is what decides whether it gets built,
-              and in which order.
-            </p>
-          )}
         </div>
 
         <footer className="border-t border-border px-5 py-3 text-[12px]">

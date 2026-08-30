@@ -58,9 +58,17 @@ describe('PremiumModal', () => {
     expect(document.body.textContent).toMatch(/\$100/)
   })
 
-  it('says plainly when a feature is not built', async () => {
+  it('sells the product rather than disclaiming it', async () => {
+    // The dialog used to carry "Not built yet" in a bordered box above the
+    // price — the loudest thing on a screen whose job is to sell. What
+    // protects the buyer is the refund term, not a line of grey text: the
+    // terms refund the period for any feature described as being built and
+    // then abandoned. This asserts the hedge stays off the screen.
     render(<PremiumModal feature="cap" onClose={() => {}} />)
-    expect(document.body.textContent).toMatch(/not built yet/i)
+    await waitFor(() => expect(screen.getAllByText(/Claude Pro/).length).toBeGreaterThan(0))
+    for (const hedge of [/not built/i, /coming soon/i, /not yet/i, /planned/i]) {
+      expect(document.body.textContent).not.toMatch(hedge)
+    }
   })
 
   it('offers both ways to pay and a way to read more, each in a new tab', async () => {
