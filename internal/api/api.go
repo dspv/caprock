@@ -449,7 +449,11 @@ func (s *Server) handleSessionEvents(w http.ResponseWriter, r *http.Request) {
 	// just happened" renders an empty window without knowing why.
 	var evs []event.Event
 	var err error
-	if r.URL.Query().Get("newest") == "1" {
+	if before, _ := strconv.ParseInt(r.URL.Query().Get("before"), 10, 64); before > 0 {
+		// Paging backwards from a known point — what the timeline does when the
+		// reader asks for more history.
+		evs, err = store.EventsBefore(r.Context(), s.d.Store.DB(), id, before, limit)
+	} else if r.URL.Query().Get("newest") == "1" {
 		evs, err = store.LastEvents(r.Context(), s.d.Store.DB(), id, limit)
 	} else {
 		evs, err = store.ListEvents(r.Context(), s.d.Store.DB(), id, after, limit)

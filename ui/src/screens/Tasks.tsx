@@ -428,7 +428,7 @@ function TaskDiff({ sessionID, assignee }: { sessionID?: string; assignee: strin
                 })}
               </pre>
             )}
-            {open === f.path && !f.patch && <div className="px-3 pb-2 text-[11px] text-fg-faint">{f.binary ? 'binary file' : f.status === 'untracked' ? 'untracked — no diff against HEAD' : 'no patch'}</div>}
+            {open === f.path && !f.patch && <div className="px-3 pb-2 text-[11px] text-fg-faint">{f.binary ? 'binary file' : 'no patch'}</div>}
           </li>
         ))}
       </ul>

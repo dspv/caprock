@@ -141,6 +141,33 @@ func TestThrottleRecorded(t *testing.T) {
 	}
 }
 
+// A SessionEnd hook ends the session at the moment the user leaves it. Before
+// this the only path to 'ended' was the staleness sweep, so a session closed at
+// noon still counted as live until the small hours.
+func TestSessionEndEndsSessionAndRevives(t *testing.T) {
+	ctx := context.Background()
+	r, _ := newRecorder(t)
+	base := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	if _, err := r.Record(ctx, &event.Event{SessionID: "s", Source: event.SourceHook, Kind: event.KindTurnUser, Ts: base}, SessionInfo{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Record(ctx, &event.Event{SessionID: "s", Source: event.SourceHook, Kind: event.KindSessionEnd, Ts: base.Add(time.Minute)}, SessionInfo{}); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := store.GetSession(ctx, r.Store.DB(), "s")
+	if s.Status != store.StatusEnded {
+		t.Fatalf("after SessionEnd: status %s, want ended", s.Status)
+	}
+	// Ending is not a tombstone: a newer event means the session is alive
+	// again, which is what makes a wrong guess cheap.
+	if _, err := r.Record(ctx, &event.Event{SessionID: "s", Source: event.SourceHook, Kind: event.KindTurnUser, Ts: base.Add(2 * time.Minute)}, SessionInfo{}); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ = store.GetSession(ctx, r.Store.DB(), "s"); s.Status != store.StatusActive {
+		t.Fatalf("after a later event: status %s, want active", s.Status)
+	}
+}
+
 func TestMarkIdle(t *testing.T) {
 	ctx := context.Background()
 	r, sub := newRecorder(t)

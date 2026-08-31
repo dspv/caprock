@@ -368,10 +368,55 @@ func (m *Manager) Resize(sessionID string, cols, rows int) error {
 	return a.sess.Resize(cols, rows)
 }
 
-// Shutdown kills every owned session (daemon stopping).
+// ShutdownGrace is how long a session gets to finish on its own before it is
+// killed. Claude Code flushes its transcript and releases its session id on
+// the way out; none of that survives a SIGKILL.
+const ShutdownGrace = 5 * time.Second
+
+// Shutdown ends every owned session, giving each a chance to stop cleanly.
+//
+// It used to SIGKILL them outright, so upgrading Caprock — or any restart of
+// the daemon — silently destroyed whatever the user had running under it,
+// mid-turn, with no warning and nothing written out. A tool that watches your
+// work must not be the thing that eats it.
+//
+// Every session is signalled first and waited on together, so the grace period
+// is spent once rather than once per session. Anything still alive at the end
+// is killed: shutdown has to terminate, and a process that ignores SIGTERM has
+// had its chance.
 func (m *Manager) Shutdown() {
-	for _, a := range m.List() {
-		_ = a.sess.Signal(ptyman.SignalKill)
+	agents := m.List()
+	if len(agents) == 0 {
+		return
+	}
+	for _, a := range agents {
+		// A paused session cannot act on a signal, so let it run first —
+		// otherwise SIGTERM sits undelivered and every one of them takes the
+		// full grace period before being killed anyway.
+		if a.sess.Paused() {
+			_ = a.sess.Signal(ptyman.SignalResume)
+		}
+		_ = a.sess.Signal(ptyman.SignalTerm)
+	}
+	done := make(chan struct{})
+	go func() {
+		var wg sync.WaitGroup
+		for _, a := range agents {
+			wg.Add(1)
+			go func(a *Agent) {
+				defer wg.Done()
+				_ = a.sess.Wait()
+			}(a)
+		}
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(ShutdownGrace):
+	}
+	// Close kills anything still running and releases the PTY either way.
+	for _, a := range agents {
 		_ = a.sess.Close()
 	}
 }

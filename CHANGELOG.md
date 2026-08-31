@@ -9,6 +9,96 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.40.0] - 2026-08-31
+
+### Fixed
+
+- **A session now ends when it ends, instead of half a day later.** The Now
+  screen counted a whole day's finished sessions as live — "14 sessions, 0
+  active" — and the live pulse drew a row per known session, so a day in one
+  repository became six identical `caprock` rows over six flat hairlines.
+
+  Nothing consumed `SessionEnd`. The shim never registered it, so the only
+  path to `ended` was the 12-hour staleness sweep. Caprock now registers the
+  hook and ends the session on it, and the sweep drops to **an hour** as the
+  backstop it should always have been: the case where the hook never fired —
+  `kill -9`, a closed terminal, a dead host. Ending early is cheap, because
+  it is not a tombstone — a later event on the same session revives it.
+
+  Upgrading registers the new hook on the next `caprock up`; nothing to do by
+  hand.
+
+- **Upgrading Caprock no longer kills the work it was watching.** Restarting
+  the daemon — which every upgrade does — sent `SIGKILL` to every session
+  Caprock had spawned. They died mid-turn, with no warning and nothing
+  flushed: a tool that watches your work should not be the thing that eats
+  it. Sessions are now asked to stop, waited on for five seconds so Claude
+  Code can write out its transcript, and only then killed if they refuse. The
+  upgrade banner also says how many sessions will close before you copy the
+  command; sessions you started yourself are untouched, as always.
+
+### Changed
+
+- **The live pulse shows only tracks that ran.** Ended sessions are dropped,
+  and so is any track with no events in the window — an hour of flat hairline
+  says only that a session exists, and several of them read as a broken chart
+  rather than as silence. When nothing ran in the last hour, the panel says
+  that in one line.
+
+- **A pulse row shows what its hour cost, not the session's lifetime.** A
+  long-running session printed `$4,053.39` beside an hour of bars and a
+  `$101.85` day: two true numbers answering different questions, side by side.
+  The row now sums the window the bars cover, with the lifetime on hover.
+
+- **The new-session dialog answers its own questions.** Model and permission
+  mode both opened on an empty "default" that said nothing about what was
+  about to run — and "default" is not a permission mode Claude Code accepts
+  at all, so the dialog could send the binary a value it rejects. They now
+  start on Opus 5 and "accept edits, asks before commands", with each option
+  labelled by what it does rather than by its flag name. The worktree field
+  and "create the directory" moved under Advanced, and the paragraph
+  advertising OpenCode support left the dialog: every field on screen is a
+  decision asked of someone who wanted to press one button.
+
+- **The session timeline reads newest-first.** It was the only list in Caprock
+  ordered the other way, so the same glance meant two different things on two
+  screens — you arrive at a timeline wanting the last thing that happened, not
+  the first. The `follow` checkbox and its autoscroll are gone with it: new
+  rows arrive at the top now, so there is nothing to chase. History stays
+  behind "load earlier events" rather than being rendered up front, and each
+  click now pages back from the oldest row on screen — it used to refetch the
+  first thousand events of the session and discard nearly all of them, which
+  on a sixteen-thousand-event session fetched the wrong end of the history.
+
+- **"Live diff" and "Files" are one Changes tab.** They answered one question
+  between them — what did this session change — so reading it meant visiting
+  both tabs and holding two lists in your head, and on most sessions
+  "Files (0)" was empty besides. Files now expand independently rather than
+  one at a time (the old accordion closed the first file when you opened the
+  second, so two changes could never be compared), with a caret per row and
+  expand/collapse all for reading a whole branch. Files touched but unchanged
+  keep their own panel underneath. Old `?tab=diff` and `?tab=files` links
+  still work.
+
+- **The live diff measures a branch from where it forked.** The base was
+  always HEAD, which answers "what have I not committed yet" — so a branch
+  whose work was committed showed *no changes at all* while the session had
+  rewritten dozens of files. It is now the merge base with master/main: the
+  branch's own commits plus whatever is uncommitted. The panel names its base
+  ("since master") beside the file count. Untracked files show their contents
+  as added lines instead of "no diff against HEAD".
+
+- **The Projects list holds its order while you point at it.** Rows are ranked
+  by spend and refresh every 30 seconds, so a row could swap places between
+  aiming and clicking and open a repository you never pointed at. The values
+  keep updating live; only the sequence holds still, and only while the
+  pointer is inside the panel.
+
+- **Pulse rows are told apart by branch and session id.** Working all day in
+  one repository drew rows labelled `caprock`, `caprock`, `caprock`, most of
+  them subtitled `was responding`. The branch and a short id are what actually
+  differ, so they are what the row leads with.
+
 ## [0.39.2] - 2026-08-31
 
 ### Fixed

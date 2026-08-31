@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -28,6 +29,12 @@ type Result struct {
 	Branch string     `json:"branch"`
 	Files  []FileDiff `json:"files"`
 	Stat   string     `json:"stat"`
+	// Base names what the changes are measured against, so a reader is never
+	// left guessing whether a figure covers the branch or only the working
+	// tree. Empty means HEAD (the trunk, or a repo with no other branch).
+	Base string `json:"base,omitempty"`
+	// BaseBranch is the trunk this branch forked from, when one was found.
+	BaseBranch string `json:"base_branch,omitempty"`
 }
 
 // ErrNotARepo means cwd is not inside a git work tree (→ HTTP 409).
@@ -36,7 +43,21 @@ var ErrNotARepo = errors.New("not a git repository")
 // MaxPatchBytes bounds each file's patch in the response.
 const MaxPatchBytes = 200 << 10
 
-// Diff returns working-tree changes vs HEAD (staged + unstaged) plus untracked files.
+// DefaultBases are the branches a feature branch is measured against, in
+// order of preference. The first that exists and is not the current branch
+// wins; on the trunk itself none of them apply and the base stays HEAD.
+var DefaultBases = []string{"master", "main"}
+
+// Diff returns what this session's branch changed: its own commits since it
+// left the trunk, plus everything still uncommitted, plus untracked files.
+//
+// It used to diff the working tree against HEAD alone, which answers "what
+// have I not committed yet" — a different question, and the wrong one for a
+// panel titled with the branch name. On a branch whose work was committed,
+// every file it changed had already moved into HEAD, so the panel reported
+// no changes at all while the session had rewritten twenty files. Measuring
+// from the merge base makes the branch the unit, which is what the reader is
+// looking at.
 func Diff(ctx context.Context, cwd string) (*Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -53,6 +74,13 @@ func Diff(ctx context.Context, cwd string) (*Result, error) {
 	base := "HEAD"
 	if _, err := git(ctx, cwd, "rev-parse", "--verify", "HEAD"); err != nil {
 		base = "" // unborn branch: diff against the empty index
+	} else if mb, trunk := mergeBase(ctx, cwd, res.Branch); mb != "" {
+		// The fork point, not the trunk's tip: diffing against a moving
+		// master would attribute everyone else's commits to this session the
+		// moment the trunk advanced.
+		base = mb
+		res.BaseBranch = trunk
+		res.Base = "since " + trunk
 	}
 	// numstat for counts.
 	args := []string{"diff", "--numstat", "-M"}
@@ -118,13 +146,26 @@ func Diff(ctx context.Context, cwd string) (*Result, error) {
 			}
 		}
 	}
-	// Untracked files.
+	// Untracked files. git will not diff them, so we ask it to diff each one
+	// against nothing — `--no-index /dev/null <path>` produces exactly the
+	// all-additions patch a new file deserves. Without this the panel said
+	// "untracked — no diff against HEAD", which is true and useless: a new
+	// file's content *is* its change, and answering a question the reader did
+	// not ask reads as a broken panel.
 	if out, err := git(ctx, cwd, "ls-files", "--others", "--exclude-standard"); err == nil {
 		for _, p := range strings.Split(strings.TrimSpace(out), "\n") {
 			if p == "" {
 				continue
 			}
-			files[p] = &FileDiff{Path: p, Status: "untracked"}
+			fd := &FileDiff{Path: p, Status: "untracked"}
+			// --no-index exits 1 when the files differ, which is always here,
+			// so the error is expected and only the output matters.
+			patch := gitOut(ctx, cwd, "diff", "--no-color", "--no-ext-diff", "--no-index", os.DevNull, p)
+			if patch != "" {
+				fd.Patch = capPatch(rewriteNoIndexHeader(patch, p))
+				fd.Additions, fd.Binary = countAdded(patch)
+			}
+			files[p] = fd
 			order = append(order, p)
 		}
 	}
@@ -154,6 +195,18 @@ func git(ctx context.Context, cwd string, args ...string) (string, error) {
 	return out.String(), nil
 }
 
+// gitOut runs git and keeps stdout even when the exit status is non-zero.
+// `diff --no-index` exits 1 whenever the two inputs differ, which for an
+// untracked file is always — treating that as failure threw the patch away
+// and left every new file rendering as empty.
+func gitOut(ctx context.Context, cwd string, args ...string) string {
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", cwd}, args...)...)
+	var out bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, nil
+	_ = cmd.Run()
+	return out.String()
+}
+
 // splitPatch splits a unified diff into per-file chunks keyed by the b/ path.
 func splitPatch(patch string) map[string]string {
 	out := map[string]string{}
@@ -180,4 +233,55 @@ func capPatch(p string) string {
 		return p
 	}
 	return p[:MaxPatchBytes] + "\n… [patch truncated]\n"
+}
+
+// mergeBase finds where `branch` left the trunk, so a session's diff covers
+// its own commits and not the trunk's. Returns "" when there is no other
+// branch to measure against — a repo with only master, or master itself —
+// and the caller keeps HEAD.
+func mergeBase(ctx context.Context, cwd, branch string) (rev, trunk string) {
+	if branch == "" || branch == "HEAD" { // detached: nothing to fork from
+		return "", ""
+	}
+	for _, t := range DefaultBases {
+		if t == branch {
+			return "", "" // on the trunk: its own commits are not "changes"
+		}
+		if _, err := git(ctx, cwd, "rev-parse", "--verify", t); err != nil {
+			continue
+		}
+		mb, err := git(ctx, cwd, "merge-base", t, "HEAD")
+		if err != nil {
+			continue
+		}
+		if mb = strings.TrimSpace(mb); mb != "" {
+			return mb, t
+		}
+	}
+	return "", ""
+}
+
+// rewriteNoIndexHeader makes a --no-index patch look like an ordinary one.
+// git writes the null device as the source path (`--- /dev/null`, and on the
+// `diff --git` line), which is correct but shows the reader a device name
+// where a filename belongs.
+func rewriteNoIndexHeader(patch, path string) string {
+	patch = strings.ReplaceAll(patch, "a/"+os.DevNull, "a/"+path)
+	patch = strings.ReplaceAll(patch, os.DevNull+" b/"+path, "a/"+path+" b/"+path)
+	return patch
+}
+
+// countAdded reports the added-line count of an all-additions patch, and
+// whether git called it binary.
+func countAdded(patch string) (int, bool) {
+	if strings.Contains(patch, "Binary files ") || strings.Contains(patch, "GIT binary patch") {
+		return 0, true
+	}
+	n := 0
+	for _, line := range strings.Split(patch, "\n") {
+		if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
+			n++
+		}
+	}
+	return n, false
 }

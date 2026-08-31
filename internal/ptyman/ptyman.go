@@ -28,6 +28,11 @@ const (
 	SignalPause  Signal = "pause"  // SIGSTOP on POSIX; input-hold on Windows (no process-level equivalent)
 	SignalResume Signal = "resume" // SIGCONT on POSIX; releases the input-hold on Windows
 	SignalKill   Signal = "kill"   // terminate the process tree
+	// SignalTerm asks the process to stop and lets it clean up first. Claude
+	// Code writes its transcript and releases its session on the way out, none
+	// of which happens under SIGKILL — so a daemon restart used to take a
+	// user's running work with it, silently.
+	SignalTerm Signal = "term"
 )
 
 // ErrNotSupported is returned for signals the platform cannot honour.

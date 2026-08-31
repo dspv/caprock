@@ -12,10 +12,21 @@
  * eyeballed, because "these two oranges look different on my monitor" is
  * exactly the judgement that produced the bug.
  */
-import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
 import { PulsePanel, TIER_TOKEN, IDLE_TOKEN } from './Pulse'
-import type { SessionSummary } from '@/lib/api'
+import type { Event, SessionSummary } from '@/lib/api'
+
+/** Seeded events per session id, keyed the way the panel asks for them. */
+const seeded = vi.hoisted(() => ({ value: {} as Record<string, Event[]> }))
+
+vi.mock('@/lib/api', async (orig) => {
+  const actual = await orig<typeof import('@/lib/api')>()
+  return {
+    ...actual,
+    api: { ...actual.api, recentEvents: async (id: string) => seeded.value[id] ?? [] },
+  }
+})
 
 /** The token values from design/tokens.css, per theme. Kept here so the test
  * fails if a theme drops or renames a token the pulse depends on. */
@@ -148,11 +159,115 @@ describe('pulse legend', () => {
   })
 })
 
+/**
+ * Which sessions earn a row.
+ *
+ * The panel used to draw one track per known session, and a session stayed
+ * "known" for twelve hours after it ended. A day in one repository therefore
+ * produced six rows all labelled "caprock", most of them an hour of flat
+ * hairline — which reads as a broken chart, not as silence.
+ */
+describe('pulse track selection', () => {
+  const NOW = Date.parse('2026-08-21T12:00:00Z')
+
+  it('drops ended sessions and ones that did nothing in the window', async () => {
+    seeded.value = {
+      live: [turn('live', NOW - 60_000)],
+      // Ended, but still inside the window — status is what disqualifies it.
+      done: [turn('done', NOW - 60_000)],
+      // Live, but its last event predates the hour the panel draws.
+      stale: [turn('stale', NOW - 5 * 60 * 60_000)],
+    }
+    render(
+      <PulsePanel
+        sessions={[
+          session({ session_id: 'live', project: 'alpha' }),
+          session({ session_id: 'done', project: 'beta', status: 'ended' }),
+          session({ session_id: 'stale', project: 'gamma' }),
+        ]}
+        now={NOW}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText('alpha')).toBeInTheDocument())
+    expect(screen.queryByText('beta')).not.toBeInTheDocument()
+    expect(screen.queryByText('gamma')).not.toBeInTheDocument()
+  })
+
+  it('says the hour was quiet rather than drawing empty tracks', async () => {
+    seeded.value = { s: [turn('s', NOW - 5 * 60 * 60_000)] }
+    render(<PulsePanel sessions={[session({ session_id: 's' })]} now={NOW} />)
+    await waitFor(() => expect(screen.getByText(/Nothing ran in the last/)).toBeInTheDocument())
+  })
+
+  // Two true numbers answering different questions used to sit side by side: a
+  // session's lifetime cost against an hour of bars, so a long-lived session
+  // showed $4,053.39 next to a $101.85 day.
+  it('shows what the window cost, not the session lifetime', async () => {
+    seeded.value = { s: [turn('s', NOW - 60_000, 0.25)] }
+    render(
+      <PulsePanel
+        sessions={[session({ session_id: 's', stats: { cost_usd: 4053.39 } as SessionSummary['stats'] })]}
+        now={NOW}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText('$0.25')).toBeInTheDocument())
+    expect(screen.queryByText(/4,053/)).not.toBeInTheDocument()
+  })
+
+  it('names which session a track is when more than one is running', async () => {
+    seeded.value = { 'aaaaaaaa-1111': [turn('aaaaaaaa-1111', NOW - 60_000)], 'bbbbbbbb-2222': [turn('bbbbbbbb-2222', NOW - 60_000)] }
+    render(
+      <PulsePanel
+        sessions={[
+          session({ session_id: 'aaaaaaaa-1111', project: 'caprock', git_branch: 'master' }),
+          session({ session_id: 'bbbbbbbb-2222', project: 'caprock', git_branch: 'fix/pulse' }),
+        ]}
+        now={NOW}
+      />,
+    )
+    // Same project twice: the branch is what tells the two rows apart.
+    await waitFor(() => expect(screen.getByText('master')).toBeInTheDocument())
+    expect(screen.getByText('fix/pulse')).toBeInTheDocument()
+  })
+
+  // The first version of the label above had `shrink-0` on the branch, so a
+  // long branch squeezed the project name to nothing and the row read as a
+  // branch with no repository — the label erased the identity it was added to
+  // clarify. The project is what must survive.
+  it('keeps the project name when the branch is long', async () => {
+    seeded.value = { s: [turn('s', NOW - 60_000)] }
+    render(
+      <PulsePanel
+        sessions={[session({ session_id: 's', project: 'caprock', git_branch: 'fix/session-end-and-pulse-tracks' })]}
+        now={NOW}
+      />,
+    )
+    const name = await waitFor(() => screen.getByText('caprock'))
+    expect(name.className).not.toMatch(/\btruncate\b/)
+    expect(screen.getByText('fix/session-end-and-pulse-tracks').className).toMatch(/\btruncate\b/)
+  })
+})
+
+/** One assistant turn, which is what buildPulse counts as a minute of work. */
+function turn(sessionID: string, ts: number, cost = 0.01): Event {
+  return {
+    id: ts,
+    ts: new Date(ts).toISOString(),
+    session_id: sessionID,
+    source: 'hook',
+    kind: 'turn.assistant',
+    payload: {},
+    cost_usd: cost,
+  } as Event
+}
+
 /** The least session that makes PulsePanel render — it returns null with none. */
-function session(): SessionSummary {
+function session(over: Partial<SessionSummary> = {}): SessionSummary {
   return {
     session_id: 's-1',
     project: 'demo',
+    status: 'active',
     last_event_at: Date.now(),
+    ...over,
   } as SessionSummary
 }

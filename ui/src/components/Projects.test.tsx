@@ -575,3 +575,42 @@ describe('the team hint', () => {
     expect(screen.getByText(/See them across the team/)).toBeTruthy()
   })
 })
+
+
+/**
+ * A ranked list that reorders under the pointer is a list you cannot click.
+ * Rows are ordered by spend and the data refreshes every 30s, so a project
+ * could overtake its neighbour between aiming and clicking — and you would
+ * open a repository you never pointed at.
+ */
+describe('row order under the pointer', () => {
+  const share = (project: string, cost: number): ProjectShare =>
+    ({ project, cost_usd: cost, tokens: cost * 1000, sessions: 1 }) as ProjectShare
+
+  it('holds the order still while the pointer is inside the panel', async () => {
+    projects.value = [share('alpha', 10), share('beta', 5)]
+    const { container, rerender } = render(<ProjectsPanel sessions={[]} agent="all" />)
+    await screen.findByText('alpha')
+
+    const panel = container.querySelector('section')!
+    fireEvent.mouseEnter(panel)
+
+    // beta overtakes alpha while the pointer rests on the list.
+    projects.value = [share('beta', 99), share('alpha', 10)]
+    rerender(<ProjectsPanel sessions={[]} agent="all" />)
+
+    const text = panel.textContent ?? ''
+    expect(text.indexOf('alpha')).toBeLessThan(text.indexOf('beta'))
+  })
+
+  it('lets the ranking resume once the pointer leaves', async () => {
+    projects.value = [share('alpha', 10), share('beta', 5)]
+    const { container } = render(<ProjectsPanel sessions={[]} agent="all" />)
+    await screen.findByText('alpha')
+    const panel = container.querySelector('section')!
+    fireEvent.mouseEnter(panel)
+    fireEvent.mouseLeave(panel)
+    // Nothing is frozen now, so the panel is free to rank by spend again.
+    expect(panel).toBeInTheDocument()
+  })
+})

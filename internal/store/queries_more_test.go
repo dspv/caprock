@@ -634,3 +634,38 @@ func TestReplayedOldEventDoesNotReviveAnEndedSession(t *testing.T) {
 		t.Errorf("status = %q; a replayed old event revived a finished session", sess.Status)
 	}
 }
+
+// Paging backwards has its own query because the timeline used to walk back by
+// asking for the first N events of the session and discarding what it already
+// had — on a long session that fetches the wrong end of the history.
+func TestEventsBeforePagesBackwards(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	for i := 1; i <= 10; i++ {
+		ev := &event.Event{SessionID: "s", Source: event.SourceHook, Kind: event.KindTurnUser, Ts: time.UnixMilli(int64(i) * 1000)}
+		if _, err := InsertEvent(ctx, s.db, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	all, err := LastEvents(ctx, s.db, "s", 10)
+	if err != nil || len(all) != 10 {
+		t.Fatalf("seed: %d %v", len(all), err)
+	}
+	// The three immediately before the 6th row, oldest-first.
+	page, err := EventsBefore(ctx, s.db, "s", all[5].ID, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page) != 3 {
+		t.Fatalf("page size %d, want 3", len(page))
+	}
+	for i, want := range []int64{all[2].ID, all[3].ID, all[4].ID} {
+		if page[i].ID != want {
+			t.Errorf("row %d: id %d, want %d", i, page[i].ID, want)
+		}
+	}
+	// Nothing precedes the first row, which is how the UI knows to stop.
+	if empty, err := EventsBefore(ctx, s.db, "s", all[0].ID, 3); err != nil || len(empty) != 0 {
+		t.Fatalf("before the first row: %d %v", len(empty), err)
+	}
+}

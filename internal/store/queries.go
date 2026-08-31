@@ -593,13 +593,30 @@ func ListEvents(ctx context.Context, q Querier, sessionID string, after int64, l
 
 // LastEvents returns the newest n events for a session, oldest first.
 func LastEvents(ctx context.Context, q Querier, sessionID string, n int) ([]event.Event, error) {
+	return EventsBefore(ctx, q, sessionID, 0, n)
+}
+
+// EventsBefore returns the n events immediately preceding `before` (exclusive),
+// oldest-first. before <= 0 means "from the end", which is what LastEvents is.
+//
+// Paging backwards needs its own query: the timeline used to walk back by
+// asking for the first 1000 events of the session and discarding everything it
+// already had, which on a session with sixteen thousand events fetched the
+// wrong end of the history and threw nearly all of it away.
+func EventsBefore(ctx context.Context, q Querier, sessionID string, before int64, n int) ([]event.Event, error) {
 	if n <= 0 {
 		n = 50
 	}
 	if n > MaxEventPage {
 		n = MaxEventPage
 	}
-	rows, err := q.QueryContext(ctx, `SELECT * FROM (SELECT `+eventCols+` FROM events WHERE session_id = ? ORDER BY id DESC LIMIT ?) ORDER BY id ASC`, sessionID, n)
+	where, args := `session_id = ?`, []any{sessionID}
+	if before > 0 {
+		where += ` AND id < ?`
+		args = append(args, before)
+	}
+	args = append(args, n)
+	rows, err := q.QueryContext(ctx, `SELECT * FROM (SELECT `+eventCols+` FROM events WHERE `+where+` ORDER BY id DESC LIMIT ?) ORDER BY id ASC`, args...)
 	if err != nil {
 		return nil, err
 	}

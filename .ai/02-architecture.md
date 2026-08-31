@@ -27,7 +27,7 @@ How the system is built: the daemon, its two data planes, cross-platform rules, 
 Two data planes, mirroring what works in Munder Difflin, but in Go:
 
 - **Terminal plane** — `ptyman` spawns each agent as a `claude` process in a PTY, streams bytes to the UI (xterm.js in browser), accepts stdin writes. Shipped in Control (v0.2.0); see [ADR-006](08-decisions.md#adr-006--pty-backend-conpty-capable-wrapper-behind-our-own-ptyman-interface) for the backend choice.
-- **Event plane** — `hookd` is a local HTTP server; a tiny shim registered in each agent's `.claude/settings.json` POSTs hook payloads (PreToolUse, PostToolUse, Stop, SubagentStop, SessionStart, PreCompact, …). **This is the source of truth for "what is the agent doing."**
+- **Event plane** — `hookd` is a local HTTP server; a tiny shim registered in each agent's `.claude/settings.json` POSTs hook payloads (PreToolUse, PostToolUse, Stop, SubagentStop, SessionStart, SessionEnd, PreCompact, …). **This is the source of truth for "what is the agent doing."**
 
 **Why not Electron:** the only thing Electron buys is bundling Chromium. A Go daemon + browser tab gives the same UI with zero ABI pain, one `go build` per platform, and the option of a TUI later. Desktop wrapper (Tauri/Wails) is a packaging decision for later, not an architecture decision now ([ADR-003](08-decisions.md#adr-003--ui-stack-react--vite-embedded-in-the-go-binary-via-goembed)).
 
@@ -99,7 +99,7 @@ This is where the incumbent bleeds users, so it is a hard requirement, not a nic
 
 ## Data sources
 
-- **Hooks** (shim → hookd). Gives tool-level lifecycle: tool name + input, `session_id`, `cwd`, `transcript_path`, stop events. ~30 events exist; MVP consumes `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `SessionStart`, `PreCompact`. Latency: real-time.
+- **Hooks** (shim → hookd). Gives tool-level lifecycle: tool name + input, `session_id`, `cwd`, `transcript_path`, stop events. ~30 events exist; MVP consumes `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `SessionStart`, `SessionEnd`, `PreCompact`. Latency: real-time.
 - **Transcript JSONL** (`~/.claude/projects/…`). Gives the full message stream incl. per-turn token usage (input / output / cache read / cache write), model, text of assistant turns. Tailed by `ingest`. Latency: ~seconds. The observed on-disk shape (2026-08-18) is recorded in [03-contracts.md § Transcript JSONL](03-contracts.md#transcript-jsonl-observed-shape).
 - **PTY bytes.** Raw terminal for the detail view; also fallback signal when hooks aren't installed. Latency: real-time.
 
@@ -127,7 +127,7 @@ type Event struct {
 }
 ```
 
-Append-only `events` table + materialized rollups (`session_stats`, `agent_stats`, `daily_stats`). DDL in [03-contracts.md § SQLite schema](03-contracts.md#sqlite-schema-ddl-v1). Note the DDL v1 `events` row carries `source` (`hook` | `transcript`) in addition to the fields above, because the same session is seen through both planes; the planes are reconciled by shared dedupe keys ([03-contracts.md § Hook shim](03-contracts.md#hook-shim)). One extra kind exists in code: `context.compact` (PreCompact hooks). `SessionStart` maps to `agent.spawn`, `Stop`/`SubagentStop` to `agent.stop` (subagents carry `agent_id`).
+Append-only `events` table + materialized rollups (`session_stats`, `agent_stats`, `daily_stats`). DDL in [03-contracts.md § SQLite schema](03-contracts.md#sqlite-schema-ddl-v1). Note the DDL v1 `events` row carries `source` (`hook` | `transcript`) in addition to the fields above, because the same session is seen through both planes; the planes are reconciled by shared dedupe keys ([03-contracts.md § Hook shim](03-contracts.md#hook-shim)). One extra kind exists in code: `context.compact` (PreCompact hooks). `SessionStart` maps to `agent.spawn`, `SessionEnd` to `session.end`, `Stop`/`SubagentStop` to `agent.stop` (subagents carry `agent_id`).
 
 Every producer writes through one path — `internal/rollup.Recorder.Record` — which stores the event, upserts the session, prices assistant turns, updates `session_stats` / `daily_stats` / `session_files` in one transaction, then publishes `event` + `session` frames on the in-process bus (`internal/bus`) that feeds the WebSocket and the loop detector.
 
@@ -139,7 +139,7 @@ Implementation notes (`internal/loop`): "normalized-similar" = same tool + `tool
 
 ## Session lifecycle
 
-`active` on any event → `idle` after 5 minutes of silence (sweeper every 30 s) → `ended` after 12 hours of silence (Caprock also ends sessions it kills). `/v1/sessions?active=true` returns everything not ended. Narration ([04-ui.md § Narration map](04-ui.md#narration-map-t7)) is computed server-side in `internal/narrate` from the last 60 events.
+`active` on any event → `idle` after 5 minutes of silence (sweeper every 30 s) → `ended` on the `SessionEnd` hook, or after 1 hour of silence when that hook never arrived (Caprock also ends sessions it kills). Ending is reversible: a later event on the same id makes the session active again, so an early end costs nothing. `/v1/sessions?active=true` returns everything not ended. Narration ([04-ui.md § Narration map](04-ui.md#narration-map-t7)) is computed server-side in `internal/narrate` from the last 60 events.
 
 ## Repository layout
 

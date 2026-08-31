@@ -18,10 +18,12 @@ import { Copyable } from '@/components/ui'
 
 const DISMISS_KEY = 'caprock.update.dismissed'
 
-export function UpdateBanner({ plan, onSave, now }: {
+export function UpdateBanner({ plan, onSave, now, owned = 0 }: {
   plan?: Settings
   onSave: (s: Settings) => void
   now: number
+  /** Live sessions Caprock started, which upgrading will close. */
+  owned?: number
 }) {
   const [st, setSt] = useState<UpdateStatus>()
   const [dismissed, setDismissed] = useState(() => localStorage.getItem(DISMISS_KEY) ?? '')
@@ -74,6 +76,16 @@ export function UpdateBanner({ plan, onSave, now }: {
         <span className="font-medium">Caprock {st.latest}</span> is available —
         you&apos;re on <span className="mono">{st.current}</span>.
       </span>
+      {/* Upgrading restarts the daemon, and the sessions it started are its
+        * children — so they end with it. They are asked to stop cleanly and
+        * given a few seconds, but the work still stops, and finding that out
+        * afterwards is how a user loses a turn they were in the middle of.
+        * Only shown when there is something to lose. */}
+      {owned > 0 && (
+        <span className="text-[12px] text-warn shrink-0">
+          {owned === 1 ? '1 session Caprock started will close' : `${owned} sessions Caprock started will close`}
+        </span>
+      )}
       {st.command ? (
         <Copyable command={st.command} />
       ) : (
