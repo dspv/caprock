@@ -17,8 +17,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type Event, type SessionSummary } from '@/lib/api'
 import { live } from '@/lib/live'
-import { buildPulse, costTier, medianCost, trackState, PULSE_MINUTES, type Pulse as PulseModel } from '@/lib/pulse'
-import { fmtUSD } from '@/lib/format'
+import { buildPulse, costTier, medianCost, trackState, windowCost, windowEvents, PULSE_MINUTES, type Pulse as PulseModel } from '@/lib/pulse'
+import { fmtAgo, fmtUSD, shortId } from '@/lib/format'
 import { Panel } from '@/components/ui'
 import { href, navigate } from '@/lib/router'
 
@@ -30,9 +30,16 @@ const MAX_TRACKS = 6
 const SEED_LIMIT = 2000
 
 export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now: number }) {
-  // Newest first — the tracks people care about are the ones running.
+  // Newest first — the tracks people care about are the ones running. Ended
+  // sessions are dropped here rather than relying on the caller's filter: the
+  // Now screen offers a "show ended" tick, and a finished session has no
+  // pulse to show whether or not the list it came from includes it.
   const tracked = useMemo(
-    () => [...sessions].sort((a, b) => b.last_event_at - a.last_event_at).slice(0, MAX_TRACKS),
+    () =>
+      [...sessions]
+        .filter((s) => s.status !== 'ended')
+        .sort((a, b) => b.last_event_at - a.last_event_at)
+        .slice(0, MAX_TRACKS),
     [sessions],
   )
   const ids = tracked.map((s) => s.session_id).join(',')
@@ -70,6 +77,20 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
     })
   }, [])
 
+  // `now` is rounded to the minute so a per-second clock does not rebuild
+  // every model each tick.
+  const minute = Math.floor(now / 60_000)
+  // A track earns its row by having happened. Without this the panel drew a
+  // row per known session — six identical project names over six flat
+  // hairlines — which reads as a fault in the chart rather than as silence.
+  const rows = useMemo(
+    () =>
+      tracked
+        .map((s) => ({ s, pulse: buildPulse(events.get(s.session_id) ?? [], minute * 60_000) }))
+        .filter((r) => windowEvents(r.pulse) > 0),
+    [tracked, events, minute],
+  )
+
   if (tracked.length === 0) return null
 
   return (
@@ -78,9 +99,16 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
       right={<span className="text-[11px] text-fg-faint">last {PULSE_MINUTES} minutes · one bar per minute</span>}
     >
       <div>
-        {tracked.map((s) => (
-          <Track key={s.session_id} s={s} events={events.get(s.session_id) ?? []} now={now} />
-        ))}
+        {rows.length === 0 ? (
+          // Saying the hour was quiet is information; six empty tracks are not.
+          <div className="px-3 py-6 text-[12px] text-fg-faint text-center">
+            Nothing ran in the last {PULSE_MINUTES} minutes.
+          </div>
+        ) : (
+          rows.map(({ s, pulse }) => (
+            <Track key={s.session_id} s={s} pulse={pulse} minute={minute} showId={rows.length > 1} />
+          ))
+        )}
       </div>
       {/* Height and colour answer different questions, and saying so first is
         * the difference between a legend and a decoration. The tier words are
@@ -134,11 +162,18 @@ function Swatch({
   )
 }
 
-function Track({ s, events, now }: { s: SessionSummary; events: Event[]; now: number }) {
-  // The model is recomputed when events change, not on every render; `now` is
-  // rounded to the minute so a per-second clock does not invalidate it.
-  const minute = Math.floor(now / 60_000)
-  const pulse = useMemo(() => buildPulse(events, minute * 60_000), [events, minute])
+function Track({
+  s,
+  pulse,
+  minute,
+  showId,
+}: {
+  s: SessionSummary
+  pulse: PulseModel
+  minute: number
+  /** Whether to name which session this is. See the header below. */
+  showId: boolean
+}) {
   // Health comes from the daemon's narrator, which knows "your turn" from the
   // agent.stop event. The bars cannot: they describe the hour, not this moment.
   const state = trackState(pulse, s.activity?.health)
@@ -156,19 +191,36 @@ function Track({ s, events, now }: { s: SessionSummary; events: Event[]; now: nu
       href={href({ name: 'session', id: s.session_id })}
       className="grid grid-cols-[132px_1fr_92px_104px] items-center gap-3 px-3 py-2 border-t border-border first:border-t-0 hover:bg-panel-2 no-underline text-fg"
     >
+      {/* Working all day in one repository used to draw six rows all labelled
+        * "caprock", told apart only by a phrase like "was responding" that
+        * three of them shared. The branch and the session id are what actually
+        * differ, so they go where the eye already is. Only when there is more
+        * than one track: a lone row needs no disambiguation. */}
       <div className="min-w-0">
         <div className="text-[13px] font-medium truncate flex items-center gap-1.5">
           <span className="truncate">{s.project || 'unknown project'}</span>
+          {s.git_branch && <span className="shrink-0 text-[10px] text-fg-faint mono">{s.git_branch}</span>}
           {s.agent === 'opencode' && (
             <span className="shrink-0 text-[9px] uppercase tracking-[0.08em] text-fg-faint border border-border px-1 rounded-sm">
               oc
             </span>
           )}
         </div>
-        <div className="text-[10px] text-fg-faint mono truncate">{s.activity?.phrase ?? ''}</div>
+        <div className="text-[10px] text-fg-faint mono truncate">
+          {showId && <span title={`session ${s.session_id} · started ${fmtAgo(s.started_at)} ago`}>{shortId(s.session_id)} · </span>}
+          {s.activity?.phrase ?? ''}
+        </div>
       </div>
       <PulseCanvas pulse={pulse} now={minute * 60_000} sessionID={s.session_id} />
-      <div className="num text-[13px] font-semibold text-right">{fmtUSD(s.stats?.cost_usd)}</div>
+      {/* The window's cost, not the session's. The bars describe an hour; a
+        * lifetime figure beside them invited the reader to add a number to a
+        * picture it does not belong to. */}
+      <div
+        className="num text-[13px] font-semibold text-right"
+        title={`${fmtUSD(s.stats?.cost_usd)} for the whole session`}
+      >
+        {fmtUSD(windowCost(pulse))}
+      </div>
       <div className={`text-[11px] text-right ${stateCls}`} title={pulse.repeatSample}>
         {state.label}
       </div>

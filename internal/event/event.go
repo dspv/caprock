@@ -13,12 +13,17 @@ import (
 type Kind string
 
 const (
-	KindToolPre           Kind = "tool.pre"
-	KindToolPost          Kind = "tool.post"
-	KindTurnUser          Kind = "turn.user"
-	KindTurnAssistant     Kind = "turn.assistant"
-	KindAgentStop         Kind = "agent.stop"
-	KindAgentSpawn        Kind = "agent.spawn"
+	KindToolPre       Kind = "tool.pre"
+	KindToolPost      Kind = "tool.post"
+	KindTurnUser      Kind = "turn.user"
+	KindTurnAssistant Kind = "turn.assistant"
+	KindAgentStop     Kind = "agent.stop"
+	KindAgentSpawn    Kind = "agent.spawn"
+	// KindSessionEnd is emitted for SessionEnd hooks — the user left the
+	// session. It is the only signal that separates "finished" from "quiet",
+	// and without it a session stayed live until the staleness sweep caught it
+	// half a day later.
+	KindSessionEnd        Kind = "session.end"
 	KindMailSent          Kind = "mail.sent"
 	KindMailDelivered     Kind = "mail.delivered"
 	KindTaskCreated       Kind = "task.created"

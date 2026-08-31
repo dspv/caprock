@@ -27,7 +27,7 @@ func fixture(t *testing.T, name string) []byte {
 	return b
 }
 
-func TestNormalizeAllSevenEvents(t *testing.T) {
+func TestNormalizeAllHookEvents(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	cases := []struct {
 		file string
@@ -42,6 +42,7 @@ func TestNormalizeAllSevenEvents(t *testing.T) {
 		{"post_tool_use.json", event.KindToolPost, "Bash", "post:toolu_01", ""},
 		{"stop.json", event.KindAgentStop, "", "", ""},
 		{"subagent_stop.json", event.KindAgentStop, "", "", "agent-9"},
+		{"session_end.json", event.KindSessionEnd, "", "", ""},
 		{"pre_compact.json", event.KindContextCompact, "", "", ""},
 		{"stop_failure.json", event.KindThrottle, "", "", ""},
 	}

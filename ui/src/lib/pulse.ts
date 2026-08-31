@@ -36,6 +36,21 @@ export interface Pulse {
   repeatSample: string
 }
 
+/** Events recorded inside the window — what makes a track worth a row.
+ *  A track with none of these is an hour of flat hairline, which says only
+ *  that the session exists. */
+export function windowEvents(p: Pulse): number {
+  return p.bars.reduce((n, b) => n + b.n, 0)
+}
+
+/** What this session spent inside the window. The row used to show the
+ *  session's lifetime cost beside an hour of bars, so a long-running session
+ *  read $4,053.39 next to a $101.85 day — two true numbers answering
+ *  different questions, printed as if they answered the same one. */
+export function windowCost(p: Pulse): number {
+  return p.bars.reduce((sum, b) => sum + b.cost, 0)
+}
+
 /** Minutes of history a track shows. */
 export const PULSE_MINUTES = 60
 

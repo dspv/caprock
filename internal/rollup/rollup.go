@@ -131,6 +131,13 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 			// goes idle via the idle sweeper, and 'ended' only on SessionEnd/kill.
 			patch.Status = ""
 		}
+		if ev.Kind == event.KindSessionEnd {
+			// The user left the session, so it is over now rather than whenever
+			// the staleness sweep next runs. An explicit status wins in the
+			// upsert, and a later event on the same id revives it — which is
+			// what should happen if Claude Code reuses the session after all.
+			patch.Status = store.StatusEnded
+		}
 		if err := store.UpsertSession(ctx, q, ev.SessionID, patch); err != nil {
 			return err
 		}

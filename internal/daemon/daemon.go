@@ -63,7 +63,10 @@ type Options struct {
 	OpenCodeDB string
 	// IdleAfter is the silence threshold before a session is marked idle.
 	IdleAfter time.Duration
-	// EndAfter is the silence threshold before a session is marked ended (default 12h).
+	// EndAfter is the silence threshold before a session is marked ended
+	// (default 1h). It is a backstop, not the main path: SessionEnd ends a
+	// session the moment the user leaves it. What this catches is the session
+	// whose hook never fired — kill -9, a closed terminal, a crashed host.
 	EndAfter time.Duration
 	// HiveDir enables Phase 2 orchestration (tasks board + Stop-loop) at this path.
 	// Empty ⇒ orchestration off (task endpoints return 501).
@@ -147,7 +150,10 @@ func newDaemon(ctx context.Context, opt Options) (*Daemon, error) {
 		opt.IdleAfter = 5 * time.Minute
 	}
 	if opt.EndAfter <= 0 {
-		opt.EndAfter = 12 * time.Hour
+		// An hour outlasts lunch, and being wrong is cheap: the upsert revives
+		// an ended session on its next event. Twelve hours meant every session
+		// of the day was still "live" at midnight.
+		opt.EndAfter = time.Hour
 	}
 	if opt.DataDir == "" {
 		dir, err := config.EnsureDataDir()

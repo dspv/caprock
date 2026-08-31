@@ -86,6 +86,10 @@ func Normalize(raw []byte, now time.Time) (*event.Event, rollup.SessionInfo, err
 		}
 	case "SessionStart":
 		ev.Kind = event.KindAgentSpawn
+	case "SessionEnd":
+		// The user left. This is the one event that can end a session at the
+		// moment it actually ends; everything else waits for the sweep.
+		ev.Kind = event.KindSessionEnd
 	case "PreCompact":
 		ev.Kind = event.KindContextCompact
 	case "StopFailure":
