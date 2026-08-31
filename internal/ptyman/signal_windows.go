@@ -12,6 +12,15 @@ func (s *session) Signal(sig Signal) error {
 	case SignalResume:
 		s.paused.Store(false)
 		return nil
+	case SignalTerm:
+		// Windows has no SIGTERM for a console process that is not ours to
+		// signal; Kill is the only termination primitive. The caller still
+		// waits first, so a process that exits on its own is never killed —
+		// the graceful path is the wait, not the signal.
+		if s.cmd == nil || s.cmd.Process == nil {
+			return nil
+		}
+		return s.cmd.Process.Kill()
 	case SignalKill:
 		if s.cmd == nil || s.cmd.Process == nil {
 			return nil

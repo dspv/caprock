@@ -28,6 +28,15 @@ Phase 3 (Delight) has no plan by design.
   Upgrading registers the new hook on the next `caprock up`; nothing to do by
   hand.
 
+- **Upgrading Caprock no longer kills the work it was watching.** Restarting
+  the daemon — which every upgrade does — sent `SIGKILL` to every session
+  Caprock had spawned. They died mid-turn, with no warning and nothing
+  flushed: a tool that watches your work should not be the thing that eats
+  it. Sessions are now asked to stop, waited on for five seconds so Claude
+  Code can write out its transcript, and only then killed if they refuse. The
+  upgrade banner also says how many sessions will close before you copy the
+  command; sessions you started yourself are untouched, as always.
+
 ### Changed
 
 - **The live pulse shows only tracks that ran.** Ended sessions are dropped,

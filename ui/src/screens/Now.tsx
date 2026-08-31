@@ -87,7 +87,9 @@ export function NowScreen() {
           <a href="#/settings" className="link ml-auto text-[11px]">details</a>
         </div>
       )}
-      <UpdateBanner plan={plan} onSave={savePlan} now={now} />
+      {/* Only sessions Caprock spawned end with the daemon; the ones the user
+        * started themselves are untouched by an upgrade. */}
+      <UpdateBanner plan={plan} onSave={savePlan} now={now} owned={list.filter((s) => s.owned && s.status !== 'ended').length} />
       <Attention items={attention} now={now} onDismiss={(id) => live.dismissAlert(id)} sessions={list} />
 
       {/* Above Today because it is the wider frame Today sits inside: what all

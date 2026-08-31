@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -43,6 +44,10 @@ type fakeSession struct {
 	exit   int
 	closed bool
 	paused bool
+	// ignoreTerm models a process that will not stop when asked, so the
+	// shutdown path's kill-after-grace can be tested.
+	ignoreTerm bool
+	termed     atomic.Bool
 }
 
 func (s *fakeSession) Output() io.Reader { return &chanReader{ch: s.out, done: s.done} }
@@ -59,6 +64,13 @@ func (s *fakeSession) Signal(sig ptyman.Signal) error {
 		s.paused = true
 	case ptyman.SignalResume:
 		s.paused = false
+	case ptyman.SignalTerm:
+		s.termed.Store(true)
+		if !s.ignoreTerm {
+			// A clean exit: the process stops on its own having written
+			// whatever it needed to.
+			s.finish(0)
+		}
 	case ptyman.SignalKill:
 		s.finish(-1)
 	}
@@ -70,6 +82,12 @@ func (s *fakeSession) Wait() error {
 		return exitErr(7)
 	}
 	return nil
+}
+
+func (s *fakeSession) exitCode() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.exit
 }
 
 type exitErr int
@@ -439,4 +457,52 @@ func TestChatDirectories(t *testing.T) {
 			t.Fatal("invented a location with no data directory configured")
 		}
 	})
+}
+
+// Shutdown must not destroy the user's work.
+//
+// Upgrading Caprock restarts the daemon, and the daemon used to SIGKILL every
+// session it had spawned — so the user's running agents died mid-turn, with no
+// warning and nothing flushed. The tool that watches your work must not be the
+// thing that eats it.
+func TestShutdownAsksBeforeKilling(t *testing.T) {
+	m, _, f := newMgr(t)
+	if _, err := m.Spawn(context.Background(), SpawnRequest{Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	sess := f.session
+
+	m.Shutdown()
+
+	if !sess.termed.Load() {
+		t.Fatal("session was never asked to stop; shutdown went straight to the kill")
+	}
+	if code := sess.exitCode(); code != 0 {
+		t.Fatalf("exit code %d, want 0 — the session did not get to finish cleanly", code)
+	}
+}
+
+// A process that ignores the request is still killed: shutdown has to
+// terminate. The grace period is spent once for all sessions, not per session.
+func TestShutdownKillsWhatWillNotStop(t *testing.T) {
+	m, _, f := newMgr(t)
+	if _, err := m.Spawn(context.Background(), SpawnRequest{Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	sess := f.session
+	sess.ignoreTerm = true
+
+	start := time.Now()
+	m.Shutdown()
+	elapsed := time.Since(start)
+
+	if !sess.termed.Load() {
+		t.Error("the polite request was skipped")
+	}
+	if code := sess.exitCode(); code != -1 {
+		t.Errorf("exit code %d, want -1 — a session that ignores the request must still be killed", code)
+	}
+	if elapsed < ShutdownGrace {
+		t.Errorf("waited %v, expected to wait out the %v grace period", elapsed, ShutdownGrace)
+	}
 }

@@ -21,6 +21,14 @@ func (s *session) Signal(sig Signal) error {
 		}
 		s.paused.Store(false)
 		return nil
+	case SignalTerm:
+		// Same group-first rule as kill: Claude Code spawns children, and
+		// signalling only the leader leaves them behind.
+		if pgid, err := syscall.Getpgid(s.cmd.Process.Pid); err == nil && pgid == s.cmd.Process.Pid {
+			_ = syscall.Kill(-pgid, syscall.SIGTERM)
+			return nil
+		}
+		return s.cmd.Process.Signal(syscall.SIGTERM)
 	case SignalKill:
 		// Kill the whole process group when we own it; fall back to the process.
 		if pgid, err := syscall.Getpgid(s.cmd.Process.Pid); err == nil && pgid == s.cmd.Process.Pid {
