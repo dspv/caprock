@@ -1894,3 +1894,17 @@ func RecentDirs(ctx context.Context, q Querier, limit int) ([]RecentDirDetail, e
 	}
 	return out, rows.Err()
 }
+
+// SpendSince is the total priced cost of events at or after fromMs.
+//
+// The daily spend cap's only question, asked after every priced turn, so it is
+// one indexed sum and nothing else. Unpriced turns contribute nothing: a model
+// missing from the pricing table leaves cost_usd NULL, and COALESCE flattens it
+// — the cap therefore under-counts rather than inventing a figure, which is the
+// safe direction for something that stops work.
+func SpendSince(ctx context.Context, q Querier, fromMs int64) (float64, error) {
+	var usd float64
+	err := q.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(cost_usd),0) FROM events WHERE ts >= ?`, fromMs).Scan(&usd)
+	return usd, err
+}

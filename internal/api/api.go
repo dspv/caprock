@@ -102,6 +102,14 @@ type Settings struct {
 	// LicenseKey unlocks the paid features, checked locally against the expiry
 	// it carries (ADR-022). Empty is the ordinary state.
 	LicenseKey string `json:"license_key,omitempty"`
+	// CapUSDPerDay is the daily spend ceiling; 0 is off. Reaching it pauses the
+	// sessions Caprock started and nothing else (rule 7).
+	//
+	// No omitempty: zero means "the cap is off", which is a state the UI has to
+	// be able to read. Omitted, an off cap is indistinguishable from a daemon
+	// too old to have the field, and the panel cannot tell "you turned this
+	// off" from "this build cannot do it".
+	CapUSDPerDay float64 `json:"cap_usd_per_day"`
 	// BrowseRoot is the only directory the folder picker may look inside, and
 	// the boundary every path it returns is checked against. Empty means the
 	// user's home directory.
@@ -626,6 +634,8 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		PlanLabel       *string  `json:"plan_label"`
 		PlanUSDPerMonth *float64 `json:"plan_usd_per_month"`
 		LicenseKey      *string  `json:"license_key"`
+		CapUSDPerDay    *float64 `json:"cap_usd_per_day"`
+		BrowseRoot      *string  `json:"browse_root"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&patch); err != nil {
 		s.failCode(w, http.StatusBadRequest, fmt.Errorf("parse body: %w", err))
@@ -637,6 +647,20 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.PlanKind != nil {
 		in.PlanKind = *patch.PlanKind
+	}
+	if patch.CapUSDPerDay != nil {
+		v := *patch.CapUSDPerDay
+		// Validated rather than coerced, like every other field here: this
+		// number stops work, so a negative or non-finite one is a 400 and not
+		// a silently clamped zero that quietly disables the cap.
+		if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
+			s.failCode(w, http.StatusBadRequest, errors.New("cap_usd_per_day must be zero (off) or a positive number of dollars"))
+			return
+		}
+		in.CapUSDPerDay = v
+	}
+	if patch.BrowseRoot != nil {
+		in.BrowseRoot = *patch.BrowseRoot
 	}
 	if patch.LicenseKey != nil {
 		in.LicenseKey = *patch.LicenseKey

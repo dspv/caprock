@@ -65,6 +65,12 @@ type Config struct {
 	// embedded expiry — no network call, no signature (ADR-022). Empty is the
 	// normal state: the free product is the whole product for one person.
 	LicenseKey string `json:"license_key,omitempty"`
+	// CapUSDPerDay is the daily spend ceiling. Zero is off, which is the
+	// default: a threshold nobody chose would eventually stop work for a
+	// reason its owner could not explain. See internal/cap.
+	CapUSDPerDay float64 `json:"cap_usd_per_day,omitempty"`
+	// BrowseRoot is where the folder picker may look. Empty means $HOME.
+	BrowseRoot string `json:"browse_root,omitempty"`
 }
 
 // Defaults returns the built-in configuration (spec: K=5, T=3, port 4173).

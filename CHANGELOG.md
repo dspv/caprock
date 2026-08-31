@@ -9,6 +9,39 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.39.0] - 2026-08-31
+
+### Added
+
+- **The daily spend cap — the first thing Caprock does rather than shows.**
+  Everything else here is observation: you look and you learn something. A cap
+  acts while you are asleep, which is when a runaway loop does its damage. Set
+  a number for the day; when the day crosses it, the sessions Caprock started
+  are paused.
+
+  Four rules, each covered by a test that was verified by breaking it:
+
+  - **Only sessions Caprock started.** One from your own terminal is watched
+    and never signalled, however much it costs — [rule 7](CLAUDE.md), enforced
+    inside the thing holding the process handles rather than by whoever calls
+    it, so the cap cannot violate it even by mistake.
+  - **Paused, not killed.** The conversation, the directory and the context
+    survive; resume and the session carries on. Killing would throw away work
+    already paid for, which is a strange thing for a tool that exists to stop
+    waste.
+  - **Once a day.** A session you resume by hand must not be re-paused seconds
+    later, and two turns crossing the threshold together must not both fire.
+  - **Fails open.** If the spend cannot be read, nothing is paused: a missed
+    pause costs money, a spurious one stops work that was fine, and the second
+    is the one nobody forgives.
+
+  **The suggested limit comes from your own history** — twice your median day,
+  rounded. The median rather than the mean, because one runaway day would drag
+  an average up and produce a ceiling that never fires, which is exactly the day
+  the feature exists for. It is offered as a click, never prefilled: a number
+  that appears in the field on its own is a number nobody chose, and this one
+  stops work.
+
 ## [0.38.1] - 2026-08-30
 
 ### Fixed

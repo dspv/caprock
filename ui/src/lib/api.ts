@@ -232,6 +232,8 @@ export interface AssistantNote {
 export interface Settings {
   /** Where the folder picker may look. Empty means the home directory. */
   browse_root?: string
+  /** The daily spend ceiling in USD; 0 is off. See internal/cap. */
+  cap_usd_per_day?: number
   update_checks: boolean
   plan_kind: '' | 'flat' | 'metered'
   plan_label: string

@@ -48,6 +48,15 @@ type Recorder struct {
 	Now func() time.Time
 	// Location decides which calendar day a turn belongs to (daily_stats).
 	Location *time.Location
+	// OnPriced is called after a turn has been priced and stored, with the
+	// daily spend cap as its only caller today.
+	//
+	// A hook rather than a direct dependency: the recorder is the write path
+	// for every event on the machine, and it must not grow a reason to know
+	// what a spend cap is. It is also called *after* the transaction commits —
+	// a cap that paused sessions from inside the write path would hold the
+	// database open while signalling processes.
+	OnPriced func(ctx context.Context)
 }
 
 // New builds a Recorder with sane defaults.
@@ -198,6 +207,12 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 	if r.Bus != nil {
 		r.Bus.Publish(bus.Frame{Type: bus.FrameEvent, Data: res.Event})
 		r.Bus.Publish(bus.Frame{Type: bus.FrameSession, Data: SessionFrame{Session: res.Session, Stats: res.Stats}})
+	}
+	// Only when this turn actually cost something: an unpriced event cannot
+	// have moved the day's total, and checking on every hook event would ask
+	// the database for a sum thousands of times an hour to learn nothing.
+	if res.Priced && r.OnPriced != nil {
+		r.OnPriced(ctx)
 	}
 	return res, nil
 }

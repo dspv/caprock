@@ -23,6 +23,7 @@ import (
 	"github.com/dspv/caprock/internal/api"
 	"github.com/dspv/caprock/internal/board"
 	"github.com/dspv/caprock/internal/bus"
+	"github.com/dspv/caprock/internal/cap"
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/desktop"
@@ -91,6 +92,9 @@ type Daemon struct {
 	rt    config.Runtime
 	start time.Time
 
+	// cap is the daily spend guard. Nil until run() builds it, because it needs
+	// the owned-session manager.
+	cap *cap.Guard
 	// cfgMu guards opt.Config, which the settings endpoint mutates at runtime.
 	cfgMu sync.RWMutex
 	// hiveMu guards board, orch and opt.HiveDir/opt.RepoCwd. The task runner can
@@ -229,6 +233,33 @@ func (d *Daemon) run(ctx context.Context) error {
 			st, _ := store.GetStats(ctx, d.store.DB(), id)
 			d.bus.Publish(bus.Frame{Type: bus.FrameSession, Data: rollup.SessionFrame{Session: s, Stats: st}})
 		}
+	}
+
+	// The daily spend cap. Built here because it needs the manager: it may only
+	// ever pause sessions Caprock started, and the manager is what knows which
+	// those are (rule 7 lives in PauseOwned, not in a filter here).
+	d.cap = &cap.Guard{
+		Settings: func() cap.Settings { return cap.Settings{LimitUSD: d.config().CapUSDPerDay} },
+		Spend: func(ctx context.Context) (float64, error) {
+			// The local calendar day, which is what "a daily cap" means to the
+			// person setting one. Midnight UTC would fire mid-afternoon for
+			// half the world.
+			now := time.Now()
+			y, m, day := now.Date()
+			start := time.Date(y, m, day, 0, 0, 0, 0, now.Location())
+			return store.SpendSince(ctx, d.store.DB(), start.UnixMilli())
+		},
+		Sig: d.mgr,
+		Now: time.Now,
+		Log: d.log,
+	}
+	// Checked after a turn is priced rather than on a timer: the spend only
+	// moves when a turn is priced, and a poll would either lag the crossing or
+	// ask the database for a sum it already knows is unchanged.
+	d.rec.OnPriced = func(ctx context.Context) {
+		// Detached from the request that triggered it: pausing processes must
+		// not be cancelled because a hook's HTTP call finished first.
+		d.cap.Check(context.WithoutCancel(ctx))
 	}
 
 	// Phase 2 board (opt-in via HiveDir, or turned on later over the API).
@@ -823,6 +854,8 @@ func (a *settingsAdapter) Get() api.Settings {
 		PlanLabel:       c.PlanLabel,
 		PlanUSDPerMonth: c.PlanUSDPerMonth,
 		LicenseKey:      c.LicenseKey,
+		CapUSDPerDay:    c.CapUSDPerDay,
+		BrowseRoot:      c.BrowseRoot,
 	}
 }
 
@@ -837,8 +870,16 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	// likely way the one interaction that turns a payment into a working
 	// feature goes wrong, and storing it dirty makes every later read wrong.
 	a.d.opt.Config.LicenseKey = strings.TrimSpace(in.LicenseKey)
+	// A raised limit must release a cap that has already fired, or work stays
+	// stopped until midnight for a ceiling that no longer applies.
+	capChanged := in.CapUSDPerDay != a.d.opt.Config.CapUSDPerDay
+	a.d.opt.Config.CapUSDPerDay = in.CapUSDPerDay
+	a.d.opt.Config.BrowseRoot = strings.TrimSpace(in.BrowseRoot)
 	cfg := a.d.opt.Config
 	a.d.cfgMu.Unlock()
+	if capChanged && a.d.cap != nil {
+		a.d.cap.Reset()
+	}
 	// Turning checks on should show an answer immediately rather than after
 	// the next restart. Runs detached so the PUT stays fast, and under the
 	// daemon's lifetime context so it is not cancelled with the request.

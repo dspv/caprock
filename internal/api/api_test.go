@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -84,6 +85,26 @@ func (e *env) get(t *testing.T, path string, out any) int {
 			t.Fatalf("decode %s: %v", path, err)
 		}
 	}
+	return resp.StatusCode
+}
+
+// put sends a JSON body, which the forgery guard requires a content type for.
+func (e *env) put(t *testing.T, path string, body any) int {
+	t.Helper()
+	b, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := http.NewRequest(http.MethodPut, e.srv.URL+path, bytes.NewReader(b))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
 	return resp.StatusCode
 }
 
@@ -409,6 +430,37 @@ type fakeSettings struct{ cur Settings }
 
 func (f *fakeSettings) Get() Settings        { return f.cur }
 func (f *fakeSettings) Set(s Settings) error { f.cur = s; return nil }
+
+// The cap is a number that stops work, so it has to survive a save and it has
+// to refuse nonsense.
+func TestSettingsCapRoundTripsAndValidates(t *testing.T) {
+	e := newEnv(t)
+	// Shipped broken once: the field existed on the struct and in the UI but
+	// was missing from the PUT decoder, so the panel said "saved" and the
+	// daemon kept a cap of zero. The button worked, the feature did not.
+	if code := e.put(t, "/v1/settings", map[string]any{"cap_usd_per_day": 280}); code != 200 {
+		t.Fatalf("PUT cap: %d", code)
+	}
+	var got Settings
+	if code := e.get(t, "/v1/settings", &got); code != 200 || got.CapUSDPerDay != 280 {
+		t.Errorf("cap came back as %v, want 280", got.CapUSDPerDay)
+	}
+
+	// Zero is off, and must be settable — otherwise a cap cannot be turned off
+	// once it is on.
+	if code := e.put(t, "/v1/settings", map[string]any{"cap_usd_per_day": 0}); code != 200 {
+		t.Fatalf("PUT zero: %d", code)
+	}
+	if code := e.get(t, "/v1/settings", &got); code != 200 || got.CapUSDPerDay != 0 {
+		t.Errorf("cap came back as %v, want 0", got.CapUSDPerDay)
+	}
+
+	// A negative ceiling is a 400, not a silently clamped zero: coercing it
+	// would disable the cap while answering 200.
+	if code := e.put(t, "/v1/settings", map[string]any{"cap_usd_per_day": -5}); code != 400 {
+		t.Errorf("negative cap: %d, want 400", code)
+	}
+}
 
 // The settings endpoint must validate rather than coerce: a wrong plan kind or
 // a nonsense price would otherwise drive a wrong headline number on the value

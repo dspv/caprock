@@ -304,6 +304,42 @@ func (m *Manager) List() []*Agent {
 	return out
 }
 
+// OwnedRunning lists the sessions Caprock started that are still running.
+//
+// The name says "owned" rather than "all" because that distinction is the whole
+// safety story: `m.agents` holds only sessions this manager spawned, and a
+// caller must not have to remember that. See PauseOwned.
+func (m *Manager) OwnedRunning() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]string, 0, len(m.agents))
+	for id := range m.agents {
+		out = append(out, id)
+	}
+	return out
+}
+
+// PauseOwned pauses a session Caprock started, reporting whether it did.
+//
+// An id this manager does not own is refused here, quietly and without error:
+// [Rule 7] is enforced at the thing that holds the process handles rather than
+// by whoever happens to be calling. A session started in someone's own terminal
+// is watched and never signalled, however much it is costing — and the daily
+// spend cap, the one caller today, therefore cannot violate that rule even by
+// mistake.
+//
+// [Rule 7]: ../../CLAUDE.md
+func (m *Manager) PauseOwned(sessionID string) (bool, error) {
+	a, ok := m.Get(sessionID)
+	if !ok {
+		return false, nil
+	}
+	if err := a.sess.Signal(ptyman.SignalPause); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // Input writes typed bytes to an owned session.
 func (m *Manager) Input(sessionID string, data []byte) error {
 	a, ok := m.Get(sessionID)

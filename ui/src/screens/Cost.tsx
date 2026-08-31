@@ -12,6 +12,7 @@ import { costBasis, costBasisLong } from '@/components/CostBasis'
 import { RateLimitRow } from '@/components/PlanLimits'
 import { PremiumBanner } from '@/components/PremiumBanner'
 import { Locked } from '@/components/Locked'
+import { SpendCap } from '@/components/SpendCap'
 import { UnpricedNote } from '@/components/Unpriced'
 import { WorkMix } from '@/components/WorkMix'
 
@@ -38,6 +39,10 @@ export function CostScreen() {
   // fault light for a cache that has never been used.
   const measured = !!s && s.turns > 0
   const days = groupDays(daily.data ?? [])
+  // Twice the median day, rounded — the same arithmetic as internal/cap's
+  // Suggest, because a suggestion that differs between the screen offering it
+  // and the daemon storing it is two different promises.
+  const capSuggestion = suggestCap(days.map((d) => d.cost))
   return (
     <div className="grid gap-3">
       <div className="flex items-center gap-1">
@@ -177,27 +182,12 @@ export function CostScreen() {
       {/* The cap sits beside the limits it complements: one is Anthropic's
         * ceiling, the other is yours. Showing it here, locked, is the whole
         * pitch — the panel is where it will be, with real figures behind it. */}
+      {/* The cap sits beside the limits it complements: one is Anthropic's
+        * ceiling, the other is yours. Locked, the panel is the pitch — it is
+        * where the feature will be, with real figures behind it. Unlocked,
+        * Locked renders its children live and this becomes the real control. */}
       <Locked feature="cap" title="Stop the day at a number you choose">
-        <Panel title="Daily spend cap">
-          <div className="grid gap-2 px-3 py-3 text-[13px]">
-            <div className="flex items-baseline justify-between">
-              <span className="text-fg-muted">Cap</span>
-              <span className="num text-fg">$150.00 / day</span>
-            </div>
-            {/* No live figure here. Today's cost is free and shown at the top
-              * of this very screen — putting it behind glass reads as taking
-              * something away, which is the one thing a preview of an unbuilt
-              * feature must never do. */}
-            <div className="flex items-baseline justify-between">
-              <span className="text-fg-muted">Checked</span>
-              <span className="text-fg">as each session spends</span>
-            </div>
-            <div className="flex items-baseline justify-between">
-              <span className="text-fg-muted">When it is reached</span>
-              <span className="text-fg">pause the sessions Caprock started</span>
-            </div>
-          </div>
-        </Panel>
+        <SpendCap suggestion={capSuggestion} />
       </Locked>
 
       {s && (
@@ -263,4 +253,26 @@ function rangeDays(range: Range, fromMs?: number): number {
       if (!fromMs) return 30
       return Math.max(1, Math.ceil((Date.now() - fromMs) / 86_400_000))
   }
+}
+
+/**
+ * A daily cap worth offering: twice the median day, rounded to something a
+ * person would type.
+ *
+ * The median rather than the mean, because one runaway day would drag an
+ * average up and produce a ceiling that never fires — which is precisely the
+ * day the feature exists for. Twice it, because a cap set *at* the median fires
+ * half the time by definition, and a cap that interrupts ordinary work is one
+ * people switch off within a week.
+ *
+ * Mirrors Suggest in internal/cap. Both round the same way: $147.83 as a
+ * proposed ceiling reads as a computation rather than a decision.
+ */
+function suggestCap(costs: number[]): number {
+  const days = costs.filter((c) => c > 0).sort((a, b) => a - b)
+  if (days.length < 3) return 0 // too little history to claim a typical day
+  const median = days[Math.floor(days.length / 2)]!
+  const v = median * 2
+  const step = v < 10 ? 1 : v < 100 ? 5 : 10
+  return Math.round(v / step) * step
 }
