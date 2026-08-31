@@ -3,9 +3,13 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Health } from '@/lib/api'
 
-export function Panel({ title, center, right, children, className = '' }: { title?: ReactNode; center?: ReactNode; right?: ReactNode; children: ReactNode; className?: string }) {
+export function Panel({ title, center, right, children, className = '', onMouseEnter, onMouseLeave }: { title?: ReactNode; center?: ReactNode; right?: ReactNode; children: ReactNode; className?: string; onMouseEnter?: () => void; onMouseLeave?: () => void }) {
   return (
-    <section className={`border border-border bg-panel rounded-[var(--radius-panel)] shadow-[var(--shadow-panel)] min-w-0 ${className}`}>
+    <section
+      className={`border border-border bg-panel rounded-[var(--radius-panel)] shadow-[var(--shadow-panel)] min-w-0 ${className}`}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+    >
       {(title || center || right) && (
         // The header sits on panel-2 so chrome reads as a recess rather than
         // as body text with a rule under it.

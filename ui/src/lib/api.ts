@@ -92,7 +92,7 @@ export interface SessionDetail extends SessionSummary {
 }
 
 export interface FileDiff { path: string; status: string; additions: number; deletions: number; patch?: string; binary?: boolean }
-export interface DiffResult { root: string; branch: string; files: FileDiff[]; stat: string }
+export interface DiffResult { root: string; branch: string; files: FileDiff[]; stat: string; base?: string; base_branch?: string }
 
 export interface ModelShare { model: string; tokens: number; cost_usd: number; turns: number }
 

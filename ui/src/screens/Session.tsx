@@ -283,8 +283,19 @@ function DiffTab({ id, lastEventAt }: { id: string; lastEventAt: number }) {
   }
   const d: DiffResult | undefined = diff.data
   if (!d) return <div className="text-fg-muted px-1">loading…</div>
+  // The base is named because the same file count means different things
+  // against a branch than against HEAD: on a branch whose work is committed,
+  // "vs HEAD" is zero files while the branch changed twenty.
   return (
-    <Panel title={`Working tree · ${d.branch || 'detached'}`} right={<span className="num">{d.files.length} files</span>}>
+    <Panel
+      title={`Working tree · ${d.branch || 'detached'}`}
+      right={
+        <span className="flex items-center gap-2">
+          {d.base && <span className="text-[11px] text-fg-faint">{d.base}</span>}
+          <span className="num">{d.files.length} files</span>
+        </span>
+      }
+    >
       {d.files.length === 0 && <Empty title="Clean working tree" />}
       <ul>
         {d.files.map((f) => (
@@ -295,7 +306,7 @@ function DiffTab({ id, lastEventAt }: { id: string; lastEventAt: number }) {
               <span className="ml-auto num text-[11px] shrink-0"><span className="text-ok">+{f.additions}</span> <span className="text-danger">−{f.deletions}</span></span>
             </button>
             {open === f.path && f.patch && <Patch patch={f.patch} />}
-            {open === f.path && !f.patch && <div className="px-3 pb-2 text-[11px] text-fg-faint">{f.binary ? 'binary file' : f.status === 'untracked' ? 'untracked — no diff against HEAD' : 'no patch'}</div>}
+            {open === f.path && !f.patch && <div className="px-3 pb-2 text-[11px] text-fg-faint">{f.binary ? 'binary file' : 'no patch'}</div>}
           </li>
         ))}
       </ul>

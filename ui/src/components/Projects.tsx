@@ -213,7 +213,21 @@ export function ProjectsPanel({ sessions, agent }: { sessions: SessionSummary[];
     () => (agent === 'all' ? everything : everything.filter((p) => !p.agent || p.agent === agent)),
     [everything, agent],
   )
-  const shown = expanded ? all : all.slice(0, 6)
+  // Rows are ranked by spend, and spend changes while you read — so a row
+  // could swap places under the pointer between the moment you aimed and the
+  // moment you clicked, and you opened a different project than the one you
+  // meant. The order is therefore frozen while the pointer is inside the
+  // panel: the *values* keep updating live, only the sequence holds still.
+  // Ranking that reorders under a cursor is a ranking you cannot click.
+  const [frozen, setFrozen] = useState<string[] | null>(null)
+  const ordered = useMemo(() => {
+    if (!frozen) return all
+    const rank = new Map(frozen.map((k, i) => [k, i]))
+    // A project that appeared after the freeze has no frozen rank; it sorts
+    // to the end rather than being hidden, so new work still shows up.
+    return [...all].sort((a, b) => (rank.get(a.project) ?? Infinity) - (rank.get(b.project) ?? Infinity))
+  }, [all, frozen])
+  const shown = expanded ? ordered : ordered.slice(0, 6)
   const totalCost = all.reduce((sum, p) => sum + p.cost_usd, 0)
   const totalTokens = all.reduce((sum, p) => sum + p.tokens, 0)
 
@@ -226,6 +240,8 @@ export function ProjectsPanel({ sessions, agent }: { sessions: SessionSummary[];
 
   return (
     <Panel
+      onMouseEnter={() => setFrozen(all.map((p) => p.project))}
+      onMouseLeave={() => setFrozen(null)}
       title="Projects"
       right={
         <span className="flex items-center gap-2">
