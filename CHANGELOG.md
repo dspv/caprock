@@ -9,6 +9,43 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.40.0] - 2026-08-31
+
+### Fixed
+
+- **A session now ends when it ends, instead of half a day later.** The Now
+  screen counted a whole day's finished sessions as live — "14 sessions, 0
+  active" — and the live pulse drew a row per known session, so a day in one
+  repository became six identical `caprock` rows over six flat hairlines.
+
+  Nothing consumed `SessionEnd`. The shim never registered it, so the only
+  path to `ended` was the 12-hour staleness sweep. Caprock now registers the
+  hook and ends the session on it, and the sweep drops to **an hour** as the
+  backstop it should always have been: the case where the hook never fired —
+  `kill -9`, a closed terminal, a dead host. Ending early is cheap, because
+  it is not a tombstone — a later event on the same session revives it.
+
+  Upgrading registers the new hook on the next `caprock up`; nothing to do by
+  hand.
+
+### Changed
+
+- **The live pulse shows only tracks that ran.** Ended sessions are dropped,
+  and so is any track with no events in the window — an hour of flat hairline
+  says only that a session exists, and several of them read as a broken chart
+  rather than as silence. When nothing ran in the last hour, the panel says
+  that in one line.
+
+- **A pulse row shows what its hour cost, not the session's lifetime.** A
+  long-running session printed `$4,053.39` beside an hour of bars and a
+  `$101.85` day: two true numbers answering different questions, side by side.
+  The row now sums the window the bars cover, with the lifetime on hover.
+
+- **Pulse rows are told apart by branch and session id.** Working all day in
+  one repository drew rows labelled `caprock`, `caprock`, `caprock`, most of
+  them subtitled `was responding`. The branch and a short id are what actually
+  differ, so they are what the row leads with.
+
 ## [0.39.2] - 2026-08-31
 
 ### Fixed
