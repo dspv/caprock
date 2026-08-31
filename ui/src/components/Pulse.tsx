@@ -195,11 +195,22 @@ function Track({
         * "caprock", told apart only by a phrase like "was responding" that
         * three of them shared. The branch and the session id are what actually
         * differ, so they go where the eye already is. Only when there is more
-        * than one track: a lone row needs no disambiguation. */}
+        * than one track: a lone row needs no disambiguation.
+        *
+        * The project never shrinks and the branch is what gives way, because
+        * the first attempt had it backwards: `shrink-0` on the branch let a
+        * long one (`fix/session-end-and-pulse-tracks`) squeeze the project to
+        * nothing, so the row lost the name it is actually about and read as a
+        * branch floating with no repository. A label that can erase the
+        * primary identity is worse than no label. */}
       <div className="min-w-0">
-        <div className="text-[13px] font-medium truncate flex items-center gap-1.5">
-          <span className="truncate">{s.project || 'unknown project'}</span>
-          {s.git_branch && <span className="shrink-0 text-[10px] text-fg-faint mono">{s.git_branch}</span>}
+        <div className="text-[13px] font-medium flex items-baseline gap-1.5 min-w-0">
+          <span className="shrink-0">{s.project || 'unknown project'}</span>
+          {s.git_branch && (
+            <span className="min-w-0 truncate text-[10px] text-fg-faint mono" title={s.git_branch}>
+              {s.git_branch}
+            </span>
+          )}
           {s.agent === 'opencode' && (
             <span className="shrink-0 text-[9px] uppercase tracking-[0.08em] text-fg-faint border border-border px-1 rounded-sm">
               oc

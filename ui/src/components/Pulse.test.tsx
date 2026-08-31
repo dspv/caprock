@@ -229,6 +229,23 @@ describe('pulse track selection', () => {
     await waitFor(() => expect(screen.getByText('master')).toBeInTheDocument())
     expect(screen.getByText('fix/pulse')).toBeInTheDocument()
   })
+
+  // The first version of the label above had `shrink-0` on the branch, so a
+  // long branch squeezed the project name to nothing and the row read as a
+  // branch with no repository — the label erased the identity it was added to
+  // clarify. The project is what must survive.
+  it('keeps the project name when the branch is long', async () => {
+    seeded.value = { s: [turn('s', NOW - 60_000)] }
+    render(
+      <PulsePanel
+        sessions={[session({ session_id: 's', project: 'caprock', git_branch: 'fix/session-end-and-pulse-tracks' })]}
+        now={NOW}
+      />,
+    )
+    const name = await waitFor(() => screen.getByText('caprock'))
+    expect(name.className).not.toMatch(/\btruncate\b/)
+    expect(screen.getByText('fix/session-end-and-pulse-tracks').className).toMatch(/\btruncate\b/)
+  })
 })
 
 /** One assistant turn, which is what buildPulse counts as a minute of work. */
