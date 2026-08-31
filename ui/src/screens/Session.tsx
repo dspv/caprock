@@ -11,11 +11,19 @@ import { TerminalView } from '@/components/Terminal'
 import { costBasisLong } from '@/components/CostBasis'
 import { usePlan } from '@/components/PlanPicker'
 
-type Tab = 'timeline' | 'notes' | 'diff' | 'files' | 'terminal'
+type Tab = 'timeline' | 'notes' | 'changes' | 'terminal'
 
 export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: number }) {
   const detail = useApi(() => api.session(id), [id], { intervalMs: 5000 })
-  const active: Tab = tab === 'diff' || tab === 'files' || tab === 'terminal' || tab === 'notes' ? tab : 'timeline'
+  // 'diff' and 'files' were separate tabs answering one question between them
+  // — what did this session change — so a reader had to visit both and hold
+  // the two lists in their head. Old links keep working.
+  const active: Tab =
+    tab === 'changes' || tab === 'diff' || tab === 'files'
+      ? 'changes'
+      : tab === 'terminal' || tab === 'notes'
+        ? tab
+        : 'timeline'
   const now = useNow(1000)
   const [plan] = usePlan()
   const s = detail.data
@@ -58,17 +66,16 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         </div>
       </Panel>
       <div className="flex items-center gap-1 border-b border-border">
-        {(['timeline', 'notes', 'diff', 'files', 'terminal'] as Tab[]).map((t) => (
+        {(['timeline', 'notes', 'changes', 'terminal'] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`px-3 py-1.5 text-[12px] border-b-2 -mb-px ${active === t ? 'border-accent text-fg' : 'border-transparent text-fg-muted hover:text-fg'}`}>
-            {t === 'timeline' ? 'Timeline' : t === 'notes' ? 'Answers' : t === 'diff' ? 'Live diff' : t === 'files' ? `Files (${s.files.length})` : 'Terminal'}
+            {t === 'timeline' ? 'Timeline' : t === 'notes' ? 'Answers' : t === 'changes' ? 'Changes' : 'Terminal'}
           </button>
         ))}
         {!s.owned && <span className="ml-auto text-[11px] text-fg-faint pr-1">observe-only — terminal is read/write for spawned sessions only</span>}
       </div>
       {active === 'timeline' && <Timeline id={id} initial={s.events} now={now} at={at} />}
       {active === 'notes' && <SessionNotes id={id} now={now} />}
-      {active === 'diff' && <DiffTab id={id} lastEventAt={s.last_event_at} />}
-      {active === 'files' && <FilesTab s={s} />}
+      {active === 'changes' && <ChangesTab id={id} s={s} />}
       {active === 'terminal' && <Panel className="overflow-hidden"><TerminalView sessionId={id} owned={s.owned && s.status !== 'ended'} cwd={s.cwd} /></Panel>}
     </div>
   )
@@ -270,47 +277,93 @@ export function describe(e: Event, p: Record<string, unknown>): string {
   }
 }
 
-function DiffTab({ id, lastEventAt }: { id: string; lastEventAt: number }) {
-  const diff = useApi(() => api.diff(id), [id, lastEventAt], { live: false, intervalMs: 8000 })
-  const [open, setOpen] = useState<string | null>(null)
+function ChangesTab({ id, s }: { id: string; s: SessionDetail }) {
+  const diff = useApi(() => api.diff(id), [id, s.last_event_at], { live: false, intervalMs: 8000 })
+  // Which files are expanded. A set rather than a single path: comparing two
+  // changes means seeing both at once, and the old one-at-a-time accordion
+  // made that impossible — opening the second closed the first.
+  const [open, setOpen] = useState<Set<string>>(new Set())
+  const toggle = (p: string) =>
+    setOpen((cur) => {
+      const next = new Set(cur)
+      if (!next.delete(p)) next.add(p)
+      return next
+    })
+
   if (diff.error && !diff.data) {
     const e = diff.error
     if (e instanceof ApiError && e.status === 409) {
       const body = e.body as { error?: string; cwd?: string } | undefined
-      return <Empty title="No git repository">{body?.cwd ? <span className="mono">{body.cwd}</span> : null} {body?.error}</Empty>
+      return (
+        <div className="grid gap-3">
+          <Empty title="No git repository">{body?.cwd ? <span className="mono">{body.cwd}</span> : null} {body?.error}</Empty>
+          <TouchedPanel s={s} />
+        </div>
+      )
     }
     return <Empty title="Cannot load diff">{e.message}</Empty>
   }
   const d: DiffResult | undefined = diff.data
   if (!d) return <div className="text-fg-muted px-1">loading…</div>
-  // The base is named because the same file count means different things
-  // against a branch than against HEAD: on a branch whose work is committed,
-  // "vs HEAD" is zero files while the branch changed twenty.
+
+  // Files the session touched that carry no change: already committed, or
+  // reverted, or only read-modified-back. They belong on the same screen —
+  // "what did this session touch" and "what changed" are two halves of one
+  // question — but not mixed into the diff list, where a row with no patch
+  // reads as a rendering fault.
+  const changed = new Set(d.files.map((f) => f.path))
+  const alsoTouched = s.files.filter((f) => !changed.has(f) && !changed.has(f.replace(/^.*?\//, '')))
+  const allOpen = d.files.length > 0 && d.files.every((f) => open.has(f.path))
+
   return (
-    <Panel
-      title={`Working tree · ${d.branch || 'detached'}`}
-      right={
-        <span className="flex items-center gap-2">
-          {d.base && <span className="text-[11px] text-fg-faint">{d.base}</span>}
-          <span className="num">{d.files.length} files</span>
-        </span>
-      }
-    >
-      {d.files.length === 0 && <Empty title="Clean working tree" />}
-      <ul>
-        {d.files.map((f) => (
-          <li key={f.path} className="border-b border-border/60 last:border-0">
-            <button className="w-full text-left px-3 py-1.5 flex items-center gap-3 hover:bg-panel-2" onClick={() => setOpen(open === f.path ? null : f.path)}>
-              <span className={`mono text-[10px] w-16 shrink-0 ${f.status === 'added' || f.status === 'untracked' ? 'text-ok' : f.status === 'deleted' ? 'text-danger' : 'text-fg-muted'}`}>{f.status}</span>
-              <span className="mono text-[12px] truncate">{f.path}</span>
-              <span className="ml-auto num text-[11px] shrink-0"><span className="text-ok">+{f.additions}</span> <span className="text-danger">−{f.deletions}</span></span>
-            </button>
-            {open === f.path && f.patch && <Patch patch={f.patch} />}
-            {open === f.path && !f.patch && <div className="px-3 pb-2 text-[11px] text-fg-faint">{f.binary ? 'binary file' : 'no patch'}</div>}
-          </li>
-        ))}
-      </ul>
-    </Panel>
+    <div className="grid gap-3">
+      {/* The base is named because the same file count means different things
+        * against a branch than against HEAD: on a branch whose work is
+        * committed, "vs HEAD" is zero files while the branch changed twenty. */}
+      <Panel
+        title={`Changes · ${d.branch || 'detached'}`}
+        right={
+          <span className="flex items-center gap-2">
+            {d.base && <span className="text-[11px] text-fg-faint">{d.base}</span>}
+            {d.files.length > 0 && (
+              <button
+                className="text-[11px] text-fg-muted hover:text-fg border border-border px-1.5 py-0.5 rounded-sm"
+                onClick={() => setOpen(allOpen ? new Set() : new Set(d.files.map((f) => f.path)))}
+              >
+                {allOpen ? 'collapse all' : 'expand all'}
+              </button>
+            )}
+            <span className="num">{d.files.length} files</span>
+          </span>
+        }
+      >
+        {d.files.length === 0 && <Empty title="Clean working tree" />}
+        <ul>
+          {d.files.map((f) => {
+            const isOpen = open.has(f.path)
+            return (
+              <li key={f.path} className="border-b border-border/60 last:border-0">
+                <button
+                  className="w-full text-left px-3 py-1.5 flex items-center gap-3 hover:bg-panel-2"
+                  onClick={() => toggle(f.path)}
+                  aria-expanded={isOpen}
+                >
+                  {/* A disclosure caret, because a row that expands should look
+                    * like one before it is clicked. */}
+                  <span className={`text-fg-faint text-[10px] shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`}>▶</span>
+                  <span className={`mono text-[10px] w-16 shrink-0 ${f.status === 'added' || f.status === 'untracked' ? 'text-ok' : f.status === 'deleted' ? 'text-danger' : 'text-fg-muted'}`}>{f.status}</span>
+                  <span className="mono text-[12px] truncate">{f.path}</span>
+                  <span className="ml-auto num text-[11px] shrink-0"><span className="text-ok">+{f.additions}</span> <span className="text-danger">−{f.deletions}</span></span>
+                </button>
+                {isOpen && f.patch && <Patch patch={f.patch} />}
+                {isOpen && !f.patch && <div className="px-3 pb-2 text-[11px] text-fg-faint">{f.binary ? 'binary file' : 'no patch'}</div>}
+              </li>
+            )
+          })}
+        </ul>
+      </Panel>
+      {alsoTouched.length > 0 && <TouchedPanel s={s} only={alsoTouched} />}
+    </div>
   )
 }
 
@@ -325,23 +378,24 @@ function Patch({ patch }: { patch: string }) {
   )
 }
 
-function FilesTab({ s }: { s: SessionDetail }) {
+function TouchedPanel({ s, only }: { s: SessionDetail; only?: string[] }) {
+  const list = only ?? s.files
   // The endpoint caps this list, so a busy session shows 100 while the stat
   // tile above says 132. Presenting a truncated list as the complete answer is
   // worst exactly here, where someone is auditing what an agent changed.
   const capped = s.files.length < s.stats.files_touched
   return (
     <Panel
-      title="Files touched"
+      title={only ? 'Also touched, unchanged' : 'Files touched'}
       right={
         <span className="num">
-          {capped ? `${s.files.length} of ${s.stats.files_touched} · most recent` : s.files.length}
+          {capped ? `${list.length} of ${s.stats.files_touched} · most recent` : list.length}
         </span>
       }
     >
-      {s.files.length === 0 && <Empty title="No Edit/Write calls yet" />}
+      {list.length === 0 && <Empty title="No Edit/Write calls yet" />}
       <ul>
-        {s.files.map((f) => (
+        {list.map((f) => (
           <li key={f} className="px-3 py-1 border-b border-border/60 last:border-0 flex gap-2 items-baseline">
             <span className="mono text-[12px]">{basename(f)}</span>
             <span className="mono text-[10px] text-fg-faint truncate">{f}</span>
