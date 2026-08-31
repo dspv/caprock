@@ -44,9 +44,22 @@ Percentages are deliberately coarse — they answer "is this track started, half
   screen carries an `all / claude / opencode` switch that applies to the whole
   screen. Observation only: it cannot start, steer or stop an OpenCode session,
   and the task runner does not work with it. See [16-opencode.md](16-opencode.md).
+- **The paid tier has a feature.** The daily spend cap (`internal/cap`) pauses the sessions Caprock started when the day crosses a limit, and the premium dialog no longer sells anything unbuilt. Payment is a licence key checked locally ([ADR-022](08-decisions.md)); one repository, one binary, everything Apache-2.0.
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
 ## Log
+
+### 2026-08-31 — The first paid feature, a folder picker, and Shift+Enter fixed on the fourth attempt
+
+**The daily spend cap is built** (`internal/cap`) — the first thing Caprock does rather than shows. A limit for the day; when the day crosses it, the sessions Caprock started are paused. Four rules, each with a test verified by breaking it: only owned sessions (`agents.PauseOwned` refuses any id the manager did not spawn, so [rule 7](../CLAUDE.md) lives in the thing holding the process handles); paused rather than killed, so a resume keeps the conversation; once a day, with the day claimed under a mutex before any signal; and fails open, because a missed pause costs money while a spurious one stops work that was fine. The suggested limit is twice the reader's median day — the median rather than the mean, since one runaway day would drag an average up and produce a ceiling that never fires, which is exactly the day the feature exists for.
+
+**Four defects in that feature were found by opening it in a browser, not by the tests.** `cap_usd_per_day` was missing from the settings PUT decoder, so the panel said "saved" and stored nothing; `omitempty` dropped a zero from the response, so the cap could be switched on but never off; the field seeded from a render where the response was still undefined, leaving an empty box beside "on $280"; and the input stripped the minus sign before validating, so `-5` saved as `5`. All four would have shipped on a green suite.
+
+**A folder picker replaced typing an absolute path** (`/v1/browse`, `/v1/recent-dirs`). Recent directories come from the sessions table; browsing walks from a configurable root. This is the one endpoint that reads the filesystem for a web page, so the boundary is the feature: directories and names only, symlinks resolved *before* the containment check, dotfiles never listed, and an identical 404 for "outside the root" and "does not exist" so it cannot be used as an existence oracle. The Windows CI job added earlier this week caught a real hole on its first run against it — `\Windows\System32` has no volume, so `filepath.IsAbs` is false and the path was being joined onto the root instead of refused.
+
+**Shift+Enter took four attempts, and the fourth was a different bug from the first three.** CSI u needs the kitty protocol negotiated. `5c 6e` misread the iTerm2 binding, whose Send Text *interprets* the escape rather than sending both characters — so a message arrived as `first line\n`. A bare line feed looked right against an **empty** prompt and submits the moment anything is typed, which was the original symptom. The real answer is `ESC CR`, **and that was still not enough**: returning `false` from the key handler stops xterm interpreting the key, but the browser kept delivering it to xterm's hidden textarea, which emitted its own carriage return — the socket carried `[27,13]` and then `[13]`, and Claude Code submitted on the second. `preventDefault` was the missing half.
+
+**Two lessons worth keeping.** Testing a newline key against an empty prompt makes wrong answers look right, because there is nothing to submit. And three fixes in a row argued about *which bytes to send* while nothing watched what else went down the wire afterwards — the bug was found by logging every frame the socket sent during one real key press. The user's observation that Ctrl+Enter worked while Shift+Enter did not is what ruled out the bytes entirely.
 
 ### 2026-08-28 — A terminal you can live in, and two tests that proved nothing
 
