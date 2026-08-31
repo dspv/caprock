@@ -167,6 +167,23 @@ export function TerminalView({
     // it emitting the plain carriage return it otherwise would, which Claude
     // Code reads as submit.
     const NEWLINE = '\x1b\r'
+    // Returning false from the handler is not enough.
+    //
+    // It stops xterm *interpreting* the key, but the browser still delivers it
+    // to xterm's hidden textarea, which emits a carriage return through
+    // onData — so the socket carried our sequence and then a bare `0d`, and
+    // Claude Code submitted on the second one. On the wire it read as
+    // `[27,13]` immediately followed by `[13]`, which is exactly what a user
+    // sees as "it always sends".
+    //
+    // preventDefault stops the textarea ever seeing the key. This is the
+    // fourth attempt at Shift+Enter and the first three were all about which
+    // bytes to send; the bytes were only ever half of it.
+    const newline = (e: KeyboardEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      send(NEWLINE)
+    }
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown') return true
 
@@ -196,7 +213,7 @@ export function TerminalView({
       // Ctrl+J is not an Enter key at all, and is the combination Claude
       // Code's documentation names as working in every terminal.
       if (e.ctrlKey && !e.altKey && !e.metaKey && (e.key === 'j' || e.key === 'J')) {
-        send(NEWLINE)
+        newline(e)
         return false
       }
       if (e.key !== 'Enter') return true
@@ -206,7 +223,7 @@ export function TerminalView({
       if (mods !== 1) return true
       // Cmd is the browser's and the OS's, never ours.
       if (e.metaKey) return true
-      send(NEWLINE)
+      newline(e)
       return false
     })
     // Copy and paste, and who owns Ctrl+C.

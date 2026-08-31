@@ -203,7 +203,20 @@ describe('Shift+Enter', () => {
   }
 
   const key = (over: Partial<KeyboardEvent>) =>
-    ({ type: 'keydown', key: 'Enter', shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, ...over }) as KeyboardEvent
+    ({
+      type: 'keydown',
+      key: 'Enter',
+      shiftKey: false,
+      ctrlKey: false,
+      altKey: false,
+      metaKey: false,
+      // The handler calls both on the newline keys: returning false is not
+      // enough to stop xterm's hidden textarea emitting its own carriage
+      // return. A fixture without them throws rather than failing usefully.
+      preventDefault() {},
+      stopPropagation() {},
+      ...over,
+    }) as unknown as KeyboardEvent
 
   // Claude Code accepts four ways of asking for a newline and a person reaches
   // for whichever one they learned elsewhere. This shipped supporting only
@@ -226,9 +239,22 @@ describe('Shift+Enter', () => {
     // right on an *empty* prompt and submits once anything is typed — the
     // exact symptom reported. Only ESC CR keeps the prompt and adds a line.
     const h = mount()
-    expect(h(key(mods))).toBe(false)  // xterm must not also send \r
+    const ev = key(mods)
+    const prevented: string[] = []
+    ;(ev as { preventDefault?: () => void }).preventDefault = () => prevented.push('default')
+    ;(ev as { stopPropagation?: () => void }).stopPropagation = () => prevented.push('propagation')
+
+    expect(h(ev)).toBe(false)
     expect(sent).toEqual(['\x1b\r'])
     expect([...(sent[0] ?? '')].map((c) => c.charCodeAt(0))).toEqual([0x1b, 0x0d])
+
+    // The half that took four attempts to find. Returning false stops xterm
+    // *interpreting* the key, but the browser still delivers it to xterm's
+    // hidden textarea, which emits a carriage return through onData — so the
+    // socket carried our sequence and then a bare 0d, and Claude Code
+    // submitted on the second one. On the wire: [27,13] immediately followed
+    // by [13], which is exactly what "it always sends" looks like.
+    expect(prevented).toContain('default')
   })
 
   it('sends the same sequence for Ctrl+J', () => {

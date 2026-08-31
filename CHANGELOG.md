@@ -9,6 +9,23 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.39.2] - 2026-08-31
+
+### Fixed
+
+- **Shift+Enter really does insert a newline now.** 0.39.1 sent the right
+  bytes and still submitted, because the bytes were only half of it: returning
+  `false` from the key handler stops xterm *interpreting* the key, but the
+  browser still delivers it to xterm's hidden textarea, which emits its own
+  carriage return. The socket carried `ESC CR` and then a bare `CR`
+  immediately after — `[27,13]` followed by `[13]` — and Claude Code submitted
+  on the second one.
+
+  The keys now call `preventDefault`, so the textarea never sees them. Four
+  attempts at this bug and the first three were all arguments about which
+  sequence to send; nothing was watching what else went down the wire
+  afterwards.
+
 ## [0.39.1] - 2026-08-31
 
 ### Fixed
