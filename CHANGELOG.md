@@ -50,6 +50,16 @@ Phase 3 (Delight) has no plan by design.
   `$101.85` day: two true numbers answering different questions, side by side.
   The row now sums the window the bars cover, with the lifetime on hover.
 
+- **The new-session dialog answers its own questions.** Model and permission
+  mode both opened on an empty "default" that said nothing about what was
+  about to run — and "default" is not a permission mode Claude Code accepts
+  at all, so the dialog could send the binary a value it rejects. They now
+  start on Opus 5 and "accept edits, asks before commands", with each option
+  labelled by what it does rather than by its flag name. The worktree field
+  and "create the directory" moved under Advanced, and the paragraph
+  advertising OpenCode support left the dialog: every field on screen is a
+  decision asked of someone who wanted to press one button.
+
 - **The session timeline reads newest-first.** It was the only list in Caprock
   ordered the other way, so the same glance meant two different things on two
   screens — you arrive at a timeline wanting the last thing that happened, not
