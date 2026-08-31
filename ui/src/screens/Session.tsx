@@ -83,12 +83,14 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
 
 type Filter = 'all' | 'tools' | 'turns'
 
+/** How much history one "load earlier" click brings back. Big enough to be
+ *  worth the round trip, small enough that the page stays responsive. */
+const EARLIER_PAGE = 200
+
 function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now: number; at?: number }) {
   const [events, setEvents] = useState<Event[]>(initial)
   const [filter, setFilter] = useState<Filter>('all')
-  const [follow, setFollow] = useState(true)
   const lastId = useRef(initial.length ? initial[initial.length - 1]!.id : 0)
-  const bottom = useRef<HTMLDivElement>(null)
   const list = useRef<HTMLOListElement>(null)
   // The session detail ships only the newest events, so a long session opened
   // to its timeline showed a peephole of its final seconds with no way back.
@@ -99,10 +101,11 @@ function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now:
     if (oldest === undefined || loadingEarlier) return
     setLoadingEarlier(true)
     try {
-      // Ask from the start and keep what precedes what we already have; the
-      // endpoint pages forward from `after`, so this walks backwards in blocks.
-      const earlier = await api.events(id, 0, 1000)
-      const before = earlier.filter((e) => e.id < oldest)
+      // One page back from the oldest row held. This used to ask for the first
+      // thousand events of the *session* and discard everything already shown,
+      // which on a sixteen-thousand-event session fetched the wrong end of the
+      // history and threw nearly all of it away.
+      const before = await api.eventsBefore(id, oldest, EARLIER_PAGE)
       if (before.length === 0) setExhausted(true)
       else setEvents((cur) => [...before, ...cur])
     } catch {
@@ -118,7 +121,6 @@ function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now:
     lastId.current = f.data.id
     setEvents((evs) => [...evs, f.data].slice(-5000))
   }), [id])
-  useEffect(() => { if (follow) bottom.current?.scrollIntoView({ block: 'end' }) }, [events, follow])
   const cost = useMemo(() => {
     let acc = 0
     return events.filter((e) => e.kind === 'turn.assistant').map((e) => (acc += e.cost_usd ?? 0))
@@ -129,7 +131,15 @@ function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now:
     for (const e of events) if (e.kind === 'tool.pre' && e.tool) { const p = e.payload as { tool_use_id?: string }; if (p?.tool_use_id) m.set(p.tool_use_id, e.tool) }
     return m
   }, [events])
-  const visible = events.filter((e) => filter === 'all' || (filter === 'tools' ? e.kind.startsWith('tool.') : e.kind.startsWith('turn.') || e.kind === 'agent.stop'))
+  // Newest first. The list is read the way a feed is — you arrive wanting the
+  // last thing that happened, not the first — and it used to be the only place
+  // in Caprock ordered the other way, so the same glance meant two different
+  // things on two screens. Oldest-first suited the `follow` autoscroll that is
+  // now gone: with new rows arriving at the top there is nothing to chase.
+  const visible = events
+    .filter((e) => filter === 'all' || (filter === 'tools' ? e.kind.startsWith('tool.') : e.kind.startsWith('turn.') || e.kind === 'agent.stop'))
+    .slice()
+    .reverse()
   return (
     <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px]">
       <Panel title={`Events · ${events.length} shown`} className="min-w-0 overflow-hidden" right={
@@ -137,12 +147,19 @@ function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now:
           {(['all', 'tools', 'turns'] as Filter[]).map((f) => (
             <button key={f} onClick={() => setFilter(f)} className={`px-1.5 rounded-sm ${filter === f ? 'bg-panel-2 text-fg' : 'hover:text-fg'}`}>{f}</button>
           ))}
-          <label className="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} className="accent-[var(--color-accent)]" />follow</label>
         </span>
       }>
-        <ol ref={list} className="max-h-[70vh] overflow-auto" onScroll={() => { const el = list.current; if (el && follow && el.scrollTop + el.clientHeight < el.scrollHeight - 40) setFollow(false) }}>
+        <ol ref={list} className="max-h-[70vh] overflow-auto">
+          {visible.length === 0 && <Empty title="No events yet" />}
+          {visible.map((e) => (
+            <EventRow key={e.id} e={e} now={now} toolByUse={toolByUse} inMinute={at !== undefined && sameMinute(e.ts, at)} />
+          ))}
+          {/* History is behind a link rather than loaded up front: a long
+            * session has thousands of events and nobody wants them rendered to
+            * reach the one they came for. It sits at the bottom because that is
+            * where the oldest row now is. */}
           {!exhausted && events.length > 0 && (
-            <li className="px-3 py-1.5 border-b border-border/60">
+            <li className="px-3 py-1.5 border-t border-border/60">
               <button
                 className="text-[11px] text-fg-muted hover:text-fg border border-border px-2 py-0.5 rounded-sm"
                 onClick={() => void loadEarlier()}
@@ -153,11 +170,6 @@ function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now:
             </li>
           )}
           {exhausted && <li className="px-3 py-1 text-[11px] text-fg-faint">start of session</li>}
-          {visible.length === 0 && <Empty title="No events yet" />}
-          {visible.map((e) => (
-            <EventRow key={e.id} e={e} now={now} toolByUse={toolByUse} inMinute={at !== undefined && sameMinute(e.ts, at)} />
-          ))}
-          <div ref={bottom} />
         </ol>
       </Panel>
       <div className="grid gap-3 content-start">

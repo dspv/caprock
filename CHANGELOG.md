@@ -50,6 +50,16 @@ Phase 3 (Delight) has no plan by design.
   `$101.85` day: two true numbers answering different questions, side by side.
   The row now sums the window the bars cover, with the lifetime on hover.
 
+- **The session timeline reads newest-first.** It was the only list in Caprock
+  ordered the other way, so the same glance meant two different things on two
+  screens — you arrive at a timeline wanting the last thing that happened, not
+  the first. The `follow` checkbox and its autoscroll are gone with it: new
+  rows arrive at the top now, so there is nothing to chase. History stays
+  behind "load earlier events" rather than being rendered up front, and each
+  click now pages back from the oldest row on screen — it used to refetch the
+  first thousand events of the session and discard nearly all of them, which
+  on a sixteen-thousand-event session fetched the wrong end of the history.
+
 - **"Live diff" and "Files" are one Changes tab.** They answered one question
   between them — what did this session change — so reading it meant visiting
   both tabs and holding two lists in your head, and on most sessions

@@ -6,6 +6,8 @@ import type { DiffResult, Event, SessionDetail, SessionSummary } from '@/lib/api
 
 const detail = vi.hoisted(() => ({ value: {} as SessionDetail }))
 const diffResult = vi.hoisted(() => ({ value: {} as DiffResult }))
+const earlier = vi.hoisted(() => ({ value: [] as Event[] }))
+const earlierCalls = vi.hoisted(() => ({ value: [] as { before: number; limit: number }[] }))
 
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
@@ -16,6 +18,10 @@ vi.mock('@/lib/api', async (orig) => {
       session: async () => detail.value,
       diff: async () => diffResult.value,
       notes: async () => [],
+      eventsBefore: async (_id: string, before: number, limit: number) => {
+        earlierCalls.value.push({ before, limit })
+        return earlier.value
+      },
     },
   }
 })
@@ -118,5 +124,62 @@ d('Changes tab', () => {
     unmount()
     render(<SessionScreen id="s" tab="files" />)
     expect(await screen.findByText('a.ts')).toBeInTheDocument()
+  })
+})
+
+
+/**
+ * The timeline reads newest-first, like every other list in Caprock. It was
+ * the only screen ordered the other way, so the same glance meant two
+ * different things on two screens.
+ */
+d('Timeline order and history', () => {
+  const ev = (id: number, prompt: string): Event => ({
+    id, ts: new Date(1_800_000_000_000 + id * 1000).toISOString(),
+    session_id: 's', source: 'hook', kind: 'turn.user', payload: { prompt },
+  })
+
+  const setup = (events: Event[]) => {
+    earlierCalls.value = []
+    diffResult.value = { root: '/r', branch: 'b', stat: '', files: [] } as DiffResult
+    detail.value = {
+      session_id: 's', cwd: '/r', project: 'p', model: 'claude-opus-5', status: 'active',
+      started_at: 0, last_event_at: Date.now(), has_hooks: true, has_transcript: true, owned: false,
+      files: [], events,
+      stats: { session_id: 's', turns: 1, tool_calls: 0, files_touched: 0, cost_usd: 0, tokens_in: 0, tokens_out: 0, cache_read: 0, cache_write: 0 },
+      savings: { hit_rate: 0 },
+      activity: { health: 'working', phrase: 'working', at: Date.now() },
+    } as unknown as SessionDetail
+  }
+
+  it('puts the newest event at the top', async () => {
+    setup([ev(1, 'oldest'), ev(2, 'middle'), ev(3, 'newest')])
+    const { container } = render(<SessionScreen id="s" tab="timeline" />)
+    await screen.findByText(/newest/)
+    const text = container.textContent ?? ''
+    expect(text.indexOf('newest')).toBeLessThan(text.indexOf('oldest'))
+  })
+
+  // A long session has thousands of events; rendering them all to reach the
+  // one you came for is why this is a link and not a preloaded list.
+  it('pages back from the oldest row held, not from the start of the session', async () => {
+    setup([ev(500, 'held')])
+    render(<SessionScreen id="s" tab="timeline" />)
+    const link = await screen.findByText('load earlier events')
+    earlier.value = [ev(499, 'older')]
+    link.click()
+    await waitFor(() => expect(screen.getByText(/older/)).toBeInTheDocument())
+    // Asking from id 0 would refetch the wrong end of a long history and throw
+    // nearly all of it away, which is what this replaced.
+    expect(earlierCalls.value[0]?.before).toBe(500)
+  })
+
+  it('says when there is nothing older left', async () => {
+    setup([ev(1, 'only')])
+    render(<SessionScreen id="s" tab="timeline" />)
+    const link = await screen.findByText('load earlier events')
+    earlier.value = []
+    link.click()
+    await waitFor(() => expect(screen.getByText('start of session')).toBeInTheDocument())
   })
 })

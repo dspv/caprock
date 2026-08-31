@@ -387,6 +387,10 @@ export const api = {
   sessions: (activeOnly = false) => get<SessionSummary[]>(`/v1/sessions${activeOnly ? '?active=true' : ''}`),
   session: (id: string) => get<SessionDetail>(`/v1/sessions/${encodeURIComponent(id)}`),
   events: (id: string, after = 0, limit = 500) => get<Event[]>(`/v1/sessions/${encodeURIComponent(id)}/events?after=${after}&limit=${limit}`),
+  /** The events immediately preceding `before`, oldest-first — paging back
+   *  through a long session without refetching from its start. */
+  eventsBefore: (id: string, before: number, limit = 200) =>
+    get<Event[]>(`/v1/sessions/${encodeURIComponent(id)}/events?before=${before}&limit=${limit}`),
   /** The newest events for a session, for anything showing recent activity. */
   recentEvents: (id: string, limit = 2000) => get<Event[]>(`/v1/sessions/${encodeURIComponent(id)}/events?newest=1&limit=${limit}`),
   diff: (id: string) => get<DiffResult>(`/v1/sessions/${encodeURIComponent(id)}/diff`),
