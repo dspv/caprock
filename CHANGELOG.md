@@ -50,6 +50,30 @@ Phase 3 (Delight) has no plan by design.
   `$101.85` day: two true numbers answering different questions, side by side.
   The row now sums the window the bars cover, with the lifetime on hover.
 
+- **"Live diff" and "Files" are one Changes tab.** They answered one question
+  between them — what did this session change — so reading it meant visiting
+  both tabs and holding two lists in your head, and on most sessions
+  "Files (0)" was empty besides. Files now expand independently rather than
+  one at a time (the old accordion closed the first file when you opened the
+  second, so two changes could never be compared), with a caret per row and
+  expand/collapse all for reading a whole branch. Files touched but unchanged
+  keep their own panel underneath. Old `?tab=diff` and `?tab=files` links
+  still work.
+
+- **The live diff measures a branch from where it forked.** The base was
+  always HEAD, which answers "what have I not committed yet" — so a branch
+  whose work was committed showed *no changes at all* while the session had
+  rewritten dozens of files. It is now the merge base with master/main: the
+  branch's own commits plus whatever is uncommitted. The panel names its base
+  ("since master") beside the file count. Untracked files show their contents
+  as added lines instead of "no diff against HEAD".
+
+- **The Projects list holds its order while you point at it.** Rows are ranked
+  by spend and refresh every 30 seconds, so a row could swap places between
+  aiming and clicking and open a repository you never pointed at. The values
+  keep updating live; only the sequence holds still, and only while the
+  pointer is inside the panel.
+
 - **Pulse rows are told apart by branch and session id.** Working all day in
   one repository drew rows labelled `caprock`, `caprock`, `caprock`, most of
   them subtitled `was responding`. The branch and a short id are what actually
