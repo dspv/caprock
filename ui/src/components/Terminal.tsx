@@ -137,36 +137,36 @@ export function TerminalView({
     // supports multi-line prompts sends something else instead, and the
     // question is only which something.
     //
-    // **Read out of a terminal that works.** `/terminal-setup` writes a
-    // binding into iTerm2, and that binding is on disk and can simply be
-    // read. It is Send Text, and the text is two bytes: `5c 6e` — a backslash
-    // and the letter n. Not a line feed, not CSI u. Claude Code sees the
-    // backslash at the end of the line and turns the pair into a newline,
-    // which is the same `\` + Enter its documentation says works everywhere.
+    // **ESC then CR — Alt+Enter as a terminal actually encodes it.**
     //
-    // Two earlier guesses were wrong, and both failed in a way nobody could
-    // see from the code:
+    // Four attempts at this, and the only thing that settled it was sending
+    // candidate bytes to a running Claude Code with text already in the prompt
+    // and looking at what happened:
     //
-    //   CSI u (`ESC [ 13 ; 2 u`) is what a terminal sends *after* negotiating
-    //   the kitty keyboard protocol. We never negotiate, so it arrived as
-    //   nothing at all.
+    //   CSI u (`ESC [ 13 ; 2 u`) needs the kitty keyboard protocol negotiated.
+    //   We never negotiate, so it arrived as nothing at all.
     //
-    //   A bare line feed (`0x0A`) is what Ctrl+J sends, and the documentation
-    //   does say Ctrl+J works — but Claude Code reads a lone line feed as
-    //   *submit*. The user who reported it saw exactly that: on an empty
-    //   prompt it looked like a newline, because there was nothing to submit,
-    //   and the moment he typed anything the same key sent his message.
+    //   `5c 6e` — a backslash and the letter n — was read out of the iTerm2
+    //   binding `/terminal-setup` writes. That misread the file: Send Text
+    //   *interprets* the escape, so iTerm2 puts one byte on the wire, not two
+    //   printable characters. Sending the pair literally typed `\n` into the
+    //   prompt and submitted, so a message arrived as "first line\n".
     //
-    // So all of these send the backslash pair, which is what a terminal
-    // Claude Code itself configured sends.
+    //   A bare line feed (`0x0A`) looked right when written to an empty
+    //   prompt — two lines appeared. With text already typed it submits, which
+    //   is the exact symptom that was reported. **Testing on an empty prompt
+    //   is what made two of these look correct.**
     //
-    //   Shift+Enter · Option+Enter · Ctrl+Enter · Ctrl+J  →  \n (5c 6e)
+    //   `ESC CR` (`1b 0d`) keeps the prompt and adds a line, with text in it.
+    //   That is what a terminal sends for Alt+Enter, and it is what Claude
+    //   Code's own macOS instructions tell people to bind Option+Enter to.
+    //
+    //   Shift+Enter · Option+Enter · Ctrl+Enter · Ctrl+J  →  ESC CR (1b 0d)
     //
     // Intercepted before xterm turns the key into bytes: returning false stops
-    // it emitting the plain carriage return it otherwise would.
-    // Two printable characters, `5c 6e` — a backslash and the letter n.
-    // Read straight out of the iTerm2 binding `/terminal-setup` writes.
-    const NEWLINE = '\\n'
+    // it emitting the plain carriage return it otherwise would, which Claude
+    // Code reads as submit.
+    const NEWLINE = '\x1b\r'
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown') return true
 

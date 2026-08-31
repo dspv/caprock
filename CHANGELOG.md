@@ -9,6 +9,29 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.39.1] - 2026-08-31
+
+### Fixed
+
+- **Shift+Enter typed `\n` into the prompt and sent the message.** The newline
+  keys sent two printable characters — a backslash and the letter n — so a
+  message arrived as `first line\n` and the multi-line prompt was unusable.
+  They now send `ESC CR`, which is Alt+Enter as a terminal encodes it and what
+  Claude Code's own macOS instructions bind Option+Enter to.
+
+  **Three earlier answers were wrong, and two of them shipped.** CSI u needs
+  the kitty keyboard protocol negotiated, which we never do. `5c 6e` came from
+  reading the binding `/terminal-setup` writes into iTerm2 — but Send Text
+  *interprets* that escape, so iTerm2 puts one byte on the wire rather than
+  two characters. A bare line feed looked correct against an **empty** prompt
+  and submits the moment anything is typed, which is the symptom that was
+  reported in the first place.
+
+  Testing on an empty prompt is what made two wrong answers look right. The
+  sequence is now verified by sending candidate bytes to a running Claude Code
+  with text already typed, and the tests assert the bytes rather than the
+  reasoning.
+
 ## [0.39.0] - 2026-08-31
 
 ### Added

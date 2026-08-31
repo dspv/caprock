@@ -215,26 +215,29 @@ describe('Shift+Enter', () => {
     ['Shift+Enter', { shiftKey: true }],
     ['Option+Enter', { altKey: true }],
     ['Ctrl+Enter', { ctrlKey: true }],
-  ])('%s sends the backslash pair', (_name, mods) => {
-    // `5c 6e` — a backslash and the letter n, exactly what the binding
-    // `/terminal-setup` writes into iTerm2 sends. Read off disk rather than
-    // guessed, after two guesses that both failed invisibly: CSI u needs the
-    // kitty protocol negotiated, and a bare line feed is read as *submit* —
-    // which looked like a newline on an empty prompt and sent the message the
-    // moment there was one.
+  ])('%s sends ESC CR', (_name, mods) => {
+    // `1b 0d`, verified against a running Claude Code with text already in the
+    // prompt — which is the part three earlier answers got wrong.
+    //
+    // This test asserted two of those wrong answers in turn, which is how the
+    // bug reached users twice. CSI u needs the kitty protocol negotiated.
+    // `5c 6e` misread the iTerm2 binding, whose Send Text interprets the
+    // escape rather than sending both characters. A bare line feed looked
+    // right on an *empty* prompt and submits once anything is typed — the
+    // exact symptom reported. Only ESC CR keeps the prompt and adds a line.
     const h = mount()
     expect(h(key(mods))).toBe(false)  // xterm must not also send \r
-    expect(sent).toEqual(['\\n'])
-    expect([...(sent[0] ?? '')].map((c) => c.charCodeAt(0))).toEqual([0x5c, 0x6e])
+    expect(sent).toEqual(['\x1b\r'])
+    expect([...(sent[0] ?? '')].map((c) => c.charCodeAt(0))).toEqual([0x1b, 0x0d])
   })
 
-  it('sends the same pair for Ctrl+J', () => {
-    // Not an Enter key at all: Ctrl+J is line feed, and it is the combination
-    // that works in every terminal with no configuration whatsoever. If
-    // everything else here failed, this would still give someone a newline.
+  it('sends the same sequence for Ctrl+J', () => {
+    // Ctrl+J is not an Enter key at all, and people reach for it because it is
+    // the one Claude Code's documentation names. It gets the same treatment,
+    // so whichever key someone learned elsewhere produces a newline here.
     const h = mount()
     expect(h(key({ key: 'j', ctrlKey: true }))).toBe(false)
-    expect(sent).toEqual(['\\n'])
+    expect(sent).toEqual(['\x1b\r'])
   })
 
   it('leaves plain Enter alone', () => {
@@ -273,7 +276,7 @@ describe('Shift+Enter', () => {
     const h = mount()
     h(key({ shiftKey: true }))
     h(key({ shiftKey: true, type: 'keyup' }))
-    expect(sent).toEqual(['\\n'])
+    expect(sent).toEqual(['\x1b\r'])
   })
 
   /**
@@ -313,7 +316,7 @@ describe('Shift+Enter', () => {
     const h = mount()
     h(key({ shiftKey: true }))
     resizeHandler.fn?.({ cols: 100, rows: 30 })
-    expect(sent).toEqual(['\\n', '{"resize":{"cols":100,"rows":30}}'])
+    expect(sent).toEqual(['\x1b\r', '{"resize":{"cols":100,"rows":30}}'])
     // The frame type is the whole protocol: binary is what the user typed,
     // text is a message about the terminal. Swap them and the daemon writes
     // `{"resize":…}` into the session as keystrokes.
