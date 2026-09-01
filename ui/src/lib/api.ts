@@ -102,6 +102,19 @@ export interface GeminiStatus {
   /** The licence is active. Asking is refused by the server without it. */
   licensed: boolean
   model: string
+  /** The Gemini models in the pricing table, cheapest first, each with what a
+   *  short question costs at its rates. */
+  models?: GeminiModel[]
+}
+
+export interface GeminiModel {
+  id: string
+  display: string
+  input: number
+  output: number
+  /** Roughly 2k in and 500 out — an example of a dashboard question, not a
+   *  promise about the next one. */
+  typical_usd: number
 }
 
 export interface GeminiUsage {

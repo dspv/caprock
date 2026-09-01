@@ -27,8 +27,13 @@ const geminiSessionID = "caprock-gemini"
 // from the same table (ADR-023), because unlike OpenCode there is no vendor
 // figure to carry — Google reports per project, never per call.
 func (d *Daemon) askGemini(ctx context.Context, model, prompt string) (any, error) {
+	// The user's own figures ride along, so the answer is about their machine
+	// rather than about software in general. Costs the question a few hundred
+	// tokens and is the difference between a chat window and a feature.
+	system := geminiSystemPrompt + "\n\n" + d.geminiContext(ctx)
+
 	c := &gemini.Client{}
-	rep, err := c.Ask(ctx, model, geminiSystemPrompt, prompt)
+	rep, err := c.Ask(ctx, model, system, prompt)
 	if err != nil {
 		return nil, err
 	}
@@ -80,9 +85,12 @@ func (d *Daemon) askGemini(ctx context.Context, model, prompt string) (any, erro
 // geminiSystemPrompt keeps answers short. A dashboard panel is not a chat
 // window, and a model that writes five paragraphs into a box that fits three
 // lines has spent the user's money on scrolling.
-const geminiSystemPrompt = "You are answering inside a developer dashboard. " +
-	"Be brief and concrete: a few sentences, or a short list. " +
-	"No preamble, no restating the question."
+const geminiSystemPrompt = "You are answering inside Caprock, a dashboard that watches " +
+	"this developer's AI coding sessions. The facts below are their own data, already " +
+	"measured — use them, and say plainly when they do not answer the question rather " +
+	"than filling the gap with a guess. Costs are at API list prices, not their actual " +
+	"bill, so do not present a figure as what they were charged. " +
+	"Be brief and concrete: a few sentences, or a short list. No preamble."
 
 func mustJSON(v any) json.RawMessage {
 	b, err := json.Marshal(v)

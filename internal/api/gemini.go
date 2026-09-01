@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"sort"
+	"strings"
 
 	"github.com/dspv/caprock/internal/gemini"
 	"github.com/dspv/caprock/internal/license"
@@ -16,11 +18,40 @@ import (
 // instead of showing a dead button.
 func (s *Server) handleGeminiStatus(w http.ResponseWriter, r *http.Request) {
 	st := license.Parse(s.d.Settings.Get().LicenseKey, s.d.Now())
+
+	// The choosable models, priced. A twenty-five-fold spread separates the
+	// cheapest from the dearest, and it is the reader's money — so the price of
+	// a question is shown before it is spent, not after.
+	type modelOpt struct {
+		ID      string  `json:"id"`
+		Display string  `json:"display"`
+		Input   float64 `json:"input"`
+		Output  float64 `json:"output"`
+		// Typical is what a short question costs at this model's rates: roughly
+		// 2k in and 500 out, which is what a dashboard question looks like. It
+		// is an example, not a promise, and the UI labels it as one.
+		Typical float64 `json:"typical_usd"`
+	}
+	var models []modelOpt
+	if s.d.Table != nil {
+		for _, m := range s.d.Table.Models {
+			if !strings.HasPrefix(m.ID, "gemini-") {
+				continue
+			}
+			models = append(models, modelOpt{
+				ID: m.ID, Display: m.Display, Input: m.Input, Output: m.Output,
+				Typical: (2000/1e6)*m.Input + (500/1e6)*m.Output,
+			})
+		}
+		sort.Slice(models, func(a, b int) bool { return models[a].Typical < models[b].Typical })
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"available": gemini.Available(),
 		"env_var":   gemini.EnvKey,
 		"licensed":  st.Active,
 		"model":     gemini.DefaultModel,
+		"models":    models,
 	})
 }
 

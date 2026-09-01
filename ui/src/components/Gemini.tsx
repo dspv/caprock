@@ -27,9 +27,22 @@ import { useApi } from '@/lib/useApi'
 import { Panel } from '@/components/ui'
 import { fmtTokens } from '@/lib/format'
 
+/** Prices below a cent, which is most of them, without rounding them to
+ *  nothing: fmtUSD renders $0.002 as "$0.00", and a reader who believes a
+ *  question is free will believe it fifty times. */
+function fmtCents(usd: number): string {
+  if (usd >= 0.01) return `$${usd.toFixed(2)}`
+  return `${(usd * 100).toFixed(1)}\u00A2`
+}
+
 export function GeminiPanel() {
-  const status = useApi(() => api.gemini(), [], { live: false, intervalMs: 30000 })
+  // Fetched once, not polled: the key comes from the daemon's environment and
+  // cannot change while it runs, and the licence is already polled by the
+  // premium chip. A timer here bought nothing and outlived the test that
+  // mounted it, firing into a torn-down jsdom.
+  const status = useApi(() => api.gemini(), [], { live: false })
   const [prompt, setPrompt] = useState('')
+  const [model, setModel] = useState('')
   const [reply, setReply] = useState<GeminiReply | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -43,7 +56,7 @@ export function GeminiPanel() {
     setBusy(true)
     setError('')
     try {
-      setReply(await api.askGemini(q))
+      setReply(await api.askGemini(q, model || undefined))
       setPrompt('')
     } catch (e) {
       setError(errText(e))
@@ -89,7 +102,7 @@ export function GeminiPanel() {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void ask()
             }}
           />
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <button
               onClick={() => void ask()}
               disabled={busy || !prompt.trim()}
@@ -97,6 +110,23 @@ export function GeminiPanel() {
             >
               {busy ? 'asking…' : 'Ask'}
             </button>
+            {/* Priced, because the models differ by twenty-five times and it is
+              * the reader's money. The figure is what a short question costs at
+              * that model's rates — shown before spending rather than after. */}
+            {(st?.models?.length ?? 0) > 0 && (
+              <select
+                className="input w-auto text-[12px] py-1"
+                value={model || st?.model || ''}
+                onChange={(e) => setModel(e.target.value)}
+                aria-label="Model"
+              >
+                {st!.models!.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.display} · ~{fmtCents(m.typical_usd)} a question
+                  </option>
+                ))}
+              </select>
+            )}
             <span className="text-[11px] text-fg-faint">⌘↵ to send</span>
           </div>
 
