@@ -82,16 +82,50 @@ export function GeminiPanel() {
       {/* The setup case comes first because it is the one a reader can act on
         * without paying anything. */}
       {needsKey ? (
-        <div className="px-3 py-3 text-[12px] text-fg-muted grid gap-2">
+        <div className="px-3 py-3 text-[12px] text-fg-muted grid gap-2.5">
           <p className="m-0">
-            Caprock can ask Google&apos;s Gemini on your own key. It never stores the key —
-            set it in the daemon&apos;s environment and restart:
+            Caprock can ask Google&apos;s Gemini on your own key, and it never stores that key —
+            it reads <span className="mono text-fg">{st?.env_var ?? 'GEMINI_API_KEY'}</span> from
+            the daemon&apos;s environment when you ask. Get a key from{' '}
+            <a className="link" href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
+              Google AI Studio
+            </a>
+            , then put it where the daemon will see it.
           </p>
-          <code className="mono text-[11px] bg-panel-2 px-2 py-1.5 rounded-sm text-fg block overflow-x-auto">
-            export {st?.env_var ?? 'GEMINI_API_KEY'}=…
-          </code>
+
+          {/* Where, not just what. `export` in a terminal lives in that window
+            * only: set it in one tab, start the daemon in another, and nothing
+            * happens — which reads as a broken feature rather than a missed
+            * step. And a login agent inherits almost nothing from a shell
+            * profile, so the person who ran `caprock service install` needs a
+            * different answer entirely. Both are spelled out. */}
+          <div className="grid gap-1">
+            <p className="m-0 text-fg">If you start it yourself</p>
+            <p className="m-0 text-fg-faint">
+              Put the line in <span className="mono">~/.zshrc</span> (or{' '}
+              <span className="mono">~/.bashrc</span>), open a new terminal, then restart the daemon.
+              Exporting it in one window and starting Caprock in another will not work.
+            </p>
+            <code className="mono text-[11px] bg-panel-2 px-2 py-1.5 rounded-sm text-fg block overflow-x-auto">
+              export {st?.env_var ?? 'GEMINI_API_KEY'}=AIza…{'\n'}caprock down &amp;&amp; caprock up
+            </code>
+          </div>
+
+          <div className="grid gap-1">
+            <p className="m-0 text-fg">If it starts at login</p>
+            <p className="m-0 text-fg-faint">
+              A login agent does not read your shell profile, so the variable has to go in the
+              agent itself — on macOS in{' '}
+              <span className="mono">~/Library/LaunchAgents/dev.caprock.daemon.plist</span> under{' '}
+              <span className="mono">EnvironmentVariables</span>, on Linux as an{' '}
+              <span className="mono">Environment=</span> line in the systemd user unit. Then{' '}
+              <span className="mono">caprock service install</span> again to reload it.
+            </p>
+          </div>
+
           <p className="m-0 text-fg-faint">
-            Get one from Google AI Studio. You pay Google directly; Caprock only counts what it sent.
+            You pay Google directly. Caprock only counts what it sent, which is not the same as
+            what Google bills.
           </p>
         </div>
       ) : (

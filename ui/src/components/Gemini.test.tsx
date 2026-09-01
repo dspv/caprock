@@ -23,14 +23,14 @@ describe('GeminiPanel', () => {
     status.value = { available: false, env_var: 'GEMINI_API_KEY', licensed: true, model: 'gemini-3.5-flash-lite' }
     render(<GeminiPanel />)
     // The fix, not a paywall: this reader has nothing to buy.
-    await waitFor(() => expect(screen.getByText(/GEMINI_API_KEY/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByText(/GEMINI_API_KEY/).length).toBeGreaterThan(0))
     expect(screen.queryByRole('button', { name: /ask/i })).not.toBeInTheDocument()
   })
 
   it('says the key stays with the user, since that is the whole trade', async () => {
     status.value = { available: false, env_var: 'GEMINI_API_KEY', licensed: true, model: 'm' }
     render(<GeminiPanel />)
-    await waitFor(() => expect(screen.getByText(/never stores the key/i)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/never stores that key/i)).toBeInTheDocument())
     // And who gets paid, so nobody expects Caprock to be reselling tokens.
     expect(screen.getByText(/pay Google directly/i)).toBeInTheDocument()
   })
@@ -93,7 +93,22 @@ describe('the key is explained in both states', () => {
   it('shows the setup step when no key is set, licensed or not', async () => {
     status.value = { available: false, env_var: 'GEMINI_API_KEY', licensed: false, model: 'm' }
     render(<GeminiPanel />)
-    await waitFor(() => expect(screen.getByText(/GEMINI_API_KEY/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByText(/GEMINI_API_KEY/).length).toBeGreaterThan(0))
+  })
+
+  // "export it" is not an answer: the variable lives in that one window, so
+  // setting it in one tab and starting the daemon in another does nothing and
+  // reads as a broken feature. And a login agent inherits almost nothing from
+  // a shell profile, so that case needs its own answer.
+  it('says where to put the variable, for both ways the daemon starts', async () => {
+    status.value = { available: false, env_var: 'GEMINI_API_KEY', licensed: true, model: 'm' }
+    render(<GeminiPanel />)
+    await waitFor(() => expect(screen.getByText(/If you start it yourself/)).toBeInTheDocument())
+    expect(screen.getByText(/\.zshrc/)).toBeInTheDocument()
+    expect(screen.getByText(/will not work/)).toBeInTheDocument()
+
+    expect(screen.getByText(/If it starts at login/)).toBeInTheDocument()
+    expect(screen.getByText(/dev\.caprock\.daemon\.plist/)).toBeInTheDocument()
   })
 
   it('still names the variable once a key is working', async () => {
