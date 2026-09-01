@@ -58,6 +58,9 @@ type Deps struct {
 	Token string
 	// Shutdown is invoked by POST /v1/shutdown (caprock down).
 	Shutdown func()
+	// AskGemini answers one prompt on the user's own key and records what it
+	// cost. nil ⇒ the endpoint returns 501. See ADR-023.
+	AskGemini func(ctx context.Context, model, prompt string) (any, error)
 	// Agents is the Phase 1 owned-session manager (nil ⇒ endpoints return 501).
 	Agents AgentController
 	// Tasks is the Phase 2 hive-backed task board (nil ⇒ endpoints return 501).
@@ -203,6 +206,8 @@ func New(d Deps) *Server {
 	// rather than duplicated in the UI, so one edit in Go changes every place
 	// a price appears.
 	m.HandleFunc("GET /v1/premium", s.handlePremium)
+	m.HandleFunc("GET /v1/gemini", s.handleGeminiStatus)
+	m.HandleFunc("POST /v1/gemini/ask", s.handleGeminiAsk)
 	m.HandleFunc("GET /v1/pricing", s.handlePricing)
 	m.HandleFunc("GET /v1/live", s.ws.ServeHTTP)
 	if d.Hook != nil {
@@ -1396,9 +1401,9 @@ func agentFilter(v string) (store.AgentFilter, error) {
 	switch v {
 	case "", "all":
 		return "", nil
-	case "claude", "opencode":
+	case "claude", "opencode", "gemini":
 		return store.AgentFilter(v), nil
 	default:
-		return "", fmt.Errorf("unknown agent %q: use claude, opencode, or omit for both", v)
+		return "", fmt.Errorf("unknown agent %q: use claude, opencode, gemini, or omit for all", v)
 	}
 }

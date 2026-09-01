@@ -52,6 +52,11 @@ const (
 	SourceOpenCode Source = "opencode"
 	SourcePTY      Source = "pty"
 	SourceHarness  Source = "harness"
+	// SourceGemini marks calls Caprock made to Google's Gemini on the user's
+	// own key. Unlike OpenCode these are priced by our own table, because the
+	// figures come from the response's usageMetadata and there is no vendor
+	// cost to carry — Google reports per project, not per call (ADR-023).
+	SourceGemini Source = "gemini"
 )
 
 // TokenDelta carries per-turn token usage (turn.assistant only).

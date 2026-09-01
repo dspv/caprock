@@ -16,8 +16,10 @@ func TestAgentFilterParam(t *testing.T) {
 		{"all", "", false},
 		{"claude", "claude", false},
 		{"opencode", "opencode", false},
+		{"gemini", "gemini", false},
 		{"OpenCode", "", true}, // case matters; a near-miss must not silently widen
-		{"gemini", "", true},
+		{"Gemini", "", true},
+		{"cursor", "", true}, // an agent we do not support is an error, not "everything"
 		{"'; DROP TABLE sessions--", "", true},
 		{"claude,opencode", "", true},
 	}
