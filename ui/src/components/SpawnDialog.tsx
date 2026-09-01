@@ -24,9 +24,12 @@ const MODELS: [value: string, label: string][] = [
 // which is not one of them, and "" — so the dialog could send a mode the
 // binary rejects. Three are offered here; the rest are reachable by starting
 // claude yourself, which Caprock watches all the same.
+// Short enough to survive a narrow window. The label has to carry what the
+// session will DO without being opened — a mode cut off mid-word ("asks before
+// com…") is the one label where truncation hides the consequence.
 const MODES: [value: string, label: string][] = [
-  ['acceptEdits', 'Accept edits · asks before commands'],
-  ['plan', 'Plan · reads and plans, changes nothing'],
+  ['acceptEdits', 'Accept edits · asks first'],
+  ['plan', 'Plan · changes nothing'],
   ['bypassPermissions', 'Bypass · never asks'],
 ]
 
@@ -68,7 +71,7 @@ export function SpawnDialog({
   }
   return (
     <div className="fixed inset-0 z-20 bg-black/50 flex items-start justify-center pt-24" onClick={onClose}>
-      <div className="border border-border-strong bg-panel rounded-[var(--radius-panel)] w-[520px] max-w-[92vw]" onClick={(e) => e.stopPropagation()}>
+      <div className="border border-border-strong bg-panel rounded-[var(--radius-panel)] w-[620px] max-w-[94vw]" onClick={(e) => e.stopPropagation()}>
         <header className="px-3 py-2 border-b border-border flex items-center">
           <h2 className="text-[12px] uppercase tracking-[0.08em] text-fg-muted">New session</h2>
           <button onClick={onClose} className="ml-auto text-fg-muted hover:text-fg">✕</button>

@@ -7,6 +7,24 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **The weekly report, to your own Telegram bot.** What moved this week against
+  your usual, sent Monday morning — or the next day you open the lid, because a
+  timer set for Monday 09:00 fires for nobody whose laptop is shut at weekends.
+
+  A repository is only named when it clears both a real change in dollars and
+  twice its usual week, where *usual* is the median of the preceding four weeks
+  rather than last week: $2 to $6 is three times and is nothing, and a claim in
+  a message is one the reader cannot click into to check. Most weeks it says
+  nothing moved, which is true and worth saying. A week the machine was off is
+  reported as such rather than as a collapse in spending.
+
+  The bot token is stored on your machine and is the one thing this API accepts
+  but never returns. The message carries figures only — no prompts, no replies,
+  no tool output, no file names — and goes straight to Telegram; nothing passes
+  our server.
+
 Phase 3 (Delight) has no plan by design.
 
 ## [0.41.0] - 2026-09-01

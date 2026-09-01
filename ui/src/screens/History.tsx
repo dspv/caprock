@@ -10,14 +10,10 @@ import { costBasis, costBasisLong } from '@/components/CostBasis'
 import { usePlan } from '@/components/PlanPicker'
 import { PremiumBanner } from '@/components/PremiumBanner'
 import { Locked } from '@/components/Locked'
+import { WeeklyReport } from '@/components/WeeklyReport'
 import { UnpricedNote } from '@/components/Unpriced'
 
 type Range = 'today' | '7d' | '30d' | 'all'
-
-// Shown only when this machine has no week to draw on — a brand-new install
-// would otherwise preview an empty report, which sells nothing. Named so it can
-// never be mistaken on screen for the reader's own repositories.
-const PLACEHOLDER_WEEK = ['your-api', 'your-web']
 
 export function HistoryScreen() {
   const [range, setRange] = useState<Range>('all')
@@ -36,10 +32,6 @@ export function HistoryScreen() {
   // this screen, two panels down. Putting them behind glass would take
   // something away rather than preview something new, which turns the free
   // tier into a hostage. What is genuinely paid here is the *delivery* —
-  // Monday morning, in Telegram, without opening this page — so that is what
-  // the preview sells.
-  const wk = useApi(() => api.summary('7d'), [], { intervalMs: 60000 })
-  const weekProjects = (wk.data?.projects ?? []).slice(0, 4).map((p) => p.project)
   const maxTool = Math.max(...(d?.tools ?? []).map((t) => t.count), 1)
   return (
     <div className="grid gap-3">
@@ -121,36 +113,11 @@ export function HistoryScreen() {
           * screen already answers "where did it go", and the paid half is
           * having that answer arrive without coming here to look. */}
         <Locked feature="report" title="Get this every Monday, without opening the dashboard">
-          {/* The preview is the report itself, filled with this machine's own
-            * figures — not a list of its properties.
-            *
-            * It used to be three rows reading "Sent: Mondays 09:00 / To: your
-            * Telegram bot / Contains: the week by repository and model", which
-            * describes an email without showing one. Behind glass that is a
-            * blurred settings screen, and nobody buys a settings screen. What
-            * sells this is seeing the message that would have arrived, with
-            * real repository names and real dollars in it. */}
-          <Panel title="Weekly report" right={<span>Mondays, 09:00</span>}>
-            <div className="px-3 py-3 text-[13px]">
-              <p className="text-fg-muted">
-                <span className="text-fg-faint">To:</span> your Telegram bot or webhook
-              </p>
-              <p className="mt-2 text-fg">Last week, by repository:</p>
-              <div className="mt-1.5 grid gap-1">
-                {(weekProjects.length ? weekProjects : PLACEHOLDER_WEEK).map((name) => (
-                  <div key={name} className="flex items-baseline justify-between gap-3">
-                    <span className="truncate text-fg-muted">{name || 'unknown'}</span>
-                    {/* Deliberately not a figure — see the note above the
-                      * data. The bar is a shape, not a number. */}
-                    <span aria-hidden className="h-1.5 w-24 shrink-0 rounded-full bg-fg-faint/25" />
-                  </div>
-                ))}
-              </div>
-              <p className="mt-2.5 border-t border-border pt-2 text-[12px] text-fg-faint">
-                …and the same by model, in your inbox before you open a terminal.
-              </p>
-            </div>
-          </Panel>
+          {/* Unlocked this is the real control; locked it is the pitch, and
+            * both are the same component. What sells it is seeing where the
+            * message goes and that Caprock keeps nothing — a reader deciding
+            * whether to pay is deciding whether to hand over a bot token. */}
+          <WeeklyReport />
         </Locked>
 
         <Panel title="Top projects" right={<span>by cost</span>}>

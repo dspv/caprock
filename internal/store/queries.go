@@ -612,11 +612,20 @@ func EventsBefore(ctx context.Context, q Querier, sessionID string, before int64
 	}
 	where, args := `session_id = ?`, []any{sessionID}
 	if before > 0 {
-		where += ` AND id < ?`
+		// Paged by the timestamp of the row the caller already has, because the sort
+		// is by time: mixing an id cursor with a ts ordering skips rows on any
+		// session whose insert order and chronology disagree — which is every
+		// session that was ever backfilled from a transcript.
+		where += ` AND ts < (SELECT ts FROM events WHERE id = ?)`
 		args = append(args, before)
 	}
 	args = append(args, n)
-	rows, err := q.QueryContext(ctx, `SELECT * FROM (SELECT `+eventCols+` FROM events WHERE `+where+` ORDER BY id DESC LIMIT ?) ORDER BY id ASC`, args...)
+	// Ordered by ts, not by id. The two agree for a session captured live, and
+	// diverge for one whose transcript was re-read: a backfill inserts old
+	// events with new rowids, so "the newest sixty by id" returned a fortnight
+	// of history and the activity feed showed it as what just happened. The id
+	// stays as the tie-break, since two events can share a millisecond.
+	rows, err := q.QueryContext(ctx, `SELECT * FROM (SELECT `+eventCols+` FROM events WHERE `+where+` ORDER BY ts DESC, id DESC LIMIT ?) ORDER BY ts ASC, id ASC`, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -669,3 +669,44 @@ func TestEventsBeforePagesBackwards(t *testing.T) {
 		t.Fatalf("before the first row: %d %v", len(empty), err)
 	}
 }
+
+// The newest events are the newest by TIME, not by rowid.
+//
+// The two agree for a session captured live and diverge for one whose
+// transcript was re-read: a backfill inserts old events with new rowids. On a
+// session with fifteen thousand events that made "the newest sixty" a fortnight
+// of history, and the activity feed presented it as what just happened —
+// reported as "I only see 9-10 day old entries and cannot scroll", because
+// every row was equally stale.
+func TestLastEventsOrdersByTimeNotInsertion(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+
+	base := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	// Inserted newest-first, so rowid order is the reverse of time order —
+	// exactly what a backfill produces.
+	for i := 0; i < 5; i++ {
+		ev := &event.Event{
+			SessionID: "s", Source: event.SourceHook, Kind: event.KindTurnUser,
+			Ts: base.Add(time.Duration(-i) * time.Hour),
+		}
+		if _, err := InsertEvent(ctx, s.db, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := LastEvents(ctx, s.db, "s", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d events", len(got))
+	}
+	// The two newest by clock are the last hour and the one before it — not the
+	// two most recently inserted, which are the oldest.
+	newest := got[len(got)-1]
+	if !newest.Ts.Equal(base) {
+		t.Errorf("newest event is %v, want %v — ordered by rowid instead of time",
+			newest.Ts.UTC(), base)
+	}
+}

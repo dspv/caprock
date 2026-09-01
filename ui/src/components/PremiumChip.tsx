@@ -44,36 +44,59 @@ export function PremiumChip() {
   // one optional field crashed every screen rather than hiding one chip.
   if (!premium.data?.yearly?.url) return null
 
-  if (premium.data.license?.active) {
-    return <span className="text-premium-strong">premium</span>
+  // Paid: say which plan, not just that they paid.
+  //
+  // "premium" alone answers a question nobody has — they know they bought it.
+  // What they cannot see anywhere else is which one they are on and when it
+  // ends, and a renewal that has not arrived is worth noticing a week early
+  // rather than the morning features stop.
+  const lic = premium.data.license
+  if (lic?.active) {
+    const ends = lic.expires_at ? new Date(lic.expires_at) : null
+    // A lifetime key is issued fifty years out, so anything beyond a decade is
+    // one — there is no separate flag, and inventing one to render a word is
+    // not worth a migration.
+    const lifetime = !!ends && ends.getFullYear() - new Date().getFullYear() > 10
+    return (
+      <span
+        className="text-premium-strong"
+        title={ends && !lifetime ? `Covers you through ${ends.toLocaleDateString()}` : 'Bought outright'}
+      >
+        premium <span className="opacity-70">{lifetime ? 'lifetime' : 'yearly'}</span>
+        {lic.in_grace && <span className="ml-1 text-warn">· renew</span>}
+      </span>
+    )
   }
 
   const p = premium.data
 
+  // One control, and it opens the dialog.
+  //
+  // It used to be two: the label went straight to Stripe's checkout and a
+  // chevron beside it opened the dialog, in one border, one colour, with no
+  // seam between them. Nothing said the left half was a payment link, so
+  // clicking the word "premium" to find out what premium *is* took you to a
+  // card form — the one place a reader who has not decided should never land
+  // by accident. The chevron said nothing either; it was a shape, not a label.
+  //
+  // Reading first is also the order the evidence asks for: five readers priced
+  // the dialog and none bought (FB-027), which is a question about the offer,
+  // not about how few clicks stand in front of the checkout. The dialog
+  // carries the buy button, where it is a decision rather than a slip.
   return (
     <>
-      <span className="inline-flex items-center overflow-hidden rounded-sm border border-premium/60">
-        {/* Straight to the checkout, at the price most people should take. */}
-        <a
-          href={p.yearly.url}
-          target="_blank"
-          rel="noreferrer"
-          className="bg-premium px-2 py-0.5 text-white no-underline hover:brightness-110"
-        >
-          premium ${p.yearly.charged_usd}/yr
-        </a>
-        {/* And a way to read first, for anyone who has not decided. Marked
-          * with a chevron rather than words: the header has no room for a
-          * second label, and the target of this one is a dialog, not a page. */}
-        <button
-          onClick={() => setOpen(true)}
-          aria-label="What Premium includes"
-          title="What Premium includes"
-          className="px-1.5 py-0.5 text-premium-strong hover:bg-premium/10"
-        >
-          ›
-        </button>
-      </span>
+      {/* A verb, because "premium $30/yr" is a price tag and a price tag asks
+        * nothing. What this control does is open the dialog, so it says so —
+        * and carries the price, because a reader deciding whether to click
+        * deserves to know the number before they do. */}
+      <button
+        onClick={() => setOpen(true)}
+        title="What Premium includes"
+        className="inline-flex items-center gap-1.5 rounded-sm border border-premium/60 bg-premium px-2 py-0.5 text-white hover:brightness-110"
+      >
+        <span>Get premium</span>
+        <span className="opacity-75">${p.yearly.charged_usd}/yr</span>
+      </button>
       {/* The cap, not the report: it is the feature people arrive worried
         * about, and the one a runaway session makes them want. */}
       {open && <PremiumModal feature="cap" onClose={() => setOpen(false)} />}

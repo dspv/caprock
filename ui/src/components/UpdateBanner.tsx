@@ -20,7 +20,7 @@ const DISMISS_KEY = 'caprock.update.dismissed'
 
 export function UpdateBanner({ plan, onSave, now, owned = 0 }: {
   plan?: Settings
-  onSave: (s: Settings) => void
+  onSave: (patch: Partial<Settings>) => void
   now: number
   /** Live sessions Caprock started, which upgrading will close. */
   owned?: number
@@ -52,7 +52,7 @@ export function UpdateBanner({ plan, onSave, now, owned = 0 }: {
         <span className="ml-auto flex items-center gap-2 shrink-0">
           <button
             className="text-[11px] border border-accent/50 text-accent bg-accent/10 px-2 py-0.5 rounded-sm hover:bg-accent/20"
-            onClick={() => onSave({ ...plan, update_checks: true })}
+            onClick={() => onSave({ update_checks: true })}
           >
             check for updates
           </button>
