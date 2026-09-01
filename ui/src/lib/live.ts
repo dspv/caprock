@@ -57,6 +57,13 @@ class LiveStore {
   }
 
   private connect() {
+    // A reconnect can outlive the document that scheduled it: a test unmounts,
+    // jsdom is torn down, and the pending timer still fires — reaching for
+    // `location` in a window that no longer has one. Harmless in a browser,
+    // where the page is going away anyway, but on CI it surfaced as an
+    // unhandled error that failed a release whose 478 tests had all passed.
+    if (typeof location === 'undefined' || typeof WebSocket === 'undefined') return
+
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
     const url = `${proto}://${location.host}/v1/live`
     this.set({ conn: 'connecting' })

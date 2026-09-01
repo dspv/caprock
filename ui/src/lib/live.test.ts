@@ -31,3 +31,26 @@ describe('loop alerts are one per session', () => {
     expect(alerts[0]!.ts).toBe('2026-08-20T11:00:00Z')
   })
 })
+
+/**
+ * A queued reconnect can outlive the document that scheduled it.
+ *
+ * A test mounts something that opens the socket, it does not connect, and a
+ * retry is queued 500ms out. The test ends, jsdom is torn down, and the timer
+ * fires into a window with no `location`. Harmless in a browser, where the page
+ * is going away anyway — and on CI it is an unhandled ReferenceError that failed
+ * a release whose 478 tests had every one of them passed. It does not reproduce
+ * locally, because it depends on which test happens to be running when the
+ * timer comes due.
+ */
+describe('reconnecting after the page has gone', () => {
+  it('gives up quietly rather than throwing into a torn-down document', () => {
+    const saved = globalThis.location
+    delete (globalThis as { location?: unknown }).location
+    try {
+      expect(() => live.start()).not.toThrow()
+    } finally {
+      globalThis.location = saved
+    }
+  })
+})

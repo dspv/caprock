@@ -9,7 +9,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
-## [0.42.0] - 2026-09-01
+## [0.42.1] - 2026-09-01
 
 ### Added
 
@@ -49,6 +49,12 @@ Phase 3 (Delight) has no plan by design.
 - **The new-session dialog cut off the permission label** — "Accept edits · asks
   before com…" hid the consequence, which is the one thing that label exists to
   state. Wider dialog, shorter labels.
+
+- **A stray reconnect no longer crashes a torn-down page.** The live socket
+  queues a retry when it cannot connect, and that timer could outlive the
+  document that scheduled it — harmless in a browser, where the page is going
+  away anyway, and enough to fail a release build whose every test had passed.
+  It now gives up quietly instead.
 
 - **The premium chip was two controls disguised as one.** The label went
   straight to the checkout while a chevron beside it opened the explanation, in
