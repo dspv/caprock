@@ -286,7 +286,8 @@ func (d *Daemon) run(ctx context.Context) error {
 		Status: d.status, ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
 		Token: rt.Token, Shutdown: cancel, Agents: &agentAdapter{m: d.mgr},
 		Tasks: &boardAdapter{d: d}, Settings: &settingsAdapter{d: d}, Update: d.upd,
-		DataDir: d.opt.DataDir,
+		AskGemini: d.askGemini,
+		DataDir:   d.opt.DataDir,
 	})
 	srv := &http.Server{Handler: d.api, ReadHeaderTimeout: 10 * time.Second}
 

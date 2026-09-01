@@ -354,3 +354,71 @@ switch on. Anything that needs our infrastructure — cross-machine aggregation,
 the weekly report's delivery — is enforced by that infrastructure and needs no
 key at all, which is the tier boundary [ADR-021](#adr-021--the-team-tier-is-self-hosted-and-the-free-product-is-not-carved-up)
 already draws.
+
+---
+
+## ADR-023 — Gemini runs on a key Caprock never holds, read from the environment
+
+**Decided 2026-09-01.** *Second paid feature.*
+
+A user can point Caprock at Google's Gemini through their own Google AI Studio
+key. Caprock makes the call; the user pays Google directly. Two decisions shape
+it, and both exist to keep the product's foundation intact.
+
+**Caprock never stores the key.** It is read from `GEMINI_API_KEY` in the
+daemon's environment, the way every CLI tool on the machine already does it —
+never written to `config.json`, never accepted by `PUT /v1/settings`, never
+returned by `GET /v1/settings`. This is the direct answer to the objection
+recorded in [17-teams.md](17-teams.md) § Not a secret store: *"a bug in Caprock
+shows a wrong number, and with a vault a bug in Caprock leaks credentials."*
+A key held in the environment cannot leak from a database Caprock does not
+write. It also rules out the alternative — an OS keychain across three
+platforms — which is real work, a Windows CI surface, and still leaves Caprock
+custodian of somebody's credential.
+
+The cost is honest and worth naming: the user sets an environment variable
+before starting the daemon, which is a worse first run than pasting a key into
+a field. That is the price of not being a secret store, and it is the right
+trade for a tool whose whole argument is that it holds nothing.
+
+**Rule 4 gains its second exception, and it is opt-in per call.** [Rule
+4](../CLAUDE.md) says all data stays on the machine, with the release check as
+the only exception — an outbound call that carries nothing about the user. A
+Gemini call carries both a credential and the user's own content, which is
+categorically further than that exception reaches, so it is written down here
+rather than assumed. What keeps it inside the spirit of the rule: nothing is
+sent unless the user asks a question in that turn, no background call is ever
+made, the destination is Google's documented endpoint and nowhere else, and
+with the variable unset the feature does not exist — there is no default-on
+path to disable. Caprock still sends nothing about the user to Caprock.
+
+**The gate is checked on the server, unlike the spend cap.** [ADR-022](#adr-022--the-licence-key-is-an-offline-string-with-an-expiry-and-nothing-more)
+made the licence a convenience rather than a lock, and the spend cap follows
+that: its paywall is a React component, and a free user who sets the threshold
+by curl gets a working cap. Copying that here would be wrong. The cap spends
+nothing; a Gemini call spends the user's quota and opens an outbound
+connection, so an unpaid caller is not merely reading a screen they did not pay
+for. `license.Parse(...).Active` is therefore checked in the handler before the
+request leaves, which is a new precedent in this codebase and deliberately
+narrow: it applies to features that spend money or reach the network, not to
+features that draw a panel.
+
+**Usage is counted from the response, not from Google.** There is no per-key
+billing API — Google's own answer is that per-key breakdowns "can't be done via
+AI Studio usage dashboards", and the console reports per *project*. So the
+figures come from `usageMetadata` on each response (`promptTokenCount`,
+`candidatesTokenCount`, `cachedContentTokenCount`, `thoughtsTokenCount`),
+priced through the same `pricing/` table as everything else and stamped with
+the same basis. Two consequences are stated on screen rather than hidden: the
+history starts when the feature is first used, because nothing before that
+passed through Caprock, and the total is what Caprock sent, not what Google
+billed.
+
+**Rules out:** storing the key in `config.json` or any Caprock-managed store;
+an OS keychain; reading Google's usage dashboard; any background or speculative
+call; presenting a Caprock-side total as the user's Google bill.
+
+**Revisit if** Google ships a per-key usage API (then the numbers can be
+reconciled rather than only counted), or if setting an environment variable
+proves to be the thing that stops people using the feature — in which case the
+question is a better handoff, not a key Caprock keeps.

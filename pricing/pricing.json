@@ -1,16 +1,20 @@
 {
-  "version": "2026-08-30.1",
+  "version": "2026-09-01.1",
   "source": "https://platform.claude.com/docs/en/about-claude/pricing",
   "fetched_at": "2026-08-18",
   "currency": "USD",
   "unit": "per_million_tokens",
   "notes": [
     "First-party Anthropic API prices. Amazon Bedrock and Google Vertex have separate partner pricing (regional endpoints +10%) and are not covered by this table (OQ-02).",
-    "cache_write_5m = 1.25x input, cache_write_1h = 2x input, cache_read = 0.1x input — per Anthropic's published multipliers.",
+    "cache_write_5m = 1.25x input, cache_write_1h = 2x input, cache_read = 0.1x input \u2014 per Anthropic's published multipliers.",
     "Model ids are matched by prefix against the `model` field observed in transcripts (e.g. claude-opus-5, claude-sonnet-4-5-20250929). Longest prefix wins.",
     "context_window is the model's maximum input context in tokens as published; used for the 'context fill %' badge (OQ-07).",
     "Non-Anthropic rows are the providers' own published list prices, fetched 2026-08-27: DeepSeek V4 Pro $0.435/$0.87 per 1M (its 75% cut, made permanent); MiniMax M3 $0.30/$1.20 per 1M standard tier with $0.06 cache read (its permanent 50% off). They are priced so a total that includes non-Anthropic usage is a total; Caprock still does not charge for any of it and cannot see a bill.",
-    "A model may have more than one row: a price that has been superseded keeps its own row with `until` (the last date it applied, inclusive, UTC), and the current price is the row with no `until`. Rows for one id are ordered oldest-first and a turn is priced by the row in force when it ran, so an expiring introductory rate never restates history at a price nobody was charged. Sonnet 5 is the first: $2/$10 introductory through 2026-08-30, $3/$15 from 2026-08-31 (claude.com/pricing, read 2026-08-30)."
+    "A model may have more than one row: a price that has been superseded keeps its own row with `until` (the last date it applied, inclusive, UTC), and the current price is the row with no `until`. Rows for one id are ordered oldest-first and a turn is priced by the row in force when it ran, so an expiring introductory rate never restates history at a price nobody was charged. Sonnet 5 is the first: $2/$10 introductory through 2026-08-30, $3/$15 from 2026-08-31 (claude.com/pricing, read 2026-08-30).",
+    "Gemini prices are Google AI Studio paid-tier rates read from https://ai.google.dev/gemini-api/docs/pricing on 2026-09-01, for the text models the chat feature can reach. Image, video, TTS, embedding and robotics models are omitted because no code path can bill them.",
+    "gemini-3.7-flash and gemini-3.6-flash carry introductory pricing through 2026-12-31; input doubles to $1.50 and output to $7.50 on 2027-01-01. This table must be refreshed before that date or those two rows will understate cost.",
+    "Gemini has no 5m/1h cache-write price: Google bills cache storage per hour ($0.50-$4.50 per 1M tokens/hour by model), which is time-based and has no per-token equivalent, so cache_write_* are 0 for Gemini rows and cached input is priced at cache_read.",
+    "gemini-3.1-pro-preview and gemini-2.5-pro are tiered by prompt size; the rate here is the =<200k tier. Prompts over 200k tokens bill at roughly double ($4.00/$18.00 and $2.50/$15.00 respectively) and are therefore under-reported by this table."
   ],
   "models": [
     {
@@ -213,6 +217,86 @@
       "cache_read": 0.06,
       "output": 1.2,
       "context_window": 204800
+    },
+    {
+      "id": "gemini-3.7-flash",
+      "display": "Gemini 3.7 Flash",
+      "input": 0.75,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.075,
+      "output": 3.75,
+      "context_window": 1000000
+    },
+    {
+      "id": "gemini-3.6-flash",
+      "display": "Gemini 3.6 Flash",
+      "input": 0.75,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.075,
+      "output": 3.75,
+      "context_window": 1000000
+    },
+    {
+      "id": "gemini-3.5-flash",
+      "display": "Gemini 3.5 Flash",
+      "input": 1.5,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.15,
+      "output": 9.0,
+      "context_window": 1000000
+    },
+    {
+      "id": "gemini-3.5-flash-lite",
+      "display": "Gemini 3.5 Flash Lite",
+      "input": 0.3,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.03,
+      "output": 2.5,
+      "context_window": 1000000
+    },
+    {
+      "id": "gemini-3.1-pro-preview",
+      "display": "Gemini 3.1 Pro",
+      "input": 2.0,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.2,
+      "output": 12.0,
+      "context_window": 1000000
+    },
+    {
+      "id": "gemini-2.5-pro",
+      "display": "Gemini 2.5 Pro",
+      "input": 1.25,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.125,
+      "output": 10.0,
+      "context_window": 1000000
+    },
+    {
+      "id": "gemini-2.5-flash",
+      "display": "Gemini 2.5 Flash",
+      "input": 0.3,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.03,
+      "output": 2.5,
+      "context_window": 1000000
+    },
+    {
+      "id": "gemini-2.5-flash-lite",
+      "display": "Gemini 2.5 Flash Lite",
+      "input": 0.1,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.01,
+      "output": 0.4,
+      "context_window": 1000000
     }
   ]
 }

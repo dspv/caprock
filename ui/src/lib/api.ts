@@ -91,6 +91,46 @@ export interface SessionDetail extends SessionSummary {
   events: Event[]
 }
 
+/** Whether asking Gemini is possible here, and why not when it is not.
+ *  Deliberately says nothing about the key beyond its presence: the key lives
+ *  in the daemon's environment and is never sent to this page (ADR-023). */
+export interface GeminiStatus {
+  /** A key is set in the daemon's environment. */
+  available: boolean
+  /** The variable to set — so the UI can tell the reader what to do. */
+  env_var: string
+  /** The licence is active. Asking is refused by the server without it. */
+  licensed: boolean
+  model: string
+  /** The Gemini models in the pricing table, cheapest first, each with what a
+   *  short question costs at its rates. */
+  models?: GeminiModel[]
+}
+
+export interface GeminiModel {
+  id: string
+  display: string
+  input: number
+  output: number
+  /** Roughly 2k in and 500 out — an example of a dashboard question, not a
+   *  promise about the next one. */
+  typical_usd: number
+}
+
+export interface GeminiUsage {
+  prompt_tokens: number
+  output_tokens: number
+  cached_tokens: number
+  thoughts_tokens: number
+  total_tokens: number
+}
+
+export interface GeminiReply {
+  text: string
+  model: string
+  usage: GeminiUsage
+}
+
 export interface FileDiff { path: string; status: string; additions: number; deletions: number; patch?: string; binary?: boolean }
 export interface DiffResult { root: string; branch: string; files: FileDiff[]; stat: string; base?: string; base_branch?: string }
 
@@ -406,6 +446,8 @@ export const api = {
     get<Summary>(`/v1/stats/summary?range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}`),
   daily: (days = 30) => get<DailyStat[]>(`/v1/stats/daily?days=${days}`),
   premium: () => get<PremiumPricing>('/v1/premium'),
+  gemini: () => get<GeminiStatus>('/v1/gemini'),
+  askGemini: (prompt: string, model?: string) => post<GeminiReply>('/v1/gemini/ask', { prompt, model }),
   browse: (dir = '') => get<BrowseResponse>(`/v1/browse${dir ? `?dir=${encodeURIComponent(dir)}` : ''}`),
   recentDirs: () => get<RecentDir[]>('/v1/recent-dirs'),
   history: (range: 'today' | '7d' | '30d' | 'all' = 'all') => get<History>(`/v1/history?range=${range}`),

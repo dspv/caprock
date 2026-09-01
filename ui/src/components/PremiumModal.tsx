@@ -59,7 +59,7 @@ import { useEffect } from 'react'
 import { api, type PremiumPricing } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 
-export type PaidFeature = 'cap' | 'report'
+export type PaidFeature = 'cap' | 'report' | 'gemini'
 
 /**
  * `points` is what the feature does for you, in the fewest words that still
@@ -78,6 +78,18 @@ const FEATURES: Record<
       'It happens while you are asleep, not in tomorrow\u2019s summary',
       'Your own sessions are never touched — only the ones Caprock started',
     ],
+  },
+  gemini: {
+    title: 'Ask Gemini, on your own key',
+    body: 'A second model inside Caprock, paid for by you, at Google\u2019s prices.',
+    points: [
+      'Ask about your own sessions without leaving the dashboard',
+      'What it costs is counted and shown beside your Claude spend',
+      'Caprock never stores the key \u2014 it reads it from your environment',
+    ],
+    // Named because it is the honest cost of not being a secret store: the
+    // alternative was a field on this page and a credential in our database.
+    setup: 'Set GEMINI_API_KEY in the daemon\u2019s environment and restart it. Google bills you directly.',
   },
   report: {
     title: 'A weekly report, sent where you are',

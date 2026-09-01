@@ -49,6 +49,54 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-09-01 — A second model, on a key we refuse to hold
+
+**Gemini is the second paid feature, and the shape of it is one decision:
+the key is not ours.** It is read from `GEMINI_API_KEY` in the daemon's
+environment at call time — never written to `config.json`, never accepted by
+`PUT /v1/settings`, never returned by any endpoint, and sent in a header rather
+than a query string so nothing that logs a URL can capture it. The objection
+this answers was already written down in [17-teams.md](17-teams.md): *"a bug in
+Caprock shows a wrong number, and with a vault a bug in Caprock leaks
+credentials."* A key held in the environment cannot leak from a database Caprock
+does not write. The price is a worse first run — set a variable, restart — and
+the panel says so rather than hiding a missing field.
+
+**The licence is checked on the server, which the spend cap deliberately does
+not do.** [ADR-022](08-decisions.md) made the key a convenience rather than a
+lock, and the cap follows it: a free user who sets the threshold by curl gets a
+working cap, because a cap spends nothing. This spends the user's Gemini quota
+and opens an outbound connection, so the check runs in the handler before the
+request leaves. A test asserts an unlicensed ask never reaches the client.
+[ADR-023](08-decisions.md) keeps the precedent narrow on purpose: server-side
+gates belong to features that spend money or reach the network, not to features
+that draw a panel.
+
+**What makes it worth paying for is the context, not the chat box.** Asked "what
+did I spend yesterday" with no figures, a model can only explain what spending
+is. Every question now carries today's and the week's totals, the top models and
+projects, and what is running — all already computed. What it does *not* carry
+is prompts, replies, tool output and file paths, each pinned by its own test:
+the database holds the prose Claude wrote and every command it ran, and none of
+that belongs in a request the user did not specifically ask for.
+
+**The model is chosen and priced before it is spent.** A question costs 0.04
+cents on Flash Lite and 1.00 cent on Pro — twenty-five times, on the user's own
+card — so being locked to whichever default we picked was our choice made with
+their money. The list is built from the pricing table, so one place adds a model
+and the price shown is the price charged. Sub-cent figures render in cents:
+`fmtUSD` prints `$0.002` as `$0.00`, and a reader who believes a question is
+free will believe it fifty times.
+
+**Two traps worth recording.** A `useApi` poll on the status endpoint outlived
+the test that mounted it and fired into a torn-down jsdom — the key comes from
+the environment and cannot change while the daemon runs, so the timer bought
+nothing and was removed. And five minutes went into a model list that stayed
+empty on a scratch daemon: a process from 21 August was still holding port 4199,
+and every request was being answered by a binary three weeks old. The handler
+test had been green the whole time.
+
+
 ### 2026-08-31 — The first paid feature, a folder picker, Shift+Enter on the fourth attempt, and a session that ended half a day late
 
 **The daily spend cap is built** (`internal/cap`) — the first thing Caprock does rather than shows. A limit for the day; when the day crosses it, the sessions Caprock started are paused. Four rules, each with a test verified by breaking it: only owned sessions (`agents.PauseOwned` refuses any id the manager did not spawn, so [rule 7](../CLAUDE.md) lives in the thing holding the process handles); paused rather than killed, so a resume keeps the conversation; once a day, with the day claimed under a mutex before any signal; and fails open, because a missed pause costs money while a spurious one stops work that was fine. The suggested limit is twice the reader's median day — the median rather than the mean, since one runaway day would drag an average up and produce a ceiling that never fires, which is exactly the day the feature exists for.

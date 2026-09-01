@@ -9,6 +9,27 @@ const diffResult = vi.hoisted(() => ({ value: {} as DiffResult }))
 const earlier = vi.hoisted(() => ({ value: [] as Event[] }))
 const earlierCalls = vi.hoisted(() => ({ value: [] as { before: number; limit: number }[] }))
 
+// SessionScreen mounts the Terminal tab, and xterm asks jsdom for a canvas
+// context it does not have. The failure is noise rather than a defect — the
+// terminal is exercised in Terminal.test.tsx — but it is printed as an
+// unhandled error, and an error nobody can act on trains people to ignore the
+// ones they can.
+vi.mock('@xterm/xterm', () => ({
+  Terminal: class {
+    open() {}
+    write() {}
+    dispose() {}
+    focus() {}
+    loadAddon() {}
+    onData() { return { dispose() {} } }
+    onResize() { return { dispose() {} } }
+    attachCustomKeyEventHandler() {}
+    get element() { return null }
+  },
+}))
+vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit() {} dispose() {} } }))
+vi.mock('@xterm/addon-webgl', () => ({ WebglAddon: class { dispose() {} } }))
+
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
   return {
