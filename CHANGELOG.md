@@ -7,6 +7,27 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **Ask Gemini, on your own key.** The second paid feature: a second model
+  inside Caprock, billed to you by Google at their prices. Caprock **never
+  stores the key** — it reads `GEMINI_API_KEY` from the daemon's environment at
+  the moment of the call, and it is never written to disk, never accepted by the
+  settings endpoint and never returned by one. A key we do not hold is a key we
+  cannot leak; the cost is that you set a variable and restart, which the panel
+  says plainly.
+
+  Questions travel with your own figures — today's and the week's spend, the top
+  models and projects, what is running now — so the answers are about your
+  machine rather than about software in general. Prompts, replies, tool output
+  and file paths are never sent.
+
+  The model is yours to pick, priced before you spend: a question costs about
+  0.04 cents on Flash Lite and 1.00 cent on Pro. Answers are counted and priced
+  beside your Claude spend, from the response's own token counts — which is what
+  Caprock sent, not what Google billed, since there is no per-key billing API to
+  reconcile against.
+
 Phase 3 (Delight) has no plan by design.
 
 ## [0.40.0] - 2026-08-31

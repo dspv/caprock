@@ -116,6 +116,13 @@ and the OS keychain — tools that do nothing else — and it would put every
 buyer's security review in front of a two-person product. Helping someone not
 leak a key is worth paying for; taking custody of it is a different company.
 
+*This held when a feature needed a key.* The Gemini feature ([ADR-023](08-decisions.md))
+reads the user's Google AI Studio key from `GEMINI_API_KEY` in the daemon's
+environment at the moment of the call — never stored, never in `config.json`,
+never returned by any endpoint. The paragraph above is the reason: a key Caprock
+does not hold is a key Caprock cannot leak. The cost is a worse first run, and
+that was the right side of the trade.
+
 This is a candidate, not a decision. What premium contains should be settled by
 what the first paying users ask for.
 
