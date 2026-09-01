@@ -7,6 +7,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+Phase 3 (Delight) has no plan by design.
+
+## [0.41.0] - 2026-09-01
+
 ### Added
 
 - **Ask Gemini, on your own key.** The second paid feature: a second model
@@ -28,7 +32,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   Caprock sent, not what Google billed, since there is no per-key billing API to
   reconcile against.
 
-Phase 3 (Delight) has no plan by design.
+  **Not yet exercised against the live API.** The token fields are taken from
+  Google's documentation and every path is covered by tests against a stubbed
+  endpoint, but no request has been made with a real key — so if Google names a
+  usage field differently, a question would be recorded as costing nothing.
+  Setting `GEMINI_API_KEY` and asking one question is what confirms it.
 
 ## [0.40.0] - 2026-08-31
 
