@@ -36,8 +36,12 @@ export function ActivityFeed({ sessions, now, emptyHint }: { sessions: SessionSu
       const recent = [...sessions]
         .sort((a, b) => b.last_event_at - a.last_event_at)
         .slice(0, 4)
+      // The NEWEST sixty, not the oldest: `events(id, 0, 60)` pages forward
+      // from the start of a session, so on anything long-running this seeded
+      // the feed with a fortnight-old history and called it live activity.
+      // Same defect the session timeline had.
       const batches = await Promise.all(
-        recent.map((s) => api.events(s.session_id, 0, 60).catch(() => [] as never[])),
+        recent.map((s) => api.recentEvents(s.session_id, 60).catch(() => [] as never[])),
       )
       if (cancelled) return
       const seeded = batches

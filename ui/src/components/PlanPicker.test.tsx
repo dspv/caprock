@@ -1,43 +1,57 @@
 /**
- * The plan menu writes the whole settings object, so it must carry unrelated
- * preferences through untouched. Setting a plan silently turning off release
- * checks would be a genuinely confusing bug — the user changed one thing and
- * two things changed.
+ * Saving one setting must not carry the others with it.
+ *
+ * The hook used to PUT the whole Settings object, built from a module-level
+ * cache, so any control could overwrite a field it knew nothing about with a
+ * value it had read minutes earlier. Two tabs were enough to see it: change the
+ * plan in one, click "check for updates" in the other, and the second wrote the
+ * plan back to what its cache still held. Nothing failed to save — a stale copy
+ * undid it, which is indistinguishable from "it does not stick".
+ *
+ * The server has always treated PUT as a patch. This pins that the client
+ * behaves like one too.
  */
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { PlanChip } from './PlanPicker'
+import { UpdateBanner } from './UpdateBanner'
 import type { Settings } from '@/lib/api'
 
-const enabled: Settings = {
-  update_checks: true,
-  plan_kind: 'flat',
-  plan_label: 'Pro',
-  plan_usd_per_month: 20,
-}
+const sent = vi.hoisted(() => ({ bodies: [] as Record<string, unknown>[] }))
 
-describe('PlanChip', () => {
-  it('keeps release checks on when the plan changes', () => {
-    const onSave = vi.fn()
-    render(<PlanChip plan={enabled} onSave={onSave} />)
-    fireEvent.click(screen.getByRole('button', { name: /Pro/ }))
-    fireEvent.click(screen.getByText('Max 20×'))
-    expect(onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ plan_kind: 'flat', plan_label: 'Max 20×', plan_usd_per_month: 200, update_checks: true }),
-    )
-  })
+vi.mock('@/lib/api', async (orig) => {
+  const actual = await orig<typeof import('@/lib/api')>()
+  return {
+    ...actual,
+    api: {
+      ...actual.api,
+      update: async () => ({ enabled: true, current: 'v1', update_available: false }),
+      saveSettings: async (s: Settings) => {
+        sent.bodies.push(s as unknown as Record<string, unknown>)
+        return s
+      },
+    },
+  }
+})
 
-  it('prompts to set a plan when none is stated', () => {
-    render(<PlanChip plan={{ update_checks: false, plan_kind: '', plan_label: '', plan_usd_per_month: 0 }} onSave={vi.fn()} />)
-    expect(screen.getByRole('button', { name: 'set plan' })).toBeTruthy()
-  })
+describe('saving one setting', () => {
+  it('sends only the field that changed', async () => {
+    sent.bodies = []
+    const saves: Partial<Settings>[] = []
+    const plan = {
+      update_checks: false,
+      plan_kind: 'flat',
+      plan_label: 'Max 20×',
+      plan_usd_per_month: 200,
+    } as Settings
 
-  it('rejects a nonsense custom price instead of storing it', () => {
-    const onSave = vi.fn()
-    render(<PlanChip plan={enabled} onSave={onSave} />)
-    fireEvent.click(screen.getByRole('button', { name: /Pro/ }))
-    fireEvent.change(screen.getByPlaceholderText('e.g. 150'), { target: { value: 'abc' } })
-    fireEvent.click(screen.getByRole('button', { name: 'set' }))
-    expect(onSave).not.toHaveBeenCalled()
+    render(<UpdateBanner plan={plan} onSave={(p) => saves.push(p)} now={Date.now()} />)
+    fireEvent.click(await screen.findByText('check for updates'))
+
+    await waitFor(() => expect(saves.length).toBe(1))
+    // The whole point: turning on update checks must not also restate the
+    // plan, because this component's copy of it may be minutes old.
+    expect(saves[0]).toEqual({ update_checks: true })
+    expect(saves[0]).not.toHaveProperty('plan_label')
+    expect(saves[0]).not.toHaveProperty('plan_usd_per_month')
   })
 })

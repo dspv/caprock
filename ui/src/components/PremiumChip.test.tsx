@@ -1,64 +1,80 @@
 /**
- * The complaint this exists to answer was "how do I even buy this?", asked
- * while looking at the main screen. So what is tested is that a path to paying
- * exists without visiting a particular screen, and that it goes away once
- * someone has paid.
+ * The header chip: one control, and what it says depends on whether they paid.
+ *
+ * It was two controls in one border — a payment link and a chevron — with no
+ * seam between them, so clicking the word "premium" to find out what premium
+ * *is* took you to a card form. A reader who has not decided should never land
+ * on a checkout by accident, and a chevron is a shape rather than a label.
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import { PremiumChip } from './PremiumChip'
 import type { PremiumPricing } from '@/lib/api'
 
-const state = vi.hoisted(() => ({ licensed: false }))
-
-const pricing = (): PremiumPricing => ({
-  yearly: { per_month_usd: 2.5, charged_usd: 30, period: 'year', url: 'https://buy/y' },
-  monthly: { per_month_usd: 5, charged_usd: 5, period: 'month', url: 'https://buy/m' },
-  lifetime: { per_month_usd: 0, charged_usd: 100, period: 'once', url: 'https://buy/l' },
-  info_url: 'https://caprock.dev/premium/',
-  license: { active: state.licensed, in_grace: false },
-})
+const state = vi.hoisted(() => ({ value: {} as PremiumPricing }))
 
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
-  return { ...actual, api: { ...actual.api, premium: async () => pricing() } }
+  return { ...actual, api: { ...actual.api, premium: async () => state.value } }
 })
 
-import { PremiumChip } from './PremiumChip'
+const pricing = (license: PremiumPricing['license']): PremiumPricing =>
+  ({
+    yearly: { charged_usd: 30, url: 'https://buy/y' },
+    monthly: { charged_usd: 5, url: 'https://buy/m' },
+    lifetime: { charged_usd: 100, url: 'https://buy/l' },
+    license,
+  }) as PremiumPricing
 
 describe('PremiumChip', () => {
-  it('goes straight to the checkout, without a dialog in the way', async () => {
-    // The first version opened the dialog and nothing else, so someone who had
-    // already decided still had to read a screen and then hunt for a price.
-    // "You cannot go straight to premium" was the complaint.
-    state.licensed = false
+  it('asks for something, rather than just showing a price', async () => {
+    state.value = pricing({ active: false } as PremiumPricing['license'])
     render(<PremiumChip />)
-    const buy = await screen.findByRole('link', { name: /premium/i })
-    expect(buy.getAttribute('href')).toBe('https://buy/y')
-    expect(buy.getAttribute('target')).toBe('_blank')
-    // Reaching it must not require opening anything first.
-    expect(screen.queryByRole('dialog')).toBeNull()
+    // "premium $30/yr" is a price tag, and a price tag asks nothing.
+    const btn = await screen.findByRole('button', { name: /get premium/i })
+    expect(btn).toBeInTheDocument()
+    expect(screen.getByText('$30/yr')).toBeInTheDocument()
   })
 
-  it('still offers the explanation, for anyone who has not decided', async () => {
-    state.licensed = false
+  it('never puts a checkout one stray click away', async () => {
+    state.value = pricing({ active: false } as PremiumPricing['license'])
     render(<PremiumChip />)
-    const more = await screen.findByRole('button', { name: /what premium includes/i })
-    fireEvent.click(more)
-    expect(screen.getByRole('dialog')).toBeTruthy()
+    await screen.findByRole('button', { name: /get premium/i })
+    // No link at all in the header: the buy buttons live in the dialog, where
+    // clicking one is a decision rather than a slip.
+    expect(screen.queryByRole('link')).toBeNull()
   })
 
-  // Not tested here: the crash when the daemon sends no plans. It was real —
-  // the first version read `.url` off an absent plan and took the whole header
-  // down — but App.test.tsx is what catches it, because a crash only shows as
-  // a crash when something around it disappears. Two attempts at asserting it
-  // in isolation passed whether the guard was present or not, and a test that
-  // cannot fail is worse than no test.
-  it('stops selling to someone who has already paid', async () => {
-    // A buy button shown to a payer is the fastest way to make them feel they
-    // bought nothing.
-    state.licensed = true
+  // Paid readers know they paid. What they cannot see anywhere else is which
+  // plan they are on and when it ends.
+  it('names the plan once bought', async () => {
+    state.value = pricing({ active: true, expires_at: '2027-09-01' } as PremiumPricing['license'])
     render(<PremiumChip />)
     await waitFor(() => expect(screen.getByText(/premium/i)).toBeInTheDocument())
-    expect(screen.queryByRole('link', { name: /premium/i })).toBeNull()
+    expect(screen.getByText('yearly')).toBeInTheDocument()
+  })
+
+  it('calls a fifty-year key lifetime', async () => {
+    state.value = pricing({ active: true, expires_at: '2076-09-01' } as PremiumPricing['license'])
+    render(<PremiumChip />)
+    await waitFor(() => expect(screen.getByText('lifetime')).toBeInTheDocument())
+  })
+
+  // A renewal that has not arrived is worth noticing a week early, not on the
+  // morning the features stop.
+  it('flags a key inside its grace period', async () => {
+    state.value = pricing({
+      active: true, in_grace: true, expires_at: '2026-08-25',
+    } as PremiumPricing['license'])
+    render(<PremiumChip />)
+    await waitFor(() => expect(screen.getByText(/renew/)).toBeInTheDocument())
+  })
+
+  it('renders nothing until the daemon has answered', () => {
+    state.value = {} as PremiumPricing
+    const { container } = render(<PremiumChip />)
+    // An older daemon sends no pricing at all; a chip reading "$undefined/yr"
+    // is worse than no chip.
+    expect(container.textContent).toBe('')
   })
 })

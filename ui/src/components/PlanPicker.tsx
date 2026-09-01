@@ -37,7 +37,7 @@ function emit() {
   for (const s of subs) s()
 }
 
-export function usePlan(): [Settings | undefined, (s: Settings) => void] {
+export function usePlan(): [Settings | undefined, (patch: Partial<Settings>) => void] {
   const [, force] = useState(0)
   useEffect(() => {
     const fn = () => force((v) => v + 1)
@@ -52,15 +52,26 @@ export function usePlan(): [Settings | undefined, (s: Settings) => void] {
     return () => { subs.delete(fn) }
   }, [])
 
-  const save = (s: Settings) => {
-    cached = s // optimistic: the chip must never lag the click
+  // Send only what changed.
+  //
+  // This used to PUT the whole Settings object, built from this module's
+  // cached copy — so any control could overwrite a field it knew nothing
+  // about with a value it read minutes ago. Two tabs were enough: change the
+  // plan in one, click "check for updates" in the other, and the second wrote
+  // the plan back to what its cache still held. The setting had saved; a stale
+  // copy undid it, which reads as "it does not stick".
+  //
+  // The server has always been a patch — absent fields are left alone — so the
+  // fix is to stop pretending otherwise on this side.
+  const save = (patch: Partial<Settings>) => {
+    cached = { ...(cached ?? ({} as Settings)), ...patch } // optimistic: the chip must never lag the click
     emit()
-    void api.saveSettings(s).catch(() => { /* stays local until the next load */ })
+    void api.saveSettings(patch as Settings).catch(() => { /* stays local until the next load */ })
   }
   return [cached, save]
 }
 
-export function PlanChip({ plan, onSave }: { plan?: Settings; onSave: (s: Settings) => void }) {
+export function PlanChip({ plan, onSave }: { plan?: Settings; onSave: (patch: Partial<Settings>) => void }) {
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
 
@@ -95,11 +106,10 @@ export function PlanChip({ plan, onSave }: { plan?: Settings; onSave: (s: Settin
   )
 }
 
-function PlanMenu({ plan, onSave }: { plan?: Settings; onSave: (s: Settings) => void }) {
+function PlanMenu({ plan, onSave }: { plan?: Settings; onSave: (patch: Partial<Settings>) => void }) {
   const [custom, setCustom] = useState(String(plan?.plan_usd_per_month || ''))
   // Carry every other setting through: changing the plan must not silently
   // reset an unrelated preference such as release checks.
-  const base: Settings = plan ?? { update_checks: false, plan_kind: '', plan_label: '', plan_usd_per_month: 0 }
   return (
     <div className="absolute right-0 top-7 z-20 w-[268px] border border-border-strong bg-panel rounded-[var(--radius-panel)] shadow-lg p-2">
       <div className="text-[11px] text-fg-muted px-1 pb-1.5">
@@ -110,7 +120,7 @@ function PlanMenu({ plan, onSave }: { plan?: Settings; onSave: (s: Settings) => 
         return (
           <button
             key={p.label}
-            onClick={() => onSave({ ...base, plan_kind: p.kind, plan_label: p.label, plan_usd_per_month: p.usd })}
+            onClick={() => onSave({ plan_kind: p.kind, plan_label: p.label, plan_usd_per_month: p.usd })}
             className={`w-full flex items-baseline gap-2 px-1.5 py-1 rounded-sm text-left text-[12px] hover:bg-panel-2 ${
               active ? 'text-accent' : 'text-fg'
             }`}
@@ -136,7 +146,7 @@ function PlanMenu({ plan, onSave }: { plan?: Settings; onSave: (s: Settings) => 
             onClick={() => {
               const usd = Number(custom)
               if (!Number.isFinite(usd) || usd < 0) return
-              onSave({ ...base, plan_kind: 'flat', plan_label: 'plan', plan_usd_per_month: usd })
+              onSave({ plan_kind: 'flat', plan_label: 'plan', plan_usd_per_month: usd })
             }}
           >
             set
