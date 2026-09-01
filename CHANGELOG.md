@@ -7,6 +7,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+Phase 3 (Delight) has no plan by design.
+
+## [0.42.0] - 2026-09-01
+
 ### Added
 
 - **The weekly report, to your own Telegram bot.** What moved this week against
@@ -25,7 +29,32 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   no tool output, no file names — and goes straight to Telegram; nothing passes
   our server.
 
-Phase 3 (Delight) has no plan by design.
+### Fixed
+
+- **A setting no longer resets when you save a different one.** "Set plan keeps
+  resetting" was not a save that failed: the dashboard sent the whole settings
+  object every time, assembled from a cache in the page, so any control could
+  write back a field it had read minutes earlier. Two tabs were enough — change
+  the plan in one, turn on update checks in the other, and the second restated
+  the plan from its own stale copy. Only what changed is sent now.
+
+- **Live activity showed a fortnight of history as what just happened.** Two
+  causes at once: the feed asked for a session's *first* sixty events rather
+  than its last, and the store ordered "most recent" by insertion rather than by
+  time. Those agree for a session captured live and diverge for one whose
+  transcript was re-read, because a backfill inserts old events with new ids. On
+  a long session every row was equally stale, which is also why it read as
+  impossible to scroll.
+
+- **The new-session dialog cut off the permission label** — "Accept edits · asks
+  before com…" hid the consequence, which is the one thing that label exists to
+  state. Wider dialog, shorter labels.
+
+- **The premium chip was two controls disguised as one.** The label went
+  straight to the checkout while a chevron beside it opened the explanation, in
+  one border with no seam between them — so clicking the word "premium" to find
+  out what premium *is* took you to a card form. One control now: it opens the
+  dialog, and once you have bought it names your plan and when it ends.
 
 ## [0.41.0] - 2026-09-01
 
