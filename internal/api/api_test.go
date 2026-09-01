@@ -428,7 +428,14 @@ func TestPaceForecastHonesty(t *testing.T) {
 // fakeSettings is an in-memory SettingsController for the endpoint tests.
 type fakeSettings struct{ cur Settings }
 
-func (f *fakeSettings) Get() Settings        { return f.cur }
+// Get mirrors what the daemon's adapter does with the write-only token: it
+// reports that one is set and does not hand it back. A fake that returned the
+// token would let a leak pass its own test.
+func (f *fakeSettings) Get() Settings {
+	out := f.cur
+	out.ReportBotSet = f.cur.ReportBotToken != ""
+	return out
+}
 func (f *fakeSettings) Set(s Settings) error { f.cur = s; return nil }
 
 // The cap is a number that stops work, so it has to survive a save and it has

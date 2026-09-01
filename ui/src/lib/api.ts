@@ -274,6 +274,17 @@ export interface Settings {
   browse_root?: string
   /** The daily spend ceiling in USD; 0 is off. See internal/cap. */
   cap_usd_per_day?: number
+  /** Where the weekly report goes. Not a credential, so it round-trips. */
+  report_chat_id?: string
+  /** Whether a bot token is stored. The token itself is never returned — it is
+   *  the one write-only field in this API (ADR-024). */
+  report_bot_set?: boolean
+  /** Why the last send failed, absent when it did not. A weekly message that
+   *  stops arriving is invisible otherwise. */
+  report_last_error?: string
+  report_last_sent_ms?: number
+  /** Write-only: accepted by PUT, never present in a GET response. */
+  report_bot_token?: string
   update_checks: boolean
   plan_kind: '' | 'flat' | 'metered'
   plan_label: string

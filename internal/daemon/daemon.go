@@ -85,15 +85,19 @@ type Daemon struct {
 	bus   *bus.Bus
 	table *cost.Table
 	rec   *rollup.Recorder
-	det   *loop.Detector
-	tail  *ingest.Tailer
-	ocIn  *opencode.Ingester
-	mgr   *agents.Manager
-	board *board.Board
-	orch  *orchestrator.Orchestrator
-	api   *api.Server
-	rt    config.Runtime
-	start time.Time
+	// report holds the weekly report's last outcome, so a message that never
+	// arrived can be explained on the settings screen instead of being an
+	// absence nobody notices.
+	report reportState
+	det    *loop.Detector
+	tail   *ingest.Tailer
+	ocIn   *opencode.Ingester
+	mgr    *agents.Manager
+	board  *board.Board
+	orch   *orchestrator.Orchestrator
+	api    *api.Server
+	rt     config.Runtime
+	start  time.Time
 
 	// cap is the daily spend guard. Nil until run() builds it, because it needs
 	// the owned-session manager.
@@ -384,6 +388,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		}()
 	}
 	go d.sweep(ctx)
+	go d.weeklyLoop(ctx)
 	go d.backfillToolLinks(ctx)
 	if d.config().RetentionDays > 0 {
 		go d.pruneLoop(ctx)
@@ -863,6 +868,13 @@ func (a *settingsAdapter) Get() api.Settings {
 		LicenseKey:      c.LicenseKey,
 		CapUSDPerDay:    c.CapUSDPerDay,
 		BrowseRoot:      c.BrowseRoot,
+		ReportChatID:    c.ReportChatID,
+		// The token itself never crosses this boundary — only whether one
+		// exists, which is what a screen needs to render a state.
+		ReportBotSet:     c.ReportBotToken != "",
+		ReportBotToken:   c.ReportBotToken,
+		ReportLastError:  a.d.reportLastError(),
+		ReportLastSentMs: a.d.reportLastSent(),
 	}
 }
 
@@ -882,6 +894,8 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	capChanged := in.CapUSDPerDay != a.d.opt.Config.CapUSDPerDay
 	a.d.opt.Config.CapUSDPerDay = in.CapUSDPerDay
 	a.d.opt.Config.BrowseRoot = strings.TrimSpace(in.BrowseRoot)
+	a.d.opt.Config.ReportBotToken = strings.TrimSpace(in.ReportBotToken)
+	a.d.opt.Config.ReportChatID = strings.TrimSpace(in.ReportChatID)
 	cfg := a.d.opt.Config
 	a.d.cfgMu.Unlock()
 	if capChanged && a.d.cap != nil {

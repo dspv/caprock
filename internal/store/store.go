@@ -45,6 +45,12 @@ const (
 	// it would skip exactly the machines the widening is for. Absent ⇒ start at
 	// 0; the sentinel below ⇒ finished.
 	MetaToolLinkCursor = "tool_link_cursor"
+	// MetaReportWeek is the ISO week of the last weekly report that was sent,
+	// as "2026-W36". It lives here rather than in memory because an in-memory
+	// marker sends a second copy of the message after every restart — the bug
+	// cap.Guard.firedOn has, tolerable for a cap and not for a message someone
+	// receives on their phone.
+	MetaReportWeek = "report_week"
 	// ToolLinkDone is the MetaToolLinkCursor value meaning "no rows left".
 	// A cursor alone cannot say so: the pass ends by reading a short batch, and
 	// new unlinked rows never appear behind the cursor.

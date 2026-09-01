@@ -168,3 +168,38 @@ func TestEmptyPromptIsRefusedBeforeTheNetwork(t *testing.T) {
 		t.Error("an empty prompt reached the client")
 	}
 }
+
+// The bot token is the first write-only field in this API. GET /v1/settings is
+// read on every settings render and by `caprock report`, so a credential must
+// not ride along on either — what comes back is whether one is set.
+func TestBotTokenIsWriteOnly(t *testing.T) {
+	e := newGeminiEnv(t)
+
+	cur := e.settings.Get()
+	cur.ReportBotToken = "123456:SECRET-BOT-TOKEN"
+	cur.ReportChatID = "-1009999"
+	if err := e.settings.Set(cur); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := http.Get(e.srv.URL + "/v1/settings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var raw bytes.Buffer
+	_, _ = raw.ReadFrom(res.Body)
+
+	if bytes.Contains(raw.Bytes(), []byte("SECRET-BOT-TOKEN")) {
+		t.Fatalf("GET /v1/settings returned the bot token:\n%s", raw.String())
+	}
+	var out map[string]any
+	_ = json.Unmarshal(raw.Bytes(), &out)
+	// What a screen needs instead: that one is set, and where messages go.
+	if out["report_bot_set"] != true {
+		t.Errorf("report_bot_set should be true with a token stored: %v", out)
+	}
+	if out["report_chat_id"] != "-1009999" {
+		t.Errorf("the chat id is not a credential and should round-trip: %v", out["report_chat_id"])
+	}
+}

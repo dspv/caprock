@@ -69,6 +69,17 @@ type Config struct {
 	// default: a threshold nobody chose would eventually stop work for a
 	// reason its owner could not explain. See internal/cap.
 	CapUSDPerDay float64 `json:"cap_usd_per_day,omitempty"`
+	// ReportBotToken and ReportChatID configure the weekly report's delivery to
+	// the user's own Telegram bot.
+	//
+	// The token is stored here, unlike the Gemini key, and ADR-024 is where
+	// that difference is argued: a bot token drives a bot the user made for
+	// this, with no billing attached, while an AI Studio key spends money.
+	// Putting it in the environment instead would mean editing a launchd plist
+	// to turn on a feature sold as two minutes of setup. The file is 0600
+	// inside a 0700 data dir, and the token is never returned over HTTP.
+	ReportBotToken string `json:"report_bot_token,omitempty"`
+	ReportChatID   string `json:"report_chat_id,omitempty"`
 	// BrowseRoot is where the folder picker may look. Empty means $HOME.
 	BrowseRoot string `json:"browse_root,omitempty"`
 }

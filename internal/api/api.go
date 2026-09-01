@@ -113,6 +113,33 @@ type Settings struct {
 	// too old to have the field, and the panel cannot tell "you turned this
 	// off" from "this build cannot do it".
 	CapUSDPerDay float64 `json:"cap_usd_per_day"`
+	// ReportChatID is where the weekly report goes. Not a credential — a chat
+	// id identifies a conversation and grants nothing — so it round-trips like
+	// any other setting.
+	ReportChatID string `json:"report_chat_id"`
+	// ReportBotSet reports whether a bot token is stored, WITHOUT the token.
+	//
+	// The token is the first write-only field in this API: accepted by PUT,
+	// never returned by GET. Every other setting round-trips, and the licence
+	// key is echoed back plainly — but that key unlocks features on this
+	// machine, while a bot token can send messages as somebody's bot. This
+	// response is read on every settings render and by `caprock report`, and a
+	// credential should not ride along on either. What a screen needs is
+	// whether one is set, which is this.
+	ReportBotSet bool `json:"report_bot_set"`
+	// ReportBotToken is never serialised — the `-` tag is the mechanism that
+	// makes "write-only" true rather than merely intended. It is set by the PUT
+	// handler and read by the daemon; GET renders ReportBotSet instead.
+	ReportBotToken string `json:"-"`
+	// ReportLastError is why the last send failed, empty when it did not.
+	//
+	// A weekly message that silently stops arriving is the failure mode this
+	// feature has: nobody notices an absence. Telegram's own words are kept
+	// ("chat not found", "bot was blocked by the user") because both are things
+	// only the user can fix.
+	ReportLastError string `json:"report_last_error,omitempty"`
+	// ReportLastSentMs is when a report last went out, 0 for never.
+	ReportLastSentMs int64 `json:"report_last_sent_ms,omitempty"`
 	// BrowseRoot is the only directory the folder picker may look inside, and
 	// the boundary every path it returns is checked against. Empty means the
 	// user's home directory.
@@ -645,6 +672,10 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		LicenseKey      *string  `json:"license_key"`
 		CapUSDPerDay    *float64 `json:"cap_usd_per_day"`
 		BrowseRoot      *string  `json:"browse_root"`
+		// The bot token goes in and never comes back out. An empty string is a
+		// deliberate clear, which is why it is a pointer like everything else.
+		ReportBotToken *string `json:"report_bot_token"`
+		ReportChatID   *string `json:"report_chat_id"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&patch); err != nil {
 		s.failCode(w, http.StatusBadRequest, fmt.Errorf("parse body: %w", err))
@@ -670,6 +701,15 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.BrowseRoot != nil {
 		in.BrowseRoot = *patch.BrowseRoot
+	}
+	// Only touched when the caller named it. GET never returns the token, so a
+	// UI that reads settings and writes them back always omits it — treating
+	// absence as "clear it" would delete the token on the next unrelated save.
+	if patch.ReportBotToken != nil {
+		in.ReportBotToken = strings.TrimSpace(*patch.ReportBotToken)
+	}
+	if patch.ReportChatID != nil {
+		in.ReportChatID = strings.TrimSpace(*patch.ReportChatID)
 	}
 	if patch.LicenseKey != nil {
 		in.LicenseKey = *patch.LicenseKey

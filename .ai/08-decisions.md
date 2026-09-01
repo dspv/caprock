@@ -422,3 +422,76 @@ call; presenting a Caprock-side total as the user's Google bill.
 reconciled rather than only counted), or if setting an environment variable
 proves to be the thing that stops people using the feature — in which case the
 question is a better handoff, not a key Caprock keeps.
+
+---
+
+## ADR-024 — The weekly report holds a bot token, and only reports what a baseline supports
+
+**Decided 2026-09-01.** *Third paid feature; amends the scope of [ADR-023](#adr-023--gemini-runs-on-a-key-caprock-never-holds-read-from-the-environment).*
+
+A weekly message saying what moved, sent to the user's own Telegram bot. Three
+decisions, and the first one walks back a line drawn yesterday.
+
+**The bot token is stored, and the Gemini key still is not.** ADR-023 said
+Caprock never holds a credential, and that remains true of the thing it was
+written about. A Google AI Studio key and a Telegram bot token are not the same
+object: the key is attached to a billing account and can spend real money, while
+the token drives a bot the user created for this one purpose, which can send
+messages to the chats it was invited to and nothing else. Leaking the first
+costs money; leaking the second costs a stranger the ability to message you.
+That difference is large enough to price differently.
+
+The deciding argument is what the alternative does to the feature. Putting the
+token in the environment means: talk to BotFather, find the chat id, edit a
+launchd plist or a systemd unit, reinstall the service, restart the daemon — on
+Windows, worse. The premium page promises "about two minutes", and a setup that
+long would not be dishonest so much as unused. A feature nobody finishes setting
+up is not a feature.
+
+It is stored the way the licence key already is: `config.json`, mode `0600`,
+inside a `0700` data dir. It is **write-only over HTTP** — accepted by
+`PUT /v1/settings`, never returned by `GET /v1/settings`, which is a new pattern
+in this codebase and exists because the settings response is read by the
+dashboard on every render and by `caprock report`. What comes back instead is
+whether a token is set, which is all any screen needs to know.
+
+**A finding needs a baseline and a floor, or it is not reported.** The premium
+page says "the repository that cost 3× its usual week". Two weeks compared give
+a ratio, not a finding: a repository that cost $2 and then $6 is 3× and means
+nothing. "Usual" is therefore the median of the preceding four weeks, not last
+week, and no movement is reported at all unless the change also clears an
+absolute floor — a few dollars, not a few cents. Below that the message says the
+week was ordinary, which is a true and useful thing to say.
+
+This follows what `assembleWork` already does in `caprock report`: withhold a
+breakdown whose linkage is too weak rather than publish a confident wrong
+ranking. A weekly message is worse than the dashboard for this, because the
+reader cannot click into it to check.
+
+**It is the first background outbound call, and that is the part to be careful
+with.** ADR-023 ruled out "any background or speculative call" for Gemini, and
+that stands for Gemini: it spends the user's money per call. This spends
+nothing, goes only to Telegram's documented API, and carries figures the user
+already sees on their own screen — no prompts, no replies, no tool output, no
+file paths, on the same rule as the Gemini context. It sends only when the user
+has configured a bot, which is the opt-in; with no token there is no timer and
+nothing to disable.
+
+**Scheduling is a comparison, not a countdown.** A laptop is closed at
+weekends, so a ticker anchored to Monday 09:00 fires for nobody. The daemon
+instead checks hourly whether the ISO week of the last sent report is behind the
+current one, and sends on the first tick after the send time — which means a
+machine opened on Wednesday gets Monday's report on Wednesday, labelled with the
+week it covers. The marker lives in the `meta` table beside the tool-link
+cursor, because an in-memory marker sends a second copy after every restart:
+that is exactly the bug `cap.Guard.firedOn` has, tolerable for a cap and not for
+a message.
+
+**Rules out:** a token in the environment; a report that names a mover without a
+baseline behind it; a fixed weekly timer; an in-memory sent-marker; sending
+anything the dashboard does not already show the user.
+
+**Revisit if** a user asks for a second channel (a webhook is the same shape with
+a different URL), or if the token turns out to be worth more than this decision
+assumes — a bot added to a company Slack-style group chat is a wider blast radius
+than a personal one, and that would be the signal to move it out of the file.
