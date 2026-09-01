@@ -49,6 +49,11 @@ export function GeminiPanel() {
 
   const st = status.data
   const ready = !!st?.available
+  // Two things can be missing and they are independent. Behind the paywall the
+  // panel is inert, so a reader who has set no key would otherwise see a text
+  // box they cannot type in and no hint that a key is needed at all — the
+  // setup step has to be visible whether or not they have bought anything.
+  const needsKey = st !== undefined && !st.available
 
   const ask = async () => {
     const q = prompt.trim()
@@ -76,7 +81,7 @@ export function GeminiPanel() {
     >
       {/* The setup case comes first because it is the one a reader can act on
         * without paying anything. */}
-      {!ready ? (
+      {needsKey ? (
         <div className="px-3 py-3 text-[12px] text-fg-muted grid gap-2">
           <p className="m-0">
             Caprock can ask Google&apos;s Gemini on your own key. It never stores the key —
@@ -131,6 +136,14 @@ export function GeminiPanel() {
           </div>
 
           {error && <div className="text-danger text-[12px]">{error}</div>}
+
+          {/* Where the key is, stated even when it is working. Someone reading
+            * a panel that spends money should be able to see what it spends
+            * against without going to look for documentation. */}
+          <p className="m-0 text-[11px] text-fg-faint">
+            Using the key in <span className="mono">{st?.env_var}</span>. Caprock never stores it —
+            Google bills you directly.
+          </p>
 
           {reply && (
             <div className="grid gap-2 border-t border-border pt-2">

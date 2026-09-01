@@ -84,3 +84,24 @@ describe('choosing a model', () => {
     expect(screen.queryByLabelText('Model')).not.toBeInTheDocument()
   })
 })
+
+
+// Behind the paywall the panel is inert, so a reader who has set no key would
+// see a text box they cannot type in and no hint that a key is needed. The
+// setup step has to be visible whether or not they have bought anything.
+describe('the key is explained in both states', () => {
+  it('shows the setup step when no key is set, licensed or not', async () => {
+    status.value = { available: false, env_var: 'GEMINI_API_KEY', licensed: false, model: 'm' }
+    render(<GeminiPanel />)
+    await waitFor(() => expect(screen.getByText(/GEMINI_API_KEY/)).toBeInTheDocument())
+  })
+
+  it('still names the variable once a key is working', async () => {
+    status.value = { available: true, env_var: 'GEMINI_API_KEY', licensed: true, model: 'm' }
+    render(<GeminiPanel />)
+    // Someone reading a panel that spends money should see what it spends
+    // against without going to look for documentation.
+    await waitFor(() => expect(screen.getByText(/Using the key in/)).toBeInTheDocument())
+    expect(screen.getByText(/never stores it/i)).toBeInTheDocument()
+  })
+})
