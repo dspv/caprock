@@ -28,6 +28,7 @@ import (
 	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/desktop"
 	"github.com/dspv/caprock/internal/event"
+	"github.com/dspv/caprock/internal/gemini"
 	"github.com/dspv/caprock/internal/hive"
 	"github.com/dspv/caprock/internal/hookd"
 	"github.com/dspv/caprock/internal/hooks"
@@ -873,6 +874,9 @@ func (a *settingsAdapter) Get() api.Settings {
 		// exists, which is what a screen needs to render a state.
 		ReportBotSet:     c.ReportBotToken != "",
 		ReportBotToken:   c.ReportBotToken,
+		GeminiAPIKey:     c.GeminiAPIKey,
+		GeminiKeySet:     gemini.Available(c.GeminiAPIKey),
+		GeminiKeyFromEnv: gemini.EnvKeyValue() != "",
 		ReportLastError:  a.d.reportLastError(),
 		ReportLastSentMs: a.d.reportLastSent(),
 	}
@@ -896,6 +900,7 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	a.d.opt.Config.BrowseRoot = strings.TrimSpace(in.BrowseRoot)
 	a.d.opt.Config.ReportBotToken = strings.TrimSpace(in.ReportBotToken)
 	a.d.opt.Config.ReportChatID = strings.TrimSpace(in.ReportChatID)
+	a.d.opt.Config.GeminiAPIKey = strings.TrimSpace(in.GeminiAPIKey)
 	cfg := a.d.opt.Config
 	a.d.cfgMu.Unlock()
 	if capChanged && a.d.cap != nil {

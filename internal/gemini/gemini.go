@@ -45,17 +45,32 @@ const DefaultModel = "gemini-3.5-flash-lite"
 // stays off: with nothing set there is no default-on path to disable.
 var ErrNoKey = errors.New("no " + EnvKey + " in the environment")
 
-// Key returns the key from the environment, trimmed. Empty means absent —
-// callers must treat that as "the feature does not exist here", not as an error
-// to report.
-func Key() string { return strings.TrimSpace(os.Getenv(EnvKey)) }
+// EnvKeyValue returns the key from the environment, trimmed.
+//
+// The environment still wins over the stored one: a machine already set up that
+// way keeps working untouched, and a CI runner can inject a key without writing
+// a file (ADR-025).
+func EnvKeyValue() string { return strings.TrimSpace(os.Getenv(EnvKey)) }
+
+// Key resolves the key to use: the environment first, then whatever the user
+// entered in the dashboard. Empty means absent — callers must treat that as
+// "the feature is not set up here", not as an error to report.
+func Key(stored string) string {
+	if k := EnvKeyValue(); k != "" {
+		return k
+	}
+	return strings.TrimSpace(stored)
+}
 
 // Available reports whether a key is present at all.
-func Available() bool { return Key() != "" }
+func Available(stored string) bool { return Key(stored) != "" }
 
 // Client calls the API. The zero value is usable.
 type Client struct {
-	HTTP *http.Client
+	// Stored is the key the user entered in the dashboard, used when the
+	// environment does not carry one.
+	Stored string
+	HTTP   *http.Client
 	// Base overrides the endpoint in tests. Empty means Endpoint.
 	Base string
 	// Now is injectable so timings are deterministic under test.
@@ -155,7 +170,7 @@ const MaxBody = 8 << 20
 
 // Ask sends one prompt and returns the answer. system may be empty.
 func (c *Client) Ask(ctx context.Context, model, system, prompt string) (*Reply, error) {
-	key := Key()
+	key := Key(c.Stored)
 	if key == "" {
 		return nil, ErrNoKey
 	}
@@ -238,7 +253,7 @@ func (c *Client) Ask(ctx context.Context, model, system, prompt string) (*Reply,
 // Check verifies the key by listing models. It is the cheapest call that
 // proves the key works, and it sends no user content.
 func (c *Client) Check(ctx context.Context) ([]string, error) {
-	key := Key()
+	key := Key(c.Stored)
 	if key == "" {
 		return nil, ErrNoKey
 	}

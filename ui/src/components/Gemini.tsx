@@ -22,7 +22,7 @@
  * being caught rounding.
  */
 import { useState } from 'react'
-import { api, errText, type GeminiReply } from '@/lib/api'
+import { api, errText, type GeminiReply, type Settings } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { Panel } from '@/components/ui'
 import { fmtTokens } from '@/lib/format'
@@ -42,6 +42,9 @@ export function GeminiPanel() {
   // mounted it, firing into a torn-down jsdom.
   const status = useApi(() => api.gemini(), [], { live: false })
   const [prompt, setPrompt] = useState('')
+  const [draftKey, setDraftKey] = useState('')
+  const [savingKey, setSavingKey] = useState(false)
+  const [keyError, setKeyError] = useState('')
   const [model, setModel] = useState('')
   const [reply, setReply] = useState<GeminiReply | null>(null)
   const [busy, setBusy] = useState(false)
@@ -54,6 +57,22 @@ export function GeminiPanel() {
   // box they cannot type in and no hint that a key is needed at all — the
   // setup step has to be visible whether or not they have bought anything.
   const needsKey = st !== undefined && !st.available
+
+  const saveKey = async () => {
+    const k = draftKey.trim()
+    if (!k || savingKey) return
+    setSavingKey(true)
+    setKeyError('')
+    try {
+      await api.saveSettings({ gemini_api_key: k } as Partial<Settings> as Settings)
+      setDraftKey('')
+      status.refresh?.()
+    } catch (e) {
+      setKeyError(errText(e))
+    } finally {
+      setSavingKey(false)
+    }
+  }
 
   const ask = async () => {
     const q = prompt.trim()
@@ -84,49 +103,45 @@ export function GeminiPanel() {
       {needsKey ? (
         <div className="px-3 py-3 text-[12px] text-fg-muted grid gap-2.5">
           <p className="m-0">
-            Caprock can ask Google&apos;s Gemini on your own key, and it never stores that key —
-            it reads <span className="mono text-fg">{st?.env_var ?? 'GEMINI_API_KEY'}</span> from
-            the daemon&apos;s environment when you ask. Get a key from{' '}
+            Ask Google&apos;s Gemini about your own sessions, on your own key. Get one from{' '}
             <a className="link" href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
               Google AI Studio
-            </a>
-            , then put it where the daemon will see it.
+            </a>{' '}
+            and paste it here — you pay Google directly, and Caprock counts what it spends
+            beside your Claude figures.
           </p>
-
-          {/* Where, not just what. `export` in a terminal lives in that window
-            * only: set it in one tab, start the daemon in another, and nothing
-            * happens — which reads as a broken feature rather than a missed
-            * step. And a login agent inherits almost nothing from a shell
-            * profile, so the person who ran `caprock service install` needs a
-            * different answer entirely. Both are spelled out. */}
-          <div className="grid gap-1">
-            <p className="m-0 text-fg">If you start it yourself</p>
-            <p className="m-0 text-fg-faint">
-              Put the line in <span className="mono">~/.zshrc</span> (or{' '}
-              <span className="mono">~/.bashrc</span>), open a new terminal, then restart the daemon.
-              Exporting it in one window and starting Caprock in another will not work.
-            </p>
-            <code className="mono text-[11px] bg-panel-2 px-2 py-1.5 rounded-sm text-fg block overflow-x-auto">
-              export {st?.env_var ?? 'GEMINI_API_KEY'}=AIza…{'\n'}caprock down &amp;&amp; caprock up
-            </code>
+          {/* The field, rather than an environment variable.
+            *
+            * It used to say `export GEMINI_API_KEY=…` and nothing else, which
+            * is no instruction at all for the people most likely to be here: a
+            * login agent inherits nothing from a shell profile, so anyone who
+            * ran `caprock service install` had to hand-edit a launchd plist to
+            * switch on a paid feature. A key nobody can enter protects nothing
+            * — the feature simply goes unused (ADR-025). */}
+          <label className="grid gap-1">
+            <span className="text-fg-muted">API key</span>
+            <input
+              className="input"
+              type="password"
+              placeholder="AIza…"
+              value={draftKey}
+              onChange={(e) => setDraftKey(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void saveKey() }}
+            />
+          </label>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => void saveKey()}
+              disabled={savingKey || !draftKey.trim()}
+              className="border border-accent bg-accent/15 text-accent px-3 py-1 rounded-sm hover:bg-accent/25 disabled:opacity-50"
+            >
+              {savingKey ? 'saving…' : 'Save key'}
+            </button>
+            <span className="text-[11px] text-fg-faint">
+              Stored on this machine only, and never sent back to this page.
+            </span>
           </div>
-
-          <div className="grid gap-1">
-            <p className="m-0 text-fg">If it starts at login</p>
-            <p className="m-0 text-fg-faint">
-              A login agent does not read your shell profile, so the variable has to go in the
-              agent itself — on macOS in{' '}
-              <span className="mono">~/Library/LaunchAgents/dev.caprock.daemon.plist</span> under{' '}
-              <span className="mono">EnvironmentVariables</span>, on Linux as an{' '}
-              <span className="mono">Environment=</span> line in the systemd user unit. Then{' '}
-              <span className="mono">caprock service install</span> again to reload it.
-            </p>
-          </div>
-
-          <p className="m-0 text-fg-faint">
-            You pay Google directly. Caprock only counts what it sent, which is not the same as
-            what Google bills.
-          </p>
+          {keyError && <div className="text-danger text-[11px]">{keyError}</div>}
         </div>
       ) : (
         <div className="px-3 py-3 grid gap-2">
@@ -175,8 +190,9 @@ export function GeminiPanel() {
             * a panel that spends money should be able to see what it spends
             * against without going to look for documentation. */}
           <p className="m-0 text-[11px] text-fg-faint">
-            Using the key in <span className="mono">{st?.env_var}</span>. Caprock never stores it —
-            Google bills you directly.
+            {st?.from_env
+              ? <>Using the key in <span className="mono">{st?.env_var}</span>, which takes precedence over the stored one.</>
+              : <>Using the key you saved here. Google bills you directly.</>}
           </p>
 
           {reply && (

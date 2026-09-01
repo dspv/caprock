@@ -1,58 +1,102 @@
 /**
  * The Gemini panel has to keep two absences apart.
  *
- * "No key" is a setup problem with a free fix — a variable name. "No licence"
- * is a purchase. Merging them into one greyed-out button tells a reader who
- * has not set the variable that they should pay, which is both wrong and the
- * kind of wrong that gets a refund request.
+ * "No key" is setup with a free fix. "No licence" is a purchase. Merging them
+ * into one greyed-out button tells a reader who has not pasted a key that they
+ * should pay, which is both wrong and the kind of wrong that gets a refund
+ * request.
  */
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { GeminiPanel } from './Gemini'
-import type { GeminiStatus } from '@/lib/api'
+import type { GeminiStatus, Settings } from '@/lib/api'
 
 const status = vi.hoisted(() => ({ value: {} as GeminiStatus }))
+const saved = vi.hoisted(() => ({ calls: [] as Partial<Settings>[] }))
 
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
-  return { ...actual, api: { ...actual.api, gemini: async () => status.value } }
+  return {
+    ...actual,
+    api: {
+      ...actual.api,
+      gemini: async () => status.value,
+      saveSettings: async (s: Settings) => {
+        saved.calls.push(s)
+        return s
+      },
+    },
+  }
 })
 
 describe('GeminiPanel', () => {
-  it('names the variable to set when there is no key', async () => {
+  // A login agent inherits nothing from a shell profile, so "export it" was no
+  // instruction at all for anyone who ran `caprock service install` — which is
+  // the setup the product recommends (ADR-025).
+  it('offers a field to paste the key into', async () => {
     status.value = { available: false, env_var: 'GEMINI_API_KEY', licensed: true, model: 'gemini-3.5-flash-lite' }
     render(<GeminiPanel />)
-    // The fix, not a paywall: this reader has nothing to buy.
-    await waitFor(() => expect(screen.getAllByText(/GEMINI_API_KEY/).length).toBeGreaterThan(0))
-    expect(screen.queryByRole('button', { name: /ask/i })).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByPlaceholderText('AIza…')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /save key/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^ask$/i })).not.toBeInTheDocument()
   })
 
-  it('says the key stays with the user, since that is the whole trade', async () => {
+  it('saves the key and asks for nothing else', async () => {
+    saved.calls = []
     status.value = { available: false, env_var: 'GEMINI_API_KEY', licensed: true, model: 'm' }
     render(<GeminiPanel />)
-    await waitFor(() => expect(screen.getByText(/never stores that key/i)).toBeInTheDocument())
-    // And who gets paid, so nobody expects Caprock to be reselling tokens.
+    const field = await screen.findByPlaceholderText('AIza…')
+    fireEvent.change(field, { target: { value: 'AIza-test' } })
+    fireEvent.click(screen.getByRole('button', { name: /save key/i }))
+    await waitFor(() => expect(saved.calls.length).toBe(1))
+    // Only the key: a settings write that carries other fields can undo them.
+    expect(saved.calls[0]).toEqual({ gemini_api_key: 'AIza-test' })
+  })
+
+  it('says where the key lives and who bills for it', async () => {
+    status.value = { available: false, env_var: 'GEMINI_API_KEY', licensed: true, model: 'm' }
+    render(<GeminiPanel />)
+    await waitFor(() => expect(screen.getByText(/never sent back to this page/i)).toBeInTheDocument())
     expect(screen.getByText(/pay Google directly/i)).toBeInTheDocument()
+  })
+
+  it('shows the setup step whether or not they have paid', async () => {
+    status.value = { available: false, env_var: 'GEMINI_API_KEY', licensed: false, model: 'm' }
+    render(<GeminiPanel />)
+    await waitFor(() => expect(screen.getByPlaceholderText('AIza…')).toBeInTheDocument())
   })
 
   it('offers the box once a key is set', async () => {
     status.value = { available: true, env_var: 'GEMINI_API_KEY', licensed: true, model: 'gemini-3.5-flash-lite' }
     render(<GeminiPanel />)
-    await waitFor(() => expect(screen.getByRole('button', { name: /ask/i })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('button', { name: /^ask$/i })).toBeInTheDocument())
     expect(screen.getByPlaceholderText(/ask about your sessions/i)).toBeInTheDocument()
-    // The model is named: it is the reader's money, and different models cost
-    // very different amounts.
+    // The model is named: it is the reader's money, and models differ by
+    // twenty-five times.
     expect(screen.getByText('gemini-3.5-flash-lite')).toBeInTheDocument()
   })
 
   it('will not send an empty question', async () => {
     status.value = { available: true, env_var: 'GEMINI_API_KEY', licensed: true, model: 'm' }
     render(<GeminiPanel />)
-    const btn = await screen.findByRole('button', { name: /ask/i })
-    expect(btn).toBeDisabled()
+    expect(await screen.findByRole('button', { name: /^ask$/i })).toBeDisabled()
+  })
+
+  // The environment still wins where it is set, so a machine configured that
+  // way keeps working — and the panel says which source it is using, or
+  // editing a field that changes nothing is baffling.
+  it('says when the environment is supplying the key', async () => {
+    status.value = { available: true, from_env: true, env_var: 'GEMINI_API_KEY', licensed: true, model: 'm' }
+    render(<GeminiPanel />)
+    await waitFor(() => expect(screen.getByText(/takes precedence/i)).toBeInTheDocument())
+  })
+
+  it('says when the stored key is the one in use', async () => {
+    status.value = { available: true, from_env: false, env_var: 'GEMINI_API_KEY', licensed: true, model: 'm' }
+    render(<GeminiPanel />)
+    await waitFor(() => expect(screen.getByText(/key you saved here/i)).toBeInTheDocument())
   })
 })
-
 
 describe('choosing a model', () => {
   const withModels = (): GeminiStatus => ({
@@ -67,8 +111,7 @@ describe('choosing a model', () => {
   it('prices each model, because they differ by twenty-five times', async () => {
     status.value = withModels()
     render(<GeminiPanel />)
-    const select = await screen.findByLabelText('Model')
-    expect(select).toBeInTheDocument()
+    expect(await screen.findByLabelText('Model')).toBeInTheDocument()
     // Sub-cent prices must not round to "$0.00": a reader who believes a
     // question is free will believe it fifty times.
     expect(screen.getByText(/Flash Lite · ~0.0¢ a question/)).toBeInTheDocument()
@@ -78,45 +121,7 @@ describe('choosing a model', () => {
   it('offers no picker when the daemon sent no models', async () => {
     status.value = { available: true, env_var: 'GEMINI_API_KEY', licensed: true, model: 'm' }
     render(<GeminiPanel />)
-    await screen.findByRole('button', { name: /ask/i })
-    // An older daemon that does not send the list must not produce an empty
-    // dropdown next to the button.
+    await screen.findByRole('button', { name: /^ask$/i })
     expect(screen.queryByLabelText('Model')).not.toBeInTheDocument()
-  })
-})
-
-
-// Behind the paywall the panel is inert, so a reader who has set no key would
-// see a text box they cannot type in and no hint that a key is needed. The
-// setup step has to be visible whether or not they have bought anything.
-describe('the key is explained in both states', () => {
-  it('shows the setup step when no key is set, licensed or not', async () => {
-    status.value = { available: false, env_var: 'GEMINI_API_KEY', licensed: false, model: 'm' }
-    render(<GeminiPanel />)
-    await waitFor(() => expect(screen.getAllByText(/GEMINI_API_KEY/).length).toBeGreaterThan(0))
-  })
-
-  // "export it" is not an answer: the variable lives in that one window, so
-  // setting it in one tab and starting the daemon in another does nothing and
-  // reads as a broken feature. And a login agent inherits almost nothing from
-  // a shell profile, so that case needs its own answer.
-  it('says where to put the variable, for both ways the daemon starts', async () => {
-    status.value = { available: false, env_var: 'GEMINI_API_KEY', licensed: true, model: 'm' }
-    render(<GeminiPanel />)
-    await waitFor(() => expect(screen.getByText(/If you start it yourself/)).toBeInTheDocument())
-    expect(screen.getByText(/\.zshrc/)).toBeInTheDocument()
-    expect(screen.getByText(/will not work/)).toBeInTheDocument()
-
-    expect(screen.getByText(/If it starts at login/)).toBeInTheDocument()
-    expect(screen.getByText(/dev\.caprock\.daemon\.plist/)).toBeInTheDocument()
-  })
-
-  it('still names the variable once a key is working', async () => {
-    status.value = { available: true, env_var: 'GEMINI_API_KEY', licensed: true, model: 'm' }
-    render(<GeminiPanel />)
-    // Someone reading a panel that spends money should see what it spends
-    // against without going to look for documentation.
-    await waitFor(() => expect(screen.getByText(/Using the key in/)).toBeInTheDocument())
-    expect(screen.getByText(/never stores it/i)).toBeInTheDocument()
   })
 })

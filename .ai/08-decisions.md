@@ -495,3 +495,58 @@ anything the dashboard does not already show the user.
 a different URL), or if the token turns out to be worth more than this decision
 assumes — a bot added to a company Slack-style group chat is a wider blast radius
 than a personal one, and that would be the signal to move it out of the file.
+
+---
+
+## ADR-025 — Keys go in the interface, stored write-only, because a key nobody can enter is a feature nobody uses
+
+**Decided 2026-09-01.** *Supersedes the storage half of [ADR-023](#adr-023--gemini-runs-on-a-key-caprock-never-holds-read-from-the-environment).*
+
+ADR-023 kept the Gemini key out of Caprock entirely: read from `GEMINI_API_KEY`
+at the moment of the call, never stored. The reasoning was sound and the outcome
+was not.
+
+**What the environment actually costs.** The owner's own machine runs the daemon
+as a login agent, and a login agent inherits nothing from a shell profile — so
+`export GEMINI_API_KEY=…` does nothing at all for him, and the honest
+instruction is "edit this XML, then reinstall the service." Anyone who ran
+`caprock service install`, which the product recommends, is in the same
+position. A setup step that hard turns a paid feature into one nobody finishes
+switching on, and an unused feature protects no credential: it just fails to
+exist.
+
+**What changes, and what does not.** Keys are entered in the dashboard and
+stored in `config.json`, mode `0600` inside a `0700` data dir — the same posture
+as `~/.claude` and `~/.aws`, which hold exactly this class of secret on the same
+disk. The environment variable keeps working and takes precedence, so a machine
+already set up that way is untouched and a CI runner can still inject one
+without writing a file.
+
+Every stored key is **write-only over HTTP**: accepted by `PUT /v1/settings`,
+never returned by `GET`, which reports only whether one is set. That is the
+pattern [ADR-024](#adr-024--the-weekly-report-holds-a-bot-token-and-only-reports-what-a-baseline-supports)
+introduced for the Telegram token, and the two decisions are now one rule rather
+than two positions on the same question — which is the second reason to make this
+change. Holding a bot token and refusing an API key was a distinction the code
+could state but nobody could feel.
+
+**The objection in [17-teams.md](17-teams.md) still stands, and this is not a
+vault.** That passage warns against becoming a secret store — competing with
+1Password, putting every buyer's security review in front of a two-person
+product. Storing the credentials for the features Caprock itself calls is a
+different thing from offering to keep the user's secrets in general. The line
+this holds is: Caprock stores a key **only** when Caprock is the one making the
+call, and never as a service to the user.
+
+**What it buys, beyond setup.** A key entered in the interface is a key Caprock
+can account for. The product's whole subject is where the money went, and "which
+key spent what" is the same question one layer out — which is not possible at
+all for a value it can only read and never name.
+
+**Rules out:** returning any stored key over HTTP; storing a credential for
+something Caprock does not itself call; an OS keychain (three platforms of work
+for a file-permission difference on one of them); removing the environment
+variable as an option.
+
+**Revisit if** a user asks Caprock to hold a key it does not use — that is the
+line, and the answer is no.

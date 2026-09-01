@@ -95,8 +95,10 @@ export interface SessionDetail extends SessionSummary {
  *  Deliberately says nothing about the key beyond its presence: the key lives
  *  in the daemon's environment and is never sent to this page (ADR-023). */
 export interface GeminiStatus {
-  /** A key is set in the daemon's environment. */
+  /** A key is available — from the environment or entered in settings. */
   available: boolean
+  /** The key comes from the environment, which wins over the stored one. */
+  from_env?: boolean
   /** The variable to set — so the UI can tell the reader what to do. */
   env_var: string
   /** The licence is active. Asking is refused by the server without it. */
@@ -285,6 +287,12 @@ export interface Settings {
   report_last_sent_ms?: number
   /** Write-only: accepted by PUT, never present in a GET response. */
   report_bot_token?: string
+  /** Whether a Gemini key is available, from the environment or this field. */
+  gemini_key_set?: boolean
+  /** True when GEMINI_API_KEY is set, which takes precedence over the field. */
+  gemini_key_from_env?: boolean
+  /** Write-only, like the bot token. */
+  gemini_api_key?: string
   update_checks: boolean
   plan_kind: '' | 'flat' | 'metered'
   plan_label: string

@@ -434,6 +434,7 @@ type fakeSettings struct{ cur Settings }
 func (f *fakeSettings) Get() Settings {
 	out := f.cur
 	out.ReportBotSet = f.cur.ReportBotToken != ""
+	out.GeminiKeySet = f.cur.GeminiAPIKey != ""
 	return out
 }
 func (f *fakeSettings) Set(s Settings) error { f.cur = s; return nil }

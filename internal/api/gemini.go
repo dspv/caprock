@@ -17,7 +17,8 @@ import (
 // and is this a paying user — so the screen can say which one is missing
 // instead of showing a dead button.
 func (s *Server) handleGeminiStatus(w http.ResponseWriter, r *http.Request) {
-	st := license.Parse(s.d.Settings.Get().LicenseKey, s.d.Now())
+	cfg := s.d.Settings.Get()
+	st := license.Parse(cfg.LicenseKey, s.d.Now())
 
 	// The choosable models, priced. A twenty-five-fold spread separates the
 	// cheapest from the dearest, and it is the reader's money — so the price of
@@ -47,11 +48,14 @@ func (s *Server) handleGeminiStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"available": gemini.Available(),
-		"env_var":   gemini.EnvKey,
-		"licensed":  st.Active,
-		"model":     gemini.DefaultModel,
-		"models":    models,
+		"available": gemini.Available(cfg.GeminiAPIKey),
+		// Which source the key came from, so the panel can explain why editing
+		// the field changes nothing when the environment is winning.
+		"from_env": gemini.EnvKeyValue() != "",
+		"env_var":  gemini.EnvKey,
+		"licensed": st.Active,
+		"model":    gemini.DefaultModel,
+		"models":   models,
 	})
 }
 
@@ -68,7 +72,7 @@ func (s *Server) handleGeminiAsk(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "gemini not configured", http.StatusNotImplemented)
 		return
 	}
-	if !gemini.Available() {
+	if !gemini.Available(s.d.Settings.Get().GeminiAPIKey) {
 		// Not an error the user did wrong: the feature is simply not set up.
 		writeJSON(w, http.StatusPreconditionFailed, map[string]string{
 			"error":  "no api key",

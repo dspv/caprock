@@ -131,6 +131,15 @@ type Settings struct {
 	// makes "write-only" true rather than merely intended. It is set by the PUT
 	// handler and read by the daemon; GET renders ReportBotSet instead.
 	ReportBotToken string `json:"-"`
+	// GeminiKeySet reports whether a Gemini key is available — from the
+	// environment or entered here — without revealing it. Same write-only rule
+	// as the bot token (ADR-025).
+	GeminiKeySet bool `json:"gemini_key_set"`
+	// GeminiKeyFromEnv says the key comes from GEMINI_API_KEY rather than from
+	// the field, so the panel can say why editing it changes nothing.
+	GeminiKeyFromEnv bool `json:"gemini_key_from_env"`
+	// GeminiAPIKey is never serialised, for the same reason as the bot token.
+	GeminiAPIKey string `json:"-"`
 	// ReportLastError is why the last send failed, empty when it did not.
 	//
 	// A weekly message that silently stops arriving is the failure mode this
@@ -676,6 +685,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		// deliberate clear, which is why it is a pointer like everything else.
 		ReportBotToken *string `json:"report_bot_token"`
 		ReportChatID   *string `json:"report_chat_id"`
+		GeminiAPIKey   *string `json:"gemini_api_key"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&patch); err != nil {
 		s.failCode(w, http.StatusBadRequest, fmt.Errorf("parse body: %w", err))
@@ -710,6 +720,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.ReportChatID != nil {
 		in.ReportChatID = strings.TrimSpace(*patch.ReportChatID)
+	}
+	if patch.GeminiAPIKey != nil {
+		in.GeminiAPIKey = strings.TrimSpace(*patch.GeminiAPIKey)
 	}
 	if patch.LicenseKey != nil {
 		in.LicenseKey = *patch.LicenseKey

@@ -80,6 +80,12 @@ type Config struct {
 	// inside a 0700 data dir, and the token is never returned over HTTP.
 	ReportBotToken string `json:"report_bot_token,omitempty"`
 	ReportChatID   string `json:"report_chat_id,omitempty"`
+	// GeminiAPIKey is the user's Google AI Studio key, entered in the dashboard.
+	// GEMINI_API_KEY in the environment takes precedence when both exist, so a
+	// machine already configured that way is untouched (ADR-025). Stored under
+	// the same 0600/0700 posture as everything else here, and never returned
+	// over HTTP.
+	GeminiAPIKey string `json:"gemini_api_key,omitempty"`
 	// BrowseRoot is where the folder picker may look. Empty means $HOME.
 	BrowseRoot string `json:"browse_root,omitempty"`
 }

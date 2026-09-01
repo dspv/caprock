@@ -60,7 +60,7 @@ func TestAskParsesAnswerAndUsage(t *testing.T) {
 // no default-on path, so nothing needs disabling.
 func TestNoKeyIsNotAnError(t *testing.T) {
 	t.Setenv(EnvKey, "")
-	if Available() {
+	if Available("") {
 		t.Error("Available() true with an empty key")
 	}
 	if _, err := (&Client{}).Ask(context.Background(), "", "", "hi"); !errors.Is(err, ErrNoKey) {
@@ -74,8 +74,8 @@ func TestNoKeyIsNotAnError(t *testing.T) {
 func TestKeyIsTrimmed(t *testing.T) {
 	// A key pasted from a web page arrives with a newline more often than not.
 	t.Setenv(EnvKey, "  padded-key\n")
-	if Key() != "padded-key" {
-		t.Errorf("Key() = %q", Key())
+	if Key("") != "padded-key" {
+		t.Errorf("Key() = %q", Key(""))
 	}
 }
 

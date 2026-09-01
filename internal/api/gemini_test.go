@@ -203,3 +203,46 @@ func TestBotTokenIsWriteOnly(t *testing.T) {
 		t.Errorf("the chat id is not a credential and should round-trip: %v", out["report_chat_id"])
 	}
 }
+
+// The Gemini key is stored now (ADR-025), which makes it the second write-only
+// field — and the second chance to leak one. GET /v1/settings is read on every
+// settings render and by `caprock report`.
+func TestStoredGeminiKeyIsWriteOnly(t *testing.T) {
+	t.Setenv(gemini.EnvKey, "") // no environment key, so the stored one is in play
+	e := newGeminiEnv(t)
+
+	cur := e.settings.Get()
+	cur.GeminiAPIKey = "AIza-SECRET-STORED-KEY"
+	if err := e.settings.Set(cur); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{"/v1/settings", "/v1/gemini"} {
+		res, err := http.Get(e.srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var raw bytes.Buffer
+		_, _ = raw.ReadFrom(res.Body)
+		_ = res.Body.Close()
+		if bytes.Contains(raw.Bytes(), []byte("AIza-SECRET-STORED-KEY")) {
+			t.Errorf("GET %s returned the stored key:\n%s", path, raw.String())
+		}
+	}
+}
+
+// The environment still wins, so a machine already set up that way keeps
+// working and a CI runner can inject one without writing a file.
+func TestEnvironmentKeyBeatsTheStoredOne(t *testing.T) {
+	t.Setenv(gemini.EnvKey, "from-env")
+	if got := gemini.Key("from-settings"); got != "from-env" {
+		t.Errorf("Key() = %q, want the environment's", got)
+	}
+	t.Setenv(gemini.EnvKey, "")
+	if got := gemini.Key("from-settings"); got != "from-settings" {
+		t.Errorf("Key() = %q, want the stored one", got)
+	}
+	if gemini.Available("") {
+		t.Error("Available() true with neither source set")
+	}
+}

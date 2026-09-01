@@ -32,7 +32,7 @@ func (d *Daemon) askGemini(ctx context.Context, model, prompt string) (any, erro
 	// tokens and is the difference between a chat window and a feature.
 	system := geminiSystemPrompt + "\n\n" + d.geminiContext(ctx)
 
-	c := &gemini.Client{}
+	c := &gemini.Client{Stored: d.config().GeminiAPIKey}
 	rep, err := c.Ask(ctx, model, system, prompt)
 	if err != nil {
 		return nil, err
