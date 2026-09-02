@@ -616,3 +616,60 @@ machines without the CLI.
 
 **Revisit if** a third coding CLI arrives — two special cases in one switch is
 fine, four is a table.
+
+## ADR-027 — Gemini is observed through the telemetry it already writes
+
+**Date:** 2026-09-02 · **Status:** accepted
+
+[ADR-026](#adr-026--gemini-cli-is-a-session-caprock-starts-not-a-chat-panel-it-owns)
+made Gemini a session Caprock starts. It said nothing about seeing what that
+session does, and the answer for two releases was: nothing. A live Gemini
+session sat in the list with zero turns, zero tokens and no cost, under a line
+admitting Caprock could not measure it. Starting an agent you cannot see is
+half a feature in a product whose whole subject is where the money went.
+
+**Claude Code has two sources and Gemini has neither.** Hooks call a shim on
+every event; the transcript is a JSONL file with `usage` on every reply. Gemini
+CLI has no hook Caprock can install and writes no transcript in a format
+anything else reads. What it does have is OpenTelemetry, and
+`GEMINI_TELEMETRY_OUTFILE` makes it write that to a file we name — which is
+the same shape as the transcript: something the agent writes for its own
+reasons that Caprock is allowed to read.
+
+**The decision.** A spawned Gemini session gets four variables in its
+environment: telemetry on, target local, outfile inside Caprock's data
+directory, prompts off. The file is per-session and named by Caprock's session
+id, so the ingester needs no correlation step — the file name *is* the join
+key. A tailer reads each file from a remembered offset every three seconds and
+records `user_prompt`, `api_response` and `tool_call` as `turn.user`,
+`turn.assistant` and `tool.post`.
+
+**Why the file rather than the terminal.** The bytes flowing through the PTY
+are a picture of a terminal, and a TUI redraws its whole box constantly. A
+parser over that would be guessing at token counts from rendered text and would
+break on Gemini's next release. The telemetry is structured, versioned by
+Google, and carries exactly the fields Caprock already stores.
+
+**The file lives in Caprock's data directory, not the project.** A telemetry
+file appearing inside somebody's repository is a file they have to gitignore,
+and one they might commit.
+
+**Prompts are turned off, and that was verified rather than assumed.**
+`GEMINI_TELEMETRY_LOG_PROMPTS=false` leaves `prompt_length` and drops the
+prompt text. Checked on a live session, because the flag existing in the bundle
+would not have proved it worked — the same class of assumption that made
+[ADR-026](#adr-026--gemini-cli-is-a-session-caprock-starts-not-a-chat-panel-it-owns)
+wrong twice.
+
+**Cache writes stay zero.** Gemini reports what it read from cache and has no
+counterpart to Claude's cache-write figure. The column means "we do not know",
+and inventing a number for it would break rule 6 on the screen whose entire
+promise is that its figures are measured.
+
+**Rules out:** parsing the terminal; an OTLP collector (a second process to
+install, for a file read); reading Gemini's own session files (undocumented,
+and the telemetry answers the question); writing telemetry into the user's
+project.
+
+**Revisit if** Gemini ships hooks Caprock can install, which would make this
+the fallback rather than the mechanism.

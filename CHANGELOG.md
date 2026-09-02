@@ -9,6 +9,38 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.44.4] - 2026-09-02
+
+### Added
+
+- **Caprock now sees what a Gemini session does.** It could start one and then
+  observe nothing: a live session sat in the list with zero turns, zero tokens
+  and no cost. Gemini has no hooks and writes no transcript, but it does write
+  OpenTelemetry, and it will write it to a file Caprock names — so a spawned
+  session now reports its turns, its tokens and its cost like any other.
+
+  The file is per-session, named by the session id, and lives in Caprock's own
+  data directory rather than in your project, where it would be something to
+  gitignore. Prompts are switched off in it: what you typed is on screen in the
+  terminal already, and a second copy on disk is one nobody asked for.
+
+  Cache writes stay at zero for Gemini. It reports what it read from cache and
+  has no equivalent of Claude's cache-write figure, and a column that means "we
+  do not know" is better empty than filled with a guess.
+
+### Fixed
+
+- **Two of the three Gemini models still could not be used.** The list was
+  checked against the installed CLI and the pricing table, and both said these
+  were fine. A real key says otherwise: Google has closed
+  `gemini-2.5-flash-lite` to new keys, and `gemini-3.1-pro-preview` is barred
+  on a free key by quota (`generate_content_free_tier_input_token_count,
+  limit: 0`) — so picking either opened a terminal and then failed.
+
+  The three offered now each answered a real prompt on a real key, and are
+  priced. This is the third pass over one short list: written from memory,
+  then checked against the CLI bundle, and only the live call was right.
+
 ## [0.44.3] - 2026-09-02
 
 ### Fixed

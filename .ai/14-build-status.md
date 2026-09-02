@@ -49,6 +49,37 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-09-02 (later still) — Gemini is observed, and a real key found the fourth wrong model
+
+**Caprock sees Gemini sessions now.** The entry below ends by naming the gap:
+Caprock started a Gemini session and then observed nothing, because Gemini has
+no hooks and no transcript. It does have OpenTelemetry, and
+`GEMINI_TELEMETRY_OUTFILE` makes it write that to a file we name — which turns
+out to be the same arrangement as a transcript. A spawned session now reports
+turns, tokens and cost like any other. [ADR-027](08-decisions.md) has the
+reasoning; verified end to end on a live session: a real question, a real answer
+from Google, `turns 1 · tokens_in 10867 · cost $0.0033 · model
+gemini-3.5-flash-lite` on the session screen.
+
+**A real key found a fourth wrong model.** The list was checked against the CLI
+bundle *and* the pricing table after the last correction, and both said it was
+fine. Google disagreed about two of three: `gemini-2.5-flash-lite` is closed to
+new keys, and `gemini-3.1-pro-preview` is quota-barred on a free key
+(`limit: 0`). Three passes over three strings — memory, then bundle, then a live
+call — and only the third was right. A model existing in a bundle says nothing
+about whether Google will serve it to this key today.
+
+**Two things were verified rather than assumed, deliberately.**
+`GEMINI_TELEMETRY_LOG_PROMPTS=false` really does drop the prompt and keep
+`prompt_length` — checked on a live session, not by finding the flag in the
+bundle. And the telemetry field names in the parser were read off a real file,
+not off the source: a token count silently read as zero is exactly the failure
+this whole feature exists to prevent, and it would look like a working feature.
+
+**Cache writes stay zero for Gemini**, because Gemini reports cache reads and
+has no counterpart to Claude's cache-write figure. Rule 6 applies with more
+force on a screen whose entire promise is that its figures are measured.
+
 ### 2026-09-02 (later) — Ten minutes with the real binary broke four assumptions
 
 The entry below ends by admitting the Gemini launch was verified against a fake

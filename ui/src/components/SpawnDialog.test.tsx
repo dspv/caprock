@@ -54,10 +54,12 @@ describe('SpawnDialog', () => {
  * in this dialog. The two take different flags — no --session-id, model as -m,
  * no permission modes — so choosing one has to change what the request carries.
  */
-/** Ids the installed Gemini CLI recognises and pricing.json can cost. */
+/** Ids that answered a real prompt on a real key and that pricing.json can
+ *  cost. Verified against Google, not against the CLI bundle: the bundle also
+ *  names models Google has since closed to new keys, and models a free key is
+ *  quota-barred from calling. */
 const REAL_GEMINI_MODELS = [
-  'gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro',
-  'gemini-3.5-flash', 'gemini-3.1-pro-preview',
+  'gemini-3.5-flash-lite', 'gemini-2.5-flash', 'gemini-3.5-flash',
 ]
 
 describe('choosing an agent', () => {
