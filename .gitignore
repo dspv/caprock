@@ -39,3 +39,6 @@ __pycache__/
 
 # Screenshot fixture — a copy of a real database, rebuilt on demand.
 scripts/shotdata/
+
+# TypeScript incremental build cache — a local artifact, never shared.
+*.tsbuildinfo
