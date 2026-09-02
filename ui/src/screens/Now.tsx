@@ -261,6 +261,7 @@ export function NowScreen() {
       {spawning && (
         <SpawnDialog
           available={status.data?.claude_available ?? false}
+          geminiAvailable={status.data?.gemini_available ?? false}
           onClose={() => { setSpawning(false); sessions.refresh() }}
         />
       )}

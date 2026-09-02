@@ -367,6 +367,9 @@ export interface Status {
   ingest_error?: string
   ui_built: boolean
   claude_available: boolean
+  /** The Gemini CLI is on PATH, so the new-session dialog can offer it as an
+   *  agent. Absent on daemons older than this feature. */
+  gemini_available?: boolean
   owned_active: number
   loop_k: number
   loop_t_minutes: number
@@ -398,7 +401,13 @@ export interface BrowseResponse { dir: string; parent: string; root: string; ent
 /** A directory Caprock has already seen sessions run in. */
 export interface RecentDir { dir: string; name: string; sessions: number; last_event_at: number }
 
-export interface SpawnRequest { cwd?: string; chat?: boolean; create?: boolean; worktree?: string; model?: string; permission_mode?: string; args?: string[] }
+export interface SpawnRequest {
+  /** Which coding agent to launch: "claude" (default) or "gemini". They take
+   *  different flags, so the daemon builds the argv per agent. */
+  agent?: 'claude' | 'gemini'
+  cwd?: string; chat?: boolean; create?: boolean; worktree?: string
+  model?: string; permission_mode?: string; args?: string[]
+}
 
 async function post<T>(path: string, body: unknown, method = 'POST'): Promise<T> {
   const res = await fetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })

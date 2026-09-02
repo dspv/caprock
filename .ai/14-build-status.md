@@ -49,6 +49,40 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-09-02 — The key starts a session, not a conversation about the bill
+
+**We built the wrong Gemini feature first.** Yesterday's entry describes a panel
+that answers questions about your own spending, and it is a fine panel. It is
+not what a user with a Gemini key was looking for. He updated, went to start a
+session with the model he pays Google for, could not find one anywhere, and
+asked where it was — and the honest answer was that we had given him a chat box
+about his own invoice. The lesson is not about Gemini: a feature built from the
+key we had rather than from the job somebody wanted done will pass every test
+and still be the wrong thing.
+
+**Gemini CLI is now a third agent in the New Session dialog**, and nothing after
+the spawn is special-cased — same PTY, same terminal, same cost stream, same
+sessions list, subject to the cap and to graceful shutdown like anything else
+Caprock starts. What is special-cased is the argv: Gemini takes `-m` and has no
+permission mode or caller-assigned session id, so the picker swaps the model
+list and disables Permissions rather than sending flags the binary rejects. It
+is hidden entirely when no `gemini` is on PATH — a choice that fails on click is
+worse than no choice. [ADR-026](08-decisions.md) has the reasoning; the key
+reaches the child from config, never from the browser, because `GeminiKey` on
+the spawn request is `json:"-"`.
+
+**Unproven, and worth saying plainly:** this machine has no `gemini` installed,
+so the launch was verified against a fake binary on PATH and by tests, not by a
+real Gemini session. The first real run is the user's.
+
+**A debounce timer that outlived its component** cost a release for the second
+time — the same failure mode, a timer waking into a torn-down jsdom with all 483
+tests green. Twice it was patched where it surfaced. The actual defect was that
+`useDebouncedValue` never cancelled on unmount, which also means any screen
+closed inside the 400 ms window was setting state on a component that was gone.
+The test added with the fix fails without it; the two earlier guards treated the
+symptom.
+
 ### 2026-09-01 — A second model, on a key we refuse to hold
 
 **Gemini is the second paid feature, and the shape of it is one decision:

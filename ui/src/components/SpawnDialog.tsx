@@ -13,6 +13,16 @@ const DEFAULT_MODE = 'acceptEdits'
 
 // Labelled, because `bypassPermissions` is not a phrase anyone thinks in and
 // the consequence is the part that matters.
+// Gemini CLI is a coding agent in the same shape as Claude Code — it reads
+// files, edits them and runs commands in a directory — so it belongs in this
+// dialog rather than in a chat panel. Its models are Google's, and the prices
+// differ by a factor of twenty-five, so they are named here too.
+const GEMINI_MODELS: [value: string, label: string][] = [
+  ['gemini-3.5-flash-lite', 'Flash Lite · cheapest'],
+  ['gemini-3.7-flash', 'Flash 3.7 · balanced'],
+  ['gemini-3.1-pro-preview', 'Pro 3.1 · most capable'],
+]
+
 const MODELS: [value: string, label: string][] = [
   ['claude-opus-5', 'Opus 5 · most capable'],
   ['claude-sonnet-5', 'Sonnet 5 · faster, cheaper'],
@@ -35,6 +45,7 @@ const MODES: [value: string, label: string][] = [
 
 export function SpawnDialog({
   available,
+  geminiAvailable = false,
   onClose,
   // Where to start, when the caller already knows. Opening this from a session
   // whose repository is on screen and then asking for the directory again is
@@ -42,10 +53,13 @@ export function SpawnDialog({
   initialCwd = '',
 }: {
   available: boolean
+  /** Whether the Gemini CLI is on PATH, so the agent picker is worth showing. */
+  geminiAvailable?: boolean
   onClose: () => void
   initialCwd?: string
 }) {
   const [cwd, setCwd] = useState(initialCwd)
+  const [agent, setAgent] = useState<'claude' | 'gemini'>('claude')
   const [model, setModel] = useState(DEFAULT_MODEL)
   const [mode, setMode] = useState(DEFAULT_MODE)
   const [worktree, setWorktree] = useState('')
@@ -57,8 +71,11 @@ export function SpawnDialog({
     setBusy(true); setError('')
     try {
       const req: Parameters<typeof api.spawn>[0] = { cwd: cwd.trim() }
+      if (agent !== 'claude') req.agent = agent
       if (model) req.model = model
-      if (mode) req.permission_mode = mode
+      // Gemini CLI has no permission modes; sending one would be a flag it
+      // does not understand.
+      if (mode && agent === 'claude') req.permission_mode = mode
       if (worktree.trim()) req.worktree = worktree.trim()
       if (create) req.create = true
       const { session_id } = await api.spawn(req)
@@ -96,9 +113,30 @@ export function SpawnDialog({
                 <DirPicker value={cwd} onPick={setCwd} />
               </div>
             </Field>
+            {/* Only offered when the machine has both: a choice that fails on
+              * click is worse than no choice. */}
+            {geminiAvailable && (
+              <Field label="Agent">
+                <select
+                  className="input"
+                  value={agent}
+                  onChange={(e) => {
+                    const next = e.target.value as 'claude' | 'gemini'
+                    setAgent(next)
+                    // The model lists do not overlap, so carrying the old
+                    // selection across would launch with a model the agent
+                    // has never heard of.
+                    setModel(next === 'gemini' ? GEMINI_MODELS[0]![0] : DEFAULT_MODEL)
+                  }}
+                >
+                  <option value="claude">Claude Code</option>
+                  <option value="gemini">Gemini CLI · your own key</option>
+                </select>
+              </Field>
+            )}
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Model"><select className="input" value={model} onChange={(e) => setModel(e.target.value)}>{MODELS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select></Field>
-              <Field label="Permissions"><select className="input" value={mode} onChange={(e) => setMode(e.target.value)}>{MODES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select></Field>
+              <Field label="Model"><select className="input" value={model} onChange={(e) => setModel(e.target.value)}>{(agent === 'gemini' ? GEMINI_MODELS : MODELS).map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select></Field>
+              <Field label={agent === 'gemini' ? 'Permissions · not used by Gemini' : 'Permissions'}><select disabled={agent === 'gemini'} className="input" value={mode} onChange={(e) => setMode(e.target.value)}>{MODES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select></Field>
             </div>
             {/* Two settings that matter to a handful of runs and to nobody
               * else, folded away rather than deleted. Every field on screen is

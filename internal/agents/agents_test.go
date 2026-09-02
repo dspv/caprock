@@ -506,3 +506,64 @@ func TestShutdownKillsWhatWillNotStop(t *testing.T) {
 		t.Errorf("waited %v, expected to wait out the %v grace period", elapsed, ShutdownGrace)
 	}
 }
+
+// Gemini CLI takes different flags from Claude Code: no --session-id, and the
+// model is -m. Passing Claude's argv to it would fail at launch with an error
+// the user cannot act on.
+func TestGeminiGetsItsOwnFlags(t *testing.T) {
+	// No ambient key, so the stored one is the only source — which is the
+	// case this covers.
+	t.Setenv("GEMINI_API_KEY", "")
+	m, _, f := newMgr(t)
+	defer m.Shutdown()
+
+	if _, err := m.Spawn(context.Background(), SpawnRequest{
+		Cwd: t.TempDir(), Agent: AgentGemini, Model: "gemini-3.5-flash",
+		Command: "", GeminiKey: "AIza-test",
+	}); err != nil {
+		// The fake PTY does not care that the binary is absent, so a failure
+		// here is a failure to build the request rather than to launch.
+		t.Fatal(err)
+	}
+
+	args := f.lastSpec.Args
+	joined := strings.Join(args, " ")
+	if strings.Contains(joined, "--session-id") {
+		t.Errorf("gemini was given Claude's --session-id: %v", args)
+	}
+	if strings.Contains(joined, "--permission-mode") {
+		t.Errorf("gemini was given Claude's --permission-mode: %v", args)
+	}
+	if !strings.Contains(joined, "-m gemini-3.5-flash") {
+		t.Errorf("model not passed as -m: %v", args)
+	}
+
+	// The key has to reach the child or the CLI asks for one it cannot see.
+	var found bool
+	for _, kv := range f.lastSpec.Env {
+		if kv == "GEMINI_API_KEY=AIza-test" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("the stored key did not reach the child environment")
+	}
+}
+
+// Claude's own argv must not change.
+func TestClaudeKeepsItsFlags(t *testing.T) {
+	m, _, f := newMgr(t)
+	defer m.Shutdown()
+
+	if _, err := m.Spawn(context.Background(), SpawnRequest{
+		Cwd: t.TempDir(), Model: "claude-opus-5", PermissionMode: "acceptEdits",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(f.lastSpec.Args, " ")
+	for _, want := range []string{"--session-id", "--model claude-opus-5", "--permission-mode acceptEdits"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("claude argv lost %q: %v", want, f.lastSpec.Args)
+		}
+	}
+}
