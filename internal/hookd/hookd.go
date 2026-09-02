@@ -40,7 +40,33 @@ type Payload struct {
 	Source         string          `json:"source"`  // SessionStart
 	Model          string          `json:"model"`   // SessionStart (optional)
 	Trigger        string          `json:"trigger"` // PreCompact
+	Reason         string          `json:"reason"`  // SessionEnd
 	Error          string          `json:"error"`   // StopFailure / PostToolUseFailure
+}
+
+// endsTheSession reports whether a SessionEnd reason means the session is over.
+//
+// SessionEnd does not only mean "the user left". Observed on a real machine:
+// `clear` (the user ran /clear — same session, fresh context) and
+// `prompt_input_exit` (Escape at the prompt), alongside `exit` and `other`.
+// Treating all of them as the end retired sessions people were still working
+// in: one here had been running for six days when a /clear closed it.
+//
+// The reasons known to continue are named, plus `other` — which is not a
+// statement that the session ended, and is too thin to retire someone's work
+// on. Everything else ends it. The idle sweep is the backstop in both
+// directions, and the two errors are not symmetric: a session wrongly left
+// open closes itself within the hour, while one wrongly closed vanishes from
+// the dashboard with its owner still typing into it. A real exit is also
+// caught by the process exiting, which records the code and ends the session
+// through a path that does not depend on this reason at all.
+func endsTheSession(reason string) bool {
+	switch reason {
+	case "clear", "prompt_input_exit", "other":
+		return false
+	default:
+		return true
+	}
 }
 
 // ErrUnknownEvent marks hook_event_name values hookd does not consume.
@@ -87,8 +113,21 @@ func Normalize(raw []byte, now time.Time) (*event.Event, rollup.SessionInfo, err
 	case "SessionStart":
 		ev.Kind = event.KindAgentSpawn
 	case "SessionEnd":
-		// The user left. This is the one event that can end a session at the
-		// moment it actually ends; everything else waits for the sweep.
+		// Claude Code fires this for several things, and most of them leave the
+		// session running: `clear` wipes the context, `prompt_input_exit` is
+		// Escape at the prompt. Treating every one as "the session is over"
+		// retired sessions their owner was still working in — one here had run
+		// for six days before a /clear closed it in the dashboard.
+		//
+		// Only an exit ends it. Anything else is recorded as an ordinary event
+		// so the timeline still shows it, and the idle sweep decides the rest.
+		if !endsTheSession(p.Reason) {
+			// Still worth recording: `/clear` is a context reset, which is what
+			// context.compact already means, and the timeline should show it.
+			// What it must not do is retire the session.
+			ev.Kind = event.KindContextCompact
+			break
+		}
 		ev.Kind = event.KindSessionEnd
 	case "PreCompact":
 		ev.Kind = event.KindContextCompact
