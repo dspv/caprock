@@ -9,6 +9,28 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.44.2] - 2026-09-02
+
+Both of these came from the first person to run a Gemini session in anger.
+
+### Fixed
+
+- **The terminal flickered on every keystroke.** A `ResizeObserver` called
+  `fit()` straight from its callback, and `fit()` writes to the element the
+  observer is watching — so a resize could cause a resize. Idle, that settles
+  after one frame and nobody notices. Under a TUI that repaints its whole box
+  on every key, which Gemini CLI does, it was a visible flicker on every key.
+  Fits are now coalesced into one per frame and skipped entirely when the
+  geometry has not moved. It affected any terminal that repaints often, not
+  only Gemini's.
+
+- **Six columns of zeros above a session Caprock cannot measure.** A Gemini
+  session showed `$0.00`, `0` tokens, `0` turns, `0%` cache, with the reason —
+  "no hooks · no transcript" — in small grey text underneath. Zeros are how
+  that bar says "nothing has happened yet", so it read as broken rather than as
+  out of scope. It now says the one true thing instead: Caprock started this
+  session but does not measure it, and the terminal below is live.
+
 ## [0.44.1] - 2026-09-02
 
 ### Fixed

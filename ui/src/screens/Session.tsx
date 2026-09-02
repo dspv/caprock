@@ -9,6 +9,7 @@ import { useNow } from './Now'
 import { SessionNotes } from '@/components/Notes'
 import { TerminalView } from '@/components/Terminal'
 import { costBasisLong } from '@/components/CostBasis'
+import { agentName } from '@/components/Projects'
 import { usePlan } from '@/components/PlanPicker'
 
 type Tab = 'timeline' | 'notes' | 'changes' | 'terminal'
@@ -33,6 +34,10 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   if (!s) return <div className="text-fg-muted px-1">loading…</div>
   const setTab = (t: Tab) => navigate({ name: 'session', id, tab: t })
   const total = s.stats.tokens_in + s.stats.tokens_out + s.stats.cache_read + s.stats.cache_write
+  // Nothing measured, and no source that could measure it. Both halves matter:
+  // a Claude session in its first second also has zeros, but it has hooks, so
+  // its bar is about to fill in and the zeros are true.
+  const unmeasurable = !s.has_hooks && !s.has_transcript && total === 0 && s.stats.turns === 0
   return (
     <div className="grid gap-3">
       <div className="flex items-center gap-3 flex-wrap">
@@ -49,6 +54,18 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         <span className="text-fg-faint num text-[11px] ml-2">{fmtAgo(s.activity.at || s.last_event_at, now)}</span>
         {s.loop && <span className="ml-3 text-danger text-[12px]">loop: {s.loop.sample} ×{s.loop.count} in {s.loop.window_min}m</span>}
       </div>
+      {/* A session Caprock starts but cannot read — Gemini today — produced six
+        * columns of zeros with the reason in 11px grey underneath. Zeros are
+        * how this bar shows "nothing happened yet", so it read as broken
+        * rather than as out of scope. Say the one true thing instead. */}
+      {unmeasurable ? (
+        <Panel>
+          <div className="px-3 py-2.5 text-[13px] text-fg-muted">
+            Caprock started this {agentName(s.agent)} session but does not measure it — there are no hooks and no transcript to read, so cost, tokens and turns are not counted here.{' '}
+            <span className="text-fg-faint">The terminal below is live.</span>
+          </div>
+        </Panel>
+      ) : (
       <Panel>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-border">
           {/* One of six columns, so the basis cannot fit beside the model
@@ -65,6 +82,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
           <Stat label="Files" value={s.stats.files_touched} sub={`${s.has_hooks ? 'hooks' : 'no hooks'} · ${s.has_transcript ? 'transcript' : 'no transcript'}`} />
         </div>
       </Panel>
+      )}
       <div className="flex items-center gap-1 border-b border-border">
         {(['timeline', 'notes', 'changes', 'terminal'] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`px-3 py-1.5 text-[12px] border-b-2 -mb-px ${active === t ? 'border-accent text-fg' : 'border-transparent text-fg-muted hover:text-fg'}`}>

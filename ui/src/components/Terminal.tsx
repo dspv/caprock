@@ -306,12 +306,33 @@ export function TerminalView({
     el.addEventListener('drop', onDrop)
     el.addEventListener('dragover', onDragOver)
 
-    const ro = new ResizeObserver(() => { try { fit.fit() } catch { /* */ } })
+    // fit() writes to the DOM, and this observer watches the element it
+    // writes to — so calling it straight from the callback lets a resize
+    // trigger a resize. Idle that settles after a frame; under a TUI that
+    // repaints on every keystroke (Gemini CLI does) it becomes a visible
+    // flicker on every key. Coalesce into one fit per frame, and skip the
+    // write entirely when the geometry has not actually changed.
+    let raf = 0
+    let last = ''
+    const refit = () => {
+      raf = 0
+      const el = host.current
+      if (!el) return
+      const geom = `${el.clientWidth}x${el.clientHeight}`
+      if (geom === last) return
+      last = geom
+      try { fit.fit() } catch { /* not laid out yet */ }
+    }
+    const ro = new ResizeObserver(() => {
+      if (raf) return
+      raf = requestAnimationFrame(refit)
+    })
     ro.observe(host.current)
     return () => {
       el.removeEventListener('paste', onPaste)
       el.removeEventListener('drop', onDrop)
       el.removeEventListener('dragover', onDragOver)
+      if (raf) cancelAnimationFrame(raf)
       ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); ws.close(); term.dispose()
     }
   }, [sessionId, owned])

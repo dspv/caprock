@@ -47,7 +47,8 @@ vi.mock('@xterm/xterm', () => ({
     dispose() {}
   },
 }))
-vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit() {} } }))
+let fitCalls = 0
+vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit() { fitCalls++ } } }))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
   return {
@@ -65,6 +66,19 @@ vi.mock('@xterm/addon-webgl', () => ({
   WebglAddon: class { __webgl = true; onContextLoss() {} dispose() {} },
 }))
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}))
+
+// A ResizeObserver we can fire by hand, and an element whose size we control:
+// jsdom lays nothing out, so clientWidth/clientHeight are 0 for everything and
+// the "did the geometry change" guard could not otherwise be exercised.
+const roHandler: { fn?: () => void } = {}
+const hostSize = { width: 400, height: 300 }
+vi.stubGlobal('ResizeObserver', class {
+  constructor(fn: () => void) { roHandler.fn = fn }
+  observe() {}
+  disconnect() { roHandler.fn = undefined }
+})
+Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get() { return hostSize.width } })
+Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get() { return hostSize.height } })
 
 import { TerminalView } from './Terminal'
 
@@ -325,6 +339,45 @@ describe('Shift+Enter', () => {
     mount()
     resizeHandler.fn?.({ cols: 143, rows: 38 })
     expect(sent).toContain('{"resize":{"cols":143,"rows":38}}')
+  })
+
+  /**
+   * fit() writes to the element this observer watches, so calling it straight
+   * from the callback lets a resize cause a resize. Idle, that settles after a
+   * frame and nobody notices. Under a TUI that repaints on every keystroke —
+   * Gemini CLI does — it was a visible flicker on every key, reported by the
+   * first user to run one.
+   */
+  it('does not refit when the geometry has not changed', async () => {
+    mount()
+    await new Promise((r) => requestAnimationFrame(() => r(null)))
+    // Settle on a size first: the observer's very first callback is the one
+    // that records the baseline, and fitting once for that is correct.
+    roHandler.fn?.()
+    await new Promise((r) => requestAnimationFrame(() => r(null)))
+
+    const before = fitCalls
+    // Now the case that mattered: many fires, nothing moved — which is what a
+    // TUI repainting on every keystroke produces.
+    for (let i = 0; i < 20; i++) roHandler.fn?.()
+    await new Promise((r) => requestAnimationFrame(() => r(null)))
+    expect(fitCalls - before).toBe(0)
+  })
+
+  it('coalesces a burst of resizes into one fit', async () => {
+    mount()
+    // Let mount's own fits (on socket open, and again when fonts resolve)
+    // settle before counting; this is about the observer, not startup.
+    await new Promise((r) => requestAnimationFrame(() => r(null)))
+    const before = fitCalls
+    // A real resize, reported many times as the drag proceeds.
+    for (let i = 0; i < 10; i++) {
+      hostSize.width = 400 + i * 10
+      roHandler.fn?.()
+    }
+    await new Promise((r) => requestAnimationFrame(() => r(null)))
+    // One frame, one fit — not ten.
+    expect(fitCalls - before).toBe(1)
   })
 
   it('never sends a zero size', () => {
