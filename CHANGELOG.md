@@ -9,6 +9,92 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.49.0] - 2026-09-03
+
+### Added
+
+- **Read Caprock from a tablet.** `caprock up --lan` opens a second listener on
+  this machine's own private address; the status screen shows what to open on
+  the other device and a six-digit code to type. No account, no tunnel, nothing
+  on anybody's server — the other device is talking to your machine.
+
+  Free, and staying free. What premium unlocks are the three things that spend
+  money or leave the machine; reading your own figures from the sofa is
+  neither, and charging for the one place the local-first promise loosens would
+  be a strange thing to sell.
+
+  The pairing rules were built and tested a fortnight ago and are unchanged:
+  single-use codes, five minutes, burned after five wrong guesses, a full
+  length token that does not expire, and revocation that takes effect on the
+  next request. What is new is the listener, the gate and the screens. Every
+  request from the network is refused until a device has traded a code for a
+  token — the pairing endpoint and the dashboard's own files are the only
+  things open before that, and every other path is closed by default.
+
+  Three decisions are worth knowing, because each had an easier wrong answer.
+  **`--lan` is a flag, not a setting**: a laptop opened somewhere you do not
+  trust should not carry a decision you made at home, so the devices survive a
+  restart and the open door does not. **One named address, never `0.0.0.0`**,
+  or a VPN or container bridge coming up later would quietly widen it. And the
+  **DNS-rebinding defence admits exactly one more host** — the address you
+  chose — rather than the whole private range. See
+  [ADR-029](.ai/08-decisions.md).
+
+  No QR code: nothing here can verify that a generated one actually scans, and
+  an unverified QR is worse than an address you can type in fifteen seconds.
+
+### Fixed
+
+- **Two figures ignored the agent filter.** Choosing `opencode` on the Now
+  screen narrowed most of the Today panel and left "burn now" showing every
+  agent's money, in the same grid row as the cost it no longer matched. The
+  unpriced warning had the same fault, and worse: it told a reader looking at
+  one agent that tokens were missing from a total those tokens were never in.
+
+- **The share card's breakdown was always the last thirty days.** Choosing a
+  period changed the heading and the lit tile and nothing else that mattered,
+  so a card headed "My week on Caprock" carried a month's models beneath it —
+  five of them against the one that week ran, and $5,459 of Opus against
+  $1,576. The four tiles still show every period on purpose; it is the
+  breakdown that belongs to the period the card names.
+
+- **A range or filter change showed the previous answer under the new
+  heading.** Pressing 7d while 30d was up swapped the title at once and left
+  every figure below it answering the old range until the response landed —
+  around half a second on a large database, long enough to read a number and
+  believe it. A refresh still keeps the figures on screen, because blanking
+  them every few seconds would be its own defect.
+
+- **The calendar put days in the wrong weekday column.** A day nobody worked
+  has no row at all, so one missing Sunday slid every later day one column
+  left and a Monday rendered under "S" — in a panel whose whole purpose is
+  making "I do not work Sundays" visible at a glance.
+
+- **"Ended · 200" counted the page, not the sessions.** The list is capped at
+  200, and the label counted the array it received while the lifetime strip
+  above said otherwise. It reads "200 of 431" when they differ.
+
+- **The largest figure on the screen called itself a cost.** On a flat plan it
+  is not one: it is what the work would have cost through the API, and the
+  qualifier saying so sat underneath in grey at a third the size. A reader on a
+  subscription took the whole product for an accusation of waste. The figure is
+  unchanged and now headed "Worth at API list"; anyone billed per token still
+  sees "Cost", because for them it is the true word.
+
+### Changed
+
+- **Every screenshot retaken**, and three faults in how they are captured
+  fixed: two first-run banners were in every frame, "set plan" was lit as an
+  unfinished action because the capture runs against a throwaway data
+  directory, and the feature crops had silently been failing to find their
+  panels since the database grew.
+
+- **The docs say what the product does now.** An audit found the release check
+  described as the only outbound call (it is one of three, all opt-in), the
+  premium page selling a shipped feature as unbuilt, a release runbook asking
+  you to verify a hook count that can no longer appear, and Gemini missing from
+  every user-facing list of agents.
+
 ## [0.48.0] - 2026-09-02
 
 ### Fixed
