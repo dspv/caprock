@@ -14,6 +14,9 @@ const data = vi.hoisted(() => ({ value: undefined as unknown }))
 const drawn = vi.hoisted(() => ({ text: [] as string[] }))
 const calls = vi.hoisted(() => ({ n: 0 }))
 
+/** A distinct cost per range, so a card drawing the wrong one is visible. */
+const RANGE_COST = vi.hoisted(() => ({ today: 11, '7d': 22, '30d': 33 }) as Record<string, number>)
+
 const summary = vi.hoisted(() => ({
   cost_usd: 1234.5, sessions: 3, tokens_in: 1e6, tokens_out: 2e6,
   cache_read: 9e9, cache_write: 1e8,
@@ -29,7 +32,18 @@ vi.mock('@/lib/api', async (orig) => {
     api: {
       ...actual.api,
       history: async () => { calls.n++; return data.value },
-      summary: async () => summary as never,
+      // Answers per range. Ignoring the argument here is what let the card
+      // draw a month's breakdown under a week's heading without any test
+      // noticing: every range returned the same object.
+      // Answers per range. Ignoring the argument here is what let the card
+      // draw a month's breakdown under a week's heading without any test
+      // noticing: every range returned the same object. The model ids come
+      // from the fixture, so a test that sets one still sees it.
+      summary: async (range: string) => ({
+        ...summary,
+        models: summary.models.map((m) => ({ ...m, cost_usd: RANGE_COST[range] ?? m.cost_usd })),
+        work: summary.work.map((w) => ({ ...w, cost_usd: RANGE_COST[range] ?? w.cost_usd })),
+      }) as never,
     },
   }
 })
@@ -314,5 +328,38 @@ describe('the period a card is about', () => {
     expect(d.week).toBeDefined()
     expect(d.month).toBeDefined()
     expect(d.allTime).toBeDefined()
+  })
+})
+
+describe('the card is about the period it names', () => {
+  // A card headed "My week on Caprock" carried the last thirty days' models
+  // and work under it: `collectCardData` fetched four ranges and then read the
+  // breakdowns out of the 30-day one whatever was chosen. On this machine that
+  // was five models and $5,473 of Opus against the one model and $1,936 that
+  // the week actually ran — the heading naming one stretch, the chart drawing
+  // another.
+  it('draws the chosen period\'s breakdown, not always the month\'s', async () => {
+    stubCanvas()
+    await drawShareCard(await collectCardData('today'))
+    // $11 is the today fixture; $33 is the month's.
+    expect(drawn.text.some((t) => t.includes('$11'))).toBe(true)
+    expect(drawn.text.some((t) => t.includes('$33'))).toBe(false)
+
+    stubCanvas()
+    await drawShareCard(await collectCardData('7d'))
+    expect(drawn.text.some((t) => t.includes('$22'))).toBe(true)
+    expect(drawn.text.some((t) => t.includes('$33'))).toBe(false)
+  })
+
+  it('says so when an all-time card shows the month, because there is no all-time split', async () => {
+    stubCanvas()
+    await drawShareCard(await collectCardData('all'))
+    expect(drawn.text.some((t) => t.includes('LAST 30 DAYS'))).toBe(true)
+  })
+
+  it('leaves the heading unqualified when the breakdown is the period asked for', async () => {
+    stubCanvas()
+    await drawShareCard(await collectCardData('7d'))
+    expect(drawn.text.some((t) => t.includes('LAST 30 DAYS'))).toBe(false)
   })
 })
