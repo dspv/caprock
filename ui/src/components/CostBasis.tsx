@@ -23,6 +23,21 @@
  */
 import type { Settings } from '@/lib/api'
 
+/**
+ * What to call the hero figure, which is not "cost" for everyone.
+ *
+ * On a flat plan the number is what this work would have cost through the API
+ * — it is emphatically not what anyone was charged. Labelled "Cost", the
+ * largest figure on the screen names itself as money spent and then denies it
+ * in grey underneath, and a subscriber reads the whole screen as an accusation
+ * of waste (FB-026: "all about if you were a fool and paid for tokens instead
+ * of a subscription"). Metered users *are* billed per token, so for them the
+ * word is right and stays.
+ */
+export function costLabel(plan?: Settings): string {
+  return plan?.plan_kind === 'flat' ? 'Worth at API list' : 'Cost'
+}
+
 /** The subtitle for a hero cost figure, in plain words. */
 export function costBasis(plan?: Settings): string {
   if (plan?.plan_kind === 'metered') return 'at API list price · ≈ your bill'

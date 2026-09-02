@@ -11,7 +11,7 @@ started) · **building** · **shipped** (in a release, with the version) ·
 | ------ | ---------- | ----- | ---------------------------------------------------------------------------- | -------- | ----------------- |
 | FB-028 | 2026-08-30 | Dima  | No way to buy from the main screen; the locked preview was unreadable        | shipped  | v0.37.1           |
 | FB-027 | 2026-08-30 | Panel | Five readers priced the premium dialog and none of them bought               | shipped  | v0.37.0           |
-| FB-026 | 2026-08-29 | Alex  | The dollar figures read as "what you'd pay if you were foolish"              | open     | —                 |
+| FB-026 | 2026-08-29 | Alex  | The dollar figures read as "what you'd pay if you were foolish"              | shipped  | next release      |
 | FB-025 | 2026-08-29 | Alex  | `make build` does not work on Windows out of the box                         | shipped  | v0.36.0           |
 | FB-024 | 2026-08-29 | Alex  | Ship through winget, and install into %USERPROFILE%\.local\bin               | shipped  | v0.36.0           |
 | FB-023 | 2026-08-29 | Alex  | The SQLite database reached half a gigabyte on ordinary use                  | declined | —                 |
@@ -126,8 +126,23 @@ None of that is on the screen. The number is large, in dollars, and unlabelled
 as to whose dollars — so a subscriber reads it as an accusation of waste. The
 fix is framing, not arithmetic: lead with the split, not the total.
 
-**Open**, because the right wording is not obvious and this is one person's
-reaction. Not a bug in the data; a bug in what the data appears to say.
+**Shipped**, and the fix turned out to be one word rather than a new layout.
+
+The screen already carried the answer: PLAN VALUE sits above everything and
+says you pay $200 where the same work costs $6,502 through the API — 32.5×. It
+had been there nine days when Alex looked, and he still read the screen as an
+accusation. So the framing was not missing; something was overriding it.
+
+It was the label. The largest figure on the screen was headed **Cost**, and
+the qualifier denying it — "not a bill" — sat in grey underneath at a third the
+size. A heading is read as a fact about the number; a caption is read as an
+excuse for it. On a flat plan the hero figure is now headed **"Worth at API
+list"**, which is what it has always measured. Someone billed per token still
+sees "Cost", because for them the plain word is the true one and softening it
+would be its own lie (`costLabel` in `ui/src/components/CostBasis.tsx`).
+
+The number never changed. It did not need to: it was right, and it is the
+argument for the subscription rather than against it.
 
 ### FB-025 — `make build` breaks on Windows
 

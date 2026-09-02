@@ -8,7 +8,7 @@ import { BarChart, BarReadout } from '@/components/BarChart'
 import { DayGrid } from '@/components/DayGrid'
 import { PlanValue } from '@/components/PlanValue'
 import { usePlan } from '@/components/PlanPicker'
-import { costBasis, costBasisLong } from '@/components/CostBasis'
+import { costBasis, costBasisLong, costLabel } from '@/components/CostBasis'
 import { RateLimitRow } from '@/components/PlanLimits'
 import { PremiumBanner } from '@/components/PremiumBanner'
 import { Locked } from '@/components/Locked'
@@ -72,7 +72,7 @@ export function CostScreen() {
               the misreading happens where the number is. The session count used
               to live here and now does not — appended to the basis it pushed
               the line past the column and truncated the part that matters. */}
-          <Stat label="Cost" value={measured ? fmtUSD(s!.cost_usd) : '—'} sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : 'nothing measured in this range'}</span>} tone="info" size="hero" />
+          <Stat label={costLabel(plan)} value={measured ? fmtUSD(s!.cost_usd) : '—'} sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : 'nothing measured in this range'}</span>} tone="info" size="hero" />
           <Stat label="Burn now" value={measured ? `${fmtUSD(s!.burn.usd_per_hour)}/h` : '—'} sub={measured ? `${fmtTokens(Math.round(s!.burn.tokens_per_min))} tok/min · ${s!.sessions} sessions` : undefined}  />
           <Stat label="Input" value={measured ? fmtTokens(s!.tokens_in) : '—'} sub="fresh, full price" />
           <Stat label="Output" value={measured ? fmtTokens(s!.tokens_out) : '—'} sub={measured ? `${s!.turns} turns` : undefined} />
