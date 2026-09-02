@@ -9,6 +9,44 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.45.0] - 2026-09-02
+
+### Changed
+
+- **A session stays open until its process exits.** It used to close after a
+  stretch of silence, and every number chosen for "a stretch" was wrong for
+  somebody: twelve hours left the day's work marked live at midnight, and one
+  hour closed a session while its owner was at lunch. Both were guesses about a
+  person's day standing in for a fact about a process — and the fact is
+  available. The shim now reports the pid of the Claude Code that ran it, and
+  Caprock already knew the pid of every session it starts itself, so the sweep
+  asks whether that process is alive instead of watching a clock.
+
+  A session you leave for a week is still there when you come back. One whose
+  terminal you closed ends on the next sweep, without waiting for a threshold
+  at all.
+
+  A staleness threshold still exists for sessions with no pid to ask — rows
+  written by an older shim, and transcripts read with no live process behind
+  them — and it is now twenty-four hours, because there is nothing to verify
+  and the only cost of being slow is a stale row in a list.
+
+  **OpenCode sessions are judged by the clock alone**, never by liveness. They
+  are read out of OpenCode's own database rather than watched, so there is no
+  process of ours behind them and they arrive already old. The first cut of
+  this change missed that and filled the screen with 97-day-old sessions marked
+  live.
+
+### Fixed
+
+- **The Now screen shows now.** A session that has not made a sound in two days
+  no longer appears there, whatever its status column says — status alone
+  cannot tell a quiet session from somebody's history, because an observed
+  agent's sessions arrive weeks old by definition. Two days rather than one, so
+  a session left on Friday evening is still on screen on Monday morning.
+  Anything actually working shows regardless of age, which is what the screen
+  is for. Older sessions are on Lifetime and under "show ended".
+
 ## [0.44.5] - 2026-09-02
 
 ### Fixed

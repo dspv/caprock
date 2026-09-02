@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/dspv/caprock/internal/config"
@@ -64,6 +65,16 @@ func Run(stdin io.Reader, stdout io.Writer) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+rt.Token)
+	// The pid of the process that ran this hook — Claude Code itself, since the
+	// shim is its child. It is how the daemon can tell a session that is quiet
+	// from one that is gone, without guessing from a clock: no hook payload
+	// carries a pid, and a session's own process is the only thing that
+	// actually answers "is this still open".
+	//
+	// A header rather than a field in the body: the body is forwarded verbatim
+	// and belongs to Claude Code, and the shim's first rule is to never be the
+	// reason a session breaks.
+	req.Header.Set("X-Caprock-Ppid", strconv.Itoa(os.Getppid()))
 	client := &http.Client{
 		Transport: &http.Transport{
 			DialContext:           (&net.Dialer{Timeout: 300 * time.Millisecond}).DialContext,

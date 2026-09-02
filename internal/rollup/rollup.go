@@ -22,6 +22,10 @@ import (
 // Empty fields are "unknown", never overwrite.
 type SessionInfo struct {
 	Cwd, TranscriptPath, GitBranch, Version, Model string
+	// PID is the process the session belongs to, when it is known: the shim
+	// reports its parent, which is Claude Code. Zero means unknown, and an
+	// unknown pid is why the staleness sweep still exists.
+	PID int
 	// Agent names the coding agent this session belongs to. Empty means Claude
 	// Code, which is what every session was before OpenCode support, and what
 	// the column defaults to.
@@ -125,6 +129,7 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 			FromTranscript: ev.Source == event.SourceTranscript,
 
 			Agent: info.Agent,
+			PID:   info.PID,
 		}
 		if ev.Kind == event.KindAgentStop && ev.AgentID == "" {
 			// A top-level Stop means the turn ended, not the session; the session

@@ -159,25 +159,23 @@ func newDaemon(ctx context.Context, opt Options) (*Daemon, error) {
 		opt.IdleAfter = 5 * time.Minute
 	}
 	if opt.EndAfter <= 0 {
-		// Eight hours: long enough that a working day's interruptions — lunch,
-		// a meeting, an afternoon on something else — never retire a session
-		// somebody is still in, and short enough that a session abandoned
-		// overnight is not still "live" the next morning.
+		// This is no longer how a session ends. A session ends when its process
+		// does, which the sweep now checks directly — the shim reports the pid
+		// of the Claude Code that ran it, and Caprock knows the pid of every
+		// session it spawns. A session with a pid may sit quiet for a week and
+		// stay open, because being quiet is not being over.
 		//
-		// This was one hour for exactly one release, on the reasoning that an
-		// hour outlasts lunch. It does not: an hour *is* lunch, and the first
-		// user to leave his terminal and come back found his session closed.
-		// On the machine that finding was checked against, 44 sessions had
-		// paused for more than an hour and then carried on, 86 of those pauses
-		// between one and three hours.
+		// What is left for this threshold is sessions with no pid to ask: rows
+		// written by an older shim, and transcripts read with no live process
+		// behind them. Twenty-four hours, because there is nothing to verify
+		// and the only cost of being slow is a stale row.
 		//
-		// The threshold only matters when a session ends without saying so —
-		// kill -9, a closed terminal, a crashed host. SessionEnd handles every
-		// ordinary ending immediately, so this can afford to be slow, and the
-		// two errors are not symmetric: a stale row costs a line in a list
-		// until the sweep catches it, while a wrongly ended one disappears
-		// from the dashboard with its owner still working in it.
-		opt.EndAfter = 8 * time.Hour
+		// Two numbers were tried here as the main rule and both were wrong.
+		// Twelve hours left the day's work marked live at midnight. One hour
+		// closed a session while its owner was at lunch — an hour is lunch.
+		// Any number would have been wrong for somebody, which is why the rule
+		// is now a fact about a process rather than a guess about a day.
+		opt.EndAfter = 24 * time.Hour
 	}
 	if opt.DataDir == "" {
 		dir, err := config.EnsureDataDir()

@@ -213,7 +213,7 @@ func TestALunchBreakDoesNotEndASession(t *testing.T) {
 
 	// The default the daemon applies. Named here so a change to it has to
 	// change this test too, and whoever changes it reads why it is eight.
-	const endAfter = 8 * time.Hour
+	const endAfter = 24 * time.Hour
 
 	for _, away := range []time.Duration{
 		time.Hour,                    // lunch
@@ -232,13 +232,13 @@ func TestALunchBreakDoesNotEndASession(t *testing.T) {
 	}
 
 	// Long enough that nobody is coming back to it today.
-	r.Now = func() time.Time { return base.Add(9 * time.Hour) }
+	r.Now = func() time.Time { return base.Add(25 * time.Hour) }
 	if err := r.MarkIdle(ctx, 5*time.Minute, endAfter); err != nil {
 		t.Fatal(err)
 	}
 	s, _ := store.GetSession(ctx, r.Store.DB(), "lunch")
 	if s.Status != store.StatusEnded {
-		t.Errorf("after 9h the backstop should have ended it, status %s", s.Status)
+		t.Errorf("after 25h the backstop should have ended it, status %s", s.Status)
 	}
 }
 
@@ -253,8 +253,8 @@ func TestAWronglyEndedSessionRevivesOnItsNextEvent(t *testing.T) {
 	}
 	drain(sub)
 
-	r.Now = func() time.Time { return base.Add(9 * time.Hour) }
-	if err := r.MarkIdle(ctx, 5*time.Minute, 8*time.Hour); err != nil {
+	r.Now = func() time.Time { return base.Add(25 * time.Hour) }
+	if err := r.MarkIdle(ctx, 5*time.Minute, 24*time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	if s, _ := store.GetSession(ctx, r.Store.DB(), "back"); s.Status != store.StatusEnded {
