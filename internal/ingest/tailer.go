@@ -281,6 +281,22 @@ func (t *Tailer) readFile(ctx context.Context, f *fileState, fi os.FileInfo) {
 		return
 	}
 	defer fh.Close()
+	// A shorter file is not the only way a transcript is replaced.
+	//
+	// Claude Code rewrites a transcript in place — on a resume, on a compact —
+	// and the replacement is often the same length or longer. Then the size
+	// check above does not fire, we seek into the middle of *different*
+	// content, and every line before that offset is never read. Not a
+	// duplicate-detection problem: those lines are never parsed, so the dedupe
+	// key never sees them. A session simply arrives missing its first turns,
+	// with nothing anywhere saying so.
+	//
+	// The cheap test is the byte before the offset: every record this tailer
+	// consumes ends in a newline, so if that byte is not one, the file under us
+	// is not the file we measured. Costs one read of one byte per sweep.
+	if f.offset > 0 && !endsLineAt(fh, f.offset) {
+		f.offset = 0
+	}
 	if _, err := fh.Seek(f.offset, io.SeekStart); err != nil {
 		return
 	}
@@ -352,4 +368,20 @@ func (t *Tailer) handleLine(ctx context.Context, f *fileState, raw []byte, fallb
 		}
 		t.mu.Unlock()
 	}
+}
+
+// endsLineAt reports whether the byte at off-1 is a newline — that is, whether
+// `off` is still a record boundary in the file as it is now.
+//
+// A false answer means the file was replaced by content of the same size or
+// larger, and the offset points into the middle of something else. Any read
+// error is reported as "not a boundary": re-reading a file from the start
+// costs a sweep and is absorbed by keyed dedupe, while trusting a stale offset
+// costs data.
+func endsLineAt(fh *os.File, off int64) bool {
+	var b [1]byte
+	if _, err := fh.ReadAt(b[:], off-1); err != nil {
+		return false
+	}
+	return b[0] == '\n'
 }

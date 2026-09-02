@@ -351,7 +351,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		Tasks: &boardAdapter{d: d}, Settings: &settingsAdapter{d: d}, Update: d.upd,
 		AskGemini: d.askGemini,
 		DataDir:   d.opt.DataDir,
-		Pairing:   d.pairing, LANURL: d.lanURL,
+		Pairing:   d.pairing, LANURL: d.lanURL, Started: d.start,
 	})
 	srv := &http.Server{Handler: d.api, ReadHeaderTimeout: 10 * time.Second}
 

@@ -143,16 +143,26 @@ func (g *Ingester) readFile(ctx context.Context, path string) (int, error) {
 		return 0, err
 	}
 
-	evs, err := ParseTelemetry(f)
+	// Advance only past what parsed cleanly. The file is being written while
+	// this reads it, so the tail is routinely a half-written record; counting
+	// it as read loses it forever, because when the writer finishes those
+	// bytes are below the stored offset and nothing reads them again.
+	//
+	// This used to advance to the end of whatever was available whenever *any*
+	// record parsed — the opposite of what the comment claimed — so a sweep
+	// landing mid-record silently dropped it. The parser reports its own
+	// position now.
+	evs, whole, err := ParseTelemetryAt(f)
 	if err != nil {
 		return 0, err
 	}
-
-	// Advance only past what parsed cleanly. The file is being written while
-	// this reads it, so the tail is routinely a half-written record; counting
-	// it as read would lose it forever, and re-reading it next tick costs
-	// nothing because the store deduplicates.
-	consumed := from + consumedBytes(evs, info.Size()-from)
+	consumed := from + whole
+	// The parser counts from where it started reading, which is `from`. The
+	// dedupe key needs a position in the *file*, or a record read on a second
+	// sweep would key differently from the same record read on the first.
+	for i := range evs {
+		evs[i].Offset += from
+	}
 
 	var stored int
 	for _, e := range evs {
@@ -169,19 +179,6 @@ func (g *Ingester) readFile(ctx context.Context, path string) (int, error) {
 	g.at[path] = consumed
 	g.mu.Unlock()
 	return stored, nil
-}
-
-// consumedBytes is how far the reader may advance.
-//
-// ParseTelemetry does not report where it stopped, and adding that would
-// complicate its only other caller for no gain — so a file whose tail did not
-// parse is simply re-read next tick. That is safe because the store
-// deduplicates, and cheap because a tail is small.
-func consumedBytes(evs []TelemetryEvent, available int64) int64 {
-	if len(evs) == 0 {
-		return 0
-	}
-	return available
 }
 
 func (g *Ingester) record(ctx context.Context, path string, e TelemetryEvent) (bool, error) {
@@ -206,10 +203,18 @@ func (g *Ingester) record(ctx context.Context, path string, e TelemetryEvent) (b
 		Tool:      e.Tool,
 		Model:     e.Model,
 		Payload:   payload,
-		// The key is what makes a re-read free. Timestamp plus kind plus tool
-		// is unique within a session in practice: Gemini stamps to the
-		// millisecond and does not emit two identical events in one.
-		Key: fmt.Sprintf("otel:%s:%s:%d", e.Kind, e.Tool, e.TS.UnixMilli()),
+		// The key is what makes a re-read free, and it keys on *where the
+		// record is in the file* rather than on what it says.
+		//
+		// Timestamp plus kind plus tool was very nearly unique and not quite:
+		// two api_response records in the same millisecond collapsed into one,
+		// and — the sharp edge — an event whose `event.timestamp` is missing or
+		// in an unexpected layout gets the zero time, so every such event in a
+		// session shared one key and only the first was ever stored.
+		//
+		// A record's byte offset is unique by construction and stable across
+		// re-reads, which is the property a dedupe key actually needs.
+		Key: fmt.Sprintf("otel:%d", e.Offset),
 	}
 	if e.Kind == event.KindTurnAssistant {
 		ev.Tokens = &event.TokenDelta{

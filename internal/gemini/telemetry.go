@@ -70,6 +70,11 @@ type TelemetryEvent struct {
 	// Raw is the attributes map, stored as the event payload so a field this
 	// parser does not yet read is still there to be read later.
 	Raw map[string]any
+	// Offset is where this record began, in bytes from the start of the file.
+	// Stable across re-reads, which is what makes it usable in a dedupe key —
+	// unlike a position within one sweep's batch, which moves when the sweep
+	// starts from a different place.
+	Offset int64
 }
 
 // ParseTelemetry decodes a telemetry stream into events, in file order.
@@ -78,25 +83,42 @@ type TelemetryEvent struct {
 // file is written by another program while Caprock is reading it, so a torn
 // final record is the normal case and not an error worth propagating.
 func ParseTelemetry(r io.Reader) ([]TelemetryEvent, error) {
+	evs, _, err := ParseTelemetryAt(r)
+	return evs, err
+}
+
+// ParseTelemetryAt is ParseTelemetry, and also reports how many bytes were
+// consumed by whole records.
+//
+// The caller tails a file Gemini is still writing, so the tail is routinely a
+// half-written record. Advancing past it loses it: when the writer finishes,
+// those bytes are below the stored offset and nothing reads them again. The
+// count returned here is the offset just after the last balanced `}` at depth
+// zero — everything after it is an incomplete record and will be re-read,
+// which costs nothing because the store deduplicates.
+func ParseTelemetryAt(r io.Reader) ([]TelemetryEvent, int64, error) {
 	var out []TelemetryEvent
-	for raw := range records(r) {
-		var rec struct {
+	recs, done := recordsAt(r)
+	for rec := range recs {
+		raw := rec.raw
+		var parsed struct {
 			Body       any            `json:"_body"`
 			Attributes map[string]any `json:"attributes"`
 		}
-		if err := json.Unmarshal(raw, &rec); err != nil {
+		if err := json.Unmarshal(raw, &parsed); err != nil {
 			continue
 		}
 		// Spans and the metrics block have no _body; they repeat what the logs
 		// already carry, in less detail.
-		if rec.Attributes == nil || rec.Body == nil {
+		if parsed.Attributes == nil || parsed.Body == nil {
 			continue
 		}
-		if ev, ok := decode(rec.Attributes); ok {
+		if ev, ok := decode(parsed.Attributes); ok {
+			ev.Offset = rec.at
 			out = append(out, ev)
 		}
 	}
-	return out, nil
+	return out, <-done, nil
 }
 
 func decode(a map[string]any) (TelemetryEvent, bool) {
@@ -183,8 +205,17 @@ func num(v any) int {
 // Brace counting, with string and escape state, because the file is
 // concatenated pretty-printed objects rather than JSONL — and because a prompt
 // containing `{` would otherwise cut a record in half.
-func records(r io.Reader) <-chan []byte {
-	ch := make(chan []byte)
+// record is one balanced top-level object and where it began.
+type record struct {
+	at  int64
+	raw []byte
+}
+
+// recordsAt yields each balanced top-level object, and on a second channel the
+// byte offset just past the last complete one.
+func recordsAt(r io.Reader) (<-chan record, <-chan int64) {
+	ch := make(chan record)
+	done := make(chan int64, 1)
 	go func() {
 		defer close(ch)
 		br := bufio.NewReaderSize(r, 64*1024)
@@ -194,11 +225,14 @@ func records(r io.Reader) <-chan []byte {
 			inStr, esc bool
 			started    bool
 		)
+		var read, complete, startedAt int64
+		defer func() { done <- complete }()
 		for {
 			c, err := br.ReadByte()
 			if err != nil {
 				return
 			}
+			read++
 			if started {
 				buf.WriteByte(c)
 			}
@@ -216,6 +250,7 @@ func records(r io.Reader) <-chan []byte {
 			case c == '{':
 				if depth == 0 {
 					started = true
+					startedAt = read - 1
 					buf.Reset()
 					buf.WriteByte(c)
 				}
@@ -223,12 +258,13 @@ func records(r io.Reader) <-chan []byte {
 			case c == '}':
 				depth--
 				if depth == 0 && started {
-					ch <- []byte(buf.String())
+					ch <- record{at: startedAt, raw: []byte(buf.String())}
 					buf.Reset()
 					started = false
+					complete = read
 				}
 			}
 		}
 	}()
-	return ch
+	return ch, done
 }

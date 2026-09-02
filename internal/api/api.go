@@ -61,6 +61,9 @@ type Deps struct {
 	Version  string
 	// Status returns daemon/ingest/hooks status for /v1/status.
 	Status func(ctx context.Context) any
+	// Started is when this daemon came up. The burn tile needs it: in the
+	// first minutes there is less history than the window it divides by.
+	Started time.Time
 	// ActiveLoops reports whether a session currently has an unexpired loop alert.
 	ActiveLoops func(sessionID string) *loop.Alert
 	// IdleAfter is the silence threshold for the idle badge.
@@ -864,9 +867,23 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	const win = 10 * time.Minute
 	recent, err := store.SummarizeSparkFor(ctx, s.d.Store.DB(), s.d.Now().Add(-win).UnixMilli(), store.SparkSpec{}, agent)
 	if err == nil {
+		// Divide by the time actually covered, not by the window's width.
+		//
+		// A daemon three minutes old has three minutes of history and was
+		// dividing it by ten, so a rate read a third of the truth with nothing
+		// saying the window was still filling. The spark on the same screen
+		// already refuses to extrapolate its last bucket for exactly this
+		// reason; this is the same rule, applied to the tile beside it.
+		covered := win
+		if up := s.d.Now().Sub(s.d.Started); !s.d.Started.IsZero() && up < win {
+			covered = up
+		}
+		if covered < time.Second {
+			covered = time.Second // a daemon that just started divides by nothing
+		}
 		resp.Burn = Burn{WindowMin: int(win / time.Minute), Turns: recent.Turns,
-			USDPerHour: recent.CostUSD / win.Hours(),
-			TokPerMin:  float64(recent.TokensIn+recent.TokensOut+recent.CacheRead+recent.CacheWrite) / win.Minutes()}
+			USDPerHour: recent.CostUSD / covered.Hours(),
+			TokPerMin:  float64(recent.TokensIn+recent.TokensOut+recent.CacheRead+recent.CacheWrite) / covered.Minutes()}
 	}
 	if n, err := store.CountThrottles(ctx, s.d.Store.DB(), from, agent); err == nil {
 		resp.Throttles = n
