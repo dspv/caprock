@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +28,24 @@ type reportState struct {
 	mu       sync.RWMutex
 	lastErr  string
 	lastSent int64
+}
+
+// loadReportState restores what the last send did, so a failure survives a
+// restart. Without this the settings panel forgets the reason a message never
+// arrived the moment the daemon is restarted — which is exactly what somebody
+// does when a feature seems broken.
+func (d *Daemon) loadReportState(ctx context.Context) {
+	lastErr, err := d.store.GetMeta(ctx, store.MetaReportLastError)
+	if err != nil {
+		return
+	}
+	sentRaw, _ := d.store.GetMeta(ctx, store.MetaReportLastSent)
+	sent, _ := strconv.ParseInt(sentRaw, 10, 64)
+
+	d.report.mu.Lock()
+	d.report.lastErr = lastErr
+	d.report.lastSent = sent
+	d.report.mu.Unlock()
 }
 
 func (d *Daemon) reportLastError() string {
@@ -111,16 +130,35 @@ func (d *Daemon) weeklyOnce(ctx context.Context) {
 	sender := &weekly.Sender{}
 	err = sender.Send(ctx, cfg.ReportBotToken, cfg.ReportChatID, msg)
 
+	// Recorded in the store, not only in memory. A weekly message that stops
+	// arriving is a failure nobody notices — the person who set up a bot is
+	// waiting for a phone to buzz, not reading a settings screen — and an error
+	// held in memory disappears at the next restart, taking the only evidence
+	// with it. A week later, "chat not found" is still the answer.
+	sentAt := time.Now().UnixMilli()
 	d.report.mu.Lock()
 	if err != nil {
 		d.report.lastErr = err.Error()
 		d.log.Warn("weekly report: send failed", "component", "report", "err", err)
 	} else {
 		d.report.lastErr = ""
-		d.report.lastSent = time.Now().UnixMilli()
+		d.report.lastSent = sentAt
 		d.log.Info("weekly report sent", "component", "report", "week", week)
 	}
 	d.report.mu.Unlock()
+
+	lastErr := ""
+	if err != nil {
+		lastErr = err.Error()
+	}
+	if e := d.store.SetMeta(ctx, store.MetaReportLastError, lastErr); e != nil {
+		d.log.Warn("weekly report: could not record the error", "component", "report", "err", e)
+	}
+	if err == nil {
+		if e := d.store.SetMeta(ctx, store.MetaReportLastSent, strconv.FormatInt(sentAt, 10)); e != nil {
+			d.log.Warn("weekly report: could not record the send", "component", "report", "err", e)
+		}
+	}
 }
 
 // buildWeekly reads the daily rollups the report is computed from.

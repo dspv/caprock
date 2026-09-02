@@ -51,6 +51,15 @@ const (
 	// cap.Guard.firedOn has, tolerable for a cap and not for a message someone
 	// receives on their phone.
 	MetaReportWeek = "report_week"
+	// MetaReportLastError is why the last weekly send failed, empty when it did
+	// not. Stored rather than held in memory for the same reason the week is:
+	// the person who configured a bot is waiting for a message, not watching a
+	// settings screen, and an error that vanishes on the next restart takes the
+	// only evidence of a silent failure with it. "chat not found" a week later
+	// is still the answer.
+	MetaReportLastError = "report_last_error"
+	// MetaReportLastSent is when a report last went out, unix ms as a string.
+	MetaReportLastSent = "report_last_sent"
 	// ToolLinkDone is the MetaToolLinkCursor value meaning "no rows left".
 	// A cursor alone cannot say so: the pass ends by reading a short batch, and
 	// new unlinked rows never appear behind the cursor.

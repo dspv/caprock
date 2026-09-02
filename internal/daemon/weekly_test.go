@@ -59,3 +59,67 @@ func TestNoBotMeansNoWork(t *testing.T) {
 	// Would panic on a nil store read if it got past the configuration check.
 	d.weeklyOnce(context.Background())
 }
+
+// A weekly message that stops arriving is the failure mode this feature has:
+// nobody notices an absence. The reason it stopped therefore has to outlive a
+// restart — because restarting is precisely what somebody does when a feature
+// seems broken, and an in-memory error is erased by the act of investigating
+// it.
+func TestWhyAReportFailedSurvivesARestart(t *testing.T) {
+	ctx := context.Background()
+	st := memStore(t)
+
+	// What a failed send leaves behind.
+	if err := st.SetMeta(ctx, store.MetaReportLastError, "chat not found"); err != nil {
+		t.Fatal(err)
+	}
+
+	// A fresh daemon over the same store: the restart.
+	d := &Daemon{store: st}
+	d.loadReportState(ctx)
+
+	if got := d.reportLastError(); got != "chat not found" {
+		t.Errorf("last error after a restart = %q, want Telegram's own words back", got)
+	}
+}
+
+func TestASuccessfulSendClearsTheOldError(t *testing.T) {
+	// An error left on screen after the next report arrived would send someone
+	// hunting a problem they no longer have.
+	ctx := context.Background()
+	st := memStore(t)
+
+	if err := st.SetMeta(ctx, store.MetaReportLastError, "bot was blocked by the user"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetMeta(ctx, store.MetaReportLastError, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetMeta(ctx, store.MetaReportLastSent, "1788350000000"); err != nil {
+		t.Fatal(err)
+	}
+
+	d := &Daemon{store: st}
+	d.loadReportState(ctx)
+
+	if got := d.reportLastError(); got != "" {
+		t.Errorf("a stale error survived a successful send: %q", got)
+	}
+	if got := d.reportLastSent(); got != 1788350000000 {
+		t.Errorf("last sent = %d, want the recorded timestamp", got)
+	}
+}
+
+// Nothing recorded is the normal first-run state and must not look like a
+// failure.
+func TestNoHistoryIsNotAnError(t *testing.T) {
+	ctx := context.Background()
+	d := &Daemon{store: memStore(t)}
+	d.loadReportState(ctx)
+	if got := d.reportLastError(); got != "" {
+		t.Errorf("a daemon that never sent anything reports %q", got)
+	}
+	if got := d.reportLastSent(); got != 0 {
+		t.Errorf("last sent = %d, want 0", got)
+	}
+}
