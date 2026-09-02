@@ -33,9 +33,11 @@ import (
 	"github.com/dspv/caprock/internal/hookd"
 	"github.com/dspv/caprock/internal/hooks"
 	"github.com/dspv/caprock/internal/ingest"
+	"github.com/dspv/caprock/internal/lan"
 	"github.com/dspv/caprock/internal/loop"
 	"github.com/dspv/caprock/internal/opencode"
 	"github.com/dspv/caprock/internal/orchestrator"
+	"github.com/dspv/caprock/internal/pairing"
 	"github.com/dspv/caprock/internal/ptyman"
 	"github.com/dspv/caprock/internal/rollup"
 	"github.com/dspv/caprock/internal/store"
@@ -51,6 +53,15 @@ type Options struct {
 	TranscriptRoot string // "" ⇒ ~/.claude/projects
 	// Listener overrides the port (tests pass a pre-bound 127.0.0.1:0 listener).
 	Listener net.Listener
+	// LAN also serves the machine's private network address, so a tablet or
+	// phone on the same network can reach the dashboard after pairing.
+	//
+	// A run flag rather than a stored setting, deliberately. Loopback-only is
+	// what the product promises, and a promise that quietly survives a restart
+	// is one nobody re-consents to: a laptop opened in a coworking space would
+	// carry a decision made at home on a trusted network. Turning it on is an
+	// act, every time.
+	LAN bool
 	// DisableIngest turns transcript tailing off (tests, or hooks-only mode).
 	DisableIngest bool
 	// OpenCodeURL overrides where OpenCode's headless server is expected.
@@ -121,6 +132,12 @@ type Daemon struct {
 	mu     sync.Mutex
 	alerts map[string]*loop.Alert // session → last alert (expires after window)
 	url    string
+	// lanURL is the address a paired device uses, empty when LAN access is off.
+	lanURL string
+	// lanIP is the address the second listener binds; nil when off.
+	lanIP net.IP
+	// pairing decides which devices get in; nil when LAN access is off.
+	pairing *pairing.Store
 	// ingestErr is the terminal error from the tailer goroutine, if it died.
 	// Ingest is the whole product on Phase 0, so its death is not a log line:
 	// it is reported by /v1/status, `caprock status` and the dashboard.
@@ -303,6 +320,30 @@ func (d *Daemon) run(ctx context.Context) error {
 	hh := &hookd.Handler{Token: rt.Token, Recorder: d.rec, Log: d.log, Decide: d.stopDecision}
 
 	// API.
+	// LAN access, decided before the API is built so the pairing screen has an
+	// address to show from the first request. The listener itself is opened
+	// further down, once the server exists.
+	//
+	// A failure is reported and survived: the dashboard on loopback is the
+	// product, a tablet is an extra, and refusing to start because the wifi is
+	// off would be the wrong trade.
+	if d.opt.LAN {
+		if ip, err := lan.Address(); err != nil {
+			d.log.Warn("LAN access requested but this machine has no private network address",
+				"component", "daemon", "err", err)
+		} else {
+			d.lanIP = ip
+			d.lanURL = "http://" + net.JoinHostPort(ip.String(), strconv.Itoa(port))
+			d.pairing = pairing.New()
+			if snap, err := config.ReadDevices(d.opt.DataDir); err == nil {
+				// Devices survive a restart; the *decision* to listen does not.
+				// Someone who paired a tablet last week should not have to walk
+				// to it again, but they do have to turn the listener back on.
+				d.pairing.Load(snap)
+			}
+		}
+	}
+
 	d.api = api.New(api.Deps{
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d,
 		Status: d.status, ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
@@ -310,6 +351,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		Tasks: &boardAdapter{d: d}, Settings: &settingsAdapter{d: d}, Update: d.upd,
 		AskGemini: d.askGemini,
 		DataDir:   d.opt.DataDir,
+		Pairing:   d.pairing, LANURL: d.lanURL,
 	})
 	srv := &http.Server{Handler: d.api, ReadHeaderTimeout: 10 * time.Second}
 
@@ -421,6 +463,37 @@ func (d *Daemon) run(ctx context.Context) error {
 
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
+
+	// The second listener, when the user asked for one.
+	//
+	// A named private address, never 0.0.0.0: that would accept on every
+	// interface this machine has now or gains later — a VPN coming up, a
+	// container bridge, a tethered phone — and none of those is what anyone
+	// agreed to. Binding one address makes the promise checkable, and it is
+	// the address the pairing screen shows.
+	//
+	// A failure here is reported and survived rather than fatal. The dashboard
+	// on loopback is the product; a tablet is an extra, and refusing to start
+	// because the wifi is off would be the wrong trade.
+	if d.lanIP != nil {
+		lanLn, err := net.Listen("tcp", net.JoinHostPort(d.lanIP.String(), strconv.Itoa(port)))
+		if err != nil {
+			d.log.Warn("LAN access requested but the address could not be bound",
+				"component", "daemon", "addr", d.lanIP.String(), "err", err)
+			// No listener means no way in, so take the invitation off the
+			// screen too rather than showing an address nothing answers on.
+			d.lanURL, d.pairing = "", nil
+		} else {
+			go func() {
+				if err := srv.Serve(lanLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
+					d.log.Warn("LAN listener stopped", "component", "daemon", "err", err)
+				}
+			}()
+			d.log.Info("also listening on the local network — devices must pair before they get in",
+				"component", "daemon", "url", d.lanURL)
+		}
+	}
+
 	d.log.Info("caprock daemon listening", "component", "daemon", "url", d.url, "data_dir", d.opt.DataDir, "version", d.opt.Version)
 	// enableHive logs which hive is in force (whether it came from --hive or from
 	// the dashboard), so a detached daemon has a record of what it orchestrates.

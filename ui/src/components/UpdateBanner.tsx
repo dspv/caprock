@@ -8,7 +8,7 @@
  * surface a local-first tool should not open. You copy one line and run it in
  * your own terminal, where you can see exactly what it does.
  *
- * The check itself is the only outbound call Caprock makes, so it is off until
+ * The check reaches GitHub for a version number and nothing else, so it is off until
  * you turn it on — this component is also where you turn it on, and off again.
  */
 import { useEffect, useState } from 'react'

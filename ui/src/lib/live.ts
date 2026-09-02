@@ -3,6 +3,7 @@
 // staleness dot instead of a spinner (no spinner longer than 300ms).
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { Event, LoopAlert, Session, Stats, TaskFrame } from './api'
+import { deviceToken } from './api'
 
 export type Frame =
   | { type: 'hello'; data: { server_time: number } }
@@ -69,7 +70,13 @@ class LiveStore {
     this.set({ conn: 'connecting' })
     let ws: WebSocket
     try {
-      ws = new WebSocket(url)
+      // A paired device sends its token as a subprotocol. The WebSocket
+      // constructor takes a URL and protocols and nothing else — it cannot set
+      // a header — and a query parameter would write the token into every
+      // access log and browser history entry on the device. On the machine
+      // itself there is no token and this is a plain connection.
+      const t = deviceToken()
+      ws = t ? new WebSocket(url, [`caprock.device.${t}`]) : new WebSocket(url)
     } catch {
       this.scheduleReconnect()
       return

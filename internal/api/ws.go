@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,10 +21,12 @@ type wsHub struct {
 
 	mu    sync.Mutex
 	conns map[*websocket.Conn]context.CancelFunc
+	// lanHost is the one private address this daemon answers on, or "".
+	lanHost string
 }
 
-func newWSHub(b *bus.Bus, log *slog.Logger) *wsHub {
-	return &wsHub{bus: b, log: log, conns: map[*websocket.Conn]context.CancelFunc{}}
+func newWSHub(b *bus.Bus, log *slog.Logger, lanHost string) *wsHub {
+	return &wsHub{bus: b, log: log, conns: map[*websocket.Conn]context.CancelFunc{}, lanHost: lanHost}
 }
 
 // helloFrame is the first frame every client receives.
@@ -32,10 +35,20 @@ type helloFrame struct {
 }
 
 func (h *wsHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Same-origin only: the dashboard is served by this daemon. Vite dev on
+	// :5173 proxies /v1 so the origin is still localhost. A LAN listener adds
+	// exactly one more origin — the address it was told to bind.
+	origins := []string{"localhost:*", "127.0.0.1:*", "[::1]:*"}
+	if h.lanHost != "" {
+		origins = append(origins, h.lanHost+":*")
+	}
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		// Same-origin only: the dashboard is served by this daemon. Vite dev on
-		// :5173 proxies /v1 so the origin is still localhost.
-		OriginPatterns: []string{"localhost:*", "127.0.0.1:*", "[::1]:*"},
+		OriginPatterns: origins,
+		// A device token arrives as a subprotocol, because a browser's
+		// WebSocket constructor cannot set headers and this is the only field
+		// it can carry. The token is echoed back as the negotiated protocol,
+		// which is what the API requires of a server that accepts one.
+		Subprotocols: subprotocolsFor(r),
 	})
 	if err != nil {
 		return
@@ -202,4 +215,18 @@ func (h *wsHub) serveTerm(s *Server) http.HandlerFunc {
 			}
 		}
 	}
+}
+
+// subprotocolsFor lists the protocols this handshake may negotiate.
+//
+// The browser sends `caprock.device.<token>` when it has one. Echoing it back
+// completes the handshake; the token itself was already checked by the gate in
+// ServeHTTP, which runs before this handler and refuses an unpaired device.
+func subprotocolsFor(r *http.Request) []string {
+	for _, p := range strings.Split(r.Header.Get("Sec-WebSocket-Protocol"), ",") {
+		if p = strings.TrimSpace(p); strings.HasPrefix(p, "caprock.device.") {
+			return []string{p}
+		}
+	}
+	return nil
 }
