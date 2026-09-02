@@ -101,7 +101,8 @@ This is where the incumbent bleeds users, so it is a hard requirement, not a nic
 
 - **Hooks** (shim → hookd). Gives tool-level lifecycle: tool name + input, `session_id`, `cwd`, `transcript_path`, stop events. ~30 events exist; MVP consumes `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `SessionStart`, `SessionEnd`, `PreCompact`. Latency: real-time.
 - **Transcript JSONL** (`~/.claude/projects/…`). Gives the full message stream incl. per-turn token usage (input / output / cache read / cache write), model, text of assistant turns. Tailed by `ingest`. Latency: ~seconds. The observed on-disk shape (2026-08-18) is recorded in [03-contracts.md § Transcript JSONL](03-contracts.md#transcript-jsonl-observed-shape).
-- **PTY bytes.** Raw terminal for the detail view; also fallback signal when hooks aren't installed. Latency: real-time.
+- **Gemini telemetry** (`<data_dir>/gemini/<session_id>.otel.log`). Gemini CLI has no hooks Caprock can install and writes no transcript, but it writes OpenTelemetry, and `GEMINI_TELEMETRY_OUTFILE` makes it write to a file Caprock names — the counterpart of Claude Code's transcript. A spawned session gets telemetry switched on and prompts switched off; a tailer reads each file from a remembered offset and records `user_prompt` / `api_response` / `tool_call` as `turn.user` / `turn.assistant` / `tool.post`. Latency: ~seconds. Cache *writes* stay zero — Gemini reports reads and has no counterpart figure, and a column meaning "we do not know" is better empty ([ADR-027](08-decisions.md)).
+- **PTY bytes.** Raw terminal for the detail view; also fallback signal when hooks aren't installed. Latency: real-time. Deliberately not parsed for figures: it is a picture of a redrawing TUI, and token counts guessed from rendered text would break on the agent's next release.
 
 Cost = token usage × pricing table (the spec says "ported from Caprock"; in practice the table is authored from the Anthropic pricing page and the cache-savings *formula* is what ports from Caprock-python — [ADR-015](08-decisions.md#adr-015--pricing-source-anthropic-first-party-pricing-page-versioned-the-legacy-repo-has-no-pricingjson), [03-contracts.md § Pricing table](03-contracts.md#pricing-table)). Cache hit-rate math also ports from Caprock.
 
@@ -139,7 +140,13 @@ Implementation notes (`internal/loop`): "normalized-similar" = same tool + `tool
 
 ## Session lifecycle
 
-`active` on any event → `idle` after 5 minutes of silence (sweeper every 30 s) → `ended` on the `SessionEnd` hook, or after 1 hour of silence when that hook never arrived (Caprock also ends sessions it kills). Ending is reversible: a later event on the same id makes the session active again, so an early end costs nothing. `/v1/sessions?active=true` returns everything not ended. Narration ([04-ui.md § Narration map](04-ui.md#narration-map-t7)) is computed server-side in `internal/narrate` from the last 60 events.
+`active` on any event → `idle` after 5 minutes of silence (sweeper every 30 s) → `ended` when the session's **process** exits.
+
+A session is over when its process is gone, not when it goes quiet: Caprock knows the pid of every session it spawns, and the shim reports its parent — the Claude Code that ran it — as `X-Caprock-Ppid`. So a session left alone for a week stays open, and one whose terminal was closed ends on the next sweep. The `SessionEnd` hook still ends a session immediately when it means an exit, and Caprock ends the sessions it kills. Three silence thresholds preceded this and every one was wrong for somebody — see [ADR-028](08-decisions.md#adr-028--a-session-ends-when-its-process-does).
+
+Two carve-outs: agents Caprock only observes (OpenCode) are judged by the clock alone, since their rows come out of another tool's database with no process behind them; and sessions with no pid keep a 24-hour staleness sweep, because there is nothing to ask.
+
+Ending is reversible: a later event on the same id makes the session active again, so an early end costs nothing. `/v1/sessions?active=true` returns everything not ended — separately, the Now screen hides anything silent for more than two days, because status cannot tell a quiet session from imported history. Narration ([04-ui.md § Narration map](04-ui.md#narration-map-t7)) is computed server-side in `internal/narrate` from the last 60 events.
 
 ## Repository layout
 

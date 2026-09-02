@@ -673,3 +673,60 @@ project.
 
 **Revisit if** Gemini ships hooks Caprock can install, which would make this
 the fallback rather than the mechanism.
+
+## ADR-028 — A session ends when its process does
+
+**Date:** 2026-09-02 · **Status:** accepted
+
+Caprock decided a session was over because it had been silent for a while, and
+every number chosen for "a while" was wrong for somebody. Twelve hours left the
+day's work marked live at midnight. One hour closed a session while its owner
+was at lunch — an hour *is* lunch, and the comment justifying it said the
+opposite. Eight hours was the same guess with a safer margin and would have
+failed anyone leaving a session over a weekend.
+
+**Every one of those was a guess about a person's day standing in for a fact
+about a process**, and the fact was available the whole time. Caprock records
+the pid of every session it spawns, and for a session started in a terminal the
+shim knows its own parent — the Claude Code that ran it — and now reports it as
+`X-Caprock-Ppid`.
+
+**The decision.** The sweep asks whether the session's process is alive. A
+session with a live pid stays open however long it has been quiet; one whose
+process is gone ends on the next sweep with no threshold involved. Measured on
+a real database before changing anything: 44 sessions had paused for over an
+hour and then carried on, 86 of those pauses between one and three hours. The
+interruption this used to punish is the normal shape of a working day.
+
+**A header, not a body field.** The hook body belongs to Claude Code and the
+shim forwards it verbatim; the shim's first rule is to never be the reason a
+session breaks, and adding a field to somebody else's payload is a way to break
+one.
+
+**Two exceptions.** Agents Caprock only observes — OpenCode today — are judged
+by the clock alone: their rows come out of another tool's database, arrive
+months old, and have no process of ours behind them. The first cut of this
+missed that and filled the Now screen with 97-day-old sessions marked live.
+And sessions with no pid at all keep a 24-hour staleness sweep, because there
+is nothing to verify.
+
+**Separately, the Now screen filters by recency.** Status cannot tell a quiet
+session from imported history, so anything silent for two days is not shown
+there whatever its status — two days rather than one so a Friday evening
+session survives to Monday morning. Anything *working* shows regardless of age.
+
+**Windows needs its own check.** `Signal(0)` errors for every pid there,
+including live ones, so the unix probe would have declared every session dead —
+the exact failure this exists to prevent. `OpenProcess` plus
+`GetExitCodeProcess` instead.
+
+**Known unsoundness, accepted:** pid reuse. Detecting it means comparing
+process start times across three platforms, for a case requiring a wrap of the
+pid space between two sweeps. Its cost is a stale row; the cost of not doing
+this at all was a session vanishing while somebody worked in it.
+
+**Rules out:** any silence threshold as the primary rule; killing a session
+because the daemon restarted.
+
+**Revisit if** pid reuse is ever observed in practice, which would make start
+times worth the three platforms of code.
