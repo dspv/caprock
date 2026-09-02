@@ -164,3 +164,46 @@ func TestHandlerStopDecision(t *testing.T) {
 		t.Fatalf("subagent stop: %d", rr.Code)
 	}
 }
+
+// SessionEnd is not only "the user left". These four reasons were all observed
+// on one real machine, and treating every one of them as the end retired
+// sessions people were still working in — including one that had been running
+// for six days when a /clear closed it in the dashboard.
+func TestOnlyARealExitEndsTheSession(t *testing.T) {
+	for _, tc := range []struct {
+		reason string
+		kind   event.Kind
+	}{
+		// Same session, fresh context.
+		{"clear", event.KindContextCompact},
+		// Escape at the prompt. Still sitting there.
+		{"prompt_input_exit", event.KindContextCompact},
+		// Unspecified, which is not evidence of an ending.
+		{"other", event.KindContextCompact},
+		// The session is over.
+		{"exit", event.KindSessionEnd},
+		{"logout", event.KindSessionEnd},
+	} {
+		raw := []byte(`{"session_id":"s1","hook_event_name":"SessionEnd","reason":"` + tc.reason + `"}`)
+		ev, _, err := Normalize(raw, time.Unix(0, 0))
+		if err != nil {
+			t.Fatalf("%s: %v", tc.reason, err)
+		}
+		if ev.Kind != tc.kind {
+			t.Errorf("reason %q produced %q, want %q", tc.reason, ev.Kind, tc.kind)
+		}
+	}
+}
+
+// A reason that continues the session must still reach the timeline: /clear is
+// something the reader wants to see, it just is not an ending.
+func TestAClearIsRecordedRatherThanDropped(t *testing.T) {
+	raw := []byte(`{"session_id":"s1","hook_event_name":"SessionEnd","reason":"clear"}`)
+	ev, _, err := Normalize(raw, time.Unix(0, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ev == nil || ev.SessionID != "s1" {
+		t.Fatalf("the event was dropped: %+v", ev)
+	}
+}

@@ -9,6 +9,27 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.44.3] - 2026-09-02
+
+### Fixed
+
+- **A session you were still working in could close itself.** 0.44.0 started
+  listening to Claude Code's `SessionEnd` hook so a session ends the moment it
+  ends rather than whenever the staleness sweep next runs. But `SessionEnd`
+  does not only mean "the user left": it also fires on `/clear`, on Escape at
+  the prompt, and with an unhelpful `other`. All of them were being treated as
+  the end. One session on the machine this was found on had been running for
+  six days when a `/clear` retired it in the dashboard.
+
+  Only a reason that actually means an exit ends the session now. A `/clear` is
+  recorded as the context reset it is, so it still appears in the timeline. A
+  process that really exits is unaffected — that path records the exit code and
+  never consulted the reason.
+
+  The two mistakes here are not symmetric, and the fix leans accordingly: a
+  session wrongly left open closes itself within the hour, while one wrongly
+  closed vanishes while its owner is still typing into it.
+
 ## [0.44.2] - 2026-09-02
 
 Both of these came from the first person to run a Gemini session in anger.
