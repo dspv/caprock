@@ -93,12 +93,16 @@ type Daemon struct {
 	det    *loop.Detector
 	tail   *ingest.Tailer
 	ocIn   *opencode.Ingester
-	mgr    *agents.Manager
-	board  *board.Board
-	orch   *orchestrator.Orchestrator
-	api    *api.Server
-	rt     config.Runtime
-	start  time.Time
+	// gemIn reads the telemetry files spawned Gemini sessions write. Gemini has
+	// no hooks and no transcript, so without this Caprock starts a session and
+	// then observes nothing about it — which is what 0.44.x shipped.
+	gemIn *gemini.Ingester
+	mgr   *agents.Manager
+	board *board.Board
+	orch  *orchestrator.Orchestrator
+	api   *api.Server
+	rt    config.Runtime
+	start time.Time
 
 	// cap is the daily spend guard. Nil until run() builds it, because it needs
 	// the owned-session manager.
@@ -388,6 +392,12 @@ func (d *Daemon) run(ctx context.Context) error {
 			}
 		}()
 	}
+	// Telemetry from spawned Gemini sessions. Started unconditionally: the
+	// directory appears when the first Gemini session is spawned, and a sweep
+	// over a directory that does not exist is a no-op rather than an error.
+	d.gemIn = gemini.NewIngester(filepath.Join(d.opt.DataDir, "gemini"), d.rec, d.log)
+	go d.gemIn.Run(ctx)
+
 	go d.sweep(ctx)
 	go d.weeklyLoop(ctx)
 	go d.backfillToolLinks(ctx)
@@ -948,6 +958,13 @@ func (a *agentAdapter) Spawn(ctx context.Context, req any) (string, string, erro
 	ag, err := a.m.Spawn(ctx, sr)
 	if err != nil {
 		return "", "", err
+	}
+	if sr.Agent == agents.AgentGemini {
+		// Telemetry carries Gemini's own conversation id and its own idea of a
+		// working directory. Caprock knows the one the user actually picked, so
+		// it tells the ingester rather than trusting the file — otherwise the
+		// session's cost lands on the wrong project, or on none.
+		a.d.gemIn.Track(ag.SessionID, ag.Cwd)
 	}
 	return ag.SessionID, ag.Cwd, nil
 }

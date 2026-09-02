@@ -14,6 +14,18 @@ import { usePlan } from '@/components/PlanPicker'
 
 type Tab = 'timeline' | 'notes' | 'changes' | 'terminal'
 
+/** Names the source a session's figures come from.
+ *
+ *  Claude Code has hooks and a transcript; Gemini has neither and is read from
+ *  the OpenTelemetry file it writes when Caprock asks it to. Saying "no hooks"
+ *  about a session Caprock is actively measuring is technically true and
+ *  practically a lie. */
+function sourceLine(s: SessionDetail): string {
+  if (s.agent === 'gemini') return 'telemetry'
+  const parts = [s.has_hooks ? 'hooks' : 'no hooks', s.has_transcript ? 'transcript' : 'no transcript']
+  return parts.join(' · ')
+}
+
 export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: number }) {
   const detail = useApi(() => api.session(id), [id], { intervalMs: 5000 })
   // 'diff' and 'files' were separate tabs answering one question between them
@@ -37,7 +49,14 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   // Nothing measured, and no source that could measure it. Both halves matter:
   // a Claude session in its first second also has zeros, but it has hooks, so
   // its bar is about to fill in and the zeros are true.
+  //
+  // A Gemini session is read from its telemetry file, which starts empty and
+  // fills on the first model call — so it looks unmeasurable for a few seconds
+  // and then is not. Saying "nothing to read here" about a session that is
+  // about to report would be wrong in the more annoying direction, so it is
+  // told apart and given its own line.
   const unmeasurable = !s.has_hooks && !s.has_transcript && total === 0 && s.stats.turns === 0
+  const waitingOnTelemetry = unmeasurable && s.agent === 'gemini'
   return (
     <div className="grid gap-3">
       <div className="flex items-center gap-3 flex-wrap">
@@ -61,8 +80,18 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
       {unmeasurable ? (
         <Panel>
           <div className="px-3 py-2.5 text-[13px] text-fg-muted">
-            Caprock started this {agentName(s.agent)} session but does not measure it — there are no hooks and no transcript to read, so cost, tokens and turns are not counted here.{' '}
-            <span className="text-fg-faint">The terminal below is live.</span>
+            {waitingOnTelemetry ? (
+              <>
+                Nothing measured yet — Gemini reports its own figures, and the first
+                ones arrive with its first answer.{' '}
+                <span className="text-fg-faint">The terminal below is live.</span>
+              </>
+            ) : (
+              <>
+                Caprock started this {agentName(s.agent)} session but does not measure it — there are no hooks and no transcript to read, so cost, tokens and turns are not counted here.{' '}
+                <span className="text-fg-faint">The terminal below is live.</span>
+              </>
+            )}
           </div>
         </Panel>
       ) : (
@@ -79,7 +108,11 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
           <Stat label="Cache" value={fmtPct(s.savings.hit_rate * 100)} sub={`read ${fmtTokens(s.stats.cache_read)} · write ${fmtTokens(s.stats.cache_write)}`} tone={s.savings.hit_rate > 0.5 ? 'ok' : undefined} />
           <Stat label="Context" value={s.context ? fmtPct(s.context.pct) : '—'} sub={s.context ? `${fmtTokens(s.context.tokens)} / ${fmtTokens(s.context.window)}` : 'unknown model'} tone={s.context && s.context.pct >= 85 ? 'danger' : s.context && s.context.pct >= 60 ? 'warn' : undefined} />
           <Stat label="Turns" value={s.stats.turns} sub={`${s.stats.tool_calls} tool calls`} />
-          <Stat label="Files" value={s.stats.files_touched} sub={`${s.has_hooks ? 'hooks' : 'no hooks'} · ${s.has_transcript ? 'transcript' : 'no transcript'}`} />
+          {/* What is being read, named. "no hooks · no transcript" is true of a
+            * Gemini session and reads as "nothing is being measured", which
+            * stopped being true once its telemetry was ingested — the row
+            * above it now carries real tokens and a real cost. */}
+          <Stat label="Files" value={s.stats.files_touched} sub={sourceLine(s)} />
         </div>
       </Panel>
       )}

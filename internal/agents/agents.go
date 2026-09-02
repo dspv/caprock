@@ -138,6 +138,22 @@ func resolveGemini() string {
 	return "gemini"
 }
 
+// telemetryPath is where a Gemini session's telemetry is written, and where
+// the ingester later reads it from. Empty when there is no data directory to
+// put it in, which turns the feature off rather than failing the spawn — a
+// session that runs unobserved is worse than one that does not run at all only
+// if you forget to say so, and the session screen does say so.
+func (m *Manager) telemetryPath(sessionID string) string {
+	if m.dataDir == "" {
+		return ""
+	}
+	dir := filepath.Join(m.dataDir, "gemini")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return ""
+	}
+	return filepath.Join(dir, sessionID+".otel.log")
+}
+
 // GeminiAvailable reports whether the gemini binary can be launched, so the
 // dialog offers an agent the machine actually has rather than a choice that
 // fails on click.
@@ -345,6 +361,30 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 	// way keeps what it had, and the child sees one value rather than two.
 	if req.Agent == AgentGemini && req.GeminiKey != "" && os.Getenv("GEMINI_API_KEY") == "" {
 		env = append(env, "GEMINI_API_KEY="+req.GeminiKey)
+	}
+	// Gemini has no hooks and no transcript, so without this Caprock starts a
+	// session and then sees nothing it does — which is exactly what 0.44.x
+	// shipped: a live session showing zero turns and zero cost. It does write
+	// OpenTelemetry, and to a local file when told to, which makes that file
+	// the counterpart of Claude Code's transcript.
+	//
+	// The file is per-session and lives beside the rest of Caprock's data. Not
+	// in the user's project: a telemetry file appearing inside a repository is
+	// a file somebody has to gitignore, and one they might commit.
+	if req.Agent == AgentGemini {
+		if path := m.telemetryPath(sessionID); path != "" {
+			env = append(env,
+				"GEMINI_TELEMETRY_ENABLED=true",
+				"GEMINI_TELEMETRY_TARGET=local",
+				"GEMINI_TELEMETRY_OUTFILE="+path,
+				// Prompts are the one thing in this file Caprock does not need
+				// in order to count anything, and the flag that keeps them out
+				// costs nothing. What the user typed is on screen in the
+				// terminal already; a second copy on disk is a copy nobody
+				// asked for.
+				"GEMINI_TELEMETRY_LOG_PROMPTS=false",
+			)
+		}
 	}
 	spec := ptyman.Spec{Command: command, Args: args, Dir: cwd, Env: env, Cols: req.Cols, Rows: req.Rows}
 	// The PTY process is controlled explicitly via Signal/Close; it must not die

@@ -344,10 +344,11 @@ in the New Session dialog — same terminal, same directory picker, same row in
 the sessions list, and its own filter chip. Caprock passes the key to the child
 process, so you do not have to export it in every shell.
 
-What Caprock does *not* yet do is watch a Gemini session: there are no hooks and
-no transcript to read, so its turns, tokens and cost do not appear in the
-figures. Starting it is control, not observation, and the numbers on every
-screen remain Claude's and OpenCode's.
+Its turns, tokens and cost appear alongside everything else. Gemini has no hooks
+and writes no transcript, but it does write OpenTelemetry, and Caprock asks it
+to write that to a file it then reads — the same arrangement as Claude Code's
+transcript, with a different file. Prompts are switched off in it; the terminal
+already shows you what you typed.
 
 *Ask about your own numbers.* On the Cost screen, a question carries today's and
 the week's spend, top projects and models — so the answers are about your

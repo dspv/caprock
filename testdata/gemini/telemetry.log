@@ -1,0 +1,79 @@
+{
+  "_body": "",
+  "attributes": {
+    "session.id": "14cf8be0-0953-4142-b0ad-4faee72102d4",
+    "event.name": "gemini_cli.config",
+    "event.timestamp": "2026-09-02T10:06:18.419Z",
+    "model": "gemini-3.5-flash-lite"
+  }
+}
+{
+  "_body": "",
+  "attributes": {
+    "session.id": "14cf8be0-0953-4142-b0ad-4faee72102d4",
+    "event.name": "gemini_cli.user_prompt",
+    "event.timestamp": "2026-09-02T10:06:18.969Z",
+    "prompt_length": 71,
+    "prompt_id": "14cf8be0-0953-4142-b0ad-4faee72102d4",
+    "prompt": "Write the number 7 to a file called seven.txt, then tell me you did it."
+  }
+}
+{
+  "_body": "",
+  "attributes": {
+    "session.id": "14cf8be0-0953-4142-b0ad-4faee72102d4",
+    "event.name": "gemini_cli.api_response",
+    "event.timestamp": "2026-09-02T10:06:21.328Z",
+    "model": "gemini-3.5-flash-lite",
+    "duration_ms": 2346,
+    "input_token_count": 8631,
+    "output_token_count": 41,
+    "cached_content_token_count": 0,
+    "thoughts_token_count": 0,
+    "tool_token_count": 0,
+    "total_token_count": 8672,
+    "prompt_id": "14cf8be0-0953-4142-b0ad-4faee72102d4"
+  }
+}
+{
+  "_body": "",
+  "attributes": {
+    "session.id": "14cf8be0-0953-4142-b0ad-4faee72102d4",
+    "event.name": "gemini_cli.tool_call",
+    "event.timestamp": "2026-09-02T10:06:21.336Z",
+    "function_name": "update_topic",
+    "duration_ms": 3,
+    "success": true,
+    "decision": "accept",
+    "prompt_id": "14cf8be0-0953-4142-b0ad-4faee72102d4"
+  }
+}
+{
+  "_body": "",
+  "attributes": {
+    "session.id": "14cf8be0-0953-4142-b0ad-4faee72102d4",
+    "event.name": "gemini_cli.api_response",
+    "event.timestamp": "2026-09-02T10:06:22.367Z",
+    "model": "gemini-3.5-flash-lite",
+    "duration_ms": 1029,
+    "input_token_count": 8718,
+    "output_token_count": 27,
+    "cached_content_token_count": 0,
+    "thoughts_token_count": 0,
+    "tool_token_count": 0,
+    "total_token_count": 8745,
+    "prompt_id": "14cf8be0-0953-4142-b0ad-4faee72102d4"
+  }
+}
+{
+  "_body": "",
+  "attributes": {
+    "session.id": "14cf8be0-0953-4142-b0ad-4faee72102d4",
+    "event.name": "gemini_cli.tool_call",
+    "event.timestamp": "2026-09-02T10:06:22.370Z",
+    "function_name": "write_file",
+    "duration_ms": 0,
+    "success": false,
+    "prompt_id": "14cf8be0-0953-4142-b0ad-4faee72102d4"
+  }
+}
