@@ -738,3 +738,60 @@ func TestBurnNarrowsWithTheAgentFilter(t *testing.T) {
 		t.Errorf("turns = %d, want 1 — only the opencode turn is in scope", oc.Burn.Turns)
 	}
 }
+
+// The burn rate divides by the time it actually covers.
+//
+// A daemon three minutes old has three minutes of history, and dividing that
+// by the window's full ten made the rate read a third of the truth with
+// nothing saying the window was still filling. The spark on the same screen
+// already refuses to extrapolate its last bucket; this is the same rule for
+// the tile beside it.
+func TestBurnDividesByTheTimeItCovers(t *testing.T) {
+	now := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	cost := 1.0
+
+	for _, tc := range []struct {
+		name    string
+		started time.Time
+		wantUSD float64
+	}{
+		{"a mature daemon divides by the whole window", now.Add(-time.Hour), 6.0},
+		{"a two-minute-old daemon divides by two minutes", now.Add(-2 * time.Minute), 30.0},
+		{"an unknown start falls back to the window", time.Time{}, 6.0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t)
+			ctx := context.Background()
+			if _, err := e.rec.Record(ctx, &event.Event{
+				SessionID: "s-burn", Source: event.SourceTranscript, Kind: event.KindTurnAssistant,
+				Key: "burn-1", Ts: now.Add(-time.Minute), Model: "claude-opus-5",
+				Tokens: &event.TokenDelta{In: 100, Out: 100}, CostUSD: &cost,
+			}, rollup.SessionInfo{Cwd: t.TempDir()}); err != nil {
+				t.Fatal(err)
+			}
+
+			// A server whose clock and start time this case controls. The
+			// shared env fixes `now` 30s ahead, which is inside the window.
+			srv := New(Deps{
+				Store: e.st, Version: "test", Token: "tok",
+				Now:     func() time.Time { return now },
+				Started: tc.started,
+			})
+			ts := httptest.NewServer(srv)
+			defer ts.Close()
+
+			res, err := http.Get(ts.URL + "/v1/stats/summary?range=today")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer res.Body.Close()
+			var sum SummaryResponse
+			if err := json.NewDecoder(res.Body).Decode(&sum); err != nil {
+				t.Fatal(err)
+			}
+			if got := sum.Burn.USDPerHour; got < tc.wantUSD*0.99 || got > tc.wantUSD*1.01 {
+				t.Fatalf("burn = %.2f/h, want about %.2f/h", got, tc.wantUSD)
+			}
+		})
+	}
+}

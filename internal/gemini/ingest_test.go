@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/dspv/caprock/internal/cost"
@@ -205,5 +207,85 @@ func TestANilIngesterIsSafe(t *testing.T) {
 	g.Forget("s")
 	if n, err := g.Sweep(context.Background()); n != 0 || err != nil {
 		t.Errorf("nil ingester: %d, %v", n, err)
+	}
+}
+
+// A record that was half-written when the sweep ran must be picked up once the
+// writer finishes it.
+//
+// The file is tailed while Gemini writes it, so landing mid-record is the
+// normal case, not an edge one. The reader used to advance to the end of
+// whatever was available whenever *any* record had parsed — the opposite of
+// what its own comment promised — so the half-written record ended up below
+// the stored offset and was never read again. The turn, and its tokens, were
+// gone with nothing reporting a loss.
+func TestATornRecordIsReadOnceItIsWhole(t *testing.T) {
+	ctx := context.Background()
+	g, st, dir := newIngester(t)
+	const sid = "26580d90-de2f-4088-9d9e-8200137b1b71"
+
+	full := fixtureBody(t)
+	// Cut inside the last record: one whole record, then a fragment.
+	last := strings.LastIndex(full, "{")
+	if last <= 0 {
+		t.Fatal("fixture has no second record to tear")
+	}
+	torn := full[:last+30]
+
+	writeTelemetry(t, dir, sid, torn)
+	if _, err := g.Sweep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	partial := countTurns(t, st, sid)
+
+	// The writer finishes the record it had started.
+	writeTelemetry(t, dir, sid, full)
+	if _, err := g.Sweep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	whole := countTurns(t, st, sid)
+
+	if whole <= partial {
+		t.Fatalf("turns after the record was completed = %d, same as before (%d) — the torn record was skipped permanently", whole, partial)
+	}
+}
+
+func countTurns(t *testing.T, st *store.Store, sid string) int {
+	t.Helper()
+	var n int
+	if err := st.DB().QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM events WHERE session_id = ?`, sid).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+// Two records that carry no usable timestamp are still two events.
+//
+// The dedupe key was kind + tool + millisecond, which is unique right up until
+// it is not: `event.timestamp` missing or in an unexpected layout yields the
+// zero time, so every such record in a session shared one key and only the
+// first was ever stored. The turns, and their tokens, were silently gone. A
+// record's byte offset is unique by construction, which is what a dedupe key
+// needs.
+func TestRecordsWithNoTimestampAreNotCollapsedIntoOne(t *testing.T) {
+	ctx := context.Background()
+	g, st, dir := newIngester(t)
+	const sid = "26580d90-de2f-4088-9d9e-8200137b1b71"
+
+	rec := func(in, out int) string {
+		return `{"_body":"api",` +
+			`"attributes":{"event.name":"gemini_cli.api_response","session.id":"` + sid + `",` +
+			`"model":"gemini-2.5-pro","input_token_count":` + strconv.Itoa(in) +
+			`,"output_token_count":` + strconv.Itoa(out) + `}}` + "\n"
+	}
+	// No event.timestamp on either: both used to key to the zero time.
+	writeTelemetry(t, dir, sid, rec(10, 20)+rec(30, 40))
+
+	if _, err := g.Sweep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := countTurns(t, st, sid); got != 2 {
+		t.Fatalf("stored %d events, want 2 — records with no timestamp collapsed into one", got)
 	}
 }

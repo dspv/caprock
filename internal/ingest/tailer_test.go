@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -387,5 +388,69 @@ func waitFor(t *testing.T, d time.Duration, cond func() bool) {
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// A transcript replaced by content of the *same size or longer* loses
+// everything below the old offset.
+//
+// The size check catches a shorter file and nothing else, and Claude Code
+// rewrites a transcript in place — on a resume, on a compact — where the
+// replacement is usually not shorter. The tailer then seeks into the middle of
+// different content and the lines above that point are never parsed, so keyed
+// dedupe never sees them either: the session simply arrives missing its first
+// turns, with nothing saying so.
+//
+// The sibling test above says in its own comment that swapping a session id
+// keeps the size identical. That is exactly the case it then avoided.
+func TestAReplacedTranscriptOfTheSameSizeIsReReadWhole(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "-replaced", "s.jsonl")
+	writeTranscript(t, path, "bbbbbbbb-cccc-dddd-eeee-ffffffffffff")
+
+	tl, _ := newTailerAt(t, root)
+	ctx := context.Background()
+	if err := tl.discover(nil); err != nil {
+		t.Fatal(err)
+	}
+	tl.pass(ctx, false)
+	if tl.Stats().EventsStored == 0 {
+		t.Fatal("nothing was stored on the first pass")
+	}
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A different session, three more turns, and at least as long as the file
+	// it replaces — which is what the old check could not see.
+	var sb strings.Builder
+	for i := 1; i <= 4; i++ {
+		sb.WriteString(`{"type":"assistant","uuid":"v-` + strconv.Itoa(i) +
+			`","sessionId":"cccccccc-dddd-eeee-ffff-000000000000","cwd":"/home/u/proj","timestamp":"2026-08-19T10:0` +
+			strconv.Itoa(i) + `:00.000Z","message":{"model":"claude-opus-5","id":"n-` + strconv.Itoa(i) +
+			`","role":"assistant","content":[{"type":"text","text":"replacement"}],"usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}` + "\n")
+	}
+	if err := os.WriteFile(path, []byte(sb.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Size() <= before.Size() {
+		t.Fatalf("the replacement must not be shorter, or this tests the old branch: %d → %d", before.Size(), after.Size())
+	}
+
+	tl.pass(ctx, false)
+
+	var turns int
+	if err := tl.Store.DB().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM events WHERE session_id = ? AND kind = 'turn.assistant'`,
+		"cccccccc-dddd-eeee-ffff-000000000000").Scan(&turns); err != nil {
+		t.Fatal(err)
+	}
+	if turns != 4 {
+		t.Fatalf("stored %d turns of the replacement, want 4 — the lines above the stale offset were never read", turns)
 	}
 }
