@@ -252,13 +252,39 @@ def main():
         ws = create_connection(ws_url, timeout=30)
         rpc(ws, "Page.enable"); rpc(ws, "Runtime.enable")
 
+        # Put the first-run prompts away before the first render, not after it.
+        #
+        # Both banners are answered from localStorage at mount, so writing the
+        # keys once the screen is up changes nothing that is already on it —
+        # and the navigations that follow are hash changes, which do not reload
+        # the document and so never re-read the flag. The result was two
+        # dismissable strips across the top of every capture, taking a sixth of
+        # the frame before a single figure appeared. Set the keys against the
+        # origin, then load the document once so they are read.
+        rpc(ws, "Page.navigate", {"url": f"{BASE}/#/now"})
+        time.sleep(1.5)
+        evaluate(ws, """
+          try {
+            localStorage.setItem('caprock.update.dismissed', 'offer');
+            const t = Date.now();
+            localStorage.setItem('caprock-prompts', JSON.stringify({
+              'premium-banner': t, 'premium-hint': t, 'share-month': t,
+            }));
+          } catch (e) {}
+        """)
+
         for theme in ("dark", "light"):
             for route, name in SHOTS:
+                # Navigating to the same document with a different hash does
+                # not reload it, and the dismissal flags above are only read as
+                # the document boots. Go by way of about:blank so each capture
+                # is a real load *of its own route* — Page.reload would reload
+                # the document at its default route and lose the hash, which
+                # silently made every shot the Now screen.
+                rpc(ws, "Page.navigate", {"url": "about:blank"})
+                time.sleep(0.3)
                 rpc(ws, "Page.navigate", {"url": f"{BASE}/#/{route}"})
                 time.sleep(1.5)
-                # Dismiss the update banner: a first-run prompt, not a feature,
-                # and it pushes the dashboard down in every capture.
-                evaluate(ws, "try{localStorage.setItem('caprock.update.dismissed','offer')}catch(e){}")
                 # Toggle to the theme we want by clicking the control, which is
                 # what a person does. Writing to storage only takes effect on
                 # the next document load, and a hash navigation is not one.

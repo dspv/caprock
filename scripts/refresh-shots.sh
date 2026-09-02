@@ -52,6 +52,27 @@ echo "→ snapshotting the database (read-only; the live one is untouched)"
 mkdir -p "$WORK/data"
 sqlite3 "$DATA_DIR/caprock.db" ".backup '$WORK/data/caprock.db'"
 
+# Carry over the plan, and nothing else from the config.
+#
+# The plan lives in config.json rather than the database, so a throwaway data
+# directory has none — and the header then shows "set plan" lit as an unfinished
+# action, which is the first thing a reader of the README sees: an instruction
+# to configure something they have not been told about yet. Three fields, copied
+# by name. Never the whole file: it also holds the report bot token.
+if [ -f "$DATA_DIR/config.json" ]; then
+  python3 - "$DATA_DIR/config.json" "$WORK/data/config.json" <<'PLAN'
+import json, sys
+src, dst = sys.argv[1], sys.argv[2]
+try:
+    d = json.load(open(src))
+except Exception:
+    sys.exit(0)
+keep = {k: d[k] for k in ("plan_kind", "plan_label", "plan_usd_per_month") if k in d}
+if keep:
+    json.dump(keep, open(dst, "w"), indent=2)
+PLAN
+fi
+
 # The published binary, not a working tree build: the header carries the
 # version, and a README showing "dev build" tells the reader they are looking
 # at something unreleased. CAPROCK_SHOT_BIN overrides it for testing an

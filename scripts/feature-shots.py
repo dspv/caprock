@@ -89,9 +89,28 @@ def main():
         for theme in ("dark", "light"):
             for name, route, needle, _why in SHOTS:
                 rpc(ws, "Page.navigate", {"url": f"{BASE}/#/{route}"})
-                time.sleep(3.5)
+                # Wait for the panel rather than for the clock. A fixed pause
+                # was enough on a small database and silently was not on a real
+                # one: every shot failed with "no element matching", which
+                # reads like a renamed panel and is really a screen that had
+                # not finished fetching. Also put the first-run banners away,
+                # or they push the panel down and the clip lands on the strip
+                # above it.
+                evaluate(ws, """
+                  try {
+                    localStorage.setItem('caprock.update.dismissed', 'offer');
+                    const t = Date.now();
+                    localStorage.setItem('caprock-prompts', JSON.stringify({
+                      'premium-banner': t, 'premium-hint': t, 'share-month': t,
+                    }));
+                  } catch (e) {}
+                """)
                 evaluate(ws, f"localStorage.setItem('caprock-theme','{theme}');location.reload()")
-                time.sleep(3.5)
+                for _ in range(60):
+                    time.sleep(0.4)
+                    if evaluate(ws, f"document.body.innerText.includes({json.dumps(needle)})"):
+                        break
+                time.sleep(2.0)   # let the bars and numbers paint
 
                 # Find the panel whose heading matches, and take its box. The
                 # walk goes up to the panel container so the border and title
@@ -115,15 +134,18 @@ def main():
                     print(f"  !! {name}: no element matching {needle!r} on /{route}")
                     continue
 
-                pad = 12
+                # Asymmetric padding: 12px is right on three sides, but at the
+                # top it reached into the panel above and clipped a button in
+                # half, which reads as a broken screenshot rather than a crop.
+                pad, pad_top = 12, 2
                 shot = rpc(ws, "Page.captureScreenshot", {
                     "format": "png",
                     "captureBeyondViewport": True,
                     "clip": {
                         "x": max(0, box["x"] - pad),
-                        "y": max(0, box["y"] - pad),
+                        "y": max(0, box["y"] - pad_top),
                         "width": min(WIDTH, box["w"] + pad * 2),
-                        "height": box["h"] + pad * 2,
+                        "height": box["h"] + pad + pad_top,
                         "scale": 2,
                     },
                 })
