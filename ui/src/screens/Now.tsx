@@ -19,7 +19,7 @@ import { UnpricedNote } from '@/components/Unpriced'
 import { SpawnDialog } from '@/components/SpawnDialog'
 import { LastWord } from '@/components/LastWord'
 import { usePlan } from '@/components/PlanPicker'
-import { costBasis, costBasisLong } from '@/components/CostBasis'
+import { costBasis, costBasisLong, costLabel } from '@/components/CostBasis'
 import { href } from '@/lib/router'
 import { useState } from 'react'
 import { useNow } from '@/lib/useNow'
@@ -224,7 +224,7 @@ export function NowScreen() {
           * colour pointed away from the money. The rest are reference figures
           * and step down, which is what makes room for the headline. */}
         <div className="grid grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr_1fr] divide-x divide-border">
-          <Stat label="Cost today" value={measured ? fmtUSD(summary.data?.cost_usd) : '—'} sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : loading ? 'reading your figures…' : 'nothing measured yet'}</span>} tone="info" size="hero" />
+          <Stat label={`${costLabel(plan)} today`} value={measured ? fmtUSD(summary.data?.cost_usd) : '—'} sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : loading ? 'reading your figures…' : 'nothing measured yet'}</span>} tone="info" size="hero" />
           <Stat label="Burn now" value={measured ? `${fmtUSD(summary.data!.burn.usd_per_hour)}/h` : '—'} sub={measured ? `${fmtTokens(Math.round(summary.data!.burn.tokens_per_min))} tok/min · last ${summary.data!.burn.window_min}m` : undefined} />
           <Stat label="Sessions" value={measured ? summary.data!.sessions : '—'} sub={measured ? `${summary.data!.active_sessions} active` : undefined} size="compact" />
           <Stat label="Turns" value={measured ? summary.data!.turns : '—'} sub={measured ? `${summary.data!.tool_calls} tool calls` : undefined} size="compact" />

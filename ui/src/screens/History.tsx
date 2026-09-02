@@ -6,7 +6,7 @@ import { CacheStat } from '@/components/CacheStat'
 import { Empty, Panel, Skeleton, Stat } from '@/components/ui'
 import { groupDays } from './Cost'
 import { BarChart, BarReadout } from '@/components/BarChart'
-import { costBasis, costBasisLong } from '@/components/CostBasis'
+import { costBasis, costBasisLong, costLabel } from '@/components/CostBasis'
 import { usePlan } from '@/components/PlanPicker'
 import { PremiumBanner } from '@/components/PremiumBanner'
 import { Locked } from '@/components/Locked'
@@ -67,7 +67,7 @@ export function HistoryScreen() {
           {/* "API-equivalent" was our jargon on the largest number in the
               product; it explained nothing to someone meeting it for the
               first time, and three of five readers took it for a bill. */}
-          <Stat label="Cost" value={measured ? fmtUSD(d!.totals.cost_usd) : '—'} sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : 'nothing measured yet'}</span>} tone="info" size="hero" />
+          <Stat label={costLabel(plan)} value={measured ? fmtUSD(d!.totals.cost_usd) : '—'} sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : 'nothing measured yet'}</span>} tone="info" size="hero" />
         </div>
         {/* Not locked any more. Third-party pricing was going to be the paid
           * feature until the prices were simply added — DeepSeek, MiniMax and
