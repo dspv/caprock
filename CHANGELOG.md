@@ -7,6 +7,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+Phase 3 (Delight) has no plan by design.
+
+## [0.43.0] - 2026-09-02
+
 ### Added
 
 - **Claude Fable 5.1 and Mythos 5.1 in the pricing table**, contributed by
@@ -32,8 +36,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   it into the panel instead. The environment variable still works and still
   wins where both exist, and the stored key is never returned by any endpoint —
   the same write-only rule the Telegram token follows.
-
-Phase 3 (Delight) has no plan by design.
 
 ## [0.42.1] - 2026-09-01
 
