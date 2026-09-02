@@ -3,6 +3,7 @@ package rollup
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -268,5 +269,50 @@ func TestAWronglyEndedSessionRevivesOnItsNextEvent(t *testing.T) {
 	}
 	if s, _ := store.GetSession(ctx, r.Store.DB(), "back"); s.Status != store.StatusActive {
 		t.Errorf("typing in an ended session left it %s", s.Status)
+	}
+}
+
+// A session that carries on into the next day counts on both days.
+//
+// The daily "sessions" column used to be incremented when a session recorded
+// its first turn *ever*, so a session begun yesterday added nothing to today —
+// and a day whose work was all continuations read zero sessions beside real
+// spend. Four of eight days on the owner's database read exactly that.
+func TestASessionSpanningMidnightCountsOnBothDays(t *testing.T) {
+	ctx := context.Background()
+	r, _ := newRecorder(t)
+
+	// UTC, because newRecorder pins the recorder's location to it — a local
+	// time here would land on whichever side of midnight the test machine's
+	// offset put it, which is how the first version of this test lied.
+	for i, ts := range []time.Time{
+		time.Date(2026, 8, 18, 23, 50, 0, 0, time.UTC),
+		time.Date(2026, 8, 19, 0, 10, 0, 0, time.UTC), // same session, next day
+		time.Date(2026, 8, 19, 0, 20, 0, 0, time.UTC), // and again, same day
+	} {
+		ev := &event.Event{
+			SessionID: "night-owl", Source: event.SourceTranscript,
+			Kind: event.KindTurnAssistant, Key: fmt.Sprintf("k%d", i),
+			Ts: ts, Model: "claude-opus-5",
+			Tokens: &event.TokenDelta{In: 1_000_000, Out: 0},
+		}
+		if _, err := r.Record(ctx, ev, SessionInfo{Cwd: "/home/u/proj"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	d, err := store.Daily(ctx, r.Store.DB(), "2026-08-18")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int64{}
+	for _, row := range d {
+		got[row.Day] += row.Sessions
+	}
+	if got["2026-08-18"] != 1 {
+		t.Errorf("18th counted %d sessions, want 1", got["2026-08-18"])
+	}
+	if got["2026-08-19"] != 1 {
+		t.Errorf("19th counted %d sessions, want 1 — the same session working on a second day is a session that day", got["2026-08-19"])
 	}
 }

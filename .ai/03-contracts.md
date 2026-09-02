@@ -195,6 +195,38 @@ GET    /v1/history?range=…           lifetime totals + tool distribution + mod
 
 **Non-Anthropic pricing.** `pricing/pricing.json` carries rows for the models Caprock observes through OpenCode — DeepSeek and MiniMax at the providers' own published rates, fetched with a date and noted in the file. They are priced so a total that includes non-Anthropic usage is a total; before this, $155 of the owner's own spend sat outside his. `normalizeModel` strips a gateway's vendor prefix, so `minimax/minimax-m3` from OpenRouter and `MiniMax-M3` from the direct API are one row rather than two, one of them unpriced. The unpriced warning fires only on turns whose tokens are greater than zero: a turn recorded with explicit zeroes has nothing to price, and warning about it says a total is missing money it is not missing.
 
+### Daily sessions DDL (migration 0020)
+
+```sql
+CREATE TABLE IF NOT EXISTS daily_sessions (
+  day        TEXT NOT NULL,   -- local date, matching daily_stats.day
+  project    TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  PRIMARY KEY (day, project, session_id)
+) WITHOUT ROWID;
+```
+
+`daily_stats.sessions` was incremented when a session recorded its **first turn
+ever**, so a session begun yesterday added nothing to today and a day whose work
+was all continuations read zero sessions beside real spend — four of the last
+eight days on the owner's database. The marker answers "first turn of this
+session *on this day*" instead.
+
+Two things about the key are load-bearing:
+
+- **Not keyed by model**, though `daily_stats` is. The dashboard sums a day's
+  rows, so the count must live in exactly one of them; keyed by model as well, a
+  session that switched from Opus to Haiku mid-day counted twice — measured as 3
+  against a true 2 on 27 August.
+- **The backfill matches on the day alone**, not on `(day, project)`. A
+  session's project is resolved from its cwd and can be renamed later — a chat
+  started before its repository was known is stored as a timestamp and becomes
+  `chat` — so historical `daily_stats` rows and markers rebuilt from events
+  disagree about the name while agreeing about the day. Joining on the name left
+  those days at zero, which is the bug being fixed. After the migration all ten
+  recent days on the owner's database match a `COUNT(DISTINCT session_id)` over
+  the events themselves.
+
 ### Tool bytes DDL (migration 0018)
 
 ```sql

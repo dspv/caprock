@@ -549,52 +549,58 @@ func TestSearchNotes(t *testing.T) {
 	}
 }
 
-// files_touched sat in a row of range-filtered stats but ignored the range,
-// so "today" reported the lifetime figure — the one number in that row that
-// lied, which made the five correct ones beside it suspect too.
-func TestHistoryFilesTouchedRespectsRange(t *testing.T) {
+// files_touched sat in a row of range-filtered stats but ignored the range.
+//
+// Two attempts at this. The first counted every session's *lifetime* total if
+// the session had said anything in the window — so a fortnight-long session
+// that touched 300 files put all 300 into "today" the moment it spoke today.
+// Measured on the owner's database, seven days read 417 against a true 144.
+//
+// The fix is the other table: `session_files` stamps each path with the first
+// time it was touched, so the ranged answer counts *files*, not sessions. This
+// test therefore writes through `TouchFile`, the real path, rather than
+// inserting a total directly — which is how the first version passed while the
+// screen was wrong.
+func TestHistoryCountsFilesTouchedInTheWindowNotSessionLifetimes(t *testing.T) {
 	ctx := context.Background()
 	s := openTest(t)
-	now := time.UnixMilli(1_800_000_000_000)
+	now := time.Now()
 	old := now.Add(-90 * 24 * time.Hour)
 
-	for _, tc := range []struct {
-		id    string
-		ts    time.Time
-		files int64
+	// One long-running session: two files touched long ago, one today. Its
+	// lifetime total is three; today's honest answer is one.
+	for _, f := range []struct {
+		path string
+		ts   time.Time
 	}{
-		{"recent", now, 3},
-		{"ancient", old, 40},
+		{"/repo/old-a.go", old},
+		{"/repo/old-b.go", old},
+		{"/repo/today.go", now},
 	} {
-		ev := &event.Event{SessionID: tc.id, Source: event.SourceHook, Kind: event.KindToolPre,
-			Tool: "Edit", Ts: tc.ts, Key: tc.id + "-k"}
-		if _, err := InsertEvent(ctx, s.db, ev); err != nil {
+		if _, err := TouchFile(ctx, s.db, "long-runner", f.path, f.ts.UnixMilli()); err != nil {
 			t.Fatal(err)
 		}
-		if err := UpsertSession(ctx, s.db, tc.id, SessionPatch{LastEventAt: tc.ts.UnixMilli()}); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := s.db.ExecContext(ctx,
-			`INSERT INTO session_stats(session_id, files_touched) VALUES(?, ?)
-			 ON CONFLICT(session_id) DO UPDATE SET files_touched = excluded.files_touched`,
-			tc.id, tc.files); err != nil {
-			t.Fatal(err)
-		}
+	}
+	// The session itself is active now, which is what made the old query
+	// count all three.
+	if err := UpsertSession(ctx, s.db, "long-runner", SessionPatch{LastEventAt: now.UnixMilli()}); err != nil {
+		t.Fatal(err)
 	}
 
 	recent, err := History(ctx, s.db, now.Add(-24*time.Hour).UnixMilli())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if recent.FilesTouched != 3 {
-		t.Fatalf("recent range files_touched = %d, want 3 (the 90-day-old session must not count)", recent.FilesTouched)
+	if recent.FilesTouched != 1 {
+		t.Fatalf("files touched in the last day = %d, want 1 — the two 90-day-old files belong to the same session, not to today", recent.FilesTouched)
 	}
+
 	all, err := History(ctx, s.db, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if all.FilesTouched != 43 {
-		t.Fatalf("all-time files_touched = %d, want 43", all.FilesTouched)
+	if all.FilesTouched != 3 {
+		t.Fatalf("files touched all time = %d, want 3", all.FilesTouched)
 	}
 }
 

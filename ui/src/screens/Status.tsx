@@ -49,16 +49,22 @@ export function StatusScreen() {
       <SettingsPanel />
       <Pairing />
       <Panel title="Daemon">
-        <table className="w-full text-[12px]">
-          <tbody>
-            {rows.map(([k, v]) => (
-              <tr key={k} className="border-b border-border/60 last:border-0">
-                <td className="px-3 py-1 text-fg-muted w-32">{k}</td>
-                <td className="px-3 py-1 mono break-all">{v}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="overflow-x-auto">
+          {/* Scrolls inside itself on a narrow screen. Without this the table
+            * pushes the whole page sideways on a tablet and takes every other
+            * panel with it — the fault is not a table that is cut off, it is a
+            * body that scrolls horizontally. */}
+          <table className="w-full text-[12px]">
+            <tbody>
+              {rows.map(([k, v]) => (
+                <tr key={k} className="border-b border-border/60 last:border-0">
+                  <td className="px-3 py-1 text-fg-muted w-32">{k}</td>
+                  <td className="px-3 py-1 mono break-all">{v}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </Panel>
       {/* A dead tailer meant nothing was being captured while every other row
         * on this screen looked healthy. */}

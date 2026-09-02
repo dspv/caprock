@@ -313,31 +313,35 @@ function WhereItIs({ work, assignee }: { work?: TaskWork; assignee: string }) {
   }
   return (
     <Panel title="Where the work is">
-      <table className="w-full text-[12px]">
-        <tbody>
-          <tr className="border-b border-border/60">
-            <td className="px-3 py-1 text-fg-muted w-32">branch</td>
-            <td className="px-3 py-1 mono break-all">{work.branch}</td>
-          </tr>
-          {work.worktree && (
+      <div className="overflow-x-auto">
+        {/* Scrolls inside itself on a narrow screen: the table is wide, and a
+        * body that scrolls sideways takes every other panel with it. */}
+        <table className="w-full text-[12px]">
+          <tbody>
             <tr className="border-b border-border/60">
-              <td className="px-3 py-1 text-fg-muted w-32">worktree</td>
-              <td className="px-3 py-1 mono break-all">{work.worktree}</td>
+              <td className="px-3 py-1 text-fg-muted w-32">branch</td>
+              <td className="px-3 py-1 mono break-all">{work.branch}</td>
             </tr>
-          )}
-          <tr className="border-b border-border/60 last:border-0">
-            <td className="px-3 py-1 text-fg-muted w-32 align-top">take it</td>
-            <td className="px-3 py-1 grid gap-1 justify-items-start">
-              <Copyable command={`git merge --no-ff ${work.branch}`} />
-              <span className="text-[11px] text-fg-faint">
-                Run it from {work.repo ? <span className="mono">{work.repo}</span> : 'your repo'}, on the branch you want the work
-                on. Prefer <span className="mono">git cherry-pick</span> if you only want some of it. Worker{' '}
-                <span className="mono">{assignee}</span> may still be running — check the diff below first.
-              </span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+            {work.worktree && (
+              <tr className="border-b border-border/60">
+                <td className="px-3 py-1 text-fg-muted w-32">worktree</td>
+                <td className="px-3 py-1 mono break-all">{work.worktree}</td>
+              </tr>
+            )}
+            <tr className="border-b border-border/60 last:border-0">
+              <td className="px-3 py-1 text-fg-muted w-32 align-top">take it</td>
+              <td className="px-3 py-1 grid gap-1 justify-items-start">
+                <Copyable command={`git merge --no-ff ${work.branch}`} />
+                <span className="text-[11px] text-fg-faint">
+                  Run it from {work.repo ? <span className="mono">{work.repo}</span> : 'your repo'}, on the branch you want the work
+                  on. Prefer <span className="mono">git cherry-pick</span> if you only want some of it. Worker{' '}
+                  <span className="mono">{assignee}</span> may still be running — check the diff below first.
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </Panel>
   )
 }

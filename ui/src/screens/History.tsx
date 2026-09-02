@@ -97,28 +97,32 @@ export function HistoryScreen() {
             * note is complaining about. */}
           <Panel title="Model mix" right={<span>by cost</span>}>
             {!d ? <Skeleton rows={3} /> : d.summary.models.length === 0 && <Empty title="No priced turns" />}
-            <table className="w-full text-[12px]">
-              {/* Named columns. Three figures in a row with nothing over them
-                * is a puzzle — "12.02B  $7,595.32" reads as two unrelated
-                * numbers until you work out which is which, and "by cost" in
-                * the corner describes the sort order, not the columns. */}
-              <thead>
-                <tr className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">
-                  <th className="px-3 pb-1 text-left font-normal">model</th>
-                  <th className="px-3 pb-1 text-right font-normal">tokens</th>
-                  <th className="px-3 pb-1 text-right font-normal">cost</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(d?.summary.models ?? []).map((m) => (
-                  <tr key={m.model} className="border-b border-border/60 last:border-0">
-                    <td className="px-3 py-1 mono">{m.model || 'unknown'}</td>
-                    <td className="px-3 py-1 num text-right text-fg-muted">{fmtTokens(m.tokens)}</td>
-                    <td className="px-3 py-1 num text-right">{fmtUSD(m.cost_usd)}</td>
+            <div className="overflow-x-auto">
+              {/* Scrolls inside itself on a narrow screen: the table is wide, and a
+              * body that scrolls sideways takes every other panel with it. */}
+              <table className="w-full text-[12px]">
+                {/* Named columns. Three figures in a row with nothing over them
+                  * is a puzzle — "12.02B  $7,595.32" reads as two unrelated
+                  * numbers until you work out which is which, and "by cost" in
+                  * the corner describes the sort order, not the columns. */}
+                <thead>
+                  <tr className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">
+                    <th className="px-3 pb-1 text-left font-normal">model</th>
+                    <th className="px-3 pb-1 text-right font-normal">tokens</th>
+                    <th className="px-3 pb-1 text-right font-normal">cost</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {(d?.summary.models ?? []).map((m) => (
+                    <tr key={m.model} className="border-b border-border/60 last:border-0">
+                      <td className="px-3 py-1 mono">{m.model || 'unknown'}</td>
+                      <td className="px-3 py-1 num text-right text-fg-muted">{fmtTokens(m.tokens)}</td>
+                      <td className="px-3 py-1 num text-right">{fmtUSD(m.cost_usd)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </Panel>
           {/* The weekly report belongs beside the figures it would contain: this
           * screen already answers "where did it go", and the paid half is
@@ -132,28 +136,32 @@ export function HistoryScreen() {
         </Locked>
 
         <Panel title="Top projects" right={<span>by cost</span>}>
-            <table className="w-full text-[12px]">
-              {/* Named columns. Three figures in a row with nothing over them
-                * is a puzzle — "12.02B  $7,595.32" reads as two unrelated
-                * numbers until you work out which is which, and "by cost" in
-                * the corner describes the sort order, not the columns. */}
-              <thead>
-                <tr className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">
-                  <th className="px-3 pb-1 text-left font-normal">project</th>
-                  <th className="px-3 pb-1 text-right font-normal">tokens</th>
-                  <th className="px-3 pb-1 text-right font-normal">cost</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(d?.summary.projects ?? []).slice(0, 8).map((p) => (
-                  <tr key={p.project} className="border-b border-border/60 last:border-0">
-                    <td className="px-3 py-1">{p.project || 'unknown'}</td>
-                    <td className="px-3 py-1 num text-right text-fg-muted">{fmtTokens(p.tokens)}</td>
-                    <td className="px-3 py-1 num text-right">{fmtUSD(p.cost_usd)}</td>
+            <div className="overflow-x-auto">
+              {/* Scrolls inside itself on a narrow screen: the table is wide, and a
+              * body that scrolls sideways takes every other panel with it. */}
+              <table className="w-full text-[12px]">
+                {/* Named columns. Three figures in a row with nothing over them
+                  * is a puzzle — "12.02B  $7,595.32" reads as two unrelated
+                  * numbers until you work out which is which, and "by cost" in
+                  * the corner describes the sort order, not the columns. */}
+                <thead>
+                  <tr className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">
+                    <th className="px-3 pb-1 text-left font-normal">project</th>
+                    <th className="px-3 pb-1 text-right font-normal">tokens</th>
+                    <th className="px-3 pb-1 text-right font-normal">cost</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {(d?.summary.projects ?? []).slice(0, 8).map((p) => (
+                    <tr key={p.project} className="border-b border-border/60 last:border-0">
+                      <td className="px-3 py-1">{p.project || 'unknown'}</td>
+                      <td className="px-3 py-1 num text-right text-fg-muted">{fmtTokens(p.tokens)}</td>
+                      <td className="px-3 py-1 num text-right">{fmtUSD(p.cost_usd)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </Panel>
         </div>
       </div>

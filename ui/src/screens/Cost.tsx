@@ -106,33 +106,37 @@ export function CostScreen() {
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <Panel title="Model mix" right={<span>by cost</span>}>
           {!s ? <Skeleton rows={4} /> : s.models.length === 0 && <Empty title="No priced turns in range" />}
-          <table className="w-full text-[12px]">
-            {/* Named columns. Four figures in a row with nothing over them is a
-              * puzzle, and "by cost" in the corner describes the sort order
-              * rather than the columns. */}
-            <thead>
-              <tr className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">
-                <th className="px-3 pb-1 text-left font-normal">model</th>
-                <th className="px-3 pb-1 text-right font-normal">turns</th>
-                <th className="px-3 pb-1 text-right font-normal">tokens</th>
-                <th className="px-3 pb-1 text-right font-normal">cost</th>
-                <th className="px-3 pb-1 text-right font-normal">share</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(s?.models ?? []).map((m) => (
-                <tr key={m.model} className="border-b border-border/60 last:border-0">
-                  <td className="px-3 py-1 mono" title={m.model || undefined}>{m.model ? fmtModel(m.model) : 'unknown'}</td>
-                  <td className="px-3 py-1 num text-right text-fg-muted">{m.turns} turns</td>
-                  <td className="px-3 py-1 num text-right text-fg-muted">{fmtTokens(m.tokens)}</td>
-                  {/* An unpriced model summed to 0 and rendered "$0.00",
-                      which reads as free. It has no price, so it shows none. */}
-                  <td className="px-3 py-1 num text-right">{(s?.unpriced?.models ?? []).includes(m.model) ? <span className="text-warn" title="this model is not in the pricing table, so its cost is unknown">unpriced</span> : fmtUSD(m.cost_usd)}</td>
-                  <td className="px-3 py-1 num text-right text-fg-faint w-14">{s && s.cost_usd > 0 && !(s.unpriced?.models ?? []).includes(m.model) ? fmtPct((100 * m.cost_usd) / s.cost_usd) : '—'}</td>
+          <div className="overflow-x-auto">
+            {/* Scrolls inside itself on a narrow screen: the table is wide, and a
+            * body that scrolls sideways takes every other panel with it. */}
+            <table className="w-full text-[12px]">
+              {/* Named columns. Four figures in a row with nothing over them is a
+                * puzzle, and "by cost" in the corner describes the sort order
+                * rather than the columns. */}
+              <thead>
+                <tr className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">
+                  <th className="px-3 pb-1 text-left font-normal">model</th>
+                  <th className="px-3 pb-1 text-right font-normal">turns</th>
+                  <th className="px-3 pb-1 text-right font-normal">tokens</th>
+                  <th className="px-3 pb-1 text-right font-normal">cost</th>
+                  <th className="px-3 pb-1 text-right font-normal">share</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {(s?.models ?? []).map((m) => (
+                  <tr key={m.model} className="border-b border-border/60 last:border-0">
+                    <td className="px-3 py-1 mono" title={m.model || undefined}>{m.model ? fmtModel(m.model) : 'unknown'}</td>
+                    <td className="px-3 py-1 num text-right text-fg-muted">{m.turns} turns</td>
+                    <td className="px-3 py-1 num text-right text-fg-muted">{fmtTokens(m.tokens)}</td>
+                    {/* An unpriced model summed to 0 and rendered "$0.00",
+                        which reads as free. It has no price, so it shows none. */}
+                    <td className="px-3 py-1 num text-right">{(s?.unpriced?.models ?? []).includes(m.model) ? <span className="text-warn" title="this model is not in the pricing table, so its cost is unknown">unpriced</span> : fmtUSD(m.cost_usd)}</td>
+                    <td className="px-3 py-1 num text-right text-fg-faint w-14">{s && s.cost_usd > 0 && !(s.unpriced?.models ?? []).includes(m.model) ? fmtPct((100 * m.cost_usd) / s.cost_usd) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Panel>
         {/* The third cut of "where did the money go": by model, by project, and
             by the KIND of work each turn did. It sits with its siblings rather
@@ -140,26 +144,30 @@ export function CostScreen() {
         <WorkMix summary={s} />
         <Panel title="Per project" right={<span>by cost</span>}>
           {!s ? <Skeleton rows={4} /> : s.projects.length === 0 && <Empty title="No priced turns in range" />}
-          <table className="w-full text-[12px]">
-            <thead>
-              <tr className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">
-                <th className="px-3 pb-1 text-left font-normal">project</th>
-                <th className="px-3 pb-1 text-right font-normal">tokens</th>
-                <th className="px-3 pb-1 text-right font-normal">cost</th>
-                <th className="px-3 pb-1 text-right font-normal">share</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(s?.projects ?? []).map((p) => (
-                <tr key={p.project} className="border-b border-border/60 last:border-0">
-                  <td className="px-3 py-1">{p.project || 'unknown'}</td>
-                  <td className="px-3 py-1 num text-right text-fg-muted">{fmtTokens(p.tokens)}</td>
-                  <td className="px-3 py-1 num text-right">{fmtUSD(p.cost_usd)}</td>
-                  <td className="px-3 py-1 num text-right text-fg-faint w-14">{s && s.cost_usd > 0 ? fmtPct((100 * p.cost_usd) / s.cost_usd) : '—'}</td>
+          <div className="overflow-x-auto">
+            {/* Scrolls inside itself on a narrow screen: the table is wide, and a
+            * body that scrolls sideways takes every other panel with it. */}
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">
+                  <th className="px-3 pb-1 text-left font-normal">project</th>
+                  <th className="px-3 pb-1 text-right font-normal">tokens</th>
+                  <th className="px-3 pb-1 text-right font-normal">cost</th>
+                  <th className="px-3 pb-1 text-right font-normal">share</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {(s?.projects ?? []).map((p) => (
+                  <tr key={p.project} className="border-b border-border/60 last:border-0">
+                    <td className="px-3 py-1">{p.project || 'unknown'}</td>
+                    <td className="px-3 py-1 num text-right text-fg-muted">{fmtTokens(p.tokens)}</td>
+                    <td className="px-3 py-1 num text-right">{fmtUSD(p.cost_usd)}</td>
+                    <td className="px-3 py-1 num text-right text-fg-faint w-14">{s && s.cost_usd > 0 ? fmtPct((100 * p.cost_usd) / s.cost_usd) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Panel>
       </div>
       {/* The month and the limits share a row: the chart does not need full
