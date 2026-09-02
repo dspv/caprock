@@ -57,7 +57,7 @@ export function NowScreen() {
   // quoting the wrong number.
   const [agent, setAgent] = useState<AgentFilter>('all')
   const [spawning, setSpawning] = useState(false)
-  const sessions = useApi(() => api.sessions(!showEnded), [showEnded], { intervalMs: 5000 })
+  const sessions = useApi(() => api.sessionsWithTotal(!showEnded), [showEnded], { intervalMs: 5000 })
   const status = useApi(() => api.status(), [], { live: false, intervalMs: 30000 })
   const summary = useApi(() => api.summary('today', agent), [agent], { intervalMs: 5000 })
   // All-time totals, for the one line that mentions the paid version. Slow
@@ -66,7 +66,10 @@ export function NowScreen() {
   const lifetime = useApi(() => api.history('all'), [], { intervalMs: 60000 })
   const { alerts } = useLive()
   const now = useNow(1000)
-  const everySession = sessions.data ?? []
+  const everySession = sessions.data?.items ?? []
+  // How many the server holds, against how many it sent. The list is capped at
+  // 200; past that the "Ended" label would otherwise count the page.
+  const sessionTotal = sessions.data?.total ?? everySession.length
   // Sessions carry their own agent, so this needs no second request.
   const list = agent === 'all'
     ? everySession
@@ -307,7 +310,16 @@ export function NowScreen() {
         groups={[
           { label: 'Active', items: working },
           { label: 'Idle', items: rest, dim: true },
-          ...(showEnded ? [{ label: 'Ended', items: ended, dim: true }] : []),
+          ...(showEnded
+            ? [{
+                label: 'Ended',
+                items: ended,
+                dim: true,
+                // The cap applies to the whole list, and the ended sessions are
+                // what fills it — the live ones are a handful.
+                total: sessionTotal - working.length - rest.length,
+              }]
+            : []),
         ]}
         now={now}
       />
@@ -417,7 +429,7 @@ function SessionGrid({
   groups,
   now,
 }: {
-  groups: { label: string; items: SessionSummary[]; dim?: boolean }[]
+  groups: { label: string; items: SessionSummary[]; dim?: boolean; total?: number }[]
   now: number
 }) {
   const cells = groups.flatMap((g) =>
@@ -426,7 +438,16 @@ function SessionGrid({
       dim: g.dim,
       // Only the first card of a run is labelled; the count goes with it so
       // "Active · 3" still reads as a count rather than a repeated tag.
-      label: i === 0 ? `${g.label} · ${g.items.length}` : null,
+      //
+      // When the server had more than it sent, the label says so. The list is
+      // capped at 200, and "Ended · 200" beside a lifetime strip reading 431
+      // sessions is a number that looks authoritative and counts the page.
+      label:
+        i === 0
+          ? g.total && g.total > g.items.length
+            ? `${g.label} · ${g.items.length} of ${g.total}`
+            : `${g.label} · ${g.items.length}`
+          : null,
     })),
   )
   if (cells.length === 0) return null

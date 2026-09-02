@@ -258,7 +258,7 @@ func TestWithTxCommitsOnSuccess(t *testing.T) {
 // The throttle count is a measured fact shown on the Cost screen — it must be
 // zero when nothing was recorded rather than an error or a guess.
 func TestCountThrottlesIsZeroWithoutObservations(t *testing.T) {
-	n, err := CountThrottles(context.Background(), openTest(t).db, 0)
+	n, err := CountThrottles(context.Background(), openTest(t).db, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}

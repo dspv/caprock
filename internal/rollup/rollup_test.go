@@ -135,7 +135,7 @@ func TestThrottleRecorded(t *testing.T) {
 	if _, err := r.Record(ctx, ev, SessionInfo{}); err != nil {
 		t.Fatal(err)
 	}
-	n, err := store.CountThrottles(ctx, r.Store.DB(), 0)
+	n, err := store.CountThrottles(ctx, r.Store.DB(), 0, "")
 	if err != nil || n != 1 {
 		t.Fatalf("throttle not recorded: %d %v", n, err)
 	}
