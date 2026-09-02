@@ -236,8 +236,13 @@ function paintCard(g: CanvasRenderingContext2D, d: CardData) {
     return h
   }
 
-  const h = bars(64, 372, d.models, 'WHERE THE MONEY WENT')
-  bars(612, 372, d.work, 'WHAT IT WENT ON')
+  // The breakdowns are the chosen period's, so the headings need no qualifier
+  // — except on an all-time card, where there is no all-time split to draw and
+  // the month stands in for it. Saying which is cheaper than a chart that
+  // quietly answers a different question from the one above it.
+  const span = d.period === 'all' ? ' · LAST 30 DAYS' : ''
+  const h = bars(64, 372, d.models, `WHERE THE MONEY WENT${span}`)
+  bars(612, 372, d.work, `WHAT IT WENT ON${span}`)
 
   // The full caveat, not the short one. A dollar figure posted without it
   // reads as a bill somebody paid, and "not money saved" is the half that
@@ -276,7 +281,20 @@ export function cardFilename(d = new Date()): string {
   return `caprock-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.png`
 }
 
-/** Gather what the card needs. Four ranges, because the card shows four. */
+/**
+ * Gather what the card needs.
+ *
+ * Four ranges because the four tiles are always drawn — a week means nothing
+ * without knowing whether it was a normal one, which is why choosing a period
+ * lights one tile rather than removing the others.
+ *
+ * The two breakdowns below them are a different matter: they belong to the
+ * period the card is *about*. They used to come from the 30-day summary
+ * whatever was chosen, so a card headed "My week on Caprock" carried a month's
+ * models under it — five of them, against the one that actually ran that week,
+ * and $5,473 of Opus against $1,936. The heading named one stretch and the
+ * chart drew another.
+ */
 export async function collectCardData(period: SharePeriod = 'all'): Promise<CardData> {
   const [today, week, month, hist] = await Promise.all([
     api.summary('today'),
@@ -284,6 +302,10 @@ export async function collectCardData(period: SharePeriod = 'all'): Promise<Card
     api.summary('30d'),
     api.history('all'),
   ])
+  // The chosen period's own summary. 'all' has no summary range of its own —
+  // history carries the totals but not the per-model split — so it borrows the
+  // month, which is the longest split there is, and says so on the card.
+  const chosen = period === 'today' ? today : period === '7d' ? week : month
   const toks = (s: { tokens_in: number; tokens_out: number; cache_read: number; cache_write: number }) =>
     s.tokens_in + s.tokens_out + s.cache_read + s.cache_write
   return {
@@ -297,10 +319,10 @@ export async function collectCardData(period: SharePeriod = 'all'): Promise<Card
       days: hist.totals.days,
       tokens: toks(hist.summary),
     },
-    cacheHitPct: (month.savings?.hit_rate ?? 0) * 100,
-    models: (month.models ?? []).slice(0, 5)
+    cacheHitPct: (chosen.savings?.hit_rate ?? 0) * 100,
+    models: (chosen.models ?? []).slice(0, 5)
       .map((m) => ({ label: shortModel(m.model), cost: m.cost_usd })),
-    work: (month.work ?? []).slice(0, 5)
+    work: (chosen.work ?? []).slice(0, 5)
       .map((w) => ({ label: WORK_LABEL[w.kind] ?? w.kind, cost: w.cost_usd })),
   }
 }
