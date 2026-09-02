@@ -9,6 +9,58 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.49.1] - 2026-09-03
+
+Six figures that were quietly wrong, found by auditing the parts of the backend
+nobody had looked at. Every one was measured against a real database before and
+after. **Carries schema migration 0020**, which backfills from your own events;
+it ran in a tenth of a second on a 257k-event database.
+
+### Fixed
+
+- **"Files touched" counted whole session lifetimes.** The range filtered which
+  *sessions* counted, not which *files* — so a fortnight-long session that
+  touched 300 files put all 300 into "today" the moment it said anything today.
+  Seven days read 417 against a true 144. The ranged answer was already on
+  disk; the wrong table was being asked.
+
+- **The daily session count read zero on days with real spend.** It counted a
+  session on the day of its first turn *ever*, so a session begun yesterday
+  added nothing to today. Four of eight days read 0 against 1, 2, 2 and 2 —
+  beside cost and token figures in the same rows that were correct, which is
+  worse than being wrong alone. After the migration, ten recent days all match
+  a direct count over the events.
+
+- **A replaced transcript of the same size lost everything below the old
+  offset.** Truncation was detected by "the file got shorter", and Claude Code
+  rewrites transcripts in place — on a resume, on a compact — where the
+  replacement usually is not shorter. Those lines were never parsed, so nothing
+  deduplicated them either: a session simply arrived missing its first turns.
+
+- **A half-written Gemini record was skipped permanently.** The reader advanced
+  past everything available whenever anything parsed, which is the opposite of
+  what its own comment promised. Since the file is read while Gemini writes it,
+  landing mid-record is the normal case.
+
+- **Two Gemini events in the same millisecond became one** — and worse, every
+  event whose timestamp was missing or in an unexpected format shared a single
+  key, so only the first was ever stored.
+
+- **The burn rate divided a partial window by its full width.** A daemon three
+  minutes old has three minutes of history and was dividing by ten, so the rate
+  read a third of the truth with nothing saying the window was still filling.
+
+- **Six tables can no longer push the page sideways** on a narrow screen. On a
+  tablet a wide table took the whole body with it.
+
+### Changed
+
+- **More tests where a failure would cost something**: the three shapes a tool
+  error arrives in (only one was exercised, and it decides the red badge), the
+  point where rule 7 is enforced, all five pairing handlers, and the file that
+  holds device tokens. Every important test was checked by reverting the
+  behaviour it asserts.
+
 ## [0.49.0] - 2026-09-03
 
 ### Added
