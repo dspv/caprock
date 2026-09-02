@@ -21,6 +21,7 @@ import { buildPulse, costTier, medianCost, trackState, windowCost, windowEvents,
 import { fmtAgo, fmtUSD, shortId } from '@/lib/format'
 import { Panel } from '@/components/ui'
 import { href, navigate } from '@/lib/router'
+import { agentMark } from '@/components/Projects'
 
 /** How many tracks to show. More than this and no single one is readable. */
 const MAX_TRACKS = 6
@@ -211,9 +212,9 @@ function Track({
               {s.git_branch}
             </span>
           )}
-          {s.agent === 'opencode' && (
+          {agentMark(s.agent) && (
             <span className="shrink-0 text-[9px] uppercase tracking-[0.08em] text-fg-faint border border-border px-1 rounded-sm">
-              oc
+              {agentMark(s.agent)}
             </span>
           )}
         </div>

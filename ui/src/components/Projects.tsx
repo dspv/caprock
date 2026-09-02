@@ -107,16 +107,46 @@ import { Panel, Skeleton } from '@/components/ui'
 
 type Range = 'today' | '7d' | '30d' | 'all'
 
-/** Which agent's work to show. Present only when both are on the machine. */
-export type AgentFilter = 'all' | 'claude' | 'opencode'
+/** Which agent's work to show. Present only when the machine has more than one. */
+export type AgentFilter = 'all' | 'claude' | 'opencode' | 'gemini'
 
 export const AGENTS: { key: AgentFilter; label: string }[] = [
-  // 'all' rather than 'both': a third agent would make 'both' a lie, and the
-  // label is the one part of this control a user reads every time.
+  // 'all' rather than 'both': the third agent arrived and would have made
+  // 'both' a lie, and the label is the one part of this control a user reads
+  // every time.
   { key: 'all', label: 'all' },
   { key: 'claude', label: 'claude' },
   { key: 'opencode', label: 'opencode' },
+  { key: 'gemini', label: 'gemini' },
 ]
+
+/** The short mark for an agent that is not Claude Code, or '' for one that is.
+ *  Claude is the common case on almost every machine, so badging it too would
+ *  put a label on every row; the mark answers "why is this one different".
+ *  Written once because it was three copies of `agent === 'opencode'`, each of
+ *  which silently called a Gemini session Claude. */
+export function agentMark(agent?: string): string {
+  switch (agent) {
+    case 'opencode':
+      return 'oc'
+    case 'gemini':
+      return 'gem'
+    default:
+      return ''
+  }
+}
+
+/** How to name an agent in a sentence. */
+export function agentName(agent?: string): string {
+  switch (agent) {
+    case 'opencode':
+      return 'OpenCode'
+    case 'gemini':
+      return 'Gemini'
+    default:
+      return 'Claude Code'
+  }
+}
 
 const RANGES: { key: Range; label: string }[] = [
   { key: 'today', label: 'today' },
@@ -354,12 +384,9 @@ function ProjectRow({
         <div className="flex items-center gap-2">
           {live && <span className="inline-block w-1.5 h-1.5 rounded-full bg-ok shrink-0" title="a session is live in this project" />}
           <span className="truncate text-[14px]">{label}</span>
-          {/* Only the second agent is marked. On most machines every row is
-            * Claude Code, so labelling those too would put a badge on every
-            * line — the mark answers "why is this one different". */}
-          {p.agent === 'opencode' && (
+          {agentMark(p.agent) && (
             <span className="shrink-0 text-[9px] uppercase tracking-[0.08em] text-fg-faint border border-border px-1 rounded-sm">
-              oc
+              {agentMark(p.agent)}
             </span>
           )}
           <span className="text-[11px] text-fg-faint num shrink-0">

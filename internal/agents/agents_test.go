@@ -528,14 +528,24 @@ func TestGeminiGetsItsOwnFlags(t *testing.T) {
 
 	args := f.lastSpec.Args
 	joined := strings.Join(args, " ")
-	if strings.Contains(joined, "--session-id") {
-		t.Errorf("gemini was given Claude's --session-id: %v", args)
-	}
+	// Claude's spelling of the permission flag is the one Gemini rejects; its
+	// own is --approval-mode, and it does take --session-id.
 	if strings.Contains(joined, "--permission-mode") {
 		t.Errorf("gemini was given Claude's --permission-mode: %v", args)
 	}
+	if strings.Contains(joined, "--model ") {
+		t.Errorf("gemini was given Claude's --model: %v", args)
+	}
 	if !strings.Contains(joined, "-m gemini-3.5-flash") {
 		t.Errorf("model not passed as -m: %v", args)
+	}
+	// Without this the CLI stops on its folder-trust prompt, which in a PTY
+	// nobody is watching is an invisible hang rather than an error.
+	if !strings.Contains(joined, "--skip-trust") {
+		t.Errorf("gemini would block on the trust prompt: %v", args)
+	}
+	if !strings.Contains(joined, "--session-id") {
+		t.Errorf("gemini accepts --session-id and should carry Caprock's: %v", args)
 	}
 
 	// The key has to reach the child or the CLI asks for one it cannot see.
@@ -565,5 +575,40 @@ func TestClaudeKeepsItsFlags(t *testing.T) {
 		if !strings.Contains(joined, want) {
 			t.Errorf("claude argv lost %q: %v", want, f.lastSpec.Args)
 		}
+	}
+}
+
+// The two CLIs cover the same ground with different words: Claude has six
+// permission modes, Gemini four. A mode that cannot be mapped is left off so
+// Gemini falls back to asking, rather than being handed a guess at what the
+// user meant — the failure there is silent and expensive.
+func TestPermissionModesMapOntoGeminisOwn(t *testing.T) {
+	for _, tc := range []struct{ claude, gemini string }{
+		{"acceptEdits", "auto_edit"},
+		{"bypassPermissions", "yolo"},
+		{"auto", "yolo"},
+		{"plan", "plan"},
+		{"manual", ""},
+		{"dontAsk", ""},
+		{"", ""},
+	} {
+		if got := geminiApprovalMode(tc.claude); got != tc.gemini {
+			t.Errorf("%q mapped to %q, want %q", tc.claude, got, tc.gemini)
+		}
+	}
+}
+
+func TestUnmappableModeIsLeftOffRatherThanGuessed(t *testing.T) {
+	t.Setenv("GEMINI_API_KEY", "")
+	m, _, f := newMgr(t)
+	defer m.Shutdown()
+
+	if _, err := m.Spawn(context.Background(), SpawnRequest{
+		Cwd: t.TempDir(), Agent: AgentGemini, PermissionMode: "dontAsk",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if joined := strings.Join(f.lastSpec.Args, " "); strings.Contains(joined, "--approval-mode") {
+		t.Errorf("an unmappable mode was guessed at: %v", f.lastSpec.Args)
 	}
 }

@@ -9,6 +9,49 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.44.1] - 2026-09-02
+
+### Fixed
+
+- **Starting a session with Gemini actually works now.** 0.44.0 shipped the
+  feature built against a fake binary, on four assumptions about the Gemini CLI
+  that were written from memory rather than from `gemini --help`. Installing the
+  real thing disproved all four in ten minutes.
+
+  *It stopped before it started.* Gemini refuses to run in a directory it has
+  not been told to trust, and inside a terminal nobody is watching that is an
+  invisible hang, not an error. Caprock passes `--skip-trust` — sound here
+  because the only directory it ever launches is the one picked in the dialog,
+  which is the same consent the prompt asks for.
+
+  *Two of the three models did not exist.* `gemini-3.5-flash-lite` and
+  `gemini-3.7-flash` were invented; the session would open a terminal and then
+  die at the binary. The list now offers only ids the installed CLI recognises
+  and the pricing table can cost, and a test holds that line.
+
+  *Permissions were greyed out as "not used by Gemini".* Gemini has four
+  approval modes and the dialog was throwing the choice away. They map onto
+  Claude's: accept-edits to `auto_edit`, bypass and auto to `yolo`, plan to
+  `plan`. Claude's `manual` and `dontAsk` have no counterpart worth guessing at,
+  so they are marked in the list and Gemini falls back to asking.
+
+  *`--session-id` was omitted on the belief Gemini did not accept it.* It does,
+  so the row in the sessions list and the session the agent thinks it is in are
+  now the same one.
+
+- **A Gemini session is no longer described as a Claude one.** The agent was
+  added to the launcher and to nothing else: its sessions arrived in the list
+  wearing no badge, with no filter chip to find them by, and the empty state
+  called them Claude Code — because three separate places asked
+  `agent === 'opencode'` and treated everything else as Claude. There is now a
+  `gemini` chip beside `claude` and `opencode`, shown only on a machine that has
+  it, and one helper decides the badge and the name so a fourth agent cannot
+  reintroduce this.
+
+  Caprock still does not *watch* a Gemini session — no hooks, no transcript, so
+  its turns and cost are absent from every figure. Starting it is control, not
+  observation; the README says so rather than leaving it to be discovered.
+
 ## [0.44.0] - 2026-09-02
 
 ### Added
