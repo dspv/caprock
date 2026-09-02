@@ -318,7 +318,14 @@ export interface UpdateStatus {
 
 export interface DailyStat { day: string; project: string; model: string; tokens_total: number; cost_usd: number; sessions: number }
 
-export interface ToolCount { tool: string; count: number }
+export interface ToolCount {
+  tool: string
+  count: number
+  /** Bytes this tool handed back, summed. Not tokens: a tool spends none — the
+   *  turn that reads its output does — so a per-tool token figure could only
+   *  be a turn's tokens divided up, which looks measured and is not. */
+  bytes: number
+}
 export interface HistoryTotals { sessions: number; owned_sessions: number; turns: number; tool_calls: number; files_touched: number; cost_usd: number; avg_session_sec: number; days: number; unpriced?: Unpriced }
 export interface Task { id: string; title: string; status: string; assignee: string; budget_usd: number; verify_rounds: number; cost_usd: number; created_at: number; updated_at: number }
 // The live WS "task" frame carries the on-disk hive.Task (no cost_usd — that's

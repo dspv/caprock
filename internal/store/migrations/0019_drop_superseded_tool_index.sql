@@ -1,0 +1,12 @@
+-- Drop the index 0018 superseded.
+--
+-- 0016 added (kind, ts, tool) so the ALL TIME tool table was answered from a
+-- covering index. 0018 needs `tool_bytes` in it too, and its index is the same
+-- three columns with that one on the end — so the older index now answers
+-- nothing the newer one doesn't, and keeping both means maintaining two copies
+-- of the same thing on every event insert.
+--
+-- This is its own migration rather than a line in 0018 because 0018 has already
+-- run on the databases that matter; an edit to an applied migration is an edit
+-- nobody receives.
+DROP INDEX IF EXISTS idx_events_kind_ts_tool;

@@ -16,7 +16,7 @@
  */
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
-import { fmtTokens, fmtTool, fmtUSD } from '@/lib/format'
+import { fmtBytes, fmtTokens, fmtTool, fmtUSD } from '@/lib/format'
 import { Panel } from '@/components/ui'
 import { ShareCard } from '@/components/Share'
 import { ShareNudge } from '@/components/ShareNudge'
@@ -68,11 +68,16 @@ export function BreakdownPanel() {
       <div className="grid gap-x-8 gap-y-5 px-3 py-3 md:grid-cols-2">
         <Bars
           title="Most-used tools"
-          cols={{ value: 'calls', share: 'share' }}
+          cols={{ value: 'calls', sub: 'returned', share: 'share' }}
           rows={tools.map((t) => ({
             key: t.tool,
             label: fmtTool(t.tool),
             value: t.count.toLocaleString('en-US'),
+            // What came back, which the call count cannot say: Bash is called
+            // far more often than Read and hands back a fraction as much. Not
+            // tokens — see ToolCount — but the size is measured exactly, and
+            // it is what fills a context and gets billed on the next turn.
+            sub: t.bytes > 0 ? fmtBytes(t.bytes) : '',
             share: allCalls > 0 ? (100 * t.count) / allCalls : null,
             frac: topCalls > 0 ? t.count / topCalls : 0,
           }))}
