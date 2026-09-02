@@ -62,6 +62,25 @@ export function WeeklyReport() {
   }
 
   const configured = !!s?.report_bot_set && !!s?.report_chat_id
+  const [testing, setTesting] = useState(false)
+  const [sent, setSent] = useState(false)
+
+  async function sendNow() {
+    setTesting(true)
+    setSent(false)
+    setError('')
+    try {
+      await api.testReport()
+      setSent(true)
+      window.setTimeout(() => setSent(false), 6000)
+    } catch (e) {
+      // Telegram's own words: "chat not found" and "bot was blocked by the
+      // user" are both things only the reader can fix.
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setTesting(false)
+    }
+  }
 
   return (
     <Panel
@@ -96,6 +115,15 @@ export function WeeklyReport() {
             <span className="mono">/newbot</span>, and paste what it gives you. Caprock stores it
             on this machine and never sends it back to this page.
           </span>
+          {/* The question everybody asks, answered where it is asked. Without
+            * this it reads as three minutes of setup for no reason, and the
+            * reason is the whole point of the product. */}
+          <span className="text-[11px] text-fg-faint">
+            It is your own bot, not one of ours, and that is deliberate: the message goes
+            straight from this machine to Telegram, so your figures never pass through
+            anybody's server. A shared bot would mean shipping its token inside a public
+            binary, and routing what you spend through us to deliver it.
+          </span>
         </label>
 
         <label className="grid gap-1">
@@ -107,9 +135,11 @@ export function WeeklyReport() {
             onChange={(e) => setChat(e.target.value)}
           />
           <span className="text-[11px] text-fg-faint">
-            Write to your bot once, then open{' '}
+            <strong>Write to your bot first</strong> — find it by its username, press Start, send
+            anything. Telegram does not let a bot message you until you have. Then open{' '}
             <span className="mono">api.telegram.org/bot&lt;token&gt;/getUpdates</span> and copy{' '}
-            <span className="mono">chat.id</span>.
+            <span className="mono">chat.id</span>. For a channel instead, add the bot as an
+            administrator; its id starts with a minus.
           </span>
         </label>
 
@@ -121,6 +151,19 @@ export function WeeklyReport() {
           >
             {saving ? 'saving…' : 'Save'}
           </button>
+          {/* Without this the only way to learn whether a token is right is to
+            * wait for Monday and see nothing arrive — which is exactly what a
+            * quiet week looks like. A button that sends one now turns a week
+            * of doubt into five seconds. */}
+          <button
+            onClick={() => void sendNow()}
+            disabled={testing || !configured}
+            title={configured ? 'Send this week\'s report now' : 'Save a bot token and chat id first'}
+            className="border border-border px-3 py-1 rounded-sm hover:border-fg-faint disabled:opacity-50"
+          >
+            {testing ? 'sending…' : 'Send one now'}
+          </button>
+          {sent && <span className="text-[11px] text-ok">sent — check Telegram</span>}
           {saved && !error && <span className="text-[11px] text-ok">saved</span>}
           {error && <span className="text-[11px] text-danger">{error}</span>}
         </div>

@@ -40,13 +40,17 @@ import (
 
 // Deps is everything the API needs from the daemon.
 type Deps struct {
-	Store   *store.Store
-	Bus     *bus.Bus
-	Table   *cost.Table
-	Log     *slog.Logger
-	Hook    http.Handler // POST /v1/hook (hookd)
-	UI      fs.FS        // embedded dashboard (index.html at root); nil ⇒ placeholder
-	Version string
+	Store *store.Store
+	Bus   *bus.Bus
+	Table *cost.Table
+	Log   *slog.Logger
+	Hook  http.Handler // POST /v1/hook (hookd)
+	// Reporter sends a weekly report on demand, so somebody can find out
+	// whether their bot works without waiting for Monday. Nil disables the
+	// endpoint rather than crashing it.
+	Reporter ReportSender
+	UI       fs.FS // embedded dashboard (index.html at root); nil ⇒ placeholder
+	Version  string
 	// Status returns daemon/ingest/hooks status for /v1/status.
 	Status func(ctx context.Context) any
 	// ActiveLoops reports whether a session currently has an unexpired loop alert.
@@ -159,6 +163,16 @@ type Settings struct {
 	BrowseRoot string `json:"browse_root,omitempty"`
 }
 
+// ReportSender sends one weekly report immediately.
+//
+// An interface rather than the daemon itself, for the same reason as every
+// other seam here: the API package must stay testable without building a
+// daemon, and a handler that can only be exercised with a live Telegram token
+// is a handler nobody tests.
+type ReportSender interface {
+	SendReportNow(ctx context.Context) error
+}
+
 // TaskController is the subset of the Phase 2 hive the API needs.
 type TaskController interface {
 	// Enabled reports whether the task runner is on. It is asked per request
@@ -229,6 +243,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/update/check", s.handleUpdateCheck)
 	m.HandleFunc("GET /v1/settings", s.handleGetSettings)
 	m.HandleFunc("PUT /v1/settings", s.handlePutSettings)
+	m.HandleFunc("POST /v1/report/test", s.handleTestReport)
 	m.HandleFunc("GET /v1/stats/daily", s.handleDaily)
 	m.HandleFunc("GET /v1/events", s.handleEventsFeed)
 	m.HandleFunc("GET /v1/history", s.handleHistory)
@@ -1408,12 +1423,32 @@ func (s *Server) agentErr(w http.ResponseWriter, err error) {
 
 // --- helpers ---
 
+// handleTestReport sends this week's report now.
+//
+// The failure mode of the weekly report is silence, so the only way to tell a
+// working setup from a typo used to be waiting a week and then finding nothing
+// — which looks exactly like a week where nothing moved.
+func (s *Server) handleTestReport(w http.ResponseWriter, r *http.Request) {
+	if s.d.Reporter == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("reporting is unavailable"))
+		return
+	}
+	if err := s.d.Reporter.SendReportNow(r.Context()); err != nil {
+		// Telegram's own words reach the screen: "chat not found" and "bot was
+		// blocked by the user" are both things only the user can fix.
+		s.failCode(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"sent": "ok"})
+}
+
 // writeJSON serializes into a buffer BEFORE writing the status line. It used
 // to encode straight to the ResponseWriter after writing 200 and discard the
 // error — so a single unserializable value (one event whose timestamp rolled
 // past year 9999 is enough, because json aborts the whole array) produced
 // HTTP 200 with an empty body. The dashboard then threw parsing it, and the
 // failure was invisible in the logs. A failure here is now an honest 500.
+
 func writeJSON(w http.ResponseWriter, code int, v any) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)

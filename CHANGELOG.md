@@ -9,6 +9,40 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.46.0] - 2026-09-02
+
+### Added
+
+- **Send this week's report now.** There was no way to find out whether a bot
+  token and chat id were right except to wait for Monday — and when nothing
+  arrived, that looked exactly like a week where nothing moved. A button beside
+  the fields sends one immediately.
+
+  The panel also now says why the bot is yours rather than ours: the message
+  goes straight from your machine to Telegram, so your figures never pass
+  through anybody's server. A shared bot would mean shipping its token inside a
+  public binary and routing what you spend through us to deliver it. And it
+  says to write to the bot first, because Telegram will not let a bot message
+  you until you have — the step that silently produces an empty `getUpdates`.
+
+### Fixed
+
+- **What's new showed raw Markdown.** `### Fixed` as a literal heading,
+  asterisks around every bold phrase, and paragraphs broken at the eighty
+  columns a changelog is wrapped to for the sake of diffs. It was rendered as
+  preformatted text on the reasoning that a local-first tool should not render
+  remote markup — right instinct, wrong conclusion, in a dialog whose only job
+  is to be read.
+
+  Not solved with a Markdown library, which would parse arbitrary remote input
+  into HTML. Caprock recognises the four shapes its own notes use and builds
+  elements from strings: no links, no images, no attributes, nothing that can
+  turn remote text into markup, with tests holding that line.
+
+- **The dialog linked to GitHub.** Someone reading what they just upgraded into
+  wants the changelog written for readers, not a tag page with build artefacts
+  on it. It goes to caprock.dev/changelog now.
+
 ## [0.45.2] - 2026-09-02
 
 ### Fixed

@@ -23,6 +23,7 @@ import { FeedbackButton } from '@/components/Feedback'
 import { ShareButton } from '@/components/Share'
 import { PremiumChip } from '@/components/PremiumChip'
 import { SiteFooter } from '@/components/SiteFooter'
+import { ReleaseNotes } from './ReleaseNotes'
 
 const NAV: { route: Route; label: string; phase?: string }[] = [
   { route: { name: 'now' }, label: 'Now' },
@@ -236,10 +237,12 @@ function VersionChip() {
  * latest tag — so this costs no extra request and no further exposure, and it
  * is never fetched at all unless the user turned release checks on.
  *
- * Rendered as plain text rather than parsed as Markdown. Release bodies are
- * written by us, but they are still remote content, and a dialog that renders
- * remote markup is a surface a local-first tool has no reason to open. The
- * headings and bullets read perfectly well as the lines they already are.
+ * It used to be shown as preformatted text, on the reasoning that a
+ * local-first tool should not render remote markup. The caution was right and
+ * the conclusion was wrong: what a reader got was `### Fixed` as a literal
+ * heading and asterisks around every bold phrase, in a dialog whose only job
+ * is to be read. See ReleaseNotes — it recognises the few shapes our own notes
+ * use and builds elements from strings, so nothing remote can become markup.
  */
 function NotesDialog({ u, onClose }: { u: UpdateStatus; onClose: () => void }) {
   return (
@@ -256,18 +259,21 @@ function NotesDialog({ u, onClose }: { u: UpdateStatus; onClose: () => void }) {
           <button onClick={onClose} className="ml-auto text-[16px] leading-none text-fg-faint hover:text-fg">×</button>
         </div>
         <div className="overflow-y-auto px-4 py-3">
-          <pre className="whitespace-pre-wrap break-words font-sans text-[13px] leading-relaxed text-fg-muted">
-            {u.notes}
-          </pre>
+          <ReleaseNotes text={u.notes ?? ''} />
         </div>
         <div className="border-t border-border px-4 py-2.5">
+          {/* The changelog on the site, not the release on GitHub. Somebody
+            * reading what they just upgraded into wants the list of releases
+            * written for readers, not a tag page with build artefacts on it —
+            * and sending a person to a repository to find out what changed in
+            * a product they already paid for is an odd thing to do. */}
           <a
-            href={u.url ?? 'https://github.com/dspv/caprock/releases/latest'}
+            href="https://caprock.dev/changelog"
             target="_blank"
             rel="noopener noreferrer"
             className="text-[12px] text-fg-faint no-underline hover:text-accent"
           >
-            the full release on GitHub →
+            every release →
           </a>
         </div>
       </div>
