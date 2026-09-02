@@ -1096,7 +1096,12 @@ func addSpark(p *ProjectShare, spec SparkSpec, series []sessionBucket) {
 // `cost_usd IS NULL` is exactly the rollup's "model not in pricing table; cost
 // left unknown" path (see internal/rollup). Turns with no tokens are excluded:
 // they cost nothing to price and would inflate the count with noise.
-func queryUnpriced(ctx context.Context, q Querier, fromMs int64) (*Unpriced, error) {
+// queryUnpriced counts the turns whose cost could not be computed, through the
+// same agent filter as the total it warns about. Unfiltered, it told a reader
+// looking at OpenCode that money was missing from their total — money that was
+// Claude's, and was not in that total at all.
+func queryUnpriced(ctx context.Context, q Querier, fromMs int64, agent AgentFilter) (*Unpriced, error) {
+	scope, scopeArgs := agent.sessionScope("session_id")
 	rows, err := q.QueryContext(ctx, `
 		SELECT COALESCE(model,''),
 		       COUNT(*),
@@ -1108,8 +1113,8 @@ func queryUnpriced(ctx context.Context, q Querier, fromMs int64) (*Unpriced, err
 		  -- user their total is missing money when it is missing nothing: the
 		  -- owner's database had 38 such turns and a banner saying so.
 		  AND (COALESCE(tokens_in,0) + COALESCE(tokens_out,0)
-		       + COALESCE(cache_read,0) + COALESCE(cache_write,0)) > 0
-		GROUP BY model ORDER BY 3 DESC`, fromMs)
+		       + COALESCE(cache_read,0) + COALESCE(cache_write,0)) > 0`+scope+`
+		GROUP BY model ORDER BY 3 DESC`, append([]any{fromMs}, scopeArgs...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -1274,7 +1279,7 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	// model with cost 0.00, which reads as "this model was free" rather than
 	// "we could not price it" — so the volume is carried out separately and the
 	// UI is able to say which model it could not price.
-	if u, err := queryUnpriced(ctx, q, fromMs); err != nil {
+	if u, err := queryUnpriced(ctx, q, fromMs, agent); err != nil {
 		return s, err
 	} else {
 		s.Unpriced = u
@@ -1880,7 +1885,9 @@ func History(ctx context.Context, q Querier, fromMs int64) (HistoryTotals, error
 		WHERE se.last_event_at >= ?`, fromMs).Scan(&h.FilesTouched); err != nil {
 		return h, err
 	}
-	u, err := queryUnpriced(ctx, q, fromMs)
+	// The history screen carries no agent filter, so this counts every agent —
+	// which is what the total it sits under counts too.
+	u, err := queryUnpriced(ctx, q, fromMs, "")
 	if err != nil {
 		return h, err
 	}

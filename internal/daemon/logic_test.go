@@ -9,16 +9,19 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/api"
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/cost"
+	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/loop"
 	"github.com/dspv/caprock/internal/rollup"
 	"github.com/dspv/caprock/internal/store"
@@ -229,5 +232,137 @@ func TestURLReportsWhatWasBound(t *testing.T) {
 	d := &Daemon{url: "http://127.0.0.1:4173"}
 	if got := d.URL(); got != "http://127.0.0.1:4173" {
 		t.Errorf("URL = %q", got)
+	}
+}
+
+// loopFrame is one tool call on the bus, shaped so the detector will count it:
+// a write tool with a stable signature, which is what a stuck agent produces.
+func loopFrame(sessionID string, ts time.Time) bus.Frame {
+	return bus.Frame{Type: bus.FrameEvent, Data: event.Event{
+		Ts: ts, SessionID: sessionID, Source: event.SourceHook,
+		Kind: event.KindToolPre, Tool: "Bash",
+		Payload: json.RawMessage(`{"tool_input":{"command":"go test ./..."}}`),
+	}}
+}
+
+// loopWatcher runs observeLoops over a bus and hands back the alerts it
+// publishes, so a test can assert on what the dashboard would actually show.
+func loopWatcher(t *testing.T) (*Daemon, *bus.Subscriber, func()) {
+	t.Helper()
+	b := bus.New()
+	d := &Daemon{
+		log: quietLog(), bus: b, alerts: map[string]*loop.Alert{},
+		det: loop.New(3, 5*time.Minute),
+		mgr: agents.NewManager(memStore(t), t.TempDir(), "", quietLog()),
+		opt: Options{Config: config.Config{}},
+	}
+	// in is what observeLoops reads; out is where the alerts it raises land.
+	in := b.Subscribe(64)
+	out := b.Subscribe(64)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		d.observeLoops(ctx, in)
+	}()
+	return d, out, func() {
+		cancel()
+		wg.Wait()
+	}
+}
+
+// awaitAlert waits for a loop alert on the bus, or gives up. A deadline rather
+// than a sleep: the goroutine publishes when it publishes.
+func awaitAlert(t *testing.T, sub *bus.Subscriber) *loop.Alert {
+	t.Helper()
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case f := <-sub.C:
+			if f.Type != bus.FrameAlert {
+				continue
+			}
+			a, ok := f.Data.(*loop.Alert)
+			if !ok {
+				continue
+			}
+			return a
+		case <-deadline:
+			t.Fatal("no loop alert was published")
+			return nil
+		}
+	}
+}
+
+// A session repeating the same command is the thing the loop detector exists to
+// catch: it must reach the alert map (the red banner) and the bus (the live
+// dashboard), or a runaway agent burns money with nothing on screen.
+func TestALoopRaisesAnAlertOnTheBusAndInTheMap(t *testing.T) {
+	d, out, stop := loopWatcher(t)
+	defer stop()
+
+	now := time.Now()
+	for i := 0; i < 4; i++ {
+		d.bus.Publish(loopFrame("s-stuck", now.Add(time.Duration(i)*time.Second)))
+	}
+
+	a := awaitAlert(t, out)
+	if a.SessionID != "s-stuck" {
+		t.Errorf("alert names session %q, want s-stuck", a.SessionID)
+	}
+	if a.Tool != "Bash" {
+		t.Errorf("alert names tool %q, want Bash", a.Tool)
+	}
+	// And it is the alert /v1/status counts and the session view reads.
+	if got := d.activeLoop("s-stuck"); got == nil {
+		t.Error("the alert never reached the map the dashboard reads")
+	}
+}
+
+// Startup replays history onto the same bus. Alerting on it would greet the
+// user with a wall of red banners about loops that ended weeks ago — and, with
+// auto-pause on, would pause live sessions because of what they did in July.
+func TestBackfilledHistoryRaisesNoAlerts(t *testing.T) {
+	d, out, stop := loopWatcher(t)
+	defer stop()
+
+	old := time.Now().Add(-24 * time.Hour)
+	for i := 0; i < 6; i++ {
+		d.bus.Publish(loopFrame("s-history", old.Add(time.Duration(i)*time.Second)))
+	}
+
+	// A fresh loop afterwards proves the watcher is alive and simply chose not
+	// to alert on the old events — without it this test passes on a dead
+	// goroutine.
+	now := time.Now()
+	for i := 0; i < 4; i++ {
+		d.bus.Publish(loopFrame("s-live", now.Add(time.Duration(i)*time.Second)))
+	}
+
+	if a := awaitAlert(t, out); a.SessionID != "s-live" {
+		t.Errorf("alerted on backfilled history: session %q", a.SessionID)
+	}
+	if d.activeLoop("s-history") != nil {
+		t.Error("a loop from yesterday is on the dashboard as if it were happening now")
+	}
+}
+
+// Everything else on the bus — session frames, alerts the watcher itself
+// published — must pass through without being mistaken for a tool call.
+func TestTheLoopWatcherIgnoresWhatIsNotAnEvent(t *testing.T) {
+	d, out, stop := loopWatcher(t)
+	defer stop()
+
+	d.bus.Publish(bus.Frame{Type: bus.FrameSession, Data: "not an event"})
+	d.bus.Publish(bus.Frame{Type: bus.FrameEvent, Data: "not an event either"})
+
+	now := time.Now()
+	for i := 0; i < 4; i++ {
+		d.bus.Publish(loopFrame("s-ok", now.Add(time.Duration(i)*time.Second)))
+	}
+	if a := awaitAlert(t, out); a.SessionID != "s-ok" {
+		t.Errorf("unexpected alert for %q", a.SessionID)
 	}
 }

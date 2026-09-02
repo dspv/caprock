@@ -86,7 +86,7 @@ export function pointOnSpoke(node: NodePos, g: Geometry, t: number): { x: number
 
 // The resting parameter t for a task at each phase along its worker's spoke.
 // assign near center, in_progress mid, verifying AT the gate, done settled out.
-export const PHASE_T: Record<string, number> = {
+const PHASE_T: Record<string, number> = {
   assigned: 0.18,
   in_progress: 0.45,
   verifying: GATE_T,

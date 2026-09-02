@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, ApiError, type DiffResult, type Event, type SessionDetail } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { live } from '@/lib/live'
-import { fmtAgo, fmtPct, fmtTokens, fmtUSD, shortId, basename } from '@/lib/format'
+import { fmtAgo, fmtPct, fmtTokens, fmtUSD, basename } from '@/lib/format'
 import { Badge, Empty, Panel, Sparkline, Stat } from '@/components/ui'
 import { href, navigate } from '@/lib/router'
 import { useNow } from './Now'
@@ -495,5 +495,3 @@ function OwnedControls({ id }: { id: string }) {
     </span>
   )
 }
-
-export { shortId }

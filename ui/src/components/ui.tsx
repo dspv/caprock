@@ -59,7 +59,7 @@ export function Stat({ label, value, sub, tone, size = 'default' }: {
   )
 }
 
-export const healthLabel: Record<Health, string> = {
+const healthLabel: Record<Health, string> = {
   working: 'working',
   idle: 'idle',
   'waiting-on-you': 'waiting on you',
@@ -68,7 +68,7 @@ export const healthLabel: Record<Health, string> = {
   ended: 'ended',
 }
 
-export function healthTone(h: Health): 'ok' | 'warn' | 'danger' | 'muted' {
+function healthTone(h: Health): 'ok' | 'warn' | 'danger' | 'muted' {
   switch (h) {
     case 'working': return 'ok'
     case 'idle': return 'warn'
@@ -166,8 +166,4 @@ export function Copyable({ command, className = '' }: { command: string; classNa
       {copied ? 'copied' : `$ ${command}`}
     </button>
   )
-}
-
-export function Kbd({ children }: { children: ReactNode }) {
-  return <kbd className="mono text-[10px] border border-border-strong rounded-sm px-1 py-[1px] text-fg-muted">{children}</kbd>
 }
