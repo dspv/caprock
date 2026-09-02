@@ -466,6 +466,10 @@ export const api = {
   /** `before` pages backwards: pass the lowest event_id already shown. */
   searchNotes: (q: string, limit = 100, before = 0) =>
     get<AssistantNote[]>(`/v1/notes?q=${encodeURIComponent(q)}&limit=${limit}${before ? `&before=${before}` : ''}`),
+  /** Sends this week's report now, so a bot can be tested without waiting
+   *  for Monday. The failure mode of this feature is silence, which is
+   *  indistinguishable from a quiet week. */
+  testReport: () => post<{ sent: string }>('/v1/report/test', {}),
   settings: () => get<Settings>('/v1/settings'),
   update: () => get<UpdateStatus>('/v1/update'),
   checkUpdate: () => post<UpdateStatus>('/v1/update/check', {}),

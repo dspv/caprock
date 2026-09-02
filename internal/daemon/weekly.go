@@ -71,6 +71,46 @@ func (d *Daemon) reportLastSent() int64 {
 //
 // The marker is in the store rather than in memory, or a restart would send a
 // second copy.
+// SendReportNow builds this week's report and sends it immediately.
+//
+// Without this the only way to find out whether a bot token and chat id are
+// right is to wait for Monday. Somebody pastes two values, presses save, and
+// has no way to tell a working setup from a typo until a week has passed — at
+// which point nothing arrives and there is still nothing to look at, because
+// the failure mode of this feature is silence.
+//
+// It deliberately does not touch the week marker: a test send must not make
+// the real report skip its week.
+func (d *Daemon) SendReportNow(ctx context.Context) error {
+	cfg := d.config()
+	if strings.TrimSpace(cfg.ReportBotToken) == "" || strings.TrimSpace(cfg.ReportChatID) == "" {
+		return fmt.Errorf("no bot configured")
+	}
+	if !license.Parse(cfg.LicenseKey, time.Now()).Active {
+		return fmt.Errorf("the weekly report is a premium feature")
+	}
+	rep, err := d.buildWeekly(ctx, time.Now())
+	if err != nil {
+		return err
+	}
+	msg := weekly.Message(rep, d.reportBasis())
+	sender := &weekly.Sender{}
+	if err := sender.Send(ctx, cfg.ReportBotToken, cfg.ReportChatID, msg); err != nil {
+		// Recorded like a scheduled failure, so the panel explains it the same
+		// way — the reason is as useful now as it would be on a Monday.
+		d.report.mu.Lock()
+		d.report.lastErr = err.Error()
+		d.report.mu.Unlock()
+		_ = d.store.SetMeta(ctx, store.MetaReportLastError, err.Error())
+		return err
+	}
+	d.report.mu.Lock()
+	d.report.lastErr = ""
+	d.report.mu.Unlock()
+	_ = d.store.SetMeta(ctx, store.MetaReportLastError, "")
+	return nil
+}
+
 func (d *Daemon) weeklyLoop(ctx context.Context) {
 	t := time.NewTicker(weeklyCheck)
 	defer t.Stop()
