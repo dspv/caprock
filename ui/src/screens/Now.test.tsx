@@ -24,6 +24,8 @@ const state = vi.hoisted(() => ({
   status: {} as Partial<Status>,
   summary: undefined as Partial<Summary> | undefined,
   sessions: [] as SessionSummary[],
+  /** What the server holds, when it is more than it sent. */
+  sessionTotal: undefined as number | undefined,
   spawned: [] as unknown[],
 }))
 
@@ -36,6 +38,12 @@ vi.mock('@/lib/api', async (orig) => {
       status: async () => state.status as Status,
       summary: async () => state.summary as Summary,
       sessions: async () => state.sessions,
+      // The screen asks for the list with its total, so the cap can be stated
+      // rather than hidden; the mock answers in the same shape.
+      sessionsWithTotal: async () => ({
+        items: state.sessions,
+        total: state.sessionTotal ?? state.sessions.length,
+      }),
       spawn: async (req: unknown) => { state.spawned.push(req); return { session_id: 'chat-1', cwd: '/data/chats/x' } },
     },
   }
@@ -225,4 +233,38 @@ it('puts every session in one grid so a single active card does not reserve a ro
   const parent = cardOf(active).parentElement!
   expect(cardOf(idle).parentElement).toBe(parent)
   expect(parent.className).toMatch(/\bgrid\b/)
+})
+
+it('says when the ended list is only part of what there is', async () => {
+  // The list is capped at 200 server-side. Labelling the array it received —
+  // "Ended · 200" — states a count of the page as though it were a count of
+  // every ended session, directly below a lifetime strip saying otherwise.
+  // Nothing on the screen said the list had been cut.
+  state.summary = emptySummary({ sessions: 431 })
+  state.status = { claude_available: true }
+  state.sessions = [
+    sess({ session_id: 'e1', status: 'ended', activity: { phrase: 'done', tool: '', at: '', health: 'idle', repeats: 1 } }),
+    sess({ session_id: 'e2', status: 'ended', activity: { phrase: 'done', tool: '', at: '', health: 'idle', repeats: 1 } }),
+  ]
+  state.sessionTotal = 431
+  render(<NowScreen />)
+
+  const show = await screen.findByLabelText(/show ended sessions/i)
+  fireEvent.click(show)
+
+  expect(await screen.findByText(/Ended · 2 of 431/)).toBeTruthy()
+})
+
+it('states a plain count when the server sent everything it had', async () => {
+  state.summary = emptySummary({ sessions: 2 })
+  state.status = { claude_available: true }
+  state.sessions = [
+    sess({ session_id: 'e1', status: 'ended', activity: { phrase: 'done', tool: '', at: '', health: 'idle', repeats: 1 } }),
+    sess({ session_id: 'e2', status: 'ended', activity: { phrase: 'done', tool: '', at: '', health: 'idle', repeats: 1 } }),
+  ]
+  state.sessionTotal = 2
+  render(<NowScreen />)
+
+  fireEvent.click(await screen.findByLabelText(/show ended sessions/i))
+  expect(await screen.findByText(/Ended · 2$/)).toBeTruthy()
 })

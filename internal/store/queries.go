@@ -462,6 +462,19 @@ func GetSession(ctx context.Context, q Querier, id string) (Session, error) {
 	return scanSession(q.QueryRowContext(ctx, `SELECT `+sessionCols+` FROM sessions WHERE session_id = ?`, id))
 }
 
+// CountSessions returns how many sessions exist under the same filter
+// ListSessions pages through — so a caller can say "200 of 431" rather than
+// presenting a truncated page as the whole set.
+func CountSessions(ctx context.Context, q Querier, activeOnly bool) (int, error) {
+	where := ""
+	if activeOnly {
+		where = ` WHERE status != 'ended'`
+	}
+	var n int
+	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions`+where).Scan(&n)
+	return n, err
+}
+
 // ListSessions returns sessions newest-first. activeOnly filters out ended.
 func ListSessions(ctx context.Context, q Querier, activeOnly bool, limit int) ([]Session, error) {
 	if limit <= 0 {
@@ -1913,9 +1926,15 @@ func PruneEventsBefore(ctx context.Context, q Querier, beforeMs int64) (int64, e
 }
 
 // CountThrottles counts throttle observations since sinceMs (limit-forecast input).
-func CountThrottles(ctx context.Context, q Querier, sinceMs int64) (int64, error) {
+// CountThrottles counts rate-limit and overloaded events since sinceMs, through
+// the same agent filter as the figures they are shown beside. The table carries
+// a session id, so the scope is answerable; the empty filter counts every agent.
+func CountThrottles(ctx context.Context, q Querier, sinceMs int64, agent AgentFilter) (int64, error) {
+	scope, scopeArgs := agent.sessionScope("session_id")
 	var n int64
-	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM throttle_observations WHERE ts >= ?`, sinceMs).Scan(&n)
+	err := q.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM throttle_observations WHERE ts >= ?`+scope,
+		append([]any{sinceMs}, scopeArgs...)...).Scan(&n)
 	return n, err
 }
 

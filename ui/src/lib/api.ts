@@ -466,8 +466,33 @@ async function get<T>(path: string): Promise<T> {
   return (await res.json()) as T
 }
 
+/**
+ * The sessions list, with how many exist behind it.
+ *
+ * The list is capped server-side at 200. Without the total, a screen labels
+ * the array it received — "Ended · 200" — which reads as a count of every
+ * ended session and is a count of the page. `get` drops response headers, so
+ * this one call does its own fetch rather than teaching every call to carry a
+ * total it does not have.
+ */
+async function sessionsWithTotal(activeOnly: boolean): Promise<{ items: SessionSummary[]; total: number }> {
+  const res = await fetch(`/v1/sessions${activeOnly ? '?active=true' : ''}`, {
+    headers: { Accept: 'application/json' },
+  })
+  if (!res.ok) {
+    let body: unknown
+    try { body = await res.json() } catch { /* ignore */ }
+    throw new ApiError(res.status, `${res.status} ${res.statusText}`, body)
+  }
+  const items = (await res.json()) as SessionSummary[]
+  const n = Number(res.headers.get('X-Total-Count'))
+  // An older daemon sends no header; then the page is all we know of.
+  return { items, total: Number.isFinite(n) && n > 0 ? n : items.length }
+}
+
 export const api = {
   sessions: (activeOnly = false) => get<SessionSummary[]>(`/v1/sessions${activeOnly ? '?active=true' : ''}`),
+  sessionsWithTotal,
   session: (id: string) => get<SessionDetail>(`/v1/sessions/${encodeURIComponent(id)}`),
   events: (id: string, after = 0, limit = 500) => get<Event[]>(`/v1/sessions/${encodeURIComponent(id)}/events?after=${after}&limit=${limit}`),
   /** The events immediately preceding `before`, oldest-first — paging back

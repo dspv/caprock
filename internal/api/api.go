@@ -430,6 +430,13 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, sum)
 	}
+	// How many exist, beside how many are in this page. The list is capped at
+	// 200, and a screen that labels a truncated array "Ended · 200" states a
+	// count of what it fetched as though it were a count of what there is —
+	// while the lifetime strip on the same screen says otherwise.
+	if total, err := store.CountSessions(ctx, s.d.Store.DB(), active); err == nil {
+		w.Header().Set("X-Total-Count", strconv.Itoa(total))
+	}
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -835,7 +842,7 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 			USDPerHour: recent.CostUSD / win.Hours(),
 			TokPerMin:  float64(recent.TokensIn+recent.TokensOut+recent.CacheRead+recent.CacheWrite) / win.Minutes()}
 	}
-	if n, err := store.CountThrottles(ctx, s.d.Store.DB(), from); err == nil {
+	if n, err := store.CountThrottles(ctx, s.d.Store.DB(), from, agent); err == nil {
 		resp.Throttles = n
 	}
 	// Live rate-limit windows (not range-scoped — this is current state).

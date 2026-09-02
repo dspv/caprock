@@ -41,6 +41,36 @@ function shade(cost: number, max: number): string {
   return 'bg-accent/25'
 }
 
+/**
+ * Every day between the first and the last, whether or not it was worked.
+ *
+ * The server sends a row only for a day that recorded a priced turn, so a day
+ * off is not a zero — it is absent. Laid out in sequence, one missing Sunday
+ * slid every later day one column left, and from there the columns are no
+ * longer weekdays: a Monday renders under "S". That inverts the one thing this
+ * panel exists to show. A day nobody worked is also a fact worth seeing, and a
+ * calendar is where you notice it.
+ */
+function everyDay(bars: Bar[]): Bar[] {
+  const first = bars[0]
+  const last = bars[bars.length - 1]
+  if (!first || !last || bars.length < 2) return bars
+  const known = new Map(bars.map((b) => [b.day, b]))
+  const out: Bar[] = []
+  // Walk in UTC, matching weekdayIndex — stepping a local Date across a
+  // daylight-saving boundary can land twice on the same date or skip one.
+  const end = new Date(`${last.day}T00:00:00Z`)
+  for (
+    let d = new Date(`${first.day}T00:00:00Z`);
+    d <= end;
+    d.setUTCDate(d.getUTCDate() + 1)
+  ) {
+    const iso = d.toISOString().slice(0, 10)
+    out.push(known.get(iso) ?? { day: iso, cost: 0, tokens: 0, sessions: 0 })
+  }
+  return out
+}
+
 export function DayGrid({ bars, active, onActive, maxCell = 44 }: {
   bars: Bar[]
   active: string | null
@@ -49,11 +79,13 @@ export function DayGrid({ bars, active, onActive, maxCell = 44 }: {
   maxCell?: number
 }) {
   const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
-  const max = Math.max(...bars.map((b) => num(b.cost)), 1e-9)
+  const days = everyDay(bars)
+  const max = Math.max(...days.map((b) => num(b.cost)), 1e-9)
 
   // Lead the first row with blanks so every column is one weekday. Without
-  // this the grid is just a 7-wide wrap and the columns mean nothing.
-  const first = bars[0]
+  // this the grid is just a 7-wide wrap and the columns mean nothing — and it
+  // only holds because `days` above has no gaps in it.
+  const first = days[0]
   const lead = first ? weekdayIndex(first.day) : 0
 
   return (
@@ -78,7 +110,7 @@ export function DayGrid({ bars, active, onActive, maxCell = 44 }: {
           <div key={`lead-${i}`} aria-hidden />
         ))}
 
-        {bars.map((b) => {
+        {days.map((b) => {
           const cost = num(b.cost)
           const on = active === b.day
           return (
