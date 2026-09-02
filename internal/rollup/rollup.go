@@ -110,11 +110,10 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 		}
 		res.Stored = true
 
-		// Was this session known before? Drives the daily "sessions" count.
-		prev, err := store.GetStats(ctx, q, ev.SessionID)
-		if err != nil {
-			return err
-		}
+		// The daily "sessions" count used to be driven from here, by asking
+		// whether this session had any turn before. It is answered by
+		// MarkDailySession below instead — per day rather than per lifetime —
+		// which also spares this query on every stored event.
 		// Project is derived inside UpsertSession from Cwd, so the repository
 		// grouping is resolved in exactly one place.
 		patch := store.SessionPatch{
@@ -197,7 +196,14 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 					project = s.Project
 				}
 			}
-			if err := store.AddDaily(ctx, q, day, project, ev.Model, tokens, usd, prev.Turns == 0); err != nil {
+			// "First turn of this session *today*", not "first turn ever" —
+			// otherwise a session that began yesterday adds nothing to today,
+			// and a day of continuations reads zero sessions beside real spend.
+			firstToday, err := store.MarkDailySession(ctx, q, day, project, ev.SessionID)
+			if err != nil {
+				return err
+			}
+			if err := store.AddDaily(ctx, q, day, project, ev.Model, tokens, usd, firstToday); err != nil {
 				return err
 			}
 		}

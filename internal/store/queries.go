@@ -812,7 +812,34 @@ func GetStats(ctx context.Context, q Querier, sessionID string) (Stats, error) {
 	return s, err
 }
 
-// AddDaily increments daily_stats for (day, project, model). newSession bumps the sessions count.
+// MarkDailySession records that a session was seen on a day, and reports
+// whether this was the first time.
+//
+// The caller used to answer "is this a new session" with "is this its first
+// turn ever", so a session that started yesterday added nothing to today —
+// four of eight days on the owner's database read zero sessions beside real
+// spend.
+//
+// Keyed by day and project, deliberately not by model. daily_stats *is* keyed
+// by model and the dashboard sums a day's rows, so the count has to live in
+// exactly one place: keyed by model as well, a session that switched from Opus
+// to Haiku mid-day would be counted twice, which measured as 3 against a true
+// 2 on 27 August.
+func MarkDailySession(ctx context.Context, q Querier, day, project, sessionID string) (bool, error) {
+	res, err := q.ExecContext(ctx,
+		`INSERT INTO daily_sessions(day, project, session_id) VALUES(?, ?, ?)
+		 ON CONFLICT(day, project, session_id) DO NOTHING`,
+		day, project, sessionID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// AddDaily increments daily_stats for (day, project, model). newSession bumps
+// the sessions count, and is true only for the row that carries it — see
+// MarkDailySession.
 func AddDaily(ctx context.Context, q Querier, day, project, model string, tokens int64, cost float64, newSession bool) error {
 	_, err := q.ExecContext(ctx, `
 		INSERT INTO daily_stats(day, project, model, tokens_total, cost_usd, sessions) VALUES(?, ?, ?, ?, ?, ?)
@@ -1889,13 +1916,21 @@ func History(ctx context.Context, q Querier, fromMs int64) (HistoryTotals, error
 	if err := rows.Close(); err != nil {
 		return h, err
 	}
-	// Restrict to the same window as every other total here. Unfiltered, this
-	// reported the lifetime figure under a "today" heading beside five stats
-	// that did move with the range — the one number in the row that lied.
+	// Count the files touched *in the window*, not the lifetime totals of the
+	// sessions that were active in it.
+	//
+	// Filtering sessions by `last_event_at` was the first attempt and is not
+	// enough: a session that ran for a fortnight and touched 300 files
+	// contributed all 300 to a "today" figure the moment it said anything
+	// today. Measured on the owner's database, the seven-day figure read 417
+	// against a true 144 — nearly three times over, in a row where every other
+	// number moves correctly with the range.
+	//
+	// `session_files` carries a per-file `first_ts`, so the ranged answer was
+	// already on disk; it was the wrong table that was being asked.
 	if err := q.QueryRowContext(ctx, `
-		SELECT COALESCE(SUM(st.files_touched),0)
-		FROM session_stats st JOIN sessions se ON se.session_id = st.session_id
-		WHERE se.last_event_at >= ?`, fromMs).Scan(&h.FilesTouched); err != nil {
+		SELECT COUNT(*) FROM session_files WHERE first_ts >= ?`,
+		fromMs).Scan(&h.FilesTouched); err != nil {
 		return h, err
 	}
 	// The history screen carries no agent filter, so this counts every agent —

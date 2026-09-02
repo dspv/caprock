@@ -1,11 +1,16 @@
 package api
 
 import (
+	"context"
+	"encoding/json"
 	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/dspv/caprock/internal/event"
+	"github.com/dspv/caprock/internal/rollup"
 )
 
 // The folder picker asks the daemon to list directories on behalf of a web
@@ -196,5 +201,80 @@ func TestBrowseEndpointRefusesOutsideTheRoot(t *testing.T) {
 				t.Errorf("got %d, want 404 — and the same 404 for every case, or this is an existence oracle", code)
 			}
 		})
+	}
+}
+
+// The other half of the folder picker: the directories sessions have already
+// run in. This one reads the database rather than the filesystem, so the browse
+// root does not apply — but a directory that has since been deleted or renamed
+// must not be offered, because clicking it spawns a session that fails and a
+// picker that offers dead paths is worse than a shorter list.
+func TestRecentDirsSkipsDirectoriesThatAreGone(t *testing.T) {
+	e := newEnv(t)
+	live := t.TempDir()
+	gone := filepath.Join(t.TempDir(), "deleted-since")
+	if err := os.Mkdir(gone, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e.seed(t, live)
+	seedIn(t, e, "s2", gone)
+	// A file, not a directory: a repo path that became a file is the rename
+	// case, and Stat alone would happily report it exists.
+	notADir := filepath.Join(t.TempDir(), "now-a-file")
+	if err := os.WriteFile(notADir, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	seedIn(t, e, "s3", notADir)
+
+	// Delete one after it has been recorded, which is exactly what happens when
+	// somebody removes a checkout.
+	if err := os.RemoveAll(gone); err != nil {
+		t.Fatal(err)
+	}
+
+	var got []recentDir
+	if code := e.get(t, "/v1/recent-dirs", &got); code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	for _, d := range got {
+		if d.Dir == gone {
+			t.Errorf("the picker offered %q, which no longer exists; clicking it spawns a session that fails", gone)
+		}
+		if d.Dir == notADir {
+			t.Errorf("the picker offered %q, which is a file rather than a directory", notADir)
+		}
+	}
+	var found *recentDir
+	for i := range got {
+		if got[i].Dir == live {
+			found = &got[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("the directory that still exists was not offered; got %+v", got)
+	}
+	// The row has to carry what the picker renders: the short name people call
+	// a project by, and the session count that orders it.
+	if found.Name != filepath.Base(live) {
+		t.Errorf("Name = %q; want the last path segment %q", found.Name, filepath.Base(live))
+	}
+	if found.Sessions < 1 {
+		t.Errorf("Sessions = %d; want at least the one that was seeded", found.Sessions)
+	}
+	if found.LastEventAt == 0 {
+		t.Error("LastEventAt is zero; the list is ordered by it")
+	}
+}
+
+// seedIn records one session in a given directory, so the recent-dirs list has
+// more than one entry to choose between.
+func seedIn(t *testing.T, e *env, sessionID, cwd string) {
+	t.Helper()
+	ev := &event.Event{
+		SessionID: sessionID, Source: event.SourceHook, Kind: event.KindTurnUser,
+		Key: "prompt:" + sessionID, Ts: e.now, Payload: json.RawMessage(`{"prompt":"go"}`),
+	}
+	if _, err := e.rec.Record(context.Background(), ev, rollup.SessionInfo{Cwd: cwd}); err != nil {
+		t.Fatal(err)
 	}
 }
