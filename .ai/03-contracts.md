@@ -8,7 +8,7 @@ Conventions that apply to every contract here: JSON casing is **snake_case**; al
 
 - Single Go binary `caprock-hook` (same repo, tiny), installed to Caprock's data dir.
 - Registered in `~/.claude/settings.json` under events: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `SubagentStop`, `SessionEnd`, `PreCompact`, `StopFailure`. Installer merges JSON non-destructively; `caprock hooks uninstall` reverts; back up the settings file before first write.
-- Behavior (Phase 0–1: fire-and-forget): read stdin JSON → POST to `http://127.0.0.1:<port>/v1/hook` with `Authorization: Bearer <run-token>` → always exit 0 within a 1s budget. Never print to stdout (a broken shim must not affect the user's Claude session). If the daemon is down, drop silently.
+- Behavior (Phase 0–1: fire-and-forget): read stdin JSON → POST to `http://127.0.0.1:<port>/v1/hook` with `Authorization: Bearer <run-token>` and `X-Caprock-Ppid: <os.Getppid()>` → always exit 0 within a 1s budget. Never print to stdout (a broken shim must not affect the user's Claude session). If the daemon is down, drop silently.
 - One server, one port: `/v1/hook` lives on the same listener as the API and UI (default **4173**); `<data_dir>/runtime.json` holds `{port, token}`, written by the daemon, read by the shim per invocation.
 - Phase 2 extended this protocol for **Stop events only** — request-response with a 5s timeout; see [05-orchestration.md § Stop-hook decision protocol](05-orchestration.md#stop-hook-decision-protocol-shim-upgrade-t19).
 - Why a shim binary rather than Claude Code's native `type: "http"` hook: [ADR-009](08-decisions.md#adr-009--hook-transport-is-the-caprock-hook-shim-binary-not-claude-codes-native-http-hook-type).
@@ -238,12 +238,39 @@ CREATE TABLE sessions (
   started_at   INTEGER, last_event_at INTEGER,
   status       TEXT NOT NULL DEFAULT 'active',  -- active|idle|ended
   transcript_path TEXT,
-  agent        TEXT NOT NULL DEFAULT 'claude'   -- claude|opencode (0015)
+  agent        TEXT NOT NULL DEFAULT 'claude',  -- claude|opencode|gemini (0015)
+  pid          INTEGER NOT NULL DEFAULT 0       -- the session's process, 0 = unknown
 );
 
+**A session ends when its process does.** `pid` is what makes that answerable:
+Caprock records it for every session it spawns, and for a session started in a
+terminal the shim sends its parent — the Claude Code that ran it — as the
+`X-Caprock-Ppid` header on `POST /v1/hook`. A header rather than a body field,
+because the body is Claude Code's payload forwarded verbatim.
+
+An upsert only ever raises a pid: an event carrying `0` means *this event did
+not know*, which must not erase one an earlier event did know.
+
+The sweep asks whether that process is alive rather than how long the session
+has been quiet. A session with a live process may sit silent for a week and
+stay open. Three silence thresholds were tried before this and all were wrong
+for somebody — twelve hours left the day's work live at midnight, one hour
+closed a session while its owner was at lunch. See
+[ADR-028](08-decisions.md#adr-028--a-session-ends-when-its-process-does).
+
+Two exceptions, both deliberate:
+
+- **Agents Caprock only observes** (`opencode`) are judged by the clock alone.
+  Their rows are read out of another tool's database, arrive months old, and
+  have no process of ours to ask about.
+- **Sessions with no pid** — written by an older shim, or read from a transcript
+  with no live process behind them — fall back to a 24-hour staleness sweep,
+  because there is nothing to verify and the only cost of being slow is a stale
+  row.
+
 **`sessions.status` is derived, and `ended` is sticky only against the past.**
-An explicit status from a caller (a `SessionEnd` hook, `SetExit`, the staleness
-sweep) always wins. Otherwise an upsert marks the session `active` unless it is
+An explicit status from a caller (a `SessionEnd` hook, `SetExit`, the sweep)
+always wins. Otherwise an upsert marks the session `active` unless it is
 already `ended` *and* the incoming event is no newer than the one stored — so
 re-reading a finished session's transcript cannot resurrect it, while a session
 that is still emitting events is alive by definition.

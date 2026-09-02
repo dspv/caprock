@@ -39,7 +39,7 @@ export function Locked({
   // and still sees a lock has been charged for nothing.
   if (premium.data?.license?.active) return <>{children}</>
   return (
-    <div className="relative overflow-hidden rounded-[var(--radius-panel)] border border-border">
+    <div className="overflow-hidden rounded-[var(--radius-panel)] border border-border">
       {/* The feature as it will look, behind glass. Inert: a preview that
         * responds to a click is a preview that lies. */}
       {/* Legible through the glass, not merely suggested by it.
@@ -49,7 +49,7 @@ export function Locked({
         * occupies the space of a demonstration while demonstrating nothing,
         * and "I cannot tell what is under it" was the first thing said about
         * this panel. Dimmed enough to read as inert, sharp enough to read. */}
-      <div aria-hidden className="pointer-events-none select-none opacity-90">
+      <div aria-hidden className="pointer-events-none select-none opacity-70">
         {children}
       </div>
 
@@ -60,13 +60,21 @@ export function Locked({
         * brighter underneath and the sheet dimmed it straight back. The panel
         * is legible now because nothing covers it — the caption carries its
         * own backing so it stays readable against whatever it lands on. */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 px-4 text-center">
-        <span className="rounded-sm bg-panel/95 px-3 py-1 text-[15px] font-medium text-fg shadow-[0_2px_12px_var(--color-bg)]">
-          {title}
-        </span>
+      {/* Below the preview, not across it.
+        *
+        * Centring on the panel put the caption and the button exactly over the
+        * middle of the text — the sentence explaining what the feature does was
+        * cut mid-word by the thing selling it. Opacity was tuned twice to fix
+        * that and could not: the problem was never how transparent the overlay
+        * was, it was where it sat.
+        *
+        * A row underneath reads in the order the eye already moves — here is
+        * the feature, here is what it costs — and covers nothing. */}
+      <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 border-t border-border bg-panel-2/60 px-4 py-2.5 text-center">
+        <span className="text-[13px] font-medium text-fg">{title}</span>
         <button
           onClick={() => setOpen(true)}
-          className="rounded-sm bg-premium px-3.5 py-1.5 text-[13px] font-medium text-white shadow-[0_2px_12px_var(--color-bg)] hover:brightness-110"
+          className="rounded-sm bg-premium px-3.5 py-1.5 text-[13px] font-medium text-white hover:brightness-110"
         >
           Unlock with Premium
         </button>
