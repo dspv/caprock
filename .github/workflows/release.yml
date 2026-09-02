@@ -7,6 +7,21 @@ on:
 permissions:
   contents: write
 
+# One release run per tag, ever.
+#
+# A tag push once delivered two events three seconds apart, so two runs built
+# the same tag at once: one uploaded the binaries and the other died on
+# `422 already_exists`, leaving a red release beside a perfectly good one. The
+# worse version of the same race is both runs uploading a subset and the
+# release ending up with half its binaries.
+#
+# cancel-in-progress is false on purpose: the first run is the one holding the
+# upload, and cancelling it to start again would be trading a confusing failure
+# for a broken release.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   # Gate: re-run the full check suite on the exact tagged commit before anything
   # is built or published. A tag push does not otherwise re-run ci.yml (it fires
