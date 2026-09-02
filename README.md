@@ -330,22 +330,26 @@ Premium adds the things that act on what you are looking at.
 **A daily cap.** Pass a number you set, and Caprock pauses the sessions it
 started — paused, not killed, and never a session you started yourself. Built.
 
-**Ask Gemini, on your own key.** A second model inside Caprock, answering about
-your own sessions and spend, billed to you by Google at their prices. Caprock
-never stores the key: it reads `GEMINI_API_KEY` from the daemon's environment at
-the moment of the call, so a key it does not hold is a key it cannot leak. Set
-the variable before starting the daemon:
+**Gemini, on your own key.** A second model inside Caprock, billed to you by
+Google at their prices. Get a key from
+[Google AI Studio](https://aistudio.google.com/apikey) and either export
+`GEMINI_API_KEY` before `caprock up`, or paste it into the field on the Cost
+screen. An exported variable wins; a pasted key is written to the config file
+with owner-only permissions and never leaves the machine or comes back out of
+the API. The key buys two things:
 
-```bash
-export GEMINI_API_KEY=AIza...        # from https://aistudio.google.com/apikey
-caprock up
-```
+*Start a session with Gemini.* Install the CLI
+(`npm install -g @google/gemini-cli`) and Gemini CLI appears next to Claude Code
+in the New Session dialog — same terminal, same directory picker, and the
+session lands in the same cost and activity stream as everything else. Caprock
+passes the key to the child process, so you do not have to export it in every
+shell.
 
-Then ask on the Cost screen. The question carries your own figures — today's and
+*Ask about your own numbers.* On the Cost screen, a question carries today's and
 the week's spend, top projects and models — so the answers are about your
-machine; your prompts, replies, and tool output are never sent. Pick the model
-from the panel: a question costs about 0.04 cents on Flash Lite and 1 cent on
-Pro, priced before you spend it. Built.
+machine; your prompts, replies, and tool output are never sent. A question costs
+about 0.04 cents on Flash Lite and 1 cent on Pro, priced before you spend it.
+Built.
 
 **A weekly report** of what moved, sent to your own Telegram bot or webhook.
 Not built yet, and the page that sells it says so.

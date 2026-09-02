@@ -9,6 +9,36 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.44.0] - 2026-09-02
+
+### Added
+
+- **Start a session with Gemini CLI.** Install it
+  (`npm install -g @google/gemini-cli`), and it appears next to Claude Code in
+  the New Session dialog — same terminal, same directory picker, same row in the
+  sessions list, same cost stream. Caprock passes the key you already entered
+  into the child process, so it works without exporting anything in the shell
+  you happen to be in.
+
+  The previous release let a Gemini key answer questions *about* your spending.
+  That is not what somebody with a key wants it for — they want to work with the
+  model, and the panel answered questions about the tool instead of doing the
+  job. Both now run on the same key.
+
+  The two CLIs do not take the same flags — Gemini has no permission modes and
+  no caller-assigned session id — so picking the agent switches the model list
+  and greys out Permissions rather than sending an argument the binary rejects.
+  The picker is hidden entirely on a machine with no `gemini` on PATH.
+
+### Fixed
+
+- **A debounce timer outlived the screen that set it.** Closing a screen inside
+  the 400 ms live-tick window left a timer that woke up and set state on a
+  component that no longer existed. It was visible mainly as a failed release —
+  the timer firing after the test runner had torn the DOM down, with all 483
+  tests passing — which is how it got fixed twice at the wrong end before the
+  cancel-on-unmount that it actually needed.
+
 ## [0.43.0] - 2026-09-02
 
 ### Added

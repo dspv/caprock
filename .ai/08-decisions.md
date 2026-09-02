@@ -550,3 +550,52 @@ variable as an option.
 
 **Revisit if** a user asks Caprock to hold a key it does not use — that is the
 line, and the answer is no.
+
+## ADR-026 — Gemini CLI is a session Caprock starts, not a chat panel it owns
+
+**Date:** 2026-09-02 · **Status:** accepted
+
+[ADR-023](#adr-023--gemini-runs-on-a-key-caprock-never-holds-read-from-the-environment)
+put a Gemini key to work answering questions *about* Caprock's own data — a
+panel on the Cost screen that composes a prompt from today's spend and returns
+prose. That is a real feature and it stays. It is not what somebody who has a
+Gemini key wants it for. They want to work with the model: ask it things, have
+it write code, start a session. The panel answers questions about the tool
+instead of doing the job, and the gap only became visible when a user with a key
+went looking for where to start a session with it and found a chat box about his
+own bill.
+
+**The decision.** Gemini CLI is a third agent in the New Session dialog,
+alongside Claude Code, and everything downstream of the spawn is unchanged: same
+PTY, same terminal, same directory picker, same row in the sessions list, same
+cost stream. Caprock passes `GEMINI_API_KEY` into the child's environment when
+the ambient environment does not already set one, so the key entered once under
+[ADR-025](#adr-025--keys-go-in-the-interface-stored-write-only-because-a-key-nobody-can-enter-is-a-feature-nobody-uses)
+works in every shell without being exported into any of them.
+
+**The flags are not the same, so the picker is not cosmetic.** Claude Code takes
+`--session-id`, `--model`, `--permission-mode`. Gemini CLI takes `-m` and has no
+notion of a permission mode or a caller-assigned session id. Sending Claude's
+argv to Gemini fails at the binary, so choosing the agent has to change the
+request: the model list swaps to Gemini's, and Permissions greys out rather than
+pretending to apply. The picker appears only when a `gemini` binary is on the
+daemon's PATH — a choice that fails on click is worse than no choice.
+
+**Rule 7 is not bent by this.** "We never signal or type into a process we did
+not start" is about processes Caprock finds; this is a process Caprock starts,
+on an explicit click, and it is subject to every rule that already governs a
+spawned session — the daily cap pauses it, graceful shutdown waits for it,
+`caprock down` does not orphan it.
+
+**The key never travels through the browser.** `GeminiKey` on the spawn request
+is `json:"-"`: it cannot be supplied by a client and is filled server-side from
+config. A dashboard that could hand a key to a process it spawns is a dashboard
+where a page can exfiltrate one.
+
+**Rules out:** a Gemini chat panel *replacing* the terminal; asking the user to
+re-enter the key per session; passing a key when the environment already has
+one (an exported variable stays the source of truth); shipping the picker on
+machines without the CLI.
+
+**Revisit if** a third coding CLI arrives — two special cases in one switch is
+fine, four is a table.

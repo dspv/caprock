@@ -24,16 +24,26 @@ import (
 
 // SpawnRequest describes a session to launch.
 type SpawnRequest struct {
-	Cwd            string   `json:"cwd"`
-	Chat           bool     `json:"chat,omitempty"`            // a quick chat: Caprock picks the directory, no repository needed
-	Create         bool     `json:"create,omitempty"`          // make Cwd if it does not exist (one level, under an existing parent)
-	Worktree       string   `json:"worktree,omitempty"`        // git worktree name to create under the repo
-	Model          string   `json:"model,omitempty"`           // --model
-	PermissionMode string   `json:"permission_mode,omitempty"` // --permission-mode
-	Command        string   `json:"command,omitempty"`         // default "claude"
-	Args           []string `json:"args,omitempty"`            // extra args
-	Cols           int      `json:"cols,omitempty"`
-	Rows           int      `json:"rows,omitempty"`
+	Cwd            string `json:"cwd"`
+	Chat           bool   `json:"chat,omitempty"`            // a quick chat: Caprock picks the directory, no repository needed
+	Create         bool   `json:"create,omitempty"`          // make Cwd if it does not exist (one level, under an existing parent)
+	Worktree       string `json:"worktree,omitempty"`        // git worktree name to create under the repo
+	Model          string `json:"model,omitempty"`           // --model
+	PermissionMode string `json:"permission_mode,omitempty"` // --permission-mode
+	Command        string `json:"command,omitempty"`         // default "claude"
+	// Agent picks which coding agent to launch: "claude" (default) or
+	// "gemini". They take different flags — gemini has no --session-id and
+	// spells the model -m — so the argv is built per agent rather than
+	// pretending one shape fits both.
+	Agent string `json:"agent,omitempty"`
+	// GeminiKey is the key the daemon holds, passed into the child's
+	// environment. Never accepted from the browser — the API fills it in from
+	// settings, so a page cannot hand a spawned process someone else's
+	// credential.
+	GeminiKey string   `json:"-"`
+	Args      []string `json:"args,omitempty"` // extra args
+	Cols      int      `json:"cols,omitempty"`
+	Rows      int      `json:"rows,omitempty"`
 }
 
 // Agent is a live owned session.
@@ -62,6 +72,7 @@ type Manager struct {
 	log      *slog.Logger
 	dataDir  string
 	claude   string // resolved claude binary (or "claude")
+	gemini   string // resolved gemini binary (or "gemini")
 	mu       sync.Mutex
 	agents   map[string]*Agent
 	OnExit   func(sessionID string, code int)
@@ -89,7 +100,35 @@ func NewManager(st *store.Store, dataDir, claudePath string, log *slog.Logger) *
 	if claudePath == "" {
 		claudePath = resolveClaude()
 	}
-	return &Manager{pty: ptyman.New(), store: st, log: log, dataDir: dataDir, claude: claudePath, agents: map[string]*Agent{}, NewSessionID: config.NewSessionID, Now: time.Now}
+	return &Manager{pty: ptyman.New(), store: st, log: log, dataDir: dataDir, claude: claudePath, gemini: resolveGemini(), agents: map[string]*Agent{}, NewSessionID: config.NewSessionID, Now: time.Now}
+}
+
+// AgentClaude and AgentGemini name the coding agents Caprock can launch.
+const (
+	AgentClaude = "claude"
+	AgentGemini = "gemini"
+)
+
+// resolveGemini finds the Gemini CLI, which is an ordinary npm global install
+// rather than something with a conventional home — so PATH is the only place
+// worth looking.
+func resolveGemini() string {
+	if p, err := exec.LookPath("gemini"); err == nil {
+		return p
+	}
+	return "gemini"
+}
+
+// GeminiAvailable reports whether the gemini binary can be launched, so the
+// dialog offers an agent the machine actually has rather than a choice that
+// fails on click.
+func (m *Manager) GeminiAvailable() bool {
+	if filepath.IsAbs(m.gemini) {
+		_, err := os.Stat(m.gemini)
+		return err == nil
+	}
+	_, err := exec.LookPath(m.gemini)
+	return err == nil
 }
 
 // ClaudeAvailable reports whether the resolved claude binary can be launched.
@@ -238,17 +277,33 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		cwd, worktree = wt, req.Worktree
 	}
 	command := req.Command
-	if command == "" {
+	var args []string
+	switch {
+	case command != "":
+		// An explicit command is taken as given: the caller knows what it is
+		// launching, and guessing flags for an unknown binary is worse than
+		// launching it bare.
+		args = append(args, req.Args...)
+	case req.Agent == AgentGemini:
+		command = m.gemini
+		// Gemini CLI has no --session-id: it manages its own history, so the
+		// id here is Caprock's handle on the process and nothing is passed
+		// through. Model is -m; there is no permission-mode equivalent.
+		if req.Model != "" {
+			args = append(args, "-m", req.Model)
+		}
+		args = append(args, req.Args...)
+	default:
 		command = m.claude
+		args = []string{"--session-id", sessionID}
+		if req.Model != "" {
+			args = append(args, "--model", req.Model)
+		}
+		if req.PermissionMode != "" {
+			args = append(args, "--permission-mode", req.PermissionMode)
+		}
+		args = append(args, req.Args...)
 	}
-	args := []string{"--session-id", sessionID}
-	if req.Model != "" {
-		args = append(args, "--model", req.Model)
-	}
-	if req.PermissionMode != "" {
-		args = append(args, "--permission-mode", req.PermissionMode)
-	}
-	args = append(args, req.Args...)
 
 	// Pre-accept the folder-trust dialog so the spawned session does not block on
 	// it (best-effort; a failure here must not stop the spawn).
@@ -256,7 +311,16 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		m.log.Warn("pre-trust folder", "component", "agents", "cwd", cwd, "err", err)
 	}
 
-	spec := ptyman.Spec{Command: command, Args: args, Dir: cwd, Env: childEnv(), Cols: req.Cols, Rows: req.Rows}
+	env := childEnv()
+	// The Gemini CLI reads GEMINI_API_KEY from its environment, and the key the
+	// user pasted into the dashboard lives in the daemon's config — so it has
+	// to be handed over here or the child asks for a key it cannot see. Only
+	// when the environment does not already carry one: a machine set up the old
+	// way keeps what it had, and the child sees one value rather than two.
+	if req.Agent == AgentGemini && req.GeminiKey != "" && os.Getenv("GEMINI_API_KEY") == "" {
+		env = append(env, "GEMINI_API_KEY="+req.GeminiKey)
+	}
+	spec := ptyman.Spec{Command: command, Args: args, Dir: cwd, Env: env, Cols: req.Cols, Rows: req.Rows}
 	// The PTY process is controlled explicitly via Signal/Close; it must not die
 	// when the caller's context (e.g. an HTTP request) ends.
 	sess, err := m.pty.Spawn(context.WithoutCancel(ctx), spec)
@@ -273,7 +337,15 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 
 	// Persist ownership so a restart knows what Caprock launched.
 	_ = m.store.WithTx(ctx, func(q store.Querier) error {
-		if err := store.UpsertSession(ctx, q, sessionID, store.SessionPatch{Cwd: cwd}); err != nil {
+		// The agent is recorded here, so the session carries it from its first
+		// row: the filter, the per-agent totals and the badge all read this
+		// column, and a Gemini session that arrived labelled "claude" would be
+		// counted under the wrong agent forever.
+		agent := req.Agent
+		if agent == "" {
+			agent = AgentClaude
+		}
+		if err := store.UpsertSession(ctx, q, sessionID, store.SessionPatch{Cwd: cwd, Agent: agent}); err != nil {
 			return err
 		}
 		return store.MarkOwned(ctx, q, sessionID, worktree, a.Command, sess.PID())

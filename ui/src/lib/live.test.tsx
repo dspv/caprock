@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
-import { live } from './live'
+import { act, render } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { live, useLiveTick } from './live'
 
 describe('live store', () => {
   it('collects alerts and bumps tick on session/event frames', () => {
@@ -54,3 +55,30 @@ describe('reconnecting after the page has gone', () => {
     }
   })
 })
+
+/**
+ * Twice now a release has failed with every test passing: a debounce timer
+ * fired after the run had torn the DOM down, and `window` was gone. The timer
+ * outliving its component is the real defect — a screen closed inside the
+ * debounce window sets state on something that no longer exists — and the
+ * broken release was only how we noticed.
+ */
+describe('the live tick timer does not outlive its component', () => {
+  it('cancels a pending debounce on unmount', () => {
+    vi.useFakeTimers()
+    try {
+      const { unmount } = render(<TickProbe />)
+      act(() => { live.handle({ type: 'session', data: { session_id: 's', tick: 1 } as never }) })
+      unmount()
+      // Nothing left to fire: if the timer survived, it would call setState on
+      // an unmounted component here.
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+function TickProbe() {
+  return <span>{useLiveTick(400)}</span>
+}

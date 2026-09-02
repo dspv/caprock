@@ -154,6 +154,13 @@ function useDebouncedValue<T>(initial: T, ms: number): [T, (v: T) => void] {
   const [v, setV] = useState(initial)
   const timer = useRef<number | null>(null)
   const pending = useRef(initial)
+  // The timer outlives the component unless we cancel it: a screen unmounted
+  // inside the debounce window would wake up and set state on a component that
+  // is gone. Under a test runner that tears the DOM down first, the same timer
+  // fires into a world with no `window` and fails the whole run.
+  useEffect(() => () => {
+    if (timer.current !== null) { clearTimeout(timer.current); timer.current = null }
+  }, [])
   const set = useCallback((next: T) => {
     pending.current = next
     if (timer.current !== null) return

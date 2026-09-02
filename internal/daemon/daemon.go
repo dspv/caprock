@@ -289,7 +289,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.api = api.New(api.Deps{
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version,
 		Status: d.status, ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
-		Token: rt.Token, Shutdown: cancel, Agents: &agentAdapter{m: d.mgr},
+		Token: rt.Token, Shutdown: cancel, Agents: &agentAdapter{m: d.mgr, d: d},
 		Tasks: &boardAdapter{d: d}, Settings: &settingsAdapter{d: d}, Update: d.upd,
 		AskGemini: d.askGemini,
 		DataDir:   d.opt.DataDir,
@@ -751,6 +751,10 @@ type Status struct {
 	Hooks           *hooks.Status `json:"hooks,omitempty"`
 	UIBuilt         bool          `json:"ui_built"`
 	ClaudeAvailable bool          `json:"claude_available"`
+	// GeminiAvailable says the Gemini CLI is on PATH, so the new-session
+	// dialog offers an agent the machine actually has rather than a choice
+	// that fails on click.
+	GeminiAvailable bool `json:"gemini_available"`
 	// OpenCode reports what the second agent's reader is doing, or is absent
 	// when OpenCode is not installed. Without it there was no way to tell
 	// whether a machine that runs OpenCode was having those sessions read:
@@ -797,7 +801,7 @@ func (d *Daemon) status(_ context.Context) any {
 		Pricing: PricingStatus{Version: d.table.Version, Source: d.table.Source, FetchedAt: d.table.FetchedAt, UserOverride: d.table.UserOverride, Models: len(d.table.Models)},
 		LoopK:   d.det.K, LoopTMin: int(d.det.Window / time.Minute),
 		OpenCode:        d.openCodeStats(),
-		ClaudeAvailable: d.mgr.ClaudeAvailable(), OwnedActive: len(d.mgr.List()),
+		ClaudeAvailable: d.mgr.ClaudeAvailable(), GeminiAvailable: d.mgr.GeminiAvailable(), OwnedActive: len(d.mgr.List()),
 		Orchestration: b != nil,
 	}
 	if b != nil {
@@ -919,7 +923,10 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	return config.Save(a.d.opt.DataDir, cfg)
 }
 
-type agentAdapter struct{ m *agents.Manager }
+type agentAdapter struct {
+	m *agents.Manager
+	d *Daemon
+}
 
 func (a *agentAdapter) Available() bool { return a.m.ClaudeAvailable() }
 
@@ -931,6 +938,12 @@ func (a *agentAdapter) Spawn(ctx context.Context, req any) (string, string, erro
 	var sr agents.SpawnRequest
 	if err := json.Unmarshal(b, &sr); err != nil {
 		return "", "", err
+	}
+	// The key is deliberately not a JSON field on SpawnRequest — a request body
+	// must not be able to carry one — so it is set here, from the daemon's own
+	// settings, for a Gemini launch only.
+	if sr.Agent == agents.AgentGemini {
+		sr.GeminiKey = a.d.config().GeminiAPIKey
 	}
 	ag, err := a.m.Spawn(ctx, sr)
 	if err != nil {
