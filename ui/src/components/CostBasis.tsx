@@ -40,12 +40,3 @@ export function costBasisLong(plan?: Settings): string {
   }
   return 'At Anthropic list prices. Set your plan in the header to see how it compares to your bill.'
 }
-
-/** A small inline note for a panel header. */
-export function CostBasisNote({ plan, className }: { plan?: Settings; className?: string }) {
-  return (
-    <span className={className ?? 'text-[11px] text-fg-faint'} title={costBasisLong(plan)}>
-      {costBasis(plan)}
-    </span>
-  )
-}

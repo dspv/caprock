@@ -689,3 +689,52 @@ func TestRangeFromDaySuffix(t *testing.T) {
 		t.Fatalf("90d must start before 30d, got %d vs %d", d90, d30)
 	}
 }
+
+// Every figure in the Today panel must answer for the same agent.
+//
+// "Burn now" sits in one grid row with "cost today", under one header carrying
+// the agent chips. It was computed without the filter, so choosing `opencode`
+// narrowed the cost beside it and left the burn showing every agent's money —
+// the mistake the comment on handleSummary rejects, made one tile to the right.
+func TestBurnNarrowsWithTheAgentFilter(t *testing.T) {
+	e := newEnv(t)
+	dir := t.TempDir()
+	e.seed(t, dir) // s1: claude, 100 in / 200 out, priced
+
+	ctx := context.Background()
+	cost := 4.0
+	if _, err := e.rec.Record(ctx, &event.Event{
+		SessionID: "oc1", Source: event.SourceOpenCode, Kind: event.KindTurnAssistant,
+		// Inside the burn window, which is measured against the wall clock the
+		// daemon runs on rather than the recorder's fixed test time.
+		Key: "msg:oc1", Ts: time.Now().Add(-time.Minute), Model: "claude-sonnet-5",
+		Tokens: &event.TokenDelta{In: 10, Out: 20}, CostUSD: &cost,
+	}, rollup.SessionInfo{Cwd: dir}); err != nil {
+		t.Fatal(err)
+	}
+	// After Record: recording upserts the session itself and would otherwise
+	// put the agent back to the default.
+	if err := store.UpsertSession(ctx, e.st.DB(), "oc1", store.SessionPatch{Agent: "opencode"}); err != nil {
+		t.Fatal(err)
+	}
+
+	var all, oc SummaryResponse
+	if code := e.get(t, "/v1/stats/summary?range=today", &all); code != 200 {
+		t.Fatalf("summary: %d", code)
+	}
+	if code := e.get(t, "/v1/stats/summary?range=today&agent=opencode", &oc); code != 200 {
+		t.Fatalf("summary filtered: %d", code)
+	}
+
+	if oc.Burn.USDPerHour >= all.Burn.USDPerHour {
+		t.Errorf("burn did not narrow: opencode %.4f/h against everything %.4f/h",
+			oc.Burn.USDPerHour, all.Burn.USDPerHour)
+	}
+	// The filtered burn must be OpenCode's own money, not a share of the whole.
+	if want := cost / (10.0 / 60.0); oc.Burn.USDPerHour != want {
+		t.Errorf("burn = %.4f/h, want %.4f/h — the one session's own cost", oc.Burn.USDPerHour, want)
+	}
+	if oc.Burn.Turns != 1 {
+		t.Errorf("turns = %d, want 1 — only the opencode turn is in scope", oc.Burn.Turns)
+	}
+}

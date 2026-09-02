@@ -119,7 +119,7 @@ export function issueURL(kind: FeedbackKind, screen: string, text: string, ctx: 
  * without telling them is worse than asking them to trim it — measured, a
  * 20,000-character report produced a 20,386-character URL.
  */
-export const maxText = 6000
+const maxText = 6000
 
 /** Enough words to be worth filing. */
 export function isSendable(text: string): boolean {

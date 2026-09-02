@@ -28,6 +28,19 @@ type reportState struct {
 	mu       sync.RWMutex
 	lastErr  string
 	lastSent int64
+	// base overrides the Telegram host. Empty in production, where Sender uses
+	// the real API; set by tests so the scheduling rules below — the week
+	// marker, the send hour, the paid gate — can be exercised without a test
+	// suite that talks to api.telegram.org. The weekly package's own tests use
+	// the same Sender.Base seam.
+	base string
+}
+
+// sender builds the report's delivery client, honouring the test host override.
+func (d *Daemon) sender() *weekly.Sender {
+	d.report.mu.RLock()
+	defer d.report.mu.RUnlock()
+	return &weekly.Sender{Base: d.report.base}
 }
 
 // loadReportState restores what the last send did, so a failure survives a
@@ -94,8 +107,7 @@ func (d *Daemon) SendReportNow(ctx context.Context) error {
 		return err
 	}
 	msg := weekly.Message(rep, d.reportBasis())
-	sender := &weekly.Sender{}
-	if err := sender.Send(ctx, cfg.ReportBotToken, cfg.ReportChatID, msg); err != nil {
+	if err := d.sender().Send(ctx, cfg.ReportBotToken, cfg.ReportChatID, msg); err != nil {
 		// Recorded like a scheduled failure, so the panel explains it the same
 		// way — the reason is as useful now as it would be on a Monday.
 		d.report.mu.Lock()
@@ -167,8 +179,7 @@ func (d *Daemon) weeklyOnce(ctx context.Context) {
 	}
 
 	msg := weekly.Message(rep, d.reportBasis())
-	sender := &weekly.Sender{}
-	err = sender.Send(ctx, cfg.ReportBotToken, cfg.ReportChatID, msg)
+	err = d.sender().Send(ctx, cfg.ReportBotToken, cfg.ReportChatID, msg)
 
 	// Recorded in the store, not only in memory. A weekly message that stops
 	// arriving is a failure nobody notices — the person who set up a bot is

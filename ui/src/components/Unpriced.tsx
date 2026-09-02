@@ -33,11 +33,3 @@ export function UnpricedNote({ u, className = '' }: { u?: Unpriced; className?: 
   )
 }
 
-/**
- * The one-line form for a dense stat row, shown as a stat's `sub`.
- */
-export function unpricedSub(u?: Unpriced): string | undefined {
-  if (!u || u.turns === 0) return undefined
-  const names = u.models.map((m) => m || 'unknown').join(', ')
-  return `+ ${fmtTokens(u.tokens)} tok unpriced (${names})`
-}

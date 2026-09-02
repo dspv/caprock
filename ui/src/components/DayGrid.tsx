@@ -32,7 +32,7 @@ function weekdayIndex(iso: string): number {
  * empty step: "something happened here" is the one distinction the grid must
  * never lose, and rounding a $2 day down to blank loses it.
  */
-export function shade(cost: number, max: number): string {
+function shade(cost: number, max: number): string {
   if (!(cost > 0)) return 'bg-border/60'
   const t = Math.sqrt(cost / Math.max(max, 1e-9))
   if (t > 0.75) return 'bg-accent'

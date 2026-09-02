@@ -824,9 +824,12 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	if s.d.Table != nil {
 		resp.Pricing = s.d.Table.Version
 	}
-	// Burn over the last 10 minutes.
+	// Burn over the last 10 minutes — through the same agent filter as the
+	// figures beside it. It sits in one grid row with "cost today", so an
+	// unfiltered burn under a heading that says "opencode" is the mistake the
+	// comment above rejects, made one tile to the right.
 	const win = 10 * time.Minute
-	recent, err := store.Summarize(ctx, s.d.Store.DB(), s.d.Now().Add(-win).UnixMilli())
+	recent, err := store.SummarizeSparkFor(ctx, s.d.Store.DB(), s.d.Now().Add(-win).UnixMilli(), store.SparkSpec{}, agent)
 	if err == nil {
 		resp.Burn = Burn{WindowMin: int(win / time.Minute), Turns: recent.Turns,
 			USDPerHour: recent.CostUSD / win.Hours(),

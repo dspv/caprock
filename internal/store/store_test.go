@@ -797,7 +797,7 @@ func TestUnpricedIgnoresTurnsWithNoTokens(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	u, err := queryUnpriced(ctx, s.db, 0)
+	u, err := queryUnpriced(ctx, s.db, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -904,5 +904,68 @@ func TestAToolCallWithNoResponseCountsZeroBytes(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].Bytes != 0 {
 		t.Errorf("a call with no response reported %+v", got)
+	}
+}
+
+// The unpriced warning belongs to the agent whose total it warns about.
+//
+// Unfiltered, it told someone looking at the OpenCode figures that tokens were
+// missing from their total — tokens that were Claude's, and that were not in
+// that total at all. A warning about the wrong money is worse than no warning:
+// it sends the reader looking for a hole in a number that has none.
+func TestUnpricedIsScopedToTheAgentAsked(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+
+	for _, tc := range []struct{ session, agent, model string }{
+		{"claude-1", "claude", "claude-ghost"},
+		{"oc-1", "opencode", "opencode-ghost"},
+	} {
+		if err := UpsertSession(ctx, s.db, tc.session, SessionPatch{Agent: tc.agent}); err != nil {
+			t.Fatal(err)
+		}
+		ev := &event.Event{
+			SessionID: tc.session, Source: event.SourceTranscript,
+			Kind: event.KindTurnAssistant, Model: tc.model, Ts: time.UnixMilli(2000),
+			Tokens: &event.TokenDelta{In: 1000, Out: 500},
+			Key:    "k-" + tc.session,
+		}
+		if _, err := InsertEvent(ctx, s.db, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, tc := range []struct {
+		name   string
+		agent  AgentFilter
+		models []string
+	}{
+		{"no filter sees both", "", []string{"claude-ghost", "opencode-ghost"}},
+		{"opencode sees only its own", "opencode", []string{"opencode-ghost"}},
+		{"claude sees only its own", "claude", []string{"claude-ghost"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			u, err := queryUnpriced(ctx, s.db, 0, tc.agent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if u == nil {
+				t.Fatalf("expected %v, got no warning at all", tc.models)
+			}
+			if len(u.Models) != len(tc.models) {
+				t.Fatalf("models = %v, want %v", u.Models, tc.models)
+			}
+			for _, want := range tc.models {
+				found := false
+				for _, got := range u.Models {
+					if got == want {
+						found = true
+					}
+				}
+				if !found {
+					t.Errorf("models = %v, missing %q", u.Models, want)
+				}
+			}
+		})
 	}
 }

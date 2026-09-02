@@ -20,9 +20,10 @@ const (
 	KindAgentStop     Kind = "agent.stop"
 	KindAgentSpawn    Kind = "agent.spawn"
 	// KindSessionEnd is emitted for SessionEnd hooks — the user left the
-	// session. It is the only signal that separates "finished" from "quiet",
-	// and without it a session stayed live until the staleness sweep caught it
-	// half a day later.
+	// session. It does not by itself end one: the hook also fires on /clear and
+	// on Escape, so treating it as the end buried sessions their owner was
+	// still working in. What ends a session is its process exiting; see
+	// hookd.endsTheSession and ADR-028.
 	KindSessionEnd        Kind = "session.end"
 	KindMailSent          Kind = "mail.sent"
 	KindMailDelivered     Kind = "mail.delivered"
@@ -50,8 +51,6 @@ const (
 	// them; the source is what tells the reader which arithmetic produced a
 	// figure.
 	SourceOpenCode Source = "opencode"
-	SourcePTY      Source = "pty"
-	SourceHarness  Source = "harness"
 	// SourceGemini marks calls Caprock made to Google's Gemini on the user's
 	// own key. Unlike OpenCode these are priced by our own table, because the
 	// figures come from the response's usageMetadata and there is no vendor
