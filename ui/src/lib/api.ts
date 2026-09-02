@@ -424,8 +424,49 @@ export interface SpawnRequest {
   fork?: boolean
 }
 
+/**
+ * The device token, for a dashboard being read from a tablet.
+ *
+ * On the machine itself this is always empty and nothing changes: loopback
+ * needs no token, and the daemon does not ask for one. A device on the local
+ * network gets one by pairing, keeps it, and sends it on every request from
+ * then on.
+ *
+ * localStorage rather than a cookie, deliberately. A cookie rides along on
+ * requests the user did not make, which is what makes CSRF possible, and this
+ * API starts sessions and runs commands. A header is sent only by code that
+ * meant to send it.
+ */
+const DEVICE_TOKEN_KEY = 'caprock.device.token'
+
+export function deviceToken(): string {
+  try {
+    return localStorage.getItem(DEVICE_TOKEN_KEY) ?? ''
+  } catch {
+    return '' // private mode: pairing will simply be asked for again
+  }
+}
+
+export function setDeviceToken(token: string) {
+  try {
+    localStorage.setItem(DEVICE_TOKEN_KEY, token)
+  } catch { /* nothing to do; the next request will 401 and ask again */ }
+}
+
+export function clearDeviceToken() {
+  try {
+    localStorage.removeItem(DEVICE_TOKEN_KEY)
+  } catch { /* ignore */ }
+}
+
+/** Headers for a request, carrying the device token when there is one. */
+function withDevice(h: Record<string, string> = {}): Record<string, string> {
+  const t = deviceToken()
+  return t ? { ...h, 'X-Caprock-Device': t } : h
+}
+
 async function post<T>(path: string, body: unknown, method = 'POST'): Promise<T> {
-  const res = await fetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const res = await fetch(path, { method, headers: withDevice({ 'Content-Type': 'application/json' }), body: JSON.stringify(body) })
   if (!res.ok) {
     let b: unknown
     try { b = await res.json() } catch { /* */ }
@@ -457,7 +498,7 @@ export function errText(e: unknown): string {
 }
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(path, { headers: { Accept: 'application/json' } })
+  const res = await fetch(path, { headers: withDevice({ Accept: 'application/json' }) })
   if (!res.ok) {
     let body: unknown
     try { body = await res.json() } catch { /* ignore */ }
@@ -477,7 +518,7 @@ async function get<T>(path: string): Promise<T> {
  */
 async function sessionsWithTotal(activeOnly: boolean): Promise<{ items: SessionSummary[]; total: number }> {
   const res = await fetch(`/v1/sessions${activeOnly ? '?active=true' : ''}`, {
-    headers: { Accept: 'application/json' },
+    headers: withDevice({ Accept: 'application/json' }),
   })
   if (!res.ok) {
     let body: unknown
@@ -488,6 +529,26 @@ async function sessionsWithTotal(activeOnly: boolean): Promise<{ items: SessionS
   const n = Number(res.headers.get('X-Total-Count'))
   // An older daemon sends no header; then the page is all we know of.
   return { items, total: Number.isFinite(n) && n > 0 ? n : items.length }
+}
+
+/** A device that has been let in from the local network. */
+export interface PairedDevice {
+  id: string
+  name: string
+  paired_at: number
+  last_seen: number
+}
+
+/** What the owner sees on the pairing panel. */
+export interface PairState {
+  /** Whether this daemon is listening on the network at all. */
+  enabled: boolean
+  /** What to type into the other device. Empty when disabled. */
+  url?: string
+  /** The outstanding code, shown only on the machine itself. */
+  code?: string
+  expires_in_sec?: number
+  devices: PairedDevice[]
 }
 
 export const api = {
@@ -510,6 +571,12 @@ export const api = {
    *  for Monday. The failure mode of this feature is silence, which is
    *  indistinguishable from a quiet week. */
   testReport: () => post<{ sent: string }>('/v1/report/test', {}),
+  pairState: () => get<PairState>('/v1/pair/state'),
+  /** Exchange a code for a token. The one call a device makes before it is trusted. */
+  pairRedeem: (code: string, name: string) =>
+    post<{ token: string; id: string; name: string }>('/v1/pair', { code, name }),
+  pairCode: () => post<{ code: string; expires_in_sec: number; url: string }>('/v1/pair/code', {}),
+  pairRevoke: (id: string) => post<{ revoked: number }>(`/v1/pair/devices/${encodeURIComponent(id)}`, {}, 'DELETE'),
   settings: () => get<Settings>('/v1/settings'),
   update: () => get<UpdateStatus>('/v1/update'),
   checkUpdate: () => post<UpdateStatus>('/v1/update/check', {}),

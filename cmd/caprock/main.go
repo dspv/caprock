@@ -65,6 +65,7 @@ func upCmd() *cobra.Command {
 		noHooks    bool
 		yes        bool
 		foreground bool
+		useLAN     bool
 		dataDirF   string
 		hiveDir    string
 		repoDir    string
@@ -112,9 +113,9 @@ func upCmd() *cobra.Command {
 			}
 
 			if !foreground {
-				return detach(cmd, dir, cfg, noOpen, hiveDir, repoDir)
+				return detach(cmd, dir, cfg, noOpen, useLAN, hiveDir, repoDir)
 			}
-			return runForeground(cmd, dir, cfg, noOpen, hiveDir, repoDir)
+			return runForeground(cmd, dir, cfg, noOpen, useLAN, hiveDir, repoDir)
 		},
 	}
 	c.Flags().IntVar(&port, "port", 0, "listen port (default from config.json, 4173)")
@@ -122,18 +123,20 @@ func upCmd() *cobra.Command {
 	c.Flags().BoolVar(&noHooks, "no-hooks", false, "do not install/verify the hook shim")
 	c.Flags().BoolVarP(&yes, "yes", "y", false, "assume yes for the hook install prompt")
 	c.Flags().BoolVar(&foreground, "foreground", false, "run in the foreground (logs to stderr) instead of detaching")
+	c.Flags().BoolVar(&useLAN, "lan", false, "also listen on this machine's private network address, so a tablet or phone can reach the dashboard after pairing")
 	c.Flags().StringVar(&dataDirF, "data-dir", "", "override the data directory (also $CAPROCK_DATA_DIR)")
 	c.Flags().StringVar(&hiveDir, "hive", "", "run tasks unattended: queue directory for the task runner (created if missing)")
 	c.Flags().StringVar(&repoDir, "repo", "", "the repo workers operate on, one git worktree each (default: current directory)")
 	return c
 }
 
-func runForeground(cmd *cobra.Command, dir string, cfg config.Config, noOpen bool, hiveDir, repoDir string) error {
+func runForeground(cmd *cobra.Command, dir string, cfg config.Config, noOpen, useLAN bool, hiveDir, repoDir string) error {
 	log := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{Level: slog.LevelInfo}))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return daemon.Run(ctx, daemon.Options{
 		DataDir: dir, Config: cfg, Version: version.Version, Log: log, HiveDir: hiveDir, RepoCwd: repoDir,
+		LAN: useLAN,
 		OnReady: func(url string) {
 			fmt.Fprintf(cmd.OutOrStdout(), "caprock is up at %s  (data: %s)\n", url, dir)
 			printHive(cmd, hiveDir)
@@ -147,7 +150,7 @@ func runForeground(cmd *cobra.Command, dir string, cfg config.Config, noOpen boo
 // detach re-executes this binary with `up --foreground` as a background
 // process whose stdout/stderr go to <data_dir>/caprock.log, then waits until
 // runtime.json appears.
-func detach(cmd *cobra.Command, dir string, cfg config.Config, noOpen bool, hiveDir, repoDir string) error {
+func detach(cmd *cobra.Command, dir string, cfg config.Config, noOpen, useLAN bool, hiveDir, repoDir string) error {
 	self, err := os.Executable()
 	if err != nil {
 		return err
@@ -163,6 +166,13 @@ func detach(cmd *cobra.Command, dir string, cfg config.Config, noOpen bool, hive
 	}
 	if repoDir != "" {
 		childArgs = append(childArgs, "--repo", repoDir)
+	}
+	if useLAN {
+		// The child is the process that serves, so the flag has to reach it —
+		// without this line `caprock up --lan` reports success and listens on
+		// loopback, which is the worst kind of wrong: a promise kept in the
+		// message and broken in the socket.
+		childArgs = append(childArgs, "--lan")
 	}
 	child := exec.Command(self, childArgs...)
 	child.Env = append(os.Environ(), config.EnvDataDir+"="+dir)

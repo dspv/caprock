@@ -3,6 +3,7 @@ package api
 import (
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -69,7 +70,7 @@ func safeMethod(m string) bool {
 
 // checkOrigin decides whether a /v1 request may proceed. It returns an empty
 // string when the request is allowed, or a reason to refuse with 403.
-func checkOrigin(r *http.Request) string {
+func checkOrigin(r *http.Request, lanHost string) string {
 	// Fetch metadata first: a browser always sends it and script cannot forge
 	// it, so a cross-site value is decisive regardless of the other headers.
 	// It is checked for reads as well as writes — a cross-site page must not be
@@ -90,13 +91,15 @@ func checkOrigin(r *http.Request) string {
 	// attack can reach a loopback listener, and because non-browser clients
 	// legitimately address the daemon by other names (a test harness, a proxy,
 	// an SSH tunnel) with no rebinding risk.
-	if (sfs != "" || r.Header.Get("Origin") != "") && !isLoopbackHost(r.Host) {
+	if (sfs != "" || r.Header.Get("Origin") != "") && !isLoopbackHost(r.Host) && !isTheLANHost(r.Host, lanHost) {
 		return "forbidden host"
 	}
 
-	// A present Origin must be loopback, on every method. This is what the
-	// dashboard sends, and what a cross-origin fetch() from a page sends.
-	if o := r.Header.Get("Origin"); o != "" && !isLoopbackOrigin(o) {
+	// A present Origin must be loopback — or the one LAN address this daemon
+	// was told to answer on, which is the dashboard as a tablet sees it. This
+	// is what the dashboard sends, and what a cross-origin fetch() from a page
+	// sends.
+	if o := r.Header.Get("Origin"); o != "" && !isLoopbackOrigin(o) && !isLANOrigin(o, lanHost) {
 		return "forbidden origin"
 	}
 
@@ -168,4 +171,38 @@ func isLoopbackHost(host string) bool {
 		return ip.IsLoopback()
 	}
 	return false
+}
+
+// isTheLANHost reports whether host is the one private address this daemon was
+// told to listen on.
+//
+// Exactly that address, not "any private address". The check above exists to
+// stop DNS rebinding — a name an attacker controls, resolved to an address we
+// answer on — and admitting the whole private range would leave that door open
+// for every address in it. One address, chosen by the user when they started
+// the daemon with --lan, is a hole the size of the feature and no larger.
+func isTheLANHost(host, lanHost string) bool {
+	if lanHost == "" {
+		return false
+	}
+	h := host
+	if hh, _, err := net.SplitHostPort(host); err == nil {
+		h = hh
+	}
+	return strings.EqualFold(strings.Trim(h, "[]"), lanHost)
+}
+
+// isLANOrigin reports whether an Origin header names the one private address
+// this daemon listens on. Same reasoning as isTheLANHost: exactly that
+// address, so widening the origin check costs exactly the feature and nothing
+// around it.
+func isLANOrigin(origin, lanHost string) bool {
+	if lanHost == "" {
+		return false
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Scheme != "http" {
+		return false
+	}
+	return strings.EqualFold(u.Hostname(), lanHost)
 }

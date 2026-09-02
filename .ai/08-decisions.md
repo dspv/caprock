@@ -748,3 +748,66 @@ because the daemon restarted.
 
 **Revisit if** pid reuse is ever observed in practice, which would make start
 times worth the three platforms of code.
+
+---
+
+## ADR-029 — A second device gets in over the LAN, with a code, or not at all
+
+**Date:** 2026-09-03 · **Status:** accepted
+
+Reaching Caprock from a tablet needs the daemon to answer something other than
+loopback, and that is a real reduction in safety rather than a feature with a
+caveat. Bound to loopback, being on the machine *was* the authorisation. Bound
+to the network, every device on it can open the socket — the guest on the home
+wifi, the stranger in the coworking space — so the premise has to be replaced
+rather than stretched.
+
+The replacement is one rule: **a request that did not come from this machine
+must carry a device token.** Loopback is unaffected, so nothing about the local
+experience changes and no existing client needs anything. From the network,
+three paths are open before a token exists and no others: `POST /v1/pair`, the
+dashboard's own files (they carry no figures), and nothing else — every other
+`/v1` path is closed by default, so a route added next year is private until
+someone decides otherwise.
+
+**Three decisions inside it are worth stating, because each had an easier
+wrong answer.**
+
+- **`--lan` is a run flag, not a setting.** Storing it would mean a laptop
+  opened in a coworking space carries a decision made at home on a trusted
+  network. The *devices* persist — walking to the tablet again after every
+  restart would be its own punishment — but the open door does not.
+- **One named address, never `0.0.0.0`.** The wildcard accepts on every
+  interface the machine has now or acquires later: a VPN coming up, a container
+  bridge, a tethered phone. None of those is what anyone agreed to. One
+  address is a promise that can be shown on screen and checked, and it is the
+  address the pairing panel displays.
+- **The DNS-rebinding defence is widened by exactly one host.** `checkOrigin`
+  refuses a browser request whose `Host` is not loopback, which is what stops a
+  name an attacker controls from resolving to an address we answer on.
+  Admitting the whole private range would leave that door open for every
+  address in it; admitting the single address the user chose costs exactly the
+  feature and nothing around it.
+
+The pairing store itself (`internal/pairing`) was built and tested a fortnight
+earlier and is unchanged: six-digit single-use codes, five-minute expiry,
+burned after five wrong guesses, constant-time comparison, a full-length token
+that does not expire, and per-device revocation that takes effect on the next
+request.
+
+**The token travels as a header, and as a WebSocket subprotocol.** A cookie
+would ride along on requests the user did not make, which is what makes CSRF
+possible, and this API starts sessions and runs commands. A browser's
+`WebSocket` constructor cannot set headers, so `/v1/live` takes the token as
+`caprock.device.<token>` and echoes it back — not as a query parameter, which
+would write it into every access log and browser history entry on the device.
+
+**Rules out:** a relay of ours (sessions would pass through a machine we run,
+which contradicts rule 4 and three sentences on the site); binding the wildcard
+address; a stored "LAN on" setting; pairing from a device that is already
+paired — a tablet is somewhere to read figures, not a second control room, so
+issuing codes and revoking devices stay loopback-only.
+
+**Revisit if** somebody needs this from outside their own network. That is a
+different decision with different costs (see FB-019), and the honest answer
+today is Tailscale, which people already install for Claude Code.

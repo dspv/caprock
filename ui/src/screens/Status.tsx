@@ -4,6 +4,7 @@ import { fmtDuration, fmtUSD } from '@/lib/format'
 import { Empty, Panel } from '@/components/ui'
 import { usePlan } from '@/components/PlanPicker'
 import { LicenseField } from '@/components/LicenseField'
+import { Pairing } from '@/components/Pairing'
 
 export function StatusScreen() {
   const st = useApi(() => api.status(), [], { live: false, intervalMs: 5000 })
@@ -46,6 +47,7 @@ export function StatusScreen() {
   return (
     <div className="grid gap-3 max-w-3xl">
       <SettingsPanel />
+      <Pairing />
       <Panel title="Daemon">
         <table className="w-full text-[12px]">
           <tbody>
@@ -112,8 +114,8 @@ function SettingsPanel() {
           <span>
             <span className="text-fg">Check GitHub for new releases</span>
             <span className="block text-[11px] text-fg-muted">
-              The only outbound call Caprock makes. No usage data is sent, and it
-              is checked at most once a day.
+              Asks GitHub for a version number, at most once a day. No usage
+              data is sent, and nothing is sent to us.
             </span>
           </span>
         </label>

@@ -137,6 +137,22 @@ func (s *Store) ClearCode() {
 	s.code, s.attempts = "", 0
 }
 
+// Code returns the outstanding code, or "" when there is none or it has
+// expired.
+//
+// For showing the owner what to type into the other device — which is the only
+// way pairing works — and for nothing else. It is never sent to anything but a
+// loopback request, and never used to decide access: Redeem is what checks a
+// code, in constant time, with the attempt counter behind it.
+func (s *Store) Code() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.code == "" || s.Now().Sub(s.codeAt) > CodeTTL {
+		return ""
+	}
+	return s.code
+}
+
 // CodeActive reports whether a code is outstanding and still valid, and how
 // long it has left. For showing a countdown, never for deciding access.
 func (s *Store) CodeActive() (bool, time.Duration) {

@@ -39,11 +39,50 @@ The installer writes, for each of the nine events, a matcher-less entry (`matche
 
 ## HTTP API (daemon, `127.0.0.1:4173`)
 
+### Who may connect, and from where
+
+Loopback by default and nothing else. `caprock up --lan` opens a **second**
+listener on one named private IPv4 address — never `0.0.0.0` — and from that
+moment one rule decides every request: **anything that did not come from this
+machine must carry a device token** ([ADR-029](08-decisions.md)).
+
+- **Loopback is unaffected.** No token, no change, no existing client touched.
+- **From the network, three things are reachable without a token:** `POST
+  /v1/pair`, the dashboard's own files (they carry no figures), and nothing
+  else. Every other `/v1` path is closed by default, so a route added later is
+  private until someone decides otherwise.
+- **The token is a header**, `X-Caprock-Device`, or — on `/v1/live`, where a
+  browser cannot set one — the WebSocket subprotocol `caprock.device.<token>`,
+  echoed back to complete the handshake. Never a query parameter: that writes a
+  bearer token into every access log and browser history entry on the device.
+- **`--lan` is a run flag, never stored.** Paired devices survive a restart;
+  the decision to listen does not.
+- **Refusal is `401` with `{error, detail}`**, not a redirect — the caller is
+  usually `fetch()`, and a redirect to HTML becomes a parse error three frames
+  later.
+
+**Pairing endpoints.** `GET /v1/pair/state`, `POST /v1/pair/code` and `DELETE
+/v1/pair/devices/{id|all}` are **loopback-only, enforced in the handler** rather
+than by the gate: a paired tablet is somewhere to read figures, not a second
+control room, and it must not be able to admit a third device or revoke the
+laptop that let it in. `POST /v1/pair` takes `{code, name}` and returns
+`{token, id, name}`; it is the one call a device makes before it is trusted, and
+it answers the same way for a wrong, expired, exhausted or never-issued code,
+because every distinction tells a guesser how close they are.
+
+Codes are six digits, single-use, valid five minutes, and burned after five
+wrong guesses (`internal/pairing`, unchanged since it was written). Device
+tokens are full length and do not expire; revocation takes effect on the next
+request. The guest list lives in `devices.json` at mode 0600, beside the
+licence key and the report bot token, and never in `config.json`.
+
 ### Cross-site request protection
 
 **Binding to loopback is not an authentication boundary against a browser.** Any page the user visits while the daemon runs can send requests to `127.0.0.1`; the same-origin policy stops that page *reading* the response, but not *sending* the request and not what the request does. `POST /v1/agents` executes a command from its body, so an unguarded forgery is remote code execution from a web page.
 
 Guarding only a *present* cross-site `Origin` — the shape `if o != "" && !isLoopbackOrigin(o)` — is therefore wrong, and was the live defect: browsers omit `Origin` entirely on cross-site **simple requests** (an HTML form POST, or `fetch` with a `text/plain` body), so the check was skipped in exactly the case that mattered. **A missing `Origin` is never trusted for a state-changing method.**
+
+When `--lan` is on, the loopback tests above admit **exactly one further host**: the private address the daemon was told to bind. Not the private range — the rebinding defence exists to stop a name an attacker controls from resolving to an address we answer on, and admitting 192.168/16 would leave that open for every address in it.
 
 Every request under `/v1` passes `checkOrigin` (`internal/api/csrf.go`) before routing. The layers, in order:
 

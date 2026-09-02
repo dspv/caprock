@@ -18,7 +18,7 @@ started) · **building** · **shipped** (in a release, with the version) ·
 | FB-022 | 2026-08-28 | Dima  | Make the web terminal good enough to live in, like iTerm2                    | shipped  | v0.33.0           |
 | FB-021 | 2026-08-28 | Vova  | Shift+Enter inserts a newline on an empty prompt, submits once there is text | shipped  | v0.32.1           |
 | FB-020 | 2026-08-28 | Dima  | Show what a cache hit rate actually means, without shouting                  | shipped  | v0.32.0           |
-| FB-019 | 2026-08-27 | Dima  | Reach Caprock from a tablet or phone, the way Claude Code is                 | open     | —                 |
+| FB-019 | 2026-08-27 | Dima  | Reach Caprock from a tablet or phone, the way Claude Code is                 | part     | next release      |
 | FB-018 | 2026-08-27 | Vova  | Shift+Enter did not work for him; Option+Enter was what he pressed           | shipped  | v0.31.3           |
 | FB-017 | 2026-08-27 | Dima  | Wanted an update button, or at least clear steps per OS                      | shipped  | v0.31.2           |
 | FB-016 | 2026-08-27 | Almas | brew said "already installed" for a release that was already out             | shipped  | v0.31.2           |
@@ -332,7 +332,19 @@ Three routes, and they are not variations on one thing:
   would be a page explaining it and a dashboard that helps: show the address,
   check the tunnel is up, offer a QR.
 
-Held until somebody asks.
+**The LAN route shipped**, and the other two did not.
+
+`caprock up --lan` opens a second listener on one named private address; a
+device on the same network gets the pairing page, types a six-digit code read
+off the machine's own screen, and is issued a token it keeps. Every other
+request from the network is refused. Details and the three decisions inside it
+are in [ADR-029](../.ai/08-decisions.md).
+
+The premise correction above still stands, and is why the other two routes are
+still not built. A relay of ours would carry other people's sessions through a
+machine we run, which contradicts rule 4 and three sentences on the site.
+Tailscale works from anywhere and costs us nothing to support beyond a page
+explaining it — that is the answer if somebody asks for a café, and nobody has.
 
 ### FB-018 — Option+Enter, not Shift+Enter
 

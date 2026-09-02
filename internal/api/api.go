@@ -33,6 +33,7 @@ import (
 	"github.com/dspv/caprock/internal/license"
 	"github.com/dspv/caprock/internal/loop"
 	"github.com/dspv/caprock/internal/narrate"
+	"github.com/dspv/caprock/internal/pairing"
 	"github.com/dspv/caprock/internal/premium"
 	"github.com/dspv/caprock/internal/store"
 	"github.com/dspv/caprock/internal/update"
@@ -41,10 +42,17 @@ import (
 // Deps is everything the API needs from the daemon.
 type Deps struct {
 	Store *store.Store
-	Bus   *bus.Bus
-	Table *cost.Table
-	Log   *slog.Logger
-	Hook  http.Handler // POST /v1/hook (hookd)
+	// Pairing decides which devices on the local network may be served. Nil
+	// when LAN access is off, which is the default and the usual case — see
+	// lanauth.go.
+	Pairing *pairing.Store
+	// LANURL is the address a second device types in, empty when LAN access is
+	// off. Shown on the pairing screen and encoded in its QR code.
+	LANURL string
+	Bus    *bus.Bus
+	Table  *cost.Table
+	Log    *slog.Logger
+	Hook   http.Handler // POST /v1/hook (hookd)
 	// Reporter sends a weekly report on demand, so somebody can find out
 	// whether their bot works without waiting for Monday. Nil disables the
 	// endpoint rather than crashing it.
@@ -230,7 +238,13 @@ func New(d Deps) *Server {
 	if d.IdleAfter <= 0 {
 		d.IdleAfter = 5 * time.Minute
 	}
-	s := &Server{d: d, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log), hist: newHistoryCache(historyTTL, d.Now)}
+	lanHost := ""
+	if d.LANURL != "" {
+		if u, err := url.Parse(d.LANURL); err == nil {
+			lanHost = u.Hostname()
+		}
+	}
+	s := &Server{d: d, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newHistoryCache(historyTTL, d.Now)}
 	m := s.mux
 	m.HandleFunc("GET /v1/sessions", s.handleSessions)
 	m.HandleFunc("GET /v1/sessions/{id}", s.handleSession)
@@ -240,6 +254,13 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/sessions/{id}/diff", s.handleSessionDiff)
 	m.HandleFunc("GET /v1/stats/summary", s.handleSummary)
 	m.HandleFunc("GET /v1/update", s.handleUpdate)
+	// Pairing. Only the redeem endpoint is reachable from the network; the
+	// rest are refused off-loopback inside the handlers, so a paired tablet
+	// cannot admit a third device or revoke the laptop that let it in.
+	m.HandleFunc("GET /v1/pair/state", s.handlePairState)
+	m.HandleFunc("POST /v1/pair/code", s.handlePairNewCode)
+	m.HandleFunc("POST /v1/pair", s.handlePairRedeem)
+	m.HandleFunc("DELETE /v1/pair/devices/{id}", s.handlePairRevoke)
 	m.HandleFunc("POST /v1/update/check", s.handleUpdateCheck)
 	m.HandleFunc("GET /v1/settings", s.handleGetSettings)
 	m.HandleFunc("PUT /v1/settings", s.handlePutSettings)
@@ -293,13 +314,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Cache-Control", "no-store")
+	// Before anything else: a request from the network gets nothing until it
+	// has proved which device it is. Loopback is unaffected.
+	if !s.pairingGate(w, r) {
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/v1/") {
 		// Refuse anything that cannot be shown to come from the dashboard
 		// itself or from a real local client. The same-origin policy does NOT
 		// protect this API — it stops a page reading the response, not sending
 		// the request — and POST /v1/agents runs a command from its body. See
 		// csrf.go for the layering and why a missing Origin is not trusted.
-		if reason := checkOrigin(r); reason != "" {
+		if reason := checkOrigin(r, s.lanHost()); reason != "" {
 			http.Error(w, reason, http.StatusForbidden)
 			return
 		}
@@ -1504,4 +1530,18 @@ func agentFilter(v string) (store.AgentFilter, error) {
 	default:
 		return "", fmt.Errorf("unknown agent %q: use claude, opencode, gemini, or omit for all", v)
 	}
+}
+
+// lanHost is the bare address of the LAN listener, or "" when there is none.
+// Used by the origin check, which must admit the one address this daemon
+// answers on and no other.
+func (s *Server) lanHost() string {
+	if s.d.LANURL == "" {
+		return ""
+	}
+	u, err := url.Parse(s.d.LANURL)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
 }

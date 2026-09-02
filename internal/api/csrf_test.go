@@ -377,9 +377,9 @@ func TestCheckOriginUnit(t *testing.T) {
 		{"post foreign origin json", http.MethodPost, map[string]string{"Origin": "https://evil.example", "Content-Type": "application/json"}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := checkOrigin(mk(tc.method, tc.hdr)) == ""
+			got := checkOrigin(mk(tc.method, tc.hdr), "") == ""
 			if got != tc.allowed {
-				t.Fatalf("allowed = %v, want %v (reason %q)", got, tc.allowed, checkOrigin(mk(tc.method, tc.hdr)))
+				t.Fatalf("allowed = %v, want %v (reason %q)", got, tc.allowed, checkOrigin(mk(tc.method, tc.hdr), ""))
 			}
 		})
 	}
@@ -404,7 +404,7 @@ func TestCSRFRebindingHostRefused(t *testing.T) {
 		for k, v := range hdr {
 			req.Header.Set(k, v)
 		}
-		if reason := checkOrigin(req); reason == "" {
+		if reason := checkOrigin(req, ""); reason == "" {
 			t.Errorf("a rebound Host was accepted with %v; DNS-rebinding layer is not working", hdr)
 		}
 	}
@@ -413,7 +413,7 @@ func TestCSRFRebindingHostRefused(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "http://caprock.internal:4173/v1/agents", strings.NewReader("{}"))
 	req.Host = "caprock.internal:4173"
 	req.Header.Set("Content-Type", "application/json")
-	if reason := checkOrigin(req); reason != "" {
+	if reason := checkOrigin(req, ""); reason != "" {
 		t.Errorf("non-browser client refused by the Host check: %q", reason)
 	}
 }
