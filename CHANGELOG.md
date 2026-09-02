@@ -9,6 +9,28 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.47.0] - 2026-09-02
+
+### Added
+
+- **Pick up a session Caprock did not start.** It never types into a process it
+  did not launch — two writers on one terminal interleave characters and ruin
+  both — so a session you started yourself was readable here and nothing else.
+
+  There is now a button on it. `claude --resume` starts a *second* process on
+  the same conversation, with the history read from disk: nothing is taken away
+  from the terminal that already has it, and the new process is one Caprock
+  started, so it can be typed into like any other. The stats, the timeline and
+  the terminal all work on it.
+
+  While the original is still running the copy branches instead —
+  `--fork-session`, a new id — because two live processes sharing one id would
+  write a single transcript between them and each end up holding half the
+  other's turns. Once it has ended, it simply continues.
+
+  The command is offered for copying too, for people who would rather stay in
+  their own terminal.
+
 ## [0.46.0] - 2026-09-02
 
 ### Added

@@ -407,6 +407,14 @@ export interface SpawnRequest {
   agent?: 'claude' | 'gemini'
   cwd?: string; chat?: boolean; create?: boolean; worktree?: string
   model?: string; permission_mode?: string; args?: string[]
+  /** Continue an existing conversation instead of starting a new one. Caprock
+   *  cannot type into a process it did not start, so picking a session up
+   *  means starting a second one on the same history. */
+  resume?: string
+  /** Branch rather than continue: a new session id for the copy, leaving the
+   *  original alone. Needed when the session being picked up is still
+   *  running, or both would write one transcript between them. */
+  fork?: boolean
 }
 
 async function post<T>(path: string, body: unknown, method = 'POST'): Promise<T> {

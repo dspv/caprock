@@ -32,10 +32,28 @@ type SpawnRequest struct {
 	PermissionMode string `json:"permission_mode,omitempty"` // --permission-mode
 	Command        string `json:"command,omitempty"`         // default "claude"
 	// Agent picks which coding agent to launch: "claude" (default) or
-	// "gemini". They take different flags — gemini has no --session-id and
-	// spells the model -m — so the argv is built per agent rather than
+	// "gemini". They take different flags — gemini spells the model -m and
+	// needs --skip-trust — so the argv is built per agent rather than
 	// pretending one shape fits both.
 	Agent string `json:"agent,omitempty"`
+	// Resume continues an existing conversation instead of starting a new one.
+	//
+	// This is how a session that lives in somebody's terminal can be picked up
+	// inside Caprock. It cannot type into a process it did not start — two
+	// writers on one PTY interleave characters and ruin both — so it starts a
+	// second process on the same conversation, which is what `--resume` is for.
+	// The history is on disk, so nothing is lost and nothing is fought over.
+	Resume string `json:"resume,omitempty"`
+	// Fork branches the resumed conversation into a new session id rather than
+	// reusing the original.
+	//
+	// Set when the session being picked up is still running somewhere: two live
+	// processes claiming one id would write the same transcript and each end up
+	// with half the other's turns. A fork keeps the history and leaves the
+	// original alone. Claude Code refuses --session-id alongside --resume
+	// unless --fork-session is present, which is the same distinction from the
+	// other side.
+	Fork bool `json:"fork,omitempty"`
 	// GeminiKey is the key the daemon holds, passed into the child's
 	// environment. Never accepted from the browser — the API fills it in from
 	// settings, so a page cannot hand a spawned process someone else's
@@ -337,7 +355,19 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		args = append(args, req.Args...)
 	default:
 		command = m.claude
-		args = []string{"--session-id", sessionID}
+		switch {
+		case req.Resume != "" && req.Fork:
+			// A branch: the original keeps running under its own id, and this
+			// process gets a fresh one. Both flags are required together —
+			// Claude Code refuses --session-id with --resume otherwise.
+			args = []string{"--resume", req.Resume, "--fork-session", "--session-id", sessionID}
+		case req.Resume != "":
+			// Continuing the same conversation, which already has an id.
+			args = []string{"--resume", req.Resume}
+			sessionID = req.Resume
+		default:
+			args = []string{"--session-id", sessionID}
+		}
 		if req.Model != "" {
 			args = append(args, "--model", req.Model)
 		}

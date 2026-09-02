@@ -612,3 +612,69 @@ func TestUnmappableModeIsLeftOffRatherThanGuessed(t *testing.T) {
 		t.Errorf("an unmappable mode was guessed at: %v", f.lastSpec.Args)
 	}
 }
+
+// Caprock cannot type into a session it did not start: two writers on one PTY
+// interleave characters and ruin both, which is why rule 7 exists. What it can
+// do is start a second process on the same conversation — the history is on
+// disk, so nothing is lost and nothing is fought over.
+func TestResumingContinuesAnExistingConversation(t *testing.T) {
+	m, _, f := newMgr(t)
+	defer m.Shutdown()
+
+	const existing = "61d26e6d-8788-4ba6-aac2-547c957a9cd2"
+	if _, err := m.Spawn(context.Background(), SpawnRequest{
+		Cwd: t.TempDir(), Resume: existing,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(f.lastSpec.Args, " ")
+	if !strings.Contains(joined, "--resume "+existing) {
+		t.Errorf("the conversation was not resumed: %v", f.lastSpec.Args)
+	}
+	// Claude Code refuses both: --session-id names a new session, --resume an
+	// existing one. Sending both is an error at the binary, after the terminal
+	// has already opened.
+	if strings.Contains(joined, "--session-id") {
+		t.Errorf("--session-id was sent alongside --resume: %v", f.lastSpec.Args)
+	}
+}
+
+func TestForkingBranchesRatherThanSharingAnId(t *testing.T) {
+	// Set when the original is still running somewhere. Two live processes
+	// claiming one id would write the same transcript and each end up with half
+	// the other's turns.
+	m, _, f := newMgr(t)
+	defer m.Shutdown()
+
+	const existing = "61d26e6d-8788-4ba6-aac2-547c957a9cd2"
+	ag, err := m.Spawn(context.Background(), SpawnRequest{
+		Cwd: t.TempDir(), Resume: existing, Fork: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(f.lastSpec.Args, " ")
+	for _, must := range []string{"--resume " + existing, "--fork-session", "--session-id"} {
+		if !strings.Contains(joined, must) {
+			t.Errorf("a fork is missing %q: %v", must, f.lastSpec.Args)
+		}
+	}
+	if ag.SessionID == existing {
+		t.Error("a fork reused the original's id; both would write one transcript")
+	}
+}
+
+func TestANormalSpawnStillGetsItsOwnId(t *testing.T) {
+	m, _, f := newMgr(t)
+	defer m.Shutdown()
+	if _, err := m.Spawn(context.Background(), SpawnRequest{Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(f.lastSpec.Args, " ")
+	if !strings.Contains(joined, "--session-id fixed-session-id") {
+		t.Errorf("a plain spawn lost its session id: %v", f.lastSpec.Args)
+	}
+	if strings.Contains(joined, "--resume") {
+		t.Errorf("a plain spawn resumed something: %v", f.lastSpec.Args)
+	}
+}
