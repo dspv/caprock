@@ -33,6 +33,8 @@ func TestLookupPrefixAndProviderIDs(t *testing.T) {
 		"claude-3-5-haiku-20241022":                    "claude-3-5-haiku",
 		"CLAUDE-HAIKU-4-5":                             "claude-haiku-4-5",
 		"anthropic.claude-opus-4-1-20250805-v1:0":      "claude-opus-4-1",
+		"claude-fable-5-1":                             "claude-fable-5-1",
+		"claude-fable-5":                               "claude-fable-5",
 	}
 	for in, want := range cases {
 		row, ok := tb.Lookup(in)
@@ -223,6 +225,31 @@ func TestEveryModelHasExactlyOneCurrentPrice(t *testing.T) {
 	for _, m := range tbl.Models {
 		if n := current[m.ID]; n != 1 {
 			t.Errorf("%s has %d current rows (exactly one row must have no `until`)", m.ID, n)
+		}
+	}
+}
+
+func TestFable51CacheReadsAtItsOwnRate(t *testing.T) {
+	tb, _ := Embedded()
+
+	// Fable 5.1 reads cache at 0.025x input, not the 0.1x every other row
+	// follows, so the $0.25 looks like a typo of Fable 5's $1.00 and sits one
+	// character away from a row that would charge four times as much.
+	for _, tc := range []struct {
+		model string
+		want  float64
+	}{
+		{"claude-fable-5-1", 0.25},
+		{"claude-mythos-5-1", 0.25},
+		{"claude-fable-5", 1.0},
+	} {
+		got, ok := tb.Price(tc.model, event.TokenDelta{CacheRead: 1_000_000})
+		if !ok {
+			t.Errorf("%s has no price", tc.model)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("%s: 1M cache-read tokens cost $%.2f, want $%.2f", tc.model, got, tc.want)
 		}
 	}
 }
