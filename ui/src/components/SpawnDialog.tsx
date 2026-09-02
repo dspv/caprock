@@ -17,14 +17,17 @@ const DEFAULT_MODE = 'acceptEdits'
 // files, edits them and runs commands in a directory — so it belongs in this
 // dialog rather than in a chat panel. Its models are Google's, and the prices
 // differ by a factor of twenty-five, so they are named here too.
-// Every id here is one the installed Gemini CLI recognises *and* the pricing
-// table can cost, checked against both — an earlier list was written from
-// memory and two of its three models did not exist, which fails at the binary
-// after the terminal has already opened.
+// Every id here answered a real prompt on a real key, and is one the pricing
+// table can cost. Both halves are needed and neither is enough: the first list
+// was written from memory and two of three did not exist; the second was
+// checked against the CLI bundle and pricing.json, and still offered
+// `gemini-2.5-flash-lite`, which Google has closed to new keys, and
+// `gemini-3.1-pro-preview`, which a free key cannot call at all
+// (`generate_content_free_tier_input_token_count, limit: 0`).
 const GEMINI_MODELS: [value: string, label: string][] = [
-  ['gemini-2.5-flash-lite', 'Flash Lite 2.5 · cheapest'],
-  ['gemini-3.5-flash', 'Flash 3.5 · balanced'],
-  ['gemini-3.1-pro-preview', 'Pro 3.1 · most capable'],
+  ['gemini-3.5-flash-lite', 'Flash Lite 3.5 · cheapest'],
+  ['gemini-2.5-flash', 'Flash 2.5 · older, cheap'],
+  ['gemini-3.5-flash', 'Flash 3.5 · most capable here'],
 ]
 
 const MODELS: [value: string, label: string][] = [

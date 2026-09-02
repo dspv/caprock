@@ -9,6 +9,21 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.44.4] - 2026-09-02
+
+### Fixed
+
+- **Two of the three Gemini models still could not be used.** The list was
+  checked against the installed CLI and the pricing table, and both said these
+  were fine. A real key says otherwise: Google has closed
+  `gemini-2.5-flash-lite` to new keys, and `gemini-3.1-pro-preview` is barred
+  on a free key by quota (`generate_content_free_tier_input_token_count,
+  limit: 0`) — so picking either opened a terminal and then failed.
+
+  The three offered now each answered a real prompt on a real key, and are
+  priced. This is the third pass over one short list: written from memory,
+  then checked against the CLI bundle, and only the live call was right.
+
 ## [0.44.3] - 2026-09-02
 
 ### Fixed
