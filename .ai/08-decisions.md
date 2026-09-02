@@ -56,7 +56,13 @@ The much larger population runs `claude` in a terminal today and wants to see wh
 
 ## ADR-005 — Monetization: free OSS through Phases 0–1; open-core deferred; solo mode free forever
 
-**Date:** 2026-08-18 · **Status:** accepted
+**Date:** 2026-08-18 · **Status:** accepted, and its condition has since been met — see [ADR-022](#adr-022--the-licence-key-is-an-offline-string-with-an-expiry-and-nothing-more)
+
+> Read the "Rules out" below with its scope: it forbade paid surfaces **in
+> Phases 0–1**, and the revisit condition — Phase 2 shipping with measurable
+> pull — is what happened. Paid plans on an offline licence key are live. Solo
+> mode is still free forever, which is the part this entry says is never
+> revisited.
 
 Adoption friction is the enemy at launch; the trust story is "local-first, zero servers, runs on the subscription you already pay for". The open-core (team/cloud tier) decision waits for post-Phase-2 traction.
 
@@ -232,7 +238,15 @@ The trade is a warning against a broken install, so the warning stays. Measured 
 
 ## ADR-019 — `caprock up` detaches by default; hook-install consent is a TTY prompt (or `--yes`); sessions end on `SessionEnd`, or after an hour of silence
 
-**Date:** 2026-08-18 · **Status:** accepted · *repo-prep decision (made while building T1–T6; resolves OQ-08)*
+**Date:** 2026-08-18 · **Status:** accepted, except for session lifetime — **that part is superseded by [ADR-028](#adr-028--a-session-ends-when-its-process-does)** · *repo-prep decision (made while building T1–T6; resolves OQ-08)*
+
+> **The timeouts below are history.** A session no longer ends after an hour, or
+> after any period of silence: it ends when its process does. The "Revisit if"
+> at the foot of this entry asked for exactly the evidence that arrived —
+> 44 sessions paused for more than an hour and then continued — so the sweep is
+> now a backstop for sessions with no known pid, and `SessionEnd` no longer ends
+> a session either, because it also fires on `/clear` and Escape. Read ADR-028
+> for what replaced this.
 
 `caprock up` re-executes itself as a detached background process logging to `<data_dir>/caprock.log` and returns once `runtime.json` appears; `--foreground` keeps it attached (dev, CI, service managers); `caprock down` asks the daemon to stop over `POST /v1/shutdown` with the per-run token (works identically on Windows, no signals). Hook install: when any of the registered events is missing and stdin is a TTY, `up` explains what it will write and asks `Install now? [Y/n]`; `--yes` answers for scripts; a non-TTY without `--yes` skips with a hint (transcript tailing still works). Session lifecycle: `active` → `idle` after 5 min → `ended` after 12 h without events, so the Now screen shows what is running today rather than every session ever ingested (superseded by the 2026-08-31 update below). The `caprock-hook` binary is copied from beside the `caprock` executable into the data dir; if absent, `<caprock> hook` (a hidden subcommand over the same `internal/shim` code) is registered instead, so a single-binary install still works.
 
@@ -554,6 +568,10 @@ line, and the answer is no.
 ## ADR-026 — Gemini CLI is a session Caprock starts, not a chat panel it owns
 
 **Date:** 2026-09-02 · **Status:** accepted
+
+> **The key is stored now.** Reading it only from the environment made a
+> feature nobody could reach; [ADR-025](#adr-025--keys-go-in-the-interface-stored-write-only-because-a-key-nobody-can-enter-is-a-feature-nobody-uses)
+> reverses the storage decision below. Everything else here still holds.
 
 [ADR-023](#adr-023--gemini-runs-on-a-key-caprock-never-holds-read-from-the-environment)
 put a Gemini key to work answering questions *about* Caprock's own data — a

@@ -2,7 +2,7 @@
 
 **Status: the observation half is built.** Sessions, turns and tool calls are
 imported from OpenCode's database, tagged with their agent, and shown on the
-same screens as Claude Code. Live SSE and session control are not built and are
+same screens as Claude Code. Session control is not built; live SSE is (`internal/opencode/stream.go`) and are
 scoped below. Everything below was
 measured against a real OpenCode installation, not inferred from documentation;
 where a number appears it came from a live database.
@@ -113,7 +113,7 @@ real installation rather than a fixture test. On the owner's machine it reports
 carrying a file path — enough to confirm that per-repository and per-directory
 attribution both have the data they need.
 
-Fixture-based tests that run everywhere are step 6 and are not written yet.
+Fixture-based tests that run everywhere are step 6 and are written (`internal/opencode/fixture_test.go`).
 
 ## How it works
 
@@ -180,7 +180,7 @@ re-enabling the pricing table each turns it red.
 
 ## The agent filter
 
-The Now screen carries `both / claude / opencode` beside the pricing note, and
+The Now screen carries `all / claude / opencode / gemini` beside the pricing note, and
 it applies to the whole screen: today's totals, the live pulse, the activity
 feed, the projects list and the session cards all answer the same question. A
 filtered list beside an unfiltered total is how a reader ends up quoting a

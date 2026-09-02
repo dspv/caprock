@@ -2,7 +2,7 @@
 
 This file is the system prompt Caprock injects when it spawns the orchestrator
 session. It is loaded verbatim by `internal/orchestrator` and passed to
-`claude --append-system-prompt`. Keep it in English; edit it here, not in code.
+`claude --append-system-prompt-file`. Keep it in English; edit it here, not in code.
 
 The orchestrator is a normal Claude Code session with its own git worktree that
 coordinates worker sessions **only through hive files** — it never runs git on

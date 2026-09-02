@@ -116,15 +116,24 @@ and the OS keychain — tools that do nothing else — and it would put every
 buyer's security review in front of a two-person product. Helping someone not
 leak a key is worth paying for; taking custody of it is a different company.
 
-*This held when a feature needed a key.* The Gemini feature ([ADR-023](08-decisions.md))
-reads the user's Google AI Studio key from `GEMINI_API_KEY` in the daemon's
-environment at the moment of the call — never stored, never in `config.json`,
-never returned by any endpoint. The paragraph above is the reason: a key Caprock
-does not hold is a key Caprock cannot leak. The cost is a worse first run, and
-that was the right side of the trade.
+*This held until a feature needed a key.* The Gemini feature
+([ADR-023](08-decisions.md)) first read the user's Google AI Studio key from
+`GEMINI_API_KEY` in the daemon's environment and stored nothing — a key Caprock
+does not hold is a key Caprock cannot leak. The cost was a first run nobody
+completed: setting an environment variable for a background daemon and
+restarting it is not something a person does to try a feature.
+[ADR-025](08-decisions.md) reversed it. The key is entered in the dashboard and
+stored in `config.json` at mode 0600, write-only over HTTP — it can be set and
+cleared, never read back, and no endpoint returns it. The principle survives in
+a narrower form: the key never leaves the machine except to Google, on the
+user's own call.
 
-This is a candidate, not a decision. What premium contains should be settled by
-what the first paying users ask for.
+**This section is history: premium shipped.** It records the thinking before
+paid plans existed, and the question it poses — what premium should contain —
+was answered by building it: a daily spend cap, the weekly report, and Gemini on
+the user's own key, unlocked by an offline licence key
+([ADR-022](08-decisions.md)). What follows describes the waitlist page that came
+before the purchase page.
 
 **The instrument for finding that out is `/premium`.** An email field, one
 question — which of five things you would want first — and a free-text box. It
