@@ -68,10 +68,21 @@ export function NowScreen() {
   // unless "show ended" is ticked, and an agent's history is usually all
   // ended. So each is detected where it exists: the daemon reports whether it
   // reads OpenCode at all, and whether a gemini binary is on PATH.
+  // A filter chip is offered when there is something to filter — a session
+  // from that agent — not when the machine merely could run one. Having the
+  // gemini binary on PATH is what decides whether the New Session dialog
+  // offers Gemini; it says nothing about whether any Gemini session exists,
+  // and a first run showed `all · claude · gemini` above an empty screen with
+  // nothing to sort.
+  //
+  // OpenCode is the one exception, and for a reason rather than by accident:
+  // its sessions are usually all ended and older than the visible window, so
+  // the list genuinely cannot answer "is OpenCode here" — the daemon reporting
+  // that it reads OpenCode at all is the honest test.
   const agentsHere = AGENTS.filter(
     (a) => a.key === 'all' || a.key === 'claude' ||
       (a.key === 'opencode' && !!status.data?.opencode) ||
-      (a.key === 'gemini' && (!!status.data?.gemini_available || everySession.some((s) => s.agent === 'gemini'))),
+      (a.key === 'gemini' && everySession.some((s) => s.agent === 'gemini')),
   )
   const hasBoth = agentsHere.length > 2
   const working = list.filter((s) => s.activity.health === 'working' || s.activity.health === 'looping' || s.activity.health === 'error' || s.activity.health === 'waiting-on-you')

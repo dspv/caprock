@@ -9,6 +9,28 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.45.1] - 2026-09-02
+
+Both found by installing Caprock from scratch and reading the first screens the
+way somebody seeing it for the first time would.
+
+### Fixed
+
+- **The premium lock covered the sentence explaining the feature.** The caption
+  and the button were centred on the panel, so they landed exactly across the
+  middle of the text — "Off. Nothing is paused, whatever the day costs" was cut
+  mid-word by the thing selling it. Two earlier attempts tuned the preview's
+  opacity, which could not help: the problem was never how transparent the
+  overlay was, it was where it sat. It is a row underneath now, reading in the
+  order the eye already moves — here is the feature, here is what it costs —
+  and covering nothing.
+
+- **A `gemini` filter chip appeared on a machine with no Gemini sessions.**
+  Having the binary on PATH is what decides whether the New Session dialog
+  offers Gemini; it says nothing about whether any Gemini session exists. A
+  first run showed `all · claude · gemini` above an empty screen with nothing
+  to sort by. The chip now appears when there is something to filter.
+
 ## [0.45.0] - 2026-09-02
 
 ### Changed
