@@ -9,6 +9,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.44.5] - 2026-09-02
+
+### Fixed
+
+- **A session you left for lunch was closed while you were out.** 0.44.3 cut
+  the staleness threshold from twelve hours to one, on the reasoning that an
+  hour outlasts lunch. An hour *is* lunch: the first person to leave a terminal
+  and come back to it found the session gone from the dashboard. On the machine
+  this was checked against, 44 sessions had paused for over an hour and then
+  carried on working, and 86 of those pauses were between one and three hours —
+  a meeting, a walk, an afternoon on something else.
+
+  Eight hours now. The threshold only exists to catch a session that ended
+  without saying so — `kill -9`, a closed terminal, a crashed host — because
+  `SessionEnd` ends an ordinary session the moment it ends. So it can afford to
+  be slow, and the two mistakes are not symmetric: a stale row costs a line in
+  a list until the next sweep, while one wrongly ended vanishes from the
+  dashboard with its owner still working in it.
+
 ## [0.44.4] - 2026-09-02
 
 ### Added

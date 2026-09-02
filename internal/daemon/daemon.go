@@ -159,10 +159,25 @@ func newDaemon(ctx context.Context, opt Options) (*Daemon, error) {
 		opt.IdleAfter = 5 * time.Minute
 	}
 	if opt.EndAfter <= 0 {
-		// An hour outlasts lunch, and being wrong is cheap: the upsert revives
-		// an ended session on its next event. Twelve hours meant every session
-		// of the day was still "live" at midnight.
-		opt.EndAfter = time.Hour
+		// Eight hours: long enough that a working day's interruptions — lunch,
+		// a meeting, an afternoon on something else — never retire a session
+		// somebody is still in, and short enough that a session abandoned
+		// overnight is not still "live" the next morning.
+		//
+		// This was one hour for exactly one release, on the reasoning that an
+		// hour outlasts lunch. It does not: an hour *is* lunch, and the first
+		// user to leave his terminal and come back found his session closed.
+		// On the machine that finding was checked against, 44 sessions had
+		// paused for more than an hour and then carried on, 86 of those pauses
+		// between one and three hours.
+		//
+		// The threshold only matters when a session ends without saying so —
+		// kill -9, a closed terminal, a crashed host. SessionEnd handles every
+		// ordinary ending immediately, so this can afford to be slow, and the
+		// two errors are not symmetric: a stale row costs a line in a list
+		// until the sweep catches it, while a wrongly ended one disappears
+		// from the dashboard with its owner still working in it.
+		opt.EndAfter = 8 * time.Hour
 	}
 	if opt.DataDir == "" {
 		dir, err := config.EnsureDataDir()

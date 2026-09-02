@@ -189,3 +189,84 @@ func TestMarkIdle(t *testing.T) {
 		t.Fatalf("frames %+v", f)
 	}
 }
+
+// A working day has interruptions, and none of them mean the session is over.
+//
+// v0.44.3 set the end threshold to one hour on the reasoning that "an hour
+// outlasts lunch". An hour *is* lunch: the first user to leave his terminal and
+// come back found his session closed. On the machine that was checked against,
+// 44 sessions had paused for over an hour and then carried on, 86 of those
+// pauses between one and three hours.
+//
+// The threshold only exists for a session that ended without saying so —
+// kill -9, a closed terminal, a crashed host. SessionEnd handles every ordinary
+// ending immediately, so this can afford to be slow.
+func TestALunchBreakDoesNotEndASession(t *testing.T) {
+	ctx := context.Background()
+	r, sub := newRecorder(t)
+	base := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	r.Now = func() time.Time { return base }
+	if _, err := r.Record(ctx, &event.Event{SessionID: "lunch", Source: event.SourceHook, Kind: event.KindTurnUser, Ts: base}, SessionInfo{}); err != nil {
+		t.Fatal(err)
+	}
+	drain(sub)
+
+	// The default the daemon applies. Named here so a change to it has to
+	// change this test too, and whoever changes it reads why it is eight.
+	const endAfter = 8 * time.Hour
+
+	for _, away := range []time.Duration{
+		time.Hour,                    // lunch
+		90 * time.Minute,             // lunch and a walk
+		3 * time.Hour,                // a long meeting
+		7*time.Hour + 30*time.Minute, // most of a day on something else
+	} {
+		r.Now = func() time.Time { return base.Add(away) }
+		if err := r.MarkIdle(ctx, 5*time.Minute, endAfter); err != nil {
+			t.Fatal(err)
+		}
+		s, _ := store.GetSession(ctx, r.Store.DB(), "lunch")
+		if s.Status == store.StatusEnded {
+			t.Fatalf("a %s absence ended the session", away)
+		}
+	}
+
+	// Long enough that nobody is coming back to it today.
+	r.Now = func() time.Time { return base.Add(9 * time.Hour) }
+	if err := r.MarkIdle(ctx, 5*time.Minute, endAfter); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := store.GetSession(ctx, r.Store.DB(), "lunch")
+	if s.Status != store.StatusEnded {
+		t.Errorf("after 9h the backstop should have ended it, status %s", s.Status)
+	}
+}
+
+// And if it was wrong, the session comes back the moment its owner types.
+func TestAWronglyEndedSessionRevivesOnItsNextEvent(t *testing.T) {
+	ctx := context.Background()
+	r, sub := newRecorder(t)
+	base := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	r.Now = func() time.Time { return base }
+	if _, err := r.Record(ctx, &event.Event{SessionID: "back", Source: event.SourceHook, Kind: event.KindTurnUser, Ts: base}, SessionInfo{}); err != nil {
+		t.Fatal(err)
+	}
+	drain(sub)
+
+	r.Now = func() time.Time { return base.Add(9 * time.Hour) }
+	if err := r.MarkIdle(ctx, 5*time.Minute, 8*time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := store.GetSession(ctx, r.Store.DB(), "back"); s.Status != store.StatusEnded {
+		t.Fatalf("setup: status %s, want ended", s.Status)
+	}
+
+	later := base.Add(10 * time.Hour)
+	r.Now = func() time.Time { return later }
+	if _, err := r.Record(ctx, &event.Event{SessionID: "back", Source: event.SourceHook, Kind: event.KindTurnUser, Ts: later}, SessionInfo{}); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := store.GetSession(ctx, r.Store.DB(), "back"); s.Status != store.StatusActive {
+		t.Errorf("typing in an ended session left it %s", s.Status)
+	}
+}
