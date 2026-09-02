@@ -4,7 +4,7 @@ import { navigate } from '@/lib/router'
 import { live, useLive } from '@/lib/live'
 import { fmtAgo, fmtPct, fmtTokens, fmtUSD, shortId } from '@/lib/format'
 import { Badge, Empty, Panel, Skeleton, Stat } from '@/components/ui'
-import { ProjectsPanel, AGENTS, type AgentFilter } from '@/components/Projects'
+import { ProjectsPanel, AGENTS, agentName, type AgentFilter } from '@/components/Projects'
 import { ActivityFeed } from '@/components/ActivityFeed'
 import { LifetimeStrip } from '@/components/Lifetime'
 import { CacheStat } from '@/components/CacheStat'
@@ -46,13 +46,18 @@ export function NowScreen() {
   const list = agent === 'all'
     ? everySession
     : everySession.filter((s) => (s.agent ?? 'claude') === agent)
-  // Whether the control has anything to switch between. Neither the session
-  // list nor today's summary can answer this: the list holds only live
-  // sessions unless "show ended" is ticked, and a machine's OpenCode history
-  // is usually all ended and all older than today. The daemon reports whether
-  // it is reading OpenCode at all, which is the honest test — and it says so
-  // whether or not anything ran in the visible window.
-  const hasBoth = !!status.data?.opencode
+  // Only offer a filter for an agent this machine actually runs: a chip that
+  // always finds nothing is a control that lies about what is here. The
+  // session list cannot answer this on its own — it holds only live sessions
+  // unless "show ended" is ticked, and an agent's history is usually all
+  // ended. So each is detected where it exists: the daemon reports whether it
+  // reads OpenCode at all, and whether a gemini binary is on PATH.
+  const agentsHere = AGENTS.filter(
+    (a) => a.key === 'all' || a.key === 'claude' ||
+      (a.key === 'opencode' && !!status.data?.opencode) ||
+      (a.key === 'gemini' && (!!status.data?.gemini_available || everySession.some((s) => s.agent === 'gemini'))),
+  )
+  const hasBoth = agentsHere.length > 2
   const working = list.filter((s) => s.activity.health === 'working' || s.activity.health === 'looping' || s.activity.health === 'error' || s.activity.health === 'waiting-on-you')
   const rest = list.filter((s) => !working.includes(s) && s.status !== 'ended')
   const ended = list.filter((s) => s.status === 'ended')
@@ -137,7 +142,7 @@ export function NowScreen() {
               * slightly lighter grey — a control whose state you have to
               * squint at is one people misread. */
             <span className="inline-flex items-center gap-0.5 rounded-md bg-panel-2 p-0.5">
-              {AGENTS.map((a) => (
+              {agentsHere.map((a) => (
                 <button
                   key={a.key}
                   onClick={() => setAgent(a.key)}
@@ -197,7 +202,7 @@ export function NowScreen() {
           emptyHint={
             agent === 'all' ? undefined : (
               <>
-                Nothing from {agent === 'opencode' ? 'OpenCode' : 'Claude Code'} yet.
+                Nothing from {agentName(agent)} yet.
               </>
             )
           }
@@ -224,7 +229,7 @@ export function NowScreen() {
            * from this agent, in this window" — and telling a reader to start
            * `claude` when they filtered for OpenCode is advice for the wrong
            * program. */
-          <Empty title={`No ${agent === 'opencode' ? 'OpenCode' : 'Claude Code'} sessions here`}>
+          <Empty title={`No ${agentName(agent)} sessions here`}>
             Nothing from this agent in the current view. Switch to{' '}
             <button className="link underline" onClick={() => setAgent('all')}>all</button>{' '}
             to see everything.
@@ -398,13 +403,9 @@ export function SessionCard({ s, now }: { s: SessionSummary; now: number }) {
       <div className="px-3 pt-2 pb-1 flex items-center gap-2">
         <span className="font-medium truncate text-[15px]">{s.project || 'unknown project'}</span>
         <span className="mono text-[11px] text-fg-faint">{shortId(s.session_id)}</span>
-        {/* Only the second agent is labelled. Marking every Claude Code
-          * session too would put a badge on almost every row on most machines,
-          * which is noise: the label exists to answer "why is this one
-          * different", not to restate the common case. */}
-        {s.agent === 'opencode' && (
+        {s.agent && s.agent !== 'claude' && (
           <span className="text-[10px] uppercase tracking-[0.08em] text-fg-muted border border-border px-1 py-px rounded-sm">
-            opencode
+            {s.agent}
           </span>
         )}
         {s.git_branch && <span className="mono text-[11px] text-fg-muted truncate">{s.git_branch}</span>}

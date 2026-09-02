@@ -17,9 +17,13 @@ const DEFAULT_MODE = 'acceptEdits'
 // files, edits them and runs commands in a directory — so it belongs in this
 // dialog rather than in a chat panel. Its models are Google's, and the prices
 // differ by a factor of twenty-five, so they are named here too.
+// Every id here is one the installed Gemini CLI recognises *and* the pricing
+// table can cost, checked against both — an earlier list was written from
+// memory and two of its three models did not exist, which fails at the binary
+// after the terminal has already opened.
 const GEMINI_MODELS: [value: string, label: string][] = [
-  ['gemini-3.5-flash-lite', 'Flash Lite · cheapest'],
-  ['gemini-3.7-flash', 'Flash 3.7 · balanced'],
+  ['gemini-2.5-flash-lite', 'Flash Lite 2.5 · cheapest'],
+  ['gemini-3.5-flash', 'Flash 3.5 · balanced'],
   ['gemini-3.1-pro-preview', 'Pro 3.1 · most capable'],
 ]
 
@@ -37,6 +41,10 @@ const MODELS: [value: string, label: string][] = [
 // Short enough to survive a narrow window. The label has to carry what the
 // session will DO without being opened — a mode cut off mid-word ("asks before
 // com…") is the one label where truncation hides the consequence.
+// The modes the daemon can express as a Gemini --approval-mode; the rest fall
+// back to Gemini's own default, which asks.
+const GEMINI_MAPPED = new Set(['acceptEdits', 'auto', 'bypassPermissions', 'plan'])
+
 const MODES: [value: string, label: string][] = [
   ['acceptEdits', 'Accept edits · asks first'],
   ['plan', 'Plan · changes nothing'],
@@ -136,7 +144,11 @@ export function SpawnDialog({
             )}
             <div className="grid grid-cols-2 gap-3">
               <Field label="Model"><select className="input" value={model} onChange={(e) => setModel(e.target.value)}>{(agent === 'gemini' ? GEMINI_MODELS : MODELS).map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select></Field>
-              <Field label={agent === 'gemini' ? 'Permissions · not used by Gemini' : 'Permissions'}><select disabled={agent === 'gemini'} className="input" value={mode} onChange={(e) => setMode(e.target.value)}>{MODES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select></Field>
+              {/* Gemini spells these differently — default, auto_edit, yolo,
+                * plan — and the daemon maps onto them, so the control stays
+                * live for both. Two of Claude's six have no counterpart worth
+                * guessing at, and are marked rather than silently ignored. */}
+              <Field label="Permissions"><select className="input" value={mode} onChange={(e) => setMode(e.target.value)}>{MODES.map(([v, label]) => <option key={v} value={v}>{agent === 'gemini' && !GEMINI_MAPPED.has(v) ? `${label} · Gemini asks instead` : label}</option>)}</select></Field>
             </div>
             {/* Two settings that matter to a handful of runs and to nobody
               * else, folded away rather than deleted. Every field on screen is

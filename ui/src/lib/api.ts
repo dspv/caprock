@@ -19,7 +19,7 @@ export interface Session {
   owned: boolean
   /** Which coding agent produced this session. Absent means Claude Code,
    *  which is what every session was before OpenCode support. */
-  agent?: 'claude' | 'opencode'
+  agent?: 'claude' | 'opencode' | 'gemini'
 }
 
 export interface Stats {

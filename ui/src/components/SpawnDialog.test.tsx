@@ -54,6 +54,12 @@ describe('SpawnDialog', () => {
  * in this dialog. The two take different flags — no --session-id, model as -m,
  * no permission modes — so choosing one has to change what the request carries.
  */
+/** Ids the installed Gemini CLI recognises and pricing.json can cost. */
+const REAL_GEMINI_MODELS = [
+  'gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro',
+  'gemini-3.5-flash', 'gemini-3.1-pro-preview',
+]
+
 describe('choosing an agent', () => {
   it('offers no picker when the machine has only Claude', async () => {
     render(<SpawnDialog available onClose={() => {}} initialCwd="/x" />)
@@ -74,9 +80,22 @@ describe('choosing an agent', () => {
     expect(model.value).toMatch(/^gemini-/)
   })
 
-  it('greys out permissions for Gemini, which has none', async () => {
+  it('keeps permissions live for Gemini, which spells them differently', async () => {
+    // An earlier version greyed this out on the belief that Gemini had no
+    // permission modes. It has four — default, auto_edit, yolo, plan — and the
+    // daemon maps onto them, so disabling the control threw away a real choice.
     render(<SpawnDialog available geminiAvailable onClose={() => {}} initialCwd="/x" />)
     fireEvent.change(screen.getByLabelText<HTMLSelectElement>('Agent'), { target: { value: 'gemini' } })
-    expect(screen.getByLabelText(/Permissions/)).toBeDisabled()
+    expect(screen.getByLabelText(/Permissions/)).not.toBeDisabled()
+  })
+
+  it('offers only models the CLI and the pricing table both know', () => {
+    // Two of the three ids in the first version were written from memory and
+    // do not exist: the session opens a terminal, then dies at the binary.
+    // Every id here was checked against the installed CLI and pricing.json.
+    render(<SpawnDialog available geminiAvailable onClose={() => {}} initialCwd="/x" />)
+    fireEvent.change(screen.getByLabelText<HTMLSelectElement>('Agent'), { target: { value: 'gemini' } })
+    const offered = Array.from(screen.getByLabelText<HTMLSelectElement>(/Model/).options).map((o) => o.value)
+    for (const id of offered) expect(REAL_GEMINI_MODELS).toContain(id)
   })
 })

@@ -109,6 +109,25 @@ const (
 	AgentGemini = "gemini"
 )
 
+// geminiApprovalMode maps a Claude permission mode onto Gemini's --approval-mode,
+// which covers the same ground with four values instead of six: default (ask),
+// auto_edit (edits without asking), yolo (everything without asking), plan
+// (read-only). Claude's manual and dontAsk have no counterpart that is not a
+// guess about what the user meant, so they are left off and Gemini uses its own
+// default — asking is the safe end of that axis.
+func geminiApprovalMode(claudeMode string) string {
+	switch claudeMode {
+	case "acceptEdits":
+		return "auto_edit"
+	case "bypassPermissions", "auto":
+		return "yolo"
+	case "plan":
+		return "plan"
+	default:
+		return ""
+	}
+}
+
 // resolveGemini finds the Gemini CLI, which is an ordinary npm global install
 // rather than something with a conventional home — so PATH is the only place
 // worth looking.
@@ -286,11 +305,18 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		args = append(args, req.Args...)
 	case req.Agent == AgentGemini:
 		command = m.gemini
-		// Gemini CLI has no --session-id: it manages its own history, so the
-		// id here is Caprock's handle on the process and nothing is passed
-		// through. Model is -m; there is no permission-mode equivalent.
+		// Gemini CLI refuses to start in a directory it has not been told to
+		// trust, and in a PTY nobody is watching that is an invisible hang
+		// rather than an error. Caprock only ever launches a directory the user
+		// picked in the dialog, which is the same consent the prompt asks for.
+		args = []string{"--skip-trust", "--session-id", sessionID}
 		if req.Model != "" {
 			args = append(args, "-m", req.Model)
+		}
+		// Gemini spells the permission modes differently and accepts only its
+		// own four; an unmapped mode is left off rather than guessed at.
+		if mode := geminiApprovalMode(req.PermissionMode); mode != "" {
+			args = append(args, "--approval-mode", mode)
 		}
 		args = append(args, req.Args...)
 	default:

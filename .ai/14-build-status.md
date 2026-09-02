@@ -49,6 +49,52 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-09-02 (later) — Ten minutes with the real binary broke four assumptions
+
+The entry below ends by admitting the Gemini launch was verified against a fake
+binary, and that the first real run would be the user's. He asked for the CLI to
+be installed and tested instead. Every one of the four things the release
+assumed about `gemini` was wrong:
+
+- It **refuses to start in an untrusted directory** and waits for confirmation —
+  invisible inside a PTY. The same trap Claude Code sets, already handled there,
+  not looked for here. Fixed with `--skip-trust`, which is honest because
+  Caprock only launches the folder the user picked.
+- **Two of the three models did not exist.** `gemini-3.5-flash-lite` and
+  `gemini-3.7-flash` were written from memory. The session opens a terminal and
+  dies at the binary — the worst shape of failure, because it looks like it
+  worked.
+- **`--approval-mode` exists**, with four values covering Claude's six. The
+  dialog greyed the control out as "not used by Gemini" and discarded a real
+  choice.
+- **`--session-id` is accepted.** Omitted on the assumption it was not, which
+  cost the link between our row and the agent's own session.
+
+The general lesson is not about Gemini. A fake binary tests the code that builds
+the argv and nothing about whether the argv is right, so it validates the half
+that was never in doubt. `gemini --help` was available the whole time and would
+have answered all four questions before any of them shipped. This is the same
+finding as verifying in a browser rather than in a green suite: the suite was
+green here too.
+
+A fifth thing surfaced only from running it: **Gemini had been added to the
+launcher and to nothing else.** The session appeared in the list with no badge,
+no filter chip, and an empty state naming it Claude Code, because
+`agent === 'opencode'` was copied into three components as the test for "not
+Claude". One helper now decides the badge and the name. The general form of this
+bug is worth naming: a new agent touches the observer as much as the launcher,
+and only the launcher had a test.
+
+**What Caprock does not do for Gemini, stated rather than discovered:** it starts
+the session and then sees nothing. No hooks, no transcript, so turns, tokens and
+cost are all absent — the filter chip finds a live session with zero of
+everything. That is an honest boundary between control and observation, and the
+README says so on the same line as the feature.
+
+Still unverified: a live call with a real key. The stored key is empty, so the
+model ids are confirmed against the CLI bundle and `pricing.json` rather than
+against a response from Google.
+
 ### 2026-09-02 — The key starts a session, not a conversation about the bill
 
 **We built the wrong Gemini feature first.** Yesterday's entry describes a panel

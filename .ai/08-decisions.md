@@ -574,12 +574,29 @@ the ambient environment does not already set one, so the key entered once under
 works in every shell without being exported into any of them.
 
 **The flags are not the same, so the picker is not cosmetic.** Claude Code takes
-`--session-id`, `--model`, `--permission-mode`. Gemini CLI takes `-m` and has no
-notion of a permission mode or a caller-assigned session id. Sending Claude's
-argv to Gemini fails at the binary, so choosing the agent has to change the
-request: the model list swaps to Gemini's, and Permissions greys out rather than
-pretending to apply. The picker appears only when a `gemini` binary is on the
-daemon's PATH — a choice that fails on click is worse than no choice.
+`--model` and `--permission-mode`; Gemini CLI takes `-m` and `--approval-mode`,
+whose four values (`default`, `auto_edit`, `yolo`, `plan`) cover the same ground
+as Claude's six. Two of Claude's — `manual` and `dontAsk` — have no counterpart
+that is not a guess, and are left off so Gemini falls back to asking. Both
+accept `--session-id`, so Caprock's id is passed to either and the row in the
+sessions list names the same session the agent thinks it is in. The picker
+appears only when a `gemini` binary is on the daemon's PATH — a choice that
+fails on click is worse than no choice.
+
+**Gemini must be told the directory is trusted, or it does not start.** It
+refuses to run in an untrusted folder and waits for confirmation, which inside a
+PTY nobody is watching is an invisible hang rather than an error — the same trap
+Claude Code's folder-trust dialog sets, which Caprock already pre-accepts.
+Caprock passes `--skip-trust`, and the thing that makes that sound rather than
+reckless is that Caprock only ever launches a directory the user chose in the
+dialog: the click *is* the consent the prompt is asking for.
+
+**This section is a correction.** Its first version claimed Gemini had neither
+`--session-id` nor permission modes, and shipped a model list with two ids that
+do not exist. All four claims were written from memory rather than from
+`gemini --help`, and none survived ten minutes with the real binary installed.
+The models offered are now checked against both the CLI and `pricing.json`, so a
+session cannot open a terminal and then die on a model name Caprock invented.
 
 **Rule 7 is not bent by this.** "We never signal or type into a process we did
 not start" is about processes Caprock finds; this is a process Caprock starts,
