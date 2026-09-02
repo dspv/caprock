@@ -1,11 +1,12 @@
 {
   "version": "2026-09-02.1",
   "source": "https://platform.claude.com/docs/en/about-claude/pricing",
-  "fetched_at": "2026-08-18",
+  "fetched_at": "2026-09-02",
   "currency": "USD",
   "unit": "per_million_tokens",
   "notes": [
     "First-party Anthropic API prices. Amazon Bedrock and Google Vertex have separate partner pricing (regional endpoints +10%) and are not covered by this table (OQ-02).",
+    "fetched_at is the most recent read, not one date for every row: Anthropic prices were read on 2026-08-18, the non-Anthropic rows on 2026-08-27, the Gemini rows on 2026-09-01, and Fable 5.1 / Mythos 5.1 on 2026-09-02. Each note below carries the date for the rows it describes, because a single date on a table assembled over weeks tells a reader checking a figure nothing about that figure.",
     "cache_write_5m = 1.25x input, cache_write_1h = 2x input, cache_read = 0.1x input \u2014 per Anthropic's published multipliers. Claude Fable 5.1 and Claude Mythos 5.1 are the exception and read 0.025x ($0.25 per 1M), so those two rows deliberately break the 0.1x rule; both were read from the pricing page on 2026-09-02.",
     "Model ids are matched by prefix against the `model` field observed in transcripts (e.g. claude-opus-5, claude-sonnet-4-5-20250929). Longest prefix wins.",
     "context_window is the model's maximum input context in tokens as published; used for the 'context fill %' badge (OQ-07).",

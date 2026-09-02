@@ -7,7 +7,22 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **Claude Fable 5.1 and Mythos 5.1 in the pricing table**, contributed by
+  [@SergeAx](https://github.com/SergeAx) — the first outside contribution to
+  this repository. Cache reads on those two models cost 0.025× the input price
+  rather than the 0.1× every other Claude row follows, which makes `$0.25` look
+  like a typo of Fable 5's `$1.00`; the PR pins it with a test, so a later tidy
+  cannot quietly charge four times the real rate.
+
 ### Changed
+
+- **`fetched_at` in the pricing table names the most recent read**, and each
+  note carries the date for the rows it describes. One date on a table
+  assembled from three vendors over three weeks said 18 August while holding
+  prices read on 1 and 2 September — which tells a reader checking a figure
+  nothing about that figure.
 
 - **The Gemini key goes in the dashboard now.** It was read only from
   `GEMINI_API_KEY`, on the reasoning that a key Caprock never holds is one it
