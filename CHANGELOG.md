@@ -9,6 +9,17 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.49.2] - 2026-09-03
+
+### Fixed
+
+- **"Burn now" says it is measuring instead of extrapolating.** 0.49.1 made the
+  rate divide by the time it actually covers, which is correct arithmetic and
+  an alarming number: a daemon twenty seconds old showed $3,215/h, because
+  twenty seconds of a busy minute extrapolates to that. Until the window has
+  been lived through, the tile shows a dash and says it needs ten minutes of
+  running — a figure nobody can act on is worse than no figure.
+
 ## [0.49.1] - 2026-09-03
 
 Six figures that were quietly wrong, found by auditing the parts of the backend

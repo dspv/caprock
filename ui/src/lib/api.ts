@@ -203,7 +203,15 @@ export interface WorkShare {
   tokens_pct: number
   cost_pct: number
 }
-export interface Burn { window_min: number; usd_per_hour: number; tokens_per_min: number; turns: number }
+export interface Burn {
+  window_min: number
+  usd_per_hour: number
+  tokens_per_min: number
+  turns: number
+  /** The daemon has been up for less than the window, so the rate is an
+   *  extrapolation from a short sample rather than a measured ten minutes. */
+  filling?: boolean
+}
 
 export interface Summary {
   range: string

@@ -670,6 +670,11 @@ type Burn struct {
 	USDPerHour float64 `json:"usd_per_hour"`
 	TokPerMin  float64 `json:"tokens_per_min"`
 	Turns      int64   `json:"turns"`
+	// Filling is true while the daemon has been up for less than the window,
+	// so the screen can say "still measuring" rather than print a rate
+	// extrapolated from a handful of seconds. Honest arithmetic on twenty
+	// seconds of history still reads as an alarming number.
+	Filling bool `json:"filling,omitempty"`
 }
 
 // handleUpdate reports the cached release status. It performs no network I/O:
@@ -874,14 +879,14 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 		// saying the window was still filling. The spark on the same screen
 		// already refuses to extrapolate its last bucket for exactly this
 		// reason; this is the same rule, applied to the tile beside it.
-		covered := win
+		covered, filling := win, false
 		if up := s.d.Now().Sub(s.d.Started); !s.d.Started.IsZero() && up < win {
-			covered = up
+			covered, filling = up, true
 		}
 		if covered < time.Second {
 			covered = time.Second // a daemon that just started divides by nothing
 		}
-		resp.Burn = Burn{WindowMin: int(win / time.Minute), Turns: recent.Turns,
+		resp.Burn = Burn{WindowMin: int(win / time.Minute), Turns: recent.Turns, Filling: filling,
 			USDPerHour: recent.CostUSD / covered.Hours(),
 			TokPerMin:  float64(recent.TokensIn+recent.TokensOut+recent.CacheRead+recent.CacheWrite) / covered.Minutes()}
 	}
