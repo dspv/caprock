@@ -2,7 +2,11 @@
 
 package store
 
-import "golang.org/x/sys/windows"
+import (
+	"errors"
+
+	"golang.org/x/sys/windows"
+)
 
 // ProcessAlive reports whether a process is still running.
 //
@@ -24,10 +28,15 @@ func ProcessAlive(pid int) bool {
 	}
 	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
 	if err != nil {
-		// ERROR_ACCESS_DENIED means it exists and is not ours to open.
-		return err == windows.ERROR_ACCESS_DENIED
+		// ERROR_ACCESS_DENIED means it exists and is simply not ours to open —
+		// the same reasoning as EPERM on unix. errors.Is rather than a
+		// comparison because the syscall wrapper wraps it.
+		return errors.Is(err, windows.ERROR_ACCESS_DENIED)
 	}
-	defer windows.CloseHandle(h)
+	// The handle is only needed for the query below; a failure to close it
+	// leaks a handle for the life of the daemon and is worth a line in the log,
+	// but it must not change the answer.
+	defer func() { _ = windows.CloseHandle(h) }()
 
 	var code uint32
 	if err := windows.GetExitCodeProcess(h, &code); err != nil {

@@ -52,18 +52,24 @@ func TestAnUnknownPidIsNeverAlive(t *testing.T) {
 	}
 }
 
+// A process that lives long enough to be asked about, on every OS.
+//
+// Not `timeout` on Windows: it reads the console to allow a keypress to cancel
+// it, and under CI there is no console, so it exits immediately — which turns
+// "is this running process alive" into a test of a process that already
+// finished. `ping -n` to the loopback address is the portable stand-in that
+// Windows scripts have used for exactly this reason for decades.
 func sleeper() string {
 	if runtime.GOOS == "windows" {
-		return "cmd"
+		return "ping"
 	}
 	return "sleep"
 }
 
 func sleeperArgs() []string {
 	if runtime.GOOS == "windows" {
-		// timeout is the closest thing to sleep that ships with Windows, and
-		// /t 30 is long enough to outlive the test either way.
-		return []string{"/c", "timeout", "/t", "30", "/nobreak"}
+		// One ping a second, thirty of them. Long enough to outlive the test.
+		return []string{"-n", "30", "127.0.0.1"}
 	}
 	return []string{"30"}
 }
