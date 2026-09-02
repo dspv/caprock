@@ -11,6 +11,7 @@ import { TerminalView } from '@/components/Terminal'
 import { costBasisLong } from '@/components/CostBasis'
 import { agentName } from '@/components/Projects'
 import { usePlan } from '@/components/PlanPicker'
+import { ContinueSession } from '@/components/ContinueSession'
 
 type Tab = 'timeline' | 'notes' | 'changes' | 'terminal'
 
@@ -66,6 +67,16 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         {s.git_branch && <span className="mono text-[11px] text-fg-muted">{s.git_branch}</span>}
         <Badge health={s.activity.health} />
         {s.owned && s.status !== 'ended' && <OwnedControls id={id} />}
+        {/* A session Caprock did not start is readable and not typeable —
+          * rule 7, and for a good reason: two writers on one PTY interleave.
+          * What it can do is start a second process on the same conversation,
+          * which is what this offers. Only for Claude Code: Gemini has its own
+          * --resume with different semantics, and offering a button that means
+          * something slightly different per agent is worse than not offering
+          * it yet. */}
+        {!s.owned && (s.agent ?? 'claude') === 'claude' && (
+          <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={s.status !== 'ended'} />
+        )}
         <span className="text-[12px] text-fg-muted ml-auto num">{s.cwd}</span>
       </div>
       <div className="text-[13px]">
