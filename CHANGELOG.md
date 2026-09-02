@@ -9,7 +9,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
-## [0.47.1] - 2026-09-02
+## [0.48.0] - 2026-09-02
 
 ### Fixed
 
@@ -20,12 +20,8 @@ Phase 3 (Delight) has no plan by design.
   Now, Cost and Lifetime now names them, on one line with the table's own title
   so it costs no vertical space.
 
-  The tool table has two figures rather than three, and now says so. It could
-  have shown tokens beside calls — but 14% of Bash calls cannot be linked to
-  the turn that paid for them against 1% of Read's, so the number would have
-  understated Bash specifically, which is the comparison the table exists to
-  make. A figure that looks measured and is quietly skewed is worse than a
-  column that is not there.
+  The tool table gained a second figure while this was being written; see
+  "how much each tool hands back" below.
 
 - **The all-time breakdown moved up, under the live pulse.** It was last, below
   a tall activity feed, so the most legible thing on the screen was the thing
@@ -45,6 +41,12 @@ Phase 3 (Delight) has no plan by design.
   `| | |`. The same renderer the release notes got now covers both, and it
   learned tables and quotes on the way.
 
+- **A plan you had already chosen looked unchosen.** Once set, the picker's
+  button went grey and lost its border — which is exactly what the buttons
+  beside it look like when they are not set — so every session started with the
+  impression that the plan had been forgotten again. It keeps its border and
+  carries a check.
+
 - **A Gemini error sent people somewhere they no longer need to go.** "Set
   GEMINI_API_KEY in the daemon's environment and restart it" — but the key has
   a field on the Cost screen and takes effect at once. A wrong instruction is
@@ -54,6 +56,23 @@ Phase 3 (Delight) has no plan by design.
   not an absolute path` was written for whoever was debugging it.
 
 ### Added
+
+- **The tool table says how much each tool hands back.** Calls alone told the
+  wrong story. Bash is 46,343 calls returning 13.4 MB; Read is 11,767 calls
+  returning 58.7 MB — four times fewer calls, four times more context. The loud
+  tool is the cheap one, and nothing in the product said so.
+
+  In bytes, deliberately, and not tokens. Tool results arrive in the transcript
+  with no token attribution of their own, so a token figure here could only be
+  invented from a bytes-per-token ratio — and 14% of Bash calls cannot be
+  linked to the turn that paid for them against 1% of Read's, so the invented
+  number would have understated Bash specifically, which is the comparison the
+  table exists to make. Bytes are measured.
+
+  Measured as each event is stored rather than counted per request, with an
+  index that covers the query: the all-time figures went from 2.1s to 0.05s on
+  a 641 MB database. The panel that took a visible beat to appear no longer
+  does, and there is no cache to go stale.
 
 - **Share a week, a month, or today — not only all time.** The picker was
   removed once, on the reasoning that a card showing every period at once made
