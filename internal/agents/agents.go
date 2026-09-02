@@ -236,11 +236,11 @@ func resolveClaude() string {
 // without touching anyone's repository.
 func (m *Manager) newChatDir() (string, error) {
 	if m.dataDir == "" {
-		return "", errors.New("agents: no data directory, so a chat has nowhere to live")
+		return "", errors.New("no data directory, so a chat has nowhere to live")
 	}
 	base := config.ChatsDir(m.dataDir)
 	if err := os.MkdirAll(base, 0o700); err != nil {
-		return "", fmt.Errorf("agents: create chats directory: %w", err)
+		return "", fmt.Errorf("create chats directory: %w", err)
 	}
 	// Second granularity plus a counter: two chats started inside the same
 	// second would otherwise land in one directory and share a transcript.
@@ -254,10 +254,10 @@ func (m *Manager) newChatDir() (string, error) {
 		if err := os.Mkdir(dir, 0o700); err == nil {
 			return dir, nil
 		} else if !os.IsExist(err) {
-			return "", fmt.Errorf("agents: create chat directory: %w", err)
+			return "", fmt.Errorf("create chat directory: %w", err)
 		}
 		if i > 100 {
-			return "", errors.New("agents: could not find a free chat directory name")
+			return "", errors.New("could not find a free chat directory name")
 		}
 	}
 }
@@ -275,24 +275,24 @@ func (m *Manager) newChatDir() (string, error) {
 // asked for a directory to exist and it does.
 func makeProjectDir(dir string) error {
 	if !filepath.IsAbs(dir) {
-		return fmt.Errorf("agents: %q is not an absolute path", dir)
+		return fmt.Errorf("%q is not an absolute path", dir)
 	}
 	// Clean first: `/Users/me/dev/../../../etc/x` is absolute and still escapes
 	// wherever the user thought they were.
 	dir = filepath.Clean(dir)
 	parent := filepath.Dir(dir)
 	if parent == dir {
-		return fmt.Errorf("agents: refusing to create the filesystem root")
+		return fmt.Errorf("refusing to create the filesystem root")
 	}
 	fi, err := os.Stat(parent)
 	if err != nil || !fi.IsDir() {
-		return fmt.Errorf("agents: %q does not exist, so %q cannot be created in it", parent, filepath.Base(dir))
+		return fmt.Errorf("%q does not exist, so %q cannot be created in it", parent, filepath.Base(dir))
 	}
 	// Mkdir, never MkdirAll — the parent check above is the guard, and this
 	// call is what keeps it a guard. MkdirAll here would create the chain the
 	// check just refused, so the two have to stay in agreement.
 	if err := os.Mkdir(dir, 0o755); err != nil && !os.IsExist(err) {
-		return fmt.Errorf("agents: could not create %q: %w", dir, err)
+		return fmt.Errorf("could not create %q: %w", dir, err)
 	}
 	return nil
 }
@@ -309,11 +309,11 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		req.Cwd = dir
 	}
 	if req.Cwd == "" {
-		return nil, errors.New("agents: spawn without cwd")
+		return nil, errors.New("spawn without cwd")
 	}
 	if fi, err := os.Stat(req.Cwd); err != nil || !fi.IsDir() {
 		if !req.Create {
-			return nil, fmt.Errorf("agents: cwd %q is not a directory", req.Cwd)
+			return nil, fmt.Errorf("cwd %q is not a directory", req.Cwd)
 		}
 		if err := makeProjectDir(req.Cwd); err != nil {
 			return nil, err
@@ -421,7 +421,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 	// when the caller's context (e.g. an HTTP request) ends.
 	sess, err := m.pty.Spawn(context.WithoutCancel(ctx), spec)
 	if err != nil {
-		return nil, fmt.Errorf("agents: spawn %s: %w", command, err)
+		return nil, fmt.Errorf("spawn %s: %w", command, err)
 	}
 	a := &Agent{
 		SessionID: sessionID, Cwd: cwd, Worktree: worktree, Command: command + " " + join(args), StartedAt: time.Now(),
@@ -590,7 +590,7 @@ func (m *Manager) Shutdown() {
 }
 
 // ErrNotOwned is returned for control operations on a session Caprock did not spawn.
-var ErrNotOwned = errors.New("session is not owned by caprock (observe-only)")
+var ErrNotOwned = errors.New("caprock did not start this session, so only its own terminal can control it")
 
 func errNotOwned(id string) error { return fmt.Errorf("%w: %s", ErrNotOwned, id) }
 

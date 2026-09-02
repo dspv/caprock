@@ -118,7 +118,7 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
         * lot of context — so they name the comparison rather than implying an
         * absolute scale. */}
       <div className="px-3 py-2 flex items-center gap-4 flex-wrap text-[11px] text-fg-faint border-t border-border">
-        <span className="text-fg-muted" title="They are independent: one call carrying a large context is a short bright bar, twenty greps are a tall dark one.">bar height = turns and tools · colour = what the minute cost</span>
+        <span className="text-fg-muted" title="Height and colour are independent.">bar height = turns and tools · colour = what the minute cost</span>
         <span className="flex items-center gap-1.5">
           <Swatch tier={IDLE_TOKEN} className="h-[2px]" />idle
         </span>

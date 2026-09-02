@@ -124,7 +124,7 @@ export function NowScreen() {
       {hooksMissing && (
         <div className="border border-warn/50 bg-warn/10 px-3 py-2 text-[12px] rounded-[var(--radius-panel)] flex items-center gap-3">
           <span className="text-warn font-medium">Hooks not installed</span>
-          <span className="text-fg-muted">Activity is coming from transcripts only (a few seconds late, no tool-level detail for running commands). Run <span className="mono text-fg">caprock hooks install</span> for real-time narration.</span>
+          <span className="text-fg-muted">Run <span className="mono text-fg">caprock hooks install</span> for live activity. Without it, updates lag by a few seconds.</span>
           <a href="#/settings" className="link ml-auto text-[11px]">details</a>
         </div>
       )}

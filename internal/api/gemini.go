@@ -75,8 +75,8 @@ func (s *Server) handleGeminiAsk(w http.ResponseWriter, r *http.Request) {
 	if !gemini.Available(s.d.Settings.Get().GeminiAPIKey) {
 		// Not an error the user did wrong: the feature is simply not set up.
 		writeJSON(w, http.StatusPreconditionFailed, map[string]string{
-			"error":  "no api key",
-			"detail": "set " + gemini.EnvKey + " in the daemon's environment and restart it",
+			"error":  "no Gemini key",
+			"detail": "add one on the Cost screen — it works straight away, no restart",
 		})
 		return
 	}

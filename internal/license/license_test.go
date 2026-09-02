@@ -37,10 +37,10 @@ func TestParse(t *testing.T) {
 		// Every rejection has to say what is wrong. "Invalid" sends someone to
 		// support; naming the problem lets them fix it.
 		{name: "no key at all", key: "", now: "2026-08-26", wantWhy: "no key"},
-		{name: "the wrong kind of string", key: "sk_live_abc123", now: "2026-08-26", wantWhy: "starts with"},
-		{name: "prefix but no date", key: "CR-hello", now: "2026-08-26", wantWhy: "too short"},
-		{name: "a date that is not one", key: "CR-2026-13-45-A1B2C3D4", now: "2026-08-26", wantWhy: "readable date"},
-		{name: "date runs into the random part", key: "CR-2026-08-26A1B2C3D4", now: "2026-08-26", wantWhy: "separator"},
+		{name: "the wrong kind of string", key: "sk_live_abc123", now: "2026-08-26", wantWhy: "not a Caprock key"},
+		{name: "prefix but no date", key: "CR-hello", now: "2026-08-26", wantWhy: "cut short"},
+		{name: "a date that is not one", key: "CR-2026-13-45-A1B2C3D4", now: "2026-08-26", wantWhy: "not readable"},
+		{name: "date runs into the random part", key: "CR-2026-08-26A1B2C3D4", now: "2026-08-26", wantWhy: "not readable"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := Parse(tc.key, at(tc.now))

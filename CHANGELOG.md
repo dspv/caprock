@@ -9,6 +9,39 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.47.1] - 2026-09-02
+
+### Fixed
+
+- **The answers screen showed raw Markdown.** Claude writes bold text, lists
+  and tables; the screen kept the line breaks and showed everything else as the
+  markup it is made of — `**bold**` with its asterisks, a table collapsed into
+  `| | |`. The same renderer the release notes got now covers both, and it
+  learned tables and quotes on the way.
+
+- **A Gemini error sent people somewhere they no longer need to go.** "Set
+  GEMINI_API_KEY in the daemon's environment and restart it" — but the key has
+  a field on the Cost screen and takes effect at once. A wrong instruction is
+  worse than a long one.
+
+- **Errors carried a Go package name into the dialog box.** `agents: "/x" is
+  not an absolute path` was written for whoever was debugging it.
+
+### Changed
+
+- **Copy across the product says less.** Several tooltips explained the
+  attribution algorithm where the reader had asked what a number meant, and
+  several paragraphs defended design decisions nobody had questioned. The
+  longest of them — the per-directory rule — was four sentences of
+  specification on hover; it is now one. "Everything here is measured — no
+  invented numbers" is gone from the Cost screen: readers assume the figures
+  are real until told otherwise, so the sentence created the doubt it answered.
+
+- **Messages about a missing `claude` say what to do.** "Spawning is
+  unavailable" named an internal verb and diagnosed without a fix; it now says
+  the binary is not on PATH, that installing Claude Code fixes it, and that
+  watching works regardless.
+
 ## [0.47.0] - 2026-09-02
 
 ### Added

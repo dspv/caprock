@@ -45,14 +45,12 @@ const LABELS: Record<WorkKind, { label: string; title: string }> = {
   command: {
     label: 'running commands',
     title:
-      'Turns that ran a shell command — builds, tests, git, anything through Bash. ' +
-      'The command itself is free; what costs is the turn that issued it and read its output.',
+      'Turns that ran a shell command — builds, tests, git, anything through Bash.',
   },
   read: {
     label: 'reading and searching',
     title:
-      'Turns that read or searched the codebase — Read, Grep, Glob. ' +
-      'The file contents enter the prompt and are billed, which is why reading is not free.',
+      'Turns that read or searched the codebase — Read, Grep, Glob.',
   },
   web: {
     label: 'web research',
@@ -71,9 +69,7 @@ const LABELS: Record<WorkKind, { label: string; title: string }> = {
   none: {
     label: 'no tool call',
     title:
-      'Turns that called no tool at all. They may have been reasoning, planning, answering a ' +
-      'question or writing prose — Caprock records which tools ran, not what a turn was thinking, ' +
-      'so it does not claim to know which.',
+      'Turns that called no tool — reasoning, planning, or writing prose.',
   },
 }
 
@@ -84,10 +80,7 @@ const LABELS: Record<WorkKind, { label: string; title: string }> = {
  * Kept in sync with store.WorkKindRule (Go), which is the definition.
  */
 const WORK_RULE =
-  'Each turn counts toward one kind of work, decided by the tools it called: writing a file wins ' +
-  'over running a command, which wins over reading or searching, then web, then an MCP tool, then ' +
-  'anything else. A turn that called no tool is counted as exactly that. Each turn goes whole to ' +
-  'one row, never split, so the rows add up to the total exactly.'
+  'Each turn counts once, under its most expensive kind of tool. Rows add up to the total.'
 
 export function WorkMix({ summary }: { summary?: Summary }) {
   const s = summary
@@ -122,9 +115,8 @@ export function WorkMix({ summary }: { summary?: Summary }) {
       </table>
       {degraded && (
         <div className="mx-3 mb-2.5 text-[11px] text-warn">
-          {unlinked.toLocaleString()} tool calls in this range could not be matched to the turn that
-          paid for them, so their cost is counted under “no tool call” rather than the work they
-          actually did. Every other row is understated by up to that much.
+          {unlinked.toLocaleString()} tool calls could not be matched to a turn, so their cost lands
+          under “no tool call”. The other rows are understated.
         </div>
       )}
     </Panel>

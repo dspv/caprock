@@ -365,19 +365,18 @@ export function TerminalView({
           onClick={() => setSpawning(true)}
           className="rounded-sm bg-accent px-3.5 py-2 text-[13px] font-medium text-bg hover:brightness-110"
         >
-          Launch a new Claude Code session here →
+          Start a session here →
         </button>
+        {/* One paragraph, not three. The two that used to follow this both said
+          * the same thing — your session is safe — and the second said it as an
+          * apology for a policy the reader had not questioned. What they need
+          * to know is what the button does. */}
         <p className="max-w-[52ch] text-[12px] leading-relaxed text-fg-faint">
-          Runs a second <span className="mono">claude</span> in{' '}
-          {cwd ? <span className="mono text-fg-muted">{cwd}</span> : 'this repository'} and gives it a
-          terminal you can type in. This session keeps running, untouched.
+          Opens a second <span className="mono">claude</span> in{' '}
+          {cwd ? <span className="mono text-fg-muted">{cwd}</span> : 'this repository'}, with a
+          terminal you can type in. This one keeps running.
         </p>
         {spawning && <SpawnDialog available onClose={() => setSpawning(false)} initialCwd={cwd ?? ''} />}
-
-        <p className="mt-1 max-w-[52ch] text-[12px] leading-relaxed text-fg-faint">
-          Caprock never types into a process it did not start — including this
-          one, which stays visible here and keeps being measured.
-        </p>
       </div>
     )
   }

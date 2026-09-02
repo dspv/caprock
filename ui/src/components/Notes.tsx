@@ -19,6 +19,7 @@ import { useApi } from '@/lib/useApi'
 import { fmtAgo, shortId } from '@/lib/format'
 import { Empty, Skeleton } from '@/components/ui'
 import { href } from '@/lib/router'
+import { Prose } from './Prose'
 
 export function SessionNotes({ id, now }: { id: string; now: number }) {
   const q = useApi(() => api.notes(id), [id], { intervalMs: 10000 })
@@ -102,10 +103,14 @@ export function NoteCard({ note, now, showSession = false }: {
         {note.fragment && <span className="text-fg-faint">· mid-thought</span>}
         <span className="num ml-auto">{fmtAgo(note.ts, now)}</span>
       </div>
-      {/* Preserve the newlines and spacing Claude wrote — the structure of a
-        * summary (lists, code, headings) is most of its readability. */}
-      <div className="px-3 py-2 text-[13px] leading-[1.55] whitespace-pre-wrap break-words">
-        {body}
+      {/* Rendered, not preserved. The comment here used to say the structure
+        * of a summary is most of its readability — true, and the code then
+        * kept only the line breaks, so a reader got `**bold**` with its
+        * asterisks and a Markdown table collapsed into `| | |`. Claude writes
+        * lists, headings and tables; showing them as the markup they are made
+        * of is showing the reader the wrong half. */}
+      <div className="px-3 py-2 break-words">
+        <Prose text={body} />
       </div>
       {long && (
         <button

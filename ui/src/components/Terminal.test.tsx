@@ -158,12 +158,13 @@ describe('a session Caprock did not start', () => {
     // It was a link to the main screen, which is navigation dressed as an
     // offer: it moved the reader away from what they were doing and left them
     // to find the real button themselves.
-    expect(screen.getByRole('button', { name: /launch a new claude code session/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /start a session here/i })).toBeTruthy()
     expect(screen.queryByRole('link', { name: /start|launch/i })).toBeNull()
 
     // And it must say what happens to the session already running, because the
     // reasonable fear about a button on this screen is that it disturbs it.
-    expect(document.body.textContent).toMatch(/keeps running, untouched/i)
+    // The wording may change; the promise may not.
+    expect(document.body.textContent).toMatch(/this one keeps running|keeps running, untouched/i)
 
     // And none of the vocabulary that only makes sense from inside.
     for (const jargon of [/externally started/i, /does not own/i, /spawn/i]) {

@@ -271,8 +271,7 @@ func maybeInstallHooks(cmd *cobra.Command, dir string, yes bool) error {
 		return nil
 	}
 	if !yes {
-		fmt.Fprintf(cmd.OutOrStdout(), "Caprock needs a hook entry in %s so it can see Claude Code sessions.\n", sp)
-		fmt.Fprintf(cmd.OutOrStdout(), "It appends `%s` under %d events, backs the file up first, and never touches your other hooks.\n", shimPath, len(hooks.Events))
+		fmt.Fprintf(cmd.OutOrStdout(), "Caprock adds a hook to %s so it can see your sessions. It backs the file up first.\n", sp)
 		if !confirm(cmd, "Install now? [Y/n] ") {
 			fmt.Fprintln(cmd.OutOrStdout(), "Skipped. Run `caprock hooks install` later; transcript tailing still works (delayed).")
 			return nil
@@ -332,8 +331,7 @@ func maybeInstallStatusline(cmd *cobra.Command, yes bool) error {
 		return nil
 	}
 	if !yes {
-		fmt.Fprintf(cmd.OutOrStdout(), "Caprock can also show your plan limits (5h/7d, Pro/Max) on the Cost screen via Claude Code's status line.\n")
-		fmt.Fprintf(cmd.OutOrStdout(), "It sets `statusLine.command` to `%s` in %s (backed up first). Skip if you use your own status line.\n", cmdStr, sp)
+		fmt.Fprintf(cmd.OutOrStdout(), "Caprock can also show your plan limits on the Cost screen, through Claude Code's status line (backed up first).\n")
 		if !confirm(cmd, "Add it? [Y/n] ") {
 			fmt.Fprintln(cmd.OutOrStdout(), "Skipped. Run `caprock statusline install` later to enable plan limits.")
 			return nil
@@ -470,7 +468,7 @@ func statusCmd() *cobra.Command {
 			if st.ClaudeAvailable {
 				fmt.Fprintf(out, "claude:  found on PATH — Caprock can start sessions for you\n")
 			} else {
-				fmt.Fprintf(out, "claude:  not found on PATH — Caprock cannot start sessions, but still observes every session you start yourself\n")
+				fmt.Fprintf(out, "claude:  not on PATH — install Claude Code to start sessions here; watching still works\n")
 			}
 			fmt.Fprintf(out, "ui:      %s\n", map[bool]string{true: "embedded", false: "placeholder (built without dashboard)"}[st.UIBuilt])
 			// Which hive is in force was reported nowhere — not here, not in

@@ -1097,7 +1097,7 @@ func (s *Server) requireTasks(w http.ResponseWriter) bool {
 		// "Phase 2" is our internal build order and means nothing to a user;
 		// the detail says what to do instead. It no longer sends anyone to a
 		// terminal first: POST /v1/hive turns the runner on where they are.
-		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "the task runner is off", "detail": "turn it on with POST /v1/hive, or start the daemon with `caprock up --hive <dir>`"})
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "the task runner is off", "detail": "turn it on from the Tasks screen, or start the daemon with `caprock up --hive <dir>`"})
 		return false
 	}
 	return true
@@ -1255,7 +1255,7 @@ func (s *Server) handleApprovals(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) requireAgents(w http.ResponseWriter) bool {
 	if s.d.Agents == nil || !s.d.Agents.Available() {
-		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "spawning is unavailable", "detail": "the `claude` binary was not found on PATH; Caprock runs in observe-only mode"})
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "can't start sessions", "detail": "`claude` is not on your PATH — install Claude Code, or add it. Caprock still watches sessions you start yourself."})
 		return false
 	}
 	return true

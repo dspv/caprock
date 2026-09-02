@@ -8,7 +8,7 @@
  */
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { ReleaseNotes, parseNotes, inlines } from './ReleaseNotes'
+import { Prose, parseNotes, inlines } from './Prose'
 
 const real = `### Fixed
 
@@ -20,13 +20,13 @@ const real = `### Fixed
 
 describe('what a reader actually sees', () => {
   it('turns a heading into a heading, not into hashes', () => {
-    render(<ReleaseNotes text={real} />)
+    render(<Prose text={real} />)
     expect(screen.getByText('Fixed').tagName).toBe('H3')
     expect(screen.queryByText(/###/)).toBeNull()
   })
 
   it('bolds without showing the asterisks', () => {
-    render(<ReleaseNotes text={real} />)
+    render(<Prose text={real} />)
     const strong = screen.getByText(/Why a weekly report never arrived/)
     expect(strong.tagName).toBe('STRONG')
     expect(document.body.textContent).not.toContain('**')
@@ -44,7 +44,7 @@ describe('what a reader actually sees', () => {
   })
 
   it('renders a bullet as one, without the dash', () => {
-    render(<ReleaseNotes text={'- something changed'} />)
+    render(<Prose text={'- something changed'} />)
     expect(screen.getByText('something changed')).toBeInTheDocument()
     expect(document.body.textContent).not.toContain('- something')
   })
@@ -56,14 +56,14 @@ describe('remote text cannot become markup', () => {
   // open — which was the right instinct behind showing raw text, kept here
   // without the cost of being unreadable.
   it('shows html as text', () => {
-    render(<ReleaseNotes text={'<img src=x onerror=alert(1)> and <b>bold</b>'} />)
+    render(<Prose text={'<img src=x onerror=alert(1)> and <b>bold</b>'} />)
     expect(document.querySelector('img')).toBeNull()
     expect(document.querySelector('b')).toBeNull()
     expect(document.body.textContent).toContain('<img src=x onerror=alert(1)>')
   })
 
   it('never produces a link', () => {
-    render(<ReleaseNotes text={'[click](https://evil.example) and https://evil.example'} />)
+    render(<Prose text={'[click](https://evil.example) and https://evil.example'} />)
     expect(document.querySelector('a')).toBeNull()
   })
 
