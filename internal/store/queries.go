@@ -168,6 +168,10 @@ type SessionPatch struct {
 	StartedAt, LastEventAt   int64
 	FromHook, FromTranscript bool
 	Status                   string // set only to force a status
+	// PID is the process the session belongs to, reported by the shim. Zero
+	// leaves whatever is stored alone: most events do not carry one, and an
+	// event that does not know the pid must not erase one that did.
+	PID int
 }
 
 // resolveRepoFields fills Project/RepoRoot/RepoPath from Cwd. Callers pass a cwd
@@ -206,8 +210,8 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 	// cwd, and then the stored resolution is left alone rather than blanked.
 	project, repoRoot, repoPath, repoKnown := p.resolveRepoFields()
 	_, err := q.ExecContext(ctx, `
-		INSERT INTO sessions(session_id, cwd, project, model, started_at, last_event_at, status, transcript_path, has_hooks, has_transcript, git_branch, version, repo_root, repo_path, agent)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), 'claude'))
+		INSERT INTO sessions(session_id, cwd, project, model, started_at, last_event_at, status, transcript_path, has_hooks, has_transcript, git_branch, version, repo_root, repo_path, agent, pid)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), 'claude'), ?)
 		ON CONFLICT(session_id) DO UPDATE SET
 		  cwd             = COALESCE(NULLIF(excluded.cwd, ''), sessions.cwd),
 		  project         = COALESCE(NULLIF(excluded.project, ''), sessions.project),
@@ -233,8 +237,12 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 		                    END,
 		  has_hooks       = MAX(sessions.has_hooks, excluded.has_hooks),
 		  has_transcript  = MAX(sessions.has_transcript, excluded.has_transcript),
-		  agent           = COALESCE(NULLIF(excluded.agent, ''), sessions.agent)`,
-		id, p.Cwd, project, p.Model, p.StartedAt, p.LastEventAt, status, p.TranscriptPath, b2i(p.FromHook), b2i(p.FromTranscript), p.GitBranch, p.Version, repoRoot, repoPath, p.Agent,
+		  agent           = COALESCE(NULLIF(excluded.agent, ''), sessions.agent),
+		  -- Zero means "this event did not know", which must not erase a pid an
+		  -- earlier event did know. A session's pid is how the sweep tells a
+		  -- quiet session from a gone one.
+		  pid             = CASE WHEN excluded.pid > 0 THEN excluded.pid ELSE sessions.pid END`,
+		id, p.Cwd, project, p.Model, p.StartedAt, p.LastEventAt, status, p.TranscriptPath, b2i(p.FromHook), b2i(p.FromTranscript), p.GitBranch, p.Version, repoRoot, repoPath, p.Agent, p.PID,
 		repoKnown, repoKnown,
 		p.Status, p.Status)
 	if err != nil {
@@ -319,23 +327,59 @@ func MarkIdleSessions(ctx context.Context, q Querier, before int64) ([]string, e
 	return ids, nil
 }
 
-// MarkEndedSessions flips idle/active sessions silent since `before` (unix ms) to ended.
+// MarkEndedSessions ends sessions whose process is gone, and — only for
+// sessions whose process was never known — sessions silent since `before`.
+//
+// A session is over when its process exits, not when it goes quiet. Every
+// number picked for "quiet enough" was wrong for somebody: twelve hours left
+// the day's work marked live at midnight, one hour closed a session while its
+// owner was at lunch. Both are guesses about a person's day standing in for a
+// fact about a process, and the fact is available — the shim reports the pid of
+// the Claude Code that ran it, and Caprock records the pid of every session it
+// spawns itself.
+//
+// So a session with a pid is judged only by whether that pid is alive, and may
+// sit quiet for a week without being touched. `before` applies solely to
+// sessions with no pid: rows written by an older shim, or read from a
+// transcript with no live process behind them, where there is nothing to ask
+// and a backstop is all there is.
 func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, error) {
-	rows, err := q.QueryContext(ctx, `SELECT session_id FROM sessions WHERE status != 'ended' AND last_event_at < ?`, before)
+	rows, err := q.QueryContext(ctx,
+		`SELECT session_id, COALESCE(pid, 0), COALESCE(last_event_at, 0), COALESCE(agent, 'claude')
+		 FROM sessions WHERE status != 'ended'`)
 	if err != nil {
 		return nil, err
 	}
 	var ids []string
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
+		var id, agent string
+		var pid int
+		var lastEvent int64
+		if err := rows.Scan(&id, &pid, &lastEvent, &agent); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
-		ids = append(ids, id)
+		switch {
+		case !ownsItsProcess(agent):
+			// Read out of another tool's database rather than watched: there is
+			// no process of ours behind it, and there never will be. Judging it
+			// by liveness would keep months of somebody's history permanently
+			// "live" — which is exactly what happened the first time this
+			// change was tried, with 97-day-old sessions filling the Now
+			// screen. The clock is the only rule these can have.
+			if lastEvent < before {
+				ids = append(ids, id)
+			}
+		case pid > 1:
+			// A known process decides it, whatever the clock says.
+			if !ProcessAlive(pid) {
+				ids = append(ids, id)
+			}
+		case lastEvent < before:
+			ids = append(ids, id)
+		}
 	}
-	// Same reasoning as MarkIdleSessions: a partial read must not pass for a
-	// complete one when an UPDATE follows it.
+	// A partial read must not pass for a complete one when an UPDATE follows.
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
 		return nil, err
@@ -344,10 +388,53 @@ func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, 
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	if _, err := q.ExecContext(ctx, `UPDATE sessions SET status = 'ended' WHERE status != 'ended' AND last_event_at < ?`, before); err != nil {
+	// Updated by id rather than by the time test: the decision was made per
+	// session above, and re-deriving it in SQL would end sessions whose process
+	// is alive but which happen to be older than `before` — the exact bug this
+	// function was rewritten to remove.
+	if err := updateStatusByID(ctx, q, ids, StatusEnded); err != nil {
 		return nil, err
 	}
 	return ids, nil
+}
+
+// ownsItsProcess reports whether Caprock can see the process behind a session.
+//
+// Claude Code sessions arrive through a shim Caprock installed, which reports
+// its parent's pid; Gemini sessions are ones Caprock spawned. OpenCode is
+// different in kind — it is read out of OpenCode's own database, so those rows
+// describe work that happened, possibly months ago, with no process to ask
+// about. They are history, and history is never live.
+func ownsItsProcess(agent string) bool {
+	return agent != "opencode"
+}
+
+// updateStatusByID sets one status on a known set of sessions, in chunks that
+// stay well inside SQLite's variable limit.
+func updateStatusByID(ctx context.Context, q Querier, ids []string, status string) error {
+	const chunk = 400
+	for start := 0; start < len(ids); start += chunk {
+		end := start + chunk
+		if end > len(ids) {
+			end = len(ids)
+		}
+		batch := ids[start:end]
+		args := make([]any, 0, len(batch)+1)
+		args = append(args, status)
+		placeholders := make([]byte, 0, len(batch)*2)
+		for i, id := range batch {
+			if i > 0 {
+				placeholders = append(placeholders, ',')
+			}
+			placeholders = append(placeholders, '?')
+			args = append(args, id)
+		}
+		qs := `UPDATE sessions SET status = ? WHERE session_id IN (` + string(placeholders) + `)`
+		if _, err := q.ExecContext(ctx, qs, args...); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude')`

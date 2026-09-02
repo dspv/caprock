@@ -24,6 +24,22 @@ import { href } from '@/lib/router'
 import { useState } from 'react'
 import { useNow } from '@/lib/useNow'
 
+/** How recently a session must have spoken to belong on the Now screen.
+ *
+ *  Two days rather than one: a session left overnight on Friday should still be
+ *  there on Monday morning if its process is alive, and a day would drop it.
+ *  Everything older is reachable through the Lifetime screen and the "show
+ *  ended" toggle, which is where history belongs. */
+export const NOW_WINDOW_MS = 2 * 24 * 60 * 60 * 1000
+
+export function recentEnough(s: { last_event_at?: number | null }, now: number): boolean {
+  // A row with no timestamp is shown rather than hidden: not knowing when
+  // something happened is not evidence that it was long ago, and hiding a
+  // live session is the worse mistake.
+  if (!s.last_event_at) return true
+  return now - s.last_event_at < NOW_WINDOW_MS
+}
+
 export function NowScreen() {
   const [showEnded, setShowEnded] = useState(false)
   // Which agent this whole screen is about. It reaches every panel, so the
@@ -59,7 +75,16 @@ export function NowScreen() {
   )
   const hasBoth = agentsHere.length > 2
   const working = list.filter((s) => s.activity.health === 'working' || s.activity.health === 'looping' || s.activity.health === 'error' || s.activity.health === 'waiting-on-you')
-  const rest = list.filter((s) => !working.includes(s) && s.status !== 'ended')
+  // "Now" is a screen about now. A session that has not made a sound in two
+  // days is history, whatever its status column says — and status alone is not
+  // enough to tell them apart, because an observed agent's sessions are read
+  // out of its own database and arrive already weeks old. Without this, opening
+  // the screen after connecting OpenCode filled it with 97-day-old rows marked
+  // idle, which is technically true and useless.
+  //
+  // Anything working shows regardless of age: a long-running agent that has
+  // been quiet while it thinks is exactly what this screen is for.
+  const rest = list.filter((s) => !working.includes(s) && s.status !== 'ended' && recentEnough(s, now))
   const ended = list.filter((s) => s.status === 'ended')
   const [plan, savePlan] = usePlan()
   const attention = findAttention({ sessions: list, alerts, now, limits: summary.data?.rate_limits })

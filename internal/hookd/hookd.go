@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -212,6 +213,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad payload", http.StatusBadRequest)
 		return
 	}
+	// The shim reports the pid of the process that ran it — Claude Code itself.
+	// It is the only way the daemon can tell a quiet session from a gone one
+	// without guessing from a clock, since no hook payload carries a pid.
+	// Absent or unparseable is normal: an older shim does not send it, and a
+	// session without one simply falls back to the staleness sweep.
+	if v := r.Header.Get("X-Caprock-Ppid"); v != "" {
+		if pid, err := strconv.Atoi(v); err == nil && pid > 1 {
+			info.PID = pid
+		}
+	}
+
 	res, err := h.Recorder.Record(r.Context(), ev, info)
 	if err != nil {
 		log.Error("record hook event", "component", "hookd", "err", err, "session_id", ev.SessionID, "kind", ev.Kind)
