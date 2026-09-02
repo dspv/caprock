@@ -30,6 +30,22 @@ export function fmtTokens(v: number | undefined | null): string {
   return new Intl.NumberFormat('en-US').format(v)
 }
 
+/** Bytes, in the units a person reads them in.
+ *
+ *  Kept separate from fmtTokens because these are not tokens and must never
+ *  read as though they were: a tool's output is text that gets billed on the
+ *  *next* turn, at a ratio that depends on what the text is. MB and KB say
+ *  "this is a size"; a bare "58.7M" beside a token column would not. */
+export function fmtBytes(v: number | undefined | null): string {
+  if (finite(v) === null) return '—'
+  v = v as number
+  const abs = Math.abs(v)
+  if (abs >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1)}GB`
+  if (abs >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}MB`
+  if (abs >= 1_000) return `${Math.round(v / 1_000)}KB`
+  return `${v}B`
+}
+
 export function fmtPct(v: number | undefined | null, digits = 0): string {
   if (finite(v) === null) return '—'
   // Round DOWN, not to nearest: a 99.514% cache hit rate shown as "100%" reads

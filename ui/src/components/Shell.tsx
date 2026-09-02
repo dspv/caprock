@@ -23,7 +23,7 @@ import { FeedbackButton } from '@/components/Feedback'
 import { ShareButton } from '@/components/Share'
 import { PremiumChip } from '@/components/PremiumChip'
 import { SiteFooter } from '@/components/SiteFooter'
-import { ReleaseNotes } from './ReleaseNotes'
+import { Prose } from './Prose'
 
 const NAV: { route: Route; label: string; phase?: string }[] = [
   { route: { name: 'now' }, label: 'Now' },
@@ -162,7 +162,7 @@ function ConnDot({ state, lastFrameAt }: { state: 'connecting' | 'open' | 'close
   const cls = state === 'open' ? 'bg-ok' : state === 'connecting' ? 'bg-warn' : 'bg-danger'
   const label = state === 'open' ? `live · ${lastFrameAt ? fmtAgo(lastFrameAt, now) : 'connected'}` : state === 'connecting' ? 'connecting…' : 'disconnected — reconnecting'
   return (
-    <span className="inline-flex items-center gap-1.5" title={state === 'open' ? 'Connected to the daemon. The time is when it last sent anything — on an idle machine that keeps counting up, which is normal.' : 'WebSocket /v1/live'}>
+    <span className="inline-flex items-center gap-1.5" title={state === 'open' ? 'Connected. Time since the daemon last sent anything.' : 'WebSocket /v1/live'}>
       <span className={`inline-block w-1.5 h-1.5 rounded-full ${cls}`} />
       <span className="num">{label}</span>
     </span>
@@ -259,7 +259,7 @@ function NotesDialog({ u, onClose }: { u: UpdateStatus; onClose: () => void }) {
           <button onClick={onClose} className="ml-auto text-[16px] leading-none text-fg-faint hover:text-fg">×</button>
         </div>
         <div className="overflow-y-auto px-4 py-3">
-          <ReleaseNotes text={u.notes ?? ''} />
+          <Prose text={u.notes ?? ''} />
         </div>
         <div className="border-t border-border px-4 py-2.5">
           {/* The changelog on the site, not the release on GitHub. Somebody

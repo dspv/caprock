@@ -16,7 +16,7 @@
  */
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
-import { fmtTokens, fmtTool, fmtUSD } from '@/lib/format'
+import { fmtBytes, fmtTokens, fmtTool, fmtUSD } from '@/lib/format'
 import { Panel } from '@/components/ui'
 import { ShareCard } from '@/components/Share'
 import { ShareNudge } from '@/components/ShareNudge'
@@ -68,18 +68,23 @@ export function BreakdownPanel() {
       <div className="grid gap-x-8 gap-y-5 px-3 py-3 md:grid-cols-2">
         <Bars
           title="Most-used tools"
-          note="by calls"
+          cols={{ value: 'calls', sub: 'returned', share: 'share' }}
           rows={tools.map((t) => ({
             key: t.tool,
             label: fmtTool(t.tool),
             value: t.count.toLocaleString('en-US'),
+            // What came back, which the call count cannot say: Bash is called
+            // far more often than Read and hands back a fraction as much. Not
+            // tokens — see ToolCount — but the size is measured exactly, and
+            // it is what fills a context and gets billed on the next turn.
+            sub: t.bytes > 0 ? fmtBytes(t.bytes) : '',
             share: allCalls > 0 ? (100 * t.count) / allCalls : null,
             frac: topCalls > 0 ? t.count / topCalls : 0,
           }))}
         />
         <Bars
           title="Where the money went"
-          note="by cost"
+          cols={{ value: 'cost', sub: 'tokens', share: 'share' }}
           rows={models.map((m) => ({
             key: m.model,
             label: m.model || 'unknown',
@@ -123,11 +128,15 @@ export function BreakdownPanel() {
 /** A short ranked list — label, bar, figure — used for both breakdowns. */
 function Bars({
   title,
-  note,
+  cols,
   rows,
 }: {
   title: string
-  note: string
+  /** What each numeric column is, in the order they appear. Three figures in a
+   *  row with nothing over them is a puzzle: `$7,587.14 · 12.01B · 58%` reads
+   *  as three unrelated numbers until you have worked out which is which, and
+   *  a note saying "by cost" describes the sort order, not the columns. */
+  cols: { value: string; sub?: string; share: string }
   rows: {
     key: string
     label: string
@@ -142,9 +151,21 @@ function Bars({
   if (rows.length === 0) return null
   return (
     <div>
-      <div className="mb-2 flex items-baseline justify-between">
-        <span className="text-[10px] uppercase tracking-[0.12em] text-fg-faint">{title}</span>
-        <span className="text-[10px] text-fg-faint">{note}</span>
+      {/* One row: the table's name on the left, its column names over their own
+        * figures on the right. Two stacked rows — a title, then a header —
+        * spent a line of vertical space saying what one line says, and put a
+        * gap between the heading and the first row it heads. The widths match
+        * the rows below, so each name sits over its column. */}
+      <div className="mb-1.5 flex items-center gap-2 text-[10px] uppercase tracking-[0.08em] text-fg-faint">
+        {/* Allowed to run past the label column rather than wrap: "Where the
+          * money went" broke onto a second line inside w-36 and pushed the
+          * column names above the title they sit beside. It is a heading, not
+          * a cell — nothing is lining up underneath it. */}
+        <span className="shrink-0 whitespace-nowrap tracking-[0.12em]">{title}</span>
+        <span className="flex-1" />
+        <span className="num w-20 shrink-0 text-right">{cols.value}</span>
+        <span className="num w-16 shrink-0 text-right">{cols.sub ?? ''}</span>
+        <span className="num w-9 shrink-0 text-right">{cols.share}</span>
       </div>
       <div className="grid gap-1.5">
         {rows.map((r) => (

@@ -59,10 +59,16 @@ describe('NoteCard', () => {
     expect(screen.getByText('caprock')).toBeTruthy()
   })
 
-  it('preserves the newlines a summary depends on', () => {
-    const text = 'What changed:\n\n- one\n- two'
-    const { container } = render(<NoteCard note={note({ text })} now={NOW} />)
-    const body = container.querySelector('.whitespace-pre-wrap')
-    expect(body?.textContent).toBe(text)
+  it('renders the structure a summary depends on, rather than its markup', () => {
+    // This used to assert the opposite — that the raw text survived intact —
+    // and it passed while readers saw `**bold**` with its asterisks and a
+    // table collapsed into `| | |`. Keeping the line breaks is not the same as
+    // keeping the structure, and only the second one is readable.
+    const text = 'What changed:\n\n- one\n- **two**'
+    render(<NoteCard note={note({ text })} now={NOW} />)
+    expect(screen.getByText('one')).toBeInTheDocument()
+    expect(screen.getByText('two').tagName).toBe('STRONG')
+    expect(document.body.textContent).not.toContain('**')
+    expect(document.body.textContent).not.toContain('- one')
   })
 })

@@ -92,13 +92,28 @@ export function PlanChip({ plan, onSave }: { plan?: Settings; onSave: (patch: Pa
 
   return (
     <div className="relative" ref={box}>
+      {/* A set plan has to look set.
+        *
+        * It went grey and borderless once chosen — the reasoning being that a
+        * settled setting should stop asking for attention. What it actually
+        * did was make the answer indistinguishable from "feedback" and "status"
+        * beside it, so the reader could not tell their plan was stored and
+        * kept setting it again. A tick and a border say it is an answer; the
+        * unset state keeps the accent, because that one is a question. */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className={`mono text-[11px] px-1.5 py-0.5 rounded-sm border ${
-          plan?.plan_kind ? 'border-border text-fg-muted hover:text-fg' : 'border-accent/50 text-accent'
+        className={`mono text-[11px] px-1.5 py-0.5 rounded-sm border inline-flex items-center gap-1 ${
+          plan?.plan_kind
+            ? 'border-border-strong bg-panel-2 text-fg hover:border-fg-faint'
+            : 'border-accent/50 text-accent'
         }`}
-        title="How you pay for Claude Code — Caprock cannot detect this, so you tell it"
+        title={
+          plan?.plan_kind
+            ? `Your plan: ${label}. Click to change it.`
+            : 'How you pay for Claude Code — Caprock cannot detect this, so you tell it'
+        }
       >
+        {plan?.plan_kind && <span className="text-ok" aria-hidden>✓</span>}
         {label}
       </button>
       {open && <PlanMenu plan={plan} onSave={(s) => { onSave(s); setOpen(false) }} />}

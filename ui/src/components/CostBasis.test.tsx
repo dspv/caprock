@@ -24,7 +24,10 @@ describe('costBasis', () => {
     const s = costBasis(plan({ plan_kind: 'metered', plan_label: 'API' }))
     expect(s).not.toContain('not a bill')
     expect(s).toContain('your bill')
-    expect(costBasisLong(plan({ plan_kind: 'metered' }))).toContain('approximately')
+    // Hedged, but as a bill rather than as an equivalent. The word itself does
+    // not matter — "approximately" and "roughly" both do the job — so this
+    // asserts the claim, not the vocabulary.
+    expect(costBasisLong(plan({ plan_kind: 'metered' }))).toMatch(/roughly|approximate/i)
   })
 
   it('claims neither when the plan is unknown', () => {

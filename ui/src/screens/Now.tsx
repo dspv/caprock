@@ -32,6 +32,15 @@ import { useNow } from '@/lib/useNow'
  *  ended" toggle, which is where history belongs. */
 export const NOW_WINDOW_MS = 2 * 24 * 60 * 60 * 1000
 
+/** Whether an answer is still on its way — as opposed to having arrived empty.
+ *
+ *  Exported so the distinction is testable: conflating the two is what made a
+ *  screen full of figures announce "nothing measured yet" for the second it
+ *  took the first response to land. */
+export function isLoading(data: unknown, error: unknown): boolean {
+  return !data && !error
+}
+
 export function recentEnough(s: { last_event_at?: number | null }, now: number): boolean {
   // A row with no timestamp is shown rather than hidden: not knowing when
   // something happened is not evidence that it was long ago, and hiding a
@@ -105,6 +114,11 @@ export function NowScreen() {
   // "Cache hit 0%" — the only coloured thing on the page was a warning about a
   // cache that had never been used. Nothing measured means no number to show.
   const measured = !!summary.data && summary.data.turns > 0
+  // Not the same as "nothing measured", and saying so was a lie the first
+  // screen told on every load: until the first response lands there is no
+  // answer yet, and "nothing measured yet" is an answer. On a large database
+  // the all-time query takes about half a second — long enough to read.
+  const loading = isLoading(summary.data, summary.error)
   const ingestError = status.data?.ingest_error
   return (
     <div className="grid gap-3">
@@ -124,7 +138,7 @@ export function NowScreen() {
       {hooksMissing && (
         <div className="border border-warn/50 bg-warn/10 px-3 py-2 text-[12px] rounded-[var(--radius-panel)] flex items-center gap-3">
           <span className="text-warn font-medium">Hooks not installed</span>
-          <span className="text-fg-muted">Activity is coming from transcripts only (a few seconds late, no tool-level detail for running commands). Run <span className="mono text-fg">caprock hooks install</span> for real-time narration.</span>
+          <span className="text-fg-muted">Run <span className="mono text-fg">caprock hooks install</span> for live activity. Without it, updates lag by a few seconds.</span>
           <a href="#/settings" className="link ml-auto text-[11px]">details</a>
         </div>
       )}
@@ -207,7 +221,7 @@ export function NowScreen() {
           * colour pointed away from the money. The rest are reference figures
           * and step down, which is what makes room for the headline. */}
         <div className="grid grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr_1fr] divide-x divide-border">
-          <Stat label="Cost today" value={measured ? fmtUSD(summary.data?.cost_usd) : '—'} sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : 'nothing measured yet'}</span>} tone="info" size="hero" />
+          <Stat label="Cost today" value={measured ? fmtUSD(summary.data?.cost_usd) : '—'} sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : loading ? 'reading your figures…' : 'nothing measured yet'}</span>} tone="info" size="hero" />
           <Stat label="Burn now" value={measured ? `${fmtUSD(summary.data!.burn.usd_per_hour)}/h` : '—'} sub={measured ? `${fmtTokens(Math.round(summary.data!.burn.tokens_per_min))} tok/min · last ${summary.data!.burn.window_min}m` : undefined} />
           <Stat label="Sessions" value={measured ? summary.data!.sessions : '—'} sub={measured ? `${summary.data!.active_sessions} active` : undefined} size="compact" />
           <Stat label="Turns" value={measured ? summary.data!.turns : '—'} sub={measured ? `${summary.data!.tool_calls} tool calls` : undefined} size="compact" />
@@ -230,6 +244,18 @@ export function NowScreen() {
         * sessions are busy, which are grinding, and which have gone quiet. */}
       <PulsePanel sessions={list} now={now} />
 
+      {/* Straight after the pulse, not at the bottom of the screen.
+        *
+        * It was last, below the activity feed and the project list, and the
+        * feed is tall — so the most legible thing on this screen was the thing
+        * you had to scroll to find. It reads as a continuation of the pulse:
+        * that shows the shape of the work, this shows what the work was.
+        *
+        * It was moved out of the all-time line at the top for a reason that
+        * still holds — expanded up there it pushed Today and the pulse below
+        * the fold — so it goes under the pulse rather than above it. */}
+      <BreakdownPanel />
+
       {/* What is happening (left) beside what it costs (right). */}
       <div className="grid gap-3 lg:grid-cols-2">
         <ActivityFeed
@@ -245,13 +271,6 @@ export function NowScreen() {
         />
         <ProjectsPanel sessions={list} agent={agent} />
       </div>
-
-      {/* The lifetime figures sit here rather than in the all-time line at the
-        * top: hidden in that line nobody found them, expanded there they
-        * pushed Today and the live pulse below the fold. Between the live
-        * panels and the session rows there is room, and nothing they compete
-        * with. */}
-      <BreakdownPanel />
 
       {sessions.error && !sessions.data && (
         <Empty title="Cannot reach the daemon">{sessions.error.message} — is <span className="mono">caprock up</span> running?</Empty>

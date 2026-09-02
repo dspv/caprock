@@ -21,10 +21,10 @@
  * The card itself carries `caprock.dev`, so the link travels with the image
  * even when someone posts it without the text.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useApi } from '@/lib/useApi'
 import { api, type History } from '@/lib/api'
-import { cardFilename, collectCardData, drawShareCard } from './ShareCard'
+import { cardFilename, collectCardData, drawShareCard, PERIOD_LABEL, type SharePeriod } from './ShareCard'
 import { fmtUSD } from '@/lib/format'
 
 /** The words that travel with the image. Measured figures, no adjectives. */
@@ -37,16 +37,26 @@ export function ShareButton() {
   const [open, setOpen] = useState(false)
   return (
     <>
-      {/* Loud on purpose. As grey 11px lowercase text between "feedback" and
-        * the build label, this was invisible — the owner, who wrote the
-        * feature, could not find it on his own dashboard. Sharing is the one
-        * thing here that travels, so it gets a border and the accent colour
-        * rather than the muted tone every other topbar item wears. */}
+      {/* Loud on purpose, and twice now not loud enough.
+        *
+        * A tinted border in the accent colour still lost, because everything
+        * around it is the same 11px and the premium button beside it is a
+        * solid block of colour: an outline cannot win an argument with a fill.
+        * This is filled, a size up, and carries an icon, so the eye finds it
+        * without reading the row.
+        *
+        * It earns that: sharing is the only thing on this dashboard that
+        * leaves the machine, and somebody who has just had a good week has
+        * nowhere to say so. */}
       <button
         onClick={() => setOpen(true)}
-        className="rounded-md border border-accent/45 bg-accent/[0.08] px-2 py-0.5 text-accent hover:bg-accent/[0.16]"
-        title="Draw a shareable image of your figures"
+        className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-[12px] font-medium text-bg hover:brightness-110"
+        title="Draw a shareable picture of your figures"
       >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+          <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
+        </svg>
         Share
       </button>
       {open && <ShareDialog onClose={() => setOpen(false)} />}
@@ -66,12 +76,40 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
   const [drawing, setDrawing] = useState(false)
   const [locked, setLocked] = useState(false)
   const [note, setNote] = useState('')
+  // Which stretch the card is about. Defaults to the week: a working week is
+  // the thing people actually finish and want to show, and an all-time total
+  // shared on its own reads as a boast rather than a result.
+  const [period, setPeriod] = useState<SharePeriod>('7d')
+  // The picture itself, drawn as soon as the sheet opens and again whenever
+  // the period changes.
+  //
+  // Without it the period buttons are a promise about a file nobody has seen:
+  // you press Save, open your downloads, and only then find out what you
+  // chose. A card is a picture — the way to choose one is to look at it.
+  const [preview, setPreview] = useState<string>('')
+
+  // Redrawn on every period change. Each draw is one canvas and three cached
+  // API calls, so it costs less than the click that opened the sheet.
+  useEffect(() => {
+    let live = true
+    let url = ''
+    void (async () => {
+      const d = await collectCardData(period)
+      const blob = await drawShareCard(d)
+      if (!blob || !live) return
+      url = URL.createObjectURL(blob)
+      setPreview(url)
+    })()
+    return () => {
+      live = false
+      // Revoked on the way out: a blob URL held after its <img> is gone keeps
+      // the whole bitmap alive, and this component redraws on every click.
+      if (url) URL.revokeObjectURL(url)
+    }
+  }, [period])
 
   const build = async () => {
-    // No period to choose any more: the card shows today, the week, the month
-    // and all time at once, which is what made the picker redundant rather
-    // than a feature worth keeping.
-    const [d, h] = await Promise.all([collectCardData(), api.history('all')])
+    const [d, h] = await Promise.all([collectCardData(period), api.history('all')])
     const blob = await drawShareCard(d)
     return { blob, text: caption(h.totals) }
   }
@@ -154,6 +192,44 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
             * were all true and none of them was the question a person has
             * standing in front of this dialog, which is: what happens if I
             * press it. */}
+          {/* Which stretch, before where it goes. The card shows every period
+            * either way — this decides which one is the headline, and what the
+            * heading claims. */}
+          <div className="mb-3.5 flex items-center gap-1">
+            <span className="mr-1 text-[12px] text-fg-muted">Show</span>
+            {(['today', '7d', '30d', 'all'] as SharePeriod[]).map((p) => (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                aria-pressed={period === p}
+                className={`rounded-sm px-2 py-1 text-[12px] ${
+                  period === p
+                    ? 'bg-accent text-bg font-medium'
+                    : 'text-fg-muted hover:text-fg'
+                }`}
+              >
+                {PERIOD_LABEL[p]}
+              </button>
+            ))}
+          </div>
+
+          {/* The card, at the size it will be seen. Above the buttons, because
+            * it is the thing being decided — the buttons only choose where it
+            * goes. A fixed aspect box so switching period does not make the
+            * dialog jump while the next draw lands. */}
+          <div
+            className="mb-3.5 overflow-hidden rounded-md border border-border bg-panel-2"
+            style={{ aspectRatio: '1200 / 630' }}
+          >
+            {preview ? (
+              <img src={preview} alt="Your figures, as they will be shared" className="block w-full" />
+            ) : (
+              <div className="flex h-full items-center justify-center text-[12px] text-fg-faint">
+                drawing…
+              </div>
+            )}
+          </div>
+
           <div className="grid gap-2.5">
             {canNative && (
               <button

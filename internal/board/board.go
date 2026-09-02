@@ -110,7 +110,7 @@ func (cr *CreateRequest) validate() error {
 	case len(cr.Body) > maxBody:
 		return fmt.Errorf("task body is %d bytes; the limit is %d", len(cr.Body), maxBody)
 	case len(cr.DoneCriteria) == 0:
-		return errors.New("done_criteria is required: at least one command that must pass before the task can be done. Caprock cannot verify a task without one, and will not mark it done on the worker's say-so")
+		return errors.New("done_criteria is required — at least one command that must exit 0 before the task is done")
 	case math.IsNaN(cr.BudgetUSD) || math.IsInf(cr.BudgetUSD, 0):
 		return errors.New("budget_usd must be a real number")
 	case cr.BudgetUSD < 0:

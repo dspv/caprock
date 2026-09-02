@@ -33,12 +33,12 @@ export function costBasis(plan?: Settings): string {
 /** The longer form, for a panel header or a tooltip. */
 export function costBasisLong(plan?: Settings): string {
   if (plan?.plan_kind === 'metered') {
-    return 'Priced from your captured tokens at Anthropic list prices. You are billed per token, so this is approximately your actual cost.'
+    return 'Roughly your real bill — you pay per token. At Anthropic list prices.'
   }
   if (plan?.plan_kind === 'flat') {
-    return `Priced from your captured tokens at Anthropic list prices. You pay ${plan.plan_label || 'a flat plan'}, so this is what the same work would have cost through the API — not money out of pocket.`
+    return `At Anthropic list prices — what this work would cost through the API. You pay ${plan.plan_label || 'a flat plan'}, so it is not money out of pocket.`
   }
-  return 'Priced from your captured tokens at Anthropic list prices. Whether that is your actual bill depends on how you pay — set your plan in the header.'
+  return 'At Anthropic list prices. Set your plan in the header to see how it compares to your bill.'
 }
 
 /** A small inline note for a panel header. */

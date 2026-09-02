@@ -63,22 +63,22 @@ func Parse(key string, now time.Time) State {
 		return State{Reason: "no key"}
 	}
 	if !strings.HasPrefix(k, Prefix) {
-		return State{Reason: fmt.Sprintf("a Caprock key starts with %q", Prefix)}
+		return State{Reason: fmt.Sprintf("that is not a Caprock key — they start with %q", Prefix)}
 	}
 	rest := strings.TrimPrefix(k, Prefix)
 	// A date is all a key needs. The suffix exists so two keys issued on the
 	// same day can be told apart in an email; nothing verifies it, so a key
 	// dictated over the phone and typed without one still has to work.
 	if len(rest) < len("2006-01-02") {
-		return State{Reason: "key is too short to carry a date"}
+		return State{Reason: "that key looks cut short — check you copied all of it"}
 	}
 	day := rest[:len("2006-01-02")]
 	exp, err := time.Parse("2006-01-02", day)
 	if err != nil {
-		return State{Reason: "key does not carry a readable date"}
+		return State{Reason: "that key is not readable — check you copied all of it"}
 	}
 	if len(rest) > len(day) && rest[len(day)] != '-' {
-		return State{Reason: "key is missing the separator after its date"}
+		return State{Reason: "that key is not readable — check you copied all of it"}
 	}
 	// The date names the last day covered, so the key is good until the end of
 	// it — an expiry of 2026-08-26 that stops working at midnight on the 26th

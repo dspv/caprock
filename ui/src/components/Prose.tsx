@@ -1,5 +1,9 @@
 /**
- * Release notes, rendered rather than dumped.
+ * The Markdown Caprock displays, rendered rather than dumped.
+ *
+ * Used for release notes and for the answers Claude wrote. Both arrived as raw
+ * text for the same reason and looked equally wrong: `### Fixed` as a literal
+ * heading, asterisks around bold phrases, and a table collapsed into `| | |`.
  *
  * These used to be shown as preformatted text on the reasoning that release
  * bodies are remote content and a local-first tool has no business rendering
@@ -21,6 +25,8 @@ type Block =
   | { kind: 'heading'; text: string }
   | { kind: 'bullet'; parts: Inline[] }
   | { kind: 'para'; parts: Inline[] }
+  | { kind: 'table'; rows: Inline[][][] }
+  | { kind: 'quote'; parts: Inline[] }
 
 type Inline = { text: string; bold: boolean; code: boolean }
 
@@ -52,6 +58,7 @@ export function parseNotes(src: string): Block[] {
   const out: Block[] = []
   let para: string[] = []
   let bullet: string[] = []
+  let table: string[] = []
 
   const flushPara = () => {
     if (para.length) out.push({ kind: 'para', parts: inlines(para.join(' ')) })
@@ -61,7 +68,29 @@ export function parseNotes(src: string): Block[] {
     if (bullet.length) out.push({ kind: 'bullet', parts: inlines(bullet.join(' ')) })
     bullet = []
   }
+  // A Markdown table read as plain text is the worst case of all: `| | |`
+  // followed by `|---|---|` and then rows whose columns no longer line up,
+  // which is what an answer containing one looked like on the Answers screen.
+  const flushTable = () => {
+    if (table.length) {
+      const rows = table
+        // The separator row carries no content — it only told a parser which
+        // line was the header, and there is no header row worth keeping when
+        // the table is two columns of a summary.
+        .filter((line) => !/^[|\s:-]+$/.test(line))
+        .map((line) =>
+          line
+            .replace(/^\||\|$/g, '')
+            .split('|')
+            .map((cell) => inlines(cell.trim())),
+        )
+        .filter((cells) => cells.some((c) => c.some((p) => p.text.trim() !== '')))
+      if (rows.length) out.push({ kind: 'table', rows })
+    }
+    table = []
+  }
   const flush = () => {
+    flushTable()
     flushBullet()
     flushPara()
   }
@@ -80,6 +109,21 @@ export function parseNotes(src: string): Block[] {
       out.push({ kind: 'heading', text: heading[1] ?? '' })
       continue
     }
+    if (trimmed.startsWith('|')) {
+      flushBullet()
+      flushPara()
+      table.push(trimmed)
+      continue
+    }
+    flushTable()
+
+    const quoted = /^>\s?(.*)$/.exec(trimmed)
+    if (quoted) {
+      flush()
+      out.push({ kind: 'quote', parts: inlines(quoted[1] ?? '') })
+      continue
+    }
+
     const item = /^[-*•]\s+(.*)$/.exec(trimmed)
     if (item) {
       flush()
@@ -98,7 +142,7 @@ export function parseNotes(src: string): Block[] {
 }
 
 /** Renders parsed notes. No `dangerouslySetInnerHTML` anywhere in this file. */
-export function ReleaseNotes({ text }: { text: string }) {
+export function Prose({ text }: { text: string }) {
   const blocks = parseNotes(text)
   return (
     <div className="grid gap-2.5 text-[13px] leading-relaxed text-fg-muted">
@@ -111,6 +155,32 @@ export function ReleaseNotes({ text }: { text: string }) {
             >
               {b.text}
             </h3>
+          )
+        }
+        if (b.kind === 'table') {
+          return (
+            <div key={i} className="overflow-x-auto">
+              <table className="border-collapse text-[12px]">
+                <tbody>
+                  {b.rows.map((cells, r) => (
+                    <tr key={r} className="border-b border-border last:border-0">
+                      {cells.map((cell, c) => (
+                        <td key={c} className="py-1 pr-4 align-top">
+                          {renderInline(cell)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        }
+        if (b.kind === 'quote') {
+          return (
+            <p key={i} className="m-0 border-l-2 border-border pl-3 text-fg-faint">
+              {renderInline(b.parts)}
+            </p>
           )
         }
         if (b.kind === 'bullet') {

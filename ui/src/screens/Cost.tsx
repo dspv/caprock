@@ -107,6 +107,18 @@ export function CostScreen() {
         <Panel title="Model mix" right={<span>by cost</span>}>
           {!s ? <Skeleton rows={4} /> : s.models.length === 0 && <Empty title="No priced turns in range" />}
           <table className="w-full text-[12px]">
+            {/* Named columns. Four figures in a row with nothing over them is a
+              * puzzle, and "by cost" in the corner describes the sort order
+              * rather than the columns. */}
+            <thead>
+              <tr className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">
+                <th className="px-3 pb-1 text-left font-normal">model</th>
+                <th className="px-3 pb-1 text-right font-normal">turns</th>
+                <th className="px-3 pb-1 text-right font-normal">tokens</th>
+                <th className="px-3 pb-1 text-right font-normal">cost</th>
+                <th className="px-3 pb-1 text-right font-normal">share</th>
+              </tr>
+            </thead>
             <tbody>
               {(s?.models ?? []).map((m) => (
                 <tr key={m.model} className="border-b border-border/60 last:border-0">
@@ -129,6 +141,14 @@ export function CostScreen() {
         <Panel title="Per project" right={<span>by cost</span>}>
           {!s ? <Skeleton rows={4} /> : s.projects.length === 0 && <Empty title="No priced turns in range" />}
           <table className="w-full text-[12px]">
+            <thead>
+              <tr className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">
+                <th className="px-3 pb-1 text-left font-normal">project</th>
+                <th className="px-3 pb-1 text-right font-normal">tokens</th>
+                <th className="px-3 pb-1 text-right font-normal">cost</th>
+                <th className="px-3 pb-1 text-right font-normal">share</th>
+              </tr>
+            </thead>
             <tbody>
               {(s?.projects ?? []).map((p) => (
                 <tr key={p.project} className="border-b border-border/60 last:border-0">
@@ -212,14 +232,13 @@ export function CostScreen() {
             </div>
           ) : (
             <div className="px-3 pt-1 text-sm text-fg-muted">
-              No window state yet. Caprock reads this from Claude Code's status line, so it appears
-              once a Pro or Max session has run with <span className="mono text-fg">caprock statusline</span> registered —
-              <span className="mono text-fg"> caprock up</span> offers to do that. API-billed usage has no windows to report.
+              Nothing yet. Run <span className="mono text-fg">caprock statusline</span> in a Pro or
+              Max session and your limits appear here. API billing has no windows.
             </div>
           )}
           <div className="mt-2 px-3 pb-3 text-[11px] text-fg-faint leading-relaxed">
-            Live from Claude Code's status line (Pro/Max). The percentage is your usage of the window; a
-            forecast is shown only when your measured pace would reach the limit before the window resets.
+            From Claude Code's status line. A forecast appears only when your pace would hit the
+            limit before the window resets.
           </div>
         </Panel>
       )}
@@ -227,8 +246,7 @@ export function CostScreen() {
       <div className="text-[11px] text-fg-faint">
         {s && s.throttles > 0
           ? `${s.throttles} rate-limit / overloaded event${s.throttles === 1 ? "" : "s"} observed in this range (from Claude Code's StopFailure hook).`
-          : "No rate-limit events observed in this range."}{" "}
-        Everything here is measured — no invented numbers.
+          : "No rate-limit events observed in this range."}
       </div>
     </div>
   )

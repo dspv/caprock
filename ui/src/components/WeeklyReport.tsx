@@ -119,10 +119,8 @@ export function WeeklyReport() {
             * this it reads as three minutes of setup for no reason, and the
             * reason is the whole point of the product. */}
           <span className="text-[11px] text-fg-faint">
-            It is your own bot, not one of ours, and that is deliberate: the message goes
-            straight from this machine to Telegram, so your figures never pass through
-            anybody's server. A shared bot would mean shipping its token inside a public
-            binary, and routing what you spend through us to deliver it.
+            Your own bot, so your figures go straight from this machine to Telegram — never
+            through anybody's server.
           </span>
         </label>
 
@@ -135,11 +133,10 @@ export function WeeklyReport() {
             onChange={(e) => setChat(e.target.value)}
           />
           <span className="text-[11px] text-fg-faint">
-            <strong>Write to your bot first</strong> — find it by its username, press Start, send
-            anything. Telegram does not let a bot message you until you have. Then open{' '}
+            <strong>Message your bot first</strong> — find it by username, press Start, send
+            anything. Then open{' '}
             <span className="mono">api.telegram.org/bot&lt;token&gt;/getUpdates</span> and copy{' '}
-            <span className="mono">chat.id</span>. For a channel instead, add the bot as an
-            administrator; its id starts with a minus.
+            <span className="mono">chat.id</span>.
           </span>
         </label>
 

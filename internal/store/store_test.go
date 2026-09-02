@@ -815,3 +815,94 @@ func TestUnpricedIgnoresTurnsWithNoTokens(t *testing.T) {
 }
 
 func intPtr(v int) *int { return &v }
+
+// What a tool handed back is measured; what it cost in tokens is not.
+//
+// A tool spends no tokens — the turn that reads its output does — so any
+// per-tool token figure could only be a turn's tokens divided between its
+// calls, which looks measured and is not. The size of the response is the
+// honest thing the call count cannot say: on one real machine Bash was called
+// 22x more often than Read and handed back a quarter as much text.
+func TestToolBytesAreMeasuredFromTheResponse(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+
+	n := 0
+	post := func(tool, response string) {
+		t.Helper()
+		n++
+		payload := fmt.Sprintf(`{"tool_name":%q,"tool_response":%q}`, tool, response)
+		if _, err := InsertEvent(ctx, s.DB(), &event.Event{
+			Ts: time.Unix(1000, 0), SessionID: "s1", Source: event.SourceHook,
+			Kind: event.KindToolPost, Tool: tool, Payload: json.RawMessage(payload),
+			Key: fmt.Sprintf("post-%d", n),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pre := func(tool, key string) {
+		t.Helper()
+		if _, err := InsertEvent(ctx, s.DB(), &event.Event{
+			Ts: time.Unix(1000, 0), SessionID: "s1", Source: event.SourceHook,
+			Kind: event.KindToolPre, Tool: tool, Payload: json.RawMessage(`{}`), Key: key,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Read: called twice, hands back a lot. Bash: called four times, hands back
+	// almost nothing. That inversion is the whole point of the column.
+	big := strings.Repeat("x", 4000)
+	pre("Read", "r1")
+	pre("Read", "r2")
+	post("Read", big)
+	post("Read", big)
+	for i := 0; i < 4; i++ {
+		pre("Bash", fmt.Sprintf("b%d", i))
+		post("Bash", fmt.Sprintf("ok%d", i))
+	}
+
+	got, err := ToolDistribution(ctx, s.DB(), 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	by := map[string]ToolCount{}
+	for _, r := range got {
+		by[r.Tool] = r
+	}
+	if by["Bash"].Count != 4 {
+		t.Errorf("Bash calls = %d, want 4", by["Bash"].Count)
+	}
+	if by["Read"].Count != 2 {
+		t.Errorf("Read calls = %d, want 2", by["Read"].Count)
+	}
+	// The inversion: fewer calls, far more returned.
+	if by["Read"].Bytes <= by["Bash"].Bytes {
+		t.Errorf("Read returned %d bytes and Bash %d — the column shows nothing the count does not",
+			by["Read"].Bytes, by["Bash"].Bytes)
+	}
+	// Counted from tool.post only: counting the pre as well would double it.
+	if by["Read"].Bytes < 8000 {
+		t.Errorf("Read bytes = %d, want about 8000 for two 4000-byte responses", by["Read"].Bytes)
+	}
+}
+
+func TestAToolCallWithNoResponseCountsZeroBytes(t *testing.T) {
+	// A pre event, a payload without the field, a payload that is not JSON:
+	// none of them is an error, and none of them should invent a size.
+	ctx := context.Background()
+	s := openTest(t)
+	if _, err := InsertEvent(ctx, s.DB(), &event.Event{
+		Ts: time.Unix(1000, 0), SessionID: "s1", Source: event.SourceHook,
+		Kind: event.KindToolPre, Tool: "Bash", Payload: json.RawMessage(`{"tool_name":"Bash"}`), Key: "k1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ToolDistribution(ctx, s.DB(), 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Bytes != 0 {
+		t.Errorf("a call with no response reported %+v", got)
+	}
+}

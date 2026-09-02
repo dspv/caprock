@@ -316,7 +316,7 @@ describe('ProjectsPanel figures', () => {
     // Each explanation rides on its own row, and they must say DIFFERENT things
     // — the whole point of splitting them is that the reasons differ.
     const outsideHover = screen.getByText('outside the repository').getAttribute('title') ?? ''
-    expect(outsideHover).toMatch(/outside this repository/i)
+    expect(outsideHover).toMatch(/files live elsewhere/i)
     expect(outsideHover).toMatch(/scratchpad|notes|test-output/i)
     const wideHover = screen.getByText('repository-wide work').getAttribute('title') ?? ''
     expect(wideHover).toMatch(/before Claude had touched any file/i)

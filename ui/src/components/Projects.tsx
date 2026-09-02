@@ -178,11 +178,7 @@ const SPARK_BASIS = 'tokens' as const
  * sentence shown on hover.
  */
 const TOUCH_RULE =
-  'A turn counts toward the directory of the most recent file it touched, and keeps counting there ' +
-  'until it touches a file somewhere else — so the commands, tests and searches between two edits ' +
-  'count toward the directory being worked on. Reading, editing or writing a file counts as touching ' +
-  'it; running a command does not. Each turn goes whole to one row, never split between two, so the ' +
-  'rows add up to the repository total exactly.'
+  'Cost is charged to the folder Claude was last working in. Rows add up to the repository total.'
 
 /**
  * The two rows that are NOT directories, and the sentences that explain them.
@@ -218,10 +214,8 @@ const REPO_WIDE_RULE =
   'guessed onto the directory the session reached later.'
 const OUTSIDE_LABEL = 'outside the repository'
 const OUTSIDE_RULE =
-  'Turns whose most recent file touch was outside this repository — Claude’s notes on the ' +
-  'project, agent scratchpads, test-output directories, or another checkout. This is real ' +
-  'work and it counts toward the repository total, but it happened outside the tree, so it ' +
-  'is not charged to any directory inside it.'
+  'Work on this project whose files live elsewhere — Claude’s notes, scratchpads, test output. ' +
+  'Counted in the repository total, but not under any folder.'
 
 export function ProjectsPanel({ sessions, agent }: { sessions: SessionSummary[]; agent: AgentFilter }) {
   // 7d is the default. "today" is near-empty most mornings and would make the
