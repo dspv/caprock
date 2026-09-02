@@ -24,10 +24,28 @@ function token(name: string, fallback: string): string {
 }
 
 /** What a card is about. `all` is the lifetime figure; the others are periods. */
-export type SharePeriod = 'all' | '7d' | '30d'
+/** Which stretch a card is about.
+ *
+ * The picker was removed once on the reasoning that a card showing today, the
+ * week, the month and all time at once made choosing redundant. It does not:
+ * somebody sharing a working week does not want their lifetime total to be the
+ * headline, and a card that answers four questions answers none of them
+ * loudly. The period decides what is said big; the other figures stay, because
+ * the context is what makes a number mean anything. */
+export type SharePeriod = 'today' | '7d' | '30d' | 'all'
+
+/** What each period is called on the card, and which tile it makes the point. */
+export const PERIOD_LABEL: Record<SharePeriod, string> = {
+  today: 'today',
+  '7d': 'this week',
+  '30d': 'this month',
+  all: 'all time',
+}
 
 /** Everything a card shows. Gathered by the caller, drawn here. */
 export interface CardData {
+  /** Which stretch this card is about. */
+  period: SharePeriod
   /** When the card was drawn. A figure in a feed weeks later needs a date. */
   takenAt: Date
   today: { cost: number; sessions: number }
@@ -142,7 +160,10 @@ function paintCard(g: CanvasRenderingContext2D, d: CardData) {
   // No trailing space in the lead: measureText already returns the width up to
   // the last glyph, so a space there is a second gap on top of the measured
   // one — which is where the hole between "on" and the domain came from.
-  const lead = 'My stats on'
+  // The heading names the stretch, so a card shared out of context still says
+  // what it is about. "My week on caprock.dev" is a claim; "My stats on
+  // caprock.dev" beside four periods is a shrug.
+  const lead = d.period === 'all' ? 'My stats on' : `My ${PERIOD_LABEL[d.period].replace('this ', '')} on`
   const space = g.measureText(' ').width
   const leadW = g.measureText(lead).width
   text(64, 78, lead, headSize, fg, sans, 600)
@@ -157,11 +178,15 @@ function paintCard(g: CanvasRenderingContext2D, d: CardData) {
   })
   text(domainX + domainW + space * 2, 78, `– ${date}`, 26, faint, sans, 600)
 
+  // The chosen period is the one in accent; the rest are context rather than
+  // competition. Every figure stays on the card — a week means nothing without
+  // knowing whether it was a normal one.
+  const lit = (p: SharePeriod) => (d.period === p ? accent : fg)
   const tiles: [string, string, string, string][] = [
-    ['TODAY', fmtUSD(d.today.cost), `${d.today.sessions} sessions`, accent],
-    ['THIS WEEK', fmtUSD(d.week.cost), `${d.week.sessions} sessions`, fg],
-    ['THIS MONTH', fmtUSD(d.month.cost), `${shortTokens(d.month.tokens)} tokens`, fg],
-    ['ALL TIME', fmtUSD(d.allTime.cost), `${d.allTime.days} active days`, accent],
+    ['TODAY', fmtUSD(d.today.cost), `${d.today.sessions} sessions`, lit('today')],
+    ['THIS WEEK', fmtUSD(d.week.cost), `${d.week.sessions} sessions`, lit('7d')],
+    ['THIS MONTH', fmtUSD(d.month.cost), `${shortTokens(d.month.tokens)} tokens`, lit('30d')],
+    ['ALL TIME', fmtUSD(d.allTime.cost), `${d.allTime.days} active days`, lit('all')],
     ['A DAY', fmtUSD(d.allTime.cost / Math.max(1, d.allTime.days)), 'on average', fg],
     ['TOKENS', shortTokens(d.allTime.tokens), 'all time', fg],
     // The one tile that answers "dear or cheap" rather than "how much".
@@ -252,7 +277,7 @@ export function cardFilename(d = new Date()): string {
 }
 
 /** Gather what the card needs. Four ranges, because the card shows four. */
-export async function collectCardData(): Promise<CardData> {
+export async function collectCardData(period: SharePeriod = 'all'): Promise<CardData> {
   const [today, week, month, hist] = await Promise.all([
     api.summary('today'),
     api.summary('7d'),
@@ -262,6 +287,7 @@ export async function collectCardData(): Promise<CardData> {
   const toks = (s: { tokens_in: number; tokens_out: number; cache_read: number; cache_write: number }) =>
     s.tokens_in + s.tokens_out + s.cache_read + s.cache_write
   return {
+    period,
     takenAt: new Date(),
     today: { cost: today.cost_usd, sessions: today.sessions },
     week: { cost: week.cost_usd, sessions: week.sessions },

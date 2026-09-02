@@ -13,6 +13,14 @@ Phase 3 (Delight) has no plan by design.
 
 ### Fixed
 
+- **"Nothing measured yet" appeared while the figures were still loading.** The
+  first screen could not tell "no answer yet" from "the answer is nothing", so
+  for the second it took the first response to arrive it announced, with
+  confidence, that a machine with thousands of turns on it had never run
+  anything. It says "reading your figures…" until it knows. Measured on a
+  641 MB database: nothing on this screen takes longer than 0.7s, so the delay
+  was never the problem — the wrong answer during it was.
+
 - **The answers screen showed raw Markdown.** Claude writes bold text, lists
   and tables; the screen kept the line breaks and showed everything else as the
   markup it is made of — `**bold**` with its asterisks, a table collapsed into
@@ -26,6 +34,28 @@ Phase 3 (Delight) has no plan by design.
 
 - **Errors carried a Go package name into the dialog box.** `agents: "/x" is
   not an absolute path` was written for whoever was debugging it.
+
+### Added
+
+- **Share a week, a month, or today — not only all time.** The picker was
+  removed once, on the reasoning that a card showing every period at once made
+  choosing redundant. It does not: somebody sharing a working week does not
+  want their lifetime total to be the headline, and a card that answers four
+  questions answers none of them loudly. The choice now decides what the
+  heading claims and which figure is lit; every other period stays on the card,
+  because a week means nothing without knowing whether it was a normal one.
+  It opens on the week.
+
+- **You can see the card before you send it.** The buttons said where the
+  picture would go and nothing said what was in it: you pressed Save, opened
+  your downloads, and only then found out. The card is drawn in the sheet now,
+  at the size it will be seen, and it redraws as you change the period — which
+  is what makes the choice worth having.
+
+- **The Share button can be found.** It was an outlined button in a row of
+  11px text, next to a solid premium button — an outline cannot win an argument
+  with a fill. It is filled, a size up, and carries an icon. It earns that:
+  sharing is the only thing on this dashboard that leaves the machine.
 
 ### Changed
 

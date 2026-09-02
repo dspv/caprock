@@ -6,7 +6,7 @@
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { cardFilename, collectCardData, drawShareCard } from './ShareCard'
+import { cardFilename, collectCardData, drawShareCard, PERIOD_LABEL } from './ShareCard'
 import { ShareCard } from './Share'
 import type { History } from '@/lib/api'
 
@@ -276,5 +276,43 @@ describe('the share dialog’s guarantees', () => {
     expect(dialog.textContent).toMatch(/no names/i)
     expect(dialog.textContent).toMatch(/nothing claude wrote/i)
     expect(dialog.textContent).toMatch(/uploaded nowhere/i)
+  })
+})
+
+/**
+ * The picker was removed once, on the reasoning that a card showing today, the
+ * week, the month and all time at once made choosing redundant. It does not:
+ * somebody sharing a working week does not want their lifetime total to be the
+ * headline, and a card that answers four questions answers none of them
+ * loudly.
+ */
+describe('the period a card is about', () => {
+  it('names the stretch in the heading, so a card out of context still says what it is', () => {
+    // "My stats on caprock.dev" beside four periods is a shrug. "My week on
+    // caprock.dev" is a claim.
+    expect(PERIOD_LABEL['7d']).toBe('this week')
+    expect(PERIOD_LABEL['30d']).toBe('this month')
+    expect(PERIOD_LABEL.today).toBe('today')
+    expect(PERIOD_LABEL.all).toBe('all time')
+  })
+
+  it('carries the choice into the data, not only into the dialog', async () => {
+    // A picker that does not reach the drawing is a control that lies.
+    const d = await collectCardData('7d')
+    expect(d.period).toBe('7d')
+  })
+
+  it('defaults to all time when nobody chose', async () => {
+    const d = await collectCardData()
+    expect(d.period).toBe('all')
+  })
+
+  it('still gathers every period, whichever one is chosen', async () => {
+    // The other figures are context, not competition: a week means nothing
+    // without knowing whether it was a normal one.
+    const d = await collectCardData('today')
+    expect(d.week).toBeDefined()
+    expect(d.month).toBeDefined()
+    expect(d.allTime).toBeDefined()
   })
 })

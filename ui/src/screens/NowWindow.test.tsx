@@ -8,7 +8,7 @@
  * rows marked idle: true, and useless.
  */
 import { describe, expect, it } from 'vitest'
-import { recentEnough, NOW_WINDOW_MS } from './Now'
+import { recentEnough, isLoading, NOW_WINDOW_MS } from './Now'
 
 const now = Date.UTC(2026, 8, 2, 12, 0, 0)
 const ago = (ms: number) => ({ last_event_at: now - ms })
@@ -38,5 +38,31 @@ describe('what belongs on the Now screen', () => {
     // Guards against someone "tidying" this into an idle timeout: this is
     // about what is worth looking at, not about what is running.
     expect(NOW_WINDOW_MS).toBeGreaterThanOrEqual(24 * 60 * 60 * 1000)
+  })
+})
+
+/**
+ * "Nothing measured yet" is an answer. Until the first response lands there is
+ * no answer, and showing one is a lie the first screen used to tell on every
+ * load — reported as "the data took very long to load" by someone whose data
+ * was there all along and arrived in under a second.
+ */
+describe('waiting is not the same as empty', () => {
+  const empty = { turns: 0 } as const
+
+  it('is loading while nothing has arrived and nothing failed', () => {
+    expect(isLoading(undefined, undefined)).toBe(true)
+  })
+
+  it('is not loading once the answer is in, even when the answer is zero', () => {
+    // A genuinely empty machine must still see "nothing measured yet" — the
+    // fix is to stop guessing, not to never say it.
+    expect(isLoading(empty, undefined)).toBe(false)
+  })
+
+  it('is not loading when the request failed', () => {
+    // An error has its own message; a spinner that never stops is worse than
+    // a failure that says so.
+    expect(isLoading(undefined, new Error('nope'))).toBe(false)
   })
 })
