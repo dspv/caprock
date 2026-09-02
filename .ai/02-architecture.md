@@ -31,11 +31,13 @@ Two data planes, mirroring what works in Munder Difflin, but in Go:
 
 **Why not Electron:** the only thing Electron buys is bundling Chromium. A Go daemon + browser tab gives the same UI with zero ABI pain, one `go build` per platform, and the option of a TUI later. Desktop wrapper (Tauri/Wails) is a packaging decision for later, not an architecture decision now ([ADR-003](08-decisions.md#adr-003--ui-stack-react--vite-embedded-in-the-go-binary-via-goembed)).
 
-## A second agent
+## Three agents, three routes in
 
-Caprock reads [OpenCode](https://github.com/sst/opencode) as well as Claude
-Code. The two arrive by completely different routes, and the asymmetry is the
-point:
+Caprock reads [OpenCode](https://github.com/sst/opencode) and
+[Gemini CLI](https://github.com/google-gemini/gemini-cli) as well as Claude
+Code. All three arrive by completely different routes, and the asymmetry is the
+point — each is read the way that agent already keeps its own records, rather
+than by asking it to keep ours:
 
 - **Claude Code** needs a shim in `~/.claude/settings.json` and its JSONL
   transcripts tailed, because it publishes events and prose but no totals —
@@ -44,12 +46,23 @@ point:
   the working directory and the model are already columns. It is opened
   read-only and polled; nothing is installed, and its own cost figures are
   carried across rather than recomputed.
+- **Gemini CLI** emits OpenTelemetry. Caprock starts it with
+  `GEMINI_TELEMETRY_OUTFILE` pointing at a file per session and tails that,
+  mapping `user_prompt`, `api_response` and `tool_call` records onto the same
+  event kinds ([ADR-026](08-decisions.md), [ADR-027](08-decisions.md)). The file name is the session id,
+  which is what joins the telemetry to the session Caprock spawned.
 
-Both land in the same `events` and `sessions` tables, distinguished by
+All three land in the same `events` and `sessions` tables, distinguished by
 `events.source` and `sessions.agent`. Everything downstream — loop detection,
-narration, work-kind classification, per-directory attribution — works on both
-without knowing there are two, because the OpenCode ingester shapes its
+narration, work-kind classification, per-directory attribution — works on all of
+them without knowing there is more than one, because each ingester shapes its
 payloads like a Claude Code hook payload rather than like its own rows.
+
+One difference reaches further than ingestion: **Caprock starts Claude Code and
+Gemini, and does not start OpenCode.** A session it started has a pid, so its
+end is a fact rather than an inference; OpenCode's is not, which is why
+`ownsItsProcess()` gives it a clock where the others get process liveness
+([ADR-028](08-decisions.md)).
 
 Full detail, including what is not supported, is in
 [16-opencode.md](16-opencode.md).

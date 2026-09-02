@@ -232,7 +232,7 @@ committed to a release yet; each item still needs its own DoD before it starts.
   scope). Any surface must be labelled as plan-usage level, never presented as
   tokens or dollars, or it breaks Rule 6.
 
-- **B4 — The paid tier: a daily spend cap (SELLING, not built).** Payment is
+- **B4 — The paid tier: a daily spend cap (shipped).** Payment is
   live on `caprock.dev/premium` — a Stripe product with two prices ($5/month,
   $30/year) and a page stating what the plan does. The point is to learn
   whether anyone pays *before* spending on traffic: buying an audience for a

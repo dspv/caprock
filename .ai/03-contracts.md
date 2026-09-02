@@ -156,6 +156,27 @@ GET    /v1/history?range=…           lifetime totals + tool distribution + mod
 
 **Non-Anthropic pricing.** `pricing/pricing.json` carries rows for the models Caprock observes through OpenCode — DeepSeek and MiniMax at the providers' own published rates, fetched with a date and noted in the file. They are priced so a total that includes non-Anthropic usage is a total; before this, $155 of the owner's own spend sat outside his. `normalizeModel` strips a gateway's vendor prefix, so `minimax/minimax-m3` from OpenRouter and `MiniMax-M3` from the direct API are one row rather than two, one of them unpriced. The unpriced warning fires only on turns whose tokens are greater than zero: a turn recorded with explicit zeroes has nothing to price, and warning about it says a total is missing money it is not missing.
 
+### Tool bytes DDL (migration 0018)
+
+```sql
+ALTER TABLE events ADD COLUMN tool_bytes INTEGER NOT NULL DEFAULT 0;
+```
+
+Filled from the tool response as the event is stored, and backfilled once from
+`json_extract(payload,'$.tool_response')` for events already on disk. It is
+stored rather than measured per request because the panel that reads it asks
+for every event ever recorded, and reading a column out of a 641 MB table's
+payloads took 2.1s of a screen that is supposed to answer at a glance.
+
+**Bytes, and deliberately not tokens.** A tool result arrives in the transcript
+with no token attribution of its own, so a token figure here could only be a
+bytes-per-token conversion — and the linkage that would have to carry it is
+uneven: 14% of Bash calls cannot be matched to the turn that paid for them
+against 1% of Read's. The converted number would understate Bash specifically,
+which is the comparison the tool table exists to make. A figure that looks
+measured and is quietly skewed is worse than one that is not there;
+[rule 6](../CLAUDE.md) is what makes that the rule rather than a preference.
+
 **Tool distribution DDL.** `idx_events_tool_dist` on `events(kind, ts, tool, tool_bytes)` exists so the ALL TIME panel's tool table is answered from a covering index. Without it SQLite finds rows by (kind, ts) and then fetches each from the table to read two columns — and those rows carry the whole hook payload, which was most of the 2.1s the query took. Covering, it is 0.05s, measured on the owner's 254k-event database (2026-09-02). It replaces `idx_events_kind_ts_tool` from migration 0016, which is the same index without `tool_bytes`; both would cost two copies of the same thing on every insert, so `0019_drop_superseded_tool_index.sql` drops it — as its own migration, because 0018 had already run where it mattered and an edit to an applied migration is an edit nobody receives. `idx_events_kind_ts` is left alone — it serves every other kind+range query and none of them want `tool` along for the ride. Migrations `0018_tool_bytes.sql`, `0019_drop_superseded_tool_index.sql`.
 
 **`caprock license` manages the key from the terminal** — `license` shows it, `license set <key>` stores it (refusing one that will not work rather than leaving someone to wonder why nothing happened), `license clear` removes it, and `license issue --days N | --lifetime` mints one. Issuing exists because the Stripe webhook was the only thing that could make a key, which leaves no way to serve a customer who paid another way, a refund reissued, or a friend. `license.Issue` and the webhook produce the same format and a cross-repository test holds them together. The random suffix is optional: nothing verifies it, it exists so two keys issued on the same day are distinguishable in an email, and a key dictated over the phone has to work without it.
@@ -219,7 +240,7 @@ CREATE TABLE events (
   id          INTEGER PRIMARY KEY,          -- rowid, monotonic
   ts          INTEGER NOT NULL,             -- unix ms
   session_id  TEXT NOT NULL,
-  source      TEXT NOT NULL,                -- 'hook' | 'transcript' | 'opencode'
+  source      TEXT NOT NULL,                -- 'hook' | 'transcript' | 'opencode' | 'gemini'
   kind        TEXT NOT NULL,                -- see 02-architecture.md § Event model
   tool        TEXT,
   payload     TEXT NOT NULL,                -- raw JSON
@@ -227,7 +248,8 @@ CREATE TABLE events (
   cache_read  INTEGER, cache_write INTEGER,
   cost_usd    REAL,
   msg_id      TEXT,                          -- assistant message id (migration 0012)
-  touch_dir   TEXT                           -- directory the tool touched (migration 0012)
+  touch_dir   TEXT,                          -- directory the tool touched (migration 0012)
+  tool_bytes  INTEGER NOT NULL DEFAULT 0     -- bytes the tool returned (migration 0018)
 );
 CREATE INDEX idx_events_session_ts ON events(session_id, ts);
 CREATE INDEX idx_events_ts ON events(ts);

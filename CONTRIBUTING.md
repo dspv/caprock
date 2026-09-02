@@ -40,8 +40,7 @@ Full engineering rules: [`.ai/06-engineering-rules.md`](.ai/06-engineering-rules
   table, or price updates [`.ai/03-contracts.md`](.ai/03-contracts.md) (and a
   migration / `pricing_version` bump) **in the same commit**.
 - **Docs land with the change** — a behaviour change updates its docs, including
-  [`.ai/14-build-status.md`](.ai/14-build-status.md) and the README progress
-  bars, in the same PR.
+  [`.ai/14-build-status.md`](.ai/14-build-status.md), in the same PR.
 
 New to the codebase? Read [`.ai/00-index.md`](.ai/00-index.md) first — it maps
 every doc to when you'd read it.

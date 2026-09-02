@@ -89,9 +89,11 @@ On first run `caprock up` asks before adding its hook and status-line entries to
 `~/.claude/settings.json` (it backs the file up and never touches your other
 settings). Say no and it still reads your history from transcripts.
 
-Run [OpenCode](https://github.com/sst/opencode) too? It is picked up
-automatically and shown on the same screens — see [OpenCode](#opencode) for what
-that covers and what it does not.
+Run [OpenCode](https://github.com/sst/opencode) or
+[Gemini CLI](https://github.com/google-gemini/gemini-cli) too? Both are shown on
+the same screens — OpenCode is picked up automatically from its own database,
+Gemini through the telemetry it writes when Caprock starts it. See
+[OpenCode](#opencode) for what that covers and what it does not.
 
 ![Live activity and cost, right now](docs/shot-now.png)
 
@@ -168,7 +170,7 @@ across two tools that each see half of it; here the projects list, the history
 and the cost add up over both, and OpenCode rows carry an `oc` mark so you can
 still tell them apart.
 
-**Or see one at a time.** The Now screen carries `all / claude / opencode` in
+**Or see one at a time.** The Now screen carries `all / claude / opencode / gemini` in
 the middle of its header, and it applies to the whole screen — today's totals,
 the live pulse, the activity feed, the projects list and the session cards all
 answer the same question. It appears only on a machine that runs both.
@@ -356,8 +358,9 @@ machine; your prompts, replies, and tool output are never sent. A question costs
 about 0.04 cents on Flash Lite and 1 cent on Pro, priced before you spend it.
 Built.
 
-**A weekly report** of what moved, sent to your own Telegram bot or webhook.
-Not built yet, and the page that sells it says so.
+**A weekly report** of what moved — spend, the projects that drove it, and
+what changed against the median of the last four weeks — sent to your own
+Telegram bot.
 
 $5/month, $30/year, or $100 once — [caprock.dev/premium](https://caprock.dev/premium/).
 

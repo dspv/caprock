@@ -39,14 +39,14 @@ not a channel decision.
 
 Supporting directories:
 
-| Path                | Contents                                                       |
-| ------------------- | -------------------------------------------------------------- |
-| `scripts/`          | `align-tables.py`, `check-links.py` — docs tooling             |
-| `docs/`             | Human-facing docs; the migration audit record                  |
-| `cmd/`, `internal/` | Go daemon, CLI, shim (see 02-architecture § Repository layout) |
-| `ui/`               | React + Vite dashboard, embedded into the binary               |
-| `pricing/`          | `pricing.json` — versioned model pricing table                 |
-| `testdata/`         | Transcript fixtures, hook payloads, fake `claude`              |
+| Path                | Contents                                                                                                                                                                           |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scripts/`          | `align-tables.py`, `check-links.py` — docs gates; `shots.py`, `feature-shots.py`, `refresh-shots.sh` — the documented screenshots; `dev.sh`, `record-stand.sh`, `release-notes.py` |
+| `docs/`             | Human-facing docs; the migration audit record                                                                                                                                      |
+| `cmd/`, `internal/` | Go daemon, CLI, shim (see 02-architecture § Repository layout)                                                                                                                     |
+| `ui/`               | React + Vite dashboard, embedded into the binary                                                                                                                                   |
+| `pricing/`          | `pricing.json` — versioned model pricing table                                                                                                                                     |
+| `testdata/`         | Transcript fixtures, hook payloads, fake `claude`                                                                                                                                  |
 
 ## Current State
 
@@ -64,7 +64,7 @@ Supporting directories:
 1. **Phase order is the product.** Observe (Phase 0) ships and works on externally started sessions before any control or orchestration code is user-facing. Read before write; orchestration is additive. Skipping ahead produces a harness nobody can adopt without changing their workflow — the incumbent's exact failure.
 2. **No task is done with a red Windows CI job. No exceptions.** Cross-platform reliability is the moat ([02-architecture.md](02-architecture.md#cross-platform-do-it-right-on-day-one)).
 3. **The shim never breaks a user's Claude session.** Any error path is silent `exit 0` within 1s; no stdout except the Phase 2 Stop decision.
-4. **All data stays on the machine.** Loopback listeners only; no telemetry; **no outbound calls except the release check the user explicitly turns on** — off by default, asked for once, revocable, and carrying no body, credentials, or usage data (see [02-architecture.md](02-architecture.md) and `internal/update`). Local-first is the trust story that made the incumbent land.
+4. **All data stays on the machine.** Loopback listeners only; no telemetry; **no outbound call the user did not switch on** — the release check (`internal/update`), Gemini on the user's own key (`internal/gemini`), and the weekly report to the user's own bot (`internal/weekly`). Each is off by default and revocable, none reports to Caprock, and none carries usage data (see [02-architecture.md](02-architecture.md), [06-engineering-rules.md](06-engineering-rules.md)). Local-first is the trust story that made the incumbent land.
 5. **All code, commits, PR titles, descriptions and docs in English.** Conventional Commits.
 6. **No invented numbers anywhere public** — prices, costs, forecasts, performance claims. Measured or sourced with a date, else an open question. Forecasts are labeled estimates.
 7. **Every feature traces to a complaint** ([01-product.md § Complaint → feature traceability](01-product.md#complaint--feature-traceability)); a feature with no row is a candidate for cutting.
