@@ -412,6 +412,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	go d.gemIn.Run(ctx)
 
 	go d.sweep(ctx)
+	d.loadReportState(ctx)
 	go d.weeklyLoop(ctx)
 	go d.backfillToolLinks(ctx)
 	if d.config().RetentionDays > 0 {

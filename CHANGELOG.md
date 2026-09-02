@@ -9,6 +9,22 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.45.2] - 2026-09-02
+
+### Fixed
+
+- **Why a weekly report never arrived is remembered now.** The reason a send
+  failed was held in memory, so restarting the daemon erased it — and
+  restarting is exactly what somebody does when a feature seems broken, which
+  made investigating the problem the thing that destroyed the evidence.
+
+  This matters more than it sounds because of how the feature fails: a message
+  that stops arriving is an absence, and nobody notices an absence. The
+  settings panel was the only place the reason appeared, and it was empty by
+  the time anyone looked. Telegram's own words — "chat not found", "bot was
+  blocked by the user" — are kept, because both are things only the user can
+  fix, and a week later they are still the answer.
+
 ## [0.45.1] - 2026-09-02
 
 Both found by installing Caprock from scratch and reading the first screens the
