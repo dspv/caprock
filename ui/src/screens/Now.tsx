@@ -244,6 +244,18 @@ export function NowScreen() {
         * sessions are busy, which are grinding, and which have gone quiet. */}
       <PulsePanel sessions={list} now={now} />
 
+      {/* Straight after the pulse, not at the bottom of the screen.
+        *
+        * It was last, below the activity feed and the project list, and the
+        * feed is tall — so the most legible thing on this screen was the thing
+        * you had to scroll to find. It reads as a continuation of the pulse:
+        * that shows the shape of the work, this shows what the work was.
+        *
+        * It was moved out of the all-time line at the top for a reason that
+        * still holds — expanded up there it pushed Today and the pulse below
+        * the fold — so it goes under the pulse rather than above it. */}
+      <BreakdownPanel />
+
       {/* What is happening (left) beside what it costs (right). */}
       <div className="grid gap-3 lg:grid-cols-2">
         <ActivityFeed
@@ -259,13 +271,6 @@ export function NowScreen() {
         />
         <ProjectsPanel sessions={list} agent={agent} />
       </div>
-
-      {/* The lifetime figures sit here rather than in the all-time line at the
-        * top: hidden in that line nobody found them, expanded there they
-        * pushed Today and the live pulse below the fold. Between the live
-        * panels and the session rows there is room, and nothing they compete
-        * with. */}
-      <BreakdownPanel />
 
       {sessions.error && !sessions.data && (
         <Empty title="Cannot reach the daemon">{sessions.error.message} — is <span className="mono">caprock up</span> running?</Empty>

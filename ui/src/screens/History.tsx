@@ -78,7 +78,7 @@ export function HistoryScreen() {
         <UnpricedNote u={d?.totals.unpriced} className="mx-3 mb-2.5" />
       </Panel>
       <div className="grid gap-3 lg:grid-cols-2">
-        <Panel title="Tool usage" right={<span>by calls</span>}>
+        <Panel title="Tool usage" right={<span className="text-[10px] uppercase tracking-[0.08em]">calls</span>}>
           {!d ? <Skeleton rows={5} /> : d.tools.length === 0 && <Empty title="No tool calls yet" />}
           <ul className="py-1">
             {(d?.tools ?? []).slice(0, 18).map((t) => (
@@ -98,6 +98,17 @@ export function HistoryScreen() {
           <Panel title="Model mix" right={<span>by cost</span>}>
             {!d ? <Skeleton rows={3} /> : d.summary.models.length === 0 && <Empty title="No priced turns" />}
             <table className="w-full text-[12px]">
+              {/* Named columns. Three figures in a row with nothing over them
+                * is a puzzle — "12.02B  $7,595.32" reads as two unrelated
+                * numbers until you work out which is which, and "by cost" in
+                * the corner describes the sort order, not the columns. */}
+              <thead>
+                <tr className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">
+                  <th className="px-3 pb-1 text-left font-normal">model</th>
+                  <th className="px-3 pb-1 text-right font-normal">tokens</th>
+                  <th className="px-3 pb-1 text-right font-normal">cost</th>
+                </tr>
+              </thead>
               <tbody>
                 {(d?.summary.models ?? []).map((m) => (
                   <tr key={m.model} className="border-b border-border/60 last:border-0">
@@ -122,6 +133,17 @@ export function HistoryScreen() {
 
         <Panel title="Top projects" right={<span>by cost</span>}>
             <table className="w-full text-[12px]">
+              {/* Named columns. Three figures in a row with nothing over them
+                * is a puzzle — "12.02B  $7,595.32" reads as two unrelated
+                * numbers until you work out which is which, and "by cost" in
+                * the corner describes the sort order, not the columns. */}
+              <thead>
+                <tr className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">
+                  <th className="px-3 pb-1 text-left font-normal">project</th>
+                  <th className="px-3 pb-1 text-right font-normal">tokens</th>
+                  <th className="px-3 pb-1 text-right font-normal">cost</th>
+                </tr>
+              </thead>
               <tbody>
                 {(d?.summary.projects ?? []).slice(0, 8).map((p) => (
                   <tr key={p.project} className="border-b border-border/60 last:border-0">

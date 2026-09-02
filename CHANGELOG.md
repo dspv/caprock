@@ -13,6 +13,24 @@ Phase 3 (Delight) has no plan by design.
 
 ### Fixed
 
+- **Every table says what its columns are.** Three figures in a row with
+  nothing over them is a puzzle: `$7,587.14 · 12.01B · 58%` reads as three
+  unrelated numbers until you work out which is which, and the "by cost" in the
+  corner describes the sort order rather than the columns. Every breakdown on
+  Now, Cost and Lifetime now names them, on one line with the table's own title
+  so it costs no vertical space.
+
+  The tool table has two figures rather than three, and now says so. It could
+  have shown tokens beside calls — but 14% of Bash calls cannot be linked to
+  the turn that paid for them against 1% of Read's, so the number would have
+  understated Bash specifically, which is the comparison the table exists to
+  make. A figure that looks measured and is quietly skewed is worse than a
+  column that is not there.
+
+- **The all-time breakdown moved up, under the live pulse.** It was last, below
+  a tall activity feed, so the most legible thing on the screen was the thing
+  you had to scroll to find.
+
 - **"Nothing measured yet" appeared while the figures were still loading.** The
   first screen could not tell "no answer yet" from "the answer is nothing", so
   for the second it took the first response to arrive it announced, with
