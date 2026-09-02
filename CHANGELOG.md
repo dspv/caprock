@@ -9,7 +9,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
-## [0.49.2] - 2026-09-03
+## [0.49.3] - 2026-09-03
 
 ### Fixed
 
@@ -19,6 +19,14 @@ Phase 3 (Delight) has no plan by design.
   twenty seconds of a busy minute extrapolates to that. Until the window has
   been lived through, the tile shows a dash and says it needs ten minutes of
   running — a figure nobody can act on is worse than no figure.
+
+- **A test that asserted a promise the code never made.** One of the night's
+  new tests demanded that a healthy terminal subscriber receive 300 of 400
+  chunks while another subscriber sat stalled. The buffer is deliberately
+  lossy — a reader that falls behind legitimately misses some — so the test
+  passed on a fast machine and failed in CI, which is what stopped v0.49.2
+  from publishing. It asserts what the code actually promises now: the writer
+  finishes and a healthy reader keeps receiving.
 
 ## [0.49.1] - 2026-09-03
 

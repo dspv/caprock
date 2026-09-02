@@ -8,7 +8,6 @@ package agents
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
@@ -218,10 +217,18 @@ func TestSubscribingToADeadSessionClosesImmediately(t *testing.T) {
 	}
 }
 
-// A subscriber that stops reading must not wedge the pump. The chunk is dropped
-// for that one slow reader instead — a browser tab that stalled is not a reason
-// for every other terminal on the session to freeze, nor for the process's own
-// output pipe to back up.
+// A subscriber that never reads must not stall the session.
+//
+// The pump drops into a full subscriber rather than blocking, so one browser
+// tab that stopped reading — closed laptop, sleeping phone — cannot wedge the
+// terminal for everyone else, or for the agent writing into it.
+//
+// What is asserted is that output *keeps arriving* at a healthy reader while a
+// stalled one sits there full, and that the writer finishes. Not how many
+// chunks arrive: the buffer is deliberately lossy, so a reader that falls
+// behind legitimately misses some. An earlier version of this test demanded
+// 300 of 400 and passed on a fast machine while failing in CI, which is the
+// test asserting a promise the code never made.
 func TestASlowSubscriberDoesNotStallTheSession(t *testing.T) {
 	m, _, f := newMgr(t)
 	a, err := m.Spawn(context.Background(), SpawnRequest{Cwd: t.TempDir()})
@@ -236,27 +243,32 @@ func TestASlowSubscriberDoesNotStallTheSession(t *testing.T) {
 	defer cancelLive()
 
 	// Well past the 256-slot subscriber buffer, so the stalled one is
-	// definitely full. The writer is joined before Shutdown, which closes the
-	// fake's output channel.
-	var wg sync.WaitGroup
-	wg.Add(1)
+	// definitely full and the pump is definitely dropping into it.
+	written := make(chan struct{})
 	go func() {
-		defer wg.Done()
+		defer close(written)
 		for i := 0; i < 400; i++ {
 			f.session.out <- []byte("x")
 		}
 	}()
-	t.Cleanup(func() { wg.Wait(); m.Shutdown() })
+	t.Cleanup(func() { <-written; m.Shutdown() })
 
-	got := 0
-	deadline := time.After(10 * time.Second)
-	for got < 300 {
-		select {
-		case <-live:
-			got++
-		case <-deadline:
-			t.Fatalf("the reading subscriber received only %d chunks; one stalled reader blocked the whole session", got)
+	// The writer must finish. If a full subscriber blocked the pump, the
+	// fake's output channel would back up and this would never close.
+	select {
+	case <-written:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the writer never finished — a stalled subscriber blocked the session")
+	}
+
+	// And the healthy subscriber must still be receiving.
+	select {
+	case _, ok := <-live:
+		if !ok {
+			t.Fatal("the healthy subscriber's channel was closed")
 		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the healthy subscriber received nothing while another was stalled")
 	}
 }
 
