@@ -49,6 +49,30 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-09-02 (evening) — An hour is lunch
+
+A user left his terminal, went to lunch, came back an hour later and found the
+session closed. It was this morning's change: `EndAfter` cut from twelve hours
+to one, with a comment reading *"an hour outlasts lunch"*. That comment was the
+whole bug — an hour does not outlast lunch, it **is** lunch, and the threshold
+was placed exactly on the most common interruption of a working day.
+
+Measured before fixing, on a real database: 44 sessions had paused for more
+than an hour and then continued, with 86 of those pauses between one and three
+hours. So this was not an edge case; it was the normal shape of a day.
+
+Eight hours now, and the reasoning is written where the number is. The
+threshold exists only for a session that ends without saying so — `kill -9`, a
+closed terminal, a crashed host — because `SessionEnd` handles every ordinary
+ending immediately. A backstop can afford to be slow. And the two errors are
+not symmetric, which is the general form of several of today's fixes: a stale
+row costs a line in a list, while a wrongly closed session disappears from the
+dashboard while somebody is still working in it.
+
+The lesson is narrower than "test more". The comment asserted something about
+human behaviour — how long lunch is — and nobody checked it against the data
+sitting in the same repository, which answers it in one query.
+
 ### 2026-09-02 (later still) — Gemini is observed, and a real key found the fourth wrong model
 
 **Caprock sees Gemini sessions now.** The entry below ends by naming the gap:
