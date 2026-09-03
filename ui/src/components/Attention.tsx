@@ -66,9 +66,18 @@ function Row({ it, now, onDismiss, session }: {
         <span className={it.sessionId ? 'ml-2' : ''}>{it.detail}</span>
       </span>
       <span className="ml-auto flex items-center gap-3 shrink-0">
+        {/* Labelled in the open, not only on hover. This is the SESSION's
+          * total, and sitting bare beside "Stuck in a loop" it read as the
+          * price of the loop — a $58.85 that the repetition had not cost.
+          * Charging the loop's own window instead would not fix it: measured
+          * here, a two-hour loop's window held $47 of which essentially all
+          * was the useful work happening alongside it, so that figure would be
+          * wrong too, and harder to argue with (rule 6). The number stays what
+          * it is and now says so. */}
         {it.costUSD !== undefined && it.costUSD > 0 && (
-          <span className="num text-[13px] text-fg" title="spent by this session so far">
-            {fmtUSD(it.costUSD)}
+          <span className="flex items-baseline gap-1" title="what this session has spent in total — not what this problem cost">
+            <span className="num text-[13px] text-fg">{fmtUSD(it.costUSD)}</span>
+            <span className="text-[10px] text-fg-faint">session total</span>
           </span>
         )}
         {it.since !== undefined && (
@@ -102,7 +111,7 @@ function Row({ it, now, onDismiss, session }: {
           * Anthropic's, and no amount of money we take moves it, so selling a
           * cap beside it would be selling the wrong thing. */}
         {(it.id.startsWith('loop-') || it.id.startsWith('spent-')) && (
-          <PremiumHint reason="this is what a cap stops" now={now} />
+          <PremiumHint reason="this is what a cap stops" now={now} canAct={it.owned === true} />
         )}
         {onDismiss && it.id.startsWith('loop-') && (
           <button

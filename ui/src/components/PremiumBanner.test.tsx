@@ -58,7 +58,7 @@ describe('PremiumBanner', () => {
     fireEvent.click(screen.getByRole('button', { name: /not now/ }))
     unmount()
 
-    render(<PremiumHint reason="this is what a cap stops" now={NOW} />)
+    render(<PremiumHint reason="this is what a cap stops" now={NOW} canAct />)
     expect(screen.getByText(/a cap that stops this/)).toBeTruthy()
   })
 })

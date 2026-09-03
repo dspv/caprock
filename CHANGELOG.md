@@ -9,6 +9,29 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **The loop banner sold a cap that could not act, beside a cost that was not
+  the loop's.** Both halves of the row overstated what they knew. The spend cap
+  pauses only sessions Caprock started (rule 7), and 122 of the 127 sessions
+  that did real work on this machine were started by hand — so "a cap that
+  stops this" was, nearly every time it appeared, an offer to stop something
+  the cap cannot reach. It now says "a cap covers sessions Caprock starts" and
+  offers "what a cap does" unless the session is one Caprock owns; unknown
+  ownership counts as not owned, since a promise made on a guess is the thing
+  being fixed. The button stays, because the feature is real and the sessions
+  where it applies are exactly the ones someone would want it for.
+
+  The figure beside it is the **session's** total, and sitting bare next to
+  "Stuck in a loop" it read as the price of the repetition — a $58.85 the loop
+  had not cost. Charging the loop's own window instead would not fix it:
+  measured on a real two-hour loop, that window held $47 of which essentially
+  all was the useful work happening alongside it, so the number would still be
+  wrong and harder to argue with (rule 6). It keeps its meaning and now carries
+  a visible `session total` label rather than explaining itself only on hover.
+
+  The detector is untouched — it was right, which is how this was noticed.
+
 ## [0.52.2] - 2026-09-03
 
 ### Fixed

@@ -216,3 +216,24 @@ describe('plan-limit alerts', () => {
     expect(out[0]?.sessionId).toBe('')
   })
 })
+
+/**
+ * The spend cap can only pause sessions Caprock started (rule 7), so whether
+ * it could have acted has to reach the banner. Measured on the owner's
+ * database: 122 of the 127 sessions that did real work were started by hand —
+ * so without this the "a cap that stops this" button sat beside a loop no cap
+ * would have touched, nearly every time it appeared.
+ */
+describe('whether a cap could have acted', () => {
+  it('carries session ownership onto the loop item', () => {
+    const owned = findAttention({
+      sessions: [session({ session_id: 's-loop', owned: true })], alerts: [alert()], now: NOW,
+    })
+    expect(owned.find((i) => i.id.startsWith('loop-'))?.owned).toBe(true)
+
+    const theirs = findAttention({
+      sessions: [session({ session_id: 's-loop', owned: false })], alerts: [alert()], now: NOW,
+    })
+    expect(theirs.find((i) => i.id.startsWith('loop-'))?.owned).toBe(false)
+  })
+})
