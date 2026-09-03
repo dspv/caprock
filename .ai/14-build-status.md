@@ -2,7 +2,7 @@
 
 The running log: what is done, what is not, what is next. **Update this file and § Current State in [00-index.md](00-index.md) whenever the state of the world changes.** Dates in absolute form, never "last week". What "done" means per task is defined in [09-execution-plan.md](09-execution-plan.md).
 
-**Last updated: 2026-09-02** · Phase **2 — Orchestrate, complete** · every phase is tagged and published (`brew install dspv/tap/caprock`, or Scoop on Windows via `dspv/scoop-bucket`). The live unattended orchestrator run — the Phase 2 tag gate — is done: a real `claude` orchestrator assigned a task, spawned a worker, and drove it to green verification with nobody watching.
+**Last updated: 2026-09-03** · Phase **2 — Orchestrate, complete** · every phase is tagged and published (`brew install dspv/tap/caprock`, or Scoop on Windows via `dspv/scoop-bucket`). The live unattended orchestrator run — the Phase 2 tag gate — is done: a real `claude` orchestrator assigned a task, spawned a worker, and drove it to green verification with nobody watching.
 
 **What shipped in which release is answered by `CHANGELOG.md`, `git describe` and the releases page, and is deliberately not restated here.** This paragraph used to carry a hand-written list of them; it stopped at v0.10.0 and stayed there for eighty-four releases, which is [rule 9](../CLAUDE.md) demonstrating itself. What belongs here is the state of the world, not its version history.
 
@@ -52,6 +52,71 @@ Percentages are deliberately coarse — they answer "is this track started, half
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
 ## Log
+
+### 2026-09-03 — One editor, two working sessions: what `/clear` actually does
+
+A screenshot of the owner's own dashboard showed his repository twice: one card
+`working` at $0.00 with an unreadable context, another `working` at $1,062.36
+with a 95%-full context and the phrase "compacting context". He had just run
+`/clear`, and asked whether the data had stopped updating.
+
+It had not — the figures were three minutes old and correct, and the new
+session filled in seconds. Everything else on the screen was wrong.
+
+**`/clear` does not end a session and does not reuse its id.** Claude Code
+keeps the process and starts a **new** session id inside it. So two rows shared
+one live pid, and [ADR-028](08-decisions.md#adr-028--a-session-ends-when-its-process-does)
+judges a session by whether its process is alive — the old row's process was
+not merely alive, it was the very process now serving its replacement. Nothing
+could ever retire it. The replacement is now recorded explicitly, keyed off the
+`SessionStart` whose source is `clear`: only the start names the session meant
+to survive, and keyed off the `SessionEnd` beside it the first attempt retired
+the live one.
+
+**Three smaller lies shipped with it.** `/clear` was stored as
+`context.compact`, a different event — a compact keeps the substance of the
+context, `/clear` discards it — so the dashboard reported a compaction that
+never happened at the one moment the owner is deciding whether to wait; it and
+the reasons that continue a session without touching the context now have their
+own kinds, and neither may be `session.end`, which rollup reads as "retire
+this". An empty Context stat was captioned `unknown model` **beside a Cost stat
+reading `claude-opus-5`** — the dashboard naming the model and denying it knew
+it, in the same row; the server now says which of the two reasons applies.
+And the model picker omitted Fable 5, the most capable model on the machine,
+while `claude --help` names it beside `opus` and `sonnet`.
+
+**Every model id was checked against the real binary, and it mattered.**
+`claude-mythos-5` is in `pricing.json` and is *not* in the list: the binary
+answers "it may not exist or you may not have access to it". Being priceable
+means we can cost a model, never that the account can call it — the same lesson
+the Gemini list learned twice.
+
+**Fixing the writer was half the fix.** Shipped as v0.52.1, and the owner's
+dashboard still said "compacting context" on 17 sessions, because the rows
+already stored kept the old kind — and all 18 of them were the *last* event of
+their session, which is the phrase the card shows. The first answer given was
+that a migration "would lie about what was actually observed"; that was a
+rationalization, and the opposite was true. `events.payload` is stored
+verbatim, so every row already names the hook that produced it: the migration
+**reads** the observation rather than inventing one. v0.52.2
+(`0021_reclassify_clear_events.sql`) corrects them, leaving genuine
+`PreCompact` rows alone.
+
+**No figure moved, and that was checked rather than asserted.** The rewritten
+rows carry no cost and no tokens; totals compared on a copy of the real 665MB
+database before and after came to `13420.050393` both times, identical to the
+cent (rule 6).
+
+**Tests proven by sabotage.** Dropping the `PreCompact` guard makes the suite
+report `real-compact: kind "session.continue", want "context.compact"` — the
+one destruction worth fearing, reproduced as a failure. The supersede, the
+narration, the `context_note` and both UI surfaces are pinned the same way; the
+UI half was missed on the first pass, where the new kinds rendered as a raw
+kind string in the timeline and vanished from the activity feed entirely.
+
+**Verified in a browser on the released binary**, not only in tests: a real
+`/clear` through the installed shim records `context.clear`, leaves exactly one
+live session, and the card that started this now reads "context cleared".
 
 ### 2026-09-02 (evening) — An hour is lunch
 

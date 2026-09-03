@@ -743,6 +743,27 @@ process start times across three platforms, for a case requiring a wrap of the
 pid space between two sweeps. Its cost is a stale row; the cost of not doing
 this at all was a session vanishing while somebody worked in it.
 
+**A blind spot found later: two sessions can share one live process.** `/clear`
+does not end a session and does not reuse its id — Claude Code keeps the
+process and starts a **new** session id inside it. The old row's process is
+therefore not merely alive, it is the very process now serving its replacement,
+so this sweep could never retire it: one editor showed on the dashboard as two
+working sessions, the stale one frozen at the moment it was cleared with its
+whole cost and a 95%-full context still presented as current.
+
+The rule holds — a process that runs one conversation at a time makes a sibling
+on the same pid finished by definition — but liveness alone cannot see it,
+because the signal is shared. The replacement is recorded explicitly instead,
+keyed off the `SessionStart` whose source is `clear` (the only one of the two
+hooks that names the session meant to survive; the `SessionEnd` beside it
+carries the id being replaced). See
+[03-contracts.md § Hook shim](03-contracts.md#hook-shim).
+
+Deliberately **not** extended to closing such sessions in bulk after the fact.
+Retiring a session whose process is running is the failure this ADR exists to
+prevent, and one left over from before the fix ages to `idle` on its own and
+closes when its process exits.
+
 **Rules out:** any silence threshold as the primary rule; killing a session
 because the daemon restarted.
 

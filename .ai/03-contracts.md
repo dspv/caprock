@@ -248,6 +248,32 @@ GET    /v1/history?range=…           lifetime totals + tool distribution + mod
 
 **Non-Anthropic pricing.** `pricing/pricing.json` carries rows for the models Caprock observes through OpenCode — DeepSeek and MiniMax at the providers' own published rates, fetched with a date and noted in the file. They are priced so a total that includes non-Anthropic usage is a total; before this, $155 of the owner's own spend sat outside his. `normalizeModel` strips a gateway's vendor prefix, so `minimax/minimax-m3` from OpenRouter and `MiniMax-M3` from the direct API are one row rather than two, one of them unpriced. The unpriced warning fires only on turns whose tokens are greater than zero: a turn recorded with explicit zeroes has nothing to price, and warning about it says a total is missing money it is not missing.
 
+### Reclassifying the /clear events already recorded (migration 0021)
+
+No DDL: one `UPDATE` correcting rows the old write path mislabelled. Until
+v0.52.1 every `SessionEnd` whose reason left the session running was stored as
+`context.compact`, so the dashboard narrated "compacting context" at sessions
+that had merely been cleared. Fixing the writer did not reach the rows already
+stored, and on the owner's database **all 18 of them were the last event of
+their session** — which is the phrase the session card shows.
+
+The rewrite reads rather than guesses: `events.payload` is stored verbatim, so
+each row already names the hook that produced it. `hook_event_name = 'SessionEnd'`
+is the whole condition, and `reason` picks the kind — `clear` → `context.clear`,
+anything else → `session.continue`. A genuine `PreCompact` is untouched, which
+is the row this could most easily destroy.
+
+**It moves no figure.** The rewritten rows carry `cost_usd = 0` and no tokens
+(cost comes from `turn.assistant`), verified on a copy of a real 665MB database
+before and after — `13420.050393` both times, identical to the cent (rule 6).
+Idempotent, so a kill mid-apply is safe to retry. Not reversible — the previous
+`kind` is not kept — but recoverable from `payload`, which it does not touch.
+
+Sessions left `active` by an old `/clear` are deliberately **not** closed here:
+retiring a session whose process is still running is the failure
+[ADR-028](08-decisions.md#adr-028--a-session-ends-when-its-process-does) exists
+to prevent, and such a row ages to `idle` on its own.
+
 ### Daily sessions DDL (migration 0020)
 
 ```sql
