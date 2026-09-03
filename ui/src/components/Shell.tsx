@@ -394,8 +394,8 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
                     <button
                       key={r.label}
                       onClick={() => setRouteLabel(r.label)}
-                      className={`rounded-sm px-2 py-1 text-[11px] transition-colors ${
-                        route.label === r.label ? 'text-accent' : 'text-fg-faint hover:text-fg-muted'
+                      className={`rounded-sm px-2 py-1 text-[12px] transition-colors ${
+                        route.label === r.label ? 'text-accent' : 'text-fg-muted hover:text-fg'
                       }`}
                       title={r.label === guessed?.label ? 'how this copy appears to be installed' : undefined}
                     >
@@ -435,7 +435,12 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
                       </a>
                     )}
                   </div>
-                  <p className="pl-5 text-[11px] leading-relaxed text-fg-faint">{step.note}</p>
+                  {/* The reason each step exists, and the part people skip a
+                    * step without. At 11px in the faintest grey it was set
+                    * like a caption — decoration you are meant to slide past —
+                    * when it is the half of this dialog that explains why the
+                    * update is three commands and not one. */}
+                  <p className="pl-5 text-[12px] leading-relaxed text-fg-muted">{step.note}</p>
                 </li>
               ))}
             </ol>
@@ -443,7 +448,7 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
 
           {/* Said once, plainly. Without it people look for the button that
             * does this for them and conclude it is hidden. */}
-          <div className="text-[11px] leading-relaxed text-fg-faint border-t border-border pt-3">
+          <div className="text-[12px] leading-relaxed text-fg-muted border-t border-border pt-3">
             Caprock does not update itself: it would have to overwrite its own binary while running, and where a
             package manager owns that binary, replacing it behind their back breaks the next upgrade.
           </div>
