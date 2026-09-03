@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.52.1] - 2026-09-03
+
 ### Fixed
 
 - **`/clear` showed one editor as two working sessions.** Claude Code does not
