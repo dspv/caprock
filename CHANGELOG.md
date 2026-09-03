@@ -9,6 +9,32 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.52.2] - 2026-09-03
+
+### Fixed
+
+- **Sessions cleared before 0.52.1 still said "compacting context".** 0.52.1
+  gave `/clear` and Escape their own event kinds, but only for events recorded
+  after it shipped — the rows already in the database kept the compact's kind,
+  and on this machine all 18 of them were the *last* event of their session,
+  which is the phrase the session card shows. So 17 sessions went on claiming a
+  compaction that never happened, and the `/clear` that started the whole
+  investigation was still captioned "was compacting context" beside a $1,062
+  cost and a 95%-full context.
+
+  A migration reclassifies them. It invents nothing: `events.payload` is stored
+  verbatim, so each row already names the hook that produced it, and the rewrite
+  reads that rather than guessing — `SessionEnd` with `reason=clear` becomes
+  `context.clear`, other continuing reasons become `session.continue`, and a
+  genuine `PreCompact` is left alone. No figure moves: these rows carry no cost
+  and no tokens, and the totals were checked against a copy of a real 665 MB
+  database before and after (identical to the cent).
+
+  Sessions left `active` by an old `/clear` are deliberately **not** closed by
+  the migration. Retiring a session whose process is still running is the
+  failure [ADR-028](.ai/08-decisions.md) exists to prevent; they age to `idle`
+  on their own and close when their process exits.
+
 ## [0.52.1] - 2026-09-03
 
 ### Fixed
