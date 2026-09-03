@@ -9,6 +9,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.51.1] - 2026-09-03
+
+### Fixed
+
+- **The token column beside each model counted re-reading, not work.**
+  "claude-opus-5 · 12.61B tokens" is arithmetically true and reads as how much
+  went through that model. On a normal workload 98.6% of it is cache read — the
+  same context fetched again, at a tenth of the price — against 14.6M of output.
+  The column measured how many times one conversation was re-read.
+
+  It is **output** now: the model's own work, all of it at the top rate, and
+  comparable between models. Beside it, **$/turn** — the only figure in the
+  panel that compares models rather than measuring them. A Fable turn costs
+  twenty times a DeepSeek one, and no screen said so.
+
+  Cache-read share was the other candidate and is useless: 99% for every model,
+  so it distinguishes nothing. The cost column was already right — priced per
+  token type, cache reads at their real rate — and is untouched.
+
 ## [0.51.0] - 2026-09-03
 
 ### Added
