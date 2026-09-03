@@ -204,3 +204,23 @@ d('Timeline order and history', () => {
     await waitFor(() => expect(screen.getByText('start of session')).toBeInTheDocument())
   })
 })
+
+/**
+ * The kinds a /clear and an Escape produce. Without a case each they rendered
+ * as the raw kind string — `context.clear` — in the middle of a timeline of
+ * sentences.
+ */
+d('the events that do not end a session', () => {
+  const base = { id: 1, ts: '2026-08-20T10:00:00.000Z', session_id: 's1', source: 'hook' as const, payload: {} }
+  it('describes a /clear as itself rather than as a compaction', () => {
+    const line = describe({ ...base, kind: 'context.clear' }, {})
+    expect(line).toContain('cleared')
+    expect(line).not.toContain('compaction')
+    expect(line).not.toBe('context.clear')
+  })
+  it('describes Escape at the prompt', () => {
+    const line = describe({ ...base, kind: 'session.continue' }, { reason: 'prompt_input_exit' })
+    expect(line).toContain('prompt_input_exit')
+    expect(line).not.toBe('session.continue')
+  })
+})

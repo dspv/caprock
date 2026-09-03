@@ -416,6 +416,37 @@ func ownsItsProcess(agent string) bool {
 
 // updateStatusByID sets one status on a known set of sessions, in chunks that
 // stay well inside SQLite's variable limit.
+// EndSupersededSiblings retires the other sessions running under `pid`, leaving
+// `keep` alone. It exists for /clear, which starts a fresh session id inside a
+// process that is already running one.
+//
+// The staleness sweep cannot do this. It judges a session by whether its
+// process is alive (ADR-028), and after a /clear the old session's process is
+// not merely alive — it is the very process now serving the new session. So
+// the old row stayed `active` forever, and the dashboard showed one Claude
+// Code as two live sessions, one of them frozen at the moment it was cleared,
+// its six-day cost and 95%-full context still presented as current.
+//
+// A process runs exactly one Claude Code conversation at a time, so a sibling
+// on the same pid is finished by definition. pid 0 means "unknown" and is
+// never matched: it would sweep together every session whose pid was never
+// recorded.
+func EndSupersededSiblings(ctx context.Context, q Querier, pid int, keep string) (int64, error) {
+	if pid <= 0 {
+		return 0, nil
+	}
+	const qs = `UPDATE sessions SET status = ? WHERE pid = ? AND session_id <> ? AND status <> ?`
+	res, err := q.ExecContext(ctx, qs, StatusEnded, pid, keep, StatusEnded)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
 func updateStatusByID(ctx context.Context, q Querier, ids []string, status string) error {
 	const chunk = 400
 	for start := 0; start < len(ids); start += chunk {

@@ -30,8 +30,24 @@ const GEMINI_MODELS: [value: string, label: string][] = [
   ['gemini-3.5-flash', 'Flash 3.5 · most capable here'],
 ]
 
+// Ordered most capable first, and labelled with the axis someone actually
+// picks on: price relative to the others. The ranking is pricing.json's, per
+// million output tokens (Fable 50, Opus 25, Sonnet 15, Haiku 5) — the figures
+// the Cost screen bills these sessions with, not a remembered ordering.
+//
+// Fable 5 was missing entirely, which is the same failure the Gemini list
+// above already made once: a list written from what came to mind rather than
+// from what the machine can run. `claude --help` names `fable` alongside
+// `opus` and `sonnet` as the aliases for the latest models, pricing.json
+// carries `claude-fable-5`, and it answered a real prompt on this machine.
+// `claude-mythos-5` is in pricing.json too and is deliberately NOT here: the
+// real binary rejects it with "may not exist or you may not have access to
+// it". Being in the pricing table means we can cost a model, never that this
+// account can call it — the only proof that belongs in this list is a live
+// answer from the real `claude`.
 const MODELS: [value: string, label: string][] = [
-  ['claude-opus-5', 'Opus 5 · most capable'],
+  ['claude-fable-5', 'Fable 5 · most capable, priciest'],
+  ['claude-opus-5', 'Opus 5 · strong all-rounder'],
   ['claude-sonnet-5', 'Sonnet 5 · faster, cheaper'],
   ['claude-haiku-4-5', 'Haiku 4.5 · cheapest'],
 ]

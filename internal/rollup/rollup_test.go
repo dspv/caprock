@@ -316,3 +316,65 @@ func TestASessionSpanningMidnightCountsOnBothDays(t *testing.T) {
 		t.Errorf("19th counted %d sessions, want 1 — the same session working on a second day is a session that day", got["2026-08-19"])
 	}
 }
+
+// The whole /clear sequence as Claude Code emits it: the old session's
+// SessionEnd, then a SessionStart carrying the NEW id and source=clear, both
+// on the same pid. Afterwards exactly one session is live.
+//
+// Keyed off the end event instead, this retired the wrong one — the SessionEnd
+// payload carries the id being replaced, so "keep this session" named the
+// session that was going away.
+func TestClearLeavesOneLiveSession(t *testing.T) {
+	ctx := context.Background()
+	r, _ := newRecorder(t)
+	base := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	const pid = 4242
+
+	if _, err := r.Record(ctx, &event.Event{SessionID: "old", Source: event.SourceHook, Kind: event.KindTurnUser, Ts: base}, SessionInfo{PID: pid}); err != nil {
+		t.Fatal(err)
+	}
+	// The /clear itself: recorded, and it must not end the session by itself.
+	if _, err := r.Record(ctx, &event.Event{SessionID: "old", Source: event.SourceHook, Kind: event.KindContextClear, Ts: base.Add(time.Minute)}, SessionInfo{PID: pid}); err != nil {
+		t.Fatal(err)
+	}
+	// The replacement announces itself.
+	if _, err := r.Record(ctx, &event.Event{SessionID: "new", Source: event.SourceHook, Kind: event.KindAgentSpawn, Ts: base.Add(2 * time.Minute)}, SessionInfo{PID: pid, ReplacesPID: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	old, err := store.GetSession(ctx, r.Store.DB(), "old")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if old.Status != store.StatusEnded {
+		t.Errorf("the cleared session is %q, want ended — it would never close, since its pid is the live one now serving its replacement", old.Status)
+	}
+	fresh, err := store.GetSession(ctx, r.Store.DB(), "new")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fresh.Status != store.StatusActive {
+		t.Errorf("the session that replaced it is %q, want active", fresh.Status)
+	}
+}
+
+// A /clear on its own is not an ending. Only the SessionStart that follows
+// retires the old row, and until it arrives the session stays live.
+func TestAClearAloneDoesNotEndTheSession(t *testing.T) {
+	ctx := context.Background()
+	r, _ := newRecorder(t)
+	base := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	if _, err := r.Record(ctx, &event.Event{SessionID: "s", Source: event.SourceHook, Kind: event.KindTurnUser, Ts: base}, SessionInfo{PID: 7}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Record(ctx, &event.Event{SessionID: "s", Source: event.SourceHook, Kind: event.KindContextClear, Ts: base.Add(time.Minute)}, SessionInfo{PID: 7}); err != nil {
+		t.Fatal(err)
+	}
+	s, err := store.GetSession(ctx, r.Store.DB(), "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Status == store.StatusEnded {
+		t.Fatal("a /clear retired the session its owner is still sitting in")
+	}
+}

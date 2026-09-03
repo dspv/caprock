@@ -174,12 +174,16 @@ func TestOnlyARealExitEndsTheSession(t *testing.T) {
 		reason string
 		kind   event.Kind
 	}{
-		// Same session, fresh context.
-		{"clear", event.KindContextCompact},
-		// Escape at the prompt. Still sitting there.
-		{"prompt_input_exit", event.KindContextCompact},
+		// Same session, fresh context — and its own kind. A compact keeps the
+		// substance of the context, /clear throws it away, so borrowing
+		// context.compact had the dashboard narrating "compacting context" at
+		// a session that had just been cleared.
+		{"clear", event.KindContextClear},
+		// Escape at the prompt. Still sitting there, and the context is
+		// untouched — so this claims nothing about the context at all.
+		{"prompt_input_exit", event.KindSessionContinue},
 		// Unspecified, which is not evidence of an ending.
-		{"other", event.KindContextCompact},
+		{"other", event.KindSessionContinue},
 		// The session is over.
 		{"exit", event.KindSessionEnd},
 		{"logout", event.KindSessionEnd},
@@ -205,5 +209,47 @@ func TestAClearIsRecordedRatherThanDropped(t *testing.T) {
 	}
 	if ev == nil || ev.SessionID != "s1" {
 		t.Fatalf("the event was dropped: %+v", ev)
+	}
+}
+
+// A continuing reason must never be stored as session.end: rollup retires the
+// session on that kind, which would resurrect the six-day bug from the other
+// direction — the shim reporting "still here" and the daemon reading it as
+// "gone".
+func TestAContinuingReasonIsNeverSessionEnd(t *testing.T) {
+	for _, reason := range []string{"clear", "prompt_input_exit", "other"} {
+		raw := []byte(`{"session_id":"s1","hook_event_name":"SessionEnd","reason":"` + reason + `"}`)
+		ev, _, err := Normalize(raw, time.Unix(0, 0))
+		if err != nil {
+			t.Fatalf("%s: %v", reason, err)
+		}
+		if ev.Kind == event.KindSessionEnd {
+			t.Errorf("reason %q was stored as session.end, which retires the session", reason)
+		}
+	}
+}
+
+// /clear starts a new session inside the running process. Only the
+// SessionStart names that new session, so it is what the supersede keys off;
+// the SessionEnd beside it carries the id being replaced.
+func TestSessionStartFlagsAClearAsAReplacement(t *testing.T) {
+	for _, tc := range []struct {
+		source string
+		want   bool
+	}{
+		{"clear", true},
+		{"startup", false},
+		{"resume", false},
+		{"compact", false},
+		{"", false},
+	} {
+		raw := []byte(`{"session_id":"new","hook_event_name":"SessionStart","source":"` + tc.source + `"}`)
+		_, info, err := Normalize(raw, time.Unix(0, 0))
+		if err != nil {
+			t.Fatalf("%s: %v", tc.source, err)
+		}
+		if info.ReplacesPID != tc.want {
+			t.Errorf("source %q: ReplacesPID = %v, want %v", tc.source, info.ReplacesPID, tc.want)
+		}
 	}
 }

@@ -100,4 +100,32 @@ describe('choosing an agent', () => {
     const offered = Array.from(screen.getByLabelText<HTMLSelectElement>(/Model/).options).map((o) => o.value)
     for (const id of offered) expect(REAL_GEMINI_MODELS).toContain(id)
   })
+
+  /** Claude ids that answered a real prompt from the installed `claude` on this
+   *  machine and that pricing.json can cost. `claude-mythos-5` is in
+   *  pricing.json and is deliberately absent: the real binary answers "it may
+   *  not exist or you may not have access to it". Being priceable says we can
+   *  cost a model, never that the account can call it. */
+  const REAL_CLAUDE_MODELS = [
+    'claude-fable-5', 'claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5',
+  ]
+
+  it('offers every Claude model the CLI can actually run', () => {
+    render(<SpawnDialog available onClose={() => {}} initialCwd="/x" />)
+    const offered = Array.from(screen.getByLabelText<HTMLSelectElement>(/Model/).options).map((o) => o.value)
+    // Nothing invented: a session would open a terminal and die at the binary.
+    for (const id of offered) expect(REAL_CLAUDE_MODELS).toContain(id)
+    // And nothing missing. Fable 5 was absent while `claude --help` named it
+    // alongside opus and sonnet — the most capable model on the machine simply
+    // could not be picked, which is the half a "no invented ids" test misses.
+    for (const id of REAL_CLAUDE_MODELS) expect(offered).toContain(id)
+  })
+
+  it('orders the Claude models by capability, priciest first', () => {
+    render(<SpawnDialog available onClose={() => {}} initialCwd="/x" />)
+    const offered = Array.from(screen.getByLabelText<HTMLSelectElement>(/Model/).options).map((o) => o.value)
+    // pricing.json, per million output tokens: Fable 50, Opus 25, Sonnet 15,
+    // Haiku 5. The list is a ranking, so it has to match the money.
+    expect(offered).toEqual(REAL_CLAUDE_MODELS)
+  })
 })
