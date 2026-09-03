@@ -2166,3 +2166,21 @@ func WhereWeLeftOff(ctx context.Context, q Querier, project string, before int64
 	n.Ts = ts
 	return n, nil
 }
+
+// HandoffCoverage counts the repositories that hold a passage recent and long
+// enough to hand a new session, and dates the oldest of them.
+//
+// For the status screen. A feature that acts before anyone types is one nobody
+// can see working — this is how a person checks that it can, without opening a
+// session to find out.
+func HandoffCoverage(ctx context.Context, q Querier, since int64, minLen int) (repos int, oldest int64, err error) {
+	row := q.QueryRowContext(ctx, `
+		SELECT COUNT(DISTINCT se.project), COALESCE(MIN(e.ts), 0)
+		FROM events e JOIN sessions se ON se.session_id = e.session_id
+		WHERE `+assistantTextWhere+`
+		  AND se.project != ''
+		  AND e.ts >= ?
+		  AND LENGTH(json_extract(e.payload, '$.text')) >= ?`, since, minLen)
+	err = row.Scan(&repos, &oldest)
+	return repos, oldest, err
+}

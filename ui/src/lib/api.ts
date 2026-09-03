@@ -390,6 +390,8 @@ export interface Status {
   loop_t_minutes: number
   active_loops: number
   orchestration: boolean
+  /** What the session handoff can speak for: repositories, and since when. */
+  memory?: { repos: number; since?: string }
   /** The queue directory in force, and the checkout its workers operate on.
    *  Absent when orchestration is off. */
   hive?: string

@@ -118,3 +118,27 @@ func humanAge(d time.Duration) string {
 		return fmt.Sprintf("%d days", int(d.Hours()/24))
 	}
 }
+
+// memoryStatus is what the status screen shows about the handoff: how many
+// repositories it could speak for, and since when.
+//
+// A feature that acts before anyone types is one nobody can see working. This
+// is how a person checks that it can, without opening a session to find out.
+func (d *Daemon) memoryStatus() MemoryStatus {
+	// A daemon assembled for a test may have no store; status must still answer.
+	if d.store == nil || d.rec == nil {
+		return MemoryStatus{}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	repos, oldest, err := store.HandoffCoverage(ctx, d.store.DB(),
+		d.rec.Now().Add(-handoffMaxAge).UnixMilli(), handoffMinRunes)
+	if err != nil {
+		return MemoryStatus{}
+	}
+	ms := MemoryStatus{Repos: repos}
+	if oldest > 0 {
+		ms.Since = time.UnixMilli(oldest).Format("2006-01-02")
+	}
+	return ms
+}

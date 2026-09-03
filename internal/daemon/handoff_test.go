@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/event"
@@ -186,5 +187,32 @@ func TestTheHandoffIsThisRepositorysMostRecent(t *testing.T) {
 	}
 	if strings.Contains(got, "different repository") {
 		t.Error("handed back another repository's work")
+	}
+}
+
+// Clipping must never cut a rune in half. Handoffs carry whatever the agent
+// wrote — Russian, Japanese, emoji — and invalid UTF-8 in a JSON reply is a
+// reply Claude Code drops, which would make the feature fail silently on
+// exactly the sessions that had the most to say.
+func TestClippingNeverBreaksARune(t *testing.T) {
+	for _, name := range []string{"cyrillic", "japanese", "emoji"} {
+		var src string
+		switch name {
+		case "cyrillic":
+			src = strings.Repeat("привет мир ", 400)
+		case "japanese":
+			src = strings.Repeat("日本語のテキスト ", 400)
+		case "emoji":
+			src = strings.Repeat("🔥 emoji heavy ", 400)
+		}
+		t.Run(name, func(t *testing.T) {
+			got := clipRunes(src, handoffMaxRunes)
+			if !utf8.ValidString(got) {
+				t.Fatal("clipping produced invalid UTF-8")
+			}
+			if n := utf8.RuneCountInString(got); n > handoffMaxRunes+1 {
+				t.Fatalf("clipped to %d runes, cap is %d", n, handoffMaxRunes)
+			}
+		})
 	}
 }

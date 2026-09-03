@@ -871,6 +871,10 @@ type Status struct {
 	OpenCode      *opencode.Stats `json:"opencode,omitempty"`
 	OwnedActive   int             `json:"owned_active"`
 	Orchestration bool            `json:"orchestration"`
+	// Memory reports how many repositories have enough history to hand a new
+	// session what was left there. A feature that acts before you type is one
+	// nobody can see working, so the status screen says whether it can.
+	Memory MemoryStatus `json:"memory"`
 	// Hive is the orchestration directory in force, and Repo the checkout its
 	// workers operate on. Both empty when orchestration is off. Without them
 	// there was no way — CLI, API or log — to ask which hive a running daemon
@@ -901,6 +905,13 @@ type PricingStatus struct {
 	Models       int    `json:"models"`
 }
 
+// MemoryStatus is what the handoff can do on this machine: how many
+// repositories it could speak for, and since when.
+type MemoryStatus struct {
+	Repos int    `json:"repos"`
+	Since string `json:"since,omitempty"`
+}
+
 func (d *Daemon) status(_ context.Context) any {
 	b, _ := d.hiveState()
 	st := Status{
@@ -908,6 +919,7 @@ func (d *Daemon) status(_ context.Context) any {
 		URL: d.url, DataDir: d.opt.DataDir, UIBuilt: api.UIBuilt(),
 		Pricing: PricingStatus{Version: d.table.Version, Source: d.table.Source, FetchedAt: d.table.FetchedAt, UserOverride: d.table.UserOverride, Models: len(d.table.Models)},
 		LoopK:   d.det.K, LoopTMin: int(d.det.Window / time.Minute),
+		Memory:          d.memoryStatus(),
 		OpenCode:        d.openCodeStats(),
 		ClaudeAvailable: d.mgr.ClaudeAvailable(), GeminiAvailable: d.mgr.GeminiAvailable(), OwnedActive: len(d.mgr.List()),
 		Orchestration: b != nil,
