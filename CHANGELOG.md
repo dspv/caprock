@@ -9,6 +9,40 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.52.0] - 2026-09-03
+
+### Added
+
+- **A switch for the session memory.** "Sometimes I need the context and
+  sometimes I don't" — a fair objection from the first person to live in
+  Caprock, who had been bitten by an assistant that remembered his job title
+  and volunteered it while he was asking about something else.
+
+  ```
+  ☑ Claude knows what you did here last time
+    This folder only. Quick chats get nothing.
+  ```
+
+  On by default, because most sessions open where work already happened and a
+  feature that acts before you type is one nobody finds if it ships off. Turned
+  off, it is silent from the next session — not the next restart. Most of the
+  worry was already answered by the shape: a quick chat gets a fresh directory
+  of its own, so it has no history to be handed, and nothing crosses between
+  folders.
+
+### Changed
+
+- **"Answers" is now "Memory".** Two halves of one thing did not know about
+  each other: a new session is handed what the last one left, and you can
+  search everything the agents ever said. Same corpus — one was labelled
+  "memory" in settings, the other "Answers" in the nav, which nobody looking
+  for the first would open. The status row names the screen too.
+
+- **The Memory screen says how far back it goes** — "since July 19", measured
+  from the oldest passage still held rather than from the fortnight a handoff
+  reaches. Those are two different dates, and showing the shorter one
+  understated the corpus by a month.
+
 ## [0.51.1] - 2026-09-03
 
 ### Fixed
