@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dspv/caprock/internal/bus"
@@ -64,6 +65,13 @@ type Deps struct {
 	// Started is when this daemon came up. The burn tile needs it: in the
 	// first minutes there is less history than the window it divides by.
 	Started time.Time
+	// LAN switches network access on and off while the daemon runs. Nil in
+	// builds or tests that do not serve; then the switch reports itself as
+	// unavailable rather than pretending.
+	LAN interface {
+		EnableLAN() (string, error)
+		DisableLAN() error
+	}
 	// ActiveLoops reports whether a session currently has an unexpired loop alert.
 	ActiveLoops func(sessionID string) *loop.Alert
 	// IdleAfter is the silence threshold for the idle badge.
@@ -225,6 +233,11 @@ type Server struct {
 	d   Deps
 	mux *http.ServeMux
 	ws  *wsHub
+	// LAN access can be switched on while the daemon runs, and every request
+	// reads it, so it lives behind a lock rather than in Deps.
+	lanMu   sync.RWMutex
+	pairing *pairing.Store
+	lanURL  string
 	// hist collapses the burst of identical /v1/history requests one open
 	// screen produces. See histcache.go.
 	hist *historyCache
@@ -248,6 +261,9 @@ func New(d Deps) *Server {
 		}
 	}
 	s := &Server{d: d, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newHistoryCache(historyTTL, d.Now)}
+	// Seeded from Deps so `caprock up --lan` behaves exactly as before; the
+	// dashboard's switch goes through SetLAN.
+	s.pairing, s.lanURL = d.Pairing, d.LANURL
 	m := s.mux
 	m.HandleFunc("GET /v1/sessions", s.handleSessions)
 	m.HandleFunc("GET /v1/sessions/{id}", s.handleSession)
@@ -264,6 +280,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/pair/code", s.handlePairNewCode)
 	m.HandleFunc("POST /v1/pair", s.handlePairRedeem)
 	m.HandleFunc("DELETE /v1/pair/devices/{id}", s.handlePairRevoke)
+	m.HandleFunc("POST /v1/pair/lan", s.handleSetLAN)
 	m.HandleFunc("POST /v1/update/check", s.handleUpdateCheck)
 	m.HandleFunc("GET /v1/settings", s.handleGetSettings)
 	m.HandleFunc("PUT /v1/settings", s.handlePutSettings)
@@ -1558,10 +1575,33 @@ func agentFilter(v string) (store.AgentFilter, error) {
 // Used by the origin check, which must admit the one address this daemon
 // answers on and no other.
 func (s *Server) lanHost() string {
-	if s.d.LANURL == "" {
+	_, lanURL := s.lanState()
+	return hostOf(lanURL)
+}
+
+// SetLAN switches network access on or off while the daemon is running. A nil
+// store means off: from then on nothing off-loopback is served.
+func (s *Server) SetLAN(p *pairing.Store, url string) {
+	s.lanMu.Lock()
+	s.pairing, s.lanURL = p, url
+	s.lanMu.Unlock()
+	s.ws.setLANHost(hostOf(url))
+}
+
+// lanState reads what SetLAN wrote. Every request calls it, so it takes the
+// read side of the lock and copies out.
+func (s *Server) lanState() (*pairing.Store, string) {
+	s.lanMu.RLock()
+	defer s.lanMu.RUnlock()
+	return s.pairing, s.lanURL
+}
+
+// hostOf is the bare hostname of a URL, or "" when there is none.
+func hostOf(raw string) string {
+	if raw == "" {
 		return ""
 	}
-	u, err := url.Parse(s.d.LANURL)
+	u, err := url.Parse(raw)
 	if err != nil {
 		return ""
 	}

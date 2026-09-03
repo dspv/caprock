@@ -21,7 +21,9 @@ type wsHub struct {
 
 	mu    sync.Mutex
 	conns map[*websocket.Conn]context.CancelFunc
-	// lanHost is the one private address this daemon answers on, or "".
+	// lanHost is the one private address this daemon answers on, or "". It
+	// changes when LAN access is switched on from the dashboard, and every
+	// handshake reads it, so it is guarded by mu with the connections.
 	lanHost string
 }
 
@@ -39,8 +41,11 @@ func (h *wsHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// :5173 proxies /v1 so the origin is still localhost. A LAN listener adds
 	// exactly one more origin — the address it was told to bind.
 	origins := []string{"localhost:*", "127.0.0.1:*", "[::1]:*"}
-	if h.lanHost != "" {
-		origins = append(origins, h.lanHost+":*")
+	h.mu.Lock()
+	lanHost := h.lanHost
+	h.mu.Unlock()
+	if lanHost != "" {
+		origins = append(origins, lanHost+":*")
 	}
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		OriginPatterns: origins,
@@ -229,4 +234,12 @@ func subprotocolsFor(r *http.Request) []string {
 		}
 	}
 	return nil
+}
+
+// setLANHost updates the origin the handshake admits, when LAN access is
+// switched on or off while the daemon runs.
+func (h *wsHub) setLANHost(host string) {
+	h.mu.Lock()
+	h.lanHost = host
+	h.mu.Unlock()
 }

@@ -9,6 +9,23 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.50.0] - 2026-09-03
+
+### Added
+
+- **Let a tablet in from the dashboard, without a terminal.** Reading Caprock
+  from a phone shipped needing `caprock up --lan`, which requires a terminal on
+  the machine — and the person who wants this is usually holding the tablet,
+  not sitting at the machine. It is a button on the status screen now: press
+  it, and the same panel shows the address and the code. The flag still works
+  for a machine you administer over SSH.
+
+  Everything else is unchanged, including the part that matters: it is off
+  again when Caprock restarts, because a laptop opened somewhere you do not
+  trust should not carry a decision you made at home. Paired devices are kept —
+  they are the guest list, not the open door — and there is an off switch
+  beside them.
+
 ## [0.49.3] - 2026-09-03
 
 ### Fixed

@@ -136,6 +136,11 @@ type Daemon struct {
 	lanURL string
 	// lanIP is the address the second listener binds; nil when off.
 	lanIP net.IP
+	// srv, port and lanLn are held so EnableLAN can open a second listener on
+	// the already-running server. Guarded by mu, like the fields above.
+	srv   *http.Server
+	port  int
+	lanLn net.Listener
 	// pairing decides which devices get in; nil when LAN access is off.
 	pairing *pairing.Store
 	// ingestErr is the terminal error from the tailer goroutine, if it died.
@@ -351,9 +356,15 @@ func (d *Daemon) run(ctx context.Context) error {
 		Tasks: &boardAdapter{d: d}, Settings: &settingsAdapter{d: d}, Update: d.upd,
 		AskGemini: d.askGemini,
 		DataDir:   d.opt.DataDir,
-		Pairing:   d.pairing, LANURL: d.lanURL, Started: d.start,
+		Pairing:   d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d,
 	})
 	srv := &http.Server{Handler: d.api, ReadHeaderTimeout: 10 * time.Second}
+	// Held so LAN access can be switched on later without a restart. The
+	// dashboard is the only place a user is when they want it, and telling
+	// someone to go and find a terminal is telling them not to bother.
+	d.mu.Lock()
+	d.srv, d.port = srv, port
+	d.mu.Unlock()
 
 	// Ingest.
 	if !d.opt.DisableIngest {
@@ -1247,4 +1258,69 @@ func (d *Daemon) openCodeStats() *opencode.Stats {
 	}
 	st := d.ocIn.Stats()
 	return &st
+}
+
+// EnableLAN opens the second listener on this machine's private address, so a
+// device on the same network can reach the dashboard after pairing.
+//
+// Callable while the daemon runs, because the dashboard is where a person is
+// when they decide they want this — and the alternative was "restart it from a
+// terminal", which on a machine you are reading from a tablet is advice to
+// give up. `caprock up --lan` still works and does the same thing at startup.
+//
+// Still not remembered across a restart. That was the point of making it a
+// flag: a laptop opened somewhere you do not trust should not be carrying a
+// decision you made at home. Switching it on is an act, every time.
+func (d *Daemon) EnableLAN() (string, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.lanLn != nil {
+		return d.lanURL, nil // already listening; asking twice is not an error
+	}
+	if d.srv == nil {
+		return "", errors.New("the daemon is not serving yet")
+	}
+	ip, err := lan.Address()
+	if err != nil {
+		return "", fmt.Errorf("this machine has no private network address — is it on a network? (%w)", err)
+	}
+	ln, err := net.Listen("tcp", net.JoinHostPort(ip.String(), strconv.Itoa(d.port)))
+	if err != nil {
+		return "", fmt.Errorf("could not listen on %s: %w", ip, err)
+	}
+	d.lanLn, d.lanIP = ln, ip
+	d.lanURL = "http://" + net.JoinHostPort(ip.String(), strconv.Itoa(d.port))
+	if d.pairing == nil {
+		d.pairing = pairing.New()
+		if snap, err := config.ReadDevices(d.opt.DataDir); err == nil {
+			d.pairing.Load(snap)
+		}
+	}
+	// The API holds these by value, so it is told rather than asked.
+	d.api.SetLAN(d.pairing, d.lanURL)
+	srv := d.srv
+	go func() {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			d.log.Warn("LAN listener stopped", "component", "daemon", "err", err)
+		}
+	}()
+	d.log.Info("now also listening on the local network — devices must pair before they get in",
+		"component", "daemon", "url", d.lanURL)
+	return d.lanURL, nil
+}
+
+// DisableLAN closes the second listener. Paired devices are kept — they are the
+// guest list, not the open door — so turning it back on does not mean walking
+// to the tablet again.
+func (d *Daemon) DisableLAN() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.lanLn == nil {
+		return nil
+	}
+	err := d.lanLn.Close()
+	d.lanLn, d.lanIP, d.lanURL = nil, nil, ""
+	d.api.SetLAN(nil, "")
+	d.log.Info("stopped listening on the local network", "component", "daemon")
+	return err
 }

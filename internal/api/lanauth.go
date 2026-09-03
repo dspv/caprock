@@ -80,7 +80,8 @@ func (s *Server) allowRequest(r *http.Request) (ok bool, reason string) {
 	// kernel labels differently. Behave exactly as before the feature existed —
 	// a gate that changes what happens when it is switched off is a gate nobody
 	// can reason about.
-	if s.d.Pairing == nil {
+	ps, _ := s.lanState()
+	if ps == nil {
 		return true, ""
 	}
 	if openToUnpairedDevices(r.URL.Path) {
@@ -90,7 +91,7 @@ func (s *Server) allowRequest(r *http.Request) (ok bool, reason string) {
 	if tok == "" {
 		return false, "this device is not paired with Caprock"
 	}
-	if _, err := s.d.Pairing.Check(tok); err != nil {
+	if _, err := ps.Check(tok); err != nil {
 		// One message for an unknown token and a revoked one. Telling them
 		// apart tells a stranger which of their guesses was once real.
 		return false, "this device is not paired with Caprock"
