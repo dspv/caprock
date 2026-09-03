@@ -82,14 +82,28 @@ export function BreakdownPanel() {
             frac: topCalls > 0 ? t.count / topCalls : 0,
           }))}
         />
+        {/* Output rather than every token, and the price of a turn beside it.
+          *
+          * The combined figure was ~99% cache read on this workload — 12.61B
+          * against 14.6M of output for the same model — so the column read as
+          * "how much work went through here" while measuring how many times
+          * one context was re-read, at a tenth of the price. Output is the
+          * part that is entirely the model's own and entirely at the top rate,
+          * and it is comparable between models.
+          *
+          * $/turn is the only figure in this panel that compares models to
+          * each other: Fable costs 25× a DeepSeek turn, which nothing on this
+          * screen said. Cache-read share was the other candidate and is
+          * useless — it is 99% for every model, so it distinguishes nothing. */}
         <Bars
           title="Where the money went"
-          cols={{ value: 'cost', sub: 'tokens', share: 'share' }}
+          cols={{ value: 'cost', sub: 'output', sub2: '$/turn', share: 'share' }}
           rows={models.map((m) => ({
             key: m.model,
             label: m.model || 'unknown',
             value: fmtUSD(m.cost_usd),
-            sub: fmtTokens(m.tokens),
+            sub: fmtTokens(m.output ?? 0),
+            sub2: m.turns > 0 ? fmtUSD(m.cost_usd / m.turns) : '',
             share: allCost > 0 ? (100 * m.cost_usd) / allCost : null,
             frac: topCost > 0 ? m.cost_usd / topCost : 0,
           }))}
@@ -136,7 +150,7 @@ function Bars({
    *  row with nothing over them is a puzzle: `$7,587.14 · 12.01B · 58%` reads
    *  as three unrelated numbers until you have worked out which is which, and
    *  a note saying "by cost" describes the sort order, not the columns. */
-  cols: { value: string; sub?: string; share: string }
+  cols: { value: string; sub?: string; sub2?: string; share: string }
   rows: {
     key: string
     label: string
@@ -144,6 +158,10 @@ function Bars({
     /** A second figure for the same row — tokens beside a cost. Optional
      *  because a tool call has no meaningful token count of its own. */
     sub?: string
+    /** A third, for a table that has one. The model rows use it for the price
+     *  of a turn, which is the only figure here that compares models to each
+     *  other rather than measuring them. */
+    sub2?: string
     share: number | null
     frac: number
   }[]
@@ -165,6 +183,9 @@ function Bars({
         <span className="flex-1" />
         <span className="num w-20 shrink-0 text-right">{cols.value}</span>
         <span className="num w-16 shrink-0 text-right">{cols.sub ?? ''}</span>
+        {cols.sub2 !== undefined && (
+          <span className="num w-14 shrink-0 text-right">{cols.sub2}</span>
+        )}
         <span className="num w-9 shrink-0 text-right">{cols.share}</span>
       </div>
       <div className="grid gap-1.5">
@@ -183,6 +204,9 @@ function Bars({
             {/* Tokens sit between the figure and the share: the volume that
               * produced the cost, in the same units the vendor bills in. */}
             <span className="num w-16 shrink-0 text-right text-fg-faint">{r.sub ?? ''}</span>
+            {cols.sub2 !== undefined && (
+              <span className="num w-14 shrink-0 text-right text-fg-faint">{r.sub2 ?? ''}</span>
+            )}
             {/* The share is what makes the count mean something: 40,961 calls
               * is a number, half of everything is a finding. Floored, so a
               * row never rounds up into looking bigger than it is. */}

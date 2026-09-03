@@ -23,7 +23,7 @@ const history = (over: Partial<History> = {}): History =>
       { tool: 'mcp__claude-in-chrome__computer', count: 1704 },
     ],
     summary: {
-      models: [{ model: 'claude-opus-5', tokens: 10_082_171_962, turns: 1, cost_usd: 5398.7 }],
+      models: [{ model: 'claude-opus-5', tokens: 10_082_171_962, output: 14_600_000, turns: 28_000, cost_usd: 5398.7 }],
       projects: [],
       tokens_in: 38_927_644,
       tokens_out: 25_636_758,
@@ -97,8 +97,29 @@ describe('BreakdownPanel', () => {
     data.value = history()
     render(<BreakdownPanel />)
     await screen.findByText('claude-opus-5')
-    // Tokens beside the cost, in the units the vendor bills in.
-    expect(screen.getByText('10.08B')).toBeTruthy()
+    expect(screen.getByText('$5,398.70')).toBeTruthy()
+  })
+
+  // The token column used to be every token — and on a normal workload that is
+  // ~99% cache read: 10.08B against 14.6M of output for the same model. It read
+  // as "how much work went through here" while measuring how many times one
+  // context was re-read, at a tenth of the price. Output is the model's own
+  // work, all of it at the top rate, and comparable between models.
+  it('counts what the model wrote, not what it re-read', async () => {
+    data.value = history()
+    render(<BreakdownPanel />)
+    await screen.findByText('claude-opus-5')
+    expect(screen.getByText('14.60M')).toBeTruthy()
+    expect(screen.queryByText('10.08B')).toBeNull()
+  })
+
+  // The only figure in this panel that compares models rather than measuring
+  // them: a Fable turn costs 25× a DeepSeek one, and nothing said so.
+  it('prices a turn, which is what compares one model to another', async () => {
+    data.value = history()
+    render(<BreakdownPanel />)
+    await screen.findByText('claude-opus-5')
+    expect(screen.getByText('$0.19')).toBeTruthy() // 5398.70 / 28,000
   })
 
   it('splits input from output, which no per-model row can show', async () => {
@@ -110,7 +131,8 @@ describe('BreakdownPanel', () => {
     await screen.findByText('claude-opus-5')
     expect(screen.getByText('input')).toBeTruthy()
     expect(screen.getByText('38.93M')).toBeTruthy()
-    expect(screen.getByText('output')).toBeTruthy()
+    // "output" now names a column too, so this asserts the totals row's figure
+    // rather than the word.
     expect(screen.getByText('25.64M')).toBeTruthy()
     expect(screen.getByText('cache read')).toBeTruthy()
   })

@@ -136,7 +136,16 @@ export interface GeminiReply {
 export interface FileDiff { path: string; status: string; additions: number; deletions: number; patch?: string; binary?: boolean }
 export interface DiffResult { root: string; branch: string; files: FileDiff[]; stat: string; base?: string; base_branch?: string }
 
-export interface ModelShare { model: string; tokens: number; cost_usd: number; turns: number }
+export interface ModelShare {
+  model: string
+  tokens: number
+  cost_usd: number
+  turns: number
+  /** What the model generated — the part of a token total that is entirely its
+   *  own work and entirely at the top rate. The combined figure is ~99% cache
+   *  read on a normal workload, which swamps everything it is added to. */
+  output?: number
+}
 
 /** Volume whose model is not in the pricing table, so it contributes nothing to
  *  cost_usd. Absent when everything in range was priced. The models are named
