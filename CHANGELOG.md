@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.52.3] - 2026-09-03
+
 ### Fixed
 
 - **The loop banner sold a cap that could not act, beside a cost that was not

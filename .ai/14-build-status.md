@@ -53,6 +53,41 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-09-03 (later) — The loop banner sold a cap that could not act
+
+The owner read his own dashboard and asked a fair question: a loop alert
+offering "a cap that stops this" beside `$58.85`, and no idea what he was
+supposed to do about either. The answer was that he could do nothing, and that
+both halves of the row were our fault rather than his.
+
+**The cap could not have acted on that session.** It pauses only sessions
+Caprock started ([rule 7](../CLAUDE.md)), and the count settles it: of the
+sessions on this machine that did real work, **122 were started by hand and 5
+by Caprock**. So the button was, nearly every time it appeared, an offer to
+stop something it cannot reach — and the failure mode is a person paying for
+the cap, enabling it, and watching the next loop in a terminal session run on.
+It now reads "a cap covers sessions Caprock starts" and offers "what a cap
+does" unless the session is owned. Unknown ownership counts as not owned: a
+promise made on a guess is the thing being fixed. The button stays, because the
+feature is real and the sessions where it applies are the ones someone wants it
+for.
+
+**The cost was the session's, not the loop's.** Bare beside "Stuck in a loop",
+`$58.85` reads as the price of the repetition. The obvious fix — charge the
+loop's own window — measured worse: on the real two-hour loop that prompted
+this, the window held 176 repeated calls billing **$0.00** (a Bash call carries
+no tokens) alongside 389 assistant turns billing **$47.64**, which was the
+useful work happening at the same time. Attributing that to the loop swaps one
+wrong number for a less obviously wrong one, and a plausible wrong number is
+harder to argue with (rule 6). The figure keeps its meaning and now carries a
+visible `session total` label instead of explaining itself only on hover.
+
+**The detector was right and is untouched.** It caught a genuine polling
+loop — an agent re-checking CI that a monitor was already watching — which is
+how the two labels around it came to be read closely at all. Both fixes are
+pinned by sabotage: dropping the ownership carry, or defaulting `canAct` to
+true, each turns the suite red.
+
 ### 2026-09-03 — One editor, two working sessions: what `/clear` actually does
 
 A screenshot of the owner's own dashboard showed his repository twice: one card
