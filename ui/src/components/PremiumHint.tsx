@@ -20,19 +20,31 @@ import { useState } from 'react'
 
 const KIND: PromptKind = 'premium-hint'
 
-export function PremiumHint({ reason, now }: { reason: string; now: number }) {
+export function PremiumHint({
+  reason,
+  now,
+  // Whether the cap could actually have acted on the session this sits beside.
+  // The cap pauses only sessions Caprock started (rule 7), and on this machine
+  // 122 of the 127 sessions with real work were started by hand — so "a cap
+  // that stops this" was, nearly always, an offer to stop something it cannot
+  // reach. The button still appears, because the feature is real and the 4%
+  // where it applies are exactly the sessions someone would want it for; what
+  // changes is the claim. Undefined means unknown, which is treated as not
+  // owned: a promise is the wrong thing to make on a guess.
+  canAct = false,
+}: { reason: string; now: number; canAct?: boolean }) {
   const [shown] = useState(() => isDue(KIND, now))
   const [gone, setGone] = useState(false)
   const [open, setOpen] = useState(false)
   if (!shown || gone) return null
   return (
     <span className="flex shrink-0 items-center gap-2 text-[11px]">
-      <span className="text-fg-faint">{reason}</span>
+      <span className="text-fg-faint">{canAct ? reason : 'a cap covers sessions Caprock starts'}</span>
       <button
         onClick={() => setOpen(true)}
         className="rounded-sm border border-border px-1.5 py-0.5 text-fg-muted hover:border-border-strong hover:text-fg"
       >
-        a cap that stops this
+        {canAct ? 'a cap that stops this' : 'what a cap does'}
       </button>
       <button
         title="hide this for a month"

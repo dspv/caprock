@@ -22,8 +22,26 @@ export interface AttentionItem {
   title: string
   /** The evidence: the measured fact behind the headline. */
   detail: string
-  /** A cost to show alongside, when the item is about wasted money. */
+  /**
+   * What this session has spent in total — NOT what the problem cost.
+   *
+   * The two are far apart and the difference matters: a loop that ran for two
+   * hours sat inside a session that had already spent $58, and printing that
+   * figure beside "Stuck in a loop" reads as the price of the loop. Neither a
+   * narrower window fixes it — the spend inside a loop's window is mostly the
+   * useful work that happened alongside it, so charging it to the loop swaps
+   * one wrong number for a less obviously wrong one (rule 6). The honest move
+   * is to keep the figure the session total it is and label it as such.
+   */
   costUSD?: number
+  /**
+   * Whether Caprock started this session. The spend cap can only pause
+   * sessions it owns (rule 7), so this decides whether a cap could actually
+   * have acted here — 96% of the sessions with real work on this machine are
+   * not owned, which is how a "a cap that stops this" button ended up beside
+   * a loop no cap would have touched.
+   */
+  owned?: boolean
   /** Age of the condition, unix ms, when known. */
   since?: number
   /**
@@ -108,6 +126,7 @@ export function findAttention({ sessions, alerts, now, limits, waitingMs = DEFAU
         Number.isFinite(a.window_min) ? `in ${a.window_min} min` : '',
       ].filter(Boolean).join(' '),
       costUSD: s?.stats?.cost_usd,
+      owned: s?.owned,
       since: ms(a.ts) || undefined,
       // Where the repetition STARTED, not where the detector noticed it. The
       // first call is the one that explains what the session was trying to do;
@@ -186,6 +205,7 @@ export function findAttention({ sessions, alerts, now, limits, waitingMs = DEFAU
       title: 'Lots of turns, few files',
       detail: `${turns.toLocaleString()} turns, ${files === 0 ? 'no files' : files === 1 ? '1 file' : `${files} files`} touched`,
       costUSD: cost,
+      owned: s.owned,
       since: ms(s.activity.at) || s.last_event_at,
     })
   }
