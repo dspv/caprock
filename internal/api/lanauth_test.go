@@ -14,7 +14,7 @@ import (
 // view of the peer, which a caller cannot forge.
 func TestADeviceOnTheNetworkSeesNothingUntilItPairs(t *testing.T) {
 	ps := pairing.New()
-	s := &Server{d: Deps{Pairing: ps}}
+	s := New(Deps{Pairing: ps})
 
 	code, err := ps.NewCode()
 	if err != nil {
@@ -60,7 +60,7 @@ func TestADeviceOnTheNetworkSeesNothingUntilItPairs(t *testing.T) {
 // restart. Someone revokes a tablet because they lost it.
 func TestARevokedDeviceIsOutImmediately(t *testing.T) {
 	ps := pairing.New()
-	s := &Server{d: Deps{Pairing: ps}}
+	s := New(Deps{Pairing: ps})
 	code, _ := ps.NewCode()
 	dev, err := ps.Redeem(code, "lost tablet")
 	if err != nil {
@@ -90,7 +90,7 @@ func TestARevokedDeviceIsOutImmediately(t *testing.T) {
 // when the feature it guards is switched *off* is one nobody can reason about,
 // and it would have broken every existing caller.
 func TestWithLanOffTheGateIsInert(t *testing.T) {
-	s := &Server{d: Deps{}} // no pairing store: LAN access was never turned on
+	s := New(Deps{}) // no pairing store: LAN access was never turned on
 
 	for _, from := range []string{"127.0.0.1:51000", "192.0.2.1:1234", "192.168.1.50:51000"} {
 		r := httptest.NewRequest(http.MethodGet, "/v1/sessions", nil)

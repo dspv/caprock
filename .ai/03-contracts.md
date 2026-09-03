@@ -55,8 +55,11 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   browser cannot set one — the WebSocket subprotocol `caprock.device.<token>`,
   echoed back to complete the handshake. Never a query parameter: that writes a
   bearer token into every access log and browser history entry on the device.
-- **`--lan` is a run flag, never stored.** Paired devices survive a restart;
-  the decision to listen does not.
+- **Never stored.** Paired devices survive a restart; the decision to listen
+  does not. Settable at startup with `--lan` or at runtime with `POST
+  /v1/pair/lan` (`{on: bool}`, loopback-only) — a restart-only switch is
+  reachable only from a terminal on the machine, which is the one place the
+  person who wants it is not.
 - **Refusal is `401` with `{error, detail}`**, not a redirect — the caller is
   usually `fetch()`, and a redirect to HTML becomes a parse error three frames
   later.

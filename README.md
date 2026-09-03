@@ -413,14 +413,14 @@ Downloaded the binary directly? Replace it with a fresh one from
 ## Read it from a tablet
 
 Caprock answers only the machine it runs on. To read it from a tablet or a
-phone on the same network:
+phone on the same network, open **status** and press *Let this network in*. The
+same screen then shows an address to open on the other device and a six-digit
+code to type.
 
-```bash
-caprock up --lan
-```
-
-The **status** screen then shows an address to open on the other device and a
-six-digit code to type. That is the whole setup — no account, no tunnel,
+There is a flag too — `caprock up --lan` — for a machine you administer over
+SSH. The button exists because the person who wants this is usually holding the
+tablet, and telling them to go and find a terminal is telling them not to
+bother. That is the whole setup — no account, no tunnel,
 nothing on anybody's server. The other device is talking to your machine.
 
 A few things worth knowing, because this is the one place Caprock stops being
@@ -430,10 +430,10 @@ loopback-only:
   refused until a device has traded a code for a token. Devices are listed on
   the status screen and can be revoked one by one, which takes effect on the
   next request.
-- **It is off again next time.** `--lan` is a flag, not a setting: a laptop
-  opened somewhere you do not trust should not be carrying a decision you made
-  at home. What survives a restart is the list of devices, so you do not walk
-  back to the tablet.
+- **It is off again next time.** Not a stored setting: a laptop opened
+  somewhere you do not trust should not be carrying a decision you made at
+  home. What survives a restart is the list of devices, so you do not walk back
+  to the tablet.
 - **One address, not all of them.** The second listener binds the machine's
   own private address rather than every interface, so a VPN or a container
   bridge coming up later does not quietly widen it.

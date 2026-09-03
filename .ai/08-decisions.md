@@ -773,10 +773,16 @@ someone decides otherwise.
 **Three decisions inside it are worth stating, because each had an easier
 wrong answer.**
 
-- **`--lan` is a run flag, not a setting.** Storing it would mean a laptop
-  opened in a coworking space carries a decision made at home on a trusted
-  network. The *devices* persist — walking to the tablet again after every
-  restart would be its own punishment — but the open door does not.
+- **Not a stored setting.** Storing it would mean a laptop opened in a
+  coworking space carries a decision made at home on a trusted network. The
+  *devices* persist — walking to the tablet again after every restart would be
+  its own punishment — but the open door does not.
+
+  It is switchable at runtime (`POST /v1/pair/lan`, loopback-only) as well as
+  by `--lan` at startup. Requiring a restart made the feature reachable only
+  from a terminal on the machine, and the person who wants it is usually
+  holding the tablet. The rule that matters is "off unless switched on, and off
+  again next start", not "only settable before the process exists".
 - **One named address, never `0.0.0.0`.** The wildcard accepts on every
   interface the machine has now or acquires later: a VPN coming up, a container
   bridge, a tethered phone. None of those is what anyone agreed to. One

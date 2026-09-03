@@ -56,13 +56,14 @@ func (s *Server) handlePairState(w http.ResponseWriter, r *http.Request) {
 		s.failCode(w, http.StatusForbidden, errors.New("pairing is managed from the machine Caprock runs on"))
 		return
 	}
-	st := pairState{Enabled: s.d.Pairing != nil, URL: s.d.LANURL, Devices: []pairing.Public{}}
-	if s.d.Pairing != nil {
-		if live, left := s.d.Pairing.CodeActive(); live {
-			st.Code = s.d.Pairing.Code()
+	ps, lanURL := s.lanState()
+	st := pairState{Enabled: ps != nil, URL: lanURL, Devices: []pairing.Public{}}
+	if ps != nil {
+		if live, left := ps.CodeActive(); live {
+			st.Code = ps.Code()
 			st.ExpiresInSec = int(left / time.Second)
 		}
-		st.Devices = s.d.Pairing.Devices()
+		st.Devices = ps.Devices()
 	}
 	writeJSON(w, http.StatusOK, st)
 }
@@ -73,11 +74,12 @@ func (s *Server) handlePairNewCode(w http.ResponseWriter, r *http.Request) {
 		s.failCode(w, http.StatusForbidden, errors.New("pairing is managed from the machine Caprock runs on"))
 		return
 	}
-	if s.d.Pairing == nil {
-		s.failCode(w, http.StatusConflict, errors.New("this daemon is not listening on the network — restart it with `caprock up --lan`"))
+	ps, lanURL := s.lanState()
+	if ps == nil {
+		s.failCode(w, http.StatusConflict, errors.New("network access is off — turn it on from the status screen"))
 		return
 	}
-	code, err := s.d.Pairing.NewCode()
+	code, err := ps.NewCode()
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -85,14 +87,15 @@ func (s *Server) handlePairNewCode(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"code":           code,
 		"expires_in_sec": int(pairing.CodeTTL / time.Second),
-		"url":            s.d.LANURL,
+		"url":            lanURL,
 	})
 }
 
 // handlePairRedeem is the one thing a device may do before it is trusted:
 // exchange a code for a token.
 func (s *Server) handlePairRedeem(w http.ResponseWriter, r *http.Request) {
-	if s.d.Pairing == nil {
+	ps, _ := s.lanState()
+	if ps == nil {
 		s.failCode(w, http.StatusConflict, errors.New("this daemon is not listening on the network"))
 		return
 	}
@@ -107,7 +110,7 @@ func (s *Server) handlePairRedeem(w http.ResponseWriter, r *http.Request) {
 		// a person pairing a tablet will not name it unprompted.
 		name = "a device"
 	}
-	dev, err := s.d.Pairing.Redeem(strings.TrimSpace(req.Code), name)
+	dev, err := ps.Redeem(strings.TrimSpace(req.Code), name)
 	if err != nil {
 		// Same answer for wrong, expired, exhausted and never-issued. Each
 		// distinction tells someone guessing how close they are.
@@ -124,18 +127,19 @@ func (s *Server) handlePairRevoke(w http.ResponseWriter, r *http.Request) {
 		s.failCode(w, http.StatusForbidden, errors.New("pairing is managed from the machine Caprock runs on"))
 		return
 	}
-	if s.d.Pairing == nil {
+	ps, _ := s.lanState()
+	if ps == nil {
 		s.failCode(w, http.StatusConflict, errors.New("this daemon is not listening on the network"))
 		return
 	}
 	id := r.PathValue("id")
 	if id == "all" {
-		n := s.d.Pairing.RevokeAll()
+		n := ps.RevokeAll()
 		s.saveDevices()
 		writeJSON(w, http.StatusOK, map[string]int{"revoked": n})
 		return
 	}
-	if !s.d.Pairing.Revoke(id) {
+	if !ps.Revoke(id) {
 		s.failCode(w, http.StatusNotFound, errors.New("no such device"))
 		return
 	}
@@ -150,10 +154,52 @@ func (s *Server) handlePairRevoke(w http.ResponseWriter, r *http.Request) {
 // of what happened. A failure costs a re-pair after the next restart, and is
 // logged rather than shown.
 func (s *Server) saveDevices() {
-	if s.d.Pairing == nil || s.d.DataDir == "" {
+	ps, _ := s.lanState()
+	if ps == nil || s.d.DataDir == "" {
 		return
 	}
-	if err := config.WriteDevices(s.d.DataDir, s.d.Pairing.Snapshot()); err != nil {
+	if err := config.WriteDevices(s.d.DataDir, ps.Snapshot()); err != nil {
 		s.d.Log.Warn("could not save the paired devices", "component", "api", "err", err)
 	}
+}
+
+// handleSetLAN turns network access on or off from the dashboard.
+//
+// Loopback-only, like everything else an owner does here: switching this on is
+// the decision that lets other devices in, and a device that was let in must
+// not be able to make it.
+//
+// It exists because the alternative was "restart the daemon with --lan", which
+// requires a terminal on the machine — and the person who wants this is
+// usually holding the tablet, not sitting at the machine. `caprock up --lan`
+// still does the same thing at startup.
+func (s *Server) handleSetLAN(w http.ResponseWriter, r *http.Request) {
+	if !isLocal(r) {
+		s.failCode(w, http.StatusForbidden, errors.New("network access is switched on from the machine Caprock runs on"))
+		return
+	}
+	if s.d.LAN == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("this build cannot change network access while running — start it with `caprock up --lan`"))
+		return
+	}
+	var req struct {
+		On bool `json:"on"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req)
+	}
+	if !req.On {
+		if err := s.d.LAN.DisableLAN(); err != nil {
+			s.fail(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"enabled": false})
+		return
+	}
+	url, err := s.d.LAN.EnableLAN()
+	if err != nil {
+		s.failCode(w, http.StatusConflict, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"enabled": true, "url": url})
 }

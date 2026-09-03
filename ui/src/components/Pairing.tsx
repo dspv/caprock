@@ -46,6 +46,20 @@ export function Pairing() {
     if (code && codeUntil && secondsLeft === 0) setCode('')
   }, [code, codeUntil, secondsLeft])
 
+  async function setLAN(on: boolean) {
+    setBusy(true)
+    setError('')
+    try {
+      await api.setLAN(on)
+      setCode('')
+      state.refresh()
+    } catch (e) {
+      setError(errText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function newCode() {
     setBusy(true)
     setError('')
@@ -81,16 +95,25 @@ export function Pairing() {
   if (!s.enabled) {
     return (
       <Panel title="Another device">
-        <div className="grid gap-2 text-[12px] leading-relaxed text-fg-muted">
+        <div className="grid gap-2.5 text-[12px] leading-relaxed text-fg-muted">
           <p>
-            Caprock answers only this machine. To read it from a tablet or a phone on the
-            same network, restart it with <code className="mono text-fg">caprock up --lan</code>.
+            Caprock answers only this machine. Turn this on to read it from a tablet or a
+            phone on the same network — they will have to pair with a code first.
           </p>
+          <div>
+            <button
+              onClick={() => setLAN(true)}
+              disabled={busy}
+              className="rounded-sm border border-accent px-2 py-1 text-[12px] text-accent hover:bg-accent/10 disabled:opacity-50"
+            >
+              {busy ? 'opening…' : 'Let this network in'}
+            </button>
+          </div>
           <p className="text-fg-faint">
-            It is a restart rather than a switch because loopback-only is the promise, and
-            one that survived a restart quietly would be one you never agreed to twice.
-            Turn it on where you trust the network; it is off again next time.
+            It goes off again when Caprock restarts — a laptop opened somewhere you do not
+            trust should not carry a decision you made at home. Paired devices are kept.
           </p>
+          {error && <div className="text-[12px] text-danger">{error}</div>}
         </div>
       </Panel>
     )
@@ -139,6 +162,19 @@ export function Pairing() {
         {error && <div className="text-[12px] text-danger">{error}</div>}
 
         <Devices devices={s.devices} now={now} onRevoke={revoke} />
+
+        <div className="flex items-center gap-3 border-t border-border pt-2.5">
+          <button
+            onClick={() => setLAN(false)}
+            disabled={busy}
+            className="text-[11px] text-fg-faint hover:text-danger disabled:opacity-50"
+          >
+            stop listening on this network
+          </button>
+          <span className="text-[11px] text-fg-faint">
+            Paired devices are kept; they simply cannot reach anything.
+          </span>
+        </div>
       </div>
     </Panel>
   )
