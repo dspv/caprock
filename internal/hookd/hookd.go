@@ -164,6 +164,10 @@ type Handler struct {
 	OnAccepted func(res rollup.Result)
 	// Decide answers Stop events (Phase 2). nil ⇒ empty 204 reply.
 	Decide func(ctx context.Context, p Payload) []byte
+	// Handoff answers SessionStart: what the last session in this repository
+	// left behind, returned to the one now opening. nil or empty ⇒ 204, and
+	// the session starts exactly as it does today.
+	Handoff func(ctx context.Context, p Payload) []byte
 }
 
 // ServeHTTP implements the contract: bearer-token gated, 204 on success,
@@ -232,6 +236,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if res.Stored && h.OnAccepted != nil {
 		h.OnAccepted(res)
+	}
+	// A session opening in a repository someone has worked in before is handed
+	// what was left there. Same channel as the Stop decision above — the shim
+	// writes our reply to stdout and Claude Code reads it — so this adds a
+	// payload, not a mechanism. Rule 7 is untouched: we answer a question the
+	// session asked, we do not type into it.
+	if ev.Kind == event.KindAgentSpawn && ev.AgentID == "" && h.Handoff != nil {
+		var p Payload
+		_ = json.Unmarshal(body, &p)
+		if reply := h.Handoff(r.Context(), p); len(reply) > 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(reply)
+			return
+		}
 	}
 	if ev.Kind == event.KindAgentStop && ev.AgentID == "" && h.Decide != nil {
 		var p Payload

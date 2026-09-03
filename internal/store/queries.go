@@ -2129,3 +2129,58 @@ func SpendSince(ctx context.Context, q Querier, fromMs int64) (float64, error) {
 		`SELECT COALESCE(SUM(cost_usd),0) FROM events WHERE ts >= ?`, fromMs).Scan(&usd)
 	return usd, err
 }
+
+// WhereWeLeftOff is the last substantial thing an agent said in a repository,
+// for handing back to the next session that opens there.
+//
+// The question a person asks on returning is not "find something similar" — it
+// is "what were we doing". Measured on the owner's database: searching prior
+// prose by the terms of the opening prompt found something useful in 4 of 15
+// resumed sessions, and missed the clearest case of all ("напомни что мы
+// последний раз изучали", 384 candidate passages, nothing matched) because an
+// opening question shares no words with its own answer. Taking the last
+// substantial passage instead answers 12 of 19. Recency beats retrieval here.
+//
+// `before` excludes the session now starting, so a session cannot be handed its
+// own output; `minLen` skips one-liners like "Done." that say nothing about
+// where the work stood.
+func WhereWeLeftOff(ctx context.Context, q Querier, project string, before int64, minLen int) (AssistantNote, error) {
+	if minLen <= 0 {
+		minLen = 400
+	}
+	row := q.QueryRowContext(ctx, `
+		SELECT e.id, e.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''),
+		       COALESCE(json_extract(e.payload, '$.text'), '')
+		FROM events e JOIN sessions se ON se.session_id = e.session_id
+		WHERE `+assistantTextWhere+`
+		  AND se.project = ?
+		  AND e.ts < ?
+		  AND LENGTH(json_extract(e.payload, '$.text')) >= ?
+		ORDER BY e.ts DESC LIMIT 1`, project, before, minLen)
+	var n AssistantNote
+	var ts int64
+	err := row.Scan(&n.EventID, &n.SessionID, &n.Project, &ts, &n.Model, &n.Text)
+	if err != nil {
+		return AssistantNote{}, err
+	}
+	n.Ts = ts
+	return n, nil
+}
+
+// HandoffCoverage counts the repositories that hold a passage recent and long
+// enough to hand a new session, and dates the oldest of them.
+//
+// For the status screen. A feature that acts before anyone types is one nobody
+// can see working — this is how a person checks that it can, without opening a
+// session to find out.
+func HandoffCoverage(ctx context.Context, q Querier, since int64, minLen int) (repos int, oldest int64, err error) {
+	row := q.QueryRowContext(ctx, `
+		SELECT COUNT(DISTINCT se.project), COALESCE(MIN(e.ts), 0)
+		FROM events e JOIN sessions se ON se.session_id = e.session_id
+		WHERE `+assistantTextWhere+`
+		  AND se.project != ''
+		  AND e.ts >= ?
+		  AND LENGTH(json_extract(e.payload, '$.text')) >= ?`, since, minLen)
+	err = row.Scan(&repos, &oldest)
+	return repos, oldest, err
+}

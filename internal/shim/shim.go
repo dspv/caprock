@@ -21,8 +21,9 @@ import (
 
 const (
 	maxStdin      = 4 << 20
-	fireAndForget = 900 * time.Millisecond // total budget for non-Stop events (< 1s)
-	stopBudget    = 5 * time.Second        // Stop request-response budget
+	fireAndForget = 900 * time.Millisecond  // total budget for non-Stop events (< 1s)
+	stopBudget    = 5 * time.Second         // Stop request-response budget
+	handoffBudget = 1500 * time.Millisecond // SessionStart: in front of a prompt
 	// DebugEnv, when set, appends diagnostics to <data_dir>/hook-debug.log.
 	DebugEnv = "CAPROCK_HOOK_DEBUG"
 )
@@ -49,10 +50,23 @@ func Run(stdin io.Reader, stdout io.Writer) {
 		debugf("runtime.json: %v", err) // daemon not running: drop silently
 		return
 	}
-	isStop := hookEventName(body) == "Stop"
+	// Two events expect an answer: Stop (the orchestrator's decision) and
+	// SessionStart (what the last session in this repository left behind).
+	// Everything else is fire-and-forget, which is what keeps a hook off the
+	// critical path of a keystroke.
+	name := hookEventName(body)
+	isStop := name == "Stop"
+	wantsReply := isStop || name == "SessionStart"
 	budget := fireAndForget
-	if isStop {
+	switch {
+	case isStop:
 		budget = stopBudget
+	case wantsReply:
+		// Shorter than Stop's: this one sits in front of a session opening, and
+		// a person watching a prompt that has not appeared yet will forgive
+		// nothing. A daemon that cannot answer in this long has nothing worth
+		// waiting for, and the session simply starts as it does today.
+		budget = handoffBudget
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
@@ -88,7 +102,7 @@ func Run(stdin io.Reader, stdout io.Writer) {
 		return
 	}
 	defer resp.Body.Close()
-	if !isStop || resp.StatusCode != http.StatusOK {
+	if !wantsReply || resp.StatusCode != http.StatusOK {
 		return
 	}
 	reply, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))

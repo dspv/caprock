@@ -817,3 +817,70 @@ issuing codes and revoking devices stay loopback-only.
 **Revisit if** somebody needs this from outside their own network. That is a
 different decision with different costs (see FB-019), and the honest answer
 today is Tailscale, which people already install for Claude Code.
+
+---
+
+## ADR-030 — A session opening known ground is handed what was left there
+
+**Date:** 2026-09-03 · **Status:** accepted
+
+Caprock's first settled user, asked why free tools were unusable, did not say
+"no stats" — he said they **lose context**. We had built the stats. The gap
+between his complaint and our headline is where this comes from.
+
+**Measured before building, on the owner's own database.** 120 of 151 sessions
+(79%) open in a repository that already had sessions; 36 of those resume after
+more than a day. Claude Code keeps only the user's own prompts across projects
+(19k entries, 4.1 MB) and prunes transcripts after 30 days; Caprock holds what
+the *agent* said — 48k turns, 28.4 MB, since May, across 31 repositories.
+
+**Recency beats retrieval, and that was a surprise.** The first design searched
+prior prose by the terms of the opening prompt. It helped in 4 of 15 resumed
+sessions and missed the clearest case there is — *"напомни что мы последний раз
+изучали"*, 384 candidate passages, no term overlap, because an opening question
+shares no words with its own answer. Taking the **last substantial passage**
+instead answers 12 of 19. The cheap thing works better than the clever one, so
+the clever one is not built.
+
+**The channel already existed.** The shim has returned a reply into a live
+session since Phase 2 — that is how the orchestrator's Stop decision reaches
+the agent. `SessionStart` uses the same path with a different payload, in the
+shape Claude Code documents and we verified against a live session before
+writing any of it:
+
+```json
+{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"…"}}
+```
+
+Verifying first mattered: the payload field is `source`, not the
+`startup_reason` the documentation also names, and guessing it would have
+produced a feature that silently did nothing.
+
+**Rule 7 is untouched.** We do not type into a process we did not start; we
+answer a question the session asked of its own hook.
+
+**Four bounds, each for a reason:**
+
+- **Only `source == "startup"`.** SessionStart also fires on resume, `/clear`
+  and after compaction. A resume already holds the conversation, and
+  re-injecting the same passage after every compaction turns a note into noise
+  that grows with the session.
+- **1,200 runes.** Claude Code documents no limit and there are reports of an
+  oversized reply being dropped silently, so this stays well short of any
+  plausible cap — and costs a returning session a couple of hundred tokens
+  rather than a page of its window.
+- **400 runes minimum.** "Done." is true and says nothing about where the work
+  stood.
+- **Fourteen days.** Beyond that the last thing said is usually not what you
+  are returning to, and presenting it as context misleads.
+
+The text says where it came from — *"the user has not said this to you, and it
+may be stale"* — because an agent handed an unattributed paragraph treats it as
+an instruction.
+
+**Rules out:** searching by prompt terms (measured worse); injecting on resume
+or after compaction; anything that types into a session.
+
+**Revisit if** the handoff is switched off in practice, which is the honest
+signal — or if a distilled summary measurably beats the last passage, which
+requires the same kind of measurement rather than an argument.

@@ -22,6 +22,12 @@ export function StatusScreen() {
     ['loop rule', `≥ ${s.loop_k} same-tool calls in ${s.loop_t_minutes} min · ${s.active_loops} active`],
     ['events stored', `${s.events.toLocaleString()}${s.retention_days > 0 ? ` · pruned after ${s.retention_days}d` : ' · kept forever (set retention_days to cap DB growth)'}`],
     ['orchestration', s.orchestration ? 'on (--hive)' : 'off'],
+    // A feature that acts before you type is one nobody can see working. This
+    // says whether it can, and for how much — without opening a session to
+    // find out.
+    ['session memory', s.memory && s.memory.repos > 0
+      ? `on — a new session here is told what the last one left, in ${s.memory.repos} ${s.memory.repos === 1 ? 'repository' : 'repositories'}${s.memory.since ? ` (since ${s.memory.since})` : ''}`
+      : 'nothing to hand over yet — it starts once a session leaves something behind'],
     // Spawning needs the binary. When it is missing every spawn control is
     // disabled and nothing anywhere said why.
     ['claude', s.claude_available
