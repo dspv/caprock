@@ -9,6 +9,40 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.51.0] - 2026-09-03
+
+### Added
+
+- **A session opening a repository you have worked in before already knows
+  where you stopped.** Open `claude`, and the agent has been handed the last
+  substantial thing an agent said in that repository — no command, no prompt,
+  nothing to press. Verified against a live session, which named the previous
+  session's work while forbidden to read files or git.
+
+  The first user to live in Caprock for a week, asked why free tools were
+  unusable, did not say "no stats" — he said they **lose context**. Measured
+  here before anything was written: 120 of 151 sessions (79%) open in a
+  repository that already had sessions, 36 of them after more than a day.
+  Claude Code keeps only your own prompts across projects and prunes
+  transcripts after 30 days; Caprock holds what the *agent* said, since May,
+  across 31 repositories. The record was already there — nothing read it back.
+
+  **Recency beat retrieval, which was a surprise.** The first design searched
+  prior prose by the words of the opening prompt: it helped in 4 of 15 resumed
+  sessions and missed the clearest case there is, because an opening question
+  shares no words with its own answer. The last substantial passage answers 12
+  of 19, so the clever version is not built.
+
+  Bounded on purpose: only a genuinely new session (not a resume, not after
+  compaction — that would be noise growing with the session), at most ~1200
+  characters, nothing shorter than 400 ("Done." says nothing), nothing older
+  than a fortnight. The text says where it came from, because an agent handed
+  an unattributed paragraph treats it as an instruction. Nothing is typed into
+  any session: Claude Code asks its hook a question, and this is the answer.
+
+  The status screen says whether it can speak, and for how many repositories —
+  a feature that acts before you type is one nobody can otherwise see working.
+
 ## [0.50.1] - 2026-09-03
 
 ### Fixed
