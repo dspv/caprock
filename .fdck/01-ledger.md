@@ -9,6 +9,9 @@ started) · **building** · **shipped** (in a release, with the version) ·
 
 | Id     | Date       | From  | Request                                                                      | Status   | Landed in         |
 | ------ | ---------- | ----- | ---------------------------------------------------------------------------- | -------- | ----------------- |
+| FB-031 | 2026-09-03 | Vova  | Token optimisation, with the tokens saved shown in the stats                 | open     | —                 |
+| FB-030 | 2026-09-03 | Vova  | Caprock is convenient but not exclusive — nothing here needs paying for      | open     | —                 |
+| FB-029 | 2026-09-03 | Vova  | The stats stopped being the point once someone else pays the bill            | open     | —                 |
 | FB-028 | 2026-08-30 | Dima  | No way to buy from the main screen; the locked preview was unreadable        | shipped  | v0.37.1           |
 | FB-027 | 2026-08-30 | Panel | Five readers priced the premium dialog and none of them bought               | shipped  | v0.37.0           |
 | FB-026 | 2026-08-29 | Alex  | The dollar figures read as "what you'd pay if you were foolish"              | shipped  | next release      |
@@ -39,6 +42,55 @@ started) · **building** · **shipped** (in a release, with the version) ·
 | FB-001 | 2026-08-24 | Alex  | Hooks never fired on Windows                                                 | shipped  | v0.27.3 + v0.27.4 |
 
 ## Detail
+
+### FB-031 — Token optimisation, and the saving in the stats
+
+> Чего мне кажется сейчас не хватает, спустя неделю: оптимизиации токенов… А
+> если еще и будет показываться в стате сколько токенов сэкономлено - вообще
+> огнище
+
+With the qualifier a message later: **"если не теряется качество"**.
+
+**Open, and the burden of proof sits on the number, not on the idea.** This is
+the direction the previous product died in, and the measurement that killed it
+is in this repository: compression on real Claude Code traffic was ~0%, because
+the prefix is frozen by design (`.ai/18-postmortem.md`). Dima gave Vova the
+same answer from the other side — the tools that claim it mostly compress
+inputs, RTK is reported to drop needed chunks, and headroom compressed
+essentially nothing.
+
+So the honest shape of any attempt is: measure first on a real session, publish
+the number whatever it is, and only then decide whether there is a feature. A
+"tokens saved" figure with nothing behind it is the one thing rule 6 exists to
+prevent, and it would be on the screen this product's credibility rests on.
+
+### FB-030 — Convenient, but not exclusive
+
+> в нем нет функционала, который я бы не получил используя только бесплатные
+> тулы, за исключением статы… не многие наверное захотят платить большие бабки
+> только за удобство
+
+**Open.** The first settled user saying plainly what the product is worth to
+him. Two details make it more useful than the headline:
+
+- The free tools he compared against are **Google's AI mode and the Claude
+  desktop app** — not other dashboards. His objection to them is that they
+  **lose context quickly**, which is a capability rather than a polish item,
+  and it is what "convenient" turned out to mean.
+- He and Dima both land on enterprise as where money is, and on the same
+  missing piece: *"надо что-то чего нельзя достичь без caprock"*.
+
+### FB-029 — The stats stopped being the point
+
+> она классно все показывает, но спустя неделю это вроде как не самый главный
+> для меня стал функционал (тут наверное потому, что я сижу на корпоративном
+> акке и вцелом похер на затраты)
+
+**Open**, and worth sitting with rather than answering. The stats are the
+headline of the product and the reason it exists; a week of real use demoted
+them for a reason that describes every corporate seat — somebody else pays the
+bill. It does not follow that the stats are wrong, but it does follow that they
+are not, by themselves, what anyone buys.
 
 ### FB-028 — No way to buy, and nothing legible to buy
 
