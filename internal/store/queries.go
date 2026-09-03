@@ -2172,6 +2172,17 @@ func WhereWeLeftOff(ctx context.Context, q Querier, project string, before int64
 	return n, nil
 }
 
+// ProseSince is when the oldest passage Caprock still holds was written.
+//
+// Distinct from HandoffCoverage's date, which is bounded by how far back a
+// handoff will reach (a fortnight). The search screen spans everything, and
+// showing the shorter date there would understate the corpus by a month.
+func ProseSince(ctx context.Context, q Querier) (int64, error) {
+	var ts int64
+	err := q.QueryRowContext(ctx, `SELECT COALESCE(MIN(e.ts),0) FROM events e WHERE `+assistantTextWhere).Scan(&ts)
+	return ts, err
+}
+
 // HandoffCoverage counts the repositories that hold a passage recent and long
 // enough to hand a new session, and dates the oldest of them.
 //

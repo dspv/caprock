@@ -150,5 +150,8 @@ func (d *Daemon) memoryStatus() MemoryStatus {
 	if oldest > 0 {
 		ms.Since = time.UnixMilli(oldest).Format("2006-01-02")
 	}
+	if held, err := store.ProseSince(ctx, d.store.DB()); err == nil && held > 0 {
+		ms.Held = time.UnixMilli(held).Format("2006-01-02")
+	}
 	return ms
 }

@@ -25,6 +25,12 @@ export function NotesScreen() {
   const now = useNow(30000)
   const [includeShort, setIncludeShort] = useState(false)
   const q = useApi(() => api.searchNotes(query, PAGE), [query], { live: false, intervalMs: 0 })
+  // How far back this goes, from the daemon rather than guessed. "Since 24 May"
+  // answers "how much is in here" in three words, and it is measured.
+  const st = useApi(() => api.status(), [], { live: false })
+  const since = st.data?.memory?.held
+    ? new Date(st.data.memory.held).toLocaleDateString(undefined, { day: 'numeric', month: 'long' })
+    : ''
 
   // Older pages, appended as the reader asks for them. A fixed window looked
   // like data loss: on a busy machine 500 notes is half a day, so the list
@@ -102,7 +108,7 @@ export function NotesScreen() {
           </button>
         )}
         <span className="ml-auto text-[11px] text-fg-faint">
-          Claude&apos;s written answers, across every session. Local only.
+          {since ? `What Claude has told you, since ${since}. Local only.` : 'What Claude has told you. Local only.'}
         </span>
       </form>
 
