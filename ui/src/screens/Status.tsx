@@ -26,7 +26,10 @@ export function StatusScreen() {
     // says whether it can, and for how much — without opening a session to
     // find out.
     ['memory', s.memory && s.memory.repos > 0
-      ? `on in ${s.memory.repos} ${s.memory.repos === 1 ? 'folder' : 'folders'}${s.memory.since ? `, since ${s.memory.since}` : ''}`
+      // Names the screen, because "memory: on in 4 folders" told a reader the
+      // feature exists and not where to look at it — asked verbatim: "в
+      // статусе где??".
+      ? `on in ${s.memory.repos} ${s.memory.repos === 1 ? 'folder' : 'folders'}${s.memory.held ? `, held since ${s.memory.held}` : ''} — search it under Memory`
       : 'nothing to carry over yet — it starts once a session leaves something behind'],
     // Spawning needs the binary. When it is missing every spawn control is
     // disabled and nothing anywhere said why.
