@@ -15,6 +15,29 @@ Phase 3 (Delight) has no plan by design.
 
 - **Let a tablet in from the dashboard, without a terminal.** Reading Caprock
   from a phone shipped needing `caprock up --lan`, which requires a terminal on
+  the machine — and the person who wants this is holding the tablet. It is a
+  button on the status screen now, with an off switch beside the device list.
+  The flag still works for a machine administered over SSH. Unchanged: it is
+  off again when Caprock restarts, and paired devices are kept.
+
+- **Caprock uses a Tailscale address when there is one, and says which kind of
+  address you have.** A LAN address works when the other device is on the same
+  wifi and *never* from mobile data — no setting changes that, because the
+  packets do not arrive. The panel said nothing about it, so the honest
+  conclusion from a tablet on mobile data was that the feature is broken.
+
+  It now names the difference under the address, and points at Tailscale for
+  the case a LAN address cannot serve. Tailscale's own range (100.64.0.0/10) is
+  not "private" by the Go standard library's definition, so the one address
+  that solves the problem was being filtered out as public; it is preferred
+  over a LAN address when both exist.
+
+## [0.50.0] - 2026-09-03
+
+### Added
+
+- **Let a tablet in from the dashboard, without a terminal.** Reading Caprock
+  from a phone shipped needing `caprock up --lan`, which requires a terminal on
   the machine — and the person who wants this is usually holding the tablet,
   not sitting at the machine. It is a button on the status screen now: press
   it, and the same panel shows the address and the code. The flag still works

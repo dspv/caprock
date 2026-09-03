@@ -437,9 +437,13 @@ loopback-only:
 - **One address, not all of them.** The second listener binds the machine's
   own private address rather than every interface, so a VPN or a container
   bridge coming up later does not quietly widen it.
-- **Same network only.** From a café you want a tunnel — Tailscale is what
-  people already install for Claude Code, and it goes directly between your own
-  devices with nothing of ours in between.
+- **A LAN address is same-network only, and the screen says so.** A tablet on
+  mobile data, or on a network that separates its clients from each other, will
+  never reach it — no setting here changes that, because the packets do not
+  arrive. For anywhere else, install [Tailscale](https://tailscale.com/kb/1017/install)
+  on both devices: Caprock then shows its address instead, and it works from
+  mobile data. The traffic goes directly between your own machines, with
+  nothing of ours in between.
 
 ## Start it at login
 

@@ -556,6 +556,8 @@ export interface PairState {
   /** The outstanding code, shown only on the machine itself. */
   code?: string
   expires_in_sec?: number
+  /** The address reaches other networks (a tunnel), not just this one. */
+  tunnelled?: boolean
   devices: PairedDevice[]
 }
 
