@@ -24,6 +24,25 @@ import (
 // deliberately will not bind.
 var ErrNoAddress = errors.New("no private network address on this machine")
 
+// tailscaleCGNAT is the range a Tailscale address comes from: 100.64.0.0/10,
+// the carrier-grade NAT block reserved by RFC 6598.
+//
+// It is not "private" in Go's sense — `net.IP.IsPrivate` covers RFC 1918 only
+// — so the address of the one interface that actually solves this problem was
+// being filtered out. A tunnel address is exactly as safe to bind as a LAN
+// one, and considerably more useful: it reaches a tablet on mobile data, which
+// a LAN address never will.
+var tailscaleCGNAT = &net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
+
+// Tunnelled reports whether ip is a Tailscale address rather than a LAN one.
+// The dashboard says which, because they answer different questions: a LAN
+// address works at home and nowhere else; a tunnel address works anywhere the
+// other device has the tunnel too.
+func Tunnelled(ip net.IP) bool {
+	v4 := ip.To4()
+	return v4 != nil && tailscaleCGNAT.Contains(v4)
+}
+
 // Address returns the private IPv4 address a device on the same network would
 // use to reach this machine.
 //
@@ -33,9 +52,11 @@ var ErrNoAddress = errors.New("no private network address on this machine")
 // decision from "let my tablet in" and is not one this function will make on
 // anyone's behalf.
 //
-// When several qualify — wifi and ethernet both up, or a VPN alongside either
-// — the first in interface order wins and the rest are returned by Addresses
-// so the user can be shown the choice rather than guessed at.
+// A Tailscale address wins when there is one. It is the address that reaches a
+// tablet on mobile data — a LAN address only works on the same network, which
+// is the case the person asking for this usually does not have. Otherwise the
+// first private address in interface order wins, and the rest are returned by
+// Addresses so the user can be shown the choice rather than guessed at.
 func Address() (net.IP, error) {
 	all, err := Addresses()
 	if err != nil {
@@ -43,6 +64,11 @@ func Address() (net.IP, error) {
 	}
 	if len(all) == 0 {
 		return nil, ErrNoAddress
+	}
+	for _, ip := range all {
+		if Tunnelled(ip) {
+			return ip, nil
+		}
 	}
 	return all[0], nil
 }
@@ -71,7 +97,13 @@ func Addresses() ([]net.IP, error) {
 				continue
 			}
 			ip := ipnet.IP.To4()
-			if ip == nil || !ip.IsPrivate() || ip.IsLinkLocalUnicast() {
+			if ip == nil || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			// Private (RFC 1918) or the Tailscale range. Nothing else: a public
+			// address on an interface would put the dashboard on the internet,
+			// which is a different decision from "let my tablet in".
+			if !ip.IsPrivate() && !Tunnelled(ip) {
 				continue
 			}
 			out = append(out, ip)

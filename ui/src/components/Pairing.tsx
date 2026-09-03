@@ -127,6 +127,32 @@ export function Pairing() {
             open this on the other device
           </div>
           <div className="mono text-[15px] text-fg select-all">{s.url}</div>
+          {/* The difference between the two addresses is the whole feature.
+            * A LAN address works from the sofa and nowhere else — a tablet on
+            * mobile data, or on a network that separates its clients, will
+            * never reach it, and someone who is not told that concludes the
+            * product is broken rather than that they need a tunnel. */}
+          {s.tunnelled ? (
+            <p className="text-[11px] text-fg-faint">
+              A tunnel address — it works from anywhere the other device has the same
+              tunnel, including mobile data.
+            </p>
+          ) : (
+            <p className="text-[11px] text-fg-faint">
+              This is an address on your own network: it works when the other device is on
+              the same wifi, and not from mobile data. For anywhere else you need a tunnel —{' '}
+              <a
+                href="https://tailscale.com/kb/1017/install"
+                target="_blank"
+                rel="noreferrer"
+                className="text-accent"
+              >
+                Tailscale
+              </a>{' '}
+              on both devices is what most people use, and Caprock will show its address
+              here instead once it is running.
+            </p>
+          )}
         </div>
 
         <div className="grid gap-1.5">

@@ -7,7 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"net"
+
 	"github.com/dspv/caprock/internal/config"
+	"github.com/dspv/caprock/internal/lan"
 	"github.com/dspv/caprock/internal/pairing"
 )
 
@@ -43,6 +46,12 @@ type pairState struct {
 	URL string `json:"url,omitempty"`
 	// Code is the outstanding pairing code, shown only to the owner.
 	Code string `json:"code,omitempty"`
+	// Tunnelled says the address reaches other networks (Tailscale) rather
+	// than only this one. The distinction is the whole difference between
+	// "works from the sofa" and "works from anywhere", and a screen that does
+	// not draw it sends someone to try their tablet on mobile data and
+	// conclude the feature is broken.
+	Tunnelled bool `json:"tunnelled,omitempty"`
 	// ExpiresInSec counts the code down. Zero when there is none.
 	ExpiresInSec int              `json:"expires_in_sec,omitempty"`
 	Devices      []pairing.Public `json:"devices"`
@@ -58,6 +67,9 @@ func (s *Server) handlePairState(w http.ResponseWriter, r *http.Request) {
 	}
 	ps, lanURL := s.lanState()
 	st := pairState{Enabled: ps != nil, URL: lanURL, Devices: []pairing.Public{}}
+	if host := hostOf(lanURL); host != "" {
+		st.Tunnelled = lan.Tunnelled(net.ParseIP(host))
+	}
 	if ps != nil {
 		if live, left := ps.CodeActive(); live {
 			st.Code = ps.Code()
