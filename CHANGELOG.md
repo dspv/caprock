@@ -9,6 +9,17 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.50.1] - 2026-09-03
+
+### Fixed
+
+- **The update instructions were set like captions.** The commands read fine;
+  everything explaining them was 11px in the faintest grey — the weight this
+  interface uses for a timestamp, something you are meant to slide past. It is
+  the half of the dialog that says why updating takes three commands and why
+  Caprock will not do it for you. The install-route tabs got the same lift;
+  they are a choice, and they were dimmer than the platform tabs beside them.
+
 ## [0.50.0] - 2026-09-03
 
 ### Added
