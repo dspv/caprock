@@ -9,6 +9,41 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **`/clear` showed one editor as two working sessions.** Claude Code does not
+  end a session on `/clear` — it keeps the process and starts a fresh session
+  id inside it. Both rows therefore shared a live pid, and the sweep that
+  decides a session is over asks whether its process is still running, so the
+  old row could never close. It sat on the dashboard as a second working
+  session, frozen at the moment it was cleared, still presenting a six-day cost
+  and a 95%-full context as current. The replacement is now keyed off the
+  `SessionStart` that follows, which is the only one of the two hooks that
+  names the session meant to survive.
+
+- **A cleared session was narrated as "compacting context".** `/clear` was
+  stored as `context.compact`, which is a different event: a compact
+  summarizes the context and keeps its substance, `/clear` discards it. The
+  dashboard reported a compaction that never happened, at the one moment the
+  owner is deciding whether to wait. It has its own kind now, and the reasons
+  that leave a session running without touching its context (`Escape` at the
+  prompt) have theirs.
+
+- **"unknown model" appeared beside the model's own name.** A session that had
+  not answered yet has no prompt to measure, so the Context stat was empty —
+  and captioned `unknown model` directly beside a Cost stat reading
+  `claude-opus-5`. The two reasons a context can be missing call for opposite
+  reactions (one clears itself in seconds, the other never will), so the server
+  now says which applies, naming the model id when the pricing table cannot
+  size it.
+
+- **Fable 5 could not be picked for a new session.** The model list offered
+  three ids and omitted the most capable one on the machine, though
+  `claude --help` names `fable` alongside `opus` and `sonnet`. All four are now
+  offered, ordered by price, each verified by a live answer from the real
+  `claude` — `claude-mythos-5` is in the pricing table and stays out, because
+  the binary rejects it.
+
 ## [0.52.0] - 2026-09-03
 
 ### Added

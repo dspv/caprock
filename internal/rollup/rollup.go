@@ -30,6 +30,11 @@ type SessionInfo struct {
 	// Code, which is what every session was before OpenCode support, and what
 	// the column defaults to.
 	Agent string
+	// ReplacesPID is set when this event starts a session that takes over a
+	// process already running one — a `SessionStart` whose source is `clear`.
+	// The sibling it replaces cannot be found by the staleness sweep, because
+	// they share the live process the sweep uses to judge liveness.
+	ReplacesPID bool
 }
 
 // Result reports what Record did, for callers that need to fan out further.
@@ -141,6 +146,27 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 			// upsert, and a later event on the same id revives it — which is
 			// what should happen if Claude Code reuses the session after all.
 			patch.Status = store.StatusEnded
+		}
+		if info.ReplacesPID && info.PID > 0 {
+			// /clear does not end a session — it replaces it. Claude Code keeps
+			// the process and starts a fresh session id, so the old row is left
+			// active with a live pid, which is precisely what the sweep uses to
+			// decide a session is still running. Nothing would ever close it,
+			// and the dashboard showed one editor as two working sessions.
+			//
+			// The trigger is the new session's `SessionStart`, not the old
+			// one's `SessionEnd`: only the start names the session that must
+			// survive. Keyed off the end event, this retired the wrong one.
+			//
+			// This runs before the upsert so the new session's own row, written
+			// below, cannot be caught by it.
+			n, err := store.EndSupersededSiblings(ctx, q, info.PID, ev.SessionID)
+			if err != nil {
+				return err
+			}
+			if n > 0 {
+				r.Log.Info("retired sessions superseded by /clear", "component", "rollup", "pid", info.PID, "count", n, "session_id", ev.SessionID)
+			}
 		}
 		if err := store.UpsertSession(ctx, q, ev.SessionID, patch); err != nil {
 			return err

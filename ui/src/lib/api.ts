@@ -67,6 +67,10 @@ export interface SessionSummary extends Session {
   savings: Savings
   loop?: LoopAlert
   context?: ContextFill
+  /** Why `context` is absent — a model the pricing table does not carry, or a
+   *  session that has not answered yet. The two look identical from here and
+   *  mean opposite things, so the server names which it is. */
+  context_note?: string
 }
 
 export interface TokenDelta { in: number; out: number; cache_read: number; cache_write: number; cache_write_1h?: number }

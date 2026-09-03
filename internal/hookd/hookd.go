@@ -113,6 +113,11 @@ func Normalize(raw []byte, now time.Time) (*event.Event, rollup.SessionInfo, err
 		}
 	case "SessionStart":
 		ev.Kind = event.KindAgentSpawn
+		// `clear` means this session is taking over a process that was already
+		// running one. The session it replaces shares that pid, so the sweep —
+		// which judges a session by whether its process is alive — can never
+		// retire it. Say so here, where the source is known.
+		info.ReplacesPID = p.Source == "clear"
 	case "SessionEnd":
 		// Claude Code fires this for several things, and most of them leave the
 		// session running: `clear` wipes the context, `prompt_input_exit` is
@@ -123,10 +128,23 @@ func Normalize(raw []byte, now time.Time) (*event.Event, rollup.SessionInfo, err
 		// Only an exit ends it. Anything else is recorded as an ordinary event
 		// so the timeline still shows it, and the idle sweep decides the rest.
 		if !endsTheSession(p.Reason) {
-			// Still worth recording: `/clear` is a context reset, which is what
-			// context.compact already means, and the timeline should show it.
-			// What it must not do is retire the session.
-			ev.Kind = event.KindContextCompact
+			// Still worth recording, and worth recording as itself. `/clear` is
+			// a context reset, but it is not a compact: a compact summarizes
+			// the context, `/clear` throws it away. Reusing context.compact for
+			// it made the dashboard say "compacting context" at a session that
+			// had just been cleared — a sentence about what Claude was doing
+			// that was never true, and the one an owner reads to decide whether
+			// to wait. The other continuing reasons (`prompt_input_exit`,
+			// `other`) say nothing about the context at all, so they stay
+			// ordinary continuation events on the timeline without claiming a
+			// context event happened. They must NOT be recorded as
+			// session.end: rollup retires the session on that kind, which is
+			// exactly the bug this branch exists to prevent.
+			if p.Reason == "clear" {
+				ev.Kind = event.KindContextClear
+				break
+			}
+			ev.Kind = event.KindSessionContinue
 			break
 		}
 		ev.Kind = event.KindSessionEnd

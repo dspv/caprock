@@ -143,6 +143,12 @@ export function toFeedItem(e: Event, project?: string): FeedItem | null {
       return { ...base, icon: '■', text: 'session ended', tone: 'normal' }
     case 'context.compact':
       return { ...base, icon: '⇱', text: 'compacted its context', tone: 'warn' }
+    // A /clear is the user's doing, not Claude's, and it is the one event that
+    // explains why a session's cost and context just went back to zero. Left
+    // to the default it fell through as null and the feed simply skipped it,
+    // so the numbers reset with nothing on screen accounting for it.
+    case 'context.clear':
+      return { ...base, icon: '⌫', text: 'context cleared', tone: 'warn' }
     case 'throttle':
       return { ...base, icon: '⏳', text: 'rate-limited by the API', tone: 'warn' }
     case 'task.created':

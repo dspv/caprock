@@ -110,3 +110,17 @@ func TestNarrateClipsOnRunes(t *testing.T) {
 		t.Errorf("quote clipped a short string: %q", q)
 	}
 }
+
+// A cleared session sits at an empty prompt waiting for a human. Narrating it
+// as "compacting context" — which is what sharing the compact's event kind
+// produced — told the owner Claude was busy at the one moment they were
+// deciding whether to wait.
+func TestAClearedSessionIsNotNarratedAsCompacting(t *testing.T) {
+	act := Summarize([]event.Event{{Kind: event.KindContextClear, Ts: time.Unix(100, 0)}}, Options{Now: time.Unix(100, 0)})
+	if strings.Contains(act.Phrase, "compact") {
+		t.Errorf("a /clear is narrated as %q, which claims a compaction happened", act.Phrase)
+	}
+	if act.Health == HealthWorking {
+		t.Errorf("a cleared session reads as working; it is waiting for a prompt")
+	}
+}

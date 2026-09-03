@@ -400,6 +400,11 @@ type SessionSummary struct {
 	Savings  cost.Savings     `json:"savings"`
 	Loop     *loop.Alert      `json:"loop,omitempty"`
 	Context  *ContextFill     `json:"context,omitempty"`
+	// ContextNote says why Context is absent, which the client cannot work out
+	// on its own: a model missing from the pricing table and a session that has
+	// not answered yet both arrive as "no context", and they call for opposite
+	// reactions. Empty whenever Context is present.
+	ContextNote string `json:"context_note,omitempty"`
 }
 
 // ContextFill is the "context fill %" badge input: last turn's prompt size vs the model window.
@@ -437,15 +442,33 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 	}
 	sum := SessionSummary{Session: sess, Stats: st, Activity: act, Savings: cost.ComputeSavings(st.TokensIn, st.CacheRead, st.CacheWrite), Loop: la}
 	// Context fill: last assistant turn's input+cache tokens vs the model's window.
+	// When it cannot be computed, say which of the two reasons applies. The
+	// dashboard used to caption every empty Context "unknown model", including
+	// on a session whose model it was naming in the neighbouring column — the
+	// model is known there, it just has not answered yet.
+	sum.ContextNote = "no turn yet"
 	for i := len(last) - 1; i >= 0; i-- {
 		e := last[i]
 		if e.Kind == event.KindTurnAssistant && e.Tokens != nil {
-			if s.d.Table != nil {
-				if row, ok := s.d.Table.Lookup(firstNonEmpty(e.Model, sess.Model)); ok && row.ContextWindow > 0 {
-					toks := e.Tokens.In + e.Tokens.CacheRead + e.Tokens.CacheWrite
-					sum.Context = &ContextFill{Tokens: toks, Window: row.ContextWindow, Pct: 100 * float64(toks) / float64(row.ContextWindow)}
-				}
+			model := firstNonEmpty(e.Model, sess.Model)
+			if model == "" {
+				sum.ContextNote = "unknown model"
+				break
 			}
+			if s.d.Table == nil {
+				sum.ContextNote = "no pricing table"
+				break
+			}
+			row, ok := s.d.Table.Lookup(model)
+			if !ok || row.ContextWindow == 0 {
+				// Naming it matters: an id the table does not carry is the one
+				// thing a user can report and we can fix.
+				sum.ContextNote = model + " not in pricing table"
+				break
+			}
+			toks := e.Tokens.In + e.Tokens.CacheRead + e.Tokens.CacheWrite
+			sum.Context = &ContextFill{Tokens: toks, Window: row.ContextWindow, Pct: 100 * float64(toks) / float64(row.ContextWindow)}
+			sum.ContextNote = ""
 			break
 		}
 	}

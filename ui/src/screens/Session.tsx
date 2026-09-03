@@ -117,7 +117,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
               out only in/out made the subtitle contradict the number above it. */}
           <Stat label="Tokens" value={fmtTokens(total)} sub={`in ${fmtTokens(s.stats.tokens_in)} · out ${fmtTokens(s.stats.tokens_out)} · cache ${fmtTokens(s.stats.cache_read + s.stats.cache_write)}`} />
           <Stat label="Cache" value={fmtPct(s.savings.hit_rate * 100)} sub={`read ${fmtTokens(s.stats.cache_read)} · write ${fmtTokens(s.stats.cache_write)}`} tone={s.savings.hit_rate > 0.5 ? 'ok' : undefined} />
-          <Stat label="Context" value={s.context ? fmtPct(s.context.pct) : '—'} sub={s.context ? `${fmtTokens(s.context.tokens)} / ${fmtTokens(s.context.window)}` : 'unknown model'} tone={s.context && s.context.pct >= 85 ? 'danger' : s.context && s.context.pct >= 60 ? 'warn' : undefined} />
+          <Stat label="Context" value={s.context ? fmtPct(s.context.pct) : '—'} sub={s.context ? `${fmtTokens(s.context.tokens)} / ${fmtTokens(s.context.window)}` : (s.context_note || 'no turn yet')} tone={s.context && s.context.pct >= 85 ? 'danger' : s.context && s.context.pct >= 60 ? 'warn' : undefined} />
           <Stat label="Turns" value={s.stats.turns} sub={`${s.stats.tool_calls} tool calls`} />
           {/* What is being read, named. "no hooks · no transcript" is true of a
             * Gemini session and reads as "nothing is being measured", which
@@ -283,7 +283,7 @@ function EventRow({ e, now, toolByUse, inMinute }: {
     e.kind === 'turn.user' ? 'text-info' :
     e.kind === 'turn.assistant' ? 'text-fg' :
     e.kind === 'agent.stop' ? 'text-warn' :
-    e.kind === 'context.compact' ? 'text-warn' :
+    e.kind === 'context.compact' || e.kind === 'context.clear' ? 'text-warn' :
     'text-fg-muted'
   return (
     <li
@@ -346,6 +346,13 @@ export function describe(e: Event, p: Record<string, unknown>): string {
       return `session started (${String(p.source ?? 'startup')})`
     case 'context.compact':
       return `context compaction (${String(p.trigger ?? 'auto')})`
+    case 'context.clear':
+      return 'context cleared (/clear)'
+    // Escape at the prompt, or a reason Claude Code did not specify. Neither
+    // ends the session; both are worth a line so a gap in the timeline has a
+    // cause. Without a case here the row read as the raw kind string.
+    case 'session.continue':
+      return `still at the prompt (${String(p.reason ?? 'other')})`
     default:
       return e.kind
   }

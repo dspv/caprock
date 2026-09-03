@@ -38,6 +38,23 @@ const (
 	// KindContextCompact is emitted for PreCompact hooks (context is about to be
 	// summarized). Not in the spec's original list; consumers may ignore it.
 	KindContextCompact Kind = "context.compact"
+
+	// KindContextClear is emitted for a `SessionEnd` whose reason is `clear` —
+	// the user ran /clear. It is a context reset like a compact, and like a
+	// compact it does not end the session, but it is not the same event and
+	// must not borrow the other's name: a compact summarizes the context and
+	// keeps its substance, while /clear discards it outright. Folding the two
+	// together made the dashboard narrate "compacting context" at a session
+	// whose owner had just cleared it — a claim about what Claude was doing
+	// that was never true.
+	KindContextClear Kind = "context.clear"
+
+	// KindSessionContinue is a `SessionEnd` hook whose reason leaves the
+	// session running — `prompt_input_exit` (Escape at the prompt) or `other`.
+	// The fact is worth keeping on the timeline, but it may not be stored as
+	// session.end, which rollup treats as "retire this session", nor as a
+	// context event, since neither reason touches the context.
+	KindSessionContinue Kind = "session.continue"
 )
 
 // Source says which data plane produced the event.

@@ -809,3 +809,48 @@ func TestBurnDividesByTheTimeItCovers(t *testing.T) {
 		})
 	}
 }
+
+// An absent Context has two causes that call for opposite reactions: a model
+// the pricing table cannot size (nothing will ever fill it in) and a session
+// that has simply not answered yet (it appears within seconds). The client
+// cannot tell them apart from the session row, so the server names which.
+//
+// Captioning both "unknown model" put those words directly beside a Cost stat
+// reading `claude-opus-5` — the dashboard naming the model and denying it knew
+// it, in the same row.
+func TestContextNoteSaysWhyContextIsMissing(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	base := time.Now().Add(-time.Minute)
+
+	// A session that has started but not answered yet.
+	if _, err := e.rec.Record(ctx, &event.Event{SessionID: "quiet", Source: event.SourceHook, Kind: event.KindTurnUser, Key: "prompt:q", Ts: base, Payload: json.RawMessage(`{"prompt":"go"}`)}, rollup.SessionInfo{Cwd: t.TempDir(), Model: "claude-opus-5"}); err != nil {
+		t.Fatal(err)
+	}
+	// A session answering on a model the pricing table does not carry.
+	if _, err := e.rec.Record(ctx, &event.Event{SessionID: "exotic", Source: event.SourceTranscript, Kind: event.KindTurnAssistant, Key: "msg:x", Ts: base, Model: "claude-from-the-future", Tokens: &event.TokenDelta{In: 10, Out: 20}, Payload: json.RawMessage(`{"text":"hi"}`)}, rollup.SessionInfo{Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+
+	var list []SessionSummary
+	if code := e.get(t, "/v1/sessions", &list); code != 200 {
+		t.Fatalf("sessions: %d", code)
+	}
+	notes := map[string]string{}
+	for _, s := range list {
+		if s.Context != nil {
+			if s.ContextNote != "" {
+				t.Errorf("%s: context is present but a note explains its absence: %q", s.SessionID, s.ContextNote)
+			}
+			continue
+		}
+		notes[s.SessionID] = s.ContextNote
+	}
+	if got := notes["quiet"]; got != "no turn yet" {
+		t.Errorf("a session that has not answered yet reports %q, want %q", got, "no turn yet")
+	}
+	// The id has to be named: it is the one thing a user can report and we can fix.
+	if got := notes["exotic"]; !strings.Contains(got, "claude-from-the-future") {
+		t.Errorf("an unpriced model reports %q, which does not name the model", got)
+	}
+}

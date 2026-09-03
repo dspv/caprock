@@ -351,6 +351,16 @@ func Summarize(events []event.Event, opt Options) Activity {
 	case event.KindContextCompact:
 		act.Phrase = "compacting context"
 		act.Health = HealthWorking
+	case event.KindContextClear:
+		// Past tense, and not "working": /clear leaves the session sitting at
+		// an empty prompt waiting for a human. Narrating it as "compacting
+		// context" claimed Claude was busy doing something it had already
+		// finished, at the one moment the owner is deciding whether to wait.
+		act.Phrase = "context cleared"
+		act.Health = HealthIdle
+	case event.KindSessionContinue:
+		act.Phrase = "waiting at the prompt"
+		act.Health = HealthIdle
 	case event.KindAgentSpawn:
 		act.Phrase = "session started"
 		act.Health = HealthWorking

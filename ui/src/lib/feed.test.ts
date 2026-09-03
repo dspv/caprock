@@ -107,3 +107,19 @@ describe('seeding beside live frames', () => {
     expect(merged.map((i) => i.id)).toEqual(['99', '4', '3'])
   })
 })
+
+/**
+ * A /clear is the one event that explains why a session's cost and context
+ * just went back to zero, and it is the user's doing rather than Claude's.
+ * With no case of its own it fell through to the default, which drops the
+ * event — so the numbers reset with nothing on screen accounting for it.
+ */
+describe('a cleared context', () => {
+  it('gets a line of its own, not the compact one', () => {
+    const item = toFeedItem(ev('context.clear', {}))
+    expect(item).not.toBeNull()
+    expect(item!.text).toBe('context cleared')
+    // "compacted its context" would describe an event that did not happen.
+    expect(item!.text).not.toContain('compact')
+  })
+})
