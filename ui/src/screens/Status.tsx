@@ -25,9 +25,9 @@ export function StatusScreen() {
     // A feature that acts before you type is one nobody can see working. This
     // says whether it can, and for how much — without opening a session to
     // find out.
-    ['session memory', s.memory && s.memory.repos > 0
-      ? `on — a new session here is told what the last one left, in ${s.memory.repos} ${s.memory.repos === 1 ? 'repository' : 'repositories'}${s.memory.since ? ` (since ${s.memory.since})` : ''}`
-      : 'nothing to hand over yet — it starts once a session leaves something behind'],
+    ['memory', s.memory && s.memory.repos > 0
+      ? `on in ${s.memory.repos} ${s.memory.repos === 1 ? 'folder' : 'folders'}${s.memory.since ? `, since ${s.memory.since}` : ''}`
+      : 'nothing to carry over yet — it starts once a session leaves something behind'],
     // Spawning needs the binary. When it is missing every spawn control is
     // disabled and nothing anywhere said why.
     ['claude', s.claude_available
@@ -128,6 +128,23 @@ function SettingsPanel() {
             <span className="block text-[11px] text-fg-muted">
               Asks GitHub for a version number, at most once a day. No usage
               data is sent, and nothing is sent to us.
+            </span>
+          </span>
+        </label>
+        {/* Says what Claude does, not what the user should do. "Remind Claude"
+          * read as an instruction to the reader; "tell a new session" was our
+          * own jargon — nobody thinks of themselves as starting a session. */}
+        <label className="flex items-start gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            className="accent-[var(--color-accent)] mt-0.5"
+            checked={plan.memory !== false}
+            onChange={(e) => savePlan({ ...plan, memory: e.target.checked })}
+          />
+          <span>
+            <span className="text-fg">Claude knows what you did here last time</span>
+            <span className="block text-[11px] text-fg-muted">
+              This folder only. Quick chats get nothing.
             </span>
           </span>
         </label>

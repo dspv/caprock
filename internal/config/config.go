@@ -29,6 +29,13 @@ type Config struct {
 	LoopTMinutes int `json:"loop_t_minutes"`
 	// AutoPause applies to owned sessions only (Phase 1). Default off.
 	AutoPause bool `json:"auto_pause"`
+	// Memory decides whether a session opening a folder is told what the last
+	// one left there. On by default: 79% of sessions open somewhere work
+	// already happened, so it helps more often than it intrudes — and a
+	// feature that acts before you type is one nobody discovers if it ships
+	// off. Stored, unlike LAN access, because this is a working habit rather
+	// than a door left open.
+	Memory *bool `json:"memory,omitempty"`
 	// OpenBrowser controls whether `caprock up` opens the dashboard.
 	OpenBrowser bool `json:"open_browser"`
 	// RetentionDays prunes events older than this many days (0 = keep forever).
@@ -287,4 +294,15 @@ func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
 		return err
 	}
 	return nil
+}
+
+// MemoryOn reports whether a session should be told what the last one left in
+// the same folder.
+//
+// A pointer in the struct so that "never set" is distinguishable from "set to
+// false": a config written before this existed must get the feature, and a
+// config where someone turned it off must keep it off. Reading a bare bool
+// would have silently re-enabled it for everyone who had said no.
+func (c Config) MemoryOn() bool {
+	return c.Memory == nil || *c.Memory
 }

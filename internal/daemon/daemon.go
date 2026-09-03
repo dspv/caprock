@@ -987,6 +987,7 @@ func (a *settingsAdapter) Get() api.Settings {
 	c := a.d.opt.Config
 	return api.Settings{
 		UpdateChecks:    c.UpdateChecks,
+		Memory:          c.MemoryOn(),
 		PlanKind:        c.PlanKind,
 		PlanLabel:       c.PlanLabel,
 		PlanUSDPerMonth: c.PlanUSDPerMonth,
@@ -1010,6 +1011,10 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	a.d.cfgMu.Lock()
 	justEnabled := in.UpdateChecks && !a.d.opt.Config.UpdateChecks
 	a.d.opt.Config.UpdateChecks = in.UpdateChecks
+	// Stored as a pointer so "never set" stays distinguishable from "turned
+	// off" — a config written before this existed must get the feature.
+	memory := in.Memory
+	a.d.opt.Config.Memory = &memory
 	a.d.opt.Config.PlanKind = in.PlanKind
 	a.d.opt.Config.PlanLabel = in.PlanLabel
 	a.d.opt.Config.PlanUSDPerMonth = in.PlanUSDPerMonth

@@ -117,9 +117,12 @@ type SettingsController interface {
 // cannot detect how a user pays for Claude Code and never guesses — these
 // values are stated by the user and stored locally.
 type Settings struct {
-	// UpdateChecks enables the release check — the only outbound call Caprock
-	// makes, off unless the user turns it on.
+	// UpdateChecks enables the release check — one of three calls that can
+	// leave the machine, all off unless the user turns them on.
 	UpdateChecks bool `json:"update_checks"`
+	// Memory decides whether a session opening a folder is told what the last
+	// one left there. On unless someone turns it off; see ADR-030.
+	Memory bool `json:"memory"`
 	// PlanKind: "" (not stated), "flat" (Pro/Max/Team seat), or "metered"
 	// (API key, Bedrock, Vertex, Enterprise usage at API rates).
 	PlanKind        string  `json:"plan_kind"`
@@ -748,6 +751,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	// change what it named and nothing else.
 	var patch struct {
 		UpdateChecks    *bool    `json:"update_checks"`
+		Memory          *bool    `json:"memory"`
 		PlanKind        *string  `json:"plan_kind"`
 		PlanLabel       *string  `json:"plan_label"`
 		PlanUSDPerMonth *float64 `json:"plan_usd_per_month"`
@@ -767,6 +771,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	in := s.d.Settings.Get()
 	if patch.UpdateChecks != nil {
 		in.UpdateChecks = *patch.UpdateChecks
+	}
+	if patch.Memory != nil {
+		in.Memory = *patch.Memory
 	}
 	if patch.PlanKind != nil {
 		in.PlanKind = *patch.PlanKind
