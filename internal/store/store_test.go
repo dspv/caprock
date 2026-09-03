@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -974,4 +975,71 @@ func TestUnpricedIsScopedToTheAgentAsked(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The handoff a returning session is given: the last substantial thing said in
+// this repository, and nothing from the session now starting.
+//
+// Recency rather than retrieval, and that is a measured choice. Searching prior
+// prose by the terms of the opening prompt answered 4 of 15 resumed sessions on
+// the owner's database and missed the clearest case — "напомни что мы последний
+// раз изучали" found nothing among 384 candidate passages, because an opening
+// question shares no words with its own answer. Taking the last passage answers
+// 12 of 19.
+func TestWhereWeLeftOffHandsBackTheLastSubstantialTurn(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	base := time.Now().Add(-time.Hour)
+
+	// Three sessions in one repository, plus one elsewhere.
+	for _, tc := range []struct {
+		id, project, text string
+		at                time.Time
+	}{
+		{"old", "alpha", strings.Repeat("an early conclusion. ", 30), base},
+		{"mid", "alpha", strings.Repeat("the thing we actually settled on. ", 30), base.Add(10 * time.Minute)},
+		{"tiny", "alpha", "Done.", base.Add(20 * time.Minute)}, // too short to be a handoff
+		{"other", "beta", strings.Repeat("a different repository entirely. ", 30), base.Add(30 * time.Minute)},
+	} {
+		if err := UpsertSession(ctx, s.db, tc.id, SessionPatch{Project: tc.project}); err != nil {
+			t.Fatal(err)
+		}
+		ev := &event.Event{
+			SessionID: tc.id, Source: event.SourceTranscript, Kind: event.KindTurnAssistant,
+			Key: "k-" + tc.id, Ts: tc.at,
+			Payload: json.RawMessage(`{"text":` + strconvQuote(tc.text) + `}`),
+		}
+		if _, err := InsertEvent(ctx, s.db, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := WhereWeLeftOff(ctx, s.db, "alpha", base.Add(time.Hour).UnixMilli(), 400)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got.Text, "actually settled on") {
+		t.Fatalf("handed back %q — want the last substantial turn, not the one-liner after it", got.Text[:60])
+	}
+
+	// A session must never be handed its own output: `before` is what stops a
+	// resume from quoting the very thing it is about to say again.
+	earlier, err := WhereWeLeftOff(ctx, s.db, "alpha", base.Add(5*time.Minute).UnixMilli(), 400)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(earlier.Text, "an early conclusion") {
+		t.Fatalf("ignored the time bound: got %q", earlier.Text[:60])
+	}
+
+	// Another repository's work is not this repository's handoff.
+	if _, err := WhereWeLeftOff(ctx, s.db, "gamma", base.Add(time.Hour).UnixMilli(), 400); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("a repo with no history returned %v, want sql.ErrNoRows", err)
+	}
+}
+
+// strconvQuote is json-safe quoting for the fixtures above.
+func strconvQuote(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
 }

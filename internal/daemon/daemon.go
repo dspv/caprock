@@ -322,7 +322,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	// Hook receiver. Decide is wired unconditionally: it is a method that
 	// answers nil while no board exists, so the Stop-loop starts working the
 	// moment the task runner is turned on rather than only on the next restart.
-	hh := &hookd.Handler{Token: rt.Token, Recorder: d.rec, Log: d.log, Decide: d.stopDecision}
+	hh := &hookd.Handler{Token: rt.Token, Recorder: d.rec, Log: d.log, Decide: d.stopDecision, Handoff: d.handoff}
 
 	// API.
 	// LAN access, decided before the API is built so the pairing screen has an

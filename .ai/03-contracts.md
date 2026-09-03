@@ -79,6 +79,28 @@ tokens are full length and do not expire; revocation takes effect on the next
 request. The guest list lives in `devices.json` at mode 0600, beside the
 licence key and the report bot token, and never in `config.json`.
 
+### SessionStart handoff
+
+A `SessionStart` hook whose `source` is `startup` is answered with the last
+substantial thing an agent said in the same repository, in the shape Claude
+Code reads:
+
+```json
+{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"…"}}
+```
+
+Verified against a live session, not only against the documentation — the
+payload field is `source`, though the docs also name `startup_reason`. Any
+other source (`resume`, `clear`, `compact`, `fork`) gets `204` and the session
+starts unchanged.
+
+Bounds: 400 runes minimum (below that a passage says nothing about where the
+work stood), 1,200 maximum (Claude Code documents no cap and is reported to
+drop an oversized reply silently), 14 days maximum age. The shim waits 1.5s for
+this reply — shorter than the Stop budget, because it sits in front of a prompt
+that has not appeared yet — and a daemon that cannot answer in time simply says
+nothing. [ADR-030](08-decisions.md).
+
 ### Cross-site request protection
 
 **Binding to loopback is not an authentication boundary against a browser.** Any page the user visits while the daemon runs can send requests to `127.0.0.1`; the same-origin policy stops that page *reading* the response, but not *sending* the request and not what the request does. `POST /v1/agents` executes a command from its body, so an unguarded forgery is remote code execution from a web page.
