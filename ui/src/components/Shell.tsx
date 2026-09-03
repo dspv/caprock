@@ -33,7 +33,10 @@ const NAV: { route: Route; label: string; phase?: string }[] = [
   // which is the most quotable number the product has and was hidden behind a
   // word that promised a list. The panel inside it already said 'Lifetime'.
   { route: { name: 'history' }, label: 'Lifetime' },
-  { route: { name: 'notes' }, label: 'Answers' },
+  // "Memory" rather than "Answers": this screen and the handoff a new session
+  // gets are the same thing — everything the agents said on this machine —
+  // and nobody looking for the second would think to open the first.
+  { route: { name: 'notes' }, label: 'Memory' },
   { route: { name: 'tasks' }, label: 'Tasks' },
 ]
 // The graph is deliberately not in NAV. Without a running orchestrator it can
@@ -50,7 +53,7 @@ function screenName(r: Route): string {
     case 'history': return 'Lifetime'
     case 'tasks': return 'Tasks'
     case 'graph': return 'Graph'
-    case 'notes': return 'Answers'
+    case 'notes': return 'Memory'
     case 'settings': return 'Status'
   }
 }

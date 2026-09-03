@@ -89,13 +89,16 @@ func (e *env) get(t *testing.T, path string, out any) int {
 }
 
 // put sends a JSON body, which the forgery guard requires a content type for.
-func (e *env) put(t *testing.T, path string, body any) int {
+// put saves settings. No path parameter: every caller writes settings, and a
+// parameter that only ever takes one value is a parameter that lies about the
+// helper's reach.
+func (e *env) putSettings(t *testing.T, body any) int {
 	t.Helper()
 	b, err := json.Marshal(body)
 	if err != nil {
 		t.Fatal(err)
 	}
-	req, err := http.NewRequest(http.MethodPut, e.srv.URL+path, bytes.NewReader(b))
+	req, err := http.NewRequest(http.MethodPut, e.srv.URL+"/v1/settings", bytes.NewReader(b))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,7 +429,15 @@ func TestPaceForecastHonesty(t *testing.T) {
 }
 
 // fakeSettings is an in-memory SettingsController for the endpoint tests.
-type fakeSettings struct{ cur Settings }
+type fakeSettings struct {
+	cur Settings
+	// memorySet records whether anyone has said anything about memory. The
+	// daemon stores it as a pointer for the same reason: a config that has
+	// never mentioned it must get the feature, and one that says no must keep
+	// saying no. A fake that always reported false would make "off by default"
+	// look correct.
+	memorySet bool
+}
 
 // Get mirrors what the daemon's adapter does with the write-only token: it
 // reports that one is set and does not hand it back. A fake that returned the
@@ -435,9 +446,12 @@ func (f *fakeSettings) Get() Settings {
 	out := f.cur
 	out.ReportBotSet = f.cur.ReportBotToken != ""
 	out.GeminiKeySet = f.cur.GeminiAPIKey != ""
+	if !f.memorySet {
+		out.Memory = true
+	}
 	return out
 }
-func (f *fakeSettings) Set(s Settings) error { f.cur = s; return nil }
+func (f *fakeSettings) Set(s Settings) error { f.cur, f.memorySet = s, true; return nil }
 
 // The cap is a number that stops work, so it has to survive a save and it has
 // to refuse nonsense.
@@ -446,7 +460,7 @@ func TestSettingsCapRoundTripsAndValidates(t *testing.T) {
 	// Shipped broken once: the field existed on the struct and in the UI but
 	// was missing from the PUT decoder, so the panel said "saved" and the
 	// daemon kept a cap of zero. The button worked, the feature did not.
-	if code := e.put(t, "/v1/settings", map[string]any{"cap_usd_per_day": 280}); code != 200 {
+	if code := e.putSettings(t, map[string]any{"cap_usd_per_day": 280}); code != 200 {
 		t.Fatalf("PUT cap: %d", code)
 	}
 	var got Settings
@@ -456,7 +470,7 @@ func TestSettingsCapRoundTripsAndValidates(t *testing.T) {
 
 	// Zero is off, and must be settable — otherwise a cap cannot be turned off
 	// once it is on.
-	if code := e.put(t, "/v1/settings", map[string]any{"cap_usd_per_day": 0}); code != 200 {
+	if code := e.putSettings(t, map[string]any{"cap_usd_per_day": 0}); code != 200 {
 		t.Fatalf("PUT zero: %d", code)
 	}
 	if code := e.get(t, "/v1/settings", &got); code != 200 || got.CapUSDPerDay != 0 {
@@ -465,7 +479,7 @@ func TestSettingsCapRoundTripsAndValidates(t *testing.T) {
 
 	// A negative ceiling is a 400, not a silently clamped zero: coercing it
 	// would disable the cap while answering 200.
-	if code := e.put(t, "/v1/settings", map[string]any{"cap_usd_per_day": -5}); code != 400 {
+	if code := e.putSettings(t, map[string]any{"cap_usd_per_day": -5}); code != 400 {
 		t.Errorf("negative cap: %d, want 400", code)
 	}
 }

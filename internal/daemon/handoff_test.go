@@ -216,3 +216,47 @@ func TestClippingNeverBreaksARune(t *testing.T) {
 		})
 	}
 }
+
+// Switched off means silent, and it takes effect on the next session rather
+// than the next restart.
+//
+// Vova's objection, and it is a real one: "иногда необходим контекст а иногда
+// нет". He had been bitten by an assistant that remembered he works in MLOps
+// and volunteered it while he was asking about Rust. Memory that arrives
+// uninvited is worse than none.
+func TestSwitchedOffMeansSilent(t *testing.T) {
+	now := time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
+	d := handoffDaemon(t, now)
+	said(t, d, "caprock", strings.Repeat("plenty worth handing over here. ", 20), now.Add(-time.Hour))
+	p := hookd.Payload{HookEventName: "SessionStart", Source: "startup", Cwd: "/home/u/caprock"}
+
+	if len(d.handoff(context.Background(), p)) == 0 {
+		t.Fatal("nothing came back with memory on, so this test proves nothing")
+	}
+
+	off := false
+	d.opt.Config.Memory = &off
+	if reply := d.handoff(context.Background(), p); len(reply) > 0 {
+		t.Fatalf("spoke while switched off: %s", reply)
+	}
+
+	on := true
+	d.opt.Config.Memory = &on
+	if len(d.handoff(context.Background(), p)) == 0 {
+		t.Fatal("stayed silent after being switched back on")
+	}
+}
+
+// A config written before this feature existed has no such field, and must get
+// the feature rather than silently missing it — while a config that says false
+// keeps saying false. That is why it is a pointer.
+func TestAnOlderConfigGetsTheFeature(t *testing.T) {
+	now := time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
+	d := handoffDaemon(t, now) // Memory is nil, as an old config decodes
+	said(t, d, "caprock", strings.Repeat("something to say. ", 40), now.Add(-time.Hour))
+	if len(d.handoff(context.Background(), hookd.Payload{
+		HookEventName: "SessionStart", Source: "startup", Cwd: "/home/u/caprock",
+	})) == 0 {
+		t.Fatal("a config with no memory field was treated as off")
+	}
+}

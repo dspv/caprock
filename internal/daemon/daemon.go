@@ -908,8 +908,15 @@ type PricingStatus struct {
 // MemoryStatus is what the handoff can do on this machine: how many
 // repositories it could speak for, and since when.
 type MemoryStatus struct {
+	// Repos and Since describe the handoff: how many folders it can speak for,
+	// and the oldest passage recent enough to be handed over.
 	Repos int    `json:"repos"`
 	Since string `json:"since,omitempty"`
+	// Held is when the oldest passage Caprock still has was written — the whole
+	// corpus, not the fortnight the handoff reaches. The search screen spans
+	// all of it, and using the handoff's date there would understate what is
+	// searchable by a month.
+	Held string `json:"held,omitempty"`
 }
 
 func (d *Daemon) status(_ context.Context) any {
@@ -987,6 +994,7 @@ func (a *settingsAdapter) Get() api.Settings {
 	c := a.d.opt.Config
 	return api.Settings{
 		UpdateChecks:    c.UpdateChecks,
+		Memory:          c.MemoryOn(),
 		PlanKind:        c.PlanKind,
 		PlanLabel:       c.PlanLabel,
 		PlanUSDPerMonth: c.PlanUSDPerMonth,
@@ -1010,6 +1018,10 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	a.d.cfgMu.Lock()
 	justEnabled := in.UpdateChecks && !a.d.opt.Config.UpdateChecks
 	a.d.opt.Config.UpdateChecks = in.UpdateChecks
+	// Stored as a pointer so "never set" stays distinguishable from "turned
+	// off" — a config written before this existed must get the feature.
+	memory := in.Memory
+	a.d.opt.Config.Memory = &memory
 	a.d.opt.Config.PlanKind = in.PlanKind
 	a.d.opt.Config.PlanLabel = in.PlanLabel
 	a.d.opt.Config.PlanUSDPerMonth = in.PlanUSDPerMonth

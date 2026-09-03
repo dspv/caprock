@@ -48,6 +48,16 @@ const (
 // handoff answers a SessionStart hook. An empty reply means "say nothing", and
 // the session then starts exactly as it does today.
 func (d *Daemon) handoff(ctx context.Context, p hookd.Payload) []byte {
+	// Switched off is switched off, read here rather than at registration so a
+	// change takes effect on the next session rather than the next restart —
+	// and under the lock, because the settings endpoint writes this while
+	// sessions are opening.
+	d.cfgMu.RLock()
+	on := d.opt.Config.MemoryOn()
+	d.cfgMu.RUnlock()
+	if !on {
+		return nil
+	}
 	// Only a genuinely new session. SessionStart also fires on resume, on
 	// /clear and after compaction: a resume already has the conversation, and
 	// re-injecting the same passage after every compaction would turn a useful
@@ -139,6 +149,9 @@ func (d *Daemon) memoryStatus() MemoryStatus {
 	ms := MemoryStatus{Repos: repos}
 	if oldest > 0 {
 		ms.Since = time.UnixMilli(oldest).Format("2006-01-02")
+	}
+	if held, err := store.ProseSince(ctx, d.store.DB()); err == nil && held > 0 {
+		ms.Held = time.UnixMilli(held).Format("2006-01-02")
 	}
 	return ms
 }
