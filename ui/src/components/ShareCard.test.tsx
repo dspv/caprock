@@ -363,3 +363,88 @@ describe('the card is about the period it names', () => {
     expect(drawn.text.some((t) => t.includes('LAST 30 DAYS'))).toBe(false)
   })
 })
+
+/**
+ * The preview has to change when the period does.
+ *
+ * It did not, and the cause was a tidy-looking cleanup: the effect revoked its
+ * blob URL on teardown, so changing period revoked the URL the <img> was still
+ * pointing at. A revoked blob leaves the already-decoded bitmap on screen, so
+ * every period drew a correct new card that nobody ever saw. The owner reported
+ * it as "the previews don't change when you switch tabs".
+ *
+ * jsdom cannot draw, so the canvas is stubbed to yield a distinguishable blob
+ * per call — the assertion is about which URL the <img> ends up with, and
+ * whether the one it is showing has been revoked.
+ */
+describe('the preview image', () => {
+  const stubCanvas = () => {
+    let n = 0
+    const proto = HTMLCanvasElement.prototype as unknown as Record<string, unknown>
+    const origCtx = proto.getContext
+    const origBlob = proto.toBlob
+    proto.getContext = () =>
+      new Proxy({}, {
+        get: (_t, k) => (k === 'measureText' ? () => ({ width: 10 }) : () => undefined),
+      })
+    proto.toBlob = (cb: (b: Blob) => void) => {
+      n += 1
+      cb(new Blob([`card-${n}`], { type: 'image/png' }))
+    }
+    return () => { proto.getContext = origCtx; proto.toBlob = origBlob }
+  }
+
+  it('draws a new image for each period, and keeps the one on screen usable', async () => {
+    const restore = stubCanvas()
+    const made: string[] = []
+    const revoked: string[] = []
+    const origCreate = URL.createObjectURL
+    const origRevoke = URL.revokeObjectURL
+    let id = 0
+    const order: string[] = []
+    URL.createObjectURL = () => {
+      id += 1
+      const u = `blob:card-${id}`
+      made.push(u)
+      order.push(`create:${u}`)
+      return u
+    }
+    URL.revokeObjectURL = (u: string) => { revoked.push(u); order.push(`revoke:${u}`) }
+    try {
+      data.value = history()
+      render(<ShareCard />)
+      fireEvent.click(await screen.findByRole('button', { name: /share these numbers/i }))
+
+      const img = await screen.findByAltText(/as they will be shared/i)
+      const first = img.getAttribute('src')
+      expect(first).toBeTruthy()
+      // Guard the guard: if the canvas stub is not taking effect, no blob is
+      // ever created and every assertion below is vacuously true.
+      expect(made.length).toBe(1)
+
+      fireEvent.click(screen.getByRole('button', { name: /^this month$/i }))
+      await waitFor(() => {
+        expect(screen.getByAltText(/as they will be shared/i).getAttribute('src')).not.toBe(first)
+      })
+      const second = screen.getByAltText(/as they will be shared/i).getAttribute('src')
+
+      // The bug, stated as ordering rather than as appearance. jsdom keeps
+      // rendering a revoked blob exactly as a real browser does, so "is it
+      // still visible" cannot be asserted here — what can is *when* the old
+      // URL was released. Revoking it before its replacement existed is the
+      // defect: that is the window in which the <img> points at a dead URL and
+      // the browser keeps showing the previous bitmap.
+      const releasedFirst = revoked.indexOf(first!)
+      const madeSecond = made.indexOf(second!)
+      expect(releasedFirst).toBeGreaterThanOrEqual(0) // released, not leaked
+      expect(madeSecond).toBeGreaterThanOrEqual(0)
+      expect(order.indexOf(`revoke:${first}`)).toBeGreaterThan(order.indexOf(`create:${second}`))
+      // And the one on screen is still live.
+      expect(revoked).not.toContain(second)
+    } finally {
+      URL.createObjectURL = origCreate
+      URL.revokeObjectURL = origRevoke
+      restore()
+    }
+  })
+})

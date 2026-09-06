@@ -21,7 +21,7 @@
  * The card itself carries `caprock.dev`, so the link travels with the image
  * even when someone posts it without the text.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useApi } from '@/lib/useApi'
 import { api, type History } from '@/lib/api'
 import { cardFilename, collectCardData, drawShareCard, PERIOD_LABEL, type SharePeriod } from './ShareCard'
@@ -90,23 +90,42 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
 
   // Redrawn on every period change. Each draw is one canvas and three cached
   // API calls, so it costs less than the click that opened the sheet.
+  //
+  // The revoke has to happen when the *replacement* is on screen, not when the
+  // effect tears down. Revoking in cleanup looked tidy and broke the feature:
+  // changing period ran the old cleanup immediately, which revoked the URL the
+  // <img> was still pointing at, and a revoked blob leaves the already-decoded
+  // bitmap showing. Every period drew a correct new card that nobody ever saw —
+  // the preview simply never changed.
   useEffect(() => {
     let live = true
-    let url = ''
     void (async () => {
       const d = await collectCardData(period)
       const blob = await drawShareCard(d)
       if (!blob || !live) return
-      url = URL.createObjectURL(blob)
-      setPreview(url)
+      const url = URL.createObjectURL(blob)
+      setPreview((prev) => {
+        // The old bitmap is only unreachable once the new src is in place, so
+        // this is the one safe moment to let it go. Without the release the
+        // whole bitmap stays alive for every period the reader clicks through.
+        if (prev) URL.revokeObjectURL(prev)
+        return url
+      })
     })()
     return () => {
       live = false
-      // Revoked on the way out: a blob URL held after its <img> is gone keeps
-      // the whole bitmap alive, and this component redraws on every click.
-      if (url) URL.revokeObjectURL(url)
     }
   }, [period])
+
+  // The last URL outlives the effect that made it, so releasing it belongs to
+  // the component's own unmount rather than to any one draw. Held in a ref
+  // because unmount cleanup must not set state — it reads the current value
+  // and frees it, nothing more.
+  const latest = useRef('')
+  latest.current = preview
+  useEffect(() => () => {
+    if (latest.current) URL.revokeObjectURL(latest.current)
+  }, [])
 
   const build = async () => {
     const [d, h] = await Promise.all([collectCardData(period), api.history('all')])
