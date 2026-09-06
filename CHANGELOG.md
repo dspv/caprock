@@ -19,12 +19,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   `N turns · N steps · cache −N% · in N · out N`, from counters only the daemon
   has, added to the line Caprock already prints.
 
-  **Setting it up for the first time?** Nothing to do — `caprock up` offers the
-  status line as it always has, and now includes the numbers. **Already have
-  Caprock's status line?** Upgrading does not rewrite your settings; `caprock
-  up` prints a one-line tip with the command, and `caprock statusline install
-  --rich` switches you over. You can switch back with `caprock statusline
-  install`, and either form uninstalls the same way.
+  Nothing to turn on, and nothing to re-register: if Caprock's status line is
+  already set up, upgrading is enough, and your settings are not touched. New
+  installs get it from `caprock up` as before. `caprock statusline --plain`
+  opts out.
+
+  The daemon read that fetches the counters is bounded at 40ms — measured
+  against a real endpoint that answers in 0.6ms — and any failure falls through
+  to the line you get today. A stopped daemon costs nothing measurable; a hung
+  one costs ~55ms per line.
 
   It is fitted to the terminal — the counters go one at a time, and the plan
   windows are never dropped, being the number that decides whether work can

@@ -1,11 +1,6 @@
 package hooks
 
-import (
-	"os"
-	"path/filepath"
-	"strings"
-	"testing"
-)
+import "testing"
 
 // The statusLine command carried the same spaces-only quoting the hooks did, so
 // on Windows it reached bash as `C:UsersVolasscoop...caprock.exe statusline`
@@ -58,82 +53,5 @@ func TestIsOurStatuslineToleratesFlags(t *testing.T) {
 		if isOurStatusline(cs, plain) {
 			t.Errorf("should not be ours: %q", cs)
 		}
-	}
-}
-
-// RetargetStatusline switches our own entry between the plain and rich forms,
-// and never touches a statusLine the user set to something else.
-func TestRetargetStatusline(t *testing.T) {
-	plain := "/usr/local/bin/caprock statusline"
-	rich := plain + " --rich"
-
-	t.Run("switches our own entry", func(t *testing.T) {
-		sp := filepath.Join(t.TempDir(), "settings.json")
-		if _, err := InstallStatusline(sp, plain); err != nil {
-			t.Fatal(err)
-		}
-		changed, err := RetargetStatusline(sp, rich)
-		if err != nil || !changed {
-			t.Fatalf("retarget: changed=%v err=%v", changed, err)
-		}
-		if b, _ := os.ReadFile(sp); !strings.Contains(string(b), "--rich") {
-			t.Fatalf("rich form not written: %s", b)
-		}
-		// Idempotent: the same target twice reports no change.
-		if changed, err := RetargetStatusline(sp, rich); err != nil || changed {
-			t.Fatalf("second retarget: changed=%v err=%v", changed, err)
-		}
-		// And back again.
-		if changed, err := RetargetStatusline(sp, plain); err != nil || !changed {
-			t.Fatalf("retarget back: changed=%v err=%v", changed, err)
-		}
-		if b, _ := os.ReadFile(sp); strings.Contains(string(b), "--rich") {
-			t.Fatalf("rich form not removed: %s", b)
-		}
-	})
-
-	t.Run("leaves a user statusLine alone", func(t *testing.T) {
-		sp := filepath.Join(t.TempDir(), "settings.json")
-		if err := os.WriteFile(sp, []byte(`{"statusLine":{"type":"command","command":"ccusage"}}`), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		changed, err := RetargetStatusline(sp, rich)
-		if err != nil || changed {
-			t.Fatalf("user statusLine touched: changed=%v err=%v", changed, err)
-		}
-		if b, _ := os.ReadFile(sp); !strings.Contains(string(b), "ccusage") {
-			t.Fatalf("user command lost: %s", b)
-		}
-	})
-
-	t.Run("no settings file is not an error", func(t *testing.T) {
-		if changed, err := RetargetStatusline(filepath.Join(t.TempDir(), "settings.json"), rich); err != nil || changed {
-			t.Fatalf("missing file: changed=%v err=%v", changed, err)
-		}
-	})
-}
-
-// StatuslineCommand reports what is registered, so a caller can tell which form
-// of ours is in place without reimplementing the parsing.
-func TestStatuslineCommand(t *testing.T) {
-	sp := filepath.Join(t.TempDir(), "settings.json")
-	if got, err := StatuslineCommand(sp); err != nil || got != "" {
-		t.Fatalf("missing file should be empty: %q %v", got, err)
-	}
-	want := "/usr/local/bin/caprock statusline --rich"
-	if _, err := InstallStatusline(sp, want); err != nil {
-		t.Fatal(err)
-	}
-	got, err := StatuslineCommand(sp)
-	if err != nil || got != want {
-		t.Fatalf("StatuslineCommand = %q (%v), want %q", got, err, want)
-	}
-	// A settings file with no statusLine at all is empty, not an error.
-	sp2 := filepath.Join(t.TempDir(), "settings.json")
-	if err := os.WriteFile(sp2, []byte(`{"model":"opus"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := StatuslineCommand(sp2); err != nil || got != "" {
-		t.Fatalf("no statusLine should be empty: %q %v", got, err)
 	}
 }

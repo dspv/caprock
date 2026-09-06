@@ -102,14 +102,24 @@ not, and at 80 columns ten columns is precisely one counter. Ranked essential
 rather than decoration and never dropped at any width — a badge that
 disappears exactly when the line gets tight is not a badge.
 
-**Nobody would have found it.** Walking the four install paths in a fake HOME
-showed the feature was undiscoverable: a new user silently got the plain form,
-and an existing user saw an upgrade change nothing at all — the only route to
-`--rich` was reading the changelog. So a fresh registration now gets the rich
-form by default (nothing to disrupt, and it degrades to the plain line on its
-own), while an existing one is never rewritten by an upgrade — `up` prints a
-one-line tip naming the command and stops once the user is on it. Switching
-stays the user's call; discovering it should not have been.
+**Then the flag itself turned out to be the problem.** Walking the install
+paths in a fake HOME showed the feature was undiscoverable: a new user silently
+got the plain form, an existing user saw an upgrade change nothing, and the
+only route to `--rich` was reading the changelog. The first answer was a tip
+printed by `up`. The better answer was to ask what the flag was protecting
+against and measure it, which turned out to be very little: the endpoint is one
+indexed row over loopback and answers in **0.6ms**; a stopped daemon (no
+runtime.json) never opens a socket; a dead one is refused instantly. Only a
+daemon that accepts and never replies costs anything, and that is bounded.
+
+So the counters are **on by default**, the budget dropped from 150ms to 40ms
+(~60× the measured latency, and the worst realistic case now measures ~55ms per
+line against ~10ms otherwise), and `--plain` is the way out. `--rich` survives
+as a hidden no-op: a settings.json written while it was a real flag must not
+start failing because the flag moved. An existing registration needs no rewrite
+and no prompt — it simply starts showing the counters. That deleted the tip,
+`RetargetStatusline`, `StatuslineCommand` and the two-form command builder;
+the install path is one form again.
 
 **The green suite shipped the wrong cache metric, and only the terminal said
 so.** The obvious figure was the hit rate, and the tests were happy with it. Run

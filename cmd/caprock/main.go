@@ -106,11 +106,9 @@ func upCmd() *cobra.Command {
 					fmt.Fprintf(cmd.ErrOrStderr(), "warning: hooks not installed: %v\n", err)
 				}
 				// The statusLine feeds plan-limit windows (Pro/Max) to the Cost
-				// screen and this session's counters; offer it the same way as
-				// hooks. A fresh install gets the rich form: there is nothing
-				// to disrupt, and it degrades to the plain line by itself
-				// whenever the daemon does not answer. Non-fatal if declined.
-				if err := maybeInstallStatuslineCmd(cmd, yes, statuslineCommandStrRich(true)); err != nil {
+				// screen and puts this session's counters on the line; offer it
+				// the same way as hooks. Non-fatal if declined.
+				if err := maybeInstallStatusline(cmd, yes); err != nil {
 					fmt.Fprintf(cmd.ErrOrStderr(), "warning: statusline not installed: %v\n", err)
 				}
 			}
@@ -304,19 +302,10 @@ func maybeInstallHooks(cmd *cobra.Command, dir string, yes bool) error {
 
 // statuslineCommandStr is the command to register as Claude Code's
 // statusLine.command: this executable plus the `statusline` subcommand.
-func statuslineCommandStr() string { return statuslineCommandStrRich(false) }
-
-// statuslineCommandStrRich is statuslineCommandStr, optionally with `--rich`
-// (the session counters). Detection and removal accept either form, so a user
-// can switch between them without a stale entry being left behind.
-func statuslineCommandStrRich(rich bool) string {
-	suffix := ""
-	if rich {
-		suffix = " --rich"
-	}
+func statuslineCommandStr() string {
 	self, err := os.Executable()
 	if err != nil {
-		return "caprock statusline" + suffix
+		return "caprock statusline"
 	}
 	// Same treatment as a hook command, through the same function: forward
 	// slashes so bash does not eat a Windows path's backslashes, quotes so a
@@ -324,16 +313,16 @@ func statuslineCommandStrRich(rich bool) string {
 	// carried the spaces-only version of the bug that broke every Windows
 	// install's hooks — including its statusLine, which a user had to repair by
 	// hand.
-	return hooks.ShellCommand(self) + " statusline" + suffix
+	return hooks.ShellCommand(self) + " statusline"
 }
 
-// maybeInstallStatuslineCmd offers to register a `caprock statusline` command as
-// Claude Code's statusLine, which puts the plan-limit windows (Pro/Max) and the
-// session's counters on the line. Same consent contract as hooks: TTY prompt,
-// or `--yes` for scripts. It never clobbers a statusLine the user already set to
-// something else. Taking the command string as a parameter is what lets `up` and
-// `install --rich` register different forms through one consent path.
-func maybeInstallStatuslineCmd(cmd *cobra.Command, yes bool, cmdStr string) error {
+// maybeInstallStatusline offers to register `caprock statusline` as Claude Code's
+// statusLine, which puts the plan-limit windows (Pro/Max) and the session's own
+// counters on the line. Same consent contract as hooks: TTY prompt, or `--yes`
+// for scripts. It never clobbers a statusLine the user already set to something
+// else.
+func maybeInstallStatusline(cmd *cobra.Command, yes bool) error {
+	cmdStr := statuslineCommandStr()
 	sp, err := hooks.DefaultSettingsPath()
 	if err != nil {
 		return err
@@ -343,14 +332,10 @@ func maybeInstallStatuslineCmd(cmd *cobra.Command, yes bool, cmdStr string) erro
 		return err
 	}
 	if ours {
-		// Already ours. If it is the plain form, say once that the counters
-		// exist and how to get them — a user who never reads the changelog
-		// otherwise has no way to discover the feature, since upgrading
-		// changes nothing they can see. Their settings are not rewritten:
-		// switching is their call, not something an upgrade does silently.
-		if cur, _ := hooks.StatuslineCommand(sp); !yes && !strings.Contains(cur, "--rich") {
-			fmt.Fprintln(cmd.OutOrStdout(), "Tip: `caprock statusline install --rich` adds this session's turns, steps and cache saving to the status line.")
-		}
+		// Already ours, in either form. An existing `… statusline --rich`
+		// registration keeps working because the flag survives as a no-op, and
+		// a bare `… statusline` now shows the counters too — so an upgrade
+		// needs no settings rewrite and no prompt to switch.
 		return nil
 	}
 	if present {
@@ -647,16 +632,22 @@ func hookCmd() *cobra.Command {
 // stdin, prints a one-line status, and best-effort forwards rate-limit windows to
 // the daemon. Register in settings.json as `statusLine: {command: "caprock statusline"}`.
 func statuslineCmd() *cobra.Command {
-	var rich bool
+	var rich, plain bool
 	var width int
 	c := &cobra.Command{
 		Use:   "statusline",
 		Short: "Status line for Claude Code (reads its status JSON on stdin, prints one line)",
 		Run: func(cmd *cobra.Command, _ []string) {
-			statusline.RunWith(cmd.InOrStdin(), cmd.OutOrStdout(), statusline.Options{Rich: rich, Width: width})
+			// The counters are on by default; --plain is the way out. --rich
+			// is kept as a no-op so the registrations that named it explicitly
+			// keep working — a settings.json written by an earlier version
+			// must not start failing because a flag went away.
+			statusline.RunWith(cmd.InOrStdin(), cmd.OutOrStdout(), statusline.Options{Rich: !plain, Width: width})
 		},
 	}
-	c.Flags().BoolVar(&rich, "rich", false, "add the session's own counters (turns, steps, cache, tokens) — asks the daemon, falls back to the plain line if it does not answer")
+	c.Flags().BoolVar(&plain, "plain", false, "omit the session's counters — print only what Claude Code passes in, with no call to the daemon")
+	c.Flags().BoolVar(&rich, "rich", false, "no-op; the counters are on by default (kept so existing registrations keep working)")
+	_ = c.Flags().MarkHidden("rich")
 	c.Flags().IntVar(&width, "width", 0, "width to fit the line into (default: $COLUMNS, else 80)")
 	c.AddCommand(
 		installStatuslineCmd(),
@@ -684,42 +675,23 @@ func statuslineCmd() *cobra.Command {
 	return c
 }
 
-// installStatuslineCmd is `caprock statusline install [--rich]`.
+// installStatuslineCmd is `caprock statusline install`.
 func installStatuslineCmd() *cobra.Command {
-	var rich bool
-	c := &cobra.Command{
+	return &cobra.Command{
 		Use:   "install",
-		Short: "Register `caprock statusline` as Claude Code's statusLine (enables plan limits)",
+		Short: "Register `caprock statusline` as Claude Code's statusLine",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			sp, err := hooks.DefaultSettingsPath()
 			if err != nil {
 				return err
 			}
-			want := statuslineCommandStrRich(rich)
-			ours, _, err := hooks.StatuslineInstalled(sp, want)
-			if err != nil {
-				return err
-			}
-			if ours {
-				// Ours already — but possibly the other mode. Rewriting is a
-				// no-op when the command is identical, so this is how a user
-				// switches between plain and --rich without uninstalling.
-				changed, err := hooks.RetargetStatusline(sp, want)
-				if err != nil {
-					return err
-				}
-				if !changed {
-					fmt.Fprintln(cmd.OutOrStdout(), "statusline already installed")
-					return nil
-				}
-				fmt.Fprintln(cmd.OutOrStdout(), "statusline updated: "+want)
+			if ours, _, _ := hooks.StatuslineInstalled(sp, statuslineCommandStr()); ours {
+				fmt.Fprintln(cmd.OutOrStdout(), "statusline already installed")
 				return nil
 			}
-			return maybeInstallStatuslineCmd(cmd, true, want)
+			return maybeInstallStatusline(cmd, true)
 		},
 	}
-	c.Flags().BoolVar(&rich, "rich", false, "also show the session's own counters (turns, steps, cache, tokens)")
-	return c
 }
 
 // taskRow is the subset of GET /v1/tasks the CLI prints.

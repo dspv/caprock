@@ -38,9 +38,15 @@ const (
 	dialTimeout = 200 * time.Millisecond
 	postBudget  = 300 * time.Millisecond
 	// statsBudget bounds the rich-mode read, which the user *is* waiting on.
-	// Claude Code debounces the status line at 300ms; staying under that keeps
-	// a slow daemon from being felt as a slow prompt.
-	statsBudget = 150 * time.Millisecond
+	//
+	// Measured, not guessed: the endpoint is one indexed row over loopback and
+	// answers in ~0.6ms. The budget exists only for the pathological case — a
+	// daemon that accepts the connection and then never replies — where it is
+	// paid in full on every status line. So it is set well below Claude Code's
+	// 300ms debounce rather than merely under it: 40ms is ~60× the measured
+	// latency, which no healthy daemon will ever approach, and small enough
+	// that a hung one costs less than a frame.
+	statsBudget = 40 * time.Millisecond
 	// defaultWidth is assumed when the terminal does not say how wide it is.
 	// Chosen as the classic 80 columns: guessing narrow drops a segment that
 	// would have fitted, guessing wide wraps the line, and a wrapped status
