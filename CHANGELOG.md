@@ -7,6 +7,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+Phase 3 (Delight) has no plan by design.
+
+## [0.53.2] - 2026-09-06
+
 ### Fixed
 
 - **A status line that had silently printed nothing is repaired on start.** An
@@ -19,8 +23,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   in that state for months. `caprock up` now recognises the spelling, repairs
   it, and says so. A statusLine that is not ours is still never touched, and
   neither is a working one.
-
-Phase 3 (Delight) has no plan by design.
 
 ## [0.53.1] - 2026-09-06
 
