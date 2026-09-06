@@ -259,3 +259,88 @@ committed to a release yet; each item still needs its own DoD before it starts.
   terse prompting is the example given), offered as part of what a paying
   customer gets. Nothing costed, nothing designed, and it sits behind B4 —
   which has customers waiting on it.
+
+---
+
+## Open work
+
+The roadmap (T0–T25) is complete, and the backlog above is shipped except B5.
+This section is the one home for what is still open: every entry names what
+would start it, and every buildable entry carries its definition of done, so
+picking one up never re-litigates scope. Requests and their reasoning live in
+[`.fdck/01-ledger.md`](../.fdck/01-ledger.md); distribution lives in
+[`.gtm/04-status.md`](../.gtm/04-status.md). This file only says what "done"
+would mean.
+
+### Decisions that gate work
+
+A call, not a task — none of these becomes code until it is decided. Each is
+open in the ledger, which owns the reasoning.
+
+- **Positioning: what paid adds that free cannot (FB-030, FB-029).** A week of
+  real use demoted the headline feature: "convenient, but not exclusive", and
+  "the stats stopped being the point" once someone else pays the bill. Deciding
+  here decides what the Teams tier and the premium candidates below must
+  actually be.
+- **Pay for models from inside Caprock (FB-008).** Unscoped, and the resale
+  margin was measured thin. Needs production traffic we can see; today we see
+  only development.
+- **Token optimisation, with a "tokens saved" figure (FB-031).** Held — the
+  owner chose not to pursue it (too risky): the history is against it, and a
+  number with nothing measured behind it is what rule 6 exists to prevent.
+  Reopen only via a measured real-session number, whatever it is. The ledger
+  row still reads `open` and should be flipped to `declined` with the reason
+  recorded there.
+
+### Buildable work
+
+Each definition of done is new here; the shape and boundary of each item are
+owned by the file linked, which is the home for the details.
+
+- **Teams tier.** Specified in [17-teams.md](17-teams.md), not built, gated on
+  demand from the `/teams` form. **DoD:** a second mode (or a second binary)
+  receives aggregate reports from more than one machine — session identity,
+  totals, activity phrase, and never prompts, replies or tool output — stores
+  them, and serves the existing dashboard with a person column; enrolment is a
+  team token; cost per person and per repository is visible across machines.
+  Out of scope for the first version, per 17-teams.md: SSO and roles, budget
+  enforcement, a team task runner.
+- **API-key hygiene (first premium candidate).** From
+  [17-teams.md](17-teams.md): which keys and profiles a session used (variable
+  names, never values), and a warning when a key literal appears in command
+  output. **DoD:** a session names the key variables it touched; a key value in
+  tool output raises a warning; Caprock never stores a key value.
+- **OpenCode control.** Today read-only: sessions and cost are observed, but
+  Caprock cannot start, steer or stop an OpenCode session, and the task runner
+  does not work with it — `internal/agents` assumes the `claude` binary and its
+  flags throughout ([16-opencode.md § Plan](16-opencode.md#plan), costed at
+  around two days). **DoD:** spawn, type into, and kill an OpenCode session from
+  the dashboard, and run one task end-to-end against OpenCode with the same
+  verification-before-done as Claude Code, green on the 3-OS matrix. The first
+  step is a feasibility check of OpenCode's own APIs; the DoD is the target only
+  if they support it.
+- **Tablet reach beyond LAN (FB-019).** LAN pairing shipped; the two routes past
+  it are not built. **DoD:** a page explaining how to reach Caprock over a
+  Tailscale or SSH tunnel — the address, an is-it-up check, a QR — with no relay
+  of ours. Gated on someone actually asking for "from a café".
+- **A free sample report (FB-027 leftover).** A reader wanted to try the weekly
+  report before paying. **DoD:** a user generates and reads one report without a
+  licence; every figure in it traces to measured data with its date.
+- **Slack alert channel (FB-027 leftover).** The manager wanted Slack rather
+  than Telegram. **DoD:** the report and alert channel accepts a Slack webhook
+  the same way it accepts a Telegram bot; data still leaves only to the user's
+  own channel.
+- **Database payload compression (FB-023).** Declined with measurements;
+  reopen only when someone actually runs out of space or the file grows faster
+  than usage. **DoD (if reopened):** payloads compressed under a migration, the
+  dictionary strategy decided, and full-text search still working; the contract
+  and a version bump land in the same commit (rule 8).
+- **Token-reduction plugins (B5, the one unshipped backlog item above).**
+  **DoD:** not defined yet — before any code, measure on real sessions what a
+  given plugin actually saves and publish the number, whatever it is.
+
+### Distribution
+
+- **X, LinkedIn, YouTube; the first video; the six-week content plan.** Owned by
+  [`.gtm/04-status.md`](../.gtm/04-status.md) § Next actions — cross-linked here
+  so the build plan and the distribution plan share one entry point. No code.
