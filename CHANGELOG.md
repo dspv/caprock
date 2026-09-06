@@ -7,6 +7,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+Phase 3 (Delight) has no plan by design.
+
+## [0.55.0] - 2026-09-06
+
 ### Changed
 
 - **More words for a cache hit rate, and a shorter cost on the status line.**
@@ -23,8 +27,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   grey as though it were extra information. Now it says it once, as "Waiting
   for you", and the "what did it ask?" button beside it is the part that
   actually tells you something.
-
-Phase 3 (Delight) has no plan by design.
 
 ## [0.54.5] - 2026-09-06
 
