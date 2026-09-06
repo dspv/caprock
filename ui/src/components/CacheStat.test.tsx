@@ -41,7 +41,11 @@ describe('CacheStat', () => {
   it('leaves the middle band uncoloured', () => {
     // Colour means something on this dashboard. An ordinary reading is not
     // something, and colouring it would make the palette meaningless.
-    const { container } = render(<CacheStat hitRate={0.9} cutPct={70} measured />)
+    //
+    // 87%, not 90%: `good` moved down to 90 when `excellent` and `very good`
+    // were added above it, so 90% is now a coloured band and this test would
+    // have been asserting about the wrong one.
+    const { container } = render(<CacheStat hitRate={0.87} cutPct={70} measured />)
     const word = screen.getByText('ok')
     expect(word.className).not.toMatch(/text-ok|text-warn|text-danger/)
     expect(container.querySelector('.text-warn')).toBeNull()

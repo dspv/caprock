@@ -22,7 +22,7 @@ func TestRenderFromStdin(t *testing.T) {
 	var out bytes.Buffer
 	Run(strings.NewReader(in), &out)
 	got := out.String()
-	for _, want := range []string{"Opus", "ctx 8%", "$0.012", "5h", "24", "resets"} {
+	for _, want := range []string{"Opus", "ctx 8%", "$0.01", "5h", "24", "resets"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("status line missing %q: %q", want, got)
 		}
@@ -434,6 +434,38 @@ func TestBrandSurvivesEveryWidth(t *testing.T) {
 	for _, w := range []int{60, 40, 20} {
 		if got := renderWidth(in, st, w); !strings.Contains(got, brandMark) {
 			t.Fatalf("width %d lost the mark: %q", w, got)
+		}
+	}
+}
+
+// The cost carries the precision its size deserves, matching the dashboard's
+// own formatter rather than a flat width.
+//
+// It was a flat three decimals, which read "$169.410" on a real session — a
+// trailing zero on a line that reprints after every message. One decimal was
+// asked for and measured rather than assumed: 92 of the 250 priced sessions on
+// the owner's machine round to zero at one decimal place, 33 of the 73 from
+// the last week. Two is the floor.
+func TestCostPrecisionFollowsMagnitude(t *testing.T) {
+	for in, want := range map[float64]string{
+		169.41:  "$169.41", // the case that prompted this: no trailing zero
+		169.4:   "$169.40",
+		1.5:     "$1.50",
+		0.012:   "$0.01",
+		0.0034:  "$0.0034", // under a cent: four decimals, or it reads as nothing
+		0.00001: "$0.0000", // vanishingly small, but still not "$0.00"-by-rounding
+	} {
+		if got := fmtUSD(in); got != want {
+			t.Errorf("fmtUSD(%v) = %q, want %q", in, got, want)
+		}
+	}
+	// The whole point, stated as the property rather than one example: a real
+	// cost is never rendered as zero. Every value here rounds to $0.0 at one
+	// decimal place, which is the format this guards against.
+	for _, v := range []float64{0.08, 0.04, 0.011, 0.002} {
+		got := fmtUSD(v)
+		if got == "$0.0" || got == "$0.00" || got == "$0.0000" {
+			t.Errorf("fmtUSD(%v) = %q — a session that cost money reports nothing", v, got)
 		}
 	}
 }

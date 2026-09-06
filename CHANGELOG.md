@@ -9,6 +9,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **More words for a cache hit rate, and a shorter cost on the status line.**
+  98% and 99% were both "outstanding"; there are now `excellent` (98–99) and
+  `very good` (96–98) between it and `good`, which moves down to 90. And the
+  status line's cost read `$169.410` — a trailing zero on a line that reprints
+  after every message. It now shows two decimals, matching the dashboard, and
+  four only below a cent: one decimal was the obvious cut, but 92 of 250 real
+  sessions round to zero at one place, and a session that cost money should
+  never report nothing.
+
 - **The waiting banner said the same thing twice.** It read `Waiting on you ·
   caprock · waiting for you` — one sentence in two prepositions, the repeat in
   grey as though it were extra information. Now it says it once, as "Waiting
