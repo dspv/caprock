@@ -92,6 +92,16 @@ is fitted to the terminal by rank — counters dropped first, plan windows never
 — measuring runes with the ANSI colour codes discounted, since counting the
 escape bytes is what would make a coloured line wrap.
 
+**The line now carries the mark.** It was an anonymous row of figures, which
+is a strange thing for the one Caprock surface a user sees all day. The legacy
+Python tool led with an amber ⛰ and a dim wordmark; the mark survived the pivot
+— it is what the favicon draws — so this is the existing identity, not a
+revival of something dropped. It is ranked essential rather than decoration: a
+badge that disappears exactly when the line gets tight is not a badge. But the
+wordmark costs ten columns on something that reprints every message, and at 80
+columns that is precisely one counter, so the badge *shrinks* to the bare mark
+before anything is dropped. The mark itself never goes.
+
 **The green suite shipped the wrong cache metric, and only the terminal said
 so.** The obvious figure was the hit rate, and the tests were happy with it. Run
 against the real database it printed `cache 100%` — for every session on this
