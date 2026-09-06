@@ -5,12 +5,12 @@
 // the Cost screen can show them. It never fails: the status line is printed
 // before any network call, and every error path is silent with exit 0.
 //
-// In rich mode (`caprock statusline --rich`) it also asks the daemon for the
-// session's own counters — turns, tool calls, cache hit rate, token totals —
-// which only the daemon knows. That read happens *before* printing, so it is
-// the one place the "never wait on the daemon" rule needs defending rather
-// than merely obeying: the read carries a hard budget and any failure, timeout
-// or missing daemon falls through to exactly the line plain mode prints.
+// It also asks the daemon for the session's own counters — turns, tool calls,
+// what the cache cut off the bill, token totals — which only the daemon knows.
+// That read happens *before* printing, so it is the one place the "never wait
+// on the daemon" rule needs defending rather than merely obeying: the read
+// carries a hard budget and any failure, timeout or missing daemon falls
+// through to exactly the line `--plain` prints.
 // See .ai/03-contracts.md § Statusline.
 package statusline
 

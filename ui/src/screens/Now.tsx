@@ -152,7 +152,11 @@ export function NowScreen() {
 
       {/* Above Today because it is the wider frame Today sits inside: what all
         * of this has come to, before what happened in the last few hours. */}
-      <div className="flex items-start gap-3">
+      {/* items-stretch, not items-start: the two buttons are the same control
+        * as the strip beside them and read as ragged when they are shorter.
+        * Stretching makes their height follow the strip's rather than being a
+        * second padding value kept in sync by hand. */}
+      <div className="flex items-stretch gap-3">
         <div className="min-w-0 flex-1"><LifetimeStrip plan={plan} /></div>
         {/* Starting a session is the only thing on this screen that DOES
           * something, and it used to sit at the very bottom in 11px grey,
@@ -390,7 +394,7 @@ function QuickChatButton({ available }: { available: boolean | undefined }) {
         onClick={start}
         disabled={busy}
         title="start a session without picking a folder"
-        className="relative shrink-0 rounded-[var(--radius-panel)] border border-border-strong px-3 py-2 text-[13px] leading-5 text-fg-muted hover:text-fg hover:border-accent/50 disabled:opacity-50"
+        className="relative flex shrink-0 items-center rounded-[var(--radius-panel)] border border-accent/35 px-3 text-[13px] leading-5 text-fg-muted hover:text-fg hover:border-accent/60 disabled:opacity-50"
       >
         {busy ? 'starting…' : 'Quick chat'}
         {error && (
@@ -416,7 +420,7 @@ function NewSessionButton({ available, onClick }: { available: boolean | undefin
     <button
       onClick={onClick}
       title={missing ? 'claude was not found on this machine — click for details' : 'start a session Caprock owns'}
-      className={`shrink-0 rounded-[var(--radius-panel)] border px-3 py-2 text-[13px] leading-5 font-medium transition-colors ${
+      className={`flex shrink-0 items-center rounded-[var(--radius-panel)] border px-3 text-[13px] leading-5 font-medium transition-colors ${
         missing
           ? 'border-border text-fg-faint hover:text-fg-muted'
           : 'border-accent/60 bg-accent/15 text-accent hover:bg-accent/25'
