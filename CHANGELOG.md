@@ -9,6 +9,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.54.5] - 2026-09-06
+
+### Fixed
+
+- **Codex figures already on your screen are corrected.** 0.54.4 fixed how
+  token reports are read and could not reach the turns already stored — those
+  kept showing no tokens and no cost. They are re-read from the transcripts on
+  the next start, which takes seconds and needs nothing from you.
+
 ## [0.54.4] - 2026-09-06
 
 ### Fixed
