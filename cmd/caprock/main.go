@@ -343,7 +343,7 @@ func maybeInstallStatusline(cmd *cobra.Command, yes bool) error {
 		// it, but always say so. This line used to be behind `if !yes`, and
 		// `caprock statusline install` calls with yes=true: the subcommand
 		// printed nothing and exited 0, having done nothing at all.
-		fmt.Fprintln(cmd.OutOrStdout(), "You already have a statusLine set; leaving it. To use Caprock's instead, run `caprock statusline install --rich`.")
+		fmt.Fprintln(cmd.OutOrStdout(), "You already have a statusLine set; leaving it. To use Caprock's instead, run `caprock statusline install`.")
 		return nil
 	}
 	if !yes {

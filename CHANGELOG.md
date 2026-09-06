@@ -7,6 +7,22 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **Every coloured border in the dashboard was grey.** A global border reset
+  sat outside Tailwind's cascade layers, and unlayered CSS beats layered CSS
+  whatever its specificity — so it quietly overrode every `border-accent`,
+  `border-premium`, `border-ok` and `border-warn` in the app. It went unnoticed
+  because the elements using them mostly have a tinted background too: the
+  "+ New session" button looked amber because of its fill, not its border.
+  Buttons and status pills now show the colour they always asked for.
+
+### Changed
+
+- **The two session buttons line up with the strip beside them.** Quick chat
+  and + New session were shorter than the ALL TIME row they share, which read
+  as ragged; they now match its height. Quick chat gains a soft amber border.
+
 Phase 3 (Delight) has no plan by design.
 
 ## [0.53.0] - 2026-09-06
