@@ -87,6 +87,8 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
   // you press Save, open your downloads, and only then find out what you
   // chose. A card is a picture — the way to choose one is to look at it.
   const [preview, setPreview] = useState<string>('')
+  // Whether the last draw gave up, so the box can say so instead of waiting.
+  const [failed, setFailed] = useState(false)
 
   // Redrawn on every period change. Each draw is one canvas and three cached
   // API calls, so it costs less than the click that opened the sheet.
@@ -100,9 +102,21 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     let live = true
     void (async () => {
-      const d = await collectCardData(period)
-      const blob = await drawShareCard(d)
-      if (!blob || !live) return
+      let blob: Blob | null = null
+      try {
+        blob = await drawShareCard(await collectCardData(period))
+      } catch {
+        blob = null // reported below, not swallowed into a permanent "drawing…"
+      }
+      if (!live) return
+      if (!blob) {
+        // "drawing…" is a state that ends. Without this it was also the state
+        // for "this will never draw", which is the same screen forever and no
+        // way to tell the two apart.
+        setFailed(true)
+        return
+      }
+      setFailed(false)
       const url = URL.createObjectURL(blob)
       setPreview((prev) => {
         // The old bitmap is only unreachable once the new src is in place, so
@@ -243,8 +257,10 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
             {preview ? (
               <img src={preview} alt="Your figures, as they will be shared" className="block w-full" />
             ) : (
-              <div className="flex h-full items-center justify-center text-[12px] text-fg-faint">
-                drawing…
+              <div className="flex h-full items-center justify-center px-6 text-center text-[12px] text-fg-faint">
+                {failed
+                  ? 'Could not draw the card here. Save the image still works — it draws again on click.'
+                  : 'drawing…'}
               </div>
             )}
           </div>

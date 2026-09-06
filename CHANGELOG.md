@@ -29,11 +29,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
-- **The share dialog's preview never changed when you switched period.** It
-  drew a correct new card each time and then threw it away: the effect released
-  its image on teardown, so changing period released the one still on screen,
-  and a released image leaves the previous picture showing. The card you saved
-  was always right; the preview was a lie about it.
+- **The share dialog's preview never changed when you switched period** — and
+  on a real machine it never appeared at all. Two faults in the same box. The
+  draw released its image on teardown, so changing period released the one
+  still on screen, and a released image leaves the previous picture showing.
+  Under that, anything the drawing threw on killed the draw silently and left
+  "drawing…" on screen for good, which looked exactly like a slow one. The card
+  you saved was always right; the preview was a lie about it. A draw that
+  cannot finish now says so.
 
 ### Removed
 

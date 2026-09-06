@@ -350,7 +350,16 @@ export async function drawShareCard(data: CardData): Promise<Blob | null> {
     return null
   }
   if (!g) return null
-  paintCard(g, data)
+  // Painting is inside the guard too. It was outside, so anything the drawing
+  // threw on — one unexpected figure in a real dataset is enough — rejected
+  // this promise, killed the caller's async function without a catch, and left
+  // the dialog showing "drawing…" for good. A card that cannot be drawn has to
+  // report that, like every other failure here, rather than hang.
+  try {
+    paintCard(g, data)
+  } catch {
+    return null
+  }
   return await new Promise<Blob | null>((resolve) => {
     if (typeof c.toBlob !== 'function') { resolve(null); return }
     c.toBlob((b) => resolve(b), 'image/png')

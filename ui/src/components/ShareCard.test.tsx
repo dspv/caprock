@@ -448,3 +448,37 @@ describe('the preview image', () => {
     }
   })
 })
+
+/**
+ * "drawing…" has to be a state that ends.
+ *
+ * `paintCard` used to run outside the try in `drawShareCard`, so anything it
+ * threw on rejected the promise, killed the caller's async function with no
+ * catch, and left the dialog saying "drawing…" for good — indistinguishable
+ * from a slow draw. A card that cannot be drawn has to say so.
+ */
+describe('a draw that cannot finish', () => {
+  it('says so rather than showing "drawing…" for ever', async () => {
+    const proto = HTMLCanvasElement.prototype as unknown as Record<string, unknown>
+    const orig = proto.getContext
+    // A context that blows up mid-paint, which is the shape of the bug.
+    proto.getContext = () =>
+      new Proxy({}, {
+        get: (_t, k) => {
+          if (k === 'measureText') return () => ({ width: 10 })
+          return () => { throw new Error('paint failed') }
+        },
+      })
+    try {
+      data.value = history()
+      render(<ShareCard />)
+      fireEvent.click(await screen.findByRole('button', { name: /share these numbers/i }))
+      await waitFor(() => {
+        expect(screen.getByText(/could not draw the card/i)).toBeTruthy()
+      })
+      expect(screen.queryByText(/^drawing…$/)).toBeNull()
+    } finally {
+      proto.getContext = orig
+    }
+  })
+})
