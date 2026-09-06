@@ -7,6 +7,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **The waiting banner said the same thing twice.** It read `Waiting on you ·
+  caprock · waiting for you` — one sentence in two prepositions, the repeat in
+  grey as though it were extra information. Now it says it once, as "Waiting
+  for you", and the "what did it ask?" button beside it is the part that
+  actually tells you something.
+
 Phase 3 (Delight) has no plan by design.
 
 ## [0.54.5] - 2026-09-06
