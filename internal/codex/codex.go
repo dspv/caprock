@@ -124,7 +124,6 @@ type Limits struct {
 // adds event kinds between releases and an unknown kind is not an error.
 type record struct {
 	Timestamp string          `json:"timestamp"`
-	Ordinal   int64           `json:"ordinal"`
 	Type      string          `json:"type"`
 	Payload   json.RawMessage `json:"payload"`
 }
@@ -214,8 +213,10 @@ func Parse(r io.Reader, path string) (*Session, error) {
 	// stored as a delta. See the package doc for why the transcript's own
 	// per-turn field is not used.
 	var prevTotal *usage
+	var lineNo int64
 	for sc.Scan() {
 		line := sc.Bytes()
+		lineNo++
 		if len(line) == 0 {
 			continue
 		}
@@ -301,7 +302,7 @@ func Parse(r io.Reader, path string) (*Session, error) {
 			}
 			s.Turns = append(s.Turns, Turn{
 				At:         at,
-				Key:        keyFor(rec.Ordinal, "turn"),
+				Key:        keyFor(lineNo, "turn"),
 				In:         d.InputTokens,
 				CacheRead:  d.CachedInputTokens,
 				CacheWrite: d.CacheWriteInputTok,
@@ -326,7 +327,7 @@ func Parse(r io.Reader, path string) (*Session, error) {
 			}
 			s.Tools = append(s.Tools, ToolCall{
 				At:    at,
-				Key:   keyFor(rec.Ordinal, "tool"),
+				Key:   keyFor(lineNo, "tool"),
 				Name:  tp.Name,
 				Input: string(in),
 			})
@@ -383,11 +384,21 @@ func nonNeg(n int64) int64 {
 	return n
 }
 
-// keyFor builds the per-event idempotency key. The transcript is append-only,
-// so a record's ordinal identifies it for good: re-reading a file cannot
-// produce a duplicate event.
-func keyFor(ordinal int64, kind string) string {
-	return "codex:" + kind + ":" + itoa(ordinal)
+// keyFor builds the per-event idempotency key from the record's position in
+// the file.
+//
+// The line index, not the `ordinal` field. Ordinal looked like the right
+// answer and is present in **1 of 100** real transcripts — every older file
+// omits it, so it decoded to 0 for every record and every turn in a session
+// collapsed onto the single key `codex:turn:0`. One session lost 54 of its 55
+// turns that way, and with them their tokens: the store rejects a duplicate
+// key, which is exactly the behaviour that makes re-reading safe and exactly
+// what made this silent.
+//
+// A line index is unique by construction in an append-only file, and stable
+// for the same reason ordinal would have been: earlier lines never move.
+func keyFor(line int64, kind string) string {
+	return "codex:" + kind + ":" + itoa(line)
 }
 
 func itoa(n int64) string {

@@ -26,7 +26,7 @@ func TestAgainstLocalTranscripts(t *testing.T) {
 		t.Skip("Codex directory exists but holds no transcripts")
 	}
 
-	var parsed, withTokens, withModel int
+	var parsed, withTokens, withModel, turns int
 	for _, f := range ts {
 		s, err := ParseFile(f.Path)
 		if err != nil {
@@ -42,6 +42,25 @@ func TestAgainstLocalTranscripts(t *testing.T) {
 		}
 		if s.Model != "" {
 			withModel++
+		}
+		turns += len(s.Turns)
+		// Keys must be unique within a session or the store drops the later
+		// turns as duplicates — silently, because rejecting a duplicate key is
+		// exactly what makes re-reading a transcript safe. Keying on the
+		// `ordinal` field did this: it is absent from 99 of 100 transcripts, so
+		// every turn shared `codex:turn:0` and one session kept 1 turn of 55.
+		keys := make(map[string]bool, len(s.Turns)+len(s.Tools))
+		for _, tn := range s.Turns {
+			if keys[tn.Key] {
+				t.Fatalf("%s: duplicate turn key %q — later turns would be dropped", f.Path, tn.Key)
+			}
+			keys[tn.Key] = true
+		}
+		for _, tl := range s.Tools {
+			if keys[tl.Key] {
+				t.Fatalf("%s: tool key %q collides", f.Path, tl.Key)
+			}
+			keys[tl.Key] = true
 		}
 		for _, tn := range s.Turns {
 			// The arithmetic that decides every cost figure. A negative delta
@@ -74,6 +93,6 @@ func TestAgainstLocalTranscripts(t *testing.T) {
 		t.Errorf("%d transcripts carry tokens but only %d name a model — %d sessions cannot be priced",
 			withTokens, withModel, withTokens-withModel)
 	}
-	t.Logf("parsed %d/%d transcripts; %d carry tokens, %d name a model",
-		parsed, len(ts), withTokens, withModel)
+	t.Logf("parsed %d/%d transcripts; %d carry tokens, %d name a model, %d turns total",
+		parsed, len(ts), withTokens, withModel, turns)
 }

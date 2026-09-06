@@ -2,6 +2,7 @@ package codex
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -46,9 +47,12 @@ type fileState struct {
 
 // Stats is what the daemon reports about Codex ingest.
 type Stats struct {
-	Sessions int   `json:"sessions"`
-	Events   int   `json:"events"`
-	Unpriced int   `json:"unpriced,omitempty"`
+	Sessions int `json:"sessions"`
+	Events   int `json:"events"`
+	Unpriced int `json:"unpriced,omitempty"`
+	// Repriced counts turns that were stored before the model could be read
+	// and have since been given one from their transcript.
+	Repriced int   `json:"repriced,omitempty"`
 	LastPoll int64 `json:"last_poll_ms,omitempty"`
 }
 
@@ -166,6 +170,12 @@ func (in *Ingester) session(ctx context.Context, s *Session) error {
 		if err != nil {
 			return err
 		}
+	}
+	// Rows written before this importer could find the model are corrected
+	// here, from the transcript they came from. Best-effort: a failure to
+	// repair history must not stop the import of what is current.
+	if err := in.repriceSession(ctx, s); err != nil {
+		in.log.Debug("codex reprice failed", "component", "codex", "session_id", s.ID, "err", err)
 	}
 	return nil
 }
@@ -285,4 +295,85 @@ func toolInput(c ToolCall) any {
 		return map[string]any{"command": str}
 	}
 	return map[string]any{"command": raw}
+}
+
+// repriceSession fills in the model on turns already stored without one, and
+// prices them.
+//
+// It exists because the first release of this importer read the model from
+// `turn_context` alone, which 96 of 100 real transcripts do not carry — so
+// those turns were stored with real tokens and no model, and no cost. Reading
+// the second source fixes every *future* import and reaches none of the rows
+// already written: event keys are idempotent by design, so a re-read is a
+// no-op rather than a correction.
+//
+// A migration could not do this. `events.payload` is stored verbatim and the
+// answer can normally be read back out of it — that is how the /clear
+// reclassification worked — but here the payload records `"model": ""`,
+// because the model was never captured. The transcripts on disk are the only
+// place the answer exists.
+//
+// It invents nothing: it reads the same file the row came from, and touches
+// only rows of ours that have no model at all. A turn that already names one
+// is left alone, whatever it says.
+func (in *Ingester) repriceSession(ctx context.Context, s *Session) error {
+	if s.Model == "" || in.rec == nil || in.rec.Table == nil {
+		return nil
+	}
+	db := in.rec.Store.DB()
+	rows, err := db.QueryContext(ctx,
+		`SELECT id, ts, tokens_in, tokens_out, cache_read, cache_write
+		   FROM events
+		  WHERE session_id = ? AND source = ? AND kind = ?
+		    AND COALESCE(model, '') = ''`,
+		s.ID, string(event.SourceCodex), string(event.KindTurnAssistant))
+	if err != nil {
+		return err
+	}
+	type row struct {
+		id     int64
+		ts     int64
+		tokens event.TokenDelta
+	}
+	var todo []row
+	for rows.Next() {
+		var r row
+		var in64, out64, cr, cw sql.NullInt64
+		if err := rows.Scan(&r.id, &r.ts, &in64, &out64, &cr, &cw); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		r.tokens = event.TokenDelta{In: in64.Int64, Out: out64.Int64, CacheRead: cr.Int64, CacheWrite: cw.Int64}
+		todo = append(todo, r)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if len(todo) == 0 {
+		return nil
+	}
+	for _, r := range todo {
+		// Priced at the turn's own timestamp, like every other turn: a price
+		// that has since changed was the real one for the work that ran under
+		// it.
+		usd, ok := in.rec.Table.PriceAt(s.Model, r.tokens, time.UnixMilli(r.ts))
+		if !ok {
+			continue
+		}
+		if _, err := db.ExecContext(ctx,
+			`UPDATE events SET model = ?, cost_usd = ? WHERE id = ? AND COALESCE(model,'') = ''`,
+			s.Model, usd, r.id); err != nil {
+			return err
+		}
+	}
+	in.mu.Lock()
+	in.stats.Repriced += len(todo)
+	in.mu.Unlock()
+	in.log.Info("codex turns repriced from the transcript",
+		"component", "codex", "session_id", s.ID, "model", s.Model, "turns", len(todo))
+	return nil
 }

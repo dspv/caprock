@@ -577,6 +577,8 @@ Time to first token, tokens per second, and the model-versus-tool time split are
 
 ### Phase 2 DDL additions
 
+Codex events are keyed `codex:{turn,tool}:<line>` — the record's line number in its transcript, unique by construction in an append-only file. Not the record's `ordinal` field, which reads as 0 in 99 of 100 real transcripts and collapsed every turn of a session onto one key; migration 0022 clears the rows that produced.
+
 Tables `tasks` (mirror of file state for querying) and `verifications` (`task_id`, `round`, `command`, `exit_code`, `output_path`). Files are the source of truth for hive state; SQLite mirrors them for the UI (rebuildable by rescan). Forced-continue counter for the Stop-loop lives in SQLite per (session, task).
 
 No DDL change was needed for either fix here, only honest use of the existing columns. `verifications.output_path` now holds a real path — `<hive>/verifications/<task-id>/round-<n>-cmd-<i>.log` — instead of the empty string it was always written with, so a green task carries auditable evidence. The forced-continue counter's `task_id` takes the reserved value `/no-task` for a session that owns none (the orchestrator), which is what makes the guard bound it too; a hive id may not contain `/`, so it cannot collide with a real task id.

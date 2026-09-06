@@ -1,6 +1,7 @@
 package codex
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -231,7 +232,7 @@ func TestDirRespectsEnv(t *testing.T) {
 // carries tokens can be priced. Reading only the obvious source left 83% of
 // tokens with no cost.
 func TestModelFromProvenanceWhenTurnContextIsAbsent(t *testing.T) {
-	lines := readLines(t, fixture)
+	lines := readLines(t)
 	var kept []string
 	for _, l := range lines {
 		if strings.Contains(l, `"turn_context"`) {
@@ -253,7 +254,7 @@ func TestModelFromProvenanceWhenTurnContextIsAbsent(t *testing.T) {
 // in every real transcript carrying both, and no model changed mid-session in
 // 100 files — but the per-turn value is the one to trust if that ever changes.
 func TestTurnContextBeatsProvenance(t *testing.T) {
-	lines := readLines(t, fixture)
+	lines := readLines(t)
 	for i, l := range lines {
 		if strings.Contains(l, `"turn_context"`) {
 			lines[i] = strings.Replace(l, `"gpt-5-codex"`, `"gpt-5.6-sol"`, 1)
@@ -271,7 +272,7 @@ func TestTurnContextBeatsProvenance(t *testing.T) {
 // Provenance carries a type. Only `model` names a model id; anything else
 // describes the instructions some other way and must not be read as one.
 func TestProvenanceOfAnotherTypeIsNotAModel(t *testing.T) {
-	lines := readLines(t, fixture)
+	lines := readLines(t)
 	var kept []string
 	for _, l := range lines {
 		if strings.Contains(l, `"turn_context"`) {
@@ -288,9 +289,9 @@ func TestProvenanceOfAnotherTypeIsNotAModel(t *testing.T) {
 	}
 }
 
-func readLines(t *testing.T, path string) []string {
+func readLines(t *testing.T) []string {
 	t.Helper()
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(fixture)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,4 +302,50 @@ func readLines(t *testing.T, path string) []string {
 		}
 	}
 	return out
+}
+
+// Keys come from the record's line, not from its `ordinal` field.
+//
+// Ordinal looked like the obvious key and is present in 1 of 100 real
+// transcripts. In the other 99 it decoded to 0 for every record, so every turn
+// in a session shared the key `codex:turn:0` and the store — correctly —
+// rejected all but the first as duplicates. One real session kept 1 of its 55
+// turns, and the tokens went with them. Nothing errored; the data was just
+// quietly absent.
+func TestKeysDoNotDependOnTheOrdinalField(t *testing.T) {
+	lines := readLines(t)
+	var stripped []string
+	for _, l := range lines {
+		var m map[string]any
+		if err := json.Unmarshal([]byte(l), &m); err != nil {
+			stripped = append(stripped, l) // the deliberate partial line
+			continue
+		}
+		delete(m, "ordinal")
+		b, err := json.Marshal(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stripped = append(stripped, string(b))
+	}
+	s, err := Parse(strings.NewReader(strings.Join(stripped, "\n")), "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Turns) < 2 {
+		t.Fatalf("fixture needs at least two turns to detect a collision, got %d", len(s.Turns))
+	}
+	seen := map[string]bool{}
+	for _, tn := range s.Turns {
+		if seen[tn.Key] {
+			t.Fatalf("two turns share the key %q with no ordinal present — every turn after the first would be dropped as a duplicate", tn.Key)
+		}
+		seen[tn.Key] = true
+	}
+	for _, tl := range s.Tools {
+		if seen[tl.Key] {
+			t.Fatalf("a tool call collides with a turn key: %q", tl.Key)
+		}
+		seen[tl.Key] = true
+	}
 }

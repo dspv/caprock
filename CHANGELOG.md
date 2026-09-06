@@ -9,6 +9,23 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.54.2] - 2026-09-06
+
+### Fixed
+
+- **Codex sessions were missing more than half their turns.** The importer
+  keyed each event on a field present in one transcript out of a hundred; in
+  the rest it read as zero, so every turn of a session shared one key and all
+  but the first were discarded as duplicates. One session kept 1 turn of its
+  55. On the owner's machine 98 turns were stored where the transcripts hold
+  218, with 18.5M tokens missing along with them.
+
+  Keys now come from the record's position in the file, which is unique by
+  construction. A migration clears the Codex events already stored — they are
+  re-read from the transcripts within seconds of the next start, so nothing is
+  lost — and the figures come back complete: 218 turns and $3.30 where it had
+  been 98 and $0.38.
+
 ## [0.54.1] - 2026-09-06
 
 ### Fixed
