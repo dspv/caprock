@@ -54,28 +54,40 @@ func isOurStatusline(cs, cmdPath string) bool {
 	return b == "caprock" || b == "caprock.exe"
 }
 
-// splitCommand splits a `program subcommand` string into its program path and
-// the single subcommand, honoring a leading double-quoted path (which may
-// contain spaces). Returns ok=false if the shape isn't `<prog> <one-word-sub>`.
+// splitCommand splits a `program subcommand [flags…]` string into its program
+// path and the subcommand, honoring a leading double-quoted path (which may
+// contain spaces). Returns ok=false if the shape isn't `<prog> <one-word-sub>`
+// optionally followed by flags.
+//
+// Trailing arguments are tolerated rather than rejected because the registered
+// command carries them: `… statusline --rich` is still our statusline, and a
+// stricter match would make the rich registration look like a stranger's — so
+// `install` would offer to add a second one and `uninstall` would refuse to
+// remove what we ourselves wrote. What keeps this from claiming someone else's
+// command is the caller's check on the program itself: the base name must be
+// caprock, and a caprock invoked with `statusline` is ours whatever flags and
+// flag values follow (`--width 100` puts a bare word there legitimately).
 func splitCommand(cs string) (prog, sub string, ok bool) {
 	cs = strings.TrimSpace(cs)
+	var rest string
 	if strings.HasPrefix(cs, `"`) {
 		end := strings.IndexByte(cs[1:], '"')
 		if end < 0 {
 			return "", "", false
 		}
 		prog = cs[1 : 1+end]
-		rest := strings.TrimSpace(cs[2+end:])
-		if rest == "" || strings.ContainsAny(rest, " \t") {
+		rest = strings.TrimSpace(cs[2+end:])
+	} else {
+		prog, rest, ok = strings.Cut(cs, " ")
+		if !ok {
 			return "", "", false
 		}
-		return prog, rest, true
 	}
-	fields := strings.Fields(cs)
-	if len(fields) != 2 {
+	fields := strings.Fields(rest)
+	if len(fields) == 0 {
 		return "", "", false
 	}
-	return fields[0], fields[1], true
+	return prog, fields[0], true
 }
 
 // InstallStatusline sets settings.json's statusLine to our command, backing the
@@ -107,6 +119,42 @@ func InstallStatusline(settingsPath, cmdPath string) (backup string, err error) 
 		return "", err
 	}
 	return backup, writeSettings(settingsPath, root)
+}
+
+// RetargetStatusline rewrites our own statusLine entry to cmdPath, which is how
+// a user switches between the plain and `--rich` forms. It touches nothing
+// unless the existing entry is already ours, so a user-set statusLine is as
+// safe here as it is in Install. Returns whether the file changed.
+func RetargetStatusline(settingsPath, cmdPath string) (changed bool, err error) {
+	root, err := readSettings(settingsPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	v, ok := root.Get("statusLine")
+	if !ok {
+		return false, nil
+	}
+	obj, ok := v.(*Object)
+	if !ok {
+		return false, nil
+	}
+	c, _ := obj.Get("command")
+	cs, _ := c.(string)
+	if cs == cmdPath {
+		return false, nil // already exactly this
+	}
+	if !isOurStatusline(cs, cmdPath) {
+		return false, nil // the user's own — never rewrite it
+	}
+	obj.Set("command", cmdPath)
+	root.Set("statusLine", obj)
+	if _, err := backupOnce(settingsPath); err != nil {
+		return false, err
+	}
+	return true, writeSettings(settingsPath, root)
 }
 
 // UninstallStatusline removes the statusLine only if it is ours, leaving a

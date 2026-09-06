@@ -53,6 +53,59 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-09-06 — The session's own numbers in the status line (FB-032)
+
+Dima sent a screenshot of the DeepSeek harness's status bar and asked whether
+Caprock could put that kind of line into Claude Code and OpenCode. Caprock has
+owned Claude Code's `statusLine.command` since v0.17.0, so this was a question
+about which figures go on a line we already print.
+
+The screenshot split three ways by where each number would come from. Turns,
+steps, cache hit rate and token totals are already columns on `session_stats`
+— shipped, behind `--rich`. Time to first token, tokens per second and the
+model-versus-tool split have no source at all; the derivation from hook
+timestamps that looks obvious counts the user's own thinking time as inference,
+so under rule 6 they are off the line until measured. And OpenCode is not a
+surface we can write to — it exposes no `statusLine.command`, and Caprock reads
+its database read-only rather than extending it.
+
+**The interesting part was not the data but the ordering.** The statusline's
+safety contract is that it prints from stdin *first* and only then talks to the
+daemon, fire-and-forget, so a slow or absent daemon can never be felt as a slow
+prompt. Showing the counters inverts that: the read has to happen before the
+print. So it is bounded at 150ms — inside Claude Code's own 300ms debounce —
+and every failure path (down, slow, erroring, junk response) falls through to
+byte-for-byte the plain line. That equivalence is what the tests assert, rather
+than asserting the happy path twice.
+
+`GET /v1/statusline/{id}` is deliberately lean: one indexed `session_stats`
+row, no narration, no pricing lookup, no event load. The existing session-detail
+endpoint carries the same numbers but pulls sixty events, a hundred file paths
+and a pricing lookup to do it — fine for a screen, wrong for something that
+runs on every assistant message.
+
+Two details that would have failed quietly. `splitCommand` required the
+registered command to be exactly two words, so `… statusline --rich` read as a
+*stranger's* statusLine: `install` would have offered to add a second one and
+`uninstall` would have refused to remove what we ourselves wrote. And the line
+is fitted to the terminal by rank — counters dropped first, plan windows never
+— measuring runes with the ANSI colour codes discounted, since counting the
+escape bytes is what would make a coloured line wrap.
+
+**The green suite shipped the wrong cache metric, and only the terminal said
+so.** The obvious figure was the hit rate, and the tests were happy with it. Run
+against the real database it printed `cache 100%` — for every session on this
+machine, because real sessions read cached tokens in the billions against tens
+of thousands of uncached input. A number identical for everybody is decoration,
+and it was eating width the useful counters needed. It now reports what the
+cache cut off the bill via the same `cost.ComputeSavings` the Cost screen uses
+(so the two cannot drift): 83–90% across those same sessions, and no segment at
+all when writes dominate and the cut is zero — rather than claiming a saving
+that was not made. Two more things only the terminal showed: the counters were
+one rank, so a standard 80-column terminal dropped all four to save one column
+(they now degrade one at a time), and the first run after the fix still printed
+the old figure because the binary had not been rebuilt.
+
 ### 2026-09-03 (later) — The loop banner sold a cap that could not act
 
 The owner read his own dashboard and asked a fair question: a loop alert

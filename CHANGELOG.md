@@ -7,6 +7,29 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **The session's own numbers in the Claude Code status line** —
+  `caprock statusline --rich` (register with `caprock statusline install
+  --rich`) adds `N turns · N steps · cache −N% · in N · out N` to the line
+  Caprock already prints, from counters only the daemon has. Opt-in: an
+  existing registration is unchanged until you ask for it, and you can switch
+  between the plain and rich forms in place.
+
+  It is fitted to the terminal — the counters are dropped before anything else
+  when the line would not fit, and the plan windows are never dropped, being
+  the number that decides whether work can continue at all. The daemon read
+  happens before printing, which is the one place the "never delay a session"
+  rule needed defending rather than obeying: it is bounded at 150ms, inside
+  Claude Code's own debounce, and a daemon that is down, slow, erroring or
+  answering with junk falls through to exactly the line you get today.
+
+  Not shown, deliberately: time to first token, tokens per second, and the
+  model-versus-tool time split. Nothing carries them — not the hooks, not the
+  transcript — and the obvious derivation from hook timestamps counts your own
+  thinking time as inference. They stay off the line until something real backs
+  them.
+
 Phase 3 (Delight) has no plan by design.
 
 ## [0.52.3] - 2026-09-03
