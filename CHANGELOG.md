@@ -7,6 +7,37 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **Codex sessions are on the dashboard.** A machine running Claude Code,
+  OpenCode and OpenAI Codex had its spend split three ways, each tool knowing
+  only its own share. Codex sessions, turns, tool calls and cost now sit on the
+  same screens as the others, filterable by agent. Nothing to install: Codex
+  writes one transcript per session and Caprock reads it, the way it already
+  reads OpenCode's database.
+
+  **Most Codex sessions cannot be priced, and the dashboard says so instead of
+  guessing.** Only 4 of 100 real transcripts named the model they ran on — the
+  other 96 carry real token counts and no model at all, which is 83% of tokens.
+  Those turns keep their tokens and carry no cost, and `caprock status` reports
+  how many, so a partial total reads as partial. Inventing the model from the
+  originator would have put a confident dollar figure on screen derived from
+  nothing.
+
+  Pricing gained OpenAI rows (`gpt-5-codex`, `gpt-5.3-codex`, and the `gpt-5.6`
+  family), read from OpenAI's published prices on 2026-09-06.
+
+### Fixed
+
+- **The share dialog's preview never changed when you switched period** — and
+  on a real machine it never appeared at all. Two faults in the same box. The
+  draw released its image on teardown, so changing period released the one
+  still on screen, and a released image leaves the previous picture showing.
+  Under that, anything the drawing threw on killed the draw silently and left
+  "drawing…" on screen for good, which looked exactly like a slow one. The card
+  you saved was always right; the preview was a lie about it. A draw that
+  cannot finish now says so.
+
 ### Removed
 
 - **The "Lots of turns, few files" alert.** It counted files touched through

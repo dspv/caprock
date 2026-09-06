@@ -1634,10 +1634,10 @@ func agentFilter(v string) (store.AgentFilter, error) {
 	switch v {
 	case "", "all":
 		return "", nil
-	case "claude", "opencode", "gemini":
+	case "claude", "opencode", "gemini", "codex":
 		return store.AgentFilter(v), nil
 	default:
-		return "", fmt.Errorf("unknown agent %q: use claude, opencode, gemini, or omit for all", v)
+		return "", fmt.Errorf("unknown agent %q: use claude, opencode, gemini, codex, or omit for all", v)
 	}
 }
 

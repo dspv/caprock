@@ -19,7 +19,7 @@ export interface Session {
   owned: boolean
   /** Which coding agent produced this session. Absent means Claude Code,
    *  which is what every session was before OpenCode support. */
-  agent?: 'claude' | 'opencode' | 'gemini'
+  agent?: 'claude' | 'opencode' | 'gemini' | 'codex'
 }
 
 export interface Stats {
@@ -380,6 +380,9 @@ export interface Status {
    *  anything to switch between — a session list or a day's summary cannot
    *  answer it, because either may legitimately be empty. */
   opencode?: { sessions: number; events: number; last_poll_ms?: number }
+  /** Codex reports `unpriced` too: turns whose transcript never named a model,
+   *  which therefore carry tokens but no cost. */
+  codex?: { sessions: number; events: number; unpriced?: number; last_poll_ms?: number }
   version: string
   /** GOOS/GOARCH — what a bug report needs and nobody remembers to include. */
   platform?: string

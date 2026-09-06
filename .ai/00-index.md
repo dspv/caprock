@@ -22,6 +22,7 @@ Caprock is a local, open-source **mission control for Claude Code**: a single st
 | [16-opencode.md](16-opencode.md)                   | OpenCode support: what it gives us, decisions, traps, plan      | Adding or changing OpenCode support                |
 | [17-teams.md](17-teams.md)                         | The team tier: shape, boundary, open questions (not built)      | Working on anything paid                           |
 | [18-postmortem.md](18-postmortem.md)               | The ~0% compression finding that closed the prior direction     | Before reopening token optimisation (FB-031)       |
+| [19-codex.md](19-codex.md)                         | Codex support: what it gives us, what it cannot price, plan     | Adding or changing Codex support                   |
 
 These files absorbed the hand-off specification (`CaprockV2-SPEC.md`, deleted after the loss audit recorded in [docs/migration-audit.md](../docs/migration-audit.md)). The spec is not a separate source of truth — **these files are**. (Numbering is non-contiguous by design — 11 was never used; nothing is missing.)
 

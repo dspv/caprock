@@ -21,7 +21,7 @@
  * The card itself carries `caprock.dev`, so the link travels with the image
  * even when someone posts it without the text.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useApi } from '@/lib/useApi'
 import { api, type History } from '@/lib/api'
 import { cardFilename, collectCardData, drawShareCard, PERIOD_LABEL, type SharePeriod } from './ShareCard'
@@ -87,26 +87,59 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
   // you press Save, open your downloads, and only then find out what you
   // chose. A card is a picture — the way to choose one is to look at it.
   const [preview, setPreview] = useState<string>('')
+  // Whether the last draw gave up, so the box can say so instead of waiting.
+  const [failed, setFailed] = useState(false)
 
   // Redrawn on every period change. Each draw is one canvas and three cached
   // API calls, so it costs less than the click that opened the sheet.
+  //
+  // The revoke has to happen when the *replacement* is on screen, not when the
+  // effect tears down. Revoking in cleanup looked tidy and broke the feature:
+  // changing period ran the old cleanup immediately, which revoked the URL the
+  // <img> was still pointing at, and a revoked blob leaves the already-decoded
+  // bitmap showing. Every period drew a correct new card that nobody ever saw —
+  // the preview simply never changed.
   useEffect(() => {
     let live = true
-    let url = ''
     void (async () => {
-      const d = await collectCardData(period)
-      const blob = await drawShareCard(d)
-      if (!blob || !live) return
-      url = URL.createObjectURL(blob)
-      setPreview(url)
+      let blob: Blob | null = null
+      try {
+        blob = await drawShareCard(await collectCardData(period))
+      } catch {
+        blob = null // reported below, not swallowed into a permanent "drawing…"
+      }
+      if (!live) return
+      if (!blob) {
+        // "drawing…" is a state that ends. Without this it was also the state
+        // for "this will never draw", which is the same screen forever and no
+        // way to tell the two apart.
+        setFailed(true)
+        return
+      }
+      setFailed(false)
+      const url = URL.createObjectURL(blob)
+      setPreview((prev) => {
+        // The old bitmap is only unreachable once the new src is in place, so
+        // this is the one safe moment to let it go. Without the release the
+        // whole bitmap stays alive for every period the reader clicks through.
+        if (prev) URL.revokeObjectURL(prev)
+        return url
+      })
     })()
     return () => {
       live = false
-      // Revoked on the way out: a blob URL held after its <img> is gone keeps
-      // the whole bitmap alive, and this component redraws on every click.
-      if (url) URL.revokeObjectURL(url)
     }
   }, [period])
+
+  // The last URL outlives the effect that made it, so releasing it belongs to
+  // the component's own unmount rather than to any one draw. Held in a ref
+  // because unmount cleanup must not set state — it reads the current value
+  // and frees it, nothing more.
+  const latest = useRef('')
+  latest.current = preview
+  useEffect(() => () => {
+    if (latest.current) URL.revokeObjectURL(latest.current)
+  }, [])
 
   const build = async () => {
     const [d, h] = await Promise.all([collectCardData(period), api.history('all')])
@@ -224,8 +257,10 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
             {preview ? (
               <img src={preview} alt="Your figures, as they will be shared" className="block w-full" />
             ) : (
-              <div className="flex h-full items-center justify-center text-[12px] text-fg-faint">
-                drawing…
+              <div className="flex h-full items-center justify-center px-6 text-center text-[12px] text-fg-faint">
+                {failed
+                  ? 'Could not draw the card here. Save the image still works — it draws again on click.'
+                  : 'drawing…'}
               </div>
             )}
           </div>

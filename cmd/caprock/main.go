@@ -492,6 +492,17 @@ func statusCmd() *cobra.Command {
 			if st.OpenCode != nil {
 				fmt.Fprintf(out, "opencode: %d sessions read, %d events stored\n", st.OpenCode.Sessions, st.OpenCode.Events)
 			}
+			// Same for Codex, with one addition: it reports token counts but
+			// never names a model on most transcripts, and a turn with no model
+			// cannot be priced. Saying how many were left unpriced is the
+			// difference between a cost figure that looks low and one a reader
+			// knows is partial.
+			if st.Codex != nil {
+				fmt.Fprintf(out, "codex:   %d transcripts read, %d events stored\n", st.Codex.Sessions, st.Codex.Events)
+				if st.Codex.Unpriced > 0 {
+					fmt.Fprintf(out, "         %d turns carried no model id, so they have tokens but no cost\n", st.Codex.Unpriced)
+				}
+			}
 			// Spawning needs the `claude` binary. When it is missing, every
 			// spawn control is disabled and nothing said why — not here, not in
 			// `caprock up`, not on the dashboard.
