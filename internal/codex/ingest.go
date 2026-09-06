@@ -189,12 +189,19 @@ func (in *Ingester) session(ctx context.Context, s *Session) error {
 // one: rule 6 prefers a missing number to an invented one. This is common, not
 // exceptional — most Codex Desktop transcripts carry no `turn_context` at all.
 func (in *Ingester) turn(ctx context.Context, s *Session, t Turn, info rollup.SessionInfo) error {
-	payload, _ := json.Marshal(map[string]any{
+	fields := map[string]any{
 		"model":      s.Model,
 		"cwd":        s.Cwd,
 		"originator": s.Originator,
 		"reasoning":  t.Reasoning,
-	})
+	}
+	if t.TotalOnly {
+		// Recorded so the figure can be traced later: this turn's transcript
+		// gave a total with no breakdown, so its whole usage is counted as
+		// input and its cost is an upper bound.
+		fields["tokens_total_only"] = true
+	}
+	payload, _ := json.Marshal(fields)
 	ev := &event.Event{
 		Ts:        t.At,
 		SessionID: s.ID,

@@ -9,6 +9,22 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.54.4] - 2026-09-06
+
+### Fixed
+
+- **Half of Codex's token reports were being thrown away.** About half the
+  turns in a Codex transcript state how many tokens they used without breaking
+  it down by kind, and Caprock read only the breakdown — so those turns were
+  stored as having used nothing at all. On the owner's machine that hid 18.6M
+  tokens and turned $23.71 of usage into $0.53.
+
+  Such a total is now counted as input, which is the unqualified rate: nothing
+  is credited a cache discount it was not reported to have earned, and no split
+  is invented across kinds. For those turns the cost is therefore an **upper
+  bound** — any part of the total that was really a cached read cost a tenth of
+  what is shown. A turn that genuinely used nothing is still stored as nothing.
+
 ## [0.54.3] - 2026-09-06
 
 ### Fixed
