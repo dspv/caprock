@@ -145,7 +145,7 @@ export function findAttention({ sessions, alerts, now, limits, waitingMs = DEFAU
       continue
     }
 
-    // 3. Waiting on you, and has been for a while. A session that asked a
+    // 3. Waiting for you, and has been for a while. A session that asked a
     // question two minutes ago is not a problem; one that asked twenty minutes
     // ago is time you did not know you were losing.
     if (s.activity.health === 'waiting-on-you') {
@@ -156,8 +156,17 @@ export function findAttention({ sessions, alerts, now, limits, waitingMs = DEFAU
           sessionId: s.session_id,
           project: s.project,
           severity: 'medium',
-          title: 'Waiting on you',
-          detail: s.activity.phrase,
+          title: 'Waiting for you',
+          // No detail. The other rows put the activity phrase here because it
+          // carries the evidence — an error row's phrase names what broke. A
+          // waiting session's phrase is the fixed string "waiting for you", so
+          // the row read "Waiting on you · caprock · waiting for you": the same
+          // sentence twice, in two prepositions, with the repeat in grey as
+          // though it were adding something.
+          //
+          // The title says it once, and "what did it ask?" beside it is the
+          // part that actually tells you anything.
+          detail: '',
           since: at,
         })
       }

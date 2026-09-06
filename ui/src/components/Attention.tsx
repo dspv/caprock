@@ -63,7 +63,10 @@ function Row({ it, now, onDismiss, session }: {
             {it.project || shortId(it.sessionId)}
           </a>
         )}
-        <span className={it.sessionId ? 'ml-2' : ''}>{it.detail}</span>
+        {/* Rendered only when there is something to say. A row whose detail is
+          * empty — the waiting one, whose title already says it — would
+          * otherwise carry an indented empty span after the project name. */}
+        {it.detail && <span className={it.sessionId ? 'ml-2' : ''}>{it.detail}</span>}
       </span>
       <span className="ml-auto flex items-center gap-3 shrink-0">
         {/* Labelled in the open, not only on hover. This is the SESSION's

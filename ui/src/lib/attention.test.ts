@@ -70,7 +70,7 @@ describe('findAttention', () => {
     })
     const items = findAttention({ sessions: [stale], alerts: [], now: NOW })
     expect(items).toHaveLength(1)
-    expect(items[0]!.title).toBe('Waiting on you')
+    expect(items[0]!.title).toBe('Waiting for you')
     expect(items[0]!.severity).toBe('medium')
   })
 
@@ -220,5 +220,26 @@ describe('whether a cap could have acted', () => {
       sessions: [session({ session_id: 's-loop', owned: false })], alerts: [alert()], now: NOW,
     })
     expect(theirs.find((i) => i.id.startsWith('loop-'))?.owned).toBe(false)
+  })
+})
+
+// The waiting row says it once. It read "Waiting on you · caprock · waiting for
+// you" — the same sentence twice, in two prepositions, the repeat in grey as
+// though it were evidence. The other rows carry the activity phrase because
+// theirs adds something (an error names what broke); this one's phrase is the
+// fixed string the title already is.
+describe('the waiting row', () => {
+  it('does not repeat itself', () => {
+    const s = {
+      session_id: 'w', project: 'caprock', status: 'idle',
+      last_event_at: NOW - 20 * 60_000,
+      activity: { health: 'waiting-on-you', phrase: 'waiting for you', at: '2026-08-20T11:40:00Z' },
+    } as unknown as SessionSummary
+    const [item] = findAttention({ sessions: [s], alerts: [], now: NOW })
+    expect(item!.title).toBe('Waiting for you')
+    expect(item!.detail).toBe('')
+    // Whatever the phrase says, it must not be echoed under a title that
+    // already says it.
+    expect(item!.detail.toLowerCase()).not.toContain('waiting')
   })
 })
