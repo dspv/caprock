@@ -99,6 +99,26 @@ rejected before the second source was found: it would have put a confident
 dollar figure on the screen this product's credibility rests on, derived from
 nothing. Finding a recorded id was the difference between a guess and a fact.
 
+## A total with no breakdown
+
+Roughly **half** of the token samples measured (114 of 233) fill in
+`total_tokens` and leave every component — input, cached, output — at zero. One
+of them is 4.4M tokens. Reading only the components stored those turns as
+having used nothing, which is how $23 of real usage on the owner's machine
+showed as $0.53.
+
+The total is carried as **input**. That is the honest reading of a number which
+says only "this much was used": input is the unqualified rate, so nothing is
+credited a cache discount it was not reported to have earned. Splitting the
+total across kinds by any ratio would be inventing the split ([rule
+6](../CLAUDE.md)); leaving the turn empty would be discarding real usage.
+
+The consequence, and it is worth stating plainly: **for those turns the cost is
+an upper bound.** Any part of that total which was really a cached read was
+billed at a tenth of what is shown. The event's payload carries
+`tokens_total_only: true` so the figure can be traced back rather than having to
+be re-derived.
+
 ## What is not covered by the measurement
 
 The 100 transcripts this was built against are **96% Codex Desktop / VS Code**

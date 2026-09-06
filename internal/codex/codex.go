@@ -95,6 +95,11 @@ type Turn struct {
 	// Reasoning tokens are billed as output and are already included in Out.
 	// Carried separately only so a reader can see the split.
 	Reasoning int64
+	// TotalOnly marks a turn whose transcript reported a total with no
+	// breakdown, so `In` holds that total rather than a measured input figure.
+	// Its cost is therefore an upper bound: any part of it that was really a
+	// cached read would have been billed at a tenth.
+	TotalOnly bool
 }
 
 // ToolCall is one tool invocation.
@@ -319,7 +324,7 @@ func Parse(r io.Reader, path string) (*Session, error) {
 			if !ok {
 				continue // a repeat of the previous sample: no new tokens
 			}
-			s.Turns = append(s.Turns, Turn{
+			turn := Turn{
 				At:         at,
 				Key:        keyFor(lineNo, "turn"),
 				In:         d.InputTokens,
@@ -327,7 +332,23 @@ func Parse(r io.Reader, path string) (*Session, error) {
 				CacheWrite: d.CacheWriteInputTok,
 				Out:        d.OutputTokens,
 				Reasoning:  d.ReasoningOutputToken,
-			})
+			}
+			// Some transcripts fill in `total_tokens` and leave every component
+			// at zero — 114 of 233 samples on the machine this was built
+			// against, one of them 4.4M tokens. Reading only the components
+			// drops all of that: a real turn stored as if it had used nothing.
+			//
+			// The total is carried as input, which is the honest reading of a
+			// number that says only "this much was used": input is what the
+			// billing arithmetic treats as unqualified, so nothing is credited
+			// a cache discount it was not reported to have earned. Splitting
+			// the total across kinds by any ratio would be inventing the split
+			// (rule 6); leaving the turn empty would be discarding the usage.
+			if turn.In == 0 && turn.Out == 0 && turn.CacheRead == 0 && turn.CacheWrite == 0 && d.TotalTokens > 0 {
+				turn.In = d.TotalTokens
+				turn.TotalOnly = true
+			}
+			s.Turns = append(s.Turns, turn)
 		case "response_item":
 			var k payloadKind
 			if err := json.Unmarshal(rec.Payload, &k); err != nil {

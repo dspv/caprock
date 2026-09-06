@@ -349,3 +349,60 @@ func TestKeysDoNotDependOnTheOrdinalField(t *testing.T) {
 		seen[tl.Key] = true
 	}
 }
+
+// Some transcripts report a total with every component at zero — 114 of 233
+// token samples on the machine this was built against, one of them 4.4M
+// tokens. Reading only the components stored those turns as if they had used
+// nothing, which is how $23 of real usage came to show as $0.53.
+func TestTotalWithNoBreakdownIsNotDiscarded(t *testing.T) {
+	body := `{"type":"session_meta","payload":{"session_id":"s","cwd":"/w","base_instructions":{"provenance":{"type":"model","model":"gpt-5-codex"}}}}
+{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":0,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":2528}}}}`
+	s, err := Parse(strings.NewReader(body), "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Turns) != 1 {
+		t.Fatalf("want 1 turn, got %d", len(s.Turns))
+	}
+	tn := s.Turns[0]
+	if tn.In != 2528 {
+		t.Errorf("the total should be carried as input, got In=%d", tn.In)
+	}
+	if !tn.TotalOnly {
+		t.Error("the turn should be marked as having no breakdown, so its cost reads as an upper bound")
+	}
+	// Never credited a cache discount it was not reported to have earned.
+	if tn.CacheRead != 0 || tn.CacheWrite != 0 {
+		t.Errorf("a total with no breakdown must not be split across kinds: %+v", tn)
+	}
+}
+
+// A turn that really did use nothing stays empty and unmarked — the fallback
+// must not manufacture usage out of a zero total.
+func TestGenuinelyEmptyTurnIsNotInflated(t *testing.T) {
+	body := `{"type":"session_meta","payload":{"session_id":"s","cwd":"/w"}}
+{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}}}`
+	s, err := Parse(strings.NewReader(body), "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tn := range s.Turns {
+		if tn.TotalOnly || tn.In != 0 {
+			t.Errorf("a zero total invented usage: %+v", tn)
+		}
+	}
+}
+
+// A turn that has a breakdown keeps it, untouched by the fallback.
+func TestBreakdownIsPreferredOverTheTotal(t *testing.T) {
+	body := `{"type":"session_meta","payload":{"session_id":"s","cwd":"/w"}}
+{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":80,"output_tokens":10,"total_tokens":110}}}}`
+	s, err := Parse(strings.NewReader(body), "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tn := s.Turns[0]
+	if tn.In != 100 || tn.CacheRead != 80 || tn.Out != 10 || tn.TotalOnly {
+		t.Errorf("the breakdown was overwritten: %+v", tn)
+	}
+}
