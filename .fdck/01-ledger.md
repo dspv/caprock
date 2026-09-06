@@ -9,7 +9,7 @@ started) · **building** · **shipped** (in a release, with the version) ·
 
 | Id     | Date       | From  | Request                                                                      | Status   | Landed in         |
 | ------ | ---------- | ----- | ---------------------------------------------------------------------------- | -------- | ----------------- |
-| FB-031 | 2026-09-03 | Vova  | Token optimisation, with the tokens saved shown in the stats                 | open     | —                 |
+| FB-031 | 2026-09-03 | Vova  | Token optimisation, with the tokens saved shown in the stats                 | declined | —                 |
 | FB-030 | 2026-09-03 | Vova  | Caprock is convenient but not exclusive — nothing here needs paying for      | open     | —                 |
 | FB-029 | 2026-09-03 | Vova  | The stats stopped being the point once someone else pays the bill            | open     | —                 |
 | FB-028 | 2026-08-30 | Dima  | No way to buy from the main screen; the locked preview was unreadable        | shipped  | v0.37.1           |
@@ -51,10 +51,11 @@ started) · **building** · **shipped** (in a release, with the version) ·
 
 With the qualifier a message later: **"если не теряется качество"**.
 
-**Open, and the burden of proof sits on the number, not on the idea.** This is
+**Declined on 2026-09-06 by the owner** — too risky to pursue, and the burden
+of proof sits on the number, not on the idea. This is
 the direction the previous product died in, and the measurement that killed it
 is in this repository: compression on real Claude Code traffic was ~0%, because
-the prefix is frozen by design (`.ai/18-postmortem.md`). Dima gave Vova the
+the prefix is frozen by design ([18-postmortem.md](../.ai/18-postmortem.md)). Dima gave Vova the
 same answer from the other side — the tools that claim it mostly compress
 inputs, RTK is reported to drop needed chunks, and headroom compressed
 essentially nothing.
@@ -63,6 +64,9 @@ So the honest shape of any attempt is: measure first on a real session, publish
 the number whatever it is, and only then decide whether there is a feature. A
 "tokens saved" figure with nothing behind it is the one thing rule 6 exists to
 prevent, and it would be on the screen this product's credibility rests on.
+
+**Reopen condition:** a measured real-session number, whatever it is — the same
+condition the plan records in [09-execution-plan.md § Open work](../.ai/09-execution-plan.md#open-work).
 
 ### FB-030 — Convenient, but not exclusive
 

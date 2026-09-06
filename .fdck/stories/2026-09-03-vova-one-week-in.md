@@ -69,7 +69,7 @@ With the qualifier that matters, added a message later:
 - On token optimisation he pushed back with what this project already measured:
   the few tools that claim it mostly compress inputs, RTK is reported to drop
   needed chunks, and **headroom compressed essentially nothing** — which is the
-  finding that closed the previous product (`.ai/18-postmortem.md`).
+  finding that closed the previous product ([18-postmortem.md](../../.ai/18-postmortem.md)).
 - Both agreed the answer is to find an enterprise that will say what it needs,
   rather than guess.
 
