@@ -168,6 +168,7 @@ cmd/caprock/          # daemon + CLI (up/down/status/hooks/tasks/statusline/serv
 cmd/caprock-hook/     # the shim binary (thin main over internal/shim)
 internal/shim/        # shim logic: stdin → POST, silent, Stop request-response
 internal/statusline/  # `caprock statusline`: Claude Code status JSON → one-line render + best-effort rate-limit POST; `--rich` adds the daemon's session counters under a hard budget
+internal/codex/       # OpenAI Codex: rollout-transcript parser + poller (read-only, priced by our own table)
 internal/service/     # `caprock service`: autostart via launchd / systemd user unit / Startup folder
 internal/version/     # the version string (stamped via -ldflags at build)
 internal/config/      # data dir, config.json, runtime.json, atomic writes

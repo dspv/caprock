@@ -24,6 +24,7 @@ import (
 	"github.com/dspv/caprock/internal/board"
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/cap"
+	"github.com/dspv/caprock/internal/codex"
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/desktop"
@@ -73,6 +74,9 @@ type Options struct {
 	// store and make assertions about session counts fail on their machine and
 	// pass in CI.
 	OpenCodeDB string
+	// CodexDir overrides where Codex's rollout transcripts are looked for.
+	// Empty means the default (~/.codex/sessions); "off" disables the import.
+	CodexDir string
 	// IdleAfter is the silence threshold before a session is marked idle.
 	IdleAfter time.Duration
 	// EndAfter is the silence threshold before a session is marked ended
@@ -104,6 +108,7 @@ type Daemon struct {
 	det    *loop.Detector
 	tail   *ingest.Tailer
 	ocIn   *opencode.Ingester
+	cxIn   *codex.Ingester
 	// gemIn reads the telemetry files spawned Gemini sessions write. Gemini has
 	// no hooks and no transcript, so without this Caprock starts a session and
 	// then observes nothing about it — which is what 0.44.x shipped.
@@ -439,6 +444,38 @@ func (d *Daemon) run(ctx context.Context) error {
 						d.ocIn.Touch(ctx, sessionID)
 					})
 				}
+			}
+		}
+	}
+
+	// Codex, when this machine has it. Easier to observe than either of the
+	// others: it writes one append-only JSONL transcript per session carrying
+	// the model, tokens, tool calls and plan limits, so there is nothing to
+	// install and no config of someone else's to rewrite. Absence is the
+	// normal case and is silent.
+	if !d.opt.DisableIngest {
+		dir := d.opt.CodexDir
+		if dir == "" {
+			dir = codex.Dir()
+		}
+		if dir == "off" {
+			dir = ""
+		}
+		if dir != "" {
+			// Announce only after a listing succeeds, for the same reason the
+			// OpenCode branch waits for a read: a directory that exists but
+			// holds nothing we understand should not promise the user their
+			// sessions are being read.
+			if ts, err := codex.List(dir); err != nil {
+				d.log.Warn("codex transcripts found but not readable", "component", "codex", "dir", dir, "err", err)
+			} else if len(ts) > 0 {
+				d.cxIn = codex.NewIngester(dir, d.rec, d.log, 5*time.Second)
+				go func() {
+					if err := d.cxIn.Run(ctx); err != nil && ctx.Err() == nil {
+						d.log.Error("codex ingest stopped", "component", "codex", "err", err)
+					}
+				}()
+				d.log.Info("codex sessions are being read", "component", "codex", "dir", dir, "transcripts", len(ts))
 			}
 		}
 	}
@@ -868,9 +905,12 @@ type Status struct {
 	// whether a machine that runs OpenCode was having those sessions read:
 	// the dashboard shows them mixed in with Claude Code's, so their absence
 	// looks the same as having none.
-	OpenCode      *opencode.Stats `json:"opencode,omitempty"`
-	OwnedActive   int             `json:"owned_active"`
-	Orchestration bool            `json:"orchestration"`
+	OpenCode *opencode.Stats `json:"opencode,omitempty"`
+	// Codex reports the third agent's reader on the same terms, and is absent
+	// when the machine has no Codex transcripts.
+	Codex         *codex.Stats `json:"codex,omitempty"`
+	OwnedActive   int          `json:"owned_active"`
+	Orchestration bool         `json:"orchestration"`
 	// Memory reports how many repositories have enough history to hand a new
 	// session what was left there. A feature that acts before you type is one
 	// nobody can see working, so the status screen says whether it can.
@@ -928,6 +968,7 @@ func (d *Daemon) status(_ context.Context) any {
 		LoopK:   d.det.K, LoopTMin: int(d.det.Window / time.Minute),
 		Memory:          d.memoryStatus(),
 		OpenCode:        d.openCodeStats(),
+		Codex:           d.codexStats(),
 		ClaudeAvailable: d.mgr.ClaudeAvailable(), GeminiAvailable: d.mgr.GeminiAvailable(), OwnedActive: len(d.mgr.List()),
 		Orchestration: b != nil,
 	}
@@ -1281,6 +1322,15 @@ func (d *Daemon) openCodeStats() *opencode.Stats {
 		return nil
 	}
 	st := d.ocIn.Stats()
+	return &st
+}
+
+// codexStats reports the Codex reader, or nil when it is not running.
+func (d *Daemon) codexStats() *codex.Stats {
+	if d.cxIn == nil {
+		return nil
+	}
+	st := d.cxIn.Stats()
 	return &st
 }
 

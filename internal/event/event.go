@@ -73,6 +73,11 @@ const (
 	// figures come from the response's usageMetadata and there is no vendor
 	// cost to carry — Google reports per project, not per call (ADR-023).
 	SourceGemini Source = "gemini"
+	// SourceCodex marks events read from OpenAI Codex's rollout transcripts.
+	// Like Gemini and unlike OpenCode they are priced by our own table: Codex
+	// reports token counts but never a cost of its own, which is why the
+	// pricing table had to grow OpenAI rows to support it.
+	SourceCodex Source = "codex"
 )
 
 // TokenDelta carries per-turn token usage (turn.assistant only).

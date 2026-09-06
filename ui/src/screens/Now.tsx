@@ -87,13 +87,14 @@ export function NowScreen() {
   // and a first run showed `all · claude · gemini` above an empty screen with
   // nothing to sort.
   //
-  // OpenCode is the one exception, and for a reason rather than by accident:
-  // its sessions are usually all ended and older than the visible window, so
-  // the list genuinely cannot answer "is OpenCode here" — the daemon reporting
-  // that it reads OpenCode at all is the honest test.
+  // OpenCode and Codex are the exceptions, and for a reason rather than by
+  // accident: their sessions are usually all ended and older than the visible
+  // window, so the list genuinely cannot answer "is this agent here" — the
+  // daemon reporting that it reads them at all is the honest test.
   const agentsHere = AGENTS.filter(
     (a) => a.key === 'all' || a.key === 'claude' ||
       (a.key === 'opencode' && !!status.data?.opencode) ||
+      (a.key === 'codex' && !!status.data?.codex) ||
       (a.key === 'gemini' && everySession.some((s) => s.agent === 'gemini')),
   )
   const hasBoth = agentsHere.length > 2

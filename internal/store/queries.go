@@ -406,12 +406,14 @@ func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, 
 // ownsItsProcess reports whether Caprock can see the process behind a session.
 //
 // Claude Code sessions arrive through a shim Caprock installed, which reports
-// its parent's pid; Gemini sessions are ones Caprock spawned. OpenCode is
-// different in kind — it is read out of OpenCode's own database, so those rows
-// describe work that happened, possibly months ago, with no process to ask
-// about. They are history, and history is never live.
+// its parent's pid; Gemini sessions are ones Caprock spawned. OpenCode and
+// Codex are different in kind — they are read out of files those tools wrote,
+// so the rows describe work that happened, possibly months ago, with no process
+// to ask about. They are history, and history is never live. Without this a
+// hundred imported Codex transcripts would every one of them claim to be
+// running.
 func ownsItsProcess(agent string) bool {
-	return agent != "opencode"
+	return agent != "opencode" && agent != "codex"
 }
 
 // updateStatusByID sets one status on a known set of sessions, in chunks that

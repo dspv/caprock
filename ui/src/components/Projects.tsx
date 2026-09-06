@@ -108,7 +108,7 @@ import { Panel, Skeleton } from '@/components/ui'
 type Range = 'today' | '7d' | '30d' | 'all'
 
 /** Which agent's work to show. Present only when the machine has more than one. */
-export type AgentFilter = 'all' | 'claude' | 'opencode' | 'gemini'
+export type AgentFilter = 'all' | 'claude' | 'opencode' | 'gemini' | 'codex'
 
 export const AGENTS: { key: AgentFilter; label: string }[] = [
   // 'all' rather than 'both': the third agent arrived and would have made
@@ -118,6 +118,7 @@ export const AGENTS: { key: AgentFilter; label: string }[] = [
   { key: 'claude', label: 'claude' },
   { key: 'opencode', label: 'opencode' },
   { key: 'gemini', label: 'gemini' },
+  { key: 'codex', label: 'codex' },
 ]
 
 /** The short mark for an agent that is not Claude Code, or '' for one that is.
@@ -131,6 +132,8 @@ export function agentMark(agent?: string): string {
       return 'oc'
     case 'gemini':
       return 'gem'
+    case 'codex':
+      return 'cdx'
     default:
       return ''
   }
@@ -143,6 +146,8 @@ export function agentName(agent?: string): string {
       return 'OpenCode'
     case 'gemini':
       return 'Gemini'
+    case 'codex':
+      return 'Codex'
     default:
       return 'Claude Code'
   }
