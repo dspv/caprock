@@ -77,6 +77,22 @@ func splitCommand(cs string) (prog, sub string, ok bool) {
 		}
 		prog = cs[1 : 1+end]
 		rest = strings.TrimSpace(cs[2+end:])
+		// The quotes-around-everything form an older version wrote:
+		// `"…/caprock statusline"`. The shell looks for a file literally named
+		// "caprock statusline", finds none, and the status line silently prints
+		// nothing — which is how it survived unnoticed on a real machine. Split
+		// it here so the entry is recognised as ours and can be repaired,
+		// rather than mistaken for a stranger's and left alone forever.
+		if rest == "" {
+			// Split before the `statusline` token rather than at some space:
+			// the path itself may contain spaces (`/Users/My Name/bin/caprock`)
+			// and the remainder may carry flags, so neither the first nor the
+			// last space is reliably the boundary. The subcommand is the one
+			// word we are actually looking for, so cut there.
+			if i := strings.Index(prog, " statusline"); i > 0 {
+				prog, rest = prog[:i], strings.TrimSpace(prog[i+1:])
+			}
+		}
 	} else {
 		prog, rest, ok = strings.Cut(cs, " ")
 		if !ok {
@@ -119,6 +135,65 @@ func InstallStatusline(settingsPath, cmdPath string) (backup string, err error) 
 		return "", err
 	}
 	return backup, writeSettings(settingsPath, root)
+}
+
+// RepairStatusline rewrites our own statusLine entry when the stored command
+// would not actually run, and reports whether it changed anything.
+//
+// The one form this exists for is the quotes-around-everything command an
+// older version wrote (`"…/caprock statusline"`), which the shell resolves as
+// a single filename that does not exist — so the status line printed nothing,
+// silently, for as long as the entry survived. Recognising it is not enough:
+// install treats anything of ours as an idempotent no-op, so without this the
+// entry would be identified and then left exactly as broken as it was found.
+//
+// It is deliberately narrow. A statusLine that is not ours is never touched,
+// and neither is one of ours that already runs — this repairs a known-broken
+// spelling, it does not normalise everyone's command to today's preferred one.
+func RepairStatusline(settingsPath, cmdPath string) (repaired bool, err error) {
+	root, err := readSettings(settingsPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	v, ok := root.Get("statusLine")
+	if !ok {
+		return false, nil
+	}
+	obj, ok := v.(*Object)
+	if !ok {
+		return false, nil
+	}
+	c, _ := obj.Get("command")
+	cs, _ := c.(string)
+	if cs == "" || !isOurStatusline(cs, cmdPath) || !brokenQuoting(cs) {
+		return false, nil
+	}
+	obj.Set("command", cmdPath)
+	root.Set("statusLine", obj)
+	if _, err := backupOnce(settingsPath); err != nil {
+		return false, err
+	}
+	return true, writeSettings(settingsPath, root)
+}
+
+// brokenQuoting reports whether a command quotes the whole string rather than
+// just the path, which makes the shell look for a file whose name contains a
+// space and silently find nothing.
+func brokenQuoting(cs string) bool {
+	cs = strings.TrimSpace(cs)
+	if !strings.HasPrefix(cs, `"`) {
+		return false
+	}
+	end := strings.IndexByte(cs[1:], '"')
+	if end < 0 {
+		return false
+	}
+	// Everything inside the quotes, with nothing after them: the subcommand got
+	// swallowed into what the shell will treat as one filename.
+	return strings.TrimSpace(cs[2+end:]) == "" && strings.Contains(cs[1:1+end], " ")
 }
 
 // UninstallStatusline removes the statusLine only if it is ours, leaving a

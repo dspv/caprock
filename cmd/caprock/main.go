@@ -336,6 +336,20 @@ func maybeInstallStatusline(cmd *cobra.Command, yes bool) error {
 		// registration keeps working because the flag survives as a no-op, and
 		// a bare `… statusline` now shows the counters too — so an upgrade
 		// needs no settings rewrite and no prompt to switch.
+		//
+		// The exception is an entry that cannot run at all: a version of ours
+		// quoted the whole command, which the shell resolves as one nonexistent
+		// filename, so the status line printed nothing and said nothing about
+		// why. Repair it and say so — silently fixing a file the user owns is
+		// worse than a line of output, and they deserve to know why a status
+		// line that was blank has come back.
+		repaired, err := hooks.RepairStatusline(sp, cmdStr)
+		if err != nil {
+			return err
+		}
+		if repaired {
+			fmt.Fprintln(cmd.OutOrStdout(), "statusline repaired: the stored command was quoted so it could never run (backed up first)")
+		}
 		return nil
 	}
 	if present {

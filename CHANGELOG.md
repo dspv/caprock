@@ -7,6 +7,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **A status line that had silently printed nothing is repaired on start.** An
+  older version wrote the registered command with quotes around the whole
+  string rather than just the path (`"…/caprock statusline"`). The shell reads
+  that as one filename, finds no such file, and prints nothing — so the status
+  line was simply blank, with nothing anywhere saying why. Worse, Caprock did
+  not recognise the entry as its own, so `statusline install` treated it as
+  somebody else's and refused to touch it: the machine it was found on had been
+  in that state for months. `caprock up` now recognises the spelling, repairs
+  it, and says so. A statusLine that is not ours is still never touched, and
+  neither is a working one.
+
 Phase 3 (Delight) has no plan by design.
 
 ## [0.53.1] - 2026-09-06
