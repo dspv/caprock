@@ -7,6 +7,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+Phase 3 (Delight) has no plan by design.
+
+## [0.54.0] - 2026-09-06
+
 ### Added
 
 - **Codex sessions are on the dashboard.** A machine running Claude Code,
@@ -52,8 +56,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   no true positives is not a threshold to tune, so it is gone rather than
   retuned. Counting files out of shell command text would be guesswork; if this
   ever returns it should be built on what git actually says changed.
-
-Phase 3 (Delight) has no plan by design.
 
 ## [0.53.2] - 2026-09-06
 
