@@ -9,6 +9,22 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.54.1] - 2026-09-06
+
+### Fixed
+
+- **Codex sessions now all carry a price.** v0.54.0 shipped with 83% of Codex
+  tokens costing nothing, because it read the model from the obvious field —
+  present in 4 transcripts out of 100. The other 96 record it elsewhere, as an
+  explicit model id rather than a hint, so both are read now and every session
+  that used tokens can be priced. A session that names no model anywhere still
+  keeps its tokens and no cost, rather than an invented one.
+
+- **A test daemon read the machine's real Codex transcripts.** The smoke test
+  asserts exact turn and cost figures, and on a developer machine with Codex
+  installed it was importing that person's actual sessions and counting them.
+  It turns the import off, as it already did for OpenCode.
+
 ## [0.54.0] - 2026-09-06
 
 ### Added
@@ -20,13 +36,13 @@ Phase 3 (Delight) has no plan by design.
   writes one transcript per session and Caprock reads it, the way it already
   reads OpenCode's database.
 
-  **Most Codex sessions cannot be priced, and the dashboard says so instead of
-  guessing.** Only 4 of 100 real transcripts named the model they ran on — the
-  other 96 carry real token counts and no model at all, which is 83% of tokens.
-  Those turns keep their tokens and carry no cost, and `caprock status` reports
-  how many, so a partial total reads as partial. Inventing the model from the
-  originator would have put a confident dollar figure on screen derived from
-  nothing.
+  **Every Codex session that used tokens is priced**, which took finding where
+  Codex actually records the model. The obvious field is in 4 transcripts out
+  of 100; the other 96 record it somewhere else entirely, and reading only the
+  first left 83% of tokens with no cost at all. Both are model ids Codex wrote
+  down, not guesses from the version or the app that launched it. A session
+  that names no model anywhere still keeps its tokens and carries no cost
+  rather than an invented one.
 
   Pricing gained OpenAI rows (`gpt-5-codex`, `gpt-5.3-codex`, and the `gpt-5.6`
   family), read from OpenAI's published prices on 2026-09-06.

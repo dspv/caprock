@@ -27,7 +27,8 @@ rather than a pipeline.
 - **`session_meta`** opens every file with the session id, `cwd`,
   `cli_version`, and `originator` (`Codex Desktop` or `codex_cli_rs`).
 - **`turn_context`** carries the model, the effort level and the workspace
-  roots — when it is present at all, which is the catch below.
+  roots — when it is present at all, which is only 4 transcripts in 100. The
+  model of the other 96 is in `session_meta.base_instructions.provenance`.
 - **`token_count`** carries input, cached input, cache-write, output and
   reasoning tokens, plus **the plan-limit windows**: `primary` (300 minutes)
   and `secondary` (10080 minutes), each with `used_percent` and `resets_at`.
@@ -74,22 +75,29 @@ table prices. So `pricing/pricing.json` grew OpenAI rows, read from
 bill for cache writes, so those columns are `0` — meaning "not charged", the
 same as the Gemini rows.
 
-**Most sessions cannot be priced, and say so.** Only 4 of 100 transcripts
-carried a `turn_context`, which is the only record naming the model; the other
-96 have real token counts and no model at all, and no indirect signal either
-(no `model_context_window`, nothing). That is **83% of tokens**. Those turns are
-stored with their true tokens and **no cost** rather than a guessed one, per
-[rule 6](../CLAUDE.md) — a missing number beats an invented one. `caprock
-status` reports the count so a reader knows the total is partial:
+**The model is recorded twice, and reading only the obvious one left 83% of
+tokens unpriced.** `turn_context` is the natural place to look and appears in
+**4 of 100** transcripts. The other 96 record it as
+`session_meta.base_instructions.provenance` — `{"type":"model","model":"…"}`,
+an explicit model id rather than an inference. Together they name a model for
+**every session that carries any tokens**; the two that still name none have no
+tokens either, so nothing is lost.
 
-```
-codex:   100 transcripts read, 218 events stored
-         113 turns carried no model id, so they have tokens but no cost
-```
+The two sources agreed in every transcript carrying both, and no model changed
+mid-session in any of the 100. `turn_context` still wins where both exist:
+provenance describes the prompt the session was built with, `turn_context` the
+turn actually running, and if they ever diverge the per-turn value is the
+truthful one.
+
+A turn that names no model anywhere is still stored with its true tokens and
+**no cost** rather than a guessed one, per [rule 6](../CLAUDE.md), and `caprock
+status` reports the count so a partial total reads as partial. That path is now
+rare rather than the common case.
 
 Guessing the model from `originator` or `cli_version` was considered and
-rejected: it would put a confident dollar figure on the screen this product's
-credibility rests on, derived from nothing.
+rejected before the second source was found: it would have put a confident
+dollar figure on the screen this product's credibility rests on, derived from
+nothing. Finding a recorded id was the difference between a guess and a fact.
 
 ## Not built
 

@@ -203,9 +203,13 @@ func TestImportedSessionsAreRetiredByTheClock(t *testing.T) {
 	}
 }
 
-// A turn whose transcript never named a model is stored with its real tokens
-// and no cost. Rule 6: a missing number beats an invented one. This is the
-// common case — most Codex Desktop transcripts carry no turn_context at all.
+// A turn whose transcript names no model anywhere is stored with its real
+// tokens and no cost. Rule 6: a missing number beats an invented one.
+//
+// This used to be the common case, because only `turn_context` was read and
+// that is present in 4 of 100 real transcripts. It is now rare — the model is
+// also recorded in `base_instructions.provenance`, which covers the other 96 —
+// so this test has to strip *both* sources to reach the unpriced path at all.
 func TestTurnWithNoModelIsStoredUnpriced(t *testing.T) {
 	h := newHarness(t)
 	b, err := os.ReadFile(fixture)
@@ -222,10 +226,26 @@ func TestTurnWithNoModelIsStoredUnpriced(t *testing.T) {
 			continue
 		}
 		var rec struct {
-			Type string `json:"type"`
+			Type    string          `json:"type"`
+			Payload json.RawMessage `json:"payload"`
 		}
-		if err := json.Unmarshal([]byte(line), &rec); err == nil && rec.Type == "turn_context" {
-			continue
+		if err := json.Unmarshal([]byte(line), &rec); err == nil {
+			if rec.Type == "turn_context" {
+				continue
+			}
+			// Strip the provenance too, leaving a transcript that genuinely
+			// names no model — otherwise this test silently stops testing the
+			// unpriced path the moment a second source is read.
+			if rec.Type == "session_meta" {
+				var pl map[string]any
+				if json.Unmarshal(rec.Payload, &pl) == nil {
+					delete(pl, "base_instructions")
+					body, _ := json.Marshal(map[string]any{"type": "session_meta", "payload": pl})
+					kept = append(kept, body...)
+					kept = append(kept, '\n')
+					continue
+				}
+			}
 		}
 		kept = append(kept, line...)
 		kept = append(kept, '\n')

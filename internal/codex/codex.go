@@ -140,6 +140,14 @@ type sessionMeta struct {
 	Cwd        string `json:"cwd"`
 	CLIVersion string `json:"cli_version"`
 	Originator string `json:"originator"`
+	// BaseInstructions carries the model the session's system prompt was
+	// built for, which is the only place most transcripts name a model at all.
+	BaseInstructions *struct {
+		Provenance *struct {
+			Type  string `json:"type"`
+			Model string `json:"model"`
+		} `json:"provenance"`
+	} `json:"base_instructions"`
 }
 
 type turnContext struct {
@@ -226,6 +234,18 @@ func Parse(r io.Reader, path string) (*Session, error) {
 			s.Cwd = m.Cwd
 			s.CLIVersion = m.CLIVersion
 			s.Originator = m.Originator
+			// The model, from the one place nearly every transcript records
+			// it. `turn_context` is the obvious source and is present in only
+			// 4 of 100 real transcripts; this is present in 96, and the two
+			// sets barely overlap — together they name a model for every
+			// session that has any tokens at all.
+			//
+			// It is a recorded model id (`{"type":"model","model":"…"}`), not
+			// an inference from the originator or the CLI version, which is
+			// what makes pricing from it honest rather than a guess.
+			if bi := m.BaseInstructions; bi != nil && bi.Provenance != nil && bi.Provenance.Type == "model" {
+				s.Model = bi.Provenance.Model
+			}
 			if t := parseTime(m.Timestamp); !t.IsZero() {
 				s.StartedAt = t
 			} else {
@@ -236,8 +256,12 @@ func Parse(r io.Reader, path string) (*Session, error) {
 			if err := json.Unmarshal(rec.Payload, &tc); err != nil {
 				continue
 			}
-			// The model can change mid-session; the last one wins, which is
-			// what the session is "on" now.
+			// turn_context wins over the base-instructions provenance when both
+			// are present: provenance describes the prompt the session was
+			// built with, this describes the turn actually being run. They
+			// agreed in every transcript where both appear, and no model
+			// changed mid-session in any of the 100 checked — but if one ever
+			// does, the per-turn value is the truthful one.
 			if tc.Model != "" {
 				s.Model = tc.Model
 			}
