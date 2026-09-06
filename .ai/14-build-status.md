@@ -53,6 +53,88 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-09-06 — The session's own numbers in the status line (FB-032)
+
+Dima sent a screenshot of the DeepSeek harness's status bar and asked whether
+Caprock could put that kind of line into Claude Code and OpenCode. Caprock has
+owned Claude Code's `statusLine.command` since v0.17.0, so this was a question
+about which figures go on a line we already print.
+
+The screenshot split three ways by where each number would come from. Turns,
+steps, cache hit rate and token totals are already columns on `session_stats`
+— shipped, behind `--rich`. Time to first token, tokens per second and the
+model-versus-tool split have no source at all; the derivation from hook
+timestamps that looks obvious counts the user's own thinking time as inference,
+so under rule 6 they are off the line until measured. And OpenCode is not a
+surface we can write to — it exposes no `statusLine.command`, and Caprock reads
+its database read-only rather than extending it.
+
+**The interesting part was not the data but the ordering.** The statusline's
+safety contract is that it prints from stdin *first* and only then talks to the
+daemon, fire-and-forget, so a slow or absent daemon can never be felt as a slow
+prompt. Showing the counters inverts that: the read has to happen before the
+print. So it is bounded at 150ms — inside Claude Code's own 300ms debounce —
+and every failure path (down, slow, erroring, junk response) falls through to
+byte-for-byte the plain line. That equivalence is what the tests assert, rather
+than asserting the happy path twice.
+
+`GET /v1/statusline/{id}` is deliberately lean: one indexed `session_stats`
+row, no narration, no pricing lookup, no event load. The existing session-detail
+endpoint carries the same numbers but pulls sixty events, a hundred file paths
+and a pricing lookup to do it — fine for a screen, wrong for something that
+runs on every assistant message.
+
+Two details that would have failed quietly. `splitCommand` required the
+registered command to be exactly two words, so `… statusline --rich` read as a
+*stranger's* statusLine: `install` would have offered to add a second one and
+`uninstall` would have refused to remove what we ourselves wrote. And the line
+is fitted to the terminal by rank — counters dropped first, plan windows never
+— measuring runes with the ANSI colour codes discounted, since counting the
+escape bytes is what would make a coloured line wrap.
+
+**The line now carries the mark.** It was an anonymous row of figures, which
+is a strange thing for the one Caprock surface a user sees all day. The legacy
+Python tool led with an amber ⛰; the mark survived the pivot — it is what the
+favicon draws — so this is the existing identity, not a revival of something
+dropped. The glyph alone, no wordmark: on a line that reprints after every
+assistant message the word costs ten columns and says nothing the mark does
+not, and at 80 columns ten columns is precisely one counter. Ranked essential
+rather than decoration and never dropped at any width — a badge that
+disappears exactly when the line gets tight is not a badge.
+
+**Then the flag itself turned out to be the problem.** Walking the install
+paths in a fake HOME showed the feature was undiscoverable: a new user silently
+got the plain form, an existing user saw an upgrade change nothing, and the
+only route to `--rich` was reading the changelog. The first answer was a tip
+printed by `up`. The better answer was to ask what the flag was protecting
+against and measure it, which turned out to be very little: the endpoint is one
+indexed row over loopback and answers in **0.6ms**; a stopped daemon (no
+runtime.json) never opens a socket; a dead one is refused instantly. Only a
+daemon that accepts and never replies costs anything, and that is bounded.
+
+So the counters are **on by default**, the budget dropped from 150ms to 40ms
+(~60× the measured latency, and the worst realistic case now measures ~55ms per
+line against ~10ms otherwise), and `--plain` is the way out. `--rich` survives
+as a hidden no-op: a settings.json written while it was a real flag must not
+start failing because the flag moved. An existing registration needs no rewrite
+and no prompt — it simply starts showing the counters. That deleted the tip,
+`RetargetStatusline`, `StatuslineCommand` and the two-form command builder;
+the install path is one form again.
+
+**The green suite shipped the wrong cache metric, and only the terminal said
+so.** The obvious figure was the hit rate, and the tests were happy with it. Run
+against the real database it printed `cache 100%` — for every session on this
+machine, because real sessions read cached tokens in the billions against tens
+of thousands of uncached input. A number identical for everybody is decoration,
+and it was eating width the useful counters needed. It now reports what the
+cache cut off the bill via the same `cost.ComputeSavings` the Cost screen uses
+(so the two cannot drift): 83–90% across those same sessions, and no segment at
+all when writes dominate and the cut is zero — rather than claiming a saving
+that was not made. Two more things only the terminal showed: the counters were
+one rank, so a standard 80-column terminal dropped all four to save one column
+(they now degrade one at a time), and the first run after the fix still printed
+the old figure because the binary had not been rebuilt.
+
 ### 2026-09-03 (later) — The loop banner sold a cap that could not act
 
 The owner read his own dashboard and asked a fair question: a loop alert

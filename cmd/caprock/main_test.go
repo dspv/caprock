@@ -477,3 +477,32 @@ func TestNoInternalPhaseWordingInHelp(t *testing.T) {
 		}
 	}
 }
+
+// The counters are on by default; `--plain` opts out. `--rich` survives as a
+// hidden no-op because settings.json files written by an earlier version name
+// it explicitly — a registration must not start failing because a flag moved.
+func TestStatuslineFlags(t *testing.T) {
+	var sl *cobra.Command
+	for _, c := range newRoot().Commands() {
+		if c.Name() == "statusline" {
+			sl = c
+		}
+	}
+	if sl == nil {
+		t.Fatal("no statusline command")
+	}
+	rich := sl.Flags().Lookup("rich")
+	if rich == nil {
+		t.Fatal("--rich must still parse: existing registrations name it")
+	}
+	if rich.Hidden != true {
+		t.Error("--rich should be hidden; it is a compatibility no-op, not an option to offer")
+	}
+	if sl.Flags().Lookup("plain") == nil {
+		t.Error("--plain is the way to opt out of the counters")
+	}
+	// The registered command names no flag: the default is what we want.
+	if got := statuslineCommandStr(); !strings.HasSuffix(got, " statusline") {
+		t.Errorf("registration should be the bare subcommand, got %q", got)
+	}
+}

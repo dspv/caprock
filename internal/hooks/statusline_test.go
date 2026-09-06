@@ -29,3 +29,29 @@ func TestStatuslineRecognisesEveryPathForm(t *testing.T) {
 		}
 	}
 }
+
+// The registered command may carry flags (`… statusline --rich`). Detection has
+// to see through them, or install would offer to add a second entry and
+// uninstall would refuse to remove what we wrote ourselves. What still marks a
+// command as not ours is the program, not its arguments.
+func TestIsOurStatuslineToleratesFlags(t *testing.T) {
+	plain := "/usr/local/bin/caprock statusline"
+	for _, cs := range []string{
+		"/usr/local/bin/caprock statusline --rich",
+		"/opt/caprock statusline --rich --width 100",
+		`"/Users/My Name/bin/caprock" statusline --rich`,
+	} {
+		if !isOurStatusline(cs, plain) {
+			t.Errorf("should be ours: %q", cs)
+		}
+	}
+	for _, cs := range []string{
+		"ccusage statusline",
+		"/usr/local/bin/other-tool statusline --rich",
+		"/usr/local/bin/caprock hooks", // a caprock, but not the statusline
+	} {
+		if isOurStatusline(cs, plain) {
+			t.Errorf("should not be ours: %q", cs)
+		}
+	}
+}

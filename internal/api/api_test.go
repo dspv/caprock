@@ -854,3 +854,56 @@ func TestContextNoteSaysWhyContextIsMissing(t *testing.T) {
 		t.Errorf("an unpriced model reports %q, which does not name the model", got)
 	}
 }
+
+// GET /v1/statusline/{id} serves the session counters the status line prints:
+// bearer-gated, and zeros rather than a 404 for a session with nothing yet
+// (the first call of a session races its first turn being recorded).
+func TestStatuslineStatsEndpoint(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	if err := store.UpsertSession(ctx, e.st.DB(), "s1", store.SessionPatch{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AddStats(ctx, e.st.DB(), store.Stats{
+		SessionID: "s1", Turns: 4, ToolCalls: 23, TokensIn: 80_000, TokensOut: 35_600, CacheRead: 1_520_000,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Unauthorized without the bearer token.
+	resp, err := http.Get(e.srv.URL + "/v1/statusline/s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 401 {
+		t.Fatalf("statusline stats without token: %d", resp.StatusCode)
+	}
+
+	get := func(id string) StatuslineStats {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodGet, e.srv.URL+"/v1/statusline/"+id, nil)
+		req.Header.Set("Authorization", "Bearer tok")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("statusline stats %s: %d", id, resp.StatusCode)
+		}
+		var out StatuslineStats
+		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+
+	got := get("s1")
+	if got.Turns != 4 || got.ToolCalls != 23 || got.TokensIn != 80_000 || got.TokensOut != 35_600 || got.CacheRead != 1_520_000 {
+		t.Fatalf("counters wrong: %+v", got)
+	}
+	if unknown := get("no-such-session"); unknown != (StatuslineStats{}) {
+		t.Fatalf("unknown session should be zeros, got %+v", unknown)
+	}
+}

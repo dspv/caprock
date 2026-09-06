@@ -54,28 +54,40 @@ func isOurStatusline(cs, cmdPath string) bool {
 	return b == "caprock" || b == "caprock.exe"
 }
 
-// splitCommand splits a `program subcommand` string into its program path and
-// the single subcommand, honoring a leading double-quoted path (which may
-// contain spaces). Returns ok=false if the shape isn't `<prog> <one-word-sub>`.
+// splitCommand splits a `program subcommand [flags…]` string into its program
+// path and the subcommand, honoring a leading double-quoted path (which may
+// contain spaces). Returns ok=false if the shape isn't `<prog> <one-word-sub>`
+// optionally followed by flags.
+//
+// Trailing arguments are tolerated rather than rejected because the registered
+// command carries them: `… statusline --rich` is still our statusline, and a
+// stricter match would make the rich registration look like a stranger's — so
+// `install` would offer to add a second one and `uninstall` would refuse to
+// remove what we ourselves wrote. What keeps this from claiming someone else's
+// command is the caller's check on the program itself: the base name must be
+// caprock, and a caprock invoked with `statusline` is ours whatever flags and
+// flag values follow (`--width 100` puts a bare word there legitimately).
 func splitCommand(cs string) (prog, sub string, ok bool) {
 	cs = strings.TrimSpace(cs)
+	var rest string
 	if strings.HasPrefix(cs, `"`) {
 		end := strings.IndexByte(cs[1:], '"')
 		if end < 0 {
 			return "", "", false
 		}
 		prog = cs[1 : 1+end]
-		rest := strings.TrimSpace(cs[2+end:])
-		if rest == "" || strings.ContainsAny(rest, " \t") {
+		rest = strings.TrimSpace(cs[2+end:])
+	} else {
+		prog, rest, ok = strings.Cut(cs, " ")
+		if !ok {
 			return "", "", false
 		}
-		return prog, rest, true
 	}
-	fields := strings.Fields(cs)
-	if len(fields) != 2 {
+	fields := strings.Fields(rest)
+	if len(fields) == 0 {
 		return "", "", false
 	}
-	return fields[0], fields[1], true
+	return prog, fields[0], true
 }
 
 // InstallStatusline sets settings.json's statusLine to our command, backing the

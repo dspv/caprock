@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dspv/caprock/internal/config"
 )
@@ -133,4 +134,306 @@ func TestPostSilentWhenDaemonDown(t *testing.T) {
 	t.Setenv(config.EnvDataDir, t.TempDir()) // no runtime.json
 	post(forward{SessionID: "x", FiveHour: &window{UsedPercentage: 1}})
 	// Reaching here without panic/hang is the assertion.
+}
+
+// Rich mode adds the daemon's counters to the line.
+func TestRichModeAddsCounters(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_, _ = io.WriteString(w, `{"turns":4,"tool_calls":23,"tokens_in":80000,"tokens_out":35600,"cache_read":1520000,"cache_write":40000}`)
+	}))
+	defer srv.Close()
+	pointAtServer(t, srv.URL)
+
+	var out bytes.Buffer
+	RunWith(strings.NewReader(`{"session_id":"s1","model":{"display_name":"Opus"}}`), &out, Options{Rich: true, Width: 500})
+	got := out.String()
+	for _, want := range []string{"Opus", "4 turns", "23 steps", "cache −", "in 80.0K", "out 35.6K"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("rich line missing %q: %q", want, got)
+		}
+	}
+}
+
+// The contract this feature had to defend: rich mode may never cost the user
+// more than the extra segments. A daemon that is down, slow, or refusing must
+// yield exactly the plain line.
+func TestRichModeFallsBackToPlainLine(t *testing.T) {
+	const stdin = `{"session_id":"s1","model":{"display_name":"Opus"},"context_window":{"used_percentage":8}}`
+
+	var plain bytes.Buffer
+	RunWith(strings.NewReader(stdin), &plain, Options{Width: 500}) // Rich false → no daemon call
+
+	t.Run("daemon down", func(t *testing.T) {
+		t.Setenv(config.EnvDataDir, t.TempDir()) // no runtime.json
+		var out bytes.Buffer
+		RunWith(strings.NewReader(stdin), &out, Options{Rich: true, Width: 500})
+		if out.String() != plain.String() {
+			t.Fatalf("daemon down changed the line:\n got %q\nwant %q", out.String(), plain.String())
+		}
+	})
+
+	t.Run("daemon errors", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer srv.Close()
+		pointAtServer(t, srv.URL)
+		var out bytes.Buffer
+		RunWith(strings.NewReader(stdin), &out, Options{Rich: true, Width: 500})
+		if out.String() != plain.String() {
+			t.Fatalf("daemon error changed the line: %q", out.String())
+		}
+	})
+
+	t.Run("daemon returns junk", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, "definitely not json")
+		}))
+		defer srv.Close()
+		pointAtServer(t, srv.URL)
+		var out bytes.Buffer
+		RunWith(strings.NewReader(stdin), &out, Options{Rich: true, Width: 500})
+		if out.String() != plain.String() {
+			t.Fatalf("junk response changed the line: %q", out.String())
+		}
+	})
+}
+
+// A daemon that never answers must not hold the line hostage: the read is
+// bounded, so the user waits statsBudget at worst and still gets the plain line.
+func TestRichModeIsBoundedWhenDaemonHangs(t *testing.T) {
+	// Ordering matters: Close waits for the in-flight handler, so the handler
+	// must be released before it, i.e. this defer has to be registered after.
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		<-release // never answers within the budget
+	}))
+	defer srv.Close()
+	defer close(release)
+	pointAtServer(t, srv.URL)
+
+	start := time.Now()
+	var out bytes.Buffer
+	RunWith(strings.NewReader(`{"session_id":"s1","model":{"display_name":"Opus"}}`), &out, Options{Rich: true, Width: 500})
+	elapsed := time.Since(start)
+
+	if !strings.Contains(out.String(), "Opus") {
+		t.Fatalf("no line printed when the daemon hung: %q", out.String())
+	}
+	// Generous headroom over statsBudget for slow CI; the point is that it is
+	// bounded at all, not the exact figure. Measured locally this path costs
+	// ~46ms against a daemon that never answers, against a ~0.6ms healthy read.
+	if elapsed > 2*time.Second {
+		t.Fatalf("rich read was not bounded: took %s", elapsed)
+	}
+}
+
+// A session the daemon has no counters for yet renders the plain line, not a
+// row of zeros claiming nothing has happened.
+func TestRichModeZeroStatsAddsNothing(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"turns":0,"tool_calls":0,"tokens_in":0,"tokens_out":0,"cache_read":0,"cache_write":0}`)
+	}))
+	defer srv.Close()
+	pointAtServer(t, srv.URL)
+
+	var out bytes.Buffer
+	RunWith(strings.NewReader(`{"session_id":"s1","model":{"display_name":"Opus"}}`), &out, Options{Rich: true, Width: 500})
+	if got := out.String(); got != brandMark+" · Opus" {
+		t.Fatalf("zero counters should add nothing, got %q", got)
+	}
+}
+
+// Rich mode without a session id must not call the daemon at all.
+func TestRichModeSkipsCallWithoutSessionID(t *testing.T) {
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+	}))
+	defer srv.Close()
+	pointAtServer(t, srv.URL)
+
+	var out bytes.Buffer
+	RunWith(strings.NewReader(`{"model":{"display_name":"Opus"}}`), &out, Options{Rich: true, Width: 500})
+	if called {
+		t.Fatal("called the daemon with no session id")
+	}
+}
+
+// A narrow terminal drops the counters, never the plan window the user came to
+// read, and never overflows once the essentials alone fit.
+func TestNarrowTerminalDropsCountersNotEssentials(t *testing.T) {
+	var in input
+	if err := json.Unmarshal([]byte(`{"model":{"display_name":"Opus 4.1"},"context_window":{"used_percentage":8},`+
+		`"rate_limits":{"five_hour":{"used_percentage":91}}}`), &in); err != nil {
+		t.Fatal(err)
+	}
+	st := &stats{Turns: 4, ToolCalls: 23, TokensIn: 80000, TokensOut: 35600, CacheRead: 1520000, CacheWrite: 40000}
+
+	wide := renderWidth(in, st, 200)
+	if !strings.Contains(wide, "4 turns") {
+		t.Fatalf("wide line should carry the counters: %q", wide)
+	}
+
+	// The counters degrade one at a time rather than as a block: an 80-column
+	// terminal — the default, and where most users are — keeps the two
+	// counters worth watching instead of losing all four to save one column.
+	mid := renderWidth(in, st, 80)
+	if !strings.Contains(mid, "turns") {
+		t.Fatalf("80 columns should keep turns/steps: %q", mid)
+	}
+	if strings.Contains(mid, "in 80.0K") {
+		t.Fatalf("80 columns should drop the token totals first: %q", mid)
+	}
+	if displayWidth(mid) > 80 {
+		t.Fatalf("80-column line overflows: width %d in %q", displayWidth(mid), mid)
+	}
+
+	narrow := renderWidth(in, st, 40)
+	if strings.Contains(narrow, "turns") || strings.Contains(narrow, "cache") {
+		t.Fatalf("narrow line kept the counters: %q", narrow)
+	}
+	for _, want := range []string{"Opus 4.1", "ctx 8%", "5h"} {
+		if !strings.Contains(narrow, want) {
+			t.Fatalf("narrow line dropped an essential %q: %q", want, narrow)
+		}
+	}
+	if displayWidth(narrow) > 40 {
+		t.Fatalf("narrow line overflows: width %d in %q", displayWidth(narrow), narrow)
+	}
+}
+
+// displayWidth counts what the terminal draws — runes, not bytes, and not the
+// colour codes. Getting this wrong is what would make a coloured line wrap.
+func TestDisplayWidthIgnoresANSIAndCountsRunes(t *testing.T) {
+	if got := displayWidth(colorPct("5h", 42)); got != len("5h 42%") {
+		t.Fatalf("ANSI counted: got %d, want %d", got, len("5h 42%"))
+	}
+	if got := displayWidth("привет"); got != 6 {
+		t.Fatalf("multibyte runes counted as bytes: got %d", got)
+	}
+}
+
+func TestCompactTokens(t *testing.T) {
+	for in, want := range map[int64]string{0: "0", 812: "812", 35_600: "35.6K", 1_500_000: "1.5M"} {
+		if got := compactTokens(in); got != want {
+			t.Fatalf("compactTokens(%d) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// COLUMNS drives the width; absent or absurd values fall back to 80 rather than
+// guessing wide, because a wrapped status line costs a screen row every message.
+func TestTerminalWidthFromCOLUMNS(t *testing.T) {
+	t.Setenv("COLUMNS", "120")
+	if got := terminalWidth(); got != 120 {
+		t.Fatalf("COLUMNS ignored: %d", got)
+	}
+	for _, bad := range []string{"", "wide", "3", "-10"} {
+		t.Setenv("COLUMNS", bad)
+		if got := terminalWidth(); got != defaultWidth {
+			t.Fatalf("COLUMNS=%q gave %d, want %d", bad, got, defaultWidth)
+		}
+	}
+}
+
+// pointAtServer writes a runtime.json in a temp data dir naming the test server,
+// so the statusline's daemon calls reach it.
+func pointAtServer(t *testing.T, url string) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv(config.EnvDataDir, dir)
+	port, err := strconv.Atoi(strings.TrimPrefix(url, "http://127.0.0.1:"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt, err := config.NewRuntime(port, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := config.WriteRuntime(dir, rt); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The cache segment reports what the cache cut off the bill, not how often it
+// was hit. This is the whole reason it is not a hit rate: on real sessions the
+// cached reads outnumber uncached input by orders of magnitude, so a hit rate
+// is 100% for everybody and says nothing. Two sessions with very different
+// cache economics must produce different numbers here.
+func TestCacheSegmentDiscriminatesBetweenSessions(t *testing.T) {
+	// Shaped like this machine's real rows: tiny uncached input against
+	// millions of cached reads. A hit rate would render 100% for both.
+	heavy := renderWidth(input{}, &stats{Turns: 1, TokensIn: 41_083, CacheRead: 6_684_979_254, CacheWrite: 1_000_000}, 500)
+	// A session that writes far more cache than it ever reads back.
+	light := renderWidth(input{}, &stats{Turns: 1, TokensIn: 41_083, CacheRead: 10_000, CacheWrite: 5_000_000}, 500)
+
+	// The session that reuses its cache shows a large, specific cut.
+	if !strings.Contains(heavy, "cache −90%") {
+		t.Fatalf("heavy-reuse session: want a large cut, got %q", heavy)
+	}
+	// The write-dominated one saves nothing — writes are billed above list
+	// price, so the cache genuinely cost it more than it returned. It must say
+	// nothing rather than print a saving, which is the whole point of gating
+	// the segment on a positive cut.
+	if strings.Contains(light, "cache") {
+		t.Fatalf("write-dominated session claimed a saving: %q", light)
+	}
+}
+
+// The line carries the mark, in both modes, so it is identifiably Caprock's
+// rather than an anonymous row of figures — the glyph alone, with no wordmark.
+func TestBrandOnEveryLine(t *testing.T) {
+	var plain bytes.Buffer
+	RunWith(strings.NewReader(`{"model":{"display_name":"Opus"}}`), &plain, Options{Width: 200})
+	if !strings.HasPrefix(plain.String(), brandMark) {
+		t.Fatalf("plain line does not lead with the mark: %q", plain.String())
+	}
+	if strings.Contains(plain.String(), "caprock") {
+		t.Fatalf("the line spells out the name; the mark alone is the badge: %q", plain.String())
+	}
+	// The mark is the amber glyph the favicon draws.
+	if !strings.Contains(brandMark, "⛰") || !strings.Contains(brandMark, "\x1b[33m") {
+		t.Fatalf("mark is not the amber glyph: %q", brandMark)
+	}
+}
+
+// The mark survives at every width, and costs little enough that an 80-column
+// terminal still shows the counters beside it.
+func TestBrandSurvivesEveryWidth(t *testing.T) {
+	var in input
+	if err := json.Unmarshal([]byte(`{"model":{"display_name":"Opus 5"},"context_window":{"used_percentage":34},`+
+		`"cost":{"total_cost_usd":1.234},"rate_limits":{"five_hour":{"used_percentage":91,"resets_at":1788700000}}}`), &in); err != nil {
+		t.Fatal(err)
+	}
+	st := &stats{Turns: 113, ToolCalls: 118, TokensIn: 226, TokensOut: 59_400, CacheRead: 5_800_000, CacheWrite: 40_000}
+
+	wide := renderWidth(in, st, 200)
+	if !strings.Contains(wide, brandMark) || strings.Contains(wide, "caprock") {
+		t.Fatalf("wide line should carry the mark and not the name: %q", wide)
+	}
+
+	// The mark is cheap enough that 80 columns still fits the counters beside it.
+	mid := renderWidth(in, st, 80)
+	if !strings.Contains(mid, brandMark) {
+		t.Fatalf("80 columns should keep the mark: %q", mid)
+	}
+	if !strings.Contains(mid, "113 turns") {
+		t.Fatalf("80 columns should keep turns/steps beside the mark: %q", mid)
+	}
+	if displayWidth(mid) > 80 {
+		t.Fatalf("80-column line overflows: %d in %q", displayWidth(mid), mid)
+	}
+
+	// The mark is never dropped, however narrow it gets — a badge that
+	// disappears when the line is tight is not a badge.
+	for _, w := range []int{60, 40, 20} {
+		if got := renderWidth(in, st, w); !strings.Contains(got, brandMark) {
+			t.Fatalf("width %d lost the mark: %q", w, got)
+		}
+	}
 }

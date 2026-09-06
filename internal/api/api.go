@@ -325,6 +325,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/agents/{id}/term", s.ws.serveTerm(s))
 	m.HandleFunc("POST /v1/shutdown", s.handleShutdown)
 	m.HandleFunc("POST /v1/statusline", s.handleStatusline)
+	m.HandleFunc("GET /v1/statusline/{id}", s.handleStatuslineStats)
 	m.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": d.Version})
 	})
@@ -1170,6 +1171,45 @@ func (s *Server) handleStatusline(w http.ResponseWriter, r *http.Request) {
 	record("five_hour", body.FiveHour)
 	record("seven_day", body.SevenDay)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// StatuslineStats is GET /v1/statusline/{id} — the figures the status line puts
+// on screen, and nothing else.
+//
+// The session detail endpoint already carries these, but it also loads sixty
+// events, a hundred file paths, narration and a pricing lookup to do it. This
+// runs on every assistant message, ahead of a line the user is waiting for, so
+// it is deliberately one indexed row and no derived work.
+type StatuslineStats struct {
+	Turns     int64 `json:"turns"`
+	ToolCalls int64 `json:"tool_calls"`
+	TokensIn  int64 `json:"tokens_in"`
+	TokensOut int64 `json:"tokens_out"`
+	// CacheRead and CacheWrite are returned raw rather than as a hit rate:
+	// what counts as the denominator is a presentation choice, and the caller
+	// that renders it should make it.
+	CacheRead  int64 `json:"cache_read"`
+	CacheWrite int64 `json:"cache_write"`
+}
+
+func (s *Server) handleStatuslineStats(w http.ResponseWriter, r *http.Request) {
+	if s.d.Token == "" || r.Header.Get("Authorization") != "Bearer "+s.d.Token {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	st, err := store.GetStats(r.Context(), s.d.Store.DB(), r.PathValue("id"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	// An unknown session is zeros, not a 404: the first call of a session races
+	// the first turn being recorded, and the caller renders "no numbers yet"
+	// identically either way.
+	writeJSON(w, http.StatusOK, StatuslineStats{
+		Turns: st.Turns, ToolCalls: st.ToolCalls,
+		TokensIn: st.TokensIn, TokensOut: st.TokensOut,
+		CacheRead: st.CacheRead, CacheWrite: st.CacheWrite,
+	})
 }
 
 // rateWindowIn is one plan-limit window as relayed by `caprock statusline`.

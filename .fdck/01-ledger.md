@@ -7,41 +7,87 @@ Status is one of: **open** (no decision yet) · **planned** (decided yes, not
 started) · **building** · **shipped** (in a release, with the version) ·
 **declined** (decided no, with the reason in the story).
 
-| Id     | Date       | From  | Request                                                                      | Status   | Landed in         |
-| ------ | ---------- | ----- | ---------------------------------------------------------------------------- | -------- | ----------------- |
-| FB-031 | 2026-09-03 | Vova  | Token optimisation, with the tokens saved shown in the stats                 | declined | —                 |
-| FB-030 | 2026-09-03 | Vova  | Caprock is convenient but not exclusive — nothing here needs paying for      | open     | —                 |
-| FB-029 | 2026-09-03 | Vova  | The stats stopped being the point once someone else pays the bill            | open     | —                 |
-| FB-028 | 2026-08-30 | Dima  | No way to buy from the main screen; the locked preview was unreadable        | shipped  | v0.37.1           |
-| FB-027 | 2026-08-30 | Panel | Five readers priced the premium dialog and none of them bought               | shipped  | v0.37.0           |
-| FB-026 | 2026-08-29 | Alex  | The dollar figures read as "what you'd pay if you were foolish"              | shipped  | next release      |
-| FB-025 | 2026-08-29 | Alex  | `make build` does not work on Windows out of the box                         | shipped  | v0.36.0           |
-| FB-024 | 2026-08-29 | Alex  | Ship through winget, and install into %USERPROFILE%\.local\bin               | shipped  | v0.36.0           |
-| FB-023 | 2026-08-29 | Alex  | The SQLite database reached half a gigabyte on ordinary use                  | declined | —                 |
-| FB-022 | 2026-08-28 | Dima  | Make the web terminal good enough to live in, like iTerm2                    | shipped  | v0.33.0           |
-| FB-021 | 2026-08-28 | Vova  | Shift+Enter inserts a newline on an empty prompt, submits once there is text | shipped  | v0.32.1           |
-| FB-020 | 2026-08-28 | Dima  | Show what a cache hit rate actually means, without shouting                  | shipped  | v0.32.0           |
-| FB-019 | 2026-08-27 | Dima  | Reach Caprock from a tablet or phone, the way Claude Code is                 | part     | next release      |
-| FB-018 | 2026-08-27 | Vova  | Shift+Enter did not work for him; Option+Enter was what he pressed           | shipped  | v0.31.3           |
-| FB-017 | 2026-08-27 | Dima  | Wanted an update button, or at least clear steps per OS                      | shipped  | v0.31.2           |
-| FB-016 | 2026-08-27 | Almas | brew said "already installed" for a release that was already out             | shipped  | v0.31.2           |
-| FB-015 | 2026-08-27 | Dima  | Hover invisible, caveat too wordy, two buttons out of line                   | shipped  | v0.31.2           |
-| FB-014 | 2026-08-27 | Dima  | The premium banner's line was a metaphor, not an explanation                 | shipped  | v0.31.1           |
-| FB-013 | 2026-08-27 | Dima  | Sharing a card produced two images, downloading produced one                 | shipped  | v0.31.1           |
-| FB-012 | 2026-08-27 | Dima  | Plan limits looked odd and belonged to nothing on the screen                 | shipped  | v0.31.1           |
-| FB-011 | 2026-08-27 | Dima  | No clear way to update; the share button was easy to miss                    | shipped  | v0.31.1           |
-| FB-010 | 2026-08-27 | Dima  | The share dialog explained too much and read as a hang                       | shipped  | v0.31.0           |
-| FB-009 | 2026-08-27 | Vova  | Shift+Enter in the terminal, for multi-line prompts                          | shipped  | v0.30.1           |
-| FB-008 | 2026-08-26 | Vova  | Pay for models from inside Caprock                                           | open     | —                 |
-| FB-007 | 2026-08-26 | Vova  | Show plan limits where they are actually looked at                           | shipped  | v0.28.0           |
-| FB-006 | 2026-08-26 | Vova  | Quick chat: a findable "new project" that makes the folder                   | shipped  | v0.28.0           |
-| FB-005 | 2026-08-26 | Vova  | Third-party model providers, free ones first                                 | part     | v0.30.0           |
-| FB-004 | 2026-08-26 | Vova  | JetBrains Mono in the terminal — Cyrillic was unreadable                     | shipped  | v0.28.0           |
-| FB-003 | 2026-08-26 | Vova  | Would pay $20/mo; $50 with models; $100 with Claude+GPT                      | open     | —                 |
-| FB-002 | 2026-08-25 | Vova  | Filter the dashboard by agent after OpenCode appeared                        | shipped  | v0.21.4           |
-| FB-001 | 2026-08-24 | Alex  | Hooks never fired on Windows                                                 | shipped  | v0.27.3 + v0.27.4 |
+| Id     | Date       | From  | Request                                                                         | Status   | Landed in         |
+| ------ | ---------- | ----- | ------------------------------------------------------------------------------- | -------- | ----------------- |
+| FB-032 | 2026-09-06 | Dima  | Put the session's real numbers in the Claude Code status line, as DeepSeek does | shipped  | next release      |
+| FB-031 | 2026-09-03 | Vova  | Token optimisation, with the tokens saved shown in the stats                    | declined | —                 |
+| FB-030 | 2026-09-03 | Vova  | Caprock is convenient but not exclusive — nothing here needs paying for         | open     | —                 |
+| FB-029 | 2026-09-03 | Vova  | The stats stopped being the point once someone else pays the bill               | open     | —                 |
+| FB-028 | 2026-08-30 | Dima  | No way to buy from the main screen; the locked preview was unreadable           | shipped  | v0.37.1           |
+| FB-027 | 2026-08-30 | Panel | Five readers priced the premium dialog and none of them bought                  | shipped  | v0.37.0           |
+| FB-026 | 2026-08-29 | Alex  | The dollar figures read as "what you'd pay if you were foolish"                 | shipped  | next release      |
+| FB-025 | 2026-08-29 | Alex  | `make build` does not work on Windows out of the box                            | shipped  | v0.36.0           |
+| FB-024 | 2026-08-29 | Alex  | Ship through winget, and install into %USERPROFILE%\.local\bin                  | shipped  | v0.36.0           |
+| FB-023 | 2026-08-29 | Alex  | The SQLite database reached half a gigabyte on ordinary use                     | declined | —                 |
+| FB-022 | 2026-08-28 | Dima  | Make the web terminal good enough to live in, like iTerm2                       | shipped  | v0.33.0           |
+| FB-021 | 2026-08-28 | Vova  | Shift+Enter inserts a newline on an empty prompt, submits once there is text    | shipped  | v0.32.1           |
+| FB-020 | 2026-08-28 | Dima  | Show what a cache hit rate actually means, without shouting                     | shipped  | v0.32.0           |
+| FB-019 | 2026-08-27 | Dima  | Reach Caprock from a tablet or phone, the way Claude Code is                    | part     | next release      |
+| FB-018 | 2026-08-27 | Vova  | Shift+Enter did not work for him; Option+Enter was what he pressed              | shipped  | v0.31.3           |
+| FB-017 | 2026-08-27 | Dima  | Wanted an update button, or at least clear steps per OS                         | shipped  | v0.31.2           |
+| FB-016 | 2026-08-27 | Almas | brew said "already installed" for a release that was already out                | shipped  | v0.31.2           |
+| FB-015 | 2026-08-27 | Dima  | Hover invisible, caveat too wordy, two buttons out of line                      | shipped  | v0.31.2           |
+| FB-014 | 2026-08-27 | Dima  | The premium banner's line was a metaphor, not an explanation                    | shipped  | v0.31.1           |
+| FB-013 | 2026-08-27 | Dima  | Sharing a card produced two images, downloading produced one                    | shipped  | v0.31.1           |
+| FB-012 | 2026-08-27 | Dima  | Plan limits looked odd and belonged to nothing on the screen                    | shipped  | v0.31.1           |
+| FB-011 | 2026-08-27 | Dima  | No clear way to update; the share button was easy to miss                       | shipped  | v0.31.1           |
+| FB-010 | 2026-08-27 | Dima  | The share dialog explained too much and read as a hang                          | shipped  | v0.31.0           |
+| FB-009 | 2026-08-27 | Vova  | Shift+Enter in the terminal, for multi-line prompts                             | shipped  | v0.30.1           |
+| FB-008 | 2026-08-26 | Vova  | Pay for models from inside Caprock                                              | open     | —                 |
+| FB-007 | 2026-08-26 | Vova  | Show plan limits where they are actually looked at                              | shipped  | v0.28.0           |
+| FB-006 | 2026-08-26 | Vova  | Quick chat: a findable "new project" that makes the folder                      | shipped  | v0.28.0           |
+| FB-005 | 2026-08-26 | Vova  | Third-party model providers, free ones first                                    | part     | v0.30.0           |
+| FB-004 | 2026-08-26 | Vova  | JetBrains Mono in the terminal — Cyrillic was unreadable                        | shipped  | v0.28.0           |
+| FB-003 | 2026-08-26 | Vova  | Would pay $20/mo; $50 with models; $100 with Claude+GPT                         | open     | —                 |
+| FB-002 | 2026-08-25 | Vova  | Filter the dashboard by agent after OpenCode appeared                           | shipped  | v0.21.4           |
+| FB-001 | 2026-08-24 | Alex  | Hooks never fired on Windows                                                    | shipped  | v0.27.3 + v0.27.4 |
 
 ## Detail
+
+### FB-032 — The numbers DeepSeek puts in its status line
+
+Dima sent a screenshot of the DeepSeek harness's status bar and asked whether
+Caprock could put the same kind of line into Claude Code and OpenCode:
+
+```
+4 turns · 23 steps  |  LLM 7m49s · Tool call 2.7s  |  TTFT avg 1.9s · 83 tok/s  |  Cache hit 95%  |  Input 1.5M tok · Output 35.6K tok
+```
+
+**Shipped, in the part that can be told the truth.** Caprock already owns this
+surface — `caprock statusline` has been Claude Code's `statusLine.command`
+since v0.17.0 — so this is a question about which figures go on a line we
+already print, not about a new integration.
+
+The screenshot splits cleanly into three groups by where the number would have
+to come from:
+
+- **Already in the database.** Turns, steps, the cache figures and input/output
+  totals are columns on `session_stats`, written on every turn. Nothing to
+  measure; the work is reading them and fitting them on a line. The cache
+  number shipped as what the cache *cut off the bill* rather than DeepSeek's
+  hit rate: run against the real database, a hit rate read 100% for every
+  session on the machine, because cached reads outnumber uncached input by
+  orders of magnitude. A figure identical for everybody is decoration.
+- **Not measured, and not honestly derivable today.** TTFT and tokens/second
+  have no source: hooks do not carry them and the transcript does not either.
+  The wall-clock split between model time and tool time is closer — the
+  `PreToolUse`/`PostToolUse` timestamps bound the tool half — but "the rest is
+  the model" counts the user's own thinking time as inference. Under rule 6
+  these stay off the line until something real backs them.
+- **Not available at all, on the other agent.** OpenCode has no
+  `statusLine.command`, and Caprock reads its database read-only rather than
+  extending it. Its status bar is not a surface we can write to, so this is a
+  Claude Code feature.
+
+The interesting constraint is not the data but the safety contract. The
+statusline prints from stdin **first**, then talks to the daemon
+fire-and-forget, precisely so a slow or absent daemon can never delay a
+session. Reading `session_stats` before printing inverts that. The plan keeps
+the guarantee by degrading rather than waiting: a hard read budget, and the
+current line whenever the daemon does not answer inside it.
+
+Shipped as `caprock statusline --rich`, opt-in and off by default, so an
+existing registration is unchanged until the user asks for it.
 
 ### FB-031 — Token optimisation, and the saving in the stats
 

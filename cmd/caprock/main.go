@@ -106,7 +106,8 @@ func upCmd() *cobra.Command {
 					fmt.Fprintf(cmd.ErrOrStderr(), "warning: hooks not installed: %v\n", err)
 				}
 				// The statusLine feeds plan-limit windows (Pro/Max) to the Cost
-				// screen; offer it the same way as hooks. Non-fatal if declined.
+				// screen and puts this session's counters on the line; offer it
+				// the same way as hooks. Non-fatal if declined.
 				if err := maybeInstallStatusline(cmd, yes); err != nil {
 					fmt.Fprintf(cmd.ErrOrStderr(), "warning: statusline not installed: %v\n", err)
 				}
@@ -316,32 +317,37 @@ func statuslineCommandStr() string {
 }
 
 // maybeInstallStatusline offers to register `caprock statusline` as Claude Code's
-// statusLine command, which feeds plan-limit windows (Pro/Max) to the Cost
-// screen. Same consent contract as hooks: TTY prompt, or `--yes` for scripts. It
-// never clobbers a statusLine the user already set to something else.
+// statusLine, which puts the plan-limit windows (Pro/Max) and the session's own
+// counters on the line. Same consent contract as hooks: TTY prompt, or `--yes`
+// for scripts. It never clobbers a statusLine the user already set to something
+// else.
 func maybeInstallStatusline(cmd *cobra.Command, yes bool) error {
+	cmdStr := statuslineCommandStr()
 	sp, err := hooks.DefaultSettingsPath()
 	if err != nil {
 		return err
 	}
-	cmdStr := statuslineCommandStr()
 	ours, present, err := hooks.StatuslineInstalled(sp, cmdStr)
 	if err != nil {
 		return err
 	}
 	if ours {
-		return nil // already ours
+		// Already ours, in either form. An existing `… statusline --rich`
+		// registration keeps working because the flag survives as a no-op, and
+		// a bare `… statusline` now shows the counters too — so an upgrade
+		// needs no settings rewrite and no prompt to switch.
+		return nil
 	}
 	if present {
 		// The user has their own statusLine (ccusage is common) — don't touch
 		// it, but always say so. This line used to be behind `if !yes`, and
 		// `caprock statusline install` calls with yes=true: the subcommand
 		// printed nothing and exited 0, having done nothing at all.
-		fmt.Fprintln(cmd.OutOrStdout(), "You already have a statusLine set; leaving it. For Caprock's plan-limit view, add `caprock statusline` yourself, or run `caprock statusline install`.")
+		fmt.Fprintln(cmd.OutOrStdout(), "You already have a statusLine set; leaving it. To use Caprock's instead, run `caprock statusline install --rich`.")
 		return nil
 	}
 	if !yes {
-		fmt.Fprintf(cmd.OutOrStdout(), "Caprock can also show your plan limits on the Cost screen, through Claude Code's status line (backed up first).\n")
+		fmt.Fprintf(cmd.OutOrStdout(), "Caprock can also show your plan limits and this session's numbers on Claude Code's status line (backed up first).\n")
 		if !confirm(cmd, "Add it? [Y/n] ") {
 			fmt.Fprintln(cmd.OutOrStdout(), "Skipped. Run `caprock statusline install` later to enable plan limits.")
 			return nil
@@ -626,29 +632,25 @@ func hookCmd() *cobra.Command {
 // stdin, prints a one-line status, and best-effort forwards rate-limit windows to
 // the daemon. Register in settings.json as `statusLine: {command: "caprock statusline"}`.
 func statuslineCmd() *cobra.Command {
+	var rich, plain bool
+	var width int
 	c := &cobra.Command{
 		Use:   "statusline",
 		Short: "Status line for Claude Code (reads its status JSON on stdin, prints one line)",
 		Run: func(cmd *cobra.Command, _ []string) {
-			statusline.Run(cmd.InOrStdin(), cmd.OutOrStdout())
+			// The counters are on by default; --plain is the way out. --rich
+			// is kept as a no-op so the registrations that named it explicitly
+			// keep working — a settings.json written by an earlier version
+			// must not start failing because a flag went away.
+			statusline.RunWith(cmd.InOrStdin(), cmd.OutOrStdout(), statusline.Options{Rich: !plain, Width: width})
 		},
 	}
+	c.Flags().BoolVar(&plain, "plain", false, "omit the session's counters — print only what Claude Code passes in, with no call to the daemon")
+	c.Flags().BoolVar(&rich, "rich", false, "no-op; the counters are on by default (kept so existing registrations keep working)")
+	_ = c.Flags().MarkHidden("rich")
+	c.Flags().IntVar(&width, "width", 0, "width to fit the line into (default: $COLUMNS, else 80)")
 	c.AddCommand(
-		&cobra.Command{
-			Use:   "install",
-			Short: "Register `caprock statusline` as Claude Code's statusLine (enables plan limits)",
-			RunE: func(cmd *cobra.Command, _ []string) error {
-				sp, err := hooks.DefaultSettingsPath()
-				if err != nil {
-					return err
-				}
-				if ours, _, _ := hooks.StatuslineInstalled(sp, statuslineCommandStr()); ours {
-					fmt.Fprintln(cmd.OutOrStdout(), "statusline already installed")
-					return nil
-				}
-				return maybeInstallStatusline(cmd, true)
-			},
-		},
+		installStatuslineCmd(),
 		&cobra.Command{
 			Use:   "uninstall",
 			Short: "Remove Caprock's statusLine entry (leaves your own untouched)",
@@ -671,6 +673,25 @@ func statuslineCmd() *cobra.Command {
 		},
 	)
 	return c
+}
+
+// installStatuslineCmd is `caprock statusline install`.
+func installStatuslineCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "install",
+		Short: "Register `caprock statusline` as Claude Code's statusLine",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			sp, err := hooks.DefaultSettingsPath()
+			if err != nil {
+				return err
+			}
+			if ours, _, _ := hooks.StatuslineInstalled(sp, statuslineCommandStr()); ours {
+				fmt.Fprintln(cmd.OutOrStdout(), "statusline already installed")
+				return nil
+			}
+			return maybeInstallStatusline(cmd, true)
+		},
+	}
 }
 
 // taskRow is the subset of GET /v1/tasks the CLI prints.
