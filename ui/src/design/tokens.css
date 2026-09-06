@@ -118,7 +118,16 @@
   font-feature-settings: "tnum" 1, "zero" 1;
 }
 
-* { border-color: var(--color-border); }
+/* In `@layer base`, not unlayered. Unlayered styles beat every layered one in
+ * the cascade whatever their specificity, so as a bare `*` rule this silently
+ * overrode every `border-accent/NN` utility in the app — the "+ New session"
+ * button looked amber only because of its background, and its border had been
+ * grey all along. Inside the base layer it is the default it was meant to be,
+ * and a utility takes over. (`:where()` alone does not fix this: the layer,
+ * not the specificity, is what wins.) */
+@layer base {
+  * { border-color: var(--color-border); }
+}
 /* `:where()` so this sets a default without competing with utilities.
  * At plain `a` it has the same specificity as `.text-panel` and wins on order,
  * being declared after them — so a colour class on an <a> was silently
