@@ -72,8 +72,13 @@ func startDaemon(t *testing.T, dataDir, root string) (string, context.CancelFunc
 			// Without this the developer's own OpenCode sessions are imported
 			// into the temporary store and every count below is wrong.
 			OpenCodeDB: "off",
-			IdleAfter:  30 * time.Second,
-			OnReady:    func(u string) { ready <- u },
+			// Off for the same reason OpenCode is: this test asserts exact
+			// turn and cost figures, and a developer machine with real Codex
+			// transcripts under ~/.codex would have them imported into the
+			// daemon under test and counted.
+			CodexDir:  "off",
+			IdleAfter: 30 * time.Second,
+			OnReady:   func(u string) { ready <- u },
 		})
 	}()
 	select {

@@ -65,10 +65,15 @@ func TestAgainstLocalTranscripts(t *testing.T) {
 	if parsed == 0 {
 		t.Fatal("no transcript on this machine parsed at all")
 	}
-	// Not an assertion, a record: most Codex Desktop transcripts carry no
-	// turn_context, so most sessions have tokens and no model to price them by.
-	// If that ratio ever inverts, the unpriced-turn handling matters less and
-	// this log is where the change shows up first.
+	// Every session that carries tokens must name a model, or its cost cannot
+	// be computed. This holds because two sources are read: `turn_context`
+	// (4 of 100 real transcripts) and `base_instructions.provenance` (96).
+	// Reading only the first left 83% of tokens unpriced, and this assertion is
+	// what would catch that regressing.
+	if withTokens > withModel {
+		t.Errorf("%d transcripts carry tokens but only %d name a model — %d sessions cannot be priced",
+			withTokens, withModel, withTokens-withModel)
+	}
 	t.Logf("parsed %d/%d transcripts; %d carry tokens, %d name a model",
 		parsed, len(ts), withTokens, withModel)
 }

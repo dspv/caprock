@@ -224,3 +224,81 @@ func TestDirRespectsEnv(t *testing.T) {
 		t.Errorf("env override ignored: %q", Dir())
 	}
 }
+
+// The model comes from base_instructions.provenance when turn_context is
+// absent, which on real data is nearly always: turn_context appears in 4 of
+// 100 transcripts, provenance in 96, and between them every session that
+// carries tokens can be priced. Reading only the obvious source left 83% of
+// tokens with no cost.
+func TestModelFromProvenanceWhenTurnContextIsAbsent(t *testing.T) {
+	lines := readLines(t, fixture)
+	var kept []string
+	for _, l := range lines {
+		if strings.Contains(l, `"turn_context"`) {
+			continue
+		}
+		kept = append(kept, l)
+	}
+	s, err := Parse(strings.NewReader(strings.Join(kept, "\n")), "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Model != "gpt-5-codex" {
+		t.Fatalf("model should come from provenance, got %q", s.Model)
+	}
+}
+
+// turn_context wins where both exist: provenance describes the prompt the
+// session was built with, turn_context the turn actually running. They agreed
+// in every real transcript carrying both, and no model changed mid-session in
+// 100 files — but the per-turn value is the one to trust if that ever changes.
+func TestTurnContextBeatsProvenance(t *testing.T) {
+	lines := readLines(t, fixture)
+	for i, l := range lines {
+		if strings.Contains(l, `"turn_context"`) {
+			lines[i] = strings.Replace(l, `"gpt-5-codex"`, `"gpt-5.6-sol"`, 1)
+		}
+	}
+	s, err := Parse(strings.NewReader(strings.Join(lines, "\n")), "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Model != "gpt-5.6-sol" {
+		t.Fatalf("turn_context should win over provenance, got %q", s.Model)
+	}
+}
+
+// Provenance carries a type. Only `model` names a model id; anything else
+// describes the instructions some other way and must not be read as one.
+func TestProvenanceOfAnotherTypeIsNotAModel(t *testing.T) {
+	lines := readLines(t, fixture)
+	var kept []string
+	for _, l := range lines {
+		if strings.Contains(l, `"turn_context"`) {
+			continue
+		}
+		kept = append(kept, strings.Replace(l, `"type": "model"`, `"type": "preset"`, 1))
+	}
+	s, err := Parse(strings.NewReader(strings.Join(kept, "\n")), "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Model != "" {
+		t.Fatalf("a non-model provenance was read as a model: %q", s.Model)
+	}
+}
+
+func readLines(t *testing.T, path string) []string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, l := range strings.Split(string(b), "\n") {
+		if strings.TrimSpace(l) != "" {
+			out = append(out, l)
+		}
+	}
+	return out
+}
