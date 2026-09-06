@@ -139,14 +139,16 @@ type sessionMeta struct {
 	Cwd        string `json:"cwd"`
 	CLIVersion string `json:"cli_version"`
 	Originator string `json:"originator"`
-	// BaseInstructions carries the model the session's system prompt was
-	// built for, which is the only place most transcripts name a model at all.
-	BaseInstructions *struct {
-		Provenance *struct {
-			Type  string `json:"type"`
-			Model string `json:"model"`
-		} `json:"provenance"`
-	} `json:"base_instructions"`
+	// BaseInstructions carries the model the session's system prompt was built
+	// for, which is the only place most transcripts name a model at all.
+	//
+	// Deliberately json.RawMessage rather than a typed struct: this field is
+	// not ours, and it has already been seen as an object here. Typed, a
+	// version of Codex that writes it as a plain string makes the *whole*
+	// session_meta fail to decode — and with it the session id, so the entire
+	// transcript is discarded as "not a rollout file". One unexpected field
+	// type must cost the model, not the session.
+	BaseInstructions json.RawMessage `json:"base_instructions"`
 }
 
 type turnContext struct {
@@ -227,10 +229,27 @@ func Parse(r io.Reader, path string) (*Session, error) {
 		at := parseTime(rec.Timestamp)
 		switch rec.Type {
 		case "session_meta":
+			// Decoded field by field rather than into a struct in one go.
+			//
+			// A single unexpected type anywhere in this payload fails the whole
+			// unmarshal, and losing session_meta means losing the session id,
+			// which makes the entire transcript "not a rollout file" and drops
+			// every turn in it. That is far too much to lose to one field we do
+			// not even own — Codex is free to change any of these between
+			// releases. Each field is taken if it is the shape we expect and
+			// skipped if it is not.
 			var m sessionMeta
-			if err := json.Unmarshal(rec.Payload, &m); err != nil {
+			raw := map[string]json.RawMessage{}
+			if err := json.Unmarshal(rec.Payload, &raw); err != nil {
 				continue
 			}
+			m.SessionID = jsonString(raw["session_id"])
+			m.ID = jsonString(raw["id"])
+			m.Timestamp = jsonString(raw["timestamp"])
+			m.Cwd = jsonString(raw["cwd"])
+			m.CLIVersion = jsonString(raw["cli_version"])
+			m.Originator = jsonString(raw["originator"])
+			m.BaseInstructions = raw["base_instructions"]
 			s.ID = firstNonEmpty(m.SessionID, m.ID)
 			s.Cwd = m.Cwd
 			s.CLIVersion = m.CLIVersion
@@ -244,8 +263,8 @@ func Parse(r io.Reader, path string) (*Session, error) {
 			// It is a recorded model id (`{"type":"model","model":"…"}`), not
 			// an inference from the originator or the CLI version, which is
 			// what makes pricing from it honest rather than a guess.
-			if bi := m.BaseInstructions; bi != nil && bi.Provenance != nil && bi.Provenance.Type == "model" {
-				s.Model = bi.Provenance.Model
+			if model := provenanceModel(m.BaseInstructions); model != "" {
+				s.Model = model
 			}
 			if t := parseTime(m.Timestamp); !t.IsZero() {
 				s.StartedAt = t
@@ -343,6 +362,42 @@ func Parse(r io.Reader, path string) (*Session, error) {
 		return nil, ErrNotASession
 	}
 	return s, nil
+}
+
+// jsonString decodes a raw value as a string, or returns "" for anything else.
+// Absent, null, a number, an object — all mean "not a string we can use", none
+// of them an error worth losing a session over.
+func jsonString(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return ""
+	}
+	return s
+}
+
+// provenanceModel reads the model id out of base_instructions, tolerating any
+// shape it is not. Only a provenance of type "model" names a model; anything
+// else describes the instructions some other way and is not one.
+func provenanceModel(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var bi struct {
+		Provenance *struct {
+			Type  string `json:"type"`
+			Model string `json:"model"`
+		} `json:"provenance"`
+	}
+	if err := json.Unmarshal(raw, &bi); err != nil {
+		return "" // a string, a number, anything: no model here, and no error
+	}
+	if bi.Provenance == nil || bi.Provenance.Type != "model" {
+		return ""
+	}
+	return bi.Provenance.Model
 }
 
 // ErrNotASession is returned for a file with no session_meta record.
