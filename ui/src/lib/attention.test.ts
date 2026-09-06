@@ -106,7 +106,7 @@ describe('findAttention', () => {
   })
 })
 
-describe('spent with little to show', () => {
+describe('the removed "lots of turns, few files" rule', () => {
   const base = (over: Partial<SessionSummary> & { session_id: string }): SessionSummary => ({
     project: 'p',
     status: 'ended',
@@ -116,39 +116,24 @@ describe('spent with little to show', () => {
     ...over,
   } as unknown as SessionSummary)
 
-  it('surfaces a session that burned money and touched almost nothing', () => {
-    // The real case: 1,401 turns, 1 file, $78 — previously unreachable, because
-    // every other rule skips ended sessions.
-    const s = base({ session_id: 'a', stats: { cost_usd: 78.06, turns: 1401, files_touched: 1 } as never })
-    const items = findAttention({ sessions: [s], alerts: [], now: NOW })
-    expect(items).toHaveLength(1)
-    expect(items[0]!.title).toBe('Lots of turns, few files')
-    expect(items[0]!.detail).toContain('1 file')
-    expect(items[0]!.costUSD).toBe(78.06)
-  })
-
-  it('says nothing about a session that spent money and produced work', () => {
-    const s = base({ session_id: 'a', stats: { cost_usd: 1497, turns: 12527, files_touched: 400 } as never })
+  // These are the three sessions the rule ever fired on, on a real machine.
+  // Every one was a false positive: they made 636, 418 and 288 Bash calls, and
+  // `files_touched` counts only Edit/Write/MultiEdit/NotebookEdit — so the work
+  // was real and simply invisible to the counter. The third shipped three
+  // releases while the banner said "no files touched".
+  it.each([
+    ['0 files, $48, 357 turns — shipped three releases', { cost_usd: 48.58, turns: 357, files_touched: 0 }],
+    ['1 file, $78, 1401 turns', { cost_usd: 78.06, turns: 1401, files_touched: 1 }],
+    ['1 file, $56, 731 turns', { cost_usd: 56.42, turns: 731, files_touched: 1 }],
+  ])('says nothing about %s', (_label, stats) => {
+    const s = base({ session_id: 'a', stats: stats as never })
     expect(findAttention({ sessions: [s], alerts: [], now: NOW })).toEqual([])
   })
 
-  it('ignores a cheap session however little it touched', () => {
-    const s = base({ session_id: 'a', stats: { cost_usd: 2, turns: 900, files_touched: 0 } as never })
-    expect(findAttention({ sessions: [s], alerts: [], now: NOW })).toEqual([])
-  })
-
-  it('ignores a short expensive session — that is just a big turn', () => {
-    const s = base({ session_id: 'a', stats: { cost_usd: 60, turns: 12, files_touched: 0 } as never })
-    expect(findAttention({ sessions: [s], alerts: [], now: NOW })).toEqual([])
-  })
-
-  it('does not raise last month as if it were actionable', () => {
-    const s = base({
-      session_id: 'a',
-      last_event_at: NOW - 30 * 24 * 3600 * 1000,
-      activity: { health: 'idle', phrase: 'x', at: '2026-07-21T12:00:00Z' } as never,
-      stats: { cost_usd: 78, turns: 1401, files_touched: 1 } as never,
-    })
+  it('says nothing however extreme the shape gets', () => {
+    // No threshold to tune: the counter cannot see Bash edits at any cost or
+    // turn count, so there is no version of this rule that is not guessing.
+    const s = base({ session_id: 'a', stats: { cost_usd: 5000, turns: 20000, files_touched: 0 } as never })
     expect(findAttention({ sessions: [s], alerts: [], now: NOW })).toEqual([])
   })
 })

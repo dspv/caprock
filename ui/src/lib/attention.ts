@@ -66,15 +66,6 @@ export interface AttentionInput {
 
 const DEFAULT_WAITING_MS = 15 * 60 * 1000
 
-// Thresholds for "spent, with little to show". Deliberately conservative: this
-// must fire on a session that plainly went nowhere, never on ordinary research
-// or a long conversation that happened not to edit much. Measured against a
-// real month, these select 2 sessions out of 56.
-const wastedUSD = 25
-const wastedTurns = 300
-const wastedFiles = 2
-const wastedWindowMs = 24 * 60 * 60 * 1000
-
 // Running out of plan window stops work outright, so it earns an interruption —
 // but only near the end. The Cost screen already colours 85% amber, and an
 // alert that fires wherever a colour changes is an alert people learn to
@@ -173,42 +164,27 @@ export function findAttention({ sessions, alerts, now, limits, waitingMs = DEFAU
     }
   }
 
-  // A session that cost real money across many turns while touching almost no
-  // files. The other rules deliberately skip ended sessions, so this shape had
-  // no surface at all: finding one meant scanning dozens of unsorted cards
-  // behind a checkbox at the bottom of the page.
+  // There was a "lots of turns, few files" alert here. It is gone, and the
+  // reason is worth keeping: `files_touched` counts only Edit/Write/MultiEdit/
+  // NotebookEdit, so every file changed through Bash — `sed -i`, a heredoc, a
+  // python one-liner — was invisible to it. Agents working under bypassed
+  // permissions are told to prefer exactly those, so the rule was blind to a
+  // whole ordinary way of working.
   //
-  // Cost alone is still not a rule — spending is the job. And this is not a
-  // verdict either: reading, investigating and designing all look like this,
-  // and the product has no way to tell them from a session that went nowhere.
-  // It reports the measurement and leaves the judgement to the person who was
-  // there, which is why the wording is descriptive rather than damning.
-  for (const s of list) {
-    if (!s.stats || !s.activity) continue
-    const { cost_usd: cost, turns, files_touched: files } = s.stats
-    if (cost < wastedUSD || turns < wastedTurns || files > wastedFiles) continue
-    // Only recent work: a session that went nowhere last month is history, not
-    // something to act on, and an alert you cannot act on is noise that trains
-    // people to stop reading the strip.
-    const endedAt = ms(s.activity.at) || s.last_event_at
-    if (endedAt > 0 && now - endedAt > wastedWindowMs) continue
-    out.push({
-      id: `spent-${s.session_id}`,
-      sessionId: s.session_id,
-      project: s.project,
-      severity: 'medium',
-      // Stated as the measurement, not as a verdict. Many turns and few files
-      // is often legitimate — a long investigation, a design conversation,
-      // debugging by reading. The product cannot tell those from a session
-      // that went nowhere, so it reports what it counted and lets the person
-      // who was there decide.
-      title: 'Lots of turns, few files',
-      detail: `${turns.toLocaleString()} turns, ${files === 0 ? 'no files' : files === 1 ? '1 file' : `${files} files`} touched`,
-      costUSD: cost,
-      owned: s.owned,
-      since: ms(s.activity.at) || s.last_event_at,
-    })
-  }
+  // On the owner's machine it had fired on three sessions ever, with 636, 418
+  // and 288 Bash calls: all three were false, and one of them had shipped
+  // three releases while the banner said "no files touched". A rule with no
+  // true positives is not a threshold to tune.
+  //
+  // It also argued against itself. Its own comment conceded the product cannot
+  // tell a long investigation from a session that went nowhere and left the
+  // judgement to the reader — which is a reason not to interrupt them at all.
+  // "I don't even know what to do with this" was the report that removed it.
+  //
+  // Counting files from Bash command text would be guesswork about shell
+  // syntax, and rule 6 prefers no number to an invented one. If this returns,
+  // it should be built on `internal/gitdiff`, which already knows what a
+  // session really changed.
 
   // High severity first; within a severity, the oldest condition first, because
   // the thing that has been wrong longest has cost the most.
