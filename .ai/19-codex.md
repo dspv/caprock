@@ -99,6 +99,29 @@ rejected before the second source was found: it would have put a confident
 dollar figure on the screen this product's credibility rests on, derived from
 nothing. Finding a recorded id was the difference between a guess and a fact.
 
+## What is not covered by the measurement
+
+The 100 transcripts this was built against are **96% Codex Desktop / VS Code**
+and 4 sessions from the plain CLI, across CLI versions 0.39.0–0.150.0. That is
+one machine's habits, not the population — and the two bugs shipped in v0.54.0
+and v0.54.1 both came from generalising a field's presence from the newest file
+rather than counting it across all of them.
+
+The CLI sessions are reassuring in the way that matters: they carry the model
+in `turn_context` and no provenance, which is the *opposite* of Desktop. Reading
+both sources is what makes the importer work across them, so the design is
+validated by the split rather than by luck.
+
+What protects the rest is refusing to lose data to a shape we did not expect.
+`session_meta` is decoded field by field, not as one struct: a single
+unexpected type used to fail the whole unmarshal, and losing that record loses
+the session id, which discards **the entire transcript**. Every field is taken
+if it is the shape we expect and skipped if it is not, and `robustness_test.go`
+pins that for unknown record kinds, non-object payloads, a `base_instructions`
+that is a string, a `turn_context` whose model is not one, missing timestamps
+and missing `token_count.info`. The worst case for an unforeseen shape is a
+missing field, never a missing session.
+
 ## Not built
 
 - **Session control.** Spawning, typing into, and killing a Codex session.
