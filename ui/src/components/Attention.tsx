@@ -105,12 +105,13 @@ function Row({ it, now, onDismiss, session }: {
         >
           {it.sessionId ? 'open' : 'details'}
         </a>
-        {/* Only on the two items a spend cap would actually have acted on: a
-          * loop burning money and a session that spent a lot for nothing.
-          * Deliberately NOT on the plan-window item — a plan limit is
-          * Anthropic's, and no amount of money we take moves it, so selling a
-          * cap beside it would be selling the wrong thing. */}
-        {(it.id.startsWith('loop-') || it.id.startsWith('spent-')) && (
+        {/* Only on the item a spend cap would actually have acted on: a loop
+          * burning money. Deliberately NOT on the plan-window item — a plan
+          * limit is Anthropic's, and no amount of money we take moves it, so
+          * selling a cap beside it would be selling the wrong thing. (It was
+          * also on the "spent a lot for nothing" item, which is gone — see
+          * attention.ts for why.) */}
+        {it.id.startsWith('loop-') && (
           <PremiumHint reason="this is what a cap stops" now={now} canAct={it.owned === true} />
         )}
         {onDismiss && it.id.startsWith('loop-') && (

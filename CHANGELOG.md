@@ -7,6 +7,21 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Removed
+
+- **The "Lots of turns, few files" alert.** It counted files touched through
+  Edit/Write only, so everything changed through Bash — `sed -i`, a heredoc, a
+  python one-liner — was invisible to it. An agent running with permissions
+  bypassed is told to prefer exactly those, so the rule was blind to an
+  ordinary way of working.
+
+  On the owner's machine it had fired three times ever, on sessions that made
+  636, 418 and 288 Bash calls. All three were wrong, and one of them had
+  shipped three releases while the banner said "no files touched". A rule with
+  no true positives is not a threshold to tune, so it is gone rather than
+  retuned. Counting files out of shell command text would be guesswork; if this
+  ever returns it should be built on what git actually says changed.
+
 Phase 3 (Delight) has no plan by design.
 
 ## [0.53.2] - 2026-09-06
