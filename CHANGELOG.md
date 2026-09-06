@@ -9,6 +9,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.54.3] - 2026-09-06
+
+### Fixed
+
+- **A Codex transcript with one unexpected field was skipped entirely.** The
+  session record was read all-or-nothing, so a single field of a type we did
+  not expect discarded the session id — and with it every turn in that
+  transcript. Each field is now read on its own: an unfamiliar shape costs that
+  field, never the session. Codex is someone else's format and free to change
+  between releases, so this is the difference between missing a detail and
+  missing a day's work.
+
 ## [0.54.2] - 2026-09-06
 
 ### Fixed
