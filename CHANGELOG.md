@@ -7,6 +7,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+Phase 3 (Delight) has no plan by design.
+
+## [0.53.1] - 2026-09-06
+
 ### Fixed
 
 - **Every coloured border in the dashboard was grey.** A global border reset
@@ -22,8 +26,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 - **The two session buttons line up with the strip beside them.** Quick chat
   and + New session were shorter than the ALL TIME row they share, which read
   as ragged; they now match its height. Quick chat gains a soft amber border.
-
-Phase 3 (Delight) has no plan by design.
 
 ## [0.53.0] - 2026-09-06
 
