@@ -242,7 +242,7 @@ func TestRichModeZeroStatsAddsNothing(t *testing.T) {
 
 	var out bytes.Buffer
 	RunWith(strings.NewReader(`{"session_id":"s1","model":{"display_name":"Opus"}}`), &out, Options{Rich: true, Width: 500})
-	if got := out.String(); got != brandFull+" · Opus" {
+	if got := out.String(); got != brandMark+" · Opus" {
 		t.Fatalf("zero counters should add nothing, got %q", got)
 	}
 }
@@ -385,24 +385,25 @@ func TestCacheSegmentDiscriminatesBetweenSessions(t *testing.T) {
 }
 
 // The line carries the mark, in both modes, so it is identifiably Caprock's
-// rather than an anonymous row of figures.
+// rather than an anonymous row of figures — the glyph alone, with no wordmark.
 func TestBrandOnEveryLine(t *testing.T) {
 	var plain bytes.Buffer
 	RunWith(strings.NewReader(`{"model":{"display_name":"Opus"}}`), &plain, Options{Width: 200})
-	if !strings.HasPrefix(plain.String(), brandFull) {
-		t.Fatalf("plain line does not lead with the badge: %q", plain.String())
+	if !strings.HasPrefix(plain.String(), brandMark) {
+		t.Fatalf("plain line does not lead with the mark: %q", plain.String())
 	}
-	// The mark is the amber glyph the favicon draws, and it survives even when
-	// the wordmark cannot.
+	if strings.Contains(plain.String(), "caprock") {
+		t.Fatalf("the line spells out the name; the mark alone is the badge: %q", plain.String())
+	}
+	// The mark is the amber glyph the favicon draws.
 	if !strings.Contains(brandMark, "⛰") || !strings.Contains(brandMark, "\x1b[33m") {
 		t.Fatalf("mark is not the amber glyph: %q", brandMark)
 	}
 }
 
-// The badge shrinks to the mark before any counter is dropped: the wordmark
-// costs ten columns and carries nothing the mark does not, so on an 80-column
-// terminal it is the difference between showing turns/steps and showing none.
-func TestBrandShrinksBeforeCountersAreDropped(t *testing.T) {
+// The mark survives at every width, and costs little enough that an 80-column
+// terminal still shows the counters beside it.
+func TestBrandSurvivesEveryWidth(t *testing.T) {
 	var in input
 	if err := json.Unmarshal([]byte(`{"model":{"display_name":"Opus 5"},"context_window":{"used_percentage":34},`+
 		`"cost":{"total_cost_usd":1.234},"rate_limits":{"five_hour":{"used_percentage":91,"resets_at":1788700000}}}`), &in); err != nil {
@@ -411,21 +412,17 @@ func TestBrandShrinksBeforeCountersAreDropped(t *testing.T) {
 	st := &stats{Turns: 113, ToolCalls: 118, TokensIn: 226, TokensOut: 59_400, CacheRead: 5_800_000, CacheWrite: 40_000}
 
 	wide := renderWidth(in, st, 200)
-	if !strings.Contains(wide, brandFull) {
-		t.Fatalf("wide line should carry the full wordmark: %q", wide)
+	if !strings.Contains(wide, brandMark) || strings.Contains(wide, "caprock") {
+		t.Fatalf("wide line should carry the mark and not the name: %q", wide)
 	}
 
-	// At 80 the wordmark must go and the counters must stay — the whole point
-	// of shrinking before dropping.
+	// The mark is cheap enough that 80 columns still fits the counters beside it.
 	mid := renderWidth(in, st, 80)
-	if strings.Contains(mid, "caprock") {
-		t.Fatalf("80 columns should drop the wordmark: %q", mid)
-	}
 	if !strings.Contains(mid, brandMark) {
 		t.Fatalf("80 columns should keep the mark: %q", mid)
 	}
 	if !strings.Contains(mid, "113 turns") {
-		t.Fatalf("80 columns should keep turns/steps once the wordmark is gone: %q", mid)
+		t.Fatalf("80 columns should keep turns/steps beside the mark: %q", mid)
 	}
 	if displayWidth(mid) > 80 {
 		t.Fatalf("80-column line overflows: %d in %q", displayWidth(mid), mid)

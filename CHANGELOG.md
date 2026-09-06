@@ -9,21 +9,26 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
-- **The status line carries the mark** — the amber ⛰ from the favicon, with a
-  dim `caprock` beside it, so the line is identifiably ours instead of an
-  anonymous row of figures. It shrinks to the bare mark rather than vanishing
-  when the terminal is narrow. This is on every status line, in both modes.
+- **The status line carries the mark** — the amber ⛰ from the favicon, the
+  glyph alone, so the line is identifiably ours instead of an anonymous row of
+  figures. Two columns, and it is never dropped however narrow the terminal
+  gets. This is on every status line, in both modes, and needs nothing turned
+  on: if Caprock's status line is already set up, the next release adds it.
 
 - **The session's own numbers in the Claude Code status line** —
-  `caprock statusline --rich` (register with `caprock statusline install
-  --rich`) adds `N turns · N steps · cache −N% · in N · out N` to the line
-  Caprock already prints, from counters only the daemon has. Opt-in: an
-  existing registration is unchanged until you ask for it, and you can switch
-  between the plain and rich forms in place.
+  `N turns · N steps · cache −N% · in N · out N`, from counters only the daemon
+  has, added to the line Caprock already prints.
 
-  It is fitted to the terminal — the wordmark shrinks first, then the counters
-  go one at a time, and the plan windows are never dropped, being the number
-  that decides whether work can continue at all. The daemon read
+  **Setting it up for the first time?** Nothing to do — `caprock up` offers the
+  status line as it always has, and now includes the numbers. **Already have
+  Caprock's status line?** Upgrading does not rewrite your settings; `caprock
+  up` prints a one-line tip with the command, and `caprock statusline install
+  --rich` switches you over. You can switch back with `caprock statusline
+  install`, and either form uninstalls the same way.
+
+  It is fitted to the terminal — the counters go one at a time, and the plan
+  windows are never dropped, being the number that decides whether work can
+  continue at all. The daemon read
   happens before printing, which is the one place the "never delay a session"
   rule needed defending rather than obeying: it is bounded at 150ms, inside
   Claude Code's own debounce, and a daemon that is down, slow, erroring or

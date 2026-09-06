@@ -112,3 +112,28 @@ func TestRetargetStatusline(t *testing.T) {
 		}
 	})
 }
+
+// StatuslineCommand reports what is registered, so a caller can tell which form
+// of ours is in place without reimplementing the parsing.
+func TestStatuslineCommand(t *testing.T) {
+	sp := filepath.Join(t.TempDir(), "settings.json")
+	if got, err := StatuslineCommand(sp); err != nil || got != "" {
+		t.Fatalf("missing file should be empty: %q %v", got, err)
+	}
+	want := "/usr/local/bin/caprock statusline --rich"
+	if _, err := InstallStatusline(sp, want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := StatuslineCommand(sp)
+	if err != nil || got != want {
+		t.Fatalf("StatuslineCommand = %q (%v), want %q", got, err, want)
+	}
+	// A settings file with no statusLine at all is empty, not an error.
+	sp2 := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(sp2, []byte(`{"model":"opus"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := StatuslineCommand(sp2); err != nil || got != "" {
+		t.Fatalf("no statusLine should be empty: %q %v", got, err)
+	}
+}

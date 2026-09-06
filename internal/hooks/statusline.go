@@ -121,6 +121,30 @@ func InstallStatusline(settingsPath, cmdPath string) (backup string, err error) 
 	return backup, writeSettings(settingsPath, root)
 }
 
+// StatuslineCommand returns the statusLine command currently in settings.json
+// (empty when there is none), so a caller can tell which form of ours is
+// registered without reimplementing the parsing.
+func StatuslineCommand(settingsPath string) (string, error) {
+	root, err := readSettings(settingsPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", nil
+		}
+		return "", err
+	}
+	v, ok := root.Get("statusLine")
+	if !ok {
+		return "", nil
+	}
+	obj, ok := v.(*Object)
+	if !ok {
+		return "", nil
+	}
+	c, _ := obj.Get("command")
+	cs, _ := c.(string)
+	return cs, nil
+}
+
 // RetargetStatusline rewrites our own statusLine entry to cmdPath, which is how
 // a user switches between the plain and `--rich` forms. It touches nothing
 // unless the existing entry is already ours, so a user-set statusLine is as

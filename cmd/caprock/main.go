@@ -106,8 +106,11 @@ func upCmd() *cobra.Command {
 					fmt.Fprintf(cmd.ErrOrStderr(), "warning: hooks not installed: %v\n", err)
 				}
 				// The statusLine feeds plan-limit windows (Pro/Max) to the Cost
-				// screen; offer it the same way as hooks. Non-fatal if declined.
-				if err := maybeInstallStatusline(cmd, yes); err != nil {
+				// screen and this session's counters; offer it the same way as
+				// hooks. A fresh install gets the rich form: there is nothing
+				// to disrupt, and it degrades to the plain line by itself
+				// whenever the daemon does not answer. Non-fatal if declined.
+				if err := maybeInstallStatuslineCmd(cmd, yes, statuslineCommandStrRich(true)); err != nil {
 					fmt.Fprintf(cmd.ErrOrStderr(), "warning: statusline not installed: %v\n", err)
 				}
 			}
@@ -324,17 +327,12 @@ func statuslineCommandStrRich(rich bool) string {
 	return hooks.ShellCommand(self) + " statusline" + suffix
 }
 
-// maybeInstallStatusline offers to register `caprock statusline` as Claude Code's
-// statusLine command, which feeds plan-limit windows (Pro/Max) to the Cost
-// screen. Same consent contract as hooks: TTY prompt, or `--yes` for scripts. It
-// never clobbers a statusLine the user already set to something else.
-func maybeInstallStatusline(cmd *cobra.Command, yes bool) error {
-	return maybeInstallStatuslineCmd(cmd, yes, statuslineCommandStr())
-}
-
-// maybeInstallStatuslineCmd is maybeInstallStatusline for a specific command
-// string, so `install --rich` registers the rich form through the same consent
-// contract rather than a second path of its own.
+// maybeInstallStatuslineCmd offers to register a `caprock statusline` command as
+// Claude Code's statusLine, which puts the plan-limit windows (Pro/Max) and the
+// session's counters on the line. Same consent contract as hooks: TTY prompt,
+// or `--yes` for scripts. It never clobbers a statusLine the user already set to
+// something else. Taking the command string as a parameter is what lets `up` and
+// `install --rich` register different forms through one consent path.
 func maybeInstallStatuslineCmd(cmd *cobra.Command, yes bool, cmdStr string) error {
 	sp, err := hooks.DefaultSettingsPath()
 	if err != nil {
@@ -345,18 +343,26 @@ func maybeInstallStatuslineCmd(cmd *cobra.Command, yes bool, cmdStr string) erro
 		return err
 	}
 	if ours {
-		return nil // already ours
+		// Already ours. If it is the plain form, say once that the counters
+		// exist and how to get them — a user who never reads the changelog
+		// otherwise has no way to discover the feature, since upgrading
+		// changes nothing they can see. Their settings are not rewritten:
+		// switching is their call, not something an upgrade does silently.
+		if cur, _ := hooks.StatuslineCommand(sp); !yes && !strings.Contains(cur, "--rich") {
+			fmt.Fprintln(cmd.OutOrStdout(), "Tip: `caprock statusline install --rich` adds this session's turns, steps and cache saving to the status line.")
+		}
+		return nil
 	}
 	if present {
 		// The user has their own statusLine (ccusage is common) — don't touch
 		// it, but always say so. This line used to be behind `if !yes`, and
 		// `caprock statusline install` calls with yes=true: the subcommand
 		// printed nothing and exited 0, having done nothing at all.
-		fmt.Fprintln(cmd.OutOrStdout(), "You already have a statusLine set; leaving it. For Caprock's plan-limit view, add `caprock statusline` yourself, or run `caprock statusline install`.")
+		fmt.Fprintln(cmd.OutOrStdout(), "You already have a statusLine set; leaving it. To use Caprock's instead, run `caprock statusline install --rich`.")
 		return nil
 	}
 	if !yes {
-		fmt.Fprintf(cmd.OutOrStdout(), "Caprock can also show your plan limits on the Cost screen, through Claude Code's status line (backed up first).\n")
+		fmt.Fprintf(cmd.OutOrStdout(), "Caprock can also show your plan limits and this session's numbers on Claude Code's status line (backed up first).\n")
 		if !confirm(cmd, "Add it? [Y/n] ") {
 			fmt.Fprintln(cmd.OutOrStdout(), "Skipped. Run `caprock statusline install` later to enable plan limits.")
 			return nil

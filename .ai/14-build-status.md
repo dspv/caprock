@@ -94,13 +94,22 @@ escape bytes is what would make a coloured line wrap.
 
 **The line now carries the mark.** It was an anonymous row of figures, which
 is a strange thing for the one Caprock surface a user sees all day. The legacy
-Python tool led with an amber ⛰ and a dim wordmark; the mark survived the pivot
-— it is what the favicon draws — so this is the existing identity, not a
-revival of something dropped. It is ranked essential rather than decoration: a
-badge that disappears exactly when the line gets tight is not a badge. But the
-wordmark costs ten columns on something that reprints every message, and at 80
-columns that is precisely one counter, so the badge *shrinks* to the bare mark
-before anything is dropped. The mark itself never goes.
+Python tool led with an amber ⛰; the mark survived the pivot — it is what the
+favicon draws — so this is the existing identity, not a revival of something
+dropped. The glyph alone, no wordmark: on a line that reprints after every
+assistant message the word costs ten columns and says nothing the mark does
+not, and at 80 columns ten columns is precisely one counter. Ranked essential
+rather than decoration and never dropped at any width — a badge that
+disappears exactly when the line gets tight is not a badge.
+
+**Nobody would have found it.** Walking the four install paths in a fake HOME
+showed the feature was undiscoverable: a new user silently got the plain form,
+and an existing user saw an upgrade change nothing at all — the only route to
+`--rich` was reading the changelog. So a fresh registration now gets the rich
+form by default (nothing to disrupt, and it degrades to the plain line on its
+own), while an existing one is never rewritten by an upgrade — `up` prints a
+one-line tip naming the command and stops once the user is on it. Switching
+stays the user's call; discovering it should not have been.
 
 **The green suite shipped the wrong cache metric, and only the terminal said
 so.** The obvious figure was the hit rate, and the tests were happy with it. Run

@@ -162,15 +162,14 @@ const (
 	rankTokens           // input/output totals: the first to go
 )
 
-// The mark: the amber ⛰ the favicon draws and the legacy tool led with, with a
-// dim wordmark beside it. Two forms, because the wordmark costs ten columns on
-// a line that repeats every message — on a standard 80-column terminal that is
-// a whole counter's worth. fit() keeps brandFull while it fits and falls back
-// to brandMark, so the line is identifiably ours at either width.
-const (
-	brandMark = "\x1b[33m⛰\x1b[0m"
-	brandFull = brandMark + " \x1b[2mcaprock\x1b[0m"
-)
+// brandMark is the amber ⛰ the favicon draws and the legacy tool led with.
+//
+// The glyph alone, with no wordmark: on a line that reprints after every
+// assistant message the word costs ten columns and says nothing the mark does
+// not — and on a standard 80-column terminal ten columns is a whole counter.
+// The mark is never dropped at any width; a badge that disappears exactly when
+// the line gets tight is not a badge.
+const brandMark = "\x1b[33m⛰\x1b[0m"
 
 // render builds the one-line status at the default width.
 func render(in input) string { return renderWidth(in, nil, 0) }
@@ -184,14 +183,9 @@ func renderWidth(in input, st *stats, width int) string {
 
 	// The mark, so the line is identifiably ours rather than an anonymous row
 	// of figures. The legacy Python tool led with the same amber ⛰, and the
-	// mark survived the pivot — it is what the favicon draws. Amber matches
-	// it; the wordmark is dim so the mark identifies without competing with
-	// the numbers, which are what the user is actually reading.
-	//
-	// Ranked essential, not decoration: a badge that disappears exactly when
-	// the line gets tight is not a badge. The whole point is that the row of
-	// figures is recognisably Caprock's. It shrinks rather than vanishing.
-	add(rankEssential, brandFull)
+	// mark survived the pivot — it is what the favicon draws. Ranked essential
+	// rather than decoration: it is two columns, and the identity is the point.
+	add(rankEssential, brandMark)
 
 	if in.Model != nil && in.Model.DisplayName != "" {
 		add(rankEssential, in.Model.DisplayName)
@@ -260,18 +254,6 @@ func fit(seg []segment, width int) string {
 			parts = append(parts, s.text)
 		}
 		return strings.Join(parts, " · ")
-	}
-	// Shrink the badge before dropping anything. The wordmark costs ten
-	// columns and carries no information the mark does not — on an 80-column
-	// terminal that is the difference between showing turns/steps and showing
-	// nothing, so trading it for a real counter is the right way round.
-	if displayWidth(join(seg)) > width {
-		for i, s := range seg {
-			if s.text == brandFull {
-				seg[i].text = brandMark
-				break
-			}
-		}
 	}
 	for rank := rankTokens; rank > rankEssential; rank-- {
 		if displayWidth(join(seg)) <= width {
