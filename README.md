@@ -89,11 +89,13 @@ On first run `caprock up` asks before adding its hook and status-line entries to
 `~/.claude/settings.json` (it backs the file up and never touches your other
 settings). Say no and it still reads your history from transcripts.
 
-Run [OpenCode](https://github.com/sst/opencode) or
-[Gemini CLI](https://github.com/google-gemini/gemini-cli) too? Both are shown on
-the same screens — OpenCode is picked up automatically from its own database,
-Gemini through the telemetry it writes when Caprock starts it. See
-[OpenCode](#opencode) for what that covers and what it does not.
+Run [OpenCode](https://github.com/sst/opencode),
+[Codex](https://developers.openai.com/codex) or
+[Gemini CLI](https://github.com/google-gemini/gemini-cli) too? All are shown on
+the same screens — OpenCode from its own database, Codex from the transcripts it
+writes, Gemini through the telemetry it writes when Caprock starts it. See
+[OpenCode and Codex](#opencode-and-codex) for what that covers and what it does
+not.
 
 ![Live activity and cost, right now](docs/shot-now.png)
 
@@ -162,33 +164,46 @@ is inside your backups, so treat it as you would your shell history: do not
 put it in a bug report, and do not hand it to anyone debugging an issue for
 you. `caprock down` and deleting the data directory removes all of it.
 
-## OpenCode
+## OpenCode and Codex
 
-Caprock also reads [OpenCode](https://github.com/sst/opencode) sessions, on the
-same screens as Claude Code. A machine that runs both has its spend split
-across two tools that each see half of it; here the projects list, the history
-and the cost add up over both, and OpenCode rows carry an `oc` mark so you can
-still tell them apart.
+Caprock also reads [OpenCode](https://github.com/sst/opencode) and
+[Codex](https://developers.openai.com/codex) sessions, on the same screens as
+Claude Code. A machine that runs more than one has its spend split across tools
+that each see part of it; here the projects list, the history and the cost add
+up over all of them, and the rows carry an `oc` or `cdx` mark so you can still
+tell them apart.
 
-**Or see one at a time.** The Now screen carries `all / claude / opencode / gemini` in
-the middle of its header, and it applies to the whole screen — today's totals,
-the live pulse, the activity feed, the projects list and the session cards all
-answer the same question. It appears only on a machine that runs both.
+**Or see one at a time.** The Now screen carries
+`all / claude / opencode / codex / gemini` in the middle of its header, and it
+applies to the whole screen — today's totals, the live pulse, the activity feed,
+the projects list and the session cards all answer the same question. It appears
+only on a machine that runs more than one.
 
-Nothing to configure. If OpenCode is installed, Caprock finds its database and
-reads it — no shim, no settings file to edit, and the database is opened
-read-only. Sessions from before you installed Caprock are included, because
-OpenCode keeps its own history.
+Nothing to configure for either. OpenCode is found through its own database,
+opened read-only; Codex through the transcript it writes per session. No shim,
+no settings file to edit, and sessions from before you installed Caprock are
+included, because both tools keep their own history.
 
-Costs come from OpenCode's own figures rather than being recalculated here, so
-they match what OpenCode reports. Like Caprock's own numbers, they are modelled
-from list prices, not a bill.
+**The cost works differently for each, and it matters.** OpenCode computes its
+own figures and Caprock passes them through, so they match what OpenCode
+reports. Codex reports how many tokens a turn used but never what it cost, so
+those are priced from Caprock's own table of OpenAI list prices. Like every
+number here, both are modelled from list prices, not a bill.
 
-**What is not there yet.** Observation only: the dashboard cannot start,
-steer or stop an OpenCode session, and the task runner does not work with it.
-Activity refreshes every few seconds rather than instantly, so the Now screen
-lags a little behind a running session — the Cost and Lifetime screens are
-unaffected. Verified on macOS; it builds and its tests pass on Linux and
+Two things about Codex figures worth knowing:
+
+- A turn whose transcript does not name the model it ran on keeps its tokens and
+  shows **no cost**, rather than a guessed one. `caprock status` reports how many.
+- About half of Codex's token reports give a total without breaking it down by
+  kind. Caprock counts that total as input, which is the unqualified rate — so
+  for those turns the cost is an **upper bound**: any part of it that was really
+  a cached read cost a tenth of what is shown.
+
+**What is not there yet.** Observation only: the dashboard cannot start, steer
+or stop an OpenCode or Codex session, and the task runner does not work with
+either. Activity refreshes every few seconds rather than instantly, so the Now
+screen lags a little behind a running session — the Cost and Lifetime screens
+are unaffected. Verified on macOS; it builds and its tests pass on Linux and
 Windows, but it has not been run on either.
 
 ## Why

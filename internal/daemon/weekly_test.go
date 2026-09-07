@@ -182,15 +182,24 @@ func (s *telegramStub) last() string {
 	return s.sent[len(s.sent)-1]
 }
 
-// activeKey is a licence that is valid today. The date in a key is the last day
-// it covers, so a key dated in the future is an active one.
+// reportNow is the instant every test in this file runs at.
+//
+// Fixed, because the report is deliberately suppressed on a Monday before the
+// send hour — so a test that reads the wall clock passes six days a week and
+// fails on the seventh. It did: green all week, red at 06:42 on a Monday, on a
+// commit that touched only the README. A Wednesday afternoon is an ordinary
+// sending day and says so.
+var reportNow = time.Date(2026, 9, 9, 14, 0, 0, 0, time.UTC)
+
+// activeKey is a licence valid at reportNow. The date in a key is the last day
+// it covers, so a key dated after it is an active one.
 func activeKey() string {
-	return license.Prefix + time.Now().AddDate(0, 0, 30).Format("2006-01-02") + "-test"
+	return license.Prefix + reportNow.AddDate(0, 0, 30).Format("2006-01-02") + "-test"
 }
 
 // expiredKey is a licence whose grace period is long gone.
 func expiredKey() string {
-	return license.Prefix + time.Now().AddDate(0, 0, -365).Format("2006-01-02") + "-test"
+	return license.Prefix + reportNow.AddDate(0, 0, -365).Format("2006-01-02") + "-test"
 }
 
 // reportDaemon is a daemon wired for the report and nothing else: a store, a
@@ -200,6 +209,7 @@ func reportDaemon(t *testing.T, host string, cfg config.Config) (*Daemon, *store
 	st := memStore(t)
 	rec := rollup.New(st, embeddedTable(t), bus.New(), quietLog())
 	rec.Location = time.UTC
+	rec.Now = func() time.Time { return reportNow }
 	d := &Daemon{log: quietLog(), store: st, rec: rec, opt: Options{Config: cfg}}
 	d.report.base = host
 	return d, st
@@ -256,7 +266,7 @@ func TestAFailedSendStillConsumesTheWeek(t *testing.T) {
 	if tg.count() != 1 {
 		t.Fatalf("tried to send %d times, want 1", tg.count())
 	}
-	if marker, _ := st.GetMeta(ctx, store.MetaReportWeek); marker != isoWeek(time.Now()) {
+	if marker, _ := st.GetMeta(ctx, store.MetaReportWeek); marker != isoWeek(reportNow) {
 		t.Fatalf("the week was not consumed after a failed send: %q", marker)
 	}
 	// The reason is on the settings screen and in the store, because an absent
@@ -303,7 +313,7 @@ func TestOneReportPerWeekAcrossManyChecks(t *testing.T) {
 
 	// A new week releases it again, or the report would send once and never
 	// again for the life of the install.
-	if err := st.SetMeta(ctx, store.MetaReportWeek, isoWeek(time.Now().AddDate(0, 0, -7))); err != nil {
+	if err := st.SetMeta(ctx, store.MetaReportWeek, isoWeek(reportNow.AddDate(0, 0, -7))); err != nil {
 		t.Fatal(err)
 	}
 	d.weeklyOnce(ctx)

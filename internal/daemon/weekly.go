@@ -99,10 +99,10 @@ func (d *Daemon) SendReportNow(ctx context.Context) error {
 	if strings.TrimSpace(cfg.ReportBotToken) == "" || strings.TrimSpace(cfg.ReportChatID) == "" {
 		return fmt.Errorf("no bot configured")
 	}
-	if !license.Parse(cfg.LicenseKey, time.Now()).Active {
+	if !license.Parse(cfg.LicenseKey, d.rec.Now()).Active {
 		return fmt.Errorf("the weekly report is a premium feature")
 	}
-	rep, err := d.buildWeekly(ctx, time.Now())
+	rep, err := d.buildWeekly(ctx, d.rec.Now())
 	if err != nil {
 		return err
 	}
@@ -147,11 +147,16 @@ func (d *Daemon) weeklyOnce(ctx context.Context) {
 	// Paid, and checked here rather than only in the UI: this reaches the
 	// network on a schedule, which is the boundary ADR-023 drew for
 	// server-side gates.
-	if !license.Parse(cfg.LicenseKey, time.Now()).Active {
+	// The daemon's own clock, not the wall clock, everywhere below. The send is
+	// suppressed on a Monday before the send hour, so a test that reaches this
+	// path through time.Now() passes or fails according to what day CI runs on
+	// — which is exactly what happened: green all week, red on a Monday
+	// morning, on a commit that touched only the README.
+	now := d.rec.Now()
+	if !license.Parse(cfg.LicenseKey, now).Active {
 		return
 	}
 
-	now := time.Now()
 	week := isoWeek(now)
 	sent, _ := d.store.GetMeta(ctx, store.MetaReportWeek)
 	if sent == week {
