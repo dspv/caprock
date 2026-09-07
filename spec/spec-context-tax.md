@@ -18,12 +18,16 @@ The routing spike (`.ai/notes/routing-spike.md`, 439 sessions, token-based) show
 
 The cost driver is not what a tool returns. It is how many calls run inside a large context: every call re-sends the whole context as a cache read. At 382k context on Opus 5 a single Bash call costs about $0.19 before it does anything. 21,711 calls is roughly half of the archive's list-price spend.
 
-Spotify's 90% came from moving a heavy payload out of the frontier context. The same 90% is available here by moving a **heavy loop** out of it: a series of Bash calls (test, build, grep, run-and-look) executed in a subagent with a fresh 30k context costs an order of magnitude less per call than the same series in the main 382k context, and only the outcome returns.
+Spotify's 90% came from moving a heavy payload out of the frontier context. The equivalent move here is to shrink the context the loop runs in. Two levers can do that — isolating the loop in a subagent, or compacting the context sooner — and Stage 0 measured both.
+
+**Isolation is worth 12x per series and the model will not take it.** In a live trial Claude acted on 1 delegation nudge out of 8, with delivery confirmed. It is parked with its evidence in section 6.4; the meter keeps the counterfactual as an informational line and nothing acts on it.
+
+**Compaction saves more and needs nobody's consent** — $578 against isolation's $466 on the same archive — because the auto-compact threshold is a setting Caprock can compute and write, not a suggestion the model may decline.
 
 Caprock ships two things:
 
-1. **Free — Context Tax meter.** Live and retroactive: context at call time, dollar cost of the next call, consecutive-call series and what they cost, per-tool share by token-turns, and the counterfactual "if this series had run isolated". No keys, no hooks, computed from transcripts Caprock already parses.
-2. **Paid — Context Tax reduction.** Hooks and prompts that push Bash loops into isolated subagents at the right moment, nudge compaction where it pays, and optionally summarise oversized outputs. Every intervention is logged; measured savings sit next to the estimate.
+1. **Free — Context Tax meter.** Live and retroactive: context at call time, dollar cost of the next call, consecutive-call series and what they cost, per-tool share by token-turns, the share of tax paid above 500k of starting context, and the recommended `autoCompactWindow` with its expected saving. No keys, no hooks, computed from transcripts Caprock already parses.
+2. **Paid — Compaction threshold management.** Caprock computes the optimal `autoCompactWindow` per project from the user's own data, writes it into settings, and keeps it current as the workload changes. Every write is logged; measured savings sit next to the estimate.
 
 ---
 
@@ -56,7 +60,7 @@ Read-routing kill criterion (15% of context) failed at 7% including MCP text. Th
 
 Per-call cost in a session is `context_at_call * P_cache_read + result_tokens * P_cache_write`. On this archive the first term dominates by more than two orders of magnitude for a typical Bash call. Reducing `result_tokens` (Spotify's lever) barely moves it. Reducing `context_at_call` for the calls that do not need the full conversation moves it 10x or more.
 
-Claude Code already has the primitive: subagents run in their own context and return a result to the parent. The product is deciding **when** a loop should move there, making it happen, and measuring whether it paid.
+There are two ways to reduce `context_at_call`: run the loop somewhere smaller (a subagent), or make the context itself smaller sooner (compaction). Stage 0 measured both. Isolation has the larger per-series effect and cannot be made to happen — the model declined the nudge 7 times in 8. Compaction has the larger total effect and happens by setting a number. The product is therefore the second lever, with the first kept as a measurement that explains it.
 
 ### 1.4 Prior Caprock learning
 
@@ -76,14 +80,14 @@ Subscription users experience this as hitting limits. API users experience it as
 
 ### Goal
 
-A Caprock user sees, live and in the archive, what their context costs per call, which call series drive the cost, and what isolating those series would have saved. A paid user turns on interventions that move eligible loops into isolated subagents and sees measured savings next to the estimate.
+A Caprock user sees, live and in the archive, what their context costs per call, which call series drive the cost, and how much of that cost a sooner compaction would remove. A paid user has Caprock compute and maintain the `autoCompactWindow` for each project and sees measured savings next to the estimate.
 
 ### Success metrics
 
 - Meter runs on every archived and live session with no configuration, no keys, no hooks.
 - Live view updates within one turn of the current session: context now, cost of next call, current series length and cost.
 - Estimate for a session is reproducible from the transcript and the price registry.
-- Paid interventions are logged per event with tokens, dollars, and whether Claude complied.
+- Every threshold write is logged with the value, the project, the data it was computed from, and the measured effect afterwards.
 - Measured savings on two weeks of dogfooding are at least 60% of the estimate for the same sessions.
 - Hooks fail open. No hook ever blocks a tool call on error, timeout, or licence failure.
 - Meter figures appear on the share card.
@@ -91,15 +95,15 @@ A Caprock user sees, live and in the archive, what their context costs per call,
 ### Non-goals
 
 - Routing whole-file reads. Dead on the data.
-- Delegating reasoning or editing loops. A debug loop that needs the conversation's history stays in the main context; the classifier must be conservative.
-- External worker models for isolation. The subagent is Claude's own (Haiku selectable); no new keys. An external worker is only considered for the optional output-summarisation lever (section 6.3).
-- Quality measurement of subagent outcomes. Log compliance and re-runs; do not claim quality.
+- Delegation nudges and isolation hooks. Parked on measured compliance of 1 in 8 (section 6.4). The meter still shows the isolation counterfactual; nothing acts on it.
+- External worker models. No new keys anywhere in this spec. An external worker is only considered for the optional output-summarisation lever (section 6.3).
+- Quality measurement of compacted sessions. Log the re-read cost; do not claim anything about output quality.
 
 ### Kill criteria
 
-- **Stage 0.** If Bash series of length >= 5 at context >= 200k account for under 25% of Bash token-turns on this archive, the isolation lever is too small; ship the meter only, drop the paid tier of this spec.
-- **Stage 2.** If Claude complies with the delegation nudge in under 50% of eligible series after prompt tuning, or if measured savings are under 60% of estimate, the intervention does not work as designed; stop and report.
-- **Output summarisation (6.3).** Only if the isolation lever ships and the user opts in; if it delivers under 3% of total context in dogfooding, remove it.
+- **Stage 0 — decided 2026-09-07, see `.ai/notes/context-tax.md`.** The isolation criterion (25% of Bash token-turns) failed at 12.9%, and a live nudge trial returned 1 compliance in 8. Isolation is parked (section 6.4). The meter and compaction both passed on their own terms and carry the release.
+- **Stage 2 — compaction.** Compaction is not free: after a boundary the model re-reads what the summary dropped. Measure that cost before shipping the intervention — tokens re-read after the boundary (Read/Grep of paths that were in context before the summary) and Bash commands repeated from before it. **If re-reads consume more than 50% of the estimated saving, the intervention does not ship**; raise the threshold and re-measure rather than shipping blind. If measured savings are under 60% of the estimate after that, stop and report.
+- **Output summarisation (6.3).** Opt-in only; if it delivers under 3% of total context in dogfooding, remove it.
 
 ---
 
@@ -114,7 +118,7 @@ internal/contexttax/
   estimator/    counterfactuals (isolation, compaction, summarisation)
   live/         current-session meter fed from the live transcript tail
   hooks/        `caprock hook <event>` entrypoints, fail-open
-  interventions/ delegation nudge, compaction nudge, output summariser
+  compaction/   optimal autoCompactWindow per project; settings read/write with backup
   log/          intervention log + measured outcomes
 ui
   ContextTaxPanel   free meter + paid controls
@@ -137,28 +141,29 @@ transcript (archive or live tail)
 Data flow, paid:
 
 ```
-Claude Code
-  -> PostToolUse(Bash) -> caprock hook post-bash
-       -> updates series state for the session
-       -> if series eligible: returns additionalContext with the delegation nudge (section 6.1)
-  -> Claude spawns a subagent (Task) for the remaining loop, or ignores the nudge
-  -> transcript shows subagent usage (mechanism check in Stage 0 decides how it is read)
-  -> intervention log: nudge issued, complied?, series cost before/after, subagent cost
+archive per project
+  -> estimator: saved_compaction over a grid of candidate thresholds
+  -> optimal autoCompactWindow, net of measured re-read cost (section 6.1)
+  -> settings.json write, with backup and a logged before/after value
+  -> subsequent sessions: measured tax per call vs the pre-write baseline
+  -> re-read audit after every boundary feeds back into the threshold
   -> measured vs estimated in the panel
 ```
 
+No hook is required for the paid lever. The threshold is a settings value, so the intervention happens between sessions rather than inside one.
+
 ### 4.1 Hook contract
 
-`caprock hook post-bash`, `caprock hook pre-bash` (only if Stage 0 finds PreToolUse necessary):
+This release ships no new hook — the compaction lever writes a setting instead. The contract below binds any hook a later stage adds.
 
 - JSON in on stdin, JSON out on stdout, exit 0 always. 2 s hard timeout. No network in hooks.
 - Any error -> emit nothing, log locally, increment `hook_failopen` shown in the panel.
 - Licence failure -> hooks emit nothing; panel says "interventions paused"; never silent.
-- Series state is kept by the running Caprock process, keyed by `session_id`; the hook reads it over the local socket Caprock already uses, with a 200 ms budget, falling back to "no nudge".
+- **A hook must not fire inside a subagent.** The parent session's `PostToolUse` also fires for tool calls made within subagents — observed directly in the Stage 0 trial, where an already-isolated loop was told to isolate itself. Detect the subagent case from the transcript path (`<session-id>/subagents/agent-<id>.jsonl`) or the agent id and return without acting. This is mandatory for every future Caprock hook, not advice.
 
 ### 4.2 Installation
 
-`caprock contexttax enable [--project]` merges hooks into the relevant `settings.json` with a backup, never overwriting existing hooks; installs a skill file describing the delegation pattern (section 6.1); `disable` removes exactly what `enable` added; `status` prints thresholds, compliance rate, last 10 interventions.
+`caprock contexttax enable [--project]` starts managing `autoCompactWindow` for that project: it writes the computed value into the relevant `settings.json` with a backup, touching no other key. `disable` restores exactly the value that was there before, or removes the key if it was absent. `status` prints the current value, the value Caprock would choose, the data behind it, and the last 10 writes with their measured effect.
 
 ---
 
@@ -189,14 +194,18 @@ The first term is the context tax. The panel shows it as its own number.
 
 A series is a maximal run of consecutive tool calls with no user message between them and no compaction boundary inside. Attributes: length `n`, start context `C_start`, total tax `sum(C_i * P_cr)`, class, whether it contains Edit/Write calls.
 
-Eligible for isolation (initial rule, tuned in Stage 2):
+Eligible for isolation (used to compute the informational counterfactual, not to trigger anything):
 
 - `n >= 5`
-- `C_start >= 200k` (configurable; the panel slider offers 100k / 200k / 300k)
+- `C_start >= 200k` (configurable; the panel slider offers 200k / 350k / 500k / 700k — the Stage 0 grid, chosen because coverage is far more sensitive to context than to length)
 - class in {test, build, search, pkg, vcs, run} and no Edit/Write inside the series, or Edit/Write only to files first created inside the series
 - not the first series after a user message that contains a question (heuristic: Claude is still understanding the task)
 
-### 5.4 Counterfactual: isolation
+### 5.4 Counterfactual: isolation (informational only)
+
+This number is displayed, never acted on. It is what tells a user their loop was
+expensive; the intervention that follows is compaction, not delegation. See
+section 6.4 for why.
 
 ```
 C_sub0   = subagent starting context: measured 17.9k (median first turn over 364 real
@@ -223,10 +232,13 @@ For each candidate point `k` (initial rule: any point where `C_k >= 250k` and at
 ```
 saved_compaction_k = sum over i > k of (C_i - C_compacted) * P_cr
                    - compaction_cost (summary write, initial default 8k * P_cw)
+                   - reread_cost_k                      (section 6.1, measured in Stage 2)
 where C_compacted = C_k * compaction_ratio (initial 0.25, measured from existing boundaries)
 ```
 
-Show the best `k` per session. This is a nudge, not an enforcement.
+`reread_cost_k` is what the model spends re-acquiring what the summary dropped. Stage 0 did not measure it and the $578.46 figure does not include it; Stage 2 must, because it is the difference between a real saving and a shuffled one.
+
+Show the best `k` per session, and per project the threshold that would have produced the best `k` across sessions — that value is what the paid lever writes (section 6.1).
 
 ### 5.6 Counterfactual: output summarisation (optional lever)
 
@@ -234,40 +246,56 @@ Same formula as the old spec section 5.3, applied only to Bash results with `R_i
 
 ### 5.7 Aggregates and display
 
-- Per session: total tax, tax share of cost, series table, best compaction point, saved_isolation total.
-- Per project and per period: same, plus per-class breakdown.
-- Live: `C_now`, `cost_next_call = C_now * P_cr`, current series length and tax so far, eligibility flag.
-- Subscription users: lead with "N% of your context token-turns is tax" and "series X would have cost 12x less isolated"; dollars as a secondary line "at API list price". API users: lead with dollars.
+- Per session: total tax, tax share of cost, series table, best compaction point, saved_isolation total (informational).
+- Per project and per period: same, plus per-class breakdown, plus **the share of tax paid above 500k of starting context** — on the Stage 0 archive that was half of it, and it is the figure that explains the compaction recommendation.
+- Per project: recommended `autoCompactWindow` and the saving expected from it. Free shows the number; paid writes it.
+- Live: `C_now`, **`cost_next_call = C_now * P_cr` shown as a live dollar figure**, current series length and tax so far. The next-call cost is the meter's sharpest number — on a 968k-context session it reads $0.48 before the call does anything — so it leads the badge.
+- Subscription users: lead with "N% of your context token-turns is tax"; dollars as a secondary line "at API list price". API users: lead with dollars.
 - Always show the base next to any percentage. Estimated events carry a tilde. Compaction and summarisation figures are labelled as separate levers.
 
 ---
 
 ## 6. Interventions (paid)
 
-### 6.1 Delegation nudge
+The only intervention in this release is compaction threshold management. It was chosen over isolation on measurement, not preference: it saves more ($578 vs $466 on the Stage 0 archive) and, unlike a nudge, it does not depend on the model agreeing to anything.
 
-Trigger: `post-bash` hook detects the current series has just become eligible (section 5.3). Action: return `additionalContext`:
+### 6.1 Compaction threshold management
 
-```
-Context tax notice (Caprock): this session's context is 382k tokens; the last 6 Bash calls cost
-$1.14 of context re-reads before doing anything. This looks like a <class> loop. Run the rest
-of it in a subagent (Task tool, model haiku) with a self-contained brief and return only the
-outcome; do not continue the loop in this context. Skill: caprock-isolate-loop.
-```
+Claude Code's auto-compact threshold is configurable, and Caprock can set it:
 
-One nudge per series; do not repeat on every call. Log: series id, nudge text, next tool call (Task = complied, Bash = ignored), cost of the series after the nudge, subagent cost if visible.
+- `autoCompactWindow` in `settings.json` — a plain token count, accepted range 100k-1M ([settings](https://code.claude.com/docs/en/settings)).
+- `CLAUDE_CODE_AUTO_COMPACT_WINDOW` in the environment, which takes precedence.
+- `/autocompact` interactively, `--autocompact` on the command line.
 
-If Stage 0 finds that `additionalContext` is not delivered to the model reliably, fall back to PreToolUse `deny` with `permissionDecisionReason` carrying the same text, gated to the first Bash call after eligibility, and only when the user has opted into hard mode. Soft mode is the default.
+Verified in Stage 0: the settings key sits beside the existing top-level keys, needs no nesting, and reads back unchanged. Left unset, the default sits near the top of the model's window — the session that produced the Stage 0 report ran at 968,728 tokens, paying $0.48 per Bash call before any work.
 
-Skill `caprock-isolate-loop` (markdown, installed by `enable`): how to write the brief (goal, commands allowed, what to return, stop conditions), which model to use, what not to delegate.
+**Free.** Per project, show the recommended threshold and the saving it would have produced on that project's own history. Nothing is written.
 
-### 6.2 Compaction nudge
+**Paid.** Caprock writes the value into `settings.json` (backup first, no other key touched) and keeps it current as the workload changes. Every write is logged with the old value, the new value, the data behind it, and the measured effect on the sessions that follow.
 
-Trigger: live estimator finds `saved_compaction_k` above a dollar threshold (initial $2) at the current point. Action: `additionalContext` suggesting `/compact` with the estimated saving, once per 50 calls at most. Log the same way.
+The threshold is computed per project rather than globally: a project whose sessions peak at 200k and one that runs to 900k do not want the same number.
+
+**Re-read cost, and the gate on it.** Compaction is not free. After a boundary the model re-reads what the summary dropped, and that cost is not in the $578.46 estimate. Stage 2 measures it directly from transcripts: tokens spent on Read/Grep of paths that were in context before the boundary, plus Bash commands repeated from before it. Per the Stage 2 kill criterion, if re-reads consume more than half the estimated saving, the intervention does not ship at that threshold — raise it and re-measure. A lower threshold is not automatically better, and shipping one blind would move cost rather than remove it.
+
+### 6.2 Compaction nudge (secondary)
+
+For users who prefer to decide per session rather than have a threshold managed: when the live estimator finds `saved_compaction_k` above a dollar threshold (initial $2), suggest `/compact` with the estimated saving, at most once per 50 calls. This is a convenience on top of 6.1, not the mechanism — the product does not depend on the user or the model complying.
 
 ### 6.3 Output summariser (opt-in)
 
-The old Bash track, reduced: `PostToolUse` with `updatedToolOutput` for Bash results above 4k tokens, keeping the last 40 lines verbatim and the full output on disk. Worker = Haiku via the Anthropic API key already needed for nothing else, so this is the only lever that needs a key; keep it off by default.
+The old Bash track, reduced: `PostToolUse` with `updatedToolOutput` for Bash results above 4k tokens, keeping the last 40 lines verbatim and the full output on disk. Worker = Haiku via an Anthropic API key, so this is the only lever that needs a key; keep it off by default.
+
+### 6.4 Delegation nudge — parked, with evidence
+
+The delegation nudge was the centrepiece of this spec when it was written. Stage 0 parked it. The evidence, so a later reader does not have to rediscover it:
+
+- **The mechanism works.** `additionalContext` from a `PostToolUse` hook does reach the model ([Agent SDK hooks](https://code.claude.com/docs/en/agent-sdk/hooks)), and delivery was confirmed live — the nudge appears in the transcript as `PostToolUse:Bash hook additional context`.
+- **The model does not act on it.** 8 nudges fired on eligible series in a live session; Claude complied once. Because delivery was confirmed, the other seven were refusals, not lost messages. That is 1 in 8 against a Stage 2 bar of 50%.
+- **The economics per compliance are excellent.** On the one delegation, $1.41 was saved of the $1.45 the loop would have cost inline — 97%. The lever is real; the take-up is not.
+- **The coverage is a bracket, not a number**: 6.2% of Bash token-turns under the strictest edit rule, 12.9% under this spec's Write-then-Edit provenance rule, 34.8% if edits to pre-existing files are allowed.
+- **The trial has a caveat that must not be lost.** The model being nudged was the one that wrote the nudge and knew what was being measured. Any attempt to revive this lever needs a compliance number from a session that is not about the experiment.
+
+To unpark it, the thing to change is the compliance rate, and the only honest way to learn it is another live trial with a tuned prompt on someone else's work. Nothing in the meter should wait on that.
 
 ---
 
@@ -275,58 +303,60 @@ The old Bash track, reduced: `PostToolUse` with `updatedToolOutput` for Bash res
 
 ### Free
 
-- Context Tax panel: totals, per-tool share by token-turns, series table with counterfactuals, best compaction point, per-project and per-period views, sliders for series length and context threshold.
-- Live badge on the session view: context now, cost of next call, series so far.
+- Context Tax panel: totals, per-tool share by token-turns, series table with counterfactuals, share of tax above 500k starting context, best compaction point, per-project and per-period views, sliders for series length and context threshold.
+- **Recommended `autoCompactWindow` per project, with the saving it would have produced.** The number is free; writing it is the paid part.
+- Live badge on the session view: context now, cost of next call in dollars, series so far.
 - Share card block:
 
 ```
 Context tax: 54% of your Claude Code spend (Bash, 21,711 calls at 382k avg context)
-Isolating 143 eligible loops would have saved ~$2,900 of $9,700 in 36 days
+Half of it was paid above 500k of context. A lower compact threshold would have saved ~$578 of $9,700 in 36 days
 ```
 
-- CTA: "Interventions are in Premium. Measured, not estimated."
+- CTA: "Caprock can set and maintain that threshold for you. Measured, not estimated."
 
 ### Paid (Premium)
 
 - `caprock contexttax enable/disable/status`.
-- Delegation nudge, compaction nudge, optional summariser.
-- Intervention log, compliance rate, measured vs estimated, calibration state.
+- Managed `autoCompactWindow` per project: computed, written with backup, kept current.
+- Write log with old and new value, measured effect on subsequent sessions, re-read audit, measured vs estimated.
+- Optional summariser (6.3).
 
 ### Paid (Teams)
 
-- Aggregation across people: tax share, eligible-series count, measured savings, compliance, per person and total. This is the manager view column set.
+- Aggregation across people: tax share, share above 500k context, managed thresholds and their measured savings, per person and total. This is the manager view column set.
 
 ### Enforcement
 
-Meter works with no licence. Interventions gate on the existing licence check and fail open.
+Meter works with no licence. Threshold management gates on the existing licence check; on licence failure Caprock stops managing the value and leaves the last written one in place, saying so in the panel. It never silently reverts a user's settings.
 
 ---
 
 ## 8. Stages
 
-**Stage 0 — Counterfactual and mechanism (3-4 days).**
+**Stage 0 — Counterfactual and mechanism. DONE 2026-09-07** (`.ai/notes/context-tax.md`, spike in `cmd/routing-spike/`). Isolation failed its criterion at 12.9% and 1-in-8 live compliance, and is parked; the meter and compaction carry the release. Original scope:
 - Extend `cmd/routing-spike` (or a new `cmd/contexttax-spike`) with series detection, classification, and the section 5.4 / 5.5 counterfactuals. Run on the full archive with the dev session excluded by project name, not by size.
 - Output `.ai/notes/context-tax.md`: series distribution (n, C_start, class), share of Bash token-turns covered by eligible series, isolation and compaction counterfactual totals, sensitivity to the thresholds.
 - Mechanism check against the official Claude Code docs (https://docs.claude.com/en/docs/claude-code/hooks and the subagents page), verified in a live session: does `additionalContext` from PostToolUse reach the model; how does a subagent's usage appear in the transcript (separate file, nested records, or absent); how to set the subagent model and cap its context. Record findings with links; if measurement of subagent cost is impossible from transcripts, say so and propose the fallback (estimate from brief + results).
 - Apply the Stage 0 kill criterion.
 
-**Stage 1 — Meter, free (1.5 weeks).** Events, series, estimator, panel, live badge, share block. Retroactive on first run, incremental after. Golden-transcript tests for `C_i`, series boundaries, and counterfactuals.
+**Stage 1 — Meter, free (1.5 weeks). Next.** Events, series, estimator, panel, live badge, share block, per-project recommended threshold. Retroactive on first run, incremental after. Golden-transcript tests for `C_i`, series boundaries, and counterfactuals. **The meter then runs on Dima's own sessions for a week before Stage 2 begins** — the recommendation has to survive contact with real use before anything writes it.
 
-**Stage 2 — Interventions, paid, flagged (2 weeks).** Hooks, skill, delegation nudge, compaction nudge, log, panel paid state, recalibration of `C_sub0` and `S` against live delegated runs (Stage 0 measured both from the archive). Two weeks of dogfooding on Dima's sessions. Apply the Stage 2 kill criterion.
+**Stage 2 — Compaction management, paid, flagged (2 weeks).** In order: measure the re-read cost after existing compaction boundaries across the archive and apply the Stage 2 kill criterion; only then build threshold computation, the settings writer with backup and restore, the write log, and the panel's paid state. Two weeks of dogfooding on Dima's sessions.
 
 **Stage 3 — Summariser (3 days, optional).** Only if the user wants it after Stage 2 numbers.
 
 **Stage 4 — Teams aggregation (1 week).**
 
-**Release.** Meter for everyone, interventions in Premium marked beta, aggregation in Teams. `/numbers` post: "We checked Spotify's 90% on 439 real sessions: reads are 1.6%, the money is context times calls, here is what isolating loops saves."
+**Release.** Meter for everyone, threshold management in Premium marked beta, aggregation in Teams. `/numbers` post per the Stage 0 findings: reads are 1.6%, the money is context times calls, isolation is worth 12x per series but the model takes it 1 time in 8, and compaction saves more without needing the model's consent.
 
 ---
 
 ## 9. Definition of done
 
-- Stage 0: note exists with reproducible numbers and a mechanism section with doc links and live-session evidence; kill criterion decided.
-- Stage 1: panel renders from an existing archive within 5 s for 1k sessions; live badge updates within one turn; golden tests pass; no network calls.
-- Stage 2: on a clean machine `enable` leads to a logged nudge within one eligible session; killing Caprock mid-session never blocks a tool call; compliance and measured savings visible; calibration line shows N subagent runs.
+- Stage 0: DONE. Note exists with reproducible numbers and a mechanism section with doc links and live-session evidence; kill criterion applied and the result acted on.
+- Stage 1: panel renders from an existing archive within 5 s for 1k sessions; live badge updates within one turn; golden tests pass; no network calls; the recommended threshold is reproducible from the archive.
+- Stage 2: re-read cost measured and reported before any writer is built; `enable` writes the threshold with a backup and `disable` restores the exact prior state (including absence of the key); a week of subsequent sessions shows measured tax against the pre-write baseline.
 - Stage 4: team totals reconcile with per-person panels.
 
 ---
@@ -339,7 +369,15 @@ Package layout beyond section 4, storage for the intervention log, tokenizer for
 
 ## 11. Open questions (answer during Stage 0)
 
-1. Does Claude reliably act on `additionalContext` mid-loop, or does it need the hard-mode deny? Decides the default.
-2. Subagent usage visibility in transcripts. Decides whether "measured" is truly measured for the subagent side.
-3. Does isolating with the same model (Opus subagent) already capture most of the saving, making the Haiku choice a secondary knob? The counterfactual should show both.
+Answered in Stage 0 (`.ai/notes/context-tax.md`):
+
+1. **Does Claude act on `additionalContext` mid-loop?** It receives it and mostly ignores it: 1 of 8. This parked the isolation lever (section 6.4).
+2. **Subagent usage visibility.** Measured, not estimated. Claude Code writes each subagent to `<session-id>/subagents/agent-<id>.jsonl` with a `.meta.json` carrying `toolUseId`, which links it back to the spawning `Task` call; 362 of 364 archived subagent transcripts carry full `usage`.
+3. **Does same-model isolation capture most of the saving?** Yes — $466 of $487, so 96%. The cheap-worker choice is a settings footnote, not a mechanism.
+
+Still open:
+
 4. Whether OpenCode sessions get the meter in the same release (hook schema is compatible).
+5. What compaction actually costs in re-reads. Gates the paid lever; Stage 2 answers it.
+6. Whether this archive is representative at all. Every Stage 0 number is one person's projects, and the workload the spec was written about is the session that had to be excluded. The spike runs on anyone's archive:
+   `go run github.com/dspv/caprock/cmd/routing-spike@latest -tax -json > my-context-tax.json`

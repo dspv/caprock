@@ -15,16 +15,20 @@ go run ./cmd/routing-spike -tax -allow-edits -exclude-project "..."   # upper bo
 > token-turns on this archive, the isolation lever is too small; ship the meter
 > only, drop the paid tier of this spec. — [spec §3](../../spec/spec-context-tax.md)
 
-That criterion was about **the isolation lever**, not about the product. Read
-lever by lever, Stage 0 produced three different answers:
+That criterion was about **the isolation lever**, not about the product — and the
+lever failed twice over: 12.9% coverage on the archive, and 1 compliance in 8 when
+the nudge was tried live. Isolation is parked. Read lever by lever, Stage 0
+produced three different answers:
 
-| lever                            | Stage 0 result                              | status                   |
-| -------------------------------- | ------------------------------------------- | ------------------------ |
-| the meter (show the tax)         | $801.56 measurable, exact from `usage`      | passes on its own terms  |
-| compaction (lower the threshold) | $578.46 saved, mechanism confirmed writable | passes; first paid lever |
-| isolation (delegate the loop)    | 12.9% of Bash token-turns, $487 saved       | a bracket, not a number  |
+| lever                            | Stage 0 result                              | decision                          |
+| -------------------------------- | ------------------------------------------- | --------------------------------- |
+| the meter (show the tax)         | $801.56 measurable, exact from `usage`      | ships free, Stage 1               |
+| compaction (lower the threshold) | $578.46 gross, mechanism confirmed writable | the paid lever, gated on re-reads |
+| isolation (delegate the loop)    | 12.9% coverage, 1 of 8 compliance live      | parked                            |
 
-The isolation figure depends on one rule, and the honest form is a bracket:
+The isolation figure is quoted here because it is what the criterion asked for and
+because it is the number a future reader will want before unparking the lever. It
+depends on one rule, and the honest form is a bracket:
 
 | eligibility rule                                   | coverage  | saved       |
 | -------------------------------------------------- | --------- | ----------- |
