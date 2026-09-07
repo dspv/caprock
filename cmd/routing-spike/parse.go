@@ -49,6 +49,16 @@ type Event struct {
 	Bytes     int    `json:"bytes"`      // only to quantify the bytes-vs-tokens error
 	TurnsLeft int    `json:"turns_left"` // assistant turns after this, to the next compaction
 	Command   string `json:"command,omitempty"`
+
+	// ContextAtCall is C_i (spec §5.1): the context the issuing assistant turn
+	// carried. Exact from usage, never estimated — it is the number the whole
+	// context-tax argument rests on.
+	ContextAtCall int `json:"context_at_call"`
+	// BreaksSeries marks an event that ends a run: a user message or a
+	// compaction happened here, so the next call starts a new series.
+	BreaksSeries bool `json:"-"`
+	// UserBefore is set when a user message preceded this call.
+	UserBefore bool `json:"-"`
 }
 
 // TokenTurns is the spec's unit: content is written to cache once and re-read
@@ -73,6 +83,10 @@ type Session struct {
 	BashCalls  int
 	ToolCalls  int
 	Compaction int
+	// Model is the session's model id, taken from its assistant turns. The
+	// context tax is priced against it, so a session on Opus and one on Sonnet
+	// are not interchangeable.
+	Model string
 }
 
 type rawLine struct {
@@ -85,6 +99,7 @@ type rawLine struct {
 
 type rawMessage struct {
 	Role    string          `json:"role"`
+	Model   string          `json:"model"`
 	Content json.RawMessage `json:"content"`
 	Usage   *usage          `json:"usage"`
 }
@@ -148,6 +163,12 @@ func ParseSession(path string) (*Session, error) {
 
 	turn := 0
 	prevCtx := 0
+	curCtx := 0
+	// A user message ends a series: the loop is over because a human spoke.
+	// Set on the next event so the boundary lands between the two runs.
+	userSpoke := false
+	// A compaction also ends a series — the context it was paying for is gone.
+	compactPending := false
 
 	for sc.Scan() {
 		var rl rawLine
@@ -156,6 +177,7 @@ func ParseSession(path string) (*Session, error) {
 		}
 		if rl.Type == "system" && rl.Subtype == "compact_boundary" {
 			compactAt = append(compactAt, turn)
+			compactPending = true
 			continue
 		}
 		if rl.Cwd != "" && s.Project == "" {
@@ -176,12 +198,16 @@ func ParseSession(path string) (*Session, error) {
 
 		switch m.Role {
 		case "assistant":
+			if s.Model == "" {
+				s.Model = m.Model
+			}
 			ctx := 0
 			if m.Usage != nil {
 				ctx = m.Usage.contextTokens()
 			}
 			if ctx > 0 {
 				turn++
+				curCtx = ctx
 				turnCtx = append(turnCtx, ctx)
 				// The growth in context since the previous assistant turn is
 				// what the intervening tool results cost. Attributed below.
@@ -201,6 +227,17 @@ func ParseSession(path string) (*Session, error) {
 			}
 
 		case "user":
+			hasResult := false
+			for _, b := range blocks {
+				if b.Type == "tool_result" {
+					hasResult = true
+					break
+				}
+			}
+			if !hasResult {
+				// A message from the human, not a tool answering back.
+				userSpoke = true
+			}
 			for _, b := range blocks {
 				if b.Type != "tool_result" {
 					continue
@@ -208,15 +245,19 @@ func ParseSession(path string) (*Session, error) {
 				c := pending[b.ToolUseID]
 				text, isImage, nbytes := flatten(b.Content)
 				ev := Event{
-					Class:   classify(c.name, c.targeted, isImage),
-					Tool:    c.name,
-					Project: s.Project,
-					Session: s.ID,
-					Turn:    turn,
-					Lines:   strings.Count(text, "\n") + 1,
-					Bytes:   nbytes,
-					Command: c.command,
+					Class:         classify(c.name, c.targeted, isImage),
+					Tool:          c.name,
+					Project:       s.Project,
+					Session:       s.ID,
+					Turn:          turn,
+					Lines:         strings.Count(text, "\n") + 1,
+					Bytes:         nbytes,
+					Command:       c.command,
+					ContextAtCall: curCtx,
+					UserBefore:    userSpoke,
+					BreaksSeries:  compactPending,
 				}
+				userSpoke, compactPending = false, false
 				events = append(events, ev)
 			}
 		}

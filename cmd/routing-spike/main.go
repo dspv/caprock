@@ -46,6 +46,16 @@ func main() {
 	// sessions shows whether a verdict is a property of the archive or of one
 	// outlier, which is a question the spec's kill criteria cannot answer alone.
 	drop := flag.Int("drop-largest", 0, "exclude the N largest sessions by context token-turns")
+	// The context-tax spec asks for the dev session to be excluded by project
+	// name rather than by size, so the exclusion is a stated rule and not a
+	// number chosen after seeing the answer.
+	exclude := flag.String("exclude-project", "", "comma-separated project names to exclude (context-tax spec §8)")
+	tax := flag.Bool("tax", false, "run the context-tax analysis (spec sections 5.3-5.5)")
+	// The Edit/Write rule refuses the most expensive series on this archive, so
+	// the kill decision needs to be readable with and without it. The spec
+	// permits edits to files created inside the series; the transcript cannot
+	// tell which those are, so this flag brackets the answer instead.
+	allowEdits := flag.Bool("allow-edits", false, "count series containing Edit/Write as eligible (upper bound)")
 	flag.Parse()
 
 	files, err := transcripts(*dir)
@@ -66,9 +76,67 @@ func main() {
 		}
 		all = append(all, *s)
 	}
+	// Subagent transcripts are separate files under <session>/subagents/. They
+	// are the measured basis for C_sub0 and are never counted as sessions of
+	// their own: a subagent's context is the thing isolation creates, not a
+	// session the user ran.
+	var main_, subs []Session
+	for _, s := range all {
+		if strings.Contains(s.Path, "/subagents/") {
+			subs = append(subs, s)
+		} else {
+			main_ = append(main_, s)
+		}
+	}
+	all = main_
+
+	excluded := 0
+	if *exclude != "" {
+		var kept []Session
+		names := strings.Split(*exclude, ",")
+		for _, s := range all {
+			drop := false
+			// Matched against the project directory exactly, not as a
+			// substring of the path. `-Users-ds-dev-caprock` as a substring
+			// also catches the orchestrator's scratchpad runs
+			// (`-private-tmp-...--Users-ds-dev-caprock-<uuid>-scratchpad-...`),
+			// which are Caprock being exercised rather than Caprock being
+			// written — a different population, and 21 of the 43 it removed.
+			dirName := filepath.Base(filepath.Dir(s.Path))
+			for _, n := range names {
+				if n = strings.TrimSpace(n); n != "" && dirName == n {
+					drop = true
+					break
+				}
+			}
+			if drop {
+				excluded++
+				continue
+			}
+			kept = append(kept, s)
+		}
+		all = kept
+	}
 	if *drop > 0 {
 		all = dropLargest(all, *drop)
 	}
+
+	if *tax {
+		cSub0 := measureCSub0(subs)
+		rule := DefaultRule
+		rule.AllowEdits = *allowEdits
+		tr := AnalyseTax(all, rule, cSub0, 1_000, 500)
+		tr.Excluded = excluded
+		if *asJSON {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			_ = enc.Encode(tr)
+			return
+		}
+		fmt.Print(tr.Text())
+		return
+	}
+
 	rep := Analyse(all)
 	rep.Root = *dir
 	rep.FilesScanned = len(files)
@@ -80,6 +148,36 @@ func main() {
 		return
 	}
 	fmt.Print(rep.Text(*showBytes))
+}
+
+// measureCSub0 is the median peak context of a real subagent run.
+//
+// The spec guesses 25k. Measuring it matters because it sits inside the
+// isolation counterfactual: guessing low would inflate the saving, which is
+// the direction that would sell the feature rather than test it.
+func measureCSub0(subs []Session) int {
+	// The first turn's context, not the peak. C_sub0 is what a subagent starts
+	// with; everything after is its own accumulating results, which the
+	// counterfactual already adds call by call. Using the peak would charge
+	// that growth twice.
+	var peaks []int
+	for _, s := range subs {
+		first := 0
+		for _, e := range s.Events {
+			if e.ContextAtCall > 0 {
+				first = e.ContextAtCall
+				break
+			}
+		}
+		if first > 0 {
+			peaks = append(peaks, first)
+		}
+	}
+	if len(peaks) == 0 {
+		return 25_000 // the spec's default, when there is nothing to measure
+	}
+	sort.Ints(peaks)
+	return peaks[len(peaks)/2]
 }
 
 // dropLargest removes the n sessions with the most context token-turns.
