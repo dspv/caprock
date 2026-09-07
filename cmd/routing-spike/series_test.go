@@ -12,9 +12,9 @@ func bashCall(ctx int, cmd string) string {
 		`"content":[{"type":"tool_use","id":"t` + itoa(ctx) + `","name":"Bash","input":{"command":"` + cmd + `"}}]}}`
 }
 
-func bashResult(ctx int, body string) string {
+func bashResult(ctx int) string {
 	return `{"type":"user","message":{"role":"user","content":[{"type":"tool_result",` +
-		`"tool_use_id":"t` + itoa(ctx) + `","content":"` + body + `"}]}}`
+		`"tool_use_id":"t` + itoa(ctx) + `","content":"ok"}]}}`
 }
 
 func userSays(text string) string {
@@ -27,11 +27,11 @@ func userSays(text string) string {
 func TestUserMessageEndsASeries(t *testing.T) {
 	lines := []string{}
 	for i := 1; i <= 3; i++ {
-		lines = append(lines, bashCall(100000+i, "go test ./..."), bashResult(100000+i, "ok"))
+		lines = append(lines, bashCall(100000+i, "go test ./..."), bashResult(100000+i))
 	}
 	lines = append(lines, userSays("now do something else"))
 	for i := 1; i <= 4; i++ {
-		lines = append(lines, bashCall(200000+i, "go build ./..."), bashResult(200000+i, "ok"))
+		lines = append(lines, bashCall(200000+i, "go build ./..."), bashResult(200000+i))
 	}
 	s, err := ParseSession(write(t, lines...))
 	if err != nil {
@@ -51,11 +51,11 @@ func TestUserMessageEndsASeries(t *testing.T) {
 func TestCompactionEndsASeries(t *testing.T) {
 	lines := []string{}
 	for i := 1; i <= 3; i++ {
-		lines = append(lines, bashCall(300000+i, "go test ./..."), bashResult(300000+i, "ok"))
+		lines = append(lines, bashCall(300000+i, "go test ./..."), bashResult(300000+i))
 	}
 	lines = append(lines, `{"type":"system","subtype":"compact_boundary"}`)
 	for i := 1; i <= 3; i++ {
-		lines = append(lines, bashCall(50000+i, "go test ./..."), bashResult(50000+i, "ok"))
+		lines = append(lines, bashCall(50000+i, "go test ./..."), bashResult(50000+i))
 	}
 	s, _ := ParseSession(write(t, lines...))
 	got := DetectSeries(*s, DefaultRule)
@@ -73,7 +73,7 @@ func TestEligibilityRule(t *testing.T) {
 	long := func(n, ctx int, cmd string) Series {
 		lines := []string{}
 		for i := 1; i <= n; i++ {
-			lines = append(lines, bashCall(ctx+i, cmd), bashResult(ctx+i, "ok"))
+			lines = append(lines, bashCall(ctx+i, cmd), bashResult(ctx+i))
 		}
 		s, _ := ParseSession(write(t, lines...))
 		got := DetectSeries(*s, DefaultRule)
@@ -99,7 +99,7 @@ func TestEligibilityRule(t *testing.T) {
 func TestSeriesWithEditsIsNotEligible(t *testing.T) {
 	lines := []string{}
 	for i := 1; i <= 3; i++ {
-		lines = append(lines, bashCall(250000+i, "go test ./..."), bashResult(250000+i, "ok"))
+		lines = append(lines, bashCall(250000+i, "go test ./..."), bashResult(250000+i))
 	}
 	lines = append(lines,
 		`{"type":"assistant","message":{"role":"assistant","model":"claude-opus-5","usage":{"input_tokens":0,`+
@@ -107,16 +107,89 @@ func TestSeriesWithEditsIsNotEligible(t *testing.T) {
 			`"content":[{"type":"tool_use","id":"e1","name":"Edit","input":{"file_path":"x.go"}}]}}`,
 		`{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"e1","content":"done"}]}}`)
 	for i := 4; i <= 6; i++ {
-		lines = append(lines, bashCall(260000+i, "go test ./..."), bashResult(260000+i, "ok"))
+		lines = append(lines, bashCall(260000+i, "go test ./..."), bashResult(260000+i))
 	}
 	s, _ := ParseSession(write(t, lines...))
 	got := DetectSeries(*s, DefaultRule)
 	if len(got) != 1 {
 		t.Fatalf("want 1 series, got %d", len(got))
 	}
-	if got[0].Eligible || got[0].Why != "contains Edit/Write" {
-		t.Errorf("an editing series must not be eligible: eligible=%v why=%q", got[0].Eligible, got[0].Why)
+	if got[0].Eligible || got[0].Why != "edits pre-existing files" {
+		t.Errorf("a series editing files it did not create must not be eligible: eligible=%v why=%q",
+			got[0].Eligible, got[0].Why)
 	}
+	if !got[0].EditLoop || got[0].SelfContained {
+		t.Errorf("it should be classed as an edit-loop: editLoop=%v selfContained=%v",
+			got[0].EditLoop, got[0].SelfContained)
+	}
+}
+
+// The rule that decides the verdict: a series that only edits what it first
+// wrote owns everything it touches, so isolating it cannot clobber work that
+// predates it. Refusing these is what put the coverage figure at 6%.
+func TestSeriesEditingOnlyItsOwnFilesIsSelfContained(t *testing.T) {
+	writeCall := func(id, path string, ctx int) string {
+		return `{"type":"assistant","message":{"role":"assistant","model":"claude-opus-5","usage":{"input_tokens":0,` +
+			`"cache_creation_input_tokens":0,"cache_read_input_tokens":` + itoa(ctx) + `,"output_tokens":5},` +
+			`"content":[{"type":"tool_use","id":"` + id + `","name":"Write","input":{"file_path":"` + path + `"}}]}}`
+	}
+	editCall := func(id, path string, ctx int) string {
+		return `{"type":"assistant","message":{"role":"assistant","model":"claude-opus-5","usage":{"input_tokens":0,` +
+			`"cache_creation_input_tokens":0,"cache_read_input_tokens":` + itoa(ctx) + `,"output_tokens":5},` +
+			`"content":[{"type":"tool_use","id":"` + id + `","name":"Edit","input":{"file_path":"` + path + `"}}]}}`
+	}
+	res := func(id string) string {
+		return `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"` + id + `","content":"ok"}]}}`
+	}
+
+	t.Run("writes then edits the same file", func(t *testing.T) {
+		lines := []string{writeCall("w1", "/tmp/new.go", 250000), res("w1"), editCall("e1", "/tmp/new.go", 250100), res("e1")}
+		for i := 1; i <= 4; i++ {
+			lines = append(lines, bashCall(250200+i, "go test ./..."), bashResult(250200+i))
+		}
+		s, _ := ParseSession(write(t, lines...))
+		got := DetectSeries(*s, DefaultRule)
+		if len(got) != 1 {
+			t.Fatalf("want 1 series, got %d", len(got))
+		}
+		if !got[0].SelfContained || got[0].EditLoop {
+			t.Errorf("selfContained=%v editLoop=%v, want true/false", got[0].SelfContained, got[0].EditLoop)
+		}
+		if !got[0].Eligible {
+			t.Errorf("a self-contained loop should be eligible, refused: %q", got[0].Why)
+		}
+	})
+
+	t.Run("edits a file it never wrote", func(t *testing.T) {
+		lines := []string{writeCall("w1", "/tmp/new.go", 250000), res("w1"), editCall("e1", "/tmp/other.go", 250100), res("e1")}
+		for i := 1; i <= 4; i++ {
+			lines = append(lines, bashCall(250200+i, "go test ./..."), bashResult(250200+i))
+		}
+		s, _ := ParseSession(write(t, lines...))
+		got := DetectSeries(*s, DefaultRule)
+		if got[0].SelfContained || !got[0].EditLoop {
+			t.Errorf("editing an unwritten file must not be self-contained: %+v", got[0])
+		}
+	})
+
+	t.Run("an edit with no recorded path counts as foreign", func(t *testing.T) {
+		// Unknown provenance is treated as the worse case, because this rule
+		// decides whether real work is moved into a subagent.
+		lines := []string{
+			`{"type":"assistant","message":{"role":"assistant","model":"claude-opus-5","usage":{"input_tokens":0,` +
+				`"cache_creation_input_tokens":0,"cache_read_input_tokens":250000,"output_tokens":5},` +
+				`"content":[{"type":"tool_use","id":"e1","name":"Edit","input":{}}]}}`,
+			res("e1"),
+		}
+		for i := 1; i <= 5; i++ {
+			lines = append(lines, bashCall(250200+i, "go test ./..."), bashResult(250200+i))
+		}
+		s, _ := ParseSession(write(t, lines...))
+		got := DetectSeries(*s, DefaultRule)
+		if got[0].SelfContained || !got[0].EditLoop {
+			t.Errorf("an edit with no path must count as foreign: %+v", got[0])
+		}
+	})
 }
 
 func TestCommandClassification(t *testing.T) {
@@ -261,7 +334,7 @@ func TestCallsWithoutContextAreSkipped(t *testing.T) {
 		`{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"n1","content":"x"}]}}`,
 	}
 	for i := 1; i <= 5; i++ {
-		lines = append(lines, bashCall(250000+i, "go test ./..."), bashResult(250000+i, "ok"))
+		lines = append(lines, bashCall(250000+i, "go test ./..."), bashResult(250000+i))
 	}
 	s, _ := ParseSession(write(t, lines...))
 	got := DetectSeries(*s, DefaultRule)

@@ -54,6 +54,10 @@ type Event struct {
 	// carried. Exact from usage, never estimated — it is the number the whole
 	// context-tax argument rests on.
 	ContextAtCall int `json:"context_at_call"`
+	// Path is the file an Edit or Write targeted. Provenance inside a series
+	// turns on it: a series that only edits what it first created is a
+	// self-contained loop, one that edits pre-existing files is not.
+	Path string `json:"path,omitempty"`
 	// BreaksSeries marks an event that ends a run: a user message or a
 	// compaction happened here, so the next call starts a new series.
 	BreaksSeries bool `json:"-"`
@@ -149,6 +153,7 @@ func ParseSession(path string) (*Session, error) {
 		name     string
 		targeted bool
 		command  string
+		path     string
 	}
 	pending := map[string]call{}
 
@@ -218,7 +223,7 @@ func ParseSession(path string) (*Session, error) {
 			for _, b := range blocks {
 				if b.Type == "tool_use" {
 					targeted, cmd := inspectInput(b.Name, b.Input)
-					pending[b.ID] = call{name: b.Name, targeted: targeted, command: cmd}
+					pending[b.ID] = call{name: b.Name, targeted: targeted, command: cmd, path: filePath(b.Input)}
 					s.ToolCalls++
 					if b.Name == "Bash" {
 						s.BashCalls++
@@ -254,6 +259,7 @@ func ParseSession(path string) (*Session, error) {
 					Bytes:         nbytes,
 					Command:       c.command,
 					ContextAtCall: curCtx,
+					Path:          c.path,
 					UserBefore:    userSpoke,
 					BreaksSeries:  compactPending,
 				}
@@ -398,6 +404,24 @@ func inspectInput(name string, raw json.RawMessage) (targeted bool, command stri
 		return in.Offset != nil || in.Limit != nil, ""
 	}
 	return false, in.Command
+}
+
+// filePath extracts the file an Edit/Write acted on.
+func filePath(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var in struct {
+		FilePath     string `json:"file_path"`
+		NotebookPath string `json:"notebook_path"`
+	}
+	if json.Unmarshal(raw, &in) != nil {
+		return ""
+	}
+	if in.FilePath != "" {
+		return in.FilePath
+	}
+	return in.NotebookPath
 }
 
 func classify(tool string, targeted, isImage bool) Class {

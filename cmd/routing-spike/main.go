@@ -208,7 +208,9 @@ func transcripts(root string) ([]string, error) {
 	var out []string
 	err := filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil // unreadable entry: skip, keep scanning
+			// An unreadable entry is skipped rather than aborting the walk: one
+			// bad permission in a 400-transcript archive must not lose the run.
+			return nil //nolint:nilerr // deliberate: skip and keep scanning
 		}
 		if !info.IsDir() && strings.HasSuffix(p, ".jsonl") {
 			out = append(out, p)

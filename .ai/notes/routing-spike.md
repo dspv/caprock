@@ -4,7 +4,7 @@
 **Reproduce:** `go run ./cmd/routing-spike -bytes`
 **Verdict:** estimator **FAIL** (6.2% against a 15% bar) · Bash track **PASS** (24.7% against a 20% bar)
 
-This is Stage 0 of [the routing-savings spec](../../docs/spec-routing-savings.md):
+This is Stage 0 of [the routing-savings spec](../../spec/spec-routing-savings.md):
 the measurement that decides whether the rest of the feature is built. No feature
 code was written.
 

@@ -187,7 +187,7 @@ func AnalyseTax(sessions []Session, rule Rule, cSub0, summary, brief int) TaxRep
 	// Sensitivity: the kill decision must not turn on one arbitrary pair of
 	// thresholds, so the same measurement is repeated across the grid.
 	for _, n := range []int{3, 5, 8, 12} {
-		for _, c := range []int{100_000, 200_000, 300_000} {
+		for _, c := range []int{200_000, 350_000, 500_000, 700_000} {
 			sub := AnalyseTaxOnce(sessions, Rule{MinN: n, MinCStart: c}, cSub0, summary, brief)
 			r.Sweep = append(r.Sweep, SweepRow{
 				MinN: n, MinCtx: c, Eligible: sub.EligibleSeries,
@@ -323,12 +323,14 @@ func ctxBucket(c int) string {
 		return "200-300k"
 	case c < 500_000:
 		return "300-500k"
+	case c < 700_000:
+		return "500-700k"
 	}
-	return "500k+"
+	return "700k+"
 }
 
 func ctxOrder(l string) int {
-	for i, x := range []string{"<50k", "50-100k", "100-200k", "200-300k", "300-500k", "500k+"} {
+	for i, x := range []string{"<50k", "50-100k", "100-200k", "200-300k", "300-500k", "500-700k", "700k+"} {
 		if x == l {
 			return i
 		}
@@ -378,7 +380,7 @@ func (r TaxReport) Text() string {
 
 	f("\nWHY SERIES WERE REFUSED\n")
 	f("  %-26s %8s %12s\n", "reason", "series", "tax held")
-	for _, k := range []string{"too short", "context below threshold", "contains Edit/Write"} {
+	for _, k := range []string{"too short", "context below threshold", "edits pre-existing files"} {
 		if r.WhyNot[k] > 0 {
 			f("  %-26s %8d %11.2f$\n", k, r.WhyNot[k], r.WhyNotTax[k])
 		}

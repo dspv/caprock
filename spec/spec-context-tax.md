@@ -199,10 +199,15 @@ Eligible for isolation (initial rule, tuned in Stage 2):
 ### 5.4 Counterfactual: isolation
 
 ```
-C_sub0   = subagent starting context (initial default 25k: system prompt + tools + task brief;
-           measured in Stage 2 and fed back)
-S        = summary returned to parent (initial default 1k; measured)
-P_sub_*  = prices of the subagent model (Haiku 4.5 by default; same-model isolation also shown)
+C_sub0   = subagent starting context: measured 17.9k (median first turn over 364 real
+           subagent transcripts, Stage 0), growing to a 62.6k median peak over a run.
+           The growth is not a second constant -- the sum_{j<i} R_j term below is it.
+S        = summary returned to parent: measured 10.9k median (Stage 0), not the 1k
+           first guessed; it is cache-written once and re-read for every remaining turn,
+           so it is a material part of the cost, not a rounding error.
+P_sub_*  = prices of the subagent model. Same-model isolation captures 96% of the saving
+           (Stage 0: $466 of $487), so the default is the lead's own model and the
+           cheaper-worker case is a settings line, not a product decision.
 
 cost_isolated = sum over i in series of (C_sub0 + sum_{j<i} R_j) * P_sub_cr + R_i * P_sub_cw
               + S * P_cw + S * turns_left_end * P_cr
@@ -307,7 +312,7 @@ Meter works with no licence. Interventions gate on the existing licence check an
 
 **Stage 1 — Meter, free (1.5 weeks).** Events, series, estimator, panel, live badge, share block. Retroactive on first run, incremental after. Golden-transcript tests for `C_i`, series boundaries, and counterfactuals.
 
-**Stage 2 — Interventions, paid, flagged (2 weeks).** Hooks, skill, delegation nudge, compaction nudge, log, panel paid state, calibration of `C_sub0` and `S` from real subagent runs. Two weeks of dogfooding on Dima's sessions. Apply the Stage 2 kill criterion.
+**Stage 2 — Interventions, paid, flagged (2 weeks).** Hooks, skill, delegation nudge, compaction nudge, log, panel paid state, recalibration of `C_sub0` and `S` against live delegated runs (Stage 0 measured both from the archive). Two weeks of dogfooding on Dima's sessions. Apply the Stage 2 kill criterion.
 
 **Stage 3 — Summariser (3 days, optional).** Only if the user wants it after Stage 2 numbers.
 

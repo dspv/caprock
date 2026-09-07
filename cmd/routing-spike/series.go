@@ -12,14 +12,23 @@ import (
 // return; it is the context each one re-reads. A series of twelve Bash calls at
 // 380k context pays that 380k twelve times over before doing any work.
 type Series struct {
-	Session  string `json:"session"`
-	Project  string `json:"project"`
-	Start    int    `json:"start_turn"`
-	N        int    `json:"n"`
-	CStart   int    `json:"c_start"`
-	CEnd     int    `json:"c_end"`
-	Class    string `json:"class"`
-	HasEdit  bool   `json:"has_edit"`
+	Session string `json:"session"`
+	Project string `json:"project"`
+	Start   int    `json:"start_turn"`
+	N       int    `json:"n"`
+	CStart  int    `json:"c_start"`
+	CEnd    int    `json:"c_end"`
+	Class   string `json:"class"`
+	HasEdit bool   `json:"has_edit"`
+	// SelfContained: every Edit in the series targets a file the same series
+	// first created with Write. Such a loop owns everything it touches, so
+	// isolating it cannot clobber work that predates it.
+	SelfContained bool `json:"self_contained"`
+	// EditLoop: the series edits files it did not create. Whether these can be
+	// isolated is not answerable from a transcript — it turns on whether the
+	// loop needs the conversation's history — so they are their own category
+	// for Stage 2 to settle by experiment.
+	EditLoop bool   `json:"edit_loop"`
 	TaxTok   int    `json:"tax_tokens"`    // sum of C_i, the context re-read
 	ResultTk int    `json:"result_tokens"` // sum of R_i
 	TurnsEnd int    `json:"turns_left_end"`
@@ -156,16 +165,36 @@ func buildSeries(s Session, ev []Event, rule Rule) Series {
 		Model:    s.Model,
 		TurnsEnd: ev[len(ev)-1].TurnsLeft,
 	}
+	// created tracks files this series wrote itself, so an Edit to something
+	// the loop made is told apart from an edit to something that was already
+	// there when it began.
+	created := map[string]bool{}
+	editsOutside := false
 	for _, e := range ev {
 		sr.TaxTok += e.ContextAtCall
 		sr.ResultTk += e.Tokens
-		if e.Tool == "Edit" || e.Tool == "Write" || e.Tool == "NotebookEdit" {
+		switch e.Tool {
+		case "Write":
 			sr.HasEdit = true
+			if e.Path != "" {
+				created[e.Path] = true
+			}
+		case "Edit", "MultiEdit", "NotebookEdit":
+			sr.HasEdit = true
+			// An edit whose path was not recorded cannot be shown to be
+			// self-contained, so it counts as foreign. Unknown provenance is
+			// treated as the worse case: this decides whether real work gets
+			// moved into a subagent.
+			if e.Path == "" || !created[e.Path] {
+				editsOutside = true
+			}
 		}
 		if e.Command != "" {
 			cmds = append(cmds, e.Command)
 		}
 	}
+	sr.SelfContained = sr.HasEdit && !editsOutside
+	sr.EditLoop = editsOutside
 	sr.Class = classifySeries(cmds)
 
 	switch {
@@ -173,12 +202,13 @@ func buildSeries(s Session, ev []Event, rule Rule) Series {
 		sr.Why = "too short"
 	case sr.CStart < rule.MinCStart:
 		sr.Why = "context below threshold"
-	case sr.HasEdit && !rule.AllowEdits:
-		// The spec allows edits to files created inside the series; the
-		// transcript does not reliably say which files those are, so this
-		// spike takes the conservative reading. It undercounts eligibility,
-		// which is the safe direction for a kill criterion.
-		sr.Why = "contains Edit/Write"
+	case sr.EditLoop && !rule.AllowEdits:
+		// Edits to files the series did not itself create. Refused not because
+		// such a loop is unsuitable — that is unknown — but because a
+		// transcript cannot say whether it needs the conversation's history.
+		// Stage 2 settles it by experiment; until then it is its own category
+		// rather than a flat no.
+		sr.Why = "edits pre-existing files"
 	default:
 		sr.Eligible = true
 	}
