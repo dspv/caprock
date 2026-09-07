@@ -42,3 +42,4 @@ scripts/shotdata/
 
 # TypeScript incremental build cache — a local artifact, never shared.
 *.tsbuildinfo
+/routing-spike

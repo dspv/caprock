@@ -26,8 +26,10 @@ Spotify's 90% came from moving a heavy payload out of the frontier context. The 
 
 Caprock ships two things:
 
-1. **Free — Context Tax meter.** Live and retroactive: context at call time, dollar cost of the next call, consecutive-call series and what they cost, per-tool share by token-turns, the share of tax paid above 500k of starting context, and the recommended `autoCompactWindow` with its expected saving. No keys, no hooks, computed from transcripts Caprock already parses.
-2. **Paid — Compaction threshold management.** Caprock computes the optimal `autoCompactWindow` per project from the user's own data, writes it into settings, and keeps it current as the workload changes. Every write is logged; measured savings sit next to the estimate.
+1. **Free — these numbers inside the screens Caprock already has.** Not a new panel: the cost of the next call on the session card, a context-tax row in the existing Breakdown, and the price of a series on the loop detector's alert. Live and retroactive, no keys, no hooks, computed from transcripts Caprock already parses. The recommended `autoCompactWindow` and its expected saving are shown for free.
+2. **Paid — Compaction threshold management, the first Premium feature that acts.** Caprock computes the optimal `autoCompactWindow` per project from the user's own data, writes it into settings, and keeps it current as the workload changes. Every write is logged; measured savings sit next to the estimate.
+
+This spec is the source of the formulas behind those numbers. It is not a feature with a surface of its own.
 
 ---
 
@@ -121,7 +123,8 @@ internal/contexttax/
   compaction/   optimal autoCompactWindow per project; settings read/write with backup
   log/          intervention log + measured outcomes
 ui
-  ContextTaxPanel   free meter + paid controls
+  existing screens  session card line, Breakdown row, loop alert price
+  Premium settings  paid compaction controls
   LiveBadge         "this call: $0.19 / context 382k / series 12" on the session view
   ShareCard         context-tax block
 ```
@@ -135,7 +138,7 @@ transcript (archive or live tail)
   -> series: runs of consecutive tool calls with no user turn between, split on compaction
   -> classifier: series class from command prefixes (test | build | vcs | search | pkg | run | mixed)
   -> estimator: cost_actual, cost_if_isolated, cost_if_compacted_at_k
-  -> aggregates -> panel, live badge, share card
+  -> aggregates -> session card line, Breakdown row, loop alert, share card
 ```
 
 Data flow, paid:
@@ -147,7 +150,7 @@ archive per project
   -> settings.json write, with backup and a logged before/after value
   -> subsequent sessions: measured tax per call vs the pre-write baseline
   -> re-read audit after every boundary feeds back into the threshold
-  -> measured vs estimated in the panel
+  -> measured vs estimated in the Premium compaction view
 ```
 
 No hook is required for the paid lever. The threshold is a settings value, so the intervention happens between sessions rather than inside one.
@@ -157,8 +160,8 @@ No hook is required for the paid lever. The threshold is a settings value, so th
 This release ships no new hook — the compaction lever writes a setting instead. The contract below binds any hook a later stage adds.
 
 - JSON in on stdin, JSON out on stdout, exit 0 always. 2 s hard timeout. No network in hooks.
-- Any error -> emit nothing, log locally, increment `hook_failopen` shown in the panel.
-- Licence failure -> hooks emit nothing; panel says "interventions paused"; never silent.
+- Any error -> emit nothing, log locally, increment `hook_failopen` shown with the compaction controls.
+- Licence failure -> hooks emit nothing; the compaction controls say "interventions paused"; never silent.
 - **A hook must not fire inside a subagent.** The parent session's `PostToolUse` also fires for tool calls made within subagents — observed directly in the Stage 0 trial, where an already-isolated loop was told to isolate itself. Detect the subagent case from the transcript path (`<session-id>/subagents/agent-<id>.jsonl`) or the agent id and return without acting. This is mandatory for every future Caprock hook, not advice.
 
 ### 4.2 Installation
@@ -188,7 +191,7 @@ P_cr  = 0.10 * P_in
 cost_call_i = C_i * P_cr + R_i * P_cw + R_i * turns_left_i * P_cr
 ```
 
-The first term is the context tax. The panel shows it as its own number.
+The first term is the context tax. It surfaces as the Breakdown row and the session card's next-call figure.
 
 ### 5.3 Series
 
@@ -197,7 +200,7 @@ A series is a maximal run of consecutive tool calls with no user message between
 Eligible for isolation (used to compute the informational counterfactual, not to trigger anything):
 
 - `n >= 5`
-- `C_start >= 200k` (configurable; the panel slider offers 200k / 350k / 500k / 700k — the Stage 0 grid, chosen because coverage is far more sensitive to context than to length)
+- `C_start >= 200k` (the Stage 0 grid is 200k / 350k / 500k / 700k, chosen because coverage is far more sensitive to context than to length; 500k is the reported default and the grid stays a computation parameter, not a user-facing control in Stage 1)
 - class in {test, build, search, pkg, vcs, run} and no Edit/Write inside the series, or Edit/Write only to files first created inside the series
 - not the first series after a user message that contains a question (heuristic: Claude is still understanding the task)
 
@@ -301,12 +304,34 @@ To unpark it, the thing to change is the compliance rate, and the only honest wa
 
 ## 7. Free vs paid
 
-### Free
+The meter is not a feature with a screen of its own. Caprock already has the
+screens people look at; Stage 0 produced numbers those screens were missing.
+The free half is those numbers appearing where the user already is, and the
+paid half is the one thing the numbers argue for. Nothing new is introduced —
+no Context Tax panel, no sliders, no separate route. This spec is the source of
+the formulas, not a feature with its own surface.
 
-- Context Tax panel: totals, per-tool share by token-turns, series table with counterfactuals, share of tax above 500k starting context, best compaction point, per-project and per-period views, sliders for series length and context threshold.
-- **Recommended `autoCompactWindow` per project, with the saving it would have produced.** The number is free; writing it is the paid part.
-- Live badge on the session view: context now, cost of next call in dollars, series so far.
-- Share card block:
+### Free — the numbers, in the screens that already exist
+
+Three placements, all of them additions to existing components:
+
+- **Session card** — one line: context now, and what the next call costs at that
+  context. The figure that makes the tax legible is the marginal one, and the
+  session view is where a running session is already being watched.
+- **Breakdown** (`ui/src/components/Breakdown.tsx`) — one row in the existing
+  lifetime table: context tax as a share of spend, with its absolute dollars,
+  in the same shape as the model and tool rows around it. The panel's own rule
+  applies — the row carries its dollars, not only its percentage.
+- **Loop detector** (`internal/loop/`) — when a series fires an alert, the alert
+  carries what the series has cost so far and what it would have cost isolated.
+  The detector already finds the repeated-tool series this spec calls a series;
+  it just never priced one.
+
+Recommended `autoCompactWindow` per project, with the saving it would have
+produced, is shown with the compaction figures. The number is free; writing it
+is the paid part.
+
+The share block stays a `ShareCard` variant, not a new screen:
 
 ```
 Context tax: 54% of your Claude Code spend (Bash, 21,711 calls at 382k avg context)
@@ -316,6 +341,10 @@ Half of it was paid above 500k of context. A lower compact threshold would have 
 - CTA: "Caprock can set and maintain that threshold for you. Measured, not estimated."
 
 ### Paid (Premium)
+
+Compaction management is the first Premium feature that does something rather
+than describing something. It replaces a placeholder, and it is the only
+intervention in this release.
 
 - `caprock contexttax enable/disable/status`.
 - Managed `autoCompactWindow` per project: computed, written with backup, kept current.
@@ -328,7 +357,7 @@ Half of it was paid above 500k of context. A lower compact threshold would have 
 
 ### Enforcement
 
-Meter works with no licence. Threshold management gates on the existing licence check; on licence failure Caprock stops managing the value and leaves the last written one in place, saying so in the panel. It never silently reverts a user's settings.
+Meter works with no licence. Threshold management gates on the existing licence check; on licence failure Caprock stops managing the value and leaves the last written one in place, saying so where the controls live. It never silently reverts a user's settings.
 
 ---
 
@@ -340,9 +369,9 @@ Meter works with no licence. Threshold management gates on the existing licence 
 - Mechanism check against the official Claude Code docs (https://docs.claude.com/en/docs/claude-code/hooks and the subagents page), verified in a live session: does `additionalContext` from PostToolUse reach the model; how does a subagent's usage appear in the transcript (separate file, nested records, or absent); how to set the subagent model and cap its context. Record findings with links; if measurement of subagent cost is impossible from transcripts, say so and propose the fallback (estimate from brief + results).
 - Apply the Stage 0 kill criterion.
 
-**Stage 1 — Meter, free (1.5 weeks). Next.** Events, series, estimator, panel, live badge, share block, per-project recommended threshold. Retroactive on first run, incremental after. Golden-transcript tests for `C_i`, series boundaries, and counterfactuals. **The meter then runs on Dima's own sessions for a week before Stage 2 begins** — the recommendation has to survive contact with real use before anything writes it.
+**Stage 1 — the numbers into the existing screens, free (1.5 weeks). Next.** Events, series and estimator in the daemon; then three placements and nothing more: the next-call cost line on the session card, a context-tax row in `Breakdown`, and the cost-so-far / cost-if-isolated figures on the loop detector's alert. Per-project recommended threshold shown with the compaction figures, share block as a `ShareCard` variant. **No new panel, no new route, no sliders** — if a number needs a home that does not exist yet, it waits. Retroactive on first run, incremental after. Golden-transcript tests for `C_i`, series boundaries, and counterfactuals. **The meter then runs on Dima's own sessions for a week before Stage 2 begins** — the recommendation has to survive contact with real use before anything writes it.
 
-**Stage 2 — Compaction management, paid, flagged (2 weeks).** In order: measure the re-read cost after existing compaction boundaries across the archive and apply the Stage 2 kill criterion; only then build threshold computation, the settings writer with backup and restore, the write log, and the panel's paid state. Two weeks of dogfooding on Dima's sessions.
+**Stage 2 — Compaction management: the first real Premium feature, flagged (2 weeks).** In order: measure the re-read cost after existing compaction boundaries across the archive and apply the Stage 2 kill criterion; only then build threshold computation, the settings writer with backup and restore, the write log, and the Premium controls. Two weeks of dogfooding on Dima's sessions.
 
 **Stage 3 — Summariser (3 days, optional).** Only if the user wants it after Stage 2 numbers.
 
@@ -355,9 +384,9 @@ Meter works with no licence. Threshold management gates on the existing licence 
 ## 9. Definition of done
 
 - Stage 0: DONE. Note exists with reproducible numbers and a mechanism section with doc links and live-session evidence; kill criterion applied and the result acted on.
-- Stage 1: panel renders from an existing archive within 5 s for 1k sessions; live badge updates within one turn; golden tests pass; no network calls; the recommended threshold is reproducible from the archive.
+- Stage 1: the three placements render from an existing archive within 5 s for 1k sessions; the session card figure updates within one turn; golden tests pass; no network calls; the recommended threshold is reproducible from the archive; **no new panel, route or slider was added**.
 - Stage 2: re-read cost measured and reported before any writer is built; `enable` writes the threshold with a backup and `disable` restores the exact prior state (including absence of the key); a week of subsequent sessions shows measured tax against the pre-write baseline.
-- Stage 4: team totals reconcile with per-person panels.
+- Stage 4: team totals reconcile with the per-person figures.
 
 ---
 
