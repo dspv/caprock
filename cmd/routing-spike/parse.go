@@ -87,6 +87,11 @@ type Session struct {
 	BashCalls  int
 	ToolCalls  int
 	Compaction int
+	// CompactAt is the assistant-turn index of each compaction boundary. The
+	// count alone cannot answer what a boundary COST: the re-read audit needs
+	// to know what was in context before each one and what was fetched again
+	// after it.
+	CompactAt []int
 	// Model is the session's model id, taken from its assistant turns. The
 	// context tax is priced against it, so a session on Opus and one on Sonnet
 	// are not interchangeable.
@@ -289,6 +294,7 @@ func ParseSession(path string) (*Session, error) {
 	s.Events = events
 	s.AssistantTurns = turn
 	s.Compaction = len(compactAt)
+	s.CompactAt = compactAt
 	for _, c := range turnCtx {
 		s.ContextTokenTurns += c
 	}

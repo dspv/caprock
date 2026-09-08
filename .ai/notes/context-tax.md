@@ -378,6 +378,49 @@ the other two came back clean.
    the subject. Stage 2 is that number, measured properly, with the nudge written
    for ad-hoc `run` loops and suppressed inside subagents.
 
+## The Stage 2 gate is not answered by this archive (2026-09-08)
+
+Compaction is not free: after a boundary the model re-reads what the summary
+dropped, and the $578 estimate does not include it. The Stage 2 kill criterion
+says the intervention does not ship if re-reads eat more than half the saving.
+`go run ./cmd/routing-spike -reread` measures it from the boundaries the
+archive already contains. The result is not the answer the gate needs, and the
+reason matters more than the number.
+
+**Measured.** 428 transcripts hold 39 compaction boundaries, in 6 sessions. 14
+of those have at least 10 assistant turns after them, which is the minimum for
+a boundary to say anything — a boundary at the end of a session re-reads
+nothing because nothing followed it. Across those 14: **273,674 tokens re-read,
+0.5% of the 52.6M tokens returned after a boundary**, 60 distinct files and 78
+distinct commands fetched again.
+
+**Why that 0.5% must not be read as a pass.** Every one of those 14 boundaries
+fired between 830k and 998k of context. That is the default compacting at the
+ceiling of the window because it has run out of room. The intervention compacts
+*early* — the spec's candidate points start at 250k. An early boundary discards
+far more, so it must re-read more, and a measurement of late boundaries is a
+floor for the default's behaviour rather than an estimate of the lever's cost.
+**0 of 14 measurable boundaries fired below 500k.** The tool now says this in
+its own output rather than printing an encouraging percentage.
+
+**What would answer it.** Boundaries that actually fired at the threshold the
+lever would set, which means running at a lower `autoCompactWindow` first and
+measuring what that does. It is the intervention performed by hand on one
+machine, and it is the only honest way to learn the number. `autoCompactWindow`
+is unset on the owner's machine, which is exactly why every observed boundary
+sits at the ceiling.
+
+**Two measurement bugs found and fixed while building this**, both of which had
+made the answer look better than it was:
+
+- `loop.Signature` reads `tool_input`, and the auditor first passed a flat
+  `{"command": ...}`. Every Bash command hashed to the same value, so a session
+  with 5,949 distinct commands before a boundary reported one. Distinct
+  commands re-run went from 13 to 78 once fixed.
+- A file fetched three times after a boundary is one re-read of dropped
+  material plus two ordinary repeats. Only the first is attributable to the
+  compaction, and charging all three would have inflated its cost.
+
 What this archive cannot settle: whether it is representative. Every conclusion
 here is one person's projects, and the workload the spec was written about is the
 session that had to be excluded. Anyone can run the same command on their own
