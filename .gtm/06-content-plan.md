@@ -40,6 +40,16 @@ Ranked by how much of the argument each one carries on its own. Figures are
 from the 2026-08-27 reading; re-run `caprock report` before publishing any of
 them.
 
+**0. The Spotify move does not work here, and the reason is the model.** File
+reads are 1.6% of context token-turns, so routing them is dead. The cost is
+every call re-sending the whole conversation — $0.19 a call at 382k of context,
+$0.48 at 968k. Isolating a loop in a subagent fixes it and is worth about 12x
+on that series, and when nudged to do it live, Claude took the suggestion
+**once in 8 tries**. Draft: [2026-09-07](content/2026-09-07-numbers-context-tax.md).
+It outranks everything below because it contradicts the person who measured it
+— we set out to ship loop isolation and shipped compaction instead. Hold it
+until the meter ships; the post ends on "check it yourself".
+
 **1. Running commands is half the bill.** $5,455 of $11,442 — 48% — went on
 turns whose most expensive act was running a command. Writing code was 13%.
 Everyone assumes the model is expensive because it writes; it is expensive
