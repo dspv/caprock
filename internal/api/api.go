@@ -28,6 +28,7 @@ import (
 
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/config"
+	"github.com/dspv/caprock/internal/contexttax"
 	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/gitdiff"
@@ -413,6 +414,12 @@ type ContextFill struct {
 	Tokens int64   `json:"tokens"`
 	Window int64   `json:"window"`
 	Pct    float64 `json:"pct"`
+	// NextCallUSD is what the next tool call costs at this context before it
+	// does any work, because every call re-reads the whole conversation as a
+	// cache read. It is the marginal figure, and the marginal figure is the
+	// one that makes a full context legible: a percentage says the window is
+	// nearly full, this says what that is charging per call.
+	NextCallUSD float64 `json:"next_call_usd"`
 }
 
 // SessionDetail is /v1/sessions/{id}.
@@ -468,7 +475,12 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 				break
 			}
 			toks := e.Tokens.In + e.Tokens.CacheRead + e.Tokens.CacheWrite
-			sum.Context = &ContextFill{Tokens: toks, Window: row.ContextWindow, Pct: 100 * float64(toks) / float64(row.ContextWindow)}
+			sum.Context = &ContextFill{
+				Tokens:      toks,
+				Window:      row.ContextWindow,
+				Pct:         100 * float64(toks) / float64(row.ContextWindow),
+				NextCallUSD: contexttax.NextCall(toks, contexttax.PricesOf(row)),
+			}
 			sum.ContextNote = ""
 			break
 		}
@@ -1035,6 +1047,11 @@ type HistoryResponse struct {
 	Daily   []store.DailyStat   `json:"daily"`
 	Savings cost.Savings        `json:"savings"`
 	Summary store.Summary       `json:"summary"`
+	// Tax is what this range paid to re-send its own context: every turn
+	// re-reads the whole conversation before it does anything. Absent when
+	// there is no pricing table to charge it at, rather than zero -- a zero
+	// tax reads as "this workload had none", which no workload does.
+	Tax *contexttax.Lifetime `json:"tax,omitempty"`
 }
 
 func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
@@ -1089,7 +1106,16 @@ func (s *Server) buildHistory(ctx context.Context, from int64, label string) (Hi
 	if daily == nil {
 		daily = []store.DailyStat{}
 	}
-	return HistoryResponse{Range: label, Totals: tot, Tools: tools, Daily: daily, Summary: sum, Savings: cost.ComputeSavings(sum.TokensIn, sum.CacheRead, sum.CacheWrite)}, nil
+	resp := HistoryResponse{Range: label, Totals: tot, Tools: tools, Daily: daily, Summary: sum, Savings: cost.ComputeSavings(sum.TokensIn, sum.CacheRead, sum.CacheWrite)}
+	if s.d.Table != nil {
+		models := make([]contexttax.ModelTax, 0, len(sum.Models))
+		for _, m := range sum.Models {
+			models = append(models, contexttax.ModelTax{Model: m.Model, CacheRead: m.CacheRead, CostUSD: m.CostUSD})
+		}
+		lt := contexttax.Sum(models, s.d.Table)
+		resp.Tax = &lt
+	}
+	return resp, nil
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {

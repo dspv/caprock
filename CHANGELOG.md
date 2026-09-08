@@ -7,6 +7,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **The context tax, in the screens you already look at.** Every call re-sends
+  the whole conversation as a cache read before it does anything, and Caprock
+  stored every number needed to price that and showed none of them. It now
+  does, in three places and no new ones: the session card's Context caption
+  says what the next call costs at the current fill (`$0.07/call`), the
+  lifetime Breakdown carries a `Context tax` row with its dollars and its share
+  of what was priced, and a loop alert states what the repeated calls paid to
+  re-read the conversation. On the author's own archive that row reads $11,117
+  of $13,910 — 80%.
+
+  Two limits are stated rather than papered over. Cache-read rates come from
+  the pricing table per model, because Fable 5.1 and Mythos 5.1 read at 0.025x
+  where the rest of the table reads at 0.1x. And a tool call is priced through
+  the turn that paid for it, which the hook plane cannot identify: where some
+  of a loop's calls are unlinked the alert says "at least", and the Breakdown
+  row names the volume it had to exclude.
+
 Phase 3 (Delight) has no plan by design.
 
 ## [0.55.0] - 2026-09-06

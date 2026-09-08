@@ -57,9 +57,26 @@ export interface LoopAlert {
   first_ts: string
   last_ts: string
   ts: string
+  /**
+   * What the repeated calls paid to re-read the conversation. NOT what the
+   * loop cost -- see the note on AttentionItem.costUSD for why that number
+   * cannot be computed honestly. Absent when the calls carried no usage.
+   */
+  tax_usd?: number
+  /** What those calls would have paid for context in a subagent. Informational. */
+  isolated_usd?: number
+  /** How many of the `count` calls the tax covers. Below count when some
+   *  arrived on the hook plane, which carries no message id to price them by. */
+  tax_priced_calls?: number
 }
 
-export interface ContextFill { tokens: number; window: number; pct: number }
+export interface ContextFill {
+  tokens: number
+  window: number
+  pct: number
+  /** What the next tool call costs at this context, before it does any work. */
+  next_call_usd: number
+}
 
 export interface SessionSummary extends Session {
   stats: Stats
@@ -372,7 +389,10 @@ export interface TaskWork {
 export interface TaskDetail { task: Task; body: string; done_criteria?: string[]; work?: TaskWork }
 export interface CreateTaskRequest { title: string; budget_usd?: number; done_criteria?: string[]; body?: string }
 
-export interface History { range: string; totals: HistoryTotals; tools: ToolCount[]; daily: DailyStat[]; savings: Savings; summary: Summary }
+/** What a range paid to re-send its own context: every turn re-reads the whole
+ *  conversation before it does anything. Absent when nothing could be priced. */
+export interface ContextTax { tax_usd: number; cost_usd: number; share: number; unpriced_tokens?: number }
+export interface History { range: string; totals: HistoryTotals; tools: ToolCount[]; daily: DailyStat[]; savings: Savings; summary: Summary; tax?: ContextTax }
 
 export interface Status {
   /** Present when the daemon is reading OpenCode; absent when it is not

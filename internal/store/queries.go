@@ -965,6 +965,12 @@ type ModelShare struct {
 	// combined figure is ~99% cache read on this workload — a number that is
 	// real, is nearly free, and swamps everything it is added to.
 	Output int64 `json:"output"`
+	// CacheRead is the context this model re-read: the conversation being
+	// re-sent on every turn. It is the base of the context tax, kept per model
+	// because cache-read rates differ by more than the table's usual 0.1x --
+	// Fable 5.1 and Mythos 5.1 read at 0.025x, so one blended rate would be
+	// wrong for any mixed workload.
+	CacheRead int64 `json:"cache_read"`
 }
 
 // ProjectShare is tokens/cost per REPOSITORY. Sessions is how many distinct
@@ -1332,14 +1338,14 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 		return s, err
 	}
 	rows, err = q.QueryContext(ctx, `
-		SELECT COALESCE(model,''), COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0)),0), COALESCE(SUM(cost_usd),0), COUNT(*), COALESCE(SUM(COALESCE(tokens_out,0)),0)
+		SELECT COALESCE(model,''), COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0)),0), COALESCE(SUM(cost_usd),0), COUNT(*), COALESCE(SUM(COALESCE(tokens_out,0)),0), COALESCE(SUM(COALESCE(cache_read,0)),0)
 		FROM events WHERE kind = 'turn.assistant' AND ts >= ?`+ev+` GROUP BY model ORDER BY 3 DESC`, append([]any{fromMs}, evArgs...)...)
 	if err != nil {
 		return s, err
 	}
 	for rows.Next() {
 		var m ModelShare
-		if err := rows.Scan(&m.Model, &m.Tokens, &m.CostUSD, &m.Turns, &m.Output); err != nil {
+		if err := rows.Scan(&m.Model, &m.Tokens, &m.CostUSD, &m.Turns, &m.Output, &m.CacheRead); err != nil {
 			_ = rows.Close()
 			return s, err
 		}

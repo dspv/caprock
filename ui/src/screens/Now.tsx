@@ -538,7 +538,17 @@ export function SessionCard({ s, now }: { s: SessionSummary; now: number }) {
       <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-border border-t border-border">
         <Stat label="Cost" value={fmtUSD(s.stats.cost_usd)} sub={s.model || '—'} tone="info" />
         <Stat label="Tokens" value={fmtTokens(s.stats.tokens_in + s.stats.tokens_out + s.stats.cache_read + s.stats.cache_write)} sub={`${fmtPct(s.savings.hit_rate * 100)} cache hit`} />
-        <Stat label="Context" value={ctx ? fmtPct(ctx.pct) : '—'} sub={ctx ? `${fmtTokens(ctx.tokens)} / ${fmtTokens(ctx.window)}` : (s.context_note || 'no turn yet')} tone={ctxTone} />
+        {/* The caption carries the price of the NEXT call, not the window size
+          * the percentage above already states. Every call re-reads the whole
+          * context before it does anything, so a full context is not merely
+          * near a limit — it is charging for itself on every call, and the
+          * marginal figure is the one that says so. */}
+        <Stat
+          label="Context"
+          value={ctx ? fmtPct(ctx.pct) : '—'}
+          sub={ctx ? <><span title="what the next tool call costs at this context, before it does any work">{fmtUSD(ctx.next_call_usd)}/call</span> <span className="text-fg-faint">· {fmtTokens(ctx.tokens)}</span></> : (s.context_note || 'no turn yet')}
+          tone={ctxTone}
+        />
         <Stat label="Activity" value={s.stats.tool_calls} sub={`${s.stats.turns} turns · ${s.stats.files_touched} files`} />
       </div>
     </a>

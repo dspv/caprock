@@ -11,6 +11,7 @@
  *  - "this session is expensive" on its own — cost is the job, not a problem
  *  - anything predictive ("this will probably fail")
  */
+import { fmtUSD } from '@/lib/format'
 import type { LoopAlert, RateLimits, SessionSummary } from '@/lib/api'
 
 export interface AttentionItem {
@@ -99,6 +100,11 @@ export function findAttention({ sessions, alerts, now, limits, waitingMs = DEFAU
   const live = Array.isArray(alerts) ? alerts.filter(Boolean) : []
   const byId = new Map(list.map((s) => [s.session_id, s]))
 
+  /** Whether some of a loop's calls could not be priced, so its tax is a floor
+   *  rather than the whole figure. */
+  const partial = (a: LoopAlert) =>
+    Number.isFinite(a.tax_priced_calls) && Number.isFinite(a.count) && (a.tax_priced_calls as number) < a.count
+
   // 1. A loop, with what it has cost so far. The detector already decided this
   // is real; our job is to attach the money and make it actionable.
   for (const a of live) {
@@ -115,6 +121,19 @@ export function findAttention({ sessions, alerts, now, limits, waitingMs = DEFAU
         `ran ${a.sample || a.tool || 'the same call'}`,
         Number.isFinite(a.count) ? `${a.count}×` : 'repeatedly',
         Number.isFinite(a.window_min) ? `in ${a.window_min} min` : '',
+        // The tax belongs in the EVIDENCE, beside "ran it 12x", and not in the
+        // money column where the session total sits. It is the one figure here
+        // attributable to these calls exactly: each repeat re-read the whole
+        // conversation before running. Saying "in context" rather than "cost"
+        // keeps it from reading as the price of the loop, which is the number
+        // this banner twice got wrong (see costUSD below).
+        // "at least", not a flat figure, whenever some of the repeated calls
+        // could not be attached to the turn that paid for them: a tax summed
+        // over 8 of 12 calls understates itself, and an understatement nobody
+        // is told about is an invented number (rule 6).
+        a.tax_usd && a.tax_usd >= 0.01
+          ? `· ${partial(a) ? 'at least ' : ''}${fmtUSD(a.tax_usd)} in context`
+          : '',
       ].filter(Boolean).join(' '),
       costUSD: s?.stats?.cost_usd,
       owned: s?.owned,

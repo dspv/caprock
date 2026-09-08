@@ -26,6 +26,7 @@ import (
 	"github.com/dspv/caprock/internal/cap"
 	"github.com/dspv/caprock/internal/codex"
 	"github.com/dspv/caprock/internal/config"
+	"github.com/dspv/caprock/internal/contexttax"
 	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/desktop"
 	"github.com/dspv/caprock/internal/event"
@@ -685,6 +686,7 @@ func (d *Daemon) observeLoops(ctx context.Context, sub *bus.Subscriber) {
 				continue
 			}
 			if a := d.det.Observe(ev); a != nil {
+				d.priceLoop(ctx, a)
 				d.mu.Lock()
 				d.alerts[a.SessionID] = a
 				d.mu.Unlock()
@@ -694,6 +696,50 @@ func (d *Daemon) observeLoops(ctx context.Context, sub *bus.Subscriber) {
 			}
 		}
 	}
+}
+
+// priceLoop fills in what a loop's repeated calls paid to re-read the
+// conversation, and what they would have paid inside a subagent.
+//
+// The tax is the sum of each call's context at cache-read rates and nothing
+// else. It is not "what the loop cost": that figure has been tried twice and
+// was wrong both times, because a loop's window is mostly the useful work
+// happening beside it (rule 6). This term is attributable to these calls
+// exactly.
+//
+// It fails quiet. An alert that cannot be priced -- no pricing table, no usage
+// on the turns, an unknown model -- keeps its zero fields and the UI omits the
+// figure rather than printing a $0.00 that reads as "this was free".
+func (d *Daemon) priceLoop(ctx context.Context, a *loop.Alert) {
+	if d.store == nil || d.table == nil {
+		return
+	}
+	calls, _, err := store.LoopTaxCalls(ctx, d.store.DB(), a.SessionID, a.FirstTs, a.LastTs)
+	if err != nil || len(calls) == 0 {
+		return
+	}
+	var priced []contexttax.Call
+	var prices contexttax.Prices
+	for _, c := range calls {
+		if c.Context <= 0 || c.Model == "" {
+			continue
+		}
+		row, ok := d.table.LookupAt(c.Model, c.Ts)
+		if !ok {
+			continue
+		}
+		// The series is priced at the rates of the model that ran it. A series
+		// that changed model mid-way is rare and the last row wins; the
+		// alternative is refusing to price it at all, which helps nobody.
+		prices = contexttax.PricesOf(row)
+		priced = append(priced, contexttax.Call{Context: c.Context, Result: c.Result})
+	}
+	if len(priced) == 0 {
+		return
+	}
+	a.TaxUSD = contexttax.TaxOf(priced, prices)
+	a.IsolatedUSD = contexttax.Isolate(priced, prices, 0).Isolated
+	a.TaxPricedCalls = len(priced)
 }
 
 // stopDecision answers a worker's Stop hook: it resolves the payload's session

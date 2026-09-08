@@ -28,6 +28,28 @@ type Alert struct {
 	FirstTs   time.Time `json:"first_ts"`
 	LastTs    time.Time `json:"last_ts"`
 	Ts        time.Time `json:"ts"`
+	// TaxUSD is what the repeated calls paid to re-read the conversation --
+	// sum of each call's context at cache-read rates, and nothing else.
+	//
+	// This is deliberately not "what the loop cost". That number was tried
+	// twice and was wrong both times: the session total read as the loop's
+	// price, and the spend inside the loop's window is mostly the useful work
+	// happening alongside it. The tax is neither. It is one term, attributable
+	// to these calls exactly, and it must stay labelled as the tax rather than
+	// as the loop's cost (rule 6).
+	//
+	// Zero means not computed -- an alert whose calls carried no usage.
+	TaxUSD float64 `json:"tax_usd,omitempty"`
+	// IsolatedUSD is what those same calls would have paid for context inside
+	// a subagent. Informational: Caprock never acts on it, because the model
+	// took the delegation nudge once in eight tries (spec section 6.4).
+	IsolatedUSD float64 `json:"isolated_usd,omitempty"`
+	// TaxPricedCalls is how many of the repeated calls the tax above covers,
+	// out of Count. A call that arrived on the hook plane carries no message
+	// id and so cannot be attached to the turn that paid for it -- 13% of all
+	// calls on the owner's archive. When this is below Count the figure is an
+	// understatement, and the UI says so rather than presenting it as whole.
+	TaxPricedCalls int `json:"tax_priced_calls,omitempty"`
 }
 
 // Detector keeps a sliding window of recent tool.pre signatures per session.

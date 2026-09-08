@@ -151,3 +151,31 @@ describe('BreakdownPanel', () => {
     expect(screen.queryByText('cache read')).toBeNull()
   })
 })
+
+/**
+ * The context-tax row prices the cache-read volume the token strip states, at
+ * each model's own rate. It carries its dollars beside its percentage, like
+ * every other row in this panel.
+ */
+describe('context tax row', () => {
+  it('states the tax in dollars and as a share of what was priced', async () => {
+    data.value = history({ tax: { tax_usd: 1115.38, cost_usd: 1390.7, share: 80.2 } } as Partial<History>)
+    render(<BreakdownPanel />)
+    expect(await screen.findByText('Context tax')).toBeTruthy()
+    expect(screen.getByText(/\$1,115/)).toBeTruthy()
+    expect(screen.getByText(/80% of/)).toBeTruthy()
+  })
+
+  it('says what it had to exclude rather than quietly understating itself', async () => {
+    data.value = history({ tax: { tax_usd: 10, cost_usd: 100, share: 10, unpriced_tokens: 473_600 } } as Partial<History>)
+    render(<BreakdownPanel />)
+    expect(await screen.findByText(/excludes .* unpriced/)).toBeTruthy()
+  })
+
+  it('is absent, not zero, when nothing could be priced', async () => {
+    data.value = history()
+    render(<BreakdownPanel />)
+    expect(await screen.findByText('Most-used tools')).toBeTruthy()
+    expect(screen.queryByText('Context tax')).toBeNull()
+  })
+})

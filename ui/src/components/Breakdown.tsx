@@ -16,7 +16,7 @@
  */
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
-import { fmtBytes, fmtTokens, fmtTool, fmtUSD } from '@/lib/format'
+import { fmtBytes, fmtPct, fmtTokens, fmtTool, fmtUSD } from '@/lib/format'
 import { Panel } from '@/components/ui'
 import { ShareCard } from '@/components/Share'
 import { ShareNudge } from '@/components/ShareNudge'
@@ -41,6 +41,7 @@ export function BreakdownPanel() {
   // zeroes read as "you used nothing", which is a different claim from "this
   // build does not report it".
   const sum = h.data?.summary
+  const tax = h.data?.tax
   const tok =
     sum && (sum.tokens_in || sum.tokens_out || sum.cache_read || sum.cache_write)
       ? { in: sum.tokens_in, out: sum.tokens_out, cacheRead: sum.cache_read, cacheWrite: sum.cache_write }
@@ -133,6 +134,26 @@ export function BreakdownPanel() {
             cache write <span className="num text-fg">{fmtTokens(tok.cacheWrite)}</span>
           </span>
           <span className="ml-auto text-fg-faint">fresh input is billed at full price</span>
+        </div>
+      )}
+      {/* What that cache-read figure above actually COST. It is the same
+        * volume priced at each model's own cache-read rate, and on a normal
+        * workload it is most of the bill: every turn re-reads the whole
+        * conversation before it does anything. The row carries its dollars,
+        * not only its percentage, like the ones above it. */}
+      {tax && tax.tax_usd > 0 && (
+        <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-t border-border px-3 py-2 text-[11px]">
+          <span className="text-[10px] uppercase tracking-[0.12em] text-fg-faint">Context tax</span>
+          <span className="num text-[13px] text-fg">{fmtUSD(tax.tax_usd)}</span>
+          <span className="text-fg-muted">
+            {fmtPct(tax.share)} of <span className="num text-fg">{fmtUSD(tax.cost_usd)}</span>
+          </span>
+          {tax.unpriced_tokens ? (
+            <span className="text-fg-faint" title="tokens on models with no pricing row, so they are not in the figure above">
+              excludes {fmtTokens(tax.unpriced_tokens)} unpriced
+            </span>
+          ) : null}
+          <span className="ml-auto text-fg-faint">re-sending the conversation on every call</span>
         </div>
       )}
     </Panel>

@@ -70,7 +70,7 @@ d('SessionCard', () => {
       stats: { session_id: 'abcdef12-3456', turns: 3, tool_calls: 7, files_touched: 2, tokens_in: 100, tokens_out: 50, cache_read: 1000, cache_write: 200, cost_usd: 0.1234 },
       activity: { phrase: 'editing main.go — 2nd attempt', tool: 'Edit', at: new Date().toISOString(), health: 'working', plan: { done: 1, total: 4, next: 'Run tests' }, repeats: 2 },
       savings: { billed_with: 0, billed_without: 0, saved: 0, hit_rate: 0.77, cut_pct: 60 },
-      context: { tokens: 1300, window: 1_000_000, pct: 0.13 },
+      context: { tokens: 1300, window: 1_000_000, pct: 0.13, next_call_usd: 0.00065 },
     }
     render(<SessionCard s={s} now={Date.now()} />)
     expect(screen.getByText('editing main.go — 2nd attempt')).toBeInTheDocument()
@@ -222,5 +222,46 @@ d('the events that do not end a session', () => {
     const line = describe({ ...base, kind: 'session.continue' }, { reason: 'prompt_input_exit' })
     expect(line).toContain('prompt_input_exit')
     expect(line).not.toBe('session.continue')
+  })
+})
+
+/**
+ * The context caption carries the price of the next call, because a full
+ * context does not merely sit near a limit — it charges for itself on every
+ * call, and the marginal figure is the only one that says so.
+ */
+// `describe` in this file is the app's own function, imported from ./Session;
+// vitest's is aliased to `d` at the top.
+d('SessionCard context tax', () => {
+  it('shows what the next call costs at the current context', () => {
+    const s = {
+      session_id: 'abcdef12-3456',
+      project: 'caprock',
+      status: 'active',
+      model: 'claude-opus-5',
+      last_event_at: Date.now(),
+      stats: { session_id: 'abcdef12-3456', turns: 3, tool_calls: 7, files_touched: 2, tokens_in: 100, tokens_out: 50, cache_read: 1000, cache_write: 200, cost_usd: 0.12 },
+      activity: { phrase: 'running tests', tool: 'Bash', at: new Date().toISOString(), health: 'working' },
+      savings: { billed_with: 0, billed_without: 0, saved: 0, hit_rate: 0.9, cut_pct: 60 },
+      context: { tokens: 382_620, window: 1_000_000, pct: 38.26, next_call_usd: 0.19 },
+    } as never
+    render(<SessionCard s={s} now={Date.now()} />)
+    expect(screen.getByText(/\$0\.19\/call/)).toBeInTheDocument()
+  })
+
+  it('keeps the reason a context is absent, rather than printing a price for it', () => {
+    const s = {
+      session_id: 'abcdef12-3456',
+      project: 'caprock',
+      status: 'active',
+      last_event_at: Date.now(),
+      stats: { session_id: 'abcdef12-3456', turns: 0, tool_calls: 0, files_touched: 0, tokens_in: 0, tokens_out: 0, cache_read: 0, cache_write: 0, cost_usd: 0 },
+      activity: { phrase: 'starting', tool: '', at: new Date().toISOString(), health: 'idle' },
+      savings: { billed_with: 0, billed_without: 0, saved: 0, hit_rate: 0, cut_pct: 0 },
+      context_note: 'unknown model',
+    } as never
+    render(<SessionCard s={s} now={Date.now()} />)
+    expect(screen.getByText('unknown model')).toBeInTheDocument()
+    expect(screen.queryByText(/\/call/)).not.toBeInTheDocument()
   })
 })
