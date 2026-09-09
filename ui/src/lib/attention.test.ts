@@ -243,3 +243,71 @@ describe('the waiting row', () => {
     expect(item!.detail.toLowerCase()).not.toContain('waiting')
   })
 })
+
+/**
+ * The context tax is the one figure on this banner attributable to the loop's
+ * own calls. It goes in the evidence, beside "ran it 8x", and it is never
+ * allowed to read as the price of the loop — the money column still carries
+ * the session total, and the two must stay distinguishable.
+ */
+describe('loop context tax', () => {
+  it('states what the repeated calls paid to re-read the conversation', () => {
+    const items = findAttention({
+      sessions: [session({ session_id: 's-loop' })],
+      alerts: [alert({ tax_usd: 2.34 })],
+      now: NOW,
+    })
+    expect(items[0]!.detail).toContain('$2.34 in context')
+    // Never phrased as what the loop cost: that number cannot be computed
+    // honestly and printing it here was wrong twice before.
+    expect(items[0]!.detail).not.toMatch(/cost/i)
+  })
+
+  it('omits the figure when the calls could not be priced', () => {
+    const items = findAttention({
+      sessions: [session({ session_id: 's-loop' })],
+      alerts: [alert()],
+      now: NOW,
+    })
+    expect(items[0]!.detail).not.toContain('$')
+    expect(items[0]!.detail).toContain('ran go test ./...')
+  })
+
+  it('omits a rounding-error tax rather than printing $0.00', () => {
+    const items = findAttention({
+      sessions: [session({ session_id: 's-loop' })],
+      alerts: [alert({ tax_usd: 0.0004 })],
+      now: NOW,
+    })
+    expect(items[0]!.detail).not.toContain('$')
+  })
+
+  it('says the tax is a floor when some calls could not be priced', () => {
+    const items = findAttention({
+      sessions: [session({ session_id: 's-loop' })],
+      alerts: [alert({ count: 12, tax_usd: 2.34, tax_priced_calls: 8 })],
+      now: NOW,
+    })
+    expect(items[0]!.detail).toContain('at least $2.34 in context')
+  })
+
+  it('states the tax flat when every call was priced', () => {
+    const items = findAttention({
+      sessions: [session({ session_id: 's-loop' })],
+      alerts: [alert({ count: 8, tax_usd: 2.34, tax_priced_calls: 8 })],
+      now: NOW,
+    })
+    expect(items[0]!.detail).toContain('$2.34 in context')
+    expect(items[0]!.detail).not.toContain('at least')
+  })
+
+  it('keeps the session total in the money column, apart from the tax', () => {
+    const items = findAttention({
+      sessions: [session({ session_id: 's-loop', stats: { cost_usd: 58.85, turns: 9, tool_calls: 40, files_touched: 3 } as never })],
+      alerts: [alert({ tax_usd: 2.34 })],
+      now: NOW,
+    })
+    expect(items[0]!.costUSD).toBe(58.85)
+    expect(items[0]!.detail).toContain('$2.34')
+  })
+})

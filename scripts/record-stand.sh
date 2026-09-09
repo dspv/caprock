@@ -110,5 +110,21 @@ cat <<EOF
 
 EOF
 
-# Hold until interrupted. The trap tears the stand down.
-while true; do sleep 3600; done
+# Hold until interrupted.
+#
+# `sleep 3600` in a loop is the obvious way to do this and it is why eight of
+# these were found still running two weeks after their recordings: sleep is a
+# separate process, bash will not run the trap until it returns, and a stand
+# started detached (nohup, or from another script) never receives the Ctrl-C
+# that would have gone to the whole process group. Each one held a daemon and a
+# temp directory open forever.
+#
+# `wait` on a backgrounded sleep is interruptible: a signal returns from wait
+# immediately, the trap runs, and the short interval bounds how long a lost
+# stand can outlive its terminal. The PID file lets a later run clear one that
+# was orphaned anyway.
+echo $$ > "$WORK/stand.pid"
+while true; do
+  sleep 30 &
+  wait $! || break
+done

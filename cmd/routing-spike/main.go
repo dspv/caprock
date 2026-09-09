@@ -56,6 +56,7 @@ func main() {
 	// permits edits to files created inside the series; the transcript cannot
 	// tell which those are, so this flag brackets the answer instead.
 	allowEdits := flag.Bool("allow-edits", false, "count series containing Edit/Write as eligible (upper bound)")
+	reread := flag.Bool("reread", false, "audit what real compaction boundaries cost in re-reads (spec section 6.1, the Stage 2 gate)")
 	flag.Parse()
 
 	files, err := transcripts(*dir)
@@ -119,6 +120,18 @@ func main() {
 	}
 	if *drop > 0 {
 		all = dropLargest(all, *drop)
+	}
+
+	if *reread {
+		rr := AnalyseRereads(all)
+		if *asJSON {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			_ = enc.Encode(rr)
+			return
+		}
+		fmt.Print(rr.Text())
+		return
 	}
 
 	if *tax {
