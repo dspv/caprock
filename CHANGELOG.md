@@ -7,6 +7,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+Phase 3 (Delight) has no plan by design.
+
+## [0.56.0] - 2026-09-09
+
 ### Added
 
 - **The context tax, in the screens you already look at.** Every call re-sends
@@ -26,7 +30,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   of a loop's calls are unlinked the alert says "at least", and the Breakdown
   row names the volume it had to exclude.
 
-Phase 3 (Delight) has no plan by design.
+### Fixed
+
+- **The recording stand outlived its terminal, forever.** Eight of them were
+  found still running, the oldest two weeks old, each holding a daemon and a
+  temp directory open. `sleep 3600` in a hold loop is a separate process, and
+  bash will not run a trap until it returns — so a stand started detached never
+  received the interrupt that would have stopped it. It waits on an
+  interruptible sleep now. Affects `make record` only, not the daemon.
 
 ## [0.55.0] - 2026-09-06
 
