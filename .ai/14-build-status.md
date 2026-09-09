@@ -2,11 +2,11 @@
 
 The running log: what is done, what is not, what is next. **Update this file and § Current State in [00-index.md](00-index.md) whenever the state of the world changes.** Dates in absolute form, never "last week". What "done" means per task is defined in [09-execution-plan.md](09-execution-plan.md).
 
-**Last updated: 2026-09-06** · Phase **2 — Orchestrate, complete** · every phase is tagged and published (`brew install dspv/tap/caprock`, or Scoop on Windows via `dspv/scoop-bucket`). The live unattended orchestrator run — the Phase 2 tag gate — is done: a real `claude` orchestrator assigned a task, spawned a worker, and drove it to green verification with nobody watching.
+**Last updated: 2026-09-09** · Phase **2 — Orchestrate, complete** · every phase is tagged and published (`brew install dspv/tap/caprock`, or Scoop on Windows via `dspv/scoop-bucket`). The live unattended orchestrator run — the Phase 2 tag gate — is done: a real `claude` orchestrator assigned a task, spawned a worker, and drove it to green verification with nobody watching.
 
 **What shipped in which release is answered by `CHANGELOG.md`, `git describe` and the releases page, and is deliberately not restated here.** This paragraph used to carry a hand-written list of them; it stopped at v0.10.0 and stayed there for eighty-four releases, which is [rule 9](../CLAUDE.md) demonstrating itself. What belongs here is the state of the world, not its version history.
 
-Since Orchestrate closed, the product has grown three observed agents (Claude Code, OpenCode, Gemini CLI), paid plans on an offline licence key ([ADR-022](08-decisions.md)), a daily spend cap, and the ability to pick up a session Caprock did not start. Next: the consolidated open-work list in [09-execution-plan.md § Open work](09-execution-plan.md#open-work). The orchestration graph shipped but did not earn a nav slot; see [04-ui.md § Graph](04-ui.md).
+Since Orchestrate closed, the product has grown one observation surface across four agents (Claude Code, OpenCode, Gemini CLI and Codex), paid plans on an offline licence key ([ADR-022](08-decisions.md)), a daily spend cap, and the ability to pick up a session Caprock did not start. Next: the consolidated open-work list in [09-execution-plan.md § Open work](09-execution-plan.md#open-work). The orchestration graph shipped but did not earn a nav slot; see [04-ui.md § Graph](04-ui.md).
 
 ## Progress by track
 
@@ -43,12 +43,22 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 - **All three phases are built and green.** The Go module + `ui/` exist and are exercised by `make check` (Go tests, `go vet`, `golangci-lint`, docs gates, and the UI typecheck/vitest/build) on the 3-OS CI matrix. Phase 2's orchestration loop has been driven end to end by a real `claude` orchestrator (see the Phase 2 log entry). **every phase is tagged and published** (Homebrew formula in `dspv/homebrew-tap`).
 - The Python measurer (`~/dev/caprock-legacy`, PyPI `caprock` 0.3.0) is frozen ([ADR-007](08-decisions.md#adr-007--the-harness-is-caprock-new-go-codebase-in-dspvcaprock-python-measurer-frozen)); the Go binary shipped its first release as **v0.1.0** on 2026-08-19.
-- **OpenCode is supported and released.** Caprock reads OpenCode's SQLite
-  database, shows those sessions on the same screens as Claude Code, and the Now
-  screen carries an `all / claude / opencode` switch that applies to the whole
-  screen. Observation only: it cannot start, steer or stop an OpenCode session,
-  and the task runner does not work with it. See [16-opencode.md](16-opencode.md).
-- **The paid tier has a feature.** The daily spend cap (`internal/cap`) pauses the sessions Caprock started when the day crosses a limit, and the premium dialog no longer sells anything unbuilt. Payment is a licence key checked locally ([ADR-022](08-decisions.md)); one repository, one binary, everything Apache-2.0.
+- **Four agent sources share the observation screens.** Claude Code remains the
+  full Observe → Control → Orchestrate path. OpenCode and Codex are imported
+  observation-only: Caprock cannot start, steer or stop them, and the task
+  runner does not work with either. Gemini sessions started by Caprock are
+  observed through prompt-disabled OpenTelemetry. The Now filter is `all /
+  claude / opencode / codex / gemini`. See [16-opencode.md](16-opencode.md) and
+  [19-codex.md](19-codex.md).
+- **The paid tier is live.** The daily spend cap (`internal/cap`) pauses the
+  sessions Caprock started when the day crosses a limit; the weekly report and
+  Gemini on the user's own key are paid surfaces too. Payment is a licence key
+  checked locally ([ADR-022](08-decisions.md)); one repository, one binary,
+  everything Apache-2.0.
+- **Context cost is visible rather than implied.** The session card states what
+  the next call's cache read costs, Lifetime breaks out the context tax, and a
+  loop alert prices the repeated context reads it can attach to turns. Unlinked
+  calls are excluded and counted rather than guessed.
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
 ## Log

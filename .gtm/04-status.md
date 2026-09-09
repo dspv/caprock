@@ -2,35 +2,40 @@
 
 ## Where things stand
 
-**Nothing is published yet.** The channel concept is agreed
-([01-channel.md](01-channel.md)) and the name is the open item blocking the
-first post.
+**Last updated: 2026-09-09.** The first Reddit and Show HN launch posts are
+published. The repeatable owned channel is not running yet: the product can
+publish under `caprock`, while the separate personal channel still waits for a
+name ([01-channel.md](01-channel.md)).
 
-| Surface        | State                                                                   |
-| -------------- | ----------------------------------------------------------------------- |
-| caprock.dev    | Live. Analytics on (Umami), `copy-command` event instrumented           |
-| GitHub repo    | Live, public, screenshots and description current                       |
-| Telegram       | The owner's own, in Russian. Not a product channel                      |
-| X              | Register as `caprock` — the handle is the product's, so no name to pick |
-| LinkedIn       | Register as `caprock`                                                   |
-| YouTube        | Not started. Video only once a post has landed                          |
-| Paid promotion | Deliberately held until 15–20 posts exist ([GTM-004](03-decisions.md))  |
+| Surface        | State                                                                  |
+| -------------- | ---------------------------------------------------------------------- |
+| caprock.dev    | Live. Analytics on (Umami), `copy-command` event instrumented          |
+| GitHub repo    | Live, public, screenshots and description current                      |
+| Reddit         | Launch posts published 2026-08-28                                      |
+| Hacker News    | Show HN published 2026-08-28                                           |
+| Telegram       | The owner's own, in Russian. Not a product channel                     |
+| X              | Not registered; register as `caprock`                                  |
+| LinkedIn       | Not registered; register as `caprock`                                  |
+| YouTube        | Not started; the first video is no longer blocked on a published post  |
+| Paid promotion | Deliberately held until 15–20 posts exist ([GTM-004](03-decisions.md)) |
+
+## Completed launches
+
+- **Reddit:** posted 2026-08-28 to r/claudecode and r/claudeskills. The result
+  still needs to be read from Umami against the 17% install-intent rate from
+  the Telegram repost.
+- **Show HN:** posted 2026-08-28 with a repository link and short body. It went
+  out on the same day as Reddit, despite the launch notes recommending separate
+  days, because the figures were fresh and the owner was available for both.
 
 ## Next actions
 
-1. ~~Post to r/ClaudeAI~~ — **posted 2026-08-28** to r/claudecode and
-   r/claudeskills. Watch Umami for the `copy-command` event: the one number
-   that matters is how many arrivals copy the install line, against the 17%
-   the Telegram repost produced.
-2. ~~Show HN~~ — **posted 2026-08-28**, link to the repository, short body.
-   Same day as Reddit, which the launch notes advise against; done anyway
-   because the figures were fresh and the owner was at the keyboard for both.
-3. **Register `caprock` on X, LinkedIn and YouTube.** No name to pick — the
+1. **Register `caprock` on X, LinkedIn and YouTube.** No name to pick — the
    product already has one, and it carries no surname ([GTM-008](03-decisions.md)).
-4. **Record the first video**: 60–90 seconds, the dashboard and one finding,
+2. **Record the first video**: 60–90 seconds, the dashboard and one finding,
    screen only. Scrub project names before recording — a video cannot be
    replaced after posting the way a screenshot can.
-5. Publish weekly for six weeks against [06-content-plan.md](06-content-plan.md),
+3. Publish weekly for six weeks against [06-content-plan.md](06-content-plan.md),
    then evaluate. A personal channel is still wanted and still waits for a name;
    it no longer blocks anything.
 
