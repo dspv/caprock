@@ -164,6 +164,24 @@ is inside your backups, so treat it as you would your shell history: do not
 put it in a bug report, and do not hand it to anyone debugging an issue for
 you. `caprock down` and deleting the data directory removes all of it.
 
+## What your context is costing you
+
+![The context tax: what the next call costs at the current context, and what that adds up to](docs/context-tax.gif)
+
+Every call re-sends the whole conversation before it does anything. You pay for
+that on every call, and it grows as the session does — so the 300th call in a
+long session costs real money before it has run.
+
+Caprock puts the price where you are already looking. A running session says
+what its **next call** costs at the context it is carrying. The lifetime
+breakdown says what that has come to. On the machine this was recorded on, it
+is 79% of the bill.
+
+The number is exact, not modelled: the context of every call comes from the
+token counts Claude Code itself records, priced per model from the pricing
+table. Calls that arrive without a way to attach them to the turn that paid for
+them are excluded and counted, so a figure is never quietly short.
+
 ## OpenCode and Codex
 
 Caprock also reads [OpenCode](https://github.com/sst/opencode) and

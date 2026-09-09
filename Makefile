@@ -159,6 +159,10 @@ shots: ## Re-take the documented screenshots and open a PR (needs a real databas
 record: ## Serve a scrubbed dashboard on :4291 to record video from (Ctrl-C to stop)
 	@bash scripts/record-stand.sh
 
+.PHONY: gif
+gif: ## Re-record a README GIF from the stand (make record first). SCENE=context-tax
+	@python3 scripts/record-gif.py $(or $(SCENE),context-tax)
+
 .PHONY: reload
 reload: build ## Build the dashboard + binaries and restart the running daemon on this machine
 	@# Runs ./bin/caprock rather than installing over the copy on PATH.
