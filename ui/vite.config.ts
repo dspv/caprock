@@ -5,7 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath, URL } from 'node:url'
 
 // The dashboard is embedded into the Go binary from internal/api/dist (go:embed).
-// In dev, Vite serves the UI on :5173 and proxies the API/WS to the daemon on :4173.
+// In dev, Vite serves the UI on :5173 and proxies the API/WS to the daemon on :22776.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
@@ -18,8 +18,8 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      '/v1': { target: 'http://127.0.0.1:4173', ws: true },
-      '/healthz': { target: 'http://127.0.0.1:4173' },
+      '/v1': { target: 'http://127.0.0.1:22776', ws: true },
+      '/healthz': { target: 'http://127.0.0.1:22776' },
     },
   },
   test: {

@@ -22,7 +22,7 @@ scoop install caprock
 # winget too, once Microsoft has merged the manifest for a release:
 #   winget install dspv.caprock
 
-caprock up        # opens localhost:4173; offers to set up hooks + plan-limit status line
+caprock up        # opens localhost:22776; offers to set up hooks + plan-limit status line
 ```
 
 Have Go? `go install github.com/dspv/caprock/cmd/caprock@latest` — the dashboard

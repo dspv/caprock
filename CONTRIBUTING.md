@@ -9,7 +9,7 @@ Prereqs: **Go 1.26**, **Node 22**.
 ```bash
 git clone git@github.com:dspv/caprock.git && cd caprock
 make build         # builds the UI (installs its deps on first run) + the binaries
-./bin/caprock up   # http://127.0.0.1:4173
+./bin/caprock up   # http://127.0.0.1:22776
 make check         # docs + lint + tests + smoke — the full CI gate, minus the OS matrix
 ```
 
@@ -79,7 +79,7 @@ what is published on caprock.dev.
 
 **Recording video? `make record`.** It serves the same scrubbed database on
 :4291 and holds it open until you stop it. Record from that window, never from
-the live dashboard on :4173 — a screenshot can be replaced after posting and a
+the live dashboard on :22776 — a screenshot can be replaced after posting and a
 video cannot, and the live one has real repository names on it. Copy them across and commit them separately
 when you want the site to move.
 

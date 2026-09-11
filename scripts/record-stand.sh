@@ -12,7 +12,7 @@
 # stops, leaving a daemon running on its own port with its own copy. Record
 # from that. Ctrl-C tears it down.
 #
-# The live daemon on 4173 is never touched: this reads its database through
+# The live daemon on 22776 is never touched: this reads its database through
 # sqlite's own backup and serves a copy.
 #
 set -euo pipefail
@@ -103,7 +103,7 @@ cat <<EOF
   Recording stand ready:  http://127.0.0.1:$PORT
 
   Real figures, scrubbed project names. Record from this window, not from
-  4173 — the live dashboard has your repository names on it, and a video
+  22776 — the live dashboard has your repository names on it, and a video
   cannot be replaced after it is posted.
 
   Ctrl-C when you are done.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run the Caprock daemon and the Vite dev server together for local development.
-# The daemon listens on :4173 (API + WS + embedded UI); Vite serves the live UI on
+# The daemon listens on :22776 (API + WS + embedded UI); Vite serves the live UI on
 # :5173 and proxies /v1 to the daemon (see ui/vite.config.ts).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -11,6 +11,6 @@ mkdir -p "$CAPROCK_DATA_DIR"
 cleanup() { kill 0 2>/dev/null || true; }
 trap cleanup EXIT INT TERM
 
-go run ./cmd/caprock up --no-open --no-hooks &
+go run ./cmd/caprock up --no-open --no-hooks --port 22776 &
 (cd ui && npm run dev) &
 wait

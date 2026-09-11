@@ -18,6 +18,9 @@ func TestDataDirEnvOverride(t *testing.T) {
 }
 
 func TestLoadDefaultsAndRoundTrip(t *testing.T) {
+	if DefaultPort != 22776 || LegacyDefaultPort != 4173 {
+		t.Fatalf("port decision changed: fresh=%d legacy=%d", DefaultPort, LegacyDefaultPort)
+	}
 	dir := t.TempDir()
 	cfg, err := Load(dir)
 	if err != nil {
@@ -37,6 +40,33 @@ func TestLoadDefaultsAndRoundTrip(t *testing.T) {
 	}
 	if got.Port != 5000 || got.LoopK != 7 || got.LoopTMinutes != 3 {
 		t.Fatalf("round trip mismatch: %+v", got)
+	}
+}
+
+func TestLoadPreservesLegacyPortForExistingInstallWithoutConfig(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(DBPath(dir), []byte("existing database marker"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Port != LegacyDefaultPort {
+		t.Fatalf("existing install moved to port %d; want legacy %d", cfg.Port, LegacyDefaultPort)
+	}
+
+	// Once a user explicitly chose a port, that choice wins over both defaults.
+	cfg.Port = 4242
+	if err := Save(dir, cfg); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Port != 4242 {
+		t.Fatalf("explicit port was replaced with %d", got.Port)
 	}
 }
 

@@ -2,7 +2,7 @@
 
 The pulse GIF was captured by hand, which means it cannot be re-made when the
 UI moves. This does the same job reproducibly: drive a headless Chrome against
-the RECORDING STAND (never the live daemon on 4173 -- that one has real
+the RECORDING STAND (never the live daemon on 22776 -- that one has real
 repository names on it and a GIF cannot be replaced after it is posted), take a
 frame at a fixed interval, and let ffmpeg build the palette.
 

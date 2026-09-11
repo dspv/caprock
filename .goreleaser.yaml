@@ -113,7 +113,7 @@ brews:
       bin.install "caprock-hook"
     caveats: |
       Start it with:  caprock up
-      Then open:      http://127.0.0.1:4173
+      Then open:      http://127.0.0.1:22776
 
 # Windows install via Scoop — the manifest is pushed to dspv/scoop-bucket on a
 # normal release (skipped on a prerelease or when the token is missing), so

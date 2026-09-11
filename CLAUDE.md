@@ -64,7 +64,7 @@ whole corpus. Contributing? See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ```bash
 make help        # list targets
-make dev         # daemon on :4173 + vite dev server on :5173
+make dev         # daemon on :22776 + vite dev server on :5173
 make test lint   # go + ui tests and linters
 make smoke       # the Phase 0 DoD scenario with the fake claude
 make docs-fmt    # tight-align all markdown tables (run after editing any table)
