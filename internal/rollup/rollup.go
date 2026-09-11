@@ -125,7 +125,6 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 		// grouping is resolved in exactly one place.
 		patch := store.SessionPatch{
 			Cwd:            info.Cwd,
-			Model:          ev.Model,
 			TranscriptPath: info.TranscriptPath,
 			GitBranch:      info.GitBranch,
 			Version:        info.Version,
@@ -136,6 +135,14 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 
 			Agent: info.Agent,
 			PID:   info.PID,
+		}
+		// A review turn must not overwrite the model a session's real work named:
+		// Codex reuses the reviewed session's id, so its review turns arrive
+		// inside a session that is otherwise gpt-5.6-sol. The session's model is
+		// what the card shows and what context pricing looks up; the review model
+		// is not it. An empty Model is a no-op in UpsertSession.
+		if !internalModel {
+			patch.Model = ev.Model
 		}
 		if ev.Kind == event.KindAgentStop && ev.AgentID == "" {
 			// A top-level Stop means the turn ended, not the session; the session

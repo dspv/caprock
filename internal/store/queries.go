@@ -141,13 +141,17 @@ func InsertEvent(ctx context.Context, q Querier, ev *event.Event) (int64, error)
 	// from the payload on every read: over 89k tool events that cost 1.3s on a
 	// 641MB database, and this screen refreshes every five seconds.
 	toolBytes := toolResponseLen(ev)
+	// Internal classification is a property of the model, written once here so
+	// every aggregate filters one flag rather than re-deriving it from model
+	// names (internal/modelclass is the single allow-list).
+	internal := b2i(modelclass.IsInternal(ev.Model))
 
 	res, err := q.ExecContext(ctx, `
-		INSERT INTO events(ts, session_id, source, kind, tool, payload, tokens_in, tokens_out, cache_read, cache_write, cost_usd, key, model, cache_write_1h, agent_id, msg_id, touch_dir, tool_bytes)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO events(ts, session_id, source, kind, tool, payload, tokens_in, tokens_out, cache_read, cache_write, cost_usd, key, model, cache_write_1h, agent_id, msg_id, touch_dir, tool_bytes, internal)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(session_id, key) WHERE key IS NOT NULL DO NOTHING`,
 		ev.Ts.UnixMilli(), ev.SessionID, string(ev.Source), string(ev.Kind), nullStr(ev.Tool), string(ev.Payload),
-		tin, tout, cr, cw, cost, key, nullStr(ev.Model), cw1h, nullStr(ev.AgentID), nullStr(ev.MsgID), touch, toolBytes)
+		tin, tout, cr, cw, cost, key, nullStr(ev.Model), cw1h, nullStr(ev.AgentID), nullStr(ev.MsgID), touch, toolBytes, internal)
 	if err != nil {
 		return 0, fmt.Errorf("insert event: %w", err)
 	}
@@ -215,10 +219,9 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 	// basename label by accident. repoKnown is false when the patch carries no
 	// cwd, and then the stored resolution is left alone rather than blanked.
 	project, repoRoot, repoPath, repoKnown := p.resolveRepoFields()
-	internal := modelclass.IsInternal(p.Model)
 	_, err := q.ExecContext(ctx, `
-		INSERT INTO sessions(session_id, cwd, project, model, started_at, last_event_at, status, transcript_path, has_hooks, has_transcript, git_branch, version, repo_root, repo_path, agent, pid, internal)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), 'claude'), ?, ?)
+		INSERT INTO sessions(session_id, cwd, project, model, started_at, last_event_at, status, transcript_path, has_hooks, has_transcript, git_branch, version, repo_root, repo_path, agent, pid)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), 'claude'), ?)
 		ON CONFLICT(session_id) DO UPDATE SET
 		  cwd             = COALESCE(NULLIF(excluded.cwd, ''), sessions.cwd),
 		  project         = COALESCE(NULLIF(excluded.project, ''), sessions.project),
@@ -245,12 +248,11 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 		  has_hooks       = MAX(sessions.has_hooks, excluded.has_hooks),
 		  has_transcript  = MAX(sessions.has_transcript, excluded.has_transcript),
 		  agent           = COALESCE(NULLIF(excluded.agent, ''), sessions.agent),
-		  internal        = CASE WHEN NULLIF(excluded.model, '') IS NOT NULL THEN excluded.internal ELSE sessions.internal END,
 		  -- Zero means "this event did not know", which must not erase a pid an
 		  -- earlier event did know. A session's pid is how the sweep tells a
 		  -- quiet session from a gone one.
 		  pid             = CASE WHEN excluded.pid > 0 THEN excluded.pid ELSE sessions.pid END`,
-		id, p.Cwd, project, p.Model, p.StartedAt, p.LastEventAt, status, p.TranscriptPath, b2i(p.FromHook), b2i(p.FromTranscript), p.GitBranch, p.Version, repoRoot, repoPath, p.Agent, p.PID, b2i(internal),
+		id, p.Cwd, project, p.Model, p.StartedAt, p.LastEventAt, status, p.TranscriptPath, b2i(p.FromHook), b2i(p.FromTranscript), p.GitBranch, p.Version, repoRoot, repoPath, p.Agent, p.PID,
 		repoKnown, repoKnown,
 		p.Status, p.Status)
 	if err != nil {
@@ -502,9 +504,9 @@ func GetSession(ctx context.Context, q Querier, id string) (Session, error) {
 // ListSessions pages through — so a caller can say "200 of 431" rather than
 // presenting a truncated page as the whole set.
 func CountSessions(ctx context.Context, q Querier, activeOnly bool) (int, error) {
-	where := ` WHERE internal = 0`
+	where := ""
 	if activeOnly {
-		where += ` AND status != 'ended'`
+		where = ` WHERE status != 'ended'`
 	}
 	var n int
 	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions`+where).Scan(&n)
@@ -516,9 +518,9 @@ func ListSessions(ctx context.Context, q Querier, activeOnly bool, limit int) ([
 	if limit <= 0 {
 		limit = 200
 	}
-	where := ` WHERE internal = 0`
+	where := ""
 	if activeOnly {
-		where += ` AND status != 'ended'`
+		where = ` WHERE status != 'ended'`
 	}
 	rows, err := q.QueryContext(ctx, `SELECT `+sessionCols+` FROM sessions`+where+` ORDER BY last_event_at DESC LIMIT ?`, limit)
 	if err != nil {
@@ -588,7 +590,7 @@ const fragmentMaxRunes = 240
 // subagent's words about half the time.
 const assistantTextWhere = `
 	e.kind = 'turn.assistant'
-	AND e.session_id NOT IN (SELECT session_id FROM sessions WHERE internal = 1)
+	AND e.internal = 0
 	AND COALESCE(e.agent_id, '') = ''
 	AND json_extract(e.payload, '$.sidechain') IS NOT 1
 	AND COALESCE(json_extract(e.payload, '$.text'), '') != ''`
@@ -1202,8 +1204,8 @@ func addSpark(p *ProjectShare, spec SparkSpec, series []sessionBucket) {
 // looking at OpenCode that money was missing from their total — money that was
 // Claude's, and was not in that total at all.
 const (
-	nonInternalEvent  = ` AND session_id NOT IN (SELECT session_id FROM sessions WHERE internal = 1)`
-	nonInternalEventE = ` AND e.session_id NOT IN (SELECT session_id FROM sessions WHERE internal = 1)`
+	nonInternalEvent  = ` AND internal = 0`
+	nonInternalEventE = ` AND e.internal = 0`
 )
 
 func queryUnpriced(ctx context.Context, q Querier, fromMs int64, agent AgentFilter) (*Unpriced, error) {
@@ -1246,9 +1248,9 @@ func queryUnpriced(ctx context.Context, q Querier, fromMs int64, agent AgentFilt
 }
 
 // queryBackgroundUsage reports known internal model work separately from user
-// work. It deliberately uses the session classification backfilled by the
-// schema migration rather than a model-name pattern in SQL: a future id must be
-// investigated before Caprock hides it from ordinary totals.
+// work. It reads the per-event classification written by internal/modelclass
+// (backfilled by migration 0024) rather than a model-name pattern in SQL: a
+// future id must be investigated before Caprock hides it from ordinary totals.
 func queryBackgroundUsage(ctx context.Context, q Querier, fromMs int64, agent AgentFilter) (*BackgroundUsage, error) {
 	scope, scopeArgs := agent.sessionScope("e.session_id")
 	rows, err := q.QueryContext(ctx, `
@@ -1256,7 +1258,7 @@ func queryBackgroundUsage(ctx context.Context, q Querier, fromMs int64, agent Ag
 		       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0)
 		FROM events e JOIN sessions s ON s.session_id = e.session_id
 		WHERE e.kind = 'turn.assistant' AND e.ts >= ?
-		  AND s.internal = 1`+scope+`
+		  AND e.internal = 1`+scope+`
 		GROUP BY COALESCE(NULLIF(e.model,''), s.model, '') ORDER BY 3 DESC`, append([]any{fromMs}, scopeArgs...)...)
 	if err != nil {
 		return nil, err
@@ -1392,7 +1394,7 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	// every historical session at once: a new user's first impression was an
 	// active count in the dozens that then fell to one.
 	if err := q.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM sessions WHERE internal = 0 AND status = 'active' AND last_event_at >= ?`+sess,
+		`SELECT COUNT(*) FROM sessions WHERE status = 'active' AND last_event_at >= ?`+sess,
 		append([]any{nowMs() - int64(activeWindow/time.Millisecond)}, sessArgs...)...).Scan(&s.Active); err != nil {
 		return s, err
 	}
@@ -1569,7 +1571,7 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	// of rows either way.
 	roots := map[string]bool{}
 	rr, err := q.QueryContext(ctx,
-		`SELECT DISTINCT repo_root FROM sessions WHERE internal = 0 AND repo_root IS NOT NULL AND repo_root != ''`)
+		`SELECT DISTINCT repo_root FROM sessions WHERE repo_root IS NOT NULL AND repo_root != ''`)
 	if err != nil {
 		return s, err
 	}
@@ -1589,8 +1591,8 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	// The session → repository mapping. Only sessions that actually spent in
 	// the range are looked up, so a database full of old sessions costs nothing.
 	rows, err = q.QueryContext(ctx,
-		`SELECT session_id, COALESCE(project,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(cwd,''), COALESCE(agent,'claude') FROM sessions WHERE internal = 0`+
-			map[bool]string{true: " AND COALESCE(agent,'claude') = ?", false: ""}[agent != ""], sessArgs...)
+		`SELECT session_id, COALESCE(project,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(cwd,''), COALESCE(agent,'claude') FROM sessions`+
+			map[bool]string{true: " WHERE COALESCE(agent,'claude') = ?", false: ""}[agent != ""], sessArgs...)
 	if err != nil {
 		return s, err
 	}
@@ -1922,7 +1924,7 @@ func ToolDistribution(ctx context.Context, q Querier, fromMs int64, limit int) (
 		       COALESCE(SUM(tool_bytes), 0) AS bytes
 		FROM events
 		WHERE kind IN ('tool.pre','tool.post') AND tool != '' AND ts >= ?
-		  AND session_id NOT IN (SELECT session_id FROM sessions WHERE internal = 1)
+		  AND internal = 0
 		GROUP BY tool
 		ORDER BY calls DESC
 		LIMIT ?`, fromMs, limit)
@@ -1967,7 +1969,7 @@ func History(ctx context.Context, q Querier, fromMs int64) (HistoryTotals, error
 	err := q.QueryRowContext(ctx, `
 		SELECT COUNT(*), COALESCE(SUM(owned),0),
 		       COALESCE(AVG(CASE WHEN last_event_at > started_at THEN (last_event_at - started_at)/1000.0 END),0)
-		FROM sessions WHERE internal = 0 AND last_event_at >= ?`, fromMs).
+		FROM sessions WHERE last_event_at >= ?`, fromMs).
 		Scan(&h.Sessions, &h.OwnedSessions, &h.AvgSessionSec)
 	if err != nil {
 		return h, err
@@ -2041,8 +2043,7 @@ func History(ctx context.Context, q Querier, fromMs int64) (HistoryTotals, error
 	// `session_files` carries a per-file `first_ts`, so the ranged answer was
 	// already on disk; it was the wrong table that was being asked.
 	if err := q.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM session_files WHERE first_ts >= ?
-		  AND session_id NOT IN (SELECT session_id FROM sessions WHERE internal = 1)`,
+		SELECT COUNT(*) FROM session_files WHERE first_ts >= ?`,
 		fromMs).Scan(&h.FilesTouched); err != nil {
 		return h, err
 	}
@@ -2217,7 +2218,7 @@ func RecentDirs(ctx context.Context, q Querier, limit int) ([]RecentDirDetail, e
 	rows, err := q.QueryContext(ctx, `
 		SELECT d, COUNT(*), MAX(last_event_at) FROM (
 			SELECT COALESCE(NULLIF(repo_root,''), cwd) AS d, last_event_at FROM sessions
-			WHERE internal = 0 AND COALESCE(NULLIF(repo_root,''), cwd) != ''
+			WHERE COALESCE(NULLIF(repo_root,''), cwd) != ''
 		) GROUP BY d ORDER BY 3 DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err

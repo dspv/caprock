@@ -123,23 +123,29 @@ be re-derived.
 
 Codex describes one of its own models, `codex-auto-review`, as its "Automatic
 approval review model" in the local catalog — and writes a perfectly ordinary
-rollout transcript for it. On the owner's machine that transcript held **41,000
-tokens over 2 turns**. Treated as a user session, those tokens rendered on the
-dashboard as two ordinary turns and raised an unpriced-cost warning nobody could
-resolve, because OpenAI publishes **no price and no base-model mapping** for the
-id — it is product machinery, not a model a user chose.
+rollout transcript for it. On the owner's machine that held **190,419 tokens
+over 8 turns**. Treated as user work, those tokens rendered as ordinary turns
+and raised an unpriced-cost warning nobody could resolve, because OpenAI
+publishes **no price and no base-model mapping** for the id — it is product
+machinery, not a model a user chose.
+
+The trap, and the reason this took a second pass: **the review reuses the
+session id of the session it reviews.** A transcript of `codex-auto-review`
+turns arrived inside the same Caprock session as the `gpt-5.6-sol` turns being
+reviewed — 8.1 million tokens of real work sat beside the review turns. So the
+classification is **per-event, not per-session**: a session-level flag would
+have hidden the real work to get rid of the review.
 
 It is now classified as **internal** rather than unpriced. The raw events stay
-in the store for auditability, but a per-session flag keeps the reviewer out of
-every user-work total — sessions, turns, tokens, cost, the model mix, the
-projects roll-up, the daily cap and the weekly report — and a quiet "background
-usage" line reports its measured token volume beside those totals, with no
-dollar value rather than a guessed one ([rule 6](../CLAUDE.md)). Classification
-lives in `internal/modelclass` as an explicit allow-list, not a
-`codex-auto-*` prefix match: a future id must be investigated before Caprock
-hides it, which is the difference between a deliberate exclusion and a silent
-one. See [03-contracts.md](03-contracts.md) for the `background` field and
-migration 0024.
+in the store for auditability, but a per-event flag keeps the reviewer out of
+every user-work total — turns, tokens, cost, the model mix, the projects
+roll-up, the daily cap and the weekly report — and a quiet "background usage"
+line reports its measured token volume beside those totals, with no dollar value
+rather than a guessed one ([rule 6](../CLAUDE.md)). Classification lives in
+`internal/modelclass` as an explicit allow-list, not a `codex-auto-*` prefix
+match: a future id must be investigated before Caprock hides it, which is the
+difference between a deliberate exclusion and a silent one. See
+[03-contracts.md](03-contracts.md) for the `background` field and migration 0024.
 
 ## What is not covered by the measurement
 

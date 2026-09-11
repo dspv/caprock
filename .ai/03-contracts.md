@@ -219,7 +219,7 @@ Plan-limit windows relayed by `caprock statusline` are **validated before storag
 
 `/v1/stats/summary` and `/v1/history` carry `unpriced` — `{turns, tokens, models[]}` — the volume in range whose model has no row in the pricing table, and which models caused it. It is **omitted entirely when everything in range was priced**, which is the normal case. A model missing from the table leaves `cost_usd` NULL (the rollup logs "model not in pricing table; cost left unknown"), and every aggregate flattens NULL with `COALESCE(SUM(cost_usd),0)` — so tens of thousands of tokens of an unpriced model summed to exactly `$0.00` and rendered as a confident, indistinguishable-from-free number. That is an invented number (rule 6), and it is certain to occur the day a model ships newer than the pricing table, or on a gateway whose model ids do not normalise. The models are **named**, not merely counted: an unknown model id is something a user can report or add a pricing override for, whereas "some tokens are unpriced" is not actionable. `cost_usd` continues to mean "the cost we could price", so the two are reported side by side and never summed.
 
-They also carry `background` — `{turns, tokens, models[]}` — measured token usage from **known internal product machinery** (today, Codex's hidden `codex-auto-review` approval reviewer). This is a different state from `unpriced`: it is not an error and asks nothing of the user, so it is **kept out of every user-work total** (sessions, turns, token and cost sums, the model mix, the projects roll-up, the daily cap and the weekly report) and reported beside them as a quiet "background usage" line with no dollar value — OpenAI publishes no price for the id, and inventing one would violate rule 6. The raw events stay in `events` for auditability; only the aggregates exclude them. Classification lives in `internal/modelclass` as an explicit allow-list (not a prefix match) and is recorded per-session by migration 0024 plus the write path, so a future id must be investigated before Caprock hides it.
+They also carry `background` — `{turns, tokens, models[]}` — measured token usage from **known internal product machinery** (today, Codex's hidden `codex-auto-review` approval reviewer). This is a different state from `unpriced`: it is not an error and asks nothing of the user, so it is **kept out of every user-work total** (sessions, turns, token and cost sums, the model mix, the projects roll-up, the daily cap and the weekly report) and reported beside them as a quiet "background usage" line with no dollar value — OpenAI publishes no price for the id, and inventing one would violate rule 6. The raw events stay in `events` for auditability; only the aggregates exclude them. Classification lives in `internal/modelclass` as an explicit allow-list (not a prefix match) and is recorded **per-event** by migration 0024 plus the write path — Codex writes the review turns into the *same* session as the work they review, so a session-level flag would hide the real turns beside them. A future id must be investigated before Caprock hides it.
 
 `GET /v1/status` may carry `desktop` — `{five_hour_pct, seven_day_pct, at, stale}` — the Claude **desktop app's** own plan usage, read on request from `plan-usage-history.json` in the app's support directory. It is omitted entirely when the app is absent, has never run, or wrote something we cannot parse; most people do not use it, so absence is a normal answer rather than an error.
 
@@ -402,7 +402,8 @@ CREATE TABLE events (
   cost_usd    REAL,
   msg_id      TEXT,                          -- assistant message id (migration 0012)
   touch_dir   TEXT,                          -- directory the tool touched (migration 0012)
-  tool_bytes  INTEGER NOT NULL DEFAULT 0     -- bytes the tool returned (migration 0018)
+  tool_bytes  INTEGER NOT NULL DEFAULT 0,    -- bytes the tool returned (migration 0018)
+  internal    INTEGER NOT NULL DEFAULT 0     -- 1 = hidden product machinery (0024)
 );
 CREATE INDEX idx_events_session_ts ON events(session_id, ts);
 CREATE INDEX idx_events_ts ON events(ts);
@@ -414,8 +415,7 @@ CREATE TABLE sessions (
   status       TEXT NOT NULL DEFAULT 'active',  -- active|idle|ended
   transcript_path TEXT,
   agent        TEXT NOT NULL DEFAULT 'claude',  -- claude|opencode|gemini (0015)
-  pid          INTEGER NOT NULL DEFAULT 0,      -- the session's process, 0 = unknown
-  internal     INTEGER NOT NULL DEFAULT 0       -- 1 = hidden product machinery (0024)
+  pid          INTEGER NOT NULL DEFAULT 0       -- the session's process, 0 = unknown
 );
 
 **A session ends when its process does.** `pid` is what makes that answerable:
@@ -582,14 +582,20 @@ Time to first token, tokens per second, and the model-versus-tool time split are
 
 Codex events are keyed `codex:{turn,tool}:<line>` — the record's line number in its transcript, unique by construction in an append-only file. Not the record's `ordinal` field, which reads as 0 in 99 of 100 real transcripts and collapsed every turn of a session onto one key; migration 0022 clears the rows that produced.
 
-**Internal sessions DDL (migration 0024).** Codex writes a normal rollout transcript
-for `codex-auto-review`, its hidden approval reviewer. `sessions` gained
-`internal INTEGER NOT NULL DEFAULT 0`; migration 0024 backfills `internal = 1`
-for existing rows whose model is `codex-auto-review` and deletes the
-`session_stats` / `daily_sessions` / `daily_stats` rollups that had described it
-as user work (the raw events stay — they are the source for the `background`
-figure). The write path classifies the same way at insert, via
-`internal/modelclass`, so post-migration events cannot resurrect the rollups.
+**Internal events DDL (migration 0024).** Codex writes its hidden approval
+reviewer, `codex-auto-review`, into the **same** session as the work it reviews —
+it reuses the reviewed session's id — so the classification is per-event, not
+per-session. `events` gained `internal INTEGER NOT NULL DEFAULT 0`; migration
+0024 backfills `internal = 1` for rows whose model is `codex-auto-review` and
+repairs the rollups that had described the review turns as user work:
+`daily_stats` drops the review model's rows, `daily_sessions` drops the markers
+of a session that is now review-only, and `session_stats` rows that mixed a
+review turn into a real session are recomputed from the non-review events
+(`files_touched` is carried over, since it is a first-touch count events cannot
+re-derive). The raw events stay — they are the source for the `background`
+figure. The write path classifies the same way at insert, via
+`internal/modelclass`, so post-migration review turns cannot resurrect the
+rollups.
 
 Tables `tasks` (mirror of file state for querying) and `verifications` (`task_id`, `round`, `command`, `exit_code`, `output_path`). Files are the source of truth for hive state; SQLite mirrors them for the UI (rebuildable by rescan). Forced-continue counter for the Stop-loop lives in SQLite per (session, task).
 

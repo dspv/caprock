@@ -22,12 +22,11 @@ Phase 3 (Delight) has no plan by design.
 
 - **Codex's own approval reviewer was reported as user work.** `codex-auto-review`
   is Codex's hidden "Automatic approval review model", and it writes a normal
-  transcript — 41,000 tokens over 2 turns on the owner's machine — which raised
-  an unresolvable unpriced-cost warning (OpenAI publishes no price for the id).
-  It is now classified as background machinery, kept out of every user-work
-  total, and reported beside them as a quiet "background usage" line with no
-  dollar value. A genuinely unknown model still gets the actionable "partial
-  estimate" with a prefilled report issue.
+  transcript that raised an unresolvable unpriced-cost warning (OpenAI publishes
+  no price for the id). It is now classified as background machinery, kept out
+  of every user-work total, and reported beside them as a quiet "background
+  usage" line with no dollar value. A genuinely unknown model still gets the
+  actionable "partial estimate" with a prefilled report issue.
 
 ## [0.56.0] - 2026-09-09
 
