@@ -97,7 +97,7 @@ export function CostScreen() {
           <Stat label="Cache write" value={measured ? fmtTokens(s!.cache_write) : '—'} sub={measured ? `${fmtPct(s!.savings.cut_pct)} input cost cut by cache` : undefined} />
         </div>
         {/* The money screen is exactly where an incomplete total misleads. */}
-        <UnpricedNote u={s?.unpriced} className="mx-3 mb-2.5" />
+        <UnpricedNote u={s?.unpriced} background={s?.background} className="mx-3 mb-2.5" />
       </Panel>
       {/* Three cuts of one question — by model, by kind of work, by project —
           so they sit as equals in one row rather than leaving the third

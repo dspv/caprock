@@ -480,7 +480,7 @@ func spend(ctx context.Context, t *testing.T, d *Daemon, project string, usd flo
 	t.Helper()
 	cost := usd
 	ev := &event.Event{
-		Ts: time.Now().AddDate(0, 0, -1), SessionID: "s-" + project, Source: event.SourceHook,
+		Ts: reportNow.AddDate(0, 0, -1), SessionID: "s-" + project, Source: event.SourceHook,
 		Kind: event.KindTurnAssistant, Model: "claude-opus-5",
 		Tokens: &event.TokenDelta{In: 1000, Out: 500}, CostUSD: &cost,
 		Payload: json.RawMessage(`{}`),

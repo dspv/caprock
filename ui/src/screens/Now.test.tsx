@@ -112,10 +112,10 @@ it('says which model it could not price instead of reporting it as free', async 
   state.status = { claude_available: true }
   render(<NowScreen />)
 
-  await waitFor(() => expect(screen.getByText(/Cost is incomplete/)).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText('Partial estimate')).toBeInTheDocument())
   // Naming the model is the actionable half.
   expect(screen.getByText('claude-opus-9-future')).toBeInTheDocument()
-  expect(screen.getByText(/not free/)).toBeInTheDocument()
+  expect(screen.getByText(/tokens not included/)).toBeInTheDocument()
 })
 
 it('reports a dead ingest instead of telling the user to wait forever', async () => {

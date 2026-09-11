@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/dspv/caprock/internal/event"
+	"github.com/dspv/caprock/internal/modelclass"
 )
 
 // Session mirrors the sessions table.
@@ -140,13 +141,17 @@ func InsertEvent(ctx context.Context, q Querier, ev *event.Event) (int64, error)
 	// from the payload on every read: over 89k tool events that cost 1.3s on a
 	// 641MB database, and this screen refreshes every five seconds.
 	toolBytes := toolResponseLen(ev)
+	// Internal classification is a property of the model, written once here so
+	// every aggregate filters one flag rather than re-deriving it from model
+	// names (internal/modelclass is the single allow-list).
+	internal := b2i(modelclass.IsInternal(ev.Model))
 
 	res, err := q.ExecContext(ctx, `
-		INSERT INTO events(ts, session_id, source, kind, tool, payload, tokens_in, tokens_out, cache_read, cache_write, cost_usd, key, model, cache_write_1h, agent_id, msg_id, touch_dir, tool_bytes)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO events(ts, session_id, source, kind, tool, payload, tokens_in, tokens_out, cache_read, cache_write, cost_usd, key, model, cache_write_1h, agent_id, msg_id, touch_dir, tool_bytes, internal)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(session_id, key) WHERE key IS NOT NULL DO NOTHING`,
 		ev.Ts.UnixMilli(), ev.SessionID, string(ev.Source), string(ev.Kind), nullStr(ev.Tool), string(ev.Payload),
-		tin, tout, cr, cw, cost, key, nullStr(ev.Model), cw1h, nullStr(ev.AgentID), nullStr(ev.MsgID), touch, toolBytes)
+		tin, tout, cr, cw, cost, key, nullStr(ev.Model), cw1h, nullStr(ev.AgentID), nullStr(ev.MsgID), touch, toolBytes, internal)
 	if err != nil {
 		return 0, fmt.Errorf("insert event: %w", err)
 	}
@@ -585,6 +590,7 @@ const fragmentMaxRunes = 240
 // subagent's words about half the time.
 const assistantTextWhere = `
 	e.kind = 'turn.assistant'
+	AND e.internal = 0
 	AND COALESCE(e.agent_id, '') = ''
 	AND json_extract(e.payload, '$.sidechain') IS NOT 1
 	AND COALESCE(json_extract(e.payload, '$.text'), '') != ''`
@@ -940,6 +946,10 @@ type Summary struct {
 	// the pricing table rendered as a confident "$0.00" — indistinguishable
 	// from free, and an invented number under rule 6.
 	Unpriced *Unpriced `json:"unpriced,omitempty"`
+	// Background is measured token usage from known internal product machinery,
+	// kept outside user session/turn/cost totals. It is not an error and carries
+	// no invented dollar value when its vendor publishes none.
+	Background *BackgroundUsage `json:"background,omitempty"`
 }
 
 // Unpriced is the volume that could not be priced, and which models caused it.
@@ -951,6 +961,15 @@ type Unpriced struct {
 	// Models are the distinct model ids with no pricing row, most volume first.
 	// An empty model id (a turn recorded before its model was known) is
 	// reported as "" and rendered by the UI as "unknown".
+	Models []string `json:"models"`
+}
+
+// BackgroundUsage is known internal work observed in real transcripts. The
+// raw events remain available, but these calls are not sessions or turns the
+// user started and therefore do not belong in user-work totals.
+type BackgroundUsage struct {
+	Turns  int64    `json:"turns"`
+	Tokens int64    `json:"tokens"`
 	Models []string `json:"models"`
 }
 
@@ -1184,6 +1203,11 @@ func addSpark(p *ProjectShare, spec SparkSpec, series []sessionBucket) {
 // same agent filter as the total it warns about. Unfiltered, it told a reader
 // looking at OpenCode that money was missing from their total — money that was
 // Claude's, and was not in that total at all.
+const (
+	nonInternalEvent  = ` AND internal = 0`
+	nonInternalEventE = ` AND e.internal = 0`
+)
+
 func queryUnpriced(ctx context.Context, q Querier, fromMs int64, agent AgentFilter) (*Unpriced, error) {
 	scope, scopeArgs := agent.sessionScope("session_id")
 	rows, err := q.QueryContext(ctx, `
@@ -1197,7 +1221,7 @@ func queryUnpriced(ctx context.Context, q Querier, fromMs int64, agent AgentFilt
 		  -- user their total is missing money when it is missing nothing: the
 		  -- owner's database had 38 such turns and a banner saying so.
 		  AND (COALESCE(tokens_in,0) + COALESCE(tokens_out,0)
-		       + COALESCE(cache_read,0) + COALESCE(cache_write,0)) > 0`+scope+`
+		       + COALESCE(cache_read,0) + COALESCE(cache_write,0)) > 0`+nonInternalEvent+scope+`
 		GROUP BY model ORDER BY 3 DESC`, append([]any{fromMs}, scopeArgs...)...)
 	if err != nil {
 		return nil, err
@@ -1221,6 +1245,43 @@ func queryUnpriced(ctx context.Context, q Querier, fromMs int64, agent AgentFilt
 		return nil, nil
 	}
 	return &u, nil
+}
+
+// queryBackgroundUsage reports known internal model work separately from user
+// work. It reads the per-event classification written by internal/modelclass
+// (backfilled by migration 0024) rather than a model-name pattern in SQL: a
+// future id must be investigated before Caprock hides it from ordinary totals.
+func queryBackgroundUsage(ctx context.Context, q Querier, fromMs int64, agent AgentFilter) (*BackgroundUsage, error) {
+	scope, scopeArgs := agent.sessionScope("e.session_id")
+	rows, err := q.QueryContext(ctx, `
+		SELECT COALESCE(NULLIF(e.model,''), s.model, ''), COUNT(*),
+		       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0)
+		FROM events e JOIN sessions s ON s.session_id = e.session_id
+		WHERE e.kind = 'turn.assistant' AND e.ts >= ?
+		  AND e.internal = 1`+scope+`
+		GROUP BY COALESCE(NULLIF(e.model,''), s.model, '') ORDER BY 3 DESC`, append([]any{fromMs}, scopeArgs...)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var b BackgroundUsage
+	for rows.Next() {
+		var model string
+		var turns, tokens int64
+		if err := rows.Scan(&model, &turns, &tokens); err != nil {
+			return nil, err
+		}
+		b.Turns += turns
+		b.Tokens += tokens
+		b.Models = append(b.Models, model)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if b.Turns == 0 {
+		return nil, nil
+	}
+	return &b, nil
 }
 
 // Summarize aggregates events since fromMs (0 = all time).
@@ -1280,7 +1341,7 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 		       COALESCE(SUM(tokens_in),0), COALESCE(SUM(tokens_out),0),
 		       COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_write),0),
 		       COALESCE(SUM(cost_usd),0)
-		FROM events WHERE ts >= ?`+ev+` GROUP BY kind`, append([]any{fromMs}, evArgs...)...)
+		FROM events WHERE ts >= ?`+nonInternalEvent+ev+` GROUP BY kind`, append([]any{fromMs}, evArgs...)...)
 	if err != nil {
 		return s, err
 	}
@@ -1324,7 +1385,7 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	// 7d or 30d, so there is no range where the old form was the better plan
 	// and no reason to branch on one.
 	if err := q.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM (SELECT session_id FROM events WHERE ts >= ?`+ev+` GROUP BY session_id)`, append([]any{fromMs}, evArgs...)...).Scan(&s.Sessions); err != nil {
+		`SELECT COUNT(*) FROM (SELECT session_id FROM events WHERE ts >= ?`+nonInternalEvent+ev+` GROUP BY session_id)`, append([]any{fromMs}, evArgs...)...).Scan(&s.Sessions); err != nil {
 		return s, err
 	}
 	// "Active" means active *now*, so it is deliberately not range-scoped — but
@@ -1339,7 +1400,7 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	}
 	rows, err = q.QueryContext(ctx, `
 		SELECT COALESCE(model,''), COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0)),0), COALESCE(SUM(cost_usd),0), COUNT(*), COALESCE(SUM(COALESCE(tokens_out,0)),0), COALESCE(SUM(COALESCE(cache_read,0)),0)
-		FROM events WHERE kind = 'turn.assistant' AND ts >= ?`+ev+` GROUP BY model ORDER BY 3 DESC`, append([]any{fromMs}, evArgs...)...)
+		FROM events WHERE kind = 'turn.assistant' AND ts >= ?`+nonInternalEvent+ev+` GROUP BY model ORDER BY 3 DESC`, append([]any{fromMs}, evArgs...)...)
 	if err != nil {
 		return s, err
 	}
@@ -1367,6 +1428,11 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 		return s, err
 	} else {
 		s.Unpriced = u
+	}
+	if b, err := queryBackgroundUsage(ctx, q, fromMs, agent); err != nil {
+		return s, err
+	} else {
+		s.Background = b
 	}
 	// Both levels of the projects roll-up come from ONE pass. Grouping by
 	// (project, first segment of repo_path) and summing the segments back up
@@ -1428,7 +1494,7 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 			       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0),
 			       COALESCE(SUM(e.cost_usd),0)
 			FROM events e
-			WHERE e.kind = 'turn.assistant' AND e.ts >= ?`+evPrefixed+`
+			WHERE e.kind = 'turn.assistant' AND e.ts >= ?`+nonInternalEventE+evPrefixed+`
 			GROUP BY e.session_id, bucket`,
 			append([]any{spark.FromMs, spark.FromMs, spark.WidthMs, fromMs}, evArgs...)...)
 	} else {
@@ -1437,7 +1503,7 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 			       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0),
 			       COALESCE(SUM(e.cost_usd),0)
 			FROM events e
-			WHERE e.kind = 'turn.assistant' AND e.ts >= ?`+evPrefixed+`
+			WHERE e.kind = 'turn.assistant' AND e.ts >= ?`+nonInternalEventE+evPrefixed+`
 			GROUP BY e.session_id`, append([]any{fromMs}, evArgs...)...)
 	}
 	if err != nil {
@@ -1858,6 +1924,7 @@ func ToolDistribution(ctx context.Context, q Querier, fromMs int64, limit int) (
 		       COALESCE(SUM(tool_bytes), 0) AS bytes
 		FROM events
 		WHERE kind IN ('tool.pre','tool.post') AND tool != '' AND ts >= ?
+		  AND internal = 0
 		GROUP BY tool
 		ORDER BY calls DESC
 		LIMIT ?`, fromMs, limit)
@@ -1891,6 +1958,9 @@ type HistoryTotals struct {
 	// numbers are "measured, not estimated", which a silently incomplete total
 	// would make false.
 	Unpriced *Unpriced `json:"unpriced,omitempty"`
+	// Background is known internal model usage, reported separately rather than
+	// counted as sessions or turns the user started.
+	Background *BackgroundUsage `json:"background,omitempty"`
 }
 
 // History computes cross-session totals since fromMs.
@@ -1931,7 +2001,7 @@ func History(ctx context.Context, q Querier, fromMs int64) (HistoryTotals, error
 	// screen.
 	rows, err := q.QueryContext(ctx, `
 		SELECT kind, COUNT(*), COALESCE(SUM(cost_usd),0)
-		FROM events WHERE ts >= ? GROUP BY kind`, fromMs)
+		FROM events WHERE ts >= ?`+nonInternalEvent+` GROUP BY kind`, fromMs)
 	if err != nil {
 		return h, err
 	}
@@ -1984,6 +2054,11 @@ func History(ctx context.Context, q Querier, fromMs int64) (HistoryTotals, error
 		return h, err
 	}
 	h.Unpriced = u
+	b, err := queryBackgroundUsage(ctx, q, fromMs, "")
+	if err != nil {
+		return h, err
+	}
+	h.Background = b
 	return h, nil
 }
 
@@ -2170,7 +2245,7 @@ func RecentDirs(ctx context.Context, q Querier, limit int) ([]RecentDirDetail, e
 func SpendSince(ctx context.Context, q Querier, fromMs int64) (float64, error) {
 	var usd float64
 	err := q.QueryRowContext(ctx,
-		`SELECT COALESCE(SUM(cost_usd),0) FROM events WHERE ts >= ?`, fromMs).Scan(&usd)
+		`SELECT COALESCE(SUM(cost_usd),0) FROM events WHERE ts >= ?`+nonInternalEvent, fromMs).Scan(&usd)
 	return usd, err
 }
 

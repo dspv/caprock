@@ -47,7 +47,7 @@ func newRoot() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "caprock",
 		Short:         "Mission control for Claude Code — local, observe-first",
-		Long:          "Caprock watches every Claude Code session on this machine (hooks + transcripts), shows live activity, cost and loop alerts at http://127.0.0.1:4173, and keeps all data local.",
+		Long:          "Caprock watches every Claude Code session on this machine (hooks + transcripts), shows live activity, cost and loop alerts at http://127.0.0.1:22776, and keeps all data local.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       version.Version,
@@ -119,7 +119,7 @@ func upCmd() *cobra.Command {
 			return runForeground(cmd, dir, cfg, noOpen, useLAN, hiveDir, repoDir)
 		},
 	}
-	c.Flags().IntVar(&port, "port", 0, "listen port (default from config.json, 4173)")
+	c.Flags().IntVar(&port, "port", 0, "listen port (default from config.json; 22776 on a fresh install)")
 	c.Flags().BoolVar(&noOpen, "no-open", false, "do not open the dashboard in a browser")
 	c.Flags().BoolVar(&noHooks, "no-hooks", false, "do not install/verify the hook shim")
 	c.Flags().BoolVarP(&yes, "yes", "y", false, "assume yes for the hook install prompt")

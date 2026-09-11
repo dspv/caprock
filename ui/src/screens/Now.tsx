@@ -259,7 +259,7 @@ export function NowScreen() {
           <PlanLimitsStat limits={summary.data?.rate_limits} now={now} />
           <CacheStat hitRate={summary.data?.savings.hit_rate} cutPct={summary.data?.savings.cut_pct} measured={measured} />
         </div>
-        <UnpricedNote u={summary.data?.unpriced} className="mx-3 mb-2.5" />
+        <UnpricedNote u={summary.data?.unpriced} background={summary.data?.background} className="mx-3 mb-2.5" />
       </Panel>
 
       {/* The shape of the work, above the detail of it: a glance says which

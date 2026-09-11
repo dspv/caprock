@@ -17,8 +17,17 @@ import (
 // EnvDataDir overrides the resolved data directory when set.
 const EnvDataDir = "CAPROCK_DATA_DIR"
 
-// DefaultPort is the single loopback port shared by the API, WS, UI and hook receiver.
-const DefaultPort = 4173
+const (
+	// DefaultPort is the single loopback port shared by the API, WS, UI and
+	// hook receiver on a fresh install. 22776 spells CAPRO on a phone keypad,
+	// is unassigned by IANA, sits below common ephemeral ranges, and avoids
+	// Vite Preview's default 4173.
+	DefaultPort = 22776
+	// LegacyDefaultPort preserves the origin and bookmarks of an existing
+	// install that never wrote config.json. A port is part of a browser origin;
+	// silently moving it would also strand LAN pairing tokens in localStorage.
+	LegacyDefaultPort = 4173
+)
 
 // Config is the user-editable configuration stored at <data_dir>/config.json.
 // Every field has a default; a missing file means "all defaults".
@@ -97,7 +106,7 @@ type Config struct {
 	BrowseRoot string `json:"browse_root,omitempty"`
 }
 
-// Defaults returns the built-in configuration (spec: K=5, T=3, port 4173).
+// Defaults returns the built-in configuration for a fresh install.
 func Defaults() Config {
 	return Config{Port: DefaultPort, LoopK: 5, LoopTMinutes: 3, AutoPause: false, OpenBrowser: true}
 }
@@ -161,6 +170,15 @@ func Load(dir string) (Config, error) {
 	cfg := Defaults()
 	b, err := os.ReadFile(ConfigPath(dir))
 	if errors.Is(err, os.ErrNotExist) {
+		// Releases before the port change did not need to write config.json for
+		// a user who kept every default. The database is the durable evidence
+		// that this is such an install; keep its old origin instead of treating
+		// an absent config file as a fresh profile.
+		if _, statErr := os.Stat(DBPath(dir)); statErr == nil {
+			cfg.Port = LegacyDefaultPort
+		} else if !errors.Is(statErr, os.ErrNotExist) {
+			return cfg, fmt.Errorf("inspect existing data: %w", statErr)
+		}
 		return cfg, nil
 	}
 	if err != nil {

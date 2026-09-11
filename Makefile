@@ -78,7 +78,7 @@ ui-install: ## npm ci for the dashboard
 	cd ui && npm ci
 
 .PHONY: dev
-dev: ## Run daemon (go run) + vite dev server; UI on :5173 proxies API to :4173
+dev: ## Run daemon (go run) + vite dev server; UI on :5173 proxies API to :22776
 	@./scripts/dev.sh
 
 # --- test / lint ----------------------------------------------------------

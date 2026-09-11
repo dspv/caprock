@@ -291,6 +291,7 @@ func turnSpendBySession(ctx context.Context, q Querier, fromMs int64) (map[strin
 		       COALESCE(cost_usd,0)
 		FROM events INDEXED BY idx_events_attr_work
 		WHERE session_id IS NOT NULL AND ts >= ?
+		  AND internal = 0
 		  AND kind IN ('tool.pre', 'turn.assistant')
 		ORDER BY session_id, ts, id`, fromMs)
 	if err != nil {

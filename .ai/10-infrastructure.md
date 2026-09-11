@@ -32,7 +32,7 @@ See [02-architecture.md § Repository layout](02-architecture.md#repository-layo
 
 ```bash
 make help        # list targets
-make dev         # daemon with live reload + vite dev server proxied to :4173
+make dev         # daemon with live reload + vite dev server proxied to :22776
 make build       # ui build + go build → ./bin/caprock, ./bin/caprock-hook
 make test        # go test ./... + ui tests
 make lint        # golangci-lint + tsc --noEmit
@@ -55,7 +55,7 @@ make check       # docs gates + lint + test (what CI runs, minus the OS matrix)
 ```bash
 git clone git@github.com:dspv/caprock.git && cd caprock
 go mod download && (cd ui && npm ci)
-make dev                 # http://localhost:4173
+make dev                 # http://localhost:22776
 make test lint check     # before every push
 ```
 

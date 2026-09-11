@@ -129,6 +129,109 @@ func TestUnknownModelLeavesCostNil(t *testing.T) {
 	}
 }
 
+// Codex Auto Review is product machinery, not a turn the user started. Codex
+// reuses the reviewed session's id, so the review turns arrive inside a session
+// whose other turns are real user work (gpt-5.6-sol). Classification is
+// per-event: the review turn must not price, must not touch the user totals, and
+// must not overwrite the session's real model — while the real turn beside it is
+// counted normally.
+func TestCodexAutoReviewIsBackgroundUsage(t *testing.T) {
+	ctx := context.Background()
+	r, sub := newRecorder(t)
+
+	real := &event.Event{
+		SessionID: "shared", Source: event.SourceCodex, Kind: event.KindTurnAssistant,
+		Model: "gpt-5.6-sol", Key: "real-1",
+		Ts:     time.Date(2026, 9, 11, 12, 0, 0, 0, time.UTC),
+		Tokens: &event.TokenDelta{In: 1_000, Out: 100},
+	}
+	if res, err := r.Record(ctx, real, SessionInfo{Cwd: "/home/u/project", Model: real.Model, Agent: "codex"}); err != nil {
+		t.Fatal(err)
+	} else if !res.Stored || !res.Priced || real.CostUSD == nil {
+		t.Fatalf("real turn should be priced: %+v cost=%v", res, real.CostUSD)
+	}
+
+	review := &event.Event{
+		SessionID: "shared", Source: event.SourceCodex, Kind: event.KindTurnAssistant,
+		Model: "codex-auto-review", Key: "review-1",
+		Ts:     time.Date(2026, 9, 11, 12, 1, 0, 0, time.UTC),
+		Tokens: &event.TokenDelta{In: 30_000, Out: 1_000, CacheRead: 10_000},
+	}
+	res, err := r.Record(ctx, review, SessionInfo{Cwd: "/home/u/project", Model: review.Model, Agent: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Stored || res.Priced || review.CostUSD != nil {
+		t.Fatalf("review turn result = %+v, cost=%v", res, review.CostUSD)
+	}
+	if frames := drain(sub); len(frames) != 2 {
+		t.Fatalf("the real turn must publish and the review turn must not; got %d frames", len(frames))
+	}
+
+	// The session still exists (it did real work) and keeps its real model.
+	s, err := store.GetSession(ctx, r.Store.DB(), "shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Model != "gpt-5.6-sol" {
+		t.Fatalf("review turn overwrote the session model: %q", s.Model)
+	}
+	if n, err := store.CountSessions(ctx, r.Store.DB(), false); err != nil || n != 1 {
+		t.Fatalf("visible sessions = %d, err=%v", n, err)
+	}
+
+	// The daily rollup carries only the real turn's work.
+	d, err := store.Daily(ctx, r.Store.DB(), "2026-09-11")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(d) != 1 || d[0].Model != "gpt-5.6-sol" {
+		t.Fatalf("daily user work = %+v", d)
+	}
+
+	sum, err := store.Summarize(ctx, r.Store.DB(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum.Sessions != 1 || sum.Turns != 1 || sum.TokensIn != 1_000 || sum.CostUSD == 0 || sum.Unpriced != nil {
+		t.Fatalf("real work missing or review work leaked into user totals: %+v", sum)
+	}
+	if sum.Background == nil || sum.Background.Turns != 1 || sum.Background.Tokens != 41_000 ||
+		len(sum.Background.Models) != 1 || sum.Background.Models[0] != "codex-auto-review" {
+		t.Fatalf("background usage = %+v", sum.Background)
+	}
+	// The raw review event stays for auditability.
+	if n, err := store.CountEvents(ctx, r.Store.DB()); err != nil || n != 2 {
+		t.Fatalf("raw events not retained: count=%d err=%v", n, err)
+	}
+}
+
+// A session that is nothing but the review model contributes no user work:
+// its turns are background only, so every user total reads zero.
+func TestCodexAutoReviewOnlySessionContributesNoUserWork(t *testing.T) {
+	ctx := context.Background()
+	r, _ := newRecorder(t)
+	ev := &event.Event{
+		SessionID: "review-only", Source: event.SourceCodex, Kind: event.KindTurnAssistant,
+		Model: "codex-auto-review", Key: "review-1",
+		Ts:     time.Date(2026, 9, 11, 12, 0, 0, 0, time.UTC),
+		Tokens: &event.TokenDelta{In: 30_000, Out: 1_000, CacheRead: 10_000},
+	}
+	if _, err := r.Record(ctx, ev, SessionInfo{Cwd: "/home/u/project", Model: ev.Model, Agent: "codex"}); err != nil {
+		t.Fatal(err)
+	}
+	sum, err := store.Summarize(ctx, r.Store.DB(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum.Sessions != 0 || sum.Turns != 0 || sum.TokensIn != 0 || sum.CostUSD != 0 || sum.Unpriced != nil {
+		t.Fatalf("review-only session leaked into user totals: %+v", sum)
+	}
+	if sum.Background == nil || sum.Background.Turns != 1 || sum.Background.Tokens != 41_000 {
+		t.Fatalf("review-only background = %+v", sum.Background)
+	}
+}
+
 func TestThrottleRecorded(t *testing.T) {
 	ctx := context.Background()
 	r, _ := newRecorder(t)

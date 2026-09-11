@@ -81,7 +81,7 @@ Event → session_stats/daily_stats updates; cost calc from pricing.json (ported
 
 #### T6 — api + live WS (1–2 evenings)
 
-Endpoints from [03-contracts.md § HTTP API](03-contracts.md#http-api-daemon-1270014173), WS fan-out of new events/alerts. *AC: httptest coverage per endpoint; WS delivers an event end-to-end in an integration test.*
+Endpoints from [03-contracts.md § HTTP API](03-contracts.md#http-api-daemon-loopback), WS fan-out of new events/alerts. *AC: httptest coverage per endpoint; WS delivers an event end-to-end in an integration test.*
 
 #### T7 — UI: Now + Session Detail (3–4 evenings)
 
