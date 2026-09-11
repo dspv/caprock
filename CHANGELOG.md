@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.57.0] - 2026-09-11
+
 ### Changed
 
 - **The default port moved from 4173 to 22776.** 4173 is Vite Preview's
