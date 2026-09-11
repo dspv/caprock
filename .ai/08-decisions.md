@@ -132,11 +132,11 @@ Plain files over cleverness: mailboxes and task state are markdown/JSON on disk,
 
 ---
 
-## ADR-011 — One server, one port (default 4173), per-run bearer token; loopback only
+## ADR-011 — One server, one port (default 22776), per-run bearer token; loopback only
 
 **Date:** 2026-08-18 · **Status:** accepted · **Amended:** 2026-09-11 (default port)
 
-`/v1/hook`, the REST API, the WebSocket, and the UI share one listener on `127.0.0.1:4173`; `runtime.json` carries `{port, token}` for the shim. Unix sockets are not portable to Windows; a single loopback listener with a random per-run token is the same code on all OS and keeps everything local.
+`/v1/hook`, the REST API, the WebSocket, and the UI share one listener on `127.0.0.1:22776`; `runtime.json` carries `{port, token}` for the shim. Unix sockets are not portable to Windows; a single loopback listener with a random per-run token is the same code on all OS and keeps everything local.
 
 **2026-09-11 amendment — the default moved to 22776.** `4173` is Vite Preview's
 default port, so a developer running `vite preview` beside Caprock hit a bind
