@@ -9,6 +9,26 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Changed
+
+- **The default port moved from 4173 to 22776.** 4173 is Vite Preview's
+  default, so a developer running `vite preview` beside Caprock hit a bind
+  collision. A fresh install now listens on 22776 (unassigned by IANA, spells
+  CAPRO on a phone keypad); an existing install that never wrote `config.json`
+  keeps its old 4173 origin, because a port is part of a browser origin and
+  moving it would strand bookmarks and LAN-pairing tokens.
+
+### Fixed
+
+- **Codex's own approval reviewer was reported as user work.** `codex-auto-review`
+  is Codex's hidden "Automatic approval review model", and it writes a normal
+  transcript — 41,000 tokens over 2 turns on the owner's machine — which raised
+  an unresolvable unpriced-cost warning (OpenAI publishes no price for the id).
+  It is now classified as background machinery, kept out of every user-work
+  total, and reported beside them as a quiet "background usage" line with no
+  dollar value. A genuinely unknown model still gets the actionable "partial
+  estimate" with a prefilled report issue.
+
 ## [0.56.0] - 2026-09-09
 
 ### Added

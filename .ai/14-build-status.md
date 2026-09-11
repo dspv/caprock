@@ -2,7 +2,7 @@
 
 The running log: what is done, what is not, what is next. **Update this file and § Current State in [00-index.md](00-index.md) whenever the state of the world changes.** Dates in absolute form, never "last week". What "done" means per task is defined in [09-execution-plan.md](09-execution-plan.md).
 
-**Last updated: 2026-09-09** · Phase **2 — Orchestrate, complete** · every phase is tagged and published (`brew install dspv/tap/caprock`, or Scoop on Windows via `dspv/scoop-bucket`). The live unattended orchestrator run — the Phase 2 tag gate — is done: a real `claude` orchestrator assigned a task, spawned a worker, and drove it to green verification with nobody watching.
+**Last updated: 2026-09-11** · Phase **2 — Orchestrate, complete** · every phase is tagged and published (`brew install dspv/tap/caprock`, or Scoop on Windows via `dspv/scoop-bucket`). The live unattended orchestrator run — the Phase 2 tag gate — is done: a real `claude` orchestrator assigned a task, spawned a worker, and drove it to green verification with nobody watching.
 
 **What shipped in which release is answered by `CHANGELOG.md`, `git describe` and the releases page, and is deliberately not restated here.** This paragraph used to carry a hand-written list of them; it stopped at v0.10.0 and stayed there for eighty-four releases, which is [rule 9](../CLAUDE.md) demonstrating itself. What belongs here is the state of the world, not its version history.
 
@@ -59,9 +59,51 @@ Percentages are deliberately coarse — they answer "is this track started, half
   the next call's cache read costs, Lifetime breaks out the context tax, and a
   loop alert prices the repeated context reads it can attach to turns. Unlinked
   calls are excluded and counted rather than guessed.
+- **The default port is 22776 on a fresh install** (4173 — Vite Preview's
+  default — is preserved for installs that predate the change); the
+  one-server-one-port shape is unchanged ([ADR-011](08-decisions.md)).
+- **Codex's `codex-auto-review` is classified as background machinery**, kept
+  out of user-work totals and reported as a quiet "background usage" line rather
+  than as an unresolvable unpriced-cost warning. See
+  [19-codex.md](19-codex.md).
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
 ## Log
+
+### 2026-09-11 — The reviewer Codex runs in the background, and the port it collided with
+
+Two defects, one of them invisible until the owner read his own dashboard and
+the other a bind collision waiting for the first `vite preview` on the same
+machine.
+
+**Codex's own approval reviewer was being billed to the user as ordinary work.**
+Codex writes a normal rollout transcript for `codex-auto-review`, its hidden
+"Automatic approval review model", and on the owner's machine that transcript
+held 41,000 tokens over 2 turns. Treated as a user session it raised the
+unpriced-cost warning — correctly, since OpenAI publishes no price for the id —
+and it was a warning no user could act on, because the model was never the
+user's choice. The fix separates the two states the warning had been conflating:
+a genuinely unknown public model is still a "partial estimate" with a prefilled
+report issue; known internal machinery is **background usage**, excluded from
+every user-work total (sessions, turns, tokens, cost, model mix, projects
+roll-up, the daily cap, the weekly report) and reported beside them as a quiet
+"background usage" line with no dollar value. Raw events stay for auditability;
+only the aggregates exclude them. Classification is `internal/modelclass`
+(explicit allow-list, not a prefix match) plus migration 0024 (`sessions.internal`
+backfill + rollup cleanup) and the write path, so a future id must be
+investigated before Caprock hides it. Pinned by sabotage: `TestCodexAutoReviewIsBackgroundUsage`,
+`TestInternalSessionMigrationBackfillsAndRemovesUserRollups`, and the UI
+`Unpriced.test.tsx`.
+
+**The default port moved from 4173 to 22776.** 4173 is Vite Preview's default,
+so a developer running `vite preview` beside Caprock hit a bind collision on the
+very machine the product is built for. 22776 is unassigned by IANA, spells CAPRO
+on a phone keypad, and sits below the common ephemeral range. An existing
+install that never wrote `config.json` keeps its old 4173 origin — the presence
+of `caprock.db` is the durable evidence it predates the change, and a port is
+part of a browser origin, so silently moving it would strand bookmarks and
+LAN-pairing tokens in localStorage. See [ADR-011](08-decisions.md)'s amendment;
+the one-server-one-port shape is unchanged.
 
 ### 2026-09-06 — The session's own numbers in the status line (FB-032)
 

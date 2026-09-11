@@ -52,7 +52,7 @@ Supporting directories:
 
 ## Current State
 
-**Last updated: 2026-09-09** · Owner: Dima · Phase: **Phase 2 complete; the product is released and paid plans are live**
+**Last updated: 2026-09-11** · Owner: Dima · Phase: **Phase 2 complete; the product is released and paid plans are live**
 
 - **Documentation:** corpus built from the spec on 2026-08-18; loss audit green; spec deleted; kept current with the code.
 - **Code:** all three phases built, green on the 3-OS CI matrix, tagged and published — `git describe`, the releases page and [CHANGELOG.md](../CHANGELOG.md) say which version, and this file deliberately does not ([rule 9](../CLAUDE.md)). Homebrew formula in `dspv/homebrew-tap` (`brew install dspv/tap/caprock`); Windows via Scoop. Post-Orchestrate work is polish and paid surfaces. The Phase 2 tag gate — a live unattended orchestrator run with hooks — passed: a real `claude` orchestrator drove a task to green verification with no human input. See [14-build-status.md](14-build-status.md) for the live per-track state.
