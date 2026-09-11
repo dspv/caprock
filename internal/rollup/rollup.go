@@ -15,6 +15,7 @@ import (
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/event"
+	"github.com/dspv/caprock/internal/modelclass"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -86,6 +87,7 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 	if ev.Model == "" && info.Model != "" {
 		ev.Model = info.Model
 	}
+	internalModel := modelclass.IsInternal(ev.Model)
 	// Price before the tx so a pricing failure never rolls back an event.
 	// OpenCode prices its own turns, so the table is never applied to them.
 	// A turn it has not priced stays unpriced rather than acquiring a figure
@@ -93,7 +95,7 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 	// make a session's total depend on which rows happened to be priced by
 	// whom, and nothing on screen would say so.
 	ourCosting := ev.Source != event.SourceOpenCode
-	if ourCosting && ev.Kind == event.KindTurnAssistant && ev.Tokens != nil && ev.CostUSD == nil && r.Table != nil && ev.Model != "" {
+	if ourCosting && !internalModel && ev.Kind == event.KindTurnAssistant && ev.Tokens != nil && ev.CostUSD == nil && r.Table != nil && ev.Model != "" {
 		// Priced at the turn's own timestamp, not at today's rates: an
 		// introductory price that has since expired was the real price for the
 		// turns that ran under it, and repricing them on the morning it lapsed
@@ -173,25 +175,27 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 		}
 
 		delta := store.Stats{SessionID: ev.SessionID}
-		switch ev.Kind {
-		case event.KindTurnAssistant:
-			delta.Turns = 1
-			if ev.Tokens != nil {
-				delta.TokensIn, delta.TokensOut, delta.CacheRead, delta.CacheWrite = ev.Tokens.In, ev.Tokens.Out, ev.Tokens.CacheRead, ev.Tokens.CacheWrite
-			}
-			if ev.CostUSD != nil {
-				delta.CostUSD = *ev.CostUSD
-			}
-		case event.KindToolPre:
-			delta.ToolCalls = 1
-			if p := touchedPath(ev); p != "" {
-				isNew, err := store.TouchFile(ctx, q, ev.SessionID, p, ev.Ts.UnixMilli())
-				if err != nil {
-					return err
+		if !internalModel {
+			switch ev.Kind {
+			case event.KindTurnAssistant:
+				delta.Turns = 1
+				if ev.Tokens != nil {
+					delta.TokensIn, delta.TokensOut, delta.CacheRead, delta.CacheWrite = ev.Tokens.In, ev.Tokens.Out, ev.Tokens.CacheRead, ev.Tokens.CacheWrite
 				}
-				if isNew {
-					delta.FilesTouched = 1
-					res.NewFiles = 1
+				if ev.CostUSD != nil {
+					delta.CostUSD = *ev.CostUSD
+				}
+			case event.KindToolPre:
+				delta.ToolCalls = 1
+				if p := touchedPath(ev); p != "" {
+					isNew, err := store.TouchFile(ctx, q, ev.SessionID, p, ev.Ts.UnixMilli())
+					if err != nil {
+						return err
+					}
+					if isNew {
+						delta.FilesTouched = 1
+						res.NewFiles = 1
+					}
 				}
 			}
 		}
@@ -206,7 +210,7 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 			_ = store.RecordThrottle(ctx, q, ev.Ts.UnixMilli(), ev.SessionID, "stop_failure", ev.Payload)
 		}
 
-		if ev.Kind == event.KindTurnAssistant {
+		if ev.Kind == event.KindTurnAssistant && !internalModel {
 			day := ev.Ts.In(r.Location).Format("2006-01-02")
 			var tokens int64
 			if ev.Tokens != nil {
@@ -248,7 +252,7 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 		return res, err
 	}
 	res.Event = *ev
-	if r.Bus != nil {
+	if r.Bus != nil && !internalModel {
 		r.Bus.Publish(bus.Frame{Type: bus.FrameEvent, Data: res.Event})
 		r.Bus.Publish(bus.Frame{Type: bus.FrameSession, Data: SessionFrame{Session: res.Session, Stats: res.Stats}})
 	}

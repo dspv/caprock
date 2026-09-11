@@ -9,7 +9,7 @@ Conventions that apply to every contract here: JSON casing is **snake_case**; al
 - Single Go binary `caprock-hook` (same repo, tiny), installed to Caprock's data dir.
 - Registered in `~/.claude/settings.json` under events: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `SubagentStop`, `SessionEnd`, `PreCompact`, `StopFailure`. Installer merges JSON non-destructively; `caprock hooks uninstall` reverts; back up the settings file before first write.
 - Behavior (Phase 0–1: fire-and-forget): read stdin JSON → POST to `http://127.0.0.1:<port>/v1/hook` with `Authorization: Bearer <run-token>` and `X-Caprock-Ppid: <os.Getppid()>` → always exit 0 within a 1s budget. Never print to stdout (a broken shim must not affect the user's Claude session). If the daemon is down, drop silently.
-- One server, one port: `/v1/hook` lives on the same listener as the API and UI (default **4173**); `<data_dir>/runtime.json` holds `{port, token}`, written by the daemon, read by the shim per invocation.
+- One server, one port: `/v1/hook` lives on the same listener as the API and UI (default **22776** on a fresh install; an existing install that never wrote `config.json` keeps its old **4173** origin, because a port is part of a browser origin and moving it would strand bookmarks and LAN-pairing tokens); `<data_dir>/runtime.json` holds `{port, token}`, written by the daemon, read by the shim per invocation.
 - Phase 2 extended this protocol for **Stop events only** — request-response with a 5s timeout; see [05-orchestration.md § Stop-hook decision protocol](05-orchestration.md#stop-hook-decision-protocol-shim-upgrade-t19).
 - Why a shim binary rather than Claude Code's native `type: "http"` hook: [ADR-009](08-decisions.md#adr-009--hook-transport-is-the-caprock-hook-shim-binary-not-claude-codes-native-http-hook-type).
 
@@ -65,7 +65,7 @@ conversation at a time, so a sibling on the same pid is finished by definition;
 
 The installer writes, for each of the nine events, a matcher-less entry (`matcher` omitted — `UserPromptSubmit` and `Stop` do not accept matchers) of the form `{"hooks":[{"type":"command","command":"<data_dir>/caprock-hook","timeout":5}]}` and leaves every other key, every pre-existing hook, **and the user's key order** untouched (ordered-JSON merge). The registered command is written with **forward slashes and double quotes**, on every platform: Claude Code runs hooks through a POSIX shell, where a backslash is an escape, so a Windows path reached it as `C:UsersVolasAppData…caprock-hook.exe` and every hook failed while the dashboard — still fed by transcript tailing — looked healthy. Windows accepts forward slashes in every API, and the quotes keep a path with a space (`C:/Program Files/…`, or the macOS `~/Library/Application Support/…`) from splitting into two words. Either fix alone is insufficient. `statusLine.command` is written the same way and had the same defect. Entries in any earlier form — bare, quoted, backslashed — are still recognised as ours, so an upgrade neither reports a working install as missing nor overwrites a line the user repaired by hand. When no `caprock-hook` binary sits beside the `caprock` executable, the registered command is `<caprock> hook` (a hidden subcommand running the same shim code). Uninstall removes only entries whose `command` points at a Caprock shim (exact path, or basename `caprock-hook[.exe]`, or `<caprock> hook`) and drops empty containers it leaves behind. Backups are `settings.json.caprock-backup-<unix-ts>` next to the original, taken before a modification **whenever the current content is not already captured by an existing backup** — a backup taken once and never refreshed goes stale (the audited machine had a 10 July snapshot of a file last edited 20 August) and would restore a file the user no longer recognises. Identical content is never snapshotted twice, so repeated runs over an unchanged file add nothing. A same-second second backup gets a `-2` suffix rather than overwriting its predecessor. At most 5 are kept: the oldest (the closest thing to a pre-Caprock state) plus the most recent 4. `caprock hooks restore` lists them and restores one by path, snapshotting the current file first so the restore is itself undoable; it refuses an unparsable backup. An unparsable settings.json is never modified.
 
-## HTTP API (daemon, `127.0.0.1:4173`)
+## HTTP API (daemon, loopback)
 
 ### Who may connect, and from where
 
@@ -218,6 +218,8 @@ Plan-limit windows relayed by `caprock statusline` are **validated before storag
 `GET /v1/status` carries `ingest_error` — the terminal error that stopped transcript ingest, when one happened — and omits it while ingest is running. The tailer runs in a goroutine whose failure used to be logged and swallowed, so a fatal ingest error (a read-only `~/.claude` reproduces it) left the daemon reporting healthy, `caprock status` printing `backfill done`, and the dashboard showing its "No sessions yet — start `claude` in any terminal" empty state forever, while nothing was being captured at all. `caprock status` and the Now and Status screens all report it.
 
 `/v1/stats/summary` and `/v1/history` carry `unpriced` — `{turns, tokens, models[]}` — the volume in range whose model has no row in the pricing table, and which models caused it. It is **omitted entirely when everything in range was priced**, which is the normal case. A model missing from the table leaves `cost_usd` NULL (the rollup logs "model not in pricing table; cost left unknown"), and every aggregate flattens NULL with `COALESCE(SUM(cost_usd),0)` — so tens of thousands of tokens of an unpriced model summed to exactly `$0.00` and rendered as a confident, indistinguishable-from-free number. That is an invented number (rule 6), and it is certain to occur the day a model ships newer than the pricing table, or on a gateway whose model ids do not normalise. The models are **named**, not merely counted: an unknown model id is something a user can report or add a pricing override for, whereas "some tokens are unpriced" is not actionable. `cost_usd` continues to mean "the cost we could price", so the two are reported side by side and never summed.
+
+They also carry `background` — `{turns, tokens, models[]}` — measured token usage from **known internal product machinery** (today, Codex's hidden `codex-auto-review` approval reviewer). This is a different state from `unpriced`: it is not an error and asks nothing of the user, so it is **kept out of every user-work total** (sessions, turns, token and cost sums, the model mix, the projects roll-up, the daily cap and the weekly report) and reported beside them as a quiet "background usage" line with no dollar value — OpenAI publishes no price for the id, and inventing one would violate rule 6. The raw events stay in `events` for auditability; only the aggregates exclude them. Classification lives in `internal/modelclass` as an explicit allow-list (not a prefix match) and is recorded per-session by migration 0024 plus the write path, so a future id must be investigated before Caprock hides it.
 
 `GET /v1/status` may carry `desktop` — `{five_hour_pct, seven_day_pct, at, stale}` — the Claude **desktop app's** own plan usage, read on request from `plan-usage-history.json` in the app's support directory. It is omitted entirely when the app is absent, has never run, or wrote something we cannot parse; most people do not use it, so absence is a normal answer rather than an error.
 
@@ -412,7 +414,8 @@ CREATE TABLE sessions (
   status       TEXT NOT NULL DEFAULT 'active',  -- active|idle|ended
   transcript_path TEXT,
   agent        TEXT NOT NULL DEFAULT 'claude',  -- claude|opencode|gemini (0015)
-  pid          INTEGER NOT NULL DEFAULT 0       -- the session's process, 0 = unknown
+  pid          INTEGER NOT NULL DEFAULT 0,      -- the session's process, 0 = unknown
+  internal     INTEGER NOT NULL DEFAULT 0       -- 1 = hidden product machinery (0024)
 );
 
 **A session ends when its process does.** `pid` is what makes that answerable:
@@ -579,6 +582,15 @@ Time to first token, tokens per second, and the model-versus-tool time split are
 
 Codex events are keyed `codex:{turn,tool}:<line>` — the record's line number in its transcript, unique by construction in an append-only file. Not the record's `ordinal` field, which reads as 0 in 99 of 100 real transcripts and collapsed every turn of a session onto one key; migration 0022 clears the rows that produced.
 
+**Internal sessions DDL (migration 0024).** Codex writes a normal rollout transcript
+for `codex-auto-review`, its hidden approval reviewer. `sessions` gained
+`internal INTEGER NOT NULL DEFAULT 0`; migration 0024 backfills `internal = 1`
+for existing rows whose model is `codex-auto-review` and deletes the
+`session_stats` / `daily_sessions` / `daily_stats` rollups that had described it
+as user work (the raw events stay — they are the source for the `background`
+figure). The write path classifies the same way at insert, via
+`internal/modelclass`, so post-migration events cannot resurrect the rollups.
+
 Tables `tasks` (mirror of file state for querying) and `verifications` (`task_id`, `round`, `command`, `exit_code`, `output_path`). Files are the source of truth for hive state; SQLite mirrors them for the UI (rebuildable by rescan). Forced-continue counter for the Stop-loop lives in SQLite per (session, task).
 
 No DDL change was needed for either fix here, only honest use of the existing columns. `verifications.output_path` now holds a real path — `<hive>/verifications/<task-id>/round-<n>-cmd-<i>.log` — instead of the empty string it was always written with, so a green task carries auditable evidence. The forced-continue counter's `task_id` takes the reserved value `/no-task` for a session that owns none (the orchestrator), which is what makes the guard bound it too; a hive id may not contain `/`, so it cannot collide with a real task id.
@@ -610,7 +622,7 @@ The service runs the daemon with `--foreground` (the supervisor owns the process
 
 ## Runtime file
 
-`<data_dir>/runtime.json` = `{"port": 4173, "token": "<random per run>", "pid": <daemon pid>, "started_at": <unix ms>}`; written 0600 by `caprock up`, deleted by `caprock down`; the shim reads it on every invocation. What `<data_dir>` resolves to per OS is owned by [ADR-013](08-decisions.md#adr-013--data-dir-and-config-conventions).
+`<data_dir>/runtime.json` = `{"port": 22776, "token": "<random per run>", "pid": <daemon pid>, "started_at": <unix ms>}`; written 0600 by `caprock up`, deleted by `caprock down`; the shim reads it on every invocation. What `<data_dir>` resolves to per OS is owned by [ADR-013](08-decisions.md#adr-013--data-dir-and-config-conventions).
 
 ### File permissions
 

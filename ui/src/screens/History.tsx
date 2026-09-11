@@ -75,7 +75,7 @@ export function HistoryScreen() {
           * free version already does is how a paid tier becomes a hostage.
           * What is left here is the honest warning for a model we do not know
           * yet, which is not a feature and not for sale. */}
-        <UnpricedNote u={d?.totals.unpriced} className="mx-3 mb-2.5" />
+        <UnpricedNote u={d?.totals.unpriced} background={d?.totals.background} className="mx-3 mb-2.5" />
       </Panel>
       <div className="grid gap-3 lg:grid-cols-2">
         <Panel title="Tool usage" right={<span className="text-[10px] uppercase tracking-[0.08em]">calls</span>}>

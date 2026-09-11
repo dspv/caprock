@@ -129,6 +129,51 @@ func TestUnknownModelLeavesCostNil(t *testing.T) {
 	}
 }
 
+// Codex Auto Review is product machinery, not a session or turn the user
+// started. Its measured tokens remain visible for auditability, but it must not
+// make the user's cost estimate look broken or inflate any work total.
+func TestCodexAutoReviewIsBackgroundUsage(t *testing.T) {
+	ctx := context.Background()
+	r, sub := newRecorder(t)
+	ev := &event.Event{
+		SessionID: "review", Source: event.SourceCodex, Kind: event.KindTurnAssistant,
+		Model: "codex-auto-review", Key: "review-1",
+		Ts:     time.Date(2026, 9, 11, 12, 0, 0, 0, time.UTC),
+		Tokens: &event.TokenDelta{In: 30_000, Out: 1_000, CacheRead: 10_000},
+	}
+	res, err := r.Record(ctx, ev, SessionInfo{Cwd: "/home/u/project", Model: ev.Model, Agent: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Stored || res.Priced || ev.CostUSD != nil {
+		t.Fatalf("internal result = %+v, cost=%v", res, ev.CostUSD)
+	}
+	if frames := drain(sub); len(frames) != 0 {
+		t.Fatalf("internal session leaked to live UI: %+v", frames)
+	}
+	if n, err := store.CountSessions(ctx, r.Store.DB(), false); err != nil || n != 0 {
+		t.Fatalf("visible sessions = %d, err=%v", n, err)
+	}
+	if d, err := store.Daily(ctx, r.Store.DB(), "2026-09-11"); err != nil || len(d) != 0 {
+		t.Fatalf("daily user work = %+v, err=%v", d, err)
+	}
+
+	sum, err := store.Summarize(ctx, r.Store.DB(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum.Sessions != 0 || sum.Turns != 0 || sum.TokensIn != 0 || sum.CostUSD != 0 || sum.Unpriced != nil {
+		t.Fatalf("internal usage leaked into user totals: %+v", sum)
+	}
+	if sum.Background == nil || sum.Background.Turns != 1 || sum.Background.Tokens != 41_000 ||
+		len(sum.Background.Models) != 1 || sum.Background.Models[0] != "codex-auto-review" {
+		t.Fatalf("background usage = %+v", sum.Background)
+	}
+	if n, err := store.CountEvents(ctx, r.Store.DB()); err != nil || n != 1 {
+		t.Fatalf("raw event was not retained: count=%d err=%v", n, err)
+	}
+}
+
 func TestThrottleRecorded(t *testing.T) {
 	ctx := context.Background()
 	r, _ := newRecorder(t)

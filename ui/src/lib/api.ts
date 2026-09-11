@@ -173,6 +173,10 @@ export interface ModelShare {
  *  because "some tokens are unpriced" is not something a user can act on,
  *  whereas an unknown model id is. */
 export interface Unpriced { turns: number; tokens: number; models: string[] }
+/** Measured usage from known internal product machinery. It is kept outside
+ *  user session/turn/cost totals and carries no dollar guess when the vendor
+ *  publishes no price. */
+export interface BackgroundUsage { turns: number; tokens: number; models: string[] }
 /** One directory inside a repository: the second level of the projects roll-up.
  *  `path` is the first segment under the repo root; "." is the root itself. */
 /** One directory inside a repository, charged by what the repository's TURNS
@@ -273,6 +277,8 @@ export interface Summary {
   rate_limits?: RateLimits
   /** Present only when some turns could not be priced — see Unpriced. */
   unpriced?: Unpriced
+  /** Known internal model work, measured but excluded from user-work totals. */
+  background?: BackgroundUsage
 }
 
 export interface RateWindow {
@@ -366,7 +372,7 @@ export interface ToolCount {
    *  be a turn's tokens divided up, which looks measured and is not. */
   bytes: number
 }
-export interface HistoryTotals { sessions: number; owned_sessions: number; turns: number; tool_calls: number; files_touched: number; cost_usd: number; avg_session_sec: number; days: number; unpriced?: Unpriced }
+export interface HistoryTotals { sessions: number; owned_sessions: number; turns: number; tool_calls: number; files_touched: number; cost_usd: number; avg_session_sec: number; days: number; unpriced?: Unpriced; background?: BackgroundUsage }
 export interface Task { id: string; title: string; status: string; assignee: string; budget_usd: number; verify_rounds: number; cost_usd: number; created_at: number; updated_at: number }
 // The live WS "task" frame carries the on-disk hive.Task (no cost_usd — that's
 // computed for the REST TaskRow). Enough to drive the orchestration graph's
