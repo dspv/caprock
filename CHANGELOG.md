@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.58.0] - 2026-09-12
+
 ### Added
 
 - **DeepSeek Harness is the fifth agent on the same screen.** Caprock now reads
