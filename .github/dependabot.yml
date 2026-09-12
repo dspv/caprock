@@ -5,16 +5,28 @@ updates:
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 3
+    groups:
+      github-actions:
+        patterns:
+          - "*"
   - package-ecosystem: gomod
     directory: /
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 3
+    groups:
+      go-dependencies:
+        patterns:
+          - "*"
   - package-ecosystem: npm
     directory: /ui
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 3
+    groups:
+      npm-dependencies:
+        patterns:
+          - "*"
