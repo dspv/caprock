@@ -9,6 +9,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.58.3] - 2026-09-13
+
+### Changed
+
+- Refreshed the shipped UI's React runtime, React types, and Node types; the
+  embedded production bundle is rebuilt and verified across all CI platforms.
+
 ## [0.58.2] - 2026-09-13
 
 ### Changed
