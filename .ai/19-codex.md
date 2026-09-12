@@ -67,6 +67,15 @@ number rather than an error.
 
 ## Cost, and what is deliberately missing
 
+Codex Desktop can also emit a separate `codex-auto-review` transcript for its
+automatic approval reviewer. Caprock treats this exact id as internal product
+machinery, not as a user session: it is excluded from user turns, costs,
+projects, and unpriced warnings. Its measured tokens remain in the separate
+`background` summary/history field so the data is visible without inventing a
+public price. This is an exact allow-list, not a prefix rule; a new similar id
+stays visible as an ordinary unknown model until investigated. See migration
+0024 and [03-contracts.md](03-contracts.md#phase-2-ddl-additions).
+
 Codex reports tokens but **never a cost**. That makes it unlike OpenCode, whose
 own figure Caprock carries through unchanged, and like Gemini, which our own
 table prices. So `pricing/pricing.json` grew OpenAI rows, read from

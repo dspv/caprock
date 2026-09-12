@@ -78,6 +78,10 @@ const (
 	// reports token counts but never a cost of its own, which is why the
 	// pricing table had to grow OpenAI rows to support it.
 	SourceCodex Source = "codex"
+	// SourceDeepseek marks events read from DeepSeek Harness (DSH) session
+	// transcripts. Like Codex they are priced by our own table: DSH reports
+	// token counts but never a cost of its own.
+	SourceDeepseek Source = "deepseek"
 )
 
 // TokenDelta carries per-turn token usage (turn.assistant only).

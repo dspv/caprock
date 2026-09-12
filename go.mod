@@ -6,6 +6,7 @@ require (
 	github.com/aymanbagabas/go-pty v0.2.3
 	github.com/coder/websocket v1.8.15
 	github.com/fsnotify/fsnotify v1.10.1
+	github.com/klauspost/compress v1.20.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/sys v0.47.0
 	modernc.org/sqlite v1.56.0

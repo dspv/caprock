@@ -28,6 +28,7 @@ import (
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/contexttax"
 	"github.com/dspv/caprock/internal/cost"
+	"github.com/dspv/caprock/internal/deepseek"
 	"github.com/dspv/caprock/internal/desktop"
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/gemini"
@@ -78,6 +79,9 @@ type Options struct {
 	// CodexDir overrides where Codex's rollout transcripts are looked for.
 	// Empty means the default (~/.codex/sessions); "off" disables the import.
 	CodexDir string
+	// DeepseekDir overrides where DeepSeek Harness session transcripts are
+	// looked for. Empty means the default (~/.dsh/sessions); "off" disables it.
+	DeepseekDir string
 	// IdleAfter is the silence threshold before a session is marked idle.
 	IdleAfter time.Duration
 	// EndAfter is the silence threshold before a session is marked ended
@@ -110,6 +114,10 @@ type Daemon struct {
 	tail   *ingest.Tailer
 	ocIn   *opencode.Ingester
 	cxIn   *codex.Ingester
+	// dsIn reads DeepSeek Harness session transcripts. Like Codex it is a
+	// read-only file import — DSH writes a zstd JSONL transcript per session and
+	// Caprock reads it, so there is nothing to install and no config to rewrite.
+	dsIn *deepseek.Ingester
 	// gemIn reads the telemetry files spawned Gemini sessions write. Gemini has
 	// no hooks and no transcript, so without this Caprock starts a session and
 	// then observes nothing about it — which is what 0.44.x shipped.
@@ -477,6 +485,32 @@ func (d *Daemon) run(ctx context.Context) error {
 					}
 				}()
 				d.log.Info("codex sessions are being read", "component", "codex", "dir", dir, "transcripts", len(ts))
+			}
+		}
+	}
+
+	// DeepSeek Harness, when this machine has it. The same shape as Codex: one
+	// zstd JSONL transcript per session under ~/.dsh/sessions, read-only, no
+	// shim and no config injection. Absence is the normal case and is silent.
+	if !d.opt.DisableIngest {
+		dir := d.opt.DeepseekDir
+		if dir == "" {
+			dir = deepseek.Dir()
+		}
+		if dir == "off" {
+			dir = ""
+		}
+		if dir != "" {
+			if ts, err := deepseek.List(dir); err != nil {
+				d.log.Warn("deepseek transcripts found but not readable", "component", "deepseek", "dir", dir, "err", err)
+			} else if len(ts) > 0 {
+				d.dsIn = deepseek.NewIngester(dir, d.rec, d.log, 5*time.Second)
+				go func() {
+					if err := d.dsIn.Run(ctx); err != nil && ctx.Err() == nil {
+						d.log.Error("deepseek ingest stopped", "component", "deepseek", "err", err)
+					}
+				}()
+				d.log.Info("deepseek sessions are being read", "component", "deepseek", "dir", dir, "transcripts", len(ts))
 			}
 		}
 	}
@@ -954,9 +988,12 @@ type Status struct {
 	OpenCode *opencode.Stats `json:"opencode,omitempty"`
 	// Codex reports the third agent's reader on the same terms, and is absent
 	// when the machine has no Codex transcripts.
-	Codex         *codex.Stats `json:"codex,omitempty"`
-	OwnedActive   int          `json:"owned_active"`
-	Orchestration bool         `json:"orchestration"`
+	Codex *codex.Stats `json:"codex,omitempty"`
+	// Deepseek reports the DeepSeek Harness reader on the same terms, and is
+	// absent when the machine has no DSH transcripts.
+	Deepseek      *deepseek.Stats `json:"deepseek,omitempty"`
+	OwnedActive   int             `json:"owned_active"`
+	Orchestration bool            `json:"orchestration"`
 	// Memory reports how many repositories have enough history to hand a new
 	// session what was left there. A feature that acts before you type is one
 	// nobody can see working, so the status screen says whether it can.
@@ -1015,6 +1052,7 @@ func (d *Daemon) status(_ context.Context) any {
 		Memory:          d.memoryStatus(),
 		OpenCode:        d.openCodeStats(),
 		Codex:           d.codexStats(),
+		Deepseek:        d.deepseekStats(),
 		ClaudeAvailable: d.mgr.ClaudeAvailable(), GeminiAvailable: d.mgr.GeminiAvailable(), OwnedActive: len(d.mgr.List()),
 		Orchestration: b != nil,
 	}
@@ -1377,6 +1415,16 @@ func (d *Daemon) codexStats() *codex.Stats {
 		return nil
 	}
 	st := d.cxIn.Stats()
+	return &st
+}
+
+// deepseekStats reports the DeepSeek Harness reader, or nil when it is not
+// running.
+func (d *Daemon) deepseekStats() *deepseek.Stats {
+	if d.dsIn == nil {
+		return nil
+	}
+	st := d.dsIn.Stats()
 	return &st
 }
 
