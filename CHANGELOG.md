@@ -9,8 +9,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
-- The README pulse animation now advances every 250 ms instead of 500 ms, so
-  the live chart reads as motion rather than a slideshow (dark and light GIFs).
+## [0.58.2] - 2026-09-13
+
+### Changed
+
+- Refreshed the SQLite and Go system dependencies and the pinned GitHub Actions
+  used by CI, with the full cross-platform verification matrix still green.
+- Dependabot updates are grouped by ecosystem and capped at three open PRs;
+  npm major updates remain separate for deliberate review.
 
 ## [0.58.1] - 2026-09-12
 
@@ -24,6 +30,8 @@ Phase 3 (Delight) has no plan by design.
 
 - GitHub Actions are pinned to immutable commit SHAs with readable release
   comments, reducing supply-chain exposure while keeping updates automated.
+- The README pulse animation now advances every 250 ms instead of 500 ms, so
+  the live chart reads as motion rather than a slideshow (dark and light GIFs).
 - The incomplete-cost warning now says `Partial cost`, offers copy/report/why
   actions, and explains the lower-bound total only on demand. No manual price
   entry is required.
