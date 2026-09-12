@@ -76,9 +76,11 @@ func startDaemon(t *testing.T, dataDir, root string) (string, context.CancelFunc
 			// turn and cost figures, and a developer machine with real Codex
 			// transcripts under ~/.codex would have them imported into the
 			// daemon under test and counted.
-			CodexDir:  "off",
-			IdleAfter: 30 * time.Second,
-			OnReady:   func(u string) { ready <- u },
+			CodexDir: "off",
+			// Keep exact-count smoke isolated from real DeepSeek transcripts too.
+			DeepseekDir: "off",
+			IdleAfter:   30 * time.Second,
+			OnReady:     func(u string) { ready <- u },
 		})
 	}()
 	select {

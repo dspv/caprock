@@ -19,6 +19,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -132,9 +133,20 @@ var ErrNotASession = errors.New("deepseek: not a session transcript")
 
 // List returns every DSH session transcript under dir.
 func List(dir string) ([]Transcript, error) {
+	if dir == "" {
+		return nil, nil
+	}
 	var out []Transcript
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return fs.SkipDir
+			}
+			// A transcript root belongs to another application. Skip an
+			// unreadable entry and keep discovering sessions elsewhere.
+			if d != nil && d.IsDir() {
+				return fs.SkipDir
+			}
 			return err
 		}
 		if d.IsDir() {
@@ -150,9 +162,27 @@ func List(dir string) ([]Transcript, error) {
 		out = append(out, Transcript{Path: path, Modified: info.ModTime(), Size: info.Size()})
 		return nil
 	})
-	if err != nil {
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, err
 	}
+	// DSH can leave the v0 file beside its v3 replacement during upgrade.
+	// They describe one session; prefer v3 so status counts and polling work
+	// are not doubled even though event keys would deduplicate the writes.
+	byDir := make(map[string]Transcript, len(out))
+	for _, tr := range out {
+		dir := filepath.Dir(tr.Path)
+		old, ok := byDir[dir]
+		if !ok || filepath.Base(tr.Path) == "session.v3.jsonl.zstd" {
+			byDir[dir] = tr
+		} else if filepath.Base(old.Path) == "session.v3.jsonl.zstd" {
+			continue
+		}
+	}
+	out = out[:0]
+	for _, tr := range byDir {
+		out = append(out, tr)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Modified.After(out[j].Modified) })
 	return out, nil
 }
 

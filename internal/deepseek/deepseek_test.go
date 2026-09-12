@@ -95,8 +95,18 @@ func TestListFindsBothFormatNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ts) != 2 {
-		t.Fatalf("transcripts = %d, want 2", len(ts))
+	if len(ts) != 1 || filepath.Base(ts[0].Path) != "session.v3.jsonl.zstd" {
+		t.Fatalf("transcripts = %+v, want only the v3 replacement", ts)
+	}
+}
+
+func TestListMissingDirectoryIsEmpty(t *testing.T) {
+	ts, err := List(filepath.Join(t.TempDir(), "does-not-exist"))
+	if err != nil {
+		t.Fatalf("missing directory returned error: %v", err)
+	}
+	if len(ts) != 0 {
+		t.Fatalf("transcripts = %d, want 0", len(ts))
 	}
 }
 
