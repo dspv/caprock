@@ -58,7 +58,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - uses: actions/download-artifact@0d2ec9d4cbcefe257d822f108de2a1f15f8da9f6 # v7.0.0
+      - uses: actions/download-artifact@484a0b528fb4d7bd804637ccb632e47a0e638317 # v7.0.0
         with:
           name: ui-dist
           path: internal/api/dist
