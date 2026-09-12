@@ -30,3 +30,6 @@ updates:
       npm-dependencies:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
