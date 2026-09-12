@@ -41,14 +41,8 @@ func writeSession(t *testing.T, content string) string {
 	return path
 }
 
-const fixture = `{"type":"session","version":3,"id":"session-1","createdAt":1789135258998,"cwd":"/home/u/proj","isSeeded":false,"delegationDepth":0,"agentPreset":"standard"}
-{"type":"user/message","seq":8,"time":1789135308420,"data":{"content":[{"type":"text","text":"hello"}]}}
-{"type":"assistant/message","seq":16,"time":1789135312847,"data":{"message":{"role":"assistant","content":[{"type":"reasoning","text":"secret thinking"},{"type":"text","text":"hi there"},{"type":"tool-call","id":"c1","name":"bash","arguments":"{\"command\":\"ls\"}"}],"source":{"kind":"model","provider":"deepseek-official","model":"deepseek-v4-pro"}},"usage":{"inputTokens":1904,"outputTokens":250,"totalTokens":13034,"cacheReadTokens":10880,"reasoningTokens":114}}}
-{"type":"tool/call","seq":17,"time":1789135312848,"data":{"turn":1,"step":1,"callId":"c1","name":"bash","arguments":"{\"command\":\"ls\"}"}}
-`
-
 func TestParseFile(t *testing.T) {
-	path := writeSession(t, fixture)
+	path := writeSession(t, fixture(t, "session-v3.jsonl"))
 	s, err := ParseFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -85,7 +79,7 @@ func TestParseFile(t *testing.T) {
 }
 
 func TestListFindsBothFormatNames(t *testing.T) {
-	path := writeSession(t, fixture)
+	path := writeSession(t, fixture(t, "session-v3.jsonl"))
 	wsDir := filepath.Dir(path)         // .../sessions/ws
 	sessionsRoot := filepath.Dir(wsDir) // .../sessions
 	if err := os.WriteFile(filepath.Join(wsDir, "session.jsonl.zstd"), []byte("x"), 0o600); err != nil {
@@ -133,7 +127,7 @@ func TestParseFileRejectsNonSession(t *testing.T) {
 }
 
 func TestKeyStableAcrossRereads(t *testing.T) {
-	path := writeSession(t, fixture)
+	path := writeSession(t, fixture(t, "session-v3.jsonl"))
 	s1, err := ParseFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -147,5 +141,19 @@ func TestKeyStableAcrossRereads(t *testing.T) {
 	}
 	if s1.Turns[0].At.IsZero() || s1.Turns[0].At != time.UnixMilli(1789135312847) {
 		t.Fatalf("turn time = %v", s1.Turns[0].At)
+	}
+}
+
+func TestParseLegacyFixture(t *testing.T) {
+	path := writeSession(t, fixture(t, "session-legacy.jsonl"))
+	s, err := ParseFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.ID != "legacy-session" || s.Cwd != "/home/u/legacy" || len(s.Turns) != 1 {
+		t.Fatalf("legacy fixture: %+v", s)
+	}
+	if s.Turns[0].Model != "deepseek-v4-pro" || s.Turns[0].Text != "done" || s.Turns[0].In != 42 || s.Turns[0].Out != 8 {
+		t.Fatalf("legacy turn: %+v", s.Turns[0])
 	}
 }

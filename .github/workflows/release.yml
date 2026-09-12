@@ -30,10 +30,10 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
           cache: npm
@@ -42,12 +42,12 @@ jobs:
       # golangci-lint's typecheck fails ("no matching files") on an empty dist/.
       - run: npm ci && npm run build
         working-directory: ui
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
         with:
           go-version-file: go.mod
           cache: true
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9
+        uses: golangci/golangci-lint-action@0a35821d5c230e903fcfe077583637dea1b27b47 # v9.0.0
       - name: make check (docs + lint + tests + smoke)
         run: make check
       - name: windows cross-build
@@ -57,17 +57,17 @@ jobs:
     needs: verify
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: ui/package-lock.json
       - run: npm ci && npm run build
         working-directory: ui
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
         with:
           go-version-file: go.mod
           cache: true
@@ -77,7 +77,7 @@ jobs:
       # section fails here rather than shipping an empty "what's new".
       - name: Release notes from CHANGELOG
         run: python3 scripts/release-notes.py "${GITHUB_REF_NAME}" > /tmp/release-notes.md
-      - uses: goreleaser/goreleaser-action@v6
+      - uses: goreleaser/goreleaser-action@286f3b13b1b49da4ac219c277f3f99673a4f3ba0 # v6.0.0
         with:
           distribution: goreleaser
           # Pinned so the toolchain moves deliberately rather than floating

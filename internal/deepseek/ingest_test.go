@@ -17,12 +17,6 @@ import (
 
 // ingestFixture is a session with one priced turn, one tool call and one user
 // prompt, so the ingester's three record paths are exercised end to end.
-const ingestFixture = `{"type":"session","version":3,"id":"session-ingest","createdAt":1789135258998,"cwd":"/home/u/proj","isSeeded":false,"agentPreset":"standard"}
-{"type":"user/message","seq":8,"time":1789135308420,"data":{"content":[{"type":"text","text":"what is in this repo"}]}}
-{"type":"assistant/message","seq":16,"time":1789135312847,"data":{"message":{"role":"assistant","content":[{"type":"text","text":"it has a Go module"}],"source":{"kind":"model","model":"deepseek-v4-pro"}},"usage":{"inputTokens":1904,"outputTokens":250,"totalTokens":13034,"cacheReadTokens":10880,"reasoningTokens":114}}}
-{"type":"tool/call","seq":17,"time":1789135312848,"data":{"turn":1,"step":1,"callId":"c1","name":"bash","arguments":"{\"command\":\"ls\"}"}}
-`
-
 func newIngestHarness(t *testing.T) (context.Context, *Ingester, *store.Store, string) {
 	t.Helper()
 	ctx := context.Background()
@@ -69,7 +63,7 @@ func writeSessionFile(t *testing.T, dir, content string) {
 
 func TestIngestRecordsTurnsToolsAndUsers(t *testing.T) {
 	ctx, in, st, dir := newIngestHarness(t)
-	writeSessionFile(t, dir, ingestFixture)
+	writeSessionFile(t, dir, fixture(t, "session-v3.jsonl"))
 	if err := in.once(ctx); err != nil {
 		t.Fatal(err)
 	}

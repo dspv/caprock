@@ -1,0 +1,3 @@
+{"type":"session","version":0,"id":"legacy-session","createdAt":1789135258998,"cwd":"/home/u/legacy"}
+{"type":"user/message","seq":2,"time":1789135308420,"data":{"content":[{"type":"text","text":"check the project"}]}}
+{"type":"assistant/message","seq":3,"time":1789135312847,"data":{"message":{"role":"assistant","content":[{"type":"text","text":"done"}],"source":{"kind":"model","model":"deepseek-v4-pro"}},"usage":{"inputTokens":42,"outputTokens":8,"totalTokens":50,"cacheReadTokens":0}}}

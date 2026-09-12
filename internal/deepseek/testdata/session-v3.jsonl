@@ -1,0 +1,4 @@
+{"type":"session","version":3,"id":"session-1","createdAt":1789135258998,"cwd":"/home/u/proj","isSeeded":false,"delegationDepth":0,"agentPreset":"standard"}
+{"type":"user/message","seq":8,"time":1789135308420,"data":{"content":[{"type":"text","text":"hello"}]}}
+{"type":"assistant/message","seq":16,"time":1789135312847,"data":{"message":{"role":"assistant","content":[{"type":"reasoning","text":"secret thinking"},{"type":"text","text":"hi there"},{"type":"tool-call","id":"c1","name":"bash","arguments":"{\"command\":\"ls\"}"}],"source":{"kind":"model","provider":"deepseek-official","model":"deepseek-v4-pro"}},"usage":{"inputTokens":1904,"outputTokens":250,"totalTokens":13034,"cacheReadTokens":10880,"reasoningTokens":114}}}
+{"type":"tool/call","seq":17,"time":1789135312848,"data":{"turn":1,"step":1,"callId":"c1","name":"bash","arguments":"{\"command\":\"ls\"}"}}
