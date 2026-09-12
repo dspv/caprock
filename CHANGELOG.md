@@ -9,6 +9,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Changed
+
+- **The incomplete-cost warning now has a clear next step.** It says `Partial
+  cost` rather than presenting a paragraph, copies only the unknown model id,
+  keeps the privacy-safe report action, and hides the lower-bound explanation
+  until requested. No manual price entry is required.
+
 ## [0.58.0] - 2026-09-12
 
 ### Added
