@@ -43,13 +43,14 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 - **All three phases are built and green.** The Go module + `ui/` exist and are exercised by `make check` (Go tests, `go vet`, `golangci-lint`, docs gates, and the UI typecheck/vitest/build) on the 3-OS CI matrix. Phase 2's orchestration loop has been driven end to end by a real `claude` orchestrator (see the Phase 2 log entry). **every phase is tagged and published** (Homebrew formula in `dspv/homebrew-tap`).
 - The Python measurer (`~/dev/caprock-legacy`, PyPI `caprock` 0.3.0) is frozen ([ADR-007](08-decisions.md#adr-007--the-harness-is-caprock-new-go-codebase-in-dspvcaprock-python-measurer-frozen)); the Go binary shipped its first release as **v0.1.0** on 2026-08-19.
-- **Four agent sources share the observation screens.** Claude Code remains the
-  full Observe → Control → Orchestrate path. OpenCode and Codex are imported
-  observation-only: Caprock cannot start, steer or stop them, and the task
-  runner does not work with either. Gemini sessions started by Caprock are
-  observed through prompt-disabled OpenTelemetry. The Now filter is `all /
-  claude / opencode / codex / gemini`. See [16-opencode.md](16-opencode.md) and
-  [19-codex.md](19-codex.md).
+- **Five agent sources share the observation screens.** Claude Code remains the
+  full Observe → Control → Orchestrate path. OpenCode, Codex and DeepSeek
+  Harness are imported observation-only: Caprock cannot start, steer or stop
+  them, and the task runner does not work with any of them. Gemini sessions
+  started by Caprock are observed through prompt-disabled OpenTelemetry. The Now
+  filter is `all / claude / opencode / codex / gemini / deepseek`. See
+  [16-opencode.md](16-opencode.md), [19-codex.md](19-codex.md) and
+  [20-deepseek.md](20-deepseek.md).
 - **The paid tier is live.** The daily spend cap (`internal/cap`) pauses the
   sessions Caprock started when the day crosses a limit; the weekly report and
   Gemini on the user's own key are paid surfaces too. Payment is a licence key
@@ -69,6 +70,38 @@ Percentages are deliberately coarse — they answer "is this track started, half
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
 ## Log
+
+### 2026-09-11 (later) — DeepSeek Harness is the fifth agent on the same screen
+
+The owner runs DeepSeek Harness beside Claude Code, OpenCode and Codex, and
+Caprock watched none of it — its spend sat outside the one screen that is
+supposed to add every agent up. It is now the fifth observation source.
+
+**It is the easiest of the five to read, and the import is a translation.** DSH
+writes one append-only JSONL transcript per session, Zstandard-compressed, at
+`~/.dsh/sessions/<cwd>/<id>/session.v3.jsonl.zstd`; a `session` header carries
+the id and cwd, `assistant/message` carries the per-turn model and `usage`,
+`tool/call` and `user/message` carry the calls and prompts. No shim, no config
+injection, nothing signalled — the same shape as Codex.
+
+**The token split needed no correction, which is the difference from Codex.**
+DSH reports fresh input and cache read separately (`inputTokens` +
+`cacheReadTokens` + `outputTokens == totalTokens` on real samples), so the delta
+is taken straight through. Codex's input total embeds the cached part and had to
+have it subtracted; passing DSH's figures through unchanged is the honest
+reading, not an oversight. Cache writes stay zero — DSH reports reads and no
+write counterpart, the same as Gemini.
+
+**Cost was already possible.** DSH names `deepseek-v4-pro`, which arrived in the
+pricing table with the OpenCode third-party rows, so no pricing change was
+needed. A turn whose model has no row is stored with its real tokens and no cost
+rather than a guess.
+
+**Verified on the real machine, not only in tests.** `internal/deepseek`'s
+live-check parses every transcript under the owner's `~/.dsh`, and the importer
+records turns, tool calls and user prompts keyed by the transcript's monotonic
+`seq` so a re-poll is a no-op. The zstd decode uses `klauspost/compress` (pure
+Go, no cgo), keeping the no-CGO rule intact. See [20-deepseek.md](20-deepseek.md).
 
 ### 2026-09-11 — The reviewer Codex runs in the background, and the port it collided with
 

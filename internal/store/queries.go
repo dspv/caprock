@@ -418,7 +418,7 @@ func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, 
 // hundred imported Codex transcripts would every one of them claim to be
 // running.
 func ownsItsProcess(agent string) bool {
-	return agent != "opencode" && agent != "codex"
+	return agent != "opencode" && agent != "codex" && agent != "deepseek"
 }
 
 // updateStatusByID sets one status on a known set of sessions, in chunks that

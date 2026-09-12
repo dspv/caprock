@@ -95,6 +95,7 @@ export function NowScreen() {
     (a) => a.key === 'all' || a.key === 'claude' ||
       (a.key === 'opencode' && !!status.data?.opencode) ||
       (a.key === 'codex' && !!status.data?.codex) ||
+      (a.key === 'deepseek' && !!status.data?.deepseek) ||
       (a.key === 'gemini' && everySession.some((s) => s.agent === 'gemini')),
   )
   const hasBoth = agentsHere.length > 2

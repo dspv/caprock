@@ -9,6 +9,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **DeepSeek Harness is the fifth agent on the same screen.** Caprock now reads
+  DSH's own session transcripts (`~/.dsh/sessions/…`, zstd JSONL) and shows its
+  sessions, turns, tool calls and cost beside Claude Code, OpenCode, Gemini and
+  Codex. The model DSH names — `deepseek-v4-pro` — was already in the pricing
+  table, so no pricing change was needed. Observation-only, like Codex: Caprock
+  reads the files and does not start, steer or stop DSH sessions.
+
 ## [0.57.0] - 2026-09-11
 
 ### Changed

@@ -90,12 +90,14 @@ On first run `caprock up` asks before adding its hook and status-line entries to
 settings). Say no and it still reads your history from transcripts.
 
 Run [OpenCode](https://github.com/sst/opencode),
-[Codex](https://developers.openai.com/codex) or
+[Codex](https://developers.openai.com/codex),
+[DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness) or
 [Gemini CLI](https://github.com/google-gemini/gemini-cli) too? All are shown on
-the same screens — OpenCode from its own database, Codex from the transcripts it
-writes, Gemini through the telemetry it writes when Caprock starts it. See
-[OpenCode and Codex](#opencode-and-codex) for what that covers and what it does
-not.
+the same screens — OpenCode from its own database, Codex and DeepSeek Harness
+from the transcripts they write, Gemini through the telemetry it writes when
+Caprock starts it. See
+[OpenCode, Codex and DeepSeek Harness](#opencode-codex-and-deepseek-harness) for
+what that covers and what it does not.
 
 ![Live activity and cost, right now](docs/shot-now.png)
 
@@ -182,25 +184,27 @@ token counts Claude Code itself records, priced per model from the pricing
 table. Calls that arrive without a way to attach them to the turn that paid for
 them are excluded and counted, so a figure is never quietly short.
 
-## OpenCode and Codex
+## OpenCode, Codex and DeepSeek Harness
 
-Caprock also reads [OpenCode](https://github.com/sst/opencode) and
-[Codex](https://developers.openai.com/codex) sessions, on the same screens as
-Claude Code. A machine that runs more than one has its spend split across tools
-that each see part of it; here the projects list, the history and the cost add
-up over all of them, and the rows carry an `oc` or `cdx` mark so you can still
-tell them apart.
+Caprock also reads [OpenCode](https://github.com/sst/opencode),
+[Codex](https://developers.openai.com/codex) and
+[DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness) sessions, on
+the same screens as Claude Code. A machine that runs more than one has its spend
+split across tools that each see part of it; here the projects list, the history
+and the cost add up over all of them, and the rows carry an `oc`, `cdx` or `dsh`
+mark so you can still tell them apart.
 
 **Or see one at a time.** The Now screen carries
-`all / claude / opencode / codex / gemini` in the middle of its header, and it
-applies to the whole screen — today's totals, the live pulse, the activity feed,
-the projects list and the session cards all answer the same question. It appears
-only on a machine that runs more than one.
+`all / claude / opencode / codex / gemini / deepseek` in the middle of its
+header, and it applies to the whole screen — today's totals, the live pulse, the
+activity feed, the projects list and the session cards all answer the same
+question. It appears only on a machine that runs more than one.
 
-Nothing to configure for either. OpenCode is found through its own database,
-opened read-only; Codex through the transcript it writes per session. No shim,
-no settings file to edit, and sessions from before you installed Caprock are
-included, because both tools keep their own history.
+Nothing to configure for any of them. OpenCode is found through its own
+database, opened read-only; Codex through the transcript it writes per session;
+DeepSeek Harness through the transcript it writes per session. No shim, no
+settings file to edit, and sessions from before you installed Caprock are
+included, because each tool keeps its own history.
 
 **The cost works differently for each, and it matters.** OpenCode computes its
 own figures and Caprock passes them through, so they match what OpenCode
