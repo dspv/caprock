@@ -151,6 +151,26 @@ number moved.
 
 **Rules out:** Unix-domain-socket hook transport; binding non-loopback interfaces; a separate hook port.
 
+The choice was checked against the boundary cases that prompted the report.
+`4173` is Vite Preview's default and is registered by IANA (TCP Reserved; UDP
+`mma-discovery`), so it is a poor default for a tool commonly developed beside
+Vite. Ports 80/443 require privileged binding or certificates; 49152–65535 are
+IANA's dynamic/private range and Windows' default dynamic range; Linux commonly
+uses 32768–60999 for ephemeral client ports. “Pretty” alternatives such as
+41717 or 42424 therefore risk colliding with ordinary outbound connections.
+Random-port fallback was rejected because the stable origin is part of browser
+bookmarks, localStorage, LAN pairing, and installed-service arguments. **22776**
+is unassigned in the IANA registry, below those ephemeral ranges, and spells
+`CAPRO` on a phone keypad. It is a stable, loopback-only default, not a claim
+that the number is reserved forever; an explicit `config.json` or `--port`
+still wins.
+
+Sources: [Vite preview options](https://vite.dev/config/preview-options),
+[IANA service-name registry](https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.csv),
+[Chromium restricted ports](https://chromium.googlesource.com/chromium/src/+/master/net/base/port_util.cc),
+[Linux IP sysctl documentation](https://kernel.org/doc/html/v6.1/networking/ip-sysctl.html),
+and [Microsoft's Windows dynamic-port guidance](https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/service-overview-and-network-port-requirements).
+
 **Revisit if:** a remote/team mode is ever built (post open-core decision) — that would be a new listener with real auth, not a change to this one.
 
 ---

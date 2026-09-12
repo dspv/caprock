@@ -588,14 +588,13 @@ it reuses the reviewed session's id — so the classification is per-event, not
 per-session. `events` gained `internal INTEGER NOT NULL DEFAULT 0`; migration
 0024 backfills `internal = 1` for rows whose model is `codex-auto-review` and
 repairs the rollups that had described the review turns as user work:
-`daily_stats` drops the review model's rows, `daily_sessions` drops the markers
-of a session that is now review-only, and `session_stats` rows that mixed a
-review turn into a real session are recomputed from the non-review events
-(`files_touched` is carried over, since it is a first-touch count events cannot
-re-derive). The raw events stay — they are the source for the `background`
-figure. The write path classifies the same way at insert, via
-`internal/modelclass`, so post-migration review turns cannot resurrect the
-rollups.
+`daily_stats` drops the review model's rows, `daily_sessions` drops markers only
+for review-only sessions, and mixed `session_stats` rows are recomputed from
+non-review events while preserving their measured first-touch count. Raw events
+stay — they are the source for the `background` figure. The write path
+classifies the exact id at insert via `internal/modelclass`, so post-migration
+review turns cannot resurrect the rollups. A future similarly named id remains
+an ordinary unknown model until separately investigated.
 
 Tables `tasks` (mirror of file state for querying) and `verifications` (`task_id`, `round`, `command`, `exit_code`, `output_path`). Files are the source of truth for hive state; SQLite mirrors them for the UI (rebuildable by rescan). Forced-continue counter for the Stop-loop lives in SQLite per (session, task).
 
