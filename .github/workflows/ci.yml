@@ -36,7 +36,7 @@ jobs:
           git diff --quiet -- internal/api/dist || {
             echo "internal/api/dist/ is stale — run 'make ui' and commit the result";
             git --no-pager diff --stat -- internal/api/dist; exit 1; }
-      - uses: actions/upload-artifact@615b319bd27bb32c3d64dca6b6ed6974d5fbe653 # v6.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v6.0.0
         with:
           name: ui-dist
           path: internal/api/dist
@@ -77,7 +77,7 @@ jobs:
           go build -trimpath -ldflags "-s -w -X github.com/dspv/caprock/internal/version.Version=${GITHUB_SHA::7}" -o bin/ ./cmd/...
       - name: smoke (Phase 0 DoD scenario)
         run: go test -count=1 -tags smoke ./internal/smoke/... ./internal/board/...
-      - uses: actions/upload-artifact@615b319bd27bb32c3d64dca6b6ed6974d5fbe653 # v6.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v6.0.0
         with:
           name: caprock-${{ matrix.os }}
           path: bin/
