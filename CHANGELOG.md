@@ -9,6 +9,9 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+- The README pulse animation now advances every 250 ms instead of 500 ms, so
+  the live chart reads as motion rather than a slideshow (dark and light GIFs).
+
 ## [0.58.1] - 2026-09-12
 
 ### Added

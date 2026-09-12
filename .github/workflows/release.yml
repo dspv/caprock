@@ -77,7 +77,7 @@ jobs:
       # section fails here rather than shipping an empty "what's new".
       - name: Release notes from CHANGELOG
         run: python3 scripts/release-notes.py "${GITHUB_REF_NAME}" > /tmp/release-notes.md
-      - uses: goreleaser/goreleaser-action@286f3b13b1b49da4ac219c277f3f99673a4f3ba0 # v6.0.0
+      - uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
         with:
           distribution: goreleaser
           # Pinned so the toolchain moves deliberately rather than floating
