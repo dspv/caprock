@@ -9,12 +9,21 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.58.1] - 2026-09-12
+
+### Added
+
+- Checked-in DeepSeek Harness transcript fixtures cover current and legacy JSONL
+  formats without depending on a developer's `~/.dsh` directory.
+- Dependabot now watches GitHub Actions, Go modules, and `ui/` npm dependencies.
+
 ### Changed
 
-- **The incomplete-cost warning now has a clear next step.** It says `Partial
-  cost` rather than presenting a paragraph, copies only the unknown model id,
-  keeps the privacy-safe report action, and hides the lower-bound explanation
-  until requested. No manual price entry is required.
+- GitHub Actions are pinned to immutable commit SHAs with readable release
+  comments, reducing supply-chain exposure while keeping updates automated.
+- The incomplete-cost warning now says `Partial cost`, offers copy/report/why
+  actions, and explains the lower-bound total only on demand. No manual price
+  entry is required.
 
 ## [0.58.0] - 2026-09-12
 
