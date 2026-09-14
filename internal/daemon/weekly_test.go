@@ -340,6 +340,7 @@ func TestARestartDoesNotResendTheWeek(t *testing.T) {
 	// carries over, only what was written down.
 	rec := rollup.New(st, embeddedTable(t), bus.New(), quietLog())
 	rec.Location = time.UTC
+	rec.Now = func() time.Time { return reportNow }
 	fresh := &Daemon{log: quietLog(), store: st, rec: rec, opt: Options{Config: cfg}}
 	fresh.report.base = d.report.base
 	fresh.loadReportState(ctx)
