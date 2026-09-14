@@ -41,6 +41,7 @@ jobs:
           name: ui-dist
           path: internal/api/dist
           if-no-files-found: error
+          retention-days: 3
 
   go:
     name: go (${{ matrix.os }})
@@ -81,6 +82,7 @@ jobs:
         with:
           name: caprock-${{ matrix.os }}
           path: bin/
+          retention-days: 3
 
   # T0 — ConPTY spike. Informational: it must never redden the required jobs
   # (ADR-006 / .ai/09-execution-plan.md T0). Its result is the go/no-go for T11.
