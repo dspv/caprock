@@ -249,6 +249,37 @@ POST   /v1/paste                     {type, data:base64} → {path}; writes a pa
 GET    /v1/history?range=…           lifetime totals + tool distribution + model mix + daily
 ```
 
+**`POST /v1/agents` with `resume` is refused when the resume cannot work** —
+`400 {error}` carrying the same reason `GET /v1/sessions/{id}` gives in
+`resume.reason`. Otherwise a stale button started a `claude --resume` that
+printed "No conversation found" and exited in a fresh terminal. An id the
+store has never seen is let through.
+
+**`GET /v1/sessions?q=&limit=`** — `q` searches project, cwd, branch,
+`title`, `prompt`, the id, and **every** `turn.user` prompt of a session (not
+only the first); SQLite's `LIKE` folds ASCII only, so the term is also tried
+lowercased and with its first letter capitalised, which covers Cyrillic as it
+is actually typed. `limit` defaults to 200 and is capped at 2000;
+`X-Total-Count` counts what matches, so the Now screen can offer "show N more"
+instead of leaving everything past the first page unreachable.
+
+**`resume`** — `{ok, reason?, command?}`. On the list it is filled for ended
+sessions only, so a card can offer continue; on `GET /v1/sessions/{id}` for any
+session except a live one Caprock started (that one is typed into). Decided by what is on disk,
+not by who started the session (FB-036): the agent (Claude Code only; Codex and
+OpenCode get their own `command` — `codex resume <id>`, `opencode --session
+<id>`), the cwd still existing, and the main transcript
+(`<project>/<session-id>.jsonl`, found from `transcript_path` or from the cwd's
+Claude Code folder) still existing. `command` is offered whenever the agent has
+one, including when Caprock cannot run it.
+
+**`SessionSummary.description` / `description_source`** — what tells a session
+from the others on the screen (FB-035): the stored `sessions.title`
+(`"title"`), else the first of the session's earliest eight `turn.user`
+prompts — or the stored `sessions.prompt`, for Codex — that says something (`"prompt"`):
+not a tag-wrapped command or notification, not a bare path, at least 12
+characters. First line only, clipped to 120 characters.
+
 **Non-Anthropic pricing.** `pricing/pricing.json` carries rows for the models Caprock observes through OpenCode — DeepSeek and MiniMax at the providers' own published rates, fetched with a date and noted in the file. They are priced so a total that includes non-Anthropic usage is a total; before this, $155 of the owner's own spend sat outside his. `normalizeModel` strips a gateway's vendor prefix, so `minimax/minimax-m3` from OpenRouter and `MiniMax-M3` from the direct API are one row rather than two, one of them unpriced. The unpriced warning fires only on turns whose tokens are greater than zero: a turn recorded with explicit zeroes has nothing to price, and warning about it says a total is missing money it is not missing.
 
 ### Reclassifying the /clear events already recorded (migration 0021)
@@ -508,6 +539,28 @@ CREATE INDEX IF NOT EXISTS idx_sessions_repo ON sessions(session_id, project, re
 - **Stored, not derived on read** — historical sessions point at directories that may no longer exist, so a read-time walk would relabel yesterday's spend according to what is still on disk today; and `/v1/stats/summary` is polled, so a filesystem walk per row is a syscall storm on a hot path.
 - **Backfill** — `Store.backfillRepo` runs immediately after the migration (resolution needs the filesystem, which SQL cannot reach), is idempotent, and only writes rows whose `repo_root` is still NULL. A failure is logged and leaves the old labels in place rather than refusing to open the database.
 
+### Session title DDL (migration 0025)
+
+```sql
+ALTER TABLE sessions ADD COLUMN title TEXT NOT NULL DEFAULT '';
+ALTER TABLE sessions ADD COLUMN prompt TEXT NOT NULL DEFAULT '';
+```
+
+The agent's own name for a session. Claude Code writes it into the transcript as
+`{"type":"ai-title","aiTitle":…}` — repeatedly, last one wins — and it is the
+name its `/resume` picker shows; OpenCode keeps a `title` per session, with the
+placeholder `New session - <timestamp>` treated as no title. Written only with a
+non-empty value, so an event that names nothing never erases a name. Rows
+ingested before transcript parser v3 are filled once from the transcripts still
+on disk (`ingest.BackfillTitles`). Codex titles come from its own thread
+index (`~/.codex/state_<N>.sqlite`, newest generation, read-only, re-read only
+when it or its WAL changes): `threads.name` becomes `title`, and
+`threads.first_user_message` becomes `prompt` — the first thing the user typed,
+for an agent whose prompts never become events. The rollout transcript's own
+user messages cannot serve: all 60 checked opened with injected AGENTS.md or
+auto-review text. `prompt` is empty for every other agent, whose first prompt
+is read from events.
+
 ### Touch attribution DDL (migration 0012)
 
 ```sql
@@ -603,7 +656,28 @@ No DDL change was needed for either fix here, only honest use of the existing co
 ## Pricing table
 
 - Embedded JSON `pricing/pricing.json` (the spec's "ported from Caprock-python" — authored from the Anthropic pricing page in practice, [ADR-015](08-decisions.md#adr-015--pricing-source-anthropic-first-party-pricing-page-versioned-the-legacy-repo-has-no-pricingjson)); overridable by a user file (`<data_dir>/pricing.json`); `pricing_version` recorded in `meta` so historical cost is never silently recomputed.
-- **Who prices what.** Four of the five sources are priced by this table; one is not. Claude Code, Gemini, Codex and **DeepSeek Harness** report tokens and no cost, so the table does the arithmetic. **OpenCode** reports its own cost, which is carried through unchanged — two different arithmetics over the same tokens would give one session two totals. The `source` on an event is what tells a reader which produced a figure. Codex is why the table carries OpenAI rows (`gpt-5-codex`, `gpt-5.3-codex`, and the `gpt-5.6` family), read from developers.openai.com on 2026-09-06; `cache_write_*` is `0` on them because OpenAI does not charge for writing its cache, which is "not charged" rather than "unknown". DeepSeek Harness names `deepseek-v4-pro`, already present from the OpenCode third-party rows; its `cache_write_*` is unused because DSH reports no cache-write split.
+- **Who prices what.** Four of the five sources are priced by this table; one is not. Claude Code, Gemini, Codex and **DeepSeek Harness** report tokens and no cost, so the table does the arithmetic. **OpenCode** reports its own cost, which is carried through unchanged — two different arithmetics over the same tokens would give one session two totals. The `source` on an event is what tells a reader which produced a figure. Codex is why the table carries OpenAI rows (`gpt-5-codex`, `gpt-5.3-codex`, and the `gpt-5.6` family, read from developers.openai.com on 2026-09-06; `gpt-6-sol` and `gpt-6-luna`, read 2026-09-29 — their >272K-token tier is not modelled, and no observed turn reached it); `cache_write_*` is `0` on them because OpenAI does not charge for writing its cache, which is "not charged" rather than "unknown". DeepSeek Harness names `deepseek-v4-pro`, already present from the OpenCode third-party rows; its `cache_write_*` is unused because DSH reports no cache-write split.
+- **A turn whose model is not in the table is priced once the table has it.**
+  It is stored with no cost and sits outside every total, counted as
+  unpriced; adding the model's row fixed only the turns after it. On start
+  the daemon runs `Recorder.PriceUnpriced` in the background: each such turn
+  is priced at the row in force at its own timestamp, and `session_stats` and
+  `daily_stats` take the same amount in the same transaction. This is not
+  repricing — a turn that was priced keeps its figure. It found 5,788 Codex
+  turns (`gpt-6-sol`, `gpt-6-luna`, rows added 2026-09-29) on the owner's
+  machine, $96.69 that no total had carried.
+- **Every write to a turn's cost moves the rollups in the same transaction.**
+  `session_stats` and `daily_stats` are accumulated, not recomputed, so an
+  event whose cost changes without them leaves every screen disagreeing with
+  the events it was built from. Migrations 0022 and 0023 broke this: they
+  deleted and re-imported every Codex event and zeroed `session_stats`, but not
+  `daily_stats`, so the first import stayed in the daily table beside the
+  re-import. `Recorder.RebuildCodexDaily` rewrites the Codex rows from events
+  once (`meta.codex_daily_rebuilt`), skipping a (day, model) another source
+  also used and any day retention may have pruned. Checked on a copy of the
+  owner's database: events, `session_stats` and `daily_stats` agree to the cent
+  and the token afterwards. Codex's own `repriceSession` now moves both
+  rollups too.
 - **A turn with no model is stored unpriced.** The recorder prices only when it has a model id; without one the turn keeps its real token counts and carries no cost, and `caprock status` reports the count so a partial total is legible as partial ([rule 6](../CLAUDE.md) — a missing number beats an invented one). For Codex this nearly never happens, but only because the model is read from **two** places: `turn_context` (4 of 100 real transcripts) and `session_meta.base_instructions.provenance` (96). Reading the obvious one alone left 83% of tokens with no cost. Both are recorded model ids rather than inferences; where both appear they agreed, and `turn_context` wins as the per-turn value. See [19-codex.md](19-codex.md).
 - **The daily spend cap (`settings.cap_usd_per_day`) pauses sessions Caprock started, and only those.** Zero is off and is the default — a threshold nobody chose would eventually stop work for a reason its owner could not explain. The check runs after a turn is **priced**, not on a timer: the day's total only moves when a turn is priced, so a poll would either lag the crossing or ask the database for a sum it already knows is unchanged. Four rules, each with a test that was verified by breaking it: **only owned sessions** — `agents.PauseOwned` refuses any id the manager did not spawn, so [rule 7](../CLAUDE.md) is enforced at the thing holding the process handles rather than by whoever is calling; **paused, not killed** — SIGSTOP, so the conversation, directory and context survive a resume; **once a day** — a session resumed by hand must not be re-paused seconds later, and the day is claimed under a mutex *before* any signal so concurrent turns cannot both fire; **fails open** — an unreadable spend does not pause, because a missed pause costs money while a spurious one stops work that was fine, and the second is the one nobody forgives. `cap_usd_per_day` carries **no `omitempty`**: zero means "off", and omitting it makes an off cap indistinguishable from a daemon too old to have the field — the panel could then be switched on but never off. A negative or non-finite value is a 400 rather than a clamp, like every other validated field here. The suggested limit is **twice the median day, rounded** (`cap.Suggest`, mirrored in the UI): the median rather than the mean because one runaway day would drag an average up and produce a ceiling that never fires — precisely the day the feature exists for — and twice it because a cap set *at* the median fires half the time by definition. It is offered as a click, never prefilled: a number that appears in the field on its own is a number nobody chose, and this one stops work.
 - **`GET /v1/browse` lists directories for the folder picker, and is the one endpoint that reads the filesystem on a web page's behalf.** Starting a session required typing an absolute path from memory into a dashboard already showing the reader's repositories. Four rules make this a picker rather than a filesystem-read API: **only directories and only names** (no contents, no sizes); **rooted at `settings.browse_root`** (default `$HOME`), with **symlinks resolved before the containment check** so a link inside the root pointing out of it cannot smuggle a caller past the boundary; **dotfile directories are never listed** — `.ssh` and `.aws` are precisely what a prober wants, while `.git` is reported as a *property* of its parent (`repo: true`) rather than somewhere to descend into; and **"outside the root" and "does not exist" return the identical 404**, so the endpoint cannot be used as an existence oracle for paths the caller may not see. Listings are capped at 500 entries with `X-Caprock-Truncated` set rather than silently cut. Repositories sort first because a repository is what is being looked for. `GET /v1/recent-dirs` is the other half and touches no filesystem beyond an existence check: it lists directories from the `sessions` table, newest first, grouped by repository root where one is known, and omits any that no longer exist — a picker offering a dead path spawns a session that fails.
@@ -643,7 +717,7 @@ The mode is applied by `store.secureDBFiles` on **every** `store.Open`, not only
 
 Not a public contract — the parser is schema-versioned and degrades to hooks-only mode on unknown shapes ([12-risks.md RISK-02](12-risks.md#risks)). What `ingest` relies on, as observed in a real Claude Code 2.1.x transcript on 2026-08-18:
 
-- One JSON object per line; `type` ∈ `user`, `assistant`, `system`, `attachment`, plus session-meta lines (`mode`, `permission-mode`, `ai-title`, `last-prompt`, `file-history-snapshot`, `bridge-session`) which are ignored.
+- One JSON object per line; `type` ∈ `user`, `assistant`, `system`, `attachment`, plus session-meta lines (`mode`, `permission-mode`, `ai-title`, `last-prompt`, `file-history-snapshot`, `bridge-session`). All are ignored except `ai-title` (`aiTitle`, `sessionId`), which since parser v3 is stored as `sessions.title` and never becomes an event.
 - `user`/`assistant`/`system` lines carry `uuid`, `parentUuid`, `timestamp` (RFC 3339), `sessionId`, `cwd`, `version`, `gitBranch`, `isSidechain`.
 - `assistant` lines: `message.model`, `message.id`, `message.usage` with `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, and `cache_creation.{ephemeral_5m_input_tokens, ephemeral_1h_input_tokens}`; `message.content[]` blocks (`text`, `tool_use`, …).
 - `system` lines with `subtype: "turn_duration"` carry `durationMs`.

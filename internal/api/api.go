@@ -407,6 +407,17 @@ type SessionSummary struct {
 	// not answered yet both arrive as "no context", and they call for opposite
 	// reactions. Empty whenever Context is present.
 	ContextNote string `json:"context_note,omitempty"`
+	// Description tells this session from the others on the screen: the
+	// agent's own title, else the first prompt that says something. Source is
+	// "title" or "prompt", so the card can style a guess differently from a
+	// name.
+	Description       string `json:"description,omitempty"`
+	DescriptionSource string `json:"description_source,omitempty"`
+	// Resume is whether this session can be carried on from here. On the list
+	// it is filled for ended sessions only, so a card can offer continue
+	// without a trip to the detail screen; the detail fills it for any session
+	// that is not Caprock's own live one.
+	Resume *ResumeInfo `json:"resume,omitempty"`
 }
 
 // ContextFill is the "context fill %" badge input: last turn's prompt size vs the model window.
@@ -449,6 +460,10 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 		act.Phrase = "was " + act.Phrase
 	}
 	sum := SessionSummary{Session: sess, Stats: st, Activity: act, Savings: cost.ComputeSavings(st.TokensIn, st.CacheRead, st.CacheWrite), Loop: la}
+	sum.Description, sum.DescriptionSource = describe(ctx, q, sess)
+	if sess.Status == store.StatusEnded {
+		sum.Resume = s.resumeInfo(sess)
+	}
 	// Context fill: last assistant turn's input+cache tokens vs the model's window.
 	// When it cannot be computed, say which of the two reasons applies. The
 	// dashboard used to caption every empty Context "unknown model", including
@@ -501,7 +516,8 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	active := r.URL.Query().Get("active") == "true"
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	sessions, err := store.ListSessions(ctx, s.d.Store.DB(), active, limit)
+	search := r.URL.Query().Get("q")
+	sessions, err := store.ListSessionsMatching(ctx, s.d.Store.DB(), active, search, limit)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -519,7 +535,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	// 200, and a screen that labels a truncated array "Ended · 200" states a
 	// count of what it fetched as though it were a count of what there is —
 	// while the lifetime strip on the same screen says otherwise.
-	if total, err := store.CountSessions(ctx, s.d.Store.DB(), active); err == nil {
+	if total, err := store.CountSessionsMatching(ctx, s.d.Store.DB(), active, search); err == nil {
 		w.Header().Set("X-Total-Count", strconv.Itoa(total))
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -549,6 +565,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	if last == nil {
 		last = []event.Event{}
 	}
+	sum.Resume = s.resumeInfo(sess)
 	writeJSON(w, http.StatusOK, SessionDetail{SessionSummary: sum, Files: files, Events: last})
 }
 
@@ -1440,6 +1457,18 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
+	}
+	// A resume the detail screen would refuse is refused here too, with the
+	// same reason: otherwise a stale button opens a terminal that prints "No
+	// conversation found" and dies. An id the store has never seen is let
+	// through — the store not knowing a session is not evidence it is gone.
+	if resume, _ := req["resume"].(string); resume != "" {
+		if sess, err := store.GetSession(r.Context(), s.d.Store.DB(), resume); err == nil {
+			if info := s.resumeInfo(sess); info != nil && !info.OK {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": info.Reason})
+				return
+			}
+		}
 	}
 	// Spawn with a background context: the process must outlive this HTTP request.
 	id, cwd, err := s.d.Agents.Spawn(context.WithoutCancel(r.Context()), req)

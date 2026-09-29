@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -197,7 +198,7 @@ func (in *Ingester) session(ctx context.Context, s Session) error {
 // info is the session identity carried alongside every event. The recorder
 // creates or updates the session row from it, so there is no separate upsert.
 func (in *Ingester) info(s Session) rollup.SessionInfo {
-	return rollup.SessionInfo{Cwd: s.Directory, Model: s.Model, Agent: Agent}
+	return rollup.SessionInfo{Cwd: s.Directory, Model: s.Model, Agent: Agent, Title: sessionTitle(s.Title)}
 }
 
 // turn stores one assistant turn with the cost OpenCode already computed.
@@ -288,4 +289,16 @@ func (in *Ingester) tool(ctx context.Context, s Session, m Message, c ToolCall) 
 		in.mu.Unlock()
 	}
 	return nil
+}
+
+// sessionTitle is OpenCode's name for a session, or "" while it still carries
+// the placeholder OpenCode gives every session before it names one — "New
+// session - 2026-09-12T…" would make every untitled card read the same, which
+// is the problem the title exists to solve.
+func sessionTitle(t string) string {
+	t = strings.TrimSpace(t)
+	if strings.HasPrefix(t, "New session - ") || strings.HasPrefix(t, "Child session - ") {
+		return ""
+	}
+	return t
 }

@@ -9,8 +9,8 @@ started) · **building** · **shipped** (in a release, with the version) ·
 
 | Id     | Date       | From  | Request                                                                         | Status   | Landed in         |
 | ------ | ---------- | ----- | ------------------------------------------------------------------------------- | -------- | ----------------- |
-| FB-036 | 2026-09-29 | Vova  | Some ended sessions can be continued and some cannot, with no reason given      | building | —                 |
-| FB-035 | 2026-09-29 | Vova  | Ended sessions all look alike; show a short description of each                 | building | —                 |
+| FB-036 | 2026-09-29 | Vova  | Some ended sessions can be continued and some cannot, with no reason given      | shipped  | next release      |
+| FB-035 | 2026-09-29 | Vova  | Ended sessions all look alike; show a short description of each                 | shipped  | next release      |
 | FB-034 | 2026-09-29 | Vova  | A paste is duplicated when short and not collapsed when long                    | shipped  | next release      |
 | FB-033 | 2026-09-29 | Vova  | A session started from Caprock cannot reach GCP; plain `claude` can             | shipped  | next release      |
 | FB-032 | 2026-09-06 | Dima  | Put the session's real numbers in the Claude Code status line, as DeepSeek does | shipped  | next release      |
@@ -55,7 +55,11 @@ Four reports in one message; the diagnosis of each is in
 shipped:** a spawned session and a verification command now start with the
 user's login-shell environment rather than the daemon's
 ([02-architecture.md § Components](../.ai/02-architecture.md#components)).
-FB-034 to FB-036 are fixed in their own changes.
+FB-034 to FB-036 are fixed in their own changes and also shipped: paste
+([04-ui.md § The terminal](../.ai/04-ui.md#the-terminal)), a description on
+every card and a continue that says why not
+([04-ui.md § Now](../.ai/04-ui.md)). Codex sessions take their names from
+Codex's own thread index ([19-codex.md § Names](../.ai/19-codex.md#names)).
 
 ### FB-032 — The numbers DeepSeek puts in its status line
 

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -305,7 +306,21 @@ func decodePayload(raw string) (map[string]any, bool) {
 // NeedsTextRepair reports whether the database was written by a parser version
 // that truncated on bytes.
 func NeedsTextRepair(storedVersion string) bool {
-	return storedVersion != "" && storedVersion != fmt.Sprint(SchemaVersion)
+	return olderThan(storedVersion, 2)
+}
+
+// NeedsTitleBackfill reports whether rows were ingested before titles were
+// read. A fresh database ("") reads every line, titles included.
+func NeedsTitleBackfill(storedVersion string) bool {
+	return olderThan(storedVersion, 3)
+}
+
+func olderThan(storedVersion string, v int) bool {
+	if storedVersion == "" {
+		return false
+	}
+	n, err := strconv.Atoi(storedVersion)
+	return err != nil || n < v
 }
 
 // HasReplacementChar is a small helper for tests and diagnostics.

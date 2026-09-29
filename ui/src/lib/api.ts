@@ -17,6 +17,8 @@ export interface Session {
   git_branch: string
   version: string
   owned: boolean
+  /** The agent's own name for the session (Claude Code's ai-title, OpenCode's title). */
+  title?: string
   /** Which coding agent produced this session. Absent means Claude Code,
    *  which is what every session was before OpenCode support. */
   agent?: 'claude' | 'opencode' | 'gemini' | 'codex' | 'deepseek'
@@ -88,6 +90,20 @@ export interface SessionSummary extends Session {
    *  session that has not answered yet. The two look identical from here and
    *  mean opposite things, so the server names which it is. */
   context_note?: string
+  /** What tells this session from the others: the agent's own title, else the
+   *  first prompt that says something. */
+  description?: string
+  description_source?: 'title' | 'prompt'
+  /** Whether it can be carried on from here. On the list: ended sessions only. */
+  resume?: ResumeInfo
+}
+
+/** Whether a session can be carried on from here, and if not, why. */
+export interface ResumeInfo {
+  ok: boolean
+  reason?: string
+  /** Resumes it from the user's own terminal; offered even when Caprock cannot. */
+  command?: string
 }
 
 export interface TokenDelta { in: number; out: number; cache_read: number; cache_write: number; cache_write_1h?: number }
@@ -572,8 +588,13 @@ async function get<T>(path: string): Promise<T> {
  * this one call does its own fetch rather than teaching every call to carry a
  * total it does not have.
  */
-async function sessionsWithTotal(activeOnly: boolean): Promise<{ items: SessionSummary[]; total: number }> {
-  const res = await fetch(`/v1/sessions${activeOnly ? '?active=true' : ''}`, {
+async function sessionsWithTotal(activeOnly: boolean, search = '', limit = 0): Promise<{ items: SessionSummary[]; total: number }> {
+  const qs = new URLSearchParams()
+  if (activeOnly) qs.set('active', 'true')
+  if (search.trim()) qs.set('q', search.trim())
+  if (limit > 0) qs.set('limit', String(limit))
+  const query = qs.toString()
+  const res = await fetch(`/v1/sessions${query ? `?${query}` : ''}`, {
     headers: withDevice({ Accept: 'application/json' }),
   })
   if (!res.ok) {

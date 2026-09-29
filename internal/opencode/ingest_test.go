@@ -366,3 +366,17 @@ func TestRunStopsOnContextCancel(t *testing.T) {
 		t.Fatal("Run did not return within 5s of cancellation")
 	}
 }
+
+// OpenCode names every session "New session - <timestamp>" until it has a real
+// title; that placeholder would make every card read the same.
+func TestSessionTitleDropsThePlaceholder(t *testing.T) {
+	for in, want := range map[string]string{
+		"New session - 2026-06-03T18:57:00.000Z": "",
+		"Child session - 2026-06-03T18:57":       "",
+		"  Разработка GTM стратегии ":            "Разработка GTM стратегии",
+	} {
+		if got := sessionTitle(in); got != want {
+			t.Errorf("sessionTitle(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

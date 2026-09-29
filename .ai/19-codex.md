@@ -179,6 +179,19 @@ that is a string, a `turn_context` whose model is not one, missing timestamps
 and missing `token_count.info`. The worst case for an unforeseen shape is a
 missing field, never a missing session.
 
+## Names
+
+Codex keeps an index of its threads beside the transcripts,
+`~/.codex/state_<N>.sqlite`, and it is read for one thing: telling sessions
+apart on the screen (FB-035). `threads.name` is the short title Codex
+generates ("Проверь даты без двух статей") and becomes the session's title;
+`threads.first_user_message` is kept for sessions it has not named yet. The
+transcript cannot supply either — of 60 rollouts checked, every user message
+it opens with is injected AGENTS.md, environment or auto-review text. The index
+is opened read-only, only the newest schema generation is read, and it is
+re-read only when it (or its WAL) changes. On the owner's machine this named
+88 of 108 ended Codex sessions and quoted a first message for 9 more.
+
 ## Not built
 
 - **Session control.** Spawning, typing into, and killing a Codex session.

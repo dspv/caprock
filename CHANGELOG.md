@@ -9,6 +9,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- Every session card says what the session was about: Claude Code's, Codex's
+  or OpenCode's own title for it (the name their resume pickers show), or else
+  its first prompt that says something. Ended sessions can finally be told
+  apart (FB-035).
+- Pricing for GPT-6 Sol and GPT-6 Luna, from OpenAI's published list prices
+  (read 2026-09-29). Turns already stored without a price because their model
+  was missing from the table are priced on the next start, at the rate in
+  force when they ran; turns that were priced keep their figures.
+- An ended session says whether it can be continued and, when it cannot, why:
+  the transcript was deleted by Claude Code, the folder is gone, or the agent
+  is not one Caprock resumes — with the command to resume it yourself where
+  the agent has one (FB-036).
+- Ended session cards say when the session ended and offer **continue** (or
+  why not) right on the card. With ended sessions shown, a search box finds a
+  session by its title, any prompt typed in it, its project or branch, and
+  **show more** reaches past the first 200.
+
 ### Fixed
 
 - A session started from Caprock can now reach what a terminal can: `gcloud`,
@@ -26,6 +45,17 @@ Phase 3 (Delight) has no plan by design.
   switching tabs or reloading. A terminal that attached after the session's
   first 256 KB of output never learned that bracketed paste was on; the daemon
   now restores the terminal modes the session set before replaying scrollback.
+- Sessions Caprock started can be continued after they end; the button used to
+  disappear for them, including after they had been continued once.
+- Continuing a session whose transcript is gone is refused with the reason,
+  instead of opening a terminal that printed "No conversation found" and
+  exited.
+- Daily totals no longer count some Codex turns twice. Migrations 0022 and
+  0023 re-imported every Codex event without taking the first import out of
+  the daily table; the Codex rows are rebuilt from events once on start
+  (on the owner's machine, five days $3.68 and 7.9M tokens too high). A Codex
+  turn repriced after its model became readable now moves the session and
+  daily totals with it.
 - Pasting an image with the keyboard uploads it and types its path; only
   drag-and-drop worked before, because xterm stopped the paste event from
   reaching our handler.

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api, ApiError } from '@/lib/api'
+import { api, ApiError, type ResumeInfo } from '@/lib/api'
 import { navigate } from '@/lib/router'
 
 /**
@@ -30,17 +30,23 @@ export function ContinueSession({
   sessionID,
   cwd,
   live,
+  resume,
+  compact = false,
 }: {
   sessionID: string
   cwd: string
   /** Whether the session is still running: decides continue vs branch. */
   live: boolean
+  /** The server's answer to "can this be resumed here", with the reason when not. */
+  resume: ResumeInfo
+  /** On a card: one word, the reason on hover, no copy command. */
+  compact?: boolean
 }) {
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState('')
 
-  const command = `claude --resume ${sessionID}`
+  const command = resume.command ?? ''
 
   async function open() {
     setBusy(true)
@@ -65,6 +71,43 @@ export function ContinueSession({
     }
   }
 
+  const copyButton = command && (
+    <button onClick={copy} title={command} className="text-[11px] text-fg-faint hover:text-fg">
+      {copied ? 'copied' : 'copy command'}
+    </button>
+  )
+
+  // Not a disabled button: a greyed-out "continue" says only that something
+  // is wrong. The reason is the useful part, so it is what is shown.
+  if (compact) {
+    if (!resume.ok) {
+      return <span className="text-[11px] text-fg-faint truncate" title={resume.reason}>can’t continue</span>
+    }
+    return (
+      <span className="inline-flex items-center gap-2">
+        <button
+          onClick={open}
+          disabled={busy}
+          title="Carry this conversation on, here"
+          className="text-[11px] border border-accent text-accent px-1.5 rounded-sm hover:bg-accent/10 disabled:opacity-50"
+        >
+          {busy ? 'opening…' : 'continue'}
+        </button>
+        {error && <span className="text-[11px] text-danger truncate" title={error}>failed</span>}
+      </span>
+    )
+  }
+
+  if (!resume.ok) {
+    return (
+      <span className="inline-flex items-center gap-2 text-[11px] text-fg-muted">
+        <span>can’t continue here: {resume.reason}</span>
+        {copyButton}
+        {error && <span className="text-danger">{error}</span>}
+      </span>
+    )
+  }
+
   return (
     <span className="inline-flex items-center gap-2">
       <button
@@ -79,13 +122,7 @@ export function ContinueSession({
       >
         {busy ? 'opening…' : live ? 'branch here' : 'continue here'}
       </button>
-      <button
-        onClick={copy}
-        title={command}
-        className="text-[11px] text-fg-faint hover:text-fg"
-      >
-        {copied ? 'copied' : 'copy command'}
-      </button>
+      {copyButton}
       {error && <span className="text-[11px] text-danger">{error}</span>}
     </span>
   )

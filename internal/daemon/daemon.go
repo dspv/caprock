@@ -252,6 +252,11 @@ func newDaemon(ctx context.Context, opt Options) (*Daemon, error) {
 			log.Info("repaired truncated assistant text", "component", "ingest", "events", n, "from_schema", prevSchema)
 		}
 	}
+	if ingest.NeedsTitleBackfill(prevSchema) {
+		if _, err := ingest.BackfillTitles(ctx, st.DB(), log); err != nil {
+			log.Warn("could not name sessions from their transcripts", "component", "ingest", "err", err)
+		}
+	}
 	_ = st.SetMeta(ctx, store.MetaTranscriptSchema, strconv.Itoa(ingest.SchemaVersion))
 	b := bus.New()
 	rec := rollup.New(st, table, b, log)
@@ -286,6 +291,28 @@ func (d *Daemon) run(ctx context.Context) error {
 	}
 	defer func() { _ = config.RemoveRuntime(d.opt.DataDir) }()
 	d.url = "http://127.0.0.1:" + strconv.Itoa(port)
+
+	// Turns stored before their model had a row in the pricing table are
+	// priced now that it may have one. Background, best-effort, idempotent:
+	// what is still missing stays unpriced and is counted as such.
+	go func() {
+		// Once: daily_stats' Codex rows carried the pre-0022/0023 imports as
+		// well as the re-imports. Days retention may have pruned are left as
+		// they are — rebuilding them from missing events would erase history.
+		var keepFrom time.Time
+		if days := d.opt.Config.RetentionDays; days > 0 {
+			// The first whole local day after the prune cutoff: the day the
+			// cutoff falls in has lost part of its events.
+			c := time.Now().AddDate(0, 0, -days)
+			keepFrom = time.Date(c.Year(), c.Month(), c.Day()+1, 0, 0, 0, 0, time.Local)
+		}
+		if _, err := d.rec.RebuildCodexDaily(ctx, keepFrom); err != nil && ctx.Err() == nil {
+			d.log.Warn("could not rebuild Codex daily totals", "component", "rollup", "err", err)
+		}
+		if _, err := d.rec.PriceUnpriced(ctx); err != nil && ctx.Err() == nil {
+			d.log.Warn("could not price previously unpriced turns", "component", "rollup", "err", err)
+		}
+	}()
 
 	// Live-plane subscriber: loop detector over stored events.
 	sub := d.bus.Subscribe(4096)

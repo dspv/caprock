@@ -71,6 +71,32 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-09-29 (evening) — Ended sessions say what they were, and whether they continue
+
+Vova could not tell ended sessions apart, and could not tell why some continued
+and some did not (FB-035, FB-036). Cards now carry a description — Claude
+Code's `ai-title` (stored in `sessions.title`, migration 0025, backfilled once
+from transcripts on disk: 22 sessions on the owner's machine), OpenCode's
+title, else the first substantive prompt. On a copy of the owner's database,
+of 198 ended sessions 109 showed a title and 51 a prompt; the Claude Code
+sessions left blank were empty probes. Codex names come from its own thread
+index ([19-codex.md § Names](19-codex.md#names)). The same copy showed 5,788
+Codex turns (`gpt-6-sol`, `gpt-6-luna`) stored unpriced — $96.69 outside every
+total; the rows were added from OpenAI's list prices and such turns are now
+priced on start, with session and daily totals moving in the same transaction.
+And `daily_stats` read $3.68 and 7.9M tokens above the events on five Codex
+days: migrations 0022/0023 re-imported Codex without taking the first import
+out of the daily table. Rebuilt once from events; afterwards events,
+`session_stats` and `daily_stats` agree exactly on that copy.
+Continue is decided on the server from the disk: on the same copy, 43 Claude
+Code sessions offered a resume that works (12 of them Caprock's own, which
+used to hide it), 24 said their transcript was deleted and 21 that their
+folder was gone — each of which had offered a button before. Ended cards now
+say when they ended (they read "waiting at the prompt"), carry continue
+themselves, and the ended list is searchable on the server — every prompt of a
+session, not only its card — and pages past the 200 it used to stop at. See
+[04-ui.md](04-ui.md) and [03-contracts.md](03-contracts.md).
+
 ### 2026-09-29 (later) — A paste goes in once, and collapses after a reconnect
 
 Vova: a short paste doubled "half the time", and a long one sometimes showed in
