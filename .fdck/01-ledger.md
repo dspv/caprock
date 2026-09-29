@@ -9,10 +9,10 @@ started) · **building** · **shipped** (in a release, with the version) ·
 
 | Id     | Date       | From  | Request                                                                         | Status   | Landed in         |
 | ------ | ---------- | ----- | ------------------------------------------------------------------------------- | -------- | ----------------- |
-| FB-036 | 2026-09-29 | Vova  | Some ended sessions can be continued and some cannot, with no reason given      | shipped  | next release      |
-| FB-035 | 2026-09-29 | Vova  | Ended sessions all look alike; show a short description of each                 | shipped  | next release      |
-| FB-034 | 2026-09-29 | Vova  | A paste is duplicated when short and not collapsed when long                    | shipped  | next release      |
-| FB-033 | 2026-09-29 | Vova  | A session started from Caprock cannot reach GCP; plain `claude` can             | shipped  | next release      |
+| FB-036 | 2026-09-29 | Vova  | Some ended sessions can be continued and some cannot, with no reason given      | shipped  | v0.59.0           |
+| FB-035 | 2026-09-29 | Vova  | Ended sessions all look alike; show a short description of each                 | shipped  | v0.59.0           |
+| FB-034 | 2026-09-29 | Vova  | A paste is duplicated when short and not collapsed when long                    | shipped  | v0.59.0           |
+| FB-033 | 2026-09-29 | Vova  | A session started from Caprock cannot reach GCP; plain `claude` can             | shipped  | v0.59.0           |
 | FB-032 | 2026-09-06 | Dima  | Put the session's real numbers in the Claude Code status line, as DeepSeek does | shipped  | v0.53.0           |
 | FB-031 | 2026-09-03 | Vova  | Token optimisation, with the tokens saved shown in the stats                    | declined | —                 |
 | FB-030 | 2026-09-03 | Vova  | Caprock is convenient but not exclusive — nothing here needs paying for         | open     | —                 |
