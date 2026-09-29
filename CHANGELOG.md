@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.59.1] - 2026-09-30
+
 ### Fixed
 
 - The dashboard no longer piles up requests while a session is busy. Every
