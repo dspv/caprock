@@ -326,7 +326,9 @@ def main():
                         if (document.querySelector('.skeleton-pulse')) return false;
                         if (t.includes('reading your figures')) return false;
                         if (t.includes('nothing measured')) return false;
-                        if (/\\$0\\.00\\s*$/m.test(t)) return false;
+                        // A stat still at zero stands on its own line; a
+                        // table row can honestly end in $0.00 (a free model).
+                        if (/^\\$0\\.00\\s*$/m.test(t)) return false;
                         // Tasks carries no money; the placeholders are all it has.
                         return !wantMoney || /\\$[0-9][0-9,]*\\.[0-9]{2}/.test(t);
                       })(""" + ("false" if route == "tasks" else "true") + """)
