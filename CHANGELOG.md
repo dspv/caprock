@@ -9,6 +9,17 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- A session started from Caprock can now reach what a terminal can: `gcloud`,
+  `bq`, Homebrew tools and everything the shell profile exports. Sessions and
+  verification commands used to inherit the daemon's environment, which under
+  launchd autostart is a bare `PATH=/usr/bin:/bin:/usr/sbin:/sbin`; they now
+  start with the user's login-shell environment, resolved once in the
+  background and refreshed every minute (FB-033).
+- A session started from Caprock no longer inherits Claude Code's session
+  markers when the daemon itself was started from inside a Claude Code session.
+
 ## [0.58.3] - 2026-09-13
 
 ### Changed

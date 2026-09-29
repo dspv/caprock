@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -676,5 +677,27 @@ func TestANormalSpawnStillGetsItsOwnId(t *testing.T) {
 	}
 	if strings.Contains(joined, "--resume") {
 		t.Errorf("a plain spawn resumed something: %v", f.lastSpec.Args)
+	}
+}
+
+// A daemon started from inside a Claude Code session carries that session's
+// markers; a spawned session must not inherit them, or it believes it is a
+// child of a session it knows nothing about.
+func TestChildEnvStripsClaudeMarkersKeepsTheRest(t *testing.T) {
+	env := childEnv([]string{
+		"PATH=/opt/homebrew/bin:/usr/bin", "GOOGLE_CLOUD_PROJECT=acme",
+		"CLAUDECODE=1", "CLAUDE_CODE_SESSION_ID=abc", "CLAUDE_CODE_MESSAGING_TOKEN=t",
+		"CLAUDE_CODE_USE_BEDROCK=1", "CAPROCK_DATA_DIR=/d",
+	})
+	for _, gone := range []string{"CLAUDECODE=1", "CLAUDE_CODE_SESSION_ID=abc", "CLAUDE_CODE_MESSAGING_TOKEN=t"} {
+		if slices.Contains(env, gone) {
+			t.Errorf("%q leaked into the child", gone)
+		}
+	}
+	// A user's own Claude Code configuration is not a nesting marker.
+	for _, kept := range []string{"PATH=/opt/homebrew/bin:/usr/bin", "GOOGLE_CLOUD_PROJECT=acme", "CLAUDE_CODE_USE_BEDROCK=1", "CAPROCK_DATA_DIR=/d", "TERM=xterm-256color"} {
+		if !slices.Contains(env, kept) {
+			t.Errorf("%q missing from the child", kept)
+		}
 	}
 }
