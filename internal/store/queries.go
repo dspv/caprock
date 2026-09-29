@@ -43,6 +43,9 @@ type Session struct {
 	// Title is the agent's own name for the session — Claude Code's ai-title,
 	// OpenCode's title — or empty when it has not named one.
 	Title string `json:"title,omitempty"`
+	// Prompt is the first thing the user typed, stored only for agents whose
+	// prompts are not events (Codex). The API folds it into the description.
+	Prompt string `json:"-"`
 }
 
 // Stats mirrors session_stats.
@@ -277,6 +280,18 @@ func SetTitle(ctx context.Context, q Querier, id, title string) error {
 		return nil
 	}
 	_, err := q.ExecContext(ctx, `UPDATE sessions SET title = ? WHERE session_id = ? AND title != ?`, title, id, title)
+	return err
+}
+
+// SetPrompt records the first thing the user typed, for an agent whose prompts
+// are not events. Same rules as SetTitle: empty is a no-op, a missing session
+// is not created.
+func SetPrompt(ctx context.Context, q Querier, id, prompt string) error {
+	prompt = strings.TrimSpace(prompt)
+	if id == "" || prompt == "" {
+		return nil
+	}
+	_, err := q.ExecContext(ctx, `UPDATE sessions SET prompt = ? WHERE session_id = ? AND prompt != ?`, prompt, id, prompt)
 	return err
 }
 
@@ -521,13 +536,13 @@ func updateStatusByID(ctx context.Context, q Querier, ids []string, status strin
 	return nil
 }
 
-const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,'')`
+const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,'')`
 
 func scanSession(sc interface{ Scan(...any) error }) (Session, error) {
 	var s Session
 	var hh, ht, owned int
 	var exit sql.NullInt64
-	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title)
+	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt)
 	s.HasHooks, s.HasTranscript, s.Owned = hh != 0, ht != 0, owned != 0
 	if exit.Valid {
 		v := int(exit.Int64)

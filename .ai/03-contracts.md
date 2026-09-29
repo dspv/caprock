@@ -267,7 +267,7 @@ one, including when Caprock cannot run it.
 **`SessionSummary.description` / `description_source`** — what tells a session
 from the others on the screen (FB-035): the stored `sessions.title`
 (`"title"`), else the first of the session's earliest eight `turn.user`
-prompts that says something (`"prompt"`, derived at read time, never stored):
+prompts — or the stored `sessions.prompt`, for Codex — that says something (`"prompt"`):
 not a tag-wrapped command or notification, not a bare path, at least 12
 characters. First line only, clipped to 120 characters.
 
@@ -534,6 +534,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_repo ON sessions(session_id, project, re
 
 ```sql
 ALTER TABLE sessions ADD COLUMN title TEXT NOT NULL DEFAULT '';
+ALTER TABLE sessions ADD COLUMN prompt TEXT NOT NULL DEFAULT '';
 ```
 
 The agent's own name for a session. Claude Code writes it into the transcript as
@@ -542,8 +543,14 @@ name its `/resume` picker shows; OpenCode keeps a `title` per session, with the
 placeholder `New session - <timestamp>` treated as no title. Written only with a
 non-empty value, so an event that names nothing never erases a name. Rows
 ingested before transcript parser v3 are filled once from the transcripts still
-on disk (`ingest.BackfillTitles`); Codex titles are not read (its `threads`
-table in `state_5.sqlite` mostly repeats the first message).
+on disk (`ingest.BackfillTitles`). Codex titles come from its own thread
+index (`~/.codex/state_<N>.sqlite`, newest generation, read-only, re-read only
+when it or its WAL changes): `threads.name` becomes `title`, and
+`threads.first_user_message` becomes `prompt` — the first thing the user typed,
+for an agent whose prompts never become events. The rollout transcript's own
+user messages cannot serve: all 60 checked opened with injected AGENTS.md or
+auto-review text. `prompt` is empty for every other agent, whose first prompt
+is read from events.
 
 ### Touch attribution DDL (migration 0012)
 
@@ -640,7 +647,16 @@ No DDL change was needed for either fix here, only honest use of the existing co
 ## Pricing table
 
 - Embedded JSON `pricing/pricing.json` (the spec's "ported from Caprock-python" — authored from the Anthropic pricing page in practice, [ADR-015](08-decisions.md#adr-015--pricing-source-anthropic-first-party-pricing-page-versioned-the-legacy-repo-has-no-pricingjson)); overridable by a user file (`<data_dir>/pricing.json`); `pricing_version` recorded in `meta` so historical cost is never silently recomputed.
-- **Who prices what.** Four of the five sources are priced by this table; one is not. Claude Code, Gemini, Codex and **DeepSeek Harness** report tokens and no cost, so the table does the arithmetic. **OpenCode** reports its own cost, which is carried through unchanged — two different arithmetics over the same tokens would give one session two totals. The `source` on an event is what tells a reader which produced a figure. Codex is why the table carries OpenAI rows (`gpt-5-codex`, `gpt-5.3-codex`, and the `gpt-5.6` family), read from developers.openai.com on 2026-09-06; `cache_write_*` is `0` on them because OpenAI does not charge for writing its cache, which is "not charged" rather than "unknown". DeepSeek Harness names `deepseek-v4-pro`, already present from the OpenCode third-party rows; its `cache_write_*` is unused because DSH reports no cache-write split.
+- **Who prices what.** Four of the five sources are priced by this table; one is not. Claude Code, Gemini, Codex and **DeepSeek Harness** report tokens and no cost, so the table does the arithmetic. **OpenCode** reports its own cost, which is carried through unchanged — two different arithmetics over the same tokens would give one session two totals. The `source` on an event is what tells a reader which produced a figure. Codex is why the table carries OpenAI rows (`gpt-5-codex`, `gpt-5.3-codex`, and the `gpt-5.6` family, read from developers.openai.com on 2026-09-06; `gpt-6-sol` and `gpt-6-luna`, read 2026-09-29 — their >272K-token tier is not modelled, and no observed turn reached it); `cache_write_*` is `0` on them because OpenAI does not charge for writing its cache, which is "not charged" rather than "unknown". DeepSeek Harness names `deepseek-v4-pro`, already present from the OpenCode third-party rows; its `cache_write_*` is unused because DSH reports no cache-write split.
+- **A turn whose model is not in the table is priced once the table has it.**
+  It is stored with no cost and sits outside every total, counted as
+  unpriced; adding the model's row fixed only the turns after it. On start
+  the daemon runs `Recorder.PriceUnpriced` in the background: each such turn
+  is priced at the row in force at its own timestamp, and `session_stats` and
+  `daily_stats` take the same amount in the same transaction. This is not
+  repricing — a turn that was priced keeps its figure. It found 5,788 Codex
+  turns (`gpt-6-sol`, `gpt-6-luna`, rows added 2026-09-29) on the owner's
+  machine, $96.69 that no total had carried.
 - **A turn with no model is stored unpriced.** The recorder prices only when it has a model id; without one the turn keeps its real token counts and carries no cost, and `caprock status` reports the count so a partial total is legible as partial ([rule 6](../CLAUDE.md) — a missing number beats an invented one). For Codex this nearly never happens, but only because the model is read from **two** places: `turn_context` (4 of 100 real transcripts) and `session_meta.base_instructions.provenance` (96). Reading the obvious one alone left 83% of tokens with no cost. Both are recorded model ids rather than inferences; where both appear they agreed, and `turn_context` wins as the per-turn value. See [19-codex.md](19-codex.md).
 - **The daily spend cap (`settings.cap_usd_per_day`) pauses sessions Caprock started, and only those.** Zero is off and is the default — a threshold nobody chose would eventually stop work for a reason its owner could not explain. The check runs after a turn is **priced**, not on a timer: the day's total only moves when a turn is priced, so a poll would either lag the crossing or ask the database for a sum it already knows is unchanged. Four rules, each with a test that was verified by breaking it: **only owned sessions** — `agents.PauseOwned` refuses any id the manager did not spawn, so [rule 7](../CLAUDE.md) is enforced at the thing holding the process handles rather than by whoever is calling; **paused, not killed** — SIGSTOP, so the conversation, directory and context survive a resume; **once a day** — a session resumed by hand must not be re-paused seconds later, and the day is claimed under a mutex *before* any signal so concurrent turns cannot both fire; **fails open** — an unreadable spend does not pause, because a missed pause costs money while a spurious one stops work that was fine, and the second is the one nobody forgives. `cap_usd_per_day` carries **no `omitempty`**: zero means "off", and omitting it makes an off cap indistinguishable from a daemon too old to have the field — the panel could then be switched on but never off. A negative or non-finite value is a 400 rather than a clamp, like every other validated field here. The suggested limit is **twice the median day, rounded** (`cap.Suggest`, mirrored in the UI): the median rather than the mean because one runaway day would drag an average up and produce a ceiling that never fires — precisely the day the feature exists for — and twice it because a cap set *at* the median fires half the time by definition. It is offered as a click, never prefilled: a number that appears in the field on its own is a number nobody chose, and this one stops work.
 - **`GET /v1/browse` lists directories for the folder picker, and is the one endpoint that reads the filesystem on a web page's behalf.** Starting a session required typing an absolute path from memory into a dashboard already showing the reader's repositories. Four rules make this a picker rather than a filesystem-read API: **only directories and only names** (no contents, no sizes); **rooted at `settings.browse_root`** (default `$HOME`), with **symlinks resolved before the containment check** so a link inside the root pointing out of it cannot smuggle a caller past the boundary; **dotfile directories are never listed** — `.ssh` and `.aws` are precisely what a prober wants, while `.git` is reported as a *property* of its parent (`repo: true`) rather than somewhere to descend into; and **"outside the root" and "does not exist" return the identical 404**, so the endpoint cannot be used as an existence oracle for paths the caller may not see. Listings are capped at 500 entries with `X-Caprock-Truncated` set rather than silently cut. Repositories sort first because a repository is what is being looked for. `GET /v1/recent-dirs` is the other half and touches no filesystem beyond an existence check: it lists directories from the `sessions` table, newest first, grouped by repository root where one is known, and omits any that no longer exist — a picker offering a dead path spawns a session that fails.

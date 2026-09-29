@@ -78,8 +78,12 @@ and some did not (FB-035, FB-036). Cards now carry a description — Claude
 Code's `ai-title` (stored in `sessions.title`, migration 0025, backfilled once
 from transcripts on disk: 22 sessions on the owner's machine), OpenCode's
 title, else the first substantive prompt. On a copy of the owner's database,
-of 198 ended sessions 21 showed a title and 42 a prompt; the Claude Code
-sessions left blank were empty probes, and Codex's 108 are not described yet.
+of 198 ended sessions 109 showed a title and 51 a prompt; the Claude Code
+sessions left blank were empty probes. Codex names come from its own thread
+index ([19-codex.md § Names](19-codex.md#names)). The same copy showed 5,788
+Codex turns (`gpt-6-sol`, `gpt-6-luna`) stored unpriced — $96.69 outside every
+total; the rows were added from OpenAI's list prices and such turns are now
+priced on start, with session and daily totals moving in the same transaction.
 Continue is decided on the server from the disk: on the same copy, 43 Claude
 Code sessions offered a resume that works (12 of them Caprock's own, which
 used to hide it), 24 said their transcript was deleted and 21 that their

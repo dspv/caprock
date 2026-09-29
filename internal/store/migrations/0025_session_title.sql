@@ -9,3 +9,9 @@
 -- Existing Claude Code rows are filled from the transcripts still on disk by
 -- ingest.BackfillTitles, run once when the transcript schema moves to v3.
 ALTER TABLE sessions ADD COLUMN title TEXT NOT NULL DEFAULT '';
+
+-- The first thing the user typed, for agents whose prompts never become events
+-- (Codex: its transcript's user messages open with injected instructions, and
+-- its own thread index keeps the clean first message). For every other agent
+-- the first prompt is read from events and this stays empty.
+ALTER TABLE sessions ADD COLUMN prompt TEXT NOT NULL DEFAULT '';

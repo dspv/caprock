@@ -58,9 +58,8 @@ user's login-shell environment rather than the daemon's
 FB-034 to FB-036 are fixed in their own changes and also shipped: paste
 ([04-ui.md § The terminal](../.ai/04-ui.md#the-terminal)), a description on
 every card and a continue that says why not
-([04-ui.md § Now](../.ai/04-ui.md)). Codex sessions still carry no description
-— Caprock does not read Codex's own titles, which mostly repeat the first
-message.
+([04-ui.md § Now](../.ai/04-ui.md)). Codex sessions take their names from
+Codex's own thread index ([19-codex.md § Names](../.ai/19-codex.md#names)).
 
 ### FB-032 — The numbers DeepSeek puts in its status line
 

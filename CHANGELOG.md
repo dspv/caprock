@@ -11,9 +11,14 @@ Phase 3 (Delight) has no plan by design.
 
 ### Added
 
-- Every session card says what the session was about: Claude Code's own title
-  for it (the name `/resume` shows) or OpenCode's, or else its first prompt
-  that says something. Ended sessions can finally be told apart (FB-035).
+- Every session card says what the session was about: Claude Code's, Codex's
+  or OpenCode's own title for it (the name their resume pickers show), or else
+  its first prompt that says something. Ended sessions can finally be told
+  apart (FB-035).
+- Pricing for GPT-6 Sol and GPT-6 Luna, from OpenAI's published list prices
+  (read 2026-09-29). Turns already stored without a price because their model
+  was missing from the table are priced on the next start, at the rate in
+  force when they ran; turns that were priced keep their figures.
 - An ended session says whether it can be continued and, when it cannot, why:
   the transcript was deleted by Claude Code, the folder is gone, or the agent
   is not one Caprock resumes — with the command to resume it yourself where

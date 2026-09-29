@@ -12,6 +12,7 @@ import (
 
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/rollup"
+	"github.com/dspv/caprock/internal/store"
 )
 
 // Agent is the value written to sessions.agent for Codex sessions.
@@ -38,6 +39,15 @@ type Ingester struct {
 	mu    sync.Mutex
 	seen  map[string]fileState
 	stats Stats
+
+	// namesAt is the state database's modification time when names were last
+	// synced; the index is re-read only when it moves.
+	namesAt time.Time
+	// namesFor is how many transcripts had been imported at that sync. A
+	// thread can be indexed before its transcript is imported, and then its
+	// name found no session to land on; a newly imported transcript forces
+	// the next sync.
+	namesFor int
 }
 
 type fileState struct {
@@ -131,10 +141,48 @@ func (in *Ingester) once(ctx context.Context) error {
 		in.stats.Sessions = len(in.seen)
 		in.mu.Unlock()
 	}
+	in.syncNames(ctx)
 	in.mu.Lock()
 	in.stats.LastPoll = time.Now().UnixMilli()
 	in.mu.Unlock()
 	return nil
+}
+
+// syncNames copies Codex's own thread names onto the sessions already
+// imported (FB-035). Separate from the transcript pass because a session's
+// events are written once and deduplicated after that, while its name arrives
+// later and can change. Best-effort: a failure costs a description, never an
+// import.
+func (in *Ingester) syncNames(ctx context.Context) {
+	path := StateDB(in.dir)
+	if path == "" || in.rec == nil || in.rec.Store == nil {
+		return
+	}
+	stamp := stateStamp(path)
+	in.mu.Lock()
+	known := len(in.seen)
+	in.mu.Unlock()
+	if !stamp.After(in.namesAt) && known == in.namesFor {
+		return
+	}
+	names, err := ReadThreadNames(ctx, path)
+	if err != nil {
+		in.log.Debug("codex thread names unavailable", "component", "codex", "err", err)
+		in.namesAt, in.namesFor = stamp, known // do not retry an unreadable index every tick
+		return
+	}
+	db := in.rec.Store.DB()
+	for id, n := range names {
+		if err := store.SetTitle(ctx, db, id, n.Name); err != nil {
+			in.log.Warn("record codex thread name", "component", "codex", "err", err)
+			return
+		}
+		if err := store.SetPrompt(ctx, db, id, n.FirstMessage); err != nil {
+			in.log.Warn("record codex first message", "component", "codex", "err", err)
+			return
+		}
+	}
+	in.namesAt, in.namesFor = stamp, known
 }
 
 // session records one parsed transcript: its turns and its tool calls, in the

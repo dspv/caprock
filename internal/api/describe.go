@@ -39,6 +39,11 @@ func describe(ctx context.Context, q store.Querier, sess store.Session) (text, s
 	if err != nil {
 		return "", ""
 	}
+	// An agent whose prompts are not events (Codex) has its first one stored
+	// on the session instead.
+	if sess.Prompt != "" {
+		prompts = append([]string{sess.Prompt}, prompts...)
+	}
 	for _, p := range prompts {
 		if substantivePrompt(p) {
 			return clipLine(p), DescriptionPrompt

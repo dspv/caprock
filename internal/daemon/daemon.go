@@ -292,6 +292,15 @@ func (d *Daemon) run(ctx context.Context) error {
 	defer func() { _ = config.RemoveRuntime(d.opt.DataDir) }()
 	d.url = "http://127.0.0.1:" + strconv.Itoa(port)
 
+	// Turns stored before their model had a row in the pricing table are
+	// priced now that it may have one. Background, best-effort, idempotent:
+	// what is still missing stays unpriced and is counted as such.
+	go func() {
+		if _, err := d.rec.PriceUnpriced(ctx); err != nil && ctx.Err() == nil {
+			d.log.Warn("could not price previously unpriced turns", "component", "rollup", "err", err)
+		}
+	}()
+
 	// Live-plane subscriber: loop detector over stored events.
 	sub := d.bus.Subscribe(4096)
 	go d.observeLoops(ctx, sub)
