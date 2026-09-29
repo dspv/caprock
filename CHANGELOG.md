@@ -9,6 +9,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- The dashboard no longer piles up requests while a session is busy. Every
+  live event made each panel ask again, whether or not its last request had
+  answered, so on a large database today's totals fell 30-60 seconds behind
+  and read "reading your figures…" while the daemon ran at over 100% CPU. A
+  panel now waits for its running request and asks once more after it.
+- `make shots` waits until every placeholder on a screen has cleared, and
+  fails rather than capturing a half-loaded one.
+
 ## [0.59.0] - 2026-09-30
 
 ### Added

@@ -93,4 +93,29 @@ describe('useApi', () => {
     await act(async () => { pending['7d']?.('seven') })
     expect(screen.getByTestId('body').textContent).toBe('seven')
   })
+
+  // A busy session sends a live tick every 400ms, and an aggregate on a large
+  // database takes seconds. Sending each tick's request while the last was
+  // still running stacked dozens of the same query in the daemon; the ones
+  // asked for meanwhile are now sent once, after the running one lands.
+  it('never overlaps a refetch with the one still running', async () => {
+    const releases: Array<(v: string) => void> = []
+    const fetcher = vi.fn(() => new Promise<string>((res) => { releases.push(res) }))
+
+    render(<Probe range="30d" fetcher={fetcher} />)
+    await act(async () => {})
+    expect(fetcher).toHaveBeenCalledTimes(1)
+
+    const button = screen.getByText('refresh')
+    await act(async () => { button.click(); button.click(); button.click() })
+    expect(fetcher).toHaveBeenCalledTimes(1)
+
+    await act(async () => { releases[0]?.('first') })
+    expect(screen.getByTestId('body').textContent).toBe('first')
+    expect(fetcher).toHaveBeenCalledTimes(2)
+
+    await act(async () => { releases[1]?.('second') })
+    expect(screen.getByTestId('body').textContent).toBe('second')
+    expect(fetcher).toHaveBeenCalledTimes(2)
+  })
 })

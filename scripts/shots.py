@@ -310,18 +310,31 @@ def main():
                 # A screen that is still fetching shows em-dashes and skeleton
                 # bars; capturing then produces the empty-looking dashboard the
                 # old screenshots had. Wait for real content to replace them.
-                for _ in range(50):
-                    time.sleep(0.4)
+                #
+                # Every placeholder has to be gone, not just one figure present:
+                # the v0.59.0 run passed on the pulse's "$20.90" while the
+                # totals still read "reading your figures…" and every table
+                # was skeleton bars. The shot daemon reads a fresh copy of the
+                # database and re-reads every transcript on start, so a busy
+                # machine takes minutes, not seconds — and a timeout is a
+                # failure, never a capture of whatever was on screen.
+                for _ in range(600):
+                    time.sleep(0.5)
                     ready = evaluate(ws, """
-                      (() => {
+                      ((wantMoney) => {
                         const t = document.body.innerText;
-                        if (t.includes('nothing measured yet')) return false;
+                        if (document.querySelector('.skeleton-pulse')) return false;
+                        if (t.includes('reading your figures')) return false;
+                        if (t.includes('nothing measured')) return false;
                         if (/\\$0\\.00\\s*$/m.test(t)) return false;
-                        return /\\$[0-9][0-9,]*\\.[0-9]{2}/.test(t);
-                      })()
+                        // Tasks carries no money; the placeholders are all it has.
+                        return !wantMoney || /\\$[0-9][0-9,]*\\.[0-9]{2}/.test(t);
+                      })(""" + ("false" if route == "tasks" else "true") + """)
                     """)
                     if ready:
                         break
+                else:
+                    sys.exit(f"{name} ({theme}) never finished loading; refusing to capture a half-loaded screen")
                 time.sleep(2.0)   # let charts and the pulse canvas paint
 
                 # Measure the real drawn height: the lowest bottom edge among
