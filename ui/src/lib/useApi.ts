@@ -33,12 +33,34 @@ export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = [], opts: { li
   // the screen flicker every few seconds. A dependency change is a new
   // question, and the honest answer to it is "reading…", not last question's
   // number under this question's title.
+  //
+  // A refetch never overlaps the one before it. Every live event asks again
+  // (at most every 400ms), and an aggregate that takes a few seconds on a
+  // large database used to be asked again before it answered — each request
+  // slowing the next, until a busy session had dozens of the same query in
+  // flight, the daemon at 167% CPU and today's totals 30-60s behind. A
+  // refetch asked for while one is running is remembered and sent once, when
+  // it lands. A new question is not held back: it cannot wait on the answer
+  // to the old one.
+  const inFlight = useRef(false)
+  const again = useRef(false)
   const run = useCallback((fresh = false) => {
+    if (!fresh && inFlight.current) {
+      again.current = true
+      return
+    }
     const my = ++seq.current
+    inFlight.current = true
+    again.current = false
     if (fresh) setState((s) => ({ ...s, data: undefined, error: undefined, loading: true }))
+    const settle = () => {
+      if (my !== seq.current) return // a newer question owns the flag now
+      inFlight.current = false
+      if (again.current) run()
+    }
     fnRef.current().then(
-      (data) => { if (my === seq.current) setState((s) => ({ ...s, data, error: undefined, loading: false, loadedAt: Date.now() })) },
-      (error: Error) => { if (my === seq.current) setState((s) => ({ ...s, error, loading: false })) },
+      (data) => { if (my === seq.current) setState((s) => ({ ...s, data, error: undefined, loading: false, loadedAt: Date.now() })); settle() },
+      (error: Error) => { if (my === seq.current) setState((s) => ({ ...s, error, loading: false })); settle() },
     )
   }, [])
 
