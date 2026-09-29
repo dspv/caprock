@@ -32,8 +32,8 @@ const maxCarry = 64
 func (t *modeTracker) feed(p []byte) {
 	data := p
 	if len(t.carry) > 0 {
-		data = append(t.carry, p...)
-		t.carry = nil
+		t.carry = append(t.carry, p...)
+		data, t.carry = t.carry, nil
 	}
 	for i := 0; i < len(data); i++ {
 		if data[i] != 0x1b {
