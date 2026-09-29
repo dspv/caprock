@@ -9,6 +9,10 @@ started) · **building** · **shipped** (in a release, with the version) ·
 
 | Id     | Date       | From  | Request                                                                         | Status   | Landed in         |
 | ------ | ---------- | ----- | ------------------------------------------------------------------------------- | -------- | ----------------- |
+| FB-036 | 2026-09-29 | Vova  | Some ended sessions can be continued and some cannot, with no reason given      | building | —                 |
+| FB-035 | 2026-09-29 | Vova  | Ended sessions all look alike; show a short description of each                 | building | —                 |
+| FB-034 | 2026-09-29 | Vova  | A paste is duplicated when short and not collapsed when long                    | building | —                 |
+| FB-033 | 2026-09-29 | Vova  | A session started from Caprock cannot reach GCP; plain `claude` can             | shipped  | next release      |
 | FB-032 | 2026-09-06 | Dima  | Put the session's real numbers in the Claude Code status line, as DeepSeek does | shipped  | next release      |
 | FB-031 | 2026-09-03 | Vova  | Token optimisation, with the tokens saved shown in the stats                    | declined | —                 |
 | FB-030 | 2026-09-03 | Vova  | Caprock is convenient but not exclusive — nothing here needs paying for         | open     | —                 |
@@ -43,6 +47,15 @@ started) · **building** · **shipped** (in a release, with the version) ·
 | FB-001 | 2026-08-24 | Alex  | Hooks never fired on Windows                                                    | shipped  | v0.27.3 + v0.27.4 |
 
 ## Detail
+
+### FB-033 to FB-036 — Paste, ended sessions, and GCP
+
+Four reports in one message; the diagnosis of each is in
+[the story](stories/2026-09-29-vova-paste-sessions-gcp.md). **FB-033 is
+shipped:** a spawned session and a verification command now start with the
+user's login-shell environment rather than the daemon's
+([02-architecture.md § Components](../.ai/02-architecture.md#components)).
+FB-034 to FB-036 are fixed in their own changes.
 
 ### FB-032 — The numbers DeepSeek puts in its status line
 

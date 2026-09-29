@@ -45,6 +45,7 @@ import (
 	"github.com/dspv/caprock/internal/rollup"
 	"github.com/dspv/caprock/internal/store"
 	"github.com/dspv/caprock/internal/update"
+	"github.com/dspv/caprock/internal/userenv"
 )
 
 // Options configure a daemon run.
@@ -292,6 +293,9 @@ func (d *Daemon) run(ctx context.Context) error {
 
 	// Owned-session manager (Phase 1).
 	d.mgr = agents.NewManager(d.store, d.opt.DataDir, "", d.log)
+	// Resolve the login-shell environment sessions are started with now, so
+	// the first one the user starts does not wait on their shell profile.
+	userenv.Warm(d.log)
 	d.mgr.OnExit = func(id string, code int) {
 		if s, err := store.GetSession(ctx, d.store.DB(), id); err == nil {
 			st, _ := store.GetStats(ctx, d.store.DB(), id)

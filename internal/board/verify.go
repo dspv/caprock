@@ -14,6 +14,7 @@ import (
 
 	"github.com/dspv/caprock/internal/hive"
 	"github.com/dspv/caprock/internal/store"
+	"github.com/dspv/caprock/internal/userenv"
 )
 
 // orchestratorAgentID is the hive id of the orchestrator (shared constant in the
@@ -261,7 +262,10 @@ func (b *Board) runCommand(ctx context.Context, command, cwd string) CommandRun 
 		return CommandRun{Command: command, ExitCode: -1, Output: "[" + err.Error() + "]"}
 	}
 	cmd.Dir = cwd
-	cmd.Env = append(os.Environ(), "CI=1")
+	// The user's login-shell environment, not the daemon's: under launchd the
+	// daemon's PATH has no go, npm or make, and every check would fail as
+	// "command not found" rather than on its merits.
+	cmd.Env = append(userenv.Environ(b.Log), "CI=1")
 	var buf bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &buf, &buf
 	err := cmd.Run()

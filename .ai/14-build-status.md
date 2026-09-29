@@ -71,6 +71,20 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-09-29 — Sessions start with the user's environment, not launchd's
+
+Vova's blocker: an agent in a Caprock session could not reach BigQuery, while
+`claude` started from his terminal could (FB-033). Not credentials — the
+environment. A session inherited the daemon's, and under launchd autostart
+that is `PATH=/usr/bin:/bin:/usr/sbin:/sbin` and nothing from the profile.
+Reproduced on the owner's machine: under that environment `claude` could not
+find `gcloud` or `bq`; with `internal/userenv` resolving the login shell it
+found both and read the active account. Resolving an interactive zsh with a
+framework measured 1.5–2.2s here, so it is warmed at daemon start and
+refreshed in the background rather than paid per spawn. Verification commands
+had the same fault (`go`, `npm` and `make` are not on launchd's PATH) and use
+the same environment. See [02-architecture.md § Components](02-architecture.md#components).
+
 ### 2026-09-11 (later) — DeepSeek Harness is the fifth agent on the same screen
 
 The owner runs DeepSeek Harness beside Claude Code, OpenCode and Codex, and
