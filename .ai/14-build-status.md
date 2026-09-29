@@ -71,6 +71,20 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-09-29 (later) — A paste goes in once, and collapses after a reconnect
+
+Vova: a short paste doubled "half the time", and a long one sometimes showed in
+full instead of collapsing (FB-034). Two faults. The paste keys read the
+clipboard and pasted, and returning `false` from xterm's key handler does not
+cancel the browser's own paste, which xterm also handles — driven in real
+Chrome over CDP, master sent `ESC[200~hello short ESC[201~` twice for one
+Cmd+V, this change once. And the terminal modes: Claude Code sends
+`ESC[?2004h` once at startup (182 KB of redraws measured without a second
+one), so a terminal that attached after 256 KB of output had bracketed paste
+off. After this change the 256 KB snapshot's only `?2004h` is the restored
+prefix. Keyboard image paste never reached our handler (xterm stops the event)
+and now listens in the capture phase. See [04-ui.md § The terminal](04-ui.md#the-terminal).
+
 ### 2026-09-29 — Sessions start with the user's environment, not launchd's
 
 Vova's blocker: an agent in a Caprock session could not reach BigQuery, while

@@ -468,14 +468,39 @@ describe('Shift+Enter', () => {
     expect(clipboard.written).toEqual([])
   })
 
-  it('pastes through the terminal, not straight to the socket', async () => {
-    // Bracketed paste has to be applied, so a multi-line paste arrives as one
-    // paste rather than as N submitted lines.
+  it('leaves paste keys to the browser, so a paste is sent exactly once', async () => {
+    // The browser's own paste reaches xterm's textarea, which brackets it.
+    // Pasting from a clipboard read as well sent every Cmd+V twice (FB-034):
+    // short text doubled, long text arrived as two pastes and did not
+    // collapse. false = xterm must not send ^V; nothing else may happen.
+    clipboard.text = 'first line\nsecond line'
     setPlatform('Linux x86_64')
     const h = mount()
-    clipboard.text = 'first line\nsecond line'
     expect(h(key({ key: 'v', ctrlKey: true, shiftKey: true }))).toBe(false)
-    await vi.waitFor(() => expect(pasted).toEqual(['first line\nsecond line']))
+    setPlatform('MacIntel')
+    const m = mount()
+    expect(m(key({ key: 'v', metaKey: true }))).toBe(false)
+    await new Promise((r) => setTimeout(r, 20))
+    expect(pasted).toEqual([])
+  })
+
+  it('catches a keyboard image paste that xterm stops from bubbling', async () => {
+    // A real Cmd+V lands on xterm's textarea, whose handler stops
+    // propagation; a bubbling listener on the host never saw it.
+    pasteCalls.length = 0
+    mount()
+    const host = [...document.querySelectorAll('div')].find((d) => d.className.includes('bg-bg'))
+    const textarea = document.createElement('textarea')
+    textarea.addEventListener('paste', (e) => e.stopPropagation())
+    host?.appendChild(textarea)
+    const file = new File([new Uint8Array([1])], 'shot.png', { type: 'image/png' })
+    Object.defineProperty(file, 'arrayBuffer', { value: async () => new Uint8Array([1]).buffer })
+    const ev = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent
+    Object.defineProperty(ev, 'clipboardData', {
+      value: { items: [{ kind: 'file', getAsFile: () => file }] },
+    })
+    textarea.dispatchEvent(ev)
+    await vi.waitFor(() => expect(pasteCalls.length).toBe(1))
   })
 
   /**
