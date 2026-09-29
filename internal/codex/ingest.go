@@ -411,17 +411,45 @@ func (in *Ingester) repriceSession(ctx context.Context, s *Session) error {
 	if len(todo) == 0 {
 		return nil
 	}
+	loc := in.rec.Location
+	if loc == nil {
+		loc = time.Local
+	}
 	for _, r := range todo {
 		// Priced at the turn's own timestamp, like every other turn: a price
 		// that has since changed was the real one for the work that ran under
 		// it.
-		usd, ok := in.rec.Table.PriceAt(s.Model, r.tokens, time.UnixMilli(r.ts))
+		at := time.UnixMilli(r.ts)
+		usd, ok := in.rec.Table.PriceAt(s.Model, r.tokens, at)
 		if !ok {
 			continue
 		}
-		if _, err := db.ExecContext(ctx,
-			`UPDATE events SET model = ?, cost_usd = ? WHERE id = ? AND COALESCE(model,'') = ''`,
-			s.Model, usd, r.id); err != nil {
+		// The totals move with the event, in one transaction. Updating the
+		// event alone left the session total without the cost and the day's
+		// tokens filed under a model with no name — every screen reading the
+		// rollups disagreeing with the events they were built from.
+		err := in.rec.Store.WithTx(ctx, func(q store.Querier) error {
+			res, err := q.ExecContext(ctx,
+				`UPDATE events SET model = ?, cost_usd = ? WHERE id = ? AND COALESCE(model,'') = ''`,
+				s.Model, usd, r.id)
+			if err != nil {
+				return err
+			}
+			if n, _ := res.RowsAffected(); n == 0 {
+				return nil
+			}
+			if _, err := store.AddStats(ctx, q, store.Stats{SessionID: s.ID, CostUSD: usd}); err != nil {
+				return err
+			}
+			day := at.In(loc).Format("2006-01-02")
+			project := store.ProjectFromCwd(s.Cwd)
+			tokens := r.tokens.Total()
+			if err := store.AddDaily(ctx, q, day, project, "", -tokens, 0, false); err != nil {
+				return err
+			}
+			return store.AddDaily(ctx, q, day, project, s.Model, tokens, usd, false)
+		})
+		if err != nil {
 			return err
 		}
 	}

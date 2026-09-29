@@ -84,6 +84,10 @@ index ([19-codex.md § Names](19-codex.md#names)). The same copy showed 5,788
 Codex turns (`gpt-6-sol`, `gpt-6-luna`) stored unpriced — $96.69 outside every
 total; the rows were added from OpenAI's list prices and such turns are now
 priced on start, with session and daily totals moving in the same transaction.
+And `daily_stats` read $3.68 and 7.9M tokens above the events on five Codex
+days: migrations 0022/0023 re-imported Codex without taking the first import
+out of the daily table. Rebuilt once from events; afterwards events,
+`session_stats` and `daily_stats` agree exactly on that copy.
 Continue is decided on the server from the disk: on the same copy, 43 Claude
 Code sessions offered a resume that works (12 of them Caprock's own, which
 used to hide it), 24 said their transcript was deleted and 21 that their

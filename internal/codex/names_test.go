@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dspv/caprock/internal/event"
+	"github.com/dspv/caprock/internal/rollup"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -66,5 +68,40 @@ func TestIngestNamesSessionsFromTheThreadIndex(t *testing.T) {
 func TestStateDBIsEmptyWithoutCodex(t *testing.T) {
 	if got := StateDB(filepath.Join(t.TempDir(), "sessions")); got != "" {
 		t.Fatalf("StateDB = %q", got)
+	}
+}
+
+// A turn stored before its model could be read is repriced once it can be —
+// and the session and daily totals move with it, rather than the event alone.
+func TestRepriceMovesTheTotalsWithTheEvent(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	at := time.Date(2026, 9, 20, 10, 0, 0, 0, time.Local)
+	ev := event.Event{Ts: at, SessionID: "cx", Source: event.SourceCodex, Kind: event.KindTurnAssistant, Key: "k1",
+		Tokens: &event.TokenDelta{In: 1_000_000, Out: 1_000_000}}
+	if _, err := h.in.rec.Record(ctx, &ev, rollup.SessionInfo{Cwd: "/Users/dev/proj", Agent: Agent}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.in.repriceSession(ctx, &Session{ID: "cx", Model: "gpt-5-codex", Cwd: "/Users/dev/proj"}); err != nil {
+		t.Fatal(err)
+	}
+	var evCost, sessCost, dayCost float64
+	var unnamed, named int64
+	q := func(query string, dst ...any) {
+		t.Helper()
+		if err := h.out.QueryRow(query).Scan(dst...); err != nil {
+			t.Fatalf("%s: %v", query, err)
+		}
+	}
+	q(`SELECT cost_usd FROM events WHERE session_id = 'cx'`, &evCost)
+	q(`SELECT cost_usd FROM session_stats WHERE session_id = 'cx'`, &sessCost)
+	q(`SELECT COALESCE(SUM(cost_usd),0), COALESCE(SUM(tokens_total),0) FROM daily_stats WHERE model = 'gpt-5-codex'`, &dayCost, &named)
+	q(`SELECT COALESCE(SUM(tokens_total),0) FROM daily_stats WHERE model = ''`, &unnamed)
+	// gpt-5-codex: $1.25 in + $10 out per 1M.
+	if evCost != 11.25 || sessCost != evCost || dayCost != evCost {
+		t.Fatalf("event %v, session %v, day %v — want all 11.25", evCost, sessCost, dayCost)
+	}
+	if named != 2_000_000 || unnamed != 0 {
+		t.Fatalf("day tokens: named %d, unnamed %d", named, unnamed)
 	}
 }

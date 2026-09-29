@@ -45,6 +45,10 @@ const (
 	// it would skip exactly the machines the widening is for. Absent ⇒ start at
 	// 0; the sentinel below ⇒ finished.
 	MetaToolLinkCursor = "tool_link_cursor"
+	// MetaCodexDailyRebuilt marks that daily_stats' Codex rows were rebuilt
+	// from events once — migrations 0022 and 0023 re-imported every Codex
+	// event without taking the first import back out of daily_stats.
+	MetaCodexDailyRebuilt = "codex_daily_rebuilt"
 	// MetaReportWeek is the ISO week of the last weekly report that was sent,
 	// as "2026-W36". It lives here rather than in memory because an in-memory
 	// marker sends a second copy of the message after every restart — the bug

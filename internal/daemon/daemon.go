@@ -296,6 +296,19 @@ func (d *Daemon) run(ctx context.Context) error {
 	// priced now that it may have one. Background, best-effort, idempotent:
 	// what is still missing stays unpriced and is counted as such.
 	go func() {
+		// Once: daily_stats' Codex rows carried the pre-0022/0023 imports as
+		// well as the re-imports. Days retention may have pruned are left as
+		// they are — rebuilding them from missing events would erase history.
+		var keepFrom time.Time
+		if days := d.opt.Config.RetentionDays; days > 0 {
+			// The first whole local day after the prune cutoff: the day the
+			// cutoff falls in has lost part of its events.
+			c := time.Now().AddDate(0, 0, -days)
+			keepFrom = time.Date(c.Year(), c.Month(), c.Day()+1, 0, 0, 0, 0, time.Local)
+		}
+		if _, err := d.rec.RebuildCodexDaily(ctx, keepFrom); err != nil && ctx.Err() == nil {
+			d.log.Warn("could not rebuild Codex daily totals", "component", "rollup", "err", err)
+		}
 		if _, err := d.rec.PriceUnpriced(ctx); err != nil && ctx.Err() == nil {
 			d.log.Warn("could not price previously unpriced turns", "component", "rollup", "err", err)
 		}

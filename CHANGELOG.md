@@ -46,6 +46,12 @@ Phase 3 (Delight) has no plan by design.
 - Continuing a session whose transcript is gone is refused with the reason,
   instead of opening a terminal that printed "No conversation found" and
   exited.
+- Daily totals no longer count some Codex turns twice. Migrations 0022 and
+  0023 re-imported every Codex event without taking the first import out of
+  the daily table; the Codex rows are rebuilt from events once on start
+  (on the owner's machine, five days $3.68 and 7.9M tokens too high). A Codex
+  turn repriced after its model became readable now moves the session and
+  daily totals with it.
 - Pasting an image with the keyboard uploads it and types its path; only
   drag-and-drop worked before, because xterm stopped the paste event from
   reaching our handler.
