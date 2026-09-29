@@ -2,11 +2,11 @@
 
 The running log: what is done, what is not, what is next. **Update this file and § Current State in [00-index.md](00-index.md) whenever the state of the world changes.** Dates in absolute form, never "last week". What "done" means per task is defined in [09-execution-plan.md](09-execution-plan.md).
 
-**Last updated: 2026-09-12** · Phase **2 — Orchestrate, complete** · every phase is tagged and published (`brew install dspv/tap/caprock`, or Scoop on Windows via `dspv/scoop-bucket`). The live unattended orchestrator run — the Phase 2 tag gate — is done: a real `claude` orchestrator assigned a task, spawned a worker, and drove it to green verification with nobody watching.
+**Last updated: 2026-09-30** · Phase **2 — Orchestrate, complete** · every phase is tagged and published (`brew install dspv/tap/caprock`, or Scoop on Windows via `dspv/scoop-bucket`). The live unattended orchestrator run — the Phase 2 tag gate — is done: a real `claude` orchestrator assigned a task, spawned a worker, and drove it to green verification with nobody watching.
 
 **What shipped in which release is answered by `CHANGELOG.md`, `git describe` and the releases page, and is deliberately not restated here.** This paragraph used to carry a hand-written list of them; it stopped at v0.10.0 and stayed there for eighty-four releases, which is [rule 9](../CLAUDE.md) demonstrating itself. What belongs here is the state of the world, not its version history.
 
-Since Orchestrate closed, the product has grown one observation surface across four agents (Claude Code, OpenCode, Gemini CLI and Codex), paid plans on an offline licence key ([ADR-022](08-decisions.md)), a daily spend cap, and the ability to pick up a session Caprock did not start. Next: the consolidated open-work list in [09-execution-plan.md § Open work](09-execution-plan.md#open-work). The orchestration graph shipped but did not earn a nav slot; see [04-ui.md § Graph](04-ui.md).
+Since Orchestrate closed, the product has grown one observation surface across five agents (Claude Code, OpenCode, Gemini CLI, Codex and DeepSeek Harness), paid plans on an offline licence key ([ADR-022](08-decisions.md)), a daily spend cap, and the ability to pick up a session Caprock did not start, or continue one that has ended. Next: the consolidated open-work list in [09-execution-plan.md § Open work](09-execution-plan.md#open-work). The orchestration graph shipped but did not earn a nav slot; see [04-ui.md § Graph](04-ui.md).
 
 ## Progress by track
 
@@ -77,10 +77,10 @@ Vova could not tell ended sessions apart, and could not tell why some continued
 and some did not (FB-035, FB-036). Cards now carry a description — Claude
 Code's `ai-title` (stored in `sessions.title`, migration 0025, backfilled once
 from transcripts on disk: 22 sessions on the owner's machine), OpenCode's
-title, else the first substantive prompt. On a copy of the owner's database,
-of 198 ended sessions 109 showed a title and 51 a prompt; the Claude Code
-sessions left blank were empty probes. Codex names come from its own thread
-index ([19-codex.md § Names](19-codex.md#names)). The same copy showed 5,788
+title, Codex's thread name ([19-codex.md § Names](19-codex.md#names)), else
+the first substantive prompt. On a copy of the owner's database, of 298 ended
+sessions 176 showed a title and 77 a prompt: Claude Code 85 of 116 (the blank
+ones are empty probes), Codex 99 of 110, OpenCode 67 of 70. The same copy showed 5,788
 Codex turns (`gpt-6-sol`, `gpt-6-luna`) stored unpriced — $96.69 outside every
 total; the rows were added from OpenAI's list prices and such turns are now
 priced on start, with session and daily totals moving in the same transaction.
@@ -88,10 +88,10 @@ And `daily_stats` read $3.68 and 7.9M tokens above the events on five Codex
 days: migrations 0022/0023 re-imported Codex without taking the first import
 out of the daily table. Rebuilt once from events; afterwards events,
 `session_stats` and `daily_stats` agree exactly on that copy.
-Continue is decided on the server from the disk: on the same copy, 43 Claude
-Code sessions offered a resume that works (12 of them Caprock's own, which
-used to hide it), 24 said their transcript was deleted and 21 that their
-folder was gone — each of which had offered a button before. Ended cards now
+Continue is decided on the server from the disk: of the 116 ended Claude Code
+sessions on the same copy, 43 offer a resume that works (12 of them Caprock's
+own, which used to hide it), 52 say their transcript was deleted and 21 that
+their folder is gone — 65 of those 73 had offered a button that failed. Ended cards now
 say when they ended (they read "waiting at the prompt"), carry continue
 themselves, and the ended list is searchable on the server — every prompt of a
 session, not only its card — and pages past the 200 it used to stop at. See

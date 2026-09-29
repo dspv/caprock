@@ -41,6 +41,7 @@ not block him; the fourth he called the blocker.
   you" on nearly every one. Nothing says what the session was about.
 - **Which ended sessions continue (FB-036).** The button was gated on the agent
   and on who started the session, and on nothing that decides whether a resume
-  works. Of 297 ended sessions on the owner's machine it told the truth for
-  about 30: about 65 offered a resume whose transcript Claude Code had already
-  deleted, and 12 that could be resumed offered nothing.
+  works. Of 116 ended Claude Code sessions on the owner's machine it told the
+  truth for 39: 65 offered a resume that failed (44 transcripts Claude Code had
+  already deleted, 21 folders gone), and 12 that could be resumed offered
+  nothing.

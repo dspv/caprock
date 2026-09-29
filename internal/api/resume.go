@@ -15,10 +15,10 @@ import (
 //
 // The button used to be gated on who started the session and which agent it
 // was, and on nothing that decides whether a resume works. On the owner's
-// machine it told the truth for about 30 of 297 ended sessions: about 65
-// offered a resume whose transcript Claude Code had already deleted — a
-// terminal that opened and died — and a dozen that could be resumed offered
-// nothing, because Caprock had started them.
+// machine it told the truth for 39 of 116 ended Claude Code sessions: 65
+// offered a resume that failed — 44 transcripts Claude Code had already
+// deleted, 21 folders gone, each a terminal that opened and died — and 12 that
+// could be resumed offered nothing, because Caprock had started them.
 type ResumeInfo struct {
 	OK bool `json:"ok"`
 	// Reason is shown in place of the button when OK is false.

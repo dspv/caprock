@@ -71,7 +71,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
           * decides, because what decides it is on disk: whether Claude Code
           * still has the transcript, whether the folder is still there. It
           * used to be decided here from who started the session and which
-          * agent it was, which was right for about one ended session in ten
+          * agent it was, which was right for 39 of 116 ended Claude Code sessions
           * (FB-036). Caprock never types into a process it did not start
           * (rule 7); a resume starts a second process on the conversation. */}
         {s.resume && <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={s.status !== 'ended'} resume={s.resume} />}

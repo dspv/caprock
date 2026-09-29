@@ -15,6 +15,7 @@ Phase 3 (Delight) has no plan by design.
   or OpenCode's own title for it (the name their resume pickers show), or else
   its first prompt that says something. Ended sessions can finally be told
   apart (FB-035).
+  OpenCode sessions imported before this release get their titles too.
 - Pricing for GPT-6 Sol and GPT-6 Luna, from OpenAI's published list prices
   (read 2026-09-29). Turns already stored without a price because their model
   was missing from the table are priced on the next start, at the rate in
@@ -34,8 +35,11 @@ Phase 3 (Delight) has no plan by design.
   `bq`, Homebrew tools and everything the shell profile exports. Sessions and
   verification commands used to inherit the daemon's environment, which under
   launchd autostart is a bare `PATH=/usr/bin:/bin:/usr/sbin:/sbin`; they now
-  start with the user's login-shell environment, resolved once in the
-  background and refreshed every minute (FB-033).
+  start with the user's login-shell environment, resolved in the background at
+  start and refreshed in the background once it is more than a minute old
+  (FB-033). Caprock runs your `$SHELL -l -i` to read that environment; the
+  shell sees `CAPROCK_RESOLVING_ENVIRONMENT=1`, so a profile can skip
+  interactive-only work. Windows is unchanged.
 - A session started from Caprock no longer inherits Claude Code's session
   markers when the daemon itself was started from inside a Claude Code session.
 - Pasting into the terminal sends the text once. Cmd+V (Ctrl+Shift+V off macOS)

@@ -80,7 +80,10 @@ Codex reports tokens but **never a cost**. That makes it unlike OpenCode, whose
 own figure Caprock carries through unchanged, and like Gemini, which our own
 table prices. So `pricing/pricing.json` grew OpenAI rows, read from
 `developers.openai.com` on 2026-09-06 and dated there: `gpt-5-codex`,
-`gpt-5.3-codex`, and the `gpt-5.6` family (sol, terra, luna). OpenAI does not
+`gpt-5.3-codex`, and the `gpt-5.6` family (sol, terra, luna); `gpt-6-sol` and
+`gpt-6-luna` were added from the same source on 2026-09-29, and the Codex turns
+stored unpriced before then are priced on start (`Recorder.PriceUnpriced`, see
+[03-contracts.md § Pricing table](03-contracts.md#pricing-table)). OpenAI does not
 bill for cache writes, so those columns are `0` — meaning "not charged", the
 same as the Gemini rows.
 
@@ -190,7 +193,7 @@ transcript cannot supply either — of 60 rollouts checked, every user message
 it opens with is injected AGENTS.md, environment or auto-review text. The index
 is opened read-only, only the newest schema generation is read, and it is
 re-read only when it (or its WAL) changes. On the owner's machine this named
-88 of 108 ended Codex sessions and quoted a first message for 9 more.
+88 of 110 ended Codex sessions and quoted a first message for 11 more.
 
 ## Not built
 
@@ -210,6 +213,8 @@ re-read only when it (or its WAL) changes. On the owner's machine this named
 
 - `internal/codex/codex.go` — the transcript parser, `List`, `Dir`.
 - `internal/codex/ingest.go` — the poller that writes into the store.
+- `internal/codex/names.go` — thread names and first messages from
+  `~/.codex/state_<N>.sqlite` (§ Names).
 - `internal/codex/live_check_test.go` — a smoke check against whatever Codex is
   installed on the machine, skipped where there is none. The fixture was written
   from what real transcripts contain, and this is what keeps that true.
