@@ -380,3 +380,27 @@ func TestSessionTitleDropsThePlaceholder(t *testing.T) {
 		}
 	}
 }
+
+// A session imported before titles were kept stores no new event on the next
+// pass, so the title cannot ride in on one; it is written on its own.
+func TestIngestNamesSessionsAlreadyImported(t *testing.T) {
+	h := newHarness(t)
+	h.f.typical()
+	h.poll()
+	var title string
+	if err := h.out.QueryRow(`SELECT title FROM sessions WHERE session_id = 'ses_a'`).Scan(&title); err != nil || title != "add auth" {
+		t.Fatalf("title = %q, err %v", title, err)
+	}
+	// As a database from before migration 0025 looks after it: rows present,
+	// titles empty, every event already stored.
+	if _, err := h.out.Exec(`UPDATE sessions SET title = ''`); err != nil {
+		t.Fatal(err)
+	}
+	h.in.mu.Lock()
+	h.in.seen = map[string]int64{}
+	h.in.mu.Unlock()
+	h.poll()
+	if err := h.out.QueryRow(`SELECT title FROM sessions WHERE session_id = 'ses_a'`).Scan(&title); err != nil || title != "add auth" {
+		t.Fatalf("title after re-read = %q, err %v", title, err)
+	}
+}

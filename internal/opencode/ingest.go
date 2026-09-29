@@ -12,6 +12,7 @@ import (
 
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/rollup"
+	"github.com/dspv/caprock/internal/store"
 )
 
 // Ingester copies OpenCode's sessions into Caprock's store.
@@ -190,6 +191,15 @@ func (in *Ingester) session(ctx context.Context, s Session) error {
 			if err := in.tool(ctx, s, m, c); err != nil {
 				return err
 			}
+		}
+	}
+	// The title reaches the row through SessionInfo only when an event is
+	// stored, and a session already imported stores none — so a session read
+	// before titles were kept, or renamed since, would never get its name.
+	// Written directly, after the events, so the row exists.
+	if in.rec != nil && in.rec.Store != nil {
+		if err := store.SetTitle(ctx, in.rec.Store.DB(), s.ID, sessionTitle(s.Title)); err != nil {
+			return err
 		}
 	}
 	return nil
