@@ -255,8 +255,17 @@ GET    /v1/history?range=…           lifetime totals + tool distribution + mod
 printed "No conversation found" and exited in a fresh terminal. An id the
 store has never seen is let through.
 
-**`SessionDetail.resume`** — `{ok, reason?, command?}`, absent for a live
-session Caprock started (that one is typed into). Decided by what is on disk,
+**`GET /v1/sessions?q=&limit=`** — `q` searches project, cwd, branch,
+`title`, `prompt`, the id, and **every** `turn.user` prompt of a session (not
+only the first); SQLite's `LIKE` folds ASCII only, so the term is also tried
+lowercased and with its first letter capitalised, which covers Cyrillic as it
+is actually typed. `limit` defaults to 200 and is capped at 2000;
+`X-Total-Count` counts what matches, so the Now screen can offer "show N more"
+instead of leaving everything past the first page unreachable.
+
+**`resume`** — `{ok, reason?, command?}`. On the list it is filled for ended
+sessions only, so a card can offer continue; on `GET /v1/sessions/{id}` for any
+session except a live one Caprock started (that one is typed into). Decided by what is on disk,
 not by who started the session (FB-036): the agent (Claude Code only; Codex and
 OpenCode get their own `command` — `codex resume <id>`, `opencode --session
 <id>`), the cwd still existing, and the main transcript

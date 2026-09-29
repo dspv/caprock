@@ -91,7 +91,10 @@ out of the daily table. Rebuilt once from events; afterwards events,
 Continue is decided on the server from the disk: on the same copy, 43 Claude
 Code sessions offered a resume that works (12 of them Caprock's own, which
 used to hide it), 24 said their transcript was deleted and 21 that their
-folder was gone — each of which had offered a button before. See
+folder was gone — each of which had offered a button before. Ended cards now
+say when they ended (they read "waiting at the prompt"), carry continue
+themselves, and the ended list is searchable on the server — every prompt of a
+session, not only its card — and pages past the 200 it used to stop at. See
 [04-ui.md](04-ui.md) and [03-contracts.md](03-contracts.md).
 
 ### 2026-09-29 (later) — A paste goes in once, and collapses after a reconnect

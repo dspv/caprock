@@ -413,6 +413,11 @@ type SessionSummary struct {
 	// name.
 	Description       string `json:"description,omitempty"`
 	DescriptionSource string `json:"description_source,omitempty"`
+	// Resume is whether this session can be carried on from here. On the list
+	// it is filled for ended sessions only, so a card can offer continue
+	// without a trip to the detail screen; the detail fills it for any session
+	// that is not Caprock's own live one.
+	Resume *ResumeInfo `json:"resume,omitempty"`
 }
 
 // ContextFill is the "context fill %" badge input: last turn's prompt size vs the model window.
@@ -433,9 +438,6 @@ type SessionDetail struct {
 	SessionSummary
 	Files  []string      `json:"files"`
 	Events []event.Event `json:"events"`
-	// Resume is whether this session can be carried on from here; nil for a
-	// live session Caprock started, which is typed into instead.
-	Resume *ResumeInfo `json:"resume,omitempty"`
 }
 
 func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSummary, []event.Event, error) {
@@ -459,6 +461,9 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 	}
 	sum := SessionSummary{Session: sess, Stats: st, Activity: act, Savings: cost.ComputeSavings(st.TokensIn, st.CacheRead, st.CacheWrite), Loop: la}
 	sum.Description, sum.DescriptionSource = describe(ctx, q, sess)
+	if sess.Status == store.StatusEnded {
+		sum.Resume = s.resumeInfo(sess)
+	}
 	// Context fill: last assistant turn's input+cache tokens vs the model's window.
 	// When it cannot be computed, say which of the two reasons applies. The
 	// dashboard used to caption every empty Context "unknown model", including
@@ -511,7 +516,8 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	active := r.URL.Query().Get("active") == "true"
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	sessions, err := store.ListSessions(ctx, s.d.Store.DB(), active, limit)
+	search := r.URL.Query().Get("q")
+	sessions, err := store.ListSessionsMatching(ctx, s.d.Store.DB(), active, search, limit)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -529,7 +535,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	// 200, and a screen that labels a truncated array "Ended · 200" states a
 	// count of what it fetched as though it were a count of what there is —
 	// while the lifetime strip on the same screen says otherwise.
-	if total, err := store.CountSessions(ctx, s.d.Store.DB(), active); err == nil {
+	if total, err := store.CountSessionsMatching(ctx, s.d.Store.DB(), active, search); err == nil {
 		w.Header().Set("X-Total-Count", strconv.Itoa(total))
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -559,7 +565,8 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	if last == nil {
 		last = []event.Event{}
 	}
-	writeJSON(w, http.StatusOK, SessionDetail{SessionSummary: sum, Files: files, Events: last, Resume: s.resumeInfo(sess)})
+	sum.Resume = s.resumeInfo(sess)
+	writeJSON(w, http.StatusOK, SessionDetail{SessionSummary: sum, Files: files, Events: last})
 }
 
 // handleSessionNotes returns what Claude said in a session, in prose, newest

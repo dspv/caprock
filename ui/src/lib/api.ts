@@ -94,6 +94,8 @@ export interface SessionSummary extends Session {
    *  first prompt that says something. */
   description?: string
   description_source?: 'title' | 'prompt'
+  /** Whether it can be carried on from here. On the list: ended sessions only. */
+  resume?: ResumeInfo
 }
 
 /** Whether a session can be carried on from here, and if not, why. */
@@ -124,8 +126,6 @@ export interface Event {
 export interface SessionDetail extends SessionSummary {
   files: string[]
   events: Event[]
-  /** Absent for a live session Caprock started — that one is typed into. */
-  resume?: ResumeInfo
 }
 
 /** Whether asking Gemini is possible here, and why not when it is not.
@@ -588,8 +588,13 @@ async function get<T>(path: string): Promise<T> {
  * this one call does its own fetch rather than teaching every call to carry a
  * total it does not have.
  */
-async function sessionsWithTotal(activeOnly: boolean): Promise<{ items: SessionSummary[]; total: number }> {
-  const res = await fetch(`/v1/sessions${activeOnly ? '?active=true' : ''}`, {
+async function sessionsWithTotal(activeOnly: boolean, search = '', limit = 0): Promise<{ items: SessionSummary[]; total: number }> {
+  const qs = new URLSearchParams()
+  if (activeOnly) qs.set('active', 'true')
+  if (search.trim()) qs.set('q', search.trim())
+  if (limit > 0) qs.set('limit', String(limit))
+  const query = qs.toString()
+  const res = await fetch(`/v1/sessions${query ? `?${query}` : ''}`, {
     headers: withDevice({ Accept: 'application/json' }),
   })
   if (!res.ok) {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -606,5 +607,59 @@ func TestSessionTitleIsNeverErasedByALaterEvent(t *testing.T) {
 	}
 	if _, err := GetSession(ctx, db, "nobody"); err == nil {
 		t.Fatal("SetTitle created a session")
+	}
+}
+
+// FB-035: finding one session among hundreds. A search reaches every prompt a
+// session was given, not only its first, and a Cyrillic word matches however
+// its first letter was typed — SQLite folds case for ASCII alone.
+func TestListSessionsMatchingSearchesPromptsAndTitles(t *testing.T) {
+	ctx := context.Background()
+	st, err := Open(ctx, ":memory:", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	db := st.DB()
+	for _, id := range []string{"a", "b", "c"} {
+		if err := UpsertSession(ctx, db, id, SessionPatch{Cwd: "/r/" + id, Status: StatusEnded}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := SetTitle(ctx, db, "a", "Проверь даты статей"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO events(ts, session_id, source, kind, payload, key) VALUES
+		(1, 'b', 'hook', 'turn.user', '{"prompt":"сначала одно"}', 'k1'),
+		(2, 'b', 'hook', 'turn.user', '{"prompt":"потом глянь таблицы в BigQuery"}', 'k2')`); err != nil {
+		t.Fatal(err)
+	}
+	ids := func(search string) []string {
+		t.Helper()
+		got, err := ListSessionsMatching(ctx, db, false, search, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, s := range got {
+			out = append(out, s.SessionID)
+		}
+		sort.Strings(out)
+		n, err := CountSessionsMatching(ctx, db, false, search)
+		if err != nil || n != len(out) {
+			t.Fatalf("count %d for %d listed, err %v", n, len(out), err)
+		}
+		return out
+	}
+	for search, want := range map[string]string{
+		"проверь":  "a", // title typed with a capital
+		"bigquery": "b", // ASCII case folds, and a later prompt counts
+		"Глянь":    "b",
+		"50%":      "", // a LIKE wildcard is a literal
+		"":         "a,b,c",
+	} {
+		if got := strings.Join(ids(search), ","); got != want {
+			t.Errorf("search %q = %q, want %q", search, got, want)
+		}
 	}
 }

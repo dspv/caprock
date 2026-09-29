@@ -2,7 +2,8 @@ import { api, errText, type SessionSummary } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { navigate } from '@/lib/router'
 import { live, useLive } from '@/lib/live'
-import { fmtAgo, fmtPct, fmtTokens, fmtUSD, shortId } from '@/lib/format'
+import { fmtAgo, fmtPct, fmtTokens, fmtUSD, fmtWhen, shortId } from '@/lib/format'
+import { ContinueSession } from '@/components/ContinueSession'
 import { Badge, Empty, Panel, Skeleton, Stat } from '@/components/ui'
 import { ProjectsPanel, AGENTS, agentName, type AgentFilter } from '@/components/Projects'
 import { ActivityFeed } from '@/components/ActivityFeed'
@@ -21,7 +22,7 @@ import { LastWord } from '@/components/LastWord'
 import { usePlan } from '@/components/PlanPicker'
 import { costBasis, costBasisLong, costLabel } from '@/components/CostBasis'
 import { href } from '@/lib/router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNow } from '@/lib/useNow'
 
 /** How recently a session must have spoken to belong on the Now screen.
@@ -49,6 +50,8 @@ export function recentEnough(s: { last_event_at?: number | null }, now: number):
   return now - s.last_event_at < NOW_WINDOW_MS
 }
 
+const PAGE = 200
+
 export function NowScreen() {
   const [showEnded, setShowEnded] = useState(false)
   // Which agent this whole screen is about. It reaches every panel, so the
@@ -57,7 +60,22 @@ export function NowScreen() {
   // quoting the wrong number.
   const [agent, setAgent] = useState<AgentFilter>('all')
   const [spawning, setSpawning] = useState(false)
-  const sessions = useApi(() => api.sessionsWithTotal(!showEnded), [showEnded], { intervalMs: 5000 })
+  // Finding one ended session among hundreds (FB-035). The search goes to the
+  // server, which also reads every prompt typed in a session — not only what
+  // is on its card — and the list grows in pages rather than stopping at the
+  // first 200 with the rest unreachable.
+  const [search, setSearch] = useState('')
+  const [query, setQuery] = useState('')
+  const [pageSize, setPageSize] = useState(PAGE)
+  useEffect(() => {
+    const t = window.setTimeout(() => { setQuery(search.trim()); setPageSize(PAGE) }, 250)
+    return () => window.clearTimeout(t)
+  }, [search])
+  const sessions = useApi(
+    () => api.sessionsWithTotal(!showEnded, showEnded ? query : '', showEnded ? pageSize : 0),
+    [showEnded, query, pageSize],
+    { intervalMs: 5000 },
+  )
   const status = useApi(() => api.status(), [], { live: false, intervalMs: 30000 })
   const summary = useApi(() => api.summary('today', agent), [agent], { intervalMs: 5000 })
   // All-time totals, for the one line that mentions the paid version. Slow
@@ -348,6 +366,21 @@ export function NowScreen() {
           <input type="checkbox" className="accent-[var(--color-accent)]" checked={showEnded} onChange={(e) => setShowEnded(e.target.checked)} />
           show ended sessions
         </label>
+        {showEnded && (
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="find a session: what it was about, a prompt, a project…"
+            className="w-[min(28rem,100%)] bg-panel border border-border rounded-sm px-2 py-0.5 text-[12px] text-fg placeholder:text-fg-faint"
+          />
+        )}
+        {showEnded && query && <span className="num">{sessionTotal} matching</span>}
+        {showEnded && everySession.length < sessionTotal && (
+          <button className="link text-[11px]" onClick={() => setPageSize((n) => n + PAGE)}>
+            show {Math.min(PAGE, sessionTotal - everySession.length)} more
+          </button>
+        )}
         {sessions.loadedAt > 0 && <span className="num ml-auto">refreshed {fmtAgo(sessions.loadedAt, now)}</span>}
       </div>
       {spawning && (
@@ -533,10 +566,25 @@ export function SessionCard({ s, now }: { s: SessionSummary; now: number }) {
           {s.description_source === 'title' ? s.description : `“${s.description}”`}
         </div>
       )}
-      <div className="px-3 pb-2 text-[13px] truncate" title={s.activity.phrase}>
-        <span className={s.activity.health === 'working' ? 'text-fg' : 'text-fg-muted'}>{s.activity.phrase}</span>
-        <span className="text-fg-faint num text-[11px] ml-2">{fmtAgo(s.activity.at || s.last_event_at, now)}</span>
-      </div>
+      {s.status === 'ended' ? (
+        // An ended session is not "waiting at the prompt", whatever its last
+        // narrated state was — that line read as live on a card for a session
+        // that stopped weeks ago. When it ended, and whether it can go on.
+        <div className="px-3 pb-2 text-[13px] flex items-center gap-2 min-w-0" title={s.activity.phrase}>
+          <span className="text-fg-muted shrink-0">ended</span>
+          <span className="text-fg-faint num text-[11px] shrink-0">{fmtWhen(s.last_event_at, now)} · {fmtAgo(s.last_event_at, now)}</span>
+          {s.resume && (
+            <span className="ml-auto min-w-0" onClick={(e) => { e.preventDefault(); e.stopPropagation() }}>
+              <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={false} resume={s.resume} compact />
+            </span>
+          )}
+        </div>
+      ) : (
+        <div className="px-3 pb-2 text-[13px] truncate" title={s.activity.phrase}>
+          <span className={s.activity.health === 'working' ? 'text-fg' : 'text-fg-muted'}>{s.activity.phrase}</span>
+          <span className="text-fg-faint num text-[11px] ml-2">{fmtAgo(s.activity.at || s.last_event_at, now)}</span>
+        </div>
+      )}
       {s.activity.plan && s.activity.plan.total > 0 && (
         <div className="px-3 pb-2 flex items-center gap-2 text-[11px] text-fg-muted">
           <div className="h-1 flex-1 bg-panel-2 rounded-sm overflow-hidden"><div className="h-full bg-accent" style={{ width: `${Math.min(100, Math.max(0, (100 * s.activity.plan.done) / s.activity.plan.total))}%` }} /></div>

@@ -23,6 +23,10 @@ Phase 3 (Delight) has no plan by design.
   the transcript was deleted by Claude Code, the folder is gone, or the agent
   is not one Caprock resumes — with the command to resume it yourself where
   the agent has one (FB-036).
+- Ended session cards say when the session ended and offer **continue** (or
+  why not) right on the card. With ended sessions shown, a search box finds a
+  session by its title, any prompt typed in it, its project or branch, and
+  **show more** reaches past the first 200.
 
 ### Fixed
 

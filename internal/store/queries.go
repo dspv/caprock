@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/dspv/caprock/internal/event"
@@ -560,25 +561,39 @@ func GetSession(ctx context.Context, q Querier, id string) (Session, error) {
 // ListSessions pages through — so a caller can say "200 of 431" rather than
 // presenting a truncated page as the whole set.
 func CountSessions(ctx context.Context, q Querier, activeOnly bool) (int, error) {
-	where := ""
-	if activeOnly {
-		where = ` WHERE status != 'ended'`
-	}
-	var n int
-	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions`+where).Scan(&n)
-	return n, err
+	return CountSessionsMatching(ctx, q, activeOnly, "")
 }
 
 // ListSessions returns sessions newest-first. activeOnly filters out ended.
 func ListSessions(ctx context.Context, q Querier, activeOnly bool, limit int) ([]Session, error) {
+	return ListSessionsMatching(ctx, q, activeOnly, "", limit)
+}
+
+// MaxSessionsPage caps one page of the session list. The Now screen asks for
+// more in steps; a caller asking for everything gets this many and the total
+// in X-Total-Count, not a response the size of the database.
+const MaxSessionsPage = 2000
+
+// CountSessionsMatching counts what ListSessionsMatching would return
+// without a limit.
+func CountSessionsMatching(ctx context.Context, q Querier, activeOnly bool, search string) (int, error) {
+	where, args := sessionFilter(activeOnly, search)
+	var n int
+	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions`+where, args...).Scan(&n)
+	return n, err
+}
+
+// ListSessionsMatching returns sessions newest-first, optionally only those
+// matching a search — see sessionFilter for what a search looks at.
+func ListSessionsMatching(ctx context.Context, q Querier, activeOnly bool, search string, limit int) ([]Session, error) {
 	if limit <= 0 {
 		limit = 200
 	}
-	where := ""
-	if activeOnly {
-		where = ` WHERE status != 'ended'`
+	if limit > MaxSessionsPage {
+		limit = MaxSessionsPage
 	}
-	rows, err := q.QueryContext(ctx, `SELECT `+sessionCols+` FROM sessions`+where+` ORDER BY last_event_at DESC LIMIT ?`, limit)
+	where, args := sessionFilter(activeOnly, search)
+	rows, err := q.QueryContext(ctx, `SELECT `+sessionCols+` FROM sessions`+where+` ORDER BY last_event_at DESC LIMIT ?`, append(args, limit)...)
 	if err != nil {
 		return nil, err
 	}
@@ -592,6 +607,61 @@ func ListSessions(ctx context.Context, q Querier, activeOnly bool, limit int) ([
 		out = append(out, s)
 	}
 	return out, rows.Err()
+}
+
+// sessionFilter is the WHERE clause for the session list.
+//
+// A search looks at everything that tells one session from another on the
+// screen — project, directory, branch, the agent's title, a stored first
+// prompt, the id — and at every prompt the user typed in it, not only the
+// first: "the one where I asked about BigQuery" is the question, and the
+// asking may have been an hour in. Prompts are the turn.user payloads, which
+// hold the text verbatim (UTF-8, not \u-escaped), so LIKE reaches them.
+//
+// SQLite's LIKE folds case for ASCII only, so a Cyrillic search is tried as
+// typed, lowercased, and with its first letter capitalised — which covers how
+// a prompt is actually written without pulling every payload into Go.
+func sessionFilter(activeOnly bool, search string) (string, []any) {
+	var conds []string
+	var args []any
+	if activeOnly {
+		conds = append(conds, `status != 'ended'`)
+	}
+	if search = strings.TrimSpace(search); search != "" {
+		var alts []string
+		for _, v := range searchVariants(search) {
+			pat := "%" + escapeLike(v) + "%"
+			alts = append(alts, `(COALESCE(project,'') LIKE ? ESCAPE '\' OR COALESCE(cwd,'') LIKE ? ESCAPE '\' OR COALESCE(git_branch,'') LIKE ? ESCAPE '\'
+			  OR title LIKE ? ESCAPE '\' OR prompt LIKE ? ESCAPE '\' OR session_id LIKE ? ESCAPE '\'
+			  OR session_id IN (SELECT session_id FROM events WHERE kind = 'turn.user' AND payload LIKE ? ESCAPE '\'))`)
+			for i := 0; i < 7; i++ {
+				args = append(args, pat)
+			}
+		}
+		conds = append(conds, "("+strings.Join(alts, " OR ")+")")
+	}
+	if len(conds) == 0 {
+		return "", nil
+	}
+	return " WHERE " + strings.Join(conds, " AND "), args
+}
+
+func searchVariants(s string) []string {
+	out := []string{s}
+	add := func(v string) {
+		for _, o := range out {
+			if o == v {
+				return
+			}
+		}
+		out = append(out, v)
+	}
+	lower := strings.ToLower(s)
+	add(lower)
+	if r, size := utf8.DecodeRuneInString(lower); r != utf8.RuneError {
+		add(string(unicode.ToUpper(r)) + lower[size:])
+	}
+	return out
 }
 
 const eventCols = `id, ts, session_id, source, kind, COALESCE(tool,''), payload, tokens_in, tokens_out, cache_read, cache_write, cost_usd, COALESCE(key,''), COALESCE(model,''), cache_write_1h, COALESCE(agent_id,'')`
