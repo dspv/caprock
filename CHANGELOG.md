@@ -19,6 +19,16 @@ Phase 3 (Delight) has no plan by design.
   background and refreshed every minute (FB-033).
 - A session started from Caprock no longer inherits Claude Code's session
   markers when the daemon itself was started from inside a Claude Code session.
+- Pasting into the terminal sends the text once. Cmd+V (Ctrl+Shift+V off macOS)
+  used to paste twice whenever the browser allowed a clipboard read, so short
+  text appeared doubled (FB-034).
+- A long paste collapses into Claude Code's "[Pasted text]" block again after
+  switching tabs or reloading. A terminal that attached after the session's
+  first 256 KB of output never learned that bracketed paste was on; the daemon
+  now restores the terminal modes the session set before replaying scrollback.
+- Pasting an image with the keyboard uploads it and types its path; only
+  drag-and-drop worked before, because xterm stopped the paste event from
+  reaching our handler.
 
 ## [0.58.3] - 2026-09-13
 
