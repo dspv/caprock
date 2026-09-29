@@ -67,18 +67,21 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         {s.git_branch && <span className="mono text-[11px] text-fg-muted">{s.git_branch}</span>}
         <Badge health={s.activity.health} />
         {s.owned && s.status !== 'ended' && <OwnedControls id={id} />}
-        {/* A session Caprock did not start is readable and not typeable —
-          * rule 7, and for a good reason: two writers on one PTY interleave.
-          * What it can do is start a second process on the same conversation,
-          * which is what this offers. Only for Claude Code: Gemini has its own
-          * --resume with different semantics, and offering a button that means
-          * something slightly different per agent is worse than not offering
-          * it yet. */}
-        {!s.owned && (s.agent ?? 'claude') === 'claude' && (
-          <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={s.status !== 'ended'} />
-        )}
+        {/* Continue, branch, or the reason neither is possible. The server
+          * decides, because what decides it is on disk: whether Claude Code
+          * still has the transcript, whether the folder is still there. It
+          * used to be decided here from who started the session and which
+          * agent it was, which was right for about one ended session in ten
+          * (FB-036). Caprock never types into a process it did not start
+          * (rule 7); a resume starts a second process on the conversation. */}
+        {s.resume && <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={s.status !== 'ended'} resume={s.resume} />}
         <span className="text-[12px] text-fg-muted ml-auto num">{s.cwd}</span>
       </div>
+      {s.description && (
+        <div className={`text-[13px] ${s.description_source === 'title' ? 'text-fg' : 'text-fg-muted'}`} title={s.description_source === 'prompt' ? 'first prompt' : undefined}>
+          {s.description_source === 'title' ? s.description : `“${s.description}”`}
+        </div>
+      )}
       <div className="text-[13px]">
         <span className="text-fg">{s.activity.phrase}</span>
         <span className="text-fg-faint num text-[11px] ml-2">{fmtAgo(s.activity.at || s.last_event_at, now)}</span>
@@ -133,12 +136,12 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
             {t === 'timeline' ? 'Timeline' : t === 'notes' ? 'Answers' : t === 'changes' ? 'Changes' : 'Terminal'}
           </button>
         ))}
-        {!s.owned && <span className="ml-auto text-[11px] text-fg-faint pr-1">observe-only — terminal is read/write for spawned sessions only</span>}
+        {!s.owned && s.status !== 'ended' && <span className="ml-auto text-[11px] text-fg-faint pr-1">observe-only — terminal is read/write for spawned sessions only</span>}
       </div>
       {active === 'timeline' && <Timeline id={id} initial={s.events} now={now} at={at} />}
       {active === 'notes' && <SessionNotes id={id} now={now} />}
       {active === 'changes' && <ChangesTab id={id} s={s} />}
-      {active === 'terminal' && <Panel className="overflow-hidden"><TerminalView sessionId={id} owned={s.owned && s.status !== 'ended'} cwd={s.cwd} /></Panel>}
+      {active === 'terminal' && <Panel className="overflow-hidden"><TerminalView sessionId={id} owned={s.owned && s.status !== 'ended'} ended={s.status === 'ended'} cwd={s.cwd} resume={s.resume && <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={false} resume={s.resume} />} /></Panel>}
     </div>
   )
 }

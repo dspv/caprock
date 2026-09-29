@@ -71,6 +71,21 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-09-29 (evening) — Ended sessions say what they were, and whether they continue
+
+Vova could not tell ended sessions apart, and could not tell why some continued
+and some did not (FB-035, FB-036). Cards now carry a description — Claude
+Code's `ai-title` (stored in `sessions.title`, migration 0025, backfilled once
+from transcripts on disk: 22 sessions on the owner's machine), OpenCode's
+title, else the first substantive prompt. On a copy of the owner's database,
+of 198 ended sessions 21 showed a title and 42 a prompt; the Claude Code
+sessions left blank were empty probes, and Codex's 108 are not described yet.
+Continue is decided on the server from the disk: on the same copy, 43 Claude
+Code sessions offered a resume that works (12 of them Caprock's own, which
+used to hide it), 24 said their transcript was deleted and 21 that their
+folder was gone — each of which had offered a button before. See
+[04-ui.md](04-ui.md) and [03-contracts.md](03-contracts.md).
+
 ### 2026-09-29 (later) — A paste goes in once, and collapses after a reconnect
 
 Vova: a short paste doubled "half the time", and a long one sometimes showed in

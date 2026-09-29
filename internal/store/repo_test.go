@@ -578,3 +578,33 @@ func TestQuickChatIsLabelledAsOne(t *testing.T) {
 		})
 	}
 }
+
+// A title, once known, survives every later event that does not carry one.
+func TestSessionTitleIsNeverErasedByALaterEvent(t *testing.T) {
+	ctx := context.Background()
+	st, err := Open(ctx, ":memory:", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	db := st.DB()
+	if err := UpsertSession(ctx, db, "s", SessionPatch{Cwd: "/r", Title: "Named by the agent"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpsertSession(ctx, db, "s", SessionPatch{Cwd: "/r"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetTitle(ctx, db, "s", "  "); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetTitle(ctx, db, "nobody", "no row"); err != nil {
+		t.Fatal(err)
+	}
+	s, err := GetSession(ctx, db, "s")
+	if err != nil || s.Title != "Named by the agent" {
+		t.Fatalf("title = %q, err %v", s.Title, err)
+	}
+	if _, err := GetSession(ctx, db, "nobody"); err == nil {
+		t.Fatal("SetTitle created a session")
+	}
+}

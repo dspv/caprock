@@ -252,6 +252,11 @@ func newDaemon(ctx context.Context, opt Options) (*Daemon, error) {
 			log.Info("repaired truncated assistant text", "component", "ingest", "events", n, "from_schema", prevSchema)
 		}
 	}
+	if ingest.NeedsTitleBackfill(prevSchema) {
+		if _, err := ingest.BackfillTitles(ctx, st.DB(), log); err != nil {
+			log.Warn("could not name sessions from their transcripts", "component", "ingest", "err", err)
+		}
+	}
 	_ = st.SetMeta(ctx, store.MetaTranscriptSchema, strconv.Itoa(ingest.SchemaVersion))
 	b := bus.New()
 	rec := rollup.New(st, table, b, log)

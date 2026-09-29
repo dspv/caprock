@@ -521,6 +521,18 @@ export function SessionCard({ s, now }: { s: SessionSummary; now: number }) {
         </span>
       </div>
       {asking && <LastWord session={s} now={now} onClose={() => setAsking(false)} />}
+      {/* What the session was about. Without it a list of ended sessions is a
+        * list of identical rows — same project, a short id, "ended" (FB-035).
+        * A title is the agent's own name and reads as one; a first prompt is
+        * a quotation and is shown as one. */}
+      {s.description && (
+        <div
+          className={`px-3 pb-0.5 text-[13px] truncate ${s.description_source === 'title' ? 'text-fg' : 'text-fg-muted'}`}
+          title={s.description_source === 'title' ? s.description : `first prompt: ${s.description}`}
+        >
+          {s.description_source === 'title' ? s.description : `“${s.description}”`}
+        </div>
+      )}
       <div className="px-3 pb-2 text-[13px] truncate" title={s.activity.phrase}>
         <span className={s.activity.health === 'working' ? 'text-fg' : 'text-fg-muted'}>{s.activity.phrase}</span>
         <span className="text-fg-faint num text-[11px] ml-2">{fmtAgo(s.activity.at || s.last_event_at, now)}</span>

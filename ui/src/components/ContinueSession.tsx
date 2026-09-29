@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api, ApiError } from '@/lib/api'
+import { api, ApiError, type ResumeInfo } from '@/lib/api'
 import { navigate } from '@/lib/router'
 
 /**
@@ -30,17 +30,20 @@ export function ContinueSession({
   sessionID,
   cwd,
   live,
+  resume,
 }: {
   sessionID: string
   cwd: string
   /** Whether the session is still running: decides continue vs branch. */
   live: boolean
+  /** The server's answer to "can this be resumed here", with the reason when not. */
+  resume: ResumeInfo
 }) {
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState('')
 
-  const command = `claude --resume ${sessionID}`
+  const command = resume.command ?? ''
 
   async function open() {
     setBusy(true)
@@ -65,6 +68,24 @@ export function ContinueSession({
     }
   }
 
+  const copyButton = command && (
+    <button onClick={copy} title={command} className="text-[11px] text-fg-faint hover:text-fg">
+      {copied ? 'copied' : 'copy command'}
+    </button>
+  )
+
+  // Not a disabled button: a greyed-out "continue" says only that something
+  // is wrong. The reason is the useful part, so it is what is shown.
+  if (!resume.ok) {
+    return (
+      <span className="inline-flex items-center gap-2 text-[11px] text-fg-muted">
+        <span>can’t continue here: {resume.reason}</span>
+        {copyButton}
+        {error && <span className="text-danger">{error}</span>}
+      </span>
+    )
+  }
+
   return (
     <span className="inline-flex items-center gap-2">
       <button
@@ -79,13 +100,7 @@ export function ContinueSession({
       >
         {busy ? 'opening…' : live ? 'branch here' : 'continue here'}
       </button>
-      <button
-        onClick={copy}
-        title={command}
-        className="text-[11px] text-fg-faint hover:text-fg"
-      >
-        {copied ? 'copied' : 'copy command'}
-      </button>
+      {copyButton}
       {error && <span className="text-[11px] text-danger">{error}</span>}
     </span>
   )

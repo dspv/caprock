@@ -40,6 +40,9 @@ type Session struct {
 	// Claude Code until OpenCode support, so "claude" is the default and the
 	// UI treats an empty value as such.
 	Agent string `json:"agent,omitempty"`
+	// Title is the agent's own name for the session — Claude Code's ai-title,
+	// OpenCode's title — or empty when it has not named one.
+	Title string `json:"title,omitempty"`
 }
 
 // Stats mirrors session_stats.
@@ -182,6 +185,9 @@ type SessionPatch struct {
 	// leaves whatever is stored alone: most events do not carry one, and an
 	// event that does not know the pid must not erase one that did.
 	PID int
+	// Title is the agent's own name for the session. Empty leaves the stored
+	// one alone.
+	Title string
 }
 
 // resolveRepoFields fills Project/RepoRoot/RepoPath from Cwd. Callers pass a cwd
@@ -220,8 +226,8 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 	// cwd, and then the stored resolution is left alone rather than blanked.
 	project, repoRoot, repoPath, repoKnown := p.resolveRepoFields()
 	_, err := q.ExecContext(ctx, `
-		INSERT INTO sessions(session_id, cwd, project, model, started_at, last_event_at, status, transcript_path, has_hooks, has_transcript, git_branch, version, repo_root, repo_path, agent, pid)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), 'claude'), ?)
+		INSERT INTO sessions(session_id, cwd, project, model, started_at, last_event_at, status, transcript_path, has_hooks, has_transcript, git_branch, version, repo_root, repo_path, agent, pid, title)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), 'claude'), ?, ?)
 		ON CONFLICT(session_id) DO UPDATE SET
 		  cwd             = COALESCE(NULLIF(excluded.cwd, ''), sessions.cwd),
 		  project         = COALESCE(NULLIF(excluded.project, ''), sessions.project),
@@ -251,14 +257,49 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 		  -- Zero means "this event did not know", which must not erase a pid an
 		  -- earlier event did know. A session's pid is how the sweep tells a
 		  -- quiet session from a gone one.
-		  pid             = CASE WHEN excluded.pid > 0 THEN excluded.pid ELSE sessions.pid END`,
-		id, p.Cwd, project, p.Model, p.StartedAt, p.LastEventAt, status, p.TranscriptPath, b2i(p.FromHook), b2i(p.FromTranscript), p.GitBranch, p.Version, repoRoot, repoPath, p.Agent, p.PID,
+		  pid             = CASE WHEN excluded.pid > 0 THEN excluded.pid ELSE sessions.pid END,
+		  title           = COALESCE(NULLIF(excluded.title, ''), sessions.title)`,
+		id, p.Cwd, project, p.Model, p.StartedAt, p.LastEventAt, status, p.TranscriptPath, b2i(p.FromHook), b2i(p.FromTranscript), p.GitBranch, p.Version, repoRoot, repoPath, p.Agent, p.PID, strings.TrimSpace(p.Title),
 		repoKnown, repoKnown,
 		p.Status, p.Status)
 	if err != nil {
 		return fmt.Errorf("upsert session: %w", err)
 	}
 	return nil
+}
+
+// SetTitle records the agent's own name for a session. An empty title is a
+// no-op, so a line that names nothing cannot erase a name already known; a
+// session that does not exist yet is left alone rather than created.
+func SetTitle(ctx context.Context, q Querier, id, title string) error {
+	title = strings.TrimSpace(title)
+	if id == "" || title == "" {
+		return nil
+	}
+	_, err := q.ExecContext(ctx, `UPDATE sessions SET title = ? WHERE session_id = ? AND title != ?`, title, id, title)
+	return err
+}
+
+// FirstPrompts returns up to limit of a session's earliest user prompts, oldest
+// first. Claude Code carries the text as `prompt`, DeepSeek Harness as `text`.
+func FirstPrompts(ctx context.Context, q Querier, id string, limit int) ([]string, error) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT COALESCE(json_extract(payload,'$.prompt'), json_extract(payload,'$.text'), '')
+		FROM events WHERE session_id = ? AND kind = 'turn.user'
+		ORDER BY ts, id LIMIT ?`, id, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
 }
 
 // MarkOwned records that Caprock spawned this session (Phase 1).
@@ -480,13 +521,13 @@ func updateStatusByID(ctx context.Context, q Querier, ids []string, status strin
 	return nil
 }
 
-const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude')`
+const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,'')`
 
 func scanSession(sc interface{ Scan(...any) error }) (Session, error) {
 	var s Session
 	var hh, ht, owned int
 	var exit sql.NullInt64
-	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent)
+	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title)
 	s.HasHooks, s.HasTranscript, s.Owned = hh != 0, ht != 0, owned != 0
 	if exit.Valid {
 		v := int(exit.Int64)

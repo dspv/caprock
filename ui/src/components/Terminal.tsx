@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Terminal as Xterm } from '@xterm/xterm'
 import { api } from '@/lib/api'
 import { SpawnDialog } from './SpawnDialog'
@@ -13,10 +13,16 @@ export function TerminalView({
   // in a single click rather than sending someone to another screen to retype
   // a path they can see.
   cwd,
+  ended = false,
+  resume,
 }: {
   sessionId: string
   owned: boolean
   cwd?: string
+  /** The session is over: there is no process, whoever started it. */
+  ended?: boolean
+  /** What to offer instead of a terminal once it has ended — continuing it. */
+  resume?: ReactNode
 }) {
   const [spawning, setSpawning] = useState(false)
   const host = useRef<HTMLDivElement>(null)
@@ -342,6 +348,18 @@ export function TerminalView({
       ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); ws.close(); term.dispose()
     }
   }, [sessionId, owned])
+  if (!owned && ended) {
+    // An ended session has no process to attach to, and it used to get the
+    // copy written for a live one: "You started this session yourself …
+    // This one keeps running" — wrong on both counts for a session Caprock
+    // started and that has stopped. What there is to do is carry it on.
+    return (
+      <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+        <p className="text-[14px] text-fg">This session has ended, so there is no terminal to attach to.</p>
+        {resume}
+      </div>
+    )
+  }
   if (!owned) {
     // Says what to do first, and why second.
     //

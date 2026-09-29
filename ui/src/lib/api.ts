@@ -17,6 +17,8 @@ export interface Session {
   git_branch: string
   version: string
   owned: boolean
+  /** The agent's own name for the session (Claude Code's ai-title, OpenCode's title). */
+  title?: string
   /** Which coding agent produced this session. Absent means Claude Code,
    *  which is what every session was before OpenCode support. */
   agent?: 'claude' | 'opencode' | 'gemini' | 'codex' | 'deepseek'
@@ -88,6 +90,18 @@ export interface SessionSummary extends Session {
    *  session that has not answered yet. The two look identical from here and
    *  mean opposite things, so the server names which it is. */
   context_note?: string
+  /** What tells this session from the others: the agent's own title, else the
+   *  first prompt that says something. */
+  description?: string
+  description_source?: 'title' | 'prompt'
+}
+
+/** Whether a session can be carried on from here, and if not, why. */
+export interface ResumeInfo {
+  ok: boolean
+  reason?: string
+  /** Resumes it from the user's own terminal; offered even when Caprock cannot. */
+  command?: string
 }
 
 export interface TokenDelta { in: number; out: number; cache_read: number; cache_write: number; cache_write_1h?: number }
@@ -110,6 +124,8 @@ export interface Event {
 export interface SessionDetail extends SessionSummary {
   files: string[]
   events: Event[]
+  /** Absent for a live session Caprock started — that one is typed into. */
+  resume?: ResumeInfo
 }
 
 /** Whether asking Gemini is possible here, and why not when it is not.

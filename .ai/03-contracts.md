@@ -249,6 +249,28 @@ POST   /v1/paste                     {type, data:base64} → {path}; writes a pa
 GET    /v1/history?range=…           lifetime totals + tool distribution + model mix + daily
 ```
 
+**`POST /v1/agents` with `resume` is refused when the resume cannot work** —
+`400 {error}` carrying the same reason `GET /v1/sessions/{id}` gives in
+`resume.reason`. Otherwise a stale button started a `claude --resume` that
+printed "No conversation found" and exited in a fresh terminal. An id the
+store has never seen is let through.
+
+**`SessionDetail.resume`** — `{ok, reason?, command?}`, absent for a live
+session Caprock started (that one is typed into). Decided by what is on disk,
+not by who started the session (FB-036): the agent (Claude Code only; Codex and
+OpenCode get their own `command` — `codex resume <id>`, `opencode --session
+<id>`), the cwd still existing, and the main transcript
+(`<project>/<session-id>.jsonl`, found from `transcript_path` or from the cwd's
+Claude Code folder) still existing. `command` is offered whenever the agent has
+one, including when Caprock cannot run it.
+
+**`SessionSummary.description` / `description_source`** — what tells a session
+from the others on the screen (FB-035): the stored `sessions.title`
+(`"title"`), else the first of the session's earliest eight `turn.user`
+prompts that says something (`"prompt"`, derived at read time, never stored):
+not a tag-wrapped command or notification, not a bare path, at least 12
+characters. First line only, clipped to 120 characters.
+
 **Non-Anthropic pricing.** `pricing/pricing.json` carries rows for the models Caprock observes through OpenCode — DeepSeek and MiniMax at the providers' own published rates, fetched with a date and noted in the file. They are priced so a total that includes non-Anthropic usage is a total; before this, $155 of the owner's own spend sat outside his. `normalizeModel` strips a gateway's vendor prefix, so `minimax/minimax-m3` from OpenRouter and `MiniMax-M3` from the direct API are one row rather than two, one of them unpriced. The unpriced warning fires only on turns whose tokens are greater than zero: a turn recorded with explicit zeroes has nothing to price, and warning about it says a total is missing money it is not missing.
 
 ### Reclassifying the /clear events already recorded (migration 0021)
@@ -508,6 +530,21 @@ CREATE INDEX IF NOT EXISTS idx_sessions_repo ON sessions(session_id, project, re
 - **Stored, not derived on read** — historical sessions point at directories that may no longer exist, so a read-time walk would relabel yesterday's spend according to what is still on disk today; and `/v1/stats/summary` is polled, so a filesystem walk per row is a syscall storm on a hot path.
 - **Backfill** — `Store.backfillRepo` runs immediately after the migration (resolution needs the filesystem, which SQL cannot reach), is idempotent, and only writes rows whose `repo_root` is still NULL. A failure is logged and leaves the old labels in place rather than refusing to open the database.
 
+### Session title DDL (migration 0025)
+
+```sql
+ALTER TABLE sessions ADD COLUMN title TEXT NOT NULL DEFAULT '';
+```
+
+The agent's own name for a session. Claude Code writes it into the transcript as
+`{"type":"ai-title","aiTitle":…}` — repeatedly, last one wins — and it is the
+name its `/resume` picker shows; OpenCode keeps a `title` per session, with the
+placeholder `New session - <timestamp>` treated as no title. Written only with a
+non-empty value, so an event that names nothing never erases a name. Rows
+ingested before transcript parser v3 are filled once from the transcripts still
+on disk (`ingest.BackfillTitles`); Codex titles are not read (its `threads`
+table in `state_5.sqlite` mostly repeats the first message).
+
 ### Touch attribution DDL (migration 0012)
 
 ```sql
@@ -643,7 +680,7 @@ The mode is applied by `store.secureDBFiles` on **every** `store.Open`, not only
 
 Not a public contract — the parser is schema-versioned and degrades to hooks-only mode on unknown shapes ([12-risks.md RISK-02](12-risks.md#risks)). What `ingest` relies on, as observed in a real Claude Code 2.1.x transcript on 2026-08-18:
 
-- One JSON object per line; `type` ∈ `user`, `assistant`, `system`, `attachment`, plus session-meta lines (`mode`, `permission-mode`, `ai-title`, `last-prompt`, `file-history-snapshot`, `bridge-session`) which are ignored.
+- One JSON object per line; `type` ∈ `user`, `assistant`, `system`, `attachment`, plus session-meta lines (`mode`, `permission-mode`, `ai-title`, `last-prompt`, `file-history-snapshot`, `bridge-session`). All are ignored except `ai-title` (`aiTitle`, `sessionId`), which since parser v3 is stored as `sessions.title` and never becomes an event.
 - `user`/`assistant`/`system` lines carry `uuid`, `parentUuid`, `timestamp` (RFC 3339), `sessionId`, `cwd`, `version`, `gitBranch`, `isSidechain`.
 - `assistant` lines: `message.model`, `message.id`, `message.usage` with `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, and `cache_creation.{ephemeral_5m_input_tokens, ephemeral_1h_input_tokens}`; `message.content[]` blocks (`text`, `tool_use`, …).
 - `system` lines with `subtype: "turn_duration"` carry `durationMs`.

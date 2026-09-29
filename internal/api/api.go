@@ -407,6 +407,12 @@ type SessionSummary struct {
 	// not answered yet both arrive as "no context", and they call for opposite
 	// reactions. Empty whenever Context is present.
 	ContextNote string `json:"context_note,omitempty"`
+	// Description tells this session from the others on the screen: the
+	// agent's own title, else the first prompt that says something. Source is
+	// "title" or "prompt", so the card can style a guess differently from a
+	// name.
+	Description       string `json:"description,omitempty"`
+	DescriptionSource string `json:"description_source,omitempty"`
 }
 
 // ContextFill is the "context fill %" badge input: last turn's prompt size vs the model window.
@@ -427,6 +433,9 @@ type SessionDetail struct {
 	SessionSummary
 	Files  []string      `json:"files"`
 	Events []event.Event `json:"events"`
+	// Resume is whether this session can be carried on from here; nil for a
+	// live session Caprock started, which is typed into instead.
+	Resume *ResumeInfo `json:"resume,omitempty"`
 }
 
 func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSummary, []event.Event, error) {
@@ -449,6 +458,7 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 		act.Phrase = "was " + act.Phrase
 	}
 	sum := SessionSummary{Session: sess, Stats: st, Activity: act, Savings: cost.ComputeSavings(st.TokensIn, st.CacheRead, st.CacheWrite), Loop: la}
+	sum.Description, sum.DescriptionSource = describe(ctx, q, sess)
 	// Context fill: last assistant turn's input+cache tokens vs the model's window.
 	// When it cannot be computed, say which of the two reasons applies. The
 	// dashboard used to caption every empty Context "unknown model", including
@@ -549,7 +559,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	if last == nil {
 		last = []event.Event{}
 	}
-	writeJSON(w, http.StatusOK, SessionDetail{SessionSummary: sum, Files: files, Events: last})
+	writeJSON(w, http.StatusOK, SessionDetail{SessionSummary: sum, Files: files, Events: last, Resume: s.resumeInfo(sess)})
 }
 
 // handleSessionNotes returns what Claude said in a session, in prose, newest
@@ -1440,6 +1450,18 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
+	}
+	// A resume the detail screen would refuse is refused here too, with the
+	// same reason: otherwise a stale button opens a terminal that prints "No
+	// conversation found" and dies. An id the store has never seen is let
+	// through — the store not knowing a session is not evidence it is gone.
+	if resume, _ := req["resume"].(string); resume != "" {
+		if sess, err := store.GetSession(r.Context(), s.d.Store.DB(), resume); err == nil {
+			if info := s.resumeInfo(sess); info != nil && !info.OK {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": info.Reason})
+				return
+			}
+		}
 	}
 	// Spawn with a background context: the process must outlive this HTTP request.
 	id, cwd, err := s.d.Agents.Spawn(context.WithoutCancel(r.Context()), req)
