@@ -9,6 +9,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.59.2] - 2026-09-30
+
+### Fixed
+
+- Today's totals load in a fraction of a second again. Two of the queries
+  behind them walked every event in the database instead of today's, once
+  the background-usage split added a column their indexes did not cover; on
+  a 300k-event database the summary took 3.7s at rest and tens of seconds
+  while a session was busy, and screens sat on "reading your figures…" or
+  "loading…". Measured on a copy of the owner's database: today 3.7s → 0.5s,
+  7d 1.9s → 0.15s.
+
 ## [0.59.1] - 2026-09-30
 
 ### Fixed
