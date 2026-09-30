@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.59.5] - 2026-09-30
+
 ### Fixed
 
 - A session started from Caprock right after the daemon starts gets your
