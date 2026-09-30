@@ -312,3 +312,48 @@ func TestToolInput(t *testing.T) {
 		t.Errorf("empty input: %#v", empty)
 	}
 }
+
+// A restart reads only what changed. Every start used to re-parse every
+// transcript on the machine — 1.1GB and 30k duplicate writes on the owner's —
+// while the daemon was at its busiest.
+func TestARestartSkipsFilesAlreadyRead(t *testing.T) {
+	h := newHarness(t)
+	h.put()
+	h.poll()
+
+	// One stored event goes missing behind the importer's back. A restart
+	// that re-parsed the file would put it back; one that trusts what it read
+	// before leaves it missing — which is how we can tell them apart.
+	if _, err := h.out.Exec(`DELETE FROM events WHERE id = (SELECT MAX(id) FROM events WHERE source='codex')`); err != nil {
+		t.Fatal(err)
+	}
+	restarted := NewIngester(h.dir, h.in.rec, h.in.log, time.Second)
+	if err := restarted.once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE source='codex'`); n != 3 {
+		t.Fatalf("restart re-read an unchanged transcript: %d events, want 3", n)
+	}
+	if restarted.Stats().Sessions != 1 {
+		t.Fatalf("restored file not counted as read: %+v", restarted.Stats())
+	}
+}
+
+// A migration that deletes a session's Codex events to import them again
+// (0022 and 0023 did) must find the file unread after the restart, or the
+// re-import silently never happens.
+func TestARestartRereadsASessionWhoseEventsAreGone(t *testing.T) {
+	h := newHarness(t)
+	h.put()
+	h.poll()
+	if _, err := h.out.Exec(`DELETE FROM events WHERE source='codex'`); err != nil {
+		t.Fatal(err)
+	}
+	restarted := NewIngester(h.dir, h.in.rec, h.in.log, time.Second)
+	if err := restarted.once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE source='codex'`); n != 4 {
+		t.Fatalf("emptied session not re-imported: %d events, want 4", n)
+	}
+}

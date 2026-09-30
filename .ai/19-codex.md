@@ -195,6 +195,17 @@ is opened read-only, only the newest schema generation is read, and it is
 re-read only when it (or its WAL) changes. On the owner's machine this named
 88 of 110 ended Codex sessions and quoted a first message for 11 more.
 
+## Restarts
+
+The files already read are remembered in the store (`meta.codex_seen`: path,
+modification time, size, session id), so a restart reads only transcripts that
+changed. It used to re-read all of them: on the owner's machine 161 files and
+1.1GB, 30k events each written again only to be found a duplicate, at the
+moment the daemon was busiest — while it ran, the dashboard's reads queued and
+hook writes waited on the lock. A remembered file is trusted only while the
+store still holds that session's Codex events, so a migration that deletes them
+to import again (0022 and 0023 did) finds the file unread.
+
 ## Not built
 
 - **Session control.** Spawning, typing into, and killing a Codex session.

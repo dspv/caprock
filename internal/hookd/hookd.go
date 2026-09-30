@@ -70,6 +70,11 @@ func endsTheSession(reason string) bool {
 	}
 }
 
+// RecordTimeout bounds one hook event's write. Far longer than the shim waits
+// on purpose: the shim's second is about not delaying Claude Code, and has
+// nothing to do with how long the event may take to reach the database.
+const RecordTimeout = 30 * time.Second
+
 // ErrUnknownEvent marks hook_event_name values hookd does not consume.
 var ErrUnknownEvent = errors.New("unknown hook event")
 
@@ -246,7 +251,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	res, err := h.Recorder.Record(r.Context(), ev, info)
+	// Written on a context the request cannot cancel. The shim gives up after
+	// a second (rule 3), and with it went r.Context(): an event still waiting
+	// for the write lock was abandoned mid-insert. All 41 hook failures in the
+	// owner's log were exactly that — "insert event: context canceled" —
+	// events lost from the one record whose point is to have them all, with
+	// nothing but a log line saying so. The write now finishes whether or not
+	// anyone is still waiting for the answer, bounded so a wedged database
+	// cannot pile handlers up forever.
+	wctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), RecordTimeout)
+	defer cancel()
+	res, err := h.Recorder.Record(wctx, ev, info)
 	if err != nil {
 		log.Error("record hook event", "component", "hookd", "err", err, "session_id", ev.SessionID, "kind", ev.Kind)
 		http.Error(w, "store", http.StatusInternalServerError)

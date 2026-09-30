@@ -42,6 +42,10 @@ type Ingester struct {
 
 	// namesAt is the state database's modification time when names were last
 	// synced; the index is re-read only when it moves.
+	// loaded is set once the files read by a previous run have been restored
+	// from the store (see restoreSeen).
+	loaded bool
+
 	namesAt time.Time
 	// namesFor is how many transcripts had been imported at that sync. A
 	// thread can be indexed before its transcript is imported, and then its
@@ -53,6 +57,9 @@ type Ingester struct {
 type fileState struct {
 	mod  time.Time
 	size int64
+	// session is the transcript's session id, kept so a restart can check the
+	// store still holds that session before trusting the file as read.
+	session string
 }
 
 // Stats is what the daemon reports about Codex ingest.
@@ -107,6 +114,16 @@ func (in *Ingester) once(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if !in.loaded {
+		in.loaded = true
+		in.restoreSeen(ctx)
+	}
+	changed := false
+	defer func() {
+		if changed {
+			in.saveSeen(ctx)
+		}
+	}()
 	for _, f := range files {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -131,8 +148,9 @@ func (in *Ingester) once(ctx context.Context) error {
 		if err := in.session(ctx, s); err != nil {
 			return err
 		}
+		changed = true
 		in.mu.Lock()
-		in.seen[f.Path] = fileState{mod: f.Modified, size: f.Size}
+		in.seen[f.Path] = fileState{mod: f.Modified, size: f.Size, session: s.ID}
 		// Updated inside the loop, not after it. The first pass over a real
 		// machine's hundred transcripts takes seconds, and `caprock status`
 		// read during it reported "0 transcripts read" beside a rising event
@@ -459,4 +477,72 @@ func (in *Ingester) repriceSession(ctx context.Context, s *Session) error {
 	in.log.Info("codex turns repriced from the transcript",
 		"component", "codex", "session_id", s.ID, "model", s.Model, "turns", len(todo))
 	return nil
+}
+
+// Every start used to re-read every transcript: on the owner's machine 161
+// files, 1.1GB, 30k events each written again only to be found a duplicate —
+// minutes of parsing and a write transaction per event, at the moment the
+// daemon is busiest. While it ran, the dashboard's reads queued and hook
+// writes waited on the lock. The files already read are now remembered in
+// the store, and a restart reads only what changed.
+
+type savedFile struct {
+	Mod     int64  `json:"m"`
+	Size    int64  `json:"s"`
+	Session string `json:"id"`
+}
+
+// restoreSeen trusts a remembered file only while the store still has its
+// session's Codex events. A migration that deletes them to re-import (0022
+// and 0023 did) must find the file unread, or the re-import never happens.
+func (in *Ingester) restoreSeen(ctx context.Context) {
+	if in.rec == nil || in.rec.Store == nil {
+		return
+	}
+	raw, err := in.rec.Store.GetMeta(ctx, store.MetaCodexSeen)
+	if err != nil || raw == "" {
+		return
+	}
+	var saved map[string]savedFile
+	if json.Unmarshal([]byte(raw), &saved) != nil {
+		return
+	}
+	db := in.rec.Store.DB()
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	for path, f := range saved {
+		if f.Session == "" {
+			continue
+		}
+		var one int
+		err := db.QueryRowContext(ctx,
+			`SELECT 1 FROM events WHERE session_id = ? AND source = ? LIMIT 1`,
+			f.Session, string(event.SourceCodex)).Scan(&one)
+		if err != nil {
+			continue
+		}
+		in.seen[path] = fileState{mod: time.Unix(0, f.Mod), size: f.Size, session: f.Session}
+	}
+	in.stats.Sessions = len(in.seen)
+}
+
+func (in *Ingester) saveSeen(ctx context.Context) {
+	if in.rec == nil || in.rec.Store == nil {
+		return
+	}
+	in.mu.Lock()
+	saved := make(map[string]savedFile, len(in.seen))
+	for path, f := range in.seen {
+		if f.session != "" {
+			saved[path] = savedFile{Mod: f.mod.UnixNano(), Size: f.size, Session: f.session}
+		}
+	}
+	in.mu.Unlock()
+	b, err := json.Marshal(saved)
+	if err != nil {
+		return
+	}
+	if err := in.rec.Store.SetMeta(ctx, store.MetaCodexSeen, string(b)); err != nil {
+		in.log.Debug("remember codex files read", "component", "codex", "err", err)
+	}
 }

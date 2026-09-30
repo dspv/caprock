@@ -9,6 +9,30 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- Hook events are no longer lost when the database is busy. The shim waits a
+  second and hangs up, and an event still waiting for the write lock was
+  abandoned with it — 41 on the owner's machine, each logged as "context
+  canceled" and missing from the record. The write now finishes after the
+  shim has gone.
+- The log no longer grows without bound. A model missing from the pricing
+  table was warned about on every event, re-reads included — 1.1M identical
+  lines and a 4.6GB `caprock.log`. It is now said once per model, and the
+  daemon's log is rotated at 64MB with one previous file kept; a log the
+  daemon has stopped writing to is cut to its last 8MB.
+- Restarting the daemon no longer re-reads every Codex transcript. On the
+  owner's machine that was 1.1GB and 30k duplicate writes on every start,
+  while the dashboard and hooks waited; only transcripts that changed are
+  read now.
+
+### Changed
+
+- CI checks the query plan of every aggregate the dashboard polls and fails
+  when one would read full event rows instead of a covering index — the
+  regression behind 0.59.2 and 0.59.3, which a small test database could
+  never show by timing.
+
 ## [0.59.5] - 2026-09-30
 
 ### Fixed
