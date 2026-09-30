@@ -89,6 +89,17 @@ func (r *Recorder) RebuildCodexDaily(ctx context.Context, keepFrom time.Time) (r
 	}
 
 	err = r.Store.WithTx(ctx, func(q store.Querier) error {
+		// The marker is written first, which also takes the write lock.
+		// Opening with the SELECT below made this a read transaction that
+		// later upgraded, and SQLite refuses that upgrade at once, without
+		// busy_timeout, if anything else committed in between — which on a
+		// daemon's first start, with every importer writing, it did: the
+		// first start of v0.59.0 on the owner's machine logged SQLITE_BUSY
+		// and left the rebuild to the next restart. Rolled back with the
+		// rest if anything below fails.
+		if _, err := q.ExecContext(ctx, `INSERT INTO meta(k, v) VALUES(?, '1') ON CONFLICT(k) DO UPDATE SET v = excluded.v`, store.MetaCodexDailyRebuilt); err != nil {
+			return err
+		}
 		for p := range codexPairs {
 			if mixed[p] {
 				continue
@@ -124,10 +135,7 @@ func (r *Recorder) RebuildCodexDaily(ctx context.Context, keepFrom time.Time) (r
 				}
 			}
 		}
-		// In the same transaction, so a crash cannot leave the rows rebuilt
-		// and the marker unset, or the other way round.
-		_, err := q.ExecContext(ctx, `INSERT INTO meta(k, v) VALUES(?, '1') ON CONFLICT(k) DO UPDATE SET v = excluded.v`, store.MetaCodexDailyRebuilt)
-		return err
+		return nil
 	})
 	if err != nil {
 		return 0, err

@@ -9,6 +9,17 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- The Lifetime screen and the all-time figures on Now load in about a second
+  instead of nine. The indexes the spend aggregates read from stopped covering
+  them when background usage was split out; migration 0026 rebuilds them (about
+  ten seconds on a large database, once, on the first start). The History totals for today read off
+  the time index like the summary's already do (4.8s to 0.02s on the owner's
+  database).
+- Rebuilding the Codex daily totals no longer fails on a busy first start
+  with "database is locked"; it used to wait for the next restart.
+
 ## [0.59.2] - 2026-09-30
 
 ### Fixed
