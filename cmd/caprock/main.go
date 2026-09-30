@@ -511,6 +511,17 @@ func statusCmd() *cobra.Command {
 			} else {
 				fmt.Fprintf(out, "claude:  not on PATH — install Claude Code to start sessions here; watching still works\n")
 			}
+			// Which environment a started session gets. A session that cannot
+			// find gcloud while a terminal can is this line reading "daemon's".
+			switch e := st.ShellEnv; e.Source {
+			case "login-shell":
+				fmt.Fprintf(out, "env:     sessions start with your login shell's environment (%s, read %s ago)\n",
+					e.Shell, time.Since(time.UnixMilli(e.ResolvedAt)).Round(time.Second))
+			case "resolving":
+				fmt.Fprintf(out, "env:     reading your login shell's environment (%s)…\n", e.Shell)
+			case "daemon":
+				fmt.Fprintf(out, "env:     could not read your login shell's environment (%s: %s); sessions start with the daemon's, retrying\n", e.Shell, e.Error)
+			}
 			fmt.Fprintf(out, "ui:      %s\n", map[bool]string{true: "embedded", false: "placeholder (built without dashboard)"}[st.UIBuilt])
 			// Which hive is in force was reported nowhere — not here, not in
 			// /v1/status, not in the startup line — so there was no way to ask

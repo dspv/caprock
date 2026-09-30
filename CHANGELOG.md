@@ -9,6 +9,22 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- A session started from Caprock right after the daemon starts gets your
+  login shell's environment instead of the daemon's bare one. Reading it was
+  cut off after 5 seconds, and at start — while every importer does its first
+  pass — it could take longer; the failure left nothing to fall back on but
+  launchd's `PATH`, so `gcloud` went missing again (FB-033). The limit is now
+  30 seconds, a failed first read retries on its own, and a session started
+  meanwhile waits up to 15 seconds for it.
+
+### Added
+
+- `caprock status` says which environment sessions start with — your login
+  shell's, still being read, or the daemon's with the reason — so a session
+  that cannot find a tool a terminal can find is one line to diagnose.
+
 ## [0.59.4] - 2026-09-30
 
 ### Changed
