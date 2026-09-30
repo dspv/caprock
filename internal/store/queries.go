@@ -1463,18 +1463,17 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	// counts cannot be summed, because a session appears under several kinds
 	// (it totalled 212 against a true 56 here). That query is ~10ms.
 	//
-	// Pinned to idx_events_ts. With no ANALYZE statistics SQLite chose
+	// Pinned to idx_events_ts_cover (migration 0026). With no ANALYZE statistics SQLite chose
 	// idx_events_kind_id to skip the GROUP BY sort, and that walks every
 	// event in the table — 0.9s for today's 772 events on the owner's
 	// 300k-event database, the query the main screen polls every few seconds.
-	// The range scan is 0.02-0.10s for today to 30d and 0.57s against 1.06s
-	// for all.
+	// The covering range scan is 0.02-0.2s at every range.
 	rows, err := q.QueryContext(ctx, `
 		SELECT kind, COUNT(*),
 		       COALESCE(SUM(tokens_in),0), COALESCE(SUM(tokens_out),0),
 		       COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_write),0),
 		       COALESCE(SUM(cost_usd),0)
-		FROM events INDEXED BY idx_events_ts WHERE ts >= ?`+nonInternalEvent+ev+` GROUP BY kind`, append([]any{fromMs}, evArgs...)...)
+		FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ?`+nonInternalEvent+ev+` GROUP BY kind`, append([]any{fromMs}, evArgs...)...)
 	if err != nil {
 		return s, err
 	}
@@ -1522,7 +1521,7 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	// 7d or 30d, so there is no range where the old form was the better plan
 	// and no reason to branch on one.
 	if err := q.QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT session_id) FROM events INDEXED BY idx_events_ts WHERE ts >= ?`+nonInternalEvent+ev, append([]any{fromMs}, evArgs...)...).Scan(&s.Sessions); err != nil {
+		`SELECT COUNT(DISTINCT session_id) FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ?`+nonInternalEvent+ev, append([]any{fromMs}, evArgs...)...).Scan(&s.Sessions); err != nil {
 		return s, err
 	}
 	// "Active" means active *now*, so it is deliberately not range-scoped — but
@@ -2132,13 +2131,14 @@ func History(ctx context.Context, q Querier, fromMs int64) (HistoryTotals, error
 		Scan(&h.Days); err != nil {
 		return h, err
 	}
-	// Grouping by kind lets this run off idx_events_kind_ts. Summing CASE
-	// expressions instead forced a scan of the full rows — 1.17s against 0.27s
-	// on a 184k-event database, and this is the slowest query on the History
-	// screen.
+	// Grouping by kind replaced summing CASE expressions (1.17s against 0.27s
+	// on a 184k-event database). Pinned to idx_events_ts_cover for the same reason
+	// as SummarizeSparkFor: left to itself SQLite walked idx_events_kind_id
+	// over every event — 4.8s for today on the owner's 300k-event database,
+	// against 0.02s over the range.
 	rows, err := q.QueryContext(ctx, `
 		SELECT kind, COUNT(*), COALESCE(SUM(cost_usd),0)
-		FROM events WHERE ts >= ?`+nonInternalEvent+` GROUP BY kind`, fromMs)
+		FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ?`+nonInternalEvent+` GROUP BY kind`, fromMs)
 	if err != nil {
 		return h, err
 	}
