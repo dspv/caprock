@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.61.0] - 2026-09-30
+
 ### Added
 
 - The memory handoff can be measured. Ticking **Measure whether it helps**
