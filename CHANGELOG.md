@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.59.6] - 2026-09-30
+
 ### Fixed
 
 - Hook events are no longer lost when the database is busy. The shim waits a
