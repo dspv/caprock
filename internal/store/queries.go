@@ -1462,12 +1462,19 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	// The distinct session count stays a separate query on purpose: per-kind
 	// counts cannot be summed, because a session appears under several kinds
 	// (it totalled 212 against a true 56 here). That query is ~10ms.
+	//
+	// Pinned to idx_events_ts. With no ANALYZE statistics SQLite chose
+	// idx_events_kind_id to skip the GROUP BY sort, and that walks every
+	// event in the table — 0.9s for today's 772 events on the owner's
+	// 300k-event database, the query the main screen polls every few seconds.
+	// The range scan is 0.02-0.10s for today to 30d and 0.57s against 1.06s
+	// for all.
 	rows, err := q.QueryContext(ctx, `
 		SELECT kind, COUNT(*),
 		       COALESCE(SUM(tokens_in),0), COALESCE(SUM(tokens_out),0),
 		       COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_write),0),
 		       COALESCE(SUM(cost_usd),0)
-		FROM events WHERE ts >= ?`+nonInternalEvent+ev+` GROUP BY kind`, append([]any{fromMs}, evArgs...)...)
+		FROM events INDEXED BY idx_events_ts WHERE ts >= ?`+nonInternalEvent+ev+` GROUP BY kind`, append([]any{fromMs}, evArgs...)...)
 	if err != nil {
 		return s, err
 	}
@@ -1500,9 +1507,13 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	if err := rows.Close(); err != nil {
 		return s, err
 	}
-	// Grouped rather than COUNT(DISTINCT), which is the same answer by a much
-	// worse route: DISTINCT sorts every matching row into a temp B-tree, while
-	// the group runs straight off idx_events_session_ts as a covering index.
+	// This was grouped off idx_events_session_ts as a covering index, which
+	// stopped being one when `internal = 0` joined the predicate: the group
+	// then read every row in the table to test it, 0.4s at every range.
+	// COUNT(DISTINCT) over the ts range is 0.01-0.10s for today to 30d and
+	// 0.35s for all (measured 2026-09-30 on the owner's database). The
+	// history of the grouped form, kept because the numbers below are why it
+	// was right at the time:
 	//
 	// On a real 600 MB database this query alone was 1.5s of the 1.7s that
 	// Summarize took, and Summarize was 80% of `/v1/history?range=all` — the
@@ -1511,7 +1522,7 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	// 7d or 30d, so there is no range where the old form was the better plan
 	// and no reason to branch on one.
 	if err := q.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM (SELECT session_id FROM events WHERE ts >= ?`+nonInternalEvent+ev+` GROUP BY session_id)`, append([]any{fromMs}, evArgs...)...).Scan(&s.Sessions); err != nil {
+		`SELECT COUNT(DISTINCT session_id) FROM events INDEXED BY idx_events_ts WHERE ts >= ?`+nonInternalEvent+ev, append([]any{fromMs}, evArgs...)...).Scan(&s.Sessions); err != nil {
 		return s, err
 	}
 	// "Active" means active *now*, so it is deliberately not range-scoped — but
