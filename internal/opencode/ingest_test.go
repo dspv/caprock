@@ -366,3 +366,41 @@ func TestRunStopsOnContextCancel(t *testing.T) {
 		t.Fatal("Run did not return within 5s of cancellation")
 	}
 }
+
+// OpenCode names every session "New session - <timestamp>" until it has a real
+// title; that placeholder would make every card read the same.
+func TestSessionTitleDropsThePlaceholder(t *testing.T) {
+	for in, want := range map[string]string{
+		"New session - 2026-06-03T18:57:00.000Z": "",
+		"Child session - 2026-06-03T18:57":       "",
+		"  Разработка GTM стратегии ":            "Разработка GTM стратегии",
+	} {
+		if got := sessionTitle(in); got != want {
+			t.Errorf("sessionTitle(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// A session imported before titles were kept stores no new event on the next
+// pass, so the title cannot ride in on one; it is written on its own.
+func TestIngestNamesSessionsAlreadyImported(t *testing.T) {
+	h := newHarness(t)
+	h.f.typical()
+	h.poll()
+	var title string
+	if err := h.out.QueryRow(`SELECT title FROM sessions WHERE session_id = 'ses_a'`).Scan(&title); err != nil || title != "add auth" {
+		t.Fatalf("title = %q, err %v", title, err)
+	}
+	// As a database from before migration 0025 looks after it: rows present,
+	// titles empty, every event already stored.
+	if _, err := h.out.Exec(`UPDATE sessions SET title = ''`); err != nil {
+		t.Fatal(err)
+	}
+	h.in.mu.Lock()
+	h.in.seen = map[string]int64{}
+	h.in.mu.Unlock()
+	h.poll()
+	if err := h.out.QueryRow(`SELECT title FROM sessions WHERE session_id = 'ses_a'`).Scan(&title); err != nil || title != "add auth" {
+		t.Fatalf("title after re-read = %q, err %v", title, err)
+	}
+}

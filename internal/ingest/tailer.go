@@ -346,6 +346,12 @@ func (t *Tailer) handleLine(ctx context.Context, f *fileState, raw []byte, fallb
 		t.mu.Unlock()
 		return
 	}
+	if l.Type == TypeAITitle {
+		if err := store.SetTitle(ctx, t.Store.DB(), l.SessionID, l.AITitle); err != nil {
+			t.Log.Warn("record session title", "component", "ingest", "err", err, "path", f.path)
+		}
+		return
+	}
 	if f.sessionID == "" {
 		f.sessionID = l.SessionID
 	}

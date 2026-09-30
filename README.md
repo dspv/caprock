@@ -240,7 +240,7 @@ Windows, but it has not been run on either.
   turns that called no tool at all.
 - **Know what it's worth** — your measured usage priced at the API rate, against
   what your plan actually costs.
-- **Steer it** — spawn, pause, and kill sessions from the dashboard.
+- **Steer it** — spawn, pause, and kill sessions from the dashboard, and continue one that has ended.
 - **Trust it** — an opt-in task runner whose tasks finish only when the checks
   Caprock runs come back green.
 - **Local-first** — loopback only, no servers, no telemetry, no account. The one thing that can reach the network is an optional check for new releases, off until you turn it on.

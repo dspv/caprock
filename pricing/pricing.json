@@ -1,5 +1,5 @@
 {
-  "version": "2026-09-06.1",
+  "version": "2026-09-29.1",
   "source": "https://platform.claude.com/docs/en/about-claude/pricing",
   "fetched_at": "2026-09-06",
   "currency": "USD",
@@ -18,6 +18,7 @@
     "gemini-3.1-pro-preview and gemini-2.5-pro are tiered by prompt size; the rate here is the =<200k tier. Prompts over 200k tokens bill at roughly double ($4.00/$18.00 and $2.50/$15.00 respectively) and are therefore under-reported by this table.",
     "OpenAI rows are OpenAI's own published list prices, read from https://developers.openai.com/api/docs/pricing and the per-model pages on 2026-09-06: gpt-5-codex $1.25/$10.00 per 1M with $0.125 cached input (400k context), gpt-5.3-codex $1.75/$14.00 with $0.175 cached, and the gpt-5.6 family sol $4/$20, terra $2/$12, luna $0.20/$1.20 (1.05M context). They exist because Codex sessions report tokens but no cost of their own, unlike OpenCode which computes its own figure.",
     "cache_write_5m and cache_write_1h are 0 on the OpenAI rows because OpenAI does not bill for writing to its cache — caching is automatic and only the discounted read is charged. A zero here means 'not charged', not 'unknown'; the same is true of the Gemini rows.",
+    "gpt-6-sol ($2.00/$10.00 per 1M, $0.20 cached) and gpt-6-luna ($0.10/$0.50, $0.01 cached), 1.05M context, are OpenAI's list prices read from https://developers.openai.com/api/docs/pricing and the per-model pages on 2026-09-29. Prompts over 272K input tokens bill at 2x input and cache and 1.5x output for the whole request and are under-reported by these rows; none of the 5,788 gpt-6 turns on the owner's machine reached that size (largest 237,646), because Codex compacts first.",
     "gpt-5.3-codex fast mode (2x list: $3.50/$28.00) is deliberately not a row. Transcripts record the model id, not the service tier, so a fast-mode session is indistinguishable from a standard one and a second row could only be guessed at (rule 6)."
   ],
   "models": [
@@ -370,6 +371,26 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.02,
       "output": 1.2,
+      "context_window": 1050000
+    },
+    {
+      "id": "gpt-6-sol",
+      "display": "GPT-6 Sol",
+      "input": 2.0,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.2,
+      "output": 10.0,
+      "context_window": 1050000
+    },
+    {
+      "id": "gpt-6-luna",
+      "display": "GPT-6 Luna",
+      "input": 0.1,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.01,
+      "output": 0.5,
       "context_window": 1050000
     }
   ]

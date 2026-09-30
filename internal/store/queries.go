@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/dspv/caprock/internal/event"
@@ -40,6 +41,12 @@ type Session struct {
 	// Claude Code until OpenCode support, so "claude" is the default and the
 	// UI treats an empty value as such.
 	Agent string `json:"agent,omitempty"`
+	// Title is the agent's own name for the session — Claude Code's ai-title,
+	// OpenCode's title — or empty when it has not named one.
+	Title string `json:"title,omitempty"`
+	// Prompt is the first thing the user typed, stored only for agents whose
+	// prompts are not events (Codex). The API folds it into the description.
+	Prompt string `json:"-"`
 }
 
 // Stats mirrors session_stats.
@@ -182,6 +189,9 @@ type SessionPatch struct {
 	// leaves whatever is stored alone: most events do not carry one, and an
 	// event that does not know the pid must not erase one that did.
 	PID int
+	// Title is the agent's own name for the session. Empty leaves the stored
+	// one alone.
+	Title string
 }
 
 // resolveRepoFields fills Project/RepoRoot/RepoPath from Cwd. Callers pass a cwd
@@ -220,8 +230,8 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 	// cwd, and then the stored resolution is left alone rather than blanked.
 	project, repoRoot, repoPath, repoKnown := p.resolveRepoFields()
 	_, err := q.ExecContext(ctx, `
-		INSERT INTO sessions(session_id, cwd, project, model, started_at, last_event_at, status, transcript_path, has_hooks, has_transcript, git_branch, version, repo_root, repo_path, agent, pid)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), 'claude'), ?)
+		INSERT INTO sessions(session_id, cwd, project, model, started_at, last_event_at, status, transcript_path, has_hooks, has_transcript, git_branch, version, repo_root, repo_path, agent, pid, title)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), 'claude'), ?, ?)
 		ON CONFLICT(session_id) DO UPDATE SET
 		  cwd             = COALESCE(NULLIF(excluded.cwd, ''), sessions.cwd),
 		  project         = COALESCE(NULLIF(excluded.project, ''), sessions.project),
@@ -251,14 +261,61 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 		  -- Zero means "this event did not know", which must not erase a pid an
 		  -- earlier event did know. A session's pid is how the sweep tells a
 		  -- quiet session from a gone one.
-		  pid             = CASE WHEN excluded.pid > 0 THEN excluded.pid ELSE sessions.pid END`,
-		id, p.Cwd, project, p.Model, p.StartedAt, p.LastEventAt, status, p.TranscriptPath, b2i(p.FromHook), b2i(p.FromTranscript), p.GitBranch, p.Version, repoRoot, repoPath, p.Agent, p.PID,
+		  pid             = CASE WHEN excluded.pid > 0 THEN excluded.pid ELSE sessions.pid END,
+		  title           = COALESCE(NULLIF(excluded.title, ''), sessions.title)`,
+		id, p.Cwd, project, p.Model, p.StartedAt, p.LastEventAt, status, p.TranscriptPath, b2i(p.FromHook), b2i(p.FromTranscript), p.GitBranch, p.Version, repoRoot, repoPath, p.Agent, p.PID, strings.TrimSpace(p.Title),
 		repoKnown, repoKnown,
 		p.Status, p.Status)
 	if err != nil {
 		return fmt.Errorf("upsert session: %w", err)
 	}
 	return nil
+}
+
+// SetTitle records the agent's own name for a session. An empty title is a
+// no-op, so a line that names nothing cannot erase a name already known; a
+// session that does not exist yet is left alone rather than created.
+func SetTitle(ctx context.Context, q Querier, id, title string) error {
+	title = strings.TrimSpace(title)
+	if id == "" || title == "" {
+		return nil
+	}
+	_, err := q.ExecContext(ctx, `UPDATE sessions SET title = ? WHERE session_id = ? AND title != ?`, title, id, title)
+	return err
+}
+
+// SetPrompt records the first thing the user typed, for an agent whose prompts
+// are not events. Same rules as SetTitle: empty is a no-op, a missing session
+// is not created.
+func SetPrompt(ctx context.Context, q Querier, id, prompt string) error {
+	prompt = strings.TrimSpace(prompt)
+	if id == "" || prompt == "" {
+		return nil
+	}
+	_, err := q.ExecContext(ctx, `UPDATE sessions SET prompt = ? WHERE session_id = ? AND prompt != ?`, prompt, id, prompt)
+	return err
+}
+
+// FirstPrompts returns up to limit of a session's earliest user prompts, oldest
+// first. Claude Code carries the text as `prompt`, DeepSeek Harness as `text`.
+func FirstPrompts(ctx context.Context, q Querier, id string, limit int) ([]string, error) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT COALESCE(json_extract(payload,'$.prompt'), json_extract(payload,'$.text'), '')
+		FROM events WHERE session_id = ? AND kind = 'turn.user'
+		ORDER BY ts, id LIMIT ?`, id, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
 }
 
 // MarkOwned records that Caprock spawned this session (Phase 1).
@@ -480,13 +537,13 @@ func updateStatusByID(ctx context.Context, q Querier, ids []string, status strin
 	return nil
 }
 
-const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude')`
+const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,'')`
 
 func scanSession(sc interface{ Scan(...any) error }) (Session, error) {
 	var s Session
 	var hh, ht, owned int
 	var exit sql.NullInt64
-	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent)
+	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt)
 	s.HasHooks, s.HasTranscript, s.Owned = hh != 0, ht != 0, owned != 0
 	if exit.Valid {
 		v := int(exit.Int64)
@@ -504,25 +561,39 @@ func GetSession(ctx context.Context, q Querier, id string) (Session, error) {
 // ListSessions pages through — so a caller can say "200 of 431" rather than
 // presenting a truncated page as the whole set.
 func CountSessions(ctx context.Context, q Querier, activeOnly bool) (int, error) {
-	where := ""
-	if activeOnly {
-		where = ` WHERE status != 'ended'`
-	}
-	var n int
-	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions`+where).Scan(&n)
-	return n, err
+	return CountSessionsMatching(ctx, q, activeOnly, "")
 }
 
 // ListSessions returns sessions newest-first. activeOnly filters out ended.
 func ListSessions(ctx context.Context, q Querier, activeOnly bool, limit int) ([]Session, error) {
+	return ListSessionsMatching(ctx, q, activeOnly, "", limit)
+}
+
+// MaxSessionsPage caps one page of the session list. The Now screen asks for
+// more in steps; a caller asking for everything gets this many and the total
+// in X-Total-Count, not a response the size of the database.
+const MaxSessionsPage = 2000
+
+// CountSessionsMatching counts what ListSessionsMatching would return
+// without a limit.
+func CountSessionsMatching(ctx context.Context, q Querier, activeOnly bool, search string) (int, error) {
+	where, args := sessionFilter(activeOnly, search)
+	var n int
+	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions`+where, args...).Scan(&n)
+	return n, err
+}
+
+// ListSessionsMatching returns sessions newest-first, optionally only those
+// matching a search — see sessionFilter for what a search looks at.
+func ListSessionsMatching(ctx context.Context, q Querier, activeOnly bool, search string, limit int) ([]Session, error) {
 	if limit <= 0 {
 		limit = 200
 	}
-	where := ""
-	if activeOnly {
-		where = ` WHERE status != 'ended'`
+	if limit > MaxSessionsPage {
+		limit = MaxSessionsPage
 	}
-	rows, err := q.QueryContext(ctx, `SELECT `+sessionCols+` FROM sessions`+where+` ORDER BY last_event_at DESC LIMIT ?`, limit)
+	where, args := sessionFilter(activeOnly, search)
+	rows, err := q.QueryContext(ctx, `SELECT `+sessionCols+` FROM sessions`+where+` ORDER BY last_event_at DESC LIMIT ?`, append(args, limit)...)
 	if err != nil {
 		return nil, err
 	}
@@ -536,6 +607,61 @@ func ListSessions(ctx context.Context, q Querier, activeOnly bool, limit int) ([
 		out = append(out, s)
 	}
 	return out, rows.Err()
+}
+
+// sessionFilter is the WHERE clause for the session list.
+//
+// A search looks at everything that tells one session from another on the
+// screen — project, directory, branch, the agent's title, a stored first
+// prompt, the id — and at every prompt the user typed in it, not only the
+// first: "the one where I asked about BigQuery" is the question, and the
+// asking may have been an hour in. Prompts are the turn.user payloads, which
+// hold the text verbatim (UTF-8, not \u-escaped), so LIKE reaches them.
+//
+// SQLite's LIKE folds case for ASCII only, so a Cyrillic search is tried as
+// typed, lowercased, and with its first letter capitalised — which covers how
+// a prompt is actually written without pulling every payload into Go.
+func sessionFilter(activeOnly bool, search string) (string, []any) {
+	var conds []string
+	var args []any
+	if activeOnly {
+		conds = append(conds, `status != 'ended'`)
+	}
+	if search = strings.TrimSpace(search); search != "" {
+		var alts []string
+		for _, v := range searchVariants(search) {
+			pat := "%" + escapeLike(v) + "%"
+			alts = append(alts, `(COALESCE(project,'') LIKE ? ESCAPE '\' OR COALESCE(cwd,'') LIKE ? ESCAPE '\' OR COALESCE(git_branch,'') LIKE ? ESCAPE '\'
+			  OR title LIKE ? ESCAPE '\' OR prompt LIKE ? ESCAPE '\' OR session_id LIKE ? ESCAPE '\'
+			  OR session_id IN (SELECT session_id FROM events WHERE kind = 'turn.user' AND payload LIKE ? ESCAPE '\'))`)
+			for i := 0; i < 7; i++ {
+				args = append(args, pat)
+			}
+		}
+		conds = append(conds, "("+strings.Join(alts, " OR ")+")")
+	}
+	if len(conds) == 0 {
+		return "", nil
+	}
+	return " WHERE " + strings.Join(conds, " AND "), args
+}
+
+func searchVariants(s string) []string {
+	out := []string{s}
+	add := func(v string) {
+		for _, o := range out {
+			if o == v {
+				return
+			}
+		}
+		out = append(out, v)
+	}
+	lower := strings.ToLower(s)
+	add(lower)
+	if r, size := utf8.DecodeRuneInString(lower); r != utf8.RuneError {
+		add(string(unicode.ToUpper(r)) + lower[size:])
+	}
+	return out
 }
 
 const eventCols = `id, ts, session_id, source, kind, COALESCE(tool,''), payload, tokens_in, tokens_out, cache_read, cache_write, cost_usd, COALESCE(key,''), COALESCE(model,''), cache_write_1h, COALESCE(agent_id,'')`
@@ -1336,12 +1462,18 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	// The distinct session count stays a separate query on purpose: per-kind
 	// counts cannot be summed, because a session appears under several kinds
 	// (it totalled 212 against a true 56 here). That query is ~10ms.
+	//
+	// Pinned to idx_events_ts_cover (migration 0026). With no ANALYZE statistics SQLite chose
+	// idx_events_kind_id to skip the GROUP BY sort, and that walks every
+	// event in the table — 0.9s for today's 772 events on the owner's
+	// 300k-event database, the query the main screen polls every few seconds.
+	// The covering range scan is 0.02-0.2s at every range.
 	rows, err := q.QueryContext(ctx, `
 		SELECT kind, COUNT(*),
 		       COALESCE(SUM(tokens_in),0), COALESCE(SUM(tokens_out),0),
 		       COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_write),0),
 		       COALESCE(SUM(cost_usd),0)
-		FROM events WHERE ts >= ?`+nonInternalEvent+ev+` GROUP BY kind`, append([]any{fromMs}, evArgs...)...)
+		FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ?`+nonInternalEvent+ev+` GROUP BY kind`, append([]any{fromMs}, evArgs...)...)
 	if err != nil {
 		return s, err
 	}
@@ -1374,9 +1506,13 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	if err := rows.Close(); err != nil {
 		return s, err
 	}
-	// Grouped rather than COUNT(DISTINCT), which is the same answer by a much
-	// worse route: DISTINCT sorts every matching row into a temp B-tree, while
-	// the group runs straight off idx_events_session_ts as a covering index.
+	// This was grouped off idx_events_session_ts as a covering index, which
+	// stopped being one when `internal = 0` joined the predicate: the group
+	// then read every row in the table to test it, 0.4s at every range.
+	// COUNT(DISTINCT) over the ts range is 0.01-0.10s for today to 30d and
+	// 0.35s for all (measured 2026-09-30 on the owner's database). The
+	// history of the grouped form, kept because the numbers below are why it
+	// was right at the time:
 	//
 	// On a real 600 MB database this query alone was 1.5s of the 1.7s that
 	// Summarize took, and Summarize was 80% of `/v1/history?range=all` — the
@@ -1385,7 +1521,7 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	// 7d or 30d, so there is no range where the old form was the better plan
 	// and no reason to branch on one.
 	if err := q.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM (SELECT session_id FROM events WHERE ts >= ?`+nonInternalEvent+ev+` GROUP BY session_id)`, append([]any{fromMs}, evArgs...)...).Scan(&s.Sessions); err != nil {
+		`SELECT COUNT(DISTINCT session_id) FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ?`+nonInternalEvent+ev, append([]any{fromMs}, evArgs...)...).Scan(&s.Sessions); err != nil {
 		return s, err
 	}
 	// "Active" means active *now*, so it is deliberately not range-scoped — but
@@ -1995,13 +2131,14 @@ func History(ctx context.Context, q Querier, fromMs int64) (HistoryTotals, error
 		Scan(&h.Days); err != nil {
 		return h, err
 	}
-	// Grouping by kind lets this run off idx_events_kind_ts. Summing CASE
-	// expressions instead forced a scan of the full rows — 1.17s against 0.27s
-	// on a 184k-event database, and this is the slowest query on the History
-	// screen.
+	// Grouping by kind replaced summing CASE expressions (1.17s against 0.27s
+	// on a 184k-event database). Pinned to idx_events_ts_cover for the same reason
+	// as SummarizeSparkFor: left to itself SQLite walked idx_events_kind_id
+	// over every event — 4.8s for today on the owner's 300k-event database,
+	// against 0.02s over the range.
 	rows, err := q.QueryContext(ctx, `
 		SELECT kind, COUNT(*), COALESCE(SUM(cost_usd),0)
-		FROM events WHERE ts >= ?`+nonInternalEvent+` GROUP BY kind`, fromMs)
+		FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ?`+nonInternalEvent+` GROUP BY kind`, fromMs)
 	if err != nil {
 		return h, err
 	}

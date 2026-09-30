@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/rollup"
+	"github.com/dspv/caprock/internal/store"
 )
 
 // Ingester copies OpenCode's sessions into Caprock's store.
@@ -191,13 +193,22 @@ func (in *Ingester) session(ctx context.Context, s Session) error {
 			}
 		}
 	}
+	// The title reaches the row through SessionInfo only when an event is
+	// stored, and a session already imported stores none — so a session read
+	// before titles were kept, or renamed since, would never get its name.
+	// Written directly, after the events, so the row exists.
+	if in.rec != nil && in.rec.Store != nil {
+		if err := store.SetTitle(ctx, in.rec.Store.DB(), s.ID, sessionTitle(s.Title)); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
 // info is the session identity carried alongside every event. The recorder
 // creates or updates the session row from it, so there is no separate upsert.
 func (in *Ingester) info(s Session) rollup.SessionInfo {
-	return rollup.SessionInfo{Cwd: s.Directory, Model: s.Model, Agent: Agent}
+	return rollup.SessionInfo{Cwd: s.Directory, Model: s.Model, Agent: Agent, Title: sessionTitle(s.Title)}
 }
 
 // turn stores one assistant turn with the cost OpenCode already computed.
@@ -288,4 +299,16 @@ func (in *Ingester) tool(ctx context.Context, s Session, m Message, c ToolCall) 
 		in.mu.Unlock()
 	}
 	return nil
+}
+
+// sessionTitle is OpenCode's name for a session, or "" while it still carries
+// the placeholder OpenCode gives every session before it names one — "New
+// session - 2026-09-12T…" would make every untitled card read the same, which
+// is the problem the title exists to solve.
+func sessionTitle(t string) string {
+	t = strings.TrimSpace(t)
+	if strings.HasPrefix(t, "New session - ") || strings.HasPrefix(t, "Child session - ") {
+		return ""
+	}
+	return t
 }

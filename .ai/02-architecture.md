@@ -83,6 +83,23 @@ Full detail, including what is not supported, is in
 | `router`   | Mailbox delivery outbox → inbox, ledger append, `mail.*` events   | 2     |
 | `orchestr` | Orchestrator lifecycle, Stop-loop, verification runner, approvals | 2     |
 | `service`  | Autostart: launchd agent / systemd user unit / Startup script     | —     |
+| `userenv`  | The login-shell environment spawned processes start with          | 1     |
+
+**A process Caprock starts gets the user's environment, not the daemon's.** A
+daemon started at login by launchd holds ten variables and
+`PATH=/usr/bin:/bin:/usr/sbin:/sbin`; one started from a terminal is a snapshot
+of that terminal, frozen for as long as it runs. A session started with either
+cannot find `gcloud`, Homebrew or anything the profile exports, and the user
+sees "Caprock can't reach BigQuery" where plain `claude` can (FB-033).
+`internal/userenv` runs the user's `$SHELL` as a login, interactive shell —
+what a terminal tab reads — and captures its `env -0`, the way VS Code
+resolves its shell environment. It is warmed at daemon start, served from a
+cache and refreshed in the background after a minute, bounded by a 5s
+timeout, and falls back to the daemon's own environment on any failure. The
+profile sees `CAPROCK_RESOLVING_ENVIRONMENT=1` and can skip interactive-only
+work. `CAPROCK_DATA_DIR` stays pinned to the daemon's value. Spawned sessions
+(`internal/agents`) and verification commands (`internal/board`) both use it;
+Windows keeps the daemon's environment, which the registry already built.
 
 Phase 0 architecture slice (no `ptyman`; the ConPTY spike ran in T0 to de-risk Control) — historical:
 
@@ -171,6 +188,7 @@ internal/shim/        # shim logic: stdin → POST, silent, Stop request-respons
 internal/statusline/  # `caprock statusline`: Claude Code status JSON → one-line render + best-effort rate-limit POST; `--rich` adds the daemon's session counters under a hard budget
 internal/codex/       # OpenAI Codex: rollout-transcript parser + poller (read-only, priced by our own table)
 internal/service/     # `caprock service`: autostart via launchd / systemd user unit / Startup folder
+internal/userenv/     # the user's login-shell environment for processes Caprock starts (not launchd's bare one)
 internal/version/     # the version string (stamped via -ldflags at build)
 internal/config/      # data dir, config.json, runtime.json, atomic writes
 internal/event/       # the normalized Event type
