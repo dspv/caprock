@@ -124,6 +124,9 @@ type Settings struct {
 	// Memory decides whether a session opening a folder is told what the last
 	// one left there. On unless someone turns it off; see ADR-030.
 	Memory bool `json:"memory"`
+	// MemoryHoldoutPct holds the handoff back from this share of new sessions
+	// (0–50), to measure what it is worth. 0 holds nothing back.
+	MemoryHoldoutPct int `json:"memory_holdout_pct"`
 	// PlanKind: "" (not stated), "flat" (Pro/Max/Team seat), or "metered"
 	// (API key, Bedrock, Vertex, Enterprise usage at API rates).
 	PlanKind        string  `json:"plan_kind"`
@@ -816,6 +819,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	var patch struct {
 		UpdateChecks    *bool    `json:"update_checks"`
 		Memory          *bool    `json:"memory"`
+		MemoryHoldout   *int     `json:"memory_holdout_pct"`
 		PlanKind        *string  `json:"plan_kind"`
 		PlanLabel       *string  `json:"plan_label"`
 		PlanUSDPerMonth *float64 `json:"plan_usd_per_month"`
@@ -838,6 +842,15 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.Memory != nil {
 		in.Memory = *patch.Memory
+	}
+	if patch.MemoryHoldout != nil {
+		// At most half: past that the handoff is mostly off, and the few
+		// sessions still getting it would take weeks to say anything.
+		if v := *patch.MemoryHoldout; v < 0 || v > 50 {
+			s.failCode(w, http.StatusBadRequest, errors.New("memory_holdout_pct must be between 0 and 50"))
+			return
+		}
+		in.MemoryHoldoutPct = *patch.MemoryHoldout
 	}
 	if patch.PlanKind != nil {
 		in.PlanKind = *patch.PlanKind

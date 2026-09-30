@@ -2534,3 +2534,97 @@ func RunningAt(ctx context.Context, q Querier, stoppedAt int64, limit int) ([]st
 	}
 	return ids, rows.Err()
 }
+
+// Handoff states on sessions.handoff.
+const (
+	HandoffNone     = 0 // nothing was there to hand over
+	HandoffServed   = 1 // it was handed what the last session left
+	HandoffWithheld = 2 // something was there and was held back, as the control
+)
+
+// SetHandoff records what a new session was given when it opened.
+func SetHandoff(ctx context.Context, q Querier, id string, state int) error {
+	_, err := q.ExecContext(ctx, `UPDATE sessions SET handoff = ? WHERE session_id = ?`, state, id)
+	return err
+}
+
+// HandoffGroup is how one arm of the handoff comparison got on: of the
+// sessions in it, how many reached a first edit, and how long and how many
+// tool calls that took.
+type HandoffGroup struct {
+	Sessions   int     `json:"sessions"`
+	Reached    int     `json:"reached"`
+	MedianMin  float64 `json:"median_min"`
+	MedianCall float64 `json:"median_calls"`
+}
+
+// HandoffEffect compares sessions that were handed the last session's note
+// with sessions that could have been and were not. The measure is the first
+// edit: how long, and how many tool calls, a session spends finding its
+// footing before it changes anything. A handoff that works should shorten it.
+func HandoffEffect(ctx context.Context, q Querier) (served, withheld HandoffGroup, err error) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT s.handoff, s.started_at,
+		       (SELECT MIN(e.ts) FROM events e WHERE e.session_id = s.session_id
+		          AND e.kind = 'tool.pre' AND e.tool IN ('Edit','Write','MultiEdit','NotebookEdit')) AS first_edit,
+		       s.session_id
+		FROM sessions s WHERE s.handoff IN (1, 2)`)
+	if err != nil {
+		return served, withheld, err
+	}
+	type row struct {
+		state        int
+		start, first int64
+		id           string
+	}
+	var all []row
+	for rows.Next() {
+		var r row
+		var fe sql.NullInt64
+		if err := rows.Scan(&r.state, &r.start, &fe, &r.id); err != nil {
+			_ = rows.Close()
+			return served, withheld, err
+		}
+		r.first = fe.Int64
+		all = append(all, r)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return served, withheld, err
+	}
+	_ = rows.Close()
+	var mins, calls [3][]float64
+	for _, r := range all {
+		g := &served
+		if r.state == HandoffWithheld {
+			g = &withheld
+		}
+		g.Sessions++
+		if r.first == 0 {
+			continue
+		}
+		var n int
+		if err := q.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM events WHERE session_id = ? AND kind = 'tool.pre' AND ts < ?`, r.id, r.first).Scan(&n); err != nil {
+			return served, withheld, err
+		}
+		g.Reached++
+		mins[r.state] = append(mins[r.state], float64(r.first-r.start)/60000)
+		calls[r.state] = append(calls[r.state], float64(n))
+	}
+	served.MedianMin, served.MedianCall = median(mins[HandoffServed]), median(calls[HandoffServed])
+	withheld.MedianMin, withheld.MedianCall = median(mins[HandoffWithheld]), median(calls[HandoffWithheld])
+	return served, withheld, nil
+}
+
+func median(xs []float64) float64 {
+	if len(xs) == 0 {
+		return 0
+	}
+	s := append([]float64(nil), xs...)
+	sort.Float64s(s)
+	if len(s)%2 == 1 {
+		return s[len(s)/2]
+	}
+	return (s[len(s)/2-1] + s[len(s)/2]) / 2
+}

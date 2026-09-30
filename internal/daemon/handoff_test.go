@@ -260,3 +260,60 @@ func TestAnOlderConfigGetsTheFeature(t *testing.T) {
 		t.Fatal("a config with no memory field was treated as off")
 	}
 }
+
+// With a holdout set, a session that could have had the handoff either gets it
+// or is held back as the control — and which one is recorded, because the
+// comparison is the only way to learn whether the handoff helps. A session
+// with nothing to hand over is in neither group.
+func TestTheHoldoutRecordsWhoGotTheHandoffAndWhoDidNot(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
+	d := handoffDaemon(t, now)
+	d.opt.Config.MemoryHoldoutPct = 25
+	said(t, d, "caprock", strings.Repeat("We moved the heartbeat into the daemon. ", 15), now.Add(-time.Hour))
+	open := func(id string, roll int) []byte {
+		t.Helper()
+		if err := store.UpsertSession(ctx, d.store.DB(), id, store.SessionPatch{Cwd: "/home/u/caprock", Project: "caprock", StartedAt: now.UnixMilli()}); err != nil {
+			t.Fatal(err)
+		}
+		d.roll = func() int { return roll }
+		return d.handoff(ctx, hookd.Payload{HookEventName: "SessionStart", Source: "startup", Cwd: "/home/u/caprock", SessionID: id})
+	}
+	if got := contextOf(t, open("lucky", 60)); got == "" {
+		t.Fatal("a roll above the holdout was not handed anything")
+	}
+	if reply := open("control", 10); len(reply) > 0 {
+		t.Fatal("a roll inside the holdout was handed the note anyway")
+	}
+	// Nothing in this folder: no group at all.
+	if err := store.UpsertSession(ctx, d.store.DB(), "stranger", store.SessionPatch{Cwd: "/home/u/elsewhere"}); err != nil {
+		t.Fatal(err)
+	}
+	d.handoff(ctx, hookd.Payload{HookEventName: "SessionStart", Source: "startup", Cwd: "/home/u/elsewhere", SessionID: "stranger"})
+
+	// The lucky one edits after two looks and five minutes; the control after
+	// four looks and fifteen.
+	tool := func(id, name string, at time.Time) {
+		t.Helper()
+		ev := &event.Event{SessionID: id, Source: event.SourceHook, Kind: event.KindToolPre, Tool: name, Key: id + name + at.String(), Ts: at, Payload: json.RawMessage(`{}`)}
+		if _, err := store.InsertEvent(ctx, d.store.DB(), ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for id, p := range map[string]struct{ looks, mins int }{"lucky": {2, 5}, "control": {4, 15}} {
+		for i := 0; i < p.looks; i++ {
+			tool(id, "Read", now.Add(time.Duration(i+1)*time.Second))
+		}
+		tool(id, "Edit", now.Add(time.Duration(p.mins)*time.Minute))
+	}
+	ms := d.memoryStatus()
+	if ms.HoldoutPct != 25 || ms.Served == nil || ms.Withheld == nil {
+		t.Fatalf("memory status = %+v, want both groups and the holdout", ms)
+	}
+	if *ms.Served != (store.HandoffGroup{Sessions: 1, Reached: 1, MedianMin: 5, MedianCall: 2}) {
+		t.Errorf("served = %+v", *ms.Served)
+	}
+	if *ms.Withheld != (store.HandoffGroup{Sessions: 1, Reached: 1, MedianMin: 15, MedianCall: 4}) {
+		t.Errorf("withheld = %+v", *ms.Withheld)
+	}
+}

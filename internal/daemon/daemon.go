@@ -105,6 +105,8 @@ type Daemon struct {
 	opt   Options
 	log   *slog.Logger
 	store *store.Store
+	// roll replaces the handoff holdout's random draw in tests.
+	roll  func() int
 	bus   *bus.Bus
 	table *cost.Table
 	rec   *rollup.Recorder
@@ -1097,6 +1099,13 @@ type MemoryStatus struct {
 	// all of it, and using the handoff's date there would understate what is
 	// searchable by a month.
 	Held string `json:"held,omitempty"`
+	// HoldoutPct is the share of handoffs held back to measure them, and
+	// Served / Withheld how each group has done so far: how many sessions,
+	// how many reached a first edit, and the median minutes and tool calls to
+	// get there. Absent until a session has been counted in either group.
+	HoldoutPct int                 `json:"holdout_pct,omitempty"`
+	Served     *store.HandoffGroup `json:"served,omitempty"`
+	Withheld   *store.HandoffGroup `json:"withheld,omitempty"`
 }
 
 func (d *Daemon) status(_ context.Context) any {
@@ -1177,15 +1186,16 @@ func (a *settingsAdapter) Get() api.Settings {
 	defer a.d.cfgMu.RUnlock()
 	c := a.d.opt.Config
 	return api.Settings{
-		UpdateChecks:    c.UpdateChecks,
-		Memory:          c.MemoryOn(),
-		PlanKind:        c.PlanKind,
-		PlanLabel:       c.PlanLabel,
-		PlanUSDPerMonth: c.PlanUSDPerMonth,
-		LicenseKey:      c.LicenseKey,
-		CapUSDPerDay:    c.CapUSDPerDay,
-		BrowseRoot:      c.BrowseRoot,
-		ReportChatID:    c.ReportChatID,
+		UpdateChecks:     c.UpdateChecks,
+		Memory:           c.MemoryOn(),
+		MemoryHoldoutPct: c.MemoryHoldoutPct,
+		PlanKind:         c.PlanKind,
+		PlanLabel:        c.PlanLabel,
+		PlanUSDPerMonth:  c.PlanUSDPerMonth,
+		LicenseKey:       c.LicenseKey,
+		CapUSDPerDay:     c.CapUSDPerDay,
+		BrowseRoot:       c.BrowseRoot,
+		ReportChatID:     c.ReportChatID,
 		// The token itself never crosses this boundary — only whether one
 		// exists, which is what a screen needs to render a state.
 		ReportBotSet:     c.ReportBotToken != "",
@@ -1206,6 +1216,7 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	// off" — a config written before this existed must get the feature.
 	memory := in.Memory
 	a.d.opt.Config.Memory = &memory
+	a.d.opt.Config.MemoryHoldoutPct = in.MemoryHoldoutPct
 	a.d.opt.Config.PlanKind = in.PlanKind
 	a.d.opt.Config.PlanLabel = in.PlanLabel
 	a.d.opt.Config.PlanUSDPerMonth = in.PlanUSDPerMonth

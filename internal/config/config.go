@@ -45,6 +45,11 @@ type Config struct {
 	// off. Stored, unlike LAN access, because this is a working habit rather
 	// than a door left open.
 	Memory *bool `json:"memory,omitempty"`
+	// MemoryHoldoutPct holds the handoff back from this share of the new
+	// sessions that could have had one, so there is something to compare the
+	// ones that got it against. 0 — the default — holds nothing back: nobody's
+	// sessions get worse unless they asked to measure it.
+	MemoryHoldoutPct int `json:"memory_holdout_pct,omitempty"`
 	// OpenBrowser controls whether `caprock up` opens the dashboard.
 	OpenBrowser bool `json:"open_browser"`
 	// RetentionDays prunes events older than this many days (0 = keep forever).

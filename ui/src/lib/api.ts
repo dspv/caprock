@@ -337,9 +337,14 @@ export interface AssistantNote {
   fragment: boolean
 }
 
+/** One arm of the handoff comparison: sessions, how many reached a first edit, and the medians to get there. */
+export interface HandoffGroup { sessions: number; reached: number; median_min: number; median_calls: number }
+
 export interface Settings {
   /** Whether Claude is told what the last session left in the same folder. */
   memory?: boolean
+  /** Share of new sessions (0–50) the handoff is held back from, to measure it. */
+  memory_holdout_pct?: number
   /** Where the folder picker may look. Empty means the home directory. */
   browse_root?: string
   /** The daily spend ceiling in USD; 0 is off. See internal/cap. */
@@ -462,7 +467,13 @@ export interface Status {
   active_loops: number
   orchestration: boolean
   /** What the session handoff can speak for: repositories, and since when. */
-  memory?: { repos: number; since?: string; held?: string }
+  memory?: {
+    repos: number; since?: string; held?: string
+    /** The handoff experiment: the holdout in force, and how each group has done. */
+    holdout_pct?: number
+    served?: HandoffGroup
+    withheld?: HandoffGroup
+  }
   /** The queue directory in force, and the checkout its workers operate on.
    *  Absent when orchestration is off. */
   hive?: string

@@ -9,6 +9,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- The memory handoff can be measured. Ticking **Measure whether it helps**
+  holds it back from one new session in four, at random, and the Memory screen
+  compares the two groups: minutes and tool calls to a session's first edit.
+  Off by default. On the owner's machine a session continuing yesterday's work
+  reached its first edit no faster than one starting cold, with the handoff
+  already on — this is how to find out whether it does anything.
+
 ## [0.60.1] - 2026-09-30
 
 ### Fixed
