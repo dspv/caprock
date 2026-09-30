@@ -20,6 +20,7 @@ import (
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/ptyman"
 	"github.com/dspv/caprock/internal/store"
+	"github.com/dspv/caprock/internal/userenv"
 )
 
 // SpawnRequest describes a session to launch.
@@ -383,7 +384,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		m.log.Warn("pre-trust folder", "component", "agents", "cwd", cwd, "err", err)
 	}
 
-	env := childEnv()
+	env := childEnv(userenv.Environ(m.log))
 	// The Gemini CLI reads GEMINI_API_KEY from its environment, and the key the
 	// user pasted into the dashboard lives in the daemon's config — so it has
 	// to be handed over here or the child asks for a key it cannot see. Only
@@ -702,20 +703,31 @@ func (a *Agent) Exited() (int, bool) {
 // Paused reports the pause state.
 func (a *Agent) Paused() bool { return a.sess.Paused() }
 
-// childEnv is the environment for a spawned session: the daemon's environment
-// with Caprock/Claude nesting markers stripped, so a session Caprock launches is
-// a normal top-level Claude Code session (transcripts persist, no "child session"
-// mode) even when the daemon itself was started from inside one.
-func childEnv() []string {
+// childEnv is the environment for a spawned session: the user's login-shell
+// environment (see internal/userenv — the daemon's own is launchd's bare one,
+// and a session started with it cannot find gcloud, Homebrew or anything the
+// profile exports) with Caprock/Claude nesting markers stripped, so a session
+// Caprock launches is a normal top-level Claude Code session (transcripts
+// persist, no "child session" mode) even when the daemon itself was started
+// from inside one.
+func childEnv(base []string) []string {
 	drop := map[string]bool{
-		"CLAUDE_CODE_CHILD_SESSION": true,
-		"CLAUDECODE":                true,
-		"CLAUDE_CODE_ENTRYPOINT":    true,
-		"CLAUDE_CODE_SSE_PORT":      true,
-		"CAPROCK_DATA_DIR":          false, // keep: the child's own hook shim needs it
+		"CLAUDE_CODE_CHILD_SESSION":    true,
+		"CLAUDECODE":                   true,
+		"CLAUDE_CODE_ENTRYPOINT":       true,
+		"CLAUDE_CODE_SSE_PORT":         true,
+		"CLAUDE_CODE_SESSION_ID":       true,
+		"CLAUDE_CODE_SESSION_ATTENDED": true,
+		"CLAUDE_CODE_MESSAGING_SOCKET": true,
+		"CLAUDE_CODE_MESSAGING_TOKEN":  true,
+		"CLAUDE_CODE_EXECPATH":         true,
+		"CLAUDE_PID":                   true,
+		"CLAUDE_EFFORT":                true,
+		"AI_AGENT":                     true,
+		"CAPROCK_DATA_DIR":             false, // keep: the child's own hook shim needs it
 	}
 	var out []string
-	for _, kv := range os.Environ() {
+	for _, kv := range base {
 		k := kv
 		if i := indexByte(kv, '='); i >= 0 {
 			k = kv[:i]

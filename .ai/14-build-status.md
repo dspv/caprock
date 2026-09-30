@@ -2,11 +2,11 @@
 
 The running log: what is done, what is not, what is next. **Update this file and § Current State in [00-index.md](00-index.md) whenever the state of the world changes.** Dates in absolute form, never "last week". What "done" means per task is defined in [09-execution-plan.md](09-execution-plan.md).
 
-**Last updated: 2026-09-12** · Phase **2 — Orchestrate, complete** · every phase is tagged and published (`brew install dspv/tap/caprock`, or Scoop on Windows via `dspv/scoop-bucket`). The live unattended orchestrator run — the Phase 2 tag gate — is done: a real `claude` orchestrator assigned a task, spawned a worker, and drove it to green verification with nobody watching.
+**Last updated: 2026-09-30** · Phase **2 — Orchestrate, complete** · every phase is tagged and published (`brew install dspv/tap/caprock`, or Scoop on Windows via `dspv/scoop-bucket`). The live unattended orchestrator run — the Phase 2 tag gate — is done: a real `claude` orchestrator assigned a task, spawned a worker, and drove it to green verification with nobody watching.
 
 **What shipped in which release is answered by `CHANGELOG.md`, `git describe` and the releases page, and is deliberately not restated here.** This paragraph used to carry a hand-written list of them; it stopped at v0.10.0 and stayed there for eighty-four releases, which is [rule 9](../CLAUDE.md) demonstrating itself. What belongs here is the state of the world, not its version history.
 
-Since Orchestrate closed, the product has grown one observation surface across four agents (Claude Code, OpenCode, Gemini CLI and Codex), paid plans on an offline licence key ([ADR-022](08-decisions.md)), a daily spend cap, and the ability to pick up a session Caprock did not start. Next: the consolidated open-work list in [09-execution-plan.md § Open work](09-execution-plan.md#open-work). The orchestration graph shipped but did not earn a nav slot; see [04-ui.md § Graph](04-ui.md).
+Since Orchestrate closed, the product has grown one observation surface across five agents (Claude Code, OpenCode, Gemini CLI, Codex and DeepSeek Harness), paid plans on an offline licence key ([ADR-022](08-decisions.md)), a daily spend cap, and the ability to pick up a session Caprock did not start, or continue one that has ended. Next: the consolidated open-work list in [09-execution-plan.md § Open work](09-execution-plan.md#open-work). The orchestration graph shipped but did not earn a nav slot; see [04-ui.md § Graph](04-ui.md).
 
 ## Progress by track
 
@@ -70,6 +70,60 @@ Percentages are deliberately coarse — they answer "is this track started, half
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
 ## Log
+
+### 2026-09-29 (evening) — Ended sessions say what they were, and whether they continue
+
+Vova could not tell ended sessions apart, and could not tell why some continued
+and some did not (FB-035, FB-036). Cards now carry a description — Claude
+Code's `ai-title` (stored in `sessions.title`, migration 0025, backfilled once
+from transcripts on disk: 22 sessions on the owner's machine), OpenCode's
+title, Codex's thread name ([19-codex.md § Names](19-codex.md#names)), else
+the first substantive prompt. On a copy of the owner's database, of 298 ended
+sessions 176 showed a title and 77 a prompt: Claude Code 85 of 116 (the blank
+ones are empty probes), Codex 99 of 110, OpenCode 67 of 70. The same copy showed 5,788
+Codex turns (`gpt-6-sol`, `gpt-6-luna`) stored unpriced — $96.69 outside every
+total; the rows were added from OpenAI's list prices and such turns are now
+priced on start, with session and daily totals moving in the same transaction.
+And `daily_stats` read $3.68 and 7.9M tokens above the events on five Codex
+days: migrations 0022/0023 re-imported Codex without taking the first import
+out of the daily table. Rebuilt once from events; afterwards events,
+`session_stats` and `daily_stats` agree exactly on that copy.
+Continue is decided on the server from the disk: of the 116 ended Claude Code
+sessions on the same copy, 43 offer a resume that works (12 of them Caprock's
+own, which used to hide it), 52 say their transcript was deleted and 21 that
+their folder is gone — 65 of those 73 had offered a button that failed. Ended cards now
+say when they ended (they read "waiting at the prompt"), carry continue
+themselves, and the ended list is searchable on the server — every prompt of a
+session, not only its card — and pages past the 200 it used to stop at. See
+[04-ui.md](04-ui.md) and [03-contracts.md](03-contracts.md).
+
+### 2026-09-29 (later) — A paste goes in once, and collapses after a reconnect
+
+Vova: a short paste doubled "half the time", and a long one sometimes showed in
+full instead of collapsing (FB-034). Two faults. The paste keys read the
+clipboard and pasted, and returning `false` from xterm's key handler does not
+cancel the browser's own paste, which xterm also handles — driven in real
+Chrome over CDP, master sent `ESC[200~hello short ESC[201~` twice for one
+Cmd+V, this change once. And the terminal modes: Claude Code sends
+`ESC[?2004h` once at startup (182 KB of redraws measured without a second
+one), so a terminal that attached after 256 KB of output had bracketed paste
+off. After this change the 256 KB snapshot's only `?2004h` is the restored
+prefix. Keyboard image paste never reached our handler (xterm stops the event)
+and now listens in the capture phase. See [04-ui.md § The terminal](04-ui.md#the-terminal).
+
+### 2026-09-29 — Sessions start with the user's environment, not launchd's
+
+Vova's blocker: an agent in a Caprock session could not reach BigQuery, while
+`claude` started from his terminal could (FB-033). Not credentials — the
+environment. A session inherited the daemon's, and under launchd autostart
+that is `PATH=/usr/bin:/bin:/usr/sbin:/sbin` and nothing from the profile.
+Reproduced on the owner's machine: under that environment `claude` could not
+find `gcloud` or `bq`; with `internal/userenv` resolving the login shell it
+found both and read the active account. Resolving an interactive zsh with a
+framework measured 1.5–2.2s here, so it is warmed at daemon start and
+refreshed in the background rather than paid per spawn. Verification commands
+had the same fault (`go`, `npm` and `make` are not on launchd's PATH) and use
+the same environment. See [02-architecture.md § Components](02-architecture.md#components).
 
 ### 2026-09-11 (later) — DeepSeek Harness is the fifth agent on the same screen
 

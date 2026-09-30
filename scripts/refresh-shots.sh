@@ -87,7 +87,22 @@ echo "→ shooting with $SHOT_BIN ($("$SHOT_BIN" --version))"
 
 # --no-hooks so a throwaway daemon never edits the user's Claude Code settings.
 echo "→ starting a daemon on :$PORT against the copy"
-"$SHOT_BIN" up --no-open --no-hooks --port "$PORT" --data-dir "$WORK/data" >/dev/null 2>&1 || true
+# An empty HOME, so it finds no transcripts to tail: the database copy is
+# what gets shown. Reading the live ones re-imported gigabytes on start —
+# minutes of every screen fetching — and brought the capturing session's
+# new events in after the scrub, raw paths and all.
+mkdir -p "$WORK/home/.claude"
+# Only the hooks, so Now does not lead with "Hooks not installed". Never the
+# whole file: settings.json can carry env values and keys.
+python3 - "$HOME/.claude/settings.json" "$WORK/home/.claude/settings.json" <<'PY'
+import json, sys
+try:
+    hooks = json.load(open(sys.argv[1])).get("hooks", {})
+except Exception:
+    hooks = {}
+json.dump({"hooks": hooks}, open(sys.argv[2], "w"))
+PY
+HOME="$WORK/home" "$SHOT_BIN" up --no-open --no-hooks --port "$PORT" --data-dir "$WORK/data" >/dev/null 2>&1 || true
 for _ in $(seq 1 20); do
   curl -sf "http://127.0.0.1:$PORT/v1/status" >/dev/null 2>&1 && break
   sleep 1

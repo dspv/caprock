@@ -119,3 +119,15 @@ export function fmtTool(name: string): string {
 export function fmtModel(id: string): string {
   return id.replace(/-\d{6,}$/, '…')
 }
+
+/** A moment as a reader names it: "12 Sep 14:03", with the year only when it
+ *  is not this one. For ended sessions, where "3d ago" alone makes a list of
+ *  old sessions impossible to place. */
+export function fmtWhen(ms: number, now = Date.now()): string {
+  if (!ms) return ''
+  const d = new Date(ms)
+  const sameYear = d.getFullYear() === new Date(now).getFullYear()
+  const date = d.toLocaleDateString('en-GB', sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' })
+  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  return `${date} ${time}`
+}

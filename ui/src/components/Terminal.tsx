@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Terminal as Xterm } from '@xterm/xterm'
 import { api } from '@/lib/api'
 import { SpawnDialog } from './SpawnDialog'
@@ -13,10 +13,16 @@ export function TerminalView({
   // in a single click rather than sending someone to another screen to retype
   // a path they can see.
   cwd,
+  ended = false,
+  resume,
 }: {
   sessionId: string
   owned: boolean
   cwd?: string
+  /** The session is over: there is no process, whoever started it. */
+  ended?: boolean
+  /** What to offer instead of a terminal once it has ended — continuing it. */
+  resume?: ReactNode
 }) {
   const [spawning, setSpawning] = useState(false)
   const host = useRef<HTMLDivElement>(null)
@@ -191,13 +197,18 @@ export function TerminalView({
       // collide with anything the process wants.
       if (isMac && e.metaKey && !e.ctrlKey && !e.altKey) {
         if (e.key === 'c') return !copySelection()  // nothing selected → let it through
-        if (e.key === 'v') { pasteFromClipboard(); return false }
+        // Not ours: returning false only stops xterm *interpreting* the key,
+        // and the browser's own paste still reaches xterm's textarea, which
+        // brackets it. Pasting here as well sent every Cmd+V twice (FB-034).
+        if (e.key === 'v') return false
       }
       // Ctrl+Shift+C / Ctrl+Shift+V elsewhere: the terminal convention,
       // deliberately distinct from Ctrl+C so SIGINT keeps its key.
       if (!isMac && e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
         if (e.key === 'C' || e.key === 'c') { copySelection(); return false }
-        if (e.key === 'V' || e.key === 'v') { pasteFromClipboard(); return false }
+        // Returning false leaves the browser's paste to xterm, as with Cmd+V;
+        // returning true would have xterm send ^V and cancel the event.
+        if (e.key === 'V' || e.key === 'v') return false
       }
       // Ctrl+C with a selection copies; without one it is SIGINT and belongs
       // to the process. This is what VS Code does, and it is what people
@@ -247,15 +258,12 @@ export function TerminalView({
       void navigator.clipboard?.writeText(sel)
       return true
     }
-    const pasteFromClipboard = () => {
-      // The paste goes through xterm rather than straight to the socket so
-      // that bracketed paste is applied if the process asked for it — a
-      // multi-line paste has to arrive as one paste, not as N submits.
-      void navigator.clipboard?.readText().then((t) => { if (t) term.paste(t) }).catch(() => {
-        // Denied or unavailable: the browser's own Cmd/Ctrl+V still works
-        // through xterm's textarea, so there is nothing to report.
-      })
-    }
+    // Paste is the browser's own event, handled by xterm, and never a
+    // clipboard read of ours. xterm applies bracketed paste when the process
+    // asked for it — a multi-line paste has to arrive as one paste, not as N
+    // submits — and the native event needs no clipboard permission, which
+    // Safari asks for on every read. The daemon restores the modes a late
+    // terminal missed, so "asked for it" holds after a reconnect too.
 
     // Paste an image, get a path.
     //
@@ -291,6 +299,8 @@ export function TerminalView({
         .find((i) => i.kind === 'file')?.getAsFile()
       if (!file) return  // ordinary text: xterm's own handling is correct
       e.preventDefault()
+      // Or xterm's textarea handler pastes the (empty) text as well.
+      e.stopPropagation()
       void sendFile(file)
     }
     const onDrop = (e: DragEvent) => {
@@ -302,7 +312,9 @@ export function TerminalView({
     // preventDefault on dragover, or the browser navigates away to the file.
     const onDragOver = (e: DragEvent) => { e.preventDefault() }
     const el = host.current
-    el.addEventListener('paste', onPaste)
+    // Capture phase: xterm's textarea handler stops the paste from bubbling,
+    // so a listener on the way up never saw a keyboard paste at all.
+    el.addEventListener('paste', onPaste, true)
     el.addEventListener('drop', onDrop)
     el.addEventListener('dragover', onDragOver)
 
@@ -329,13 +341,25 @@ export function TerminalView({
     })
     ro.observe(host.current)
     return () => {
-      el.removeEventListener('paste', onPaste)
+      el.removeEventListener('paste', onPaste, true)
       el.removeEventListener('drop', onDrop)
       el.removeEventListener('dragover', onDragOver)
       if (raf) cancelAnimationFrame(raf)
       ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); ws.close(); term.dispose()
     }
   }, [sessionId, owned])
+  if (!owned && ended) {
+    // An ended session has no process to attach to, and it used to get the
+    // copy written for a live one: "You started this session yourself …
+    // This one keeps running" — wrong on both counts for a session Caprock
+    // started and that has stopped. What there is to do is carry it on.
+    return (
+      <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+        <p className="text-[14px] text-fg">This session has ended, so there is no terminal to attach to.</p>
+        {resume}
+      </div>
+    )
+  }
   if (!owned) {
     // Says what to do first, and why second.
     //

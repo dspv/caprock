@@ -9,6 +9,100 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.59.3] - 2026-09-30
+
+### Fixed
+
+- The Lifetime screen and the all-time figures on Now load in about a second
+  instead of nine. The indexes the spend aggregates read from stopped covering
+  them when background usage was split out; migration 0026 rebuilds them
+  (about ten seconds on a large database, once, on the first start). The
+  History totals for today read off the time index like the summary's already
+  do (4.8s to 0.02s on the owner's database).
+- Rebuilding the Codex daily totals no longer fails on a busy first start
+  with "database is locked"; it used to wait for the next restart.
+
+## [0.59.2] - 2026-09-30
+
+### Fixed
+
+- Today's totals load in a fraction of a second again. Two of the queries
+  behind them walked every event in the database instead of today's, once
+  the background-usage split added a column their indexes did not cover; on
+  a 300k-event database the summary took 3.7s at rest and tens of seconds
+  while a session was busy, and screens sat on "reading your figures…" or
+  "loading…". Measured on a copy of the owner's database: today 3.7s → 0.5s,
+  7d 1.9s → 0.15s.
+
+## [0.59.1] - 2026-09-30
+
+### Fixed
+
+- The dashboard no longer piles up requests while a session is busy. Every
+  live event made each panel ask again, whether or not its last request had
+  answered, so on a large database today's totals fell 30-60 seconds behind
+  and read "reading your figures…" while the daemon ran at over 100% CPU. A
+  panel now waits for its running request and asks once more after it.
+- `make shots` waits until every placeholder on a screen has cleared, and
+  fails rather than capturing a half-loaded one.
+
+## [0.59.0] - 2026-09-30
+
+### Added
+
+- Every session card says what the session was about: Claude Code's, Codex's
+  or OpenCode's own title for it (the name their resume pickers show), or else
+  its first prompt that says something. Ended sessions can finally be told
+  apart (FB-035).
+  OpenCode sessions imported before this release get their titles too.
+- Pricing for GPT-6 Sol and GPT-6 Luna, from OpenAI's published list prices
+  (read 2026-09-29). Turns already stored without a price because their model
+  was missing from the table are priced on the next start, at the rate in
+  force when they ran; turns that were priced keep their figures.
+- An ended session says whether it can be continued and, when it cannot, why:
+  the transcript was deleted by Claude Code, the folder is gone, or the agent
+  is not one Caprock resumes — with the command to resume it yourself where
+  the agent has one (FB-036).
+- Ended session cards say when the session ended and offer **continue** (or
+  why not) right on the card. With ended sessions shown, a search box finds a
+  session by its title, any prompt typed in it, its project or branch, and
+  **show more** reaches past the first 200.
+
+### Fixed
+
+- A session started from Caprock can now reach what a terminal can: `gcloud`,
+  `bq`, Homebrew tools and everything the shell profile exports. Sessions and
+  verification commands used to inherit the daemon's environment, which under
+  launchd autostart is a bare `PATH=/usr/bin:/bin:/usr/sbin:/sbin`; they now
+  start with the user's login-shell environment, resolved in the background at
+  start and refreshed in the background once it is more than a minute old
+  (FB-033). Caprock runs your `$SHELL -l -i` to read that environment; the
+  shell sees `CAPROCK_RESOLVING_ENVIRONMENT=1`, so a profile can skip
+  interactive-only work. Windows is unchanged.
+- A session started from Caprock no longer inherits Claude Code's session
+  markers when the daemon itself was started from inside a Claude Code session.
+- Pasting into the terminal sends the text once. Cmd+V (Ctrl+Shift+V off macOS)
+  used to paste twice whenever the browser allowed a clipboard read, so short
+  text appeared doubled (FB-034).
+- A long paste collapses into Claude Code's "[Pasted text]" block again after
+  switching tabs or reloading. A terminal that attached after the session's
+  first 256 KB of output never learned that bracketed paste was on; the daemon
+  now restores the terminal modes the session set before replaying scrollback.
+- Sessions Caprock started can be continued after they end; the button used to
+  disappear for them, including after they had been continued once.
+- Continuing a session whose transcript is gone is refused with the reason,
+  instead of opening a terminal that printed "No conversation found" and
+  exited.
+- Daily totals no longer count some Codex turns twice. Migrations 0022 and
+  0023 re-imported every Codex event without taking the first import out of
+  the daily table; the Codex rows are rebuilt from events once on start
+  (on the owner's machine, five days $3.68 and 7.9M tokens too high). A Codex
+  turn repriced after its model became readable now moves the session and
+  daily totals with it.
+- Pasting an image with the keyboard uploads it and types its path; only
+  drag-and-drop worked before, because xterm stopped the paste event from
+  reaching our handler.
+
 ## [0.58.3] - 2026-09-13
 
 ### Changed

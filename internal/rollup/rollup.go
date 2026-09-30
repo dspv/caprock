@@ -36,6 +36,9 @@ type SessionInfo struct {
 	// The sibling it replaces cannot be found by the staleness sweep, because
 	// they share the live process the sweep uses to judge liveness.
 	ReplacesPID bool
+	// Title is the agent's own name for the session, when its source carries
+	// one (OpenCode). Empty leaves a stored title alone.
+	Title string
 }
 
 // Result reports what Record did, for callers that need to fan out further.
@@ -135,6 +138,7 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 
 			Agent: info.Agent,
 			PID:   info.PID,
+			Title: info.Title,
 		}
 		// A review turn must not overwrite the model a session's real work named:
 		// Codex reuses the reviewed session's id, so its review turns arrive

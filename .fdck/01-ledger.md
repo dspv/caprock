@@ -9,20 +9,24 @@ started) · **building** · **shipped** (in a release, with the version) ·
 
 | Id     | Date       | From  | Request                                                                         | Status   | Landed in         |
 | ------ | ---------- | ----- | ------------------------------------------------------------------------------- | -------- | ----------------- |
-| FB-032 | 2026-09-06 | Dima  | Put the session's real numbers in the Claude Code status line, as DeepSeek does | shipped  | next release      |
+| FB-036 | 2026-09-29 | Vova  | Some ended sessions can be continued and some cannot, with no reason given      | shipped  | v0.59.0           |
+| FB-035 | 2026-09-29 | Vova  | Ended sessions all look alike; show a short description of each                 | shipped  | v0.59.0           |
+| FB-034 | 2026-09-29 | Vova  | A paste is duplicated when short and not collapsed when long                    | shipped  | v0.59.0           |
+| FB-033 | 2026-09-29 | Vova  | A session started from Caprock cannot reach GCP; plain `claude` can             | shipped  | v0.59.0           |
+| FB-032 | 2026-09-06 | Dima  | Put the session's real numbers in the Claude Code status line, as DeepSeek does | shipped  | v0.53.0           |
 | FB-031 | 2026-09-03 | Vova  | Token optimisation, with the tokens saved shown in the stats                    | declined | —                 |
 | FB-030 | 2026-09-03 | Vova  | Caprock is convenient but not exclusive — nothing here needs paying for         | open     | —                 |
 | FB-029 | 2026-09-03 | Vova  | The stats stopped being the point once someone else pays the bill               | open     | —                 |
 | FB-028 | 2026-08-30 | Dima  | No way to buy from the main screen; the locked preview was unreadable           | shipped  | v0.37.1           |
 | FB-027 | 2026-08-30 | Panel | Five readers priced the premium dialog and none of them bought                  | shipped  | v0.37.0           |
-| FB-026 | 2026-08-29 | Alex  | The dollar figures read as "what you'd pay if you were foolish"                 | shipped  | next release      |
+| FB-026 | 2026-08-29 | Alex  | The dollar figures read as "what you'd pay if you were foolish"                 | shipped  | v0.49.0           |
 | FB-025 | 2026-08-29 | Alex  | `make build` does not work on Windows out of the box                            | shipped  | v0.36.0           |
 | FB-024 | 2026-08-29 | Alex  | Ship through winget, and install into %USERPROFILE%\.local\bin                  | shipped  | v0.36.0           |
 | FB-023 | 2026-08-29 | Alex  | The SQLite database reached half a gigabyte on ordinary use                     | declined | —                 |
 | FB-022 | 2026-08-28 | Dima  | Make the web terminal good enough to live in, like iTerm2                       | shipped  | v0.33.0           |
 | FB-021 | 2026-08-28 | Vova  | Shift+Enter inserts a newline on an empty prompt, submits once there is text    | shipped  | v0.32.1           |
 | FB-020 | 2026-08-28 | Dima  | Show what a cache hit rate actually means, without shouting                     | shipped  | v0.32.0           |
-| FB-019 | 2026-08-27 | Dima  | Reach Caprock from a tablet or phone, the way Claude Code is                    | part     | next release      |
+| FB-019 | 2026-08-27 | Dima  | Reach Caprock from a tablet or phone, the way Claude Code is                    | part     | v0.49.0           |
 | FB-018 | 2026-08-27 | Vova  | Shift+Enter did not work for him; Option+Enter was what he pressed              | shipped  | v0.31.3           |
 | FB-017 | 2026-08-27 | Dima  | Wanted an update button, or at least clear steps per OS                         | shipped  | v0.31.2           |
 | FB-016 | 2026-08-27 | Almas | brew said "already installed" for a release that was already out                | shipped  | v0.31.2           |
@@ -43,6 +47,19 @@ started) · **building** · **shipped** (in a release, with the version) ·
 | FB-001 | 2026-08-24 | Alex  | Hooks never fired on Windows                                                    | shipped  | v0.27.3 + v0.27.4 |
 
 ## Detail
+
+### FB-033 to FB-036 — Paste, ended sessions, and GCP
+
+Four reports in one message; the diagnosis of each is in
+[the story](stories/2026-09-29-vova-paste-sessions-gcp.md). **FB-033 is
+shipped:** a spawned session and a verification command now start with the
+user's login-shell environment rather than the daemon's
+([02-architecture.md § Components](../.ai/02-architecture.md#components)).
+FB-034 to FB-036 are fixed in their own changes and also shipped: paste
+([04-ui.md § The terminal](../.ai/04-ui.md#the-terminal)), a description on
+every card and a continue that says why not
+([04-ui.md § Now](../.ai/04-ui.md)). Codex sessions take their names from
+Codex's own thread index ([19-codex.md § Names](../.ai/19-codex.md#names)).
 
 ### FB-032 — The numbers DeepSeek puts in its status line
 

@@ -289,8 +289,7 @@ open in the ledger, which owns the reasoning.
   owner chose not to pursue it (too risky): the history is against it, and a
   number with nothing measured behind it is what rule 6 exists to prevent.
   Reopen only via a measured real-session number, whatever it is. The ledger
-  row still reads `open` and should be flipped to `declined` with the reason
-  recorded there.
+  row reads `declined`, with the reason recorded there.
 
 ### Buildable work
 

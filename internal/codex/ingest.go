@@ -12,6 +12,7 @@ import (
 
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/rollup"
+	"github.com/dspv/caprock/internal/store"
 )
 
 // Agent is the value written to sessions.agent for Codex sessions.
@@ -38,6 +39,15 @@ type Ingester struct {
 	mu    sync.Mutex
 	seen  map[string]fileState
 	stats Stats
+
+	// namesAt is the state database's modification time when names were last
+	// synced; the index is re-read only when it moves.
+	namesAt time.Time
+	// namesFor is how many transcripts had been imported at that sync. A
+	// thread can be indexed before its transcript is imported, and then its
+	// name found no session to land on; a newly imported transcript forces
+	// the next sync.
+	namesFor int
 }
 
 type fileState struct {
@@ -131,10 +141,48 @@ func (in *Ingester) once(ctx context.Context) error {
 		in.stats.Sessions = len(in.seen)
 		in.mu.Unlock()
 	}
+	in.syncNames(ctx)
 	in.mu.Lock()
 	in.stats.LastPoll = time.Now().UnixMilli()
 	in.mu.Unlock()
 	return nil
+}
+
+// syncNames copies Codex's own thread names onto the sessions already
+// imported (FB-035). Separate from the transcript pass because a session's
+// events are written once and deduplicated after that, while its name arrives
+// later and can change. Best-effort: a failure costs a description, never an
+// import.
+func (in *Ingester) syncNames(ctx context.Context) {
+	path := StateDB(in.dir)
+	if path == "" || in.rec == nil || in.rec.Store == nil {
+		return
+	}
+	stamp := stateStamp(path)
+	in.mu.Lock()
+	known := len(in.seen)
+	in.mu.Unlock()
+	if !stamp.After(in.namesAt) && known == in.namesFor {
+		return
+	}
+	names, err := ReadThreadNames(ctx, path)
+	if err != nil {
+		in.log.Debug("codex thread names unavailable", "component", "codex", "err", err)
+		in.namesAt, in.namesFor = stamp, known // do not retry an unreadable index every tick
+		return
+	}
+	db := in.rec.Store.DB()
+	for id, n := range names {
+		if err := store.SetTitle(ctx, db, id, n.Name); err != nil {
+			in.log.Warn("record codex thread name", "component", "codex", "err", err)
+			return
+		}
+		if err := store.SetPrompt(ctx, db, id, n.FirstMessage); err != nil {
+			in.log.Warn("record codex first message", "component", "codex", "err", err)
+			return
+		}
+	}
+	in.namesAt, in.namesFor = stamp, known
 }
 
 // session records one parsed transcript: its turns and its tool calls, in the
@@ -363,17 +411,45 @@ func (in *Ingester) repriceSession(ctx context.Context, s *Session) error {
 	if len(todo) == 0 {
 		return nil
 	}
+	loc := in.rec.Location
+	if loc == nil {
+		loc = time.Local
+	}
 	for _, r := range todo {
 		// Priced at the turn's own timestamp, like every other turn: a price
 		// that has since changed was the real one for the work that ran under
 		// it.
-		usd, ok := in.rec.Table.PriceAt(s.Model, r.tokens, time.UnixMilli(r.ts))
+		at := time.UnixMilli(r.ts)
+		usd, ok := in.rec.Table.PriceAt(s.Model, r.tokens, at)
 		if !ok {
 			continue
 		}
-		if _, err := db.ExecContext(ctx,
-			`UPDATE events SET model = ?, cost_usd = ? WHERE id = ? AND COALESCE(model,'') = ''`,
-			s.Model, usd, r.id); err != nil {
+		// The totals move with the event, in one transaction. Updating the
+		// event alone left the session total without the cost and the day's
+		// tokens filed under a model with no name — every screen reading the
+		// rollups disagreeing with the events they were built from.
+		err := in.rec.Store.WithTx(ctx, func(q store.Querier) error {
+			res, err := q.ExecContext(ctx,
+				`UPDATE events SET model = ?, cost_usd = ? WHERE id = ? AND COALESCE(model,'') = ''`,
+				s.Model, usd, r.id)
+			if err != nil {
+				return err
+			}
+			if n, _ := res.RowsAffected(); n == 0 {
+				return nil
+			}
+			if _, err := store.AddStats(ctx, q, store.Stats{SessionID: s.ID, CostUSD: usd}); err != nil {
+				return err
+			}
+			day := at.In(loc).Format("2006-01-02")
+			project := store.ProjectFromCwd(s.Cwd)
+			tokens := r.tokens.Total()
+			if err := store.AddDaily(ctx, q, day, project, "", -tokens, 0, false); err != nil {
+				return err
+			}
+			return store.AddDaily(ctx, q, day, project, s.Model, tokens, usd, false)
+		})
+		if err != nil {
 			return err
 		}
 	}

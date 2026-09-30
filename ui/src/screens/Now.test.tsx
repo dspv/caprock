@@ -27,6 +27,8 @@ const state = vi.hoisted(() => ({
   /** What the server holds, when it is more than it sent. */
   sessionTotal: undefined as number | undefined,
   spawned: [] as unknown[],
+  /** Every (activeOnly, search, limit) the screen asked the list for. */
+  listCalls: [] as unknown[][],
 }))
 
 vi.mock('@/lib/api', async (orig) => {
@@ -40,10 +42,10 @@ vi.mock('@/lib/api', async (orig) => {
       sessions: async () => state.sessions,
       // The screen asks for the list with its total, so the cap can be stated
       // rather than hidden; the mock answers in the same shape.
-      sessionsWithTotal: async () => ({
-        items: state.sessions,
-        total: state.sessionTotal ?? state.sessions.length,
-      }),
+      sessionsWithTotal: async (...args: unknown[]) => {
+        state.listCalls.push(args)
+        return { items: state.sessions, total: state.sessionTotal ?? state.sessions.length }
+      },
       spawn: async (req: unknown) => { state.spawned.push(req); return { session_id: 'chat-1', cwd: '/data/chats/x' } },
     },
   }
@@ -267,4 +269,42 @@ it('states a plain count when the server sent everything it had', async () => {
 
   fireEvent.click(await screen.findByLabelText(/show ended sessions/i))
   expect(await screen.findByText(/Ended · 2$/)).toBeTruthy()
+})
+
+// FB-035/036: an ended card says when it ended — not "waiting for you" — and
+// whether it can go on, without a trip to the detail screen.
+it('shows an ended card as ended, with continue or the reason it cannot', async () => {
+  state.summary = emptySummary({ sessions: 2 })
+  state.status = { claude_available: true }
+  state.sessions = [
+    sess({ session_id: 'ok1', status: 'ended', last_event_at: Date.now() - 3_600_000, resume: { ok: true, command: 'claude --resume ok1' },
+      activity: { phrase: 'waiting for you', tool: '', at: '', health: 'idle', repeats: 1 } }),
+    sess({ session_id: 'gone', status: 'ended', last_event_at: Date.now() - 3_600_000, resume: { ok: false, reason: 'Claude Code has deleted its transcript' },
+      activity: { phrase: 'waiting for you', tool: '', at: '', health: 'idle', repeats: 1 } }),
+  ]
+  render(<NowScreen />)
+  fireEvent.click(await screen.findByLabelText(/show ended sessions/i))
+
+  const button = await screen.findByRole('button', { name: 'continue' })
+  expect(screen.queryByText('waiting for you')).toBeNull()
+  expect(screen.getByText('can’t continue').getAttribute('title')).toMatch(/deleted/)
+  fireEvent.click(button)
+  await waitFor(() => expect(state.spawned).toContainEqual(expect.objectContaining({ resume: 'ok1', fork: false })))
+})
+
+it('searches ended sessions on the server and pages past the first 200', async () => {
+  state.summary = emptySummary({ sessions: 450 })
+  state.status = { claude_available: true }
+  state.sessions = [sess({ session_id: 'e1', status: 'ended', activity: { phrase: 'done', tool: '', at: '', health: 'idle', repeats: 1 } })]
+  state.sessionTotal = 450
+  state.listCalls = []
+  render(<NowScreen />)
+  fireEvent.click(await screen.findByLabelText(/show ended sessions/i))
+
+  fireEvent.click(await screen.findByRole('button', { name: /show 200 more/ }))
+  await waitFor(() => expect(state.listCalls).toContainEqual([false, '', 400]))
+
+  fireEvent.change(screen.getByPlaceholderText(/find a session/), { target: { value: ' bigquery ' } })
+  // Debounced, trimmed, and back to the first page for a new question.
+  await waitFor(() => expect(state.listCalls).toContainEqual([false, 'bigquery', 200]))
 })

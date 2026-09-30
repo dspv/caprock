@@ -23,7 +23,10 @@ import (
 //
 // v2 (2026-08-20): assistant text is clipped on runes rather than bytes, at a
 // much higher limit. Rows written by v1 may be short and may end in U+FFFD.
-const SchemaVersion = 2
+//
+// v3 (2026-09-29): `ai-title` lines are read into sessions.title. Rows from
+// earlier versions are filled once by BackfillTitles.
+const SchemaVersion = 3
 
 // Line is the subset of a transcript line the parser understands.
 type Line struct {
@@ -37,6 +40,7 @@ type Line struct {
 	Version     string `json:"version"`
 	GitBranch   string `json:"gitBranch"`
 	IsSidechain bool   `json:"isSidechain"`
+	AITitle     string `json:"aiTitle"` // type "ai-title": Claude Code's own name for the session
 	AgentID     string `json:"agentId"`
 	Subtype     string `json:"subtype"`
 	DurationMs  int64  `json:"durationMs"`
@@ -58,6 +62,11 @@ type Line struct {
 	} `json:"message"`
 }
 
+// TypeAITitle is the line Claude Code writes to name a session — the name its
+// own /resume picker shows. It repeats through the transcript and carries no
+// event; the tailer stores it as the session's title.
+const TypeAITitle = "ai-title"
+
 // ErrSkip marks lines that carry nothing we consume (meta lines, blank lines).
 var ErrSkip = errors.New("skip line")
 
@@ -78,7 +87,7 @@ func ParseLine(raw []byte) (*Line, error) {
 		return nil, ErrMalformed
 	}
 	switch l.Type {
-	case "user", "assistant", "system":
+	case "user", "assistant", "system", TypeAITitle:
 		if l.SessionID == "" {
 			return nil, ErrSkip
 		}
