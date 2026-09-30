@@ -81,11 +81,14 @@ own figure Caprock carries through unchanged, and like Gemini, which our own
 table prices. So `pricing/pricing.json` grew OpenAI rows, read from
 `developers.openai.com` on 2026-09-06 and dated there: `gpt-5-codex`,
 `gpt-5.3-codex`, and the `gpt-5.6` family (sol, terra, luna); `gpt-6-sol` and
-`gpt-6-luna` were added from the same source on 2026-09-29, and the Codex turns
+`gpt-6-luna` were added from the same source on 2026-09-29, `gpt-6-astra` and
+`gpt-6.1-sol` on 2026-09-30, and the Codex turns
 stored unpriced before then are priced on start (`Recorder.PriceUnpriced`, see
-[03-contracts.md § Pricing table](03-contracts.md#pricing-table)). OpenAI does not
-bill for cache writes, so those columns are `0` — meaning "not charged", the
-same as the Gemini rows.
+[03-contracts.md § Pricing table](03-contracts.md#pricing-table)). OpenAI did
+not bill for cache writes on the gpt-5 models, so those columns are `0` —
+meaning "not charged", the same as the Gemini rows. The gpt-6 family bills them
+at 1.25x input and its rows say so, but Codex reports no cache-write tokens for
+it, so the rate has nothing to apply to yet.
 
 **The model is recorded twice, and reading only the obvious one left 83% of
 tokens unpriced.** `turn_context` is the natural place to look and appears in
