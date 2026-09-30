@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.60.0] - 2026-09-30
+
 ### Added
 
 - After a reboot or an OS update, the Now screen names the sessions that were
