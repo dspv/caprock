@@ -212,18 +212,22 @@ reports. Codex reports how many tokens a turn used but never what it cost, so
 those are priced from Caprock's own table of OpenAI list prices. Like every
 number here, both are modelled from list prices, not a bill.
 
-Two things about Codex figures worth knowing:
+Three things about Codex figures worth knowing:
 
 - A turn whose transcript does not name the model it ran on keeps its tokens and
   shows **no cost**, rather than a guessed one. `caprock status` reports how many.
 - About half of Codex's token reports give a total without breaking it down by
   kind. Caprock counts that total as input, which is the unqualified rate — so
   for those turns the cost is an **upper bound**: any part of it that was really
-  a cached read cost a tenth of what is shown.
+  a cached read cost a tenth or less of what is shown.
+- OpenAI bills the gpt-6 models for writing to their cache, at 1.25x input, but
+  Codex does not report how many tokens were written. Those arrive as plain
+  input, so a gpt-6 figure can be low by up to a quarter of that unreported
+  share.
 
 **What is not there yet.** Observation only: the dashboard cannot start, steer
-or stop an OpenCode or Codex session, and the task runner does not work with
-either. Activity refreshes every few seconds rather than instantly, so the Now
+or stop an OpenCode, Codex or DeepSeek Harness session, and the task runner does
+not work with them. Activity refreshes every few seconds rather than instantly, so the Now
 screen lags a little behind a running session — the Cost and Lifetime screens
 are unaffected. Verified on macOS; it builds and its tests pass on Linux and
 Windows, but it has not been run on either.
@@ -235,15 +239,26 @@ Windows, but it has not been run on either.
 - **Find what Claude said** — the reasoning and the "here's what changed, here's
   what I still need from you" that otherwise lives only in terminal scrollback,
   searchable across every session.
+- **Pick up where you left off** — a new session in a folder you have worked in
+  is handed the last thing the previous one said there (on by default, off in
+  settings). You can measure whether that helps: an opt-in setting holds it back
+  from one new session in four and the Memory screen compares the two.
 - **See what it went on** — not just which model or which repository, but what
   the money was doing: running commands, writing code, reading and searching, or
   turns that called no tool at all.
 - **Know what it's worth** — your measured usage priced at the API rate, against
   what your plan actually costs.
-- **Steer it** — spawn, pause, and kill sessions from the dashboard, and continue one that has ended.
+- **Steer it** — spawn, pause, and kill sessions from the dashboard, and continue
+  one that has ended. Each card says what the session was about and when it was
+  worked in, says why when it cannot be continued, and ended sessions are
+  searchable. After a reboot the Now screen lists the sessions it interrupted,
+  each with continue.
 - **Trust it** — an opt-in task runner whose tasks finish only when the checks
   Caprock runs come back green.
-- **Local-first** — loopback only, no servers, no telemetry, no account. The one thing that can reach the network is an optional check for new releases, off until you turn it on.
+- **Local-first** — loopback only, no servers, no telemetry, no account. Nothing
+  reaches the network unless you switch it on: the release check, the Gemini
+  chat on your own key, and the weekly report to your own Telegram bot are each
+  off by default.
 
 What your usage is actually worth — the same work priced at the API rate,
 against what your plan costs. Nobody else tells you this number:

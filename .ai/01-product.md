@@ -16,7 +16,7 @@ Utility first. The fun layer (avatars, office floor) is a skin added later on to
 user starts / spawns a claude session
   → hooks + transcript stream events into the daemon (event plane)
   → daemon normalizes → SQLite → rollups (tokens, cost, activity, alerts)
-  → browser dashboard shows Now / Session Detail / Cost / Lifetime / Tasks
+  → browser dashboard shows Now / Session Detail / Cost / Lifetime / Memory / Tasks
   → user intervenes (message, pause, kill, approve) or lets an orchestrator run
   → verified task results and lifetime stats accumulate locally
 ```
@@ -127,7 +127,7 @@ Promises enforced by code, each with the test that proves it:
 ## Out of scope (v0.x — deliberately skipped)
 
 - Pixel-art office, avatars, animations — later, as a render mode of the event stream (and only with cleanly licensed assets; Munder Difflin's LimeZu art is non-commercial).
-- Multi-provider engines (codex/gemini/grok) — architecture keeps `command` configurable per agent, but only `claude` is tested/supported in MVP.
+- Driving non-Claude agents (start, steer, stop, the task runner) — OpenCode, Codex and DeepSeek Harness are observed only, and Gemini can be started and observed; control for the rest is open work.
 - Cloud anything, permanently: a hosted tier would mean shipping prompts,
   replies and tool output off the machine, which is the one thing this product
   exists not to do. Team features are no longer "out of scope" but "specified,
