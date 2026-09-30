@@ -42,7 +42,7 @@ Munder Difflin won on story. Phase 0 needs its own hook: "I watched my Claude bu
 The spike proves the PTY once; a later dependency bump can break it silently. Mitigation: the three-OS smoke job on every PR and the "no red Windows job" rule; weak point is that GitHub's Windows runner is not every user's Windows.
 
 **`RISK-07` — Cost math drift vs the real bill.**
-Prices change; a stale table under-reports spend and users notice on their invoice. Mitigation: `meta.pricing_version` recorded and never applied retroactively, user override file, a dated `source` in `pricing.json`, and a release-checklist step to re-fetch the pricing page. Accepted residual: partner platforms (Bedrock/Vertex) are not priced in v0.1 ([OQ-02](#open-questions)).
+Prices change; a stale table under-reports spend and users notice on their invoice. Mitigation: `meta.pricing_version` recorded and never applied retroactively, user override file, a dated `source` in `pricing.json`, and a release-checklist step to re-fetch the pricing page. Accepted residuals: partner platforms (Bedrock/Vertex) are not priced ([OQ-02](#open-questions)); the gpt-6 rows cannot apply OpenAI's cache-write rate because Codex reports no cache-write tokens, so those figures can be low by up to a quarter of that unreported share; and the gpt-6 surcharge above 272K input tokens is not modelled (no observed turn reached it).
 
 ## Open questions
 
@@ -63,7 +63,7 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   - **Why a retry cannot corrupt the linkage:** a `tool_use` id belongs to exactly one assistant message — checked across all 1560 transcripts, none of 69552 distinct ids appears under two message ids — and every one of the 53313 pathless links written was compared against transcript ground truth with zero mismatches. The backfill can therefore only find the right answer or none.
   - **What is deliberately unchanged:** the old `tool_link_backfilled` marker is not treated as completion (a database carrying it still has every pathless call unlinked), and the 1%/5% guards stay, because a fresh install or a machine with pruned transcripts still needs them.
 
-No open questions remain.
+- `OQ-11` — **Does the memory handoff help?** On the owner's database a session continuing the previous day's work reached its first edit no faster than one starting cold (17 vs 16 minutes, 24 vs 23 tool calls; 18 and 19 Claude Code sessions, 2026-09-30) with the handoff already on for most of them. Decided by: the Memory-screen comparison once each group has 5 sessions that reached an edit — the owner's machine runs the 25% holdout since 2026-09-30, and Vova has been asked to. If there is no difference, revisit [ADR-030](08-decisions.md) before building anything on context continuity.
 
 ## What would falsify the whole plan
 

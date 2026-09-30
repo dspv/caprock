@@ -6,11 +6,11 @@ The running log: what is done, what is not, what is next. **Update this file and
 
 **What shipped in which release is answered by `CHANGELOG.md`, `git describe` and the releases page, and is deliberately not restated here.** This paragraph used to carry a hand-written list of them; it stopped at v0.10.0 and stayed there for eighty-four releases, which is [rule 9](../CLAUDE.md) demonstrating itself. What belongs here is the state of the world, not its version history.
 
-Since Orchestrate closed, the product has grown one observation surface across five agents (Claude Code, OpenCode, Gemini CLI, Codex and DeepSeek Harness), paid plans on an offline licence key ([ADR-022](08-decisions.md)), a daily spend cap, and the ability to pick up a session Caprock did not start, or continue one that has ended. Next: the consolidated open-work list in [09-execution-plan.md § Open work](09-execution-plan.md#open-work). The orchestration graph shipped but did not earn a nav slot; see [04-ui.md § Graph](04-ui.md).
+Since Orchestrate closed, the product has grown one observation surface across five agents (Claude Code, OpenCode, Gemini CLI, Codex and DeepSeek Harness), paid plans on an offline licence key ([ADR-022](08-decisions.md)), a daily spend cap, the ability to pick up a session Caprock did not start, or continue one that has ended, and a memory handoff that tells a new session what the last one left in its folder ([ADR-030](08-decisions.md)) — measurable since 2026-09-30 with an opt-in holdout. Next: the consolidated open-work list in [09-execution-plan.md § Open work](09-execution-plan.md#open-work). The orchestration graph shipped but did not earn a nav slot; see [04-ui.md § Graph](04-ui.md).
 
 ## Progress by track
 
-Percentages are deliberately coarse — they answer "is this track started, half-built, or done", nothing finer. The same numbers drive the progress bars in [README.md](../README.md); **update both in the same commit.** "90%" means "works, not hardened"; never 100% for anything that has not run in the environment it was built for.
+Percentages are deliberately coarse — they answer "is this track started, half-built, or done", nothing finer. "90%" means "works, not hardened"; never 100% for anything that has not run in the environment it was built for.
 
 | Track                           | Progress | State                                                                 |
 | ------------------------------- | -------- | --------------------------------------------------------------------- |
@@ -70,6 +70,44 @@ Percentages are deliberately coarse — they answer "is this track started, half
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
 ## Log
+
+### 2026-09-30 — Reliable under load, and picking up after a restart
+
+The dashboard stalled on a busy machine: every panel refetched on each live
+frame without waiting for the last request, so summary queries piled up behind
+one another. Requests now wait their turn; migration 0026 put `internal` back
+into the covering indexes (every aggregate filters on it since 0024, so none of
+them covered any more — `/v1/history?range=all` took 9s on 300k events), and a
+test now fails CI if a hot query's plan stops using its index. Hook events are
+no longer lost when the database is busy (41 in the owner's log, each "context
+canceled"), the log file is capped at 64MB (it had reached 4.6GB of one
+repeated warning, now logged once per model), and a restart reads only the
+Codex transcripts that changed (it re-read 161 files, 1.1GB, each time). The
+login-shell environment for spawned sessions retries after a failure and
+`caprock status` says which environment sessions get (FB-033).
+
+Vova lost his sessions after an OS update (FB-037–040). Ended cards now say
+when the session was worked in, not when it closed — on the owner's database 7
+of 101 ended Claude Code sessions showed a time more than 10 minutes after
+their last work (`sessions.worked_at`, migration 0027, filled for 289 of 304).
+After a stop of Caprock or the machine, Now lists the sessions it cut off,
+each with continue: checked on a copy of the owner's database with a
+simulated stop, it named exactly the two sessions closed at that moment and
+none of the live ones. `/clear` and fork chains fold into one card, joined only
+by recorded links (4 on that database). A session last heard from before the
+machine booted is ended whatever its pid answers — a reboot hands old pids to
+other programs, which kept such sessions "live" with an empty terminal — and a
+session Caprock started before its own restart offers continue instead of an
+empty terminal.
+
+`gpt-6-astra` and `gpt-6.1-sol` were priced (27 astra turns had shown as
+"Partial cost"), and the gpt-6 rows carry OpenAI's 1.25x cache-write rate,
+which Codex reports no tokens for. The memory handoff became measurable: on
+the owner's database a session continuing the previous day's work reached its
+first edit no faster than one starting cold (17 vs 16 minutes, 24 vs 23 tool
+calls, 18 and 19 Claude Code sessions) with the handoff already on, so an
+opt-in holdout now records which sessions got it and the Memory screen compares
+the two groups (OQ-11 in [12-risks.md](12-risks.md)).
 
 ### 2026-09-29 (evening) — Ended sessions say what they were, and whether they continue
 

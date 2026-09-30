@@ -2,7 +2,7 @@
 
 Read this file first. Then read the task-specific file below.
 
-Caprock is a local, open-source **mission control for Claude Code**: a single static Go binary that runs a loopback daemon, captures every `claude` session on the machine through Claude Code hooks (via a tiny shim) and transcript tailing, normalizes everything into one event stream in SQLite, and serves a dense React dashboard (Now · Session Detail · Cost · Lifetime · Answers · Tasks) with live activity, per-repo cost, token burn, loop alerts, the prose Claude actually wrote (searchable across sessions), plus spawning/typing into sessions and a verified multi-agent orchestrator. Local-first, zero servers, Apache-2.0, free for solo use. Owner: Dima; repo `dspv/caprock`; domain `caprock.dev`.
+Caprock is a local, open-source **mission control for Claude Code**: a single static Go binary that runs a loopback daemon, captures every `claude` session on the machine through Claude Code hooks (via a tiny shim) and transcript tailing, normalizes everything into one event stream in SQLite, and serves a dense React dashboard (Now · Session Detail · Cost · Lifetime · Memory · Tasks) with live activity, per-repo cost, token burn, loop alerts, the prose Claude actually wrote (searchable across sessions, and handed to a new session opening the same folder), plus spawning/typing into sessions and a verified multi-agent orchestrator. Local-first, zero servers, Apache-2.0, free for solo use. Owner: Dima; repo `dspv/caprock`; domain `caprock.dev`.
 
 | File                                               | Contents                                                        | Read when...                                       |
 | -------------------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------- |
@@ -74,7 +74,7 @@ Supporting directories:
 7. **Every feature traces to a complaint** ([01-product.md § Complaint → feature traceability](01-product.md#complaint--feature-traceability)); a feature with no row is a candidate for cutting.
 8. **We never signal or type into a process we did not start.** Auto-pause and input are for owned sessions only.
 9. **Contracts, DDL, and pricing change only with their docs and a migration/version bump in the same commit** ([06-engineering-rules.md](06-engineering-rules.md)).
-10. **Keep the docs current as you build.** A behaviour change lands with its documentation change — including [14-build-status.md](14-build-status.md) and the README progress bars — in the same commit.
+10. **Keep the docs current as you build.** A behaviour change lands with its documentation change — including [14-build-status.md](14-build-status.md) — in the same commit.
 
 ## Documentation rules
 

@@ -31,11 +31,11 @@ Two data planes, mirroring what works in Munder Difflin, but in Go:
 
 **Why not Electron:** the only thing Electron buys is bundling Chromium. A Go daemon + browser tab gives the same UI with zero ABI pain, one `go build` per platform, and the option of a TUI later. Desktop wrapper (Tauri/Wails) is a packaging decision for later, not an architecture decision now ([ADR-003](08-decisions.md#adr-003--ui-stack-react--vite-embedded-in-the-go-binary-via-goembed)).
 
-## Three agents, three routes in
+## Five agents, each by its own route
 
-Caprock reads [OpenCode](https://github.com/sst/opencode) and
-[Gemini CLI](https://github.com/google-gemini/gemini-cli) as well as Claude
-Code. All three arrive by completely different routes, and the asymmetry is the
+Caprock reads [OpenCode](https://github.com/sst/opencode),
+[Gemini CLI](https://github.com/google-gemini/gemini-cli), OpenAI Codex and
+DeepSeek Harness as well as Claude Code. Each arrives by a different route, and the asymmetry is the
 point — each is read the way that agent already keeps its own records, rather
 than by asking it to keep ours:
 
@@ -51,21 +51,29 @@ than by asking it to keep ours:
   mapping `user_prompt`, `api_response` and `tool_call` records onto the same
   event kinds ([ADR-026](08-decisions.md), [ADR-027](08-decisions.md)). The file name is the session id,
   which is what joins the telemetry to the session Caprock spawned.
+- **Codex** writes one append-only JSONL rollout per session under
+  `~/.codex/sessions`; it is read as files, nothing installed, and priced from
+  Caprock's table because Codex reports tokens but no cost
+  ([19-codex.md](19-codex.md)).
+- **DeepSeek Harness** is read the same way from its own transcripts
+  ([20-deepseek.md](20-deepseek.md)).
 
-All three land in the same `events` and `sessions` tables, distinguished by
+All five land in the same `events` and `sessions` tables, distinguished by
 `events.source` and `sessions.agent`. Everything downstream — loop detection,
 narration, work-kind classification, per-directory attribution — works on all of
 them without knowing there is more than one, because each ingester shapes its
 payloads like a Claude Code hook payload rather than like its own rows.
 
 One difference reaches further than ingestion: **Caprock starts Claude Code and
-Gemini, and does not start OpenCode.** A session it started has a pid, so its
-end is a fact rather than an inference; OpenCode's is not, which is why
+Gemini, and does not start OpenCode, Codex or DeepSeek Harness.** A session it
+started has a pid, so its end is a fact rather than an inference; the others'
+are not, which is why
 `ownsItsProcess()` gives it a clock where the others get process liveness
 ([ADR-028](08-decisions.md)).
 
 Full detail, including what is not supported, is in
-[16-opencode.md](16-opencode.md).
+[16-opencode.md](16-opencode.md), [19-codex.md](19-codex.md) and
+[20-deepseek.md](20-deepseek.md).
 
 ## Components
 
@@ -182,6 +190,8 @@ Implementation notes (`internal/loop`): "normalized-similar" = same tool + `tool
 `active` on any event → `idle` after 5 minutes of silence (sweeper every 30 s) → `ended` when the session's **process** exits.
 
 A session is over when its process is gone, not when it goes quiet: Caprock knows the pid of every session it spawns, and the shim reports its parent — the Claude Code that ran it — as `X-Caprock-Ppid`. So a session left alone for a week stays open, and one whose terminal was closed ends on the next sweep. The `SessionEnd` hook still ends a session immediately when it means an exit — and only then, since it also fires on `/clear` and Escape — and Caprock ends the sessions it kills. A `/clear` is the one case liveness cannot judge: it starts a new session id inside the *same* process, so the row it replaces shares a live pid with its replacement and is retired explicitly rather than by the sweep ([ADR-028](08-decisions.md#adr-028--a-session-ends-when-its-process-does)). Three silence thresholds preceded this and every one was wrong for somebody — see [ADR-028](08-decisions.md#adr-028--a-session-ends-when-its-process-does).
+
+A reboot is the exception to trusting a pid: it hands the old numbers to other programs, so a session last heard from before the machine booted is ended whatever its pid answers (`store.BootTime`). A session Caprock started before its own restart still has its process but not its terminal; it is marked `detached` and offered continue ([03-contracts.md](03-contracts.md)).
 
 Two carve-outs: agents Caprock only observes (OpenCode) are judged by the clock alone, since their rows come out of another tool's database with no process behind them; and sessions with no pid keep a 24-hour staleness sweep, because there is nothing to ask.
 

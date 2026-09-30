@@ -33,7 +33,9 @@ Linux, which only the CI matrix can catch. Run a single package's tests with
 
 Full engineering rules: [`.ai/06-engineering-rules.md`](.ai/06-engineering-rules.md). The non-negotiables:
 
-- **Local-first** — no telemetry, no outbound calls from the daemon.
+- **Local-first** — no telemetry, and no outbound call the user did not switch
+  on (the release check, the Gemini chat, the weekly report — each off by
+  default).
 - **No invented numbers** — a figure that isn't measured or sourced doesn't ship.
 - **The shim never breaks a user's Claude session** — every error path exits 0.
 - **Contracts change with their docs, together** — a new/changed endpoint, DB
@@ -97,7 +99,8 @@ There's no fixed roadmap after that by design; the direction we care about:
 - **A team edition** later (shared dashboards, multi-user orchestration) — only
   once solo use proves out. The local, solo core stays free and Apache-2.0.
 
-Guardrails never move: local-first (no telemetry, no outbound calls), no invented
+Guardrails never move: local-first (no telemetry, no outbound call the user did
+not switch on), no invented
 numbers, the shim never breaks a session. If a change fights those, it's the wrong
 change. Have an idea? Open an issue — that's how direction gets set.
 
