@@ -94,8 +94,15 @@ sees "Caprock can't reach BigQuery" where plain `claude` can (FB-033).
 `internal/userenv` runs the user's `$SHELL` as a login, interactive shell —
 what a terminal tab reads — and captures its `env -0`, the way VS Code
 resolves its shell environment. It is warmed at daemon start, served from a
-cache and refreshed in the background after a minute, bounded by a 5s
-timeout, and falls back to the daemon's own environment on any failure. The
+cache and refreshed in the background after a minute, and bounded by a 30s
+timeout. One shell runs at a time. A failed refresh keeps the previous copy.
+A failed first resolution retries on its own (10s, 30s, 2m, then every 10m),
+and a session started before any resolution has succeeded waits up to 15s
+for the running one before falling back to the daemon's own environment. The
+bound was 5s until 2026-09-30, when the warm-up at daemon start — beside
+every importer's first pass, at load 11 — was killed at 5s, leaving the cache
+empty until a session start tried again. `caprock status` (and
+`shell_env` in `/v1/status`) says which environment sessions get. The
 profile sees `CAPROCK_RESOLVING_ENVIRONMENT=1` and can skip interactive-only
 work. `CAPROCK_DATA_DIR` stays pinned to the daemon's value. Spawned sessions
 (`internal/agents`) and verification commands (`internal/board`) both use it;

@@ -1007,6 +1007,10 @@ type Status struct {
 	Hooks           *hooks.Status `json:"hooks,omitempty"`
 	UIBuilt         bool          `json:"ui_built"`
 	ClaudeAvailable bool          `json:"claude_available"`
+	// ShellEnv says whether sessions Caprock starts get the user's login-shell
+	// environment or, because it could not be read, the daemon's own — the
+	// difference between a spawned session finding gcloud and not (FB-033).
+	ShellEnv userenv.State `json:"shell_env"`
 	// GeminiAvailable says the Gemini CLI is on PATH, so the new-session
 	// dialog offers an agent the machine actually has rather than a choice
 	// that fails on click.
@@ -1085,6 +1089,7 @@ func (d *Daemon) status(_ context.Context) any {
 		Codex:           d.codexStats(),
 		Deepseek:        d.deepseekStats(),
 		ClaudeAvailable: d.mgr.ClaudeAvailable(), GeminiAvailable: d.mgr.GeminiAvailable(), OwnedActive: len(d.mgr.List()),
+		ShellEnv:      userenv.Current(),
 		Orchestration: b != nil,
 	}
 	if b != nil {

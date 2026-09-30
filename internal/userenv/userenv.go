@@ -12,9 +12,11 @@
 //
 // So, the way VS Code resolves its shell environment, the user's login shell
 // is run once, interactively, and asked to print its environment; that is what
-// a spawned process inherits. It is cached briefly, bounded by a timeout, and
-// falls back to the daemon's own environment on any failure — a slow or broken
-// profile must never stop a session from starting.
+// a spawned process inherits. It is cached and refreshed in the background, a
+// failed refresh keeps the previous copy, a failed first resolution retries on
+// its own, and a session that starts before any has succeeded waits briefly
+// and then falls back to the daemon's environment — a slow or broken profile
+// must never stop a session from starting.
 package userenv
 
 import (
@@ -34,9 +36,18 @@ import (
 
 const (
 	// Timeout bounds one resolution. An interactive zsh with a framework on
-	// top starts in well under a second; anything slower is a profile doing
-	// something we should not wait for.
-	Timeout = 5 * time.Second
+	// top starts in about a second at rest — but the first resolution runs as
+	// the daemon starts, beside every importer's first pass, and on the
+	// owner's machine at load 11 a 5s bound killed it: the cache stayed empty
+	// and a session started then would have got the daemon's bare PATH, the
+	// exact failure this package exists to prevent (FB-033). A resolution
+	// runs in the background, so a generous bound costs nobody a wait.
+	Timeout = 30 * time.Second
+	// FirstWait is the longest a session start waits for an environment that
+	// is being resolved but has never been had. Starting at once with the
+	// daemon's would be the silent failure; waiting forever would be a start
+	// button that hangs.
+	FirstWait = 15 * time.Second
 	// TTL is how long a resolved environment is served before a background
 	// refresh. An export added to the profile reaches sessions started a
 	// minute later, without restarting the daemon.
@@ -48,15 +59,70 @@ const (
 	mark         = "__CAPROCK_ENV_7f3a__"
 )
 
+// retryAfter is how long to wait before trying again when no environment has
+// ever been resolved: soon, because a busy start is the usual cause, then
+// backing off so a profile that is simply broken does not run every minute.
+var retryAfter = []time.Duration{10 * time.Second, 30 * time.Second, 2 * time.Minute, 10 * time.Minute}
+
 var (
-	mu         sync.Mutex
-	cached     []string
-	cachedAt   time.Time
-	refreshing bool
-	// resolveFn and now are swapped by tests.
+	mu       sync.Mutex
+	cached   []string
+	cachedAt time.Time
+	// inflight is closed when the running resolution ends; nil when none is
+	// running. One shell at a time: a session start that finds one running
+	// waits on it instead of starting a second on an already busy machine.
+	inflight chan struct{}
+	lastErr  error
+	failures int
+	// resolveFn, now and retryAfter are swapped by tests.
 	resolveFn = resolve
 	now       = time.Now
 )
+
+// State says where the environment a started process gets comes from, for
+// `caprock status`: a user whose session cannot see gcloud needs to be able
+// to tell "Caprock never read my profile" from everything else.
+type State struct {
+	// Source is "login-shell" once resolved, "resolving" before the first
+	// resolution ends, "daemon" when it failed and nothing was ever had, and
+	// "inherited" on Windows, which has no profile to replay.
+	Source     string `json:"source"`
+	Shell      string `json:"shell,omitempty"`
+	ResolvedAt int64  `json:"resolved_at_ms,omitempty"`
+	// Error is the last resolution's failure, kept while it is the reason.
+	Error string `json:"error,omitempty"`
+}
+
+// Current reports the state of the environment cache.
+func Current() State {
+	if runtime.GOOS == "windows" {
+		return State{Source: "inherited"}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	st := State{Shell: loginShell()}
+	switch {
+	case cached != nil:
+		st.Source, st.ResolvedAt = "login-shell", cachedAt.UnixMilli()
+		if lastErr != nil {
+			st.Error = oneLine(lastErr) // a refresh failed; the older copy is still served
+		}
+	case inflight != nil && lastErr == nil:
+		st.Source = "resolving"
+	default:
+		st.Source = "daemon"
+		if lastErr != nil {
+			st.Error = oneLine(lastErr)
+		}
+	}
+	return st
+}
+
+// oneLine flattens a joined error ("shell printed no environment\nexit
+// status 1") for a status line.
+func oneLine(err error) string {
+	return strings.ReplaceAll(err.Error(), "\n", "; ")
+}
 
 // Environ returns the environment for a process Caprock starts on the user's
 // behalf: their login shell's, or the daemon's own when that cannot be had.
@@ -74,50 +140,91 @@ func Environ(log *slog.Logger) []string {
 	}
 	mu.Lock()
 	if cached != nil {
-		if now().Sub(cachedAt) >= TTL && !refreshing {
-			refreshing = true
-			go refresh(log)
+		if now().Sub(cachedAt) >= TTL {
+			startLocked(log)
 		}
 		env := append([]string(nil), cached...)
 		mu.Unlock()
 		return env
 	}
+	done := startLocked(log)
 	mu.Unlock()
-	if env := refresh(log); env != nil {
-		return env
+	select {
+	case <-done:
+	case <-time.After(FirstWait):
 	}
-	// Not cached: the next spawn tries again rather than living with the
-	// fallback.
+	mu.Lock()
+	defer mu.Unlock()
+	if cached != nil {
+		return append([]string(nil), cached...)
+	}
+	// Nothing resolved yet. The session starts with the daemon's environment
+	// rather than not at all, the failure is logged, and a retry is already
+	// scheduled.
+	if log != nil {
+		log.Warn("starting with the daemon's environment; the login shell's is not available yet",
+			"component", "userenv", "err", lastErr)
+	}
 	return os.Environ()
 }
 
 // Warm resolves the environment in the background, so the first session the
-// user starts does not wait for their shell.
+// user starts does not wait for their shell. A failure retries on its own.
 func Warm(log *slog.Logger) {
 	if runtime.GOOS == "windows" {
 		return
 	}
-	go Environ(log)
+	mu.Lock()
+	startLocked(log)
+	mu.Unlock()
 }
 
-// refresh resolves once and stores the result; nil on failure. Concurrent
-// first calls may each run the shell — harmless, and simpler than making a
-// spawn wait on someone else's resolution.
-func refresh(log *slog.Logger) []string {
-	ctx, cancel := context.WithTimeout(context.Background(), Timeout)
-	defer cancel()
-	env, err := resolveFn(ctx, loginShell(), os.Environ())
-	mu.Lock()
-	defer mu.Unlock()
-	refreshing = false
-	if err != nil {
-		if log != nil {
-			log.Warn("resolve login shell environment; using the daemon's", "component", "userenv", "err", err)
-		}
-		return nil
+// startLocked starts a resolution unless one is running, and returns the
+// channel that closes when it ends. mu must be held.
+func startLocked(log *slog.Logger) chan struct{} {
+	if inflight != nil {
+		return inflight
 	}
-	cached, cachedAt = pin(env), now()
-	return append([]string(nil), cached...)
+	done := make(chan struct{})
+	inflight = done
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), Timeout)
+		env, err := resolveFn(ctx, loginShell(), os.Environ())
+		cancel()
+		mu.Lock()
+		defer mu.Unlock()
+		inflight = nil
+		defer close(done)
+		if err == nil {
+			cached, cachedAt, lastErr, failures = pin(env), now(), nil, 0
+			return
+		}
+		lastErr = err
+		if log != nil {
+			if cached != nil {
+				log.Warn("refresh login shell environment; keeping the previous one", "component", "userenv", "err", err)
+			} else {
+				log.Warn("resolve login shell environment", "component", "userenv", "err", err)
+			}
+		}
+		if cached != nil {
+			// The older copy keeps being served; the next stale read retries.
+			cachedAt = now()
+			return
+		}
+		// Never had one: try again on our own rather than waiting for a
+		// session start to discover the gap.
+		wait := retryAfter[min(failures, len(retryAfter)-1)]
+		failures++
+		time.AfterFunc(wait, func() {
+			mu.Lock()
+			if cached == nil {
+				startLocked(log)
+			}
+			mu.Unlock()
+		})
+	}()
+	return done
 }
 
 // loginShell is the user's shell. launchd and systemd both set SHELL from the
@@ -216,6 +323,6 @@ func hasKey(env []string, key string) bool {
 // reset clears the cache; tests only.
 func reset() {
 	mu.Lock()
-	cached, cachedAt, refreshing = nil, time.Time{}, false
+	cached, cachedAt, inflight, lastErr, failures = nil, time.Time{}, nil, nil, 0
 	mu.Unlock()
 }
