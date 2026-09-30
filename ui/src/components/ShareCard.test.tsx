@@ -86,6 +86,11 @@ function stubCanvas() {
   })) as unknown as typeof HTMLCanvasElement.prototype.getContext
   // Must call back, or every await on drawShareCard hangs to the timeout.
   HTMLCanvasElement.prototype.toBlob = vi.fn((cb: BlobCallback) => cb(new Blob()))
+  // jsdom has no object URLs. Vitest's stand-in reads jsdom's private Blob
+  // internals, which jsdom 30 renamed, so every preview threw an unhandled
+  // rejection after its test had passed.
+  URL.createObjectURL = vi.fn(() => 'blob:card')
+  URL.revokeObjectURL = vi.fn()
 }
 
 describe('ShareCard', () => {
