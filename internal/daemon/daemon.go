@@ -37,6 +37,7 @@ import (
 	"github.com/dspv/caprock/internal/hooks"
 	"github.com/dspv/caprock/internal/ingest"
 	"github.com/dspv/caprock/internal/lan"
+	"github.com/dspv/caprock/internal/logcap"
 	"github.com/dspv/caprock/internal/loop"
 	"github.com/dspv/caprock/internal/opencode"
 	"github.com/dspv/caprock/internal/orchestrator"
@@ -323,6 +324,10 @@ func (d *Daemon) run(ctx context.Context) error {
 	// Resolve the login-shell environment sessions are started with now, so
 	// the first one the user starts does not wait on their shell profile.
 	userenv.Warm(d.log)
+	// The log file, whichever of the two the daemon was started with, is
+	// kept to a bounded size.
+	logcap.Watch(config.LogPath(d.opt.DataDir), config.ServiceLogPath(d.opt.DataDir))
+	go logcap.Run(ctx, d.log)
 	d.mgr.OnExit = func(id string, code int) {
 		if s, err := store.GetSession(ctx, d.store.DB(), id); err == nil {
 			st, _ := store.GetStats(ctx, d.store.DB(), id)

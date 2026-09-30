@@ -49,6 +49,9 @@ const (
 	// from events once — migrations 0022 and 0023 re-imported every Codex
 	// event without taking the first import back out of daily_stats.
 	MetaCodexDailyRebuilt = "codex_daily_rebuilt"
+	// MetaCodexSeen remembers which Codex transcripts have been read (path,
+	// modification time, size, session), so a restart reads only what changed.
+	MetaCodexSeen = "codex_seen"
 	// MetaReportWeek is the ISO week of the last weekly report that was sent,
 	// as "2026-W36". It lives here rather than in memory because an in-memory
 	// marker sends a second copy of the message after every restart — the bug

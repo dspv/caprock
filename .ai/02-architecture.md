@@ -84,6 +84,7 @@ Full detail, including what is not supported, is in
 | `orchestr` | Orchestrator lifecycle, Stop-loop, verification runner, approvals | 2     |
 | `service`  | Autostart: launchd agent / systemd user unit / Startup script     | —     |
 | `userenv`  | The login-shell environment spawned processes start with          | 1     |
+| `logcap`   | Keeps the daemon's log file bounded (rotate at 64MB, keep one)    | —     |
 
 **A process Caprock starts gets the user's environment, not the daemon's.** A
 daemon started at login by launchd holds ten variables and
@@ -196,6 +197,7 @@ internal/statusline/  # `caprock statusline`: Claude Code status JSON → one-li
 internal/codex/       # OpenAI Codex: rollout-transcript parser + poller (read-only, priced by our own table)
 internal/service/     # `caprock service`: autostart via launchd / systemd user unit / Startup folder
 internal/userenv/     # the user's login-shell environment for processes Caprock starts (not launchd's bare one)
+internal/logcap/      # rotates the daemon's log (caprock.log or service.log) at 64MB; trims the one no longer written
 internal/version/     # the version string (stamped via -ldflags at build)
 internal/config/      # data dir, config.json, runtime.json, atomic writes
 internal/event/       # the normalized Event type

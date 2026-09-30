@@ -34,6 +34,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/dspv/caprock/internal/config"
 )
 
 // Label is the reverse-DNS identifier used by launchd and, as a stem, by the
@@ -130,7 +132,7 @@ func (p Plan) Path() (string, error) {
 // LogPath is where the supervisor's own stdout/stderr for the daemon goes. It
 // sits in the data dir next to caprock.log, so `caprock service` never writes
 // outside the user's Caprock directory.
-func (p Plan) LogPath() string { return filepath.Join(p.DataDir, "service.log") }
+func (p Plan) LogPath() string { return config.ServiceLogPath(p.DataDir) }
 
 // Render produces the exact bytes of the definition file for this platform,
 // plus the mode to write it with. It is a pure function of the plan — no

@@ -173,7 +173,7 @@ PUT  /v1/settings                      → store them
 GET  /v1/update                        → cached release status (no network I/O)
 POST /v1/update/check                  → check now (403 unless enabled)
 GET  /v1/stats/daily?days=30           → DailyStat[]
-POST /v1/hook                          → 204 (shim only, bearer-token gated)
+POST /v1/hook                          → 204 (shim only, bearer-token gated; the event is written even after the shim hangs up)
 WS   /v1/live                          → server-push frames: {type:"event"|"session"|"alert", data:…}
 ```
 

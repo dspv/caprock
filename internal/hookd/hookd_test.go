@@ -253,3 +253,24 @@ func TestSessionStartFlagsAClearAsAReplacement(t *testing.T) {
 		}
 	}
 }
+
+// The shim waits a second and then hangs up, which cancels the request's
+// context. An event still queued for the write lock at that moment was
+// abandoned: 41 of them in the owner's log, every one "context canceled".
+// A hang-up must not cost the event.
+func TestAnEventOutlivesTheShimHangingUp(t *testing.T) {
+	h, st := newHandler(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // the shim is already gone by the time the write starts
+	req := httptest.NewRequest(http.MethodPost, "/v1/hook", bytes.NewReader(fixture(t, "pre_tool_use.json"))).WithContext(ctx)
+	req.Header.Set("Authorization", "Bearer secret")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+
+	evs, err := store.ListEvents(context.Background(), st.DB(), "sess-abc", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evs) != 1 {
+		t.Fatalf("stored %d events after a hang-up, want 1", len(evs))
+	}
+}

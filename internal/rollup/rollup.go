@@ -10,6 +10,7 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dspv/caprock/internal/bus"
@@ -70,6 +71,10 @@ type Recorder struct {
 	// a cap that paused sessions from inside the write path would hold the
 	// database open while signalling processes.
 	OnPriced func(ctx context.Context)
+
+	// unpricedWarned holds the models already reported as missing from the
+	// pricing table.
+	unpricedWarned sync.Map
 }
 
 // New builds a Recorder with sane defaults.
@@ -106,7 +111,12 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 		if usd, ok := r.Table.PriceAt(ev.Model, *ev.Tokens, ev.Ts); ok {
 			ev.CostUSD = &usd
 			res.Priced = true
-		} else {
+		} else if _, seen := r.unpricedWarned.LoadOrStore(ev.Model, true); !seen {
+			// Once per model per process. Logged per event, and before the
+			// duplicate check, it repeated for every re-read of every stored
+			// turn: 1.1M identical lines, 4.6GB of caprock.log on the owner's
+			// machine. The dashboard already counts unpriced turns; the log
+			// only needs to say which model to add.
 			r.Log.Warn("model not in pricing table; cost left unknown", "component", "rollup", "model", ev.Model, "session_id", ev.SessionID)
 		}
 	}

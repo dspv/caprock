@@ -136,12 +136,15 @@ func EnsureDataDir() (string, error) {
 }
 
 // Paths inside the data dir.
-func ConfigPath(dir string) string       { return filepath.Join(dir, "config.json") }
-func RuntimePath(dir string) string      { return filepath.Join(dir, "runtime.json") }
-func DBPath(dir string) string           { return filepath.Join(dir, "caprock.db") }
-func PricingPath(dir string) string      { return filepath.Join(dir, "pricing.json") }
-func ShimPath(dir string) string         { return filepath.Join(dir, shimBinaryName()) }
-func LogPath(dir string) string          { return filepath.Join(dir, "caprock.log") }
+func ConfigPath(dir string) string  { return filepath.Join(dir, "config.json") }
+func RuntimePath(dir string) string { return filepath.Join(dir, "runtime.json") }
+func DBPath(dir string) string      { return filepath.Join(dir, "caprock.db") }
+func PricingPath(dir string) string { return filepath.Join(dir, "pricing.json") }
+func ShimPath(dir string) string    { return filepath.Join(dir, shimBinaryName()) }
+func LogPath(dir string) string     { return filepath.Join(dir, "caprock.log") }
+
+// ServiceLogPath is where launchd and systemd send the daemon's output.
+func ServiceLogPath(dir string) string   { return filepath.Join(dir, "service.log") }
 func HookDebugLogPath(dir string) string { return filepath.Join(dir, "hook-debug.log") }
 
 // ChatsDir is where quick chats live — sessions started to ask something
