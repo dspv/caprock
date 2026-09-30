@@ -15,6 +15,7 @@ import { useNow } from '@/screens/Now'
 import { NoteCard } from '@/components/Notes'
 import type { AssistantNote } from '@/lib/api'
 import { Empty, Skeleton } from '@/components/ui'
+import { HandoffEffect } from '@/components/HandoffEffect'
 
 /** Notes per page. Large enough to be worth a request, small enough to render. */
 const PAGE = 200
@@ -67,8 +68,10 @@ export function NotesScreen() {
   const notes = includeShort || query ? all : all.filter((n) => !n.fragment)
   const hidden = all.length - notes.length
 
+  const mem = st.data?.memory
   return (
     <div className="grid gap-3">
+      <HandoffEffect holdout={mem?.holdout_pct} served={mem?.served} withheld={mem?.withheld} />
       <form
         className="flex items-center gap-2"
         onSubmit={(e) => {

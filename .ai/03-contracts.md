@@ -129,6 +129,24 @@ this reply — shorter than the Stop budget, because it sits in front of a promp
 that has not appeared yet — and a daemon that cannot answer in time simply says
 nothing. [ADR-030](08-decisions.md).
 
+**Measuring it.** Whenever there is a passage to hand over, the session records
+whether it got it: `sessions.handoff` is `1` (served) or `2` (held back);
+`0` means nothing was there, and those sessions are in neither group
+(migration 0028: `ALTER TABLE sessions ADD COLUMN handoff INTEGER NOT NULL
+DEFAULT 0`). `settings.memory_holdout_pct` (0–50, default 0; a value outside
+is a 400) holds the handoff back from that share of such sessions, drawn at
+random so the two groups differ only by the handoff. `GET /v1/status` reports
+`memory.holdout_pct` and, once either group has a session, `memory.served` and
+`memory.withheld` — each `{sessions, reached, median_min, median_calls}`: how
+many reached a first `Edit`/`Write`/`MultiEdit`/`NotebookEdit`, and the median
+minutes from `started_at` and `tool.pre` calls before it. Why: on the owner's
+database a session continuing yesterday's work took as long to its first edit
+as one starting cold (17 vs 16 minutes, 24 vs 23 tool calls; 18 and 19
+sessions), with the handoff already on for most of them — so whether it helps
+is an open question, and only a control group answers it. The default is 0
+because a holdout makes one session in four worse on purpose, which nobody
+should get without asking.
+
 ### Cross-site request protection
 
 **Binding to loopback is not an authentication boundary against a browser.** Any page the user visits while the daemon runs can send requests to `127.0.0.1`; the same-origin policy stops that page *reading* the response, but not *sending* the request and not what the request does. `POST /v1/agents` executes a command from its body, so an unguarded forgery is remote code execution from a web page.

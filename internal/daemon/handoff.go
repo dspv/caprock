@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -54,6 +55,7 @@ func (d *Daemon) handoff(ctx context.Context, p hookd.Payload) []byte {
 	// sessions are opening.
 	d.cfgMu.RLock()
 	on := d.opt.Config.MemoryOn()
+	holdout := d.opt.Config.MemoryHoldoutPct
 	d.cfgMu.RUnlock()
 	if !on {
 		return nil
@@ -86,6 +88,21 @@ func (d *Daemon) handoff(ctx context.Context, p hookd.Payload) []byte {
 	if text == "" {
 		return nil
 	}
+	// There is something to hand over. Whether it was, is recorded either way,
+	// so the sessions that got it can be compared with the ones that could
+	// have and did not — the only way to learn whether it helps (see
+	// store.HandoffEffect). Held back at random, never by any property of the
+	// session, or the two groups would differ for reasons of their own.
+	state := store.HandoffServed
+	if holdout > 0 && d.holdoutRoll() < holdout {
+		state = store.HandoffWithheld
+	}
+	if err := store.SetHandoff(ctx, d.store.DB(), p.SessionID, state); err != nil {
+		d.log.Warn("could not record the handoff", "component", "daemon", "err", err)
+	}
+	if state == store.HandoffWithheld {
+		return nil
+	}
 	body := fmt.Sprintf(
 		"Where this repository was left, %s ago (from Caprock's record of the previous session — "+
 			"the user has not said this to you, and it may be stale):\n\n%s",
@@ -101,6 +118,15 @@ func (d *Daemon) handoff(ctx context.Context, p hookd.Payload) []byte {
 		return nil
 	}
 	return reply
+}
+
+// holdoutRoll is a number in [0, 100), behind a field so a test can decide
+// which group a session falls in.
+func (d *Daemon) holdoutRoll() int {
+	if d.roll != nil {
+		return d.roll()
+	}
+	return rand.IntN(100)
 }
 
 // clipRunes cuts to n runes at a sentence boundary where one is near the end,
@@ -152,6 +178,12 @@ func (d *Daemon) memoryStatus() MemoryStatus {
 	}
 	if held, err := store.ProseSince(ctx, d.store.DB()); err == nil && held > 0 {
 		ms.Held = time.UnixMilli(held).Format("2006-01-02")
+	}
+	d.cfgMu.RLock()
+	ms.HoldoutPct = d.opt.Config.MemoryHoldoutPct
+	d.cfgMu.RUnlock()
+	if s, w, err := store.HandoffEffect(ctx, d.store.DB()); err == nil && s.Sessions+w.Sessions > 0 {
+		ms.Served, ms.Withheld = &s, &w
 	}
 	return ms
 }

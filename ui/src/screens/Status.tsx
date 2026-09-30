@@ -151,6 +151,22 @@ function SettingsPanel() {
             </span>
           </span>
         </label>
+        {plan.memory !== false && (
+          <label className="flex items-start gap-2 cursor-pointer pl-5">
+            <input
+              type="checkbox"
+              className="accent-[var(--color-accent)] mt-0.5"
+              checked={(plan.memory_holdout_pct ?? 0) > 0}
+              onChange={(e) => savePlan({ ...plan, memory_holdout_pct: e.target.checked ? 25 : 0 })}
+            />
+            <span>
+              <span className="text-fg">Measure whether it helps</span>
+              <span className="block text-[11px] text-fg-muted">
+                One new session in four starts without it, so the two can be compared under Memory.
+              </span>
+            </span>
+          </label>
+        )}
         <div className="flex items-baseline gap-2 border-t border-border pt-2">
           <span className="text-fg-muted w-28 shrink-0">Your plan</span>
           <span className="mono text-fg">
