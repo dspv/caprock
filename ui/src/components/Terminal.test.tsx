@@ -182,6 +182,17 @@ describe('a session Caprock did not start', () => {
   })
 })
 
+describe('a session Caprock started before it restarted', () => {
+  it('says the terminal is gone and offers continue, not an empty screen', () => {
+    // FB-040: the tab opened a blank terminal for a session whose terminal
+    // went with the previous run, while the list's continue worked.
+    render(<TerminalView sessionId="s1" owned={false} detached resume={<button>branch here</button>} />)
+    expect(document.body.textContent).toMatch(/Caprock restarted/)
+    expect(screen.getByRole('button', { name: 'branch here' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /start a session here/i })).toBeNull()
+  })
+})
+
 describe('Shift+Enter', () => {
   const sent: string[] = []
   // Which frame each send used. The daemon tells keystrokes from control

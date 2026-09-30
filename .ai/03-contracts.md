@@ -217,6 +217,24 @@ Plan-limit windows relayed by `caprock statusline` are **validated before storag
 
 `GET /v1/status` carries `shell_env`: `source` is `login-shell` (with `shell` and `resolved_at_ms`), `resolving` before the first resolution ends, `daemon` when it failed and none was ever had (with `error`), or `inherited` on Windows; `error` also appears beside `login-shell` when the latest refresh failed and the older copy is still served. It is what a user reads when a session Caprock started cannot find `gcloud` and a terminal can (FB-033); `caprock status` prints it as the `env:` line.
 
+`GET /v1/status` carries `interrupted` — `{stopped_at, ids}` — the sessions
+that were running when Caprock last stopped and were gone when it started
+again (FB-038), omitted when there are none. The daemon writes a heartbeat
+(`meta.daemon_alive_at`, unix ms) every minute; at start it reads the previous
+one as `stopped_at` before overwriting it, lists the sessions of agents whose
+process it watches that were worked in within the day before and were either
+not ended or ended within two minutes of `stopped_at` (`store.RunningAt`, at
+most 12), lets the first sweep ask their pids, and records those now ended in
+`meta.interrupted`. A later restart that interrupted nothing keeps the record.
+On read, a session continued since (live again) drops out, and a record older
+than 7 days is not reported.
+
+**A session last heard from before the machine booted is ended**, whatever its
+pid answers (`store.BootTime`: `kern.boottime`, `sysinfo`, or
+`GetTickCount64`). A reboot restarts the pid space, so the numbers Claude Code
+held are soon someone else's, and such a session stayed live, with an empty
+terminal, for as long as the stranger ran.
+
 `GET /v1/status` carries `ingest_error` — the terminal error that stopped transcript ingest, when one happened — and omits it while ingest is running. The tailer runs in a goroutine whose failure used to be logged and swallowed, so a fatal ingest error (a read-only `~/.claude` reproduces it) left the daemon reporting healthy, `caprock status` printing `backfill done`, and the dashboard showing its "No sessions yet — start `claude` in any terminal" empty state forever, while nothing was being captured at all. `caprock status` and the Now and Status screens all report it.
 
 `/v1/stats/summary` and `/v1/history` carry `unpriced` — `{turns, tokens, models[]}` — the volume in range whose model has no row in the pricing table, and which models caused it. It is **omitted entirely when everything in range was priced**, which is the normal case. A model missing from the table leaves `cost_usd` NULL (the rollup logs "model not in pricing table; cost left unknown"), and every aggregate flattens NULL with `COALESCE(SUM(cost_usd),0)` — so tens of thousands of tokens of an unpriced model summed to exactly `$0.00` and rendered as a confident, indistinguishable-from-free number. That is an invented number (rule 6), and it is certain to occur the day a model ships newer than the pricing table, or on a gateway whose model ids do not normalise. The models are **named**, not merely counted: an unknown model id is something a user can report or add a pricing override for, whereas "some tokens are unpriced" is not actionable. `cost_usd` continues to mean "the cost we could price", so the two are reported side by side and never summed.
@@ -267,7 +285,11 @@ instead of leaving everything past the first page unreachable.
 
 **`resume`** — `{ok, reason?, command?}`. On the list it is filled for ended
 sessions only, so a card can offer continue; on `GET /v1/sessions/{id}` for any
-session except a live one Caprock started (that one is typed into). Decided by what is on disk,
+session except a live one Caprock started (that one is typed into) — unless
+this daemon does not hold its terminal. Such a session is started before a
+restart of Caprock and still has a process; it is marked **`detached: true`**
+on the list and the detail, and gets `resume` there too (FB-040): its terminal
+tab used to open an empty screen. Decided by what is on disk,
 not by who started the session (FB-036): the agent (Claude Code only; Codex and
 OpenCode get their own `command` — `codex resume <id>`, `opencode --session
 <id>`), the cwd still existing, and the main transcript
@@ -563,6 +585,33 @@ for an agent whose prompts never become events. The rollout transcript's own
 user messages cannot serve: all 60 checked opened with injected AGENTS.md or
 auto-review text. `prompt` is empty for every other agent, whose first prompt
 is read from events.
+
+### Worked-at and parent DDL (migration 0027)
+
+```sql
+ALTER TABLE sessions ADD COLUMN worked_at INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sessions ADD COLUMN parent_session TEXT NOT NULL DEFAULT '';
+```
+
+- **`worked_at`** — unix ms of the session's last `turn.user`, `turn.assistant`,
+  `tool.pre` or `tool.post`: the last time anyone worked in it. `last_event_at`
+  also moves on `SessionEnd`, `/clear` and the pid sweep, so after a reboot
+  every ended card read the moment of the reboot — four cards "ended 29 Sep
+  18:26" that had been worked in hours apart (FB-037). Only grows. The
+  migration fills it from events; 289 of 304 sessions on the owner's database,
+  the rest have no work events.
+- **`parent_session`** — the session this one continues, recorded only from a
+  fact: a `/clear` (`SessionStart` with `source=clear` in the same process —
+  the previous session on that pid, `store.PreviousOnPID`) or a fork Caprock
+  started (`--resume <id> --fork-session`). Never inferred from the same
+  folder or branch. Written once. The migration fills it from the same two
+  facts in stored events and spawn commands (3 clears and 1 fork on the owner's
+  database). A plain resume keeps its session id and needs no link.
+- The sessions list orders an ended session by `worked_at` (falling back to
+  `last_event_at`), so a reboot does not reshuffle history.
+
+`SessionSummary` carries both as `worked_at` and `parent_session`, omitted when
+unset, and `detached` (see `resume` above).
 
 ### Touch attribution DDL (migration 0012)
 

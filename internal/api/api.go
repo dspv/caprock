@@ -229,6 +229,10 @@ type AgentController interface {
 	Signal(sessionID, action string) error
 	Resize(sessionID string, cols, rows int) error
 	Term(sessionID string) (snapshot []byte, sub <-chan []byte, cancel func(), ok bool)
+	// Holds reports whether this daemon has the session's terminal. A session
+	// Caprock started before its last restart does not: the terminal went with
+	// the process that held it.
+	Holds(sessionID string) bool
 	Write(sessionID string, data []byte) error
 }
 
@@ -418,6 +422,10 @@ type SessionSummary struct {
 	// without a trip to the detail screen; the detail fills it for any session
 	// that is not Caprock's own live one.
 	Resume *ResumeInfo `json:"resume,omitempty"`
+	// Detached marks a session Caprock started, not ended, whose terminal this
+	// daemon does not hold — it was started before a restart. The terminal tab
+	// opened an empty screen for it (FB-040); what it can do is continue.
+	Detached bool `json:"detached,omitempty"`
 }
 
 // ContextFill is the "context fill %" badge input: last turn's prompt size vs the model window.
@@ -461,7 +469,10 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 	}
 	sum := SessionSummary{Session: sess, Stats: st, Activity: act, Savings: cost.ComputeSavings(st.TokensIn, st.CacheRead, st.CacheWrite), Loop: la}
 	sum.Description, sum.DescriptionSource = describe(ctx, q, sess)
-	if sess.Status == store.StatusEnded {
+	if sess.Owned && sess.Status != store.StatusEnded && s.d.Agents != nil && !s.d.Agents.Holds(sess.SessionID) {
+		sum.Detached = true
+	}
+	if sess.Status == store.StatusEnded || sum.Detached {
 		sum.Resume = s.resumeInfo(sess)
 	}
 	// Context fill: last assistant turn's input+cache tokens vs the model's window.

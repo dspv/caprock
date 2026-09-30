@@ -551,8 +551,21 @@ func (d *Daemon) run(ctx context.Context) error {
 		}
 	}
 
+	// When the last run stopped, and what was running then — read before the
+	// first heartbeat overwrites the one and the first sweep ends the other.
+	stoppedAt := d.lastAlive(ctx)
+	var running []string
+	if stoppedAt > 0 {
+		var err error
+		if running, err = store.RunningAt(ctx, d.store.DB(), stoppedAt, maxInterrupted); err != nil {
+			d.log.Warn("could not read what was running at the last stop", "component", "daemon", "err", err)
+		}
+	}
+	go d.heartbeat(ctx)
+
 	// Idle sweeper (also runs once at start so backfilled history settles immediately).
 	_ = d.rec.MarkIdle(ctx, d.opt.IdleAfter, d.opt.EndAfter)
+	d.recordInterrupted(ctx, stoppedAt, running)
 	// One release check at startup when the user enabled it — so the badge is
 	// right on the first page load rather than a day later. Detached and
 	// best-effort: a network failure must never delay or break startup.
@@ -1054,6 +1067,10 @@ type Status struct {
 	ActiveLoops   int    `json:"active_loops"`
 	Events        int64  `json:"events"`
 	RetentionDays int    `json:"retention_days"`
+	// Interrupted is the sessions the last stop of Caprock (or of the
+	// machine) cut off and nobody has continued yet. Absent when there are
+	// none (FB-038).
+	Interrupted *Interrupted `json:"interrupted,omitempty"`
 	// Desktop is the Claude desktop app's own plan usage, when it has any on
 	// this machine. Omitted entirely otherwise — most people do not use it.
 	Desktop *desktop.Reading `json:"desktop,omitempty"`
@@ -1130,6 +1147,7 @@ func (d *Daemon) status(_ context.Context) any {
 	d.mu.Lock()
 	st.ActiveLoops = len(d.alerts)
 	d.mu.Unlock()
+	st.Interrupted = d.interrupted(context.Background())
 	st.RetentionDays = d.config().RetentionDays
 	if n, err := store.CountEvents(context.Background(), d.store.DB()); err == nil {
 		st.Events = n
@@ -1263,6 +1281,11 @@ func (a *agentAdapter) Resize(id string, cols, rows int) error { return a.m.Resi
 
 func (a *agentAdapter) Signal(id, action string) error {
 	return a.m.Signal(id, ptyman.Signal(action))
+}
+
+func (a *agentAdapter) Holds(id string) bool {
+	_, ok := a.m.Get(id)
+	return ok
 }
 
 func (a *agentAdapter) Term(id string) ([]byte, <-chan []byte, func(), bool) {

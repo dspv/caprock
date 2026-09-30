@@ -31,7 +31,9 @@ type ResumeInfo struct {
 // resumeInfo is nil when there is nothing to resume: a live session Caprock
 // started is typed into, not resumed.
 func (s *Server) resumeInfo(sess store.Session) *ResumeInfo {
-	if sess.Owned && sess.Status != store.StatusEnded {
+	// Caprock's own live session has its terminal; there is nothing to
+	// continue. Unless this daemon no longer holds that terminal (FB-040).
+	if sess.Owned && sess.Status != store.StatusEnded && (s.d.Agents == nil || s.d.Agents.Holds(sess.SessionID)) {
 		return nil
 	}
 	agent := sess.Agent

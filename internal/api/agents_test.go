@@ -18,6 +18,8 @@ import (
 )
 
 type fakeAgents struct {
+	// held are the sessions whose terminal the fake claims to have.
+	held     map[string]bool
 	mu       sync.Mutex
 	avail    bool
 	inputs   []string
@@ -65,6 +67,7 @@ func (f *fakeAgents) Resize(_ string, cols, rows int) error {
 	return nil
 }
 func (f *fakeAgents) Signal(_ string, a string) error { f.sigs = append(f.sigs, a); return nil }
+func (f *fakeAgents) Holds(id string) bool            { return f.termCh != nil || f.held[id] }
 func (f *fakeAgents) Term(string) ([]byte, <-chan []byte, func(), bool) {
 	if f.termCh == nil {
 		return nil, nil, nil, false

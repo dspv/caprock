@@ -2,8 +2,10 @@ import { api, errText, type SessionSummary } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { navigate } from '@/lib/router'
 import { live, useLive } from '@/lib/live'
-import { fmtAgo, fmtPct, fmtTokens, fmtUSD, fmtWhen, shortId } from '@/lib/format'
+import { fmtAgo, fmtPct, fmtSpan, fmtTokens, fmtUSD, fmtWhen, shortId } from '@/lib/format'
+import { foldChains } from '@/lib/chains'
 import { ContinueSession } from '@/components/ContinueSession'
+import { InterruptedBanner } from '@/components/Interrupted'
 import { Badge, Empty, Panel, Skeleton, Stat } from '@/components/ui'
 import { ProjectsPanel, AGENTS, agentName, type AgentFilter } from '@/components/Projects'
 import { ActivityFeed } from '@/components/ActivityFeed'
@@ -117,7 +119,10 @@ export function NowScreen() {
       (a.key === 'gemini' && everySession.some((s) => s.agent === 'gemini')),
   )
   const hasBoth = agentsHere.length > 2
-  const working = list.filter((s) => s.activity.health === 'working' || s.activity.health === 'looping' || s.activity.health === 'error' || s.activity.health === 'waiting-on-you')
+  // A /clear or a fork is a new session id in the same conversation; its
+  // earlier parts ride on the latest one instead of each being a card (FB-039).
+  const { shown, earlier } = foldChains(list)
+  const working = shown.filter((s) => s.activity.health === 'working' || s.activity.health === 'looping' || s.activity.health === 'error' || s.activity.health === 'waiting-on-you')
   // "Now" is a screen about now. A session that has not made a sound in two
   // days is history, whatever its status column says — and status alone is not
   // enough to tell them apart, because an observed agent's sessions are read
@@ -127,8 +132,8 @@ export function NowScreen() {
   //
   // Anything working shows regardless of age: a long-running agent that has
   // been quiet while it thinks is exactly what this screen is for.
-  const rest = list.filter((s) => !working.includes(s) && s.status !== 'ended' && recentEnough(s, now))
-  const ended = list.filter((s) => s.status === 'ended')
+  const rest = shown.filter((s) => !working.includes(s) && s.status !== 'ended' && recentEnough(s, now))
+  const ended = shown.filter((s) => s.status === 'ended')
   const [plan, savePlan] = usePlan()
   const attention = findAttention({ sessions: list, alerts, now, limits: summary.data?.rate_limits })
   const hooksMissing = status.data?.hooks && (status.data.hooks.missing ?? []).length > 0
@@ -168,6 +173,7 @@ export function NowScreen() {
       {/* Only sessions Caprock spawned end with the daemon; the ones the user
         * started themselves are untouched by an upgrade. */}
       <UpdateBanner plan={plan} onSave={savePlan} now={now} owned={list.filter((s) => s.owned && s.status !== 'ended').length} />
+      <InterruptedBanner info={status.data?.interrupted} now={now} />
       <Attention items={attention} now={now} onDismiss={(id) => live.dismissAlert(id)} sessions={list} />
 
       {/* Above Today because it is the wider frame Today sits inside: what all
@@ -359,6 +365,7 @@ export function NowScreen() {
               }]
             : []),
         ]}
+        earlier={earlier}
         now={now}
       />
       <div className="flex items-center gap-3 text-[11px] text-fg-faint px-0.5">
@@ -480,9 +487,11 @@ function NewSessionButton({ available, onClick }: { available: boolean | undefin
  */
 function SessionGrid({
   groups,
+  earlier,
   now,
 }: {
   groups: { label: string; items: SessionSummary[]; dim?: boolean; total?: number }[]
+  earlier?: Map<string, SessionSummary[]>
   now: number
 }) {
   const cells = groups.flatMap((g) =>
@@ -513,14 +522,14 @@ function SessionGrid({
               {label}
             </div>
           )}
-          <SessionCard s={s} now={now} />
+          <SessionCard s={s} now={now} earlier={earlier?.get(s.session_id)} />
         </div>
       ))}
     </div>
   )
 }
 
-export function SessionCard({ s, now }: { s: SessionSummary; now: number }) {
+export function SessionCard({ s, now, earlier }: { s: SessionSummary; now: number; earlier?: SessionSummary[] }) {
   const ctx = s.context
   const ctxTone = ctx ? (ctx.pct >= 85 ? 'danger' : ctx.pct >= 60 ? 'warn' : undefined) : undefined
   const [asking, setAsking] = useState(false)
@@ -571,8 +580,12 @@ export function SessionCard({ s, now }: { s: SessionSummary; now: number }) {
         // narrated state was — that line read as live on a card for a session
         // that stopped weeks ago. When it ended, and whether it can go on.
         <div className="px-3 pb-2 text-[13px] flex items-center gap-2 min-w-0" title={s.activity.phrase}>
-          <span className="text-fg-muted shrink-0">ended</span>
-          <span className="text-fg-faint num text-[11px] shrink-0">{fmtWhen(s.last_event_at, now)} · {fmtAgo(s.last_event_at, now)}</span>
+          {/* When it was worked in, not when it was closed: a restart closes
+            every session at the same minute (FB-037). */}
+          <span className="text-fg-muted shrink-0">worked</span>
+          <span className="text-fg-faint num text-[11px] shrink-0" title={`ended ${fmtWhen(s.last_event_at, now)}`}>
+            {fmtSpan(s.started_at, s.worked_at || s.last_event_at, now)} · {fmtAgo(s.worked_at || s.last_event_at, now)}
+          </span>
           {s.resume && (
             <span className="ml-auto min-w-0" onClick={(e) => { e.preventDefault(); e.stopPropagation() }}>
               <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={false} resume={s.resume} compact />
@@ -585,6 +598,7 @@ export function SessionCard({ s, now }: { s: SessionSummary; now: number }) {
           <span className="text-fg-faint num text-[11px] ml-2">{fmtAgo(s.activity.at || s.last_event_at, now)}</span>
         </div>
       )}
+      {earlier && earlier.length > 0 && <EarlierParts parts={earlier} now={now} />}
       {s.activity.plan && s.activity.plan.total > 0 && (
         <div className="px-3 pb-2 flex items-center gap-2 text-[11px] text-fg-muted">
           <div className="h-1 flex-1 bg-panel-2 rounded-sm overflow-hidden"><div className="h-full bg-accent" style={{ width: `${Math.min(100, Math.max(0, (100 * s.activity.plan.done) / s.activity.plan.total))}%` }} /></div>
@@ -617,3 +631,31 @@ export function SessionCard({ s, now }: { s: SessionSummary; now: number }) {
 }
 
 export { useNow }
+
+/**
+ * The earlier parts of this card's conversation — what a /clear or a fork left
+ * behind — each still one click away. Links would nest inside the card's own
+ * link, which is invalid; these navigate by hand.
+ */
+function EarlierParts({ parts, now }: { parts: SessionSummary[]; now: number }) {
+  return (
+    <div className="px-3 pb-2 text-[11px] text-fg-muted flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
+      <span className="shrink-0">continues {parts.length === 1 ? 'an earlier session' : `${parts.length} earlier sessions`}:</span>
+      {parts.map((p) => (
+        <button
+          key={p.session_id}
+          type="button"
+          className="truncate max-w-[18rem] underline decoration-dotted hover:text-fg"
+          title={`${p.description || shortId(p.session_id)} · worked ${fmtSpan(p.started_at, p.worked_at || p.last_event_at, now)}`}
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            navigate({ name: 'session', id: p.session_id })
+          }}
+        >
+          {p.description || shortId(p.session_id)}
+        </button>
+      ))}
+    </div>
+  )
+}

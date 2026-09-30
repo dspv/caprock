@@ -150,6 +150,12 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 			PID:   info.PID,
 			Title: info.Title,
 		}
+		switch ev.Kind {
+		case event.KindTurnUser, event.KindTurnAssistant, event.KindToolPre, event.KindToolPost:
+			// Only work dates the session on its card. An end, a /clear or a
+			// shutdown moves last_event_at but is not work (FB-037).
+			patch.WorkedAt = ev.Ts.UnixMilli()
+		}
 		// A review turn must not overwrite the model a session's real work named:
 		// Codex reuses the reviewed session's id, so its review turns arrive
 		// inside a session that is otherwise gpt-5.6-sol. The session's model is
@@ -183,6 +189,13 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 			//
 			// This runs before the upsert so the new session's own row, written
 			// below, cannot be caught by it.
+			// The session being replaced is the one this continues; recorded
+			// so the two cards read as one conversation (FB-039).
+			prev, err := store.PreviousOnPID(ctx, q, info.PID, ev.SessionID)
+			if err != nil {
+				return err
+			}
+			patch.ParentSession = prev
 			n, err := store.EndSupersededSiblings(ctx, q, info.PID, ev.SessionID)
 			if err != nil {
 				return err

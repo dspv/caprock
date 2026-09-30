@@ -445,7 +445,14 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		if err := store.UpsertSession(ctx, q, sessionID, store.SessionPatch{Cwd: cwd, Agent: agent}); err != nil {
 			return err
 		}
-		return store.MarkOwned(ctx, q, sessionID, worktree, a.Command, sess.PID())
+		if err := store.MarkOwned(ctx, q, sessionID, worktree, a.Command, sess.PID()); err != nil {
+			return err
+		}
+		if req.Fork {
+			// A fork is a new session id continuing req.Resume's conversation.
+			return store.SetParent(ctx, q, sessionID, req.Resume)
+		}
+		return nil
 	})
 
 	go a.pump(m.OnOutput)

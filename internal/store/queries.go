@@ -47,6 +47,12 @@ type Session struct {
 	// Prompt is the first thing the user typed, stored only for agents whose
 	// prompts are not events (Codex). The API folds it into the description.
 	Prompt string `json:"-"`
+	// WorkedAt is the last prompt, reply or tool call — not the exit, /clear or
+	// shutdown that may have followed it (FB-037).
+	WorkedAt int64 `json:"worked_at,omitempty"`
+	// ParentSession is the session this one continues: the one a /clear
+	// replaced, or the one it was forked from (FB-039).
+	ParentSession string `json:"parent_session,omitempty"`
 }
 
 // Stats mirrors session_stats.
@@ -192,6 +198,12 @@ type SessionPatch struct {
 	// Title is the agent's own name for the session. Empty leaves the stored
 	// one alone.
 	Title string
+	// WorkedAt is set by work events only (a prompt, a reply, a tool call);
+	// zero leaves the stored value. See migration 0027.
+	WorkedAt int64
+	// ParentSession names the session this one continues, when known; empty
+	// leaves the stored one alone.
+	ParentSession string
 }
 
 // resolveRepoFields fills Project/RepoRoot/RepoPath from Cwd. Callers pass a cwd
@@ -230,8 +242,8 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 	// cwd, and then the stored resolution is left alone rather than blanked.
 	project, repoRoot, repoPath, repoKnown := p.resolveRepoFields()
 	_, err := q.ExecContext(ctx, `
-		INSERT INTO sessions(session_id, cwd, project, model, started_at, last_event_at, status, transcript_path, has_hooks, has_transcript, git_branch, version, repo_root, repo_path, agent, pid, title)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), 'claude'), ?, ?)
+		INSERT INTO sessions(session_id, cwd, project, model, started_at, last_event_at, status, transcript_path, has_hooks, has_transcript, git_branch, version, repo_root, repo_path, agent, pid, title, worked_at, parent_session)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), 'claude'), ?, ?, ?, ?)
 		ON CONFLICT(session_id) DO UPDATE SET
 		  cwd             = COALESCE(NULLIF(excluded.cwd, ''), sessions.cwd),
 		  project         = COALESCE(NULLIF(excluded.project, ''), sessions.project),
@@ -262,8 +274,10 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 		  -- earlier event did know. A session's pid is how the sweep tells a
 		  -- quiet session from a gone one.
 		  pid             = CASE WHEN excluded.pid > 0 THEN excluded.pid ELSE sessions.pid END,
-		  title           = COALESCE(NULLIF(excluded.title, ''), sessions.title)`,
-		id, p.Cwd, project, p.Model, p.StartedAt, p.LastEventAt, status, p.TranscriptPath, b2i(p.FromHook), b2i(p.FromTranscript), p.GitBranch, p.Version, repoRoot, repoPath, p.Agent, p.PID, strings.TrimSpace(p.Title),
+		  title           = COALESCE(NULLIF(excluded.title, ''), sessions.title),
+		  worked_at       = MAX(sessions.worked_at, excluded.worked_at),
+		  parent_session  = COALESCE(NULLIF(excluded.parent_session, ''), sessions.parent_session)`,
+		id, p.Cwd, project, p.Model, p.StartedAt, p.LastEventAt, status, p.TranscriptPath, b2i(p.FromHook), b2i(p.FromTranscript), p.GitBranch, p.Version, repoRoot, repoPath, p.Agent, p.PID, strings.TrimSpace(p.Title), p.WorkedAt, p.ParentSession,
 		repoKnown, repoKnown,
 		p.Status, p.Status)
 	if err != nil {
@@ -417,6 +431,10 @@ func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, 
 	if err != nil {
 		return nil, err
 	}
+	var booted int64
+	if b := bootTime(); !b.IsZero() {
+		booted = b.UnixMilli()
+	}
 	var ids []string
 	for rows.Next() {
 		var id, agent string
@@ -437,6 +455,11 @@ func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, 
 			if lastEvent < before {
 				ids = append(ids, id)
 			}
+		case pid > 1 && booted > 0 && lastEvent > 0 && lastEvent < booted:
+			// Last heard from before the machine started: that process is gone
+			// whatever its pid now answers, because after a reboot the pid is
+			// somebody else's (see BootTime).
+			ids = append(ids, id)
 		case pid > 1:
 			// A known process decides it, whatever the clock says.
 			if !ProcessAlive(pid) {
@@ -495,6 +518,30 @@ func ownsItsProcess(agent string) bool {
 // on the same pid is finished by definition. pid 0 means "unknown" and is
 // never matched: it would sweep together every session whose pid was never
 // recorded.
+// PreviousOnPID is the session that most recently started in the same process
+// before id — the one a /clear replaced. Empty when there is none.
+func PreviousOnPID(ctx context.Context, q Querier, pid int, id string) (string, error) {
+	if pid <= 0 {
+		return "", nil
+	}
+	var prev string
+	err := q.QueryRowContext(ctx, `SELECT session_id FROM sessions WHERE pid = ? AND session_id <> ? ORDER BY started_at DESC LIMIT 1`, pid, id).Scan(&prev)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return prev, err
+}
+
+// SetParent records the session id continues. It never replaces one already
+// known.
+func SetParent(ctx context.Context, q Querier, id, parent string) error {
+	if id == "" || parent == "" || parent == id {
+		return nil
+	}
+	_, err := q.ExecContext(ctx, `UPDATE sessions SET parent_session = ? WHERE session_id = ? AND parent_session = ''`, parent, id)
+	return err
+}
+
 func EndSupersededSiblings(ctx context.Context, q Querier, pid int, keep string) (int64, error) {
 	if pid <= 0 {
 		return 0, nil
@@ -537,13 +584,13 @@ func updateStatusByID(ctx context.Context, q Querier, ids []string, status strin
 	return nil
 }
 
-const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,'')`
+const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,''), COALESCE(worked_at,0), COALESCE(parent_session,'')`
 
 func scanSession(sc interface{ Scan(...any) error }) (Session, error) {
 	var s Session
 	var hh, ht, owned int
 	var exit sql.NullInt64
-	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt)
+	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt, &s.WorkedAt, &s.ParentSession)
 	s.HasHooks, s.HasTranscript, s.Owned = hh != 0, ht != 0, owned != 0
 	if exit.Valid {
 		v := int(exit.Int64)
@@ -593,7 +640,11 @@ func ListSessionsMatching(ctx context.Context, q Querier, activeOnly bool, searc
 		limit = MaxSessionsPage
 	}
 	where, args := sessionFilter(activeOnly, search)
-	rows, err := q.QueryContext(ctx, `SELECT `+sessionCols+` FROM sessions`+where+` ORDER BY last_event_at DESC LIMIT ?`, append(args, limit)...)
+	// An ended session sorts by when it was worked in. By last_event_at, a
+	// restart that closed several at one minute left them in arbitrary order
+	// (FB-037); an open one keeps sorting by its latest event, which is live.
+	rows, err := q.QueryContext(ctx, `SELECT `+sessionCols+` FROM sessions`+where+`
+		ORDER BY CASE WHEN status = 'ended' AND worked_at > 0 THEN worked_at ELSE last_event_at END DESC LIMIT ?`, append(args, limit)...)
 	if err != nil {
 		return nil, err
 	}
@@ -2450,4 +2501,36 @@ func HandoffCoverage(ctx context.Context, q Querier, since int64, minLen int) (r
 		  AND LENGTH(json_extract(e.payload, '$.text')) >= ?`, since, minLen)
 	err = row.Scan(&repos, &oldest)
 	return repos, oldest, err
+}
+
+// RunningAt lists the sessions that look as if they were running at stoppedAt,
+// when the daemon last stopped: not ended yet, or ended by that very stop — a
+// close recorded within a couple of minutes of it. Only sessions somebody
+// worked in on the day of the stop count, and only agents whose process
+// Caprock watches, so imported history and long-abandoned rows stay out.
+// Newest work first, at most limit.
+func RunningAt(ctx context.Context, q Querier, stoppedAt int64, limit int) ([]string, error) {
+	const grace = int64(2 * 60 * 1000)
+	const day = int64(24 * 60 * 60 * 1000)
+	rows, err := q.QueryContext(ctx,
+		`SELECT session_id, COALESCE(agent,'claude') FROM sessions
+		 WHERE COALESCE(worked_at,0) >= ?
+		   AND (status != 'ended' OR (last_event_at >= ? AND last_event_at <= ?))
+		 ORDER BY worked_at DESC`,
+		stoppedAt-day, stoppedAt-grace, stoppedAt+grace)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var ids []string
+	for rows.Next() {
+		var id, agent string
+		if err := rows.Scan(&id, &agent); err != nil {
+			return nil, err
+		}
+		if ownsItsProcess(agent) && len(ids) < limit {
+			ids = append(ids, id)
+		}
+	}
+	return ids, rows.Err()
 }
