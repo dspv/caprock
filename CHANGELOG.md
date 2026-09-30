@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.60.1] - 2026-09-30
+
 ### Fixed
 
 - Codex sessions on `gpt-6-astra` and `gpt-6.1-sol` are priced (OpenAI list
