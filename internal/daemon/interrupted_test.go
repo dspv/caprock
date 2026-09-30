@@ -34,8 +34,10 @@ func TestARestartNamesTheSessionsItCutOff(t *testing.T) {
 	put("closed-by-stop", store.SessionPatch{StartedAt: ms(stop.Add(-3 * time.Hour)), LastEventAt: ms(stop.Add(30 * time.Second)), WorkedAt: ms(stop.Add(-time.Hour)), Status: store.StatusEnded})
 	// Finished long before the stop.
 	put("done-earlier", store.SessionPatch{StartedAt: ms(stop.Add(-5 * time.Hour)), LastEventAt: ms(stop.Add(-4 * time.Hour)), WorkedAt: ms(stop.Add(-4 * time.Hour)), Status: store.StatusEnded})
-	// Outlived the stop: its process is still here.
-	put("survived", store.SessionPatch{StartedAt: ms(stop.Add(-time.Hour)), LastEventAt: ms(stop.Add(-time.Minute)), WorkedAt: ms(stop.Add(-time.Minute)), PID: os.Getpid()})
+	// Outlived the stop: its process is still here, and has been heard from
+	// since — after this machine booted, which on a fresh CI runner is minutes
+	// ago, so a session last heard from an hour back would be ended by that.
+	put("survived", store.SessionPatch{StartedAt: ms(stop.Add(-time.Hour)), LastEventAt: ms(time.Now()), WorkedAt: ms(stop.Add(-time.Minute)), PID: os.Getpid()})
 	// Imported history has no process to lose.
 	put("codex", store.SessionPatch{StartedAt: ms(stop.Add(-time.Hour)), LastEventAt: ms(stop.Add(-time.Minute)), WorkedAt: ms(stop.Add(-time.Minute)), Agent: "codex"})
 	if err := d.store.SetMeta(ctx, store.MetaAliveAt, strconv.FormatInt(ms(stop), 10)); err != nil {
