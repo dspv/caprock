@@ -11,7 +11,8 @@ import base64, json, os, pathlib, sqlite3, subprocess, sys, time, urllib.request
 # a real database and has no business sitting in a working tree.
 DB = pathlib.Path(os.environ.get("CAPROCK_SHOT_DB",
                                  pathlib.Path(__file__).parent / "shotdata" / "caprock.db"))
-THIS_SESSION = "8e968de8-d2a4-428f-a7d9-2658b3e6937f"
+# The session running the capture, when it runs inside one.
+THIS_SESSION = os.environ.get("CLAUDE_CODE_SESSION_ID") or "8e968de8-d2a4-428f-a7d9-2658b3e6937f"
 
 # Repository names are as identifying as paths, and rewriting the paths alone
 # left them on screen: an employer's name, a person's surname, a client's
@@ -39,6 +40,17 @@ FEED_FIELDS = {
     "query": ["go context cancellation", "react suspense streaming",
               "sqlite wal mode", "http retry backoff"],
 }
+# Session cards lead with the agent's title for the session, or else a prompt
+# typed in it (FB-035) — the user's own words, which the path scrub never
+# sees. Every session gets one of these instead, and no prompt, so a card can
+# never fall back to reading one out of the events.
+TITLES = [
+    "Add retry with backoff to the webhook sender", "Fix flaky checkout test",
+    "Paginate the orders endpoint", "Migrate sessions table to UUID keys",
+    "Profile the search indexer", "Tighten auth token expiry",
+    "Split the billing worker into two queues", "Review the rate limiter",
+    "Dark mode for the admin panel", "Upgrade to React 19",
+]
 STAND_INS = [
     "acme-api", "acme-web", "payments-core", "billing", "checkout",
     "inventory", "notify-svc", "search-index", "data-pipeline", "auth-gateway",
@@ -100,6 +112,20 @@ def scrub():
         taken: dict[str, int] = {}
         for root in roots:
             leaf = root.rstrip("/").rsplit("/", 1)[-1]
+            # A root this shallow ("/", "/tmp", "/private/tmp") is a prefix of
+            # every path on the machine. Substituting it rewrote every slash:
+            # the v0.59.0 capture printed a project called
+            # "data-pipeline-3Usersdata-pipeline-3devdata-…" at 72% of the
+            # month. Such a session is moved onto its own root, by equality.
+            if root.strip("/").count("/") < 2 or not leaf:
+                leaf = leaf or "workspace"
+                n = taken.get(leaf, 0)
+                taken[leaf] = n + 1
+                flat = f"/Users/dev/dev/{leaf}" if n == 0 else f"/Users/dev/dev/{leaf}-{n + 1}"
+                c.execute("UPDATE sessions SET cwd=?, repo_path=? WHERE cwd=? AND (repo_root IS NULL OR repo_root='')",
+                          (flat, flat, root))
+                c.execute("UPDATE sessions SET repo_root=? WHERE repo_root=?", (flat, root))
+                continue
             n = taken.get(leaf, 0)
             taken[leaf] = n + 1
             flat = f"/Users/dev/dev/{leaf}" if n == 0 else f"/Users/dev/dev/{leaf}-{n + 1}"
@@ -153,14 +179,32 @@ def scrub():
         # as readily as through the project column, so the whole blob is
         # rewritten rather than a chosen field: the alternative is enumerating
         # every key the UI might ever display.
+        # Every path was re-rooted above, so inside a path a name only ever
+        # appears as `/Users/dev/dev/<name>` — replaced there, bounded, so a
+        # project called `tmp` or `repo` cannot rewrite the middle of another
+        # name. The label column is replaced whole. Free text in payloads
+        # takes a bare substring only for names long enough not to be a word.
+        root = "/Users/dev/dev/"
+        path_cols = [tc for tc in cols if tc != ("sessions", "project")]
         for real, token, _ in mapping:
-            for t, col in cols:
-                c.execute(f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
-                          (real, token, f"%{real}%"))
+            c.execute("UPDATE sessions SET project=? WHERE project=?", (token, real))
+            for t, col in path_cols:
+                for a, b in ((root + real + "/", root + token + "/"), (root + real + '"', root + token + '"')):
+                    c.execute(f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
+                              (a, b, f"%{a}%"))
+                c.execute(f"UPDATE {t} SET {col}=? WHERE {col}=?", (root + token, root + real))
+            if len(real) >= 4:
+                for t, col in (("events", "touch_dir"), ("events", "payload"), ("session_files", "path")):
+                    c.execute(f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
+                              (real, token, f"%{real}%"))
         for _, token, fake in mapping:
             for t, col in cols:
                 c.execute(f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
                           (token, fake, f"%{token}%"))
+        c.execute("SELECT session_id FROM sessions ORDER BY session_id")
+        for i, (sid,) in enumerate(c.fetchall()):
+            c.execute("UPDATE sessions SET title=?, prompt='' WHERE session_id=?",
+                      (TITLES[i % len(TITLES)], sid))
         # The feed's own text. Rewritten per row so the list reads as varied
         # work rather than one command repeated eighty times.
         c.execute("SELECT rowid, payload FROM events WHERE payload LIKE '%tool_input%'")
@@ -326,7 +370,9 @@ def main():
                         if (document.querySelector('.skeleton-pulse')) return false;
                         if (t.includes('reading your figures')) return false;
                         if (t.includes('nothing measured')) return false;
-                        if (/\\$0\\.00\\s*$/m.test(t)) return false;
+                        // A stat still at zero stands on its own line; a
+                        // table row can honestly end in $0.00 (a free model).
+                        if (/^\\$0\\.00\\s*$/m.test(t)) return false;
                         // Tasks carries no money; the placeholders are all it has.
                         return !wantMoney || /\\$[0-9][0-9,]*\\.[0-9]{2}/.test(t);
                       })(""" + ("false" if route == "tasks" else "true") + """)
