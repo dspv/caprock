@@ -10,6 +10,9 @@ import (
 
 const supported = true
 
+// stdout is the process's; tests swap it for a file of their own.
+var stdout = os.Stdout
+
 // pathOf is where stderr's file lives. The daemon only ever logs to one of two
 // names in its data dir, so the candidates are checked by identity rather
 // than guessed from a descriptor.

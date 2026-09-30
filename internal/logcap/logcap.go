@@ -56,8 +56,8 @@ func Run(ctx context.Context, log *slog.Logger) {
 	}
 }
 
-// stdout and stderr are the process's; tests swap them for files of their own.
-var stdout, stderr = os.Stdout, os.Stderr
+// stderr is the process's; tests swap it for a file of their own.
+var stderr = os.Stderr
 
 // rotate moves stderr's file aside once it is past limit.
 func rotate(limit int64) error {
