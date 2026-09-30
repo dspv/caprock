@@ -14,6 +14,7 @@ export function TerminalView({
   // a path they can see.
   cwd,
   ended = false,
+  detached = false,
   resume,
 }: {
   sessionId: string
@@ -21,6 +22,8 @@ export function TerminalView({
   cwd?: string
   /** The session is over: there is no process, whoever started it. */
   ended?: boolean
+  /** Caprock started it, but before its last restart: the terminal went with that run. */
+  detached?: boolean
   /** What to offer instead of a terminal once it has ended — continuing it. */
   resume?: ReactNode
 }) {
@@ -348,6 +351,18 @@ export function TerminalView({
       ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); ws.close(); term.dispose()
     }
   }, [sessionId, owned])
+  if (!owned && detached) {
+    // Caprock started this session, and then Caprock restarted. The process
+    // is still there, but the terminal was held by the run that stopped, so
+    // attaching opened an empty black screen — while the list offered a
+    // continue that worked (FB-040). Say which, and offer the same thing.
+    return (
+      <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+        <p className="text-[14px] text-fg">Caprock restarted since this session began, and its terminal went with that run.</p>
+        {resume}
+      </div>
+    )
+  }
   if (!owned && ended) {
     // An ended session has no process to attach to, and it used to get the
     // copy written for a live one: "You started this session yourself …

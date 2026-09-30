@@ -94,8 +94,14 @@ export interface SessionSummary extends Session {
    *  first prompt that says something. */
   description?: string
   description_source?: 'title' | 'prompt'
+  /** Last prompt, reply or tool call — not the exit or restart that followed it (FB-037). */
+  worked_at?: number
+  /** The session this one continues: the one a /clear replaced, or the one it was forked from (FB-039). */
+  parent_session?: string
   /** Whether it can be carried on from here. On the list: ended sessions only. */
   resume?: ResumeInfo
+  /** Caprock started it before its last restart: still running, but its terminal is not here. */
+  detached?: boolean
 }
 
 /** Whether a session can be carried on from here, and if not, why. */
@@ -442,6 +448,9 @@ export interface Status {
    *  While this is set nothing new is being captured, however healthy the rest
    *  of the status looks. */
   ingest_error?: string
+  /** Sessions the last stop of Caprock (or of the machine) cut off and nobody
+   *  has continued yet; absent when there are none. */
+  interrupted?: { stopped_at: number; ids: string[] }
   ui_built: boolean
   claude_available: boolean
   /** The Gemini CLI is on PATH, so the new-session dialog can offer it as an

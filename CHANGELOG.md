@@ -9,6 +9,29 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- After a reboot or an OS update, the Now screen names the sessions that were
+  still running when Caprock stopped, each with **continue**, until dismissed
+  (FB-038). They used to be a few ended cards among a hundred, found by opening
+  each.
+- A `/clear` or a fork is one card, not several: the earlier parts of the
+  conversation ride on the latest card as links (FB-039). Only recorded facts
+  join sessions — the same process after `/clear`, or a fork Caprock started —
+  never the same folder or branch.
+
+### Fixed
+
+- An ended card shows when the session was worked in — "worked 29 Sep
+  14:02–16:40" — not when it was closed. After a reboot every card read the
+  reboot's time (FB-037), and the list is now ordered by the same time.
+- A session from before a reboot is ended even when its old process number now
+  belongs to another program. It stayed "live" instead, and its terminal tab
+  was an empty screen.
+- The terminal tab of a session Caprock started before it restarted says the
+  terminal went with that run and offers continue, instead of an empty screen
+  (FB-040).
+
 ## [0.59.6] - 2026-09-30
 
 ### Fixed

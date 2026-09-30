@@ -459,6 +459,16 @@ func TestClearLeavesOneLiveSession(t *testing.T) {
 	if fresh.Status != store.StatusActive {
 		t.Errorf("the session that replaced it is %q, want active", fresh.Status)
 	}
+	// One terminal, one conversation: the replacement knows what it continues
+	// (FB-039).
+	if fresh.ParentSession != "old" {
+		t.Errorf("the replacement's parent is %q, want old", fresh.ParentSession)
+	}
+	// The old session was last worked in at base; the /clear a minute later
+	// moved its last event but is not work (FB-037).
+	if old.WorkedAt != base.UnixMilli() || old.LastEventAt <= old.WorkedAt {
+		t.Errorf("worked_at %d, last_event_at %d; want worked_at at the prompt and last_event_at after it", old.WorkedAt, old.LastEventAt)
+	}
 }
 
 // A /clear on its own is not an ending. Only the SessionStart that follows

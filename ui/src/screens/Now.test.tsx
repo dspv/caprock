@@ -46,6 +46,11 @@ vi.mock('@/lib/api', async (orig) => {
         state.listCalls.push(args)
         return { items: state.sessions, total: state.sessionTotal ?? state.sessions.length }
       },
+      session: async (id: string) => {
+        const s = state.sessions.find((x) => x.session_id === id)
+        if (!s) throw new Error('not found')
+        return { ...s, files: [], events: [] }
+      },
       spawn: async (req: unknown) => { state.spawned.push(req); return { session_id: 'chat-1', cwd: '/data/chats/x' } },
     },
   }
@@ -292,6 +297,44 @@ it('shows an ended card as ended, with continue or the reason it cannot', async 
   await waitFor(() => expect(state.spawned).toContainEqual(expect.objectContaining({ resume: 'ok1', fork: false })))
 })
 
+// After Vova's machine restarted, four ended cards all read "ended 29 Sep
+// 18:26": the shutdown closed them at one minute and the card showed that.
+// The card says when the session was worked in (FB-037).
+it('dates an ended card by when it was worked in, not when it was closed', async () => {
+  state.summary = emptySummary({ sessions: 1 })
+  state.status = { claude_available: true }
+  const worked = new Date(2026, 8, 29, 16, 40).getTime()
+  const restart = new Date(2026, 8, 29, 18, 26).getTime()
+  state.sessions = [
+    sess({ session_id: 'w1', status: 'ended', started_at: new Date(2026, 8, 29, 14, 2).getTime(),
+      worked_at: worked, last_event_at: restart,
+      activity: { phrase: 'done', tool: '', at: '', health: 'idle', repeats: 1 } }),
+  ]
+  render(<NowScreen />)
+  fireEvent.click(await screen.findByLabelText(/show ended sessions/i))
+  const span = await screen.findByText(/14:02–16:40/)
+  expect(span.textContent).not.toMatch(/18:26/)
+  expect(span.getAttribute('title')).toMatch(/ended .*18:26/)
+})
+
+it('folds a /clear chain into one card that links the earlier part', async () => {
+  state.summary = emptySummary({ sessions: 2 })
+  state.status = { claude_available: true }
+  state.sessions = [
+    sess({ session_id: 'head', status: 'ended', description: 'after the clear', parent_session: 'tail',
+      activity: { phrase: 'done', tool: '', at: '', health: 'idle', repeats: 1 } }),
+    sess({ session_id: 'tail', status: 'ended', description: 'before the clear',
+      activity: { phrase: 'done', tool: '', at: '', health: 'idle', repeats: 1 } }),
+  ]
+  render(<NowScreen />)
+  fireEvent.click(await screen.findByLabelText(/show ended sessions/i))
+  await screen.findByText(/continues an earlier session/)
+  const earlier = screen.getByRole('button', { name: 'before the clear' })
+  expect(earlier).toBeTruthy()
+  fireEvent.click(earlier)
+  expect(location.hash).toMatch(/tail/)
+})
+
 it('searches ended sessions on the server and pages past the first 200', async () => {
   state.summary = emptySummary({ sessions: 450 })
   state.status = { claude_available: true }
@@ -307,4 +350,28 @@ it('searches ended sessions on the server and pages past the first 200', async (
   fireEvent.change(screen.getByPlaceholderText(/find a session/), { target: { value: ' bigquery ' } })
   // Debounced, trimmed, and back to the first page for a new question.
   await waitFor(() => expect(state.listCalls).toContainEqual([false, 'bigquery', 200]))
+})
+
+it('names the sessions a restart cut off, each with continue, until dismissed', async () => {
+  localStorage.clear()
+  const stopped = Date.now() - 3600_000
+  state.summary = emptySummary({ sessions: 2 })
+  state.status = { claude_available: true, interrupted: { stopped_at: stopped, ids: ['cut', 'gone'] } }
+  const ended = { status: 'ended' as const, resume: { ok: true, command: 'claude --resume cut' },
+    activity: { phrase: 'done', tool: '', at: '', health: 'idle' as const, repeats: 1 } }
+  state.sessions = [
+    sess({ session_id: 'cut', project: 'sxope', description: 'Spanner queries', ...ended }),
+  ]
+  const { unmount } = render(<NowScreen />)
+  // One of the two ids no longer exists; the banner counts what it can show.
+  await screen.findByText(/A session was still running when Caprock last stopped/)
+  expect(screen.getByText(/Spanner queries/)).toBeTruthy()
+  expect(screen.getAllByRole('button', { name: 'continue' }).length).toBeGreaterThan(0)
+  fireEvent.click(screen.getByRole('button', { name: 'dismiss' }))
+  expect(screen.queryByText(/still running when Caprock last stopped/)).toBeNull()
+  unmount()
+  // Dismissed for this stop, on the next visit too.
+  render(<NowScreen />)
+  await screen.findByText(/Spanner queries/, undefined, { timeout: 200 }).catch(() => null)
+  expect(screen.queryByText(/still running when Caprock last stopped/)).toBeNull()
 })

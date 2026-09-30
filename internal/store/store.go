@@ -65,6 +65,15 @@ const (
 	// only evidence of a silent failure with it. "chat not found" a week later
 	// is still the answer.
 	MetaReportLastError = "report_last_error"
+	// MetaAliveAt is the daemon's heartbeat, unix ms as a string, written every
+	// minute. Read once at start, before the first write, it is when the
+	// previous run stopped — to the minute, whether it stopped cleanly or the
+	// machine went down under it.
+	MetaAliveAt = "daemon_alive_at"
+	// MetaInterrupted is the sessions that were still running when the daemon
+	// last stopped and were gone when it started again, as JSON
+	// {"stopped_at": ms, "ids": [...]} (FB-038).
+	MetaInterrupted = "interrupted"
 	// MetaReportLastSent is when a report last went out, unix ms as a string.
 	MetaReportLastSent = "report_last_sent"
 	// ToolLinkDone is the MetaToolLinkCursor value meaning "no rows left".

@@ -30,6 +30,9 @@ import (
 // that requires a wrap of the pid space between two sweeps. The failure it
 // would prevent is a stale row in a list; the failure of not doing this at all
 // was a session vanishing while somebody worked in it.
+//
+// A reboot is the exception, because it resets the pid space and makes reuse
+// the common case rather than a wrap: MarkEndedSessions checks BootTime first.
 func ProcessAlive(pid int) bool {
 	if pid <= 1 {
 		// 0 is "unknown" and 1 is init, which is never a Claude Code session

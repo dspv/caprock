@@ -141,7 +141,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
       {active === 'timeline' && <Timeline id={id} initial={s.events} now={now} at={at} />}
       {active === 'notes' && <SessionNotes id={id} now={now} />}
       {active === 'changes' && <ChangesTab id={id} s={s} />}
-      {active === 'terminal' && <Panel className="overflow-hidden"><TerminalView sessionId={id} owned={s.owned && s.status !== 'ended'} ended={s.status === 'ended'} cwd={s.cwd} resume={s.resume && <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={false} resume={s.resume} />} /></Panel>}
+      {active === 'terminal' && <Panel className="overflow-hidden"><TerminalView sessionId={id} owned={s.owned && s.status !== 'ended' && !s.detached} ended={s.status === 'ended'} detached={s.detached} cwd={s.cwd} resume={s.resume && <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={s.status !== 'ended'} resume={s.resume} />} /></Panel>}
     </div>
   )
 }

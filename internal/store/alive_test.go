@@ -88,6 +88,9 @@ func TestALiveProcessKeepsItsSessionForever(t *testing.T) {
 
 	const week = 7 * 24 * time.Hour
 	longAgo := time.Now().Add(-week)
+	// The machine has been up longer than the session has been quiet; a real
+	// session cannot have gone quiet before a boot and still be running.
+	bootedAt(t, longAgo.Add(-time.Hour))
 	if err := UpsertSession(ctx, s.DB(), "alive", SessionPatch{
 		Cwd: "/tmp", StartedAt: longAgo.UnixMilli(), LastEventAt: longAgo.UnixMilli(),
 		PID: cmd.Process.Pid,
@@ -231,5 +234,42 @@ func TestAnObservedAgentsSessionsAreJudgedByTheClockOnly(t *testing.T) {
 	}
 	if got["oc-fresh"] {
 		t.Error("a minute-old opencode session was ended")
+	}
+}
+
+// bootedAt pretends the machine started at b for the rest of the test.
+func bootedAt(t *testing.T, b time.Time) {
+	t.Helper()
+	was := bootTime
+	bootTime = func() time.Time { return b }
+	t.Cleanup(func() { bootTime = was })
+}
+
+// After a reboot the pid space starts again, so a session's old pid is soon
+// someone else's. A session last heard from before the boot is over, even when
+// something answers to its pid (FB-038).
+func TestASessionFromBeforeTheBootIsOverWhateverItsPidSays(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	boot := time.Now().Add(-time.Hour)
+	bootedAt(t, boot)
+
+	// Our own pid stands in for the stranger that inherited the number.
+	for id, last := range map[string]time.Time{
+		"before": boot.Add(-10 * time.Minute),
+		"after":  boot.Add(10 * time.Minute),
+	} {
+		if err := UpsertSession(ctx, s.DB(), id, SessionPatch{
+			Cwd: "/tmp", StartedAt: last.UnixMilli(), LastEventAt: last.UnixMilli(), PID: os.Getpid(),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ended, err := MarkEndedSessions(ctx, s.DB(), time.Now().Add(-8*time.Hour).UnixMilli())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ended) != 1 || ended[0] != "before" {
+		t.Fatalf("ended %v, want only the session from before the boot", ended)
 	}
 }

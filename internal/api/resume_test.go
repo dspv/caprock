@@ -20,7 +20,7 @@ import (
 // not by who started it — and when it cannot, the reason is said.
 func TestResumeInfoFollowsTheDiskNotTheOwner(t *testing.T) {
 	e := newEnv(t)
-	fa := &fakeAgents{avail: true}
+	fa := &fakeAgents{avail: true, held: map[string]bool{"running": true}}
 	e.srv.Config.Handler = New(Deps{Store: e.st, Version: "t", Token: "tok", Now: func() time.Time { return e.now }, Agents: fa})
 	ctx := context.Background()
 	db := e.st.DB()
@@ -58,6 +58,9 @@ func TestResumeInfoFollowsTheDiskNotTheOwner(t *testing.T) {
 	transcript("mine")
 	add("mine", store.SessionPatch{Cwd: cwd, TranscriptPath: filepath.Join(proj, "mine.jsonl")}, true, true)
 	add("running", store.SessionPatch{Cwd: cwd}, false, true)
+	// Started by Caprock before a restart: not ended, but its terminal is gone.
+	transcript("orphan")
+	add("orphan", store.SessionPatch{Cwd: cwd, TranscriptPath: filepath.Join(proj, "orphan.jsonl")}, false, true)
 	add("cx", store.SessionPatch{Cwd: cwd, Agent: "codex"}, true, false)
 
 	detail := func(id string) SessionDetail {
@@ -90,8 +93,13 @@ func TestResumeInfoFollowsTheDiskNotTheOwner(t *testing.T) {
 		t.Fatalf("owned and ended: %+v", r)
 	}
 	// Running under Caprock: typed into, not resumed.
-	if r := detail("running").Resume; r != nil {
-		t.Fatalf("owned and live: %+v", r)
+	if d := detail("running"); d.Resume != nil || d.Detached {
+		t.Fatalf("owned and live: %+v %v", d.Resume, d.Detached)
+	}
+	// Its terminal went with the last run of Caprock: continue is the way back
+	// (FB-040), not an empty terminal tab.
+	if d := detail("orphan"); !d.Detached || d.Resume == nil || !d.Resume.OK {
+		t.Fatalf("owned, live, no terminal here: detached=%v resume=%+v", d.Detached, d.Resume)
 	}
 	if r := detail("cx").Resume; r == nil || r.OK || r.Command != "codex resume cx" {
 		t.Fatalf("codex: %+v", r)

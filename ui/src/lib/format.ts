@@ -123,6 +123,23 @@ export function fmtModel(id: string): string {
 /** A moment as a reader names it: "12 Sep 14:03", with the year only when it
  *  is not this one. For ended sessions, where "3d ago" alone makes a list of
  *  old sessions impossible to place. */
+/**
+ * When a session was worked in, as one span: "29 Sep 14:02–16:40", or with
+ * both dates when it crossed midnight. An end alone said nothing after a
+ * restart — every session closed by it ended at the same minute (FB-037).
+ */
+export function fmtSpan(from: number, to: number, now = Date.now()): string {
+  if (!to) return ''
+  if (!from || from >= to) return fmtWhen(to, now)
+  const a = new Date(from)
+  const b = new Date(to)
+  if (a.toDateString() === b.toDateString()) {
+    const t = (d: Date) => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+    return `${fmtWhen(from, now)}–${t(b)}`
+  }
+  return `${fmtWhen(from, now)} – ${fmtWhen(to, now)}`
+}
+
 export function fmtWhen(ms: number, now = Date.now()): string {
   if (!ms) return ''
   const d = new Date(ms)
