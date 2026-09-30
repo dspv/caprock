@@ -166,9 +166,10 @@ These are decisions, not details, and each changes the work:
   obvious mapping and it is wrong on shared machines and CI.
 - **What happens to a developer who is offline?** Reports queue and catch up, or
   the gap shows as a gap. The second is more honest and looks broken.
-- **How is it priced?** Per seat is conventional and penalises the team that
-  installs it everywhere, which is exactly what makes the product work. Per
-  team, banded by size, may be better.
+- ~~**How is it priced?**~~ Decided 2026-09-30 (owner): one flat price for the
+  team, never per person and never a share of AI spend — $6,000 a year with
+  setup included, or $1,000 a month plus $500 one-time setup. Enterprise is
+  custom. The figures live once, in caprock-web `src/content/pricing.ts`.
 - **Does the free binary carry the reporter?** One binary is simpler to ship and
   means the free product contains code for a paid feature. A separate build
   avoids that and doubles the release matrix.
