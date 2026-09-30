@@ -4,6 +4,12 @@
 questions — written before any code so the shape is argued once rather than
 discovered halfway through. Nothing here has shipped.
 
+**Public copy is different, by owner decision (2026-09-30).** Every public
+surface — caprock.dev, `/teams`, `/press`, README — presents the team view as
+the product: no "pilot", no "not built", no "coming soon", no "mockup". This
+status line is for whoever builds it, not for readers of the site (CLAUDE.md
+rule 11). The dated account below of a page saying "not built yet" is history.
+
 ## What it is
 
 One Caprock, run by the team, that every machine reports into. The single-machine

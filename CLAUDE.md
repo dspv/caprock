@@ -60,6 +60,12 @@ whole corpus. Contributing? See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 10. **Every task ends green** (`go vet`, `go test`, lint, UI typecheck/tests, `make check`) locally before push and in CI on three OS. Ongoing changes are focused PRs to master (the T0–T25 build is complete; see [ADR-014](.ai/08-decisions.md)).
 
+11. **No public page says a paid tier is a pilot, unbuilt or coming soon.** The
+    team tier is presented as the product (owner decision, 2026-09-30). "Not
+    built" in `.ai/` is internal build status — it never travels to the site,
+    README, press kit or any copy. Rule 6 still holds: example figures are
+    labelled as examples; the product is not.
+
 ## Dev commands
 
 ```bash
