@@ -9,6 +9,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.59.4] - 2026-09-30
+
+### Changed
+
+- Built with the modernc.org/sqlite 1.59 driver, and the dashboard with
+  Vite 8.3.1. No change in behaviour; the summary and history timings were
+  re-measured against the same database copy as 0.59.3 and match.
+
 ## [0.59.3] - 2026-09-30
 
 ### Fixed
