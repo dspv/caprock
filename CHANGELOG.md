@@ -9,6 +9,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- Codex sessions on `gpt-6-astra` and `gpt-6.1-sol` are priced (OpenAI list
+  prices, read 2026-09-30). They showed as "Partial cost"; the turns already
+  stored are priced on the next start. The gpt-6 rows also carry OpenAI's
+  cache-write rate, which Codex does not report tokens for yet.
+
 ## [0.60.0] - 2026-09-30
 
 ### Added
