@@ -1,8 +1,10 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/dspv/caprock/internal/pairing"
@@ -110,5 +112,137 @@ func TestANewEndpointIsClosedUntilSomeoneOpensIt(t *testing.T) {
 	}
 	if !openToUnpairedDevices("/v1/pair") {
 		t.Fatal("the pairing endpoint must stay reachable, or there is no way in")
+	}
+}
+
+// pairedTablet is a daemon with LAN access on and one paired device.
+func pairedTablet(t *testing.T, d Deps) (*Server, string) {
+	t.Helper()
+	ps := pairing.New()
+	d.Pairing = ps
+	s := New(d)
+	code, err := ps.NewCode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dev, err := ps.Redeem(code, "tablet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s, dev.Token
+}
+
+// ADR-029: a tablet is somewhere to read figures, not a second control room.
+// The token used to be the whole check, so a paired phone could start a
+// command, type into a session, kill it, or rewrite the settings. It may read;
+// everything else is 403 — and the same requests from the machine itself are
+// untouched.
+func TestAPairedDeviceReadsButDoesNotControl(t *testing.T) {
+	s, tok := pairedTablet(t, Deps{})
+
+	for _, tc := range []struct {
+		method, path string
+		want         int // 0 = served
+	}{
+		// Reads.
+		{http.MethodGet, "/v1/sessions", 0},
+		{http.MethodGet, "/v1/sessions/abc", 0},
+		{http.MethodHead, "/v1/sessions", 0},
+		{http.MethodGet, "/v1/stats/summary", 0},
+		{http.MethodGet, "/v1/notes", 0},
+		{http.MethodGet, "/v1/tasks", 0},
+		{http.MethodGet, "/v1/live", 0},
+		{http.MethodGet, "/assets/index.js", 0},
+		// Control.
+		{http.MethodPost, "/v1/agents", http.StatusForbidden},
+		{http.MethodPost, "/v1/agents/abc/input", http.StatusForbidden},
+		{http.MethodPost, "/v1/agents/abc/signal", http.StatusForbidden},
+		{http.MethodPut, "/v1/settings", http.StatusForbidden},
+		{http.MethodPost, "/v1/tasks", http.StatusForbidden},
+		{http.MethodPost, "/v1/tasks/abc/approve", http.StatusForbidden},
+		{http.MethodPost, "/v1/orchestrator/start", http.StatusForbidden},
+		{http.MethodPost, "/v1/hive", http.StatusForbidden},
+		{http.MethodPost, "/v1/pair/code", http.StatusForbidden},
+		{http.MethodDelete, "/v1/pair/devices/all", http.StatusForbidden},
+		{http.MethodPost, "/v1/pair/lan", http.StatusForbidden},
+		{http.MethodPost, "/v1/shutdown", http.StatusForbidden},
+		{http.MethodPost, "/v1/paste", http.StatusForbidden},
+		// GETs that are not reads: the terminal socket types into the
+		// session, and the directory listings exist to start one.
+		{http.MethodGet, "/v1/agents/abc/term", http.StatusForbidden},
+		{http.MethodGet, "/v1/browse", http.StatusForbidden},
+		{http.MethodGet, "/v1/recent-dirs", http.StatusForbidden},
+		// Closed by default: a route nobody has named.
+		{http.MethodGet, "/v1/something-added-next-week", http.StatusForbidden},
+		{http.MethodOptions, "/v1/sessions", http.StatusForbidden},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			r := httptest.NewRequest(tc.method, tc.path, nil)
+			r.RemoteAddr = "192.168.1.50:51000"
+			r.Header.Set(deviceTokenHeader, tok)
+			if got, reason := s.gate(r); got != tc.want {
+				t.Fatalf("paired device: status = %d, want %d (%s)", got, tc.want, reason)
+			}
+
+			// The same request from the machine itself is not the gate's
+			// business.
+			local := httptest.NewRequest(tc.method, tc.path, nil)
+			local.RemoteAddr = "127.0.0.1:51000"
+			if got, reason := s.gate(local); got != 0 {
+				t.Fatalf("loopback: status = %d (%s)", got, reason)
+			}
+		})
+	}
+}
+
+// The refusal reaches the caller as 403 with a reason, through the real
+// handler chain, and never reaches the handler.
+func TestAPairedDeviceIsRefusedWithA403(t *testing.T) {
+	s, tok := pairedTablet(t, Deps{})
+	r := httptest.NewRequest(http.MethodPost, "/v1/agents", strings.NewReader(`{"cwd":"/tmp"}`))
+	r.RemoteAddr = "192.168.1.50:51000"
+	r.Header.Set(deviceTokenHeader, tok)
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403: %s", w.Code, w.Body)
+	}
+	var body map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || body["error"] == "" {
+		t.Fatalf("want a JSON error naming why, got %q (%v)", w.Body, err)
+	}
+}
+
+// The licence key is what pays for the product; a device allowed to read the
+// figures does not get to copy it. The machine itself still sees it, or the
+// licence field could not show what is entered.
+func TestAPairedDeviceDoesNotSeeTheLicenceKey(t *testing.T) {
+	fs := &fakeSettings{cur: Settings{LicenseKey: "CAPROCK-SECRET", PlanKind: "flat"}}
+	s, tok := pairedTablet(t, Deps{Settings: fs})
+
+	get := func(from, token string) Settings {
+		t.Helper()
+		r := httptest.NewRequest(http.MethodGet, "/v1/settings", nil)
+		r.RemoteAddr = from
+		if token != "" {
+			r.Header.Set(deviceTokenHeader, token)
+		}
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("GET /v1/settings from %s: %d %s", from, w.Code, w.Body)
+		}
+		var st Settings
+		if err := json.Unmarshal(w.Body.Bytes(), &st); err != nil {
+			t.Fatal(err)
+		}
+		return st
+	}
+	if st := get("192.168.1.50:51000", tok); st.LicenseKey != "" || st.PlanKind != "flat" {
+		t.Fatalf("paired device got licence %q, plan %q", st.LicenseKey, st.PlanKind)
+	}
+	if st := get("127.0.0.1:51000", ""); st.LicenseKey != "CAPROCK-SECRET" {
+		t.Fatalf("loopback lost the licence key: %q", st.LicenseKey)
 	}
 }

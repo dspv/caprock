@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, ApiError, type DiffResult, type Event, type SessionDetail } from '@/lib/api'
+import { api, ApiError, isPairedDevice, type DiffResult, type Event, type SessionDetail } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { live } from '@/lib/live'
 import { fmtAgo, fmtPct, fmtTokens, fmtUSD, basename } from '@/lib/format'
@@ -32,10 +32,14 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   // 'diff' and 'files' were separate tabs answering one question between them
   // — what did this session change — so a reader had to visit both and hold
   // the two lists in their head. Old links keep working.
+  // A paired device reads; the terminal is a keyboard into the session, and
+  // the daemon refuses it one (ADR-029).
+  const reader = isPairedDevice()
+  const tabs: Tab[] = reader ? ['timeline', 'notes', 'changes'] : ['timeline', 'notes', 'changes', 'terminal']
   const active: Tab =
     tab === 'changes' || tab === 'diff' || tab === 'files'
       ? 'changes'
-      : tab === 'terminal' || tab === 'notes'
+      : (tab === 'terminal' && !reader) || tab === 'notes'
         ? tab
         : 'timeline'
   const now = useNow(1000)
@@ -66,7 +70,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         <span className="mono text-[11px] text-fg-faint">{s.session_id}</span>
         {s.git_branch && <span className="mono text-[11px] text-fg-muted">{s.git_branch}</span>}
         <Badge health={s.activity.health} />
-        {s.owned && s.status !== 'ended' && <OwnedControls id={id} />}
+        {s.owned && s.status !== 'ended' && !reader && <OwnedControls id={id} />}
         {/* Continue, branch, or the reason neither is possible. The server
           * decides, because what decides it is on disk: whether Claude Code
           * still has the transcript, whether the folder is still there. It
@@ -131,12 +135,12 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
       </Panel>
       )}
       <div className="flex items-center gap-1 border-b border-border">
-        {(['timeline', 'notes', 'changes', 'terminal'] as Tab[]).map((t) => (
+        {tabs.map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`px-3 py-1.5 text-[12px] border-b-2 -mb-px ${active === t ? 'border-accent text-fg' : 'border-transparent text-fg-muted hover:text-fg'}`}>
             {t === 'timeline' ? 'Timeline' : t === 'notes' ? 'Answers' : t === 'changes' ? 'Changes' : 'Terminal'}
           </button>
         ))}
-        {!s.owned && s.status !== 'ended' && <span className="ml-auto text-[11px] text-fg-faint pr-1">observe-only — terminal is read/write for spawned sessions only</span>}
+        {!s.owned && s.status !== 'ended' && !reader && <span className="ml-auto text-[11px] text-fg-faint pr-1">observe-only — terminal is read/write for spawned sessions only</span>}
       </div>
       {active === 'timeline' && <Timeline id={id} initial={s.events} now={now} at={at} />}
       {active === 'notes' && <SessionNotes id={id} now={now} />}

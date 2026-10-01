@@ -1,4 +1,4 @@
-import { api } from '@/lib/api'
+import { api, isPairedDevice } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtDuration, fmtUSD } from '@/lib/format'
 import { Empty, Panel } from '@/components/ui'
@@ -55,8 +55,10 @@ export function StatusScreen() {
   if (s.ingest) rows.push(['ingest', `${s.ingest.files_known} transcripts · ${s.ingest.events_stored} events stored · ${s.ingest.events_deduped} deduped · ${s.ingest.lines_malformed} malformed lines · backfill ${s.ingest.backfill_done ? 'done' : 'running'}`])
   return (
     <div className="grid gap-3 max-w-3xl">
-      <SettingsPanel />
-      <Pairing />
+      {/* Settings and pairing are changed on the machine Caprock runs on; a
+        * paired device reads (ADR-029), and the daemon refuses it the rest. */}
+      {!isPairedDevice() && <SettingsPanel />}
+      {!isPairedDevice() && <Pairing />}
       <Panel title="Daemon">
         <div className="overflow-x-auto">
           {/* Scrolls inside itself on a narrow screen. Without this the table

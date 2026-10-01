@@ -148,6 +148,48 @@ d('Changes tab', () => {
   })
 })
 
+/**
+ * A paired tablet reads Caprock and does not control it (ADR-029): the daemon
+ * refuses pause, kill and the terminal socket from it, so the screen does not
+ * offer them. On the machine itself — no device token — nothing changes.
+ */
+d('Session controls on a paired device', () => {
+  const owned = () => {
+    diffResult.value = { root: '/r', branch: 'b', stat: '', files: [] } as DiffResult
+    detail.value = {
+      session_id: 's', cwd: '/r', project: 'p', model: 'claude-opus-5', status: 'active',
+      started_at: 0, last_event_at: Date.now(), has_hooks: true, has_transcript: true, owned: true,
+      files: [], events: [],
+      stats: { session_id: 's', turns: 1, tool_calls: 0, files_touched: 0, cost_usd: 0, tokens_in: 0, tokens_out: 0, cache_read: 0, cache_write: 0 },
+      savings: { hit_rate: 0 },
+      activity: { health: 'working', phrase: 'working', at: Date.now() },
+    } as unknown as SessionDetail
+  }
+
+  it('offers pause, kill and the terminal on the machine itself', async () => {
+    localStorage.removeItem('caprock.device.token')
+    owned()
+    render(<SessionScreen id="s" />)
+    expect(await screen.findByText('kill')).toBeInTheDocument()
+    expect(screen.getByText('pause')).toBeInTheDocument()
+    expect(screen.getByText('Terminal')).toBeInTheDocument()
+  })
+
+  it('offers none of them on a paired device', async () => {
+    localStorage.setItem('caprock.device.token', 'tok')
+    try {
+      owned()
+      render(<SessionScreen id="s" tab="terminal" />)
+      expect(await screen.findByText('Timeline')).toBeInTheDocument()
+      expect(screen.queryByText('kill')).not.toBeInTheDocument()
+      expect(screen.queryByText('pause')).not.toBeInTheDocument()
+      expect(screen.queryByText('Terminal')).not.toBeInTheDocument()
+    } finally {
+      localStorage.removeItem('caprock.device.token')
+    }
+  })
+})
+
 
 /**
  * The timeline reads newest-first, like every other list in Caprock. It was

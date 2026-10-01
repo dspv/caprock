@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api, ApiError, errText, type DiffResult, type Status, type Task, type TaskVerification, type TaskWork } from '@/lib/api'
+import { api, ApiError, errText, isPairedDevice, type DiffResult, type Status, type Task, type TaskVerification, type TaskWork } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtUSD, shortId } from '@/lib/format'
 import { Copyable, Empty, Panel, Skeleton } from '@/components/ui'
@@ -25,8 +25,13 @@ export function TasksScreen() {
   return (
     <div className="grid gap-3">
       <div className="flex items-center gap-2">
-        <button onClick={() => setCreating(true)} className="border border-accent/50 text-accent bg-accent/10 px-2 py-1 rounded-sm text-[12px] hover:bg-accent/20">+ New task</button>
-        <OrchestratorButton available={status.data?.claude_available ?? false} />
+        {/* A paired device reads the board; it does not run it (ADR-029). */}
+        {!isPairedDevice() && (
+          <>
+            <button onClick={() => setCreating(true)} className="border border-accent/50 text-accent bg-accent/10 px-2 py-1 rounded-sm text-[12px] hover:bg-accent/20">+ New task</button>
+            <OrchestratorButton available={status.data?.claude_available ?? false} />
+          </>
+        )}
         {/* The graph is only meaningful while work is actually assigned, so it
          * is reachable from here rather than from a permanent nav slot. */}
         {(tasks.data ?? []).some((t) => t.assignee !== '' && t.status !== 'done' && t.status !== 'failed') && (
@@ -108,7 +113,7 @@ function TaskRunnerOff({ status, onEnabled }: { status: Status; onEnabled: () =>
             created for you; your repository is not modified.
           </div>
         </div>
-        <footer className="px-3 py-2 border-t border-border flex items-center gap-2">
+        {!isPairedDevice() && <footer className="px-3 py-2 border-t border-border flex items-center gap-2">
           <button
             onClick={() => setConfirming(true)}
             className="border border-accent bg-accent/15 text-accent px-3 py-1 rounded-sm text-[12px] hover:bg-accent/25"
@@ -118,7 +123,7 @@ function TaskRunnerOff({ status, onEnabled }: { status: Status; onEnabled: () =>
           <span className="text-[11px] text-fg-faint">
             No restart. Nothing runs until you start it.
           </span>
-        </footer>
+        </footer>}
       </Panel>
       {confirming && (
         <EnableDialog hive={hive} repo={repo} onClose={() => setConfirming(false)} onDone={onEnabled} />
@@ -242,7 +247,7 @@ function TaskCard({ t, onApprove, onOpen }: { t: Task; onApprove: () => void; on
         </div>
       </button>
       {worked && <div className="mt-1 text-[10px] text-fg-faint mono truncate">caprock/{t.assignee}</div>}
-      {t.status === 'needs_you' && (
+      {t.status === 'needs_you' && !isPairedDevice() && (
         <div className="flex gap-1 mt-1.5">
           <button onClick={() => api.approve(t.id, true).then(onApprove)} className="flex-1 text-[11px] border border-ok/40 text-ok rounded-sm hover:bg-ok/10">approve</button>
           <button onClick={() => api.approve(t.id, false).then(onApprove)} className="flex-1 text-[11px] border border-danger/40 text-danger rounded-sm hover:bg-danger/10">reject</button>

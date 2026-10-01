@@ -860,6 +860,18 @@ possible, and this API starts sessions and runs commands. A browser's
 `caprock.device.<token>` and echoes it back — not as a query parameter, which
 would write it into every access log and browser history entry on the device.
 
+**A token makes a device a reader, not the owner** (added 2026-10-01). As
+shipped, the token was the whole check: past the gate a paired phone could
+start a command (`POST /v1/agents`), type into a session, kill it, change
+settings, approve a task or start the orchestrator — the "second control room"
+this ADR rules out, built by omission. The gate now holds an allowlist of
+method and route that a paired device may use, all of them reads, and answers
+anything else with 403; a route added later is closed to it until someone names
+it. Read-only rather than "reads plus pause and kill": nothing in this ADR, the
+contracts, the README or the changelog ever gave a paired device a control, and
+a kill from a tablet is still a kill. The terminal socket is excluded although
+it is a `GET`, because every frame it receives is typed into the session.
+
 **Rules out:** a relay of ours (sessions would pass through a machine we run,
 which contradicts rule 4 and three sentences on the site); binding the wildcard
 address; a stored "LAN on" setting; pairing from a device that is already

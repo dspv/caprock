@@ -88,9 +88,25 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   /v1/pair/lan` (`{on: bool}`, loopback-only) — a restart-only switch is
   reachable only from a terminal on the machine, which is the one place the
   person who wants it is not.
-- **Refusal is `401` with `{error, detail}`**, not a redirect — the caller is
-  usually `fetch()`, and a redirect to HTML becomes a parse error three frames
-  later.
+- **A token makes a device a reader, not the owner.** A paired device may make
+  only the reads named in `pairedDeviceRoutes` (`internal/api/lanauth.go`),
+  matched on method and route pattern: `GET`/`HEAD` of `/v1/sessions`,
+  `/v1/sessions/{id}` and its `events`, `notes` and `diff`, `/v1/notes`,
+  `/v1/stats/summary`, `/v1/stats/daily`, `/v1/events`, `/v1/history`,
+  `/v1/status`, `/v1/update`, `/v1/settings`, `/v1/premium`, `/v1/gemini`,
+  `/v1/pricing`, `/v1/live`, `/v1/tasks`, `/v1/tasks/{id}`, `/v1/approvals`,
+  `/v1/statusline/{id}`. Everything else is `403` — every `POST`, `PUT` and
+  `DELETE` (spawn, input, signal, paste, settings, tasks, approvals,
+  orchestrator, hive, licence, pairing, shutdown), and three `GET`s that are
+  not reads: `/v1/agents/{id}/term` (its socket types into the session), and
+  `/v1/browse` and `/v1/recent-dirs` (directory listings for starting one). An
+  allowlist, so a route added later is closed to a paired device until it is
+  named. `GET /v1/settings` omits `license_key` for a paired device. Loopback is
+  unaffected.
+- **Refusal is `401` with `{error, detail}`** for a device that has not paired,
+  and `403` with the same shape for a paired device asking for more than a read
+  — not a redirect: the caller is usually `fetch()`, and a redirect to HTML
+  becomes a parse error three frames later.
 
 **Pairing endpoints.** `GET /v1/pair/state`, `POST /v1/pair/code` and `DELETE
 /v1/pair/devices/{id|all}` are **loopback-only, enforced in the handler** rather

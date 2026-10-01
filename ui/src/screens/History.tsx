@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api } from '@/lib/api'
+import { api, isPairedDevice } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtDuration, fmtTokens, fmtUSD, fmtTool } from '@/lib/format'
 import { CacheStat } from '@/components/CacheStat'
@@ -127,13 +127,13 @@ export function HistoryScreen() {
           {/* The weekly report belongs beside the figures it would contain: this
           * screen already answers "where did it go", and the paid half is
           * having that answer arrive without coming here to look. */}
-        <Locked feature="report" title="Get this every Monday, without opening the dashboard">
+        {!isPairedDevice() && <Locked feature="report" title="Get this every Monday, without opening the dashboard">
           {/* Unlocked this is the real control; locked it is the pitch, and
             * both are the same component. What sells it is seeing where the
             * message goes and that Caprock keeps nothing — a reader deciding
             * whether to pay is deciding whether to hand over a bot token. */}
           <WeeklyReport />
-        </Locked>
+        </Locked>}
 
         <Panel title="Top projects" right={<span>by cost</span>}>
             <div className="overflow-x-auto">

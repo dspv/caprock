@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api, type DailyStat } from '@/lib/api'
+import { api, isPairedDevice, type DailyStat } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { cacheLevel } from '@/lib/cachelevel'
 import { fmtModel, fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
@@ -215,18 +215,24 @@ export function CostScreen() {
         * ceiling, the other is yours. Locked, the panel is the pitch — it is
         * where the feature will be, with real figures behind it. Unlocked,
         * Locked renders its children live and this becomes the real control. */}
-      <Locked feature="cap" title="Stop the day at a number you choose">
-        <SpendCap suggestion={capSuggestion} />
-      </Locked>
+      {/* Both panels are controls — one stops sessions, one spends on a key —
+        * and a paired device reads (ADR-029). */}
+      {!isPairedDevice() && (
+        <Locked feature="cap" title="Stop the day at a number you choose">
+          <SpendCap suggestion={capSuggestion} />
+        </Locked>
+      )}
 
       {/* Gemini sits on the money screen because that is what it is about
         * here: a second model whose cost lands in the same totals above. The
         * lock is over the panel, never over a figure — the spend it produces
         * is counted for free users too, and hiding a number this page already
         * computed is the move Paywall.test.tsx forbids. */}
-      <Locked feature="gemini" title="Ask a second model, on your own key">
-        <GeminiPanel />
-      </Locked>
+      {!isPairedDevice() && (
+        <Locked feature="gemini" title="Ask a second model, on your own key">
+          <GeminiPanel />
+        </Locked>
+      )}
 
       {s && (
         <Panel title="Plan limits">
