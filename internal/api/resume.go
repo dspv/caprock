@@ -58,6 +58,15 @@ func (s *Server) resumeInfo(sess store.Session) *ResumeInfo {
 	if sess.Cwd != "" {
 		if st, err := os.Stat(sess.Cwd); err != nil || !st.IsDir() {
 			info.OK, info.Reason = false, "The folder it ran in no longer exists: "+sess.Cwd
+			// The command used to keep its `cd` into that folder, which fails
+			// before claude ever starts. `claude --resume <id>` looks the id up
+			// in every project on the machine, so it still works from any
+			// folder — as long as the transcript is there to find.
+			info.Command = ""
+			if transcriptOnDisk(sess) {
+				info.Command = "claude --resume " + sess.SessionID
+				info.Reason += ". Claude Code can still resume it from another folder."
+			}
 			return info
 		}
 	}

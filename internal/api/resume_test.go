@@ -88,6 +88,11 @@ func TestResumeInfoFollowsTheDiskNotTheOwner(t *testing.T) {
 	if r := detail("moved").Resume; r == nil || r.OK || !strings.Contains(r.Reason, "no longer exists") {
 		t.Fatalf("moved: %+v", r)
 	}
+	// Its folder is gone but its transcript is not: the command to copy must
+	// not start by cd-ing into the missing folder.
+	if r := detail("moved").Resume; r.Command != "claude --resume moved" {
+		t.Fatalf("moved command: %q", r.Command)
+	}
 	// Started by Caprock and since ended: exactly as resumable as any other.
 	if r := detail("mine").Resume; r == nil || !r.OK {
 		t.Fatalf("owned and ended: %+v", r)

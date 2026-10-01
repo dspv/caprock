@@ -9,6 +9,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **A session whose folder is gone offers a command that works.** The copy
+  command began with `cd` into the missing folder, so it failed before
+  `claude` started. `claude --resume <id>` finds the session from any folder,
+  so that is what is offered now, while the transcript is still there.
+
 ## [0.63.0] - 2026-10-01
 
 ### Security
