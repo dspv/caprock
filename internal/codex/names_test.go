@@ -82,7 +82,7 @@ func TestRepriceMovesTheTotalsWithTheEvent(t *testing.T) {
 	if _, err := h.in.rec.Record(ctx, &ev, rollup.SessionInfo{Cwd: "/Users/dev/proj", Agent: Agent}); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.in.repriceSession(ctx, &Session{ID: "cx", Model: "gpt-5-codex", Cwd: "/Users/dev/proj"}); err != nil {
+	if err := h.in.repriceSession(ctx, &Session{ID: "cx", Model: "gpt-5-codex", Cwd: "/Users/dev/proj", Turns: []Turn{{Key: "k1"}}}); err != nil {
 		t.Fatal(err)
 	}
 	var evCost, sessCost, dayCost float64

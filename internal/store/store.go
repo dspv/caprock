@@ -56,6 +56,11 @@ const (
 	// importer read assistant prose have been given it from their transcripts
 	// once (codex.Ingester.backfillText).
 	MetaCodexTextBackfilled = "codex_text_backfilled"
+	// MetaCodexSplitRepaired marks that the Codex rows earlier versions stored
+	// wrongly have been repaired from the transcripts once: threads imported
+	// from another agent removed, and subagent turns moved off the parent's
+	// line-number keys (codex.Ingester.repairSplit).
+	MetaCodexSplitRepaired = "codex_split_repaired"
 	// MetaReportWeek is the ISO week of the last weekly report that was sent,
 	// as "2026-W36". It lives here rather than in memory because an in-memory
 	// marker sends a second copy of the message after every restart — the bug

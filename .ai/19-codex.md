@@ -217,8 +217,9 @@ ccusage already read:
   before Caprock was installed was never counted.
 
 **A moved file is not counted twice.** Event keys are `codex:{turn,tool}:<line>`
-scoped to the session id inside the file; the path is in neither, and a rename
-changes neither, so a re-read stores nothing new. It is not even re-read: a
+(`codex:sub:<thread>:{turn,tool}:<line>` for a subagent, § Imported threads and
+subagents) scoped to the session id inside the file; the path is in none of
+them, and a rename changes none of them, so a re-read stores nothing new. It is not even re-read: a
 file that vanishes from the listing is dropped from the read set, and one that
 appears elsewhere with the same name, modification time and size — which a
 rename preserves — inherits its "already read" state (`forgetMoved`). On the
@@ -296,13 +297,12 @@ reply would be stored three times.
   100 threads hold 134,377 of the 136,497 assistant messages. Caprock already
   has that prose from the original transcript, so storing it again would show
   every answer twice and bury Codex's own under a hundred-fold flood of
-  replayed tool calls.
+  replayed tool calls. Nothing else of such a thread is stored either (§
+  Imported threads and subagents).
 - **Subagent threads keep no prose.** A thread Codex spawned
   (`session_meta.source.subagent`, including its guardian reviewer) is left out
   for the reason Claude Code's sidechains are: it is a worker's chatter, not the
-  answer. It also could not be stored safely: such a file starts with a copy of
-  its parent's history and carries the parent's session id, so its line-number
-  keys name rows the parent's file wrote.
+  answer. Its turns and their cost are kept (§ Imported threads and subagents).
 - **Rows are matched on key and timestamp.** Event keys are idempotent, so a
   re-read never rewrites a stored row; `syncText` is the one place a Codex
   turn's payload changes afterwards, and it rewrites only `payload.text`, only
@@ -316,6 +316,67 @@ reply would be stored three times.
   1.2GB) it took 17.5s, almost all of it parsing, filled 1,785 turns and grew
   the file by 2.6MB (858.0MB → 860.8MB).
 
+## Imported threads and subagents
+
+Two kinds of rollout are not a session a person ran in Codex, and both were
+stored wrongly until 2026-10-01. Measured that day on a copy of the owner's
+database against the 176 rollouts on his machine.
+
+- **A thread imported from another agent is not Codex's work.** Codex Desktop
+  can import a Claude Code session (§ Prose for how one is recognised; the
+  turn-id prefix is on every turn of all 100 imports listed in
+  `~/.codex/external_agent_session_imports.json`, and on no other rollout).
+  The replay carries `token_count` records too — totals only, no breakdown —
+  so the importer stored 138 turns in 95 threads, 21.5M tokens, and priced
+  them as Codex at **$26.70**: work Claude Code did, already counted from
+  Claude Code's own transcript, counted a second time at another vendor's
+  price. Such a thread is now not recorded at all — no events and no session
+  — the same rule its prose already followed. Two caveats, measured. All 100
+  replays were checked for a turn a person ran in Codex after the import, and
+  none has one: the two non-import turn ids (`rollout-624`, `rollout-745`) sit
+  inside the replay, milliseconds apart. If one ever appears, it is skipped
+  with the thread. And 8 of the 100 source sessions are not in Caprock's
+  store (their transcripts are gone and predate its first event), so their
+  2.7M tokens are now counted nowhere; they were counted under the wrong
+  agent at the wrong price before, which is not a figure worth keeping.
+- **A subagent's turns collided with its parent's.** A file Codex spawned
+  (`session_meta.source.subagent`: a `thread_spawn` worker, or the
+  `guardian` reviewer) carries the parent's id as `session_id` and its own as
+  `id`, and its records were keyed `codex:{turn,tool}:<line>` like the
+  parent's. Line numbers are small integers in both files, so each subagent
+  record collided with the parent's on the same line, and the file read
+  second lost it as a duplicate — silently, as in migration 0022. Of 1,864
+  subagent turns in 52 files, **885 were missing**, and 6 of the parents'
+  own turns; one parent session held 21,011 events. Subagent records are
+  now keyed `codex:sub:<thread>:{turn,tool}:<line>`. Only subagent files
+  changed key: re-keying every file would have stored each of the 30k events
+  already imported a second time.
+- **A subagent's work stays in its parent's session**, as a Claude Code
+  subagent's does: `agent_id` is the subagent's thread id and the payload
+  carries `sidechain: true`, so it counts toward the session's turns and cost
+  and stays out of Memory. The forked file's second `session_meta` is a copy
+  of the parent's and is no longer read: its cwd and model are the parent's.
+  The copied history before the subagent's own work holds no `token_count`
+  and no tool call in any of the 36 forked files, so nothing is counted twice.
+- **Rows already stored are repaired once from the rollouts**
+  (`meta.codex_split_repaired`), because the rows cannot say which file wrote
+  them — a migration has nothing to go on. In the importer's goroutine after
+  its first pass, every rollout is parsed again: an imported thread's events
+  are deleted and, when nothing is left, its session; a subagent's rows under
+  the old line keys are deleted where the key **and** timestamp match the
+  subagent's record and not the parent's; then each subagent and each of
+  their parents is recorded again, which stores the subagent's turns under
+  their own keys and the parent's turns their rows had blocked. Every
+  deletion takes the same tokens, cost, turn and tool-call counts out of
+  `session_stats` and `daily_stats` (and the day's session count, for a
+  deleted session) in its transaction.
+- **Measured result.** In a test daemon on the copy the repair took 21.3s.
+  Codex user turns went from 15,608 to 16,348 and Codex cost from $630.37 to
+  $644.83: $26.70 of imported replay out, $41.17 of subagent and parent work
+  back in. All 1,864 subagent turns and 1,710 subagent tool calls are stored,
+  every parent turn is, and `session_stats` and `daily_stats` add up to the
+  events for every Codex session.
+
 ## Restarts
 
 The files already read are remembered in the store (`meta.codex_seen`: path,
@@ -325,7 +386,10 @@ changed. It used to re-read all of them: on the owner's machine 161 files and
 moment the daemon was busiest — while it ran, the dashboard's reads queued and
 hook writes waited on the lock. A remembered file is trusted only while the
 store still holds that session's Codex events, so a migration that deletes them
-to import again (0022 and 0023 did) finds the file unread.
+to import again (0022 and 0023 did) finds the file unread. An imported
+thread stores no events by design, so it is remembered with a flag (`x`) and
+trusted without that check; otherwise every start would parse all of them
+again.
 
 ## Not built
 
@@ -346,6 +410,8 @@ to import again (0022 and 0023 did) finds the file unread.
 - `internal/codex/codex.go` — the transcript parser, `List`, `ListAll`,
   `Home`, `Dirs`.
 - `internal/codex/ingest.go` — the poller that writes into the store.
+- `internal/codex/repair.go` — the one-time repair of imported threads and
+  subagent rows stored by earlier versions (§ Imported threads and subagents).
 - `internal/codex/limits.go` — plan-limit windows into `rate_limit_latest`
   (§ Plan limits).
 - `internal/codex/names.go` — thread names and first messages from
@@ -358,3 +424,8 @@ to import again (0022 and 0023 did) finds the file unread.
 - `testdata/codex/rollout-prose.jsonl` — assistant messages with their
   `item_completed` copies, a closing message after the last `token_count`, and
   a turn that only called tools (§ Prose).
+- `testdata/codex/rollout-subagent-parent.jsonl`, `rollout-subagent-child.jsonl`
+  — a parent and a forked subagent whose records share line numbers, the
+  child carrying a copy of the parent's `session_meta`.
+- `testdata/codex/rollout-imported.jsonl` — a thread imported from Claude Code:
+  `external-import-turn-N` ids, a replayed tool call, total-only token counts.

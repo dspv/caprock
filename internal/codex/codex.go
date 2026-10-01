@@ -119,16 +119,24 @@ type Session struct {
 	Imported bool
 	// Subagent marks a thread Codex spawned for a sub-task or for its guardian
 	// reviewer (`session_meta.source.subagent`). Such a file opens with a copy
-	// of its parent's history and carries the parent's session id.
+	// of its parent's history and carries the parent's session id, so ID is
+	// the parent's and ThreadID the subagent's own.
 	Subagent bool
+	// ThreadID is this file's own thread id (`session_meta.id` of its first
+	// record). For a session a person started it equals ID; for a subagent it
+	// names the subagent, and its event keys carry it (see subagentKey).
+	ThreadID string
 }
 
 // Turn is one assistant turn's token usage, already reduced to a delta.
 type Turn struct {
 	At time.Time
 	// Key is stable across re-reads: the transcript is append-only, so the
-	// ordinal of the record that produced the turn identifies it forever.
-	Key        string
+	// line of the record that produced the turn identifies it forever.
+	Key string
+	// Line is that record's line number, kept so the key an earlier version
+	// gave a subagent's turn can be rebuilt (LegacyKey).
+	Line       int64
 	In         int64
 	CacheRead  int64
 	CacheWrite int64
@@ -152,6 +160,7 @@ type Turn struct {
 type ToolCall struct {
 	At   time.Time
 	Key  string
+	Line int64
 	Name string
 	// Input is the raw argument payload, stored so the dashboard can show what
 	// a call actually did.
@@ -359,11 +368,17 @@ func Parse(r io.Reader, path string) (*Session, error) {
 			// A forked subagent's file holds its own session_meta and then a
 			// copy of its parent's, so only the first one says what this
 			// file is.
-			if !seenMeta && isSubagentSource(raw["source"]) {
-				s.Subagent = true
+			if seenMeta {
+				// The parent's session_meta, copied into a forked
+				// subagent's file. It describes the parent: its session id
+				// is the one the first record already named, and its cwd
+				// and model are not this file's.
+				continue
 			}
+			s.Subagent = isSubagentSource(raw["source"])
 			seenMeta = true
 			s.ID = firstNonEmpty(m.SessionID, m.ID)
+			s.ThreadID = firstNonEmpty(m.ID, m.SessionID)
 			s.Cwd = m.Cwd
 			s.CLIVersion = m.CLIVersion
 			s.Originator = m.Originator
@@ -462,6 +477,7 @@ func Parse(r io.Reader, path string) (*Session, error) {
 			turn := Turn{
 				At:         at,
 				Key:        keyFor(lineNo, "turn"),
+				Line:       lineNo,
 				In:         d.InputTokens,
 				CacheRead:  d.CachedInputTokens,
 				CacheWrite: d.CacheWriteInputTok,
@@ -524,6 +540,7 @@ func Parse(r io.Reader, path string) (*Session, error) {
 			s.Tools = append(s.Tools, ToolCall{
 				At:    at,
 				Key:   keyFor(lineNo, "tool"),
+				Line:  lineNo,
 				Name:  tp.Name,
 				Input: string(in),
 			})
@@ -538,12 +555,30 @@ func Parse(r io.Reader, path string) (*Session, error) {
 		// No session_meta means this is not a rollout file we understand.
 		return nil, ErrNotASession
 	}
+	if s.Subagent {
+		// A subagent's file carries its parent's session id, and its line
+		// numbers are the same small integers as the parent's own. Keyed
+		// `codex:turn:<line>` like the parent, each of its records collided
+		// with the parent's on the same line, and whichever file was read
+		// second lost it as a "duplicate" — 885 of 1,864 subagent turns on
+		// the owner's machine. Its keys carry its own thread id instead.
+		if s.ThreadID == s.ID && path != "" {
+			// No id of its own was recorded (never seen): the file name,
+			// which Codex derives from the thread id, still tells two
+			// subagents of one parent apart.
+			s.ThreadID = strings.TrimSuffix(filepath.Base(path), ".jsonl")
+		}
+		for i := range s.Turns {
+			s.Turns[i].Key = subagentKey(s.ThreadID, s.Turns[i].Line, "turn")
+		}
+		for i := range s.Tools {
+			s.Tools[i].Key = subagentKey(s.ThreadID, s.Tools[i].Line, "tool")
+		}
+	}
 	if s.Imported || s.Subagent {
 		// Imported prose is another agent's, already stored from its own
 		// transcript. A subagent's would be hidden from Memory anyway, as
-		// Claude Code's sidechains are — and its file carries the parent's
-		// session id, so its rows share keys with the parent's own and a
-		// text written from it could land on a parent row.
+		// Claude Code's sidechains are.
 		for i := range s.Turns {
 			s.Turns[i].Text = ""
 		}
@@ -669,6 +704,19 @@ func nonNeg(n int64) int64 {
 func keyFor(line int64, kind string) string {
 	return "codex:" + kind + ":" + itoa(line)
 }
+
+// subagentKey keys a subagent's record by its own thread id and line, so it
+// can never name a row its parent's file wrote under the shared session id.
+// Only subagent files use it: changing the key of any file already imported
+// would store every one of its events a second time.
+func subagentKey(thread string, line int64, kind string) string {
+	return "codex:sub:" + thread + ":" + kind + ":" + itoa(line)
+}
+
+// LegacyKey is the key versions before subagentKey gave the record on this
+// line — the one a subagent's rows were stored under inside its parent's
+// session, and the one the repair finds them by.
+func LegacyKey(line int64, kind string) string { return keyFor(line, kind) }
 
 func itoa(n int64) string {
 	if n == 0 {
