@@ -851,17 +851,32 @@ func SearchNotes(ctx context.Context, q Querier, query string, limit int, before
 		              SELECT COALESCE(json_extract(p.payload, '$.prompt'), json_extract(p.payload, '$.text'))
 		              FROM events p
 		              WHERE p.session_id = e.session_id AND p.kind = 'turn.user'
-		                AND p.id < e.id AND p.id > e.id - ?
-		              ORDER BY p.id DESC LIMIT 1
+		                AND p.ts <= e.ts AND (p.ts < e.ts OR p.id < e.id)
+		                AND p.ts >= COALESCE((
+		                      SELECT w.ts FROM events w
+		                      WHERE w.session_id = e.session_id
+		                        AND w.ts <= e.ts AND (w.ts < e.ts OR w.id < e.id)
+		                      ORDER BY w.ts DESC, w.id DESC LIMIT 1 OFFSET ?), 0)
+		              ORDER BY p.ts DESC, p.id DESC LIMIT 1
 		            ) LIKE ? ESCAPE '\')`
 		// Only the NEAREST preceding prompt, within a short window: matching any
 		// prompt nearby would return every reply in an exchange rather than the
 		// passage that answers the question.
 		//
-		// The prompt's field depends on who wrote it: Claude Code and Gemini
-		// carry `prompt`, DeepSeek Harness `text` (as FirstPrompts reads it).
-		// Reading only `prompt` made every DeepSeek question unsearchable.
-		args = append(args, pattern, promptLookback, pattern)
+		// "Preceding" is in time, within the reply's own session, not in event
+		// id. An id says when Caprock stored a row, and a prompt imported after
+		// its replies — OpenCode's history, a Claude Code transcript read after
+		// its hooks — sits after them by id: on a copy of the owner's database
+		// none of 3,048 OpenCode replies could be found by their question under
+		// the id window, and 24 Claude Code replies matched a prompt minutes
+		// older than the one they answered. The window is the reply's last
+		// promptLookback events in that session, and the lookups walk
+		// (session_id, ts) indexes.
+		//
+		// The prompt's field depends on who wrote it: Claude Code, Gemini and
+		// OpenCode carry `prompt`, DeepSeek Harness `text` (as FirstPrompts reads
+		// it). Reading only `prompt` made every DeepSeek question unsearchable.
+		args = append(args, pattern, promptLookback-1, pattern)
 	}
 	if before > 0 {
 		sql += ` AND e.id < ?`
@@ -877,9 +892,10 @@ func SearchNotes(ctx context.Context, q Querier, query string, limit int, before
 	return scanNotes(rows)
 }
 
-// promptLookback is how many events back from a reply a prompt may sit and
-// still count as "the question that produced it". Events are dense — a single
-// turn spans several — so this is a few turns, not a whole session.
+// promptLookback is how many of its session's events, in time order, a prompt
+// may sit before a reply and still count as "the question that produced it".
+// Events are dense — a single turn spans several — so this is a few turns, not
+// a whole session.
 const promptLookback = 60
 
 // escapeLike neutralises LIKE wildcards so a user searching for "100%" or a

@@ -14,6 +14,11 @@ Phase 3 (Delight) has no plan by design.
 - **What you ask Gemini CLI is kept, like every other agent's prompt.** Gemini
   sessions started from Caprock now record the question, so Memory can find a
   session by what you asked it. Sessions from before keep none.
+- **OpenCode replies can be found by the question you asked.** What you type
+  in OpenCode is now stored like a Claude Code prompt, so Memory search finds
+  a reply by your own words, and an untitled session is described by its first
+  question. Sessions read before are filled in on the first start. Text
+  OpenCode or another app adds to a message on its own is left out.
 
 ### Fixed
 
@@ -28,6 +33,14 @@ Phase 3 (Delight) has no plan by design.
   the session's last turn, and a subagent's last turn starts from a small
   prompt of its own, so a nearly full context read nearly empty until the
   subagent finished. It now measures the session's own last turn.
+- **Memory search finds the reply to a question asked earlier in time.** A
+  reply was matched to whichever prompt Caprock happened to store just before
+  it, so a question stored later than its answer — all of OpenCode's history,
+  a few Claude Code exchanges — never found it, and some replies were tied to
+  an older question than the one they answered.
+- **DeepSeek sessions no longer list injected instructions as your prompts.**
+  The AGENTS.md, CLAUDE.md and runtime-context blocks stored before this was
+  fixed are removed once, checked against DeepSeek's own transcripts.
 
 ## [0.64.0] - 2026-10-01
 

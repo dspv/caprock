@@ -171,10 +171,11 @@ func (in *Ingester) session(ctx context.Context, s Session) error {
 	if err != nil {
 		return err
 	}
-	texts, err := Texts(ctx, in.db, s.ID)
+	parts, err := TextParts(ctx, in.db, s.ID)
 	if err != nil {
 		return err
 	}
+	texts := joinTexts(parts)
 
 	// Tool calls are grouped by the message that asked for them, which is what
 	// links a tool call to the turn that paid for it. Caprock uses that link
@@ -186,8 +187,13 @@ func (in *Ingester) session(ctx context.Context, s Session) error {
 	}
 
 	for _, m := range msgs {
-		if m.Role == "assistant" {
+		switch m.Role {
+		case "assistant":
 			if err := in.turn(ctx, s, m, texts[m.ID]); err != nil {
+				return err
+			}
+		case "user":
+			if err := in.prompt(ctx, s, m, PromptText(parts[m.ID])); err != nil {
 				return err
 			}
 		}
@@ -261,6 +267,50 @@ func (in *Ingester) turn(ctx context.Context, s Session, m Message, text string)
 	res, err := in.rec.Record(ctx, ev, in.info(s))
 	if err != nil {
 		return fmt.Errorf("record turn: %w", err)
+	}
+	if res.Stored {
+		in.mu.Lock()
+		in.stats.Events++
+		in.mu.Unlock()
+	}
+	return nil
+}
+
+// prompt stores what the person typed in one user message as `turn.user`.
+//
+// The payload is a Claude Code prompt's shape — `prompt`, `cwd` — because
+// every reader of a prompt already reads that: the notes search (a reply is
+// found by the question asked), a session's description and search, and the
+// timeline. A child session's prompt is the task its parent agent wrote, not
+// the person's words; it is kept, as a Claude Code subagent's is, and marked
+// `sidechain` the way the child's replies are.
+//
+// Keyed on OpenCode's message id, so it is stored once whichever pass reads
+// it first — and the first pass after a start, which reads every session, is
+// the backfill for prompts of sessions imported before they were read: it
+// inserts the ones missing and finds the rest already there. A user message
+// read before its text part was written stores nothing yet; the next read of
+// the session — the reply that follows moves its update time — stores it.
+func (in *Ingester) prompt(ctx context.Context, s Session, m Message, text string) error {
+	if text == "" {
+		return nil
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"prompt":    text,
+		"cwd":       s.Directory,
+		"sidechain": s.IsChild(),
+	})
+	ev := &event.Event{
+		Ts:        time.UnixMilli(m.Created),
+		SessionID: s.ID,
+		Source:    event.SourceOpenCode,
+		Kind:      event.KindTurnUser,
+		Payload:   payload,
+		Key:       "oc-user:" + m.ID,
+	}
+	res, err := in.rec.Record(ctx, ev, in.info(s))
+	if err != nil {
+		return fmt.Errorf("record prompt: %w", err)
 	}
 	if res.Stored {
 		in.mu.Lock()

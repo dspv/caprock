@@ -374,6 +374,19 @@ type textPart struct {
 // thinking is not. The caller decides which roles it wants; this returns every
 // message that has text.
 func Texts(ctx context.Context, db *sql.DB, sessionID string) (map[string]string, error) {
+	parts, err := TextParts(ctx, db, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	return joinTexts(parts), nil
+}
+
+// TextParts returns the `text` parts of each message in one session, keyed by
+// message id, in order and trimmed, without the parts OpenCode marks synthetic
+// or ignored. Texts joins them into a reply and PromptText into a prompt; one
+// read serves both, so importing a session's prompts costs no second scan of
+// its parts.
+func TextParts(ctx context.Context, db *sql.DB, sessionID string) (map[string][]string, error) {
 	const q = `
 		SELECT message_id, data FROM part
 		WHERE session_id = ? AND json_extract(data,'$.type') = 'text'
@@ -404,11 +417,43 @@ func Texts(ctx context.Context, db *sql.DB, sessionID string) (map[string]string
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	return parts, nil
+}
+
+// joinTexts is Texts over parts already read.
+func joinTexts(parts map[string][]string) map[string]string {
 	out := make(map[string]string, len(parts))
 	for id, p := range parts {
 		out[id] = clipRunes(strings.Join(p, "\n"), ingest.MaxAssistantText)
 	}
-	return out, nil
+	return out
+}
+
+// PromptText is what the person typed in one user message: its text parts
+// (already without the ones OpenCode marks synthetic or ignored) joined and
+// clipped like a reply, minus the parts that are context another program
+// injected rather than words a person wrote.
+//
+// OpenCode flags what it writes into a user message itself — the "Continue if
+// you have next steps…" after a compaction, "Summarize the task tool output
+// above…" — and TextParts has already dropped those. It does not flag text a
+// program sends through it: on the owner's database four sessions open with a
+// `<system-reminder>` block, a persona greeting an agent app drives OpenCode
+// with, as the whole of the user message. Stored as a prompt it would become
+// the session's description and match searches for words nobody typed. A part
+// that opens with that tag is skipped; one that merely mentions it is kept.
+func PromptText(parts []string) string {
+	var kept []string
+	for _, p := range parts {
+		if strings.HasPrefix(p, "<system-reminder>") {
+			continue
+		}
+		kept = append(kept, p)
+	}
+	if len(kept) == 0 {
+		return ""
+	}
+	return clipRunes(strings.Join(kept, "\n"), ingest.MaxAssistantText)
 }
 
 // clipRunes truncates to at most n runes, marking the cut with an ellipsis.

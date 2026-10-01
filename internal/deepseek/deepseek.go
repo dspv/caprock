@@ -79,6 +79,11 @@ type Session struct {
 	Turns     []Turn
 	Tools     []ToolCall
 	Users     []UserMsg
+	// Injected is the event key each `user/message` record that DSH wrote
+	// itself would have been stored under (instructions, runtime context) —
+	// never imported now, and what the one-time cleanup of rows stored before
+	// that rule deletes. Read from the transcript, never guessed from text.
+	Injected []string
 }
 
 // Turn is one assistant turn: its token usage (already reduced to a delta) and
@@ -335,13 +340,15 @@ func (s *Session) parseLine(line []byte) error {
 		// first reply and prompt search matched the reminder instead of what
 		// the person asked. Only `user` is typed by a person; a record with no
 		// source is kept, so an older or newer DSH that omits it loses nothing.
+		key := "dsh:user:" + strconv.FormatInt(r.Seq, 10)
 		if k := u.Source.Kind; k != "" && k != "user" {
+			s.Injected = append(s.Injected, key)
 			return nil
 		}
 		if text := visibleText(u.Content); text != "" {
 			s.Users = append(s.Users, UserMsg{
 				At:   at,
-				Key:  "dsh:user:" + strconv.FormatInt(r.Seq, 10),
+				Key:  key,
 				Text: text,
 			})
 		}

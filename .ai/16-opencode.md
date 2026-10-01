@@ -202,9 +202,38 @@ skipped, the sidechain rule, how already-stored turns are mended — is in
   is what filled the history: on a copy of the owner's database, 3,258 turns
   gained text and Memory went from no OpenCode passages to 3,048 across 23
   sessions.
-- **Prompts are still not imported.** OpenCode keeps the person's prompts as
-  `text` parts on `user` messages; they are not stored as `turn.user` yet, so
-  Memory search finds an OpenCode reply by its own words, not by the question.
+
+## The prompts
+
+OpenCode keeps what the person typed as `text` parts on `user` messages. Each
+is stored as a `turn.user` keyed `oc-user:<message id>`, in a Claude Code
+prompt's shape (`payload.prompt`, `cwd`), so every reader of a prompt works
+unchanged: Memory finds a reply by the question that produced it, the session
+is described and searched by its prompts, and the timeline shows them. The
+exact contract is in [03-contracts.md](03-contracts.md).
+
+- **Not every user part is the person.** Parts OpenCode marks `synthetic` or
+  `ignored` are its own text — the "Continue if you have next steps…" after a
+  compaction, "Summarize the task tool output above…" — and are skipped, as for
+  replies. OpenCode does not mark text another program sends through it: four
+  sessions on the owner's database open with a `<system-reminder>` persona
+  greeting an agent app drove OpenCode with, as the whole user message. A part
+  that opens with that tag is skipped; one that only mentions it is kept.
+- **A child session's prompt is its parent's task.** It is the brief the parent
+  agent wrote for the subagent, not the person's words. It is stored, as a Claude
+  Code subagent's prompt is, and marked `sidechain` like the child's replies.
+- **History is filled on the first pass after a start**, which reads every
+  session; the stable key makes it insert only the prompts missing and leaves a
+  second start with nothing to do. The prompts arrive with ids newer than every
+  reply they produced, which is why the notes search looks for "the prompt
+  before this reply" in time rather than in event id — under the id window none
+  of the backfilled questions found its reply.
+- **Measured on a copy of the owner's database (2026-10-01):** 1,609 prompts
+  stored from the 1,613 user text parts not marked synthetic (the four
+  `<system-reminder>` greetings skipped), 47 of them in child sessions;
+  2,878 of 3,048 main-thread OpenCode replies now have a question within the
+  search window, against none before. The backfill pass took 4.0 s, a later
+  start with nothing to add 1.8–1.9 s, and the database grew by 2.9 MB.
 
 ## The agent filter
 
