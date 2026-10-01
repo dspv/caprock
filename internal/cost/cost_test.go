@@ -148,7 +148,7 @@ func TestModelsSeenInTheWildArePriced(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{
-		"claude-opus-5", "claude-opus-4-8", "claude-sonnet-5", "claude-fable-5",
+		"claude-opus-5", "claude-opus-5-5", "claude-opus-4-8", "claude-sonnet-5", "claude-fable-5",
 		"claude-haiku-4-5-20251001", "claude-opus-5[1m]",
 		"deepseek-v4-pro", "minimax/minimax-m3", "minimax-m3", "MiniMax-M3", "MiniMax-M2.7",
 	} {
@@ -160,14 +160,15 @@ func TestModelsSeenInTheWildArePriced(t *testing.T) {
 
 // A price change is not retroactive, and this is the test that says so.
 //
-// Sonnet 5 launched at an introductory $2/$10 and reverts to $3/$15 on
-// 2026-08-31. Before dated rows existed, the only way to record that was to
-// overwrite the figure — which would have restated every August turn at a
-// price nobody was charged, growing a month's reported spend by half overnight.
+// Sonnet 5 was the first case — an introductory $2/$10 that was to revert to
+// $3/$15 — until the rise was cancelled. The rule outlives the example: a
+// superseded price keeps its own row and prices the turns that ran under it.
 func TestPriceUsesTheRowInForceWhenTheTurnRan(t *testing.T) {
-	tbl, err := Embedded()
+	tbl, err := Parse([]byte(`{"version":"t","models":[
+		{"id":"m","input":2,"output":10,"until":"2026-08-30"},
+		{"id":"m","input":3,"output":15}]}`))
 	if err != nil {
-		t.Fatalf("embedded table: %v", err)
+		t.Fatal(err)
 	}
 
 	// One million input tokens, so the USD figure is the per-MTok price itself.
@@ -184,9 +185,9 @@ func TestPriceUsesTheRowInForceWhenTheTurnRan(t *testing.T) {
 		{"well after", time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC), 3.0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, ok := tbl.PriceAt("claude-sonnet-5", d, tc.at)
+			got, ok := tbl.PriceAt("m", d, tc.at)
 			if !ok {
-				t.Fatal("claude-sonnet-5 not priced")
+				t.Fatal("m not priced")
 			}
 			if got != tc.want {
 				t.Errorf("1M input tokens at %s: got $%.2f, want $%.2f", tc.at.Format("2006-01-02"), got, tc.want)
@@ -195,12 +196,48 @@ func TestPriceUsesTheRowInForceWhenTheTurnRan(t *testing.T) {
 	}
 
 	// No timestamp means "now", which must never resolve to a lapsed price.
-	got, ok := tbl.Price("claude-sonnet-5", d)
+	got, ok := tbl.Price("m", d)
 	if !ok {
-		t.Fatal("claude-sonnet-5 not priced without a timestamp")
+		t.Fatal("m not priced without a timestamp")
 	}
 	if got != 3.0 {
 		t.Errorf("undated lookup got $%.2f, want the current $3.00", got)
+	}
+}
+
+// Opus 5.5 must not fall through to Opus 5 by prefix, and Sonnet 5 stays at
+// $2/$10 after the cancelled rise.
+func TestOpus55AndSonnet5Prices(t *testing.T) {
+	tbl, err := Embedded()
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 9, 15, 0, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		model string
+		d     event.TokenDelta
+		want  float64
+	}{
+		{"claude-opus-5-5", event.TokenDelta{In: 1_000_000}, 4},
+		{"claude-opus-5-5", event.TokenDelta{CacheRead: 1_000_000}, 0.2},
+		{"claude-opus-5-5", event.TokenDelta{Out: 1_000_000}, 20},
+		{"claude-opus-5", event.TokenDelta{In: 1_000_000}, 5},
+		{"claude-sonnet-5", event.TokenDelta{In: 1_000_000, Out: 1_000_000}, 12},
+		{"claude-sonnet-5-5", event.TokenDelta{In: 1_000_000, Out: 1_000_000}, 12},
+	} {
+		got, ok := tbl.PriceAt(tc.model, tc.d, at)
+		if !ok || math.Abs(got-tc.want) > 1e-9 {
+			t.Errorf("%s %+v: got %v (ok %v), want %v", tc.model, tc.d, got, ok, tc.want)
+		}
+	}
+}
+
+func TestCorrectionsAreValidated(t *testing.T) {
+	if _, err := Parse([]byte(`{"version":"t","models":[{"id":"m","input":1,"output":1}],"corrections":[{"model":"m","from":"31/08"}]}`)); err == nil {
+		t.Error("a correction with a malformed date was accepted")
+	}
+	if _, err := Parse([]byte(`{"version":"t","models":[{"id":"m","input":1,"output":1}],"corrections":[{"from":"2026-08-31"}]}`)); err == nil {
+		t.Error("a correction naming no model was accepted")
 	}
 }
 

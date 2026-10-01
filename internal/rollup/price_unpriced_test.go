@@ -51,3 +51,49 @@ func TestPriceUnpricedFillsOnlyWhatWasNeverPriced(t *testing.T) {
 		t.Fatalf("second pass priced %d", n)
 	}
 }
+
+// A correction reprices only the turns it names, from its date, moves the
+// session and daily totals by the difference, and runs once per version.
+func TestApplyCorrectionsRepricesOnlyNamedTurns(t *testing.T) {
+	r, _ := newRecorder(t)
+	ctx := context.Background()
+	wrong, err := cost.Parse([]byte(`{"version":"v1","models":[{"id":"m","input":3,"output":15},{"id":"other","input":1,"output":1}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Table = wrong
+	rec := func(key, model string, at time.Time) {
+		ev := event.Event{Ts: at, SessionID: "s", Source: event.SourceHook, Kind: event.KindTurnAssistant, Model: model, Key: key,
+			Tokens: &event.TokenDelta{In: 1_000_000, Out: 1_000_000}}
+		if _, err := r.Record(ctx, &ev, SessionInfo{Cwd: "/r", Agent: "claude"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
+	after := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	rec("a", "m", before) // before the correction's date: kept at 18
+	rec("b", "m", after)  // corrected 18 -> 12
+	rec("c", "other", after)
+
+	right, err := cost.Parse([]byte(`{"version":"v2","models":[{"id":"m","input":2,"output":10},{"id":"other","input":5,"output":5}],
+		"corrections":[{"model":"m","from":"2026-08-31"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Table = right
+	n, err := r.ApplyCorrections(ctx)
+	if err != nil || n != 1 {
+		t.Fatalf("corrected %d, err %v", n, err)
+	}
+	st, _ := store.GetStats(ctx, r.Store.DB(), "s")
+	if want := 18.0 + 12 + 2; math.Abs(st.CostUSD-want) > 1e-9 {
+		t.Fatalf("session total %v, want %v", st.CostUSD, want)
+	}
+	var sum float64
+	if err := r.Store.DB().QueryRow(`SELECT SUM(cost_usd) FROM daily_stats WHERE model = 'm'`).Scan(&sum); err != nil || math.Abs(sum-30) > 1e-9 {
+		t.Fatalf("daily m = %v, err %v", sum, err)
+	}
+	if n, _ := r.ApplyCorrections(ctx); n != 0 {
+		t.Fatalf("second pass corrected %d", n)
+	}
+}

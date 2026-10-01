@@ -11,6 +11,14 @@ Phase 3 (Delight) has no plan by design.
 
 ### Fixed
 
+- **Opus 5.5 and Sonnet 5 are priced right, including the turns already
+  stored.** Opus 5.5 had no row and was priced as Opus 5 — $5/$25 instead of
+  $4/$20, and cache reads at $0.50 instead of $0.20. Sonnet 5's rise to $3/$15
+  on 31 August was cancelled, but Caprock priced every Sonnet 5 turn from that
+  day at it. Pricing table `2026-10-01.1` adds Opus 5.5 and Sonnet 5.5, keeps
+  Sonnet 5 at $2/$10, and lists both as corrections: on the first start the
+  daemon reprices those turns once and moves the session and daily totals by
+  the difference. A price that really changed still never restates history.
 - **A session whose folder is gone offers a command that works.** The copy
   command began with `cd` into the missing folder, so it failed before
   `claude` started. `claude --resume <id>` finds the session from any folder,

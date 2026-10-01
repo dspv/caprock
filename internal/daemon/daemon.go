@@ -238,6 +238,8 @@ func newDaemon(ctx context.Context, opt Options) (*Daemon, error) {
 		return nil, err
 	}
 	// Record the pricing version in force; never rewrite old rows on a bump.
+	// (A table's `corrections` are the exception, applied below by
+	// rollup.ApplyCorrections: turns the previous table priced wrongly.)
 	if prev, _ := st.GetMeta(ctx, store.MetaPricingVersion); prev != table.Version {
 		if prev != "" {
 			log.Info("pricing table version changed; historical costs are kept as computed", "component", "daemon", "from", prev, "to", table.Version)
@@ -312,6 +314,9 @@ func (d *Daemon) run(ctx context.Context) error {
 		}
 		if _, err := d.rec.RebuildCodexDaily(ctx, keepFrom); err != nil && ctx.Err() == nil {
 			d.log.Warn("could not rebuild Codex daily totals", "component", "rollup", "err", err)
+		}
+		if _, err := d.rec.ApplyCorrections(ctx); err != nil && ctx.Err() == nil {
+			d.log.Warn("could not correct turns the previous pricing table priced wrongly", "component", "rollup", "err", err)
 		}
 		if _, err := d.rec.PriceUnpriced(ctx); err != nil && ctx.Err() == nil {
 			d.log.Warn("could not price previously unpriced turns", "component", "rollup", "err", err)
