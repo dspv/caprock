@@ -151,6 +151,7 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/events":               true,
 	"GET /v1/history":              true,
 	"GET /v1/status":               true,
+	"GET /v1/storage":              true, // sizes only; the data dir is already in /v1/status
 	"GET /v1/update":               true,
 	"GET /v1/settings":             true, // without the licence key; see handleGetSettings
 	"GET /v1/premium":              true,

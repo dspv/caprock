@@ -93,7 +93,7 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   matched on method and route pattern: `GET`/`HEAD` of `/v1/sessions`,
   `/v1/sessions/{id}` and its `events`, `notes` and `diff`, `/v1/notes`,
   `/v1/stats/summary`, `/v1/stats/daily`, `/v1/events`, `/v1/history`,
-  `/v1/status`, `/v1/update`, `/v1/settings`, `/v1/premium`, `/v1/gemini`,
+  `/v1/status`, `/v1/storage`, `/v1/update`, `/v1/settings`, `/v1/premium`, `/v1/gemini`,
   `/v1/pricing`, `/v1/live`, `/v1/tasks`, `/v1/tasks/{id}`, `/v1/approvals`,
   `/v1/statusline/{id}`. Everything else is `403` — every `POST`, `PUT` and
   `DELETE` (spawn, input, signal, paste, settings, tasks, approvals,
@@ -226,6 +226,7 @@ Added during T6 (same conventions; not in the spec's list):
 ```
 GET  /v1/events?after=…&limit=…        → Event[] across all sessions (live-feed catch-up)
 GET  /v1/status                        → daemon status: version, pid, uptime, data dir, pricing, ingest, hooks
+GET  /v1/storage                       → what the data directory holds; see § Storage below
 GET  /v1/pricing                       → the pricing table in force
 GET  /v1/premium                       → what the paid plan costs and where to buy it
 POST /v1/shutdown                      → 200 (bearer-token gated; `caprock down`)
@@ -284,6 +285,44 @@ They also carry `background` — `{turns, tokens, models[]}` — measured token 
 `GET /v1/status` may carry `desktop` — `{five_hour_pct, seven_day_pct, at, stale}` — the Claude **desktop app's** own plan usage, read on request from `plan-usage-history.json` in the app's support directory. It is omitted entirely when the app is absent, has never run, or wrote something we cannot parse; most people do not use it, so absence is a normal answer rather than an error.
 
 What that file holds bounds what may ever be said about it: a timestamp and two window percentages. **No tokens, no cost, no conversation content**, so this can never state what the desktop app cost — only how much of a window it consumed. It is also written only while the app runs (27 samples in a day on one real machine, against ~290 at its five-minute interval), so a reading older than 20 minutes is flagged `stale` and the UI says the app has been closed since. Nothing is stored and nothing is polled.
+
+#### Storage
+
+`GET /v1/storage` reports what Caprock keeps on disk: `{data_dir,
+total_bytes, files[], database?, measured_at?, measure_ms?, error?,
+reclaimable_bytes, growth_bytes_per_day_est, retention_days}`.
+
+- **`files`** is every top-level entry of the data directory, `{name, bytes,
+  dir?}`, largest first; a directory is the sum of the regular files under it.
+  `total_bytes` is their sum. Both are read on every request — a stat of a few
+  dozen files.
+- **`database`** is the composition: `page_size`, `page_count`, `free_pages`,
+  `tables[]` (`{name, data_bytes, index_bytes}` from `dbstat`, each index folded
+  into its table), and the events table read once — `events`, `payload_bytes`
+  (`octet_length` of the raw JSON, so bytes rather than characters),
+  `oldest_ts`, `agents[]` and `kinds[]` (`{name, events, payload_bytes}`, the
+  agent taken from the session row), `recent[]` (the last 7 and 30 days) and
+  `older[]` (older than 30 and 90 days: what a `retention_days` of that length
+  would delete), each `{days, events, payload_bytes}`.
+- **It is cached, not computed per request.** `dbstat` walks every page and the
+  breakdown reads every event; on an 857 MB database the two measured 8 s warm
+  and 14 s cold
+  through this driver (2026-10-01). The daemon measures a minute after start,
+  then every 30 minutes, and serves the last result; `database` is absent until
+  the first one finishes. A failed refresh keeps the previous figures and sets
+  `error`.
+- **`reclaimable_bytes`** is `free_pages × page_size`: what a VACUUM would
+  return. **Caprock does not run VACUUM.** It rewrites the whole file, needs
+  free disk space for a second copy, and holds the write lock for its whole run,
+  stalling ingest; on a database that never deletes, the freelist is empty and
+  it would return nothing. The dashboard names the manual command (stop Caprock,
+  run `sqlite3 caprock.db VACUUM`) only when the free pages pass 64 MB.
+- **`growth_bytes_per_day_est` is an estimate and named as one** (rule 6): the
+  payload recorded over the last 30 days, per day, times the events table's
+  on-disk bytes (data and indexes) over the payload it holds. `0` when there is
+  nothing to scale by.
+- **A paired device may read it** — sizes and counts only; the data directory
+  path is already in `/v1/status`.
 
 `PUT /v1/settings` also accepts `gemini_api_key`, stored write-only in the same way. `GET` reports `gemini_key_set` and `gemini_key_from_env` instead of the value; `GEMINI_API_KEY` in the daemon's environment takes precedence over the stored key when both exist ([ADR-025](08-decisions.md)).
 

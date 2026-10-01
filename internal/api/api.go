@@ -63,6 +63,8 @@ type Deps struct {
 	Version  string
 	// Status returns daemon/ingest/hooks status for /v1/status.
 	Status func(ctx context.Context) any
+	// Storage returns what the data directory holds for /v1/storage. nil ⇒ 501.
+	Storage func(ctx context.Context) any
 	// Started is when this daemon came up. The burn tile needs it: in the
 	// first minutes there is less history than the window it divides by.
 	Started time.Time
@@ -304,6 +306,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/browse", s.handleBrowse)
 	m.HandleFunc("GET /v1/recent-dirs", s.handleRecentDirs)
 	m.HandleFunc("GET /v1/status", s.handleStatus)
+	m.HandleFunc("GET /v1/storage", s.handleStorage)
 	// What the paid plan costs, so the dashboard can say it without guessing
 	// and without an outbound call. Static — it is compiled in — but served
 	// rather than duplicated in the UI, so one edit in Go changes every place
@@ -1204,6 +1207,16 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		st = s.d.Status(r.Context())
 	}
 	writeJSON(w, http.StatusOK, st)
+}
+
+// handleStorage reports what Caprock keeps on disk. The answer is assembled
+// from a cache the daemon refreshes in the background, so polling it is cheap.
+func (s *Server) handleStorage(w http.ResponseWriter, r *http.Request) {
+	if s.d.Storage == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("storage report not available"))
+		return
+	}
+	writeJSON(w, http.StatusOK, s.d.Storage(r.Context()))
 }
 
 func (s *Server) handlePremium(w http.ResponseWriter, _ *http.Request) {

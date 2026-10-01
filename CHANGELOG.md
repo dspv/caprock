@@ -31,6 +31,13 @@ Phase 3 (Delight) has no plan by design.
   there from Claude Code itself, and so is the chatter of Codex's own
   subagents.
 
+- **See how much disk Caprock uses, and on what.** The Status screen has a
+  Storage panel: the total on disk, what it is made of (events, their indexes,
+  logs and the rest), which agent and which kind of event recorded the most,
+  roughly how much it grows a day, and what you can do about it — how much a
+  retention setting would delete, and whether compacting the database would
+  give anything back.
+
 
 ### Fixed
 

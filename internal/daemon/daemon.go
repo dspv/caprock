@@ -134,6 +134,10 @@ type Daemon struct {
 	rt    config.Runtime
 	start time.Time
 
+	// storage is the cached measurement of what the data directory holds;
+	// see storage.go.
+	storage storageState
+
 	// cap is the daily spend guard. Nil until run() builds it, because it needs
 	// the owned-session manager.
 	cap *cap.Guard
@@ -409,7 +413,7 @@ func (d *Daemon) run(ctx context.Context) error {
 
 	d.api = api.New(api.Deps{
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d,
-		Status: d.status, ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
+		Status: d.status, Storage: d.storageReport, ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
 		Token: rt.Token, Shutdown: cancel, Agents: &agentAdapter{m: d.mgr, d: d},
 		Tasks: &boardAdapter{d: d}, Settings: &settingsAdapter{d: d}, Update: d.upd,
 		AskGemini: d.askGemini,
@@ -599,6 +603,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.loadReportState(ctx)
 	go d.weeklyLoop(ctx)
 	go d.backfillToolLinks(ctx)
+	go d.storageLoop(ctx)
 	if d.config().RetentionDays > 0 {
 		go d.pruneLoop(ctx)
 	}
