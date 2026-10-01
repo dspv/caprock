@@ -53,6 +53,9 @@ type Ingester struct {
 	// textChecked is set once the first pass has given the turns stored
 	// before prose was read their text (see backfillText).
 	textChecked bool
+	// splitChecked is set once the first pass has repaired imported threads
+	// and subagent turns stored by earlier versions (see repairSplit).
+	splitChecked bool
 
 	namesAt time.Time
 	// namesFor is how many transcripts had been imported at that sync. A
@@ -68,6 +71,9 @@ type fileState struct {
 	// session is the transcript's session id, kept so a restart can check the
 	// store still holds that session before trusting the file as read.
 	session string
+	// imported marks a thread Codex imported from another agent. It stores
+	// no events by design, so it is trusted as read without them.
+	imported bool
 }
 
 // Stats is what the daemon reports about Codex ingest.
@@ -166,7 +172,7 @@ func (in *Ingester) once(ctx context.Context) error {
 		readNow[f.Path] = true
 		changed = true
 		in.mu.Lock()
-		in.seen[f.Path] = fileState{mod: f.Modified, size: f.Size, session: s.ID}
+		in.seen[f.Path] = fileState{mod: f.Modified, size: f.Size, session: s.ID, imported: s.Imported}
 		// Updated inside the loop, not after it. The first pass over a real
 		// machine's hundred transcripts takes seconds, and `caprock status`
 		// read during it reported "0 transcripts read" beside a rising event
@@ -179,6 +185,10 @@ func (in *Ingester) once(ctx context.Context) error {
 	if !in.textChecked {
 		in.textChecked = true
 		in.backfillText(ctx, files, readNow)
+	}
+	if !in.splitChecked {
+		in.splitChecked = true
+		in.repairSplit(ctx, files)
 	}
 	in.mu.Lock()
 	in.stats.LastPoll = time.Now().UnixMilli()
@@ -229,7 +239,27 @@ func (in *Ingester) syncNames(ctx context.Context) {
 // session records one parsed transcript: its turns and its tool calls, in the
 // order they happened.
 func (in *Ingester) session(ctx context.Context, s *Session) error {
+	if s.Imported {
+		// A thread Codex imported from another agent replays that agent's
+		// session, token reports included: work Claude Code did and Caprock
+		// already counts from Claude Code's own transcript. Recorded, it was
+		// counted twice and priced as Codex. Nothing of it is stored, and
+		// what an earlier version stored is taken back out.
+		if _, err := in.purgeImported(ctx, s); err != nil {
+			in.log.Debug("codex imported thread purge failed", "component", "codex", "session_id", s.ID, "err", err)
+		}
+		return nil
+	}
 	info := rollup.SessionInfo{Cwd: s.Cwd, Model: s.Model, Version: s.CLIVersion, Agent: Agent}
+	if s.Subagent {
+		// A subagent's events belong to its parent's session, as a Claude
+		// Code subagent's do, so the session is described by the parent's
+		// own file and the subagent's version is not passed. Its turns still
+		// carry its own model, which prices them. Its cwd is kept: read
+		// before the parent's file, it is the only directory the session
+		// has, and without it the turns are filed under no project.
+		info = rollup.SessionInfo{Cwd: s.Cwd, Agent: Agent}
+	}
 
 	// Turns and tools are interleaved by time so the session's event stream
 	// reads the way it happened, rather than as all turns followed by all
@@ -281,8 +311,9 @@ func (in *Ingester) session(ctx context.Context, s *Session) error {
 // Event keys are idempotent, so a re-read never rewrites a row; this is the one
 // place a Codex turn's payload is updated after it is stored, and it touches
 // only `payload.text`. A row is matched on its key AND its timestamp: a
-// subagent's file carries its parent's session id and keys by line number, so
-// a key alone can name a row that came from a different file.
+// subagent's file carries its parent's session id, and before subagentKey its
+// rows were stored under the parent's line-number keys, so a key alone could
+// name a row that came from a different file.
 func (in *Ingester) syncText(ctx context.Context, s *Session) (int, error) {
 	want := map[string]Turn{}
 	for _, t := range s.Turns {
@@ -421,6 +452,11 @@ func (in *Ingester) turn(ctx context.Context, s *Session, t Turn, info rollup.Se
 		// input and its cost is an upper bound.
 		fields["tokens_total_only"] = true
 	}
+	if s.Subagent {
+		// The two fields a Claude Code subagent's turn carries, so every
+		// screen that leaves sidechains out leaves this one out too.
+		fields["sidechain"] = true
+	}
 	payload, _ := json.Marshal(fields)
 	ev := &event.Event{
 		Ts:        t.At,
@@ -430,6 +466,7 @@ func (in *Ingester) turn(ctx context.Context, s *Session, t Turn, info rollup.Se
 		Model:     s.Model,
 		Payload:   payload,
 		Key:       t.Key,
+		AgentID:   subagentID(s),
 		// Codex's `input_tokens` is the TOTAL prompt, with `cached_input_tokens`
 		// a subset of it — verified on all 239 token samples in 100 real
 		// transcripts, where input+output always equals the reported total.
@@ -475,12 +512,16 @@ func fresh(in, cacheRead int64) int64 {
 // that one shape. A second shape here would mean a second implementation of
 // everything downstream.
 func (in *Ingester) tool(ctx context.Context, s *Session, c ToolCall, info rollup.SessionInfo) error {
-	payload, _ := json.Marshal(map[string]any{
+	fields := map[string]any{
 		"session_id": s.ID,
 		"cwd":        s.Cwd,
 		"tool_name":  c.Name,
 		"tool_input": toolInput(c),
-	})
+	}
+	if s.Subagent {
+		fields["sidechain"] = true
+	}
+	payload, _ := json.Marshal(fields)
 	ev := &event.Event{
 		Ts:        c.At,
 		SessionID: s.ID,
@@ -489,6 +530,7 @@ func (in *Ingester) tool(ctx context.Context, s *Session, c ToolCall, info rollu
 		Tool:      c.Name,
 		Payload:   payload,
 		Key:       c.Key,
+		AgentID:   subagentID(s),
 	}
 	res, err := in.rec.Record(ctx, ev, info)
 	if err != nil {
@@ -500,6 +542,15 @@ func (in *Ingester) tool(ctx context.Context, s *Session, c ToolCall, info rollu
 		in.mu.Unlock()
 	}
 	return nil
+}
+
+// subagentID is the agent_id a subagent's events carry — its own thread id, as
+// a Claude Code subagent's carry its agentId — and "" for everything else.
+func subagentID(s *Session) string {
+	if s.Subagent {
+		return s.ThreadID
+	}
+	return ""
 }
 
 // toolInput normalises a call's arguments to an object.
@@ -547,9 +598,15 @@ func (in *Ingester) repriceSession(ctx context.Context, s *Session) error {
 	if s.Model == "" || in.rec == nil || in.rec.Table == nil {
 		return nil
 	}
+	// Only rows this file wrote. A subagent shares its parent's session id,
+	// and one file's model must not be stamped onto the other's turns.
+	mine := make(map[string]bool, len(s.Turns))
+	for _, t := range s.Turns {
+		mine[t.Key] = true
+	}
 	db := in.rec.Store.DB()
 	rows, err := db.QueryContext(ctx,
-		`SELECT id, ts, tokens_in, tokens_out, cache_read, cache_write
+		`SELECT id, COALESCE(key,''), ts, tokens_in, tokens_out, cache_read, cache_write
 		   FROM events
 		  WHERE session_id = ? AND source = ? AND kind = ?
 		    AND COALESCE(model, '') = ''`,
@@ -565,10 +622,14 @@ func (in *Ingester) repriceSession(ctx context.Context, s *Session) error {
 	var todo []row
 	for rows.Next() {
 		var r row
+		var key string
 		var in64, out64, cr, cw sql.NullInt64
-		if err := rows.Scan(&r.id, &r.ts, &in64, &out64, &cr, &cw); err != nil {
+		if err := rows.Scan(&r.id, &key, &r.ts, &in64, &out64, &cr, &cw); err != nil {
 			_ = rows.Close()
 			return err
+		}
+		if !mine[key] {
+			continue
 		}
 		r.tokens = event.TokenDelta{In: in64.Int64, Out: out64.Int64, CacheRead: cr.Int64, CacheWrite: cw.Int64}
 		todo = append(todo, r)
@@ -644,6 +705,9 @@ type savedFile struct {
 	Mod     int64  `json:"m"`
 	Size    int64  `json:"s"`
 	Session string `json:"id"`
+	// Imported: a thread imported from another agent, which stores no
+	// events, so there are none to check for on restore.
+	Imported bool `json:"x,omitempty"`
 }
 
 // restoreSeen trusts a remembered file only while the store still has its
@@ -666,6 +730,10 @@ func (in *Ingester) restoreSeen(ctx context.Context) {
 	defer in.mu.Unlock()
 	for path, f := range saved {
 		if f.Session == "" {
+			continue
+		}
+		if f.Imported {
+			in.seen[path] = fileState{mod: time.Unix(0, f.Mod), size: f.Size, session: f.Session, imported: true}
 			continue
 		}
 		var one int
@@ -735,7 +803,7 @@ func (in *Ingester) saveSeen(ctx context.Context) {
 	saved := make(map[string]savedFile, len(in.seen))
 	for path, f := range in.seen {
 		if f.session != "" {
-			saved[path] = savedFile{Mod: f.mod.UnixNano(), Size: f.size, Session: f.session}
+			saved[path] = savedFile{Mod: f.mod.UnixNano(), Size: f.size, Session: f.session, Imported: f.imported}
 		}
 	}
 	in.mu.Unlock()

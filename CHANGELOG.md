@@ -48,6 +48,19 @@ Phase 3 (Delight) has no plan by design.
   folders with the same name were numbered `<name>-2`, and the numbered one
   kept its real name; the scrubber now rewrites it and refuses to finish if any
   real project name is left.
+
+- **Sessions Codex imported from Claude Code no longer count as Codex spend.**
+  Codex Desktop can import a Claude Code session, and Caprock read the copy
+  as Codex work: the same tokens counted twice, the second time at OpenAI's
+  prices. Those threads are now skipped, and the first start takes what was
+  already stored back out of every total. On one machine that was $26.70.
+
+- **Work done by Codex subagents is no longer lost.** A subagent's turns
+  could be mistaken for its parent session's own and dropped, along with their
+  cost; on one machine nearly half of them were missing. They are now kept,
+  shown as part of the session that started them, and the first start brings
+  back the ones dropped before.
+
 - **Opus 5.5 and Sonnet 5 are priced right, including the turns already
   stored.** Opus 5.5 had no row and was priced as Opus 5 — $5/$25 instead of
   $4/$20, and cache reads at $0.50 instead of $0.20. Sonnet 5's rise to $3/$15
