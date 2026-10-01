@@ -240,7 +240,29 @@ PORT = 9222
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:4290"
 OUT = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else ".")
 SHOTS = [("now", "shot-now"), ("cost", "shot-cost"),
-         ("history", "shot-history"), ("tasks", "shot-tasks")]
+         ("history", "shot-history"), ("tasks", "shot-tasks"),
+         ("notes", "shot-memory")]
+
+# What to do on a screen before capturing it. Memory is a search screen, and
+# browsing it shows the newest prose on the machine — whatever the last
+# session was about, private or not. A search for a neutral technical phrase
+# shows what the screen is for and nothing else; read the capture before it
+# is published all the same, since the names are scrubbed but prose is prose.
+ACTIONS = {
+    "notes": """
+      (() => {
+        const i = document.querySelector('input[aria-label^="Search Claude"]');
+        if (!i) return false;
+        const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+        set.call(i, 'model id');
+        i.dispatchEvent(new Event('input', { bubbles: true }));
+        i.form.requestSubmit();
+        return true;
+      })()
+    """,
+}
+# Screens with no dollar figure to wait for.
+NO_MONEY = {"tasks", "notes"}
 WIDTH, HEIGHT = 1600, 1400
 MIN_H, PAD = 300, 28          # never crop tighter than this; breathing room below
 
@@ -351,6 +373,11 @@ def main():
                     if evaluate(ws, "document.body.innerText.includes('live ·')"):
                         break
 
+                if route in ACTIONS:
+                    if not evaluate(ws, ACTIONS[route]):
+                        sys.exit(f"{name}: the action before capture found nothing to act on")
+                    time.sleep(2.0)
+
                 # A screen that is still fetching shows em-dashes and skeleton
                 # bars; capturing then produces the empty-looking dashboard the
                 # old screenshots had. Wait for real content to replace them.
@@ -375,7 +402,7 @@ def main():
                         if (/^\\$0\\.00\\s*$/m.test(t)) return false;
                         // Tasks carries no money; the placeholders are all it has.
                         return !wantMoney || /\\$[0-9][0-9,]*\\.[0-9]{2}/.test(t);
-                      })(""" + ("false" if route == "tasks" else "true") + """)
+                      })(""" + ("false" if route in NO_MONEY else "true") + """)
                     """)
                     if ready:
                         break
