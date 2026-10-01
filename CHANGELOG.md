@@ -9,6 +9,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **`caprock statusline install` no longer sends you in a circle.** With a
+  status line of your own already set, it said "run `caprock statusline
+  install`" — the command you had just run. It now names the settings file and
+  the exact `statusLine.command` value to set, and still changes nothing.
+
 ## [0.62.0] - 2026-10-01
 
 ### Added

@@ -115,6 +115,9 @@ then what Caprock adds, with a real screenshot or real output.
 | 6 | post: a measured month of cost         | cost, buying      | 2,900            |
 | 7 | `/teams/` + post on the Analytics API  | teams, otel       | 390              |
 
+- **Done:** #1 published 2026-10-01 at
+  `caprock.dev/guides/claude-code-statusline/`, linked from /docs and
+  /install; re-read Search Console for it from 2026-10-29.
 - **Order** is fit first, then volume against how weak the current results
   are. #5 is lower than its volume because Caprock answers only the cost half.
 - **Home** keeps `Claude Code usage dashboard`; guide #2 answers the how-to

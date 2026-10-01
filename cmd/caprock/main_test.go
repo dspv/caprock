@@ -506,3 +506,36 @@ func TestStatuslineFlags(t *testing.T) {
 		t.Errorf("registration should be the bare subcommand, got %q", got)
 	}
 }
+
+// A statusLine the user set is left alone, and the message says how to
+// switch. It used to say "run `caprock statusline install`" — printed by that
+// very command, so following it went in a circle.
+func TestStatuslineInstallLeavesAForeignLineAndNamesTheEdit(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
+	sp := filepath.Join(home, ".claude", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(sp), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	foreign := `{"statusLine":{"type":"command","command":"npx -y ccusage statusline"}}`
+	if err := os.WriteFile(sp, []byte(foreign), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := installStatuslineCmd()
+	var out bytes.Buffer
+	c.SetOut(&out)
+	if err := c.RunE(c, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(sp); string(got) != foreign {
+		t.Fatalf("settings changed:\n%s", got)
+	}
+	msg := out.String()
+	if !strings.Contains(msg, "set statusLine.command to: "+statuslineCommandStr()) {
+		t.Errorf("message does not name the edit: %q", msg)
+	}
+	if strings.Contains(msg, "run `caprock statusline install`") {
+		t.Errorf("message points back at the command that printed it: %q", msg)
+	}
+}
