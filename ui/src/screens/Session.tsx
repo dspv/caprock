@@ -280,7 +280,8 @@ function EventRow({ e, now, toolByUse, inMinute }: {
   const label = describe({ ...e, tool: resolved }, p)
   // The full text of what Claude (or you) wrote, for the expanded view.
   const prose = e.kind === 'turn.assistant' ? String(p.text ?? '')
-    : e.kind === 'turn.user' ? String(p.prompt ?? '')
+    // DeepSeek Harness keeps the prompt as `text`, everyone else as `prompt`.
+    : e.kind === 'turn.user' ? String(p.prompt ?? p.text ?? '')
     // A failing test tail or a stack trace is the single most useful thing in a
     // timeline, and the row shows 160 characters of it. Render it as text too,
     // rather than leaving raw JSON as the only way to read it.
@@ -341,7 +342,7 @@ export function describe(e: Event, p: Record<string, unknown>): string {
       return `${t} ${isErr ? 'failed' : 'done'}${s ? `  ${s.slice(0, 160)}` : ''}`
     }
     case 'turn.user':
-      return `you: ${String(p.prompt ?? '').slice(0, 200)}`
+      return `you: ${String(p.prompt ?? p.text ?? '').slice(0, 200)}`
     case 'turn.assistant': {
       const text = String(p.text ?? '')
       const tools = Array.isArray(p.tools) ? (p.tools as string[]) : []

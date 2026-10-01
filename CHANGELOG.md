@@ -22,6 +22,8 @@ Phase 3 (Delight) has no plan by design.
 
 ### Fixed
 
+- **A DeepSeek Harness session's timeline shows what you asked.** The prompt
+  rows were blank, because DeepSeek keeps the prompt under a different name.
 - **A session shows the model it runs on, not its subagent's.** When a
   session's subagent ran on a different model — an Opus session sending an
   Explore task to Haiku — the session took the subagent's model on its card,
