@@ -77,6 +77,9 @@ func TestListPrices(t *testing.T) {
 		{[]string{"gpt-5.6-sol"}, "OpenAI list prices", false},
 		{[]string{"claude-opus-5", "gpt-5.6-sol", "gemini-2.5-pro"}, "Anthropic, OpenAI and Google list prices", false},
 		{[]string{"claude-opus-5", "some-new-model"}, "the model makers' API list prices", false},
+		// OpenCode's provider/model spelling, as on the owner's machine. MiniMax
+		// ties OpenAI on cost here, and a tie is ordered by name.
+		{[]string{"claude-opus-5", "openai/gpt-5.5", "minimax/minimax-m3", "MiniMax-M2.7"}, "Anthropic, MiniMax and OpenAI list prices", false},
 	} {
 		got, claude := listPrices(sum(tc.models...))
 		if got != tc.want || claude != tc.claude {

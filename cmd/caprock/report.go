@@ -261,6 +261,11 @@ func reportCaveat(plan reportSettings, prices string) string {
 // counts as Anthropic's.
 func modelVendor(model string) string {
 	m := strings.ToLower(model)
+	// OpenCode writes ids as provider/model ("openai/gpt-5.5",
+	// "minimax/minimax-m3"); the model half is what names the price list.
+	if i := strings.LastIndex(m, "/"); i >= 0 {
+		m = m[i+1:]
+	}
 	switch {
 	case strings.Contains(m, "claude"):
 		return "Anthropic"
