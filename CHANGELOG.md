@@ -41,6 +41,13 @@ Phase 3 (Delight) has no plan by design.
 
 ### Fixed
 
+- **The Tasks screen says who runs a task.** It read "one Claude session per
+  task"; an orchestrator hands each task to a worker, and the screen now says
+  so. The README's pairing steps now say a code appears after *Show a code*.
+- **Screenshots no longer print a folder name the scrubber missed.** Two
+  folders with the same name were numbered `<name>-2`, and the numbered one
+  kept its real name; the scrubber now rewrites it and refuses to finish if any
+  real project name is left.
 - **Opus 5.5 and Sonnet 5 are priced right, including the turns already
   stored.** Opus 5.5 had no row and was priced as Opus 5 — $5/$25 instead of
   $4/$20, and cache reads at $0.50 instead of $0.20. Sonnet 5's rise to $3/$15
