@@ -9,6 +9,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **What you ask Gemini CLI is kept, like every other agent's prompt.** Gemini
+  sessions started from Caprock now record the question, so Memory can find a
+  session by what you asked it. Sessions from before keep none.
+
 ## [0.64.0] - 2026-10-01
 
 ### Security

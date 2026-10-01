@@ -408,12 +408,12 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 				"GEMINI_TELEMETRY_ENABLED=true",
 				"GEMINI_TELEMETRY_TARGET=local",
 				"GEMINI_TELEMETRY_OUTFILE="+path,
-				// Prompts are the one thing in this file Caprock does not need
-				// in order to count anything, and the flag that keeps them out
-				// costs nothing. What the user typed is on screen in the
-				// terminal already; a second copy on disk is a copy nobody
-				// asked for.
-				"GEMINI_TELEMETRY_LOG_PROMPTS=false",
+				// Prompts on, so a Gemini session is in Memory like every other
+				// agent's: Claude Code, Codex, OpenCode and DeepSeek all keep
+				// what was asked, and this file sits in the same 0700 data
+				// directory as their transcripts. Off was a caution from before
+				// Memory existed (ADR-027, amended 2026-10-01).
+				"GEMINI_TELEMETRY_LOG_PROMPTS=true",
 			)
 		}
 	}
