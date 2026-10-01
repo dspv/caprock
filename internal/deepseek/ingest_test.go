@@ -122,6 +122,30 @@ func TestIngestRecordsTurnsToolsAndUsers(t *testing.T) {
 	}
 }
 
+// A DeepSeek reply must be findable by the question that produced it. DSH
+// stores the prompt as `text`, Claude Code as `prompt`, and the search read
+// only the latter — so every DeepSeek question was invisible to Memory search.
+// The injected AGENTS.md and runtime-context records sit between the question
+// and the reply in a real transcript; were they stored, the reply would match
+// the reminder instead of "hello".
+func TestDeepSeekReplyIsFoundByItsPrompt(t *testing.T) {
+	ctx, in, st, dir := newIngestHarness(t)
+	writeSessionFile(t, dir, fixture(t, "session-v3.jsonl"))
+	if err := in.once(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.SearchNotes(ctx, st.DB(), "hello", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Text != "hi there" {
+		t.Fatalf("search by the prompt returned %+v, want the reply \"hi there\"", got)
+	}
+	if got, _ := store.SearchNotes(ctx, st.DB(), "runtime context", 0, 0); len(got) != 0 {
+		t.Fatalf("an injected context record was searchable as a prompt: %+v", got)
+	}
+}
+
 func TestIngestIgnoresSessionsWithNoModel(t *testing.T) {
 	ctx, in, st, dir := newIngestHarness(t)
 	content := `{"type":"session","version":3,"id":"s-nomodel","createdAt":1789135258998,"cwd":"/home/u/proj"}

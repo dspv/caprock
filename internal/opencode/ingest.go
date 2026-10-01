@@ -171,6 +171,10 @@ func (in *Ingester) session(ctx context.Context, s Session) error {
 	if err != nil {
 		return err
 	}
+	texts, err := Texts(ctx, in.db, s.ID)
+	if err != nil {
+		return err
+	}
 
 	// Tool calls are grouped by the message that asked for them, which is what
 	// links a tool call to the turn that paid for it. Caprock uses that link
@@ -183,7 +187,7 @@ func (in *Ingester) session(ctx context.Context, s Session) error {
 
 	for _, m := range msgs {
 		if m.Role == "assistant" {
-			if err := in.turn(ctx, s, m); err != nil {
+			if err := in.turn(ctx, s, m, texts[m.ID]); err != nil {
 				return err
 			}
 		}
@@ -192,6 +196,9 @@ func (in *Ingester) session(ctx context.Context, s Session) error {
 				return err
 			}
 		}
+	}
+	if err := in.refreshText(ctx, s, msgs, texts); err != nil {
+		return err
 	}
 	// The title reaches the row through SessionInfo only when an event is
 	// stored, and a session already imported stores none — so a session read
@@ -211,13 +218,23 @@ func (in *Ingester) info(s Session) rollup.SessionInfo {
 	return rollup.SessionInfo{Cwd: s.Directory, Model: s.Model, Agent: Agent, Title: sessionTitle(s.Title)}
 }
 
-// turn stores one assistant turn with the cost OpenCode already computed.
-func (in *Ingester) turn(ctx context.Context, s Session, m Message) error {
+// turn stores one assistant turn with the cost OpenCode already computed, and
+// the prose it wrote.
+//
+// `text` and `sidechain` are the two fields the Memory screen reads, in the
+// shape the Claude Code parser writes them, so the notes query stays
+// source-agnostic. A subagent's words live in a child session in OpenCode
+// rather than in a sidechain of the parent, but they are the same thing: marked
+// sidechain, they stay out of "what did the agent say" exactly as a Claude Code
+// subagent's do.
+func (in *Ingester) turn(ctx context.Context, s Session, m Message, text string) error {
 	cost := m.Cost
 	payload, _ := json.Marshal(map[string]any{
-		"provider": m.Provider,
-		"model":    m.Model,
-		"cwd":      m.Cwd,
+		"provider":  m.Provider,
+		"model":     m.Model,
+		"cwd":       m.Cwd,
+		"text":      text,
+		"sidechain": s.IsChild(),
 	})
 	ev := &event.Event{
 		Ts:        time.UnixMilli(m.Created),
@@ -251,6 +268,91 @@ func (in *Ingester) turn(ctx context.Context, s Session, m Message) error {
 		in.mu.Unlock()
 	}
 	return nil
+}
+
+// refreshText brings the prose of turns already stored up to date.
+//
+// A turn is stored once — `(session_id, key)` is unique and a re-read inserts
+// nothing — so without this two kinds of row would keep an empty or partial
+// `text` for good: every turn imported before the importer read text parts,
+// and a turn the poller or the live stream caught while OpenCode was still
+// writing its reply (the message row exists before its text parts finish).
+// Both are mended here, on the next read of the session. The poller re-reads
+// every session on its first pass after a start, so that pass is also the
+// backfill for history: it runs in the poller's own goroutine, never holds up
+// startup, and a failure costs only this session's text until the next read.
+//
+// Only `text` and `sidechain` are rewritten, via json_set, and only on rows
+// whose value differs: every other payload key, the event id, tokens and cost
+// are untouched, and a session already in step costs one read and no write.
+func (in *Ingester) refreshText(ctx context.Context, s Session, msgs []Message, texts map[string]string) error {
+	if in.rec == nil || in.rec.Store == nil {
+		return nil
+	}
+	db := in.rec.Store.DB()
+	rows, err := db.QueryContext(ctx, `
+		SELECT msg_id, COALESCE(json_extract(payload,'$.text'),''),
+		       COALESCE(json_extract(payload,'$.sidechain'),0)
+		FROM events
+		WHERE session_id = ? AND source = ? AND kind = 'turn.assistant'
+		  AND msg_id IS NOT NULL AND json_valid(payload)`,
+		s.ID, string(event.SourceOpenCode))
+	if err != nil {
+		return fmt.Errorf("read stored text: %w", err)
+	}
+	type stored struct {
+		text      string
+		sidechain bool
+	}
+	have := map[string]stored{}
+	for rows.Next() {
+		var id, text string
+		var side int
+		if err := rows.Scan(&id, &text, &side); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		have[id] = stored{text: text, sidechain: side == 1}
+	}
+	_ = rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	side := "false"
+	if s.IsChild() {
+		side = "true"
+	}
+	type fix struct{ id, text string }
+	var fixes []fix
+	for _, m := range msgs {
+		if m.Role != "assistant" {
+			continue
+		}
+		cur, ok := have[m.ID]
+		if !ok {
+			continue // not stored (or just stored with the current text)
+		}
+		if cur.text == texts[m.ID] && cur.sidechain == s.IsChild() {
+			continue
+		}
+		fixes = append(fixes, fix{id: m.ID, text: texts[m.ID]})
+	}
+	if len(fixes) == 0 {
+		return nil
+	}
+	return in.rec.Store.WithTx(ctx, func(q store.Querier) error {
+		for _, f := range fixes {
+			if _, err := q.ExecContext(ctx, `
+				UPDATE events
+				SET payload = json_set(payload, '$.text', ?, '$.sidechain', json(?))
+				WHERE session_id = ? AND key = ? AND json_valid(payload)`,
+				f.text, side, s.ID, "oc-msg:"+f.id); err != nil {
+				return fmt.Errorf("refresh text: %w", err)
+			}
+		}
+		return nil
+	})
 }
 
 // tool stores one tool call.

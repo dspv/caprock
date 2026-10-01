@@ -831,15 +831,20 @@ func SearchNotes(ctx context.Context, q Querier, query string, limit int, before
 		// match whole words, losing the fragments people actually search for.
 		pattern := "%" + escapeLike(trimmed) + "%"
 		sql += ` AND (json_extract(e.payload, '$.text') LIKE ? ESCAPE '\'
-		         OR json_extract((
-		              SELECT p.payload FROM events p
+		         OR (
+		              SELECT COALESCE(json_extract(p.payload, '$.prompt'), json_extract(p.payload, '$.text'))
+		              FROM events p
 		              WHERE p.session_id = e.session_id AND p.kind = 'turn.user'
 		                AND p.id < e.id AND p.id > e.id - ?
 		              ORDER BY p.id DESC LIMIT 1
-		            ), '$.prompt') LIKE ? ESCAPE '\')`
+		            ) LIKE ? ESCAPE '\')`
 		// Only the NEAREST preceding prompt, within a short window: matching any
 		// prompt nearby would return every reply in an exchange rather than the
 		// passage that answers the question.
+		//
+		// The prompt's field depends on who wrote it: Claude Code and Gemini
+		// carry `prompt`, DeepSeek Harness `text` (as FirstPrompts reads it).
+		// Reading only `prompt` made every DeepSeek question unsearchable.
 		args = append(args, pattern, promptLookback, pattern)
 	}
 	if before > 0 {
