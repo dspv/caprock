@@ -687,6 +687,29 @@ CREATE TABLE rate_limit_history (ts INTEGER, window TEXT, used_percentage REAL, 
 
 `rate_limit_latest` holds the current state per window (upserted); `rate_limit_history` is a throttled sample (≥30s apart) used to compute an honest "at current pace" forecast. Fed by the statusline (below).
 
+## Export (`caprock export`)
+
+`caprock export [events|sessions] [--format tsv|csv|jsonl] [--since 30d|12h|YYYY-MM-DD] [--agent <agent>] [--out file] [--payload]`
+writes the normalized record out with a fixed column set. The column sets,
+their meaning and the per-agent source mapping are in
+[docs/schema.md](../docs/schema.md); that file and `internal/export` change
+together.
+
+- **Read-only, daemon not required.** The database is opened through a
+  `file:` URI with `mode=ro` (spaces and a Windows drive spelled per SQLite's
+  URI rules), so the command cannot write and works with the daemon stopped.
+- **Same filter as the dashboard.** `events.internal = 1` rows (Codex's review
+  turns) are never exported; a session with no other event is not either.
+- **Stable columns, not `SELECT *`.** A column is only ever appended. Renaming,
+  removing or reordering one is a breaking change to every script reading the
+  output.
+- **Content stays out unless asked.** `payload` (prompts, replies, tool output)
+  is exported only with `--payload`, and only as jsonl, embedded as JSON.
+- **Encodings.** TSV escapes tab, newline, carriage return and backslash as
+  `\t \n \r \\`, so one line is one row; CSV is RFC 4180; times are RFC 3339
+  UTC with milliseconds, and an unknown value is empty (TSV/CSV) or `null`.
+- **`--out` files are created 0600**, like the database they are read from.
+
 ## Statusline
 
 `caprock statusline` is registered as Claude Code's `statusLine.command`. Registration is offered by `caprock up` (same consent contract as hooks — TTY prompt or `--yes`) and can be done or reverted explicitly with `caprock statusline install` / `caprock statusline uninstall`; it writes the single `statusLine` key in `~/.claude/settings.json` (backed up once) and never clobbers a statusLine the user set to something else. One entry of ours **is** rewritten: a version quoted the whole command (`"…/caprock statusline"`), which the shell resolves as a single nonexistent filename, so the line printed nothing and said nothing about why — `up` recognises that spelling, repairs it, and says it did. Nothing else is normalised; a working command of ours is left as it is. Claude Code pipes its status JSON on stdin (per assistant message, 300ms debounce); the command prints a compact one-line status to stdout (`⛰ · model · ctx% · $cost · 5h N% resets HH:MM · 7d N%`) and, best-effort, forwards the `rate_limits` windows (`used_percentage` 0–100, `resets_at` unix seconds) to the daemon via `POST /v1/statusline`. Like the shim it is fire-and-forget and can never break the session: it prints from the stdin JSON **first**, then POSTs with a ≤300ms budget, drops silently if the daemon is down, and always exits 0. `rate_limits` is present only for Pro/Max subscribers (absent → the line still renders, no POST). The daemon's `/v1/stats/summary` returns `rate_limits` (current window state) with a `forecast` string only when the measured usage slope is rising and would reach the limit before the window resets — otherwise the fact alone, never a guess.
