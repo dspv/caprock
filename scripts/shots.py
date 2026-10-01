@@ -278,7 +278,7 @@ ACTIONS = {
         const i = document.querySelector('input[aria-label^="Search Claude"]');
         if (!i) return false;
         const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-        set.call(i, 'model id');
+        set.call(i, 'the bug');
         i.dispatchEvent(new Event('input', { bubbles: true }));
         i.form.requestSubmit();
         return true;
