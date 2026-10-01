@@ -115,9 +115,14 @@ then what Caprock adds, with a real screenshot or real output.
 | 6 | post: a measured month of cost         | cost, buying      | 2,900            |
 | 7 | `/teams/` + post on the Analytics API  | teams, otel       | 390              |
 
-- **Done:** #1 published 2026-10-01 at
-  `caprock.dev/guides/claude-code-statusline/`, linked from /docs and
-  /install; re-read Search Console for it from 2026-10-29.
+- **Done:** all seven published 2026-10-01. #1 `/guides/claude-code-statusline/`
+  (linked from /docs and /install); #2 and #3 (linked from the home strips);
+  #4 and #5 (linked from /docs); #6 `/blog/claude-code-cost-per-month/`; #7
+  `/blog/claude-code-analytics/` plus the /teams compare rows. Two guides
+  beyond the plan went out the same day: `/guides/claude-code-on-your-phone/`
+  and `/guides/run-claude-code-agents-in-parallel/` (owns `claude code agent
+  teams`, 2,900). Each was fact-checked by a separate agent first. Re-read
+  Search Console for all of them from 2026-10-29.
 - **Order** is fit first, then volume against how weak the current results
   are. #5 is lower than its volume because Caprock answers only the cost half.
 - **Home** keeps `Claude Code usage dashboard`; guide #2 answers the how-to
