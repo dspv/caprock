@@ -486,38 +486,76 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 	// dashboard used to caption every empty Context "unknown model", including
 	// on a session whose model it was naming in the neighbouring column — the
 	// model is known there, it just has not answered yet.
+	//
+	// Measured on the main thread's last turn, not a subagent's: a subagent
+	// starts from a fresh, small prompt, so a session whose context was nearly
+	// full read nearly empty for as long as its subagent ran. Only a session
+	// with no main-thread turn at all (an OpenCode child session) is measured
+	// by its subagent turns, which are then its own.
 	sum.ContextNote = "no turn yet"
-	for i := len(last) - 1; i >= 0; i-- {
-		e := last[i]
-		if e.Kind == event.KindTurnAssistant && e.Tokens != nil {
-			model := firstNonEmpty(e.Model, sess.Model)
-			if model == "" {
-				sum.ContextNote = "unknown model"
-				break
-			}
-			if s.d.Table == nil {
-				sum.ContextNote = "no pricing table"
-				break
-			}
-			row, ok := s.d.Table.Lookup(model)
-			if !ok || row.ContextWindow == 0 {
-				// Naming it matters: an id the table does not carry is the one
-				// thing a user can report and we can fix.
-				sum.ContextNote = model + " not in pricing table"
-				break
-			}
-			toks := e.Tokens.In + e.Tokens.CacheRead + e.Tokens.CacheWrite
-			sum.Context = &ContextFill{
-				Tokens:      toks,
-				Window:      row.ContextWindow,
-				Pct:         100 * float64(toks) / float64(row.ContextWindow),
-				NextCallUSD: contexttax.NextCall(toks, contexttax.PricesOf(row)),
-			}
-			sum.ContextNote = ""
-			break
+	turn, ok := lastContextTurn(last)
+	if !ok || turn.Subagent() {
+		main, found, err := store.LastMainTurn(ctx, q, sess.SessionID)
+		if err != nil {
+			return SessionSummary{}, nil, err
+		}
+		if found {
+			turn, ok = main, true
 		}
 	}
+	if ok {
+		sum.Context, sum.ContextNote = s.contextFill(turn, sess.Model)
+	}
 	return sum, last, nil
+}
+
+// contextFill measures one turn's prompt against its model's window, or says
+// why it cannot.
+func (s *Server) contextFill(e event.Event, sessionModel string) (*ContextFill, string) {
+	model := firstNonEmpty(e.Model, sessionModel)
+	if model == "" {
+		return nil, "unknown model"
+	}
+	if s.d.Table == nil {
+		return nil, "no pricing table"
+	}
+	row, ok := s.d.Table.Lookup(model)
+	if !ok || row.ContextWindow == 0 {
+		// Naming it matters: an id the table does not carry is the one
+		// thing a user can report and we can fix.
+		return nil, model + " not in pricing table"
+	}
+	toks := e.Tokens.In + e.Tokens.CacheRead + e.Tokens.CacheWrite
+	return &ContextFill{
+		Tokens:      toks,
+		Window:      row.ContextWindow,
+		Pct:         100 * float64(toks) / float64(row.ContextWindow),
+		NextCallUSD: contexttax.NextCall(toks, contexttax.PricesOf(row)),
+	}, ""
+}
+
+// lastContextTurn is the newest assistant turn with usage in a window of
+// events, preferring the main thread's: a subagent's turn is returned only
+// when the window holds no main-thread turn, and the caller looks further back
+// for one before settling for it.
+func lastContextTurn(evs []event.Event) (event.Event, bool) {
+	var sub *event.Event
+	for i := len(evs) - 1; i >= 0; i-- {
+		e := evs[i]
+		if e.Kind != event.KindTurnAssistant || e.Tokens == nil {
+			continue
+		}
+		if !e.Subagent() {
+			return e, true
+		}
+		if sub == nil {
+			sub = &evs[i]
+		}
+	}
+	if sub != nil {
+		return *sub, true
+	}
+	return event.Event{}, false
 }
 
 func firstNonEmpty(a, b string) string {

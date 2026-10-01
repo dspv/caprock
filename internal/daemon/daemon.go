@@ -319,6 +319,10 @@ func (d *Daemon) run(ctx context.Context) error {
 		if _, err := d.rec.RebuildCodexDaily(ctx, keepFrom); err != nil && ctx.Err() == nil {
 			d.log.Warn("could not rebuild Codex daily totals", "component", "rollup", "err", err)
 		}
+		// Once: a subagent's turn used to overwrite its session's model.
+		if _, err := d.rec.RepairSessionModels(ctx); err != nil && ctx.Err() == nil {
+			d.log.Warn("could not restore session models", "component", "rollup", "err", err)
+		}
 		if _, err := d.rec.ApplyCorrections(ctx); err != nil && ctx.Err() == nil {
 			d.log.Warn("could not correct turns the previous pricing table priced wrongly", "component", "rollup", "err", err)
 		}

@@ -4,6 +4,7 @@
 package event
 
 import (
+	"bytes"
 	"encoding/json"
 	"time"
 )
@@ -127,4 +128,25 @@ type Event struct {
 	// TouchDir is the directory this tool call touched, resolved at ingest from
 	// the tool's own input. Empty when the tool named no path.
 	TouchDir string `json:"touch_dir,omitempty"`
+}
+
+// Subagent reports whether the event belongs to a subagent working inside the
+// session rather than to the session's main thread: a Claude Code sidechain, a
+// Codex subagent filed under its parent, a hook fired inside a subagent. Two
+// marks say so and either is enough: an agent id (hooks, transcripts and Codex
+// set one on a subagent's events) or `sidechain: true` in the payload, the key
+// every source with subagents writes.
+//
+// The SQL twin is store.MainThreadWhere; the two must agree.
+func (e Event) Subagent() bool {
+	if e.AgentID != "" {
+		return true
+	}
+	if !bytes.Contains(e.Payload, []byte(`"sidechain"`)) {
+		return false
+	}
+	var p struct {
+		Sidechain bool `json:"sidechain"`
+	}
+	return json.Unmarshal(e.Payload, &p) == nil && p.Sidechain
 }

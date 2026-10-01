@@ -161,8 +161,19 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 		// inside a session that is otherwise gpt-5.6-sol. The session's model is
 		// what the card shows and what context pricing looks up; the review model
 		// is not it. An empty Model is a no-op in UpsertSession.
+		//
+		// A subagent's turn must not overwrite it either. Its model is its own —
+		// an Opus session's Explore subagent runs on Haiku — and the turn is
+		// still priced and counted by it below; it only names the session when
+		// nothing from the main thread has. Without this an Opus session read as
+		// Haiku on its card, and its context fill was measured against the
+		// wrong window.
 		if !internalModel {
-			patch.Model = ev.Model
+			if ev.Subagent() {
+				patch.SubagentModel = ev.Model
+			} else {
+				patch.Model = ev.Model
+			}
 		}
 		if ev.Kind == event.KindAgentStop && ev.AgentID == "" {
 			// A top-level Stop means the turn ended, not the session; the session

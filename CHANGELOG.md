@@ -15,6 +15,20 @@ Phase 3 (Delight) has no plan by design.
   sessions started from Caprock now record the question, so Memory can find a
   session by what you asked it. Sessions from before keep none.
 
+### Fixed
+
+- **A session shows the model it runs on, not its subagent's.** When a
+  session's subagent ran on a different model — an Opus session sending an
+  Explore task to Haiku — the session took the subagent's model on its card,
+  in the session lists and in the context window it was measured against.
+  The subagent's turns still count toward the session's and the day's cost,
+  by their own model. Sessions already stored with the wrong model are
+  corrected once, on the next start.
+- **Context fill no longer drops while a subagent works.** The badge measured
+  the session's last turn, and a subagent's last turn starts from a small
+  prompt of its own, so a nearly full context read nearly empty until the
+  subagent finished. It now measures the session's own last turn.
+
 ## [0.64.0] - 2026-10-01
 
 ### Security

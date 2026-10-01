@@ -61,6 +61,10 @@ const (
 	// from another agent removed, and subagent turns moved off the parent's
 	// line-number keys (codex.Ingester.repairSplit).
 	MetaCodexSplitRepaired = "codex_split_repaired"
+	// MetaSessionModelRepaired marks that sessions.model was recomputed once
+	// from each session's latest main-thread turn: earlier versions let a
+	// subagent's turn overwrite it (rollup.RepairSessionModels).
+	MetaSessionModelRepaired = "session_model_repaired"
 	// MetaReportWeek is the ISO week of the last weekly report that was sent,
 	// as "2026-W36". It lives here rather than in memory because an in-memory
 	// marker sends a second copy of the message after every restart — the bug

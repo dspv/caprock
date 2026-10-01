@@ -184,6 +184,12 @@ func InsertEvent(ctx context.Context, q Querier, ev *event.Event) (int64, error)
 // strings mean "no information" and are never written over existing values.
 type SessionPatch struct {
 	Cwd, Project, Model, TranscriptPath, GitBranch, Version string
+	// SubagentModel is the model of a subagent's turn inside this session. It
+	// names the session only while nothing else has: a session run on Opus
+	// whose Explore subagent ran on Haiku is an Opus session, and its card,
+	// its list row and its context window all read this column. Model, the
+	// main thread's, always wins over it.
+	SubagentModel string
 	// Agent is the coding agent that produced the session ("claude",
 	// "opencode"). Empty leaves the column at its default rather than
 	// overwriting a value already stored.
@@ -241,6 +247,10 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 	// basename label by accident. repoKnown is false when the patch carries no
 	// cwd, and then the stored resolution is left alone rather than blanked.
 	project, repoRoot, repoPath, repoKnown := p.resolveRepoFields()
+	model := p.Model
+	if model == "" {
+		model = p.SubagentModel
+	}
 	_, err := q.ExecContext(ctx, `
 		INSERT INTO sessions(session_id, cwd, project, model, started_at, last_event_at, status, transcript_path, has_hooks, has_transcript, git_branch, version, repo_root, repo_path, agent, pid, title, worked_at, parent_session)
 		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), 'claude'), ?, ?, ?, ?)
@@ -249,7 +259,9 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 		  project         = COALESCE(NULLIF(excluded.project, ''), sessions.project),
 		  repo_root       = CASE WHEN ? THEN excluded.repo_root ELSE COALESCE(sessions.repo_root, excluded.repo_root) END,
 		  repo_path       = CASE WHEN ? THEN excluded.repo_path ELSE COALESCE(sessions.repo_path, excluded.repo_path) END,
-		  model           = COALESCE(NULLIF(excluded.model, ''), sessions.model),
+		  -- The main thread's model wins; a subagent's only fills an empty one.
+		  model           = CASE WHEN ? != '' THEN excluded.model
+		                         ELSE COALESCE(NULLIF(sessions.model, ''), NULLIF(excluded.model, ''), sessions.model) END,
 		  transcript_path = COALESCE(NULLIF(excluded.transcript_path, ''), sessions.transcript_path),
 		  git_branch      = COALESCE(NULLIF(excluded.git_branch, ''), sessions.git_branch),
 		  version         = COALESCE(NULLIF(excluded.version, ''), sessions.version),
@@ -277,8 +289,8 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 		  title           = COALESCE(NULLIF(excluded.title, ''), sessions.title),
 		  worked_at       = MAX(sessions.worked_at, excluded.worked_at),
 		  parent_session  = COALESCE(NULLIF(excluded.parent_session, ''), sessions.parent_session)`,
-		id, p.Cwd, project, p.Model, p.StartedAt, p.LastEventAt, status, p.TranscriptPath, b2i(p.FromHook), b2i(p.FromTranscript), p.GitBranch, p.Version, repoRoot, repoPath, p.Agent, p.PID, strings.TrimSpace(p.Title), p.WorkedAt, p.ParentSession,
-		repoKnown, repoKnown,
+		id, p.Cwd, project, model, p.StartedAt, p.LastEventAt, status, p.TranscriptPath, b2i(p.FromHook), b2i(p.FromTranscript), p.GitBranch, p.Version, repoRoot, repoPath, p.Agent, p.PID, strings.TrimSpace(p.Title), p.WorkedAt, p.ParentSession,
+		repoKnown, repoKnown, p.Model,
 		p.Status, p.Status)
 	if err != nil {
 		return fmt.Errorf("upsert session: %w", err)
@@ -768,9 +780,13 @@ const fragmentMaxRunes = 240
 const assistantTextWhere = `
 	e.kind = 'turn.assistant'
 	AND e.internal = 0
-	AND COALESCE(e.agent_id, '') = ''
-	AND json_extract(e.payload, '$.sidechain') IS NOT 1
+	AND ` + MainThreadWhere + `
 	AND COALESCE(json_extract(e.payload, '$.text'), '') != ''`
+
+// MainThreadWhere keeps the events of a session's main thread and drops its
+// subagents', for a query over `events e`. It is the SQL twin of
+// event.Event.Subagent and must say the same thing.
+const MainThreadWhere = `COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1`
 
 // SessionNotes returns what Claude said in a session, newest first. Sidechains
 // are excluded; the caller gets main-thread prose only.
@@ -965,6 +981,37 @@ func EventsBefore(ctx context.Context, q Querier, sessionID string, before int64
 		out = append(out, ev)
 	}
 	return out, rows.Err()
+}
+
+// mainTurnScan bounds how far back LastMainTurn looks. A subagent can run for
+// hundreds of events while the main thread waits on it; past this many, the
+// main thread's last reading is too old to describe the context anyway.
+const mainTurnScan = 5000
+
+// LastMainTurn returns the newest turn.assistant of a session's main thread
+// that carried usage, among its newest mainTurnScan events. found is false when
+// there is none — a session whose every turn is a subagent's, such as an
+// OpenCode child session, or one that has not answered yet.
+//
+// It exists for the context-fill badge: a subagent starts with a fresh, small
+// prompt, so measuring the session by its subagent's last turn showed an
+// almost full context as almost empty.
+func LastMainTurn(ctx context.Context, q Querier, sessionID string) (ev event.Event, found bool, err error) {
+	row := q.QueryRowContext(ctx, `
+		SELECT `+eventCols+` FROM (
+			SELECT * FROM events WHERE session_id = ? ORDER BY ts DESC, id DESC LIMIT ?
+		) e
+		WHERE e.kind = 'turn.assistant' AND e.internal = 0 AND e.tokens_in IS NOT NULL
+		  AND `+MainThreadWhere+`
+		ORDER BY e.ts DESC, e.id DESC LIMIT 1`, sessionID, mainTurnScan)
+	ev, err = scanEvent(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return event.Event{}, false, nil
+	}
+	if err != nil {
+		return event.Event{}, false, err
+	}
+	return ev, true, nil
 }
 
 // TouchFile records that a session touched a path. Returns true when the path is new for the session.
