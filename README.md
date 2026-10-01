@@ -153,6 +153,24 @@ It reads from the running daemon and only issues GETs. Numbers move as you work,
 so re-running it is the point — a figure you pasted last month is a figure about
 last month.
 
+## Take the record out
+
+Every agent Caprock reads — Claude Code, Codex, OpenCode, Gemini CLI, DeepSeek —
+lands in the same tables with the same columns. `caprock export` writes one of
+them out, for a spreadsheet, a notebook or your own warehouse:
+
+```bash
+caprock export --since 30d > events.tsv           # one row per turn and tool call
+caprock export sessions --format csv --out s.csv  # one row per session
+caprock export --agent codex --format jsonl       # one agent, as JSON lines
+```
+
+It reads the database read-only, so it works with the daemon stopped. The
+columns, what each agent's source maps to, and what is deliberately left out are
+in [`docs/schema.md`](docs/schema.md). The record also outlives the agents' own:
+Claude Code removes its transcripts after 30 days, and Caprock keeps what it
+read from them.
+
 ## What it is
 
 Claude Code runs in your terminal. Caprock is the window into it.

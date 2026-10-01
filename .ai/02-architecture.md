@@ -209,6 +209,7 @@ internal/service/     # `caprock service`: autostart via launchd / systemd user 
 internal/userenv/     # the user's login-shell environment for processes Caprock starts (not launchd's bare one)
 internal/logcap/      # rotates the daemon's log (caprock.log or service.log) at 64MB; trims the one no longer written
 internal/version/     # the version string (stamped via -ldflags at build)
+internal/export/      # `caprock export`: the record out as TSV/CSV/jsonl, read-only, fixed columns (docs/schema.md)
 internal/config/      # data dir, config.json, runtime.json, atomic writes
 internal/event/       # the normalized Event type
 internal/store/       # sqlite (modernc), migrations, all SQL

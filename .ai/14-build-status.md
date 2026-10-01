@@ -71,6 +71,15 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-01 — `caprock export`: the record, out
+
+A stranger on Threads read Caprock as "parsing heavy JSON" and proposed one
+normalized table for every agent (FB-041). That table is the `events` table;
+what was missing was a way out of it. `caprock export` writes `events` or
+`sessions` as TSV, CSV or JSON lines with a fixed, documented column set
+([docs/schema.md](../docs/schema.md), [03-contracts.md § Export](03-contracts.md)),
+reading the database read-only so it works with the daemon down.
+
 ### 2026-09-30 — Reliable under load, and picking up after a restart
 
 The dashboard stalled on a busy machine: every panel refetched on each live

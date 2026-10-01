@@ -7,7 +7,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
-Phase 3 (Delight) has no plan by design.
+### Added
+
+- `caprock export` writes Caprock's record out as TSV, CSV or JSON lines:
+  `events` (one row per turn, tool call or lifecycle event) or `sessions`, with
+  the same columns whichever of the five agents wrote the source. Filters by
+  `--since` and `--agent`; `--payload` adds the raw source record to JSON lines.
+  It reads the database read-only and works with the daemon stopped. The column
+  sets are documented in `docs/schema.md` and only ever grow at the end (FB-041).
 
 ## [0.61.0] - 2026-09-30
 
