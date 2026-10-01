@@ -65,6 +65,11 @@ const (
 	// from each session's latest main-thread turn: earlier versions let a
 	// subagent's turn overwrite it (rollup.RepairSessionModels).
 	MetaSessionModelRepaired = "session_model_repaired"
+	// MetaDeepseekInjectedRemoved marks that the prompts earlier versions
+	// stored for DeepSeek Harness's own `user/message` records (instructions,
+	// runtime context) have been deleted once, verified against the
+	// transcripts (deepseek.Ingester.removeInjected).
+	MetaDeepseekInjectedRemoved = "deepseek_injected_removed"
 	// MetaReportWeek is the ISO week of the last weekly report that was sent,
 	// as "2026-W36". It lives here rather than in memory because an in-memory
 	// marker sends a second copy of the message after every restart — the bug

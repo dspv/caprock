@@ -694,6 +694,71 @@ func TestSearchNotesMatchesThePrompt(t *testing.T) {
 	}
 }
 
+// The prompt that produced a reply is the one before it in time, not in event
+// id. A prompt imported after its replies — OpenCode's history, filled in on a
+// later start — has a higher id than every reply it produced, and under an id
+// window no OpenCode reply could be found by its question.
+func TestSearchNotesFindsAPromptStoredAfterItsReply(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+
+	add := func(ts int64, kind event.Kind, key, field, text string) {
+		payload, _ := json.Marshal(map[string]any{field: text})
+		ev := &event.Event{SessionID: "s1", Source: event.SourceOpenCode, Kind: kind,
+			Ts: time.UnixMilli(ts), Key: key, Payload: payload}
+		if _, err := InsertEvent(ctx, s.db, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Replies first, as the importer stored them before it read prompts.
+	add(2000, event.KindTurnAssistant, "a1", "text", "The room set is checked before the body.")
+	add(4000, event.KindTurnAssistant, "a2", "text", "All green.")
+	// Then the prompts, backfilled with ids after both replies.
+	add(1000, event.KindTurnUser, "u1", "prompt", "why does the SSO header resolve that way?")
+	add(3000, event.KindTurnUser, "u2", "prompt", "run the tests")
+
+	got, err := SearchNotes(ctx, s.db, "SSO", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || !strings.Contains(got[0].Text, "room set") {
+		t.Fatalf("a backfilled prompt must find the reply after it in time, got %+v", got)
+	}
+	// Only the nearest prompt: the later reply answers "run the tests".
+	if got, _ := SearchNotes(ctx, s.db, "run the tests", 0, 0); len(got) != 1 || got[0].Text != "All green." {
+		t.Fatalf("searching the second prompt returned %+v", got)
+	}
+}
+
+// The prompt has to sit within the reply's last promptLookback events: a long
+// exchange's late replies are not "the answer to" a question asked a hundred
+// tool calls ago.
+func TestSearchNotesPromptWindow(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	ins := func(ts int64, kind event.Kind, key string, payload map[string]any) {
+		b, _ := json.Marshal(payload)
+		if _, err := InsertEvent(ctx, s.db, &event.Event{SessionID: "s1", Source: event.SourceTranscript,
+			Kind: kind, Ts: time.UnixMilli(ts), Key: key, Payload: b}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ins(1000, event.KindTurnUser, "u", map[string]any{"prompt": "the SSO question"})
+	ins(1001, event.KindTurnAssistant, "near", map[string]any{"text": "first answer"})
+	for i := 0; i < promptLookback; i++ {
+		ins(int64(1002+i), event.KindToolPre, fmt.Sprintf("t%d", i), map[string]any{"tool_name": "Bash"})
+	}
+	ins(5000, event.KindTurnAssistant, "far", map[string]any{"text": "much later answer"})
+
+	got, err := SearchNotes(ctx, s.db, "SSO", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Text != "first answer" {
+		t.Fatalf("want only the reply inside the window, got %+v", got)
+	}
+}
+
 // Every /v1/stats/summary computes the model mix, and the Cost screen asks for
 // one on an interval. idx_events_cost_cover carries model but leads on kind,
 // so a query filtering only on ts cannot use it — SQLite grouped in a temp

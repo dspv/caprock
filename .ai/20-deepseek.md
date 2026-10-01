@@ -40,6 +40,18 @@ translation rather than a pipeline.
   after the opening question of every session on the owner's machine. Stored
   as prompts, they became "the prompt" of the first reply and search matched a
   reminder instead of the question, so only `source.kind: user` is imported.
+- **The rows stored before that rule are removed once.** On the first start
+  after it, the importer reads every transcript again and deletes the
+  `turn.user` rows whose key names a record the transcript marks as not the
+  person's (`meta.deepseek_injected_removed` gates it). Only the transcript can
+  say which record a row came from — the row keeps the text and the seq, not
+  the `source.kind` — so nothing is judged by its words, and a session whose
+  transcript is gone keeps its rows. A prompt adds nothing to session or daily
+  totals, so there are none to move; a session time a deleted row set would be
+  recomputed in the same transaction. On a copy of the owner's database
+  (2026-10-01) it removed 5 of 22 stored DeepSeek prompts across both sessions
+  — two openings of AGENTS.md and runtime context each, and one mid-session
+  CLAUDE.md update — in 0.1 s, and changed no session time or total.
 - **No shim, no config injection, no process signalled.** Exactly like Codex:
   nothing is written into another tool's config.
 
@@ -87,6 +99,8 @@ still stored with its real tokens and no cost rather than a guessed one.
 - `internal/deepseek/deepseek.go` — `Dir`, `List`, `ParseFile` (zstd decode +
   JSONL v3 parse).
 - `internal/deepseek/ingest.go` — the poller that writes into the store.
+- `internal/deepseek/cleanup.go` — the one-time removal of injected-context
+  prompts stored before they were skipped.
 - `internal/deepseek/live_check_test.go` — a smoke check against whatever DSH is
   installed on the machine, skipped where there is none; the fixture is written
   from what real transcripts contain, and this is what keeps that true.

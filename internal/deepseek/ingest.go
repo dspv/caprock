@@ -67,6 +67,11 @@ func (in *Ingester) Run(ctx context.Context) error {
 	if err := in.once(ctx); err != nil && ctx.Err() == nil {
 		in.log.Warn("deepseek import failed", "component", "deepseek", "err", err)
 	}
+	// After the first pass, in this goroutine: it never delays the import, and
+	// it reads the transcripts that pass may have just stored rows from.
+	if files, err := List(in.dir); err == nil {
+		in.removeInjected(ctx, files)
+	}
 	for {
 		select {
 		case <-ctx.Done():
