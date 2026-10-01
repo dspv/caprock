@@ -9,6 +9,20 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Security
+
+- **A paired tablet or phone can read Caprock and no longer control it.** The
+  device token was the only check, so a paired device could start a command,
+  type into a session, pause or kill it, change settings and the licence,
+  create and approve tasks, start the orchestrator and turn the task runner on
+  — everything the dashboard on the machine can do, although ADR-029 says a
+  tablet is somewhere to read figures, not a second control room. A paired
+  device may now make only a named list of reads; anything else is refused with
+  403, including the terminal socket and the folder listings, and a route
+  added later is closed to it until it is named. It no longer receives the
+  licence key with the settings. The tablet's dashboard stops drawing the
+  controls it cannot use. Nothing changes on the machine itself.
+
 ### Fixed
 
 - **`caprock statusline install` no longer sends you in a circle.** With a

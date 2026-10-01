@@ -12,7 +12,7 @@
  * you turn it on — this component is also where you turn it on, and off again.
  */
 import { useEffect, useState } from 'react'
-import { api, type Settings, type UpdateStatus } from '@/lib/api'
+import { api, isPairedDevice, type Settings, type UpdateStatus } from '@/lib/api'
 import { fmtAgo } from '@/lib/format'
 import { Copyable } from '@/components/ui'
 
@@ -41,7 +41,9 @@ export function UpdateBanner({ plan, onSave, now, owned = 0 }: {
 
   // The offer to switch checking on, shown once until dismissed.
   if (plan && !plan.update_checks) {
-    if (dismissed === 'offer') return null
+    // Switching the check on is a settings change, which a paired device may
+    // not make (ADR-029).
+    if (dismissed === 'offer' || isPairedDevice()) return null
     return (
       <Frame tone="muted">
         <span className="text-fg-muted">

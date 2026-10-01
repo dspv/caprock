@@ -5,7 +5,7 @@ import { href, type Route } from '@/lib/router'
 import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { useTheme } from '@/lib/theme'
-import { api, type UpdateStatus } from '@/lib/api'
+import { api, isPairedDevice, type UpdateStatus } from '@/lib/api'
 import {
   PLATFORMS,
   commandContradicts,
@@ -110,7 +110,8 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           <PremiumChip />
           <FeedbackButton screen={screenName(route)} />
           <ConnDot state={live.conn} lastFrameAt={live.lastFrameAt} />
-          <PlanChip plan={plan} onSave={savePlan} />
+          {/* Setting the plan is a settings change: on the machine only (ADR-029). */}
+          {!isPairedDevice() && <PlanChip plan={plan} onSave={savePlan} />}
           <ThemeToggle />
           <VersionChip />
           <a href="#/settings" className="text-fg-muted hover:text-fg no-underline">status</a>

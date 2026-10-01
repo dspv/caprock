@@ -1,17 +1,15 @@
 // Package pairing lets a second device — a tablet, a phone — reach a daemon
 // that is otherwise bound to loopback.
 //
-// NOTHING USES THIS YET. No listener is opened, no endpoint is served, and no
-// screen offers to pair anything. It was built and tested first because it is
-// the part that decides who gets in, and then the feature it belongs to was
-// put on hold: nobody has asked to reach Caprock from a phone, and the three
-// ways of arranging it differ so much in what they cost the user that
-// choosing one before anyone wants it would be guessing. See FB-019 in
-// .fdck/01-ledger.md.
+// It is the store behind LAN access (ADR-029): `caprock up --lan` or the
+// status screen's switch opens a second listener, internal/api's gate checks
+// every request from the network against the tokens kept here, and the status
+// screen issues codes and lists devices. It was built and tested before that
+// feature, because it is the part that decides who gets in.
 //
-// Kept rather than deleted because the reasoning here — single-use codes,
-// constant-time comparison, immediate revocation, never binding 0.0.0.0 — is
-// the expensive part to get right and does not change whichever route wins.
+// A token makes a device a reader, not the owner. What a paired device may do
+// is decided in internal/api (pairedDeviceRoutes), not here: this package
+// answers "which device is this", never "what may it do".
 //
 // The rule that shapes everything here is rule 4: all data stays on the
 // machine. Nothing in this package reaches the network, registers a name, or

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api, ApiError, type ResumeInfo } from '@/lib/api'
+import { api, ApiError, isPairedDevice, type ResumeInfo } from '@/lib/api'
 import { navigate } from '@/lib/router'
 
 /**
@@ -45,6 +45,9 @@ export function ContinueSession({
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState('')
+
+  // Continuing starts a process, which a paired device may not do.
+  if (isPairedDevice()) return null
 
   const command = resume.command ?? ''
 

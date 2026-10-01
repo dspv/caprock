@@ -1,4 +1,4 @@
-import { api, errText, type SessionSummary } from '@/lib/api'
+import { api, errText, isPairedDevice, type SessionSummary } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { navigate } from '@/lib/router'
 import { live, useLive } from '@/lib/live'
@@ -190,8 +190,13 @@ export function NowScreen() {
           * the last place anyone reading top-down would look. A user who had
           * moved onto Caprock full-time still could not find it. Top of the
           * screen, at the size of an action. */}
-        <QuickChatButton available={status.data?.claude_available} />
-        <NewSessionButton available={status.data?.claude_available} onClick={() => setSpawning(true)} />
+        {/* A paired device reads; starting a session is done on the machine. */}
+        {!isPairedDevice() && (
+          <>
+            <QuickChatButton available={status.data?.claude_available} />
+            <NewSessionButton available={status.data?.claude_available} onClick={() => setSpawning(true)} />
+          </>
+        )}
       </div>
 
       {/* The share offer lives beside the figures it is about, in the ALL TIME

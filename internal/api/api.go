@@ -794,12 +794,18 @@ func (s *Server) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
 
 // handleGetSettings returns the user-stated settings. Absent settings are not
 // an error — they mean "not stated", and the UI simply omits the comparison.
-func (s *Server) handleGetSettings(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	if s.d.Settings == nil {
 		s.failCode(w, http.StatusNotImplemented, errors.New("settings are not available"))
 		return
 	}
-	writeJSON(w, http.StatusOK, s.d.Settings.Get())
+	st := s.d.Settings.Get()
+	if s.fromPairedDevice(r) {
+		// A paired device reads figures; it does not get the key that pays for
+		// them. Whether the plan is active is GET /v1/premium's answer.
+		st.LicenseKey = ""
+	}
+	writeJSON(w, http.StatusOK, st)
 }
 
 // handlePutSettings stores the user's stated billing. It validates rather than

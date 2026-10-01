@@ -500,6 +500,11 @@ loopback-only:
   refused until a device has traded a code for a token. Devices are listed on
   the status screen and can be revoked one by one, which takes effect on the
   next request.
+- **A paired device reads; it does not control.** It sees sessions, costs,
+  answers, changes and the task board. Starting, typing into, pausing or
+  stopping a session, and changing settings, tasks or pairing, happen only on
+  the machine Caprock runs on — the daemon refuses them from anywhere else, and
+  the dashboard on the tablet does not offer them.
 - **It is off again next time.** Not a stored setting: a laptop opened
   somewhere you do not trust should not be carrying a decision you made at
   home. What survives a restart is the list of devices, so you do not walk back

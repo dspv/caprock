@@ -539,6 +539,20 @@ export function deviceToken(): string {
   }
 }
 
+/**
+ * Whether this dashboard is being read from a paired device rather than on
+ * the machine Caprock runs on.
+ *
+ * The token is kept per origin, and a paired device reaches the dashboard at
+ * the LAN address while the machine itself uses loopback, so holding one is
+ * exactly "this is the tablet". A paired device may read and nothing else
+ * (ADR-029) — the daemon refuses the rest with 403 — so controls it cannot use
+ * are not drawn there.
+ */
+export function isPairedDevice(): boolean {
+  return deviceToken() !== ''
+}
+
 export function setDeviceToken(token: string) {
   try {
     localStorage.setItem(DEVICE_TOKEN_KEY, token)
