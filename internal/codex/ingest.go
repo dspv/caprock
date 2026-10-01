@@ -50,6 +50,9 @@ type Ingester struct {
 	// limitsChecked is set once the first pass has made sure the store holds
 	// Codex's plan limits (see backfillLimits).
 	limitsChecked bool
+	// textChecked is set once the first pass has given the turns stored
+	// before prose was read their text (see backfillText).
+	textChecked bool
 
 	namesAt time.Time
 	// namesFor is how many transcripts had been imported at that sync. A
@@ -134,6 +137,7 @@ func (in *Ingester) once(ctx context.Context) error {
 		in.limitsChecked = true
 		in.backfillLimits(ctx, files)
 	}
+	readNow := map[string]bool{}
 	for _, f := range files {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -159,6 +163,7 @@ func (in *Ingester) once(ctx context.Context) error {
 			return err
 		}
 		in.recordLimits(ctx, s)
+		readNow[f.Path] = true
 		changed = true
 		in.mu.Lock()
 		in.seen[f.Path] = fileState{mod: f.Modified, size: f.Size, session: s.ID}
@@ -171,6 +176,10 @@ func (in *Ingester) once(ctx context.Context) error {
 		in.mu.Unlock()
 	}
 	in.syncNames(ctx)
+	if !in.textChecked {
+		in.textChecked = true
+		in.backfillText(ctx, files, readNow)
+	}
 	in.mu.Lock()
 	in.stats.LastPoll = time.Now().UnixMilli()
 	in.mu.Unlock()
@@ -257,7 +266,133 @@ func (in *Ingester) session(ctx context.Context, s *Session) error {
 	if err := in.repriceSession(ctx, s); err != nil {
 		in.log.Debug("codex reprice failed", "component", "codex", "session_id", s.ID, "err", err)
 	}
+	// A turn's text can arrive after its row: a message written after the
+	// request's last token_count joins that turn when the request ends. And
+	// rows imported before prose was read have none. Both are filled here.
+	if _, err := in.syncText(ctx, s); err != nil {
+		in.log.Debug("codex text sync failed", "component", "codex", "session_id", s.ID, "err", err)
+	}
 	return nil
+}
+
+// syncText writes each parsed turn's prose onto its stored row where the row's
+// text differs, and returns how many rows changed.
+//
+// Event keys are idempotent, so a re-read never rewrites a row; this is the one
+// place a Codex turn's payload is updated after it is stored, and it touches
+// only `payload.text`. A row is matched on its key AND its timestamp: a
+// subagent's file carries its parent's session id and keys by line number, so
+// a key alone can name a row that came from a different file.
+func (in *Ingester) syncText(ctx context.Context, s *Session) (int, error) {
+	want := map[string]Turn{}
+	for _, t := range s.Turns {
+		if t.Text != "" && !t.At.IsZero() {
+			want[t.Key] = t
+		}
+	}
+	if len(want) == 0 || in.rec == nil || in.rec.Store == nil {
+		return 0, nil
+	}
+	rows, err := in.rec.Store.DB().QueryContext(ctx,
+		`SELECT id, COALESCE(key,''), ts, COALESCE(json_extract(payload,'$.text'),'')
+		   FROM events
+		  WHERE session_id = ? AND source = ? AND kind = ?`,
+		s.ID, string(event.SourceCodex), string(event.KindTurnAssistant))
+	if err != nil {
+		return 0, err
+	}
+	type fix struct {
+		id   int64
+		text string
+	}
+	var todo []fix
+	for rows.Next() {
+		var id, ts int64
+		var key, text string
+		if err := rows.Scan(&id, &key, &ts, &text); err != nil {
+			_ = rows.Close()
+			return 0, err
+		}
+		t, ok := want[key]
+		if !ok || t.At.UnixMilli() != ts || t.Text == text {
+			continue
+		}
+		todo = append(todo, fix{id: id, text: t.Text})
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return 0, err
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	if len(todo) == 0 {
+		return 0, nil
+	}
+	err = in.rec.Store.WithTx(ctx, func(q store.Querier) error {
+		for _, f := range todo {
+			if _, err := q.ExecContext(ctx,
+				`UPDATE events SET payload = json_set(payload, '$.text', ?) WHERE id = ? AND json_valid(payload)`,
+				f.text, f.id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return len(todo), nil
+}
+
+// backfillText gives the turns imported before this importer read prose their
+// text, once.
+//
+// The ordinary pass cannot: it skips every file it has already read (see
+// restoreSeen), and re-recording a file would change nothing anyway, because a
+// stored key is never rewritten. So each transcript the pass did not just
+// read is parsed once more and only syncText runs on it — no event is
+// recorded. It runs in the importer's own goroutine after the first pass, so
+// it never delays the daemon starting or the first import; it is cancelled
+// with the daemon and, unfinished, simply runs again on the next start, which
+// is safe because syncText only changes rows whose text differs.
+func (in *Ingester) backfillText(ctx context.Context, files []Transcript, readNow map[string]bool) {
+	if in.rec == nil || in.rec.Store == nil {
+		return
+	}
+	if done, _ := in.rec.Store.GetMeta(ctx, store.MetaCodexTextBackfilled); done == "1" {
+		return
+	}
+	start := time.Now()
+	var parsed, filled int
+	for _, f := range files {
+		if ctx.Err() != nil {
+			return
+		}
+		if readNow[f.Path] {
+			continue // the pass just read it, and syncText ran then
+		}
+		s, err := ParseFile(f.Path)
+		if err != nil {
+			continue
+		}
+		parsed++
+		n, err := in.syncText(ctx, s)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			in.log.Debug("codex text backfill", "component", "codex", "session_id", s.ID, "err", err)
+			continue
+		}
+		filled += n
+	}
+	if err := in.rec.Store.SetMeta(ctx, store.MetaCodexTextBackfilled, "1"); err != nil {
+		return
+	}
+	in.log.Info("codex replies given their text from the transcripts",
+		"component", "codex", "transcripts", parsed, "turns", filled,
+		"took_ms", time.Since(start).Milliseconds())
 }
 
 // turn stores one assistant turn.
@@ -274,6 +409,11 @@ func (in *Ingester) turn(ctx context.Context, s *Session, t Turn, info rollup.Se
 		"cwd":        s.Cwd,
 		"originator": s.Originator,
 		"reasoning":  t.Reasoning,
+	}
+	if t.Text != "" {
+		// The same key Claude Code's turns carry, so the Memory screen and
+		// its search read Codex's prose with no source-specific code.
+		fields["text"] = t.Text
 	}
 	if t.TotalOnly {
 		// Recorded so the figure can be traced later: this turn's transcript

@@ -315,6 +315,10 @@ func clipRunes(s string, n int) string {
 	return s
 }
 
+// ClipAssistantText applies the assistant-prose cap to text from another
+// agent's transcript, so every source's `payload.text` is cut the same way.
+func ClipAssistantText(s string) string { return clipRunes(s, MaxAssistantText) }
+
 func assistantPayload(l *Line) json.RawMessage {
 	var text []string
 	var tools []string

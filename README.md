@@ -225,7 +225,8 @@ database, opened read-only; Codex through the transcript it writes per session,
 under `$CODEX_HOME` (or `~/.codex`), archived sessions included; DeepSeek
 Harness through the transcript it writes per session. No shim, no
 settings file to edit, and sessions from before you installed Caprock are
-included, because each tool keeps its own history.
+included, because each tool keeps its own history. What Codex and DeepSeek
+Harness wrote back is searchable on the Memory screen beside Claude's.
 
 **The cost works differently for each, and it matters.** OpenCode computes its
 own figures and Caprock passes them through, so they match what OpenCode

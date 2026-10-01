@@ -37,6 +37,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/dspv/caprock/internal/ingest"
 )
 
 // maxLine bounds one JSONL record. Codex embeds whole file contents in tool
@@ -108,6 +110,17 @@ type Session struct {
 	// Limits is the most recent plan-limit sample in the transcript, when the
 	// session carried one.
 	Limits *Limits
+	// Imported marks a thread Codex built by importing another agent's
+	// session (its "import from Claude Code"): every turn id is
+	// `external-import-turn-N` and the replay ends on an
+	// `<EXTERNAL SESSION IMPORTED>` message. Its assistant messages are that
+	// other agent's prose and tool calls replayed as text, which Caprock
+	// already holds from the original transcript, so none is kept as Codex's.
+	Imported bool
+	// Subagent marks a thread Codex spawned for a sub-task or for its guardian
+	// reviewer (`session_meta.source.subagent`). Such a file opens with a copy
+	// of its parent's history and carries the parent's session id.
+	Subagent bool
 }
 
 // Turn is one assistant turn's token usage, already reduced to a delta.
@@ -128,6 +141,11 @@ type Turn struct {
 	// Its cost is therefore an upper bound: any part of it that was really a
 	// cached read would have been billed at a tenth.
 	TotalOnly bool
+	// Text is the prose the assistant wrote in this turn — the `output_text`
+	// of the assistant messages the sampling request produced — clipped like
+	// Claude Code's (ingest.ClipAssistantText). Empty for a turn that only
+	// called tools, and for imported and subagent threads (see Session).
+	Text string
 }
 
 // ToolCall is one tool invocation.
@@ -233,6 +251,35 @@ type window struct {
 	ResetsAt      *int64  `json:"resets_at"`
 }
 
+// message is a `response_item` of type "message". Only the assistant's are
+// read; `content` is a list of typed blocks, of which `output_text` is the
+// prose. Reasoning is a separate `reasoning` item and is never read here.
+type message struct {
+	Role    string `json:"role"`
+	Content []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	} `json:"content"`
+}
+
+// eventKind is the part of an `event_msg` payload the parser branches on:
+// token_count, and the bracket Codex writes around one user request —
+// task_started, then task_complete or turn_aborted.
+type eventKind struct {
+	Type   string `json:"type"`
+	TurnID string `json:"turn_id"`
+}
+
+// importedTurnPrefix is the turn id Codex gives every turn of a session it
+// imported from another agent, and importedMarker the message that ends the
+// replay. Measured on the owner's machine on 2026-10-01: all 100 threads
+// listed in ~/.codex/external_agent_session_imports.json carry the prefix, and
+// none of the other 76 rollouts does.
+const (
+	importedTurnPrefix = "external-import-turn-"
+	importedMarker     = "<EXTERNAL SESSION IMPORTED>"
+)
+
 type toolCallPayload struct {
 	Name  string          `json:"name"`
 	Input json.RawMessage `json:"input"`
@@ -267,6 +314,14 @@ func Parse(r io.Reader, path string) (*Session, error) {
 	// per-turn field is not used.
 	var prevTotal *usage
 	var lineNo int64
+	// pending holds assistant prose not yet tied to a turn. Codex writes a
+	// message BEFORE the token_count of the sampling request that produced it,
+	// so the text goes onto the next turn. taskStart is where the current user
+	// request's turns begin, so a message left over when a request ends joins
+	// that request's last turn rather than the next request's first.
+	var pending []string
+	taskStart := 0
+	seenMeta := false
 	for sc.Scan() {
 		line := sc.Bytes()
 		lineNo++
@@ -301,6 +356,13 @@ func Parse(r io.Reader, path string) (*Session, error) {
 			m.CLIVersion = jsonString(raw["cli_version"])
 			m.Originator = jsonString(raw["originator"])
 			m.BaseInstructions = raw["base_instructions"]
+			// A forked subagent's file holds its own session_meta and then a
+			// copy of its parent's, so only the first one says what this
+			// file is.
+			if !seenMeta && isSubagentSource(raw["source"]) {
+				s.Subagent = true
+			}
+			seenMeta = true
 			s.ID = firstNonEmpty(m.SessionID, m.ID)
 			s.Cwd = m.Cwd
 			s.CLIVersion = m.CLIVersion
@@ -340,11 +402,30 @@ func Parse(r io.Reader, path string) (*Session, error) {
 				s.Cwd = tc.Cwd
 			}
 		case "event_msg":
-			var k payloadKind
+			var k eventKind
 			if err := json.Unmarshal(rec.Payload, &k); err != nil {
 				continue
 			}
-			if k.Type != "token_count" {
+			if strings.HasPrefix(k.TurnID, importedTurnPrefix) {
+				s.Imported = true
+			}
+			switch k.Type {
+			case "task_started":
+				// Prose from a request that produced no turn at all has no
+				// row to sit on and is dropped. Measured: 36 of 2,120
+				// messages on the owner's machine, all in subagent files
+				// replaying their parent's history.
+				pending, taskStart = nil, len(s.Turns)
+				continue
+			case "task_complete", "turn_aborted":
+				if len(pending) > 0 && len(s.Turns) > taskStart {
+					last := &s.Turns[len(s.Turns)-1]
+					last.Text = joinText(append([]string{last.Text}, pending...))
+				}
+				pending = nil
+				continue
+			case "token_count":
+			default:
 				continue
 			}
 			var tc tokenCount
@@ -402,10 +483,31 @@ func Parse(r io.Reader, path string) (*Session, error) {
 				turn.In = d.TotalTokens
 				turn.TotalOnly = true
 			}
+			turn.Text = joinText(pending)
+			pending = nil
 			s.Turns = append(s.Turns, turn)
 		case "response_item":
 			var k payloadKind
 			if err := json.Unmarshal(rec.Payload, &k); err != nil {
+				continue
+			}
+			if k.Type == "message" {
+				var m message
+				if json.Unmarshal(rec.Payload, &m) != nil || m.Role != "assistant" {
+					continue
+				}
+				for _, b := range m.Content {
+					if b.Type != "output_text" && b.Type != "text" {
+						continue
+					}
+					t := strings.TrimSpace(b.Text)
+					if t == importedMarker {
+						s.Imported = true
+					}
+					if t != "" {
+						pending = append(pending, t)
+					}
+				}
 				continue
 			}
 			if k.Type != "custom_tool_call" && k.Type != "function_call" {
@@ -436,7 +538,44 @@ func Parse(r io.Reader, path string) (*Session, error) {
 		// No session_meta means this is not a rollout file we understand.
 		return nil, ErrNotASession
 	}
+	if s.Imported || s.Subagent {
+		// Imported prose is another agent's, already stored from its own
+		// transcript. A subagent's would be hidden from Memory anyway, as
+		// Claude Code's sidechains are — and its file carries the parent's
+		// session id, so its rows share keys with the parent's own and a
+		// text written from it could land on a parent row.
+		for i := range s.Turns {
+			s.Turns[i].Text = ""
+		}
+	}
 	return s, nil
+}
+
+// joinText joins a turn's messages the way Claude Code's text blocks are
+// joined, and clips the result with the same rune-safe cap.
+func joinText(parts []string) string {
+	keep := parts[:0:0]
+	for _, p := range parts {
+		if p != "" {
+			keep = append(keep, p)
+		}
+	}
+	if len(keep) == 0 {
+		return ""
+	}
+	return ingest.ClipAssistantText(strings.Join(keep, "\n"))
+}
+
+// isSubagentSource reports whether session_meta.source names a subagent. It is
+// a plain string ("cli", "vscode") for a session a person started and an
+// object with a `subagent` key for one Codex spawned.
+func isSubagentSource(raw json.RawMessage) bool {
+	var src map[string]json.RawMessage
+	if json.Unmarshal(raw, &src) != nil {
+		return false
+	}
+	_, ok := src["subagent"]
+	return ok
 }
 
 // jsonString decodes a raw value as a string, or returns "" for anything else.
