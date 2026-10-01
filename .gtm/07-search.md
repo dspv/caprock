@@ -144,10 +144,10 @@ verify. Findings from writing them (2026-10-01):
   read from the plan picker.
 - **#7 teams** — the compare row "spend per repository" is stale: Anthropic's
   OpenTelemetry export can tag repositories when opted in.
-- **Remote / mobile (parked)** — Caprock lets a paired phone or tablet watch
-  every session over the LAN or Tailscale, and pause or kill the ones it
-  started; it does not type into sessions or answer permission prompts. It
-  can own "watch Claude Code from your phone", never "remote control".
+- **Remote / mobile** — since v0.63.0 a paired phone or tablet is read-only:
+  it watches every session over the LAN or Tailscale and controls nothing. It
+  can own "watch Claude Code from your phone", never "remote control" — the
+  guide answers Remote Control first.
 
 ### Internal links
 
