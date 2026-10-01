@@ -23,6 +23,15 @@ Phase 3 (Delight) has no plan by design.
   the first start fills in sessions imported before. A subagent's replies stay
   out, as Claude Code's do.
 
+- **What Codex wrote back is in Memory.** Codex replies now appear on the
+  Memory screen, in its search and in a session's Answers tab, the same way
+  Claude Code's do. Replies from sessions Caprock had already read are filled
+  in once, in the background, from the transcripts Codex keeps. Sessions Codex
+  imported from Claude Code are left out, because those answers are already
+  there from Claude Code itself, and so is the chatter of Codex's own
+  subagents.
+
+
 ### Fixed
 
 - **Opus 5.5 and Sonnet 5 are priced right, including the turns already

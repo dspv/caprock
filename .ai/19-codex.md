@@ -263,6 +263,59 @@ forecast from them ([04-ui.md](04-ui.md#cost--burn)). On the first pass after
 an upgrade the newest transcripts are opened once to fill the panel, because
 transcripts read by an earlier version are not parsed again until they change.
 
+## Prose
+
+What Codex wrote back is stored as `payload.text` on `turn.assistant`, the
+same key Claude Code's replies carry, so the Memory screen, its search, a
+session's Answers tab and the handoff read it with no Codex-specific code. The
+text is the `output_text` blocks of `response_item` messages with role
+`assistant`; reasoning is a separate item and is never read. Each message is
+also written twice more (`event_msg` `item_completed`/`AgentMessage`, and on
+some versions `agent_message`); only the `response_item` is read, or every
+reply would be stored three times.
+
+- **Which turn a message belongs to.** Codex writes a message *before* the
+  `token_count` of the request that produced it, so the text goes onto the next
+  turn. A message written after a request's last `token_count` (a closing line
+  after the last tool call) joins that request's last turn when
+  `task_complete` or `turn_aborted` arrives. Measured on the owner's machine on
+  2026-10-01, on the 60 rollouts a person started: 1,786 turns carry text, and
+  none of their prose is left without a turn.
+- **Same cap as Claude Code.** Joined with `\n` and clipped to
+  `ingest.MaxAssistantText` runes on a rune boundary
+  (`ingest.ClipAssistantText`).
+- **No filter on short messages.** Claude Code's ingest keeps every reply,
+  and the screens decide what to show (`fragment`, under 240 runes). Codex is
+  held to the same rule: 471 of its 1,785 stored replies are under 240 runes,
+  against 22,251 of 31,513 for Claude Code on the same database.
+- **Imported threads keep no prose.** Codex Desktop can import Claude Code
+  sessions. The result is a rollout whose turn ids are all
+  `external-import-turn-N`, ending on an `<EXTERNAL SESSION IMPORTED>` message,
+  that replays the other agent's prose and its tool calls as assistant
+  messages (`[external_agent_tool_call: Bash] …`). On the owner's machine those
+  100 threads hold 134,377 of the 136,497 assistant messages. Caprock already
+  has that prose from the original transcript, so storing it again would show
+  every answer twice and bury Codex's own under a hundred-fold flood of
+  replayed tool calls.
+- **Subagent threads keep no prose.** A thread Codex spawned
+  (`session_meta.source.subagent`, including its guardian reviewer) is left out
+  for the reason Claude Code's sidechains are: it is a worker's chatter, not the
+  answer. It also could not be stored safely: such a file starts with a copy of
+  its parent's history and carries the parent's session id, so its line-number
+  keys name rows the parent's file wrote.
+- **Rows are matched on key and timestamp.** Event keys are idempotent, so a
+  re-read never rewrites a stored row; `syncText` is the one place a Codex
+  turn's payload changes afterwards, and it rewrites only `payload.text`, only
+  on the row whose key *and* timestamp match the record.
+- **Turns imported earlier get their text once.** The ordinary pass skips
+  files it has already read (§ Restarts), so a one-time backfill parses every
+  rollout the first pass did not, runs `syncText` on it and records
+  `meta.codex_text_backfilled`. It runs in the importer's goroutine after its
+  first pass, never at daemon start, and an interrupted run starts over on the
+  next start. On a copy of the owner's database (2026-10-01, 176 rollouts,
+  1.2GB) it took 17.5s, almost all of it parsing, filled 1,785 turns and grew
+  the file by 2.6MB (858.0MB → 860.8MB).
+
 ## Restarts
 
 The files already read are remembered in the store (`meta.codex_seen`: path,
@@ -302,3 +355,6 @@ to import again (0022 and 0023 did) finds the file unread.
   from what real transcripts contain, and this is what keeps that true.
 - `testdata/codex/rollout-basic.jsonl` — a fixture reproducing every measured
   shape, including the duplicated samples and a truncated final line.
+- `testdata/codex/rollout-prose.jsonl` — assistant messages with their
+  `item_completed` copies, a closing message after the last `token_count`, and
+  a turn that only called tools (§ Prose).
