@@ -125,6 +125,30 @@ then what Caprock adds, with a real screenshot or real output.
 - **`/blog/claude-code-forgets/`** stays the story of the 30-day cleanup;
   guide #3 is the task page and links to it.
 
+### Briefs
+
+Each page has a brief in [`briefs/`](briefs/) — the phrases per heading with
+volumes, the built-in answer checked against official docs, what Caprock adds
+with the file that proves it, limits, competitors and the claims still to
+verify. Findings from writing them (2026-10-01):
+
+- **#3 history** — "kept past 30 days" is not unique (a popular viewer has a
+  one-click backup); our difference is that it is automatic. Needs a Memory
+  screenshot before writing.
+- **#4 sessions** — the H1 owns `how to resume claude code session` (260);
+  needs a continue / can't-continue screenshot.
+- **#5 Codex** — Caprock does not show Codex plan limits and misses
+  `CODEX_HOME` and `archived_sessions/`; fix in the product first or state it.
+  The Cost screen subtitle says "Anthropic list prices" beside GPT rows.
+- **#6 cost post** — first monthly reading taken; the Max 20x price must be
+  read from the plan picker.
+- **#7 teams** — the compare row "spend per repository" is stale: Anthropic's
+  OpenTelemetry export can tag repositories when opted in.
+- **Remote / mobile (parked)** — Caprock lets a paired phone or tablet watch
+  every session over the LAN or Tailscale, and pause or kill the ones it
+  started; it does not type into sessions or answer permission prompts. It
+  can own "watch Claude Code from your phone", never "remote control".
+
 ### Internal links
 
 - Home → guides #1–#3 from the strip items that already name those tasks.
@@ -138,8 +162,8 @@ then what Caprock adds, with a real screenshot or real output.
 
 ### Before each page
 
-The rules are in caprock-web's `search-plan`, `landing-page` and `blog-post`
-skills. In short: re-read the cluster's results on the day, check every
+The rules are in caprock-web's `search-plan`, `guide`, `landing-page` and
+`blog-post` skills. In short: re-read the cluster's results on the day, check every
 competitor statement against its current source, every product claim against
 the code, and pass the independent fact-check.
 
