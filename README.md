@@ -116,8 +116,10 @@ it happens, and what each repo costs you. Real numbers from a real machine.*
 
 ## Your numbers, ready to publish
 
-`caprock report` prints what your captured usage comes to at Anthropic list
-prices, in a form you can paste somewhere:
+`caprock report` prints what your captured usage comes to at API list prices,
+in a form you can paste somewhere. When the total includes Codex, Gemini or
+DeepSeek turns, the caveat names every vendor whose list was used and the
+headline stops calling it all Claude Code:
 
 ```bash
 caprock report              # a block for a post
@@ -219,8 +221,9 @@ activity feed, the projects list and the session cards all answer the same
 question. It appears only on a machine that runs more than one.
 
 Nothing to configure for any of them. OpenCode is found through its own
-database, opened read-only; Codex through the transcript it writes per session;
-DeepSeek Harness through the transcript it writes per session. No shim, no
+database, opened read-only; Codex through the transcript it writes per session,
+under `$CODEX_HOME` (or `~/.codex`), archived sessions included; DeepSeek
+Harness through the transcript it writes per session. No shim, no
 settings file to edit, and sessions from before you installed Caprock are
 included, because each tool keeps its own history.
 
@@ -242,6 +245,12 @@ Three things about Codex figures worth knowing:
   Codex does not report how many tokens were written. Those arrive as plain
   input, so a gpt-6 figure can be low by up to a quarter of that unreported
   share.
+
+**Codex's plan limits** sit on the Cost screen under Claude Code's, labelled as
+Codex's: the 5-hour and weekly windows as Codex last wrote them into a session
+transcript, with the time it wrote them. Which windows appear depends on the
+plan — some ChatGPT plans have no 5-hour window. They are shown as measured and
+never forecast.
 
 **What is not there yet.** Observation only: the dashboard cannot start, steer
 or stop an OpenCode, Codex or DeepSeek Harness session, and the task runner does

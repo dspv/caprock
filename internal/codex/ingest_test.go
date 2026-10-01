@@ -19,8 +19,10 @@ import (
 type harness struct {
 	t   *testing.T
 	dir string
-	in  *Ingester
-	out *sql.DB
+	// archived is Codex's archived_sessions/, beside dir.
+	archived string
+	in       *Ingester
+	out      *sql.DB
 }
 
 func newHarness(t *testing.T) *harness {
@@ -36,8 +38,12 @@ func newHarness(t *testing.T) *harness {
 		t.Fatalf("pricing: %v", err)
 	}
 	rec := rollup.New(st, table, nil, lg)
-	dir := t.TempDir()
-	return &harness{t: t, dir: dir, in: NewIngester(dir, rec, lg, time.Second), out: st.DB()}
+	// Laid out like a real Codex home: sessions/ and archived_sessions/ side
+	// by side, the state index in their parent.
+	home := t.TempDir()
+	dir := filepath.Join(home, "sessions")
+	archived := filepath.Join(home, "archived_sessions")
+	return &harness{t: t, dir: dir, archived: archived, in: NewIngester([]string{dir, archived}, rec, lg, time.Second), out: st.DB()}
 }
 
 // put copies the fixture transcript into the harness directory.
@@ -170,7 +176,7 @@ func TestJunkFileDoesNotStopTheImport(t *testing.T) {
 // A missing Codex directory is the normal case on almost every machine.
 func TestMissingDirectoryIsQuiet(t *testing.T) {
 	h := newHarness(t)
-	h.in.dir = filepath.Join(h.dir, "does-not-exist")
+	h.in.dirs = []string{filepath.Join(h.dir, "does-not-exist")}
 	h.poll()
 	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE source='codex'`); n != 0 {
 		t.Errorf("events from nowhere: %d", n)
@@ -327,7 +333,7 @@ func TestARestartSkipsFilesAlreadyRead(t *testing.T) {
 	if _, err := h.out.Exec(`DELETE FROM events WHERE id = (SELECT MAX(id) FROM events WHERE source='codex')`); err != nil {
 		t.Fatal(err)
 	}
-	restarted := NewIngester(h.dir, h.in.rec, h.in.log, time.Second)
+	restarted := NewIngester(h.in.dirs, h.in.rec, h.in.log, time.Second)
 	if err := restarted.once(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -349,7 +355,7 @@ func TestARestartRereadsASessionWhoseEventsAreGone(t *testing.T) {
 	if _, err := h.out.Exec(`DELETE FROM events WHERE source='codex'`); err != nil {
 		t.Fatal(err)
 	}
-	restarted := NewIngester(h.dir, h.in.rec, h.in.log, time.Second)
+	restarted := NewIngester(h.in.dirs, h.in.rec, h.in.log, time.Second)
 	if err := restarted.once(context.Background()); err != nil {
 		t.Fatal(err)
 	}

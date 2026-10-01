@@ -128,6 +128,11 @@ type Report struct {
 	PricingVersion string  `json:"pricing_version"`
 	CostBasis      string  `json:"cost_basis"`
 	Caveat         string  `json:"caveat"`
+	// Subject is what the headline says the money was spent on: "Claude
+	// Code" when every priced model is Anthropic's, otherwise a phrase that
+	// does not name one agent. Printed only; the JSON shape the site reads
+	// is unchanged.
+	Subject string `json:"-"`
 
 	// Plan is absent when no plan is stated — and so is Multiple, because a
 	// multiple with no fee under it is an invented number. FeeUSD is the plan
@@ -235,15 +240,93 @@ type ReportWindow struct {
 // says "not a discount you received, and not money back", and CostBasis.tsx
 // says "not a bill". The CLI, the dashboard and the site saying the same thing
 // in three different ways is how a caveat stops being believed.
-func reportCaveat(plan reportSettings) string {
+//
+// prices names whose list the figure was priced from ("Anthropic list
+// prices", "Anthropic and OpenAI list prices") — see listPrices.
+func reportCaveat(plan reportSettings, prices string) string {
 	switch plan.PlanKind {
 	case "metered":
-		return "Priced from captured tokens at Anthropic list prices. Billed per token, so this is approximately the actual cost — not a saving."
+		return "Priced from captured tokens at " + prices + ". Billed per token, so this is approximately the actual cost — not a saving."
 	case "flat":
-		return "Priced from captured tokens at Anthropic list prices — what the same work would have cost through the API. Not a bill, not a discount received, and not money back: without the plan I would not have run this much."
+		return "Priced from captured tokens at " + prices + " — what the same work would have cost through the API. Not a bill, not a discount received, and not money back: without the plan I would not have run this much."
 	default:
-		return "Priced from captured tokens at Anthropic list prices. Whether that is an actual bill depends on how the usage is paid for — no plan is stated, so nothing is claimed."
+		return "Priced from captured tokens at " + prices + ". Whether that is an actual bill depends on how the usage is paid for — no plan is stated, so nothing is claimed."
 	}
+}
+
+// modelVendor is whose price list a model is priced from, or "" for a model
+// this command cannot attribute. Matched on the id's own words, the way the
+// pricing table names them (claude-*, gpt-*, gemini-*, …), and on "claude"
+// anywhere so a Bedrock or Vertex spelling (us.anthropic.claude-…) still
+// counts as Anthropic's.
+func modelVendor(model string) string {
+	m := strings.ToLower(model)
+	// OpenCode writes ids as provider/model ("openai/gpt-5.5",
+	// "minimax/minimax-m3"); the model half is what names the price list.
+	if i := strings.LastIndex(m, "/"); i >= 0 {
+		m = m[i+1:]
+	}
+	switch {
+	case strings.Contains(m, "claude"):
+		return "Anthropic"
+	case strings.HasPrefix(m, "gpt-") || strings.HasPrefix(m, "codex-") || strings.HasPrefix(m, "o1") ||
+		strings.HasPrefix(m, "o3") || strings.HasPrefix(m, "o4"):
+		return "OpenAI"
+	case strings.HasPrefix(m, "gemini"):
+		return "Google"
+	case strings.HasPrefix(m, "deepseek"):
+		return "DeepSeek"
+	case strings.HasPrefix(m, "minimax"):
+		return "MiniMax"
+	}
+	return ""
+}
+
+// listPrices says whose list prices the total was priced from, and whether it
+// is Claude's alone.
+//
+// It used to say "Anthropic list prices" and "of Claude Code" whatever the
+// capture held — and on the owner's machine the top models included
+// gpt-5.6-sol, priced from OpenAI's list. Only models that carry a cost are
+// counted: an unpriced row contributed nothing to the figure the sentence
+// describes. A priced model no vendor can be named for makes the phrase
+// generic rather than leave a vendor out of it.
+func listPrices(sum reportSummary) (prices string, claudeOnly bool) {
+	cost := map[string]float64{}
+	unknown := false
+	for _, m := range sum.Models {
+		if m.CostUSD <= 0 {
+			continue
+		}
+		v := modelVendor(m.Model)
+		if v == "" {
+			unknown = true
+			continue
+		}
+		cost[v] += m.CostUSD
+	}
+	if unknown {
+		return "the model makers' API list prices", false
+	}
+	if len(cost) == 0 || (len(cost) == 1 && cost["Anthropic"] > 0) {
+		return "Anthropic list prices", true
+	}
+	vendors := make([]string, 0, len(cost))
+	for v := range cost {
+		vendors = append(vendors, v)
+	}
+	// Largest share first, so the sentence leads with where the money went.
+	sort.Slice(vendors, func(i, j int) bool {
+		if cost[vendors[i]] != cost[vendors[j]] {
+			return cost[vendors[i]] > cost[vendors[j]]
+		}
+		return vendors[i] < vendors[j]
+	})
+	names := vendors[0]
+	if len(vendors) > 1 {
+		names = strings.Join(vendors[:len(vendors)-1], ", ") + " and " + vendors[len(vendors)-1]
+	}
+	return names + " list prices", false
 }
 
 // reportBasis is the short subtitle form, mirroring costBasis() in CostBasis.tsx.
@@ -344,13 +427,21 @@ func buildReport(port int) (Report, error) {
 // daemon: what is omitted, when a multiple may be computed, and what the caveat
 // says.
 func assembleReport(sum reportSummary, plan reportSettings, hist reportHistory, ver string) Report {
+	prices, claudeOnly := listPrices(sum)
+	subject := "Claude Code"
+	if !claudeOnly {
+		// Codex, Gemini and DeepSeek turns sit in the same total; naming
+		// one agent would claim the others' spend for it.
+		subject = "coding-agent usage"
+	}
 	rep := Report{
 		GeneratedAt:    time.Now().Format("2006-01-02"),
 		Caprock:        ver,
 		CostUSD:        sum.CostUSD,
 		PricingVersion: sum.Pricing,
 		CostBasis:      reportBasis(plan),
-		Caveat:         reportCaveat(plan),
+		Caveat:         reportCaveat(plan, prices),
+		Subject:        subject,
 		Sessions:       sum.Sessions,
 		Turns:          sum.Turns,
 		ToolCalls:      sum.ToolCalls,
@@ -520,10 +611,14 @@ func writeReportText(out io.Writer, r Report) error {
 		return nil
 	}
 
-	head := fmt.Sprintf("%s of Claude Code, %s", fmtUSD0(r.CostUSD), r.CostBasis)
+	subject := r.Subject
+	if subject == "" {
+		subject = "Claude Code"
+	}
+	head := fmt.Sprintf("%s of %s, %s", fmtUSD0(r.CostUSD), subject, r.CostBasis)
 	if r.Multiple != nil && r.Plan != nil {
-		head = fmt.Sprintf("%s of Claude Code at API list prices on a %s/month plan — %.1f× the fee",
-			fmtUSD0(r.CostUSD), trimUSD(r.Plan.USDPerMont), *r.Multiple)
+		head = fmt.Sprintf("%s of %s at API list prices on a %s/month plan — %.1f× the fee",
+			fmtUSD0(r.CostUSD), subject, trimUSD(r.Plan.USDPerMont), *r.Multiple)
 	}
 	fmt.Fprintln(out, head+".")
 	fmt.Fprintln(out, r.Caveat)

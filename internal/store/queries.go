@@ -2336,6 +2336,74 @@ func LatestRateLimit(ctx context.Context, q Querier, window string) (RateLimitSn
 	return s, true, nil
 }
 
+// CodexRateLimitPrefix namespaces Codex's windows in rate_limit_latest, so
+// they sit beside Claude Code's `five_hour` / `seven_day` rows without
+// replacing them: `codex_five_hour`, `codex_seven_day`.
+const CodexRateLimitPrefix = "codex_"
+
+// ReplaceRateLimits swaps every window under prefix for those in one newer
+// sample, and reports whether it did.
+//
+// Replaced as a set rather than upserted per window, because a sample that
+// omits a window is a statement about the plan: on the owner's machine a
+// Codex account moved from `plus` (5-hour and weekly windows) to `prolite`
+// (weekly only), and an upsert would have kept showing the five-hour figure
+// from the old plan forever. A sample no newer than the stored one is ignored —
+// transcripts are imported newest-modified first and out of order, and the
+// latest observation is the only one shown.
+//
+// Unlike RecordRateLimit this writes no history: the Codex rows are shown as
+// last observed, with no forecast built on them. Run it in a transaction.
+func ReplaceRateLimits(ctx context.Context, q Querier, prefix string, sessionID string, snaps []RateLimitSnapshot) (bool, error) {
+	if prefix == "" || len(snaps) == 0 {
+		return false, nil
+	}
+	ts := snaps[0].Ts
+	var last sql.NullInt64
+	if err := q.QueryRowContext(ctx,
+		`SELECT MAX(ts) FROM rate_limit_latest WHERE substr(window, 1, length(?)) = ?`, prefix, prefix).Scan(&last); err != nil {
+		return false, err
+	}
+	if last.Valid && ts <= last.Int64 {
+		return false, nil
+	}
+	if _, err := q.ExecContext(ctx,
+		`DELETE FROM rate_limit_latest WHERE substr(window, 1, length(?)) = ?`, prefix, prefix); err != nil {
+		return false, err
+	}
+	for _, s := range snaps {
+		if _, err := q.ExecContext(ctx, `
+			INSERT INTO rate_limit_latest(window, ts, session_id, used_percentage, resets_at)
+			VALUES(?, ?, ?, ?, ?)`,
+			prefix+s.Window, ts, sessionID, s.UsedPercentage, s.ResetsAt); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+// RateLimitsWithPrefix returns every window stored under prefix, with the
+// prefix stripped from Window.
+func RateLimitsWithPrefix(ctx context.Context, q Querier, prefix string) ([]RateLimitSnapshot, error) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT window, ts, used_percentage, resets_at FROM rate_limit_latest
+		WHERE substr(window, 1, length(?)) = ? ORDER BY window`, prefix, prefix)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RateLimitSnapshot
+	for rows.Next() {
+		var s RateLimitSnapshot
+		if err := rows.Scan(&s.Window, &s.Ts, &s.UsedPercentage, &s.ResetsAt); err != nil {
+			return nil, err
+		}
+		s.Window = strings.TrimPrefix(s.Window, prefix)
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
 // RateLimitPace returns the observed usage slope (percentage points per hour) for
 // a window's CURRENT reset cycle. ok is false unless there are ≥2 same-window
 // (same resets_at) history samples spanning ≥60s with a strictly rising usage —

@@ -386,6 +386,45 @@ func TestStatuslineEndpointAndSummary(t *testing.T) {
 	}
 }
 
+// Codex's windows are served apart from Claude Code's, carry when Codex wrote
+// them, and never a forecast.
+func TestSummaryCarriesCodexRateLimitsSeparately(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	var sum struct {
+		RateLimits      json.RawMessage `json:"rate_limits"`
+		CodexRateLimits *struct {
+			FiveHour *RateWindow `json:"five_hour"`
+			SevenDay *RateWindow `json:"seven_day"`
+		} `json:"codex_rate_limits"`
+	}
+	if code := e.get(t, "/v1/stats/summary", &sum); code != 200 || sum.CodexRateLimits != nil {
+		t.Fatalf("codex_rate_limits with no Codex data: %d %+v", code, sum.CodexRateLimits)
+	}
+	err := e.st.WithTx(ctx, func(q store.Querier) error {
+		_, err := store.ReplaceRateLimits(ctx, q, store.CodexRateLimitPrefix, "codex-s", []store.RateLimitSnapshot{
+			{Window: "seven_day", Ts: 1790000000000, UsedPercentage: 5, ResetsAt: 1791067416},
+		})
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code := e.get(t, "/v1/stats/summary", &sum); code != 200 {
+		t.Fatalf("summary: %d", code)
+	}
+	if string(sum.RateLimits) != "" && string(sum.RateLimits) != "null" {
+		t.Fatalf("Codex's window leaked into Claude Code's rate_limits: %s", sum.RateLimits)
+	}
+	c := sum.CodexRateLimits
+	if c == nil || c.FiveHour != nil || c.SevenDay == nil {
+		t.Fatalf("codex_rate_limits: %+v", c)
+	}
+	if c.SevenDay.UsedPercentage != 5 || c.SevenDay.ResetsAt != 1791067416 || c.SevenDay.ObservedAt != 1790000000000 || c.SevenDay.Forecast != "" {
+		t.Fatalf("codex seven_day: %+v", c.SevenDay)
+	}
+}
+
 // paceForecast is the honest "at current pace" gate for plan limits (Rule 6: no
 // invented numbers). It forecasts only when the measured slope would reach the
 // limit before the window resets — and stays silent otherwise. Uses the

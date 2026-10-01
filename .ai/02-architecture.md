@@ -52,7 +52,8 @@ than by asking it to keep ours:
   event kinds ([ADR-026](08-decisions.md), [ADR-027](08-decisions.md)). The file name is the session id,
   which is what joins the telemetry to the session Caprock spawned.
 - **Codex** writes one append-only JSONL rollout per session under
-  `~/.codex/sessions`; it is read as files, nothing installed, and priced from
+  `$CODEX_HOME/sessions` (default `~/.codex`), moved to
+  `archived_sessions/` when archived; both are read as files, nothing installed, and priced from
   Caprock's table because Codex reports tokens but no cost
   ([19-codex.md](19-codex.md)).
 - **DeepSeek Harness** is read the same way from its own transcripts

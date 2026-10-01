@@ -1,7 +1,8 @@
 // Package codex reads OpenAI Codex's session transcripts.
 //
 // Codex is the easiest of the three agents to observe. It writes one JSONL
-// "rollout" file per session under ~/.codex/sessions/YYYY/MM/DD/, and that file
+// "rollout" file per session under $CODEX_HOME/sessions/YYYY/MM/DD/ (moved to
+// $CODEX_HOME/archived_sessions/ when the thread is archived), and that file
 // already carries everything Caprock stores: the session id and working
 // directory, the model, per-turn token counts split by kind, tool calls with
 // their arguments, and the plan-limit windows. Nothing has to be installed,
@@ -43,24 +44,51 @@ import (
 // for real transcripts and still refuses a runaway.
 const maxLine = 8 << 20
 
-// Dir is the root Codex writes its rollout transcripts under.
+// Home is Codex's state directory: `$CODEX_HOME` when it is set, otherwise
+// `~/.codex`. Codex documents CODEX_HOME as the override for everything it
+// keeps locally, transcripts included, so a user who set it has no
+// `~/.codex/sessions` for us to find — reading only the default path missed
+// every one of their sessions.
 //
 // It is the same path on every platform: Codex uses the home directory
 // directly, with no XDG or %APPDATA% branching, so there is nothing to switch
-// on here. CAPROCK_CODEX_DIR overrides it for tests and for anyone whose Codex
-// lives somewhere unusual.
-func Dir() string {
-	if d := strings.TrimSpace(os.Getenv(EnvDir)); d != "" {
+// on here.
+func Home() string {
+	if d := strings.TrimSpace(os.Getenv(EnvHome)); d != "" {
 		return d
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".codex", "sessions")
+	return filepath.Join(home, ".codex")
 }
 
-// EnvDir overrides the transcript root.
+// EnvHome is Codex's own override of its state directory.
+const EnvHome = "CODEX_HOME"
+
+// Dirs are the roots Codex writes rollout transcripts under: `sessions/`
+// (YYYY/MM/DD/rollout-*.jsonl) and `archived_sessions/`, where archiving a
+// thread moves its rollout — a rename into one flat directory, the file
+// itself unchanged (codex-rs thread-store, archive_thread.rs). An archived
+// session is still work that was done and paid for; reading only `sessions/`
+// never counted one archived before Caprock was installed, and lost it from
+// any total rebuilt from the transcripts afterwards.
+//
+// CAPROCK_CODEX_DIR overrides both with a single root, for tests and for
+// anyone whose transcripts live somewhere unusual.
+func Dirs() []string {
+	if d := strings.TrimSpace(os.Getenv(EnvDir)); d != "" {
+		return []string{d}
+	}
+	home := Home()
+	if home == "" {
+		return nil
+	}
+	return []string{filepath.Join(home, "sessions"), filepath.Join(home, "archived_sessions")}
+}
+
+// EnvDir overrides the transcript roots with one directory.
 const EnvDir = "CAPROCK_CODEX_DIR"
 
 // Session is one Codex rollout transcript, parsed.
@@ -112,17 +140,34 @@ type ToolCall struct {
 	Input string
 }
 
-// Limits is a plan-limit sample. Codex reports the same two windows Claude Code
-// does, in minutes rather than by name.
+// Limits is the plan-limit sample a transcript last recorded.
+//
+// The windows are a list, not a fixed primary/secondary pair, because which
+// window sits in which slot depends on the plan. Measured on the 72 of 176
+// transcripts that carry limits on the owner's machine: a `plus` account
+// writes `primary` = 300 minutes and `secondary` = 10080; a `prolite` account
+// writes `primary` = 10080 and `secondary` = null — it has no five-hour window
+// at all. Reading `primary` as "the 5-hour window" would have put a weekly
+// figure under a five-hour label.
 type Limits struct {
-	At               time.Time
-	PrimaryPct       float64
-	PrimaryMinutes   int
-	PrimaryResets    int64
-	SecondaryPct     float64
-	SecondaryMinutes int
-	SecondaryResets  int64
+	// At is when Codex wrote the sample, not when Caprock read it — which can
+	// be days later for a transcript imported on first run.
+	At      time.Time
+	Windows []LimitWindow
 }
+
+// LimitWindow is one window as Codex reports it.
+type LimitWindow struct {
+	Minutes     int
+	UsedPercent float64
+	// ResetsAt is unix seconds; 0 where Codex wrote null (CLI 0.4x did).
+	ResetsAt int64
+}
+
+// codexLimitID is the `limit_id` of the plan's own usage limit. Codex also
+// writes samples for other limits (`premium`, with no windows, was seen), and
+// before limit_id existed the field was absent, which decodes as "".
+const codexLimitID = "codex"
 
 // record is one line of a rollout file. Only the fields Caprock uses are named;
 // everything else in the payload is ignored rather than rejected, because Codex
@@ -176,6 +221,7 @@ type tokenCount struct {
 		Last  *usage `json:"last_token_usage"`
 	} `json:"info"`
 	RateLimits *struct {
+		LimitID   string  `json:"limit_id"`
 		Primary   *window `json:"primary"`
 		Secondary *window `json:"secondary"`
 	} `json:"rate_limits"`
@@ -184,7 +230,7 @@ type tokenCount struct {
 type window struct {
 	UsedPercent   float64 `json:"used_percent"`
 	WindowMinutes int     `json:"window_minutes"`
-	ResetsAt      int64   `json:"resets_at"`
+	ResetsAt      *int64  `json:"resets_at"`
 }
 
 type toolCallPayload struct {
@@ -305,15 +351,23 @@ func Parse(r io.Reader, path string) (*Session, error) {
 			if err := json.Unmarshal(rec.Payload, &tc); err != nil {
 				continue
 			}
-			if tc.RateLimits != nil {
+			if rl := tc.RateLimits; rl != nil && (rl.LimitID == "" || rl.LimitID == codexLimitID) && !at.IsZero() {
 				l := &Limits{At: at}
-				if w := tc.RateLimits.Primary; w != nil {
-					l.PrimaryPct, l.PrimaryMinutes, l.PrimaryResets = w.UsedPercent, w.WindowMinutes, w.ResetsAt
+				for _, w := range []*window{rl.Primary, rl.Secondary} {
+					if w == nil || w.WindowMinutes <= 0 {
+						continue
+					}
+					lw := LimitWindow{Minutes: w.WindowMinutes, UsedPercent: w.UsedPercent}
+					if w.ResetsAt != nil {
+						lw.ResetsAt = *w.ResetsAt
+					}
+					l.Windows = append(l.Windows, lw)
 				}
-				if w := tc.RateLimits.Secondary; w != nil {
-					l.SecondaryPct, l.SecondaryMinutes, l.SecondaryResets = w.UsedPercent, w.WindowMinutes, w.ResetsAt
+				// A sample naming no window says nothing about the plan, and
+				// must not replace an earlier one that did.
+				if len(l.Windows) > 0 {
+					s.Limits = l
 				}
-				s.Limits = l
 			}
 			if tc.Info == nil || tc.Info.Total == nil {
 				continue
@@ -567,12 +621,28 @@ func List(dir string) ([]Transcript, error) {
 	return out, nil
 }
 
+// ListAll lists the transcripts under every root, newest first. A root that
+// does not exist contributes nothing: most machines have never archived a
+// Codex thread, so `archived_sessions/` is usually absent.
+func ListAll(dirs []string) ([]Transcript, error) {
+	var out []Transcript
+	for _, d := range dirs {
+		ts, err := List(d)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, ts...)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Modified.After(out[j].Modified) })
+	return out, nil
+}
+
 // Available reports whether Codex transcripts exist on this machine.
 func Available() bool {
-	d := Dir()
-	if d == "" {
-		return false
+	for _, d := range Dirs() {
+		if st, err := os.Stat(d); err == nil && st.IsDir() {
+			return true
+		}
 	}
-	st, err := os.Stat(d)
-	return err == nil && st.IsDir()
+	return false
 }

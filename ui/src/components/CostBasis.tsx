@@ -2,8 +2,10 @@
  * CostBasis — the one line that says what a dollar figure on this dashboard
  * actually is.
  *
- * Every hero cost in the product is computed from captured tokens at Anthropic
- * list prices. For most users that is *not* a bill: on Pro or Max the money
+ * Every hero cost in the product is computed from captured tokens at the
+ * model maker's API list prices — Anthropic's for Claude, OpenAI's for GPT,
+ * and so on; never "Anthropic" alone, since Codex and Gemini turns sit in the
+ * same totals. For most users that is *not* a bill: on Pro or Max the money
  * already left as a flat fee, and this figure is what the same work would have
  * cost through the API. Shown to five readers, "$586" with no qualifier was
  * read as an amount owed by three of them — the number is large, it has a
@@ -48,10 +50,10 @@ export function costBasis(plan?: Settings): string {
 /** The longer form, for a panel header or a tooltip. */
 export function costBasisLong(plan?: Settings): string {
   if (plan?.plan_kind === 'metered') {
-    return 'Roughly your real bill — you pay per token. At Anthropic list prices.'
+    return 'Roughly your real bill — you pay per token. At API list prices.'
   }
   if (plan?.plan_kind === 'flat') {
-    return `At Anthropic list prices — what this work would cost through the API. You pay ${plan.plan_label || 'a flat plan'}, so it is not money out of pocket.`
+    return `At API list prices — what this work would cost through the API. You pay ${plan.plan_label || 'a flat plan'}, so it is not money out of pocket.`
   }
-  return 'At Anthropic list prices. Set your plan in the header to see how it compares to your bill.'
+  return 'At API list prices. Set your plan in the header to see how it compares to your bill.'
 }

@@ -23,7 +23,26 @@ Phase 3 (Delight) has no plan by design.
   licence key with the settings. The tablet's dashboard stops drawing the
   controls it cannot use. Nothing changes on the machine itself.
 
+### Added
+
+- **Codex's plan limits on the Cost screen.** The 5-hour and weekly windows
+  Codex writes into its session transcripts now sit in the Plan limits panel
+  under a Codex heading, beside Claude Code's, with the time Codex wrote them.
+  Only the windows your plan has appear — some ChatGPT plans have no 5-hour
+  window — and they are shown as measured, never forecast.
+  `/v1/stats/summary` carries them as `codex_rate_limits`.
+
 ### Fixed
+
+- **Codex sessions outside `~/.codex/sessions` are imported.** Caprock now
+  reads `$CODEX_HOME` when it is set, and `archived_sessions/` as well as
+  `sessions/`, so archived threads and a relocated Codex home are no longer
+  missing from the totals. A thread archived after it was imported is not
+  counted twice.
+- **The Cost screen no longer says "At Anthropic list prices"** above a model
+  table holding GPT rows; it says "At API list prices". `caprock report` names
+  every vendor whose prices make up its total ("Anthropic and OpenAI list
+  prices") and stops calling a mixed total "Claude Code".
 
 - **`caprock statusline install` no longer sends you in a circle.** With a
   status line of your own already set, it said "run `caprock statusline

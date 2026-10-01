@@ -47,7 +47,7 @@ export function PlanValue({ summary, plan, days }: { summary?: Summary; plan?: S
           </div>
           <p className="text-[11px] text-fg-faint mt-2 max-w-[60ch]">
             You are billed per token, so this is approximately your actual cost —
-            at Anthropic list prices ({summary.pricing_version}). Not a saving.
+            at API list prices ({summary.pricing_version}). Not a saving.
           </p>
         </div>
       </Panel>

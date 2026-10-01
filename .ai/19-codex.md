@@ -21,7 +21,9 @@ Codex is the easiest of the three to observe, and the import is a translation
 rather than a pipeline.
 
 - **One append-only JSONL transcript per session**, at
-  `~/.codex/sessions/YYYY/MM/DD/rollout-<timestamp>-<id>.jsonl`. The same path
+  `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-<timestamp>-<id>.jsonl`, with
+  `CODEX_HOME` defaulting to `~/.codex`; archiving a thread moves the file to
+  `$CODEX_HOME/archived_sessions/` (§ Where the transcripts are). The same path
   on every platform — Codex uses the home directory directly, with no XDG or
   `%APPDATA%` branching to mirror.
 - **`session_meta`** opens every file with the session id, `cwd`,
@@ -30,10 +32,10 @@ rather than a pipeline.
   roots — when it is present at all, which is only 4 transcripts in 100. The
   model of the other 96 is in `session_meta.base_instructions.provenance`.
 - **`token_count`** carries input, cached input, cache-write, output and
-  reasoning tokens, plus **the plan-limit windows**: `primary` (300 minutes)
-  and `secondary` (10080 minutes), each with `used_percent` and `resets_at`.
-  That is the same 5h/7d pair Claude Code exposes, except Codex writes it into
-  the transcript instead of only handing it to a status-line command.
+  reasoning tokens, plus **the plan-limit windows** — each with
+  `window_minutes`, `used_percent` and `resets_at`. Which window sits in
+  `primary` depends on the plan (§ Plan limits). Codex writes them into the
+  transcript instead of only handing them to a status-line command.
 - **Tool calls keep full fidelity** as `custom_tool_call` (a JS string) or
   `function_call` (an object), with the name, arguments and working directory.
 - **No shim, no config injection, no process signalled.** Claude Code needs the
@@ -188,7 +190,7 @@ missing field, never a missing session.
 ## Names
 
 Codex keeps an index of its threads beside the transcripts,
-`~/.codex/state_<N>.sqlite`, and it is read for one thing: telling sessions
+`$CODEX_HOME/state_<N>.sqlite`, and it is read for one thing: telling sessions
 apart on the screen (FB-035). `threads.name` is the short title Codex
 generates ("Проверь даты без двух статей") and becomes the session's title;
 `threads.first_user_message` is kept for sessions it has not named yet. The
@@ -197,6 +199,69 @@ it opens with is injected AGENTS.md, environment or auto-review text. The index
 is opened read-only, only the newest schema generation is read, and it is
 re-read only when it (or its WAL) changes. On the owner's machine this named
 88 of 110 ended Codex sessions and quoted a first message for 11 more.
+
+## Where the transcripts are
+
+Codex keeps everything under `CODEX_HOME`, which its configuration docs
+(learn.chatgpt.com, read 2026-10-01) give as defaulting to `~/.codex`. Caprock
+read only `~/.codex/sessions` until 2026-10-01, which missed two things that
+ccusage already read:
+
+- **A `CODEX_HOME` set elsewhere.** Every one of that user's sessions was
+  invisible. `codex.Home()` now honours it; `CAPROCK_CODEX_DIR` still overrides
+  both roots with one directory, for tests.
+- **`archived_sessions/`.** Archiving a thread renames its rollout (and any
+  spawned descendants') from `sessions/YYYY/MM/DD/` into a flat
+  `archived_sessions/`, the file unchanged — read from the codex-rs source,
+  `thread-store/src/local/archive_thread.rs`, on 2026-10-01. A session archived
+  before Caprock was installed was never counted.
+
+**A moved file is not counted twice.** Event keys are `codex:{turn,tool}:<line>`
+scoped to the session id inside the file; the path is in neither, and a rename
+changes neither, so a re-read stores nothing new. It is not even re-read: a
+file that vanishes from the listing is dropped from the read set, and one that
+appears elsewhere with the same name, modification time and size — which a
+rename preserves — inherits its "already read" state (`forgetMoved`). On the
+owner's machine (2026-10-01, CLI 0.156.1) there is no `archived_sessions/`
+and no `CODEX_HOME`: 176 rollouts, all under `~/.codex/sessions`, no two
+sharing a session id.
+
+**Compressed rollouts are not read.** Current codex-rs
+(`rollout/src/compression.rs`) can rewrite a rollout older than seven days as
+`rollout-….jsonl.zst`, behind a `compression_enabled` setting; the 0.156.1
+binary on the owner's machine contains that code, but **no `.zst` rollout
+exists on it**, so none was built for. A session compressed before Caprock
+first read it would be missed; one already read keeps its events. The DeepSeek
+importer already reads zstd JSONL, so this is a small change once a real
+compressed rollout exists to test against.
+
+## Plan limits
+
+Measured on the owner's machine on 2026-10-01: **72 of 176** transcripts carry
+`rate_limits` in their `token_count` records, in four shapes:
+
+- **`plus`** — `primary` 300 minutes, `secondary` 10080 (1,477 samples).
+- **`prolite`** — `primary` **10080**, `secondary` null: no five-hour window at
+  all (15,031 samples). Reading `primary` as "the 5-hour window" would have put
+  the weekly figure under the wrong label.
+- **CLI 0.4x** — no `limit_id`, windows of 299 and 10079 minutes, `resets_at`
+  null (30 samples).
+- **`limit_id: "premium"`** — both windows null (6 samples), plus 186 samples
+  where `rate_limits` itself is null.
+
+So a window is named by its **length**, never its slot — 290–310 minutes is
+`five_hour`, 10000–10160 is `seven_day`, anything else is skipped rather than
+labelled — and only `limit_id` `codex` (or absent) is read. The latest sample
+in each transcript is kept; across transcripts the one Codex wrote last wins,
+and it **replaces the whole set**, because the account above moved from `plus`
+to `prolite` and an upsert would have kept showing the old plan's five-hour
+figure. Stored in `rate_limit_latest` as `codex_five_hour` / `codex_seven_day`
+with no history, and served as `codex_rate_limits` with the time Codex wrote
+it ([03-contracts.md](03-contracts.md#rate-limit-snapshots-ddl-migration-0005)).
+The Cost screen shows them under a Codex heading with "as of"; nothing is
+forecast from them ([04-ui.md](04-ui.md#cost--burn)). On the first pass after
+an upgrade the newest transcripts are opened once to fill the panel, because
+transcripts read by an earlier version are not parsed again until they change.
 
 ## Restarts
 
@@ -219,16 +284,19 @@ to import again (0022 and 0023 did) finds the file unread.
   `~/.codex/config.toml` — on the owner's machine it was already occupied by
   Codex Computer Use. Taking it would break whatever is there, so Codex is read
   the way OpenCode is: files only, nothing written into another tool's config.
-- **Plan limits on the Cost screen.** The data is parsed (`codex.Limits`) but
-  not yet stored: `rate_limit_latest` is keyed by window name and would need to
-  distinguish two agents' windows before it can hold both.
+- **Codex limits on Now.** The compact Plan limits cell on Now stays Claude
+  Code's; Codex's are on the Cost screen only.
+- **`.jsonl.zst` rollouts** (§ Where the transcripts are).
 
 ## Where it lives
 
-- `internal/codex/codex.go` — the transcript parser, `List`, `Dir`.
+- `internal/codex/codex.go` — the transcript parser, `List`, `ListAll`,
+  `Home`, `Dirs`.
 - `internal/codex/ingest.go` — the poller that writes into the store.
+- `internal/codex/limits.go` — plan-limit windows into `rate_limit_latest`
+  (§ Plan limits).
 - `internal/codex/names.go` — thread names and first messages from
-  `~/.codex/state_<N>.sqlite` (§ Names).
+  `$CODEX_HOME/state_<N>.sqlite` (§ Names).
 - `internal/codex/live_check_test.go` — a smoke check against whatever Codex is
   installed on the machine, skipped where there is none. The fixture was written
   from what real transcripts contain, and this is what keeps that true.

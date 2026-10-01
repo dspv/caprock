@@ -53,5 +53,25 @@ describe('plan limits panel', () => {
     render(<CostScreen />)
     await waitFor(() => expect(screen.getByText('24%')).toBeInTheDocument())
     expect(screen.getByText('27%')).toBeTruthy()
+    // Without Codex the panel carries no agent headings.
+    expect(screen.queryByText('Codex')).toBeNull()
+  })
+
+  it("shows Codex's windows under its own name, with when Codex wrote them", async () => {
+    const now = Date.now()
+    state.summary = summary({
+      rate_limits: { five_hour: { used_percentage: 24, resets_at: 0 } },
+      // A prolite plan: weekly window only.
+      codex_rate_limits: { seven_day: { used_percentage: 5, resets_at: Math.floor(now / 1000) + 2 * 86400, observed_at: now - 60_000 } },
+    })
+    render(<CostScreen />)
+    await waitFor(() => expect(screen.getByText('Codex')).toBeInTheDocument())
+    expect(screen.getByText('Claude Code')).toBeTruthy()
+    expect(screen.getByText('5%')).toBeTruthy()
+    expect(screen.getByText('24%')).toBeTruthy()
+    expect(document.body.textContent).toMatch(/as of /)
+    // Only the window Codex reported: one 5-hour row (Claude Code's), not two.
+    expect(screen.getAllByText('5-hour window')).toHaveLength(1)
+    expect(document.body.textContent).toMatch(/never forecast/)
   })
 })
