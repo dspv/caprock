@@ -713,6 +713,17 @@ would not have proved it worked — the same class of assumption that made
 [ADR-026](#adr-026--gemini-cli-is-a-session-caprock-starts-not-a-chat-panel-it-owns)
 wrong twice.
 
+> **Amended 2026-10-01: prompts are on.** Off was a caution from before Memory
+> existed, and no reason beyond it was recorded. Once Memory kept the prompts
+> and replies of Claude Code, Codex, OpenCode and DeepSeek Harness, Gemini was
+> the one agent whose question could not be found. The telemetry file sits in
+> the same `0700` data directory as their transcripts. Spawned sessions now set
+> `GEMINI_TELEMETRY_LOG_PROMPTS=true`; on a live Gemini CLI 0.58.0 session the
+> `gemini_cli.user_prompt` record then carries `prompt`, which lands in
+> `turn.user` `payload.prompt` and is searched like every other agent's. What
+> Gemini *replied* was not verified — that session's key was rejected by the
+> API — so Gemini replies are not read yet.
+
 **Cache writes stay zero.** Gemini reports what it read from cache and has no
 counterpart to Claude's cache-write figure. The column means "we do not know",
 and inventing a number for it would break rule 6 on the screen whose entire

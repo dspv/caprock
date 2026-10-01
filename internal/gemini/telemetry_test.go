@@ -115,11 +115,10 @@ func TestProseNeverRidesAlongOnAFiguresEvent(t *testing.T) {
 	// counted — a cost row is read on every screen, and text riding along on
 	// one is text nobody chose to keep.
 	//
-	// The fixture was captured without GEMINI_TELEMETRY_LOG_PROMPTS, so its
-	// user_prompt does carry text; that is the shape this must handle, not the
-	// shape it should aim for. Spawned sessions set the flag, which leaves
-	// prompt_length and drops the prompt itself — verified on a live session,
-	// because the flag existing in the bundle would not have proved it worked.
+	// The fixture's user_prompt carries its text, which is the shape spawned
+	// sessions now produce: they set GEMINI_TELEMETRY_LOG_PROMPTS=true so the
+	// question reaches Memory (verified on a live 0.58.0 session, 2026-10-01).
+	// The prompt belongs on turn.user and nowhere else.
 	for _, e := range parseFixture(t) {
 		if e.Kind == event.KindTurnUser {
 			continue
