@@ -494,7 +494,10 @@ long would not be dishonest so much as unused. A feature nobody finishes setting
 up is not a feature.
 
 It is stored the way the licence key already is: `config.json`, mode `0600`,
-inside a `0700` data dir. It is **write-only over HTTP** — accepted by
+inside a `0700` data dir. It never appears in an error either: a network
+failure's text carries the request URL, which carries the token, and that text
+was logged and shown on the Settings screen until 2026-10-01 —
+`weekly.Sender.Send` now reports the cause without the URL. It is **write-only over HTTP** — accepted by
 `PUT /v1/settings`, never returned by `GET /v1/settings`, which is a new pattern
 in this codebase and exists because the settings response is read by the
 dashboard on every render and by `caprock report`. What comes back instead is
