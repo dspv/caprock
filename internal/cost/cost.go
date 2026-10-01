@@ -30,13 +30,13 @@ type Model struct {
 	// inclusive, in UTC. Empty means "still current" — almost every row.
 	//
 	// A vendor's introductory price is a real price for the turns that ran
-	// while it was live, and a different real price afterwards. Sonnet 5
-	// launched at $2/$10 and reverts to $3/$15 on 2026-08-31; overwriting the
-	// figure on that date would silently restate every August turn at a price
-	// nobody was charged, which is rule 6's "no invented numbers" applied to
-	// our own history. So a superseded price stays in the table with the date
-	// it stopped applying, and Lookup picks the row that was in force when the
-	// turn happened.
+	// while it was live, and a different real price afterwards; overwriting
+	// the figure on the day it changes would silently restate every earlier
+	// turn at a price nobody was charged, which is rule 6's "no invented
+	// numbers" applied to our own history. So a superseded price stays in the
+	// table with the date it stopped applying, and Lookup picks the row that
+	// was in force when the turn happened. (Sonnet 5 was the first case; its
+	// announced rise was then cancelled, which is a Correction, not a change.)
 	//
 	// Rows for one model id are ordered oldest-first in the JSON; the current
 	// row is the one with no Until.
@@ -52,8 +52,33 @@ type Table struct {
 	Unit      string   `json:"unit"`
 	Notes     []string `json:"notes"`
 	Models    []Model  `json:"models"`
+	// Corrections name the turns this version prices differently because an
+	// earlier version was wrong, not because a price changed. See Correction.
+	Corrections []Correction `json:"corrections,omitempty"`
 	// UserOverride is true when the table came from <data_dir>/pricing.json.
 	UserOverride bool `json:"user_override,omitempty"`
+}
+
+// Correction marks turns an earlier table priced wrongly. A price change
+// never restates history (see Model.Until); a mistake in the table is
+// different — the figure it produced was one nobody was charged, and keeping it
+// keeps an invented number (rule 6). Two cases made this necessary: Opus 5.5
+// had no row and fell through to Opus 5's by prefix, at 1.25x its input price
+// and 2.5x its cache read; and Sonnet 5's announced rise to $3/$15 on
+// 2026-08-31 was cancelled, so every Sonnet 5 turn from that day had been
+// priced at a rate that never applied.
+//
+// The daemon reprices the matching turns once per table version, at the row in
+// force at each turn's own timestamp, and moves the session and daily totals by
+// the difference (rollup.ApplyCorrections).
+type Correction struct {
+	// Model is a prefix of the stored model id, as rows are matched.
+	Model string `json:"model"`
+	// From is the first UTC day, "YYYY-MM-DD", whose turns are affected.
+	// Empty means every turn of that model.
+	From string `json:"from,omitempty"`
+	// Reason is for the person reading the table.
+	Reason string `json:"reason,omitempty"`
 }
 
 // Parse decodes a pricing table and validates it.
@@ -71,6 +96,16 @@ func Parse(b []byte) (*Table, error) {
 	for _, m := range t.Models {
 		if m.ID == "" || m.Input < 0 || m.Output < 0 || m.CacheRead < 0 || m.CacheWrite5m < 0 || m.CacheWrite1h < 0 {
 			return nil, fmt.Errorf("pricing table: invalid model row %+v", m)
+		}
+	}
+	for _, c := range t.Corrections {
+		if c.Model == "" {
+			return nil, errors.New("pricing table: a correction names no model")
+		}
+		if c.From != "" {
+			if _, err := time.Parse("2006-01-02", c.From); err != nil {
+				return nil, fmt.Errorf("pricing table: correction for %s: from %q is not YYYY-MM-DD", c.Model, c.From)
+			}
 		}
 	}
 	// Longest id first so prefix matching picks the most specific row.

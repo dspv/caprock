@@ -1,7 +1,7 @@
 {
-  "version": "2026-09-30.1",
+  "version": "2026-10-01.1",
   "source": "https://platform.claude.com/docs/en/about-claude/pricing",
-  "fetched_at": "2026-09-30",
+  "fetched_at": "2026-10-01",
   "currency": "USD",
   "unit": "per_million_tokens",
   "notes": [
@@ -11,7 +11,7 @@
     "Model ids are matched by prefix against the `model` field observed in transcripts (e.g. claude-opus-5, claude-sonnet-4-5-20250929). Longest prefix wins.",
     "context_window is the model's maximum input context in tokens as published; used for the 'context fill %' badge (OQ-07).",
     "Non-Anthropic rows are the providers' own published list prices, fetched 2026-08-27: DeepSeek V4 Pro $0.435/$0.87 per 1M (its 75% cut, made permanent); MiniMax M3 $0.30/$1.20 per 1M standard tier with $0.06 cache read (its permanent 50% off). They are priced so a total that includes non-Anthropic usage is a total; Caprock still does not charge for any of it and cannot see a bill.",
-    "A model may have more than one row: a price that has been superseded keeps its own row with `until` (the last date it applied, inclusive, UTC), and the current price is the row with no `until`. Rows for one id are ordered oldest-first and a turn is priced by the row in force when it ran, so an expiring introductory rate never restates history at a price nobody was charged. Sonnet 5 is the first: $2/$10 introductory through 2026-08-30, $3/$15 from 2026-08-31 (claude.com/pricing, read 2026-08-30).",
+    "A model may have more than one row: a price that has been superseded keeps its own row with `until` (the last date it applied, inclusive, UTC), and the current price is the row with no `until`. Rows for one id are ordered oldest-first and a turn is priced by the row in force when it ran, so an expiring introductory rate never restates history at a price nobody was charged. No row is dated today. Sonnet 5 was the first: $2/$10 was announced as introductory through 2026-08-30 with $3/$15 from 2026-08-31 (claude.com/pricing, read 2026-08-30), but on 2026-10-01 the API pricing page says the increase \"will not occur\" and $2/$10 is the standard price, so its $3/$15 row is gone and the turns priced at it are a correction (below).",
     "Gemini prices are Google AI Studio paid-tier rates read from https://ai.google.dev/gemini-api/docs/pricing on 2026-09-01, for the text models the chat feature can reach. Image, video, TTS, embedding and robotics models are omitted because no code path can bill them.",
     "gemini-3.7-flash and gemini-3.6-flash carry introductory pricing through 2026-12-31; input doubles to $1.50 and output to $7.50 on 2027-01-01. This table must be refreshed before that date or those two rows will understate cost.",
     "Gemini has no 5m/1h cache-write price: Google bills cache storage per hour ($0.50-$4.50 per 1M tokens/hour by model), which is time-based and has no per-token equivalent, so cache_write_* are 0 for Gemini rows and cached input is priced at cache_read.",
@@ -19,8 +19,14 @@
     "OpenAI rows are OpenAI's own published list prices, read from https://developers.openai.com/api/docs/pricing and the per-model pages on 2026-09-06: gpt-5-codex $1.25/$10.00 per 1M with $0.125 cached input (400k context), gpt-5.3-codex $1.75/$14.00 with $0.175 cached, and the gpt-5.6 family sol $4/$20, terra $2/$12, luna $0.20/$1.20 (1.05M context). They exist because Codex sessions report tokens but no cost of their own, unlike OpenCode which computes its own figure.",
     "cache_write_5m and cache_write_1h are 0 on the gpt-5 rows because OpenAI did not bill for writing to its cache when they were read — a zero there means 'not charged', not 'unknown'; the same is true of the Gemini rows. The gpt-6 family is different: its model pages, read 2026-09-30, say \"Cache writes are billed at 1.25x the uncached input token rate\", so those rows carry that rate in both columns (OpenAI has one cache tier). It changes nothing today: Codex reports cache_write_input_tokens as 0 on every one of the 5,815 gpt-6 turns on the owner's machine, so written tokens arrive inside plain input and are billed at 1x. The gpt-6 rows under-report by up to 0.25x of whatever share of input was a cache write, and the transcript does not say what share that is (rule 6).",
     "gpt-6-sol ($2.00/$10.00 per 1M, $0.20 cached) and gpt-6-luna ($0.10/$0.50, $0.01 cached), 1.05M context, are OpenAI's list prices read from https://developers.openai.com/api/docs/pricing and the per-model pages on 2026-09-29. Prompts over 272K input tokens bill at 2x input and cache and 1.5x output for the whole request and are under-reported by these rows; none of the 5,788 gpt-6 turns on the owner's machine reached that size (largest 237,646), because Codex compacts first.",
-    "gpt-5.3-codex fast mode (2x list: $3.50/$28.00) is deliberately not a row. Transcripts record the model id, not the service tier, so a fast-mode session is indistinguishable from a standard one and a second row could only be guessed at (rule 6).",
+    "gpt-5.3-codex fast mode (2x list: $3.50/$28.00) is deliberately not a row. Codex rollouts from late September 2026 record `service_tier` in `thread_settings_applied`, but all 598 such records on the owner's machine on 2026-10-01 say `default`; until a fast-tier turn is seen, the value it would carry is not known, and a second row could only be guessed at (rule 6). Claude Code transcripts do not record the speed at all. A fast-mode turn is priced at the standard rate and understated.",
+    "Claude Opus 5.5 and Claude Sonnet 5.5 were read from the API pricing page on 2026-10-01. Opus 5.5 is $4/$20 and reads cache at 0.05x ($0.20 per 1M), another deliberate break from the 0.1x rule. Before it had a row, `claude-opus-5-5` matched `claude-opus-5` by prefix and was priced at Opus 5's $5/$25 and $0.50 cache read. The page gives Claude 4.6 and later models a 1M context window at standard pricing.",
+    "`corrections` name turns an earlier version of this table priced wrongly, as opposed to a price that changed. The daemon reprices those turns once per table version, at the row in force at each turn's own time, and moves the session and daily totals by the difference. 2026-10-01.1 corrects Opus 5.5 (every turn) and Sonnet 5 from 2026-08-31.",
     "gpt-6-astra ($10.00/$50.00 per 1M, $1.00 cached, $12.50 cache write) and gpt-6.1-sol ($2.00/$10.00, $0.10 cached, $2.50 cache write), 1.05M context, are OpenAI's list prices read from https://developers.openai.com/api/docs/pricing and the per-model pages on 2026-09-30. The same over-272K long-context surcharge applies as to gpt-6-sol and is not modelled."
+  ],
+  "corrections": [
+    { "model": "claude-opus-5-5", "reason": "No row before 2026-10-01.1; priced as claude-opus-5 by prefix." },
+    { "model": "claude-sonnet-5", "from": "2026-08-31", "reason": "The $3/$15 rise announced for 2026-08-31 was cancelled; $2/$10 stayed the price." }
   ],
   "models": [
     {
@@ -61,6 +67,16 @@
       "cache_write_1h": 20.0,
       "cache_read": 1.0,
       "output": 50.0,
+      "context_window": 1000000
+    },
+    {
+      "id": "claude-opus-5-5",
+      "display": "Claude Opus 5.5",
+      "input": 4.0,
+      "cache_write_5m": 5.0,
+      "cache_write_1h": 8.0,
+      "cache_read": 0.2,
+      "output": 20.0,
       "context_window": 1000000
     },
     {
@@ -134,6 +150,16 @@
       "context_window": 200000
     },
     {
+      "id": "claude-sonnet-5-5",
+      "display": "Claude Sonnet 5.5",
+      "input": 2.0,
+      "cache_write_5m": 2.5,
+      "cache_write_1h": 4.0,
+      "cache_read": 0.2,
+      "output": 10.0,
+      "context_window": 1000000
+    },
+    {
       "id": "claude-sonnet-5",
       "display": "Claude Sonnet 5",
       "input": 2.0,
@@ -141,17 +167,6 @@
       "cache_write_1h": 4.0,
       "cache_read": 0.2,
       "output": 10.0,
-      "context_window": 1000000,
-      "until": "2026-08-30"
-    },
-    {
-      "id": "claude-sonnet-5",
-      "display": "Claude Sonnet 5",
-      "input": 3.0,
-      "cache_write_5m": 3.75,
-      "cache_write_1h": 6.0,
-      "cache_read": 0.3,
-      "output": 15.0,
       "context_window": 1000000
     },
     {
