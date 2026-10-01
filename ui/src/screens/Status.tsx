@@ -5,6 +5,7 @@ import { Empty, Panel } from '@/components/ui'
 import { usePlan } from '@/components/PlanPicker'
 import { LicenseField } from '@/components/LicenseField'
 import { Pairing } from '@/components/Pairing'
+import { StoragePanel } from '@/components/Storage'
 
 export function StatusScreen() {
   const st = useApi(() => api.status(), [], { live: false, intervalMs: 5000 })
@@ -20,7 +21,7 @@ export function StatusScreen() {
     ['pricing', `${s.pricing.version} · ${s.pricing.models} models · fetched ${s.pricing.fetched_at}${s.pricing.user_override ? ' · user override' : ''}`],
     ['pricing source', s.pricing.source],
     ['loop rule', `≥ ${s.loop_k} same-tool calls in ${s.loop_t_minutes} min · ${s.active_loops} active`],
-    ['events stored', `${s.events.toLocaleString()}${s.retention_days > 0 ? ` · pruned after ${s.retention_days}d` : ' · kept forever (set retention_days to cap DB growth)'}`],
+    ['events stored', `${s.events.toLocaleString()}${s.retention_days > 0 ? ` · pruned after ${s.retention_days}d` : ' · kept forever (see Storage)'}`],
     ['orchestration', s.orchestration ? 'on (--hive)' : 'off'],
     // A feature that acts before you type is one nobody can see working. This
     // says whether it can, and for how much — without opening a session to
@@ -59,6 +60,9 @@ export function StatusScreen() {
         * paired device reads (ADR-029), and the daemon refuses it the rest. */}
       {!isPairedDevice() && <SettingsPanel />}
       {!isPairedDevice() && <Pairing />}
+      {/* A read, so a paired device sees it too: sizes and counts, nothing
+        * that changes anything. */}
+      <StoragePanel />
       <Panel title="Daemon">
         <div className="overflow-x-auto">
           {/* Scrolls inside itself on a narrow screen. Without this the table

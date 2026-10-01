@@ -500,6 +500,37 @@ export interface Status {
   }
 }
 
+/** What Caprock keeps on disk: GET /v1/storage. The database composition is
+ *  measured in the background and cached, so `database` is absent for the
+ *  first minute after the daemon starts. */
+export interface StorageReport {
+  data_dir: string
+  total_bytes: number
+  files: { name: string; bytes: number; dir?: boolean }[]
+  database?: {
+    page_size: number
+    page_count: number
+    free_pages: number
+    tables?: { name: string; data_bytes: number; index_bytes: number }[]
+    events: number
+    payload_bytes: number
+    oldest_ts: number
+    agents: StorageSlice[]
+    kinds: StorageSlice[]
+    recent: StorageWindow[]
+    older: StorageWindow[]
+  }
+  measured_at?: number
+  measure_ms?: number
+  error?: string
+  reclaimable_bytes: number
+  /** An estimate, and named as one: see 03-contracts.md § Storage. */
+  growth_bytes_per_day_est: number
+  retention_days: number
+}
+export interface StorageSlice { name: string; events: number; payload_bytes: number }
+export interface StorageWindow { days: number; events: number; payload_bytes: number }
+
 /** One directory the folder picker may offer. */
 export interface BrowseEntry { name: string; path: string; repo: boolean }
 export interface BrowseResponse { dir: string; parent: string; root: string; entries: BrowseEntry[] }
@@ -722,6 +753,7 @@ export const api = {
   // Emergency stop: kills the orchestrator and every worker it spawned.
   stopOrchestrator: () => post<{ stopped: number }>('/v1/orchestrator/stop', {}),
   status: () => get<Status>('/v1/status'),
+  storage: () => get<StorageReport>('/v1/storage'),
   spawn: (req: SpawnRequest) => post<{ session_id: string; cwd: string }>('/v1/agents', req),
   signal: (id: string, action: 'pause' | 'resume' | 'kill') => post<void>(`/v1/agents/${encodeURIComponent(id)}/signal`, { action }),
   /**

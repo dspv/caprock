@@ -150,6 +150,7 @@ func TestAPairedDeviceReadsButDoesNotControl(t *testing.T) {
 		{http.MethodHead, "/v1/sessions", 0},
 		{http.MethodGet, "/v1/stats/summary", 0},
 		{http.MethodGet, "/v1/notes", 0},
+		{http.MethodGet, "/v1/storage", 0},
 		{http.MethodGet, "/v1/tasks", 0},
 		{http.MethodGet, "/v1/live", 0},
 		{http.MethodGet, "/assets/index.js", 0},

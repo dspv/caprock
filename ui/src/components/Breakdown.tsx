@@ -161,7 +161,7 @@ export function BreakdownPanel() {
 }
 
 /** A short ranked list — label, bar, figure — used for both breakdowns. */
-function Bars({
+export function Bars({
   title,
   cols,
   rows,
