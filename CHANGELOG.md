@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.63.0] - 2026-10-01
+
 ### Security
 
 - **A paired tablet or phone can read Caprock and no longer control it.** The
@@ -43,7 +45,6 @@ Phase 3 (Delight) has no plan by design.
   table holding GPT rows; it says "At API list prices". `caprock report` names
   every vendor whose prices make up its total ("Anthropic and OpenAI list
   prices") and stops calling a mixed total "Claude Code".
-
 - **`caprock statusline install` no longer sends you in a circle.** With a
   status line of your own already set, it said "run `caprock statusline
   install`" — the command you had just run. It now names the settings file and
