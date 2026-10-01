@@ -1,0 +1,178 @@
+# Google organic top 8, US, English, desktop, via DataForSEO serp/google/organic/live/advanced, read 2026-10-01.
+query	rank	domain	url
+claude code usage	1	platform.claude.com	https://platform.claude.com/claude-code
+claude code usage	2	claude.ai	https://claude.ai/
+claude code usage	3	support.claude.com	https://support.claude.com/en/articles/12157520-claude-code-usage-analytics
+claude code usage	4	www.reddit.com	https://www.reddit.com/r/ClaudeAI/comments/1n6t85n/how_exactly_does_claude_codes_usage_limits_work/
+claude code usage	5	github.com	https://github.com/phuryn/claude-usage
+claude code usage	6	support.claude.com	https://support.claude.com/en/articles/11647753-how-do-usage-and-length-limits-work
+claude code usage	7	www.minware.com	https://www.minware.com/blog/claude-code-usage-data
+claude code usage	8	news.ycombinator.com	https://news.ycombinator.com/item?id=44317012
+claude code cost	1	claude.com	https://claude.com/pricing
+claude code cost	2	www.reddit.com	https://www.reddit.com/r/ClaudeCode/comments/1nwua9x/i_spent_15_hours_instrumenting_claude_codes_to/
+claude code cost	3	www.finout.io	https://www.finout.io/blog/claude-code-pricing-2026
+claude code cost	4	www.ssdnodes.com	https://www.ssdnodes.com/learn/claude-pro-price-and-limits
+claude code cost	5	www.superblocks.com	https://www.superblocks.com/blog/claude-code-pricing
+claude code cost	6	www.youtube.com	https://www.youtube.com/watch?v=3uE33T0j1w8&vl=en
+claude code cost	7	medium.com	https://medium.com/vibe-coding/claude-code-price-hike-finally-feels-like-a-relief-619245e5674e
+claude code cost	8	simonwillison.net	https://simonwillison.net/2026/Apr/22/claude-code-confusion/
+ccusage	1	www.reddit.com	https://www.reddit.com/r/ClaudeCode/comments/1tgnytt/what_is_cache_in_ccusage/
+ccusage	2	github.com	https://github.com/contiamo/cc-usage-monitor
+ccusage	3	x.com	https://x.com/thdxr/status/1937213675150139643
+ccusage	4	news.ycombinator.com	https://news.ycombinator.com/item?id=46525189
+ccusage	5	www.reddit.com	https://www.reddit.com/r/ClaudeAI/comments/1lu7jcz/ccusagereporting_on_anthropicquestion_around/
+ccusage	6	npmjs.com	https://npmjs.com/package/@better-ccusage/codex
+ccusage	7	github.com	https://github.com/ccusage/ccusage/issues/930
+ccusage	8	news.ycombinator.com	https://news.ycombinator.com/item?id=44332660
+claude code usage monitor	1	www.reddit.com	https://www.reddit.com/r/OnlyAICoding/comments/1tmo4s4/our_new_fav_desk_gadget_claude_code_usage_display/
+claude code usage monitor	2	github.com	https://github.com/rootedlab-code/claude-code-usage-monitor/blob/main/README.md
+claude code usage monitor	3	www.linkedin.com	https://www.linkedin.com/pulse/how-i-built-usage-monitor-claude-because-like-knowing-max-hunt-s86ke
+claude code usage monitor	4	notchy.dev	https://notchy.dev/alternatives/claude-code-usage-monitor/
+claude code usage monitor	5	github.com	https://github.com/Maciek-roboblog/Claude-Code-Usage-Monitor/activity
+claude code usage monitor	6	news.ycombinator.com	https://news.ycombinator.com/item?id=44317952
+claude code usage monitor	7	x.com	https://x.com/meta_alchemist/status/2038992182812844261
+claude code usage monitor	8	github.com	https://github.com/ccusage/ccusage/discussions/579
+claude code dashboard	1	github.com	https://github.com/rohitg00/awesome-claude-code-toolkit/blob/main/plugins/analytics-reporter/commands/dashboard.md
+claude code dashboard	2	www.claudecodehq.com	https://www.claudecodehq.com/playbooks/agency-dashboard
+claude code dashboard	3	cryptorank.io	https://cryptorank.io/news/feed/8eec5-clawdmeter-claude-code-desktop-dashboard
+claude code dashboard	4	dev.to	https://dev.to/rockdarko/a-grafana-dashboard-for-claude-code-on-prometheus-2nbl
+claude code dashboard	5	www.youtube.com	https://www.youtube.com/shorts/jVVsidznXzI
+claude code dashboard	6	www.linkedin.com	https://www.linkedin.com/posts/rubioenrique_i-will-show-you-how-to-build-a-people-analytics-activity-7458176270153986048-9x3Y
+claude code dashboard	7	www.digitaltoday.co.kr	https://www.digitaltoday.co.kr/en/view/55730/claude-code-token-usage-real-time-tiny-dashboard-claudemeter-emerges
+claude code dashboard	8	github.com	https://github.com/anthropics/claude-code/issues/35607
+claude code history	1	mcpmarket.com	https://mcpmarket.com/tools/skills/claude-session-search
+claude code history	2	www.reddit.com	https://www.reddit.com/r/ClaudeCode/comments/1us6004/a_fast_local_history_browser_for_claude_code/
+claude code history	3	open-vsx.org	https://open-vsx.org/extension/doorsofperception/claude-code-history/reviews
+claude code history	4	agentnativedev.medium.com	https://agentnativedev.medium.com/save-your-best-claude-code-workflows-search-analytics-for-claude-6d9c8ef1a194
+claude code history	5	www.linkedin.com	https://www.linkedin.com/posts/jayant-sharma-bridging-techandpolicy_want-to-run-an-experiment-for-some-deep-self-insight-activity-7420858254764744704-t_Cq
+claude code history	6	github.com	https://github.com/rpmessner/claude-history.nvim
+claude code history	7	mcpmarket.com	https://mcpmarket.com/tools/skills/conversation-logging
+claude code history	8	x.com	https://x.com/robzolkos/status/2043753723323707573
+claude code history viewer	1	github.com	https://github.com/jhlee0409/claude-code-history-viewer
+claude code history viewer	2	jhlee0409.github.io	https://jhlee0409.github.io/claude-code-history-viewer/
+claude code history viewer	3	marketplace.visualstudio.com	https://marketplace.visualstudio.com/items?itemName=agsoft.claude-history-viewer
+claude code history viewer	4	news.ycombinator.com	https://news.ycombinator.com/item?id=44459376
+claude code history viewer	5	medium.com	https://medium.com/@raymondpeck/unlocking-your-claude-history-part-1-f19000c05655
+claude code history viewer	6	www.reddit.com	https://www.reddit.com/r/ClaudeAI/comments/1mdosw4/i_built_a_web_viewer_for_claude_code_conversation/
+claude code history viewer	7	johndamask.substack.com	https://johndamask.substack.com/p/devlog-making-a-claude-code-history
+claude code history viewer	8	support.claude.com	https://support.claude.com/en/articles/11817273-use-claude-s-chat-search-and-memory-to-build-on-previous-context
+claude code list sessions	1	mcpservers.org	https://mcpservers.org/agent-skills/bitwarden/extracting-session-data
+claude code list sessions	2	www.reddit.com	https://www.reddit.com/r/ClaudeCode/comments/1se7n99/i_built_a_claude_code_hook_that_turns_vague/
+claude code list sessions	3	www.mcpbundles.com	https://www.mcpbundles.com/skills/getflex-mcp-caf9b67acb
+claude code list sessions	4	github.com	https://github.com/anthropics/claude-code/issues/66126
+claude code list sessions	5	news.ycombinator.com	https://news.ycombinator.com/item?id=46805870
+claude code list sessions	6	swanbase.co	https://swanbase.co/en/blog/claude-code-hooks-automate-secure-sessions/
+claude code list sessions	7	favtray.com	https://favtray.com/videos/agent-sessions
+claude code list sessions	8	github.com	https://github.com/anthropics/claude-code/issues/34157
+claude code statusline	1	github.com	https://github.com/gfreschi/claude-code-statusline
+claude code statusline	2	www.reddit.com	https://www.reddit.com/r/ClaudeCode/comments/1uzd2mc/made_a_statusline_for_claude_code_that_actually/
+claude code statusline	3	ianodad.medium.com	https://ianodad.medium.com/claude-code-status-bar-setup-60f3f1c1c532
+claude code statusline	4	www.claudelog.com	https://www.claudelog.com/faqs/status-line-claude-code/
+claude code statusline	5	crates.io	https://crates.io/crates/claude-code-statusline-cli
+claude code statusline	6	www.youtube.com	https://www.youtube.com/watch?v=RvwZXIhP6Vg
+claude code statusline	7	www.reddit.com	https://www.reddit.com/r/ClaudeAI/comments/1vf6nge/i_built_a_status_line_for_my_parallel_claude_code/
+claude code statusline	8	news.ycombinator.com	https://news.ycombinator.com/item?id=49471239
+codex usage	1	www.reddit.com	https://www.reddit.com/r/ChatGPT/comments/1vfrsd8/codex_usage_dropped_from_about_50_to_30_in/
+codex usage	2	community.openai.com	https://community.openai.com/t/confused-about-codex-limit-usage-after-gpt-5-6-release-plus-plan/1388758/2
+codex usage	3	github.com	https://github.com/orgs/community/discussions/197984
+codex usage	4	community.openai.com	https://community.openai.com/t/what-automatically-consumes-codex-usage-without-doing-anything/1379261/3
+codex usage	5	github.com	https://github.com/openai/codex/issues/31125
+codex usage	6	community.openai.com	https://community.openai.com/t/codex-usage-limit-is-reached-too-quickly-even-with-chatgpt-plus/1379502/5
+codex usage	7	community.openai.com	https://community.openai.com/t/usage-limits-of-codex-within-cursor/1356784/9
+codex usage	8	github.com	https://github.com/openai/codex/issues/27608
+claude code remote control	1	www.reddit.com	https://www.reddit.com/r/ClaudeCode/comments/1w8zo58/i_extended_claude_code_remote_so_it_works_even/
+claude code remote control	2	daily.dev	https://daily.dev/posts/claude-code-remote-control-keeps-your-agent-local-and-puts-it-in-your-pocket-yvaalh68b
+claude code remote control	3	www.youtube.com	https://www.youtube.com/watch?v=zwyKeRirJW0
+claude code remote control	4	www.penligent.ai	https://www.penligent.ai/hackinglabs/hi/claude-code-remote-control-security-risks-when-your-local-session-becomes-a-remote-interface/
+claude code remote control	5	en.delphipraxis.net	https://en.delphipraxis.net/topic/15129-remote-control-claude-code/
+claude code remote control	6	github.com	https://github.com/anthropics/claude-code/issues/25115
+claude code remote control	7	x.com	https://x.com/levelsio/status/2028192195463839748
+claude code remote control	8	www.sotaaz.com	https://www.sotaaz.com/post/mobile-claude-code-en
+claude code multiple agents	1	code.claude.com	https://code.claude.com/docs/en/agents
+claude code multiple agents	2	code.claude.com	https://code.claude.com/docs/en/agent-teams
+claude code multiple agents	3	www.reddit.com	https://www.reddit.com/r/ClaudeCode/comments/1ra2xxj/how_to_use_multiagents_and_orchestrated_agents/
+claude code multiple agents	4	heeki.medium.com	https://heeki.medium.com/collaborating-with-agents-teams-in-claude-code-f64a465f3c11
+claude code multiple agents	5	platform.claude.com	https://platform.claude.com/docs/en/managed-agents/multiagent-orchestration
+claude code multiple agents	6	timdietrich.me	https://timdietrich.me/blog/claude-code-parallel-subagents/
+claude code multiple agents	7	code.visualstudio.com	https://code.visualstudio.com/blogs/2026/02/05/multi-agent-development
+claude code multiple agents	8	hidekazu-konishi.com	https://hidekazu-konishi.com/entry/claude_code_subagents_and_orchestration_guide.html
+claude code analytics	1	code.claude.com	https://code.claude.com/docs/en/analytics
+claude code analytics	2	support.claude.com	https://support.claude.com/en/articles/12883420-view-usage-analytics-for-team-and-enterprise-plans
+claude code analytics	3	support.claude.com	https://support.claude.com/en/articles/12157520-claude-code-usage-analytics
+claude code analytics	4	github.com	https://github.com/sujankapadia/claude-code-analytics
+claude code analytics	5	www.faros.ai	https://www.faros.ai/blog/claude-code-analytics
+claude code analytics	6	www.reddit.com	https://www.reddit.com/r/ClaudeAI/comments/1s36sno/how_to_see_analytics_of_claude_code_usage_in_teams/
+claude code analytics	7	www.worklytics.co	https://www.worklytics.co/blog/tracking-claude-code-usage
+claude code analytics	8	platform.claude.com	https://platform.claude.com/docs/en/manage-claude/claude-code-analytics-api
+claude code otel	1	github.com	https://github.com/GreptimeTeam/perses-claude-code-otel-greptimecloud
+claude code otel	2	mcpmarket.com	https://mcpmarket.com/tools/skills/opentelemetry-observability-2
+claude code otel	3	thehackernews.com	https://thehackernews.com/2026/08/securing-claude-code-new-compliance-api.html
+claude code otel	4	mcpmarket.com	https://mcpmarket.com/tools/skills/iii-observability-integration-2
+claude code otel	5	www.reddit.com	https://www.reddit.com/r/PrometheusMonitoring/comments/1tbyf8t/grafana_dashboard_for_claude_code_metrics/
+claude code otel	6	context7.com	https://context7.com/anthropics/claude-code-monitoring-guide
+claude code otel	7	www.linkedin.com	https://www.linkedin.com/posts/santorogiuseppe_a-200-token-bill-on-a-single-day-of-claude-activity-7421824421062946816-YFKN
+claude code otel	8	github.com	https://github.com/anthropics/claude-code/issues/41845
+claude code transcripts	1	www.reddit.com	https://www.reddit.com/r/ClaudeAI/comments/1v49ilq/i_profiled_3_months_of_my_claude_code_transcripts/
+claude code transcripts	2	github.com	https://github.com/simonw/claude-code-transcripts/activity
+claude code transcripts	3	mcpmarket.com	https://mcpmarket.com/tools/skills/claude-code-conversation-parser
+claude code transcripts	4	www.reddit.com	https://www.reddit.com/r/ClaudeAI/comments/1uoho9e/what_does_it_mean_when_claude_sends_transcripts/
+claude code transcripts	5	github.com	https://github.com/simonw/claude-code-transcripts/blob/main/LICENSE
+claude code transcripts	6	en.delphipraxis.net	https://en.delphipraxis.net/topic/15758-kai-permanently-deletes-claude-code-cli-session-transcripts-it-did-not-create/
+claude code transcripts	7	mcpmarket.com	https://mcpmarket.com/server/yt-transcriber
+claude code transcripts	8	www.reddit.com	https://www.reddit.com/r/ClaudeAI/comments/1widasa/stopped_copypasting_meeting_transcripts_into/
+claude code for teams	1	support.claude.com	https://support.claude.com/en/articles/11845131-use-claude-code-with-your-team-or-enterprise-plan
+claude code for teams	2	support.claude.com	https://support.claude.com/en/articles/9266767-what-is-the-team-plan
+claude code for teams	3	www.reddit.com	https://www.reddit.com/r/ClaudeAI/comments/1qercwq/claude_code_now_available_for_claude_teams/
+claude code for teams	4	support.claude.com	https://support.claude.com/en/articles/9267247-get-started-with-the-team-plan
+claude code for teams	5	claude.com	https://claude.com/solutions/enterprise
+claude code for teams	6	codingscape.com	https://codingscape.com/blog/how-to-choose-claude-team-vs-claude-enterprise
+claude code for teams	7	www.superblocks.com	https://www.superblocks.com/blog/claude-code-pricing
+claude code for teams	8	code.claude.com	https://code.claude.com/docs/en/agent-teams
+claude code token usage	1	code.claude.com	https://code.claude.com/docs/en/costs
+claude code token usage	2	www.reddit.com	https://www.reddit.com/r/ClaudeAI/comments/1t6asgc/things_i_wish_i_knew_earlier_about_claude_token/
+claude code token usage	3	code.claude.com	https://code.claude.com/docs/en/agent-sdk/cost-tracking
+claude code token usage	4	danielabaron.me	https://danielabaron.me/blog/how-i-stopped-running-out-of-tokens/
+claude code token usage	5	medium.com	https://medium.com/@habib23me/10-tip-to-stop-burning-your-tokens-in-claude-code-4776d4ac8956
+claude code token usage	6	shipyard.build	https://shipyard.build/blog/claude-code-tokens/
+claude code token usage	7	support.claude.com	https://support.claude.com/en/articles/14552983-models-usage-and-limits-in-claude-code
+claude code token usage	8	news.ycombinator.com	https://news.ycombinator.com/item?id=47096937
+how to check claude code usage	1	support.claude.com	https://support.claude.com/en/articles/12157520-claude-code-usage-analytics
+how to check claude code usage	2	www.reddit.com	https://www.reddit.com/r/ClaudeAI/comments/1lluirp/claude_code_where_can_i_see_token_used_and_the/
+how to check claude code usage	3	platform.claude.com	https://platform.claude.com/docs/en/api/beta/organization/usage_report/retrieve_claude_code
+how to check claude code usage	4	github.com	https://github.com/Maciek-roboblog/Claude-Code-Usage-Monitor
+how to check claude code usage	5	news.ycombinator.com	https://news.ycombinator.com/item?id=44317012
+how to check claude code usage	6	ccusage.com	https://ccusage.com/
+how to check claude code usage	7	shipyard.build	https://shipyard.build/blog/claude-code-track-usage/
+how to check claude code usage	8	www.facebook.com	https://www.facebook.com/groups/claudeaicommunity/posts/1332073528959811/
+claude code session manager	1	www.reddit.com	https://www.reddit.com/r/ClaudeCode/comments/1ufdh4y/i_built_a_terminal_tool_to_manage_a_fleet_of/
+claude code session manager	2	plugins.jetbrains.com	https://plugins.jetbrains.com/plugin/30981-clauditor/versions/stable/1028767
+claude code session manager	3	github.com	https://github.com/es6kr/claude-code-sessions
+claude code session manager	4	mcpmarket.com	https://mcpmarket.com/tools/skills/focus-session-manager
+claude code session manager	5	www.facebook.com	https://www.facebook.com/groups/vibecodinglife/posts/2136841066904419/
+claude code session manager	6	mcpmarket.com	https://mcpmarket.com/zh/tools/skills/development-session-manager
+claude code session manager	7	www.vsixhub.com	https://www.vsixhub.com/vsix/187977/
+claude code session manager	8	skills.rest	https://skills.rest/skill/session-manager-arete-consortium
+codex history	1	apps.apple.com	https://apps.apple.com/ch/app/codex-history/id6760963039
+codex history	2	podnews.net	https://podnews.net/podcast/ijox
+codex history	3	apps.apple.com	https://apps.apple.com/mo/app/codex-history/id6760963039?platform=mac
+codex history	4	www.reddit.com	https://www.reddit.com/r/OpenAI/comments/1nbp1bo/i_gave_codex_access_to_my_git_history_via_mcp/
+codex history	5	www.linkedin.com	https://www.linkedin.com/posts/andy-toizer_claude-codecodex-both-save-your-chat-transcripts-activity-7472677431313657856-hAzF
+codex history	6	www.amazon.com	https://www.amazon.com/History-Mythology-Aztecs-Codex-Chimalpopoca-ebook/dp/B08WJ7VBHG
+codex history	7	github.com	https://github.com/openai/codex/issues/21202
+codex history	8	www.reddit.com	https://www.reddit.com/r/codex/comments/1t5n73y/codex_cli_command_history_not_working_anyone_else/
+claude code monitoring	1	mcpmarket.com	https://mcpmarket.com/tools/skills/claude-monitor
+claude code monitoring	2	www.reddit.com	https://www.reddit.com/r/claudeskills/comments/1vvs60j/i_built_a_realtime_monitor_for_claude_code_tracks/
+claude code monitoring	3	agentpatterns.ai	https://agentpatterns.ai/tools/claude/monitor-tool/
+claude code monitoring	4	github.com	https://github.com/tuongaz/clawview
+claude code monitoring	5	dev.to	https://dev.to/aavisangle/claude-code-cost-tracking-monitor-and-cut-your-spending-4cge
+claude code monitoring	6	nhimg.org	https://nhimg.org/community/ai-beyond-identity/claude-code-telemetry-and-audit-trails-are-your-controls-ready/
+claude code monitoring	7	mcpmarket.com	https://mcpmarket.com/tools/skills/monitoring-observability-2
+claude code monitoring	8	github.com	https://github.com/ccusage/ccusage/discussions/579
+claude code cost per month	1	openclawdc.com	https://openclawdc.com/blog/claude-code-vs-codex-limits-compared/
+claude code cost per month	2	forum.logik.tv	https://forum.logik.tv/t/claude-code-cost-of-ai-coding/14417/6
+claude code cost per month	3	agenticschool.dev	https://agenticschool.dev/guides/claude-code-pricing-and-limits
+claude code cost per month	4	chatgbot.ai	https://chatgbot.ai/en/blog/claude-code-pricing
+claude code cost per month	5	discourse.devontechnologies.com	https://discourse.devontechnologies.com/t/claude-code-is-now-available-to-20-per-month-customers/83836?page=4
+claude code cost per month	6	www.productcompass.pm	https://www.productcompass.pm/p/claude-code-pricing/comments
+claude code cost per month	7	askjusto.com	https://askjusto.com/guides/what-claude-costs
+claude code cost per month	8	www.reddit.com	https://www.reddit.com/r/ClaudeAI/comments/1etx5hw/i_used_only_claude_sonnet_35_api_for_this_month/

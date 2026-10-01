@@ -1,0 +1,86 @@
+# Google Ads search volume via DataForSEO keywords_data/google_ads/search_volume, US (2840), English, read 2026-10-01.
+# volume = Google's rounded monthly average; mar..aug = 2026 months. Blank = not measured, not zero demand.
+keyword	volume	cpc_usd	ads_competition	mar	apr	may	jun	jul	aug
+codex usage	12100	2	LOW	18100	40500	22200	14800	14800	9900
+claude code usage	4400	8.34	LOW	9900	8100	5400	4400	5400	4400
+claude code cost	4400	7.88	LOW	9900	6600	5400	4400	2900	2900
+claude code costs	4400	7.88	LOW	9900	6600	5400	4400	2900	2900
+claude code remote control	3600	2.27	LOW	12100	4400	4400	5400	5400	3600
+claude code agent teams	2900	7.18	LOW	8100	4400	2900	1900	1600	1300
+ccusage	2400		LOW	2900	3600	2900	4400	3600	2400
+claude code statusline	1900	3.22	LOW	5400	3600	2400	1900	1600	1000
+claude code status line	1900	3.22	LOW	5400	3600	2400	1900	1600	1000
+claude code remote	1600	3.94	LOW	6600	2400	1600	1600	1000	720
+claude code team	1600	7.33	LOW	4400	2400	1600	1000	720	590
+codex usage limit	1300	5.73	LOW	1300	2400	2400	1900	1600	1000
+codex cost	1300	7.58	MEDIUM	1600	2900	2400	1900	1900	1600
+claude code usage limit	1000	12.71	LOW	1900	2400	1000	720	720	480
+claude code usage limits	1000	12.71	LOW	1900	2400	1000	720	720	480
+claude code mobile	1000	6.84	LOW	2400	1300	1000	880	720	480
+claude code usage monitor	720	13.17	LOW	1300	1000	880	880	880	480
+claude code enterprise	720	7.99	LOW	1600	1000	720	590	480	390
+claude code token cost	590	7.31	LOW	1000	1000	1000	1000	720	590
+claude code multiple agents	590	4.6	LOW	1300	720	720	390	260	210
+claude code dashboard	480	7.82	LOW	880	880	590	480	480	260
+claude code history	480		LOW	720	480	390	390	320	260
+claude code billing	480	5.84	LOW	880	720	590	480	390	260
+claude code context window	480		LOW	720	590	480	480	480	390
+claude code monitor	390	13.76	LOW	320	1300	590	480	320	260
+claude code monitoring	390	13.76	LOW	320	1300	590	480	320	260
+claude code history viewer	390		LOW	590	590	480	590	590	390
+claude code resume	390	6.78	LOW	480	480	390	260	260	210
+claude code on phone	390		LOW	880	590	480	390	390	320
+claude code compact	390		LOW	590	590	480	590	480	390
+how to check claude code usage	320	17.38	LOW	590	480	390	390	320	210
+claude code token limit	320	7.04	LOW	720	590	390	320	170	140
+claude code token usage	260	7.47	LOW	480	590	320	390	210	140
+claude code resume session	260		LOW	480	390	260	260	210	170
+claude code list sessions	260		LOW	480	480	390	390	320	320
+claude code orchestrator	260	8.97	LOW	480	390	260	170	210	210
+claude code from phone	260		LOW	720	480	390	320	260	210
+claude code headless	260		LOW	390	390	210	260	210	170
+how expensive is claude code	210	9.24	LOW	480	390	320	210	170	170
+check claude code usage	210	7	LOW	480	320	210	210	140	90
+claude code otel	210	12.95	LOW	390	390	390	320	260	210
+npx ccusage	210		LOW	260	320	260	320	320	260
+how to resume claude code session	210		LOW	320	320	260	320	260	260
+claude code sessions	210	7.47	LOW	320	320	260	260	210	260
+claude code save session	210		LOW	320	320	260	210	170	110
+gemini cli usage	210		LOW	390	480	260	90	40	20
+claude code cost per month	170	9	LOW	320	390	260	170	110	110
+claude code check usage	170	9.92	LOW	390	320	170	170	170	90
+claude code usage tracker	170	14.69	LOW	260	260	260	320	210	90
+claude code usage dashboard	170	14.45	LOW	260	390	260	260	210	110
+claude code analytics	170	9.96	LOW	260	390	210	210	260	140
+claude code telemetry	170	12.46	LOW	260	390	210	170	140	110
+claude code weekly limits	170		LOW	170	140	210	90	70	140
+ccusage codex	170		LOW	210	390	390	140	260	70
+claude code parallel agents	170		LOW	260	210	140	110	90	50
+claude code for teams	170	15.92	LOW	320	260	140	170	110	90
+codex history	170		LOW	170	210	260	140	170	210
+claude code transcripts	140		LOW	260	260	210	170	210	210
+claude code logs	140		LOW	170	170	110	110	90	70
+claude code team pricing	140	16.03	LOW	260	210	140	90	50	90
+claude code chat history	110	40.12	LOW	210	140	110	110	90	70
+claude code export conversation	110		LOW	210	170	110	110	90	70
+codex cli usage	110		LOW	140	170	140	110	110	90
+opencode usage	110	6.92	LOW	110	140	140	210	210	390
+how much does claude code cost per month	90	7.86	LOW	210	170	140	110	90	70
+claude code usage analytics	90	14.83	LOW	170	140	50	260	170	50
+claude code analytics api	90		LOW	170	260	140	140	70	50
+claude code opentelemetry	90	14.8	LOW	110	140	110	110	110	70
+claude code conversation history	90		LOW	170	110	70	50	70	30
+claude code session manager	90	5.05	LOW	110	140	210	170	210	210
+claude code session history	70		LOW	110	110	110	90	90	50
+claude code analytics dashboard	50	11.66	LOW	50	170	110	20	90	40
+where does claude code store conversation history	50		LOW	90	70	70	70	50	50
+claude code multiple sessions	50	2.97	LOW	110	90	110	70	70	50
+claude code transcript	40		LOW	70	50	40	20	30	20
+ccusage alternative	10		LOW	10	10	10	10	20	20
+claude code history disappeared	10		LOW	10	10	10	20	10	10
+claude code unattended	10		LOW	10	10	0	10	10	10
+claude code admin api	10		LOW	10	20	20	10	10	10
+claude code spending	10		MEDIUM	10	10	10	10	10	10
+ai coding agent cost									
+ai coding tools cost									
+track ai coding costs									
