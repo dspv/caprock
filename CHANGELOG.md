@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.64.0] - 2026-10-01
+
 ### Security
 
 - **The weekly report's bot token no longer reaches the log or the screen.**
