@@ -100,8 +100,8 @@ function TaskRunnerOff({ status, onEnabled }: { status: Status; onEnabled: () =>
               A title, a budget, and the commands that have to pass.
             </Step>
             <Step n={2} title="Caprock runs it">
-              One Claude session per task, in its <span className="text-fg">own git worktree</span> —
-              your working tree is untouched.
+              An orchestrator hands each task to a Claude worker in its{' '}
+              <span className="text-fg">own git worktree</span> — your working tree is untouched.
             </Step>
             <Step n={3} title="Caprock checks it">
               <span className="text-fg">Caprock</span> runs your commands, not the agent. Only green

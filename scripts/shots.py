@@ -5,7 +5,7 @@ much the screen actually drew, so History and Tasks were two-thirds empty
 background. Here the page is measured after it settles and the capture is
 clipped to that height, which is why each screen gets its own aspect ratio.
 """
-import base64, json, os, pathlib, sqlite3, subprocess, sys, time, urllib.request
+import base64, json, os, pathlib, re, sqlite3, subprocess, sys, time, urllib.request
 
 # Overridable so the fixture can live outside the repository — it is a copy of
 # a real database and has no business sitting in a working tree.
@@ -193,6 +193,12 @@ def scrub():
                     c.execute(f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
                               (a, b, f"%{a}%"))
                 c.execute(f"UPDATE {t} SET {col}=? WHERE {col}=?", (root + token, root + real))
+                # A leaf that collided while flattening was numbered —
+                # `<name>-2` — and neither bounded form above matches it; the
+                # v0.63.0 capture printed a Codex folder name that way.
+                glob = "".join(f"[{ch}]" if ch in "*?[" else ch for ch in root + real)
+                c.execute(f"UPDATE {t} SET {col}=? || substr({col}, ?) WHERE {col} GLOB ?",
+                          (root + token, len(root + real) + 1, glob + "-[0-9]*"))
             if len(real) >= 4:
                 for t, col in (("events", "touch_dir"), ("events", "payload"), ("session_files", "path")):
                     c.execute(f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
@@ -227,6 +233,24 @@ def scrub():
                 c.execute("UPDATE events SET payload=? WHERE rowid=?",
                           (json.dumps(d, separators=(",", ":")), rid))
                 touched += 1
+        # The last word: no real project name may survive in a column the
+        # screens print. A miss here has shipped twice, each time found by a
+        # reader of the published PNG rather than by this script.
+        for real in names:
+            # The capturing session was renamed to a stand-in at the top, so
+            # a stand-in can be among the names; it is not a real one.
+            if re.sub(r"-\d+$", "", real) in STAND_INS:
+                continue
+            # Bounded like the rewrite: `repo` must not match `reporting`.
+            seg = "/" + real
+            c.execute("SELECT COUNT(*) FROM sessions WHERE project=? "
+                      "OR cwd LIKE ? OR cwd LIKE ? OR repo_root LIKE ? OR repo_root LIKE ? "
+                      "OR cwd GLOB ? OR repo_root GLOB ?",
+                      (real, f"%{seg}", f"%{seg}/%", f"%{seg}", f"%{seg}/%",
+                       "*" + "".join(f"[{ch}]" if ch in "*?[" else ch for ch in seg) + "-[0-9]*",
+                       "*" + "".join(f"[{ch}]" if ch in "*?[" else ch for ch in seg) + "-[0-9]*"))
+            if c.fetchone()[0]:
+                raise RuntimeError(f"a real project name survived the scrub: {real!r}")
         print(f"  rewrote {touched} feed phrase(s)")
         print(f"  scrubbed {len(names)} project name(s)")
         db.commit(); db.close()

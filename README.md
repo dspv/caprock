@@ -494,8 +494,8 @@ Downloaded the binary directly? Replace it with a fresh one from
 
 Caprock answers only the machine it runs on. To read it from a tablet or a
 phone on the same network, open **status** and press *Let this network in*. The
-same screen then shows an address to open on the other device and a six-digit
-code to type.
+same screen then shows an address to open on the other device; press *Show a
+code* there for the six-digit code to type.
 
 There is a flag too — `caprock up --lan` — for a machine you administer over
 SSH. The button exists because the person who wants this is usually holding the
