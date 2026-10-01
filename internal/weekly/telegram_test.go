@@ -119,3 +119,23 @@ func TestMessageForAnEmptyWeek(t *testing.T) {
 		t.Errorf("an empty week must not read as a collapse:\n%s", got)
 	}
 }
+
+// A transport error's text carries the request URL, and the URL carries the
+// bot token; that text is logged and shown on the Settings screen.
+func TestSendNeverPutsTheTokenInAnError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	base := srv.URL
+	srv.Close() // connection refused from here on
+
+	s := &Sender{Base: base}
+	err := s.Send(context.Background(), "123:SECRETTOKEN", "-100999", "hello")
+	if err == nil {
+		t.Fatal("a closed server accepted the message")
+	}
+	if strings.Contains(err.Error(), "SECRETTOKEN") {
+		t.Fatalf("the error carries the token: %v", err)
+	}
+	if !strings.HasPrefix(err.Error(), "telegram: ") {
+		t.Fatalf("error %q does not say which delivery failed", err)
+	}
+}

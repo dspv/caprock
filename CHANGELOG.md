@@ -9,6 +9,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Security
+
+- **The weekly report's bot token no longer reaches the log or the screen.**
+  When Telegram could not be reached, the error quoted the request URL, and
+  the URL contains the token; that text went to the daemon log and to the
+  report's last-error line in Settings. The error now names the cause only.
+
 ### Fixed
 
 - **Opus 5.5 and Sonnet 5 are priced right, including the turns already

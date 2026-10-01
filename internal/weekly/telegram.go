@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"strings"
 	"time"
 )
@@ -69,7 +71,15 @@ func (s *Sender) Send(ctx context.Context, token, chat, text string) error {
 
 	res, err := s.client().Do(req)
 	if err != nil {
-		return fmt.Errorf("telegram: %w", err)
+		// A transport error is a *url.Error whose text carries the URL, and
+		// the URL carries the bot token. That text is logged and shown on the
+		// Settings screen, so it must not leave this function with the token
+		// in it: report what failed, never where.
+		var ue *neturl.Error
+		if errors.As(err, &ue) {
+			return fmt.Errorf("telegram: %w", ue.Err)
+		}
+		return errors.New(strings.ReplaceAll(fmt.Sprintf("telegram: %v", err), token, "<token>"))
 	}
 	defer res.Body.Close()
 
