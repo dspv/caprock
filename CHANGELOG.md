@@ -7,6 +7,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+Phase 3 (Delight) has no plan by design.
+
+## [0.62.0] - 2026-10-01
+
 ### Added
 
 - `caprock export` writes Caprock's record out as TSV, CSV or JSON lines:

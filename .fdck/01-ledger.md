@@ -9,7 +9,7 @@ started) · **building** · **shipped** (in a release, with the version) ·
 
 | Id     | Date       | From     | Request                                                                          | Status   | Landed in         |
 | ------ | ---------- | -------- | -------------------------------------------------------------------------------- | -------- | ----------------- |
-| FB-041 | 2026-10-01 | demos.ra | Normalized tabular data (TSV) instead of heavy JSON across every agent           | open     | —                 |
+| FB-041 | 2026-10-01 | demos.ra | Normalized tabular data (TSV) instead of heavy JSON across every agent           | shipped  | v0.62.0           |
 | FB-040 | 2026-09-30 | Vova     | Opening a session's terminal shows an empty screen; continue on the list works   | shipped  | v0.60.0           |
 | FB-039 | 2026-09-30 | Vova     | One terminal shows up as several ended sessions after /clear or a fork           | shipped  | v0.60.0           |
 | FB-038 | 2026-09-30 | Vova     | After the computer restarted, finding and continuing the sessions it interrupted | shipped  | v0.60.0           |
@@ -58,7 +58,8 @@ started) · **building** · **shipped** (in a release, with the version) ·
 A stranger under the Threads post, 2026-10-01: every agent "shares the same
 inefficiency: heavy and dense json", and one normalized tabular grid makes "the
 problem collapse". That grid is the `events` table; what is missing is a way to
-take it out (`caprock export`) and a sentence on the site that says it exists.
+take it out and a sentence on the site that says it exists. `caprock export`
+shipped in v0.62.0; the columns are in [docs/schema.md](../docs/schema.md).
 See [the story](stories/2026-10-01-demos-normalized-data.md).
 
 ### FB-037 to FB-040 — Picking up after a restart
