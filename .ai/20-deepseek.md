@@ -31,7 +31,15 @@ translation rather than a pipeline.
   recorded again as their own `tool/call` records, which is what the importer
   reads.
 - **`tool/call`** and **`user/message`** keep tool invocations and prompts with
-  their arguments and text.
+  their arguments and text. A prompt is stored as `payload.text` (Claude Code's
+  is `payload.prompt`); the notes search reads both, and before it did, no
+  DeepSeek question was searchable in Memory.
+- **Not every `user/message` is the person.** DSH writes the instructions it
+  injects — AGENTS.md and CLAUDE.md (`source.kind: agent-instructions`) and its
+  runtime-policy snapshot (`plugin`) — as user messages too, two of them right
+  after the opening question of every session on the owner's machine. Stored
+  as prompts, they became "the prompt" of the first reply and search matched a
+  reminder instead of the question, so only `source.kind: user` is imported.
 - **No shim, no config injection, no process signalled.** Exactly like Codex:
   nothing is written into another tool's config.
 

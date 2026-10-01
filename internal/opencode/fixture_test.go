@@ -336,3 +336,51 @@ func sum(t *testing.T, db *sql.DB, query string) float64 {
 	}
 	return v
 }
+
+// textOpts describes one text (or reasoning) part to write.
+type textOpts struct {
+	ID        string
+	MessageID string
+	SessionID string
+	Text      string
+	Start     int64
+	// Type defaults to "text"; "reasoning" writes the model's thinking.
+	Type string
+	// Synthetic marks text OpenCode wrote itself, as it does after a
+	// compaction ("Continue if you have next steps…").
+	Synthetic bool
+}
+
+// text writes a part shaped like the ones in a real database: assistant text
+// carries time.{start,end}; synthetic text carries the flag and no time.
+func (f *fixture) text(o textOpts) {
+	f.t.Helper()
+	if o.Type == "" {
+		o.Type = "text"
+	}
+	if o.Start == 0 {
+		o.Start = 1_700_000_000_000
+	}
+	d := map[string]any{"type": o.Type, "text": o.Text}
+	if o.Synthetic {
+		d["synthetic"] = true
+	} else {
+		d["time"] = map[string]int64{"start": o.Start, "end": o.Start + 1000}
+	}
+	b, _ := json.Marshal(d)
+	_, err := f.db.Exec(
+		`INSERT INTO part (id, message_id, session_id, time_created, time_updated, data) VALUES (?,?,?,?,?,?)`,
+		o.ID, o.MessageID, o.SessionID, o.Start, o.Start, string(b))
+	if err != nil {
+		f.t.Fatalf("insert text part: %v", err)
+	}
+}
+
+// touchSession moves a session's time_updated forward, which is what makes the
+// poller read it again — OpenCode does the same whenever a session changes.
+func (f *fixture) touchSession(id string, updated int64) {
+	f.t.Helper()
+	if _, err := f.db.Exec(`UPDATE session SET time_updated = ? WHERE id = ?`, updated, id); err != nil {
+		f.t.Fatalf("touch session: %v", err)
+	}
+}

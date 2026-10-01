@@ -320,9 +320,23 @@ func (s *Session) parseLine(line []byte) error {
 	case "user/message":
 		var u struct {
 			Content []contentBlock `json:"content"`
+			Source  struct {
+				Kind string `json:"kind"`
+			} `json:"source"`
 		}
 		if err := json.Unmarshal(r.Data, &u); err != nil {
 			return err
+		}
+		// DSH writes the context it injects as user messages too: the
+		// AGENTS.md/CLAUDE.md instructions (`source.kind: agent-instructions`)
+		// and its runtime-policy snapshot (`plugin`). Measured on the owner's
+		// transcripts, every session opens with two of them right after the
+		// real question, so stored as prompts they became "the prompt" of the
+		// first reply and prompt search matched the reminder instead of what
+		// the person asked. Only `user` is typed by a person; a record with no
+		// source is kept, so an older or newer DSH that omits it loses nothing.
+		if k := u.Source.Kind; k != "" && k != "user" {
+			return nil
 		}
 		if text := visibleText(u.Content); text != "" {
 			s.Users = append(s.Users, UserMsg{

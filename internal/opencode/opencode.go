@@ -25,7 +25,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"unicode/utf8"
 
+	"github.com/dspv/caprock/internal/ingest"
 	_ "modernc.org/sqlite"
 )
 
@@ -349,6 +351,82 @@ func Messages(ctx context.Context, db *sql.DB, sessionID string) ([]Message, err
 		})
 	}
 	return out, rows.Err()
+}
+
+// textPart is the shape stored in part.data for text parts.
+type textPart struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+	// Synthetic marks text OpenCode wrote itself rather than the model or the
+	// person ("Continue if you have next steps…" after a compaction, "Summarize
+	// the task tool output above…"); Ignored marks text OpenCode keeps out of
+	// the model's context. Neither is what the agent said.
+	Synthetic bool `json:"synthetic"`
+	Ignored   bool `json:"ignored"`
+}
+
+// Texts returns the visible prose of each message in one session, keyed by
+// message id: the message's `text` parts in order, trimmed and joined with a
+// newline, clipped on a rune boundary to the cap the Claude Code parser uses.
+//
+// Only `text` parts are read. `reasoning` parts are the model's private
+// thinking and are never stored, for the same reason Claude's extended
+// thinking is not. The caller decides which roles it wants; this returns every
+// message that has text.
+func Texts(ctx context.Context, db *sql.DB, sessionID string) (map[string]string, error) {
+	const q = `
+		SELECT message_id, data FROM part
+		WHERE session_id = ? AND json_extract(data,'$.type') = 'text'
+		ORDER BY time_created ASC, id ASC`
+	rows, err := db.QueryContext(ctx, q, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("opencode: text parts: %w", err)
+	}
+	defer rows.Close()
+
+	parts := map[string][]string{}
+	for rows.Next() {
+		var msgID, data string
+		if err := rows.Scan(&msgID, &data); err != nil {
+			return nil, fmt.Errorf("opencode: scan text part: %w", err)
+		}
+		var d textPart
+		if err := json.Unmarshal([]byte(data), &d); err != nil {
+			continue
+		}
+		if d.Synthetic || d.Ignored {
+			continue
+		}
+		if t := strings.TrimSpace(d.Text); t != "" {
+			parts[msgID] = append(parts[msgID], t)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(parts))
+	for id, p := range parts {
+		out[id] = clipRunes(strings.Join(p, "\n"), ingest.MaxAssistantText)
+	}
+	return out, nil
+}
+
+// clipRunes truncates to at most n runes, marking the cut with an ellipsis.
+// A byte cap would slice through a multi-byte character and halve the length
+// of Cyrillic prose — the defect the Claude Code parser shipped and repaired
+// (ingest.RepairAssistantText) — so this is the same rune-safe cut.
+func clipRunes(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+	count := 0
+	for i := range s {
+		if count == n {
+			return s[:i] + "…"
+		}
+		count++
+	}
+	return s
 }
 
 // ToolCall is one tool invocation inside a message.

@@ -16,6 +16,13 @@ Phase 3 (Delight) has no plan by design.
   the URL contains the token; that text went to the daemon log and to the
   report's last-error line in Settings. The error now names the cause only.
 
+### Added
+
+- **Memory shows what OpenCode wrote.** OpenCode's replies are now stored like
+  Claude Code's, so they appear in Memory and its search, history included —
+  the first start fills in sessions imported before. A subagent's replies stay
+  out, as Claude Code's do.
+
 ### Fixed
 
 - **Opus 5.5 and Sonnet 5 are priced right, including the turns already
@@ -26,6 +33,12 @@ Phase 3 (Delight) has no plan by design.
   Sonnet 5 at $2/$10, and lists both as corrections: on the first start the
   daemon reprices those turns once and moves the session and daily totals by
   the difference. A price that really changed still never restates history.
+
+- **A DeepSeek Harness reply can be found by the question you asked.** Memory
+  search looked for the prompt where Claude Code keeps it, and DeepSeek keeps
+  it elsewhere, so no DeepSeek question matched. The instructions DeepSeek
+  injects into a session are no longer taken for something you typed.
+
 - **A session whose folder is gone offers a command that works.** The copy
   command began with `cd` into the missing folder, so it failed before
   `claude` started. `claude --resume <id>` finds the session from any folder,

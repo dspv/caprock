@@ -76,6 +76,10 @@ Rules that hold for every row:
   what the work is worth at list price.
 - **Empty means unknown, not zero.** A missing token count is an empty cell in
   TSV and CSV and `null` in jsonl.
+- **What an agent wrote is `payload.text` on `turn.assistant`**, for Claude
+  Code, OpenCode and DeepSeek Harness alike: visible prose only, never the
+  model's reasoning, at most 16000 characters. A subagent's turn carries
+  `payload.sidechain: true`.
 - **Hidden product machinery is left out.** Codex's automatic review turns
   (`codex-auto-review`) are not work a person started and are not exported.
 

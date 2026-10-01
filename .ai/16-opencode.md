@@ -178,6 +178,34 @@ The suite is checked by mutation rather than by coverage alone: removing the
 agent tag, dropping OpenCode's cost, removing tool-name normalisation, or
 re-enabling the pricing table each turns it red.
 
+## The prose
+
+The Memory screen shows what an agent wrote, read from `payload.text` on
+`turn.assistant` by a query that does not know which agent wrote the row. For
+OpenCode that text lives in `part.data` as `text` parts, one or more per
+message, beside the `reasoning`, `tool` and `step-*` parts; the importer joins a
+message's text parts in order and stores them in the shape the Claude Code
+parser does, clipped on runes to the same cap. The exact contract — what is
+skipped, the sidechain rule, how already-stored turns are mended — is in
+[03-contracts.md](03-contracts.md) beside the Claude Code rule it mirrors.
+
+- **Reasoning is not prose.** `reasoning` parts are the model's thinking and
+  are never read, for the reason Claude's extended thinking is never stored.
+- **A subagent is a child session.** OpenCode runs a subagent in its own
+  session with `parent_id` set rather than as a sidechain of the parent. Its
+  turns are stored with `sidechain: true`, so "what did the agent say" answers
+  with the main thread, as it does for Claude Code.
+- **A turn is stored once, and its reply may not be finished.** The message row
+  exists before its text parts are complete, and a re-read inserts nothing, so
+  the importer compares and rewrites the text of turns already stored each time
+  it reads a session. The first pass after a start reads every session, which
+  is what filled the history: on a copy of the owner's database, 3,258 turns
+  gained text and Memory went from no OpenCode passages to 3,048 across 23
+  sessions.
+- **Prompts are still not imported.** OpenCode keeps the person's prompts as
+  `text` parts on `user` messages; they are not stored as `turn.user` yet, so
+  Memory search finds an OpenCode reply by its own words, not by the question.
+
 ## The agent filter
 
 The Now screen carries `all / claude / opencode / gemini` beside the pricing note, and
