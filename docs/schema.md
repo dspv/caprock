@@ -1,7 +1,7 @@
 # The Caprock record — export schema
 
-Five coding agents write their history in five formats. None is documented,
-and each changes with the agent's releases. Caprock reads all of them and
+Five coding agents write their history in five formats. None of them
+promises a stable format, and each changes with the agent's releases. Caprock reads all of them and
 stores one record with one set of columns, whichever agent wrote the source.
 `caprock export` writes that record out:
 
@@ -30,28 +30,28 @@ whichever arrived first.
 
 ## `events` — one row per turn, tool call or lifecycle event
 
-| Column           | Type    | Meaning                                                  |
-| ---------------- | ------- | -------------------------------------------------------- |
-| `ts`             | time    | When it happened, RFC 3339 UTC with milliseconds         |
-| `session_id`     | text    | The agent's own session id                               |
-| `agent`          | text    | `claude`, `codex`, `opencode`, `gemini` or `deepseek`    |
-| `subagent_id`    | text    | Set on a subagent's events; empty for the main agent     |
-| `source`         | text    | Which reader produced the row (table above)              |
-| `kind`           | text    | See the kinds below                                      |
-| `tool`           | text    | For `tool.*`: `Bash`, `Edit`, `Read`, `mcp__…`           |
-| `model`          | text    | The model that answered, as the agent named it           |
-| `tokens_in`      | integer | Fresh input tokens on an assistant turn                  |
-| `tokens_out`     | integer | Output tokens                                            |
-| `cache_read`     | integer | Input tokens read from the prompt cache                  |
-| `cache_write`    | integer | Tokens written to the cache, both lifetimes              |
-| `cache_write_1h` | integer | The part of `cache_write` with a 1-hour lifetime         |
-| `cost_usd`       | real    | The turn at API list price, from `pricing/pricing.json`  |
-| `tool_bytes`     | integer | Size of what a tool call returned (on `tool.post`)       |
-| `touch_dir`      | text    | Directory of the file a tool touched, slash-separated    |
-| `project`        | text    | The session's project name                               |
-| `repo_root`      | text    | The session's repository root                            |
-| `msg_id`         | text    | The provider's message id on an assistant turn           |
-| `payload`        | JSON    | Only with `--payload`, jsonl only: the raw source record |
+| Column           | Type    | Meaning                                                    |
+| ---------------- | ------- | ---------------------------------------------------------- |
+| `ts`             | time    | When it happened, RFC 3339 UTC with milliseconds           |
+| `session_id`     | text    | The agent's own session id                                 |
+| `agent`          | text    | `claude`, `codex`, `opencode`, `gemini` or `deepseek`      |
+| `subagent_id`    | text    | Set on a subagent's events; empty for the main agent       |
+| `source`         | text    | Which reader produced the row (table above)                |
+| `kind`           | text    | See the kinds below                                        |
+| `tool`           | text    | For `tool.*`: `Bash`, `Edit`, `Read`, `mcp__…`             |
+| `model`          | text    | The model that answered, as the agent named it             |
+| `tokens_in`      | integer | Fresh input tokens on an assistant turn                    |
+| `tokens_out`     | integer | Output tokens                                              |
+| `cache_read`     | integer | Input tokens read from the prompt cache                    |
+| `cache_write`    | integer | Tokens written to the cache, both lifetimes                |
+| `cache_write_1h` | integer | The part of `cache_write` with a 1-hour lifetime           |
+| `cost_usd`       | real    | The turn at list price; OpenCode's own figure for OpenCode |
+| `tool_bytes`     | integer | Size of what a tool call returned (on `tool.post`)         |
+| `touch_dir`      | text    | Directory of the file a tool touched, slash-separated      |
+| `project`        | text    | The session's project name                                 |
+| `repo_root`      | text    | The session's repository root                              |
+| `msg_id`         | text    | The provider's message id on an assistant turn             |
+| `payload`        | JSON    | Only with `--payload`, jsonl only: the raw source record   |
 
 Kinds:
 
@@ -68,10 +68,12 @@ Kinds:
 
 Rules that hold for every row:
 
-- **Cost is computed, not reported.** Every agent's tokens are priced from the
-  same table, so a Codex turn and a Claude turn are comparable. A flat-plan
-  user pays the plan, not this figure; it is what the work is worth at list
-  price.
+- **Cost is at list price, and `source` says who priced it.** Claude Code,
+  Codex, Gemini and DeepSeek report tokens and no cost, so Caprock prices them
+  from `pricing/pricing.json`. OpenCode reports its own cost, and that figure is
+  carried through unchanged — pricing the same tokens a second way would give
+  one session two totals. A flat-plan user pays the plan, not this figure; it is
+  what the work is worth at list price.
 - **Empty means unknown, not zero.** A missing token count is an empty cell in
   TSV and CSV and `null` in jsonl.
 - **Hidden product machinery is left out.** Codex's automatic review turns

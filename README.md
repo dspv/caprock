@@ -168,8 +168,8 @@ caprock export --agent codex --format jsonl       # one agent, as JSON lines
 It reads the database read-only, so it works with the daemon stopped. The
 columns, what each agent's source maps to, and what is deliberately left out are
 in [`docs/schema.md`](docs/schema.md). The record also outlives the agents' own:
-Claude Code removes its transcripts after 30 days, and Caprock keeps what it
-read from them.
+Claude Code removes its transcripts after 30 days by default, and Caprock
+keeps what it read from them.
 
 ## What it is
 
