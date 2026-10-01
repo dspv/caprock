@@ -99,11 +99,80 @@ func TestPlanLimits(t *testing.T) {
 	if s.Limits == nil {
 		t.Fatal("no limits parsed")
 	}
-	if s.Limits.PrimaryPct != 12.5 || s.Limits.PrimaryMinutes != 300 {
-		t.Errorf("primary: %+v", s.Limits)
+	want := []LimitWindow{{Minutes: 300, UsedPercent: 12.5, ResetsAt: 1788700243}, {Minutes: 10080, UsedPercent: 3.0, ResetsAt: 1788947580}}
+	if len(s.Limits.Windows) != 2 || s.Limits.Windows[0] != want[0] || s.Limits.Windows[1] != want[1] {
+		t.Errorf("windows: %+v", s.Limits.Windows)
 	}
-	if s.Limits.SecondaryPct != 3.0 || s.Limits.SecondaryMinutes != 10080 {
-		t.Errorf("secondary: %+v", s.Limits)
+}
+
+// Real `token_count.rate_limits` records, trimmed and anonymised from the
+// owner's machine (2026-10-01). Which window sits in `primary` depends on the
+// plan, so the parser must read the length, never the slot.
+func TestPlanLimitShapesFromRealTranscripts(t *testing.T) {
+	const meta = `{"timestamp":"2026-09-17T10:49:19.000Z","type":"session_meta","payload":{"id":"01a0aefc-0000-7000-8000-000000000000","cwd":"/Users/dev/proj"}}`
+	tc := func(ts, rl string) string {
+		return `{"timestamp":"` + ts + `","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":` + rl + `}}`
+	}
+	cases := []struct {
+		name string
+		rl   string
+		want []LimitWindow
+	}{
+		{
+			// `prolite`: weekly only, in the primary slot, secondary null.
+			name: "prolite",
+			rl:   `{"limit_id":"codex","limit_name":null,"primary":{"used_percent":5.0,"window_minutes":10080,"resets_at":1791067416},"secondary":null,"credits":{"has_credits":false,"unlimited":false,"balance":"0"},"individual_limit":null,"spend_control_reached":null,"plan_type":"prolite","rate_limit_reached_type":null}`,
+			want: []LimitWindow{{Minutes: 10080, UsedPercent: 5, ResetsAt: 1791067416}},
+		},
+		{
+			name: "plus",
+			rl:   `{"limit_id":"codex","limit_name":null,"primary":{"used_percent":16.0,"window_minutes":300,"resets_at":1789482335},"secondary":{"used_percent":11.0,"window_minutes":10080,"resets_at":1789833741},"credits":{"has_credits":false,"unlimited":false,"balance":"0"},"individual_limit":null,"spend_control_reached":null,"plan_type":"plus","rate_limit_reached_type":null}`,
+			want: []LimitWindow{{Minutes: 300, UsedPercent: 16, ResetsAt: 1789482335}, {Minutes: 10080, UsedPercent: 11, ResetsAt: 1789833741}},
+		},
+		{
+			// CLI 0.4x: no limit_id, odd lengths, resets_at null.
+			name: "cli 0.4x",
+			rl:   `{"primary":{"used_percent":1.0,"window_minutes":299,"resets_at":null},"secondary":{"used_percent":3.0,"window_minutes":10079,"resets_at":null}}`,
+			want: []LimitWindow{{Minutes: 299, UsedPercent: 1}, {Minutes: 10079, UsedPercent: 3}},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			src := meta + "\n" + tc("2026-10-01T12:06:17.317Z", c.rl) + "\n"
+			s, err := Parse(strings.NewReader(src), "x")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if s.Limits == nil || len(s.Limits.Windows) != len(c.want) {
+				t.Fatalf("limits: %+v", s.Limits)
+			}
+			for i := range c.want {
+				if s.Limits.Windows[i] != c.want[i] {
+					t.Errorf("window %d: %+v, want %+v", i, s.Limits.Windows[i], c.want[i])
+				}
+			}
+		})
+	}
+
+	// A sample for another limit (`premium`, which carried no windows) and a
+	// null rate_limits must not displace the plan's own sample before them.
+	src := meta + "\n" + tc("2026-09-18T18:12:29.176Z", cases[1].rl) + "\n" +
+		tc("2026-09-18T18:12:51.817Z", `{"limit_id":"premium","limit_name":null,"primary":null,"secondary":null,"plan_type":"plus"}`) + "\n" +
+		tc("2026-09-18T18:13:00.000Z", `null`) + "\n"
+	s, err := Parse(strings.NewReader(src), "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Limits == nil || len(s.Limits.Windows) != 2 || s.Limits.Windows[0].Minutes != 300 {
+		t.Fatalf("plan sample lost to a later non-plan one: %+v", s.Limits)
+	}
+}
+
+func TestWindowNames(t *testing.T) {
+	for m, want := range map[int]string{300: "five_hour", 299: "five_hour", 10080: "seven_day", 10079: "seven_day", 60: "", 1440: "", 43200: ""} {
+		if got := windowName(m); got != want {
+			t.Errorf("windowName(%d) = %q, want %q", m, got, want)
+		}
 	}
 }
 
@@ -219,10 +288,55 @@ func TestList(t *testing.T) {
 	}
 }
 
-func TestDirRespectsEnv(t *testing.T) {
+func TestDirsRespectEnv(t *testing.T) {
 	t.Setenv(EnvDir, "/tmp/somewhere")
-	if Dir() != "/tmp/somewhere" {
-		t.Errorf("env override ignored: %q", Dir())
+	if d := Dirs(); len(d) != 1 || d[0] != "/tmp/somewhere" {
+		t.Errorf("env override ignored: %q", d)
+	}
+}
+
+// CODEX_HOME is Codex's documented override of ~/.codex; both the live and
+// the archived transcripts live under it.
+func TestDirsFollowCodexHome(t *testing.T) {
+	t.Setenv(EnvDir, "")
+	home := filepath.Join(t.TempDir(), "codex-home")
+	t.Setenv(EnvHome, home)
+	want := []string{filepath.Join(home, "sessions"), filepath.Join(home, "archived_sessions")}
+	if d := Dirs(); len(d) != 2 || d[0] != want[0] || d[1] != want[1] {
+		t.Errorf("Dirs() = %q, want %q", d, want)
+	}
+}
+
+// Without CODEX_HOME the root is ~/.codex. os.UserHomeDir reads HOME on Unix
+// and USERPROFILE on Windows, so both are set.
+func TestDirsDefaultToDotCodex(t *testing.T) {
+	t.Setenv(EnvDir, "")
+	t.Setenv(EnvHome, "")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if d := Dirs(); len(d) != 2 || d[0] != filepath.Join(home, ".codex", "sessions") || d[1] != filepath.Join(home, ".codex", "archived_sessions") {
+		t.Errorf("Dirs() = %q", d)
+	}
+}
+
+func TestListAllMergesRootsAndToleratesAMissingOne(t *testing.T) {
+	home := t.TempDir()
+	live := filepath.Join(home, "sessions", "2026", "09", "06")
+	arch := filepath.Join(home, "archived_sessions")
+	for _, d := range []string{live, arch} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, p := range []string{filepath.Join(live, "rollout-a.jsonl"), filepath.Join(arch, "rollout-b.jsonl")} {
+		if err := os.WriteFile(p, []byte("{}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ts, err := ListAll([]string{filepath.Join(home, "sessions"), arch, filepath.Join(home, "nope")})
+	if err != nil || len(ts) != 2 {
+		t.Fatalf("ListAll: %v %v", ts, err)
 	}
 }
 

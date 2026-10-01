@@ -19,7 +19,7 @@ never writes. Formats are `tsv` (the default), `csv` and `jsonl`.
 | Agent       | `agent`    | `source`             | Read from                                                         |
 | ----------- | ---------- | -------------------- | ----------------------------------------------------------------- |
 | Claude Code | `claude`   | `hook`, `transcript` | Hooks via the shim, and `~/.claude/projects/**/*.jsonl`           |
-| Codex       | `codex`    | `codex`              | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` rollouts                   |
+| Codex       | `codex`    | `codex`              | `$CODEX_HOME/{sessions,archived_sessions}` rollouts (`~/.codex`)  |
 | OpenCode    | `opencode` | `opencode`           | OpenCode's own SQLite database, read-only                         |
 | Gemini CLI  | `gemini`   | `gemini`             | The telemetry file Caprock asks Gemini to write when it starts it |
 | DeepSeek    | `deepseek` | `deepseek`           | `<dsh-home>/sessions/**/session*.jsonl.zstd`                      |

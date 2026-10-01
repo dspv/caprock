@@ -297,6 +297,9 @@ export interface Summary {
   pricing_version: string
   throttles: number
   rate_limits?: RateLimits
+  /** Codex's plan windows as its newest transcript last recorded them —
+   *  measured, with observed_at, never a forecast. Absent without Codex. */
+  codex_rate_limits?: RateLimits
   /** Present only when some turns could not be priced — see Unpriced. */
   unpriced?: Unpriced
   /** Known internal model work, measured but excluded from user-work totals. */
@@ -307,6 +310,9 @@ export interface RateWindow {
   used_percentage: number
   resets_at: number
   forecast?: string
+  /** When the agent wrote the figure (unix ms). Set for Codex, whose windows
+   *  come from a transcript that may be hours old. */
+  observed_at?: number
 }
 
 /** What the paid plan costs. Served by the daemon so no price is hardcoded in

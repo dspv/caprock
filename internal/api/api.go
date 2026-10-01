@@ -733,6 +733,10 @@ type SummaryResponse struct {
 	Pricing    string       `json:"pricing_version"`
 	Throttles  int64        `json:"throttles"`             // rate-limit/overloaded events in range (honest signal, not a forecast)
 	RateLimits *RateLimits  `json:"rate_limits,omitempty"` // live window state from Claude Code's statusline (Pro/Max only); nil when unknown
+	// CodexRateLimits is Codex's plan windows as its newest transcript last
+	// recorded them: measured, with observed_at, and never a forecast. nil
+	// when no Codex transcript has carried one.
+	CodexRateLimits *RateLimits `json:"codex_rate_limits,omitempty"`
 }
 
 // RateLimits is the current plan-limit window state (from the statusline feed).
@@ -749,6 +753,10 @@ type RateWindow struct {
 	// the measured slope is rising and exhaustion is projected before the reset.
 	// nil ⇒ show only the measured fact (no guess).
 	Forecast string `json:"forecast,omitempty"`
+	// ObservedAt is when the agent wrote this figure (unix ms). Set for
+	// Codex, whose windows are read out of a transcript that may be hours or
+	// days old; Claude Code's arrive live and leave it unset.
+	ObservedAt int64 `json:"observed_at,omitempty"`
 }
 
 // Burn is the recent spend rate ("$/hr equivalent, tokens/min") over a short window.
@@ -1002,7 +1010,32 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	}
 	// Live rate-limit windows (not range-scoped — this is current state).
 	resp.RateLimits = s.rateLimits(ctx)
+	resp.CodexRateLimits = s.codexRateLimits(ctx)
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// codexRateLimits is Codex's latest observed windows, or nil. No forecast:
+// the figure comes from a transcript, not a live feed, so there is no slope
+// measured over the current window to project from.
+func (s *Server) codexRateLimits(ctx context.Context) *RateLimits {
+	snaps, err := store.RateLimitsWithPrefix(ctx, s.d.Store.DB(), store.CodexRateLimitPrefix)
+	if err != nil || len(snaps) == 0 {
+		return nil
+	}
+	var out RateLimits
+	for _, snap := range snaps {
+		rw := &RateWindow{UsedPercentage: snap.UsedPercentage, ResetsAt: snap.ResetsAt, ObservedAt: snap.Ts}
+		switch snap.Window {
+		case "five_hour":
+			out.FiveHour = rw
+		case "seven_day":
+			out.SevenDay = rw
+		}
+	}
+	if out.FiveHour == nil && out.SevenDay == nil {
+		return nil
+	}
+	return &out
 }
 
 // rateLimits builds the current plan-limit window state from the latest snapshots,

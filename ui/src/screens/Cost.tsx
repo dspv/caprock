@@ -9,7 +9,7 @@ import { DayGrid } from '@/components/DayGrid'
 import { PlanValue } from '@/components/PlanValue'
 import { usePlan } from '@/components/PlanPicker'
 import { costBasis, costBasisLong, costLabel } from '@/components/CostBasis'
-import { RateLimitRow } from '@/components/PlanLimits'
+import { CodexLimits, RateLimitRow } from '@/components/PlanLimits'
 import { PremiumBanner } from '@/components/PremiumBanner'
 import { Locked } from '@/components/Locked'
 import { SpendCap } from '@/components/SpendCap'
@@ -239,6 +239,13 @@ export function CostScreen() {
           {/* px-3 like every other panel's body. Without it the rows ran into
             * the panel border on both sides, which is the one place the eye
             * reads a table as unfinished rather than dense. */}
+          {/* Each agent's windows under its own name. The plans are separate
+            * — a Claude Max seat and a ChatGPT plan share nothing — so one
+            * unlabelled pair of rows would read as one limit. Without Codex
+            * the panel is exactly what it was. */}
+          {s.codex_rate_limits && (
+            <div className="px-3 pt-1 text-[11px] uppercase tracking-wide text-fg-faint">Claude Code</div>
+          )}
           {s.rate_limits ? (
             <div className="flex flex-col gap-2 px-3 pt-1">
               {s.rate_limits.five_hour && <RateLimitRow label="5-hour window" w={s.rate_limits.five_hour} now={now} />}
@@ -250,9 +257,11 @@ export function CostScreen() {
               Max session and your limits appear here. API billing has no windows.
             </div>
           )}
+          {s.codex_rate_limits && <CodexLimits limits={s.codex_rate_limits} now={now} />}
           <div className="mt-2 px-3 pb-3 text-[11px] text-fg-faint leading-relaxed">
             From Claude Code's status line. A forecast appears only when your pace would hit the
             limit before the window resets.
+            {s.codex_rate_limits && " Codex's are read from its own session files, as it last wrote them — never forecast."}
           </div>
         </Panel>
       )}

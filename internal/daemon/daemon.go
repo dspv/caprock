@@ -79,7 +79,8 @@ type Options struct {
 	// pass in CI.
 	OpenCodeDB string
 	// CodexDir overrides where Codex's rollout transcripts are looked for.
-	// Empty means the default (~/.codex/sessions); "off" disables the import.
+	// Empty means the default (sessions/ and archived_sessions/ under
+	// $CODEX_HOME, else ~/.codex); "off" disables the import.
 	CodexDir string
 	// DeepseekDir overrides where DeepSeek Harness session transcripts are
 	// looked for. Empty means the default (~/.dsh/sessions); "off" disables it.
@@ -501,22 +502,24 @@ func (d *Daemon) run(ctx context.Context) error {
 	// install and no config of someone else's to rewrite. Absence is the
 	// normal case and is silent.
 	if !d.opt.DisableIngest {
-		dir := d.opt.CodexDir
-		if dir == "" {
-			dir = codex.Dir()
+		var dirs []string
+		switch d.opt.CodexDir {
+		case "":
+			dirs = codex.Dirs()
+		case "off":
+		default:
+			dirs = []string{d.opt.CodexDir}
 		}
-		if dir == "off" {
-			dir = ""
-		}
-		if dir != "" {
+		if len(dirs) > 0 {
+			dir := strings.Join(dirs, string(os.PathListSeparator))
 			// Announce only after a listing succeeds, for the same reason the
 			// OpenCode branch waits for a read: a directory that exists but
 			// holds nothing we understand should not promise the user their
 			// sessions are being read.
-			if ts, err := codex.List(dir); err != nil {
+			if ts, err := codex.ListAll(dirs); err != nil {
 				d.log.Warn("codex transcripts found but not readable", "component", "codex", "dir", dir, "err", err)
 			} else if len(ts) > 0 {
-				d.cxIn = codex.NewIngester(dir, d.rec, d.log, 5*time.Second)
+				d.cxIn = codex.NewIngester(dirs, d.rec, d.log, 5*time.Second)
 				go func() {
 					if err := d.cxIn.Run(ctx); err != nil && ctx.Err() == nil {
 						d.log.Error("codex ingest stopped", "component", "codex", "err", err)

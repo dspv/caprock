@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"sort"
 	"sync"
 	"time"
@@ -28,7 +29,8 @@ const Agent = "codex"
 // Only files whose modification time moved are re-read, which on a machine with
 // a hundred transcripts is one stat per file per tick and no parsing at all.
 type Ingester struct {
-	dir   string
+	// dirs are the transcript roots: sessions/ and archived_sessions/ (Dirs).
+	dirs  []string
 	rec   *rollup.Recorder
 	log   *slog.Logger
 	every time.Duration
@@ -45,6 +47,9 @@ type Ingester struct {
 	// loaded is set once the files read by a previous run have been restored
 	// from the store (see restoreSeen).
 	loaded bool
+	// limitsChecked is set once the first pass has made sure the store holds
+	// Codex's plan limits (see backfillLimits).
+	limitsChecked bool
 
 	namesAt time.Time
 	// namesFor is how many transcripts had been imported at that sync. A
@@ -73,12 +78,13 @@ type Stats struct {
 	LastPoll int64 `json:"last_poll_ms,omitempty"`
 }
 
-// NewIngester builds an ingester over a Codex transcript directory.
-func NewIngester(dir string, rec *rollup.Recorder, log *slog.Logger, every time.Duration) *Ingester {
+// NewIngester builds an ingester over Codex's transcript roots (see Dirs). The
+// first root is the one whose parent holds Codex's state index (§ Names).
+func NewIngester(dirs []string, rec *rollup.Recorder, log *slog.Logger, every time.Duration) *Ingester {
 	if every <= 0 {
 		every = 5 * time.Second
 	}
-	return &Ingester{dir: dir, rec: rec, log: log, every: every, seen: map[string]fileState{}}
+	return &Ingester{dirs: dirs, rec: rec, log: log, every: every, seen: map[string]fileState{}}
 }
 
 // Stats returns a snapshot of what has been imported.
@@ -110,7 +116,7 @@ func (in *Ingester) Run(ctx context.Context) error {
 
 // once imports every transcript that changed since the last pass.
 func (in *Ingester) once(ctx context.Context) error {
-	files, err := List(in.dir)
+	files, err := ListAll(in.dirs)
 	if err != nil {
 		return err
 	}
@@ -118,12 +124,16 @@ func (in *Ingester) once(ctx context.Context) error {
 		in.loaded = true
 		in.restoreSeen(ctx)
 	}
-	changed := false
+	changed := in.forgetMoved(files)
 	defer func() {
 		if changed {
 			in.saveSeen(ctx)
 		}
 	}()
+	if !in.limitsChecked {
+		in.limitsChecked = true
+		in.backfillLimits(ctx, files)
+	}
 	for _, f := range files {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -148,6 +158,7 @@ func (in *Ingester) once(ctx context.Context) error {
 		if err := in.session(ctx, s); err != nil {
 			return err
 		}
+		in.recordLimits(ctx, s)
 		changed = true
 		in.mu.Lock()
 		in.seen[f.Path] = fileState{mod: f.Modified, size: f.Size, session: s.ID}
@@ -172,7 +183,10 @@ func (in *Ingester) once(ctx context.Context) error {
 // later and can change. Best-effort: a failure costs a description, never an
 // import.
 func (in *Ingester) syncNames(ctx context.Context) {
-	path := StateDB(in.dir)
+	if len(in.dirs) == 0 {
+		return
+	}
+	path := StateDB(in.dirs[0])
 	if path == "" || in.rec == nil || in.rec.Store == nil {
 		return
 	}
@@ -524,6 +538,53 @@ func (in *Ingester) restoreSeen(ctx context.Context) {
 		in.seen[path] = fileState{mod: time.Unix(0, f.Mod), size: f.Size, session: f.Session}
 	}
 	in.stats.Sessions = len(in.seen)
+}
+
+// forgetMoved drops files that are no longer on disk from the read set, and
+// reports whether it changed anything.
+//
+// Archiving a Codex thread renames its rollout from sessions/YYYY/MM/DD/ into
+// archived_sessions/. Nothing is double-counted when the file turns up at its
+// new path: every event's key is `codex:{turn,tool}:<line>` scoped to the
+// session id the file carries, and neither changes in a rename, so a re-read
+// finds every event a duplicate. But a re-read is still a full parse of a file
+// that can be tens of megabytes, and the old path would linger in the read set
+// and in `caprock status`'s transcript count. So a file that vanished is
+// forgotten, and one that reappears elsewhere with the same name, modification
+// time and size — which a rename preserves — keeps its "already read" state.
+func (in *Ingester) forgetMoved(files []Transcript) bool {
+	present := make(map[string]bool, len(files))
+	for _, f := range files {
+		present[f.Path] = true
+	}
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	changed := false
+	gone := map[string]fileState{}
+	for p, st := range in.seen {
+		if present[p] {
+			continue
+		}
+		delete(in.seen, p)
+		changed = true
+		if st.session != "" {
+			gone[filepath.Base(p)] = st
+		}
+	}
+	if len(gone) > 0 {
+		for _, f := range files {
+			if _, ok := in.seen[f.Path]; ok {
+				continue
+			}
+			if st, ok := gone[filepath.Base(f.Path)]; ok && st.mod.Equal(f.Modified) && st.size == f.Size {
+				in.seen[f.Path] = st
+			}
+		}
+	}
+	if changed {
+		in.stats.Sessions = len(in.seen)
+	}
+	return changed
 }
 
 func (in *Ingester) saveSeen(ctx context.Context) {

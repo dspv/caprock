@@ -612,7 +612,7 @@ placeholder `New session - <timestamp>` treated as no title. Written only with a
 non-empty value, so an event that names nothing never erases a name. Rows
 ingested before transcript parser v3 are filled once from the transcripts still
 on disk (`ingest.BackfillTitles`). Codex titles come from its own thread
-index (`~/.codex/state_<N>.sqlite`, newest generation, read-only, re-read only
+index (`$CODEX_HOME/state_<N>.sqlite`, default `~/.codex`, newest generation, read-only, re-read only
 when it or its WAL changes): `threads.name` becomes `title`, and
 `threads.first_user_message` becomes `prompt` — the first thing the user typed,
 for an agent whose prompts never become events. The rollout transcript's own
@@ -702,6 +702,30 @@ CREATE TABLE rate_limit_history (ts INTEGER, window TEXT, used_percentage REAL, 
 ```
 
 `rate_limit_latest` holds the current state per window (upserted); `rate_limit_history` is a throttled sample (≥30s apart) used to compute an honest "at current pace" forecast. Fed by the statusline (below).
+
+**Codex's windows share `rate_limit_latest` under a `codex_` prefix** —
+`codex_five_hour`, `codex_seven_day` — so they sit beside Claude Code's
+`five_hour` / `seven_day` rows and never replace them. No DDL change: `window`
+is free text, and the migration-0005 comment listing two values is history.
+
+- **Written by the Codex importer** from `token_count.rate_limits` in a rollout
+  transcript: only `limit_id` `codex` or absent (pre-limit_id CLIs), each
+  window named by its length (290–310 min → `five_hour`, 10000–10160 →
+  `seven_day`; anything else skipped), `used_percent` 0–100, `resets_at` unix
+  seconds (0 where Codex wrote null) and no more than 8 days after the sample.
+- **`ts` is when Codex wrote the sample**, not when Caprock read it, and
+  `session_id` is the Codex session that carried it.
+- **Replaced as a set, newest sample wins** (`store.ReplaceRateLimits`): a newer
+  sample deletes every `codex_` row and writes its own windows, so a plan with
+  no 5-hour window (`prolite`) leaves none behind from an earlier plan; an older
+  sample read later is ignored.
+- **No `rate_limit_history` rows**, hence no forecast.
+
+`GET /v1/stats/summary` returns them as `codex_rate_limits` (same shape as
+`rate_limits`: `five_hour?`, `seven_day?`, each `{used_percentage, resets_at,
+observed_at}` with `observed_at` = that `ts` in unix ms; never `forecast`),
+omitted when there are none. Like `rate_limits` it is current state, not
+range- or agent-scoped.
 
 ## Export (`caprock export`)
 

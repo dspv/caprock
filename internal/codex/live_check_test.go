@@ -14,11 +14,10 @@ import (
 // checks the real thing occasionally. A fake proves the parser handles the
 // shape we imagined, not the shape Codex writes.
 func TestAgainstLocalTranscripts(t *testing.T) {
-	dir := Dir()
-	if dir == "" || !Available() {
+	if !Available() {
 		t.Skip("no Codex transcripts on this machine")
 	}
-	ts, err := List(dir)
+	ts, err := ListAll(Dirs())
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}

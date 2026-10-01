@@ -33,15 +33,21 @@ export function readWindow(w: RateWindow, now: number) {
   }
 }
 
-export function RateLimitRow({ label, w, now }: { label: string; w: RateWindow; now: number }) {
-  const { pct, color, resetsAt, stale } = readWindow(w, now)
+export function RateLimitRow({ label, w, now, source = 'Claude Code' }: { label: string; w: RateWindow; now: number; source?: string }) {
+  const { pct, color, stale, resetsAt: clock } = readWindow(w, now)
+  let resetsAt = clock
+  // A weekly window resetting "at 14:03" does not say which day. Past a day
+  // away the weekday is part of the answer.
+  if (resetsAt && w.resets_at * 1000 - now > 24 * 3600 * 1000) {
+    resetsAt = new Date(w.resets_at * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })
+  }
   return (
     <div className="flex items-baseline justify-between gap-3 text-sm">
       <span className="text-fg-muted">{label}</span>
       <span className="flex items-baseline gap-3">
         <span className={`font-mono tabular-nums ${color}`}>{pct}%</span>
         {resetsAt && <span className="text-fg-faint">resets {resetsAt}</span>}
-        {stale && <span className="text-fg-faint" title="Claude Code has not refreshed this window recently">reset time stale</span>}
+        {stale && <span className="text-fg-faint" title={`${source} has not refreshed this window recently`}>reset time stale</span>}
         {w.forecast && <span className="text-warn">{w.forecast}</span>}
       </span>
     </div>
@@ -100,4 +106,39 @@ export function PlanLimitsStat({ limits, now }: { limits: RateLimits | undefined
       size="compact"
     />
   )
+}
+
+/**
+ * Codex's windows on the Cost screen, under Codex's name.
+ *
+ * Codex writes these into its session transcripts rather than to a live feed,
+ * so the figure is as of the last thing Codex wrote — which can be hours old
+ * when no Codex session is running. The heading says when, so an old
+ * percentage reads as old rather than as now. Which windows appear depends on
+ * the plan: some ChatGPT plans have no five-hour window, and then there is no
+ * row for one rather than an empty one.
+ */
+export function CodexLimits({ limits, now }: { limits: RateLimits; now: number }) {
+  const observed = limits.five_hour?.observed_at ?? limits.seven_day?.observed_at
+  return (
+    <>
+      <div className="flex items-baseline justify-between gap-3 px-3 pt-3 text-[11px] uppercase tracking-wide text-fg-faint">
+        <span>Codex</span>
+        {observed ? <span className="normal-case tracking-normal">as of {fmtObserved(observed, now)}</span> : null}
+      </div>
+      <div className="flex flex-col gap-2 px-3 pt-1">
+        {limits.five_hour && <RateLimitRow label="5-hour window" w={limits.five_hour} now={now} source="Codex" />}
+        {limits.seven_day && <RateLimitRow label="7-day window" w={limits.seven_day} now={now} source="Codex" />}
+      </div>
+    </>
+  )
+}
+
+/** A time today, or a date and time otherwise. */
+function fmtObserved(ms: number, now: number): string {
+  const d = new Date(ms)
+  if (d.toDateString() === new Date(now).toDateString()) {
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  }
+  return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }

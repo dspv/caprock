@@ -45,6 +45,15 @@ describe('costBasis', () => {
     }
   })
 
+  it('does not credit one vendor with prices that include GPT and Gemini rows', () => {
+    // Codex turns are priced from OpenAI's list and Gemini's from Google's;
+    // "At Anthropic list prices" under a table with gpt-5.6-sol in it was wrong.
+    for (const p of [undefined, plan({ plan_kind: 'flat' }), plan({ plan_kind: 'metered' })]) {
+      expect(costBasisLong(p)).not.toContain('Anthropic')
+      expect(costBasisLong(p)).toContain('API list prices')
+    }
+  })
+
   it('never uses the internal jargon on a user-facing line', () => {
     // "API-equivalent" is our word. It explained nothing to a first-time reader.
     for (const p of [undefined, plan({ plan_kind: 'flat' }), plan({ plan_kind: 'metered' })]) {
