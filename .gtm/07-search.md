@@ -233,6 +233,11 @@ an assistant can cite.
 | 10 | `/guides/claude-code-usage-limits/` | usage limits, resets | 3,600    |
 | 11 | Codex guide: pricing section        | Codex pricing        | 8,100    |
 
+- **Done:** #8 published 2026-10-03 as `/guides/claude-code-pricing/`, every
+  Anthropic fact fetched that day and fact-checked; linked from the cost post,
+  guide #2 and /numbers. Fact-checking it found the dashboard's Team seat
+  preset at $30 instead of $25 (fixed). Next: #9, then #10.
+
 Links: #8 is the cost answer, so `/blog/claude-code-cost-per-month/` and
 `/numbers/` link to it and it cites them for the measurement; #10 takes the
 plan-limits section's readers from guide #2; #9 cites
