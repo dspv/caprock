@@ -571,7 +571,7 @@ restart it only when it *crashes*, never when you shut it down on purpose.
 - 🐛 **Hit a bug?** [Open an issue](https://github.com/dspv/caprock/issues).
 - 🤝 **Contribute** — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-*A team version (shared dashboards, multi-user orchestration) is on the roadmap. Star to follow along.*
+*Running agents across a team? [Caprock for Teams](https://caprock.dev/teams/) puts every laptop on one screen, in your own VPC.*
 
 ## More
 
