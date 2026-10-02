@@ -2,8 +2,8 @@
 
 **Status: the observation half is built.** Sessions, turns and tool calls are
 imported from OpenCode's database, tagged with their agent, and shown on the
-same screens as Claude Code. Session control is not built; live SSE is (`internal/opencode/stream.go`) and are
-scoped below. Everything below was
+same screens as Claude Code. Live updates over OpenCode's SSE stream are built
+(`internal/opencode/stream.go`); session control is not, and is scoped below. Everything below was
 measured against a real OpenCode installation, not inferred from documentation;
 where a number appears it came from a live database.
 

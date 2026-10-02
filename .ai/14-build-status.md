@@ -47,8 +47,8 @@ Percentages are deliberately coarse — they answer "is this track started, half
   full Observe → Control → Orchestrate path. OpenCode, Codex and DeepSeek
   Harness are imported observation-only: Caprock cannot start, steer or stop
   them, and the task runner does not work with any of them. Gemini sessions
-  started by Caprock are observed through prompt-disabled OpenTelemetry. The Now
-  filter is `all / claude / opencode / codex / gemini / deepseek`. See
+  started by Caprock are observed through OpenTelemetry, prompts included. The Now
+  filter is `all / claude / opencode / gemini / codex / deepseek`. See
   [16-opencode.md](16-opencode.md), [19-codex.md](19-codex.md) and
   [20-deepseek.md](20-deepseek.md).
 - **The paid tier is live.** The daily spend cap (`internal/cap`) pauses the
