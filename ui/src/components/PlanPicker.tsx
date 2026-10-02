@@ -17,12 +17,14 @@ import { useEffect, useRef, useState } from 'react'
 import { api, type Settings } from '@/lib/api'
 import { fmtUSD } from '@/lib/format'
 
-/** The common flat plans, as published by Anthropic. The user can type any price. */
+/** The common flat plans, as published by Anthropic (claude.com/pricing, read
+ *  2026-10-03: a Team standard seat is $25 billed monthly, $20 annually). The
+ *  user can type any price. */
 const PRESETS: { label: string; kind: 'flat' | 'metered'; usd: number; note: string }[] = [
   { label: 'Pro', kind: 'flat', usd: 20, note: '$20/mo' },
   { label: 'Max 5×', kind: 'flat', usd: 100, note: '$100/mo' },
   { label: 'Max 20×', kind: 'flat', usd: 200, note: '$200/mo' },
-  { label: 'Team seat', kind: 'flat', usd: 30, note: '$30/seat/mo' },
+  { label: 'Team seat', kind: 'flat', usd: 25, note: '$25/seat/mo' },
   { label: 'API / Bedrock', kind: 'metered', usd: 0, note: 'billed per token' },
 ]
 

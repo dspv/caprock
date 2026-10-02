@@ -9,6 +9,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **The Team seat preset is $25, not $30.** Picking "Team seat" as your plan
+  priced it at $30 a month; Anthropic lists a standard seat at $25 billed
+  monthly ($20 annually), so Plan value understated what the usage was worth
+  against it.
+
 ## [0.67.0] - 2026-10-03
 
 ### Added
