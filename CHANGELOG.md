@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.67.0] - 2026-10-03
+
 ### Added
 
 - **What Caprock for Teams is, without leaving the dashboard.** The Cost
