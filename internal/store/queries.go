@@ -672,6 +672,36 @@ func ListSessionsMatching(ctx context.Context, q Querier, activeOnly bool, searc
 	return out, rows.Err()
 }
 
+// ListSessionsInDir returns the sessions of one project row, newest-first:
+// those whose repository root is dir, and those outside any repository whose
+// directory is dir. It is the same grouping the Projects panel uses (see
+// Summary: rows are keyed by repo_root, else by cwd), so "the sessions of
+// this row" means exactly the sessions that were summed into it. Exact match,
+// not the session search: a search also reads prompts, and "acme-api" would
+// match every session that ever mentioned it.
+func ListSessionsInDir(ctx context.Context, q Querier, dir string, limit int) ([]Session, error) {
+	if limit <= 0 || limit > MaxSessionsPage {
+		limit = 50
+	}
+	rows, err := q.QueryContext(ctx, `SELECT `+sessionCols+` FROM sessions
+		WHERE COALESCE(repo_root,'') = ? OR (COALESCE(repo_root,'') = '' AND COALESCE(cwd,'') = ?)
+		ORDER BY CASE WHEN status = 'ended' AND worked_at > 0 THEN worked_at ELSE last_event_at END DESC LIMIT ?`,
+		dir, dir, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Session
+	for rows.Next() {
+		s, err := scanSession(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
 // sessionFilter is the WHERE clause for the session list.
 //
 // A search looks at everything that tells one session from another on the
@@ -1256,12 +1286,18 @@ type ProjectShare struct {
 	// dashboard can say which. Empty when a repository was worked on with
 	// both — labelling it either way would be wrong, and the per-session
 	// labels below still answer it.
-	Agent    string      `json:"agent,omitempty"`
-	Tokens   int64       `json:"tokens"`
-	CostUSD  float64     `json:"cost_usd"`
-	Sessions int64       `json:"sessions"`
-	Paths    []PathShare `json:"paths,omitempty"`
-	Spark    *Spark      `json:"spark,omitempty"`
+	Agent    string  `json:"agent,omitempty"`
+	Tokens   int64   `json:"tokens"`
+	CostUSD  float64 `json:"cost_usd"`
+	Sessions int64   `json:"sessions"`
+	// Dir is the directory the row is keyed on — the repository root, or the
+	// session's own directory when it is outside any repository. It is what
+	// GET /v1/sessions?dir= takes to list this row's sessions, so the
+	// dashboard can open a terminal in the project. Empty for the row of
+	// spend whose session was deleted, which has no directory to open.
+	Dir   string      `json:"dir,omitempty"`
+	Paths []PathShare `json:"paths,omitempty"`
+	Spark *Spark      `json:"spark,omitempty"`
 }
 
 // PathShare is tokens/cost for one directory inside a repository, charged by
@@ -1904,7 +1940,11 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 			i = len(s.Projects)
 			byRoot[key] = i
 			rootLabel[key] = label
-			s.Projects = append(s.Projects, ProjectShare{Project: label, Agent: agent})
+			dir := root
+			if dir == "" {
+				dir = cwd
+			}
+			s.Projects = append(s.Projects, ProjectShare{Project: label, Agent: agent, Dir: dir})
 		}
 		p := &s.Projects[i]
 		// A repository worked on with both agents carries neither label.
