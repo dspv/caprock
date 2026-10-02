@@ -16,7 +16,7 @@
  * something to send anywhere. Rule 4: all data stays on the machine.
  */
 
-export type PromptKind = 'share-week' | 'share-month' | 'premium-hint' | 'premium-banner'
+export type PromptKind = 'share-week' | 'share-month' | 'premium-hint' | 'premium-banner' | 'teams-banner'
 
 const KEY = 'caprock-prompts'
 
@@ -28,6 +28,7 @@ const PERIOD_MS: Record<PromptKind, number> = {
   // again is lower than for being offered a card of your own numbers.
   'premium-hint': 30 * 24 * 60 * 60 * 1000,
   'premium-banner': 30 * 24 * 60 * 60 * 1000,
+  'teams-banner': 30 * 24 * 60 * 60 * 1000,
 }
 
 type Store = Partial<Record<PromptKind, number>>

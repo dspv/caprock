@@ -33,9 +33,12 @@ describe('SiteFooter', () => {
     expect(document.body.textContent?.match(/→/g) ?? []).toHaveLength(1)
   })
 
-  it('offers the team page', () => {
+  it('explains the team version in place, and links on to the team page', () => {
     render(<SiteFooter />)
-    expect(screen.getByRole('link', { name: /Caprock for Teams/ })).toHaveAttribute(
+    fireEvent.click(screen.getByRole('button', { name: /Caprock for Teams/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Caprock for Teams' })
+    expect(dialog.textContent).toMatch(/never per seat/)
+    expect(screen.getByRole('link', { name: 'See the team page' })).toHaveAttribute(
       'href',
       'https://caprock.dev/teams',
     )
