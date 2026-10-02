@@ -229,6 +229,7 @@ GET  /v1/status                        → daemon status: version, pid, uptime, 
 GET  /v1/storage                       → what the data directory holds; see § Storage below
 GET  /v1/pricing                       → the pricing table in force
 GET  /v1/premium                       → what the paid plan costs and where to buy it
+POST /v1/report/test                   → sends this week's report now → {sent:"ok"}; 502 with Telegram's error, 501 when reporting is unavailable
 POST /v1/shutdown                      → 200 (bearer-token gated; `caprock down`)
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows
 GET  /v1/statusline/{id}               → 200 (bearer-token gated) session counters for the status line; zeros for an unknown session

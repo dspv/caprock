@@ -215,7 +215,7 @@ and the cost add up over all of them, and the rows carry an `oc`, `cdx` or `dsh`
 mark so you can still tell them apart.
 
 **Or see one at a time.** The Now screen carries
-`all / claude / opencode / codex / gemini / deepseek` in the middle of its
+`all / claude / opencode / gemini / codex / deepseek` in the middle of its
 header, and it applies to the whole screen — today's totals, the live pulse, the
 activity feed, the projects list and the session cards all answer the same
 question. It appears only on a machine that runs more than one.
@@ -225,8 +225,8 @@ database, opened read-only; Codex through the transcript it writes per session,
 under `$CODEX_HOME` (or `~/.codex`), archived sessions included; DeepSeek
 Harness through the transcript it writes per session. No shim, no
 settings file to edit, and sessions from before you installed Caprock are
-included, because each tool keeps its own history. What Codex and DeepSeek
-Harness wrote back is searchable on the Memory screen beside Claude's.
+included, because each tool keeps its own history. What OpenCode, Codex and
+DeepSeek Harness wrote back is searchable on the Memory screen beside Claude's.
 
 **The cost works differently for each, and it matters.** OpenCode computes its
 own figures and Caprock passes them through, so they match what OpenCode
@@ -429,8 +429,8 @@ process, so you do not have to export it in every shell.
 Its turns, tokens and cost appear alongside everything else. Gemini has no hooks
 and writes no transcript, but it does write OpenTelemetry, and Caprock asks it
 to write that to a file it then reads — the same arrangement as Claude Code's
-transcript, with a different file. Prompts are switched off in it; the terminal
-already shows you what you typed.
+transcript, with a different file. What you ask it is kept there too, so the
+Memory screen can find a Gemini session by your question.
 
 *Ask about your own numbers.* On the Cost screen, a question carries today's and
 the week's spend, top projects and models — so the answers are about your
