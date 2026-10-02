@@ -215,6 +215,14 @@ ccusage already read:
   `archived_sessions/`, the file unchanged — read from the codex-rs source,
   `thread-store/src/local/archive_thread.rs`, on 2026-10-01. A session archived
   before Caprock was installed was never counted.
+- **Compressed rollouts, `<name>.jsonl.zst`.** Codex runs a background job
+  that compresses every local rollout untouched for seven days and deletes the
+  plain file (`codex-rs/rollout/src/compression.rs`, read 2026-10-03); resuming
+  one decompresses it back. Listing only `.jsonl` kept a week of history: a
+  fresh install or a rebuilt database lost everything older, with no symptom.
+  `List` takes both suffixes and `ParseFile` decodes zstd. The compressed file
+  has a different name and size, so it is re-read once; its events are all
+  duplicates by key and store nothing new.
 
 **A moved file is not counted twice.** Event keys are `codex:{turn,tool}:<line>`
 (`codex:sub:<thread>:{turn,tool}:<line>` for a subagent, § Imported threads and

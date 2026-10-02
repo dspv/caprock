@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 const fixture = "../../testdata/codex/rollout-basic.jsonl"
@@ -518,5 +520,47 @@ func TestBreakdownIsPreferredOverTheTotal(t *testing.T) {
 	tn := s.Turns[0]
 	if tn.In != 100 || tn.CacheRead != 80 || tn.Out != 10 || tn.TotalOnly {
 		t.Errorf("the breakdown was overwritten: %+v", tn)
+	}
+}
+
+// Codex compresses every rollout untouched for a week into `<name>.jsonl.zst`
+// and deletes the plain file. A reader that lists only `.jsonl` keeps a week of
+// history; this pins that the compressed file is listed and parses to the same
+// session as the plain one.
+func TestCompressedRolloutIsListedAndParsed(t *testing.T) {
+	raw, err := os.ReadFile(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	zpath := filepath.Join(dir, "rollout-basic.jsonl.zst")
+	enc, err := zstd.NewWriter(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(zpath, enc.EncodeAll(raw, nil), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ts, err := List(dir)
+	if err != nil || len(ts) != 1 || ts[0].Path != zpath {
+		t.Fatalf("List missed the compressed rollout: %v %v", ts, err)
+	}
+	plain, err := ParseFile(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packed, err := ParseFile(zpath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if packed.ID != plain.ID || len(packed.Turns) != len(plain.Turns) || len(packed.Tools) != len(plain.Tools) {
+		t.Fatalf("compressed parse differs: id %q/%q turns %d/%d tools %d/%d",
+			packed.ID, plain.ID, len(packed.Turns), len(plain.Turns), len(packed.Tools), len(plain.Tools))
+	}
+	if len(plain.Turns) == 0 {
+		t.Fatal("fixture has no turns; the comparison proves nothing")
+	}
+	if got := rolloutName(zpath); got != "rollout-basic" {
+		t.Errorf("rolloutName = %q", got)
 	}
 }
