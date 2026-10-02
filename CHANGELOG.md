@@ -11,6 +11,11 @@ Phase 3 (Delight) has no plan by design.
 
 ### Fixed
 
+- **Codex sessions older than a week are read again.** Codex compresses a
+  session it has not touched for seven days into a `.jsonl.zst` file and
+  removes the original. Caprock read only the uncompressed files, so a new
+  install or a rebuilt history saw one week of Codex and nothing before it.
+  Compressed sessions are now read like the rest.
 - **The Team seat preset is $25, not $30.** Picking "Team seat" as your plan
   priced it at $30 a month; Anthropic lists a standard seat at $25 billed
   monthly ($20 annually), so Plan value understated what the usage was worth

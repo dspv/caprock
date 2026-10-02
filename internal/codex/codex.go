@@ -38,6 +38,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/klauspost/compress/zstd"
+
 	"github.com/dspv/caprock/internal/ingest"
 )
 
@@ -308,7 +310,36 @@ func ParseFile(path string) (*Session, error) {
 		return nil, err
 	}
 	defer f.Close()
-	return Parse(f, path)
+	if !strings.HasSuffix(path, compressedSuffix) {
+		return Parse(f, path)
+	}
+	dec, err := zstd.NewReader(f)
+	if err != nil {
+		return nil, err
+	}
+	defer dec.Close()
+	return Parse(dec, path)
+}
+
+// compressedSuffix is what Codex gives a rollout it has compressed. Codex
+// compresses every local rollout untouched for seven days into
+// `<name>.jsonl.zst` and deletes the plain file (codex-rs/rollout/src/
+// compression.rs, read 2026-10-03), so a reader that lists only `.jsonl` sees
+// a week of history and no more: nothing older survives a fresh install or a
+// rebuilt database, and nothing is reported missing.
+const compressedSuffix = ".jsonl.zst"
+
+// isRollout reports whether path names a rollout transcript, plain or
+// compressed.
+func isRollout(path string) bool {
+	return strings.HasSuffix(path, ".jsonl") || strings.HasSuffix(path, compressedSuffix)
+}
+
+// rolloutName is a rollout's file name without its extension, the same for
+// the plain file and its compressed form.
+func rolloutName(path string) string {
+	base := filepath.Base(path)
+	return strings.TrimSuffix(strings.TrimSuffix(base, ".zst"), ".jsonl")
 }
 
 // Parse reads a rollout transcript from r. path is used only for the returned
@@ -566,7 +597,7 @@ func Parse(r io.Reader, path string) (*Session, error) {
 			// No id of its own was recorded (never seen): the file name,
 			// which Codex derives from the thread id, still tells two
 			// subagents of one parent apart.
-			s.ThreadID = strings.TrimSuffix(filepath.Base(path), ".jsonl")
+			s.ThreadID = rolloutName(path)
 		}
 		for i := range s.Turns {
 			s.Turns[i].Key = subagentKey(s.ThreadID, s.Turns[i].Line, "turn")
@@ -786,7 +817,7 @@ func List(dir string) ([]Transcript, error) {
 			}
 			return nil // unreadable entry: skip it, keep scanning
 		}
-		if d.IsDir() || !strings.HasSuffix(path, ".jsonl") {
+		if d.IsDir() || !isRollout(path) {
 			return nil
 		}
 		info, err := d.Info()
