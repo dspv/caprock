@@ -18,10 +18,10 @@ until you enable it, and each contacts exactly one host:
 
 - **Release check** (`update_checks` in Settings) asks
   `api.github.com` for the latest release. It sends nothing about you.
-- **Gemini questions** go to `generativelanguage.googleapis.com` with the key
-  in your `GEMINI_API_KEY` environment variable, only when you send one. This
-  one carries content: the text you typed. Caprock never stores the key
-  ([ADR-023](.ai/08-decisions.md)).
+- **Gemini questions** go to `generativelanguage.googleapis.com` with your own
+  key, only when you send one. This one carries content: the text you typed.
+  The key is the one you enter on the dashboard, or `GEMINI_API_KEY` in the
+  environment, which takes precedence ([ADR-025](.ai/08-decisions.md)).
 - **The weekly report** sends a message to `api.telegram.org` through a bot you
   created. It carries figures you already see on the dashboard — never a
   prompt, a reply, tool output or a file path. With no bot token configured
@@ -49,8 +49,8 @@ being as sensitive as the sessions it recorded.
 
 The rest of `<data_dir>`:
 
-- `config.json` — settings, plus the licence key and the weekly-report bot
-  token when you set them. Both are write-only over the API: never returned to
+- `config.json` — settings, plus the licence key, the Gemini key and the
+  weekly-report bot token when you set them. They are write-only over the API: never returned to
   the dashboard and never written into an error.
 - `runtime.json` — the port and a random per-run token that local clients use
   to authenticate.
