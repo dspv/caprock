@@ -10,7 +10,7 @@ import { PlanValue } from '@/components/PlanValue'
 import { usePlan } from '@/components/PlanPicker'
 import { costBasis, costBasisLong, costLabel } from '@/components/CostBasis'
 import { CodexLimits, RateLimitRow } from '@/components/PlanLimits'
-import { PremiumBanner } from '@/components/PremiumBanner'
+import { TeamsBanner } from '@/components/TeamsBanner'
 import { Locked } from '@/components/Locked'
 import { SpendCap } from '@/components/SpendCap'
 import { GeminiPanel } from '@/components/Gemini'
@@ -53,12 +53,17 @@ export function CostScreen() {
         <span className="ml-auto text-[11px] text-fg-faint">{costBasisLong(plan)}{s ? ` (table ${s.pricing_version})` : ''}</span>
       </div>
       {summary.error && !s && <Empty title="Cannot reach the daemon">{summary.error.message}</Empty>}
-      {/* Not on `today`: one day is not an average, and a banner that says
-        * "$212 a day across 1 active day" is arithmetic dressed as insight. */}
+      {/* Not on `today`: one day of one machine is too thin a fact to open
+        * an offer with. Teams, not Premium, on this screen: it is the screen
+        * about where the money went per project — the question the team
+        * version answers across machines (see TeamsBanner). */}
       {range !== 'today' && s && (
-        <PremiumBanner
-          costUSD={days.reduce((a, d) => a + d.cost, 0)}
-          days={days.filter((d) => d.cost > 0).length}
+        <TeamsBanner
+          fact={{
+            costUSD: s.cost_usd,
+            projects: s.projects.filter((p) => p.cost_usd > 0).length,
+            window: range === 'all' ? 'all time' : `in the last ${range === '7d' ? '7' : '30'} days`,
+          }}
           now={now}
         />
       )}

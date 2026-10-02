@@ -9,6 +9,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **What Caprock for Teams is, without leaving the dashboard.** The Cost
+  screen has a one-line banner that starts from this machine's spend and
+  project count. It, the Projects team line and the footer link open a dialog
+  that says what the team version is, what a lead gets, and why it is worth
+  paying for, with links to book a demo, the team page and pricing. The Cost
+  screen shows this instead of the Premium banner, which stays on Now and
+  Lifetime. "Not now" hides it for a month.
+
 ## [0.66.0] - 2026-10-03
 
 ### Added

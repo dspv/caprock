@@ -15,13 +15,14 @@
  */
 
 import { useState } from 'react'
+import { TeamsModal } from './TeamsModal'
 
 const REPO = 'https://github.com/dspv/caprock'
-const TEAMS = 'https://caprock.dev/teams'
 const PREMIUM = 'https://caprock.dev/premium'
 const STAR_KEY = 'caprock.footer.starred'
 
 export function SiteFooter() {
+  const [teams, setTeams] = useState(false)
   // Remembered so the ask stops once it has been acted on. A prompt that keeps
   // asking after you have done the thing is how a footer becomes noise.
   const [starred, setStarred] = useState(
@@ -33,11 +34,13 @@ export function SiteFooter() {
       <div className="max-w-[1600px] mx-auto px-3 py-4 flex flex-wrap items-center gap-x-6 gap-y-3 text-[11px] text-fg-faint">
         {/* The team line leads: it is the only thing here that is not already
           * available from the dashboard itself. */}
-        <a
-          href={TEAMS}
-          target="_blank"
-          rel="noreferrer"
-          className="group inline-flex items-center gap-2 no-underline"
+        {/* Opens the explanation in place rather than the website: the
+          * reader should not have to leave their numbers to learn what the
+          * team version is. The dialog links on to the team page. */}
+        <button
+          type="button"
+          onClick={() => setTeams(true)}
+          className="group inline-flex items-center gap-2"
         >
           <span className="text-fg-muted group-hover:text-fg">
             Want this for your team?
@@ -45,7 +48,8 @@ export function SiteFooter() {
           <span className="text-accent group-hover:text-accent-strong">
             Caprock for Teams →
           </span>
-        </a>
+        </button>
+        {teams && <TeamsModal onClose={() => setTeams(false)} />}
 
         <span className="ml-auto inline-flex items-center gap-4">
           {/* Legible, but still not a second offer: the team line above keeps

@@ -102,6 +102,7 @@
  * modelled, never extrapolated (rule 6).
  */
 import { ProjectTerminal } from '@/components/ProjectTerminal'
+import { TeamsModal } from '@/components/TeamsModal'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { WorkMixStrip } from '@/components/WorkMix'
 import { api, type PathShare, type ProjectShare, type SessionSummary } from '@/lib/api'
@@ -845,20 +846,25 @@ function SparkCanvas({
  * dashboard is how a tool starts feeling like a funnel.
  */
 function TeamsHint({ count }: { count: number }) {
+  const [open, setOpen] = useState(false)
   if (count < 10) return null
+  // Opens the explanation in place, like the footer and the Cost banner: the
+  // reader should not have to leave their numbers to learn what this is.
   return (
-    <a
-      href="https://caprock.dev/teams"
-      target="_blank"
-      rel="noreferrer"
-      className="flex items-baseline gap-2 border-t border-border px-3 py-1.5 text-[11px] no-underline hover:no-underline"
-    >
-      <span className="text-fg-muted">
-        {count} repositories on one machine.
-      </span>
-      <span className="text-fg-faint hover:text-accent">
-        See them across the team →
-      </span>
-    </a>
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex w-full items-baseline gap-2 border-t border-border px-3 py-1.5 text-left text-[11px]"
+      >
+        <span className="text-fg-muted">
+          {count} repositories on one machine.
+        </span>
+        <span className="text-fg-faint hover:text-accent">
+          See them across the team →
+        </span>
+      </button>
+      {open && <TeamsModal onClose={() => setOpen(false)} />}
+    </>
   )
 }
