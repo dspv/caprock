@@ -179,3 +179,61 @@ the code, and pass the independent fact-check.
 - Re-pull these volumes monthly; the trend is falling and the plan follows
   August, not March.
 - Connect Bing Webmaster Tools; Copilot citations are reported there.
+
+## Round 2: the head terms (2026-10-03)
+
+The owner set search and GEO as the focus for the next six months, with one
+aim: ideal landing pages for the largest queries. Round 1 took the tasks
+Caprock does; round 2 went for volume. 16 head seeds, 1,553 Labs
+suggestions, Google Ads volumes for 256 phrases, Google's top 20 for 14 heads.
+Raw data: [`data/2026-10-03-keywords.tsv`](data/2026-10-03-keywords.tsv) and
+[`data/2026-10-03-serps.tsv`](data/2026-10-03-serps.tsv). Cost: about $0.60.
+Volumes are August 2026, the latest month measured.
+
+**What ranks.** Every head is held by Reddit, LinkedIn, YouTube and content
+sites (finout, superblocks, softr, mindstudio) writing from the price list,
+plus Anthropic's and OpenAI's own pages. Almost none publishes a measurement.
+A page with real, dated usage from one machine — which only Caprock can read
+— is the difference, and AI Overviews show on every head, so it is also what
+an assistant can cite.
+
+- **Claude Code pricing** — `claude code pricing` 33,100, `subscription`
+  12,100, `claude max plan` 4,400, `claude code cost` 2,900, `pro
+  subscription` 2,400, `is claude max worth it` 1,000, `claude max vs pro`
+  720, `token cost` 590. One answer: what each plan costs and which one your
+  usage needs. claude.com/pricing ranks 1; the rest restate it. **Fits:**
+  plans and list prices, then what real months cost at list price against
+  each plan — the measurement the cost post already holds.
+- **Codex vs Claude Code** — `codex vs claude code` 14,800, `claude code vs
+  codex` 5,400, `chatgpt codex vs claude code` 590, `cursor vs claude code vs
+  codex` 720. Opinions: Reddit, Skool, LinkedIn, benchmarks. **Fits as
+  measurement:** both agents on one machine, read by one tool — cost per
+  turn, cache, what the turns did. Not a quality verdict.
+- **Usage limits** — `claude usage limit` 3,600, `claude pro usage limit`
+  2,400, `claude weekly limit` 590, `claude 5 hour limit` 590, `when does
+  claude weekly limit reset` 480, `claude code usage limit` 480, `codex usage
+  limit` 1,000, `codex 5 hour limit` 720, `codex limit reset` 480.
+  Anthropic's help centre and Reddit. **Fits:** the Cost screen shows the
+  5-hour and 7-day windows with their reset times for Claude Code and the
+  7-day window for Codex.
+- **Codex pricing** — `codex pricing` 8,100, `openai codex pricing` 1,000,
+  `chatgpt codex pricing` 880. Reddit and forums. **Fits** as round 1's
+  Codex guide grown a pricing section, or its own page once the first three
+  are live.
+- **Parked:** `cursor vs claude code` 6,600 and the other `X vs claude code`
+  phrases — Caprock does not read Cursor, Copilot, Kiro or Antigravity, so it
+  can measure only one side. `opencode vs claude code` 2,900 and `gemini cli
+  vs claude code` 320 can be measured and wait for enough OpenCode and Gemini
+  sessions. `codex cli` 33,100 and installs are navigational to OpenAI.
+
+| #  | Page                                | Owns                 | Aug head |
+| -- | ----------------------------------- | -------------------- | -------- |
+| 8  | `/guides/claude-code-pricing/`      | pricing, plans, cost | 33,100   |
+| 9  | `/compare/codex-vs-claude-code/`    | Codex vs Claude Code | 14,800   |
+| 10 | `/guides/claude-code-usage-limits/` | usage limits, resets | 3,600    |
+| 11 | Codex guide: pricing section        | Codex pricing        | 8,100    |
+
+Links: #8 is the cost answer, so `/blog/claude-code-cost-per-month/` and
+`/numbers/` link to it and it cites them for the measurement; #10 takes the
+plan-limits section's readers from guide #2; #9 cites
+`/blog/five-agents-one-table/` for how the two agents' records are joined.
