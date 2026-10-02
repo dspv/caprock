@@ -229,14 +229,18 @@ an assistant can cite.
 | #  | Page                                | Owns                 | Aug head |
 | -- | ----------------------------------- | -------------------- | -------- |
 | 8  | `/guides/claude-code-pricing/`      | pricing, plans, cost | 33,100   |
-| 9  | `/compare/codex-vs-claude-code/`    | Codex vs Claude Code | 14,800   |
+| 9  | `/guides/codex-vs-claude-code/`     | Codex vs Claude Code | 14,800   |
 | 10 | `/guides/claude-code-usage-limits/` | usage limits, resets | 3,600    |
 | 11 | Codex guide: pricing section        | Codex pricing        | 8,100    |
 
 - **Done:** #8 published 2026-10-03 as `/guides/claude-code-pricing/`, every
   Anthropic fact fetched that day and fact-checked; linked from the cost post,
   guide #2 and /numbers. Fact-checking it found the dashboard's Team seat
-  preset at $30 instead of $25 (fixed). Next: #9, then #10.
+  preset at $30 instead of $25 (fixed). #9 published 2026-10-03 as
+  `/guides/codex-vs-claude-code/` (a guide, not `/compare/`: it inherits the
+  guide checks, card and sitemap), measured from `caprock export`; its
+  fact-check found Codex compresses week-old rollouts to `.jsonl.zst`, which
+  Caprock did not read (fixed in #146). Next: #10.
 
 Links: #8 is the cost answer, so `/blog/claude-code-cost-per-month/` and
 `/numbers/` link to it and it cites them for the measurement; #10 takes the
