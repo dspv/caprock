@@ -663,3 +663,35 @@ func TestListSessionsMatchingSearchesPromptsAndTitles(t *testing.T) {
 		}
 	}
 }
+
+// ListSessionsInDir is the Projects row's own grouping: sessions whose
+// repository root is the directory, from any subdirectory, plus sessions
+// outside any repository that ran in the directory itself — and nothing else.
+func TestListSessionsInDir(t *testing.T) {
+	ctx := context.Background()
+	st, err := Open(ctx, ":memory:", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	db := st.DB()
+	for id, cwd := range map[string]string{"a": "/r/sub", "b": "/r", "c": "/other", "d": "/r2"} {
+		if err := UpsertSession(ctx, db, id, SessionPatch{Cwd: cwd, Status: StatusEnded}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`UPDATE sessions SET repo_root = CASE session_id WHEN 'a' THEN '/r' WHEN 'd' THEN '/r2' ELSE NULL END`); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ListSessionsInDir(ctx, db, "/r", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]bool{}
+	for _, s := range got {
+		ids[s.SessionID] = true
+	}
+	if len(ids) != 2 || !ids["a"] || !ids["b"] {
+		t.Fatalf("sessions in /r = %v, want a and b", ids)
+	}
+}

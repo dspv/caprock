@@ -9,6 +9,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **1-click terminal.** Each project on the Projects panel has a `>_` button.
+  When one session Caprock started is running in that project, a click opens
+  its terminal. Otherwise you choose: open one of Caprock's sessions, continue
+  an ended one, branch one still running in another terminal, or start a new
+  session in the project's folder. A running session card on Now opens straight
+  in its terminal too. Caprock still never types into a session it did not
+  start; continuing or branching starts a second process.
+
 ## [0.65.0] - 2026-10-02
 
 ### Added

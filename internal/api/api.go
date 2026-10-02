@@ -572,6 +572,29 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	active := r.URL.Query().Get("active") == "true"
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	search := r.URL.Query().Get("q")
+	// ?dir= lists one Projects row's sessions — an exact match on the
+	// directory the row is keyed on, not a search (see ListSessionsInDir).
+	if dir := r.URL.Query().Get("dir"); dir != "" {
+		sessions, err := store.ListSessionsInDir(ctx, s.d.Store.DB(), dir, limit)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		out := make([]SessionSummary, 0, len(sessions))
+		for _, sess := range sessions {
+			sum, _, err := s.summarize(ctx, sess)
+			if err != nil {
+				s.fail(w, err)
+				return
+			}
+			// Every row carries whether it can be picked up: the caller is
+			// about to offer exactly that, for live sessions as well as ended.
+			sum.Resume = s.resumeInfo(sess)
+			out = append(out, sum)
+		}
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
 	sessions, err := store.ListSessionsMatching(ctx, s.d.Store.DB(), active, search, limit)
 	if err != nil {
 		s.fail(w, err)

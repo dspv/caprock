@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -944,5 +945,36 @@ func TestStatuslineStatsEndpoint(t *testing.T) {
 	}
 	if unknown := get("no-such-session"); unknown != (StatuslineStats{}) {
 		t.Fatalf("unknown session should be zeros, got %+v", unknown)
+	}
+}
+
+// A Projects row carries the directory it is keyed on, and ?dir= lists
+// exactly that row's sessions — each with whether it can be picked up, since
+// the dashboard offers that from the row (open, continue or branch).
+func TestSessionsInProjectDir(t *testing.T) {
+	e := newEnv(t)
+	dir := t.TempDir()
+	e.seed(t, dir)
+
+	var sum struct {
+		Projects []store.ProjectShare `json:"projects"`
+	}
+	if code := e.get(t, "/v1/stats/summary?range=today", &sum); code != 200 || len(sum.Projects) != 1 {
+		t.Fatalf("summary: %d %+v", code, sum.Projects)
+	}
+	if got := sum.Projects[0].Dir; got != dir {
+		t.Fatalf("project dir = %q, want %q", got, dir)
+	}
+
+	var list []SessionSummary
+	if code := e.get(t, "/v1/sessions?dir="+url.QueryEscape(dir), &list); code != 200 || len(list) != 1 || list[0].SessionID != "s1" {
+		t.Fatalf("sessions in dir: %d %+v", code, list)
+	}
+	if list[0].Resume == nil {
+		t.Fatal("a session that is not Caprock's carries resume info on the dir list")
+	}
+	// Exact, not a search: a directory that merely contains the name lists nothing.
+	if code := e.get(t, "/v1/sessions?dir="+url.QueryEscape(filepath.Dir(dir)), &list); code != 200 || len(list) != 0 {
+		t.Fatalf("parent dir should list nothing: %d %+v", code, list)
 	}
 }

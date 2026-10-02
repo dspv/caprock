@@ -69,6 +69,11 @@
  * destination. A click that lands a user somewhere they cannot orient is worse
  * than a row that does nothing.
  *
+ * The repository row carries one control besides its expander: `>_`, which
+ * opens a terminal in the project (ProjectTerminal). It is a separate button
+ * at the row's right edge with its own label and tooltip, so it promises
+ * exactly where it goes; the breakdown rows under it stay inert.
+ *
  * Two things the row shows are choices worth stating.
  *
  * BOTH figures are shown, always. There used to be a $ / tokens toggle picking
@@ -96,6 +101,7 @@
  * Every number here is measured from captured events at API list price — never
  * modelled, never extrapolated (rule 6).
  */
+import { ProjectTerminal } from '@/components/ProjectTerminal'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { WorkMixStrip } from '@/components/WorkMix'
 import { api, type PathShare, type ProjectShare, type SessionSummary } from '@/lib/api'
@@ -434,19 +440,29 @@ function ProjectRow({
 
   return (
     <div className="border-t border-border first:border-t-0">
-      {expandable ? (
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          className="w-full px-3 py-1.5 hover:bg-panel-2/50"
-          title={`${label}: show cost by directory`}
-        >
-          {body}
-        </button>
-      ) : (
-        <div className="px-3 py-1.5">{body}</div>
-      )}
+      <div className="flex items-center">
+        {expandable ? (
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            className="flex-1 min-w-0 pl-3 pr-1 py-1.5 hover:bg-panel-2/50"
+            title={`${label}: show cost by directory`}
+          >
+            {body}
+          </button>
+        ) : (
+          <div className="flex-1 min-w-0 pl-3 pr-1 py-1.5">{body}</div>
+        )}
+        {/* Outside the expander, not inside it: a button in a button is
+          * invalid markup, and a click meant for the terminal must not also
+          * fold the row open. A row with no directory (spend whose session
+          * was deleted) has nowhere to open, so it gets an empty slot that
+          * keeps the numbers on one edge. */}
+        <div className="w-9 shrink-0 flex justify-center">
+          {p.dir ? <ProjectTerminal dir={p.dir} label={label} /> : null}
+        </div>
+      </div>
       {expandable && open && (
         <div className="pb-1.5 bg-panel-2/30">
           {/* The basis of the percentage, said in words. The column's base is

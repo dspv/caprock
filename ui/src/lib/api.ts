@@ -240,7 +240,12 @@ export interface Spark { from_ms: number; width_ms: number; cost: number[]; toke
 /** One REPOSITORY's spend. `paths` is the per-directory breakdown, absent when
  *  the repository has only one directory (it would restate the row's total).
  *  `spark` is the series behind the row's sparkline. */
-export interface ProjectShare { project: string; agent?: string; tokens: number; cost_usd: number; sessions: number; paths?: PathShare[]; spark?: Spark }
+export interface ProjectShare {
+  project: string; agent?: string; tokens: number; cost_usd: number; sessions: number; paths?: PathShare[]; spark?: Spark
+  /** The directory the row is keyed on (repository root, else the session's own
+   *  folder). `api.sessionsInDir` lists the row's sessions from it. */
+  dir?: string
+}
 /** The KIND of work one turn did — what the money was spent on, beside the cuts
  *  by model and by project. A turn belongs to exactly one kind, so the rows sum
  *  to the range total exactly.
@@ -704,6 +709,8 @@ export interface PairState {
 export const api = {
   sessions: (activeOnly = false) => get<SessionSummary[]>(`/v1/sessions${activeOnly ? '?active=true' : ''}`),
   sessionsWithTotal,
+  /** One Projects row's sessions, newest first, each with whether it can be picked up. */
+  sessionsInDir: (dir: string) => get<SessionSummary[]>(`/v1/sessions?dir=${encodeURIComponent(dir)}`),
   session: (id: string) => get<SessionDetail>(`/v1/sessions/${encodeURIComponent(id)}`),
   events: (id: string, after = 0, limit = 500) => get<Event[]>(`/v1/sessions/${encodeURIComponent(id)}/events?after=${after}&limit=${limit}`),
   /** The events immediately preceding `before`, oldest-first — paging back

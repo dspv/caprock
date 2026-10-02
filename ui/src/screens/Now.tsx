@@ -564,6 +564,22 @@ export function SessionCard({ s, now, earlier }: { s: SessionSummary; now: numbe
               what did it ask?
             </button>
           )}
+          {/* 1-click terminal: a session Caprock holds opens straight in its
+            * terminal, rather than in the timeline with the terminal a tab
+            * away. Only Caprock's own — rule 7 — and only while it runs here. */}
+          {s.owned && s.status !== 'ended' && !s.detached && (
+            <button
+              title="Open its terminal"
+              className="mono text-[11px] text-fg-faint hover:text-accent border border-border hover:border-accent rounded-sm px-1.5 py-0.5"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                navigate({ name: 'session', id: s.session_id, tab: 'terminal' })
+              }}
+            >
+              &gt;_
+            </button>
+          )}
           <Badge health={s.activity.health} />
         </span>
       </div>
