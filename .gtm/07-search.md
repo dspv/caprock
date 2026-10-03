@@ -240,7 +240,12 @@ an assistant can cite.
   `/guides/codex-vs-claude-code/` (a guide, not `/compare/`: it inherits the
   guide checks, card and sitemap), measured from `caprock export`; its
   fact-check found Codex compresses week-old rollouts to `.jsonl.zst`, which
-  Caprock did not read (fixed in #146). Next: #10.
+  Caprock did not read (fixed in #146). #10 published 2026-10-03 as
+  `/guides/claude-code-usage-limits/`, with the owner's windows from
+  `rate_limit_history` (Max 20× until 10 September, Max 5× after Codex); its
+  fact-check caught a 23.5% reading that was test-fixture data stored in the
+  live database. #11 went into guide #5, retitled "Codex pricing and usage".
+  Round 2 is complete; re-read Search Console for all four from 2026-10-31.
 
 Links: #8 is the cost answer, so `/blog/claude-code-cost-per-month/` and
 `/numbers/` link to it and it cites them for the measurement; #10 takes the
