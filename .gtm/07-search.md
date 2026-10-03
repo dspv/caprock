@@ -251,3 +251,38 @@ Links: #8 is the cost answer, so `/blog/claude-code-cost-per-month/` and
 `/numbers/` link to it and it cites them for the measurement; #10 takes the
 plan-limits section's readers from guide #2; #9 cites
 `/blog/five-agents-one-table/` for how the two agents' records are joined.
+
+## Round 3: API pricing and the other agents (2026-10-03)
+
+Three pages, published the same night, each fact-checked by an independent
+agent before it shipped. Volumes are US, August 2026, from the round-2 pull
+(`.gtm/data/2026-10-03-keywords.tsv`) plus one DataForSEO read of the
+`claude api pricing` cluster.
+
+- **Claude API pricing** — `claude api pricing` 6,600, `anthropic api
+  pricing` 2,400, `claude sonnet 5 pricing` 2,400, `claude opus 5 pricing`
+  1,300, `claude api cost` 1,300. The result page is thin: a cost vendor,
+  YouTube, Anthropic's billing page, Reddit, a calculator. **Fits:** the
+  price list plus what only we have — 79,014 real calls priced line by line,
+  showing the cache-read rate, not the input rate, decides an agent's bill.
+  A landing page with a calculator, not a guide.
+- **OpenCode vs Claude Code** — `opencode vs claude code` 3,600, `open code
+  vs claude code` 720. Reddit, SourceForge, Slashdot, HN. Unparked from
+  round 2: Caprock reads both, and the machine has 9,309 OpenCode calls.
+- **Cursor vs Claude Code** — `cursor vs claude code` 8,100, `claude code vs
+  cursor` 6,600. Unparked: Caprock still cannot read Cursor, but Cursor bills
+  Claude at Anthropic's list rates once its included usage is spent, so the
+  measured Claude Code side answers what heavy Claude use costs there. The
+  page labels that figure an estimate and says Caprock does not read Cursor.
+
+| #  | Page                               | Owns                    | Aug head |
+| -- | ---------------------------------- | ----------------------- | -------- |
+| 12 | `/claude-api-pricing/`             | Claude API pricing      | 6,600    |
+| 13 | `/guides/opencode-vs-claude-code/` | OpenCode vs Claude Code | 3,600    |
+| 14 | `/guides/cursor-vs-claude-code/`   | Cursor vs Claude Code   | 8,100    |
+
+- **Done:** all three published 2026-10-03. Pricing the API page's calls
+  found Caprock counting a forked session's copied turns twice — $213 on
+  this machine, all from one `--fork-session` (fixed in #150); the cost-per-
+  month post's September was corrected from $2,093 to $1,764 the same night.
+  Re-read Search Console for all three from 2026-10-31.
