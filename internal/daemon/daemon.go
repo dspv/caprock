@@ -323,6 +323,10 @@ func (d *Daemon) run(ctx context.Context) error {
 		if _, err := d.rec.RepairSessionModels(ctx); err != nil && ctx.Err() == nil {
 			d.log.Warn("could not restore session models", "component", "rollup", "err", err)
 		}
+		// Once: a fork's copies of its parent's turns were priced twice.
+		if _, err := d.rec.RepairForkedTurns(ctx); err != nil && ctx.Err() == nil {
+			d.log.Warn("could not take copied fork turns out of the totals", "component", "rollup", "err", err)
+		}
 		if _, err := d.rec.ApplyCorrections(ctx); err != nil && ctx.Err() == nil {
 			d.log.Warn("could not correct turns the previous pricing table priced wrongly", "component", "rollup", "err", err)
 		}

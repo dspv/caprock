@@ -9,6 +9,21 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **A forked session no longer counts its parent's spend a second time.**
+  Picking up a running session forks it, and Claude Code copies the
+  conversation since its last compaction into the fork's transcript, usage
+  included. Caprock priced every copied turn again, so the copied spend showed
+  up twice in Cost, the daily totals and `caprock report`. On the machine this
+  was found on, one fork added $212.93. A copied turn now stays in the fork's
+  timeline with its text but costs nothing, and the copies already stored are
+  corrected once when the daemon starts.
+- **A copied turn with no usage is no longer charged for a cache write.**
+  Claude Code blanks the token counts of some messages it carries past a
+  compaction but leaves the 1-hour cache-write figure, which was priced on its
+  own.
+
 ## [0.67.1] - 2026-10-03
 
 ### Fixed

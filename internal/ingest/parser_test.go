@@ -130,3 +130,36 @@ func TestToolPreCarriesItsMessageID(t *testing.T) {
 		t.Errorf("tool payload does not carry message_id: %s", tool.Payload)
 	}
 }
+
+// Claude Code copies the first messages it preserves across a compaction with
+// every usage scalar zeroed and the cache_creation breakdown left in place. The
+// 1h write is part of the total, so a total of zero bounds it to zero — read
+// raw, the copy was priced at 301 tokens of 1h cache write that never happened.
+func TestCacheWrite1hIsBoundedByTotalWrite(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		usage string
+		want  int64
+	}{
+		{"zeroed copy", `{"input_tokens":0,"output_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,
+		  "cache_creation":{"ephemeral_1h_input_tokens":301,"ephemeral_5m_input_tokens":0}}`, 0},
+		{"real write", `{"input_tokens":2,"output_tokens":371,"cache_read_input_tokens":995190,"cache_creation_input_tokens":301,
+		  "cache_creation":{"ephemeral_1h_input_tokens":301,"ephemeral_5m_input_tokens":0}}`, 301},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := `{"type":"assistant","sessionId":"s1","uuid":"u1","message":{"role":"assistant","id":"msg_a","model":"claude-opus-5","usage":` +
+				tc.usage + `,"content":[]}}`
+			line, err := ParseLine([]byte(raw))
+			if err != nil {
+				t.Fatal(err)
+			}
+			evs := line.Events(time.Now())
+			if len(evs) != 1 || evs[0].Tokens == nil {
+				t.Fatalf("want one turn with tokens, got %+v", evs)
+			}
+			if got := evs[0].Tokens.CacheWrite1h; got != tc.want {
+				t.Fatalf("CacheWrite1h = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}

@@ -122,6 +122,21 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 	}
 
 	err := r.Store.WithTx(ctx, func(q store.Querier) error {
+		if ev.Kind == event.KindTurnAssistant && ev.MsgID != "" && ev.Tokens != nil {
+			// A fork's transcript repeats its parent's turns under its own
+			// session id. The row stays — it is the fork's history, prose and
+			// all — but the response was billed once, to the session that
+			// already holds it, so the copy carries no usage and no cost.
+			paid, err := store.TurnPaidElsewhere(ctx, q, ev.MsgID, ev.SessionID)
+			if err != nil {
+				return err
+			}
+			if paid {
+				zero := 0.0
+				ev.Tokens = &event.TokenDelta{}
+				ev.CostUSD = &zero
+			}
+		}
 		if _, err := store.InsertEvent(ctx, q, ev); err != nil {
 			if errors.Is(err, store.ErrDuplicate) {
 				return err

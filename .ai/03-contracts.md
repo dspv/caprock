@@ -61,6 +61,8 @@ conversation at a time, so a sibling on the same pid is finished by definition;
 
 **Dedupe keys.** hookd keys events as `pre:<tool_use_id>`, `post:<tool_use_id>`, `prompt:<prompt_id>`; ingest derives the *same* keys from transcript `tool_use` / `tool_result` blocks and `promptId`, and keys assistant turns as `msg:<message.id>`. `(session_id, key)` is unique in the store, so whichever plane arrives first wins and the other is a no-op — this is how "dedupe against hook events by session_id" is implemented, and it also makes re-reading a transcript after restart idempotent. Stop / SubagentStop / SessionStart / SessionEnd / PreCompact are keyless (never deduped).
 
+**A turn is paid once across sessions.** The key is unique per session only, and a fork's transcript repeats its parent's turns under the fork's own session id (see [Transcript JSONL](#transcript-jsonl-observed-shape)). So a `turn.assistant` whose `msg_id` another session already holds *with usage* is stored with zero tokens and `cost_usd = 0` (`store.TurnPaidElsewhere`, migration 0029): the row stays in the fork's timeline with its prose and counts as a turn there, and the response is billed once, to the session that stored it first. A copy with no usage does not count as the payer, so an empty copy stored first cannot stop the original being priced. `rollup.RepairForkedTurns` applied the same rule once to rows stored before it (meta `forked_turns_repaired`): per message id the row with the most tokens pays, ties to the earliest, and `session_stats` / `daily_stats` move by what is taken off.
+
 ### settings.json registration shape
 
 The installer writes, for each of the nine events, a matcher-less entry (`matcher` omitted — `UserPromptSubmit` and `Stop` do not accept matchers) of the form `{"hooks":[{"type":"command","command":"<data_dir>/caprock-hook","timeout":5}]}` and leaves every other key, every pre-existing hook, **and the user's key order** untouched (ordered-JSON merge). The registered command is written with **forward slashes and double quotes**, on every platform: Claude Code runs hooks through a POSIX shell, where a backslash is an escape, so a Windows path reached it as `C:UsersVolasAppData…caprock-hook.exe` and every hook failed while the dashboard — still fed by transcript tailing — looked healthy. Windows accepts forward slashes in every API, and the quotes keep a path with a space (`C:/Program Files/…`, or the macOS `~/Library/Application Support/…`) from splitting into two words. Either fix alone is insufficient. `statusLine.command` is written the same way and had the same defect. Entries in any earlier form — bare, quoted, backslashed — are still recognised as ours, so an upgrade neither reports a working install as missing nor overwrites a line the user repaired by hand. When no `caprock-hook` binary sits beside the `caprock` executable, the registered command is `<caprock> hook` (a hidden subcommand running the same shim code). Uninstall removes only entries whose `command` points at a Caprock shim (exact path, or basename `caprock-hook[.exe]`, or `<caprock> hook`) and drops empty containers it leaves behind. Backups are `settings.json.caprock-backup-<unix-ts>` next to the original, taken before a modification **whenever the current content is not already captured by an existing backup** — a backup taken once and never refreshed goes stale (the audited machine had a 10 July snapshot of a file last edited 20 August) and would restore a file the user no longer recognises. Identical content is never snapshotted twice, so repeated runs over an unchanged file add nothing. A same-second second backup gets a `-2` suffix rather than overwriting its predecessor. At most 5 are kept: the oldest (the closest thing to a pre-Caprock state) plus the most recent 4. `caprock hooks restore` lists them and restores one by path, snapshotting the current file first so the restore is itself undoable; it refuses an unparsable backup. An unparsable settings.json is never modified.
@@ -699,6 +701,21 @@ ALTER TABLE sessions ADD COLUMN parent_session TEXT NOT NULL DEFAULT '';
 `SessionSummary` carries both as `worked_at` and `parent_session`, omitted when
 unset, and `detached` (see `resume` above).
 
+### Turn message-id DDL (migration 0029)
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_events_turn_msg
+  ON events(msg_id, session_id)
+  WHERE kind = 'turn.assistant' AND msg_id IS NOT NULL;
+```
+
+Finds an assistant turn by message id across sessions — the per-turn
+`store.TurnPaidElsewhere` lookup on the write path and the GROUP BY in
+`rollup.RepairForkedTurns` (see **A turn is paid once across sessions** under
+Hook shim). `idx_events_msg` leads on `session_id` and cannot answer either.
+On the owner's database (2026-10-03) the repair found 827 copied turns from
+one fork and took $212.93 and 381M tokens out of the totals.
+
 ### Touch attribution DDL (migration 0012)
 
 ```sql
@@ -914,5 +931,7 @@ Not a public contract — the parser is schema-versioned and degrades to hooks-o
 - Files live at `~/.claude/projects/<encoded-cwd>/<session-id>.jsonl`; `transcript_path` in hook payloads points at the exact file. Subagent transcripts live at `<encoded-cwd>/<session-id>/subagents/agent-<id>.jsonl` and carry the parent `sessionId` plus `agentId`, `isSidechain: true`.
 - **One API response is written as several `assistant` lines** (thinking / text / tool_use blocks split across lines), each repeating the *same* `message.id`, `requestId` and `usage`. Verified 2026-08-18 across 16,210 such groups in local transcripts: usage never differs within a `message.id`. Ingest therefore counts usage once per `message.id` (dedupe key `msg:<id>`); summing per line would over-count cache tokens 2–3×.
 - Lines with `message.model == "<synthetic>"` are Claude Code's own notices, not turns; ignored.
+- **A fork copies its parent's turns.** `claude --resume <id> --fork-session` writes the parent's history since its last `compact_boundary` into the new file: the same `uuid`, `message.id` and `usage`, with `sessionId` rewritten to the fork's. Observed 2026-10-03 on a Caprock-started fork: 827 of the parent's assistant messages, all of them still in the parent's file. Ingest prices each message id once across sessions (see **A turn is paid once across sessions** under Hook shim).
+- **The first messages a compaction preserves are copied with zeroed usage.** `input_tokens`, `output_tokens`, `cache_read_input_tokens` and `cache_creation_input_tokens` are 0, but `cache_creation.ephemeral_1h_input_tokens` keeps the original figure. The 1h write is part of `cache_creation_input_tokens`, so ingest bounds it by that total; read raw, each such copy was priced at a 1h cache write that never happened. On 2026-10-03, 6 of 24,239 local lines carrying the breakdown had it above the total, every one of them zeroed this way.
 
 Golden fixtures for the parser (normal, compacted, malformed line, unknown schema field) live in `testdata/transcripts/`.
