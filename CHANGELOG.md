@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.68.0] - 2026-10-03
+
 ### Changed
 
 - **The light theme is paper now, like caprock.dev.** A cream ground with
