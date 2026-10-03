@@ -2,8 +2,9 @@
 
 ## Where things stand
 
-**Last updated: 2026-09-09.** The first Reddit and Show HN launch posts are
-published. The repeatable owned channel is not running yet: the product can
+**Last updated: 2026-10-04.** The first Reddit launch posts are published. The
+2026-08-28 Show HN was killed on arrival and nobody saw it; the account is under
+review with HN. The repeatable owned channel is not running yet: the product can
 publish under `caprock`, while the separate personal channel still waits for a
 name ([01-channel.md](01-channel.md)).
 
@@ -12,7 +13,7 @@ name ([01-channel.md](01-channel.md)).
 | caprock.dev    | Live. Analytics on (Umami), `copy-command` event instrumented          |
 | GitHub repo    | Live, public, screenshots and description current                      |
 | Reddit         | Launch posts published 2026-08-28                                      |
-| Hacker News    | Show HN published 2026-08-28                                           |
+| Hacker News    | Show HN dead on arrival 2026-08-28; asked HN to review the account     |
 | Telegram       | The owner's own, in Russian. Not a product channel                     |
 | X              | Not registered; register as `caprock`                                  |
 | LinkedIn       | Not registered; register as `caprock`                                  |
@@ -24,11 +25,25 @@ name ([01-channel.md](01-channel.md)).
 - **Reddit:** posted 2026-08-28 to r/claudecode and r/claudeskills. The result
   still needs to be read from Umami against the 17% install-intent rate from
   the Telegram repost.
-- **Show HN:** posted 2026-08-28 with a repository link and short body. It went
-  out on the same day as Reddit, despite the launch notes recommending separate
-  days, because the figures were fresh and the owner was available for both.
+- **Show HN:** posted 2026-08-28 with a repository link and short body. It was
+  dead on arrival — 1 point, no comments, not in HN search — and so were the
+  account's submissions of 2026-06-15 and 2026-09-17 (read from the HN API on
+  2026-10-03; the account has `showdead` off, so the owner never saw it). The
+  owner emailed hn@ycombinator.com on 2026-10-03 asking for a review. Do not
+  post again from that account until HN answers.
+- **Awesome lists (2026-10-03):** listed in Piebald-AI/awesome-gemini-cli.
+  Under review: hesreallyhim/awesome-claude-code (issue #3058, filed by the
+  owner through the web form, which the list requires), awesome-opencode #804,
+  ai-for-developers/awesome-ai-coding-tools #845, awesome-codex-cli #360,
+  bradAGI/awesome-cli-coding-agents #429. Older and quiet: jqueryscript #618,
+  rohitg00 #751.
 
 ## Next actions
+
+0. **This week (from 2026-10-04):** Reddit posts by the owner — r/ClaudeAI
+   first, r/ChatGPTCoding a day later; drafts in `~/Downloads/reddit-caprock/`.
+   Directory submissions, 5–10 a day, from `.gtm/directories.yml`: the owner
+   signs up and logs in, the agent fills the forms. A Habr article in Russian.
 
 1. **Register `caprock` on X, LinkedIn and YouTube.** No name to pick — the
    product already has one, and it carries no surname ([GTM-008](03-decisions.md)).
