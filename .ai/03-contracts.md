@@ -772,6 +772,8 @@ CREATE TABLE rate_limit_history (ts INTEGER, window TEXT, used_percentage REAL, 
 
 `rate_limit_latest` holds the current state per window (upserted); `rate_limit_history` is a throttled sample (≥30s apart) used to compute an honest "at current pace" forecast. Fed by the statusline (below).
 
+**Migration 0030** deleted samples from both tables whose reset lies more than eight days after the sample — the rule `api.plausibleRateWindow` applies on write. On the owner's database that was 8 history rows of a test fixture (resets_at 1900000000) posted by an unisolated unit test.
+
 **Codex's windows share `rate_limit_latest` under a `codex_` prefix** —
 `codex_five_hour`, `codex_seven_day` — so they sit beside Claude Code's
 `five_hour` / `seven_day` rows and never replace them. No DDL change: `window`

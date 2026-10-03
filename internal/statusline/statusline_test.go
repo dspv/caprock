@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -13,6 +14,22 @@ import (
 
 	"github.com/dspv/caprock/internal/config"
 )
+
+// TestMain points the whole package at a temporary data directory. Run reads
+// runtime.json from the data directory and posts what it parsed to the daemon
+// it names; a test that forgot to isolate itself posted this file's 2030
+// fixture into the owner's live database (see migration 0030). Tests that need
+// their own directory still set one.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "caprock-statusline-test")
+	if err != nil {
+		panic(err)
+	}
+	os.Setenv(config.EnvDataDir, dir)
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
+}
 
 // The command prints a status line from the stdin JSON and never fails — malformed
 // input, empty input, and missing rate_limits all produce clean output/exit.

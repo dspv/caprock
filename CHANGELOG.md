@@ -11,6 +11,11 @@ Phase 3 (Delight) has no plan by design.
 
 ### Fixed
 
+- **Test readings no longer sit in your plan-limit history.** A unit test
+  posted a made-up 23.5% five-hour reading, with a reset in 2030, to whatever
+  Caprock daemon was running when the tests ran. Any such reading is now
+  removed, by the same rule the daemon already applies to new ones: a reset
+  more than eight days ahead is not a real window.
 - **A forked session no longer counts its parent's spend a second time.**
   Picking up a running session forks it, and Claude Code copies the
   conversation since its last compaction into the fork's transcript, usage
