@@ -188,6 +188,5 @@ project names before uploading anywhere new.
   exists and receives mail before the first form uses it — directories send
   verification links there.
 - **Founder surname.** [GTM-002](03-decisions.md) says the surname appears
-  nowhere public; caprock.dev/press already lists "Maker: Dmitriy".
-  The full name is used here as instructed; GTM-002 should be updated or the
-  name reduced to "Dmitriy" before forms go out.
+  nowhere public, so forms use "Dmitriy" only. caprock.dev/press still shows
+  the full name; that page or GTM-002 needs the owner's call.
