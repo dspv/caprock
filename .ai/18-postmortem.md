@@ -1,8 +1,8 @@
 # Postmortem — token compression on real Claude Code traffic
 
 The record of the measurement that closed the token-compression direction. Two
-feedback files point here — [the request ledger](../.fdck/01-ledger.md) and [the
-one-week story](../.fdck/stories/2026-09-03-vova-one-week-in.md) — so the finding
+feedback files in the private site repo point here — `.fdck/01-ledger.md` and
+`.fdck/stories/2026-09-03-vova-one-week-in.md` — so the finding
 gets one home instead of living only inside them.
 
 ## What was measured
