@@ -5,7 +5,7 @@ much the screen actually drew, so History and Tasks were two-thirds empty
 background. Here the page is measured after it settles and the capture is
 clipped to that height, which is why each screen gets its own aspect ratio.
 """
-import base64, json, os, pathlib, re, sqlite3, subprocess, sys, time, urllib.request
+import base64, json, os, pathlib, re, shutil, sqlite3, subprocess, sys, time, urllib.request
 
 # Overridable so the fixture can live outside the repository — it is a copy of
 # a real database and has no business sitting in a working tree.
@@ -261,6 +261,7 @@ def scrub():
 
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 PORT = 9222
+PROFILE = "/tmp/caprock-shots-profile"
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:4290"
 OUT = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else ".")
 SHOTS = [("now", "shot-now"), ("cost", "shot-cost"),
@@ -321,12 +322,16 @@ def main():
         print("refusing to shoot: the database was not scrubbed")
         return 1
 
+    # A fresh profile every run. A profile left from an earlier run kept that
+    # run's localStorage (theme, filters, a dismissed banner), and the v0.68.0
+    # Now screen sat on "nothing measured" until the profile was deleted.
+    shutil.rmtree(PROFILE, ignore_errors=True)
     proc = subprocess.Popen(
         [CHROME, "--headless=new", f"--remote-debugging-port={PORT}",
          f"--window-size={WIDTH},{HEIGHT}", "--disable-gpu", "--hide-scrollbars",
          "--no-first-run", "--remote-allow-origins=*",
          "--force-device-scale-factor=2",          # retina-sharp in a README
-         "--user-data-dir=/tmp/caprock-shots-profile", "about:blank"],
+         f"--user-data-dir={PROFILE}", "about:blank"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         for _ in range(40):
@@ -431,7 +436,22 @@ def main():
                     if ready:
                         break
                 else:
-                    sys.exit(f"{name} ({theme}) never finished loading; refusing to capture a half-loaded screen")
+                    # Say which placeholder was still there: "never finished
+                    # loading" alone sent the v0.68.0 run into guesswork.
+                    why = evaluate(ws, r"""
+                      (() => {
+                        const t = document.body.innerText;
+                        const z = t.search(/^\$0\.00\s*$/m);
+                        return JSON.stringify({
+                          skeletons: document.querySelectorAll('.skeleton-pulse').length,
+                          reading: t.includes('reading your figures'),
+                          nothing_measured: t.includes('nothing measured'),
+                          zero_stat: z < 0 ? '' : t.slice(Math.max(0, z - 160), z + 8),
+                          any_money: /\$[0-9][0-9,]*\.[0-9]{2}/.test(t),
+                        });
+                      })()
+                    """)
+                    sys.exit(f"{name} ({theme}) never finished loading; refusing to capture a half-loaded screen\n  still on screen: {why}")
                 time.sleep(2.0)   # let charts and the pulse canvas paint
 
                 # Measure the real drawn height: the lowest bottom edge among
