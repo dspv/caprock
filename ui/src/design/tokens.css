@@ -111,6 +111,20 @@
 }
 [data-theme="light"] { color-scheme: light; }
 
+/* Paper: the light palette caprock.dev uses — a cream ground, cards a shade
+ * lighter, warm hairlines — so the product and its screenshots on the site
+ * are one tone. Only the surfaces change; ink, status and accent colours are
+ * the white palette's, which already clear AA on this ground. White stays the
+ * palette above: Settings → Light theme, and DEFAULT_TONE in lib/theme.ts. */
+[data-theme="light"][data-tone="paper"] {
+  --color-bg: #efe7d6;
+  --color-panel: #f4ecdd;
+  --color-panel-2: #ebe2d0;
+  --color-border: #dccfb6;
+  --color-border-strong: #c2b293;
+  --shadow-panel: 0 8px 20px -14px rgba(60, 45, 20, 0.28);
+}
+
 /* Every number, cost, id, and terminal string is monospace with tabular numerals. */
 .num, .mono {
   font-family: var(--font-mono);

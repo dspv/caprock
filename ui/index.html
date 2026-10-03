@@ -17,6 +17,9 @@
           }
           document.documentElement.setAttribute('data-theme', t);
           document.documentElement.style.colorScheme = t;
+          // Light palette; the fallback mirrors DEFAULT_TONE in lib/theme.ts.
+          var tone = localStorage.getItem('caprock-light-tone');
+          document.documentElement.setAttribute('data-tone', tone === 'white' ? 'white' : 'paper');
         } catch (e) {}
       })();
     </script>
