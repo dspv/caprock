@@ -286,3 +286,33 @@ agent before it shipped. Volumes are US, August 2026, from the round-2 pull
   this machine, all from one `--fork-session` (fixed in #150); the cost-per-
   month post's September was corrected from $2,093 to $1,764 the same night.
   Re-read Search Console for all three from 2026-10-31.
+
+## Round 4: listicles, Gemini and pricing (2026-10-03)
+
+Published the same day as round 3, each fact-checked by an independent agent
+before it shipped.
+
+- **Top lists** — `/guides/ai-coding-agents/` and
+  `/guides/claude-code-usage-monitors/`. Ranked lists of the tools people
+  compare, with Caprock placed among them on facts, not at the top, and an
+  install line at its entry.
+- **Gemini CLI vs Claude Code** — `/guides/gemini-cli-vs-claude-code/`.
+- **Wave 2** — `/guides/is-claude-code-free/`,
+  `/guides/install-claude-code/`, `/guides/opencode-pricing/` (with the
+  machine's 9,309 OpenCode calls repriced at Go's rates, labelled an
+  estimate), `/guides/cursor-pricing/`.
+- **Indexing:** requested by hand for the first three; the daily quota ran
+  out before wave 2, so the sitemap was resubmitted instead. Request wave 2
+  by hand on 2026-10-04. Re-read Search Console for all of them from
+  2026-10-31.
+
+### Next (planned, not started)
+
+Pull volumes before writing any of these; drop the ones that come back thin.
+
+- **Copilot, Antigravity and Kiro vs Claude Code** — one page each on the
+  existing versus template.
+- **Install Codex CLI** — the twin of the Claude Code install guide.
+- **Claude Code hooks and CLAUDE.md** — task pages; Caprock is built on
+  hooks, so it has real examples.
+- **`--dangerously-skip-permissions`** — what it does, when it is safe.
