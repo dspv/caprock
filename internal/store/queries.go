@@ -180,6 +180,39 @@ func InsertEvent(ctx context.Context, q Querier, ev *event.Event) (int64, error)
 	return id, nil
 }
 
+// TurnPaidElsewhere reports whether a session other than sessionID already
+// holds an assistant turn for msgID that carries usage.
+//
+// A message id names one API response, and one response is billed once. Claude
+// Code nevertheless writes the same response into more than one transcript: a
+// fork (`--resume <id> --fork-session`) copies the parent's history since its
+// last compaction into the new session's file, ids and usage included. The
+// store dedupes on (session_id, key), which cannot see that, so the copy was
+// priced a second time.
+//
+// Only a row with usage counts as the payer. Claude Code zeroes the usage
+// scalars of the first messages it preserves across a compaction, so a copy
+// can arrive with nothing on it — and if that copy happened to be stored
+// first, the original must still be priced when it arrives.
+func TurnPaidElsewhere(ctx context.Context, q Querier, msgID, sessionID string) (bool, error) {
+	if msgID == "" {
+		return false, nil
+	}
+	var one int
+	err := q.QueryRowContext(ctx, `
+		SELECT 1 FROM events INDEXED BY idx_events_turn_msg
+		WHERE kind = 'turn.assistant' AND msg_id = ? AND session_id != ?
+		  AND COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0) > 0
+		LIMIT 1`, msgID, sessionID).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // SessionPatch carries the fields an event may reveal about its session. Empty
 // strings mean "no information" and are never written over existing values.
 type SessionPatch struct {

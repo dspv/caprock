@@ -219,7 +219,12 @@ func (l *Line) Events(fallbackTs time.Time) []event.Event {
 			td := &event.TokenDelta{In: nonNegative(u.InputTokens), Out: nonNegative(u.OutputTokens),
 				CacheRead: nonNegative(u.CacheReadInputTokens), CacheWrite: nonNegative(u.CacheCreationInputTokens)}
 			if u.CacheCreation != nil {
-				td.CacheWrite1h = nonNegative(u.CacheCreation.Ephemeral1h)
+				// The 1h write is part of cache_creation_input_tokens, never
+				// extra. Claude Code zeroes the scalars of a message it copies
+				// past a compaction and leaves this breakdown in place, so the
+				// copy read as 301 tokens written with none written in total —
+				// and the 1h figure was priced on its own. Bounded by the total.
+				td.CacheWrite1h = min(nonNegative(u.CacheCreation.Ephemeral1h), td.CacheWrite)
 			}
 			ev.Tokens = td
 		}
