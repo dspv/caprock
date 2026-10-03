@@ -17,11 +17,14 @@
           }
           document.documentElement.setAttribute('data-theme', t);
           document.documentElement.style.colorScheme = t;
+          // Light palette; the fallback mirrors DEFAULT_TONE in lib/theme.ts.
+          var tone = localStorage.getItem('caprock-light-tone');
+          document.documentElement.setAttribute('data-tone', tone === 'white' ? 'white' : 'paper');
         } catch (e) {}
       })();
     </script>
-    <script type="module" crossorigin src="/assets/index-DsjPcN-t.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-DlIsB_FC.css">
+    <script type="module" crossorigin src="/assets/index-DsOgB937.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BUpUHZRV.css">
   </head>
   <body>
     <div id="root"></div>

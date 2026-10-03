@@ -9,6 +9,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Changed
+
+- **The light theme is paper now, like caprock.dev.** A cream ground with
+  panels a shade lighter, instead of white. Prefer white? Settings → Light
+  theme → White; the choice is kept in this browser. The dark theme is
+  unchanged.
+
 ### Fixed
 
 - **Test readings no longer sit in your plan-limit history.** A unit test

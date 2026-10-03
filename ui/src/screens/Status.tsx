@@ -1,3 +1,4 @@
+import { useLightTone } from '@/lib/theme'
 import { api, isPairedDevice } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtDuration, fmtUSD } from '@/lib/format'
@@ -119,6 +120,28 @@ export function StatusScreen() {
  * header chip, and release checks could only be turned on from a banner that
  * disappears once dismissed.
  */
+/** Paper or white for the light theme; dark is unaffected. */
+function LightToneField() {
+  const [tone, setTone] = useLightTone()
+  return (
+    <div className="flex items-baseline gap-2 border-t border-border pt-2" role="radiogroup" aria-label="Light theme">
+      <span className="text-fg-muted w-28 shrink-0">Light theme</span>
+      {(['paper', 'white'] as const).map((t) => (
+        <label key={t} className="inline-flex items-center gap-1.5 cursor-pointer mr-3">
+          <input
+            type="radio"
+            name="light-tone"
+            className="accent-[var(--color-accent)]"
+            checked={tone === t}
+            onChange={() => setTone(t)}
+          />
+          <span className="text-fg">{t === 'paper' ? 'Paper' : 'White'}</span>
+        </label>
+      ))}
+    </div>
+  )
+}
+
 function SettingsPanel() {
   const [plan, savePlan] = usePlan()
   if (!plan) return null
@@ -173,6 +196,7 @@ function SettingsPanel() {
             </span>
           </label>
         )}
+        <LightToneField />
         <div className="flex items-baseline gap-2 border-t border-border pt-2">
           <span className="text-fg-muted w-28 shrink-0">Your plan</span>
           <span className="mono text-fg">
