@@ -268,8 +268,8 @@ The roadmap (T0–T25) is complete, and the backlog above is shipped except B5.
 This section is the one home for what is still open: every entry names what
 would start it, and every buildable entry carries its definition of done, so
 picking one up never re-litigates scope. Requests and their reasoning live in
-[`.fdck/01-ledger.md`](../.fdck/01-ledger.md); distribution lives in
-[`.gtm/04-status.md`](../.gtm/04-status.md). This file only says what "done"
+`.fdck/01-ledger.md`; distribution lives in `.gtm/04-status.md` (both in
+the private site repo). This file only says what "done"
 would mean.
 
 ### Decisions that gate work
@@ -341,5 +341,5 @@ owned by the file linked, which is the home for the details.
 ### Distribution
 
 - **X, LinkedIn, YouTube; the first video; the six-week content plan.** Owned by
-  [`.gtm/04-status.md`](../.gtm/04-status.md) § Next actions — cross-linked here
+  `.gtm/04-status.md` (private site repo) § Next actions — cross-linked here
   so the build plan and the distribution plan share one entry point. No code.

@@ -822,7 +822,7 @@ What he asked for, and what happened:
 - **Third-party models** and **paying for models through Caprock** are open:
   both readings of the first are weeks apart, and the second would make us a
   payment intermediary for someone else's API. Recorded in
-  [`.fdck/`](../.fdck/00-index.md), not guessed at.
+  `.fdck/` (now in the private site repo), not guessed at.
 
 He also priced it, unprompted: $20/month for what exists, $50 with other
 models, $100 with Claude and GPT. Then found the real price — $30 a year — and

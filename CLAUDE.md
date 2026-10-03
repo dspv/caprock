@@ -16,8 +16,8 @@ this line does not. See `.ai/14-build-status.md`.
 ## Repository structure
 
 - `.ai/` — full documentation, **source of truth**. Read before any task.
-- `.gtm/` — go-to-market: the channel, channel research, decisions, status.
-- `.fdck/` — user feedback: dated stories in users' own words, request ledger.
+- Go-to-market (`.gtm/`) and user feedback (`.fdck/`) live in the private site
+  repo `cybrixcc/caprock-web`, not here: this repo is public.
 - `cmd/`, `internal/` — Go daemon, CLI, hook shim (layout in `.ai/02-architecture.md`).
 - `ui/` — React + Vite dashboard, embedded into the binary via `go:embed`.
 - `pricing/` — versioned model pricing table. `testdata/` — fixtures, fake `claude`.

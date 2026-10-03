@@ -27,16 +27,12 @@ Caprock is a local, open-source **mission control for Claude Code**: a single st
 
 These files absorbed the hand-off specification (`CaprockV2-SPEC.md`, deleted after the loss audit recorded in [docs/migration-audit.md](../docs/migration-audit.md)). The spec is not a separate source of truth — **these files are**. (Numbering is non-contiguous by design — 11 was never used; nothing is missing.)
 
-**User feedback lives in [`.fdck/`](../.fdck/00-index.md)** — what real users
-said, dated, in their own words, with a ledger of every request and what was
-decided. Separate from this directory for the same reason `.gtm/` is: a user's
-report is evidence about the world, not a decision about the product. The
-ledger points at the plan; the plan does not restate the ledger.
-
-**Go-to-market lives in [`.gtm/`](../.gtm/00-index.md)** — the channel, what was
-researched about each one, decisions and status. It is a separate directory
-because product and distribution change on different clocks: a release note is
-not a channel decision.
+**User feedback and go-to-market live in the private site repo (`cybrixcc/caprock-web`)**,
+under `.fdck/` and `.gtm/`. Users' own words, the request ledger, channel
+decisions, keyword data and status are not public; they moved out of this
+repository on 2026-10-04. A user's report is evidence about the world, not a
+decision about the product, and product and distribution change on different
+clocks, so neither belongs in this directory.
 
 **This table is the one home for the doc map.** `CLAUDE.md` and `AGENTS.md` point here rather than restating it.
 
@@ -59,7 +55,7 @@ Supporting directories:
 - **Code:** all three phases built, green on the 3-OS CI matrix, tagged and published — `git describe`, the releases page and [CHANGELOG.md](../CHANGELOG.md) say which version, and this file deliberately does not ([rule 9](../CLAUDE.md)). Homebrew formula in `dspv/homebrew-tap` (`brew install dspv/tap/caprock`); Windows via Scoop. Post-Orchestrate work is polish and paid surfaces. The Phase 2 tag gate — a live unattended orchestrator run with hooks — passed: a real `claude` orchestrator drove a task to green verification with no human input. See [14-build-status.md](14-build-status.md) for the live per-track state.
 - **Agent coverage:** Claude Code, OpenCode, Gemini CLI, Codex and DeepSeek Harness share the observation screens. Claude Code has the complete Observe → Control → Orchestrate path; OpenCode, Codex and DeepSeek Harness are observation-only; Caprock can start and observe Gemini sessions. The exact boundaries live in [16-opencode.md](16-opencode.md), [19-codex.md](19-codex.md), [20-deepseek.md](20-deepseek.md) and [14-build-status.md](14-build-status.md).
 - **Paid plans:** free, $30/year or $5/month, $100 once. A licence key with its own expiry unlocks the daily spend cap, weekly report and Gemini on the user's own key, and is checked offline ([ADR-022](08-decisions.md)); Stripe issues it and emails it on payment. The team tier is specified, not built ([ADR-021](08-decisions.md)).
-- **Users:** what real people asked for, and what came of it, is in [`.fdck/`](../.fdck/00-index.md) — dated, in their own words, with a ledger.
+- **Users:** what real people asked for, and what came of it, is in `.fdck/` in the private site repo — dated, in their own words, with a ledger.
 - **Security:** a v0.17.0 audit found six defects sharing one root cause — the hive treated files written by a worker session (which runs with permissions skipped) as trusted input. All six are fixed: an arbitrary file write outside the hive via a mailbox `to:` field, a `git worktree add -B` that destroyed user commits, path traversal via task ids, a `~/.claude.json` rewrite that lost key order and truncated large integers, a settings.json backup that never refreshed (plus `caprock hooks restore`), and an unreachable-but-catastrophic prune path. See [ADR-020](08-decisions.md) and the 2026-08-23 entry in [14-build-status.md](14-build-status.md).
 - **Unmeasured / undecided:** see [12-risks.md § Open questions](12-risks.md#open-questions); `OQ-01`, `OQ-03`, and `OQ-07` are resolved (all open questions OQ-01–09 are closed); no open question blocks shipping.
 
