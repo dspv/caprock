@@ -9,6 +9,21 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **Gemini 3.8 Flash and Gemini 3.1 Flash-Lite are priced.** A Gemini CLI
+  session on either model had its tokens counted but no cost, and the Cost
+  screen named the model as unpriced. Both now carry Google's list prices,
+  read 3 October 2026 (pricing table `2026-10-03.1`). Gemini 3.8 Flash is on
+  introductory pricing that doubles on 1 January 2027; the table will be
+  refreshed before then.
+
+### Fixed
+
+- **The README no longer lists starting a Gemini CLI session as Premium.** It
+  never was: the New Session dialog offers Gemini CLI to everyone, like every
+  other agent. Asking Gemini about your numbers is the paid part.
+
 ## [0.68.0] - 2026-10-03
 
 ### Changed

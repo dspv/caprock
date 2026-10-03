@@ -1,7 +1,7 @@
 {
-  "version": "2026-10-01.1",
+  "version": "2026-10-03.1",
   "source": "https://platform.claude.com/docs/en/about-claude/pricing",
-  "fetched_at": "2026-10-01",
+  "fetched_at": "2026-10-03",
   "currency": "USD",
   "unit": "per_million_tokens",
   "notes": [
@@ -13,7 +13,8 @@
     "Non-Anthropic rows are the providers' own published list prices, fetched 2026-08-27: DeepSeek V4 Pro $0.435/$0.87 per 1M (its 75% cut, made permanent); MiniMax M3 $0.30/$1.20 per 1M standard tier with $0.06 cache read (its permanent 50% off). They are priced so a total that includes non-Anthropic usage is a total; Caprock still does not charge for any of it and cannot see a bill.",
     "A model may have more than one row: a price that has been superseded keeps its own row with `until` (the last date it applied, inclusive, UTC), and the current price is the row with no `until`. Rows for one id are ordered oldest-first and a turn is priced by the row in force when it ran, so an expiring introductory rate never restates history at a price nobody was charged. No row is dated today. Sonnet 5 was the first: $2/$10 was announced as introductory through 2026-08-30 with $3/$15 from 2026-08-31 (claude.com/pricing, read 2026-08-30), but on 2026-10-01 the API pricing page says the increase \"will not occur\" and $2/$10 is the standard price, so its $3/$15 row is gone and the turns priced at it are a correction (below).",
     "Gemini prices are Google AI Studio paid-tier rates read from https://ai.google.dev/gemini-api/docs/pricing on 2026-09-01, for the text models the chat feature can reach. Image, video, TTS, embedding and robotics models are omitted because no code path can bill them.",
-    "gemini-3.7-flash and gemini-3.6-flash carry introductory pricing through 2026-12-31; input doubles to $1.50 and output to $7.50 on 2027-01-01. This table must be refreshed before that date or those two rows will understate cost.",
+    "gemini-3.8-flash, gemini-3.7-flash and gemini-3.6-flash carry introductory pricing through 2026-12-31; input doubles to $1.50, cache read to $0.15 and output to $7.50 on 2027-01-01. This table must be refreshed before that date or those three rows will understate cost.",
+    "gemini-3.8-flash ($0.75/$3.75 per 1M, $0.075 cache read) and gemini-3.1-flash-lite ($0.25/$1.50, $0.025 cache read; text, image and video input), 1,048,576-token context, were read from https://ai.google.dev/gemini-api/docs/pricing and their model pages on 2026-10-03. Before 2026-10-03.1 neither had a row, and neither matched another id by prefix, so a turn on either was left unpriced and named in `unpriced`, not mispriced; no correction is needed.",
     "Gemini has no 5m/1h cache-write price: Google bills cache storage per hour ($0.50-$4.50 per 1M tokens/hour by model), which is time-based and has no per-token equivalent, so cache_write_* are 0 for Gemini rows and cached input is priced at cache_read.",
     "gemini-3.1-pro-preview and gemini-2.5-pro are tiered by prompt size; the rate here is the =<200k tier. Prompts over 200k tokens bill at roughly double ($4.00/$18.00 and $2.50/$15.00 respectively) and are therefore under-reported by this table.",
     "OpenAI rows are OpenAI's own published list prices, read from https://developers.openai.com/api/docs/pricing and the per-model pages on 2026-09-06: gpt-5-codex $1.25/$10.00 per 1M with $0.125 cached input (400k context), gpt-5.3-codex $1.75/$14.00 with $0.175 cached, and the gpt-5.6 family sol $4/$20, terra $2/$12, luna $0.20/$1.20 (1.05M context). They exist because Codex sessions report tokens but no cost of their own, unlike OpenCode which computes its own figure.",
@@ -260,6 +261,16 @@
       "context_window": 204800
     },
     {
+      "id": "gemini-3.8-flash",
+      "display": "Gemini 3.8 Flash",
+      "input": 0.75,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.075,
+      "output": 3.75,
+      "context_window": 1048576
+    },
+    {
       "id": "gemini-3.7-flash",
       "display": "Gemini 3.7 Flash",
       "input": 0.75,
@@ -308,6 +319,16 @@
       "cache_read": 0.2,
       "output": 12.0,
       "context_window": 1000000
+    },
+    {
+      "id": "gemini-3.1-flash-lite",
+      "display": "Gemini 3.1 Flash Lite",
+      "input": 0.25,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.025,
+      "output": 1.5,
+      "context_window": 1048576
     },
     {
       "id": "gemini-2.5-pro",

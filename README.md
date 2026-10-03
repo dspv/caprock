@@ -99,6 +99,16 @@ Caprock starts it. See
 [OpenCode, Codex and DeepSeek Harness](#opencode-codex-and-deepseek-harness) for
 what that covers and what it does not.
 
+To start a Gemini CLI session from Caprock, install the CLI
+(`npm install -g @google/gemini-cli`): it appears next to Claude Code in the New
+Session dialog — same terminal, same directory picker, its own filter chip.
+With a Gemini key set (see [Premium](#premium) for where), Caprock passes it to
+the child process. Gemini has no hooks and writes no transcript, but it does
+write OpenTelemetry, and Caprock asks it to write that to a file it then reads;
+what you ask it is kept there too, so the Memory screen can find a Gemini
+session by your question. Starting and watching Gemini sessions is free, like
+every other agent.
+
 ![Live activity and cost, right now](docs/shot-now.png)
 
 *Top: the live pulse — one bar per minute of the last hour, per session, so the
@@ -415,27 +425,15 @@ Premium adds the things that act on what you are looking at.
 **A daily cap.** Pass a number you set, and Caprock pauses the sessions it
 started — paused, not killed, and never a session you started yourself. Built.
 
-**Gemini, on your own key.** A second model inside Caprock, billed to you by
-Google at their prices. Get a key from
+**Ask Gemini about your numbers, on your own key.** A second model inside
+Caprock, billed to you by Google at their prices. Get a key from
 [Google AI Studio](https://aistudio.google.com/apikey) and either export
 `GEMINI_API_KEY` before `caprock up`, or paste it into the field on the Cost
 screen. An exported variable wins; a pasted key is written to the config file
 with owner-only permissions and never leaves the machine or comes back out of
-the API. The key buys two things:
+the API.
 
-*Start a session with Gemini.* Install the CLI
-(`npm install -g @google/gemini-cli`) and Gemini CLI appears next to Claude Code
-in the New Session dialog — same terminal, same directory picker, same row in
-the sessions list, and its own filter chip. Caprock passes the key to the child
-process, so you do not have to export it in every shell.
-
-Its turns, tokens and cost appear alongside everything else. Gemini has no hooks
-and writes no transcript, but it does write OpenTelemetry, and Caprock asks it
-to write that to a file it then reads — the same arrangement as Claude Code's
-transcript, with a different file. What you ask it is kept there too, so the
-Memory screen can find a Gemini session by your question.
-
-*Ask about your own numbers.* On the Cost screen, a question carries today's and
+On the Cost screen, a question carries today's and
 the week's spend, top projects and models — so the answers are about your
 machine; your prompts, replies, and tool output are never sent. A question costs
 about 0.04 cents on Flash Lite and 1 cent on Pro, priced before you spend it.
