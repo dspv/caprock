@@ -13,6 +13,7 @@ import (
 
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/rollup"
+	"github.com/dspv/caprock/internal/sessionlink"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -56,6 +57,12 @@ type Ingester struct {
 	// splitChecked is set once the first pass has repaired imported threads
 	// and subagent turns stored by earlier versions (see repairSplit).
 	splitChecked bool
+
+	// Link files a thread under the Caprock session that started it, when
+	// Caprock did (see internal/sessionlink). Nil leaves every thread under
+	// its own id, which is what every session not started from the dashboard
+	// is anyway.
+	Link *sessionlink.Linker
 
 	namesAt time.Time
 	// namesFor is how many transcripts had been imported at that sync. A
@@ -144,7 +151,17 @@ func (in *Ingester) once(ctx context.Context) error {
 		in.backfillLimits(ctx, files)
 	}
 	readNow := map[string]bool{}
-	for _, f := range files {
+	order := files
+	if in.Link != nil && in.Link.Waiting(Agent) {
+		// A rollout is named for the moment its thread started, so in name
+		// order a parent is read before the subagents it spawned — and is
+		// linked to the session Caprock started before their events need to
+		// know where to go. Only while a link is pending: otherwise the
+		// order changes nothing.
+		order = append([]Transcript(nil), files...)
+		sort.SliceStable(order, func(i, j int) bool { return filepath.Base(order[i].Path) < filepath.Base(order[j].Path) })
+	}
+	for _, f := range order {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -165,6 +182,7 @@ func (in *Ingester) once(ctx context.Context) error {
 			in.mu.Unlock()
 			continue
 		}
+		in.link(ctx, s)
 		if err := in.session(ctx, s); err != nil {
 			return err
 		}
@@ -224,6 +242,7 @@ func (in *Ingester) syncNames(ctx context.Context) {
 	}
 	db := in.rec.Store.DB()
 	for id, n := range names {
+		id = in.storeID(ctx, id)
 		if err := store.SetTitle(ctx, db, id, n.Name); err != nil {
 			in.log.Warn("record codex thread name", "component", "codex", "err", err)
 			return
@@ -234,6 +253,38 @@ func (in *Ingester) syncNames(ctx context.Context) {
 		}
 	}
 	in.namesAt, in.namesFor = stamp, known
+}
+
+// link points a parsed transcript at the session it is stored under: the
+// Caprock session that started it when there is one, its own id otherwise. A
+// subagent's file carries its parent's id and follows the parent's link; only
+// a thread a person started in the Codex TUI can be matched to a spawn.
+func (in *Ingester) link(ctx context.Context, s *Session) {
+	if in.Link == nil || s == nil || s.Imported {
+		return
+	}
+	s.ID = in.Link.Resolve(ctx, Agent, sessionlink.Candidate{
+		NativeID: s.ID,
+		Cwd:      s.Cwd,
+		Started:  s.StartedAt,
+		Eligible: !s.Subagent && IsTUI(s.Originator),
+	})
+}
+
+// storeID is the session a Codex thread id is stored under, without making a
+// new link.
+func (in *Ingester) storeID(ctx context.Context, threadID string) string {
+	if in.Link == nil {
+		return threadID
+	}
+	return in.Link.Resolve(ctx, Agent, sessionlink.Candidate{NativeID: threadID})
+}
+
+// IsTUI reports whether a rollout was written by the Codex terminal UI — the
+// program Caprock starts — rather than the desktop app or the IDE extension.
+// "codex-tui" is what 0.154–0.160 write; "codex_cli_rs" is the older name.
+func IsTUI(originator string) bool {
+	return originator == "codex-tui" || originator == "codex_cli_rs"
 }
 
 // session records one parsed transcript: its turns and its tool calls, in the

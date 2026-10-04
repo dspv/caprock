@@ -44,10 +44,11 @@ Percentages are deliberately coarse — they answer "is this track started, half
 - **All three phases are built and green.** The Go module + `ui/` exist and are exercised by `make check` (Go tests, `go vet`, `golangci-lint`, docs gates, and the UI typecheck/vitest/build) on the 3-OS CI matrix. Phase 2's orchestration loop has been driven end to end by a real `claude` orchestrator (see the Phase 2 log entry). **every phase is tagged and published** (Homebrew formula in `dspv/homebrew-tap`).
 - The Python measurer (`~/dev/caprock-legacy`, PyPI `caprock` 0.3.0) is frozen ([ADR-007](08-decisions.md#adr-007--the-harness-is-caprock-new-go-codebase-in-dspvcaprock-python-measurer-frozen)); the Go binary shipped its first release as **v0.1.0** on 2026-08-19.
 - **Five agent sources share the observation screens.** Claude Code remains the
-  full Observe → Control → Orchestrate path. OpenCode, Codex and DeepSeek
-  Harness are imported observation-only: Caprock cannot start, steer or stop
-  them, and the task runner does not work with any of them. Gemini sessions
-  started by Caprock are observed through OpenTelemetry, prompts included. The Now
+  full Observe → Control → Orchestrate path. Caprock can also start, type into,
+  continue and stop Codex and OpenCode TUIs, linked to the record their own
+  files keep ([ADR-031](08-decisions.md)); DeepSeek Harness is observation-only,
+  and the task runner works with Claude Code only. Gemini sessions started by
+  Caprock are observed through OpenTelemetry, prompts included. The Now
   filter is `all / claude / opencode / gemini / codex / deepseek`. See
   [16-opencode.md](16-opencode.md), [19-codex.md](19-codex.md) and
   [20-deepseek.md](20-deepseek.md).
@@ -70,6 +71,106 @@ Percentages are deliberately coarse — they answer "is this track started, half
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
 ## Log
+
+### 2026-10-04 — Plan limits in plain words
+
+- Owner feedback: from a "limit at 95%" alert he reached Cost and "did not
+  understand anything" (translated). Every window is now a ring plus a
+  sentence (used, reset clock, countdown in minutes under an hour, what 100%
+  means), a "what these are" line, and advice when a live window passes 85%
+  (wait for the reset, or switch to Codex when it has room). One
+  `PlanLimitsPanel` on Now and Cost; the alert links to
+  `#/cost?section=limits` and the screen scrolls to it. The desktop app's
+  stale reading stays off this panel.
+
+### 2026-10-04 — Lifetime, in the site's reading style
+
+- The money leads at display size, then cost per active day and per session
+  (exact divisions), the cache, and the counts. Top projects first as a donut
+  and a table with shares; tool usage and the model mix as donuts with the
+  tail as "other", or as tables (Charts | Numbers). No endpoint changed.
+
+### 2026-10-04 — Share: a Story card, and no empty wait
+
+- The share dialog has a **Story** style: the Week card for today, 7 days,
+  30 days or all time (`GET /v1/week?period=`), landscape or portrait.
+- **No empty wait.** The owner reported the preview took very long to appear,
+  and `/v1/stats/summary` was 4.7 s on his live database. Server speed is a
+  separate branch; here the dialog draws the last figures it kept at once,
+  shows the card's outline with per-range progress when it has none, warms
+  the default card on hover, and shares one round of requests between the
+  preview and the save.
+- `WeekStats` runs its two payload readers beside the rest and no longer has
+  SQLite sort the loop replay's payloads: all time went from 18.8 s to about
+  11 s on a copy of the owner's database. Most of what is left is page reads:
+  the same loop query took 1.8 s warm in the sqlite3 shell and 0.46 s with
+  `PRAGMA mmap_size`, which is a store-wide setting and was left to the
+  endpoint-speed work.
+
+### 2026-10-04 — Now: At a glance, plan-limit gauges, who is working
+
+- **At a glance** (after All time) draws the all-time cost by model, the bill
+  by token type and tool calls as hand-drawn SVG donuts, with an agents row
+  and a Charts | Numbers switch. New `GET /v1/glance`; the agent split moved
+  into `store.AgentSplit`, which the Week uses too.
+- **Plan limits** moved from a Today cell to a full-width panel of ring
+  gauges under Today, grouped by agent, with reset countdowns; the forecast
+  stays the daemon's and Codex's stays absent.
+- **Live pulse** rows show the model name and live subagents ("×N").
+  `SessionSummary` gained `model_display` and `live_subagents`.
+- **Migration 0031** (`idx_events_turn_agent`): the first `/v1/glance` took
+  81 s on a copy of the owner's database, almost all of it one sidechain
+  lookup per session that SQLite planned on the `kind` index. Forced onto
+  `idx_events_session_ts` and with both all-time reads covered, it takes
+  0.44 s cold.
+- Verified on a copy of the owner's database with a near-limit fixture (82%
+  with a forecast, 64%, a stale 91%) in both themes and at 390px. At 390px
+  the page header and the All time tables still overflow sideways, as they
+  did before; the new blocks fit.
+
+### 2026-10-04 — Week: a card of what the agents shipped
+
+A **Week** tab draws one week of this machine's work as a card to post —
+landscape 1200×675 or portrait 1080×1350, in the dashboard's own theme —
+from `GET /v1/week`. Pull requests opened and merged, commits, files and
+≈lines are read from the agents' own successful tool calls; nothing asks
+GitHub. On a copy of the owner's database the week of 2026-09-27 in UTC came
+to 131 opened (all 131 confirmed on GitHub), 128 merged locally with 3
+unreadable merges left out (GitHub: 126 of the 131 merged, plus Dependabot and
+`shots/*` merges the agents also ran), 235 commits and $474.40 — the same
+figures the hand count produced. The longest loop is found by the live
+detector's rule and priced by the same function as the alert
+(`contexttax.PriceSeries`, extracted for it).
+
+### 2026-10-04 — Choose the agent when starting a session
+
+The New session dialog starts Codex and OpenCode as well as Claude Code and
+Gemini CLI, offering only the agents whose binary the daemon finds (the login
+shell's PATH, then the installers' directories), and remembering the last
+choice per viewer. The argv per agent is a table (`internal/agents/argv.go`),
+which [ADR-026](08-decisions.md) asked for once a third CLI arrived, built from
+`codex --help` (0.160.0) and `opencode --help` (1.15.10) and then run, not from
+memory: the dotted `-c` trust override that looked right in the docs did
+nothing, and an inline table did ([19-codex.md](19-codex.md)).
+
+The half that took the time was the observer. A spawned Codex or OpenCode
+session would otherwise appear twice — a terminal with no cost, a cost with no
+terminal — because neither CLI can be told an id. `internal/sessionlink` joins
+them: OpenCode exactly, from `session.created` on the TUI's own server
+([16-opencode.md](16-opencode.md)); Codex by a stated heuristic on folder,
+originator and thread start time ([19-codex.md](19-codex.md)). The link is
+stored as `sessions.native_id` (migration 0032) and the importers file the
+agent's events under Caprock's session, so one page has the terminal and the
+cost; "continue here" now works for Codex and OpenCode sessions that have
+ended. Verified end to end on an isolated daemon with a scratch HOME, at no
+cost: Codex pointed at a closed local port, OpenCode's free tier refusing this
+version.
+
+Two smaller defects surfaced while using it. A session with no events showed
+"idle 739892d ago" — Go's zero time read as a timestamp. And an owned Codex or
+OpenCode row would have been ended by the clock while its process ran, because
+the staleness sweep treated every row of those agents as history; it now
+judges an owned one by its pid like any other session Caprock started.
 
 ### 2026-10-04 — Documents dropped into the terminal arrive, by name
 

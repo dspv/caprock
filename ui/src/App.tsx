@@ -8,6 +8,7 @@ import { SessionScreen } from '@/screens/Session'
 import { CostScreen } from '@/screens/Cost'
 import { StatusScreen } from '@/screens/Status'
 import { HistoryScreen } from '@/screens/History'
+import { WeekScreen } from '@/screens/Week'
 import { TasksScreen } from '@/screens/Tasks'
 import { OrchestrationScreen } from '@/screens/Orchestration'
 import { NotesScreen } from '@/screens/Notes'
@@ -57,9 +58,10 @@ export default function App() {
       <ErrorBoundary label={route.name}>
         {route.name === 'now' && <NowScreen />}
         {route.name === 'session' && <SessionScreen key={route.id} id={route.id} tab={route.tab} at={route.at} />}
-        {route.name === 'cost' && <CostScreen />}
+        {route.name === 'cost' && <CostScreen section={route.section} />}
         {route.name === 'settings' && <StatusScreen />}
         {route.name === 'history' && <HistoryScreen />}
+        {route.name === 'week' && <WeekScreen start={route.start} />}
         {route.name === 'tasks' && <TasksScreen />}
         {route.name === 'graph' && <OrchestrationScreen />}
         {route.name === 'notes' && <NotesScreen />}

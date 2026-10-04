@@ -1,0 +1,114 @@
+/*
+ * The Week card. Drawn at its export size (1200x675 or 1080x1350) and scaled
+ * on screen by its container, so what you see is the PNG you download.
+ *
+ * Every colour is a theme token: graphite on the dark theme, paper on the
+ * light one. The card is the one playful surface in the product; the screen
+ * around it stays as calm as the rest.
+ */
+.wk-card {
+  --wk-bg: var(--color-bg);
+  --wk-raise: var(--color-panel-2);
+  --wk-line: var(--color-border-strong);
+  --wk-ink: var(--color-fg);
+  --wk-mute: var(--color-fg-muted);
+  --wk-dim: var(--color-fg-faint);
+  --wk-amber: var(--color-accent);
+  --character-outline: transparent;
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+  color: var(--wk-ink);
+  font-family: var(--font-sans);
+  background-color: var(--wk-bg);
+  background-image:
+    radial-gradient(900px 520px at 100% 0%, color-mix(in srgb, var(--wk-amber) 11%, transparent), transparent 60%),
+    radial-gradient(700px 500px at 0% 100%, color-mix(in srgb, var(--wk-amber) 6%, transparent), transparent 60%);
+  -webkit-font-smoothing: antialiased;
+}
+[data-theme="light"] .wk-card { --character-outline: var(--color-border-strong); }
+.wk-card *, .wk-card *::before, .wk-card *::after { box-sizing: border-box; }
+
+.wk-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.wk-amber { color: var(--wk-amber); }
+.wk-dim { color: var(--wk-dim); }
+
+.wk-top { display: flex; justify-content: space-between; align-items: center; }
+.wk-brand { display: flex; align-items: center; gap: 12px; font: 700 26px/1 var(--font-mono); letter-spacing: -0.01em; }
+.wk-brand b { color: var(--wk-amber); font-weight: 700; }
+.wk-eyebrow { font: 500 17px/1.2 var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--wk-amber); }
+.wk-date { color: var(--wk-dim); }
+.wk-headline { font-weight: 800; letter-spacing: -0.025em; line-height: 1.02; margin: 0; }
+.wk-headline em { font-style: normal; color: var(--wk-amber); white-space: nowrap; }
+.wk-tally { font: 500 19px/1.4 var(--font-mono); color: var(--wk-mute); }
+.wk-tally b { color: var(--wk-ink); font-weight: 700; }
+.wk-tally i { font-style: normal; color: var(--wk-dim); padding: 0 0.35em; }
+
+.wk-stat .wk-n { font: 700 54px/1 var(--font-mono); letter-spacing: -0.03em; color: var(--wk-ink); font-variant-numeric: tabular-nums; }
+.wk-stat .wk-n .wk-approx { color: var(--wk-amber); font-weight: 500; margin-right: 0.08em; }
+.wk-stat .wk-l { font: 500 18px/1.3 var(--font-sans); color: var(--wk-mute); margin-top: 8px; }
+
+.wk-crew { display: flex; gap: 14px; }
+.wk-who { display: flex; gap: 14px; align-items: center; background: var(--wk-raise); border: 1px solid var(--wk-line); border-radius: 18px; padding: 14px 18px 14px 14px; min-width: 0; }
+.wk-who .wk-name { font: 700 19px/1.15 var(--font-sans); white-space: nowrap; }
+.wk-who .wk-nums { font: 500 15px/1.35 var(--font-mono); color: var(--wk-mute); margin-top: 4px; white-space: nowrap; }
+.wk-who .wk-bit { font: 500 15px/1.3 var(--font-sans); color: var(--wk-dim); margin-top: 3px; }
+
+.wk-callout { border: 1.5px solid var(--wk-amber); border-radius: 18px; padding: 16px 20px; background: color-mix(in srgb, var(--wk-amber) 7%, transparent); min-width: 0; }
+.wk-callout .wk-k { font: 500 13px/1 var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--wk-amber); }
+.wk-callout .wk-t { font: 600 21px/1.3 var(--font-sans); margin-top: 9px; }
+.wk-callout .wk-c { font: 700 21px/1 var(--font-mono); color: var(--wk-amber); white-space: nowrap; }
+
+.wk-foot { display: flex; justify-content: space-between; align-items: baseline; gap: 24px; font: 500 15px/1 var(--font-mono); color: var(--wk-dim); }
+.wk-foot b { color: var(--wk-mute); font-weight: 500; }
+.wk-foot .wk-url { color: var(--wk-amber); }
+
+/* 1200 x 675 — X / LinkedIn */
+.wk-land { width: 1200px; height: 675px; padding: 50px 60px 40px; display: grid; grid-template-rows: auto 1fr auto auto; }
+.wk-land .wk-main { display: grid; grid-template-columns: 1fr 300px; column-gap: 56px; align-items: center; padding: 22px 0; }
+.wk-land .wk-headline { font-size: 78px; margin-top: 14px; }
+.wk-land .wk-tally { margin-top: 20px; }
+.wk-land .wk-side { display: grid; row-gap: 22px; border-left: 1px solid var(--wk-line); padding-left: 36px; }
+.wk-land .wk-side .wk-n { font-size: 46px; }
+.wk-land .wk-side .wk-l { font-size: 16px; margin-top: 6px; }
+.wk-land .wk-bottom { display: grid; grid-template-columns: auto 1fr; column-gap: 14px; align-items: stretch; }
+.wk-land .wk-bottom.wk-solo { grid-template-columns: 1fr; }
+.wk-land .wk-who { padding: 12px 16px 12px 12px; gap: 12px; }
+.wk-land .wk-who .wk-name { font-size: 17px; }
+.wk-land .wk-who .wk-nums, .wk-land .wk-who .wk-bit { font-size: 14px; }
+.wk-land .wk-callout { display: flex; flex-direction: column; justify-content: center; padding: 12px 18px; }
+.wk-land .wk-callout .wk-t, .wk-land .wk-callout .wk-c { font-size: 17px; }
+.wk-land .wk-callout .wk-t { margin-top: 7px; }
+.wk-land .wk-foot { margin-top: 22px; font-size: 14px; }
+
+/* 1080 x 1350 — Instagram / Telegram */
+.wk-port { width: 1080px; height: 1350px; padding: 64px 72px 56px; display: flex; flex-direction: column; }
+.wk-port > .wk-eyebrow { margin-top: 44px; font-size: 19px; }
+.wk-port .wk-headline { font-size: 100px; margin-top: 18px; }
+.wk-port .wk-tally { margin-top: 24px; font-size: 22px; }
+.wk-port .wk-grid { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 34px; border-top: 1px solid var(--wk-line); border-bottom: 1px solid var(--wk-line); }
+.wk-port .wk-grid .wk-stat { padding: 22px 0 22px 28px; border-left: 1px solid var(--wk-line); }
+.wk-port .wk-grid .wk-stat:first-child { border-left: 0; padding-left: 0; }
+.wk-port .wk-grid .wk-n { font-size: 56px; }
+.wk-port .wk-bars { margin-top: 30px; padding-bottom: 26px; }
+.wk-port .wk-barrow { display: grid; grid-template-columns: repeat(7, 1fr); align-items: end; height: 146px; margin-top: 6px; border-bottom: 1px solid var(--wk-line); position: relative; }
+.wk-port .wk-barcol { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 120px; position: relative; }
+.wk-port .wk-barval { font: 700 16px/1 var(--font-mono); color: var(--wk-ink); margin-bottom: 9px; white-space: nowrap; }
+.wk-port .wk-bar { width: min(92px, 72%); border-radius: 3px 3px 0 0; }
+.wk-port .wk-barday { position: absolute; bottom: -24px; font: 500 16px/1 var(--font-mono); color: var(--wk-dim); white-space: nowrap; }
+.wk-bar-zero { background: var(--wk-line); }
+.wk-bar-low { background: color-mix(in srgb, var(--wk-amber) 78%, #000); }
+.wk-bar-mid { background: var(--wk-amber); }
+.wk-bar-top { background: color-mix(in srgb, var(--wk-amber) 68%, #fff); }
+.wk-port .wk-cap { display: flex; justify-content: space-between; font: 500 16px/1 var(--font-mono); color: var(--wk-dim); letter-spacing: 0.06em; text-transform: uppercase; }
+.wk-port .wk-crew { flex-direction: column; gap: 10px; margin-top: 26px; }
+.wk-port .wk-who { padding: 9px 22px 9px 12px; }
+.wk-port .wk-who .wk-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; width: 100%; }
+.wk-port .wk-who .wk-txt { flex: 1; min-width: 0; }
+.wk-port .wk-who .wk-name { font-size: 22px; }
+.wk-port .wk-who .wk-nums { font-size: 17px; margin-top: 0; }
+.wk-port .wk-who .wk-bit { font-size: 17px; margin-top: 5px; }
+.wk-port .wk-callouts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+.wk-port .wk-callouts.wk-solo { grid-template-columns: 1fr; }
+.wk-port .wk-callout .wk-t { font-size: 22px; }
+.wk-port .wk-foot { margin-top: auto; padding-top: 18px; font-size: 15px; flex-direction: column; align-items: flex-start; gap: 9px; }

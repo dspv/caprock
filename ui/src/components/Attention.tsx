@@ -102,7 +102,9 @@ function Row({ it, now, onDismiss, session }: {
           href={
             it.sessionId
               ? href({ name: 'session', id: it.sessionId, tab: 'timeline', at: it.at })
-              : '#/cost'
+              // An account-level item is the plan window: straight to the
+              // panel that explains it, not the top of Cost.
+              : href({ name: 'cost', section: 'limits' })
           }
           className="text-[11px] border border-border px-1.5 py-0.5 rounded-sm hover:border-border-strong no-underline text-fg-muted hover:text-fg"
         >

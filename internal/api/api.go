@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/dspv/caprock/internal/bus"
+	"github.com/dspv/caprock/internal/codex"
 	"github.com/dspv/caprock/internal/contexttax"
 	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/event"
@@ -71,6 +72,11 @@ type Deps struct {
 	}
 	// ActiveLoops reports whether a session currently has an unexpired loop alert.
 	ActiveLoops func(sessionID string) *loop.Alert
+	// LoopK and LoopWindow are the loop detector's settings, so the Week
+	// card's longest loop is found by the same rule as the live alert. Zero
+	// means the detector's defaults.
+	LoopK      int
+	LoopWindow time.Duration
 	// IdleAfter is the silence threshold for the idle badge.
 	IdleAfter time.Duration
 	Now       func() time.Time
@@ -222,7 +228,10 @@ type TaskController interface {
 
 // AgentController is the subset of internal/agents the API needs (interface for tests).
 type AgentController interface {
+	// Available reports whether any agent can be started here.
 	Available() bool
+	// Has reports whether one agent ("claude", "codex", …) can be started.
+	Has(agent string) bool
 	Spawn(ctx context.Context, req any) (id string, cwd string, err error)
 	Input(sessionID string, data []byte) error
 	Signal(sessionID, action string) error
@@ -250,6 +259,12 @@ type Server struct {
 	// /v1/stats/summary. See answercache.go.
 	hist *answerCache
 	summ *answerCache
+	// week, weekLong and glance hold the Week and Share answers (short and
+	// long periods) and Now's at-a-glance, each with its own freshness
+	// (weekTTL, weekLongTTL, glanceTTL).
+	week     *answerCache
+	weekLong *answerCache
+	glance   *answerCache
 }
 
 // New builds the router.
@@ -269,7 +284,8 @@ func New(d Deps) *Server {
 			lanHost = u.Hostname()
 		}
 	}
-	s := &Server{d: d, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now)}
+	s := &Server{d: d, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now),
+		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now)}
 	// Seeded from Deps so `caprock up --lan` behaves exactly as before; the
 	// dashboard's switch goes through SetLAN.
 	s.pairing, s.lanURL = d.Pairing, d.LANURL
@@ -297,6 +313,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/stats/daily", s.handleDaily)
 	m.HandleFunc("GET /v1/events", s.handleEventsFeed)
 	m.HandleFunc("GET /v1/history", s.handleHistory)
+	m.HandleFunc("GET /v1/week", s.handleWeek)
+	m.HandleFunc("GET /v1/glance", s.handleGlance)
 	// Picking a folder without typing its path: see browse.go for what stops
 	// this being a filesystem-read API.
 	m.HandleFunc("GET /v1/browse", s.handleBrowse)
@@ -326,6 +344,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/orchestrator/start", s.handleStartOrchestrator)
 	m.HandleFunc("POST /v1/orchestrator/stop", s.handleStopOrchestrator)
 	m.HandleFunc("POST /v1/agents", s.handleSpawn)
+	m.HandleFunc("GET /v1/agents/models", s.handleAgentModels)
 	m.HandleFunc("POST /v1/agents/{id}/input", s.handleAgentInput)
 	m.HandleFunc("POST /v1/agents/{id}/signal", s.handleAgentSignal)
 	m.HandleFunc("POST /v1/paste", s.handlePaste)
@@ -428,6 +447,14 @@ type SessionSummary struct {
 	// daemon does not hold — it was started before a restart. The terminal tab
 	// opened an empty screen for it (FB-040); what it can do is continue.
 	Detached bool `json:"detached,omitempty"`
+	// ModelDisplay is the pricing table's name for the session's model (its
+	// main thread's latest), "Opus 5.5" rather than the id. Empty when the
+	// table does not know the model.
+	ModelDisplay string `json:"model_display,omitempty"`
+	// LiveSubagents is how many subagents are working in the session now:
+	// heard from within the last 30 minutes and not yet stopped. Zero for an
+	// ended session. The main thread is not counted.
+	LiveSubagents int `json:"live_subagents,omitempty"`
 }
 
 // ContextFill is the "context fill %" badge input: last turn's prompt size vs the model window.
@@ -476,6 +503,14 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 	}
 	if sess.Status == store.StatusEnded || sum.Detached {
 		sum.Resume = s.resumeInfo(sess)
+	}
+	sum.ModelDisplay = s.modelDisplay(sess.Model)
+	if sess.Status != store.StatusEnded {
+		n, err := store.LiveSubagents(ctx, q, sess.SessionID, s.d.Now().Add(-liveSubagentWindow).UnixMilli())
+		if err != nil {
+			return SessionSummary{}, nil, err
+		}
+		sum.LiveSubagents = n
 	}
 	// Context fill: last assistant turn's input+cache tokens vs the model's window.
 	// When it cannot be computed, say which of the two reasons applies. The
@@ -1627,7 +1662,7 @@ func (s *Server) handleApprovals(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) requireAgents(w http.ResponseWriter) bool {
 	if s.d.Agents == nil || !s.d.Agents.Available() {
-		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "can't start sessions", "detail": "`claude` is not on your PATH — install Claude Code, or add it. Caprock still watches sessions you start yourself."})
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "can't start sessions", "detail": "No coding agent Caprock can start is on your PATH — install Claude Code, Codex, OpenCode or Gemini CLI, or add it. Caprock still watches sessions you start yourself."})
 		return false
 	}
 	return true
@@ -1661,6 +1696,33 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"session_id": id, "cwd": cwd})
+}
+
+// handleAgentModels lists the models an agent's own CLI offers, for the
+// new-session dialog. Codex keeps its catalog on disk; for the other agents
+// the dialog has its own checked list (Claude Code, Gemini CLI) or takes the
+// user's provider/model as typed (OpenCode), and this answers an empty list.
+// No network I/O: it reads files the CLI already wrote.
+func (s *Server) handleAgentModels(w http.ResponseWriter, r *http.Request) {
+	type resp struct {
+		Agent   string        `json:"agent"`
+		Default string        `json:"default,omitempty"`
+		Models  []codex.Model `json:"models"`
+	}
+	agent := r.URL.Query().Get("agent")
+	out := resp{Agent: agent, Models: []codex.Model{}}
+	switch agent {
+	case "codex":
+		if m := codex.ListedModels(); len(m) > 0 {
+			out.Models = m
+		}
+		out.Default = codex.ConfiguredModel()
+	case "claude", "gemini", "opencode":
+	default:
+		http.Error(w, `agent must be one of claude, codex, opencode, gemini`, http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) handleAgentInput(w http.ResponseWriter, r *http.Request) {

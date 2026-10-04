@@ -62,6 +62,15 @@ func TestResumeInfoFollowsTheDiskNotTheOwner(t *testing.T) {
 	transcript("orphan")
 	add("orphan", store.SessionPatch{Cwd: cwd, TranscriptPath: filepath.Join(proj, "orphan.jsonl")}, false, true)
 	add("cx", store.SessionPatch{Cwd: cwd, Agent: "codex"}, true, false)
+	// Codex still writing: two processes on one rollout would interleave.
+	add("cx-live", store.SessionPatch{Cwd: cwd, Agent: "codex"}, false, false)
+	// OpenCode, started by Caprock and linked to OpenCode's own id.
+	add("oc-mine", store.SessionPatch{Cwd: cwd, Agent: "opencode"}, true, true)
+	if _, err := store.SetNativeID(ctx, db, "oc-mine", "ses_abc"); err != nil {
+		t.Fatal(err)
+	}
+	// Started by Caprock, nothing ever sent: OpenCode never made a session.
+	add("oc-empty", store.SessionPatch{Cwd: cwd, Agent: "opencode"}, true, true)
 
 	detail := func(id string) SessionDetail {
 		t.Helper()
@@ -106,8 +115,18 @@ func TestResumeInfoFollowsTheDiskNotTheOwner(t *testing.T) {
 	if d := detail("orphan"); !d.Detached || d.Resume == nil || !d.Resume.OK {
 		t.Fatalf("owned, live, no terminal here: detached=%v resume=%+v", d.Detached, d.Resume)
 	}
-	if r := detail("cx").Resume; r == nil || r.OK || r.Command != "codex resume cx" {
+	if r := detail("cx").Resume; r == nil || !r.OK || !strings.HasSuffix(r.Command, "&& codex resume cx") {
 		t.Fatalf("codex: %+v", r)
+	}
+	if r := detail("cx-live").Resume; r == nil || r.OK || !strings.Contains(r.Reason, "still running") {
+		t.Fatalf("live codex: %+v", r)
+	}
+	// The agent's resume flag takes the agent's id, not Caprock's.
+	if r := detail("oc-mine").Resume; r == nil || !r.OK || !strings.HasSuffix(r.Command, "&& opencode --session ses_abc") {
+		t.Fatalf("linked opencode: %+v", r)
+	}
+	if r := detail("oc-empty").Resume; r == nil || r.OK || r.Command != "" || !strings.Contains(r.Reason, "Nothing was sent") {
+		t.Fatalf("unlinked opencode: %+v", r)
 	}
 
 	// A stale button is refused with the same reason instead of opening a
