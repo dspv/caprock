@@ -71,6 +71,10 @@ Every MVP feature must trace to a documented user pain. **Rule: a feature with n
    - Evidence: implied by #5 — reviewer reused *patterns*, rejected the *runtime*.
    - Feature: observe-only mode on externally started sessions ([02-architecture.md § Data sources](02-architecture.md#data-sources)). Phase 0.
 
+8. **"What did all of this actually buy?" — the question after the bill.**
+   - Evidence: the owner's own week (2026-10-04): a list-price total means little until it sits beside the pull requests it paid for, and the figure people want to post is "what my agents shipped".
+   - Feature: the **Week** card — PRs, commits, cost per merged PR, who did what — computed locally and drawn to share ([04-ui.md § Week](04-ui.md#week)).
+
 ## Product principles
 
 1. **Every pixel earns its place** — each screen answers "what's happening / what does it cost / where do I need to act."

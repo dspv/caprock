@@ -12,6 +12,7 @@
  *  - anything predictive ("this will probably fail")
  */
 import { fmtUSD } from '@/lib/format'
+import { countdown, resetClock } from '@/lib/limitclock'
 import type { LoopAlert, RateLimits, SessionSummary } from '@/lib/api'
 
 export interface AttentionItem {
@@ -228,14 +229,16 @@ export function findAttention({ sessions, alerts, now, limits, waitingMs = DEFAU
     const resetMs = (w.resets_at ?? 0) * 1000
     if (!(resetMs > now && resetMs < now + staleWindowMs)) continue
     const pct = Math.round(w.used_percentage)
-    const resets = new Date(resetMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    // In words, because "5-hour plan window 95% used" was read and not
+    // understood: whose limit, when it ends, and what happens at 100%.
+    const name = label === '7-day' ? 'weekly' : '5-hour'
     out.push({
       id: `limit-${label}`,
       sessionId: '',
       project: '',
       severity: pct >= 95 ? 'high' : 'medium',
-      title: `${label} plan window ${pct}% used`,
-      detail: `resets at ${resets}${w.forecast ? ` — ${w.forecast}` : ''}`,
+      title: `Claude's ${name} limit: ${pct}% used`,
+      detail: `resets ${resetClock(resetMs, now)} — in ${countdown(resetMs - now)}; at 100% Claude Code pauses until then${w.forecast ? ` · ${w.forecast}` : ''}`,
     })
   }
 

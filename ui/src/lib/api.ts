@@ -89,6 +89,10 @@ export interface ContextFill {
 
 export interface SessionSummary extends Session {
   stats: Stats
+  /** The pricing table's name for the session's latest main-thread model ("Opus 5.5"). */
+  model_display?: string
+  /** Subagents working in the session now (heard from in the last 30 minutes, not stopped). */
+  live_subagents?: number
   activity: Activity
   savings: Savings
   loop?: LoopAlert
@@ -139,6 +143,10 @@ export interface Event {
 export interface SessionDetail extends SessionSummary {
   files: string[]
   events: Event[]
+  /** Absent when the session's directory is not in a git repository. */
+  repo?: RepoLink
+  /** Latest first. An older daemon sends none. */
+  prs?: SessionPR[]
   /** The session this one carries on (a relay), when Caprock still has it. */
   relayed_from?: RelayLink
   /** The sessions started to carry this one on, oldest first. */
@@ -279,6 +287,35 @@ export interface ProjectShare {
   /** The directory the row is keyed on (repository root, else the session's own
    *  folder). `api.sessionsInDir` lists the row's sessions from it. */
   dir?: string
+  /** The repository's web address, from its git remote. Absent without one. */
+  repo_url?: string
+  /** The latest pull request any session in this row opened or merged. */
+  last_pr?: SessionPR
+}
+
+/** Where a session's directory lives on the web, read from its git remote. */
+export interface RepoLink {
+  /** The repository's top level on this machine. */
+  root: string
+  /** https address; absent when there is no remote a browser can open. */
+  url?: string
+  branch?: string
+  default_branch?: string
+  /** The branch's page, when it is not the default and the host is known. */
+  branch_url?: string
+}
+
+/** A pull request a session opened or merged, from its own `gh pr` output. */
+export interface SessionPR {
+  session_id: string
+  url: string
+  number: number
+  title?: string
+  opened_at?: number
+  /** Set only when a merge was recorded. Absent is "not known merged". */
+  merged_at?: number
+  closed_at?: number
+  last_at: number
 }
 /** The KIND of work one turn did — what the money was spent on, beside the cuts
  *  by model and by project. A turn belongs to exactly one kind, so the rows sum
@@ -470,6 +507,88 @@ export interface CreateTaskRequest { title: string; budget_usd?: number; done_cr
 /** What a range paid to re-send its own context: every turn re-reads the whole
  *  conversation before it does anything. Absent when nothing could be priced. */
 export interface ContextTax { tax_usd: number; cost_usd: number; share: number; unpriced_tokens?: number }
+/** GET /v1/glance — the all-time agent split and the bill by token type, for
+ *  the Now screen's At a glance block. */
+export interface Glance {
+  agents: WeekAgent[]
+  bill?: { input_usd: number; output_usd: number; cache_write_usd: number; cache_read_usd: number; unpriced_tokens?: number }
+  display: Record<string, string>
+}
+
+/** GET /v1/week — seven local days of what this machine's agents did, for the
+ *  Week card. Nothing in it names a repository, a path, a prompt or a session
+ *  title. `estimates` lists the fields a renderer must mark with "≈". */
+export interface WeekDay { day: string; prs_opened: number; cost_usd: number; active: boolean }
+export interface WeekAgent { agent: string; subagent: boolean; turns: number; cost_usd: number; sessions: number; threads?: number }
+export interface WeekLoop {
+  agent: string
+  tool: string
+  /** What the repeated call did: poll, input, command, edit, fetch, subagent, other. */
+  kind: string
+  calls: number
+  first_ms: number
+  last_ms: number
+  /** What the loop paid to re-read context — an estimate; absent when unpriceable. */
+  tax_usd?: number
+  tax_priced_calls?: number
+}
+export interface Week {
+  /** The named window asked for (`today`, `7d`, `30d`, `all`); absent for a week picked by its first day. */
+  period?: string
+  start: string
+  end: string
+  partial: boolean
+  from_ms: number
+  to_ms: number
+  days: WeekDay[]
+  sessions: number
+  active_days: number
+  turns: number
+  cost_usd: number
+  unpriced_turns?: number
+  models: { model: string; cache_read: number; cost_usd: number }[]
+  prs_opened: number
+  prs_merged: number
+  merges_unresolved: number
+  commits: number
+  files_edited: number
+  lines_added: number
+  lines_removed: number
+  ci_wait_ms: number
+  tool_ms: number
+  agents: WeekAgent[]
+  loop?: WeekLoop
+  biggest?: { agent: string; cost_usd: number; turns: number; active_days: number }
+  tax?: ContextTax
+  cost_per_merged_pr?: number
+  estimates: string[]
+  pricing_version?: string
+}
+
+/** One group of a tool's calls. Results, failures, bytes and trend are Premium:
+ *  the daemon leaves them out without a licence. */
+export interface DrillRow { key: string; calls: number; results?: number; failures?: number; bytes?: number; trend?: number[] }
+export interface DrillHint { kind: 'failures' | 'output' | 'repeats'; key: string; text: string }
+/** GET /v1/tools/drill: one tool's calls grouped by what they were about. */
+export interface ToolDrill {
+  tool: string
+  kind: 'shell' | 'files' | 'web' | 'mcp' | 'other'
+  group_by: string
+  calls: number
+  results?: number
+  failures?: number
+  bytes?: number
+  rows: DrillRow[]
+  other: number
+  trend_from_ms?: number
+  trend_width_ms?: number
+  hints?: DrillHint[]
+  range: string
+  locked: boolean
+  /** The strongest hint, sent in full even without a licence. */
+  teaser?: DrillHint
+}
+
 export interface History { range: string; totals: HistoryTotals; tools: ToolCount[]; daily: DailyStat[]; savings: Savings; summary: Summary; tax?: ContextTax }
 
 export interface Status {
@@ -795,6 +914,13 @@ export const api = {
   browse: (dir = '') => get<BrowseResponse>(`/v1/browse${dir ? `?dir=${encodeURIComponent(dir)}` : ''}`),
   recentDirs: () => get<RecentDir[]>('/v1/recent-dirs'),
   history: (range: 'today' | '7d' | '30d' | 'all' = 'all') => get<History>(`/v1/history?range=${range}`),
+  /** `start` is the first local day (YYYY-MM-DD); omitted, the seven days ending today. */
+  glance: () => get<Glance>('/v1/glance'),
+  toolDrill: (tool: string, range: 'today' | '7d' | '30d' | 'all' = 'all', agent?: string) =>
+    get<ToolDrill>(`/v1/tools/drill?tool=${encodeURIComponent(tool)}&range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}`),
+  week: (start?: string) => get<Week>(`/v1/week${start ? `?start=${start}` : ''}`),
+  /** The same card for a named window: today, the last 7 or 30 days, or all time. */
+  weekFor: (period: 'today' | '7d' | '30d' | 'all') => get<Week>(`/v1/week?period=${period}`),
   /** Turns the task runner on over the running daemon — no restart. Empty
    *  fields mean the daemon's own suggestion (see status.suggested_hive). */
   enableHive: (hive?: string, repo?: string) => post<{ hive: string; repo: string }>('/v1/hive', { hive: hive ?? '', repo: repo ?? '' }),

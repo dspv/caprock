@@ -18,7 +18,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type Event, type SessionSummary } from '@/lib/api'
 import { live } from '@/lib/live'
 import { buildPulse, costTier, medianCost, trackState, windowCost, windowEvents, PULSE_MINUTES, type Pulse as PulseModel } from '@/lib/pulse'
-import { fmtAgo, fmtUSD, shortId } from '@/lib/format'
+import { fmtAgo, fmtModel, fmtUSD, shortId } from '@/lib/format'
+import { AgentCharacter, characterFor } from '@/components/Characters'
 import { Panel } from '@/components/ui'
 import { href, navigate } from '@/lib/router'
 import { agentMark } from '@/components/Projects'
@@ -190,7 +191,7 @@ function Track({
   return (
     <a
       href={href({ name: 'session', id: s.session_id })}
-      className="grid grid-cols-[132px_1fr_92px_104px] items-center gap-3 px-3 py-2 border-t border-border first:border-t-0 hover:bg-panel-2 no-underline text-fg"
+      className="grid grid-cols-[132px_1fr_72px_auto] sm:grid-cols-[132px_1fr_92px_minmax(104px,auto)] items-center gap-3 px-3 py-2 border-t border-border first:border-t-0 hover:bg-panel-2 no-underline text-fg"
     >
       {/* Working all day in one repository used to draw six rows all labelled
         * "caprock", told apart only by a phrase like "was responding" that
@@ -233,8 +234,11 @@ function Track({
       >
         {fmtUSD(windowCost(pulse))}
       </div>
-      <div className={`text-[11px] text-right ${stateCls}`} title={pulse.repeatSample}>
-        {state.label}
+      <div className="min-w-0 text-right">
+        <div className={`text-[11px] ${stateCls}`} title={pulse.repeatSample}>
+          {state.label}
+        </div>
+        <WorkingNow s={s} />
       </div>
     </a>
   )
@@ -402,6 +406,34 @@ function PulseCanvas({ pulse, now, sessionID }: { pulse: PulseModel; now: number
           </span>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Who is working in the session now and on what model: the session's
+ * character, a crowd beside it with "×N" when subagents are live, and the
+ * model's display name. Both are measured — the model is the main thread's
+ * latest, live subagents are those heard from and not yet stopped — and a
+ * session that is not working shows its last model dimmed. At phone width the
+ * model gives way and the icon and count stay.
+ */
+export function WorkingNow({ s }: { s: SessionSummary }) {
+  const subs = s.live_subagents ?? 0
+  const working = s.activity?.health === 'working' || s.activity?.health === 'looping'
+  const model = s.model_display || (s.model ? fmtModel(s.model) : '')
+  if (!model && subs === 0) return null
+  const lead = characterFor(s.agent ?? 'claude')
+  const title = `${model ? `${model}${working ? '' : ' (last turn)'}` : 'model unknown'} · ${subs > 0 ? `main thread and ${subs} live subagent${subs === 1 ? '' : 's'}` : 'main thread only'}`
+  return (
+    <div className="flex items-center justify-end gap-1 text-[10px] leading-none mt-0.5" title={title}>
+      <span className="inline-flex items-center -space-x-1.5" aria-hidden>
+        <AgentCharacter who={lead} size={15} />
+        {subs > 0 && <AgentCharacter who="crowd" size={15} />}
+      </span>
+      {subs > 0 && <span className="num text-fg-muted">×{subs + 1}</span>}
+      {model && <span className={`hidden sm:inline mono truncate max-w-[88px] ${working ? 'text-fg-muted' : 'text-fg-faint opacity-70'}`}>{model}</span>}
+      <span className="sr-only">{title}</span>
     </div>
   )
 }

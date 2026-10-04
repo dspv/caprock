@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -226,7 +227,9 @@ func textsByMessageID(path string, wanted map[string]int64) (map[string]string, 
 	}
 	defer func() { _ = f.Close() }()
 
-	out := make(map[string]string, len(wanted))
+	// One response is several lines (thinking, text, tool_use), and its prose
+	// can sit on more than one of them: collect every line's, in order.
+	parts := make(map[string][]string, len(wanted))
 	sc := bufio.NewScanner(f)
 	// Transcript lines carry whole assistant turns and can be large.
 	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
@@ -244,23 +247,124 @@ func textsByMessageID(path string, wanted map[string]int64) (map[string]string, 
 		if _, ok := wanted[l.Message.ID]; !ok {
 			continue
 		}
-		var text []string
 		for _, b := range l.blocks() {
-			if b.Type == "text" {
-				if t := strings.TrimSpace(b.Text); t != "" {
-					text = append(text, t)
-				}
+			if b.Type != "text" {
+				continue
 			}
+			t := strings.TrimSpace(b.Text)
+			if t == "" || slices.Contains(parts[l.Message.ID], t) {
+				continue // a file that repeats a line must not repeat the prose
+			}
+			parts[l.Message.ID] = append(parts[l.Message.ID], t)
 		}
-		if len(text) == 0 {
-			continue
-		}
-		out[l.Message.ID] = clipRunes(strings.Join(text, "\n"), MaxAssistantText)
+	}
+	out := make(map[string]string, len(parts))
+	for id, p := range parts {
+		out[id] = clipRunes(strings.Join(p, "\n"), MaxAssistantText)
 	}
 	if err := sc.Err(); err != nil {
 		return out, err
 	}
 	return out, nil
+}
+
+// RepairEmptyAssistantText fills the prose of assistant turns that were stored
+// without it, from the transcripts still on disk.
+//
+// Claude Code writes one response as several lines, and the store keeps the
+// first — which became a thinking line with no text once Claude Code started
+// writing one ahead of every response. The prose on the lines after it was
+// dropped (store.MergeAssistantText now keeps it). On the owner's database
+// that was 93% of the turns stored after 2026-09-29.
+//
+// Candidates are main-transcript turns with an empty `text`. Most of those
+// legitimately have none — a response that only called a tool — and are left
+// as they are when the transcript has no text for them either. Each session's
+// recorded transcript is read, plus its own main file and subagent directory
+// when the recorded path is elsewhere; never the whole project tree, which on
+// a busy project is hundreds of files and this runs at startup.
+func RepairEmptyAssistantText(ctx context.Context, db *sql.DB, log *slog.Logger) (repaired int, err error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT e.id, e.session_id, json_extract(e.payload,'$.message_id'), se.transcript_path
+		FROM events e JOIN sessions se ON se.session_id = e.session_id
+		WHERE e.kind = 'turn.assistant' AND e.source = 'transcript'
+		  AND COALESCE(se.transcript_path,'') != ''
+		  AND COALESCE(json_extract(e.payload,'$.text'),'') = ''
+		  AND COALESCE(json_extract(e.payload,'$.message_id'),'') != ''`)
+	if err != nil {
+		return 0, fmt.Errorf("find assistant turns without text: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	type group struct {
+		files  []string
+		wanted map[string]int64
+	}
+	bySession := map[string]*group{}
+	for rows.Next() {
+		var id int64
+		var sessionID, messageID, path string
+		if err := rows.Scan(&id, &sessionID, &messageID, &path); err != nil {
+			return 0, err
+		}
+		g := bySession[sessionID]
+		if g == nil {
+			g = &group{files: sessionTranscripts(path, sessionID), wanted: map[string]int64{}}
+			bySession[sessionID] = g
+		}
+		g.wanted[messageID] = id
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	_ = rows.Close()
+
+	for _, g := range bySession {
+		texts := map[string]string{}
+		for _, file := range g.files {
+			missing := remaining(g.wanted, texts)
+			if len(missing) == 0 {
+				break
+			}
+			found, err := textsByMessageID(file, missing)
+			if err != nil {
+				if log != nil && !errors.Is(err, os.ErrNotExist) {
+					log.Debug("repair: cannot read transcript", "component", "ingest", "path", file, "err", err)
+				}
+				continue
+			}
+			for id, text := range found {
+				texts[id] = text
+			}
+		}
+		for messageID, text := range texts {
+			n, err := updateText(ctx, db, g.wanted[messageID], text)
+			if err != nil {
+				return repaired, err
+			}
+			repaired += n
+		}
+	}
+	return repaired, nil
+}
+
+// sessionTranscripts is the recorded transcript, then the session's own main
+// file and the files in its own directory (subagents) when those differ.
+func sessionTranscripts(recorded, sessionID string) []string {
+	out := []string{recorded}
+	root := projectRoot(filepath.Dir(recorded))
+	if main := filepath.Join(root, sessionID+".jsonl"); main != recorded {
+		out = append(out, main)
+	}
+	_ = filepath.WalkDir(filepath.Join(root, sessionID), func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil //nolint:nilerr // an unreadable subtree is skipped, not fatal
+		}
+		if !d.IsDir() && strings.HasSuffix(d.Name(), ".jsonl") && p != recorded {
+			out = append(out, p)
+		}
+		return nil
+	})
+	return out
 }
 
 // updateText rewrites only the `text` key of the row's payload, leaving every
@@ -313,6 +417,12 @@ func NeedsTextRepair(storedVersion string) bool {
 // read. A fresh database ("") reads every line, titles included.
 func NeedsTitleBackfill(storedVersion string) bool {
 	return olderThan(storedVersion, 3)
+}
+
+// NeedsEmptyTextRepair reports whether rows were stored before the prose on a
+// response's later lines was kept (RepairEmptyAssistantText).
+func NeedsEmptyTextRepair(storedVersion string) bool {
+	return olderThan(storedVersion, 4)
 }
 
 func olderThan(storedVersion string, v int) bool {

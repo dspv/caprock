@@ -2,6 +2,7 @@
 // (staleness dot, not spinner), exposes the error for an inline notice.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLiveTick } from './live'
+import { readCache, writeCache } from './swr'
 
 export interface Loaded<T> {
   data: T | undefined
@@ -9,12 +10,40 @@ export interface Loaded<T> {
   loading: boolean
   refresh: () => void
   loadedAt: number
+  /** `data` is the last answer kept in this browser (opts.cache), not yet
+   *  confirmed by a fetch. A screen says so, and never presents it as live. */
+  stale: boolean
+  /** When the stale answer was fetched, unix ms; 0 when not stale. */
+  cachedAt: number
 }
 
-export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = [], opts: { live?: boolean; intervalMs?: number } = {}): Loaded<T> {
-  const { live = true, intervalMs = 0 } = opts
+export interface ApiOptions {
+  live?: boolean
+  intervalMs?: number
+  /**
+   * Keep the last successful answer under this key (lib/swr.ts) and show it,
+   * marked stale, while a new question is first being answered. The key must
+   * name the whole question — endpoint and every parameter — because the
+   * cached answer is shown under it.
+   */
+  cache?: string
+  /** What of an answer to keep: a big payload's live parts (a session's
+   *  events) are dropped, so the kept copy stays small and says nothing
+   *  about now. */
+  cacheTrim?: (data: unknown) => unknown
+}
+
+export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = [], opts: ApiOptions = {}): Loaded<T> {
+  const { live = true, intervalMs = 0, cache } = opts
   const tick = useLiveTick(400)
-  const [state, setState] = useState<Loaded<T>>({ data: undefined, error: undefined, loading: true, refresh: () => {}, loadedAt: 0 })
+  const [state, setState] = useState<Loaded<T>>(() => {
+    const c = cache ? readCache<T>(cache) : undefined
+    return { data: c?.data, error: undefined, loading: true, refresh: () => {}, loadedAt: 0, stale: !!c, cachedAt: c?.at ?? 0 }
+  })
+  const cacheRef = useRef(cache)
+  cacheRef.current = cache
+  const trimRef = useRef(opts.cacheTrim)
+  trimRef.current = opts.cacheTrim
   const seq = useRef(0)
   const fnRef = useRef(fn)
   fnRef.current = fn
@@ -52,14 +81,26 @@ export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = [], opts: { li
     const my = ++seq.current
     inFlight.current = true
     again.current = false
-    if (fresh) setState((s) => ({ ...s, data: undefined, error: undefined, loading: true }))
+    if (fresh) {
+      // A new question shows the last answer to THAT question when this
+      // browser kept one, marked stale — never the previous question's.
+      const c = cacheRef.current ? readCache<T>(cacheRef.current) : undefined
+      setState((s) => ({ ...s, data: c?.data, error: undefined, loading: true, stale: !!c, cachedAt: c?.at ?? 0 }))
+    }
+    const key = cacheRef.current
     const settle = () => {
       if (my !== seq.current) return // a newer question owns the flag now
       inFlight.current = false
       if (again.current) run()
     }
     fnRef.current().then(
-      (data) => { if (my === seq.current) setState((s) => ({ ...s, data, error: undefined, loading: false, loadedAt: Date.now() })); settle() },
+      (data) => {
+        if (my === seq.current) {
+          setState((s) => ({ ...s, data, error: undefined, loading: false, loadedAt: Date.now(), stale: false, cachedAt: 0 }))
+          if (key) writeCache(key, trimRef.current ? trimRef.current(data) : data)
+        }
+        settle()
+      },
       (error: Error) => { if (my === seq.current) setState((s) => ({ ...s, error, loading: false })); settle() },
     )
   }, [])

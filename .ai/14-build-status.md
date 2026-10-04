@@ -72,6 +72,130 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-04 (evening) — The terminal takes the keyboard first; repo links; kept figures
+
+The owner reported that opening a session's terminal froze the browser and
+typing lagged. Profiled in headless Chrome against a `.backup` copy, with a
+fake `claude` printing 4000 coloured lines and a 12 fps spinner:
+
+- **Before.** The WebGL addon was loaded synchronously before the socket was
+  created (context creation 1455 ms in the owner's Chrome; shader linking
+  420 ms of self time in one headless run). The terminal mounted only after
+  the session detail (about 500 KB) arrived, and that detail was refetched on
+  every live event. Nothing took focus, so keys typed on open went nowhere
+  until a click. First echo 1.2–1.6 s after navigation, with a click; a key's
+  dispatch blocked for up to 200–290 ms.
+- **After.** Focus and the socket first, WebGL after the first output and
+  1.5 s with no typing, the terminal mounted before the detail, and the detail
+  polled every 30 s on the Terminal tab. First echo 0.4–0.8 s with no click
+  (one cold-cache run 2.9 s); dispatch blocked for 13–94 ms. Steady echo once
+  WebGL is in is unchanged (20–70 ms).
+
+Also in this run, all in [04-ui.md](04-ui.md): the Projects row's terminal is a
+full-size button that says what it does (the faint `>_` from PR #137 was never
+found); the session header and project rows link the repository and the pull
+requests a session opened (migration 0035, `internal/gitremote`); slow
+figures show their last value, marked, while they refresh; and a starting
+terminal says so, with Retry after 30 s. Owned sessions still die when the
+daemon restarts (they exit with 143); that is a separate issue, not addressed
+here.
+
+### 2026-10-04 (later) — Answers kept, read from the session, and a dark terminal
+
+The owner opened a session full of long Russian replies and its Answers tab
+showed one line, slowly. Measured on a `.backup` copy of his database: the
+notes query walked `idx_events_kind_id` — every assistant turn on the machine,
+payload and all — instead of the session's own index, 3.3 s cold for 21 turns;
+it is 20 ms with the kind index taken out of the planner's hands, and a plan
+test holds it. The emptiness was the write path: Claude Code now writes a
+thinking line first on every response, the store keeps the first line of a
+message id, and the prose after it was dropped as a duplicate — 93% of turns
+stored after 2026-09-29 had no text. Later lines are now folded into the row
+(parser v4) and a background repair filled 745 turns on the copy. The
+terminal's palette is graphite in both themes and no longer read once at
+mount, and `/v1/status` reuses its two bulk reads (0.26 s event count, 0.64 s
+handoff coverage, cold) for a minute. See
+[03-contracts.md](03-contracts.md) and [04-ui.md § The terminal](04-ui.md#the-terminal).
+
+### 2026-10-04 — Click a tool for what it did
+
+- On Lifetime a tool's row opens into its calls grouped by command, file,
+  domain, query or MCP action (`GET /v1/tools/drill`). Groups, calls and
+  shares are free; output, failure rate, trend per group and hints are
+  Premium, removed by the daemon without a licence, with the strongest hint
+  sent in full as a teaser. The server gate is written into ADR-022. On the
+  owner's database, Bash all time: 1,191 failures in 53,905 results.
+
+### 2026-10-04 — Plan limits in plain words
+
+- Owner feedback: from a "limit at 95%" alert he reached Cost and "did not
+  understand anything" (translated). Every window is now a ring plus a
+  sentence (used, reset clock, countdown in minutes under an hour, what 100%
+  means), a "what these are" line, and advice when a live window passes 85%
+  (wait for the reset, or switch to Codex when it has room). One
+  `PlanLimitsPanel` on Now and Cost; the alert links to
+  `#/cost?section=limits` and the screen scrolls to it. The desktop app's
+  stale reading stays off this panel.
+
+### 2026-10-04 — Lifetime, in the site's reading style
+
+- The money leads at display size, then cost per active day and per session
+  (exact divisions), the cache, and the counts. Top projects first as a donut
+  and a table with shares; tool usage and the model mix as donuts with the
+  tail as "other", or as tables (Charts | Numbers). No endpoint changed.
+
+### 2026-10-04 — Share: a Story card, and no empty wait
+
+- The share dialog has a **Story** style: the Week card for today, 7 days,
+  30 days or all time (`GET /v1/week?period=`), landscape or portrait.
+- **No empty wait.** The owner reported the preview took very long to appear,
+  and `/v1/stats/summary` was 4.7 s on his live database. Server speed is a
+  separate branch; here the dialog draws the last figures it kept at once,
+  shows the card's outline with per-range progress when it has none, warms
+  the default card on hover, and shares one round of requests between the
+  preview and the save.
+- `WeekStats` runs its two payload readers beside the rest and no longer has
+  SQLite sort the loop replay's payloads: all time went from 18.8 s to about
+  11 s on a copy of the owner's database. Most of what is left is page reads:
+  the same loop query took 1.8 s warm in the sqlite3 shell and 0.46 s with
+  `PRAGMA mmap_size`, which is a store-wide setting and was left to the
+  endpoint-speed work.
+
+### 2026-10-04 — Now: At a glance, plan-limit gauges, who is working
+
+- **At a glance** (after All time) draws the all-time cost by model, the bill
+  by token type and tool calls as hand-drawn SVG donuts, with an agents row
+  and a Charts | Numbers switch. New `GET /v1/glance`; the agent split moved
+  into `store.AgentSplit`, which the Week uses too.
+- **Plan limits** moved from a Today cell to a full-width panel of ring
+  gauges under Today, grouped by agent, with reset countdowns; the forecast
+  stays the daemon's and Codex's stays absent.
+- **Live pulse** rows show the model name and live subagents ("×N").
+  `SessionSummary` gained `model_display` and `live_subagents`.
+- **Migration 0031** (`idx_events_turn_agent`): the first `/v1/glance` took
+  81 s on a copy of the owner's database, almost all of it one sidechain
+  lookup per session that SQLite planned on the `kind` index. Forced onto
+  `idx_events_session_ts` and with both all-time reads covered, it takes
+  0.44 s cold.
+- Verified on a copy of the owner's database with a near-limit fixture (82%
+  with a forecast, 64%, a stale 91%) in both themes and at 390px. At 390px
+  the page header and the All time tables still overflow sideways, as they
+  did before; the new blocks fit.
+
+### 2026-10-04 — Week: a card of what the agents shipped
+
+A **Week** tab draws one week of this machine's work as a card to post —
+landscape 1200×675 or portrait 1080×1350, in the dashboard's own theme —
+from `GET /v1/week`. Pull requests opened and merged, commits, files and
+≈lines are read from the agents' own successful tool calls; nothing asks
+GitHub. On a copy of the owner's database the week of 2026-09-27 in UTC came
+to 131 opened (all 131 confirmed on GitHub), 128 merged locally with 3
+unreadable merges left out (GitHub: 126 of the 131 merged, plus Dependabot and
+`shots/*` merges the agents also ran), 235 commits and $474.40 — the same
+figures the hand count produced. The longest loop is found by the live
+detector's rule and priced by the same function as the alert
+(`contexttax.PriceSeries`, extracted for it).
+
 ### 2026-10-04 — Continue in another agent
 
 "Continue in… ▾" on a session page starts a new session in any agent Caprock

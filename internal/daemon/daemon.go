@@ -32,6 +32,7 @@ import (
 	"github.com/dspv/caprock/internal/desktop"
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/gemini"
+	"github.com/dspv/caprock/internal/gitremote"
 	"github.com/dspv/caprock/internal/hive"
 	"github.com/dspv/caprock/internal/hookd"
 	"github.com/dspv/caprock/internal/hooks"
@@ -104,9 +105,12 @@ type Options struct {
 
 // Daemon is a running instance.
 type Daemon struct {
-	opt   Options
-	log   *slog.Logger
-	store *store.Store
+	opt Options
+	// slow holds the status figures that read the event table in bulk.
+	slowMu sync.Mutex
+	slow   slowStatus
+	log    *slog.Logger
+	store  *store.Store
 	// roll replaces the handoff holdout's random draw in tests.
 	roll  func() int
 	bus   *bus.Bus
@@ -141,6 +145,8 @@ type Daemon struct {
 	api   *api.Server
 	rt    config.Runtime
 	start time.Time
+	// events is /v1/status's stored-event count, taken in the background.
+	events eventCounter
 
 	// storage is the cached measurement of what the data directory holds;
 	// see storage.go.
@@ -269,6 +275,12 @@ func newDaemon(ctx context.Context, opt Options) (*Daemon, error) {
 		} else if n > 0 {
 			log.Info("repaired truncated assistant text", "component", "ingest", "events", n, "from_schema", prevSchema)
 		}
+	}
+	if ingest.NeedsEmptyTextRepair(prevSchema) {
+		// Run after the port opens (repairEmptyText): it reads every affected
+		// session's transcript, ~5 s on the owner's machine, and a start must
+		// not wait on history.
+		_ = st.SetMeta(ctx, store.MetaEmptyTextRepairPending, "1")
 	}
 	if ingest.NeedsTitleBackfill(prevSchema) {
 		if _, err := ingest.BackfillTitles(ctx, st.DB(), log); err != nil {
@@ -432,6 +444,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.api = api.New(api.Deps{
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d,
 		Status: d.status, Storage: d.storageReport, ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
+		LoopK: d.det.K, LoopWindow: d.det.Window,
 		Token: rt.Token, Shutdown: cancel, Agents: &agentAdapter{m: d.mgr, d: d},
 		Tasks: &boardAdapter{d: d}, Settings: &settingsAdapter{d: d}, Update: d.upd,
 		AskGemini: d.askGemini,
@@ -550,6 +563,8 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.loadReportState(ctx)
 	go d.weeklyLoop(ctx)
 	go d.backfillToolLinks(ctx)
+	go d.repairEmptyText(ctx)
+	go d.backfillPRs(ctx)
 	go d.storageLoop(ctx)
 	if d.config().RetentionDays > 0 {
 		go d.pruneLoop(ctx)
@@ -557,6 +572,12 @@ func (d *Daemon) run(ctx context.Context) error {
 
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
+	// The all-time aggregates take a second or more on a large database; work
+	// them out now so the first screen opened finds them cached.
+	go func() {
+		d.events.get(ctx, d.store)
+		d.api.Warm(ctx)
+	}()
 
 	// The second listener, when the user asked for one.
 	//
@@ -763,22 +784,7 @@ func (d *Daemon) priceLoop(ctx context.Context, a *loop.Alert) {
 	if err != nil || len(calls) == 0 {
 		return
 	}
-	var priced []contexttax.Call
-	var prices contexttax.Prices
-	for _, c := range calls {
-		if c.Context <= 0 || c.Model == "" {
-			continue
-		}
-		row, ok := d.table.LookupAt(c.Model, c.Ts)
-		if !ok {
-			continue
-		}
-		// The series is priced at the rates of the model that ran it. A series
-		// that changed model mid-way is rare and the last row wins; the
-		// alternative is refusing to price it at all, which helps nobody.
-		prices = contexttax.PricesOf(row)
-		priced = append(priced, contexttax.Call{Context: c.Context, Result: c.Result})
-	}
+	priced, prices := contexttax.PriceSeries(store.TimedCalls(calls), d.table)
 	if len(priced) == 0 {
 		return
 	}
@@ -910,6 +916,52 @@ const toolLinkBatch = 10000
 // The cursor is committed after every batch, so the worst case a kill can cost
 // is one batch of work — never the whole scan, and never a wrong link, because
 // a tool_use id resolves to exactly one message id (see BackfillToolMessageIDs).
+// repairEmptyText fills the prose of assistant turns stored before parser v4
+// kept a response's later lines, once, in the background
+// (ingest.RepairEmptyAssistantText). Best-effort: on failure the flag stays
+// set and the next start tries again.
+func (d *Daemon) repairEmptyText(ctx context.Context) {
+	if v, _ := d.store.GetMeta(ctx, store.MetaEmptyTextRepairPending); v != "1" {
+		return
+	}
+	start := time.Now()
+	n, err := ingest.RepairEmptyAssistantText(ctx, d.store.DB(), d.log)
+	if err != nil {
+		d.log.Warn("could not fill assistant text from transcripts", "component", "ingest", "err", err)
+		return
+	}
+	_ = d.store.SetMeta(ctx, store.MetaEmptyTextRepairPending, "0")
+	d.log.Info("filled assistant text dropped with a response's later lines", "component", "ingest",
+		"events", n, "took", time.Since(start).Round(time.Millisecond).String())
+}
+
+// backfillPRs fills session_prs from the `gh pr` commands stored before
+// migration 0035, once, in the background. On a copy of the owner's database
+// the scan reads ~1,000 rows by a LIKE over Bash results, ~3 s cold.
+func (d *Daemon) backfillPRs(ctx context.Context) {
+	if v, _ := d.store.GetMeta(ctx, store.MetaPRsBackfilled); v == "1" {
+		return
+	}
+	n := 0
+	err := store.PRToolPosts(ctx, d.store.DB(), func(sid string, ts int64, payload []byte) error {
+		pr, ok := gitremote.FromToolPost(payload)
+		if !ok {
+			return nil
+		}
+		n++
+		return store.RecordPR(ctx, d.store.DB(), store.PRAction{SessionID: sid, URL: pr.URL, Number: pr.Number,
+			Title: pr.Title, Action: pr.Action, Ts: ts})
+	})
+	if err != nil {
+		d.log.Warn("could not read pull requests from history", "component", "daemon", "err", err)
+		return
+	}
+	_ = d.store.SetMeta(ctx, store.MetaPRsBackfilled, "1")
+	if n > 0 {
+		d.log.Info("read pull requests from history", "component", "daemon", "commands", n)
+	}
+}
+
 func (d *Daemon) backfillToolLinks(ctx context.Context) {
 	cur, _ := d.store.GetMeta(ctx, store.MetaToolLinkCursor)
 	if cur == store.ToolLinkDone {
@@ -1079,7 +1131,7 @@ func (d *Daemon) status(_ context.Context) any {
 		URL: d.url, DataDir: d.opt.DataDir, UIBuilt: api.UIBuilt(),
 		Pricing: PricingStatus{Version: d.table.Version, Source: d.table.Source, FetchedAt: d.table.FetchedAt, UserOverride: d.table.UserOverride, Models: len(d.table.Models)},
 		LoopK:   d.det.K, LoopTMin: int(d.det.Window / time.Minute),
-		Memory:          d.memoryStatus(),
+		Memory:          d.slowStatus().mem,
 		OpenCode:        d.openCodeStats(),
 		Codex:           d.codexStats(),
 		Deepseek:        d.deepseekStats(),
@@ -1123,10 +1175,42 @@ func (d *Daemon) status(_ context.Context) any {
 	d.mu.Unlock()
 	st.Interrupted = d.interrupted(context.Background())
 	st.RetentionDays = d.config().RetentionDays
-	if n, err := store.CountEvents(context.Background(), d.store.DB()); err == nil {
+	if n, ok := d.events.get(context.Background(), d.store); ok {
 		st.Events = n
 	}
 	return st
+}
+
+// statusSlowTTL is how long the two status figures that read the event table
+// in bulk are reused. Both are polled every 30 s and both move slowly: the
+// prose a handoff can reach and the size of the table. On the owner's 1 GB
+// database they were most of /v1/status — 0.26 s to count 330k events and
+// 0.64 s to find a fortnight's handoff passages, cold, measured 2026-10-04 on
+// a copy — and the Now screen waited on them for its figures.
+const statusSlowTTL = time.Minute
+
+type slowStatus struct {
+	at     time.Time
+	mem    MemoryStatus
+	events int64
+}
+
+// slowStatus answers the bulk-read status figures, refreshing them at most once
+// per statusSlowTTL. The first call after a start computes them.
+func (d *Daemon) slowStatus() slowStatus {
+	d.slowMu.Lock()
+	defer d.slowMu.Unlock()
+	if !d.slow.at.IsZero() && time.Since(d.slow.at) < statusSlowTTL {
+		return d.slow
+	}
+	v := slowStatus{at: time.Now(), mem: d.memoryStatus()}
+	if d.store != nil {
+		if n, err := store.CountEvents(context.Background(), d.store.DB()); err == nil {
+			v.events = n
+		}
+	}
+	d.slow = v
+	return v
 }
 
 // agentAdapter bridges *agents.Manager to api.AgentController.

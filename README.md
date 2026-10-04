@@ -293,9 +293,10 @@ Windows, but it has not been run on either.
   turns that called no tool at all.
 - **Know what it's worth** — your measured usage priced at the API rate, against
   what your plan actually costs.
-- **1-click terminal** — the `>_` on a project opens a terminal in it: straight
-  into the session Caprock is running there, or a choice to continue, branch or
-  start one. A running card on Now opens in its terminal too.
+- **1-click terminal** — the Terminal button on a project opens the session
+  Caprock is running there, picks up one started elsewhere, or starts a new one.
+  A running card on Now opens in its terminal too. Session pages and projects
+  link to the repository and the pull requests a session opened.
 - **Steer it** — spawn, pause, and kill sessions from the dashboard, and continue
   one that has ended. Each card says what the session was about and when it was
   worked in, says why when it cannot be continued, and ended sessions are

@@ -11,6 +11,17 @@ Phase 3 (Delight) has no plan by design.
 
 ### Added
 
+- **Open the repository from a session or a project.** The session header
+  links the repository — the branch's page where the host has one — and the
+  pull requests the session opened, newest first, with "merged" only where a
+  merge was recorded. A project row links its repository and its last pull
+  request. The address is read from the local git remote (GitHub, GitLab,
+  Bitbucket, Codeberg and other hosts; ssh or https); nothing is asked of the
+  host.
+- **Screens show their last figures while the new ones load.** Now, Lifetime,
+  History and a session's header open with what this browser last saw,
+  marked "updated N min ago · refreshing", instead of dashes. Nothing about
+  the present — health, burn, controls — is drawn from the kept copy.
 - **Start Codex and OpenCode sessions from Caprock.** The New session dialog
   has an agent picker — Claude Code, Codex, OpenCode, Gemini CLI — showing only
   the ones installed on this machine, and it remembers the one you picked last.
@@ -19,6 +30,70 @@ Phase 3 (Delight) has no plan by design.
   choice translated into that agent's flags. Cost, turns and answers land on the
   same session page as the terminal, and an ended Codex or OpenCode session can
   be continued with "continue here".
+- **Week: a card of what your agents shipped, to post.** A new Week tab
+  draws seven days of this machine's work — pull requests opened and merged,
+  commits, files and ≈lines written, what it cost at list price, ≈cost per
+  merged PR, the share spent re-reading context, who did what (Claude Code,
+  its subagents, Codex, OpenCode, Gemini CLI, DeepSeek), the longest loop and
+  the biggest session — as a 1200×675 or 1080×1350 card in your theme.
+  Download it as a PNG or copy it to paste. Everything is counted on your
+  machine from the agents' own tool calls; Caprock does not ask GitHub, and
+  no repository, path, prompt or session title is ever on the card.
+- **Now: At a glance.** A collapsible block after All time draws where the
+  money went, the bill by token type (with the share spent re-reading
+  context in the middle) and the most-used tools as donuts, plus one tile per
+  agent with its share of all-time cost. A Charts | Numbers switch shows the
+  same figures as tables; both choices are remembered.
+- **Live pulse says who is working and on what.** Each session row shows the
+  current model by name and, when subagents are running, a crowd icon with
+  "×N".
+- **Share: a Story card, for any period.** The share dialog gains a second
+  style beside Figures: the Week card — the headline, the money beside it,
+  who did what, the longest loop and the biggest session — for today, this
+  week, this month or all time, at 1200×675 or 1080×1350.
+- **Click a tool for what it did.** On Lifetime, a tool's row opens in
+  place: Bash by the command each call ran ("go test", "git diff"), Read and
+  Edit by file, WebFetch by domain, WebSearch by query, an MCP tool by its
+  action, with calls and share. Premium adds what came back, how often each
+  group failed, a trend per group and hints drawn only from those counts.
+
+### Changed
+
+- **A project's terminal is a button you can see.** Each Projects row has a
+  full-size button that says what it does: **Terminal** opens the session
+  Caprock is running there, **Pick up in a terminal** branches one started
+  elsewhere, **New session here** starts one. The full menu stays behind ⋯.
+  It replaces a small `>_` at the row's edge.
+- **The Teams and Premium dialogs show what you get before they describe
+  it.** Each now opens with a small picture in the Week card's style — an
+  example team's week for Teams; the daily cap stopping at its line, a
+  question to Gemini about your own sessions, or the Monday report for
+  Premium — clearly tagged as an example, followed by a few short lines and
+  the two ways forward. Premium's prices are the site's: $30 a year, or $100
+  once marked Best value, in the product's amber rather than blue. Focus now
+  moves into the dialog and back to what opened it.
+- **Plan limits are gauges, directly under Today.** Each window is a ring
+  that turns amber at 60% and red above 85%, with its reset time and a
+  countdown, grouped by agent. A forecast still appears only when your pace
+  would hit the limit before the reset, and is drawn on the ring; Codex is
+  never forecast and says how old its reading is. A stale reading is drawn
+  grey and says so.
+- **Plan limits explain themselves.** Each window says, in words, how much
+  is used, when it resets and how long that is (in minutes under an hour),
+  and that Claude Code pauses at 100% until then. One line says these are
+  Anthropic's limits per 5-hour window and per week, not Caprock's, and near
+  the limit a note says to wait for the reset or switch to Codex if it has
+  room. The same panel is on Now and Cost, and the limit alert now opens it
+  directly.
+- **Lifetime reads like the site.** The money leads, large, with what it
+  came to per active day and per session beside it, then the cache and the
+  counts. Top projects come first, as a donut beside the table; tool usage
+  and the model mix are donuts with the rest grouped as "other", or tables,
+  by a Charts | Numbers switch.
+- **The share dialog shows a card at once.** It draws the last figures for
+  the period while the current ones load, and with nothing kept it shows the
+  card's outline with each range ticking off as it answers, instead of an
+  empty box. Saving or sending always uses the current figures.
 
 - **Continue a session in another agent.** "Continue in…" on a session page
   starts a new Claude Code, Codex, OpenCode or Gemini CLI session in the same
@@ -30,6 +105,56 @@ Phase 3 (Delight) has no plan by design.
 
 ### Fixed
 
+- **Opening a session's terminal no longer freezes the page.** The terminal
+  set up its GPU renderer before it connected, and connected only after the
+  session's figures had loaded; the figures were then reloaded on every event.
+  It now connects and takes the keyboard first, switches to the GPU renderer
+  once you pause, and reloads the figures every 30 seconds while you type.
+  Keys typed the moment it opens reach the session.
+- **A terminal that is starting says so.** A resumed session can take half a
+  minute to print anything; the panel showed black until then. It now counts
+  the seconds, and after 30 seconds with nothing, or if the session closes
+  first, says so and offers Retry.
+- **A session's Answers tab shows what Claude wrote again.** Claude Code now
+  writes a thinking line ahead of every reply, and Caprock kept only the first
+  line of each reply — so the prose after it was never stored, and a session of
+  long answers showed one line. The rest of a reply is now kept with it, and
+  replies stored since the change are filled from the transcripts on disk once,
+  in the background, after an upgrade. Memory search and the handoff a new
+  session receives read the same prose and are mended with it.
+- **A long link in an answer no longer widens the page.** One unbroken URL in
+  a reply made the Answers tab scroll sideways and pushed the session's
+  buttons off the screen; it now wraps.
+- **The Answers tab opens at once.** It read every reply on the machine to find
+  one session's; on a 1 GB database that was 3.3 seconds cold for a session of
+  21 replies, and is 20 ms now.
+- **The terminal is dark in the light theme.** Claude Code's dim text and
+  status line were grey on paper and could not be read. The terminal now keeps
+  its dark palette in both themes, and keeps it when you switch theme with a
+  terminal open — it used to stay in the colours of whichever theme was on
+  when it opened.
+- **Now waits less for its figures.** The status the screen polls counted every
+  event and searched a fortnight of prose on each call; both are reused for a
+  minute now.
+- **Assistant turns are no longer lost when the database is busy.** Since
+  0.68.0 the recorder checks whether a forked session's turn was already paid
+  for before storing it, and that read-then-write transaction failed at once
+  with "database is locked" whenever another write was in progress — about
+  400 times an hour on a busy machine. The transcript reader logged the error
+  and moved past the line, so the turn never arrived. Transactions now take
+  the write lock up front and wait for it, a line that still meets a busy
+  database is read again instead of skipped, and on first start the
+  transcripts written since 3 October are read once more to recover what was
+  dropped (on the owner's machine: 259 turns, $18.52).
+- **Every page loads fast on a large database.** On a 1 GB database with
+  sessions running, the main screen's requests took up to 3.6 seconds each.
+  All-time history and the 7-day, 30-day and all-time summaries are now
+  computed in the background and served from memory, refreshed as they are
+  asked for; the whole database file is memory-mapped, so a read after a
+  write no longer starts cold; and the sessions list finds each session's
+  first prompt through its own index. The same requests now answer in under
+  0.1 seconds, and the share dialog's preview no longer waits on four
+  whole-history scans. Today's figures are still computed on every request.
 - **A session with no activity yet no longer reads "idle 739892d ago".**
 
 ## [0.69.0] - 2026-10-04

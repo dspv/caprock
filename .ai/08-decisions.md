@@ -394,6 +394,20 @@ paid until the prices turned out to be cheaper to add than to gate: DeepSeek
 and MiniMax now cost out for everyone, and the feature was removed from the
 paid list rather than kept as a claim.
 
+**Amended 2026-10-04: the tool drill-down is gated on the server.** The
+drill-down's Premium half — output, failure rate and trend per group, and the
+hints — is new: the per-tool totals stay free in Breakdown and Lifetime, and
+nothing that used to be shown is now locked. Its gate goes further than
+[ADR-023](#adr-023--gemini-runs-on-a-key-caprock-never-holds-read-from-the-environment)
+drew it, which kept server checks for features that spend money or reach the
+network. A drill draws a panel, but its paid half *is* the response: a gate
+that only blurs the page hands every figure to anyone who opens the network
+tab. So `GET /v1/tools/drill` removes those fields without an active licence
+and sends one hint in full as the teaser, and the UI's blur is placeholder
+glyphs over nothing. A feature whose paid part is a computation gets this
+server gate; a feature whose paid part is a control, like the spend cap,
+keeps the page gate.
+
 **What this constrains.** Paid features must be things the local binary can
 switch on. Anything that needs our infrastructure — cross-machine aggregation,
 the weekly report's delivery — is enforced by that infrastructure and needs no

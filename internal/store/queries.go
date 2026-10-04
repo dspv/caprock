@@ -187,6 +187,117 @@ func InsertEvent(ctx context.Context, q Querier, ev *event.Event) (int64, error)
 	return id, nil
 }
 
+// MergeAssistantText folds the prose and tool names of a later line of one API
+// response into the turn row that response is stored as.
+//
+// Claude Code writes one response as several transcript lines — thinking, then
+// text, then each tool_use — every one carrying the same message id and usage.
+// The store keys turns on `msg:<id>` so usage is counted once, which keeps the
+// FIRST line and dropped the rest. While the first line was usually the text
+// that did not matter; once Claude Code began writing a thinking line first on
+// every response, the stored turn kept an empty `text` and the prose that
+// followed it never reached the database. On the owner's machine 93% of the
+// assistant turns stored after 2026-09-29 had no text, against 10-28% in every
+// earlier week (measured 2026-10-04), and the Answers tab of a session full of
+// long replies showed one line.
+//
+// Only the payload changes: usage, cost and id stay as the first line set
+// them. It is idempotent — a transcript re-read after a restart offers the
+// same lines again, and text already in the row is not appended twice.
+// Returns whether the row changed.
+func MergeAssistantText(ctx context.Context, q Querier, sessionID, key string, payload json.RawMessage) (bool, error) {
+	if key == "" {
+		return false, nil
+	}
+	var in struct {
+		Text  string   `json:"text"`
+		Tools []string `json:"tools"`
+	}
+	if err := json.Unmarshal(payload, &in); err != nil {
+		return false, nil //nolint:nilerr // an unreadable line has nothing to add
+	}
+	in.Text = strings.TrimSpace(in.Text)
+	if in.Text == "" && len(in.Tools) == 0 {
+		return false, nil
+	}
+	var id int64
+	var raw string
+	err := q.QueryRowContext(ctx, `SELECT id, payload FROM events WHERE session_id = ? AND key = ? AND kind = ?`,
+		sessionID, key, string(event.KindTurnAssistant)).Scan(&id, &raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var stored map[string]any
+	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
+		// A payload we cannot parse is left exactly as it is.
+		return false, nil //nolint:nilerr // never damage a row we do not understand
+	}
+	changed := false
+	if in.Text != "" {
+		cur, _ := stored["text"].(string)
+		switch {
+		case cur == "":
+			stored["text"] = clipProse(in.Text)
+			changed = true
+		case !strings.Contains(cur, in.Text) && utf8.RuneCountInString(cur) < event.MaxAssistantText:
+			// A row already at the cap would only have the addition clipped
+			// away again.
+			stored["text"] = clipProse(cur + "\n" + in.Text)
+			changed = true
+		}
+	}
+	if len(in.Tools) > 0 {
+		var tools []any
+		if t, ok := stored["tools"].([]any); ok {
+			tools = t
+		}
+		have := map[string]bool{}
+		for _, t := range tools {
+			if s, ok := t.(string); ok {
+				have[s] = true
+			}
+		}
+		for _, t := range in.Tools {
+			if t != "" && !have[t] {
+				tools = append(tools, t)
+				have[t] = true
+				changed = true
+			}
+		}
+		stored["tools"] = tools
+	}
+	if !changed {
+		return false, nil
+	}
+	enc, err := json.Marshal(stored)
+	if err != nil {
+		return false, err
+	}
+	if _, err := q.ExecContext(ctx, `UPDATE events SET payload = ? WHERE id = ?`, string(enc), id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// clipProse applies event.MaxAssistantText on a rune boundary, the way the
+// transcript parser does.
+func clipProse(s string) string {
+	if utf8.RuneCountInString(s) <= event.MaxAssistantText {
+		return s
+	}
+	n := 0
+	for i := range s {
+		if n == event.MaxAssistantText {
+			return s[:i] + "…"
+		}
+		n++
+	}
+	return s
+}
+
 // TurnPaidElsewhere reports whether a session other than sessionID already
 // holds an assistant turn for msgID that carries usage.
 //
@@ -364,10 +475,17 @@ func SetPrompt(ctx context.Context, q Querier, id, prompt string) error {
 
 // FirstPrompts returns up to limit of a session's earliest user prompts, oldest
 // first. Claude Code carries the text as `prompt`, DeepSeek Harness as `text`.
+//
+// Pinned to idx_events_user_turn (migration 0033). Left to itself SQLite
+// picked idx_events_kind_ts, which walks every turn.user row in the database
+// and reads each one to test its session: 6ms a session on the owner's 1 GB
+// database, run once per untitled row of /v1/sessions — 330ms of a 50-row
+// list. The partial index holds only user turns, keyed by session and time,
+// with the implicit rowid tail giving (ts, id) order and no sort.
 func FirstPrompts(ctx context.Context, q Querier, id string, limit int) ([]string, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT COALESCE(json_extract(payload,'$.prompt'), json_extract(payload,'$.text'), '')
-		FROM events WHERE session_id = ? AND kind = 'turn.user'
+		FROM events INDEXED BY idx_events_user_turn WHERE session_id = ? AND kind = 'turn.user'
 		ORDER BY ts, id LIMIT ?`, id, limit)
 	if err != nil {
 		return nil, err
@@ -935,6 +1053,16 @@ const assistantTextWhere = `
 	AND ` + MainThreadWhere + `
 	AND COALESCE(json_extract(e.payload, '$.text'), '') != ''`
 
+// sessionAssistantTextWhere is assistantTextWhere for a query already narrowed
+// to ONE session. The unary `+` on kind takes idx_events_kind_id out of the
+// planner's hands: with `ORDER BY e.id DESC` it preferred walking every
+// assistant turn on the machine backwards by id — and reading each one's
+// payload — over the session's own (session_id, id) index. On the owner's
+// database (330k events, 82k assistant turns) that was 3.3 s cold for a
+// session with 21 turns, measured 2026-10-04; on the session index it is
+// 20 ms. TestSessionNotesUsesTheSessionIndex holds the plan.
+var sessionAssistantTextWhere = strings.Replace(assistantTextWhere, "e.kind = 'turn.assistant'", "+e.kind = 'turn.assistant'", 1)
+
 // MainThreadWhere keeps the events of a session's main thread and drops its
 // subagents', for a query over `events e`. It is the SQL twin of
 // event.Event.Subagent and must say the same thing.
@@ -953,7 +1081,7 @@ func SessionNotes(ctx context.Context, q Querier, sessionID string, limit int) (
 		SELECT e.id, e.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''),
 		       COALESCE(json_extract(e.payload, '$.text'), '')
 		FROM events e LEFT JOIN sessions se ON se.session_id = e.session_id
-		WHERE e.session_id = ? AND `+assistantTextWhere+`
+		WHERE e.session_id = ? AND `+sessionAssistantTextWhere+`
 		ORDER BY e.id DESC LIMIT ?`, sessionID, limit)
 	if err != nil {
 		return nil, err
@@ -1420,6 +1548,12 @@ type ProjectShare struct {
 	Dir   string      `json:"dir,omitempty"`
 	Paths []PathShare `json:"paths,omitempty"`
 	Spark *Spark      `json:"spark,omitempty"`
+	// RepoURL is the repository's web address, from its git remote; set by
+	// the API, empty when there is no remote it can link to.
+	RepoURL string `json:"repo_url,omitempty"`
+	// LastPR is the latest pull request a session in this row opened or
+	// merged; set by the API.
+	LastPR *SessionPR `json:"last_pr,omitempty"`
 }
 
 // PathShare is tokens/cost for one directory inside a repository, charged by

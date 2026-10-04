@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"time"
+
+	"github.com/dspv/caprock/internal/contexttax"
 )
 
 // TaxCall is one tool call priced against the turn that issued it: the context
@@ -98,4 +100,13 @@ func LoopTaxCalls(ctx context.Context, q Querier, sessionID string, from, to tim
 		priced = append(priced, p.call)
 	}
 	return priced, unlinked, nil
+}
+
+// TimedCalls converts calls for contexttax.PriceSeries.
+func TimedCalls(calls []TaxCall) []contexttax.TimedCall {
+	out := make([]contexttax.TimedCall, 0, len(calls))
+	for _, c := range calls {
+		out = append(out, contexttax.TimedCall{Call: contexttax.Call{Context: c.Context, Result: c.Result}, Model: c.Model, At: c.Ts})
+	}
+	return out
 }
