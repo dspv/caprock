@@ -88,7 +88,7 @@ export function PhoneAlerts() {
           {!error && s.alert_last_error ? (
             <p className="text-[11px] text-danger">Last alert failed: {s.alert_last_error}</p>
           ) : s.alert_last_sent_ms ? (
-            <p className="text-[11px] text-fg-faint">Last alert sent {fmtAgo(s.alert_last_sent_ms, now)} ago.</p>
+            <p className="text-[11px] text-fg-faint">Last alert sent {fmtAgo(s.alert_last_sent_ms, now)}.</p>
           ) : null}
           <Details summary="Telegram bot">
             <div className="grid gap-3 text-[12px]">{bot}</div>
