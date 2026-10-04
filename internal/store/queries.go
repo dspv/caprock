@@ -54,7 +54,7 @@ type Session struct {
 	// replaced, or the one it was forked from (FB-039).
 	ParentSession string `json:"parent_session,omitempty"`
 	// NativeID is the agent's own id for a Codex or OpenCode session Caprock
-	// started under an id of its own (migration 0031); empty otherwise.
+	// started under an id of its own (migration 0032); empty otherwise.
 	NativeID string `json:"native_id,omitempty"`
 }
 
@@ -594,7 +594,7 @@ func SetParent(ctx context.Context, q Querier, id, parent string) error {
 }
 
 // SetNativeID links a session Caprock started to the agent's own id for it
-// (migration 0031). Written once: a link already made is never moved to a
+// (migration 0032). Written once: a link already made is never moved to a
 // different thread, because the events stored under it came from the first.
 // Reports whether the link was made.
 func SetNativeID(ctx context.Context, q Querier, id, nativeID string) (bool, error) {

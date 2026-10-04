@@ -89,7 +89,7 @@ terminal — because neither CLI can be told an id. `internal/sessionlink` joins
 them: OpenCode exactly, from `session.created` on the TUI's own server
 ([16-opencode.md](16-opencode.md)); Codex by a stated heuristic on folder,
 originator and thread start time ([19-codex.md](19-codex.md)). The link is
-stored as `sessions.native_id` (migration 0031) and the importers file the
+stored as `sessions.native_id` (migration 0032) and the importers file the
 agent's events under Caprock's session, so one page has the terminal and the
 cost; "continue here" now works for Codex and OpenCode sessions that have
 ended. Verified end to end on an isolated daemon with a scratch HOME, at no

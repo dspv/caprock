@@ -736,7 +736,7 @@ ALTER TABLE sessions ADD COLUMN parent_session TEXT NOT NULL DEFAULT '';
 `SessionSummary` carries both as `worked_at` and `parent_session`, omitted when
 unset, and `detached` (see `resume` above).
 
-### Native id DDL (migration 0031)
+### Native id DDL (migration 0032)
 
 ```sql
 ALTER TABLE sessions ADD COLUMN native_id TEXT NOT NULL DEFAULT '';
