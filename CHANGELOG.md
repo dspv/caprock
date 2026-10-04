@@ -9,6 +9,17 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Changed
+
+- **The Teams and Premium dialogs show what you get before they describe
+  it.** Each now opens with a small picture in the Week card's style — an
+  example team's week for Teams; the daily cap stopping at its line, a
+  question to Gemini about your own sessions, or the Monday report for
+  Premium — clearly tagged as an example, followed by a few short lines and
+  the two ways forward. Premium's prices are the site's: $30 a year, or $100
+  once marked Best value, in the product's amber rather than blue. Focus now
+  moves into the dialog and back to what opened it.
+
 ### Added
 
 - **Week: a card of what your agents shipped, to post.** A new Week tab
