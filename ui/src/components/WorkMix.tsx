@@ -40,12 +40,13 @@ import { Empty, Panel, Skeleton } from '@/components/ui'
 const LABELS: Record<WorkKind, { label: string; title: string }> = {
   edit: {
     label: 'writing code',
-    title: 'Turns that wrote to a file — Edit, Write, NotebookEdit.',
+    title: 'Turns that wrote to a file — Edit, Write, NotebookEdit, apply_patch.',
   },
   command: {
     label: 'running commands',
     title:
-      'Turns that ran a shell command — builds, tests, git, anything through Bash.',
+      'Turns that ran a shell command or code — builds, tests, git, anything through Bash ' +
+      "or Codex's exec and js.",
   },
   read: {
     label: 'reading and searching',

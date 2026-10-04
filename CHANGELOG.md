@@ -46,6 +46,8 @@ Phase 3 (Delight) has no plan by design.
   linked at all. All three are linked now, and calls already stored are
   repaired the first time Caprock starts: on a copy of the owner's database,
   unmatched calls went from 31,275 to 7 and "no tool call" from 93% to 5%.
+  Codex's and DeepSeek's own tool names (exec, js, apply_patch, bash, read,
+  edit…) are now counted as commands, edits and reads instead of "other".
 
 ## [0.70.1] - 2026-10-04
 

@@ -302,6 +302,13 @@ func TestWorkKindOfTurnPrecedence(t *testing.T) {
 		{"web beats mcp", []string{"mcp__x__y", "WebSearch"}, WorkWeb},
 		{"mcp beats other", []string{"AskUserQuestion", "mcp__x__y"}, WorkMCP},
 		{"unknown tool is other", []string{"SomeFutureTool"}, WorkOther},
+		{"codex exec is a command", []string{"exec"}, WorkCommand},
+		{"codex js is a command", []string{"js"}, WorkCommand},
+		{"codex patch is an edit", []string{"exec", "apply_patch"}, WorkEdit},
+		{"dsh bash is a command", []string{"bash"}, WorkCommand},
+		{"dsh edit beats read", []string{"read", "edit"}, WorkEdit},
+		{"dsh grep is reading", []string{"grep"}, WorkRead},
+		{"agent control stays other", []string{"spawn_agent", "send_message", "todo_write"}, WorkOther},
 		{"mcp prefix is not matched mid-name", []string{"notmcp__x"}, WorkOther},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

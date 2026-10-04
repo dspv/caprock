@@ -118,13 +118,28 @@ const WorkKindRule = "Each turn counts toward one kind of work, decided by the t
 // The MCP test is the `mcp__` prefix, which is Claude Code's own namespacing
 // convention for them and the only reliable signal — an MCP server can name its
 // tools anything after that prefix.
+//
+// OTHER AGENTS' NAMES. Codex and DSH (DeepSeek) store their own tool names,
+// which all fell to "other" until named here — on the owner's database a third
+// of 30-day spend (2026-10-04). OpenCode's are already stored in
+// Claude Code's spelling. Codex's `exec` runs JavaScript that calls its real
+// tools (exec_command, write_stdin, apply_patch); measured on 13,086 calls,
+// 63% wrap exec_command and 14% a patch. The name alone cannot tell them
+// apart, so `exec` counts as a command and its patches understate editing.
+// Codex's `js` runs code in a Node REPL (mostly browser automation) and is a
+// command for the same reason Bash is: the model ran code.
 func workKindOf(tool string) WorkKind {
 	switch tool {
-	case "Edit", "Write", "NotebookEdit", "MultiEdit":
+	case "Edit", "Write", "NotebookEdit", "MultiEdit",
+		"apply_patch",   // Codex
+		"edit", "write": // DSH
 		return WorkEdit
-	case "Bash", "BashOutput", "KillShell":
+	case "Bash", "BashOutput", "KillShell",
+		"exec", "shell", "js", "js_reset", // Codex
+		"bash", "job_output": // DSH
 		return WorkCommand
-	case "Read", "Grep", "Glob", "NotebookRead", "ToolSearch":
+	case "Read", "Grep", "Glob", "NotebookRead", "ToolSearch",
+		"read", "grep", "glob": // DSH
 		return WorkRead
 	case "WebFetch", "WebSearch":
 		return WorkWeb
