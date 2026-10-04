@@ -203,7 +203,9 @@ export function Bars({
         <span className="shrink-0 whitespace-nowrap tracking-[0.12em]">{title}</span>
         <span className="flex-1" />
         <span className="num w-20 shrink-0 text-right">{cols.value}</span>
-        <span className="num w-16 shrink-0 text-right">{cols.sub ?? ''}</span>
+        {/* Only when there is one: an empty 64px column cost Storage's bars
+          * their room on a phone and pushed the share past the card's edge. */}
+        {cols.sub !== undefined && <span className="num w-16 shrink-0 text-right">{cols.sub}</span>}
         {cols.sub2 !== undefined && (
           <span className="num w-14 shrink-0 text-right">{cols.sub2}</span>
         )}
@@ -224,7 +226,7 @@ export function Bars({
             <span className="num w-20 shrink-0 text-right text-fg">{r.value}</span>
             {/* Tokens sit between the figure and the share: the volume that
               * produced the cost, in the same units the vendor bills in. */}
-            <span className="num w-16 shrink-0 text-right text-fg-faint">{r.sub ?? ''}</span>
+            {cols.sub !== undefined && <span className="num w-16 shrink-0 text-right text-fg-faint">{r.sub ?? ''}</span>}
             {cols.sub2 !== undefined && (
               <span className="num w-14 shrink-0 text-right text-fg-faint">{r.sub2 ?? ''}</span>
             )}

@@ -898,6 +898,8 @@ export const api = {
   pairRedeem: (code: string, name: string) =>
     post<{ token: string; id: string; name: string }>('/v1/pair', { code, name }),
   pairCode: () => post<{ code: string; expires_in_sec: number; url: string }>('/v1/pair/code', {}),
+  /** Withdraw the outstanding code, so it stops working before it expires. */
+  pairCancelCode: () => post<{ cleared: boolean }>('/v1/pair/code', {}, 'DELETE'),
   /** Turn network access on or off without restarting the daemon. */
   setLAN: (on: boolean) => post<{ enabled: boolean; url?: string }>('/v1/pair/lan', { on }),
   pairRevoke: (id: string) => post<{ revoked: number }>(`/v1/pair/devices/${encodeURIComponent(id)}`, {}, 'DELETE'),

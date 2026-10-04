@@ -125,6 +125,21 @@ already shipped were found by writing them (see
 
 ## Known gaps, and why they are open
 
+- **The QR encoder (`ui/src/lib/qr.ts`) is decoded by hand, not in CI.** Its
+  vitest checks structure — version for a given length, finder squares, timing
+  lines, format bits that say level M with a valid BCH remainder, determinism.
+  Whether a scanner actually reads it was checked on 2026-10-04 by rendering
+  codes for versions 1, 4, 6, 8, 9 and 10 (the version-information block starts
+  at 7) and decoding them with `zbarimg` and Chrome's `BarcodeDetector`: every
+  one round-tripped. No decoder is a dependency, so CI does not repeat it;
+  rerun that check after touching the encoder.
+- **Tailscale binding is tested on interface lists, not on a tailnet.**
+  `internal/lan`'s `choose` is a pure function over names and addresses, and
+  the cases cover Tailscale on macOS (utun + `fd7a:115c:a1e0::/48`), Linux and
+  Windows, and the CGNAT addresses that must be refused. No machine in CI or
+  the owner's has had Tailscale up while it was verified, so a real phone over
+  a tailnet has not been seen to connect.
+
 - **`cmd/caprock` at 27.9%** is the largest remaining gap, and what is left is
   `main`, `detach` and `openBrowser` — functions that spawn processes and
   launch a browser. Testing those would be testing the operating system. What

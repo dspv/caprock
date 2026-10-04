@@ -76,6 +76,11 @@ func (s *Server) handlePairState(w http.ResponseWriter, r *http.Request) {
 			st.ExpiresInSec = int(left / time.Second)
 		}
 		st.Devices = ps.Devices()
+	} else {
+		// Off, but the guest list is kept on disk. "Off · 1 phone paired" is
+		// the honest answer; "Off" alone hid a phone that will be let back in
+		// the moment network access is turned on.
+		st.Devices = s.devicesOnDisk()
 	}
 	writeJSON(w, http.StatusOK, st)
 }
@@ -88,7 +93,7 @@ func (s *Server) handlePairNewCode(w http.ResponseWriter, r *http.Request) {
 	}
 	ps, lanURL := s.lanState()
 	if ps == nil {
-		s.failCode(w, http.StatusConflict, errors.New("network access is off — turn it on from the status screen"))
+		s.failCode(w, http.StatusConflict, errors.New("network access is off — turn it on from Settings"))
 		return
 	}
 	code, err := ps.NewCode()
@@ -101,6 +106,21 @@ func (s *Server) handlePairNewCode(w http.ResponseWriter, r *http.Request) {
 		"expires_in_sec": int(pairing.CodeTTL / time.Second),
 		"url":            lanURL,
 	})
+}
+
+// handlePairClearCode withdraws the outstanding code. The screen's Cancel
+// calls it: a code hidden from the owner but still valid on the daemon would be
+// an invitation nobody can see. Answers 200 when there was nothing to withdraw
+// or network access is off — either way, no code works afterwards.
+func (s *Server) handlePairClearCode(w http.ResponseWriter, r *http.Request) {
+	if !isLocal(r) {
+		s.failCode(w, http.StatusForbidden, errors.New("pairing is managed from the machine Caprock runs on"))
+		return
+	}
+	if ps, _ := s.lanState(); ps != nil {
+		ps.ClearCode()
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"cleared": true})
 }
 
 // handlePairRedeem is the one thing a device may do before it is trusted:
@@ -140,11 +160,17 @@ func (s *Server) handlePairRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ps, _ := s.lanState()
+	id := r.PathValue("id")
+	if ps == nil && s.d.DataDir != "" {
+		// Off, with a guest list on disk: removing a phone must not require
+		// first opening the door to it.
+		s.revokeOnDisk(w, id)
+		return
+	}
 	if ps == nil {
 		s.failCode(w, http.StatusConflict, errors.New("this daemon is not listening on the network"))
 		return
 	}
-	id := r.PathValue("id")
 	if id == "all" {
 		n := ps.RevokeAll()
 		s.saveDevices()
@@ -157,6 +183,49 @@ func (s *Server) handlePairRevoke(w http.ResponseWriter, r *http.Request) {
 	}
 	s.saveDevices()
 	writeJSON(w, http.StatusOK, map[string]int{"revoked": 1})
+}
+
+// devicesOnDisk is the saved guest list without tokens, for a daemon that is
+// not listening. Empty, never nil, when there is none or it cannot be read.
+func (s *Server) devicesOnDisk() []pairing.Public {
+	out := []pairing.Public{}
+	if s.d.DataDir == "" {
+		return out
+	}
+	saved, err := config.ReadDevices(s.d.DataDir)
+	if err != nil {
+		return out
+	}
+	tmp := pairing.New()
+	tmp.Load(saved)
+	return append(out, tmp.Devices()...)
+}
+
+// revokeOnDisk removes one device, or all, from the saved guest list while
+// network access is off.
+func (s *Server) revokeOnDisk(w http.ResponseWriter, id string) {
+	saved, err := config.ReadDevices(s.d.DataDir)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	tmp := pairing.New()
+	tmp.Load(saved)
+	n := 0
+	if id == "all" {
+		n = tmp.RevokeAll()
+	} else if tmp.Revoke(id) {
+		n = 1
+	}
+	if n == 0 && id != "all" {
+		s.failCode(w, http.StatusNotFound, errors.New("no such device"))
+		return
+	}
+	if err := config.WriteDevices(s.d.DataDir, tmp.Snapshot()); err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"revoked": n})
 }
 
 // saveDevices writes the guest list to disk.
