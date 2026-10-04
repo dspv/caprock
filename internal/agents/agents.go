@@ -120,6 +120,11 @@ type Manager struct {
 	agents   map[string]*Agent
 	OnExit   func(sessionID string, code int)
 	OnOutput func(sessionID string) // called (throttled by caller) when new bytes arrive
+	// OnPermission is told when an owned session starts or stops waiting on a
+	// permission prompt (p is nil when it stops). See permission.go.
+	OnPermission func(sessionID string, p *Permission)
+	permMu       sync.Mutex
+	perms        map[string]*Permission
 	// NewSessionID generates a session id; overridable in tests.
 	NewSessionID func() string
 	// Now is the clock chat directory names are stamped from; overridable in
@@ -562,6 +567,10 @@ func (m *Manager) Input(sessionID string, data []byte) error {
 	if !ok {
 		return errNotOwned(sessionID)
 	}
+	if answersAMenu(data) {
+		// Answered in the terminal: the buttons are out of date.
+		m.clearPermission(sessionID)
+	}
 	_, err := a.sess.Write(data)
 	return err
 }
@@ -722,6 +731,7 @@ func (a *Agent) wait(m *Manager) {
 	m.mu.Lock()
 	delete(m.agents, a.SessionID)
 	m.mu.Unlock()
+	m.clearPermission(a.SessionID)
 	_ = m.store.WithTx(context.Background(), func(q store.Querier) error { return store.SetExit(context.Background(), q, a.SessionID, code) })
 	m.log.Info("owned session exited", "component", "agents", "session_id", a.SessionID, "code", code, "err", errStr(err))
 	if a.onExit != nil {

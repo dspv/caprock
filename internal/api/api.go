@@ -374,6 +374,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/agents/models", s.handleAgentModels)
 	m.HandleFunc("POST /v1/agents/{id}/input", s.handleAgentInput)
 	m.HandleFunc("POST /v1/agents/{id}/signal", s.handleAgentSignal)
+	m.HandleFunc("GET /v1/agents/{id}/permission", s.handlePermission)
+	m.HandleFunc("POST /v1/agents/{id}/permission", s.handleAnswerPermission)
 	m.HandleFunc("POST /v1/paste", s.handlePaste)
 	m.HandleFunc("GET /v1/agents/{id}/term", s.ws.serveTerm(s))
 	m.HandleFunc("POST /v1/shutdown", s.handleShutdown)

@@ -38,6 +38,7 @@ var viewerMay = map[string]bool{
 	"GET /v1/settings": true, "GET /v1/premium": true, "GET /v1/gemini": true, "GET /v1/pricing": true,
 	"GET /v1/live": true, "GET /v1/tasks": true, "GET /v1/tasks/{id}": true, "GET /v1/approvals": true,
 	"GET /v1/statusline/{id}": true, "GET /v1/pair/me": true, "GET /healthz": true,
+	"GET /v1/agents/{id}/permission": true,
 }
 
 // What a controller may do on top (ADR-034): work on a session, nothing about
@@ -46,7 +47,8 @@ var controllerMayAlso = map[string]bool{
 	"POST /v1/agents": true, "GET /v1/agents/models": true, "GET /v1/recent-dirs": true, "GET /v1/browse": true,
 	"GET /v1/sessions/{id}/relay": true, "GET /v1/agents/{id}/term": true,
 	"POST /v1/agents/{id}/input": true, "POST /v1/agents/{id}/signal": true, "POST /v1/paste": true,
-	"POST /v1/tasks/{id}/approve": true, "POST /v1/tasks/{id}/reject": true,
+	"POST /v1/agents/{id}/permission": true,
+	"POST /v1/tasks/{id}/approve":     true, "POST /v1/tasks/{id}/reject": true,
 }
 
 // registeredRoutes reads every route New registers out of api.go, so a route
@@ -171,6 +173,8 @@ func TestRefusalsSayWhatToDo(t *testing.T) {
 		pattern, token, want string
 	}{
 		{"POST /v1/agents/{id}/input", viewer.Token, viewerRefusal},
+		{"POST /v1/agents/{id}/permission", viewer.Token, viewerRefusal},
+		{"POST /v1/paste", viewer.Token, viewerRefusal},
 		{"PUT /v1/settings", controller.Token, controllerRefusal},
 		{"POST /v1/pair/code", controller.Token, controllerRefusal},
 	} {

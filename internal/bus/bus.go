@@ -18,6 +18,10 @@ const (
 	FrameSession FrameType = "session"
 	FrameAlert   FrameType = "alert"
 	FrameStats   FrameType = "stats" // per-session stats snapshot; UI convenience
+	// FramePermission says an owned session started or stopped waiting on a
+	// permission prompt: {session_id, permission}, permission null when it
+	// stopped.
+	FramePermission FrameType = "permission"
 )
 
 // Frame is what goes over /v1/live.

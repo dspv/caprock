@@ -195,6 +195,10 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/approvals":            true,
 	"GET /v1/statusline/{id}":      true,
 	"GET /v1/pair/me":              true, // which role this device holds, so its screens draw the right controls
+
+	// The permission prompt an owned session waits on (ADR-035); the live
+	// socket already carries it to a viewer.
+	"GET /v1/agents/{id}/permission": true,
 }
 
 // What a controller may do on top of reading (ADR-034), named one route at a
@@ -227,6 +231,9 @@ var controllerRoutes = map[string]bool{
 	"POST /v1/paste":              true, // a photo or file from the phone, typed in as its path
 	"POST /v1/tasks/{id}/approve": true,
 	"POST /v1/tasks/{id}/reject":  true,
+
+	// Answer a permission prompt with a button (ADR-035).
+	"POST /v1/agents/{id}/permission": true,
 }
 
 // deviceVerdict is what a role may do with one request.
