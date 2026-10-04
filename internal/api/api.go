@@ -57,8 +57,11 @@ type Deps struct {
 	// whether their bot works without waiting for Monday. Nil disables the
 	// endpoint rather than crashing it.
 	Reporter ReportSender
-	UI       fs.FS // embedded dashboard (index.html at root); nil ⇒ placeholder
-	Version  string
+	// Alerts sends a test phone alert on demand (ADR-036). Nil disables the
+	// endpoint.
+	Alerts  AlertSender
+	UI      fs.FS // embedded dashboard (index.html at root); nil ⇒ placeholder
+	Version string
 	// Status returns daemon/ingest/hooks status for /v1/status.
 	Status func(ctx context.Context) any
 	// InstallHooks registers the shim in Claude Code's settings, as
@@ -191,6 +194,16 @@ type Settings struct {
 	ReportLastError string `json:"report_last_error,omitempty"`
 	// ReportLastSentMs is when a report last went out, 0 for never.
 	ReportLastSentMs int64 `json:"report_last_sent_ms,omitempty"`
+	// AlertApproval and AlertFinished are the phone alerts' two switches, on
+	// unless turned off; they send nothing until a bot is configured
+	// (ADR-036). Free, unlike the weekly report that shares the bot.
+	AlertApproval bool `json:"alert_approval"`
+	AlertFinished bool `json:"alert_finished"`
+	// AlertLastError is why the last alert failed to send, empty when it did
+	// not; AlertLastSentMs is when one last arrived, 0 for never since the
+	// daemon started.
+	AlertLastError  string `json:"alert_last_error,omitempty"`
+	AlertLastSentMs int64  `json:"alert_last_sent_ms,omitempty"`
 	// BrowseRoot is the only directory the folder picker may look inside, and
 	// the boundary every path it returns is checked against. Empty means the
 	// user's home directory.
@@ -213,6 +226,11 @@ type Settings struct {
 // is a handler nobody tests.
 type ReportSender interface {
 	SendReportNow(ctx context.Context) error
+}
+
+// AlertSender sends one test phone alert through the configured bot.
+type AlertSender interface {
+	SendAlertCheck(ctx context.Context) error
 }
 
 // TaskController is the subset of the Phase 2 hive the API needs.
@@ -335,6 +353,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/settings", s.handleGetSettings)
 	m.HandleFunc("PUT /v1/settings", s.handlePutSettings)
 	m.HandleFunc("POST /v1/report/test", s.handleTestReport)
+	m.HandleFunc("POST /v1/alerts/test", s.handleTestAlert)
 	m.HandleFunc("GET /v1/stats/daily", s.handleDaily)
 	m.HandleFunc("GET /v1/events", s.handleEventsFeed)
 	m.HandleFunc("GET /v1/history", s.handleHistory)
@@ -1018,6 +1037,8 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		ReportBotToken *string `json:"report_bot_token"`
 		ReportChatID   *string `json:"report_chat_id"`
 		GeminiAPIKey   *string `json:"gemini_api_key"`
+		AlertApproval  *bool   `json:"alert_approval"`
+		AlertFinished  *bool   `json:"alert_finished"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&patch); err != nil {
 		s.failCode(w, http.StatusBadRequest, fmt.Errorf("parse body: %w", err))
@@ -1075,6 +1096,12 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.GeminiAPIKey != nil {
 		in.GeminiAPIKey = strings.TrimSpace(*patch.GeminiAPIKey)
+	}
+	if patch.AlertApproval != nil {
+		in.AlertApproval = *patch.AlertApproval
+	}
+	if patch.AlertFinished != nil {
+		in.AlertFinished = *patch.AlertFinished
 	}
 	if patch.LicenseKey != nil {
 		in.LicenseKey = *patch.LicenseKey
@@ -1923,6 +1950,20 @@ func (s *Server) handleTestReport(w http.ResponseWriter, r *http.Request) {
 	if err := s.d.Reporter.SendReportNow(r.Context()); err != nil {
 		// Telegram's own words reach the screen: "chat not found" and "bot was
 		// blocked by the user" are both things only the user can fix.
+		s.failCode(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"sent": "ok"})
+}
+
+// handleTestAlert sends one phone alert now, so a bot can be checked without
+// waiting for a session to need someone.
+func (s *Server) handleTestAlert(w http.ResponseWriter, r *http.Request) {
+	if s.d.Alerts == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("alerts are unavailable"))
+		return
+	}
+	if err := s.d.Alerts.SendAlertCheck(r.Context()); err != nil {
 		s.failCode(w, http.StatusBadGateway, err)
 		return
 	}

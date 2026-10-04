@@ -978,3 +978,17 @@ func TestSessionsInProjectDir(t *testing.T) {
 		t.Fatalf("parent dir should list nothing: %d %+v", code, list)
 	}
 }
+
+// Each phone-alert switch round-trips on its own: a save that names one must
+// leave the other where it was (ADR-036).
+func TestAlertSwitchesRoundTrip(t *testing.T) {
+	e := newEnv(t)
+	e.settings.cur.AlertApproval, e.settings.cur.AlertFinished = true, true
+	if code := e.putSettings(t, map[string]any{"alert_finished": false}); code != 200 {
+		t.Fatalf("PUT: %d", code)
+	}
+	var got Settings
+	if code := e.get(t, "/v1/settings", &got); code != 200 || !got.AlertApproval || got.AlertFinished {
+		t.Errorf("approval=%v finished=%v, want true/false", got.AlertApproval, got.AlertFinished)
+	}
+}

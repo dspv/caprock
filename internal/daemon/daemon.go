@@ -126,8 +126,10 @@ type Daemon struct {
 	// arrived can be explained on the settings screen instead of being an
 	// absence nobody notices.
 	report reportState
-	det    *loop.Detector
-	tail   *ingest.Tailer
+	// phone holds the phone alerts' last outcome, for the settings screen.
+	phone phoneAlertState
+	det   *loop.Detector
+	tail  *ingest.Tailer
 	// ingMu guards ocIn and cxIn, which can start after startup: a machine
 	// with Codex or OpenCode installed but never yet run has nothing to read
 	// until a session Caprock starts writes the first file.
@@ -364,6 +366,9 @@ func (d *Daemon) run(ctx context.Context) error {
 	// Live-plane subscriber: loop detector over stored events.
 	sub := d.bus.Subscribe(4096)
 	go d.observeLoops(ctx, sub)
+	// Phone alerts (ADR-036), subscribed before any producer starts so the
+	// first Stop is not missed.
+	go d.alertLoop(ctx, d.bus.Subscribe(1024))
 
 	// Owned-session manager (Phase 1).
 	d.mgr = agents.NewManager(d.store, d.opt.DataDir, "", d.log)
@@ -461,7 +466,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	}
 
 	d.api = api.New(api.Deps{
-		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d,
+		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d, Alerts: d,
 		Status: d.status, InstallHooks: d.installHooks, Storage: d.storageReport, ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
 		LoopK: d.det.K, LoopWindow: d.det.Window,
 		Token: rt.Token, Shutdown: cancel, Agents: &agentAdapter{m: d.mgr, d: d},
@@ -1261,6 +1266,7 @@ func (a *settingsAdapter) Get() api.Settings {
 	a.d.cfgMu.RLock()
 	defer a.d.cfgMu.RUnlock()
 	c := a.d.opt.Config
+	alertErr, alertSent := a.d.phone.get()
 	return api.Settings{
 		UpdateChecks:     c.UpdateChecks,
 		Memory:           c.MemoryOn(),
@@ -1282,6 +1288,10 @@ func (a *settingsAdapter) Get() api.Settings {
 		GeminiKeyFromEnv: gemini.EnvKeyValue() != "",
 		ReportLastError:  a.d.reportLastError(),
 		ReportLastSentMs: a.d.reportLastSent(),
+		AlertApproval:    c.AlertApprovalOn(),
+		AlertFinished:    c.AlertFinishedOn(),
+		AlertLastError:   alertErr,
+		AlertLastSentMs:  alertSent,
 	}
 }
 
@@ -1310,6 +1320,9 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	a.d.opt.Config.ReportBotToken = strings.TrimSpace(in.ReportBotToken)
 	a.d.opt.Config.ReportChatID = strings.TrimSpace(in.ReportChatID)
 	a.d.opt.Config.GeminiAPIKey = strings.TrimSpace(in.GeminiAPIKey)
+	approval, finished := in.AlertApproval, in.AlertFinished
+	a.d.opt.Config.AlertApproval = &approval
+	a.d.opt.Config.AlertFinished = &finished
 	cfg := a.d.opt.Config
 	a.d.cfgMu.Unlock()
 	if capChanged && a.d.cap != nil {

@@ -49,8 +49,9 @@ type Payload struct {
 }
 
 // permissionRequest is the hook Claude Code fires when it draws a permission
-// dialog. It is a moment, not an event: nothing is stored, and Observe is
-// told so the session's buttons can be drawn (ADR-035).
+// dialog. Observe is told so an owned session's buttons can be drawn
+// (ADR-035), and it is stored as permission.prompt for every session, so Now
+// says "waiting for approval" and the phone can be told (ADR-036).
 const permissionRequest = "PermissionRequest"
 
 // endsTheSession reports whether a SessionEnd reason means the session is over.
@@ -167,6 +168,10 @@ func Normalize(raw []byte, now time.Time) (*event.Event, rollup.SessionInfo, err
 		// A turn failed to complete — rate_limit / overloaded / billing etc. This
 		// is the honest throttle signal (SPEC §8.4 / throttle_observations).
 		ev.Kind = event.KindThrottle
+	case permissionRequest:
+		// The session is showing a permission dialog and nothing moves until
+		// somebody answers it. Stored without a key: each dialog is its own.
+		ev.Kind, ev.Tool = event.KindPermissionPrompt, p.ToolName
 	default:
 		return nil, info, ErrUnknownEvent
 	}
@@ -238,10 +243,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var p Payload
 		if json.Unmarshal(body, &p) == nil && p.SessionID != "" {
 			h.Observe(p)
-			if p.HookEventName == permissionRequest {
-				w.WriteHeader(http.StatusNoContent)
-				return
-			}
 		}
 	}
 	ev, info, err := Normalize(body, now)
