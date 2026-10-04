@@ -17,8 +17,10 @@ Phase 3 (Delight) has no plan by design.
   The terminal on a phone has a large input field and Esc, Tab, ↑, ↓, Enter and
   Ctrl+C buttons. *Take control away* is one button and holds at once, even on
   a terminal already open. Phones stay view-only until you choose; settings
-  and pairing stay on the machine. It works over your Wi-Fi or Tailscale, with
-  no relay.
+  and pairing stay on the machine, and so do sessions that never ask for
+  permission (Bypass). It works over your Wi-Fi or Tailscale, with no relay.
+  The paired-devices list tells two phones of one model apart by browser, id
+  and when each was paired.
 
 ### Fixed
 
