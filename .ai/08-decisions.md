@@ -1018,3 +1018,44 @@ own asks.
 
 **Revisit if** Codex gains a way to name a new thread, which would make its
 link exact, or OpenCode a way to pre-create a session.
+
+## ADR-032 — Continue in another agent is a new session with a brief, said to be one
+
+**Date:** 2026-10-04 · **Status:** accepted (owner approved 2026-10-04)
+
+A session's work sometimes has to move: to another agent (Codex is free this
+week, Claude Code is out of quota), or to a fresh session when continuing the
+old one cannot work (its transcript is gone, its agent is not one Caprock
+resumes). No agent can load another's conversation, and none of them can be
+handed one.
+
+**The decision.** "Continue in… ▾" on the session page starts a **new** session
+in the chosen agent, in the same folder, whose first message is a brief Caprock
+writes locally (`internal/relay`): the last substantial passage the agent wrote
+(recency beats retrieval — the SessionStart handoff's measured finding, and its
+clip, reused), the working tree as it is now, and the PRs the session opened.
+The brief is shown in full and editable before anything is sent; the user's
+click sends it. The dialog's first sentence says it is a new session with a
+summary, not the same conversation. The two sessions name each other
+(`sessions.relay_from`, migration 0036).
+
+**The brief goes on the command line, not into the terminal.** All four CLIs
+take a first message as an argument (read from their `--help` on 2026-10-04:
+claude `[prompt]`, codex `[PROMPT]`, opencode `--prompt`, gemini
+`--prompt-interactive`). Typing it into a TUI that may not have drawn its
+input yet would be a race, and a brief of many lines through a terminal
+depends on each TUI's newline handling. Rule 7 holds either way: the process is
+one Caprock starts for this purpose.
+
+**What it does not claim.** No PRs are listed for agents that do not record
+them; command text is not mined for URLs. The git section is the folder now,
+not what the old session saw. Through a Windows batch shim the brief arrives
+as one line.
+
+**Rejected:** injecting the brief as hidden context (the SessionStart route) —
+it works only for Claude Code and hides from the user what the new agent was
+told; and a model-written summary, which would spend money and tokens before
+the user has agreed to anything.
+
+**Revisit if** an agent gains a way to import another's history, which would
+make a real continuation possible.

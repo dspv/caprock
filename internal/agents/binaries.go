@@ -126,6 +126,13 @@ func isExecutable(p string) bool {
 	return fi.Mode()&0o111 != 0
 }
 
+// isBatch reports whether a binary is a Windows batch shim, which runs under
+// cmd.exe and so cannot take a multi-line argument intact.
+func isBatch(p string) bool {
+	ext := strings.ToLower(filepath.Ext(p))
+	return ext == ".cmd" || ext == ".bat"
+}
+
 func envValue(env []string, key string) string {
 	for i := len(env) - 1; i >= 0; i-- {
 		if strings.HasPrefix(env[i], key+"=") {

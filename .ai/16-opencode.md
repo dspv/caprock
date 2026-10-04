@@ -344,6 +344,10 @@ and each flag exercised by starting the TUI with it:
   `doom_loop` and directories outside the project (measured: the same four
   `ask` rules before and after), so the dialog labels it "OpenCode's own
   rules" and sends nothing.
+- **A first message** is `--prompt <text>` ("prompt to use"), which a relay's
+  brief uses ([ADR-032](08-decisions.md)); measured on 1.15.10, a multi-line
+  prompt is sent as the TUI opens, and the session it creates is linked as
+  below.
 - **Resume** is `--session <id>`. **Fork is refused**, as for Codex: `--fork`
   copies the session's messages, cost included, and Caprock would count them
   twice.

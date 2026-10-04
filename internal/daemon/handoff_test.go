@@ -11,6 +11,7 @@ import (
 	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/hookd"
+	"github.com/dspv/caprock/internal/relay"
 	"github.com/dspv/caprock/internal/rollup"
 	"github.com/dspv/caprock/internal/store"
 )
@@ -206,7 +207,7 @@ func TestClippingNeverBreaksARune(t *testing.T) {
 			src = strings.Repeat("🔥 emoji heavy ", 400)
 		}
 		t.Run(name, func(t *testing.T) {
-			got := clipRunes(src, handoffMaxRunes)
+			got := relay.Clip(src, handoffMaxRunes)
 			if !utf8.ValidString(got) {
 				t.Fatal("clipping produced invalid UTF-8")
 			}

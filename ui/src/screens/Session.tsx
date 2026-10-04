@@ -13,6 +13,7 @@ import { agentName } from '@/components/Projects'
 import { usePlan } from '@/components/PlanPicker'
 import { ContinueSession } from '@/components/ContinueSession'
 import { RepoLinks } from '@/components/RepoLinks'
+import { RelayChain, RelayMenu } from '@/components/RelayDialog'
 
 type Tab = 'timeline' | 'notes' | 'changes' | 'terminal'
 
@@ -143,12 +144,18 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
           * (FB-036). Caprock never types into a process it did not start
           * (rule 7); a resume starts a second process on the conversation. */}
         {s.resume && <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={s.status !== 'ended'} resume={s.resume} />}
+        {/* A relay: a new session, in any agent, started with a summary of
+          * this one that the user reads first — offered next to "continue"
+          * because it answers the same wish when continuing cannot (another
+          * agent, a transcript gone) or is not wanted. */}
+        {s.cwd && !reader && <RelayMenu sessionID={s.session_id} />}
         {detail.stale && <StaleNote at={detail.cachedAt} now={now} />}
         <span className="text-[12px] text-fg-muted ml-auto num">{s.cwd}</span>
       </div>
       {/* The repository and the PRs this session opened, on every tab — the
         * terminal included, which is where someone is when they want them. */}
       <RepoLinks repo={s.repo} prs={s.prs} cwd={s.cwd} />
+      <RelayChain from={s.relayed_from} to={s.relayed_to} />
       {s.description && (
         <div className={`text-[13px] ${s.description_source === 'title' ? 'text-fg' : 'text-fg-muted'}`} title={s.description_source === 'prompt' ? 'first prompt' : undefined}>
           {s.description_source === 'title' ? s.description : `“${s.description}”`}

@@ -245,3 +245,54 @@ func TestAvailabilityFollowsTheBinary(t *testing.T) {
 		t.Fatal("an agent Caprock cannot start counts as available")
 	}
 }
+
+// A relay's brief is the session's first message, in each CLI's own spelling
+// (claude/codex positional, opencode --prompt, gemini --prompt-interactive),
+// last on the line, and never on a resume.
+func TestThePromptIsTheFirstMessageInEachCLIsSpelling(t *testing.T) {
+	brief := "Continue the work.\nLine two."
+	cases := []struct {
+		agent string
+		want  []string
+	}{
+		{AgentClaude, []string{brief}},
+		{AgentCodex, []string{brief}},
+		{AgentOpenCode, []string{"--prompt", brief}},
+		{AgentGemini, []string{"--prompt-interactive", brief}},
+	}
+	for _, c := range cases {
+		l, err := builders[c.agent](launchInput{SessionID: "id", Cwd: t.TempDir(), Prompt: brief})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := l.args[len(l.args)-len(c.want):]; !slices.Equal(got, c.want) {
+			t.Errorf("%s: argv ends %q, want %q", c.agent, got, c.want)
+		}
+	}
+	l, _ := codexLaunch(launchInput{SessionID: "id", Cwd: t.TempDir(), Resume: "r", NativeResume: "n", Prompt: brief})
+	if slices.Contains(l.args, brief) {
+		t.Error("a resume was given a first message")
+	}
+}
+
+// A brief an editor left starting with a dash is still a prompt, not a flag.
+func TestAPromptStartingWithADashIsNotAFlag(t *testing.T) {
+	if got := promptArg(launchInput{Prompt: "--dangerously-bypass-approvals-and-sandbox"}); !strings.HasPrefix(got, " -") {
+		t.Errorf("promptArg = %q", got)
+	}
+	if got := promptArg(launchInput{Prompt: "  \n"}); got != "" {
+		t.Errorf("blank prompt = %q", got)
+	}
+}
+
+// Through a Windows .cmd shim the brief becomes one line with % escaped,
+// because cmd.exe ends the command at a newline and expands %VAR%.
+func TestABriefThroughABatchShimIsOneLine(t *testing.T) {
+	got := flattenForBatch("First line.\r\n\n- a.txt 100%\n")
+	if got != "First line. / - a.txt 100%%" {
+		t.Errorf("flattenForBatch = %q", got)
+	}
+	if !isBatch(`C:\npm\codex.CMD`) || isBatch("/usr/bin/codex") {
+		t.Error("isBatch")
+	}
+}

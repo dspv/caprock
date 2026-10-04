@@ -235,6 +235,7 @@ internal/smoke/       # the DoD scenario (build tag `smoke`), runs on the 3-OS m
 internal/ptyman/      # PTY backend (go-pty; ConPTY on Windows) — Control
 internal/agents/      # owned-session manager: spawn/stream/input/signal/exit, per-agent argv, worktree, folder-trust — Control
 internal/sessionlink/ # joins a spawned Codex/OpenCode session to the id the agent gives it — Control
+internal/relay/       # the brief that carries a session on in a new one, any agent (ADR-032) — Control
 internal/hive/        # on-disk orchestration state: agents/tasks/mailboxes/ledger, YAML — Orchestrate
 internal/board/       # task board: verification runner, destructive-command policy, approvals — Orchestrate
 internal/orchestrator/ # orchestrator + worker lifecycle, the mailbox-router reconciler — Orchestrate

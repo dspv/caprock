@@ -434,6 +434,10 @@ starting the TUI with it:
 - **Resume** is `codex resume <thread id>` with the same flags after it. Codex
   has no flag that names a *new* thread, so there is nothing like
   `--session-id` to pass on a fresh start.
+- **A first message** is the positional `[PROMPT]` (`Usage: codex [OPTIONS]
+  [PROMPT]`), last on the line; a relay's brief goes there
+  ([ADR-032](08-decisions.md)). Measured on 0.160.0: a multi-line prompt
+  arrives intact and is sent as the TUI opens.
 - **Fork is refused.** `codex fork` copies the thread's history into a new
   rollout, and Caprock would count its tokens again. A Codex session that is
   still running is offered nothing; it can be continued once it has ended.

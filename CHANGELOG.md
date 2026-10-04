@@ -49,6 +49,14 @@ Phase 3 (Delight) has no plan by design.
   same session page as the terminal, and an ended Codex or OpenCode session can
   be continued with "continue here".
 
+- **Continue a session in another agent.** "Continue in…" on a session page
+  starts a new Claude Code, Codex, OpenCode or Gemini CLI session in the same
+  folder, with a summary as its first message: the last thing the agent said,
+  what has changed in the working tree, and the pull requests it opened. You
+  read and edit the summary before anything is sent, and both sessions link to
+  each other. It is a new session with a summary, not the same conversation —
+  which also makes it the way to pick up a session whose transcript is gone.
+
 ### Changed
 
 - **The Teams and Premium dialogs show what you get before they describe

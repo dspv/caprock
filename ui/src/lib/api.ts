@@ -26,6 +26,9 @@ export interface Session {
    *  an id of its own — the thread or session its importer files under this
    *  one. Absent until the first message is sent, and for every other session. */
   native_id?: string
+  /** The session this one was started to carry on, with a brief rather than
+   *  its conversation (a relay). */
+  relay_from?: string
 }
 
 export interface Stats {
@@ -144,6 +147,33 @@ export interface SessionDetail extends SessionSummary {
   repo?: RepoLink
   /** Latest first. An older daemon sends none. */
   prs?: SessionPR[]
+  /** The session this one carries on (a relay), when Caprock still has it. */
+  relayed_from?: RelayLink
+  /** The sessions started to carry this one on, oldest first. */
+  relayed_to?: RelayLink[]
+}
+
+/** One end of a relay, as a session page names it. */
+export interface RelayLink {
+  session_id: string
+  agent: string
+  title?: string
+  started_at: number
+}
+
+/** What the "Continue in…" dialog shows: the proposed first message for a new
+ *  session that carries this one on, and what it was built from. Built locally
+ *  by the daemon; nothing is sent until the user starts the session. */
+export interface RelayBrief {
+  session_id: string
+  agent: string
+  cwd: string
+  cwd_exists: boolean
+  /** When the relayed passage was written (unix ms); absent when there is none. */
+  passage_at?: number
+  git?: { branch?: string; base?: string; files: string[]; more?: number; stat?: string; not_repo?: boolean }
+  prs: { number: number; url: string }[]
+  text: string
 }
 
 /** Whether asking Gemini is possible here, and why not when it is not.
@@ -661,6 +691,12 @@ export interface SpawnRequest {
    *  original alone. Needed when the session being picked up is still
    *  running, or both would write one transcript between them. */
   fork?: boolean
+  /** The first message, sent as the session starts — a relay's brief, which
+   *  the user has read and may have edited. Ignored on a resume. */
+  prompt?: string
+  /** The session this new one carries on (a relay). The folder defaults to
+   *  that session's when `cwd` is left out. */
+  relay_from?: string
 }
 
 /**
@@ -874,6 +910,8 @@ export const api = {
   spawn: (req: SpawnRequest) => post<{ session_id: string; cwd: string }>('/v1/agents', req),
   /** The models an agent's own CLI lists — Codex's on-disk catalog and its
    *  configured default. Empty for the other agents. */
+  /** The proposed brief for carrying a session on in a new one (a relay). */
+  relayBrief: (id: string) => get<RelayBrief>(`/v1/sessions/${encodeURIComponent(id)}/relay`),
   agentModels: (agent: string) =>
     get<{ agent: string; default?: string; models: { id: string; label: string }[] }>(`/v1/agents/models?agent=${encodeURIComponent(agent)}`),
   signal: (id: string, action: 'pause' | 'resume' | 'kill') => post<void>(`/v1/agents/${encodeURIComponent(id)}/signal`, { action }),
