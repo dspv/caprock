@@ -76,6 +76,12 @@ describe('the paywall', () => {
     expect(declared.length, 'no paid features are declared').toBeGreaterThan(0)
 
     const all = SCREENS.flatMap((s) => locks(read(s)).map((l) => l.feature))
+    // A feature can also be offered inline rather than behind a whole-panel
+    // lock: the tool drill-down shows its free half and opens the modal from a
+    // chip, because a lock around the panel would hide the free breakdown.
+    for (const f of ['components/ToolDrill.tsx']) {
+      for (const m of read(f).matchAll(/<PremiumModal\s+feature="([a-z]+)"/g)) all.push(m[1]!)
+    }
     for (const f of declared) {
       expect(all, `"${f}" is sold but shown nowhere in the product`).toContain(f)
     }

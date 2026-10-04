@@ -71,6 +71,15 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-04 — Click a tool for what it did
+
+- On Lifetime a tool's row opens into its calls grouped by command, file,
+  domain, query or MCP action (`GET /v1/tools/drill`). Groups, calls and
+  shares are free; output, failure rate, trend per group and hints are
+  Premium, removed by the daemon without a licence, with the strongest hint
+  sent in full as a teaser. The server gate is written into ADR-022. On the
+  owner's database, Bash all time: 1,191 failures in 53,905 results.
+
 ### 2026-10-04 — Plan limits in plain words
 
 - Owner feedback: from a "limit at 95%" alert he reached Cost and "did not

@@ -9,17 +9,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
-### Changed
-
-- **The Teams and Premium dialogs show what you get before they describe
-  it.** Each now opens with a small picture in the Week card's style — an
-  example team's week for Teams; the daily cap stopping at its line, a
-  question to Gemini about your own sessions, or the Monday report for
-  Premium — clearly tagged as an example, followed by a few short lines and
-  the two ways forward. Premium's prices are the site's: $30 a year, or $100
-  once marked Best value, in the product's amber rather than blue. Focus now
-  moves into the dialog and back to what opened it.
-
 ### Added
 
 - **Week: a card of what your agents shipped, to post.** A new Week tab
@@ -31,7 +20,6 @@ Phase 3 (Delight) has no plan by design.
   Download it as a PNG or copy it to paste. Everything is counted on your
   machine from the agents' own tool calls; Caprock does not ask GitHub, and
   no repository, path, prompt or session title is ever on the card.
-
 - **Now: At a glance.** A collapsible block after All time draws where the
   money went, the bill by token type (with the share spent re-reading
   context in the middle) and the most-used tools as donuts, plus one tile per
@@ -40,23 +28,32 @@ Phase 3 (Delight) has no plan by design.
 - **Live pulse says who is working and on what.** Each session row shows the
   current model by name and, when subagents are running, a crowd icon with
   "×N".
+- **Share: a Story card, for any period.** The share dialog gains a second
+  style beside Figures: the Week card — the headline, the money beside it,
+  who did what, the longest loop and the biggest session — for today, this
+  week, this month or all time, at 1200×675 or 1080×1350.
+- **Click a tool for what it did.** On Lifetime, a tool's row opens in
+  place: Bash by the command each call ran ("go test", "git diff"), Read and
+  Edit by file, WebFetch by domain, WebSearch by query, an MCP tool by its
+  action, with calls and share. Premium adds what came back, how often each
+  group failed, a trend per group and hints drawn only from those counts.
 
 ### Changed
 
+- **The Teams and Premium dialogs show what you get before they describe
+  it.** Each now opens with a small picture in the Week card's style — an
+  example team's week for Teams; the daily cap stopping at its line, a
+  question to Gemini about your own sessions, or the Monday report for
+  Premium — clearly tagged as an example, followed by a few short lines and
+  the two ways forward. Premium's prices are the site's: $30 a year, or $100
+  once marked Best value, in the product's amber rather than blue. Focus now
+  moves into the dialog and back to what opened it.
 - **Plan limits are gauges, directly under Today.** Each window is a ring
   that turns amber at 60% and red above 85%, with its reset time and a
   countdown, grouped by agent. A forecast still appears only when your pace
   would hit the limit before the reset, and is drawn on the ring; Codex is
   never forecast and says how old its reading is. A stale reading is drawn
   grey and says so.
-
-- **Share: a Story card, for any period.** The share dialog gains a second
-  style beside Figures: the Week card — the headline, the money beside it,
-  who did what, the longest loop and the biggest session — for today, this
-  week, this month or all time, at 1200×675 or 1080×1350.
-
-### Changed
-
 - **Plan limits explain themselves.** Each window says, in words, how much
   is used, when it resets and how long that is (in minutes under an hour),
   and that Claude Code pauses at 100% until then. One line says these are

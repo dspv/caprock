@@ -120,7 +120,7 @@ func ToolDrillStats(ctx context.Context, q Querier, o DrillOptions) (ToolDrill, 
 		if err := rows.Scan(&ts, &cwd, &cmd, &file, &link, &query, &action, &pat, &sub, &raw, &hasPost, &isErr, &bytes); err != nil {
 			return ToolDrill{}, err
 		}
-		key, by := drillKey(d.Kind, o.Tool, cwd, cmd, file, link, query, action, pat, sub, raw, o.Home)
+		key, by := drillKey(d.Kind, cwd, cmd, file, link, query, action, pat, sub, raw, o.Home)
 		if d.GroupBy == "" || d.GroupBy == "call" {
 			d.GroupBy = by
 		}
@@ -233,7 +233,7 @@ var (
 )
 
 // drillKey is the group a call belongs to, and what that group is called.
-func drillKey(kind, tool, cwd, cmd, file, link, query, action, pat, sub, raw, home string) (string, string) {
+func drillKey(kind, cwd, cmd, file, link, query, action, pat, sub, raw, home string) (string, string) {
 	switch kind {
 	case "shell":
 		if cmd == "" && raw != "" {
@@ -312,7 +312,7 @@ func commandHead(cmd, cwd string) string {
 			head = filepath.Base(w[0])
 		}
 		if head == "git" {
-			if sub, _ := gitSubcommand(shellStatement{words: w, dir: st.dir}); sub != "" {
+			if sub := gitSubcommand(shellStatement{words: w, dir: st.dir}); sub != "" {
 				return "git " + sub
 			}
 			return "git"

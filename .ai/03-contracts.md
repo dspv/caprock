@@ -463,6 +463,48 @@ reclaimable_bytes, growth_bytes_per_day_est, retention_days}`.
 
 **The session's `model` is its main thread's.** `sessions.model` is the model of the newest event from the session's main thread (`rollup.Record`); a subagent's event — `agent_id` set, or `payload.sidechain` true, the same test the notes query uses (`event.Event.Subagent`, `store.MainThreadWhere`) — fills it only while it is empty, through `SessionPatch.SubagentModel`. An Opus session whose Explore subagent runs on Haiku is an Opus session on its card, in every list and in the window its context fill is measured against; the subagent's turns are still priced by their own model and counted in `session_stats` and `daily_stats` (keyed by the turn's model) exactly as before. A session whose every turn is a subagent's (an OpenCode child session) is named by them. Earlier versions let a subagent's turn overwrite the column; `rollup.RepairSessionModels` sets each session's model once (`meta.session_model_repaired`) to that of its newest main-thread `turn.assistant` (by `ts`, internal turns excluded) where the stored value differs, and leaves sessions with no main-thread turn alone. Measured on a copy of the owner's database (2026-10-01): 6 of the 140 sessions with a main-thread turn were wrong, all six named after a subagent's model; the pass took 3.3 s on an 879 MB file, once, in the background after the port opens. The context badge looks for the main thread's last turn among the session's newest 5000 events when the newest 60 hold none (`store.LastMainTurn`, about 20 ms on a 51k-event session).
 
+### A tool's calls, grouped (`GET /v1/tools/drill`)
+
+```
+GET  /v1/tools/drill?tool=Bash&range=today|7d|30d|all&agent=   → ToolDrill — one tool's calls grouped by what they were about
+```
+
+`tool` is required (400 without it, or longer than 200 bytes); `range` and
+`agent` mean what they mean on `/v1/stats`. The response is
+`{tool, kind, group_by, calls, rows[], other, range, locked}` plus the
+Premium fields below:
+
+- **Grouping** (`kind`, `group_by`): a shell tool (Bash, Codex's `exec`,
+  `shell`, `exec_command`) by the command's head — the program, plus the
+  subcommand for tools where it is the point (`git commit`, `go test`,
+  `npm run`; `gh` keeps two words), with `cd`, `export` and other setup
+  statements skipped; Read, Edit, Write, MultiEdit and the notebook tools by
+  file, shown relative to the home directory; WebFetch by domain; WebSearch
+  by query; an MCP tool by its `action` input; any other tool by subagent
+  type (Task), pattern (Grep, Glob) or command, else one `call` group.
+- **`rows[]`** are the top 12 groups by calls, each `{key, calls}`;
+  **`other`** is the calls in every smaller group. Free.
+- **Premium** (left out without an active licence, [ADR-022](08-decisions.md)):
+  `results`, `failures` and `bytes` for the tool and per row — a result is a
+  `tool.post` matched to its `tool.pre` by `key` through the unique
+  `(session_id, key)` index, a failure is one whose `is_error` is set, bytes
+  are the stored `tool_bytes` (migration 0018); a call with no stored result
+  counts as a call and is left out of the rate. Each row's `trend` is 8
+  equal buckets of calls placed by `trend_from_ms` and `trend_width_ms`.
+  `hints[]` (`{kind, key, text}`, strongest first) are sentences built only
+  from those counts: a group failing at least 10% and twice the tool's own
+  rate (≥20 results, ≥5 failures), a group returning ≥25% of the tool's
+  output when there is more than one, a group holding ≥30% of ≥50 calls.
+- **Without a licence** `locked` is true, every Premium field is absent, and
+  **`teaser`** carries the strongest hint in full — the one place a Premium
+  figure is sent unpaid, on purpose, so the offer shows a real finding
+  rather than a blur.
+
+Every figure is counted from stored events; nothing is estimated. No new
+index or migration: the pres are read by `idx_events_kind_ts`, the posts by
+the unique key. Cached for 60 s; on the owner's 1 GB database (2026-10-04)
+Bash for all time — about 54k results — took ≈1.2 s cold.
+
 ### Phase 1 additions
 
 ```

@@ -39,7 +39,7 @@ import { useApi } from '@/lib/useApi'
 import { AgentCharacter } from './Characters'
 import { Benefit, Icon, MiniCard, UpsellDialog } from './UpsellDialog'
 
-export type PaidFeature = 'cap' | 'report' | 'gemini'
+export type PaidFeature = 'cap' | 'report' | 'gemini' | 'drill'
 
 /**
  * `body` says what the feature is in one sentence; `points` say why you would
@@ -68,6 +68,15 @@ const FEATURES: Record<
     ],
     // Named because it is the honest cost of not being a secret store.
     setup: 'Set GEMINI_API_KEY in the daemon’s environment and restart it. Google bills you directly.',
+  },
+  drill: {
+    title: 'What each tool returned, and where it failed',
+    body: 'Open a tool and see what came back, what failed, and where it is going.',
+    points: [
+      { icon: 'stack', text: 'Output per command, file or domain — what the model had to read back' },
+      { icon: 'stop', text: 'Failure rate per group, against the tool’s own' },
+      { icon: 'pie', text: 'A trend per group, and hints drawn only from those counts' },
+    ],
   },
   report: {
     title: 'A weekly report, sent where you are',
@@ -125,6 +134,32 @@ function Picture({ feature }: { feature: PaidFeature }) {
         <p className="mt-2.5 flex flex-wrap gap-x-3 font-mono text-[11px] text-fg-muted">
           <span>this answer ≈$0.002 · your key</span>
           <span>Claude this week $466</span>
+        </p>
+      </MiniCard>
+    )
+  }
+  if (feature === 'drill') {
+    const rows: [string, string, string, number][] = [
+      ['go test', '412', '18%', 0.42],
+      ['git diff', '300', '0%', 1],
+      ['make check', '220', '3%', 0.3],
+    ]
+    return (
+      <MiniCard label="Example: the Bash tool broken down by command, with output, failure rate and a hint">
+        <p className="wk-eyebrow" style={{ fontSize: 11 }}>Bash · by command</p>
+        <ul className="mt-2 space-y-1.5 font-mono text-[12px]">
+          {rows.map(([k, calls, fail, out]) => (
+            <li key={k} className="grid grid-cols-[88px_44px_1fr_36px] items-center gap-2">
+              <span className="truncate text-fg">{k}</span>
+              <span className="text-right text-fg-muted">{calls}</span>
+              <span className="h-1.5 rounded-full bg-border-strong/60"><span className="block h-full rounded-full bg-accent" style={{ width: `${out * 100}%` }} /></span>
+              <span className={`text-right ${fail === '18%' ? 'text-danger' : 'text-fg-muted'}`}>{fail}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2.5 text-[12.5px] leading-snug text-fg">
+          <span className="font-semibold">`git diff` returned 41% of all Bash output</span>
+          <span className="text-fg-muted"> — every byte of it read back by the model.</span>
         </p>
       </MiniCard>
     )
