@@ -26,7 +26,7 @@ How the system is built: the daemon, its two data planes, cross-platform rules, 
 
 Two data planes, mirroring what works in Munder Difflin, but in Go:
 
-- **Terminal plane** — `ptyman` spawns each agent as a `claude` process in a PTY, streams bytes to the UI (xterm.js in browser), accepts stdin writes. Shipped in Control (v0.2.0); see [ADR-006](08-decisions.md#adr-006--pty-backend-conpty-capable-wrapper-behind-our-own-ptyman-interface) for the backend choice.
+- **Terminal plane** — `ptyman` spawns each agent as a `claude` process in a PTY, streams bytes to the UI (xterm.js in browser), accepts stdin writes. Shipped in Control (v0.2.0); see [ADR-006](08-decisions.md#adr-006--pty-backend-conpty-capable-wrapper-behind-our-own-ptyman-interface) for the backend choice. The PTY is not held by the daemon: each owned session runs under its own `caprock pty-host` process, which outlives the daemon, so a restart or an upgrade leaves the session running and the next daemon reattaches it ([ADR-033](08-decisions.md#adr-033--an-owned-session-outlives-the-daemon-its-terminal-lives-in-a-pty-host)).
 - **Event plane** — `hookd` is a local HTTP server; a tiny shim registered in each agent's `.claude/settings.json` POSTs hook payloads (PreToolUse, PostToolUse, Stop, SubagentStop, SessionStart, SessionEnd, PreCompact, …). **This is the source of truth for "what is the agent doing."**
 
 **Why not Electron:** the only thing Electron buys is bundling Chromium. A Go daemon + browser tab gives the same UI with zero ABI pain, one `go build` per platform, and the option of a TUI later. Desktop wrapper (Tauri/Wails) is a packaging decision for later, not an architecture decision now ([ADR-003](08-decisions.md#adr-003--ui-stack-react--vite-embedded-in-the-go-binary-via-goembed)).
@@ -88,6 +88,7 @@ Full detail, including what is not supported, is in
 | `api`      | REST + WebSocket fan-out, serves the embedded UI                  | 0     |
 | `ui`       | React + Vite SPA, `go:embed`-ded                                  | 0     |
 | `ptyman`   | Spawn / stream / write / resize / kill PTY sessions               | 1     |
+| `ptyhost`  | Per-session terminal holder that outlives the daemon (ADR-033)    | 1     |
 | `hive`     | Hive dir layout, atomic file ops, single-committer git, ledger    | 2     |
 | `router`   | Mailbox delivery outbox → inbox, ledger append, `mail.*` events   | 2     |
 | `orchestr` | Orchestrator lifecycle, Stop-loop, verification runner, approvals | 2     |
@@ -117,6 +118,52 @@ profile sees `CAPROCK_RESOLVING_ENVIRONMENT=1` and can skip interactive-only
 work. `CAPROCK_DATA_DIR` stays pinned to the daemon's value. Spawned sessions
 (`internal/agents`) and verification commands (`internal/board`) both use it;
 Windows keeps the daemon's environment, which the registry already built.
+
+### Native terminals
+
+"Open in my terminal" hands a session to the user's own terminal application
+instead of the dashboard's xterm (owner request, 2026-10-04: typing in the web
+terminal is uncomfortable). Nothing new watches it: a session running in
+Ghostty is a session the user started themselves, observed through hooks and
+the transcript like any other (Phase 0). `internal/nativeterm` detects what is
+installed and builds the argv; `internal/api` decides what is allowed
+([03-contracts.md](03-contracts.md)). Each terminal is driven through its own
+interface:
+
+- **Terminal.app** — `open -a Terminal <file>.command`. Terminal runs the file
+  in a new window through the user's login shell, so the environment is
+  theirs; the file deletes itself first and ends with `exec "$SHELL" -l`, so
+  the window is a shell in the folder once the agent exits. No AppleScript,
+  so no Automation prompt. Verified on the owner's Mac, 2026-10-04, with a
+  folder named `w dir $HOME 'q' "dq"`.
+- **iTerm2** — `osascript`: `create window with default profile`, then
+  `write text` of the line into its shell. Verified the same day (iTerm2
+  3.6.6). The first use from the daemon asks for Automation permission
+  (System Settings → Privacy & Security → Automation). iTerm2 also opens
+  `.command` files, but asks "OK to run …?" every time, so it is not used.
+- **Ghostty, WezTerm, kitty** (macOS) — `open -na <App>.app --args …`, with
+  their documented flags: Ghostty `--working-directory=<dir> -e <shell> -l -i
+  -c <line>`, WezTerm `start --cwd <dir> -- …`, kitty `--directory <dir> …`.
+  Written from their documentation; none was installed on the owner's Mac on
+  2026-10-04, so none has been run.
+- **Warp** — runs commands only from a launch configuration: Caprock writes
+  `~/.warp/launch_configurations/caprock-open.yaml` (one file, overwritten)
+  and opens `warp://launch/<path>`. Best effort and not yet run: Warp was
+  installed on the owner's Mac but never set up.
+- **Linux** — `$TERMINAL -e`, `gnome-terminal --`, `konsole -e`, `kitty`,
+  `wezterm start --`, `alacritty -e`, `xterm -e`, each running the user's
+  shell with the line; looked up on the login-shell PATH, not the daemon's.
+- **Windows** — Windows Terminal `wt.exe -w new -d <dir> cmd.exe /k <argv>`
+  (a `;` in the folder escaped, or wt reads it as a second tab); otherwise
+  PowerShell or cmd started with `CREATE_NEW_CONSOLE` in the folder.
+
+The line is `cd <dir> && <argv>`, every word POSIX-quoted unless plain, and it
+is proved by a real `/bin/sh` in the tests against folder names with spaces,
+quotes, `$`, backticks and `;`. AppleScript and YAML get their own escaping.
+Argv words must match a plain charset, so an id can never carry shell syntax
+to Windows, where cmd's quoting is not something to trust. Preferred order
+when the user has not chosen: Ghostty, iTerm2, WezTerm, kitty, Terminal, Warp
+on macOS; `$TERMINAL` first on Linux; Windows Terminal, PowerShell, cmd.
 
 Phase 0 architecture slice (no `ptyman`; the ConPTY spike ran in T0 to de-risk Control) — historical:
 
@@ -198,7 +245,7 @@ Implementation notes (`internal/loop`): "normalized-similar" = same tool + `tool
 
 A session is over when its process is gone, not when it goes quiet: Caprock knows the pid of every session it spawns, and the shim reports its parent — the Claude Code that ran it — as `X-Caprock-Ppid`. So a session left alone for a week stays open, and one whose terminal was closed ends on the next sweep. The `SessionEnd` hook still ends a session immediately when it means an exit — and only then, since it also fires on `/clear` and Escape — and Caprock ends the sessions it kills. A `/clear` is the one case liveness cannot judge: it starts a new session id inside the *same* process, so the row it replaces shares a live pid with its replacement and is retired explicitly rather than by the sweep ([ADR-028](08-decisions.md#adr-028--a-session-ends-when-its-process-does)). Three silence thresholds preceded this and every one was wrong for somebody — see [ADR-028](08-decisions.md#adr-028--a-session-ends-when-its-process-does).
 
-A reboot is the exception to trusting a pid: it hands the old numbers to other programs, so a session last heard from before the machine booted is ended whatever its pid answers (`store.BootTime`). A session Caprock started before its own restart still has its process but not its terminal; it is marked `detached` and offered continue ([03-contracts.md](03-contracts.md)).
+A reboot is the exception to trusting a pid: it hands the old numbers to other programs, so a session last heard from before the machine booted is ended whatever its pid answers (`store.BootTime`). A session Caprock starts outlives a restart of Caprock: its terminal is held by a `pty-host` process, and the next daemon reattaches it before its first sweep ([ADR-033](08-decisions.md#adr-033--an-owned-session-outlives-the-daemon-its-terminal-lives-in-a-pty-host)). One that still has its process but no terminal here — started by a release from before pty-hosts, or whose holder died — is marked `detached` and offered continue ([03-contracts.md](03-contracts.md)).
 
 Two carve-outs: agents Caprock only observes (OpenCode) are judged by the clock alone, since their rows come out of another tool's database with no process behind them; and sessions with no pid keep a 24-hour staleness sweep, because there is nothing to ask.
 
@@ -236,12 +283,14 @@ internal/ptyman/      # PTY backend (go-pty; ConPTY on Windows) — Control
 internal/agents/      # owned-session manager: spawn/stream/input/signal/exit, per-agent argv, worktree, folder-trust — Control
 internal/sessionlink/ # joins a spawned Codex/OpenCode session to the id the agent gives it — Control
 internal/relay/       # the brief that carries a session on in a new one, any agent (ADR-032) — Control
+internal/ptyhost/     # `caprock pty-host`: one process per owned session holding its PTY, so it outlives the daemon (ADR-033) — Control
+internal/termbuf/     # scrollback ring + terminal-mode tracking, shared by the daemon and the pty-host
 internal/hive/        # on-disk orchestration state: agents/tasks/mailboxes/ledger, YAML — Orchestrate
 internal/board/       # task board: verification runner, destructive-command policy, approvals — Orchestrate
 internal/orchestrator/ # orchestrator + worker lifecycle, the mailbox-router reconciler — Orchestrate
 ui/                   # React + Vite app; builds into internal/api/dist (go:embed)
 pricing/              # pricing.json + embed.go (versioned pricing table)
-testdata/             # hook payloads, transcript fixtures + expected totals, loop fixtures
+testdata/             # hook payloads, transcript fixtures + expected totals, loop fixtures, fakeclaude (a Go line-REPL `claude`)
 ```
 
 Tooling, versions, CI, and release mechanics: [10-infrastructure.md](10-infrastructure.md).

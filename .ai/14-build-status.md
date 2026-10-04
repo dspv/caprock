@@ -72,6 +72,71 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-04 (later) — Settings in plain words, and the phone by QR code
+
+The owner on the Settings screen, translated: "honestly, NOTHING here is
+understandable, and it should be easy and simple" — above all the block for
+reading Caprock from a phone. It is now sections with plain titles and a
+one-line description per option; the phone is three steps and one button that
+turns network access on and shows a QR code drawn in the browser
+(`ui/src/lib/qr.ts`). Scanning it pairs the phone with no typing. Verified on an
+isolated daemon: the rendered code decoded to the pairing link, a second
+browser on the LAN address paired from that link alone and read the dashboard,
+and Remove (while on and while off) took it out. Three defects found on the
+way: the CGNAT range was admitted as Tailscale on any interface (now only on
+Tailscale's own), the off state reported no devices although `devices.json`
+kept them, and the header was 882px wide on a 390px phone. See
+[04-ui.md § Settings](04-ui.md#settings) and [03-contracts.md](03-contracts.md).
+### 2026-10-04 (night) — Feedback round on Now
+
+- Owner feedback on the preview, all on Now: bigger agent tiles with the ring
+  labelled "of spend"; Live pulse rows open in place (today's cost and
+  tokens, live sessions with state, terminal / Open repo / Open session),
+  remembered per browser; the pulse's agent indicator at reading size with a
+  state pill; plan-limit rings that show only what is used, a forecast as
+  one sentence from the new `limit_at`, and a one-line explainer; the hooks
+  banner installs hooks itself (`POST /v1/hooks/install`, the CLI's code
+  path), names the settings file and can be dismissed.
+
+### 2026-10-04 — Sessions Caprock starts survive a Caprock restart
+
+The owner upgraded, Caprock restarted through `launchctl kickstart`, and the
+session he had started from the dashboard was gone — `claude` exited 143, the
+SIGTERM the daemon's own shutdown sent it. He expected to come back to it
+running. Now each owned session runs under a `caprock pty-host` process that
+holds its PTY and scrollback and outlives the daemon; the next daemon
+reattaches it at startup, repaints the terminal from the holder's ring, and
+typing carries on. Pause, kill and resize go through the holder; the session's
+pid is still the agent's. The plist gains `AbandonProcessGroup` and the systemd
+unit `KillMode=process` — existing installs pick them up on `caprock service
+install`. The "terminal went with that run" panel is rewritten for what is left
+(sessions from older releases, a holder that died) with **Continue it here** as
+the primary action. A smoke test runs the real binary with a fake `claude`,
+stops the daemon (SIGTERM, then a hard kill), starts a new one, and types into
+the same session, on all three OSes. Honest limit: a session started by the
+release before this one is in that daemon's PTY, so the upgrade that installs
+this still ends it. See [ADR-033](08-decisions.md#adr-033--an-owned-session-outlives-the-daemon-its-terminal-lives-in-a-pty-host)
+and [03-contracts.md § Terminal holders](03-contracts.md#terminal-holders-caprock-pty-host).
+### 2026-10-04 — Open a session in your own terminal
+
+The owner finds typing in the web terminal uncomfortable. A session now opens
+in the terminal application the user already has — **Open in Ghostty ↗** on
+the session's title row beside Open repo, and on the Projects `>_` menu — running the
+agent's own resume command in its folder, and Caprock goes on watching it
+through hooks and the transcript like any session started by hand. Ownership
+decides what is offered: an ended session resumes; one Caprock runs can be
+moved (its process stopped first, then the window opened, then `owned`
+cleared) or forked; one running elsewhere can only be forked, and only Claude
+Code forks without a copy of the cost. Verified for real on the owner's Mac:
+Terminal.app (a `.command` file, no Automation prompt) and iTerm2 3.6.6
+(AppleScript), each opening a folder named `w dir $HOME 'q' "dq"` and running
+a harmless `echo`. Ghostty, WezTerm and kitty are written from their
+documentation (none installed there), Warp is best effort (installed, never set
+up), and Linux and Windows argv are tested as data, not run. iTerm2 asks
+"OK to run …?" for every `.command`, which is why it is driven over AppleScript.
+No migration. See [02-architecture.md § Native terminals](02-architecture.md#native-terminals),
+[03-contracts.md](03-contracts.md) and [04-ui.md](04-ui.md#open-in-my-terminal).
+
 ### 2026-10-04 (evening) — The terminal takes the keyboard first; repo links; kept figures
 
 The owner reported that opening a session's terminal froze the browser and

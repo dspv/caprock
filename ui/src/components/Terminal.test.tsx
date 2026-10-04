@@ -4,7 +4,7 @@
  * these defects invisible until someone read Russian output on it.
  */
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest'
 
 const ctor = vi.hoisted(() => vi.fn())
 
@@ -20,6 +20,7 @@ const keyHandler = vi.hoisted((): { fn: KeyHandler | null } => ({ fn: null }))
 // socket's creation — so a test can say the keyboard and the socket come
 // before the slow GPU set-up.
 const steps = vi.hoisted(() => [] as string[])
+const resets = vi.hoisted(() => ({ n: 0 }))
 
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
@@ -40,6 +41,7 @@ vi.mock('@xterm/xterm', () => ({
     open() {}
     focus() { steps.push('focus') }
     write(d: string) { written.push(d) }
+    reset() { resets.n++ }
     onData() { return { dispose() {} } }
     // The size the daemon is told about. A real terminal reports these after
     // it has measured its own cell; the fake reports a plausible pair so the
@@ -307,11 +309,71 @@ describe('a session Caprock did not start', () => {
 describe('a session Caprock started before it restarted', () => {
   it('says the terminal is gone and offers continue, not an empty screen', () => {
     // FB-040: the tab opened a blank terminal for a session whose terminal
-    // went with the previous run, while the list's continue worked.
-    render(<TerminalView sessionId="s1" owned={false} detached resume={<button>branch here</button>} />)
-    expect(document.body.textContent).toMatch(/Caprock restarted/)
-    expect(screen.getByRole('button', { name: 'branch here' })).toBeTruthy()
+    // went with the previous run, while the list's continue worked. Then the
+    // words were the problem: the owner could not tell what "its terminal
+    // went with that run" meant. Plain words, and continue named as the way on.
+    render(<TerminalView sessionId="s1" owned={false} detached resume={<button>Continue it here</button>} />)
+    expect(document.body.textContent).toMatch(/terminal was closed when Caprock restarted/)
+    expect(document.body.textContent).toMatch(/The conversation is saved/)
+    expect(screen.getByRole('button', { name: 'Continue it here' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: /start a session here/i })).toBeNull()
+  })
+
+  it('does not promise a continue it cannot offer', () => {
+    // Transcript gone: the reason is shown instead of the button, so the line
+    // pointing at the button must go too.
+    render(<TerminalView sessionId="s1" owned={false} detached canContinue={false} resume={<span>can’t continue here: deleted</span>} />)
+    expect(document.body.textContent).toMatch(/terminal was closed when Caprock restarted/)
+    expect(document.body.textContent).not.toMatch(/conversation is saved/)
+  })
+})
+
+describe('a Caprock restart under an open terminal', () => {
+  type Sock = { onclose?: (e: { code: number }) => void; onmessage?: (e: { data: string }) => void; onopen?: () => void }
+  const socks: Sock[] = []
+  beforeEach(() => {
+    socks.length = 0
+    written.length = 0
+    resets.n = 0
+    vi.useFakeTimers()
+    vi.stubGlobal('WebSocket', class {
+      static OPEN = 1
+      readyState = 1
+      binaryType = ''
+      onclose?: (e: { code: number }) => void
+      onmessage?: (e: { data: string }) => void
+      onopen?: () => void
+      constructor() { socks.push(this) }
+      send() {}
+      close() {}
+    })
+  })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('reconnects when the connection drops, and repaints rather than duplicating', () => {
+    // ADR-033: the session lives in its pty-host and outlives the daemon, so
+    // a dropped socket is Caprock restarting, not the session ending. It used
+    // to print "[session ended]" over a session that was still running.
+    render(<TerminalView sessionId="s-re" owned />)
+    expect(socks).toHaveLength(1)
+    socks[0]?.onclose?.({ code: 1006 })
+    expect(written.join('')).toMatch(/reconnecting/)
+    expect(written.join('')).not.toMatch(/session ended/)
+    vi.advanceTimersByTime(1000)
+    expect(socks).toHaveLength(2)
+    // The next daemon sends the scrollback; the screen is cleared first.
+    socks[1]?.onmessage?.({ data: 'screen' })
+    expect(resets.n).toBe(1)
+    socks[1]?.onmessage?.({ data: 'more' })
+    expect(resets.n).toBe(1)
+  })
+
+  it('says the session ended when the daemon says so, and stops', () => {
+    render(<TerminalView sessionId="s-end" owned />)
+    socks[0]?.onclose?.({ code: 1000 })
+    expect(written.join('')).toMatch(/session ended/)
+    vi.advanceTimersByTime(5000)
+    expect(socks).toHaveLength(1)
   })
 })
 

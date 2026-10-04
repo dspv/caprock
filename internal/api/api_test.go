@@ -449,12 +449,12 @@ func TestPaceForecastHonesty(t *testing.T) {
 	_ = store.RecordRateLimit(ctx, st.DB(), store.RateLimitSnapshot{Window: "five_hour", Ts: base, UsedPercentage: 40, ResetsAt: reset}, "s1")
 	_ = store.RecordRateLimit(ctx, st.DB(), store.RateLimitSnapshot{Window: "five_hour", Ts: now.UnixMilli(), UsedPercentage: 50, ResetsAt: reset}, "s1")
 	snap := store.RateLimitSnapshot{Window: "five_hour", UsedPercentage: 50, ResetsAt: reset}
-	if f := s.paceForecast(ctx, "five_hour", snap); f == "" || !strings.Contains(f, "limit at current pace") {
+	if f, at := s.paceForecast(ctx, "five_hour", snap); f == "" || !strings.Contains(f, "limit at current pace") || at <= s.d.Now().UnixMilli() || at >= reset*1000 {
 		t.Fatalf("expected a forecast for a steep rising slope, got %q", f)
 	}
 
 	// At 100% used → never a forecast.
-	if f := s.paceForecast(ctx, "five_hour", store.RateLimitSnapshot{Window: "five_hour", UsedPercentage: 100, ResetsAt: reset}); f != "" {
+	if f, _ := s.paceForecast(ctx, "five_hour", store.RateLimitSnapshot{Window: "five_hour", UsedPercentage: 100, ResetsAt: reset}); f != "" {
 		t.Fatalf("forecast at 100%%: %q", f)
 	}
 
@@ -463,7 +463,7 @@ func TestPaceForecastHonesty(t *testing.T) {
 	base2 := now.Add(-2 * time.Minute).UnixMilli()
 	_ = store.RecordRateLimit(ctx, st.DB(), store.RateLimitSnapshot{Window: "seven_day", Ts: base2, UsedPercentage: 50, ResetsAt: reset}, "s1")
 	_ = store.RecordRateLimit(ctx, st.DB(), store.RateLimitSnapshot{Window: "seven_day", Ts: now.UnixMilli(), UsedPercentage: 50.1, ResetsAt: reset}, "s1")
-	if f := s.paceForecast(ctx, "seven_day", store.RateLimitSnapshot{Window: "seven_day", UsedPercentage: 50.1, ResetsAt: reset}); f != "" {
+	if f, at := s.paceForecast(ctx, "seven_day", store.RateLimitSnapshot{Window: "seven_day", UsedPercentage: 50.1, ResetsAt: reset}); f != "" || at != 0 {
 		t.Fatalf("gentle slope that resets first should not forecast, got %q", f)
 	}
 }

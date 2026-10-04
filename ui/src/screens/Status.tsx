@@ -1,18 +1,203 @@
-import { useLightTone } from '@/lib/theme'
-import { api, isPairedDevice } from '@/lib/api'
+/**
+ * Settings (#/settings).
+ *
+ * The owner's verdict on the screen this replaced (translated): "honestly,
+ * NOTHING here is understandable, and it should be easy and simple." It was
+ * one panel of mixed checkboxes, a plan you could see but had to change
+ * somewhere else, a phone switch that took a paragraph to explain, and a
+ * diagnostic table nobody but us reads.
+ *
+ * Now: short sections with plain titles, in the order people come here for
+ * them — the phone first, because that is what the owner opened it for. Every
+ * option says in one line what happens when it is on. Anything only a few
+ * people need (the memory experiment, storage composition, the daemon's own
+ * figures) is one click down, not on screen.
+ *
+ * A paired device sees only what it may: appearance (stored in its own
+ * browser), storage and the install details. Settings and pairing change on
+ * the machine Caprock runs on (ADR-029), and the daemon refuses them anyway.
+ */
+import { useLightTone, useTheme } from '@/lib/theme'
+import { api, isPairedDevice, type Status } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtDuration, fmtUSD } from '@/lib/format'
-import { Empty, Panel } from '@/components/ui'
-import { usePlan } from '@/components/PlanPicker'
+import { Empty } from '@/components/ui'
+import { PlanOptions, usePlan } from '@/components/PlanPicker'
 import { LicenseField } from '@/components/LicenseField'
 import { Pairing } from '@/components/Pairing'
 import { StoragePanel } from '@/components/Storage'
+import { Choice, Details, Section, Toggle } from '@/components/SettingsParts'
 
 export function StatusScreen() {
   const st = useApi(() => api.status(), [], { live: false, intervalMs: 5000 })
   const s = st.data
   if (st.error && !s) return <Empty title="Cannot reach the daemon">{st.error.message}</Empty>
   if (!s) return <div className="text-fg-muted">loading…</div>
+  const owner = !isPairedDevice()
+  return (
+    <div className="mx-auto grid w-full max-w-3xl gap-3">
+      <h1 className="px-1 pt-1 text-[20px] font-medium text-fg">Settings</h1>
+      {/* Problems first: each one means something is not being captured or
+        * cannot be started, and none of them is a preference. */}
+      <Problems s={s} />
+      {owner && <Pairing />}
+      {owner && <PlanSection />}
+      <AppearanceSection />
+      {owner && <PrivacySection />}
+      {owner && <MemorySection />}
+      <StoragePanel />
+      <AboutSection s={s} />
+    </div>
+  )
+}
+
+function PlanSection() {
+  const [plan, savePlan] = usePlan()
+  if (!plan) return null
+  const current =
+    plan.plan_kind === 'metered'
+      ? `${plan.plan_label || 'API'} · billed per token`
+      : plan.plan_kind === 'flat'
+        ? `${plan.plan_label || 'plan'} · ${fmtUSD(plan.plan_usd_per_month)}/mo`
+        : 'not set'
+  return (
+    <Section title="Plan & licence">
+      <div className="grid gap-2">
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          <span className="text-fg">Your plan:</span>
+          <span className={`mono ${plan.plan_kind ? 'text-fg' : 'text-accent'}`}>{current}</span>
+        </div>
+        <p className="text-[12px] leading-relaxed text-fg-muted">
+          How you pay for Claude Code, so Caprock can set your usage against it. It cannot detect this, so it asks.
+        </p>
+        <div className="max-w-sm rounded-md border border-border p-1.5">
+          <PlanOptions plan={plan} onSave={savePlan} />
+        </div>
+      </div>
+      <div className="border-t border-border pt-3">
+        <LicenseField plan={plan} save={savePlan} />
+      </div>
+    </Section>
+  )
+}
+
+function AppearanceSection() {
+  const [theme, , setTheme] = useTheme()
+  const [tone, setTone] = useLightTone()
+  return (
+    <Section title="Appearance">
+      <Choice
+        label="Theme"
+        value={theme}
+        options={[
+          { value: 'dark', label: 'Dark' },
+          { value: 'light', label: 'Light' },
+        ]}
+        onChange={setTheme}
+      />
+      <Choice
+        label="Light theme"
+        value={tone}
+        options={[
+          { value: 'paper', label: 'Paper' },
+          { value: 'white', label: 'White' },
+        ]}
+        onChange={(t) => {
+          setTone(t)
+          // Choosing a light tone while dark is showing would change nothing
+          // visible, which reads as a broken control.
+          if (theme !== 'light') setTheme('light')
+        }}
+      />
+      <p className="text-[12px] text-fg-muted">Saved in this browser only.</p>
+    </Section>
+  )
+}
+
+function PrivacySection() {
+  const [plan, savePlan] = usePlan()
+  if (!plan) return null
+  return (
+    <Section title="Privacy">
+      <Toggle
+        checked={plan.update_checks}
+        onChange={(on) => savePlan({ update_checks: on })}
+        label="Tell me when a new version is out"
+        hint="Once a day, asks GitHub for the latest version number. Nothing about you is sent, and nothing goes to us."
+      />
+      <p className="text-[12px] leading-relaxed text-fg-muted">
+        That is the only thing Caprock ever sends over the internet. Everything else stays on this computer.
+      </p>
+    </Section>
+  )
+}
+
+function MemorySection() {
+  const [plan, savePlan] = usePlan()
+  if (!plan) return null
+  const on = plan.memory !== false
+  return (
+    <Section title="Memory between sessions">
+      {/* Says what Claude gets, not how: "a new session" was our jargon, and
+        * "remind Claude" read as an instruction to the reader. */}
+      <Toggle
+        checked={on}
+        onChange={(v) => savePlan({ memory: v })}
+        label="Claude knows what you did here last time"
+        hint="When you start Claude in a folder, it is handed the last thing a session there wrote — a few paragraphs, from the past two weeks. Quick chats are skipped."
+      />
+      {on && (
+        <Details summary="Experiments">
+          <Toggle
+            checked={(plan.memory_holdout_pct ?? 0) > 0}
+            onChange={(v) => savePlan({ memory_holdout_pct: v ? 25 : 0 })}
+            label="Measure whether it helps"
+            hint="One new session in four starts without it, and the Memory screen compares how fast each kind gets to its first edit."
+          />
+        </Details>
+      )}
+    </Section>
+  )
+}
+
+/** Things that are wrong, each with the one action that fixes it. */
+function Problems({ s }: { s: Status }) {
+  const missingHooks = s.hooks ? (s.hooks.missing ?? []) : []
+  return (
+    <>
+      {/* A dead tailer meant nothing was being captured while every other row
+        * on this screen looked healthy. */}
+      {s.ingest_error && (
+        <Section title="Nothing new is being recorded">
+          <p className="text-fg-muted">
+            <span className="mono text-fg break-all">{s.ingest_error}</span>. Check that
+            <span className="mono text-fg"> ~/.claude</span> is readable, then restart with
+            <span className="mono text-fg"> caprock down &amp;&amp; caprock up</span>.
+          </p>
+        </Section>
+      )}
+      {!s.claude_available && (
+        <Section title="Claude Code was not found">
+          <p className="text-fg-muted">
+            Caprock cannot start sessions for you, but it still records every session you start yourself. Install
+            Claude Code, or make sure <span className="mono">claude</span> is on the PATH Caprock was started with.
+          </p>
+        </Section>
+      )}
+      {missingHooks.length > 0 && (
+        <Section title="Live activity is a few seconds late">
+          <p className="text-fg-muted">
+            Some Claude Code hooks are missing (<span className="mono break-all">{missingHooks.join(', ')}</span>). Run{' '}
+            <span className="mono text-fg">caprock hooks install</span> to see activity as it happens.
+          </p>
+        </Section>
+      )}
+    </>
+  )
+}
+
+/** The daemon's own figures — for a bug report, not for deciding anything. */
+function AboutSection({ s }: { s: Status }) {
   const rows: [string, string][] = [
     ['version', s.version],
     ['url', s.url],
@@ -25,12 +210,8 @@ export function StatusScreen() {
     ['events stored', `${s.events.toLocaleString()}${s.retention_days > 0 ? ` · pruned after ${s.retention_days}d` : ' · kept forever (see Storage)'}`],
     ['orchestration', s.orchestration ? 'on (--hive)' : 'off'],
     // A feature that acts before you type is one nobody can see working. This
-    // says whether it can, and for how much — without opening a session to
-    // find out.
+    // says whether it can, and for how much — and names the screen to look at.
     ['memory', s.memory && s.memory.repos > 0
-      // Names the screen, because "memory: on in 4 folders" told a reader the
-      // feature exists and not where to look at it — asked verbatim: "в
-      // статусе где??".
       ? `on in ${s.memory.repos} ${s.memory.repos === 1 ? 'folder' : 'folders'}${s.memory.held ? `, held since ${s.memory.held}` : ''} — search it under Memory`
       : 'nothing to carry over yet — it starts once a session leaves something behind'],
     // Spawning needs the binary. When it is missing every spawn control is
@@ -56,160 +237,28 @@ export function StatusScreen() {
   if (s.ingest_error) rows.push(['ingest error', `STOPPED: ${s.ingest_error} — nothing is being captured`])
   if (s.ingest) rows.push(['ingest', `${s.ingest.files_known} transcripts · ${s.ingest.events_stored} events stored · ${s.ingest.events_deduped} deduped · ${s.ingest.lines_malformed} malformed lines · backfill ${s.ingest.backfill_done ? 'done' : 'running'}`])
   return (
-    <div className="grid gap-3 max-w-3xl">
-      {/* Settings and pairing are changed on the machine Caprock runs on; a
-        * paired device reads (ADR-029), and the daemon refuses it the rest. */}
-      {!isPairedDevice() && <SettingsPanel />}
-      {!isPairedDevice() && <Pairing />}
-      {/* A read, so a paired device sees it too: sizes and counts, nothing
-        * that changes anything. */}
-      <StoragePanel />
-      <Panel title="Daemon">
+    <Section title="About this install">
+      <p className="text-fg-muted">
+        Caprock <span className="mono text-fg">{s.version}</span> · running for {fmtDuration(s.uptime_s * 1000)} ·{' '}
+        <span className="num text-fg">{s.events.toLocaleString()}</span> events recorded
+      </p>
+      <Details summary="Details">
+        {/* Scrolls inside itself on a narrow screen rather than pushing the
+          * page sideways — the fault on a phone is a body that scrolls
+          * horizontally, not a table that is cut off. */}
         <div className="overflow-x-auto">
-          {/* Scrolls inside itself on a narrow screen. Without this the table
-            * pushes the whole page sideways on a tablet and takes every other
-            * panel with it — the fault is not a table that is cut off, it is a
-            * body that scrolls horizontally. */}
           <table className="w-full text-[12px]">
             <tbody>
               {rows.map(([k, v]) => (
                 <tr key={k} className="border-b border-border/60 last:border-0">
-                  <td className="px-3 py-1 text-fg-muted w-32">{k}</td>
-                  <td className="px-3 py-1 mono break-all">{v}</td>
+                  <td className="w-32 py-1 pr-3 align-top text-fg-muted">{k}</td>
+                  <td className="mono break-all py-1">{v}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      </Panel>
-      {/* A dead tailer meant nothing was being captured while every other row
-        * on this screen looked healthy. */}
-      {s.ingest_error && (
-        <Panel title="Ingest stopped">
-          <div className="px-3 py-2 text-[12px] text-fg-muted">
-            No new sessions are being captured: <span className="mono text-fg">{s.ingest_error}</span>. Check that
-            <span className="mono text-fg"> ~/.claude</span> is readable, then restart with
-            <span className="mono text-fg"> caprock down &amp;&amp; caprock up</span>.
-          </div>
-        </Panel>
-      )}
-      {!s.claude_available && (
-        <Panel title="claude not found">
-          <div className="px-3 py-2 text-[12px] text-fg-muted">
-            The <span className="mono">claude</span> binary was not found on this machine, so Caprock cannot spawn
-            sessions. It still observes every session you start yourself. Install Claude Code, or make sure
-            <span className="mono"> claude</span> is on the PATH the daemon was started with.
-          </div>
-        </Panel>
-      )}
-      {s.hooks && (s.hooks.missing ?? []).length > 0 && (
-        <Panel title="Hooks not fully installed">
-          <div className="px-3 py-2 text-[12px] text-fg-muted">
-            Missing: <span className="mono">{(s.hooks.missing ?? []).join(', ')}</span>. Run <span className="mono">caprock hooks install</span> for real-time activity; transcript tailing keeps working with a few seconds of delay.
-          </div>
-        </Panel>
-      )}
-    </div>
-  )
-}
-
-/**
- * The settings a user can actually change. This screen is what the header's
- * "status" link opens and the hooks banner sends people to, so it read as the
- * settings screen while offering nothing to set — the plan lived only in a
- * header chip, and release checks could only be turned on from a banner that
- * disappears once dismissed.
- */
-/** Paper or white for the light theme; dark is unaffected. */
-function LightToneField() {
-  const [tone, setTone] = useLightTone()
-  return (
-    <div className="flex items-baseline gap-2 border-t border-border pt-2" role="radiogroup" aria-label="Light theme">
-      <span className="text-fg-muted w-28 shrink-0">Light theme</span>
-      {(['paper', 'white'] as const).map((t) => (
-        <label key={t} className="inline-flex items-center gap-1.5 cursor-pointer mr-3">
-          <input
-            type="radio"
-            name="light-tone"
-            className="accent-[var(--color-accent)]"
-            checked={tone === t}
-            onChange={() => setTone(t)}
-          />
-          <span className="text-fg">{t === 'paper' ? 'Paper' : 'White'}</span>
-        </label>
-      ))}
-    </div>
-  )
-}
-
-function SettingsPanel() {
-  const [plan, savePlan] = usePlan()
-  if (!plan) return null
-  return (
-    <Panel title="Settings">
-      <div className="grid gap-2 px-3 py-2.5 text-[12px]">
-        <label className="flex items-start gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            className="accent-[var(--color-accent)] mt-0.5"
-            checked={plan.update_checks}
-            onChange={(e) => savePlan({ ...plan, update_checks: e.target.checked })}
-          />
-          <span>
-            <span className="text-fg">Check GitHub for new releases</span>
-            <span className="block text-[11px] text-fg-muted">
-              Asks GitHub for a version number, at most once a day. No usage
-              data is sent, and nothing is sent to us.
-            </span>
-          </span>
-        </label>
-        {/* Says what Claude does, not what the user should do. "Remind Claude"
-          * read as an instruction to the reader; "tell a new session" was our
-          * own jargon — nobody thinks of themselves as starting a session. */}
-        <label className="flex items-start gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            className="accent-[var(--color-accent)] mt-0.5"
-            checked={plan.memory !== false}
-            onChange={(e) => savePlan({ ...plan, memory: e.target.checked })}
-          />
-          <span>
-            <span className="text-fg">Claude knows what you did here last time</span>
-            <span className="block text-[11px] text-fg-muted">
-              This folder only. Quick chats get nothing.
-            </span>
-          </span>
-        </label>
-        {plan.memory !== false && (
-          <label className="flex items-start gap-2 cursor-pointer pl-5">
-            <input
-              type="checkbox"
-              className="accent-[var(--color-accent)] mt-0.5"
-              checked={(plan.memory_holdout_pct ?? 0) > 0}
-              onChange={(e) => savePlan({ ...plan, memory_holdout_pct: e.target.checked ? 25 : 0 })}
-            />
-            <span>
-              <span className="text-fg">Measure whether it helps</span>
-              <span className="block text-[11px] text-fg-muted">
-                One new session in four starts without it, so the two can be compared under Memory.
-              </span>
-            </span>
-          </label>
-        )}
-        <LightToneField />
-        <div className="flex items-baseline gap-2 border-t border-border pt-2">
-          <span className="text-fg-muted w-28 shrink-0">Your plan</span>
-          <span className="mono text-fg">
-            {plan.plan_kind === 'metered'
-              ? `${plan.plan_label || 'API'} · billed per token`
-              : plan.plan_kind === 'flat'
-                ? `${plan.plan_label || 'plan'} · ${fmtUSD(plan.plan_usd_per_month)}/mo`
-                : 'not set'}
-          </span>
-          <span className="text-[11px] text-fg-faint ml-auto">change it in the header</span>
-        </div>
-              <LicenseField plan={plan} save={savePlan} />
-      </div>
-    </Panel>
+      </Details>
+    </Section>
   )
 }

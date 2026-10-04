@@ -1,57 +1,115 @@
 /**
- * Letting a tablet or a phone in.
+ * Open Caprock on your phone.
  *
- * The daemon binds loopback and nothing else unless it was started with
- * `--lan`, so this panel has two quite different jobs depending on which.
+ * The owner's verdict on the panel this replaced (translated): "honestly,
+ * NOTHING here is understandable, and it should be easy and simple." It asked
+ * the reader to "let this network in", then to find an address, then to ask
+ * for a code, then to type both — four ideas before anything happened, and the
+ * one thing a person holding a phone wants to do (point the camera at the
+ * screen) was not offered at all.
  *
- * **Off** — explain what the switch does and what it costs, and say how to
- * turn it on. It is a restart rather than a toggle here on purpose: loopback
- * only is what the product promises, and a promise that survives a restart
- * silently is one nobody re-consents to. Someone who opens their laptop in a
- * coworking space should not be carrying a decision they made at home.
+ * So it is three steps and one button. **Show a code** turns network access on
+ * and issues a pairing code in the same press, and the code is drawn as a QR
+ * code whose link carries it: the camera opens the page, the page pairs, and
+ * the phone appears in the list below. The six digits are still shown in big
+ * type for a phone whose camera will not cooperate.
  *
- * **On** — show the address to type, a code to prove it is you, and every
- * device that has been let in, each with a way to throw it out. The code
- * counts down because a code with no visible expiry looks like a password,
- * and people treat passwords as things to write down.
+ * The state is said at a glance in the panel's corner — Off, Waiting for your
+ * phone…, 1 phone connected — because "is it on?" is the first question
+ * anyone asks of a switch that lets other devices in.
+ *
+ * What did not change is the security model (ADR-029), only how it is said:
+ * one line. Pairing is required; a paired phone reads and does not control;
+ * listening stops when Caprock restarts; the paired list is kept.
+ *
+ * The QR code is drawn here, in the browser, by ui/src/lib/qr.ts: the link
+ * carries a code that lets a device in, and it is not sent anywhere to be
+ * rendered.
  */
-import { useEffect, useState } from 'react'
-import { api, errText, type PairedDevice } from '@/lib/api'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { api, errText, type PairedDevice, type PairState } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
-import { Panel } from '@/components/ui'
+import { Section } from '@/components/SettingsParts'
 import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
+import { encodeQR, qrPath } from '@/lib/qr'
+
+/** The link a phone's camera opens: the address, with the code to redeem. */
+export function pairLink(url: string, code: string): string {
+  return `${url.replace(/\/+$/, '')}/#/pair?code=${encodeURIComponent(code)}`
+}
+
+export type PhoneStatus = { tone: 'off' | 'waiting' | 'ok' | 'on'; label: string }
+
+/** What the corner of the panel says, from the daemon's state alone. */
+export function phoneStatus(s: Pick<PairState, 'enabled' | 'code' | 'devices'>): PhoneStatus {
+  const n = s.devices.length
+  const noun = deviceNoun(s.devices)
+  if (!s.enabled) {
+    return { tone: 'off', label: n > 0 ? `Off · ${n} ${noun}${n === 1 ? '' : 's'} paired` : 'Off' }
+  }
+  if (s.code) return { tone: 'waiting', label: 'Waiting for your phone…' }
+  if (n > 0) return { tone: 'ok', label: `${n} ${noun}${n === 1 ? '' : 's'} connected` }
+  return { tone: 'on', label: 'On · nothing paired yet' }
+}
+
+/** "phone" when every paired device looks like one, "device" otherwise. */
+function deviceNoun(devices: PairedDevice[]): string {
+  return devices.length > 0 && devices.every((d) => /phone|android/i.test(d.name)) ? 'phone' : 'device'
+}
+
+/** "this Mac" on a Mac: the steps name the machine the reader is looking at. */
+function thisMachine(): string {
+  const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent
+  if (/Macintosh/.test(ua)) return 'this Mac'
+  if (/Windows/.test(ua)) return 'this PC'
+  return 'this computer'
+}
 
 export function Pairing() {
-  const state = useApi(() => api.pairState(), [], { intervalMs: 5000 })
-  const now = useNow(1000)
-  const [code, setCode] = useState('')
-  const [codeUntil, setCodeUntil] = useState(0)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [codeUntil, setCodeUntil] = useState(0)
+  const [joined, setJoined] = useState<PairedDevice | null>(null)
+  const now = useNow(1000)
 
+  // Polled fast only while a code is on screen, so the phone shows up in the
+  // list within a couple of seconds of being paired.
+  const [fast, setFast] = useState(false)
+  const state = useApi(() => api.pairState(), [], { live: false, intervalMs: fast ? 1500 : 5000 })
   const s = state.data
+  const code = s?.code ?? ''
 
-  // A code issued in another tab, or one still live from before this panel was
-  // opened, is the same code — read it from the daemon rather than keeping two
-  // ideas of what is outstanding.
   useEffect(() => {
-    if (!s?.code || code) return
-    setCode(s.code)
-    setCodeUntil(Date.now() + (s.expires_in_sec ?? 0) * 1000)
-  }, [s?.code, s?.expires_in_sec, code])
+    setFast(Boolean(code))
+    // A code issued in another tab, or still live from before this panel was
+    // opened, is the same code — its expiry comes from the daemon.
+    if (code && s?.expires_in_sec) setCodeUntil(Date.now() + s.expires_in_sec * 1000)
+  }, [code, s?.expires_in_sec])
 
-  const secondsLeft = codeUntil ? Math.max(0, Math.ceil((codeUntil - now) / 1000)) : 0
+  // A device that appears while a code is showing is the phone that just
+  // scanned it. Say so in words, beside the list it joined.
+  const known = useRef<Set<string> | null>(null)
   useEffect(() => {
-    if (code && codeUntil && secondsLeft === 0) setCode('')
-  }, [code, codeUntil, secondsLeft])
+    if (!s) return
+    const ids = new Set(s.devices.map((d) => d.id))
+    if (known.current) {
+      const fresh = s.devices.find((d) => !known.current!.has(d.id))
+      if (fresh) setJoined(fresh)
+    }
+    known.current = ids
+  }, [s])
 
-  async function setLAN(on: boolean) {
+  async function showCode() {
     setBusy(true)
     setError('')
+    setJoined(null)
     try {
-      await api.setLAN(on)
-      setCode('')
+      // One press does both: the listener has to be up before a phone can
+      // reach the page the code opens.
+      if (!s?.enabled) await api.setLAN(true)
+      const r = await api.pairCode()
+      setCodeUntil(Date.now() + r.expires_in_sec * 1000)
       state.refresh()
     } catch (e) {
       setError(errText(e))
@@ -60,13 +118,13 @@ export function Pairing() {
     }
   }
 
-  async function newCode() {
+  async function turn(on: boolean) {
     setBusy(true)
     setError('')
+    setJoined(null)
     try {
-      const r = await api.pairCode()
-      setCode(r.code)
-      setCodeUntil(Date.now() + r.expires_in_sec * 1000)
+      await api.setLAN(on)
+      state.refresh()
     } catch (e) {
       setError(errText(e))
     } finally {
@@ -74,10 +132,27 @@ export function Pairing() {
     }
   }
 
-  async function revoke(id: string) {
+  // Withdraws the code on the daemon, not just from the screen: a code hidden
+  // here but still valid there would be a door left open behind the reader.
+  async function cancelCode() {
+    setBusy(true)
+    setError('')
+    try {
+      await api.pairCancelCode()
+      setCodeUntil(0)
+      state.refresh()
+    } catch (e) {
+      setError(errText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function remove(id: string) {
     setError('')
     try {
       await api.pairRevoke(id)
+      if (joined?.id === id) setJoined(null)
       state.refresh()
     } catch (e) {
       setError(errText(e))
@@ -86,165 +161,198 @@ export function Pairing() {
 
   if (!s) {
     return (
-      <Panel title="Another device">
+      <Section title="Open Caprock on your phone">
         <div className="text-[12px] text-fg-faint">reading…</div>
-      </Panel>
+      </Section>
     )
   }
 
-  if (!s.enabled) {
-    return (
-      <Panel title="Another device">
-        <div className="grid gap-2.5 text-[12px] leading-relaxed text-fg-muted">
-          <p>
-            Caprock answers only this machine. Turn this on to read it from a tablet or a
-            phone on the same network — they will have to pair with a code first.
-          </p>
-          <div>
-            <button
-              onClick={() => setLAN(true)}
-              disabled={busy}
-              className="rounded-sm border border-accent px-2 py-1 text-[12px] text-accent hover:bg-accent/10 disabled:opacity-50"
-            >
-              {busy ? 'opening…' : 'Let this network in'}
-            </button>
-          </div>
-          <p className="text-fg-faint">
-            It goes off again when Caprock restarts — a laptop opened somewhere you do not
-            trust should not carry a decision you made at home. Paired devices are kept.
-          </p>
-          {error && <div className="text-[12px] text-danger">{error}</div>}
-        </div>
-      </Panel>
-    )
-  }
+  const status = phoneStatus(s)
+  const secondsLeft = codeUntil ? Math.max(0, Math.ceil((codeUntil - now) / 1000)) : 0
+  const showingCode = Boolean(code && s.url && secondsLeft > 0)
+  const machine = thisMachine()
 
   return (
-    <Panel title="Another device">
-      <div className="grid gap-3">
-        <div className="grid gap-1">
-          <div className="text-[11px] uppercase tracking-[0.08em] text-fg-faint">
-            open this on the other device
-          </div>
-          <div className="mono text-[15px] text-fg select-all">{s.url}</div>
-          {/* The difference between the two addresses is the whole feature.
-            * A LAN address works from the sofa and nowhere else — a tablet on
-            * mobile data, or on a network that separates its clients, will
-            * never reach it, and someone who is not told that concludes the
-            * product is broken rather than that they need a tunnel. */}
-          {s.tunnelled ? (
-            <p className="text-[11px] text-fg-faint">
-              A tunnel address — it works from anywhere the other device has the same
-              tunnel, including mobile data.
-            </p>
-          ) : (
-            <p className="text-[11px] text-fg-faint">
-              This is an address on your own network: it works when the other device is on
-              the same wifi, and not from mobile data. For anywhere else you need a tunnel —{' '}
-              <a
-                href="https://tailscale.com/kb/1017/install"
-                target="_blank"
-                rel="noreferrer"
-                className="text-accent"
-              >
-                Tailscale
-              </a>{' '}
-              on both devices is what most people use, and Caprock will show its address
-              here instead once it is running.
-            </p>
-          )}
-        </div>
-
-        <div className="grid gap-1.5">
-          <div className="text-[11px] uppercase tracking-[0.08em] text-fg-faint">
-            then enter this code
-          </div>
-          {code ? (
-            <div className="flex items-baseline gap-3">
-              <span className="mono text-[28px] tracking-[0.2em] text-accent select-all">{code}</span>
-              <span className="text-[11px] text-fg-faint">
-                {secondsLeft > 60
-                  ? `${Math.ceil(secondsLeft / 60)} min left`
-                  : `${secondsLeft}s left`}
-              </span>
-            </div>
-          ) : (
-            <div>
+    <Section title="Open Caprock on your phone" aside={<StatusPill status={status} />}>
+      <div className="grid gap-4">
+        {showingCode ? (
+          <CodeView url={s.url!} code={code} secondsLeft={secondsLeft} onNew={showCode} onCancel={cancelCode} busy={busy} />
+        ) : (
+          <>
+            <ol className="grid gap-2">
+              <Step n={1}>
+                {s.enabled && s.tunnelled
+                  ? <>Tailscale is on, on your phone and {machine}.</>
+                  : <>Your phone and {machine} are on the same Wi-Fi.</>}
+              </Step>
+              <Step n={2}>
+                Press <span className="text-fg font-medium">Show a code</span> and point your phone&apos;s camera at it.
+              </Step>
+              <Step n={3}>Your phone appears below. Remove it here any time.</Step>
+            </ol>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <button
-                onClick={newCode}
+                onClick={showCode}
                 disabled={busy}
-                className="rounded-sm border border-accent px-2 py-1 text-[12px] text-accent hover:bg-accent/10 disabled:opacity-50"
+                className="rounded-md bg-accent px-4 py-2 text-[14px] font-medium text-accent-fg disabled:opacity-50"
               >
-                {busy ? 'asking…' : 'Show a code'}
+                {busy ? 'One moment…' : s.devices.length > 0 ? 'Show a code for another phone' : 'Show a code'}
               </button>
+              {!s.enabled && s.devices.length > 0 && (
+                <button onClick={() => turn(true)} disabled={busy} className="text-[12px] text-accent hover:underline disabled:opacity-50">
+                  Turn on for paired phones only
+                </button>
+              )}
             </div>
-          )}
-          <p className="text-[11px] text-fg-faint">
-            One device, once. It stops working after it is used or after five minutes,
-            whichever comes first.
-          </p>
-        </div>
+          </>
+        )}
 
         {error && <div className="text-[12px] text-danger">{error}</div>}
 
-        <Devices devices={s.devices} now={now} onRevoke={revoke} />
+        {joined && !showingCode && (
+          <div className="rounded-md border border-ok/40 bg-ok/10 px-3 py-2 text-[13px] text-fg">
+            <span className="text-ok">✓</span> {joined.name} is connected. On it, Caprock is at{' '}
+            <span className="mono select-all break-all">{s.url}</span> — add it to the home screen to keep it one tap away.
+          </div>
+        )}
 
-        <div className="flex items-center gap-3 border-t border-border pt-2.5">
-          <button
-            onClick={() => setLAN(false)}
-            disabled={busy}
-            className="text-[11px] text-fg-faint hover:text-danger disabled:opacity-50"
-          >
-            stop listening on this network
-          </button>
-          <span className="text-[11px] text-fg-faint">
-            Paired devices are kept; they simply cannot reach anything.
-          </span>
+        <Devices devices={s.devices} now={now} onRemove={remove} />
+
+        <div className="grid gap-1 border-t border-border pt-3 text-[12px] leading-relaxed text-fg-muted">
+          <p>
+            Only phones you pair get in, and they can look but not change anything. It switches off when Caprock restarts.
+          </p>
+          {s.enabled && s.tunnelled ? (
+            <p>This {machine.replace('this ', '')} is on Tailscale, so it works from anywhere your phone has Tailscale too — even on mobile data.</p>
+          ) : (
+            <p>
+              Not on the same Wi-Fi? Install{' '}
+              <a href="https://tailscale.com/download" target="_blank" rel="noreferrer" className="text-accent">Tailscale</a>{' '}
+              on both — then it works from anywhere.
+            </p>
+          )}
+          {s.enabled && !showingCode && (
+            <div className="flex flex-wrap items-center gap-x-3 pt-1">
+              {s.url && <span className="text-fg-faint">Listening at <span className="mono break-all">{s.url}</span></span>}
+              <button onClick={() => turn(false)} disabled={busy} className="text-fg-faint underline hover:text-danger disabled:opacity-50">
+                Turn off
+              </button>
+            </div>
+          )}
         </div>
       </div>
-    </Panel>
+    </Section>
+  )
+}
+
+function StatusPill({ status }: { status: PhoneStatus }) {
+  const dot = status.tone === 'ok' ? 'bg-ok' : status.tone === 'waiting' ? 'bg-warn animate-pulse' : status.tone === 'on' ? 'bg-accent' : 'bg-fg-faint'
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[12px] text-fg" aria-live="polite">
+      <span className={`inline-block h-2 w-2 rounded-full ${dot}`} aria-hidden />
+      {status.label}
+    </span>
+  )
+}
+
+function Step({ n, children }: { n: number; children: React.ReactNode }) {
+  return (
+    <li className="flex items-baseline gap-2.5">
+      <span className="num inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border-strong text-[11px] text-fg-muted">
+        {n}
+      </span>
+      <span className="text-fg">{children}</span>
+    </li>
+  )
+}
+
+function CodeView({
+  url,
+  code,
+  secondsLeft,
+  onNew,
+  onCancel,
+  busy,
+}: {
+  url: string
+  code: string
+  secondsLeft: number
+  onNew: () => void
+  onCancel: () => void
+  busy: boolean
+}) {
+  const link = pairLink(url, code)
+  const qr = useMemo(() => qrPath(encodeQR(link)), [link])
+  const mm = Math.floor(secondsLeft / 60)
+  const ss = String(secondsLeft % 60).padStart(2, '0')
+  return (
+    <div className="flex flex-wrap items-start gap-x-6 gap-y-4">
+      {/* Black on white whatever the theme: a phone camera reads a dark code
+        * on a light ground, and an inverted one fails on many of them. */}
+      <svg
+        viewBox={qr.viewBox}
+        role="img"
+        aria-label={`QR code that opens ${url} and pairs with code ${code}`}
+        className="h-auto w-full max-w-[240px] shrink-0 rounded-md bg-white"
+        shapeRendering="crispEdges"
+      >
+        <path d={qr.d} fill="#000" />
+      </svg>
+      <div className="grid min-w-0 flex-1 basis-[220px] gap-3">
+        <div>
+          <div className="text-[15px] text-fg">Point your phone&apos;s camera at the code.</div>
+          <div className="mt-0.5 text-[12px] text-fg-muted">Tap the link it shows. The phone pairs by itself.</div>
+        </div>
+        <div className="grid gap-1">
+          <div className="text-[12px] text-fg-muted">
+            No camera? Open <span className="mono text-fg select-all break-all">{url}</span> on the phone and type
+          </div>
+          <div className="mono text-[40px] leading-none tracking-[0.18em] text-accent select-all" aria-label={`pairing code ${code.split('').join(' ')}`}>
+            {code.slice(0, 3)}&thinsp;{code.slice(3)}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-fg-muted">
+          <span className="num">Works once · {mm}:{ss} left</span>
+          <button onClick={onNew} disabled={busy} className="text-accent hover:underline disabled:opacity-50">New code</button>
+          <button onClick={onCancel} disabled={busy} className="text-fg-faint hover:text-danger disabled:opacity-50">Cancel</button>
+        </div>
+      </div>
+    </div>
   )
 }
 
 function Devices({
   devices,
   now,
-  onRevoke,
+  onRemove,
 }: {
   devices: PairedDevice[]
   now: number
-  onRevoke: (id: string) => void
+  onRemove: (id: string) => void
 }) {
-  if (devices.length === 0) {
-    return (
-      <div className="border-t border-border pt-2.5 text-[12px] text-fg-faint">
-        Nothing is paired. Only this machine can read your figures.
-      </div>
-    )
-  }
+  if (devices.length === 0) return null
   return (
-    <div className="border-t border-border pt-2.5">
-      <div className="mb-1.5 text-[11px] uppercase tracking-[0.08em] text-fg-faint">
-        paired · {devices.length}
-      </div>
-      <div className="grid gap-1">
+    <div className="grid gap-1.5">
+      <div className="text-[12px] text-fg-muted">Paired devices</div>
+      <ul className="grid gap-1.5">
         {devices.map((d) => (
-          <div key={d.id} className="flex items-center gap-3 text-[12px]">
-            <span className="text-fg">{d.name}</span>
-            <span className="text-fg-faint">
-              {d.last_seen ? `last seen ${fmtAgo(d.last_seen, now)}` : 'not seen yet'}
+          <li key={d.id} className="flex items-center gap-3 rounded-md border border-border px-3 py-2">
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-fg">{d.name}</span>
+              <span className="block text-[11px] text-fg-faint">
+                {d.last_seen ? `last seen ${fmtAgo(d.last_seen, now)}` : 'not seen yet'}
+              </span>
             </span>
-            <span className="flex-1" />
             <button
-              onClick={() => onRevoke(d.id)}
-              title="This device stops working on its next request"
-              className="text-[11px] text-fg-faint hover:text-danger"
+              onClick={() => onRemove(d.id)}
+              title="It stops working on its next request"
+              className="shrink-0 rounded-sm border border-border px-2 py-1 text-[12px] text-fg-muted hover:border-danger hover:text-danger"
             >
-              revoke
+              Remove
             </button>
-          </div>
+          </li>
         ))}
-      </div>
+      </ul>
     </div>
   )
 }

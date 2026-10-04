@@ -21,7 +21,7 @@
 import { api, type StorageReport, type StorageSlice } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtAgo, fmtBytes } from '@/lib/format'
-import { Panel } from '@/components/ui'
+import { Details, Section } from '@/components/SettingsParts'
 import { Bars } from '@/components/Breakdown'
 import { agentName } from '@/components/Projects'
 
@@ -111,11 +111,17 @@ export function StorageView({ report: s, now }: { report: StorageReport; now: nu
   const older = db?.older.find((w) => w.days === 90)
   const older30 = db?.older.find((w) => w.days === 30)
   return (
-    <Panel
+    <Section
       title="Storage"
-      right={db && s.measured_at ? <span title={`measured in ${((s.measure_ms ?? 0) / 1000).toFixed(1)}s`}>measured {fmtAgo(s.measured_at, now)}</span> : 'measuring…'}
+      aside={
+        <span className="text-[11px] text-fg-faint">
+          {db && s.measured_at ? <span title={`measured in ${((s.measure_ms ?? 0) / 1000).toFixed(1)}s`}>measured {fmtAgo(s.measured_at, now)}</span> : 'measuring…'}
+        </span>
+      }
     >
-      <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 px-3 pt-3 text-[11px] text-fg-muted">
+      {/* The headline is all most people want: how big, how fast it grows.
+        * What it is made of and what to do about it are one click down. */}
+      <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 text-[12px] text-fg-muted">
         <span>
           <span className="num text-[18px] text-fg">{fmtBytes(s.total_bytes)}</span> on disk
         </span>
@@ -132,7 +138,8 @@ export function StorageView({ report: s, now }: { report: StorageReport; now: nu
         )}
       </div>
 
-      <div className="grid gap-x-8 gap-y-5 px-3 py-3 md:grid-cols-2">
+      <Details summary="Details">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-x-8 gap-y-5 md:grid-cols-2">
         <Bars title="On disk" cols={{ value: 'size', share: 'share' }} rows={bars(disk, s.total_bytes, 6)} />
         {db && db.payload_bytes > 0 && (
           <div className="grid gap-4">
@@ -152,7 +159,7 @@ export function StorageView({ report: s, now }: { report: StorageReport; now: nu
         )}
       </div>
 
-      <div className="grid gap-1.5 border-t border-border px-3 py-2.5 text-[11px] text-fg-muted">
+      <div className="grid gap-1.5 border-t border-border pt-2.5 text-[12px] text-fg-muted">
         {s.retention_days > 0 ? (
           <p>
             <span className="text-fg">Events older than {s.retention_days} days are deleted</span>, every six hours.
@@ -186,8 +193,9 @@ export function StorageView({ report: s, now }: { report: StorageReport; now: nu
             </p>
           )
         )}
-        {s.error && <p className="text-warn">Last measurement failed: {s.error}</p>}
       </div>
-    </Panel>
+      </Details>
+      {s.error && <p className="text-[12px] text-warn">Last measurement failed: {s.error}</p>}
+    </Section>
   )
 }

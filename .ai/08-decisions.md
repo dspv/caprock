@@ -1073,3 +1073,131 @@ the user has agreed to anything.
 
 **Revisit if** an agent gains a way to import another's history, which would
 make a real continuation possible.
+---
+
+## ADR-033 — An owned session outlives the daemon: its terminal lives in a pty-host
+
+**Date:** 2026-10-04 · **Status:** accepted
+
+A session Caprock started died whenever Caprock stopped. The daemon held the PTY
+master, so an upgrade — `brew upgrade`, then `launchctl kickstart -k` — ended
+it: the owner's `claude` exited with 143, SIGTERM from the daemon's own
+shutdown, which sent it on purpose so Claude Code could flush its transcript.
+That was the gentlest available way to lose the session, and it was still
+losing it. He expected to come back after a restart, find the session running,
+and type into it. A tool that watches your work must not be the thing that ends
+it, least of all when the user did nothing but update it.
+
+**The decision.** Each owned session runs under its own small process,
+`caprock pty-host` (same binary, hidden subcommand). The holder starts the
+agent, owns the PTY master and a 256 KiB scrollback ring with terminal-mode
+tracking (`internal/termbuf`, shared with the daemon), and serves one client —
+the daemon — over a loopback TCP socket guarded by a per-session random token.
+It is started detached from the daemon: its own session on POSIX (`setsid`),
+its own process group and hidden console on Windows, outside the daemon's job
+object when the job allows it. Its registry entry,
+`<data_dir>/ptyhost/<session>.json` (`0600`), says where it listens and the
+token it wants. The daemon is a client: on shutdown it closes the connection
+and the holder carries on; at startup it reads the registry, reconnects, and
+the holder's snapshot repaints the terminal. The contract is in
+[03-contracts.md § Terminal holders](03-contracts.md#terminal-holders-caprock-pty-host).
+
+**Every agent Caprock starts, not only Claude Code.** Codex, OpenCode and
+Gemini sessions are spawned through the same path
+([ADR-031](#adr-031--codex-and-opencode-are-started-like-claude-code-and-linked-to-what-they-write)),
+so they get a holder too. What the daemon tracks about them beyond the process
+— which agent it is, and the port an OpenCode TUI's own server listens on —
+travels in the registry entry's `meta`, and on reattach the daemon resumes what
+a spawn had set up: it follows an OpenCode session's stream again (learning its
+id first if the last run had not), expects a not-yet-linked Codex thread again,
+and tracks a Gemini session's telemetry again.
+
+**Why a holder of our own and not tmux.** tmux would do the holding on macOS
+and Linux, where it is often installed, and not at all on Windows, where rule 2
+says a feature is not done. It would also be a second path with its own failure
+modes — the user's `.tmux.conf`, their key bindings, a server shared with their
+own sessions — to keep working beside the PTY path we already have and test on
+three systems. The holder is the existing `ptyman` backend moved one process
+over: go-pty on POSIX, ConPTY on Windows, the same code the session ran on
+before. No external dependency, nothing to install, one behaviour everywhere.
+
+**Why loopback TCP and not a Unix socket or a named pipe.** It is the one
+transport that is the same code on all three systems. Any local account can
+connect to a loopback port, so the token is what keeps them out: 32 random
+bytes, compared in constant time, sent in the first frame; the holder refuses
+anything else within five seconds. The token travels to the holder on its
+stdin, never in argv (which every local process can read) and never in a file
+other than the `0600` registry entry in the `0700` data directory.
+
+**Upgrades.** A holder started by one release must keep working with the daemon
+of the next, so the protocol is versioned (`proto`, in the hello and the
+registry entry) and additive: frame types are never renumbered or repurposed,
+an unknown frame is ignored, and a change that cannot be additive raises
+`proto`, after which the daemon keeps speaking every older version while a
+holder of it can still be running. Old holders run their child until it exits
+whatever release the daemon is. On Windows the holder runs from a hash-named
+copy of the binary in the data directory: Windows will not replace an
+executable a process runs from, and a long session would otherwise make the
+next `scoop update` refuse.
+
+**What the service managers do, and what we changed.** launchd, when a job
+stops, kills what is left in the job's **process group** unless
+`AbandonProcessGroup` is set; the holder has left that group by `setsid`, and
+the plist now sets the key as well, as a second lock. systemd's default
+`KillMode=control-group` kills everything in the unit's **cgroup**, whatever its
+process group, so the unit now sets `KillMode=process`. Both are template
+changes: an existing install keeps its old file until `caprock service install`
+rewrites it (`caprock service status` already reports the difference). On
+macOS the `setsid` alone keeps sessions alive meanwhile; on Linux an old unit
+still takes them on a service restart. Windows' Startup-folder script starts the
+daemon with `start /b` and no job object, so nothing reaches the holder there.
+The launchd behaviour is from its documented semantics and was not exercised
+against a real `launchctl` in this change — the rule for this work was not to
+touch the owner's launchd. The CI test stops the daemon the way a service
+manager does (SIGTERM on POSIX, a hard kill on Windows) and then kills it
+outright, and the session survives both.
+
+**What stays the same.**
+
+- **Rule 7.** A holder signals and types into exactly one process: the child it
+  started. Pause, resume, kill and resize from the dashboard go through it.
+- **Rule 3** is untouched: the shim does not know holders exist.
+- **[ADR-028](#adr-028--a-session-ends-when-its-process-does)**: the session's
+  pid is the agent's, not the holder's, so liveness still asks the right
+  process. A holder exits when its child does and removes its registry entry;
+  an exit nobody heard is left as `<session>.exit` for the next daemon to
+  record. A registry entry whose port answers nothing is a holder that died,
+  and the next daemon deletes it.
+- **`caprock down` stops the daemon, not the sessions** — that is the same act
+  as the restart this exists for. A session ends when the user ends it (exit,
+  or kill from the dashboard).
+
+**What remains of the "terminal went with that run" panel.** Two cases: a
+session started by a release from before this one (it was in the daemon's PTY,
+so the upgrade that installs this still ends it — there is no way to hand a PTY
+master to a process that did not exist when it was opened), and a session whose
+holder died with its child surviving the hangup. The panel now says so in plain
+words — *"This session's terminal was closed when Caprock restarted. The
+conversation is saved — Continue it here resumes it in a new terminal."* —
+with continue as the primary action and a copy (`--fork-session`) as a
+secondary one that says it leaves the old process running. Continue under the
+same id would put two processes on one transcript while the terminal-less one
+lives, so the daemon stops it first: SIGTERM, then SIGKILL after five seconds,
+and only when the row says Caprock started it and the recorded pid is alive.
+That is a process Caprock started, which is what rule 7 permits.
+
+**Fallback.** If a holder cannot be started, the session starts in the daemon's
+own PTY as before and a warning is logged: a session that ends with the daemon
+beats no session. A child that cannot start (a missing binary) is the spawn's
+own error and is not retried.
+
+**Rules out:** tmux or screen as the holder; a daemon shutdown that signals
+sessions held by pty-hosts; restarting or resuming a session on the user's
+behalf after a restart (the process simply never stopped); signalling a
+leftover process the store does not mark as Caprock's.
+
+**Revisit if** a holder is ever seen orphaned without a registry entry (a leak
+the cleanup cannot see), if a service manager is found that kills detached
+processes by some other grouping (a launchd coalition, a Windows job without
+breakaway), or if the protocol needs a non-additive change — which is the
+moment the daemon's multi-version support has to be written, not before.

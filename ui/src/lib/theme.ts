@@ -29,15 +29,30 @@ function apply(t: Theme) {
   document.documentElement.style.colorScheme = t
 }
 
-// useTheme returns the current theme and a toggle. The choice is persisted, so it
-// sticks across reloads; with nothing saved the OS preference is followed.
-export function useTheme(): [Theme, () => void] {
+// Every useTheme on the page hears a change made by any other — the header's
+// toggle and the Settings screen's choice are two views of one setting, and a
+// sun icon that disagreed with the page would be read as a bug.
+const THEME_EVENT = 'caprock-theme-change'
+
+// useTheme returns the current theme, a toggle, and a setter. The choice is
+// persisted, so it sticks across reloads; with nothing saved the OS preference
+// is followed.
+export function useTheme(): [Theme, () => void, (t: Theme) => void] {
   const [theme, setTheme] = useState<Theme>(initial)
   useEffect(() => {
     apply(theme)
     localStorage.setItem(KEY, theme)
   }, [theme])
-  return [theme, () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))]
+  useEffect(() => {
+    const on = (e: Event) => setTheme((e as CustomEvent<Theme>).detail)
+    window.addEventListener(THEME_EVENT, on)
+    return () => window.removeEventListener(THEME_EVENT, on)
+  }, [])
+  const set = (t: Theme) => {
+    setTheme(t)
+    window.dispatchEvent(new CustomEvent<Theme>(THEME_EVENT, { detail: t }))
+  }
+  return [theme, () => set(theme === 'dark' ? 'light' : 'dark'), set]
 }
 
 function initialTone(): LightTone {

@@ -16,7 +16,7 @@ import { useEffect, useState } from 'react'
 import { api, type PremiumPricing, type Settings } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 
-export function LicenseField({ plan, save }: { plan: Settings; save: (s: Settings) => void }) {
+export function LicenseField({ plan, save }: { plan: Settings; save: (patch: Partial<Settings>) => void }) {
   const [draft, setDraft] = useState(plan.license_key ?? '')
   const premium = useApi(() => api.premium(), [plan.license_key])
   const lic = premium.data?.license
@@ -27,28 +27,31 @@ export function LicenseField({ plan, save }: { plan: Settings; save: (s: Setting
 
   const dirty = draft.trim() !== (plan.license_key ?? '').trim()
 
+  // Label above the field rather than beside it: beside it, a fixed-width
+  // label column left a phone about a hundred pixels for a forty-character key.
   return (
-    <div className="border-t border-border pt-2">
-      <div className="flex items-baseline gap-2">
-        <span className="w-28 shrink-0 text-fg-muted">Licence</span>
+    <div className="grid gap-1.5">
+      <label htmlFor="licence-key" className="text-fg">Licence key</label>
+      <div className="flex items-center gap-2">
         <input
+          id="licence-key"
           className="input flex-1 min-w-0"
           placeholder="CR-…"
           spellCheck={false}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && dirty) save({ ...plan, license_key: draft.trim() }) }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && dirty) save({ license_key: draft.trim() }) }}
         />
         <button
           disabled={!dirty}
-          onClick={() => save({ ...plan, license_key: draft.trim() })}
-          className="rounded-sm border border-border px-2 py-0.5 text-fg-muted hover:border-border-strong hover:text-fg disabled:opacity-40"
+          onClick={() => save({ license_key: draft.trim() })}
+          className="shrink-0 rounded-sm border border-border px-2 py-0.5 text-fg-muted hover:border-border-strong hover:text-fg disabled:opacity-40"
         >
           save
         </button>
       </div>
 
-      <p className="mt-1.5 pl-[7.5rem] text-[11px] leading-relaxed">
+      <p className="text-[11px] leading-relaxed">
         {lic?.active && !lic.in_grace && (
           <span className="text-ok">
             Premium is on{lic.expires_at ? ` — renews ${lic.expires_at.slice(0, 10)}` : ''}.

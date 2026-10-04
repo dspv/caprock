@@ -40,6 +40,7 @@ import (
 	"github.com/dspv/caprock/internal/lan"
 	"github.com/dspv/caprock/internal/logcap"
 	"github.com/dspv/caprock/internal/loop"
+	"github.com/dspv/caprock/internal/nativeterm"
 	"github.com/dspv/caprock/internal/opencode"
 	"github.com/dspv/caprock/internal/orchestrator"
 	"github.com/dspv/caprock/internal/pairing"
@@ -99,6 +100,11 @@ type Options struct {
 	HiveDir string
 	// RepoCwd is the repo the orchestrator + workers operate on (default: cwd).
 	RepoCwd string
+	// HolderExe is the Caprock binary that runs `pty-host`, the process that
+	// keeps an owned session's terminal alive across daemon restarts
+	// (ADR-033). Empty runs sessions inside the daemon, as before: tests that
+	// run the daemon in-process have no such binary to offer.
+	HolderExe string
 	// OnReady is called once the server is listening (with the bound URL).
 	OnReady func(url string)
 }
@@ -376,6 +382,14 @@ func (d *Daemon) run(ctx context.Context) error {
 			d.bus.Publish(bus.Frame{Type: bus.FrameSession, Data: rollup.SessionFrame{Session: s, Stats: st}})
 		}
 	}
+	// Sessions this daemon starts live in pty-hosts, and the ones the last
+	// daemon started are picked back up here: after OnExit, which each
+	// session captures, and before the first liveness sweep and the API.
+	d.mgr.UseHosts(d.opt.HolderExe, d.opt.Version)
+	reattached := d.mgr.Reattach(ctx)
+	if len(reattached) > 0 {
+		d.log.Info("reattached sessions that outlived the last run", "component", "daemon", "count", len(reattached))
+	}
 
 	// The daily spend cap. Built here because it needs the manager: it may only
 	// ever pause sessions Caprock started, and the manager is what knows which
@@ -443,13 +457,18 @@ func (d *Daemon) run(ctx context.Context) error {
 
 	d.api = api.New(api.Deps{
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d,
-		Status: d.status, Storage: d.storageReport, ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
+		Status: d.status, InstallHooks: d.installHooks, Storage: d.storageReport, ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
 		LoopK: d.det.K, LoopWindow: d.det.Window,
 		Token: rt.Token, Shutdown: cancel, Agents: &agentAdapter{m: d.mgr, d: d},
 		Tasks: &boardAdapter{d: d}, Settings: &settingsAdapter{d: d}, Update: d.upd,
 		AskGemini: d.askGemini,
 		DataDir:   d.opt.DataDir,
-		Pairing:   d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d,
+		Terminals: &nativeterm.Opener{
+			DataDir:   d.opt.DataDir,
+			Env:       func() []string { return userenv.Environ(d.log) },
+			Preferred: func() string { return d.config().Terminal },
+		},
+		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d,
 	})
 	srv := &http.Server{Handler: d.api, ReadHeaderTimeout: 10 * time.Second}
 	// Held so LAN access can be switched on later without a restart. The
@@ -558,6 +577,9 @@ func (d *Daemon) run(ctx context.Context) error {
 	// over a directory that does not exist is a no-op rather than an error.
 	d.gemIn = gemini.NewIngester(filepath.Join(d.opt.DataDir, "gemini"), d.rec, d.log)
 	go d.gemIn.Run(ctx)
+	// Sessions reattached above are watched again the way a spawn starts
+	// watching them; here, once the Gemini ingester exists.
+	d.relink(ctx, reattached)
 
 	go d.sweep(ctx)
 	d.loadReportState(ctx)
@@ -1166,7 +1188,7 @@ func (d *Daemon) status(_ context.Context) any {
 		st.Desktop = &r
 	}
 	if p, err := hooks.DefaultSettingsPath(); err == nil {
-		if hs, err := hooks.Inspect(p, config.ShimPath(d.opt.DataDir)); err == nil {
+		if hs, err := hooks.StatusFor(d.opt.DataDir, p); err == nil {
 			st.Hooks = &hs
 		}
 	}
@@ -1244,6 +1266,7 @@ func (a *settingsAdapter) Get() api.Settings {
 		LicenseKey:       c.LicenseKey,
 		CapUSDPerDay:     c.CapUSDPerDay,
 		BrowseRoot:       c.BrowseRoot,
+		Terminal:         c.Terminal,
 		ReportChatID:     c.ReportChatID,
 		// The token itself never crosses this boundary — only whether one
 		// exists, which is what a screen needs to render a state.
@@ -1278,6 +1301,7 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	capChanged := in.CapUSDPerDay != a.d.opt.Config.CapUSDPerDay
 	a.d.opt.Config.CapUSDPerDay = in.CapUSDPerDay
 	a.d.opt.Config.BrowseRoot = strings.TrimSpace(in.BrowseRoot)
+	a.d.opt.Config.Terminal = in.Terminal
 	a.d.opt.Config.ReportBotToken = strings.TrimSpace(in.ReportBotToken)
 	a.d.opt.Config.ReportChatID = strings.TrimSpace(in.ReportChatID)
 	a.d.opt.Config.GeminiAPIKey = strings.TrimSpace(in.GeminiAPIKey)
@@ -1393,6 +1417,10 @@ func (a *agentAdapter) Resize(id string, cols, rows int) error { return a.m.Resi
 func (a *agentAdapter) Signal(id, action string) error {
 	return a.m.Signal(id, ptyman.Signal(action))
 }
+
+// Survives reports whether the session's terminal is in a pty-host, so a
+// restart of the daemon leaves it running (ADR-033).
+func (a *agentAdapter) Survives(id string) bool { return a.m.Survives(id) }
 
 func (a *agentAdapter) Holds(id string) bool {
 	_, ok := a.m.Get(id)
@@ -1722,6 +1750,34 @@ func (d *Daemon) startCodex(ctx context.Context, force bool) {
 	d.log.Info("codex sessions are being read", "component", "codex", "dir", dir, "transcripts", len(ts))
 }
 
+// relink resumes watching sessions a previous daemon started and this one
+// reattached (ADR-033): what Spawn's caller sets up for a new session would
+// otherwise stop at the restart. An OpenCode TUI's stream is followed again
+// (and its id learned, if the last run had not yet); a Codex session not yet
+// linked to its thread is expected again; a Gemini session's telemetry is
+// tracked again. Claude Code needs nothing: its hooks and transcript do not
+// go through the daemon's memory.
+func (d *Daemon) relink(ctx context.Context, back []*agents.Agent) {
+	for _, ag := range back {
+		native := ""
+		if s, err := store.GetSession(ctx, d.store.DB(), ag.SessionID); err == nil {
+			native = s.NativeID
+		}
+		switch {
+		case ag.Kind == agents.AgentOpenCode && ag.Port > 0:
+			if native == "" {
+				go d.linkOpenCode(ag)
+			} else {
+				go d.followOpenCode(ag, native)
+			}
+		case ag.Kind == agents.AgentCodex && native == "":
+			d.link.Expect(agents.AgentCodex, ag.SessionID, ag.Cwd, ag.StartedAt, true)
+		case ag.Kind == agents.AgentGemini && d.gemIn != nil:
+			d.gemIn.Track(ag.SessionID, ag.Cwd)
+		}
+	}
+}
+
 // linkOpenCode learns the id OpenCode gives a session Caprock started, from
 // the TUI's own server on the port Caprock chose, and links the two. It then
 // follows that server's stream for as long as the process lives, so the
@@ -1743,6 +1799,25 @@ func (d *Daemon) linkOpenCode(ag *agents.Agent) {
 		return
 	}
 	d.link.Claim(ctx, agents.AgentOpenCode, ag.SessionID, nativeID)
+	d.streamOpenCode(ctx, url, nativeID)
+}
+
+// followOpenCode follows the stream of an OpenCode session already linked to
+// its id — one a previous daemon started and this one reattached.
+func (d *Daemon) followOpenCode(ag *agents.Agent, nativeID string) {
+	ctx, cancel := context.WithCancel(d.baseCtx)
+	defer cancel()
+	go func() {
+		select {
+		case <-ag.Done():
+		case <-ctx.Done():
+		}
+		cancel()
+	}()
+	d.streamOpenCode(ctx, "http://127.0.0.1:"+strconv.Itoa(ag.Port), nativeID)
+}
+
+func (d *Daemon) streamOpenCode(ctx context.Context, url, nativeID string) {
 	// On a machine where OpenCode had never run, this session created the
 	// database.
 	if !d.startOpenCode(d.baseCtx) {
@@ -1826,4 +1901,21 @@ func (d *Daemon) DisableLAN() error {
 	d.api.SetLAN(nil, "")
 	d.log.Info("stopped listening on the local network", "component", "daemon")
 	return err
+}
+
+// installHooks is POST /v1/hooks/install: the same install as the CLI's, into
+// the settings file this daemon reports on in /v1/status.
+func (d *Daemon) installHooks(context.Context) (any, error) {
+	sp, err := hooks.DefaultSettingsPath()
+	if err != nil {
+		return nil, err
+	}
+	st, backup, err := hooks.InstallFor(d.opt.DataDir, sp)
+	if err != nil {
+		return nil, err
+	}
+	return struct {
+		Hooks  hooks.Status `json:"hooks"`
+		Backup string       `json:"backup,omitempty"`
+	}{st, backup}, nil
 }

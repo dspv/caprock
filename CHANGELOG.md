@@ -9,6 +9,99 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.70.1] - 2026-10-04
+
+### Added
+
+- **Install hooks from the dashboard.** The "Hooks not installed" banner on
+  Now has an **Install hooks** button that does what `caprock hooks install`
+  does and then says what changed: sessions started from now on report live;
+  ones already running keep their hooks until restarted. It names the
+  settings file it checked, and it can be dismissed until the missing set
+  changes.
+- **Open a Live pulse row in place.** Clicking a project's row shows today's
+  cost and tokens for it, every live session in it with agent, model, state
+  and what it is doing, and the terminal, Open repo and Open session buttons.
+  Open rows are remembered.
+
+### Changed
+
+- **Settings is plain now, and opening Caprock on your phone is three steps.**
+  The screen behind the header's link (now called **settings**) is short
+  sections with plain titles: Open Caprock on your phone, Plan & licence,
+  Appearance, Privacy, Memory between sessions, Storage, About this install.
+  Each option says in one line what happens when it is on.
+  - **Phone:** one button, **Show a code**, turns network access on and shows a
+    QR code with the six digits in big type beside it. Scan it with the
+    phone's camera and the phone pairs by itself, then appears in the list
+    with a **Remove** button. The corner says the state at a glance — Off,
+    Waiting for your phone…, 1 phone connected. The QR code is drawn in the
+    browser; nothing is sent anywhere to render it. **Cancel** withdraws the
+    code on the machine, not just from the screen. Phones paired before stay
+    listed while network access is off and can be removed then too.
+  - **Plan:** set it right there — the same choices as the header's picker.
+  - **Theme:** Dark or Light, and Paper or White, from Appearance; the header
+    toggle and this control stay in step.
+  - **Memory:** the setting says what Claude is handed; the "measure whether
+    it helps" experiment is under **Experiments**.
+  - **Storage** and the install's own figures keep their detail one click
+    down, under **Details**.
+- **The header wraps on a phone.** It was one row 882px wide, so every screen
+  on a paired phone scrolled sideways.
+
+- **Plan limits read at a glance.** The ring's filled arc is what is used,
+  coloured by level, on an empty neutral track; a forecast is one plain
+  sentence — "At this pace you'll hit 100% around 19:10 — about 1 h before it
+  resets." — amber unless it is under half an hour away, not a red dashed
+  ring. The explainer is one line, with the details behind "more".
+- **Agents are easier to read.** At a glance's agent tiles are bigger and
+  their ring says "of spend"; the Live pulse row shows its state as a
+  coloured pill and its agents as "4 agents" with the model at full
+  contrast.
+
+- **A session you start in Caprock survives Caprock restarting.** Upgrading
+  Caprock, `launchctl kickstart`, `caprock down` and `up`: each used to end the
+  sessions started from the dashboard. Each session's terminal now lives in a
+  small process of its own (`caprock pty-host`), and the restarted Caprock
+  picks it back up — the terminal shows what was on screen and takes typing
+  again, and stop, pause and kill work as before. `caprock down` stops
+  Caprock, not your sessions; end a session from its page or by exiting it.
+  **Sessions started by an earlier release are still ended by the upgrade that
+  installs this one**: their terminal is inside the old Caprock process.
+- **Autostart keeps sessions alive across service restarts.** The launchd agent
+  sets `AbandonProcessGroup` and the systemd unit `KillMode=process`. An
+  existing autostart keeps its old file until you run `caprock service
+  install`; `caprock service status` says when the file differs. On Linux this
+  step is needed for sessions to survive a service restart.
+- **A session whose terminal closed says so plainly.** For a session started by
+  an earlier release, the Terminal tab now reads "This session's terminal was
+  closed when Caprock restarted. The conversation is saved — Continue it here
+  resumes it in a new terminal." **Continue it here** carries the same
+  conversation on (stopping the old terminal-less process first, which Caprock
+  started); **open a copy instead** leaves that process running.
+
+### Fixed
+
+- **A carrier-NAT address is no longer offered as Tailscale.** Network access
+  admitted any address in 100.64.0.0/10 as a Tailscale one. That block is
+  carrier-grade NAT, which Tailscale borrows: a laptop tethered to a phone or
+  behind an ISP's CGNAT can hold such an address on its Wi-Fi, and binding it
+  invites everyone behind the same carrier. The range now counts only on
+  Tailscale's own interface — named `tailscale*`, or carrying Tailscale's IPv6
+  prefix `fd7a:115c:a1e0::/48`, which is how it looks on macOS.
+- **Open a session in your own terminal.** The session's title row (next to
+  Open repo, on every tab) and the Projects terminal menu carry **Open in
+  Ghostty ↗** (named for your terminal), which runs the agent's own resume command —
+  `claude --resume`, `codex resume`, `opencode --session` — in the session's
+  folder, in Ghostty, iTerm2, Terminal, WezTerm, kitty or Warp on macOS, your
+  `$TERMINAL` or a common terminal on Linux, and Windows Terminal, PowerShell
+  or cmd on Windows. Caprock keeps measuring it through hooks and the
+  transcript, as it does any session you start yourself. A session Caprock is
+  running can be **moved** (stopped here, carried on there) or **forked**; one
+  running somewhere else can only be forked, because Caprock never stops a
+  process it did not start. Pick another terminal from the ▾ menu and it
+  becomes the default.
+
 ## [0.70.0] - 2026-10-04
 
 ### Added

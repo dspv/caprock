@@ -16,6 +16,7 @@ import { AtAGlancePanel } from '@/components/AtAGlance'
 import { PremiumBanner } from '@/components/PremiumBanner'
 import { BreakdownPanel } from '@/components/Breakdown'
 import { PulsePanel } from '@/components/Pulse'
+import { HooksBanner } from '@/components/HooksBanner'
 import { Attention } from '@/components/Attention'
 import { findAttention } from '@/lib/attention'
 import { UpdateBanner } from '@/components/UpdateBanner'
@@ -140,7 +141,6 @@ export function NowScreen() {
   const ended = shown.filter((s) => s.status === 'ended')
   const [plan, savePlan] = usePlan()
   const attention = findAttention({ sessions: list, alerts, now, limits: summary.data?.rate_limits })
-  const hooksMissing = status.data?.hooks && (status.data.hooks.missing ?? []).length > 0
   // Defect: before any session exists the API returns Go zero values, so a new
   // user's first screen was a $0.00 hero, three zeroes, and a *warn*-toned
   // "Cache hit 0%" — the only coloured thing on the page was a warning about a
@@ -167,16 +167,10 @@ export function NowScreen() {
           </span>
         </div>
       )}
-      {hooksMissing && (
-        <div className="border border-warn/50 bg-warn/10 px-3 py-2 text-[12px] rounded-[var(--radius-panel)] flex items-center gap-3">
-          <span className="text-warn font-medium">Hooks not installed</span>
-          <span className="text-fg-muted">Run <span className="mono text-fg">caprock hooks install</span> for live activity. Without it, updates lag by a few seconds.</span>
-          <a href="#/settings" className="link ml-auto text-[11px]">details</a>
-        </div>
-      )}
+      {status.data?.hooks && <HooksBanner missing={status.data?.hooks?.missing ?? []} settingsPath={status.data?.hooks?.settings_path ?? ''} />}
       {/* Only sessions Caprock spawned end with the daemon; the ones the user
         * started themselves are untouched by an upgrade. */}
-      <UpdateBanner plan={plan} onSave={savePlan} now={now} owned={list.filter((s) => s.owned && s.status !== 'ended').length} />
+      <UpdateBanner plan={plan} onSave={savePlan} now={now} owned={list.filter((s) => s.owned && s.status !== 'ended' && !s.detached && !s.survives_restart).length} />
       <InterruptedBanner info={status.data?.interrupted} now={now} />
       <Attention items={attention} now={now} onDismiss={(id) => live.dismissAlert(id)} sessions={list} />
 

@@ -173,6 +173,9 @@ func TestPlistCarriesTheLoadBearingKeys(t *testing.T) {
 		"<key>KeepAlive</key>",
 		"<key>SuccessfulExit</key>",
 		"<key>StandardOutPath</key>",
+		// Owned sessions live in pty-hosts that must survive the daemon's job
+		// stopping (ADR-033).
+		"<key>AbandonProcessGroup</key>\n  <true/>",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("plist is missing %s", want)
@@ -251,6 +254,11 @@ func TestUnitCarriesTheLoadBearingDirectives(t *testing.T) {
 	// on-failure, never always: `caprock down` exits 0 and must stay down.
 	if !strings.Contains(s, "Restart=on-failure") {
 		t.Error("unit lacks Restart=on-failure")
+	}
+	// The default KillMode kills the whole cgroup, pty-hosts included, so an
+	// upgrade restart would end every owned session (ADR-033).
+	if !strings.Contains(s, "KillMode=process") {
+		t.Error("unit lacks KillMode=process")
 	}
 	if strings.Contains(s, "Restart=always") {
 		t.Error("unit uses Restart=always — systemd would fight `caprock down`")

@@ -13,6 +13,16 @@ import (
 
 // Spec describes a process to spawn.
 type Spec struct {
+	// ID names the session to a backend that keeps it outside this process
+	// (internal/ptyhost files its registry entry under it). The in-process
+	// backend ignores it.
+	ID string
+	// Meta is carried by a backend that keeps the session outside this
+	// process and handed back when the session is reattached: what the
+	// manager needs to know about a session it did not start in this run
+	// (which agent, the port its server listens on). The in-process backend
+	// ignores it.
+	Meta    map[string]string
 	Command string
 	Args    []string
 	Dir     string
@@ -34,6 +44,18 @@ const (
 	// user's running work with it, silently.
 	SignalTerm Signal = "term"
 )
+
+// ErrDetached is what Wait returns for a session that was let go of rather
+// than ended: its process is still running, held by a pty-host, and the next
+// daemon picks it back up. It is not an exit and must not be recorded as one.
+var ErrDetached = errors.New("ptyman: detached; the process keeps running in its pty-host")
+
+// Detacher is a session whose process lives outside the daemon. Detach drops
+// the daemon's connection and leaves the process running, which is what a
+// daemon restart or upgrade does to it.
+type Detacher interface {
+	Detach() error
+}
 
 // ErrNotSupported is returned for signals the platform cannot honour.
 var ErrNotSupported = errors.New("ptyman: signal not supported on this platform")

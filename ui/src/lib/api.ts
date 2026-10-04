@@ -111,8 +111,36 @@ export interface SessionSummary extends Session {
   parent_session?: string
   /** Whether it can be carried on from here. On the list: ended sessions only. */
   resume?: ResumeInfo
-  /** Caprock started it before its last restart: still running, but its terminal is not here. */
+  /** Caprock started it and still running, but its terminal is not here (an older release's session, or its pty-host died). */
   detached?: boolean
+  /** A live session Caprock started whose terminal is in a pty-host: restarting or upgrading Caprock leaves it running (ADR-033). */
+  survives_restart?: boolean
+  /** How it can be opened in the user's own terminal app; absent when it cannot at all. */
+  open_terminal?: OpenTerminalInfo
+}
+
+/** How a session can be opened in the user's own terminal application.
+ *  `modes` are what is allowed, the first being what the main button does;
+ *  `reason` says why there is none, or why one is missing. */
+export interface OpenTerminalInfo {
+  modes: OpenTerminalMode[]
+  reason?: string
+}
+
+/** resume: carry an ended session on. move: stop Caprock's process for it,
+ *  then resume it there. fork: branch it under a new id; the original runs on. */
+export type OpenTerminalMode = 'resume' | 'move' | 'fork'
+
+/** A terminal application installed on this machine. */
+export interface NativeTerminal {
+  id: string
+  name: string
+}
+
+export interface TerminalList {
+  terminals: NativeTerminal[]
+  /** The one a button opens when none is named. */
+  preferred: string
 }
 
 /** Whether a session can be carried on from here, and if not, why. */
@@ -386,6 +414,8 @@ export interface RateWindow {
   used_percentage: number
   resets_at: number
   forecast?: string
+  /** When the same pace reaches 100% (unix ms); set exactly when `forecast` is. */
+  limit_at?: number
   /** When the agent wrote the figure (unix ms). Set for Codex, whose windows
    *  come from a transcript that may be hours old. */
   observed_at?: number
@@ -429,6 +459,8 @@ export interface Settings {
   memory_holdout_pct?: number
   /** Where the folder picker may look. Empty means the home directory. */
   browse_root?: string
+  /** The terminal app sessions open in ("ghostty", "iterm2", ...). Empty: the first installed. */
+  terminal?: string
   /** The daily spend ceiling in USD; 0 is off. See internal/cap. */
   cap_usd_per_day?: number
   /** Where the weekly report goes. Not a credential, so it round-trips. */
@@ -589,6 +621,9 @@ export interface ToolDrill {
   teaser?: DrillHint
 }
 
+/** Which Caprock hook events are registered in Claude Code's settings file. */
+export interface HooksStatus { settings_path: string; shim_path: string; installed: string[] | null; missing: string[] | null; shim_exists: boolean }
+
 export interface History { range: string; totals: HistoryTotals; tools: ToolCount[]; daily: DailyStat[]; savings: Savings; summary: Summary; tax?: ContextTax }
 
 export interface Status {
@@ -612,7 +647,7 @@ export interface Status {
   data_dir: string
   pricing: { version: string; source: string; fetched_at: string; user_override: boolean; models: number }
   ingest?: { files_known: number; lines_parsed: number; lines_malformed: number; lines_skipped: number; events_stored: number; events_deduped: number; backfill_done: boolean }
-  hooks?: { settings_path: string; shim_path: string; installed: string[] | null; missing: string[] | null; shim_exists: boolean }
+  hooks?: HooksStatus
   /** The terminal error that stopped transcript ingest, when one happened.
    *  While this is set nothing new is being captured, however healthy the rest
    *  of the status looks. */
@@ -893,11 +928,15 @@ export const api = {
    *  for Monday. The failure mode of this feature is silence, which is
    *  indistinguishable from a quiet week. */
   testReport: () => post<{ sent: string }>('/v1/report/test', {}),
+  /** Runs `caprock hooks install` in the daemon; answers with what is registered after. */
+  installHooks: () => post<{ hooks: HooksStatus; backup?: string }>('/v1/hooks/install', {}),
   pairState: () => get<PairState>('/v1/pair/state'),
   /** Exchange a code for a token. The one call a device makes before it is trusted. */
   pairRedeem: (code: string, name: string) =>
     post<{ token: string; id: string; name: string }>('/v1/pair', { code, name }),
   pairCode: () => post<{ code: string; expires_in_sec: number; url: string }>('/v1/pair/code', {}),
+  /** Withdraw the outstanding code, so it stops working before it expires. */
+  pairCancelCode: () => post<{ cleared: boolean }>('/v1/pair/code', {}, 'DELETE'),
   /** Turn network access on or off without restarting the daemon. */
   setLAN: (on: boolean) => post<{ enabled: boolean; url?: string }>('/v1/pair/lan', { on }),
   pairRevoke: (id: string) => post<{ revoked: number }>(`/v1/pair/devices/${encodeURIComponent(id)}`, {}, 'DELETE'),
@@ -933,6 +972,11 @@ export const api = {
   stopOrchestrator: () => post<{ stopped: number }>('/v1/orchestrator/stop', {}),
   status: () => get<Status>('/v1/status'),
   storage: () => get<StorageReport>('/v1/storage'),
+  /** Terminal applications installed here, most preferred first. */
+  terminals: () => get<TerminalList>('/v1/terminals'),
+  /** Open a session in the user's own terminal app. */
+  openTerminal: (id: string, req: { terminal?: string; mode?: OpenTerminalMode }) =>
+    post<{ terminal: NativeTerminal; mode: OpenTerminalMode; command: string }>(`/v1/sessions/${encodeURIComponent(id)}/open-terminal`, req),
   spawn: (req: SpawnRequest) => post<{ session_id: string; cwd: string }>('/v1/agents', req),
   /** The models an agent's own CLI lists — Codex's on-disk catalog and its
    *  configured default. Empty for the other agents. */

@@ -110,14 +110,38 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   — not a redirect: the caller is usually `fetch()`, and a redirect to HTML
   becomes a parse error three frames later.
 
-**Pairing endpoints.** `GET /v1/pair/state`, `POST /v1/pair/code` and `DELETE
-/v1/pair/devices/{id|all}` are **loopback-only, enforced in the handler** rather
+**Which address.** One private IPv4 address (RFC 1918), never link-local, never
+public. Tailscale's 100.64.0.0/10 is admitted **only on Tailscale's own
+interface** — one named `tailscale*` (Linux, Windows) or carrying an address in
+Tailscale's IPv6 prefix `fd7a:115c:a1e0::/48` (macOS, where it is a `utunN`).
+The block is carrier-grade NAT, which Tailscale borrows; on any other interface
+it is an address shared with every customer behind the same carrier, and other
+VPNs borrow it too. When a Tailscale address exists it is preferred, and
+`GET /v1/pair/state` says so with `tunnelled: true` (`internal/lan`).
+
+**Pairing endpoints.** `GET /v1/pair/state`, `POST /v1/pair/code`,
+`DELETE /v1/pair/code` and `DELETE /v1/pair/devices/{id|all}` are
+**loopback-only, enforced in the handler** rather
 than by the gate: a paired tablet is somewhere to read figures, not a second
 control room, and it must not be able to admit a third device or revoke the
 laptop that let it in. `POST /v1/pair` takes `{code, name}` and returns
 `{token, id, name}`; it is the one call a device makes before it is trusted, and
 it answers the same way for a wrong, expired, exhausted or never-issued code,
 because every distinction tells a guesser how close they are.
+
+- `DELETE /v1/pair/code` withdraws the outstanding code and answers
+  `{cleared: true}` whether or not there was one — the dashboard's **Cancel**,
+  so a code hidden from the owner is not still valid behind them.
+- **While network access is off**, `GET /v1/pair/state` lists the devices saved
+  in `devices.json` (without tokens), and `DELETE /v1/pair/devices/{id|all}`
+  removes them from that file (`404` for an unknown id). Off is not forgotten:
+  every saved device is let back in when network access is turned on, so the
+  owner sees and edits that list without opening the door first. Without a
+  data directory (tests) the delete is still `409`.
+- **The scanned link** is `http://<address>:<port>/#/pair?code=NNNNNN`. The
+  code rides in the fragment, which the browser never sends to the server; the
+  pairing page reads it, redeems it once with `POST /v1/pair`, and replaces the
+  address with `#/` so the phone's history does not keep a spent code.
 
 Codes are six digits, single-use, valid five minutes, and burned after five
 wrong guesses (`internal/pairing`, unchanged since it was written). Device
@@ -216,6 +240,7 @@ GET  /v1/settings                      → user-stated settings (plan, update ch
 PUT  /v1/settings                      → store them
 GET  /v1/update                        → cached release status (no network I/O)
 POST /v1/update/check                  → check now (403 unless enabled)
+POST /v1/hooks/install                 → {hooks: HooksStatus, backup?} — `caprock hooks install`, from the dashboard
 GET  /v1/stats/daily?days=30           → DailyStat[]
 POST /v1/hook                          → 204 (shim only, bearer-token gated; the event is written even after the shim hangs up)
 WS   /v1/live                          → server-push frames: {type:"event"|"session"|"alert", data:…}
@@ -458,6 +483,8 @@ reclaimable_bytes, growth_bytes_per_day_est, retention_days}`.
 
 `GET /v1/gemini` reports whether asking Gemini is possible here: `{available, env_var, licensed, model}`. It performs **no network I/O** and **never returns the key** — `available` says only that one is present. `POST /v1/gemini/ask` takes `{prompt, model?}` and answers `{text, model, usage}`, where `usage` carries the response's own `promptTokenCount` / `candidatesTokenCount` / `cachedContentTokenCount` / `thoughtsTokenCount`. It is the one endpoint in the product that checks the licence **server-side** (402 without an active key) rather than leaving the paywall to the UI, because the call spends the user's Gemini quota and opens an outbound connection — the reasoning and its limits are in [ADR-023](08-decisions.md). With no key set it answers 412 with the variable to set, which is a different problem from 402 and is reported separately so the screen can say which. The key is read from `GEMINI_API_KEY` in the daemon's environment at call time; it is never stored, never accepted by `PUT /v1/settings`, and never present in `GET /v1/settings`.
 
+`POST /v1/hooks/install` runs the same install as `caprock hooks install` (`hooks.InstallFor`: copy the shim into the data dir, merge Caprock's entries into the settings file this daemon reports in `/v1/status.hooks.settings_path`, backing it up first) and answers with what is registered afterwards (`{hooks: {settings_path, shim_path, installed, missing, shim_exists}, backup?}`); an error is an error status, never a quiet 200, and a daemon without an installer answers 501. It is a mutating route, so the CSRF guard refuses a cross-site request and a paired device cannot make it. Nothing else in settings.json is touched. `/v1/status.hooks`, `caprock status` and this answer all check against the command an install writes (`hooks.StatusFor`): the shim in the data dir, or the fallback `"<exe>" hook` when none sits beside the binary. Checking against the shim path alone recognised that fallback only for an executable named `caprock`, so on a renamed or preview build the button said installed and the next status said all nine were missing.
+
 `GET /v1/update` returns `{enabled, current, latest, update_available, command, url, checked_at, error, notes, notes_for}` from cache and **performs no network I/O** — a page load must never cause an outbound call. `POST /v1/update/check` performs one, and returns **403 while `update_checks` is false**: the opt-in is enforced by the server, not merely hidden in the UI, so no page or local script can make Caprock reach the network uninvited. Checks are throttled to once a day unless forced, the request carries no body or credentials, and a failure is reported in `error` rather than as an error status — not knowing about a release must not read as a broken dashboard. `command` is the upgrade command inferred from the running binary's path (Homebrew, Scoop, `go install`); when no package manager owns the binary it is empty and the UI offers `url` instead. `notes` is the published release's own description, taken from the same GitHub response as the tag — reading it costs no second request and no further exposure. It is trimmed to a dialog-sized excerpt (long bodies cut at a line boundary) and paired with `notes_for`, the version it describes, so a cached note can never be shown beside a different version after a failed check. `update_available` is never true for a `dev` or `git describe` build. Caprock does not install the update: replacing the running binary would mean the daemon killing the process executing the command, and running a package manager on the user's behalf from a web page is a surface a local tool should not open.
 
 **`PUT /v1/settings` is a patch, not a replace.** Fields are decoded as pointers, so a body changes only the keys it names and leaves the rest as they were; `PUT {}` is a no-op. An explicit `false` is still honoured, so nothing here is write-only. This is not a convenience: decoding into a plain struct made an absent field indistinguishable from a cleared one, so a short body — or a retry that dropped fields — answered 200 while resetting the stated plan *and* switching the release-check opt-in off. The plan decides what every cost figure on the dashboard claims to be, and `update_checks` gates rule 4's single outbound call; neither may be toggled by omission.
@@ -549,6 +576,8 @@ POST   /v1/agents/{id}/input         {data}            → 204   (owned PTYs onl
 POST   /v1/agents/{id}/signal        {action: pause|resume|kill} → 204 (owned PTYs only)
 WS     /v1/agents/{id}/term          bidirectional stream (xterm.js): binary = keystrokes, text = control; snapshot on connect, closes on exit
 POST   /v1/paste                     {name, type, data:base64} → {path}; writes a pasted or dropped file so Claude Code can read it
+GET    /v1/terminals                 → {terminals: [{id, name}], preferred}; terminal apps installed here, most preferred first
+POST   /v1/sessions/{id}/open-terminal {terminal?, mode?: resume|move|fork} → {terminal: {id, name}, mode, command}
 GET    /v1/history?range=…           lifetime totals + tool distribution + model mix + daily
 ```
 
@@ -615,10 +644,23 @@ instead of leaving everything past the first page unreachable.
 **`resume`** — `{ok, reason?, command?}`. On the list it is filled for ended
 sessions only, so a card can offer continue; on `GET /v1/sessions/{id}` for any
 session except a live one Caprock started (that one is typed into) — unless
-this daemon does not hold its terminal. Such a session is started before a
-restart of Caprock and still has a process; it is marked **`detached: true`**
+this daemon does not hold its terminal. Since
+[ADR-033](08-decisions.md#adr-033--an-owned-session-outlives-the-daemon-its-terminal-lives-in-a-pty-host)
+a restart reattaches the sessions it started, so such a session is one started
+by a release from before pty-hosts, or one whose pty-host died, and it still has
+a process; it is marked **`detached: true`**
 on the list and the detail, and gets `resume` there too (FB-040): its terminal
-tab used to open an empty screen. Decided by what is on disk,
+tab used to open an empty screen. Continuing it under its own id
+(`POST /v1/agents` with `resume` and no `fork`) first stops that terminal-less
+process — SIGTERM, then SIGKILL after 5s; a kill on Windows — and only when the
+row says Caprock started it (`owned`) and its recorded pid is alive, so two
+processes never write one transcript (rule 7: it is Caprock's own process).
+
+**`survives_restart`** — `true` on a live session Caprock started whose
+terminal is in a pty-host, so restarting or upgrading Caprock leaves it
+running; absent on one in the daemon's own PTY (the fallback), which ends with
+the daemon. The upgrade notice counts only the latter. On the list and the
+detail. Decided by what is on disk,
 not by who started the session (FB-036): the agent (Claude Code, Codex and
 OpenCode; Gemini is not continued), the cwd still existing, and for Claude Code
 the main transcript
@@ -631,6 +673,60 @@ OpenCode: `command` is `cd <cwd> && codex resume <id>` / `opencode --session
 session is not ended (two processes on one thread), when its folder is gone,
 when Caprock started it and nothing was ever sent (nothing to continue), or
 when the binary is not found.
+
+**`open_terminal`** — `{modes, reason?}`, filled wherever `resume` is: how the
+session can be opened in the user's **own** terminal application (Ghostty,
+iTerm2, Terminal, Windows Terminal, …), running the agent's resume command in
+its folder. Absent for an agent with no command that reopens a session by id
+(Gemini's `--resume` takes "latest" or an index, not an id; DeepSeek has none)
+and when the daemon cannot open terminals. `modes` is what is allowed, the
+first being what the main button does; empty, with `reason`, when nothing is.
+The rule is [rule 7](../CLAUDE.md) as a table (`openTerminalModes`, tested as
+one):
+
+- **Ended** → `resume`, whoever started it.
+- **Running, started by Caprock, and this daemon holds its terminal** → `move`
+  (and `fork` for Claude Code). The process is Caprock's to stop.
+- **Running anywhere else** — the user's own terminal, or a Caprock session
+  whose terminal went with a restart → `fork` for Claude Code only; nothing for
+  Codex and OpenCode, whose forks copy the history with its cost into a new
+  session Caprock would count twice.
+
+An ended Claude Code session whose transcript is gone, and an OpenCode session
+whose folder is gone, get no modes and the reason. A Claude Code or Codex
+session whose folder is gone opens from the home directory: both find a
+conversation by id from anywhere.
+
+**`POST /v1/sessions/{id}/open-terminal`** carries that out. `mode` defaults to
+the first allowed; one that is not allowed is `409 {error}` with the reason;
+`terminal` names one from `GET /v1/terminals` and defaults to the preferred
+one. The command is the agent's own (`agents.NativeResume`), built from the
+same resume arguments the dashboard's own launch uses (`agents.resumeArgs`,
+shared with `argv.go`), without the flags Caprock adds for a PTY it runs:
+`claude --resume <id>` (with `--fork-session` to fork), `codex resume <id>`,
+`opencode --session <id>`, where the id is `native_id` for a Codex or OpenCode
+session Caprock started. Such a session with no `native_id` sent nothing, so
+it gets no modes and says so, as `resume` does. **`move`** stops Caprock's process first — `resume`
+(a paused process cannot act on a signal), then `term`, up to
+`agents.ShutdownGrace` for Claude Code to write its transcript out, then `kill`
+— and only once this daemon no longer holds it does the window open, so two
+processes never append to one conversation. The session's `owned` is then
+cleared: it is the user's now, and would otherwise read as a Caprock session
+whose terminal was lost. The launch is planned before anything is stopped, so a
+refusal (no such terminal, an unsafe folder name) stops nothing. A failed
+launch answers `400` (no terminal, unsafe input) or `502` with `{error,
+command}` — the command, so the screen can offer it to copy. Session ids and
+command words are checked against a plain charset, a folder name with a control
+character (or a `"` on Windows) is refused, and everything else is quoted for
+the shell it reaches ([02-architecture.md](02-architecture.md#native-terminals)).
+Both endpoints are closed to a paired device: one is a `POST`, and
+`GET /v1/terminals` lists this machine's applications, which a tablet has no
+use for (ADR-029).
+
+`GET`/`PUT /v1/settings` carry **`terminal`**, the id of the terminal sessions
+open in; empty means the first installed. `PUT` accepts only an id this build
+knows for its OS (`nativeterm.IDs`) or `""`, else 400. Stored as `terminal` in
+`config.json`.
 
 **`SessionSummary.description` / `description_source`** — what tells a session
 from the others on the screen (FB-035): the stored `sessions.title`
@@ -1181,7 +1277,7 @@ together.
 
 ## Statusline
 
-`caprock statusline` is registered as Claude Code's `statusLine.command`. Registration is offered by `caprock up` (same consent contract as hooks — TTY prompt or `--yes`) and can be done or reverted explicitly with `caprock statusline install` / `caprock statusline uninstall`; it writes the single `statusLine` key in `~/.claude/settings.json` (backed up once) and never clobbers a statusLine the user set to something else. One entry of ours **is** rewritten: a version quoted the whole command (`"…/caprock statusline"`), which the shell resolves as a single nonexistent filename, so the line printed nothing and said nothing about why — `up` recognises that spelling, repairs it, and says it did. Nothing else is normalised; a working command of ours is left as it is. Claude Code pipes its status JSON on stdin (per assistant message, 300ms debounce); the command prints a compact one-line status to stdout (`⛰ · model · ctx% · $cost · 5h N% resets HH:MM · 7d N%`) and, best-effort, forwards the `rate_limits` windows (`used_percentage` 0–100, `resets_at` unix seconds) to the daemon via `POST /v1/statusline`. Like the shim it is fire-and-forget and can never break the session: it prints from the stdin JSON **first**, then POSTs with a ≤300ms budget, drops silently if the daemon is down, and always exits 0. `rate_limits` is present only for Pro/Max subscribers (absent → the line still renders, no POST). The daemon's `/v1/stats/summary` returns `rate_limits` (current window state) with a `forecast` string only when the measured usage slope is rising and would reach the limit before the window resets — otherwise the fact alone, never a guess.
+`caprock statusline` is registered as Claude Code's `statusLine.command`. Registration is offered by `caprock up` (same consent contract as hooks — TTY prompt or `--yes`) and can be done or reverted explicitly with `caprock statusline install` / `caprock statusline uninstall`; it writes the single `statusLine` key in `~/.claude/settings.json` (backed up once) and never clobbers a statusLine the user set to something else. One entry of ours **is** rewritten: a version quoted the whole command (`"…/caprock statusline"`), which the shell resolves as a single nonexistent filename, so the line printed nothing and said nothing about why — `up` recognises that spelling, repairs it, and says it did. Nothing else is normalised; a working command of ours is left as it is. Claude Code pipes its status JSON on stdin (per assistant message, 300ms debounce); the command prints a compact one-line status to stdout (`⛰ · model · ctx% · $cost · 5h N% resets HH:MM · 7d N%`) and, best-effort, forwards the `rate_limits` windows (`used_percentage` 0–100, `resets_at` unix seconds) to the daemon via `POST /v1/statusline`. Like the shim it is fire-and-forget and can never break the session: it prints from the stdin JSON **first**, then POSTs with a ≤300ms budget, drops silently if the daemon is down, and always exits 0. `rate_limits` is present only for Pro/Max subscribers (absent → the line still renders, no POST). The daemon's `/v1/stats/summary` returns `rate_limits` (current window state) with a `forecast` string only when the measured usage slope is rising and would reach the limit before the window resets — otherwise the fact alone, never a guess. `limit_at` (unix ms) is set exactly when `forecast` is: the time that same pace reaches 100%, so the dashboard can name the clock time ("around 19:10 — about 1 h before it resets") without parsing the sentence.
 
 The line also carries **the session's own counters**, which the stdin JSON does not: `N turns · N steps · cache −N% · in N · out N`. They are on by default and need no registration change — an existing `… statusline` entry starts showing them on upgrade, with nothing written to the user's settings. `--plain` opts out. `--rich` survives as a hidden no-op so that a settings.json written while it was still a flag keeps working; nothing new registers it. They come from `GET /v1/statusline/{id}` (bearer-gated), which returns `turns`, `tool_calls`, `tokens_in`, `tokens_out`, `cache_read` and `cache_write` from `session_stats` — one indexed row, no derived work, because this runs ahead of a line the user is waiting for. An unknown session returns zeros rather than 404: the first call of a session races its first turn being recorded, and the caller renders both the same way.
 
@@ -1259,9 +1355,11 @@ No DDL change was needed for either fix here, only honest use of the existing co
 
 `caprock service install` registers the daemon with the OS's own login supervisor. One user-level mechanism per platform; nothing is written outside the user's home, and never into `~/.claude/`.
 
-- **macOS** — a launchd agent at `~/Library/LaunchAgents/dev.caprock.daemon.plist`, loaded with `launchctl bootstrap gui/<uid>`. `RunAtLoad` starts it at login; `KeepAlive` with `SuccessfulExit=false` restarts a crash but leaves a deliberate `caprock down` alone. No `ProcessType` is declared, deliberately: the daemon watches files, so `Background` with `LowPriorityIO` looks correct and was measured to make the dashboard answer in 1.2s what the same binary answered in 185ms from a terminal; `Adaptive` changed nothing, leaving the process at scheduler priority 4 against a normal 20. Any `ProcessType` puts the job in a managed band, so the key is omitted.
-- **Linux** — a systemd **user** unit at `~/.config/systemd/user/caprock.service` (honouring `XDG_CONFIG_HOME`), enabled with `systemctl --user enable --now`, `Restart=on-failure`. Without a systemd user session the install fails with an actionable message and writes nothing.
+- **macOS** — a launchd agent at `~/Library/LaunchAgents/dev.caprock.daemon.plist`, loaded with `launchctl bootstrap gui/<uid>`. `RunAtLoad` starts it at login; `KeepAlive` with `SuccessfulExit=false` restarts a crash but leaves a deliberate `caprock down` alone. No `ProcessType` is declared, deliberately: the daemon watches files, so `Background` with `LowPriorityIO` looks correct and was measured to make the dashboard answer in 1.2s what the same binary answered in 185ms from a terminal; `Adaptive` changed nothing, leaving the process at scheduler priority 4 against a normal 20. Any `ProcessType` puts the job in a managed band, so the key is omitted. `AbandonProcessGroup` is `true`, so stopping the job does not kill what is left in its process group.
+- **Linux** — a systemd **user** unit at `~/.config/systemd/user/caprock.service` (honouring `XDG_CONFIG_HOME`), enabled with `systemctl --user enable --now`, `Restart=on-failure`, `KillMode=process`. Without a systemd user session the install fails with an actionable message and writes nothing.
 - **Windows** — a `.cmd` script in the Startup folder. A Scheduled Task cannot be rendered into a temp directory for a test, so verifying one means leaving a real logon task in the runner's store; the Startup script is an ordinary user-owned file, so its generation is unit-tested on every OS. The cost is that Windows restarts the daemon at logon but not mid-session.
+
+**Owned sessions outlive the service's restarts** ([ADR-033](08-decisions.md#adr-033--an-owned-session-outlives-the-daemon-its-terminal-lives-in-a-pty-host)). Each runs under a `caprock pty-host` started in its own session (POSIX `setsid`) or its own process group with its own hidden console (Windows), which is already out of reach of launchd's process-group kill; `AbandonProcessGroup` is the second lock. systemd kills the whole cgroup whatever the process group, so on Linux `KillMode=process` is what keeps them. An install written by an earlier release lacks both keys: `caprock service status` reports the file as differing, and `caprock service install` rewrites it. Until then a macOS install still keeps sessions (the `setsid` alone suffices against a process-group kill); a Linux one does not.
 
 The service runs the daemon with `--foreground` (the supervisor owns the process lifetime, so the daemon must not detach), `--no-open`, and `--no-hooks` — hook and statusline registration stay an interactive consent decision, never something a login agent performs.
 
@@ -1278,6 +1376,44 @@ The database is included because it stores prompts and responses in cleartext �
 The mode is applied by `store.secureDBFiles` on **every** `store.Open`, not only at creation: a database written by an earlier version keeps its `0644` until something changes it, and SQLite recreates `-wal`/`-shm` on demand under the umask, so a creation-time fix alone would regress on the next open. A filesystem that refuses `chmod` (a network share, a container volume) produces a logged warning and a running daemon rather than a failed start — a permissions limitation must not become an outage.
 
 **Windows is a deliberate no-op**: NTFS has no POSIX mode bits, `os.Chmod` there only toggles the read-only attribute, and applying `0600` would risk a read-only database while achieving nothing. Access is governed by the ACL inherited from the per-user data directory. The permission tests skip on Windows with that reason (rule 2).
+
+## Terminal holders (`caprock pty-host`)
+
+One process per owned session holds its PTY, so the session outlives the daemon ([ADR-033](08-decisions.md#adr-033--an-owned-session-outlives-the-daemon-its-terminal-lives-in-a-pty-host)). Code: `internal/ptyhost`.
+
+**Starting one.** The daemon runs `<caprock> pty-host` (hidden subcommand) detached — POSIX `setsid`; Windows `CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW`, plus `CREATE_BREAKAWAY_FROM_JOB` when the job allows it — with its working directory in the system temp directory. On Windows `<caprock>` is a copy of the binary at `<data_dir>/ptyhost/bin/caprock-<sha256[:16]>.exe`, so a running session never pins the install directory against `scoop update`; copies nothing runs from are deleted at the next daemon start. The launch spec is one JSON object on the holder's **stdin** — never argv (readable machine-wide) or disk — because it carries the token and the child's environment:
+
+```json
+{"proto": 1, "session_id": "<uuid>", "dir": "<data_dir>/ptyhost", "token": "<64 hex>", "version": "<caprock version>",
+ "spec": {"ID": "<uuid>", "Meta": {"kind": "claude"}, "Command": "/abs/claude", "Args": ["--session-id", "<uuid>"], "Dir": "<cwd>", "Env": ["K=V", "…"], "Cols": 120, "Rows": 40}}
+```
+
+The holder starts the child, listens on `127.0.0.1:0`, writes its registry entry, answers one line on **stdout** — `{"ok":true,"addr":"127.0.0.1:<port>","child_pid":N}` or `{"ok":false,"error":"…"}` — and closes stdout. A holder that cannot be started falls back to the in-process PTY (the session works and ends with the daemon); a child that cannot start is reported as the spawn's error.
+
+**Registry** — `<data_dir>/ptyhost/` (`0700`):
+
+- `<session-id>.json` (`0600`, written atomically by the holder, removed by it when the session ends): `{"proto", "session_id", "host_pid", "child_pid", "addr", "token", "cwd", "command", "started_at", "version", "meta"}`, where `meta` is `{"kind": "claude"|"codex"|"opencode"|"gemini", "port": "<OpenCode TUI server port>"}` — what the next daemon needs to keep watching the session (absent from holders written before it existed: treated as the row's agent, else Claude Code). The daemon removes an entry only when nothing listens at `addr` (the holder is gone). Continuing a session under its own id starts a second holder for the same id, so a holder removes the entry — or writes an exit file — only while the entry still names its own `host_pid` and token, and the daemon ignores an exit file beside a live holder for that id.
+- `<session-id>.exit` (`0600`): `{"session_id", "code", "at"}`, written when the child exits while no daemon is connected; the next daemon records the code (`SetExit`) and deletes the file.
+- `host.log` — holders' stderr, appended; empty in the normal course.
+- Session ids must match `[A-Za-z0-9_-]{1,128}` to be used as a file name; any other id starts in-process.
+
+**Wire protocol, version 1.** A frame is one type byte, a 4-byte big-endian payload length (≤ 8 MiB), the payload. The client's first frame is `H` and must arrive within 5s; a wrong token is answered `E` and closed. One client at a time: a new authenticated client replaces the previous one.
+
+| Frame | Direction       | Payload                                                                  |
+| ----- | --------------- | ------------------------------------------------------------------------ |
+| `H`   | daemon → holder | `{"proto":1,"token":"…","resume":false}`                                 |
+| `W`   | holder → daemon | `{"proto":1,"child_pid":N,"paused":false,"version":"…"}`                 |
+| `S`   | holder → daemon | the scrollback ring (256 KiB + mode prefix), once; skipped when `resume` |
+| `O`   | holder → daemon | terminal bytes                                                           |
+| `X`   | holder → daemon | `{"code":N}`, then the holder closes and exits                           |
+| `E`   | holder → daemon | a refusal as text, then close                                            |
+| `I`   | daemon → holder | typed bytes                                                              |
+| `R`   | daemon → holder | `{"cols":N,"rows":N}`                                                    |
+| `G`   | daemon → holder | `{"signal":"pause"\                                                      |
+
+**Compatibility rule.** A holder started by one release must work with the daemon of the next. Frame types are never renumbered or repurposed; a side ignores a frame type it does not know. A change that cannot be made additively raises `proto`, and the daemon keeps speaking every older version while a holder of it can still be running. A registry entry with a newer `proto` than the daemon's is left alone (a downgrade).
+
+**Lifecycle.** The daemon reattaches every registry entry at startup — after `OnExit` is wired, before the first liveness sweep and before the API serves. On shutdown it closes its connections and leaves holders running (`ptyman.ErrDetached` is not an exit and is not recorded as one). The session's pid in `sessions.pid` is the **child's**, so liveness ([ADR-028](08-decisions.md#adr-028--a-session-ends-when-its-process-does)) is unchanged. The holder ignores `SIGHUP` and `SIGINT`, passes `SIGTERM` to its child, and exits when the child does. Pause, resume, kill and resize go through the holder.
 
 ## Transcript JSONL (observed shape)
 

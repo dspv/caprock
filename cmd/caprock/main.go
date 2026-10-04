@@ -52,7 +52,7 @@ func newRoot() *cobra.Command {
 		SilenceErrors: true,
 		Version:       version.Version,
 	}
-	root.AddCommand(upCmd(), downCmd(), statusCmd(), reportCmd(), exportCmd(), tasksCmd(), taskCmd(), hooksCmd(), hookCmd(), statuslineCmd(), licenseCmd(), serviceCmd(), versionCmd())
+	root.AddCommand(upCmd(), downCmd(), statusCmd(), reportCmd(), exportCmd(), tasksCmd(), taskCmd(), hooksCmd(), hookCmd(), statuslineCmd(), licenseCmd(), serviceCmd(), versionCmd(), ptyHostCmd())
 	return root
 }
 
@@ -100,7 +100,7 @@ func upCmd() *cobra.Command {
 
 			// Shim: place it in the data dir and register it.
 			if !noHooks {
-				if err := ensureShim(dir); err != nil {
+				if err := hooks.EnsureShim(dir); err != nil {
 					fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n", err)
 				} else if err := maybeInstallHooks(cmd, dir, yes); err != nil {
 					fmt.Fprintf(cmd.ErrOrStderr(), "warning: hooks not installed: %v\n", err)
@@ -137,7 +137,8 @@ func runForeground(cmd *cobra.Command, dir string, cfg config.Config, noOpen, us
 	defer stop()
 	return daemon.Run(ctx, daemon.Options{
 		DataDir: dir, Config: cfg, Version: version.Version, Log: log, HiveDir: hiveDir, RepoCwd: repoDir,
-		LAN: useLAN,
+		HolderExe: holderExe(dir),
+		LAN:       useLAN,
 		OnReady: func(url string) {
 			fmt.Fprintf(cmd.OutOrStdout(), "caprock is up at %s  (data: %s)\n", url, dir)
 			printHive(cmd, hiveDir)
@@ -229,51 +230,12 @@ func lastLogError(logPath string) string {
 	return ""
 }
 
-// ensureShim copies caprock-hook from beside this executable into the data dir
-// (if present and different). When no sibling shim exists, `caprock hook` is
-// used as the fallback command.
-func ensureShim(dir string) error {
-	self, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	src := filepath.Join(filepath.Dir(self), filepath.Base(config.ShimPath(dir)))
-	dst := config.ShimPath(dir)
-	sb, err := os.ReadFile(src)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil // fallback handled by shimCommand
-		}
-		return err
-	}
-	if db, err := os.ReadFile(dst); err == nil && string(db) == string(sb) {
-		return nil
-	}
-	if err := config.WriteFileAtomic(dst, sb, 0o755); err != nil {
-		return fmt.Errorf("install shim into data dir: %w", err)
-	}
-	return nil
-}
-
-// shimCommand returns the command to register in settings.json: the shim binary
-// in the data dir when it exists, else `<self> hook`.
-func shimCommand(dir string) string {
-	if _, err := os.Stat(config.ShimPath(dir)); err == nil {
-		return config.ShimPath(dir)
-	}
-	self, err := os.Executable()
-	if err != nil {
-		return config.ShimPath(dir)
-	}
-	return self + " hook"
-}
-
 func maybeInstallHooks(cmd *cobra.Command, dir string, yes bool) error {
 	sp, err := hooks.DefaultSettingsPath()
 	if err != nil {
 		return err
 	}
-	shimPath := shimCommand(dir)
+	shimPath := hooks.ShimCommand(dir)
 	st, err := hooks.Inspect(sp, shimPath)
 	if err != nil {
 		return err
@@ -288,7 +250,8 @@ func maybeInstallHooks(cmd *cobra.Command, dir string, yes bool) error {
 			return nil
 		}
 	}
-	backup, err := hooks.Install(sp, shimPath)
+	// The same call the dashboard's Install button makes.
+	_, backup, err := hooks.InstallFor(dir, sp)
 	if err != nil {
 		return err
 	}
@@ -400,7 +363,7 @@ func confirm(cmd *cobra.Command, prompt string) bool {
 func downCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "down",
-		Short: "Stop the daemon (keeps all data)",
+		Short: "Stop the daemon (keeps all data; sessions started in Caprock keep running)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dir, err := config.DataDir()
 			if err != nil {
@@ -451,7 +414,7 @@ func statusCmd() *cobra.Command {
 			out := cmd.OutOrStdout()
 			if !running {
 				sp, _ := hooks.DefaultSettingsPath()
-				hs, _ := hooks.Inspect(sp, shimCommand(dir))
+				hs, _ := hooks.Inspect(sp, hooks.ShimCommand(dir))
 				if asJSON {
 					return json.NewEncoder(out).Encode(map[string]any{"running": false, "data_dir": dir, "hooks": hs})
 				}
@@ -552,7 +515,7 @@ func hooksCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				if err := ensureShim(dir); err != nil {
+				if err := hooks.EnsureShim(dir); err != nil {
 					return err
 				}
 				return maybeInstallHooks(cmd, dir, true)
@@ -569,7 +532,7 @@ func hooksCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				removed, err := hooks.Uninstall(sp, shimCommand(dir))
+				removed, err := hooks.Uninstall(sp, hooks.ShimCommand(dir))
 				if err != nil {
 					return err
 				}
@@ -642,7 +605,7 @@ func hooksCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				st, err := hooks.Inspect(sp, shimCommand(dir))
+				st, err := hooks.Inspect(sp, hooks.ShimCommand(dir))
 				if err != nil {
 					return err
 				}

@@ -73,6 +73,7 @@ describe('plan limits panel', () => {
     expect(document.body.textContent).toMatch(/as of /)
     // Only the window Codex reported: one 5-hour row (Claude Code's), not two.
     expect(screen.getAllByText(/^5-hour window/)).toHaveLength(1)
-    expect(document.body.textContent).toMatch(/never forecast/)
+    // The Codex caveat lives behind "more", and on hover.
+    expect(screen.getByTitle(/never forecast/)).toBeTruthy()
   })
 })

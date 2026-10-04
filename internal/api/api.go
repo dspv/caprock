@@ -16,6 +16,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,6 +32,7 @@ import (
 	"github.com/dspv/caprock/internal/license"
 	"github.com/dspv/caprock/internal/loop"
 	"github.com/dspv/caprock/internal/narrate"
+	"github.com/dspv/caprock/internal/nativeterm"
 	"github.com/dspv/caprock/internal/pairing"
 	"github.com/dspv/caprock/internal/premium"
 	"github.com/dspv/caprock/internal/store"
@@ -59,6 +61,10 @@ type Deps struct {
 	Version  string
 	// Status returns daemon/ingest/hooks status for /v1/status.
 	Status func(ctx context.Context) any
+	// InstallHooks registers the shim in Claude Code's settings, as
+	// `caprock hooks install` does, and returns what is registered after.
+	// nil ⇒ 501.
+	InstallHooks func(ctx context.Context) (any, error)
 	// Storage returns what the data directory holds for /v1/storage. nil ⇒ 501.
 	Storage func(ctx context.Context) any
 	// Started is when this daemon came up. The burn tile needs it: in the
@@ -98,6 +104,9 @@ type Deps struct {
 	// Update reports whether a newer release exists. nil ⇒ 501. It is only
 	// ever consulted when the user enabled checks.
 	Update UpdateController
+	// Terminals opens a session in the user's own terminal application. nil ⇒
+	// the open-terminal endpoints return 501 and no session offers it.
+	Terminals TerminalController
 	// DataDir is where Caprock keeps its own state. Needed so a file pasted
 	// into the terminal can be written somewhere Claude Code can read it by
 	// path. Empty ⇒ POST /v1/paste returns 501.
@@ -190,6 +199,10 @@ type Settings struct {
 	// personal — ~/dev for one person, ~/src or /work for another — and because
 	// the narrower it is, the less this endpoint can be asked. See browse.go.
 	BrowseRoot string `json:"browse_root,omitempty"`
+	// Terminal is the terminal application a session opens in when the user
+	// asks for their own terminal: an id from GET /v1/terminals, or empty for
+	// the first one installed.
+	Terminal string `json:"terminal"`
 }
 
 // ReportSender sends one weekly report immediately.
@@ -239,8 +252,8 @@ type AgentController interface {
 	Resize(sessionID string, cols, rows int) error
 	Term(sessionID string) (snapshot []byte, sub <-chan []byte, cancel func(), ok bool)
 	// Holds reports whether this daemon has the session's terminal. A session
-	// Caprock started before its last restart does not: the terminal went with
-	// the process that held it.
+	// Caprock started under an older release, or whose pty-host died, does
+	// not (ADR-033).
 	Holds(sessionID string) bool
 	Write(sessionID string, data []byte) error
 }
@@ -302,6 +315,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/sessions/{id}/notes", s.handleSessionNotes)
 	m.HandleFunc("GET /v1/notes", s.handleSearchNotes)
 	m.HandleFunc("GET /v1/sessions/{id}/diff", s.handleSessionDiff)
+	m.HandleFunc("POST /v1/sessions/{id}/open-terminal", s.handleOpenTerminal)
+	m.HandleFunc("GET /v1/terminals", s.handleTerminals)
 	m.HandleFunc("GET /v1/stats/summary", s.handleSummary)
 	m.HandleFunc("GET /v1/update", s.handleUpdate)
 	// Pairing. Only the redeem endpoint is reachable from the network; the
@@ -309,10 +324,12 @@ func New(d Deps) *Server {
 	// cannot admit a third device or revoke the laptop that let it in.
 	m.HandleFunc("GET /v1/pair/state", s.handlePairState)
 	m.HandleFunc("POST /v1/pair/code", s.handlePairNewCode)
+	m.HandleFunc("DELETE /v1/pair/code", s.handlePairClearCode)
 	m.HandleFunc("POST /v1/pair", s.handlePairRedeem)
 	m.HandleFunc("DELETE /v1/pair/devices/{id}", s.handlePairRevoke)
 	m.HandleFunc("POST /v1/pair/lan", s.handleSetLAN)
 	m.HandleFunc("POST /v1/update/check", s.handleUpdateCheck)
+	m.HandleFunc("POST /v1/hooks/install", s.handleInstallHooks)
 	m.HandleFunc("GET /v1/settings", s.handleGetSettings)
 	m.HandleFunc("PUT /v1/settings", s.handlePutSettings)
 	m.HandleFunc("POST /v1/report/test", s.handleTestReport)
@@ -463,7 +480,21 @@ type SessionSummary struct {
 	// heard from within the last 30 minutes and not yet stopped. Zero for an
 	// ended session. The main thread is not counted.
 	LiveSubagents int `json:"live_subagents,omitempty"`
+	// SurvivesRestart marks a live session Caprock started whose terminal is
+	// held by a pty-host (ADR-033), so restarting or upgrading Caprock leaves
+	// it running. A live owned session without it is in the daemon's own PTY
+	// (the fallback) and ends with the daemon; the upgrade notice counts those.
+	SurvivesRestart bool `json:"survives_restart,omitempty"`
+	// OpenTerminal is how this session can be opened in the user's own
+	// terminal application, filled wherever Resume is. Absent for an agent
+	// that cannot reopen a session by id, and when the daemon cannot open
+	// terminals at all.
+	OpenTerminal *OpenTerminalInfo `json:"open_terminal,omitempty"`
 }
+
+// survivor is the optional half of AgentController that knows which sessions
+// outlive the daemon. Optional so test doubles need not grow a method.
+type survivor interface{ Survives(sessionID string) bool }
 
 // ContextFill is the "context fill %" badge input: last turn's prompt size vs the model window.
 type ContextFill struct {
@@ -518,8 +549,14 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 	if sess.Owned && sess.Status != store.StatusEnded && s.d.Agents != nil && !s.d.Agents.Holds(sess.SessionID) {
 		sum.Detached = true
 	}
+	if sess.Owned && sess.Status != store.StatusEnded && !sum.Detached {
+		if sv, ok := s.d.Agents.(survivor); ok && sv.Survives(sess.SessionID) {
+			sum.SurvivesRestart = true
+		}
+	}
 	if sess.Status == store.StatusEnded || sum.Detached {
 		sum.Resume = s.resumeInfo(sess)
+		sum.OpenTerminal = s.openTerminalInfo(sess)
 	}
 	sum.ModelDisplay = s.modelDisplay(sess.Model)
 	if sess.Status != store.StatusEnded {
@@ -638,6 +675,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 			// Every row carries whether it can be picked up: the caller is
 			// about to offer exactly that, for live sessions as well as ended.
 			sum.Resume = s.resumeInfo(sess)
+			sum.OpenTerminal = s.openTerminalInfo(sess)
 			out = append(out, sum)
 		}
 		writeJSON(w, http.StatusOK, out)
@@ -692,6 +730,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		last = []event.Event{}
 	}
 	sum.Resume = s.resumeInfo(sess)
+	sum.OpenTerminal = s.openTerminalInfo(sess)
 	from, to, err := store.RelayLinks(ctx, s.d.Store.DB(), sess)
 	if err != nil {
 		s.fail(w, err)
@@ -877,6 +916,10 @@ type RateWindow struct {
 	// the measured slope is rising and exhaustion is projected before the reset.
 	// nil ⇒ show only the measured fact (no guess).
 	Forecast string `json:"forecast,omitempty"`
+	// LimitAt is when the same pace reaches 100% (unix ms), set exactly when
+	// Forecast is, so the dashboard can say "around 19:10" without parsing
+	// the sentence.
+	LimitAt int64 `json:"limit_at,omitempty"`
 	// ObservedAt is when the agent wrote this figure (unix ms). Set for
 	// Codex, whose windows are read out of a transcript that may be hours or
 	// days old; Claude Code's arrive live and leave it unset.
@@ -964,6 +1007,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		LicenseKey      *string  `json:"license_key"`
 		CapUSDPerDay    *float64 `json:"cap_usd_per_day"`
 		BrowseRoot      *string  `json:"browse_root"`
+		Terminal        *string  `json:"terminal"`
 		// The bot token goes in and never comes back out. An empty string is a
 		// deliberate clear, which is why it is a pointer like everything else.
 		ReportBotToken *string `json:"report_bot_token"`
@@ -1006,6 +1050,14 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.BrowseRoot != nil {
 		in.BrowseRoot = *patch.BrowseRoot
+	}
+	if patch.Terminal != nil {
+		v := strings.TrimSpace(*patch.Terminal)
+		if v != "" && !contains(nativeterm.IDs(runtime.GOOS), v) {
+			s.failCode(w, http.StatusBadRequest, fmt.Errorf("terminal must be empty or one of %s", strings.Join(nativeterm.IDs(runtime.GOOS), ", ")))
+			return
+		}
+		in.Terminal = v
 	}
 	// Only touched when the caller named it. GET never returns the token, so a
 	// UI that reads settings and writes them back always omits it — treating
@@ -1256,7 +1308,7 @@ func (s *Server) rateLimits(ctx context.Context) *RateLimits {
 			continue
 		}
 		rw := &RateWindow{UsedPercentage: snap.UsedPercentage, ResetsAt: snap.ResetsAt}
-		rw.Forecast = s.paceForecast(ctx, window, snap)
+		rw.Forecast, rw.LimitAt = s.paceForecast(ctx, window, snap)
 		if window == "five_hour" {
 			out.FiveHour = rw
 		} else {
@@ -1270,17 +1322,18 @@ func (s *Server) rateLimits(ctx context.Context) *RateLimits {
 	return &out
 }
 
-// paceForecast returns "~Nh to limit at current pace" only when the observed
-// usage slope is rising and exhaustion is projected before the window resets;
-// otherwise "" (show only the measured fact). No invented numbers: every input is
-// measured and the projection is explicitly pace-conditional.
-func (s *Server) paceForecast(ctx context.Context, window string, snap store.RateLimitSnapshot) string {
+// paceForecast returns "~Nh to limit at current pace", and when that is (unix
+// ms), only when the observed usage slope is rising and exhaustion is projected
+// before the window resets; otherwise "" and 0 (show only the measured fact).
+// No invented numbers: every input is measured and the projection is
+// explicitly pace-conditional.
+func (s *Server) paceForecast(ctx context.Context, window string, snap store.RateLimitSnapshot) (string, int64) {
 	if snap.UsedPercentage >= 100 {
-		return ""
+		return "", 0
 	}
 	pctPerHour, ok, err := store.RateLimitPace(ctx, s.d.Store.DB(), window, snap.ResetsAt)
 	if err != nil || !ok || pctPerHour <= 0 {
-		return ""
+		return "", 0
 	}
 	hoursToLimit := (100 - snap.UsedPercentage) / pctPerHour
 	// Only forecast if the limit would be hit before the window resets. Use the
@@ -1288,12 +1341,13 @@ func (s *Server) paceForecast(ctx context.Context, window string, snap store.Rat
 	// consistent and deterministic in tests, not tied to raw wall-clock.
 	resetIn := time.Unix(snap.ResetsAt, 0).Sub(s.d.Now())
 	if resetIn <= 0 || hoursToLimit >= resetIn.Hours() {
-		return "" // resets before the limit at current pace — no warning
+		return "", 0 // resets before the limit at current pace — no warning
 	}
+	at := s.d.Now().Add(time.Duration(hoursToLimit * float64(time.Hour))).UnixMilli()
 	if hoursToLimit < 1 {
-		return fmt.Sprintf("~%dm to limit at current pace", int(hoursToLimit*60))
+		return fmt.Sprintf("~%dm to limit at current pace", int(hoursToLimit*60)), at
 	}
-	return fmt.Sprintf("~%.1fh to limit at current pace", hoursToLimit)
+	return fmt.Sprintf("~%.1fh to limit at current pace", hoursToLimit), at
 }
 
 // maxDailyDays bounds the daily query: ten years is far past any real history
