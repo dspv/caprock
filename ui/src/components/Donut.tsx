@@ -75,6 +75,7 @@ export function Donut({
   centerLabel,
   ariaLabel,
   size = 148,
+  legend = true,
 }: {
   title: string
   segments: Segment[]
@@ -83,13 +84,15 @@ export function Donut({
   centerLabel: string
   ariaLabel: string
   size?: number
+  /** Off when an exact table sits beside the chart and would repeat it. */
+  legend?: boolean
 }) {
   const total = segments.reduce((a, s) => a + s.value, 0)
   const r = size / 2 - 12
   let at = 0
   return (
     <figure className="m-0 min-w-0">
-      <figcaption className="text-[10px] uppercase tracking-[0.12em] text-fg-faint mb-2">{title}</figcaption>
+      {title && <figcaption className="text-[10px] uppercase tracking-[0.12em] text-fg-faint mb-2">{title}</figcaption>}
       <div className="flex items-center gap-4 flex-wrap sm:flex-nowrap">
         <svg width={size} height={size} viewBox={`${-size / 2} ${-size / 2} ${size} ${size}`} role="img" aria-label={ariaLabel} className="shrink-0">
           <circle r={r} fill="none" style={{ stroke: 'var(--color-panel-2)' }} strokeWidth={18} />
@@ -106,7 +109,7 @@ export function Donut({
             {clip(centerLabel, 16)}
           </text>
         </svg>
-        <Legend segments={segments} total={total} />
+        {legend && <Legend segments={segments} total={total} />}
       </div>
     </figure>
   )
