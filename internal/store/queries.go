@@ -56,6 +56,10 @@ type Session struct {
 	// NativeID is the agent's own id for a Codex or OpenCode session Caprock
 	// started under an id of its own (migration 0031); empty otherwise.
 	NativeID string `json:"native_id,omitempty"`
+	// RelayFrom is the session whose work this one was started to carry on,
+	// with a brief rather than the conversation (migration 0032); empty
+	// otherwise.
+	RelayFrom string `json:"relay_from,omitempty"`
 }
 
 // Stats mirrors session_stats.
@@ -623,6 +627,55 @@ func SessionForNative(ctx context.Context, q Querier, agent, nativeID string) (s
 	return id, err
 }
 
+// SetRelayFrom records that a session was started to carry on another's work
+// (migration 0032).
+func SetRelayFrom(ctx context.Context, q Querier, id, from string) error {
+	if id == "" || from == "" || id == from {
+		return nil
+	}
+	_, err := q.ExecContext(ctx, `UPDATE sessions SET relay_from = ? WHERE session_id = ?`, from, id)
+	return err
+}
+
+// RelayLink is one end of a relay, as a session page names it.
+type RelayLink struct {
+	SessionID string `json:"session_id"`
+	Agent     string `json:"agent"`
+	Title     string `json:"title,omitempty"`
+	StartedAt int64  `json:"started_at"`
+}
+
+// RelayLinks returns the session this one was relayed from (nil when none or
+// unknown) and the sessions relayed from it, oldest first.
+func RelayLinks(ctx context.Context, q Querier, sess Session) (*RelayLink, []RelayLink, error) {
+	var from *RelayLink
+	if sess.RelayFrom != "" {
+		var l RelayLink
+		err := q.QueryRowContext(ctx, `SELECT session_id, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(started_at,0) FROM sessions WHERE session_id = ?`, sess.RelayFrom).
+			Scan(&l.SessionID, &l.Agent, &l.Title, &l.StartedAt)
+		switch {
+		case err == nil:
+			from = &l
+		case !errors.Is(err, sql.ErrNoRows):
+			return nil, nil, err
+		}
+	}
+	rows, err := q.QueryContext(ctx, `SELECT session_id, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(started_at,0) FROM sessions WHERE relay_from = ? ORDER BY started_at`, sess.SessionID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	to := []RelayLink{}
+	for rows.Next() {
+		var l RelayLink
+		if err := rows.Scan(&l.SessionID, &l.Agent, &l.Title, &l.StartedAt); err != nil {
+			return nil, nil, err
+		}
+		to = append(to, l)
+	}
+	return from, to, rows.Err()
+}
+
 func EndSupersededSiblings(ctx context.Context, q Querier, pid int, keep string) (int64, error) {
 	if pid <= 0 {
 		return 0, nil
@@ -665,13 +718,13 @@ func updateStatusByID(ctx context.Context, q Querier, ids []string, status strin
 	return nil
 }
 
-const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,''), COALESCE(worked_at,0), COALESCE(parent_session,''), COALESCE(native_id,'')`
+const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,''), COALESCE(worked_at,0), COALESCE(parent_session,''), COALESCE(native_id,''), COALESCE(relay_from,'')`
 
 func scanSession(sc interface{ Scan(...any) error }) (Session, error) {
 	var s Session
 	var hh, ht, owned int
 	var exit sql.NullInt64
-	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt, &s.WorkedAt, &s.ParentSession, &s.NativeID)
+	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt, &s.WorkedAt, &s.ParentSession, &s.NativeID, &s.RelayFrom)
 	s.HasHooks, s.HasTranscript, s.Owned = hh != 0, ht != 0, owned != 0
 	if exit.Valid {
 		v := int(exit.Int64)

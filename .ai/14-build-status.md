@@ -72,6 +72,24 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-04 — Continue in another agent
+
+"Continue in… ▾" on a session page starts a new session in any agent Caprock
+can start, in the same folder, with a brief as its first message: the last
+substantial passage, the working tree now, and the PRs the session opened
+([ADR-032](08-decisions.md), `internal/relay`). The user reads and edits the
+brief before it is sent, and the dialog says first that this is a new session
+with a summary, not the same conversation. The two sessions name each other
+(`sessions.relay_from`, migration 0032). The brief goes on the agent's command
+line — every one of the four takes a first message there — so nothing races a
+TUI that has not drawn yet. The handoff's clip and age helpers moved into
+`internal/relay` and are shared. Verified on an isolated daemon at no cost:
+relayed into Codex pointed at a closed port (the multi-line brief arrived as
+its first message, intact) and into OpenCode (`--prompt`, linked exactly),
+from a seeded Claude Code session whose transcript was gone — the case where
+plain continue cannot help. PRs are found only for Claude Code, which records
+them; the others' are not guessed from command text.
+
 ### 2026-10-04 — Choose the agent when starting a session
 
 The New session dialog starts Codex and OpenCode as well as Claude Code and

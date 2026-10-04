@@ -328,6 +328,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/orchestrator/start", s.handleStartOrchestrator)
 	m.HandleFunc("POST /v1/orchestrator/stop", s.handleStopOrchestrator)
 	m.HandleFunc("POST /v1/agents", s.handleSpawn)
+	m.HandleFunc("GET /v1/sessions/{id}/relay", s.handleRelayBrief)
 	m.HandleFunc("GET /v1/agents/models", s.handleAgentModels)
 	m.HandleFunc("POST /v1/agents/{id}/input", s.handleAgentInput)
 	m.HandleFunc("POST /v1/agents/{id}/signal", s.handleAgentSignal)
@@ -451,6 +452,10 @@ type SessionDetail struct {
 	SessionSummary
 	Files  []string      `json:"files"`
 	Events []event.Event `json:"events"`
+	// RelayedFrom is the session this one was started to carry on; RelayedTo
+	// the sessions started to carry this one on (ADR-032).
+	RelayedFrom *store.RelayLink  `json:"relayed_from,omitempty"`
+	RelayedTo   []store.RelayLink `json:"relayed_to"`
 }
 
 func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSummary, []event.Event, error) {
@@ -643,7 +648,12 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		last = []event.Event{}
 	}
 	sum.Resume = s.resumeInfo(sess)
-	writeJSON(w, http.StatusOK, SessionDetail{SessionSummary: sum, Files: files, Events: last})
+	from, to, err := store.RelayLinks(ctx, s.d.Store.DB(), sess)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, SessionDetail{SessionSummary: sum, Files: files, Events: last, RelayedFrom: from, RelayedTo: to})
 }
 
 // handleSessionNotes returns what Claude said in a session, in prose, newest
@@ -1605,6 +1615,10 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	}
+	if msg := s.checkRelay(r.Context(), req); msg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
+		return
 	}
 	// Spawn with a background context: the process must outlive this HTTP request.
 	id, cwd, err := s.d.Agents.Spawn(context.WithoutCancel(r.Context()), req)

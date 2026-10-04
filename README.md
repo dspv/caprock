@@ -104,7 +104,10 @@ is installed appears next to Claude Code in the New Session dialog — same
 terminal, same directory picker, its own filter chip — and the dialog remembers
 the one you picked last. A Codex or OpenCode session started here shows its
 cost and answers on the same page as its terminal, and one that has ended can
-be continued with "continue here". For Gemini, install the CLI
+be continued with "continue here". "Continue in…" on any session starts a new
+one in the agent of your choice with a summary you read first — what the agent
+last said, what changed in the folder, the PRs it opened. For Gemini, install
+the CLI
 (`npm install -g @google/gemini-cli`).
 With a Gemini key set (see [Premium](#premium) for where), Caprock passes it to
 the child process. Gemini has no hooks and writes no transcript, but it does

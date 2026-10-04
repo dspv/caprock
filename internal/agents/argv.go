@@ -27,8 +27,11 @@ type launchInput struct {
 	Fork         bool
 	// Port is the loopback port OpenCode's own server is told to listen on,
 	// so Caprock can learn the session id it creates. 0 for everyone else.
-	Port  int
-	Extra []string
+	Port int
+	// Prompt is the first message, sent as the session starts — a relay's
+	// brief, which the user has read and approved. Only for a new session.
+	Prompt string
+	Extra  []string
 }
 
 // launch is one agent's start: its arguments, the environment it adds, and
@@ -73,6 +76,11 @@ func claudeLaunch(in launchInput) (launch, error) {
 		l.args = append(l.args, "--permission-mode", in.Mode)
 	}
 	l.args = append(l.args, in.Extra...)
+	// `claude [options] [prompt]`: a positional prompt starts the interactive
+	// session with it already sent.
+	if p := promptArg(in); p != "" {
+		l.args = append(l.args, p)
+	}
 	return l, nil
 }
 
@@ -94,6 +102,11 @@ func geminiLaunch(in launchInput) (launch, error) {
 		l.args = append(l.args, "--approval-mode", mode)
 	}
 	l.args = append(l.args, in.Extra...)
+	// -i/--prompt-interactive: "Execute the provided prompt and continue in
+	// interactive mode" (-p would run headless and exit).
+	if p := promptArg(in); p != "" {
+		l.args = append(l.args, "--prompt-interactive", p)
+	}
 	return l, nil
 }
 
@@ -127,6 +140,10 @@ func codexLaunch(in launchInput) (launch, error) {
 	}
 	l.args = append(l.args, codexPermissions(in.Mode)...)
 	l.args = append(l.args, in.Extra...)
+	// `codex [OPTIONS] [PROMPT]`: the TUI opens with the prompt sent.
+	if p := promptArg(in); p != "" {
+		l.args = append(l.args, p)
+	}
 	return l, nil
 }
 
@@ -223,7 +240,42 @@ func opencodeLaunch(in launchInput) (launch, error) {
 		l.env = append(l.env, `OPENCODE_PERMISSION={"bash":"ask"}`)
 	}
 	l.args = append(l.args, in.Extra...)
+	// --prompt: "prompt to use", sent when the TUI opens.
+	if p := promptArg(in); p != "" {
+		l.args = append(l.args, "--prompt", p)
+	}
 	return l, nil
+}
+
+// promptArg is the first message as one argument, or "" when there is none or
+// the session is being resumed (a resume has its conversation already). A
+// leading dash would be read as a flag by every one of these parsers, so such
+// a prompt is given a leading space, which no agent minds.
+func promptArg(in launchInput) string {
+	p := strings.TrimRight(in.Prompt, " \t\r\n")
+	if strings.TrimSpace(p) == "" || in.Resume != "" {
+		return ""
+	}
+	if strings.HasPrefix(p, "-") {
+		p = " " + p
+	}
+	return p
+}
+
+// flattenForBatch makes a prompt safe to pass through a Windows .cmd or .bat
+// shim (how npm installs Claude Code, Codex and Gemini CLI there): cmd.exe ends
+// the command line at a newline and expands %VAR%, so lines are joined and
+// percent signs doubled. The brief survives as one paragraph.
+func flattenForBatch(p string) string {
+	p = strings.ReplaceAll(p, "\r\n", "\n")
+	lines := strings.Split(p, "\n")
+	kept := lines[:0]
+	for _, l := range lines {
+		if t := strings.TrimSpace(l); t != "" {
+			kept = append(kept, t)
+		}
+	}
+	return strings.ReplaceAll(strings.Join(kept, " / "), "%", "%%")
 }
 
 // freePort asks the kernel for a loopback port nobody holds. It is released

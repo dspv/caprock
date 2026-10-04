@@ -1264,6 +1264,13 @@ func (a *agentAdapter) Spawn(ctx context.Context, req any) (string, string, erro
 			sr.NativeResume = prev.NativeID
 		}
 	}
+	// A relay starts in the folder the source session worked in, unless the
+	// request names one.
+	if sr.RelayFrom != "" && sr.Cwd == "" {
+		if src, err := store.GetSession(ctx, a.d.store.DB(), sr.RelayFrom); err == nil {
+			sr.Cwd = src.Cwd
+		}
+	}
 	if sr.Agent == agents.AgentCodex {
 		// The first rollout on a machine may be this session's.
 		a.d.startCodex(a.d.baseCtx, true)
@@ -1271,6 +1278,11 @@ func (a *agentAdapter) Spawn(ctx context.Context, req any) (string, string, erro
 	ag, err := a.m.Spawn(ctx, sr)
 	if err != nil {
 		return "", "", err
+	}
+	if sr.RelayFrom != "" {
+		if err := store.SetRelayFrom(ctx, a.d.store.DB(), ag.SessionID, sr.RelayFrom); err != nil {
+			a.d.log.Warn("could not record the relay", "component", "daemon", "err", err)
+		}
 	}
 	switch {
 	case sr.Agent == agents.AgentCodex && sr.Resume == "":

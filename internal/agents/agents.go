@@ -59,6 +59,13 @@ type SpawnRequest struct {
 	// sessions.native_id). Filled by the daemon from the store, never by the
 	// browser.
 	NativeResume string `json:"-"`
+	// Prompt is the first message, sent as the session starts. A relay's
+	// brief: built by Caprock, read and edited by the user, and sent only when
+	// they click Start. Ignored on a resume.
+	Prompt string `json:"prompt,omitempty"`
+	// RelayFrom is the session whose work this new one carries on
+	// (sessions.relay_from). The daemon records it; the agent never sees it.
+	RelayFrom string `json:"relay_from,omitempty"`
 	// GeminiKey is the key the daemon holds, passed into the child's
 	// environment. Never accepted from the browser — the API fills it in from
 	// settings, so a page cannot hand a spawned process someone else's
@@ -372,6 +379,10 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		in := launchInput{
 			SessionID: sessionID, Cwd: cwd, Model: req.Model, Mode: req.PermissionMode,
 			Resume: req.Resume, NativeResume: req.NativeResume, Fork: req.Fork, Extra: req.Args,
+			Prompt: req.Prompt,
+		}
+		if in.Prompt != "" && isBatch(m.binary(agent)) {
+			in.Prompt = flattenForBatch(in.Prompt)
 		}
 		// A new OpenCode session is named by OpenCode when the first message
 		// is sent; its TUI's own server announces the id, on a port chosen
