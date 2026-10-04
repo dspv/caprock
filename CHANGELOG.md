@@ -16,6 +16,10 @@ Phase 3 (Delight) has no plan by design.
   OpenCode bash call in the Tools drill-down read "(input not recorded)". They
   are stored now, in Claude Code's spelling, and calls already imported are
   filled in from OpenCode's own database the first time Caprock starts.
+- **A worker with unread mail is kept working again.** The Stop hook's
+  "process your inbox first" answer was nested where Claude Code ignores it,
+  so sessions stopped with mail still waiting. It is now in the shape Claude
+  Code acts on.
 
 ## [0.70.1] - 2026-10-04
 

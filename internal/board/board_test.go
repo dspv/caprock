@@ -68,8 +68,8 @@ func TestStopDecisionForceContinueAndGuard(t *testing.T) {
 	_, _ = b.Hive.Send(hive.Message{From: "orchestrator", To: "worker-1", Kind: hive.KindAssign, TaskID: "t1", Body: "do it"})
 	_, _ = b.Hive.Deliver()
 	body := b.StopDecision(ctx, "sess", "worker-1", "t1")
-	if body == nil || !contains(string(body), `"decision":"block"`) || !contains(string(body), "inbox") {
-		t.Fatalf("block expected: %s", body)
+	if body == nil || !contains(string(body), `{"decision":"block"`) || !contains(string(body), "inbox") || contains(string(body), "hookSpecificOutput") {
+		t.Fatalf("top-level block expected: %s", body)
 	}
 	// Top-level session (no agent id) is never forced.
 	if b.StopDecision(ctx, "sess", "", "t1") != nil {

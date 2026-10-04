@@ -68,7 +68,7 @@ Guards: max **N=10** forced continuations per task (default), then escalate; ver
 
 The forced-continue counter is keyed per (session, task), and a session with **no** task — the orchestrator, which is never assigned one — is counted under the reserved key `/no-task` so the same limit applies to it. Without that key its counter stayed at 1 and the guard could never trip: one escalation it could not clear pinned an unattended `--dangerously-skip-permissions` session in an unbounded forced-continue loop. When the guard trips, the task is walked to `needs_you` along a legal route (`board.moveTo`); guarding the single hop with `CanTransition` and skipping it when illegal silently dropped the escalation, left the task live, and kept the router waking the worker — see § Status transitions, which owns that rule.
 
-The Stop output shape is `{"hookSpecificOutput":{"hookEventName":"Stop","decision":"block","reason":"…"}}` on stdout with exit 0 (exit 2 also blocks) — the canonical, and only documented, form for Claude Code 2.1.x. `board.StopDecision` emits it, and the live unattended run confirmed Claude 2.1.235 continues on it ([OQ-06](12-risks.md#open-questions) resolved 2026-08-19). The spec's older top-level `{"decision","reason"}` form is undocumented and not used.
+The Stop output shape is the top-level `{"decision":"block","reason":"…"}` on stdout with exit 0 (exit 2 also blocks), as documented in the [hooks reference](https://code.claude.com/docs/en/hooks) for Stop and SubagentStop. `board.StopDecision` emits it. A decision nested in `hookSpecificOutput` is ignored: a live `claude -p` run on Claude Code 2.1.289 (2026-10-04) stopped on the nested form and continued on the top-level one ([OQ-06](12-risks.md#open-questions)).
 
 ## Verification runner
 

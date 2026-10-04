@@ -291,9 +291,9 @@ func (b *Board) StopDecision(ctx context.Context, sessionID, agentID, taskID str
 		return nil // allow the stop; the human takes over
 	}
 	reason := fmt.Sprintf("You have %d unread message(s) in your inbox — process them before stopping.", b.Hive.InboxCount(agentID))
-	body, _ := json.Marshal(map[string]any{
-		"hookSpecificOutput": map[string]any{"hookEventName": "Stop", "decision": "block", "reason": reason},
-	})
+	// Stop takes a top-level decision; Claude Code ignores one nested in
+	// hookSpecificOutput and lets the session stop.
+	body, _ := json.Marshal(map[string]any{"decision": "block", "reason": reason})
 	return body
 }
 
