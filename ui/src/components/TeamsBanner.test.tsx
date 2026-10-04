@@ -46,6 +46,13 @@ describe('TeamsBanner', () => {
     expect(dialog.textContent).toMatch(/On this machine alone: \$2,471\.94 across 6 projects/)
     expect(screen.getByRole('link', { name: 'Book a demo' })).toHaveAttribute('href', 'https://caprock.dev/book/')
     expect(dialog.textContent).not.toMatch(/pilot|coming soon|not built|beta/i)
-    expect(dialog.textContent?.replace('$2,471.94', '')).not.toMatch(/\$\d/)
+    // Dollar figures other than the reader's own may appear only inside the
+    // picture, and the picture must say it is an example (rule 6). No price
+    // figure anywhere: the pricing page owns it.
+    const picture = dialog.querySelector('figure[role="img"]')!
+    expect(picture.textContent).toMatch(/Example team/)
+    expect(picture.getAttribute('aria-label')).toMatch(/Illustrative/)
+    const outside = (dialog.textContent ?? '').replace(picture.textContent ?? '', '').replace('$2,471.94', '')
+    expect(outside).not.toMatch(/\$\d/)
   })
 })
