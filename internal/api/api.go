@@ -266,6 +266,8 @@ type Server struct {
 	week     *answerCache
 	weekLong *answerCache
 	glance   *answerCache
+	// drill holds the tool drill-downs (drillTTL).
+	drill *answerCache
 	// repos answers "which repository, on which host" per directory.
 	repos *repoCache
 }
@@ -287,8 +289,9 @@ func New(d Deps) *Server {
 			lanHost = u.Hostname()
 		}
 	}
-	s := &Server{d: d, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now), repos: newRepoCache(),
-		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now)}
+	s := &Server{d: d, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now),
+		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
+		drill: newAnswerCache(drillTTL, answerMaxStale, time.Now), repos: newRepoCache()}
 	// Seeded from Deps so `caprock up --lan` behaves exactly as before; the
 	// dashboard's switch goes through SetLAN.
 	s.pairing, s.lanURL = d.Pairing, d.LANURL
@@ -318,6 +321,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/history", s.handleHistory)
 	m.HandleFunc("GET /v1/week", s.handleWeek)
 	m.HandleFunc("GET /v1/glance", s.handleGlance)
+	m.HandleFunc("GET /v1/tools/drill", s.handleToolDrill)
 	// Picking a folder without typing its path: see browse.go for what stops
 	// this being a filesystem-read API.
 	m.HandleFunc("GET /v1/browse", s.handleBrowse)

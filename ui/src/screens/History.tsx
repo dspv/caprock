@@ -22,6 +22,7 @@ import { WeeklyReport } from '@/components/WeeklyReport'
 import { UnpricedNote } from '@/components/Unpriced'
 import { Donut, sharePct, topN, type Segment } from '@/components/Donut'
 import { cacheLevel } from '@/lib/cachelevel'
+import { ToolDrill } from '@/components/ToolDrill'
 
 type Range = 'today' | '7d' | '30d' | 'all'
 type View = 'charts' | 'numbers'
@@ -93,6 +94,8 @@ export function HistoryScreen() {
   const [range, setRange] = useState<Range>('all')
   const [activeDay, setActiveDay] = useState<string | null>(null)
   const [view, setViewState] = useState<View>(savedView)
+  // The tool row opened in place, if any.
+  const [drill, setDrill] = useState<string | null>(null)
   const h = useApi(() => api.history(range), [range], { intervalMs: 15000, cache: `history:${range}` })
   const [plan] = usePlan()
   const d = h.data
@@ -199,7 +202,7 @@ export function HistoryScreen() {
       </Panel>
 
       <div className="grid gap-3 lg:grid-cols-2">
-        <Panel title="Tool usage" right={<span className="text-[10px] uppercase tracking-[0.08em]">calls</span>}>
+        <Panel title="Tool usage" right={<span className="text-[10px] uppercase tracking-[0.08em]">calls · open a row for detail</span>}>
           {!d ? <Skeleton rows={5} /> : d.tools.length === 0 && <Empty title="No tool calls yet" />}
           {d && d.tools.length > 0 && view === 'charts' && (
             <div className="px-3 py-3">
@@ -214,10 +217,17 @@ export function HistoryScreen() {
           {d && d.tools.length > 0 && (
             <ul className={`py-1 ${view === 'charts' ? 'border-t border-border' : ''}`}>
               {d.tools.slice(0, view === 'charts' ? 8 : 18).map((t) => (
-                <li key={t.tool} className="flex items-center gap-2 px-3 py-[3px]">
-                  <span className="mono text-[12px] w-44 shrink-0 truncate" title={t.tool}>{fmtTool(t.tool)}</span>
-                  <div className="flex-1 h-2 bg-panel-2 rounded-sm overflow-hidden"><div className="h-full bg-accent/70" style={{ width: `${(100 * t.count) / maxTool}%` }} /></div>
-                  <span className="num text-[11px] text-fg-muted w-12 text-right">{fmtTokens(t.count)}</span>
+                <li key={t.tool}>
+                  {/* The row opens in place into what that tool's calls were
+                    * about (ToolDrill), for the range above. */}
+                  <button type="button" onClick={() => setDrill(drill === t.tool ? null : t.tool)} aria-expanded={drill === t.tool}
+                    className="flex w-full items-center gap-2 px-3 py-[3px] text-left hover:bg-panel-2">
+                    <span aria-hidden className={`w-2 text-[10px] text-fg-faint transition-transform ${drill === t.tool ? 'rotate-90' : ''}`}>›</span>
+                    <span className="mono text-[12px] w-44 shrink-0 truncate" title={t.tool}>{fmtTool(t.tool)}</span>
+                    <div className="flex-1 h-2 bg-panel-2 rounded-sm overflow-hidden"><div className="h-full bg-accent/70" style={{ width: `${(100 * t.count) / maxTool}%` }} /></div>
+                    <span className="num text-[11px] text-fg-muted w-12 text-right">{fmtTokens(t.count)}</span>
+                  </button>
+                  {drill === t.tool && <ToolDrill tool={t.tool} range={range} />}
                 </li>
               ))}
             </ul>

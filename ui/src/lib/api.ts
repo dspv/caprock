@@ -565,6 +565,30 @@ export interface Week {
   pricing_version?: string
 }
 
+/** One group of a tool's calls. Results, failures, bytes and trend are Premium:
+ *  the daemon leaves them out without a licence. */
+export interface DrillRow { key: string; calls: number; results?: number; failures?: number; bytes?: number; trend?: number[] }
+export interface DrillHint { kind: 'failures' | 'output' | 'repeats'; key: string; text: string }
+/** GET /v1/tools/drill: one tool's calls grouped by what they were about. */
+export interface ToolDrill {
+  tool: string
+  kind: 'shell' | 'files' | 'web' | 'mcp' | 'other'
+  group_by: string
+  calls: number
+  results?: number
+  failures?: number
+  bytes?: number
+  rows: DrillRow[]
+  other: number
+  trend_from_ms?: number
+  trend_width_ms?: number
+  hints?: DrillHint[]
+  range: string
+  locked: boolean
+  /** The strongest hint, sent in full even without a licence. */
+  teaser?: DrillHint
+}
+
 export interface History { range: string; totals: HistoryTotals; tools: ToolCount[]; daily: DailyStat[]; savings: Savings; summary: Summary; tax?: ContextTax }
 
 export interface Status {
@@ -892,6 +916,8 @@ export const api = {
   history: (range: 'today' | '7d' | '30d' | 'all' = 'all') => get<History>(`/v1/history?range=${range}`),
   /** `start` is the first local day (YYYY-MM-DD); omitted, the seven days ending today. */
   glance: () => get<Glance>('/v1/glance'),
+  toolDrill: (tool: string, range: 'today' | '7d' | '30d' | 'all' = 'all', agent?: string) =>
+    get<ToolDrill>(`/v1/tools/drill?tool=${encodeURIComponent(tool)}&range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}`),
   week: (start?: string) => get<Week>(`/v1/week${start ? `?start=${start}` : ''}`),
   /** The same card for a named window: today, the last 7 or 30 days, or all time. */
   weekFor: (period: 'today' | '7d' | '30d' | 'all') => get<Week>(`/v1/week?period=${period}`),
