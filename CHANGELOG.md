@@ -73,6 +73,13 @@ Phase 3 (Delight) has no plan by design.
 
 ### Changed
 
+- **Plan limits explain themselves.** Each window says, in words, how much
+  is used, when it resets and how long that is (in minutes under an hour),
+  and that Claude Code pauses at 100% until then. One line says these are
+  Anthropic's limits per 5-hour window and per week, not Caprock's, and near
+  the limit a note says to wait for the reset or switch to Codex if it has
+  room. The same panel is on Now and Cost, and the limit alert now opens it
+  directly.
 - **Lifetime reads like the site.** The money leads, large, with what it
   came to per active day and per session beside it, then the cache and the
   counts. Top projects come first, as a donut beside the table; tool usage

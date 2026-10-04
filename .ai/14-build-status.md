@@ -116,6 +116,17 @@ mount, and `/v1/status` reuses its two bulk reads (0.26 s event count, 0.64 s
 handoff coverage, cold) for a minute. See
 [03-contracts.md](03-contracts.md) and [04-ui.md § The terminal](04-ui.md#the-terminal).
 
+### 2026-10-04 — Plan limits in plain words
+
+- Owner feedback: from a "limit at 95%" alert he reached Cost and "did not
+  understand anything" (translated). Every window is now a ring plus a
+  sentence (used, reset clock, countdown in minutes under an hour, what 100%
+  means), a "what these are" line, and advice when a live window passes 85%
+  (wait for the reset, or switch to Codex when it has room). One
+  `PlanLimitsPanel` on Now and Cost; the alert links to
+  `#/cost?section=limits` and the screen scrolls to it. The desktop app's
+  stale reading stays off this panel.
+
 ### 2026-10-04 — Lifetime, in the site's reading style
 
 - The money leads at display size, then cost per active day and per session

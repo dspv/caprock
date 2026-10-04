@@ -7,7 +7,7 @@ export type Route =
   // `at` is a unix-ms instant to reveal in the timeline: clicking a minute in
   // the pulse should land on those events, not at the top of a long session.
   | { name: 'session'; id: string; tab?: string; at?: number }
-  | { name: 'cost' }
+  | { name: 'cost'; section?: string }
   | { name: 'history' }
   | { name: 'week'; start?: string }
   | { name: 'tasks' }
@@ -30,8 +30,10 @@ export function parseHash(hash: string): Route {
       return { name: 'now' }
     case 'session':
       return parts[1] ? { name: 'session', id: decodeURIComponent(parts[1]), tab, at } : { name: 'now' }
-    case 'cost':
-      return { name: 'cost' }
+    case 'cost': {
+      const section = params.get('section') ?? ''
+      return /^[a-z-]+$/.test(section) ? { name: 'cost', section } : { name: 'cost' }
+    }
     case 'history':
       return { name: 'history' }
     case 'week': {
@@ -61,7 +63,7 @@ export function href(r: Route): string {
       const s = q.toString()
       return `#/session/${encodeURIComponent(r.id)}${s ? `?${s}` : ''}`
     }
-    case 'cost': return '#/cost'
+    case 'cost': return r.section ? `#/cost?section=${r.section}` : '#/cost'
     case 'history': return '#/history'
     case 'week': return r.start ? `#/week?start=${r.start}` : '#/week'
     case 'tasks': return '#/tasks'

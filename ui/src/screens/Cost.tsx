@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api, isPairedDevice, type DailyStat } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { cacheLevel } from '@/lib/cachelevel'
@@ -9,7 +9,7 @@ import { DayGrid } from '@/components/DayGrid'
 import { PlanValue } from '@/components/PlanValue'
 import { usePlan } from '@/components/PlanPicker'
 import { costBasis, costBasisLong, costLabel } from '@/components/CostBasis'
-import { CodexLimits, RateLimitRow } from '@/components/PlanLimits'
+import { PlanLimitsPanel } from '@/components/PlanLimits'
 import { TeamsBanner } from '@/components/TeamsBanner'
 import { Locked } from '@/components/Locked'
 import { SpendCap } from '@/components/SpendCap'
@@ -19,7 +19,7 @@ import { WorkMix } from '@/components/WorkMix'
 
 type Range = 'today' | '7d' | '30d' | 'all'
 
-export function CostScreen() {
+export function CostScreen({ section }: { section?: string } = {}) {
   // 30d, matching the Projects panel on Now. On `today` the plan multiple
   // divides a single heavy day by 1/30th of a monthly fee and reads 87x where
   // the honest monthly figure is 37x — a headline that halves when you click
@@ -35,6 +35,12 @@ export function CostScreen() {
   const [activeDay, setActiveDay] = useState<string | null>(null)
   const [dayView, setDayView] = useState<'calendar' | 'bars'>('calendar')
   const s = summary.data
+  // Arriving from the plan-limit alert: bring its explanation into view once
+  // there is something to show, rather than leaving the reader at the top.
+  useEffect(() => {
+    if (section !== 'limits' || !s) return
+    document.getElementById('plan-limits')?.scrollIntoView?.({ block: 'start' })
+  }, [section, !!s])
   // Before anything has been captured the API returns Go zero values, so this
   // screen rendered a board of $0.00 / 0 with a warn-toned "0% hit rate" — a
   // fault light for a cache that has never been used.
@@ -240,35 +246,16 @@ export function CostScreen() {
       )}
 
       {s && (
-        <Panel title="Plan limits">
-          {/* px-3 like every other panel's body. Without it the rows ran into
-            * the panel border on both sides, which is the one place the eye
-            * reads a table as unfinished rather than dense. */}
-          {/* Each agent's windows under its own name. The plans are separate
-            * — a Claude Max seat and a ChatGPT plan share nothing — so one
-            * unlabelled pair of rows would read as one limit. Without Codex
-            * the panel is exactly what it was. */}
-          {s.codex_rate_limits && (
-            <div className="px-3 pt-1 text-[11px] uppercase tracking-wide text-fg-faint">Claude Code</div>
-          )}
-          {s.rate_limits ? (
-            <div className="flex flex-col gap-2 px-3 pt-1">
-              {s.rate_limits.five_hour && <RateLimitRow label="5-hour window" w={s.rate_limits.five_hour} now={now} />}
-              {s.rate_limits.seven_day && <RateLimitRow label="7-day window" w={s.rate_limits.seven_day} now={now} />}
-            </div>
-          ) : (
-            <div className="px-3 pt-1 text-sm text-fg-muted">
-              Nothing yet. Run <span className="mono text-fg">caprock statusline</span> in a Pro or
-              Max session and your limits appear here. API billing has no windows.
-            </div>
-          )}
-          {s.codex_rate_limits && <CodexLimits limits={s.codex_rate_limits} now={now} />}
-          <div className="mt-2 px-3 pb-3 text-[11px] text-fg-faint leading-relaxed">
-            From Claude Code's status line. A forecast appears only when your pace would hit the
-            limit before the window resets.
-            {s.codex_rate_limits && " Codex's are read from its own session files, as it last wrote them — never forecast."}
+        // The same panel as Now's, words and all, with an anchor: the
+        // plan-limit alert links here (#/cost?section=limits), and landing at
+        // the top of Cost left the owner looking for it.
+        <PlanLimitsPanel id="plan-limits" className="col-span-full" limits={s.rate_limits} codex={s.codex_rate_limits} now={now} empty={
+          <div className="px-3 py-3 text-sm text-fg-muted">
+            Pro and Max plans have Anthropic's 5-hour and weekly limits, which Claude Code reports on its
+            status line. Nothing yet: run <span className="mono text-fg">caprock statusline</span> in a Pro or
+            Max session and your limits appear here. API billing has no windows.
           </div>
-        </Panel>
+        } />
       )}
       </div>
       <div className="text-[11px] text-fg-faint">

@@ -11,9 +11,12 @@
  * The staleness rule below is subtle enough that two copies of it would drift,
  * and the copy that drifts is the one nobody is looking at.
  */
-import type { RateLimits, RateWindow } from '@/lib/api'
+import type { ReactNode } from 'react'
+import type { RateLimits, RateWindow, Settings } from '@/lib/api'
 import { Panel, Stat } from '@/components/ui'
 import { Ring } from '@/components/Donut'
+import { usePlan } from '@/components/PlanPicker'
+import { countdown, resetClock } from '@/lib/limitclock'
 
 /** A window's percentage, and whether its reset clock can be believed. */
 export function readWindow(w: RateWindow, now: number) {
@@ -144,13 +147,16 @@ function fmtObserved(ms: number, now: number): string {
   return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-/** "1 h 31 m", "12 m", "2 d 3 h" until a moment. */
-export function countdown(ms: number): string {
-  const m = Math.max(0, Math.round(ms / 60_000))
-  if (m < 60) return `${m} m`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h} h ${m % 60} m`
-  return `${Math.floor(h / 24)} d ${h % 24} h`
+export { countdown, resetClock }
+
+/**
+ * What the Claude heading calls the plan: the one the user picked ("Claude
+ * Max 5×"), or just "Claude Code" when they have not said. Never guessed from
+ * the percentages — the status line does not say which plan it is.
+ */
+export function planName(plan: Settings | undefined): string {
+  const label = plan?.plan_kind === 'flat' ? plan.plan_label : ''
+  return /^(pro|max)/i.test(label) ? `Claude ${label}` : 'Claude Code'
 }
 
 function gaugeColor(pct: number): string {
@@ -158,22 +164,21 @@ function gaugeColor(pct: number): string {
 }
 
 /**
- * One window as a gauge: the share used in the middle, the colour moving from
- * calm to amber to red as it nears the limit, the reset as a clock and a
- * countdown. A reading whose reset clock cannot be believed is drawn grey and
- * says so, rather than counting down to a time that is not real.
+ * One window as a gauge and a sentence. The owner opened this from a "95%"
+ * alert and could not tell what any of it meant, so every window now says it
+ * in words: how much is used, when it resets and how long that is, and what
+ * happens at 100%. The ring stays for the glance; the sentence is the answer.
  *
- * The forecast is the daemon's, never computed here: it exists only when the
- * measured pace would reach the limit before the reset, and then the rest of
- * the ring is drawn dashed to say exactly that. Codex is never forecast.
+ * A reading whose reset clock cannot be believed is drawn grey and says so,
+ * rather than counting down to a time that is not real. The forecast is the
+ * daemon's, never computed here: it exists only when the measured pace would
+ * reach the limit before the reset, and then the rest of the ring is dashed.
+ * Codex is never forecast.
  */
 export function LimitGauge({ label, w, now, source }: { label: string; w: RateWindow; now: number; source: string }) {
   const r = readWindow(w, now)
   const resetMs = w.resets_at * 1000
-  let clock = r.resetsAt
-  if (clock && resetMs - now > 24 * 3600 * 1000) {
-    clock = new Date(resetMs).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })
-  }
+  const clock = r.resetsAt ? resetClock(resetMs, now) : null
   const color = gaugeColor(r.pct)
   return (
     <div className="flex items-center gap-3 min-w-0">
@@ -183,14 +188,17 @@ export function LimitGauge({ label, w, now, source }: { label: string; w: RateWi
         <span className={`num text-[22px] font-semibold ${r.stale ? 'text-fg-faint' : ''}`} style={r.stale ? undefined : { color }}>{r.pct}%</span>
         <span className="text-[9px] uppercase tracking-[0.1em] text-fg-faint mt-1">used</span>
       </Ring>
-      <div className="min-w-0 text-[12px] leading-snug">
-        <div className="font-medium text-fg">{label}</div>
+      <div className="min-w-0 text-[12.5px] leading-snug">
+        <div className="font-medium text-fg">{label}: {r.pct}% used</div>
         {r.stale ? (
           <div className="text-fg-faint" title={`${source} has not refreshed this window recently, so the reset time and the percentage are old`}>
-            reset time stale — not a live reading
+            Not a live reading — {source} has not reported it lately.
           </div>
         ) : clock ? (
-          <div className="text-fg-muted num">resets {clock} · in {countdown(resetMs - now)}</div>
+          <>
+            <div className="text-fg-muted">Resets <span className="num text-fg">{clock}</span> — in {countdown(resetMs - now)}.</div>
+            <div className="text-fg-faint">At 100%, {source} pauses until then.</div>
+          </>
         ) : null}
         {w.forecast && !r.stale && <div className="text-danger">{w.forecast}</div>}
       </div>
@@ -198,47 +206,96 @@ export function LimitGauge({ label, w, now, source }: { label: string; w: RateWi
   )
 }
 
+/** The live window closest to its limit, with what the gauge reads for it. */
+function nearest(l: RateLimits | undefined, now: number) {
+  let best: { pct: number; resetMs: number } | undefined
+  for (const w of [l?.five_hour, l?.seven_day]) {
+    if (!w) continue
+    const r = readWindow(w, now)
+    if (r.stale) continue
+    if (!best || r.pct > best.pct) best = { pct: r.pct, resetMs: w.resets_at * 1000 }
+  }
+  return best
+}
+
 /**
- * PLAN LIMITS on Now: every window the product tracks, grouped by agent,
- * directly under Today. Same data as before — Claude Code's status line and
- * Codex's own session files — drawn large, because "can I keep going" is the
- * question that stops the work.
+ * PLAN LIMITS, on Now under Today and on Cost: every window, grouped by agent,
+ * each as a ring and a plain sentence, then one line on what these limits
+ * are and — when one is nearly spent — what to do about it.
+ *
+ * The Claude desktop app's own reading (`/v1/status.desktop`) is never shown
+ * here: it is sampled only while the app runs and is often hours stale, and a
+ * stale 10% beside a live 97% is exactly the confusion this panel exists to
+ * end. It stays on the Status screen, labelled as last seen.
  */
-export function PlanLimitsPanel({ limits, codex, now }: { limits: RateLimits | undefined; codex: RateLimits | undefined; now: number }) {
+export function PlanLimitsPanel({ limits, codex, now, id, empty, className = '' }: {
+  limits: RateLimits | undefined
+  codex: RateLimits | undefined
+  now: number
+  /** An anchor, so the plan-limit alert can land on this panel. */
+  id?: string
+  /** Shown instead of nothing when no window is known (the Cost screen says how to get them). */
+  empty?: ReactNode
+  /** For the wrapper: Cost spans it across its grid. */
+  className?: string
+}) {
+  const [plan] = usePlan()
   const claude: [string, RateWindow][] = []
   if (limits?.five_hour) claude.push(['5-hour window', limits.five_hour])
-  if (limits?.seven_day) claude.push(['7-day window', limits.seven_day])
+  if (limits?.seven_day) claude.push(['Weekly', limits.seven_day])
   const cdx: [string, RateWindow][] = []
   if (codex?.five_hour) cdx.push(['5-hour window', codex.five_hour])
-  if (codex?.seven_day) cdx.push(['7-day window', codex.seven_day])
-  if (claude.length === 0 && cdx.length === 0) return null
+  if (codex?.seven_day) cdx.push(['Weekly', codex.seven_day])
+  if (claude.length === 0 && cdx.length === 0) {
+    return empty ? <div id={id} className={`scroll-mt-16 ${className}`}><Panel title="Plan limits">{empty}</Panel></div> : null
+  }
   const observed = codex?.five_hour?.observed_at ?? codex?.seven_day?.observed_at
+  const near = nearest(limits, now)
+  const cdxNear = nearest(codex, now)
+  const advice = near && near.pct >= 85
+    ? (
+      <>
+        <b className="font-semibold">Claude is near its limit.</b> Wait for the reset at <span className="num">{resetClock(near.resetMs, now)}</span> (in {countdown(near.resetMs - now)})
+        {cdxNear && cdxNear.pct < 85 ? <>, or switch to Codex — its {codex?.five_hour ? 'tightest window' : 'weekly window'} is at <span className="num">{cdxNear.pct}%</span>.</> : '.'}
+      </>
+    )
+    : cdxNear && cdxNear.pct >= 85
+      ? <><b className="font-semibold">Codex is near its limit.</b> Its window resets <span className="num">{resetClock(cdxNear.resetMs, now)}</span> (in {countdown(cdxNear.resetMs - now)}){near && near.pct < 85 ? <>; Claude is at <span className="num">{near.pct}%</span>.</> : '.'}</>
+      : null
   return (
-    <Panel title="Plan limits">
-      <div className="grid gap-x-8 gap-y-4 px-3 py-3 md:grid-cols-2">
-        {claude.length > 0 && (
-          <section className="min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.12em] text-fg-faint mb-2">Claude Code</div>
-            <div className="flex flex-wrap gap-x-8 gap-y-3">
-              {claude.map(([l, w]) => <LimitGauge key={l} label={l} w={w} now={now} source="Claude Code" />)}
-            </div>
-          </section>
+    <div id={id} className={`scroll-mt-16 ${className}`}>
+      <Panel title="Plan limits">
+        <div className="grid gap-x-8 gap-y-4 px-3 py-3 md:grid-cols-2">
+          {claude.length > 0 && (
+            <section className="min-w-0">
+              <div className="text-[10px] uppercase tracking-[0.12em] text-fg-faint mb-2">{planName(plan)}</div>
+              <div className="flex flex-wrap gap-x-8 gap-y-3">
+                {claude.map(([l, w]) => <LimitGauge key={l} label={l} w={w} now={now} source="Claude Code" />)}
+              </div>
+            </section>
+          )}
+          {cdx.length > 0 && (
+            <section className="min-w-0">
+              <div className="text-[10px] uppercase tracking-[0.12em] text-fg-faint mb-2 flex gap-2">
+                <span>Codex</span>
+                {observed ? <span className="normal-case tracking-normal">as of {fmtObserved(observed, now)}</span> : null}
+              </div>
+              <div className="flex flex-wrap gap-x-8 gap-y-3">
+                {cdx.map(([l, w]) => <LimitGauge key={l} label={l} w={w} now={now} source="Codex" />)}
+              </div>
+            </section>
+          )}
+        </div>
+        {advice && (
+          <div className="mx-3 mb-3 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-[12.5px] text-fg" role="note">{advice}</div>
         )}
-        {cdx.length > 0 && (
-          <section className="min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.12em] text-fg-faint mb-2 flex gap-2">
-              <span>Codex</span>
-              {observed ? <span className="normal-case tracking-normal">as of {fmtObserved(observed, now)}</span> : null}
-            </div>
-            <div className="flex flex-wrap gap-x-8 gap-y-3">
-              {cdx.map(([l, w]) => <LimitGauge key={l} label={l} w={w} now={now} source="Codex" />)}
-            </div>
-          </section>
-        )}
-      </div>
-      <div className="border-t border-border px-3 py-1.5 text-[10.5px] text-fg-faint">
-        Read from Claude Code's status line{cdx.length ? ' and Codex’s session files' : ''}. A forecast appears only when your pace would hit the limit before the reset{cdx.length ? '; Codex is never forecast' : ''}.
-      </div>
-    </Panel>
+        <div className="border-t border-border px-3 py-2 text-[11.5px] leading-relaxed text-fg-muted">
+          <b className="font-medium text-fg">What these are:</b> Anthropic caps how much a Pro or Max plan can use in each
+          rolling 5-hour window and each week. They are Anthropic's limits, not Caprock's — read from Claude Code's status
+          line{cdx.length ? '; Codex’s come from its own session files, as it last wrote them' : ''}. A forecast appears only
+          when your pace would reach 100% before the reset{cdx.length ? '; Codex is never forecast' : ''}.
+        </div>
+      </Panel>
+    </div>
   )
 }

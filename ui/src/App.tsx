@@ -58,7 +58,7 @@ export default function App() {
       <ErrorBoundary label={route.name}>
         {route.name === 'now' && <NowScreen />}
         {route.name === 'session' && <SessionScreen key={route.id} id={route.id} tab={route.tab} at={route.at} />}
-        {route.name === 'cost' && <CostScreen />}
+        {route.name === 'cost' && <CostScreen section={route.section} />}
         {route.name === 'settings' && <StatusScreen />}
         {route.name === 'history' && <HistoryScreen />}
         {route.name === 'week' && <WeekScreen start={route.start} />}
