@@ -155,6 +155,8 @@ export function toFeedItem(e: Event, project?: string): FeedItem | null {
       return { ...base, icon: '＋', text: 'task created', tone: 'normal' }
     case 'task.done':
       return { ...base, icon: '✓', text: 'task verified — tests passed', tone: 'ok' }
+    case 'permission.prompt':
+      return { ...base, icon: '!', text: 'waiting for your approval', tone: 'warn' }
     case 'approval.requested':
       return { ...base, icon: '!', text: 'needs your approval', tone: 'warn' }
     // turn.assistant / turn.user / cost.tick / mail.* carry no line a human

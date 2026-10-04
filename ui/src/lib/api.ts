@@ -474,6 +474,12 @@ export interface Settings {
   report_last_sent_ms?: number
   /** Write-only: accepted by PUT, never present in a GET response. */
   report_bot_token?: string
+  /** Phone alerts through the same bot (ADR-035): on unless turned off, free. */
+  alert_approval?: boolean
+  alert_finished?: boolean
+  /** Why the last alert failed, absent when it did not; when one last arrived. */
+  alert_last_error?: string
+  alert_last_sent_ms?: number
   /** Whether a Gemini key is available, from the environment or this field. */
   gemini_key_set?: boolean
   /** True when GEMINI_API_KEY is set, which takes precedence over the field. */
@@ -932,6 +938,7 @@ export const api = {
    *  for Monday. The failure mode of this feature is silence, which is
    *  indistinguishable from a quiet week. */
   testReport: () => post<{ sent: string }>('/v1/report/test', {}),
+  testAlert: () => post<{ sent: string }>('/v1/alerts/test', {}),
   /** Runs `caprock hooks install` in the daemon; answers with what is registered after. */
   installHooks: () => post<{ hooks: HooksStatus; backup?: string }>('/v1/hooks/install', {}),
   pairState: () => get<PairState>('/v1/pair/state'),

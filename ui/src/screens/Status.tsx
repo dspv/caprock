@@ -25,6 +25,7 @@ import { Empty } from '@/components/ui'
 import { PlanOptions, usePlan } from '@/components/PlanPicker'
 import { LicenseField } from '@/components/LicenseField'
 import { Pairing } from '@/components/Pairing'
+import { PhoneAlerts } from '@/components/PhoneAlerts'
 import { StoragePanel } from '@/components/Storage'
 import { Choice, Details, Section, Toggle } from '@/components/SettingsParts'
 
@@ -41,6 +42,7 @@ export function StatusScreen() {
         * cannot be started, and none of them is a preference. */}
       <Problems s={s} />
       {owner && <Pairing />}
+      {owner && <PhoneAlerts />}
       {owner && <PlanSection />}
       <AppearanceSection />
       {owner && <PrivacySection />}
@@ -126,7 +128,8 @@ function PrivacySection() {
         hint="Once a day, asks GitHub for the latest version number. Nothing about you is sent, and nothing goes to us."
       />
       <p className="text-[12px] leading-relaxed text-fg-muted">
-        That is the only thing Caprock ever sends over the internet. Everything else stays on this computer.
+        Apart from the Telegram messages you set up yourself, that is the only thing Caprock ever sends over the
+        internet. Everything else stays on this computer.
       </p>
     </Section>
   )
