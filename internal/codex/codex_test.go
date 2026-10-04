@@ -564,3 +564,19 @@ func TestCompressedRolloutIsListedAndParsed(t *testing.T) {
 		t.Errorf("rolloutName = %q", got)
 	}
 }
+
+// A response's items come before the token_count that bills it, so a call
+// belongs to the first turn after it; one with no turn after it stays unlinked.
+func TestToolCallBelongsToTheNextTurn(t *testing.T) {
+	s := &Session{
+		Turns: []Turn{{Key: "t3", Line: 3}, {Key: "t9", Line: 9}},
+		Tools: []ToolCall{{Line: 1}, {Line: 5}, {Line: 6}, {Line: 12}},
+	}
+	linkToolsToTurns(s)
+	want := []string{"t3", "t9", "t9", ""}
+	for i, c := range s.Tools {
+		if c.TurnKey != want[i] {
+			t.Errorf("tool on line %d: TurnKey = %q, want %q", c.Line, c.TurnKey, want[i])
+		}
+	}
+}

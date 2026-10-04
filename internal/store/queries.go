@@ -282,6 +282,34 @@ func MergeAssistantText(ctx context.Context, q Querier, sessionID, key string, p
 	return true, nil
 }
 
+// LinkToolCall writes the message id onto a stored tool call that has none.
+//
+// The same call usually reaches the store twice: from the PreToolUse hook,
+// which knows no message id, and moments later from the transcript, which
+// does. Both carry the key `pre:<tool_use_id>`, so the first write wins and
+// the transcript's copy is a duplicate — and with hooks installed the hook is
+// first nearly every time. Without this, the transcript's message id was
+// dropped with the duplicate and the call was never attached to the turn that
+// paid for it: on the owner's database every hook-plane call stored after the
+// one-time backfill of 2026-08-23 had no msg_id (25,924 rows by 2026-10-04).
+//
+// Only a NULL msg_id is filled: a tool_use id belongs to exactly one message,
+// so an existing link is already right. Returns whether a row changed.
+func LinkToolCall(ctx context.Context, q Querier, sessionID, key, msgID string) (bool, error) {
+	if key == "" || msgID == "" {
+		return false, nil
+	}
+	res, err := q.ExecContext(ctx, `
+		UPDATE events SET msg_id = ?
+		WHERE session_id = ? AND key = ? AND kind = ? AND msg_id IS NULL`,
+		msgID, sessionID, key, string(event.KindToolPre))
+	if err != nil {
+		return false, fmt.Errorf("link tool call: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
 // clipProse applies event.MaxAssistantText on a rune boundary, the way the
 // transcript parser does.
 func clipProse(s string) string {

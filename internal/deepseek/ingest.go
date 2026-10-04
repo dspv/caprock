@@ -182,6 +182,7 @@ func (in *Ingester) turn(ctx context.Context, s *Session, t Turn, info rollup.Se
 		Model:     model,
 		Payload:   payload,
 		Key:       t.Key,
+		MsgID:     turnMsgID(s, t.Key),
 		Tokens: &event.TokenDelta{
 			In: t.In, Out: t.Out,
 			CacheRead: t.CacheRead, CacheWrite: t.CacheWrite,
@@ -202,6 +203,17 @@ func (in *Ingester) turn(ctx context.Context, s *Session, t Turn, info rollup.Se
 	return nil
 }
 
+// turnMsgID is the msg_id that ties a DSH turn and its tool calls together.
+// DSH records no message id, so the turn's key stands in, prefixed with the
+// session because msg_id is matched across sessions (store.TurnPaidElsewhere).
+// Migration 0037 writes the same value for rows stored before. "" for no turn.
+func turnMsgID(s *Session, turnKey string) string {
+	if turnKey == "" {
+		return ""
+	}
+	return s.ID + "/" + turnKey
+}
+
 // tool stores one tool call, shaped like a Claude Code hook payload so the
 // per-directory attribution and narration read the same shape as every other
 // agent's tool calls.
@@ -218,6 +230,7 @@ func (in *Ingester) tool(ctx context.Context, s *Session, c ToolCall, info rollu
 		Tool:      c.Name,
 		Payload:   payload,
 		Key:       c.Key,
+		MsgID:     turnMsgID(s, c.TurnKey),
 	}
 	res, err := in.rec.Record(ctx, ev, info)
 	if err != nil {
