@@ -147,6 +147,10 @@ func resolveInRoot(root, req string) (string, error) {
 
 func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 	root := s.browseRoot()
+	if deviceFrom(r) != nil {
+		// A controller phone picks folders too (ADR-034), but never outside home.
+		root = s.deviceBrowseRoot()
+	}
 	dir, err := resolveInRoot(root, r.URL.Query().Get("dir"))
 	if err != nil {
 		// 404 rather than 403: a 403 confirms the path exists, which is the one
