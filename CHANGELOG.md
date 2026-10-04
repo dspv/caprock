@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.70.1] - 2026-10-04
+
 ### Added
 
 - **Install hooks from the dashboard.** The "Hooks not installed" banner on
