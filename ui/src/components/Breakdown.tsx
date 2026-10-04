@@ -66,7 +66,7 @@ export function BreakdownPanel() {
         </span>
       }
     >
-      <div className="grid gap-x-8 gap-y-5 px-3 py-3 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-x-8 gap-y-5 px-3 py-3 md:grid-cols-2">
         <Bars
           title="Most-used tools"
           cols={{ value: 'calls', sub: 'returned', share: 'share' }}
@@ -199,22 +199,23 @@ export function Bars({
         {/* Allowed to run past the label column rather than wrap: "Where the
           * money went" broke onto a second line inside w-36 and pushed the
           * column names above the title they sit beside. It is a heading, not
-          * a cell — nothing is lining up underneath it. */}
-        <span className="shrink-0 whitespace-nowrap tracking-[0.12em]">{title}</span>
+          * a cell — nothing is lining up underneath it. On a phone it gives way
+          * (truncates) before the figure columns are pushed off the card. */}
+        <span className="min-w-0 truncate whitespace-nowrap tracking-[0.12em]">{title}</span>
         <span className="flex-1" />
-        <span className="num w-20 shrink-0 text-right">{cols.value}</span>
+        <span className="num w-16 shrink-0 text-right sm:w-20">{cols.value}</span>
         {/* Only when there is one: an empty 64px column cost Storage's bars
           * their room on a phone and pushed the share past the card's edge. */}
         {cols.sub !== undefined && <span className="num w-16 shrink-0 text-right">{cols.sub}</span>}
         {cols.sub2 !== undefined && (
-          <span className="num w-14 shrink-0 text-right">{cols.sub2}</span>
+          <span className="num hidden w-14 shrink-0 text-right sm:inline">{cols.sub2}</span>
         )}
         <span className="num w-9 shrink-0 text-right">{cols.share}</span>
       </div>
       <div className="grid gap-1.5">
         {rows.map((r) => (
           <div key={r.key} className="flex items-center gap-2 text-[11px]">
-            <span className="mono w-36 shrink-0 truncate text-fg-muted" title={r.label}>
+            <span className="mono w-24 shrink-0 truncate text-fg-muted sm:w-36" title={r.label}>
               {r.label}
             </span>
             <span className="h-1.5 flex-1 rounded-full bg-panel-2">
@@ -223,12 +224,12 @@ export function Bars({
                 style={{ width: `${Math.max(2, Math.round(r.frac * 100))}%` }}
               />
             </span>
-            <span className="num w-20 shrink-0 text-right text-fg">{r.value}</span>
+            <span className="num w-16 shrink-0 text-right text-fg sm:w-20">{r.value}</span>
             {/* Tokens sit between the figure and the share: the volume that
               * produced the cost, in the same units the vendor bills in. */}
             {cols.sub !== undefined && <span className="num w-16 shrink-0 text-right text-fg-faint">{r.sub ?? ''}</span>}
             {cols.sub2 !== undefined && (
-              <span className="num w-14 shrink-0 text-right text-fg-faint">{r.sub2 ?? ''}</span>
+              <span className="num hidden w-14 shrink-0 text-right text-fg-faint sm:inline">{r.sub2 ?? ''}</span>
             )}
             {/* The share is what makes the count mean something: 40,961 calls
               * is a number, half of everything is a finding. Floored, so a

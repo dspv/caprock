@@ -70,7 +70,7 @@ export function RepoButtons({ repo, prs = [], cwd, className = '' }: { repo?: Re
       ) : (
         path && (
           <span className="inline-flex items-center gap-2 min-w-0 max-w-full">
-            <span className="mono text-[12px] text-fg-muted truncate" title={path}>{path}</span>
+            <span className="mono min-w-0 text-[12px] text-fg-muted truncate" title={path}>{path}</span>
             <button
               type="button"
               onClick={copy}

@@ -288,7 +288,7 @@ export function ProjectsPanel({ sessions, agent }: { sessions: SessionSummary[];
       onMouseLeave={() => setFrozen(null)}
       title="Projects"
       right={
-        <span className="flex items-center gap-2">
+        <span className="flex flex-wrap items-center justify-end gap-2">
           {summary.stale && <StaleNote at={summary.cachedAt} />}
           {/* The total is stated in the same relationship as the rows: tokens
             * first, cost second and quieter. A header that summed only one of
