@@ -12,7 +12,7 @@ import { costBasisLong } from '@/components/CostBasis'
 import { agentName } from '@/components/Projects'
 import { usePlan } from '@/components/PlanPicker'
 import { ContinueSession } from '@/components/ContinueSession'
-import { RepoLinks } from '@/components/RepoLinks'
+import { RecentPRs, RepoButtons } from '@/components/RepoLinks'
 import { RelayChain, RelayMenu } from '@/components/RelayDialog'
 
 type Tab = 'timeline' | 'notes' | 'changes' | 'terminal'
@@ -89,7 +89,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
     // lands.
     if (active === 'terminal') {
       return (
-        <div className="grid gap-3">
+        <div className="grid gap-2">
           <div className="flex items-center gap-3 flex-wrap">
             <a href={href({ name: 'now' })} className="link text-fg-muted text-[12px]">← Now</a>
             <span className="mono text-[11px] text-fg-faint">{id}</span>
@@ -121,7 +121,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   // "two thousand years ago", which is what the line under the title said.
   const activityAt = s.activity.at && !String(s.activity.at).startsWith('0001-') ? s.activity.at : s.last_event_at
   return (
-    <div className="grid gap-3">
+    <div className="grid gap-2">
       <>
       <div className="flex items-center gap-3 flex-wrap">
         <a href={href({ name: 'now' })} className="link text-fg-muted text-[12px]">← Now</a>
@@ -152,19 +152,28 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         {detail.stale && <StaleNote at={detail.cachedAt} now={now} />}
         <span className="text-[12px] text-fg-muted ml-auto num">{s.cwd}</span>
       </div>
-      {/* The repository and the PRs this session opened, on every tab — the
-        * terminal included, which is where someone is when they want them. */}
-      <RepoLinks repo={s.repo} prs={s.prs} cwd={s.cwd} />
-      <RelayChain from={s.relayed_from} to={s.relayed_to} />
-      {s.description && (
-        <div className={`text-[13px] ${s.description_source === 'title' ? 'text-fg' : 'text-fg-muted'}`} title={s.description_source === 'prompt' ? 'first prompt' : undefined}>
-          {s.description_source === 'title' ? s.description : `“${s.description}”`}
+      {/* The title line, with the repository and its PR at its right end, on
+        * every tab — the terminal included, which is where someone is when
+        * they want them. On a row of their own they pushed the terminal down
+        * for nothing (owner feedback, 2026-10-04). The title gives way first
+        * and ellipsizes; at phone width the buttons wrap under it. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 -my-0.5">
+        <div
+          className={`flex-1 basis-48 min-w-0 truncate text-[13px] ${s.description_source === 'title' ? 'text-fg' : 'text-fg-muted'}`}
+          title={s.description ? (s.description_source === 'prompt' ? `first prompt: ${s.description}` : s.description) : undefined}
+        >
+          {s.description ? (s.description_source === 'title' ? s.description : `“${s.description}”`) : null}
         </div>
-      )}
-      {!detail.stale && <div className="text-[13px]">
-        <span className="text-fg">{s.activity.phrase}</span>
-        <span className="text-fg-faint num text-[11px] ml-2">{fmtAgo(activityAt, now)}</span>
-        {s.loop && <span className="ml-3 text-danger text-[12px]">loop: {s.loop.sample} ×{s.loop.count} in {s.loop.window_min}m</span>}
+        <RepoButtons repo={s.repo} prs={s.prs} cwd={s.cwd} className="ml-auto" />
+      </div>
+      <RelayChain from={s.relayed_from} to={s.relayed_to} />
+      {(!detail.stale || (s.prs?.length ?? 0) > 0) && <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[13px]">
+        {!detail.stale && <span>
+          <span className="text-fg">{s.activity.phrase}</span>
+          <span className="text-fg-faint num text-[11px] ml-2">{fmtAgo(activityAt, now)}</span>
+          {s.loop && <span className="ml-3 text-danger text-[12px]">loop: {s.loop.sample} ×{s.loop.count} in {s.loop.window_min}m</span>}
+        </span>}
+        <RecentPRs prs={s.prs} className="ml-auto" />
       </div>}
       {/* A session Caprock starts but cannot read — Gemini today — produced six
         * columns of zeros with the reason in 11px grey underneath. Zeros are
