@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/dspv/caprock/internal/config"
+	"github.com/dspv/caprock/internal/hooks"
 	"github.com/spf13/cobra"
 )
 
@@ -96,7 +97,7 @@ func TestStatuslineCommandStr(t *testing.T) {
 // the data dir — the fallback that keeps the shim working from a single binary.
 func TestShimCommandFallsBackToSelfHook(t *testing.T) {
 	dir := t.TempDir() // no shim binary inside
-	got := shimCommand(dir)
+	got := hooks.ShimCommand(dir)
 	if !strings.HasSuffix(got, " hook") {
 		t.Fatalf("expected `<self> hook` fallback, got %q", got)
 	}
@@ -108,7 +109,7 @@ func TestShimCommandFallsBackToSelfHook(t *testing.T) {
 	if err := os.WriteFile(shim, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if got := shimCommand(dir); got != shim {
+	if got := hooks.ShimCommand(dir); got != shim {
 		t.Fatalf("expected shim path %q, got %q", shim, got)
 	}
 }
@@ -165,7 +166,7 @@ func TestEnsureShimIsIdempotentAndSelfHealing(t *testing.T) {
 		t.Cleanup(func() { _ = os.Remove(src) })
 	}
 
-	if err := ensureShim(dir); err != nil {
+	if err := hooks.EnsureShim(dir); err != nil {
 		t.Fatalf("first install: %v", err)
 	}
 	dst := config.ShimPath(dir)
@@ -183,7 +184,7 @@ func TestEnsureShimIsIdempotentAndSelfHealing(t *testing.T) {
 
 	// Running again must not rewrite an identical file — the daemon calls this
 	// on every start.
-	if err := ensureShim(dir); err != nil {
+	if err := hooks.EnsureShim(dir); err != nil {
 		t.Fatalf("second install: %v", err)
 	}
 
@@ -192,7 +193,7 @@ func TestEnsureShimIsIdempotentAndSelfHealing(t *testing.T) {
 	if err := os.WriteFile(dst, []byte("stale"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := ensureShim(dir); err != nil {
+	if err := hooks.EnsureShim(dir); err != nil {
 		t.Fatalf("replacing a stale shim: %v", err)
 	}
 	after, err := os.ReadFile(dst)

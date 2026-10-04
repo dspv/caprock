@@ -59,6 +59,10 @@ type Deps struct {
 	Version  string
 	// Status returns daemon/ingest/hooks status for /v1/status.
 	Status func(ctx context.Context) any
+	// InstallHooks registers the shim in Claude Code's settings, as
+	// `caprock hooks install` does, and returns what is registered after.
+	// nil ⇒ 501.
+	InstallHooks func(ctx context.Context) (any, error)
 	// Storage returns what the data directory holds for /v1/storage. nil ⇒ 501.
 	Storage func(ctx context.Context) any
 	// Started is when this daemon came up. The burn tile needs it: in the
@@ -314,6 +318,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("DELETE /v1/pair/devices/{id}", s.handlePairRevoke)
 	m.HandleFunc("POST /v1/pair/lan", s.handleSetLAN)
 	m.HandleFunc("POST /v1/update/check", s.handleUpdateCheck)
+	m.HandleFunc("POST /v1/hooks/install", s.handleInstallHooks)
 	m.HandleFunc("GET /v1/settings", s.handleGetSettings)
 	m.HandleFunc("PUT /v1/settings", s.handlePutSettings)
 	m.HandleFunc("POST /v1/report/test", s.handleTestReport)
@@ -878,6 +883,10 @@ type RateWindow struct {
 	// the measured slope is rising and exhaustion is projected before the reset.
 	// nil ⇒ show only the measured fact (no guess).
 	Forecast string `json:"forecast,omitempty"`
+	// LimitAt is when the same pace reaches 100% (unix ms), set exactly when
+	// Forecast is, so the dashboard can say "around 19:10" without parsing
+	// the sentence.
+	LimitAt int64 `json:"limit_at,omitempty"`
 	// ObservedAt is when the agent wrote this figure (unix ms). Set for
 	// Codex, whose windows are read out of a transcript that may be hours or
 	// days old; Claude Code's arrive live and leave it unset.
@@ -1257,7 +1266,7 @@ func (s *Server) rateLimits(ctx context.Context) *RateLimits {
 			continue
 		}
 		rw := &RateWindow{UsedPercentage: snap.UsedPercentage, ResetsAt: snap.ResetsAt}
-		rw.Forecast = s.paceForecast(ctx, window, snap)
+		rw.Forecast, rw.LimitAt = s.paceForecast(ctx, window, snap)
 		if window == "five_hour" {
 			out.FiveHour = rw
 		} else {
@@ -1271,17 +1280,18 @@ func (s *Server) rateLimits(ctx context.Context) *RateLimits {
 	return &out
 }
 
-// paceForecast returns "~Nh to limit at current pace" only when the observed
-// usage slope is rising and exhaustion is projected before the window resets;
-// otherwise "" (show only the measured fact). No invented numbers: every input is
-// measured and the projection is explicitly pace-conditional.
-func (s *Server) paceForecast(ctx context.Context, window string, snap store.RateLimitSnapshot) string {
+// paceForecast returns "~Nh to limit at current pace", and when that is (unix
+// ms), only when the observed usage slope is rising and exhaustion is projected
+// before the window resets; otherwise "" and 0 (show only the measured fact).
+// No invented numbers: every input is measured and the projection is
+// explicitly pace-conditional.
+func (s *Server) paceForecast(ctx context.Context, window string, snap store.RateLimitSnapshot) (string, int64) {
 	if snap.UsedPercentage >= 100 {
-		return ""
+		return "", 0
 	}
 	pctPerHour, ok, err := store.RateLimitPace(ctx, s.d.Store.DB(), window, snap.ResetsAt)
 	if err != nil || !ok || pctPerHour <= 0 {
-		return ""
+		return "", 0
 	}
 	hoursToLimit := (100 - snap.UsedPercentage) / pctPerHour
 	// Only forecast if the limit would be hit before the window resets. Use the
@@ -1289,12 +1299,13 @@ func (s *Server) paceForecast(ctx context.Context, window string, snap store.Rat
 	// consistent and deterministic in tests, not tied to raw wall-clock.
 	resetIn := time.Unix(snap.ResetsAt, 0).Sub(s.d.Now())
 	if resetIn <= 0 || hoursToLimit >= resetIn.Hours() {
-		return "" // resets before the limit at current pace — no warning
+		return "", 0 // resets before the limit at current pace — no warning
 	}
+	at := s.d.Now().Add(time.Duration(hoursToLimit * float64(time.Hour))).UnixMilli()
 	if hoursToLimit < 1 {
-		return fmt.Sprintf("~%dm to limit at current pace", int(hoursToLimit*60))
+		return fmt.Sprintf("~%dm to limit at current pace", int(hoursToLimit*60)), at
 	}
-	return fmt.Sprintf("~%.1fh to limit at current pace", hoursToLimit)
+	return fmt.Sprintf("~%.1fh to limit at current pace", hoursToLimit), at
 }
 
 // maxDailyDays bounds the daily query: ten years is far past any real history

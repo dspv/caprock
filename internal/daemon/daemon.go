@@ -443,7 +443,7 @@ func (d *Daemon) run(ctx context.Context) error {
 
 	d.api = api.New(api.Deps{
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d,
-		Status: d.status, Storage: d.storageReport, ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
+		Status: d.status, InstallHooks: d.installHooks, Storage: d.storageReport, ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
 		LoopK: d.det.K, LoopWindow: d.det.Window,
 		Token: rt.Token, Shutdown: cancel, Agents: &agentAdapter{m: d.mgr, d: d},
 		Tasks: &boardAdapter{d: d}, Settings: &settingsAdapter{d: d}, Update: d.upd,
@@ -1166,7 +1166,7 @@ func (d *Daemon) status(_ context.Context) any {
 		st.Desktop = &r
 	}
 	if p, err := hooks.DefaultSettingsPath(); err == nil {
-		if hs, err := hooks.Inspect(p, config.ShimPath(d.opt.DataDir)); err == nil {
+		if hs, err := hooks.StatusFor(d.opt.DataDir, p); err == nil {
 			st.Hooks = &hs
 		}
 	}
@@ -1826,4 +1826,21 @@ func (d *Daemon) DisableLAN() error {
 	d.api.SetLAN(nil, "")
 	d.log.Info("stopped listening on the local network", "component", "daemon")
 	return err
+}
+
+// installHooks is POST /v1/hooks/install: the same install as the CLI's, into
+// the settings file this daemon reports on in /v1/status.
+func (d *Daemon) installHooks(context.Context) (any, error) {
+	sp, err := hooks.DefaultSettingsPath()
+	if err != nil {
+		return nil, err
+	}
+	st, backup, err := hooks.InstallFor(d.opt.DataDir, sp)
+	if err != nil {
+		return nil, err
+	}
+	return struct {
+		Hooks  hooks.Status `json:"hooks"`
+		Backup string       `json:"backup,omitempty"`
+	}{st, backup}, nil
 }

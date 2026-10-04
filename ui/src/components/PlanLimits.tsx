@@ -11,7 +11,7 @@
  * The staleness rule below is subtle enough that two copies of it would drift,
  * and the copy that drifts is the one nobody is looking at.
  */
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { RateLimits, RateWindow, Settings } from '@/lib/api'
 import { Panel, Stat } from '@/components/ui'
 import { Ring } from '@/components/Donut'
@@ -170,21 +170,41 @@ function gaugeColor(pct: number): string {
  * happens at 100%. The ring stays for the glance; the sentence is the answer.
  *
  * A reading whose reset clock cannot be believed is drawn grey and says so,
- * rather than counting down to a time that is not real. The forecast is the
- * daemon's, never computed here: it exists only when the measured pace would
- * reach the limit before the reset, and then the rest of the ring is dashed.
+ * rather than counting down to a time that is not real.
+ *
+ * The ring reads at a glance: the filled arc is what is used, coloured by
+ * level (calm under 60%, amber to 85%, red above), and the rest is an empty
+ * neutral track. It once drew the forecast as a red dashed arc over the whole
+ * remainder, so a window at 9% looked mostly red; the owner could not read it.
+ * The forecast is the daemon's, never computed here, and exists only when the
+ * measured pace would reach 100% before the reset. It is a hairline on the
+ * outer edge plus one plain sentence — when 100% arrives and how long before
+ * the reset that is — amber, red only when it is under half an hour away.
  * Codex is never forecast.
  */
+export function forecastLine(w: RateWindow, now: number): { text: string; urgent: boolean } | null {
+  if (!w.forecast) return null
+  if (!w.limit_at || w.limit_at <= now) return { text: `At this pace: ${w.forecast.replace(/^~/, 'about ')}.`, urgent: false }
+  const resetMs = w.resets_at * 1000
+  const early = resetMs - w.limit_at
+  const urgent = w.limit_at - now < 30 * 60_000
+  return {
+    text: `At this pace you'll hit 100% around ${resetClock(w.limit_at, now)}${early > 60_000 ? ` — about ${countdown(early)} before it resets` : ''}.`,
+    urgent,
+  }
+}
+
 export function LimitGauge({ label, w, now, source }: { label: string; w: RateWindow; now: number; source: string }) {
   const r = readWindow(w, now)
   const resetMs = w.resets_at * 1000
   const clock = r.resetsAt ? resetClock(resetMs, now) : null
   const color = gaugeColor(r.pct)
+  const fc = r.stale ? null : forecastLine(w, now)
   return (
     <div className="flex items-center gap-3 min-w-0">
       <Ring value={r.pct / 100} size={92} width={9} color={color} dim={r.stale}
-        marker={w.forecast && !r.stale ? { to: 1, color: 'var(--color-danger)' } : undefined}
-        ariaLabel={`${source} ${label}: ${r.pct}% used${r.stale ? ', reading is stale' : clock ? `, resets ${clock}` : ''}${w.forecast ? `, ${w.forecast}` : ''}`}>
+        marker={fc ? { to: 1, color: fc.urgent ? 'var(--color-danger)' : 'var(--color-warn)' } : undefined}
+        ariaLabel={`${source} ${label}: ${r.pct}% used${r.stale ? ', reading is stale' : clock ? `, resets ${clock}` : ''}${fc ? `. ${fc.text}` : ''}`}>
         <span className={`num text-[22px] font-semibold ${r.stale ? 'text-fg-faint' : ''}`} style={r.stale ? undefined : { color }}>{r.pct}%</span>
         <span className="text-[9px] uppercase tracking-[0.1em] text-fg-faint mt-1">used</span>
       </Ring>
@@ -200,10 +220,17 @@ export function LimitGauge({ label, w, now, source }: { label: string; w: RateWi
             <div className="text-fg-faint">At 100%, {source} pauses until then.</div>
           </>
         ) : null}
-        {w.forecast && !r.stale && <div className="text-danger">{w.forecast}</div>}
+        {fc && <div className={fc.urgent ? 'text-danger' : 'text-warn'}>{fc.text}</div>}
       </div>
     </div>
   )
+}
+
+/** What the one-line explainer leaves out. */
+function EXPLAIN(codex: boolean): string {
+  return 'Anthropic caps how much a Pro or Max plan can use in each rolling 5-hour window and each week. ' +
+    "Caprock reads them from Claude Code's status line" + (codex ? "; Codex's come from its own session files, as it last wrote them" : '') + '. ' +
+    'A forecast appears only when your pace would reach 100% before the reset' + (codex ? '; Codex is never forecast' : '') + '.'
 }
 
 /** The live window closest to its limit, with what the gauge reads for it. */
@@ -240,6 +267,7 @@ export function PlanLimitsPanel({ limits, codex, now, id, empty, className = '' 
   className?: string
 }) {
   const [plan] = usePlan()
+  const [more, setMore] = useState(false)
   const claude: [string, RateWindow][] = []
   if (limits?.five_hour) claude.push(['5-hour window', limits.five_hour])
   if (limits?.seven_day) claude.push(['Weekly', limits.seven_day])
@@ -289,11 +317,14 @@ export function PlanLimitsPanel({ limits, codex, now, id, empty, className = '' 
         {advice && (
           <div className="mx-3 mb-3 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-[12.5px] text-fg" role="note">{advice}</div>
         )}
-        <div className="border-t border-border px-3 py-2 text-[11.5px] leading-relaxed text-fg-muted">
-          <b className="font-medium text-fg">What these are:</b> Anthropic caps how much a Pro or Max plan can use in each
-          rolling 5-hour window and each week. They are Anthropic's limits, not Caprock's — read from Claude Code's status
-          line{cdx.length ? '; Codex’s come from its own session files, as it last wrote them' : ''}. A forecast appears only
-          when your pace would reach 100% before the reset{cdx.length ? '; Codex is never forecast' : ''}.
+        {/* One line, because the long explainer was the thing the owner
+          * skipped; the details are a click (or a hover) away. */}
+        <div className="border-t border-border px-3 py-2 text-[11.5px] leading-relaxed text-fg-muted" title={EXPLAIN(cdx.length > 0)}>
+          Anthropic's plan limits, per 5-hour window and per week — not Caprock's.{' '}
+          <button type="button" onClick={() => setMore((v) => !v)} aria-expanded={more} className="text-fg-faint underline-offset-2 hover:text-fg hover:underline">
+            {more ? 'less' : 'more'}
+          </button>
+          {more && <p className="mt-1 text-fg-faint">{EXPLAIN(cdx.length > 0)}</p>}
         </div>
       </Panel>
     </div>

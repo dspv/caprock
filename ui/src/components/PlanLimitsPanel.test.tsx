@@ -4,9 +4,9 @@
  * is used, when it resets and how long that is, what happens at 100%, and
  * what to do — and that the alert lands on it.
  */
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { PlanLimitsPanel, planName } from './PlanLimits'
+import { PlanLimitsPanel, forecastLine, planName } from './PlanLimits'
 import { countdown } from '@/lib/limitclock'
 import { findAttention } from '@/lib/attention'
 import { href, parseHash } from '@/lib/router'
@@ -50,9 +50,26 @@ describe('plan limits in plain words', () => {
     expect(text()).toMatch(/Resets .+ — in 9 min\./)
     expect(text()).toContain('At 100%, Claude Code pauses until then.')
     expect(text()).toContain('Weekly: 47% used')
-    expect(text()).toContain("They are Anthropic's limits, not Caprock's")
+    expect(text()).toContain("Anthropic's plan limits, per 5-hour window and per week — not Caprock's.")
+    // The details are one click away, not three lines of the panel.
+    expect(text()).not.toContain('rolling 5-hour window')
+    fireEvent.click(screen.getByRole('button', { name: 'more' }))
+    expect(text()).toContain('rolling 5-hour window')
     expect(text()).toMatch(/Claude is near its limit\. Wait for the reset at .+ \(in 9 min\), or switch to Codex — its weekly window is at 8%\./)
     await waitFor(() => expect(screen.getByText('Claude Max 5×')).toBeTruthy())
+  })
+
+  it('draws a forecast as a plain sentence, amber unless it is close', () => {
+    // 9% used, 100% at pace in 3 h 12 min, reset in 4 h 19 min: about an hour early.
+    const w = { used_percentage: 9, resets_at: at(259), forecast: '~3.2h to limit at current pace', limit_at: NOW + 192 * 60_000 }
+    const f = forecastLine(w, NOW)
+    expect(f?.text).toMatch(/^At this pace you'll hit 100% around .+ — about 1 h 7 min before it resets\.$/)
+    expect(f?.urgent).toBe(false)
+    expect(forecastLine({ ...w, limit_at: NOW + 20 * 60_000 }, NOW)?.urgent).toBe(true)
+    expect(forecastLine({ used_percentage: 9, resets_at: at(259) }, NOW)).toBeNull()
+    render(<PlanLimitsPanel now={NOW} limits={{ five_hour: w }} codex={undefined} />)
+    const line = screen.getByText(/At this pace you'll hit 100%/)
+    expect(line.className).toContain('text-warn')
   })
 
   it('gives no advice while nothing is near its limit', () => {

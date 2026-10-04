@@ -90,6 +90,7 @@ func TestCSRFNoOriginRefusedOnEveryMutatingRoute(t *testing.T) {
 		{http.MethodPut, "/v1/settings", `{"update_checks":true}`},
 		{http.MethodPost, "/v1/tasks", `{"title":"x"}`},
 		{http.MethodPost, "/v1/update/check", ``},
+		{http.MethodPost, "/v1/hooks/install", ``},
 	} {
 		// A cross-site simple request: no Origin, form content type.
 		code := do(t, e, r.method, r.path, r.body,
