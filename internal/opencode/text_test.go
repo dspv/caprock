@@ -119,7 +119,7 @@ func TestIngestFillsTextOfTurnsAlreadyStored(t *testing.T) {
 		t.Fatalf("%d rows for one turn; the refresh must update, not insert", n)
 	}
 	// Other payload keys survive the rewrite.
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE msg_id='msg_a1' AND json_extract(payload,'$.cwd') = '/home/dev/api'`); n != 1 {
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE msg_id='msg_a1' AND kind='turn.assistant' AND json_extract(payload,'$.cwd') = '/home/dev/api'`); n != 1 {
 		t.Fatal("the refresh dropped payload.cwd")
 	}
 	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE msg_id='msg_a1' AND json_type(payload,'$.sidechain') = 'false'`); n != 1 {

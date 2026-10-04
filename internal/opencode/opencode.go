@@ -482,9 +482,12 @@ type ToolCall struct {
 	Tool      string // Caprock-cased name, see NormalizeTool
 	RawTool   string // as OpenCode wrote it
 	FilePath  string // the file it touched, when it names one
-	Status    string
-	Start     int64 // unix ms
-	End       int64 // unix ms
+	// Input is the call's arguments as OpenCode wrote them (state.input), in
+	// its own spelling; ToolInput turns them into Claude Code's.
+	Input  json.RawMessage
+	Status string
+	Start  int64 // unix ms
+	End    int64 // unix ms
 }
 
 // partData is the shape stored in part.data for tool parts.
@@ -528,6 +531,7 @@ func ToolCalls(ctx context.Context, db *sql.DB, sessionID string) ([]ToolCall, e
 			ID: id, MessageID: msgID, SessionID: sessionID,
 			Tool: NormalizeTool(d.Tool), RawTool: d.Tool,
 			FilePath: filePathFrom(d.State.Input),
+			Input:    d.State.Input,
 			Status:   d.State.Status,
 			Start:    d.State.Time.Start, End: d.State.Time.End,
 		})
@@ -555,6 +559,82 @@ func filePathFrom(raw json.RawMessage) string {
 		}
 	}
 	return ""
+}
+
+// The bounds Claude Code's transcript parser puts on a stored tool_input
+// (ingest.capRawObj): an input over inputCap keeps its fields, but any one
+// over inputFieldCap is replaced by a marker, so a whole-file write does not
+// put the file into the database while the call still says what it was.
+const (
+	inputCap      = 32 << 10
+	inputFieldCap = 4 << 10
+)
+
+// inputRenames are OpenCode's argument names that Claude Code spells
+// differently in more than case: Grep's file filter is `include` in OpenCode
+// and `glob` in Claude Code.
+var inputRenames = map[string]string{"include": "glob"}
+
+// ToolInput turns a call's arguments into the tool_input a Claude Code event
+// carries, so every reader of tool_input — the tool drill-down's grouping by
+// command, file, domain and query, loop signatures, narration, pull-request
+// detection — reads an OpenCode call the way it reads a Claude Code one.
+//
+// OpenCode and Claude Code name the same arguments in different cases:
+// `filePath`, `oldString`, `replaceAll` against `file_path`, `old_string`,
+// `replace_all`. Every key is moved to snake_case; `command`, `url`,
+// `query`, `pattern` and `path` are the same word in both. Values are kept as
+// they are, within the parser's size bounds.
+//
+// A nil result means the call recorded no arguments at all.
+func ToolInput(raw json.RawMessage) map[string]any {
+	if len(raw) == 0 {
+		return nil
+	}
+	var in map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &in); err != nil || len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]json.RawMessage, len(in))
+	size := 0
+	for k, v := range in {
+		name := snakeCase(k)
+		if r, ok := inputRenames[name]; ok {
+			name = r
+		}
+		out[name] = v
+		size += len(name) + len(v) + 4
+	}
+	if size > inputCap {
+		for k, v := range out {
+			if len(v) > inputFieldCap {
+				b, _ := json.Marshal(fmt.Sprintf("[truncated %d bytes]", len(v)))
+				out[k] = b
+			}
+		}
+	}
+	res := make(map[string]any, len(out))
+	for k, v := range out {
+		res[k] = v
+	}
+	return res
+}
+
+// snakeCase spells an argument name the way Claude Code does: filePath →
+// file_path. A name already in snake_case, or all lower case, is unchanged.
+func snakeCase(s string) string {
+	var b strings.Builder
+	for i, r := range s {
+		if r >= 'A' && r <= 'Z' {
+			if i > 0 {
+				b.WriteByte('_')
+			}
+			b.WriteRune(r + ('a' - 'A'))
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // NormalizeTool maps an OpenCode tool name onto the Claude Code spelling.
