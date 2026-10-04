@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { DirPicker } from './DirPicker'
 import { AgentPicker, useAgentChoice, useSpawnableAgents, type SpawnAgent } from './AgentPicker'
-import { api, errText } from '@/lib/api'
+import { api, errText, isPairedDevice } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { navigate } from '@/lib/router'
 
@@ -135,8 +135,12 @@ export function SpawnDialog({
   const [create, setCreate] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // On a paired phone (a controller, or this dialog is not shown): a project
+  // from the list, and none of the options that make a folder or a worktree.
+  // The daemon refuses the rest from a phone anyway (ADR-034).
+  const remote = isPairedDevice()
   const submit = async () => {
-    if (!cwd.trim()) { setError('Working directory is required.'); return }
+    if (!cwd.trim()) { setError(remote ? 'Pick a project.' : 'Working directory is required.'); return }
     setBusy(true); setError('')
     try {
       const req: Parameters<typeof api.spawn>[0] = { cwd: cwd.trim() }
@@ -156,8 +160,8 @@ export function SpawnDialog({
     } finally { setBusy(false) }
   }
   return (
-    <div className="fixed inset-0 z-20 bg-black/50 flex items-start justify-center pt-24" onClick={onClose}>
-      <div className="border border-border-strong bg-panel rounded-[var(--radius-panel)] w-[620px] max-w-[94vw]" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-20 bg-black/50 flex items-start justify-center pt-4 sm:pt-24" onClick={onClose}>
+      <div className="border border-border-strong bg-panel rounded-[var(--radius-panel)] w-[620px] max-w-[94vw] max-h-[calc(100dvh-2rem)] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <header className="px-3 py-2 border-b border-border flex items-center">
           <h2 className="text-[12px] uppercase tracking-[0.08em] text-fg-muted">New session</h2>
           <button onClick={onClose} className="ml-auto text-fg-muted hover:text-fg">✕</button>
@@ -174,19 +178,27 @@ export function SpawnDialog({
           // that; the container has to be allowed to be narrower than what it
           // holds.
           <div className="px-4 py-3 grid min-w-0 gap-3 text-[13px]">
-            <Field label="Working directory" hint="pick one, or type a path">
-              <input autoFocus className="input" placeholder="/Users/you/dev/project" value={cwd} onChange={(e) => setCwd(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
-              {/* The lists write into the field above rather than replacing it,
-                * so what will actually be used stays visible and editable. */}
-              <div className="mt-1.5 min-w-0 max-w-full">
-                <DirPicker value={cwd} onPick={setCwd} />
-              </div>
-            </Field>
+            {remote ? (
+              <Field label="Project" hint="where sessions have already run">
+                <div className="min-w-0 max-w-full">
+                  <DirPicker value={cwd} onPick={setCwd} recentOnly />
+                </div>
+              </Field>
+            ) : (
+              <Field label="Working directory" hint="pick one, or type a path">
+                <input autoFocus className="input" placeholder="/Users/you/dev/project" value={cwd} onChange={(e) => setCwd(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
+                {/* The lists write into the field above rather than replacing it,
+                  * so what will actually be used stays visible and editable. */}
+                <div className="mt-1.5 min-w-0 max-w-full">
+                  <DirPicker value={cwd} onPick={setCwd} />
+                </div>
+              </Field>
+            )}
             {/* Only the agents whose binary the daemon found: a choice that
               * fails on click is worse than no choice. The last one picked
               * is remembered for this viewer. */}
             <AgentPicker value={agent} agents={agents} onChange={setAgent} />
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="Model" hint={agent === 'opencode' ? 'provider/model' : undefined}>
                 <ModelField
                   agent={agent}
@@ -200,7 +212,9 @@ export function SpawnDialog({
                 * all of them, labelled with what it becomes in this one. */}
               <Field label="Permissions">
                 <select className="input" value={mode} onChange={(e) => setMode(e.target.value)}>
-                  {MODES.map(([v, label]) => (
+                  {/* No bypass from a phone (ADR-034): the daemon refuses it,
+                    * because a phone is used when nobody watches the machine. */}
+                  {MODES.filter(([v]) => !remote || v !== 'bypassPermissions').map(([v, label]) => (
                     <option key={v} value={v}>
                       {agent === 'gemini' && !GEMINI_MAPPED.has(v) ? `${label} · Gemini asks instead` : MODE_NOTE[agent]?.[v] ?? label}
                     </option>
@@ -211,7 +225,7 @@ export function SpawnDialog({
             {/* Two settings that matter to a handful of runs and to nobody
               * else, folded away rather than deleted. Every field on screen is
               * a decision asked of someone who wanted to press one button. */}
-            <details className="text-[12px] group">
+            {!remote && <details className="text-[12px] group">
               <summary className="cursor-pointer select-none text-fg-muted hover:text-fg list-none marker:content-none">
                 <span className="inline-block transition-transform group-open:rotate-90 text-fg-faint">▶</span> Advanced
               </summary>
@@ -230,7 +244,7 @@ export function SpawnDialog({
                   <input className="input" placeholder="feature-x" value={worktree} onChange={(e) => setWorktree(e.target.value)} />
                 </Field>
               </div>
-            </details>
+            </details>}
             {error && <div className="text-danger text-[12px]">{error}</div>}
           </div>
         )}

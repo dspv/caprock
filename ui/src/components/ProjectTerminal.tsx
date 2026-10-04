@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, ApiError, isPairedDevice, type SessionSummary } from '@/lib/api'
+import { api, ApiError, type SessionSummary } from '@/lib/api'
+import { useCanControl } from '@/lib/useCanControl'
 import { navigate } from '@/lib/router'
 import { fmtAgo, shortId } from '@/lib/format'
 import { OpenInTerminal } from './OpenInTerminal'
@@ -82,7 +83,8 @@ export function ProjectTerminal({ dir, label, sessions = [] }: { dir: string; la
   // does not scroll as a page, so a menu hanging below the last row is cut off.
   const [up, setUp] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  const paired = isPairedDevice()
+  // "Paired" here means "may not start a session": a controller may (ADR-034).
+  const paired = !useCanControl()
   const action = projectAction(sessions, paired)
 
   // Close on a click elsewhere or Escape: a menu that stays open after the

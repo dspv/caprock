@@ -72,6 +72,26 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-04 (late) — The phone as a controller
+
+The owner's top priority: work from the phone, on his own network. A paired
+device now holds a role ([ADR-034](08-decisions.md)): pairing makes a viewer,
+and **Let it control sessions** in Settings makes that one device a controller,
+which may start a session in a known project (Claude Code, Codex, OpenCode),
+type into it, answer approvals and stop it; **Take control away** undoes it on
+the next request and the next keystroke. Every registered route is tested for
+the machine, a viewer and a controller (`internal/api/controller_test.go` reads
+the routes out of `api.go`). Verified on an isolated daemon at the LAN address:
+a 390px phone (Playwright, mobile emulation) paired as a viewer got 403 on every
+mutating call and no controls; promoted, it started a Claude Code session in a
+known project, typed a prompt through the keys bar (recorded as the session's
+`turn.user`), sent Esc/Tab/↑/Ctrl+C as `1b`/`09`/`1b 5b 41`/`03`, and killed it;
+demoted, it lost the controls and its open terminal closed. Real Chrome over the
+LAN address rendered the terminal and the typed line. The 390px pass also
+fixed Now and the session page running past the right edge (implicit grid
+columns, an unshrinkable truncate, the Panel's centred control). Not verified:
+a model's reply — the preview HOME has no Claude login.
+
 ### 2026-10-04 (later) — Settings in plain words, and the phone by QR code
 
 The owner on the Settings screen, translated: "honestly, NOTHING here is

@@ -142,6 +142,13 @@ func (s *Server) handlePairRedeem(w http.ResponseWriter, r *http.Request) {
 		// a person pairing a tablet will not name it unprompted.
 		name = "a device"
 	}
+	if fromThisMachine(r, s.lanHost()) {
+		// A browser on this machine opened the network address rather than
+		// loopback, and paired like a phone. Said in the name, first so a long
+		// name cannot cut it off, or the list shows a "Mac" nobody remembers
+		// pairing.
+		name = "This computer · " + name
+	}
 	dev, err := ps.Redeem(strings.TrimSpace(req.Code), name)
 	if err != nil {
 		// Same answer for wrong, expired, exhausted and never-issued. Each
@@ -283,4 +290,90 @@ func (s *Server) handleSetLAN(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"enabled": true, "url": url})
+}
+
+// pairMe is what a dashboard needs to know about the device it runs on.
+type pairMe struct {
+	// Role is "owner" on the machine itself, else the device's role.
+	Role string `json:"role"`
+	ID   string `json:"id,omitempty"`
+	Name string `json:"name,omitempty"`
+}
+
+// handlePairMe tells a dashboard which controls to draw (ADR-034). The daemon
+// enforces the role either way; this only keeps a viewer's screen free of
+// buttons that would answer 403.
+func (s *Server) handlePairMe(w http.ResponseWriter, r *http.Request) {
+	dev := deviceFrom(r)
+	if dev == nil {
+		writeJSON(w, http.StatusOK, pairMe{Role: "owner"})
+		return
+	}
+	writeJSON(w, http.StatusOK, pairMe{Role: dev.Role, ID: dev.ID, Name: dev.Name})
+}
+
+// handlePairSetRole makes one paired device a controller, or a viewer again
+// (ADR-034). Loopback-only, like every other decision about who may do what:
+// a controller must not be able to promote another device, or itself.
+//
+// Taking control away takes effect on the device's next request and on its
+// next keystroke into a terminal already open (serveTerm asks again per frame).
+func (s *Server) handlePairSetRole(w http.ResponseWriter, r *http.Request) {
+	if !isLocal(r) {
+		s.failCode(w, http.StatusForbidden, errors.New("pairing is managed from the machine Caprock runs on"))
+		return
+	}
+	var req struct {
+		Role string `json:"role"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil || !pairing.ValidRole(req.Role) {
+		s.failCode(w, http.StatusBadRequest, errors.New(`send {"role": "viewer"|"controller"}`))
+		return
+	}
+	id := r.PathValue("id")
+	ps, _ := s.lanState()
+	if ps == nil {
+		if s.d.DataDir == "" {
+			s.failCode(w, http.StatusConflict, errors.New("this daemon is not listening on the network"))
+			return
+		}
+		// Off, with a guest list on disk: the role is set there, and holds
+		// when network access is turned on again.
+		s.setRoleOnDisk(w, id, req.Role)
+		return
+	}
+	if !ps.SetRole(id, req.Role) {
+		s.failCode(w, http.StatusNotFound, errors.New("no such device"))
+		return
+	}
+	s.saveDevices()
+	s.d.Log.Info("paired device role changed", "component", "api", "device", id, "role", req.Role)
+	writeJSON(w, http.StatusOK, map[string]string{"id": id, "role": req.Role})
+}
+
+// setRoleOnDisk is handlePairSetRole for a daemon that is not listening.
+func (s *Server) setRoleOnDisk(w http.ResponseWriter, id, role string) {
+	saved, err := config.ReadDevices(s.d.DataDir)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	tmp := pairing.New()
+	tmp.Load(saved)
+	if !tmp.SetRole(id, role) {
+		s.failCode(w, http.StatusNotFound, errors.New("no such device"))
+		return
+	}
+	if err := config.WriteDevices(s.d.DataDir, tmp.Snapshot()); err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"id": id, "role": role})
+}
+
+// fromThisMachine reports whether r came from the machine's own network
+// address — the one the LAN listener is bound to.
+func fromThisMachine(r *http.Request, lanHost string) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	return err == nil && lanHost != "" && host == lanHost
 }

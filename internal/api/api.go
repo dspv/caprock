@@ -327,6 +327,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("DELETE /v1/pair/code", s.handlePairClearCode)
 	m.HandleFunc("POST /v1/pair", s.handlePairRedeem)
 	m.HandleFunc("DELETE /v1/pair/devices/{id}", s.handlePairRevoke)
+	m.HandleFunc("PUT /v1/pair/devices/{id}/role", s.handlePairSetRole)
+	m.HandleFunc("GET /v1/pair/me", s.handlePairMe)
 	m.HandleFunc("POST /v1/pair/lan", s.handleSetLAN)
 	m.HandleFunc("POST /v1/update/check", s.handleUpdateCheck)
 	m.HandleFunc("POST /v1/hooks/install", s.handleInstallHooks)
@@ -391,7 +393,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	// Before anything else: a request from the network gets nothing until it
 	// has proved which device it is. Loopback is unaffected.
-	if !s.pairingGate(w, r) {
+	r, ok := s.pairingGate(w, r)
+	if !ok {
 		return
 	}
 	if strings.HasPrefix(r.URL.Path, "/v1/") {
@@ -1807,11 +1810,23 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
 		return
 	}
+	dev := deviceFrom(r)
+	if dev != nil {
+		if msg := s.controllerSpawnRefusal(r.Context(), req); msg != "" {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": msg})
+			return
+		}
+	}
 	// Spawn with a background context: the process must outlive this HTTP request.
 	id, cwd, err := s.d.Agents.Spawn(context.WithoutCancel(r.Context()), req)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
+	}
+	if dev != nil {
+		// Said in the log, because a session the owner did not start at the
+		// machine should be traceable to the device that did.
+		s.d.Log.Info("session started from a paired device", "component", "api", "session", id, "device", dev.ID, "device_name", dev.Name)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"session_id": id, "cwd": cwd})
 }

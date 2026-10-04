@@ -9,6 +9,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **Your phone as a controller.** In settings, *Let it control sessions* beside
+  a paired phone lets it start a session in one of your projects — picking
+  Claude Code, Codex or OpenCode — type into it, answer approvals and stop it.
+  The terminal on a phone has a large input field and Esc, Tab, ↑, ↓, Enter and
+  Ctrl+C buttons. *Take control away* is one button and holds at once, even on
+  a terminal already open. Phones stay view-only until you choose; settings
+  and pairing stay on the machine, and so do sessions that never ask for
+  permission (Bypass). It works over your Wi-Fi or Tailscale, with no relay.
+  The paired-devices list tells two phones of one model apart by browser, id
+  and when each was paired.
+
 ### Fixed
 
 - **OpenCode tool calls keep their input.** A bash call's command, a fetch's
@@ -20,6 +33,9 @@ Phase 3 (Delight) has no plan by design.
   "process your inbox first" answer was nested where Claude Code ignores it,
   so sessions stopped with mail still waiting. It is now in the shape Claude
   Code acts on.
+- **Now and a session's page fit a 390px phone.** Banners, the Today panel's
+  agent switch, the breakdown bars, the donut legends and the session header
+  ran past the right edge and dragged the whole page sideways.
 
 ## [0.70.1] - 2026-10-04
 

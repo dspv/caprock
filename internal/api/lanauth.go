@@ -1,9 +1,12 @@
 package api
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"strings"
+
+	"github.com/dspv/caprock/internal/pairing"
 )
 
 // Who is allowed in, and from where.
@@ -29,8 +32,10 @@ import (
 //
 // And a token makes a device a reader, not the owner: past the gate, a paired
 // device may make only the reads listed in pairedDeviceRoutes, and anything
-// else is 403. Starting, typing into, pausing or stopping a session, and every
-// change to settings, tasks or pairing, stay on the machine (ADR-029).
+// else is 403 (ADR-029). The owner can make one device a controller, on the
+// machine (ADR-034); a controller may also make the requests in
+// controllerRoutes — start, type into, answer and stop sessions. Every change
+// to settings, tasks or pairing stays on the machine whatever the role.
 //
 // The failure is 401 with a JSON body rather than a redirect: the caller is
 // usually fetch(), and a redirect to an HTML page turns "you are not paired"
@@ -76,16 +81,33 @@ func openToUnpairedDevices(path string) bool {
 
 // allowRequest decides whether to serve r, and returns the reason when not.
 func (s *Server) allowRequest(r *http.Request) (ok bool, reason string) {
-	status, reason := s.gate(r)
+	status, reason, _ := s.gateDevice(r)
 	return status == 0, reason
 }
 
 // gate is allowRequest with the status to refuse with: 0 to serve, 401 for a
 // device that has not proved itself, 403 for a paired device asking for more
-// than a paired device may do.
+// than its role allows.
 func (s *Server) gate(r *http.Request) (status int, reason string) {
+	status, reason, _ = s.gateDevice(r)
+	return status, reason
+}
+
+// The two refusals a paired device can get, said so the person holding it
+// knows what to do next. A viewer is told where control is granted; a
+// controller asking for something only the machine does is told so.
+const (
+	viewerRefusal     = "this device can read Caprock, not control it"
+	controllerRefusal = "this is done on the machine Caprock runs on"
+)
+
+// gateDevice is gate, plus the device that is asking when the request came
+// from one. The device is a copy taken at the moment of the check (see
+// pairing.Store.Check), and nil for loopback and for a daemon with network
+// access off.
+func (s *Server) gateDevice(r *http.Request) (status int, reason string, dev *pairing.Device) {
 	if isLocal(r) {
-		return 0, ""
+		return 0, "", nil
 	}
 	// Not local, and LAN access was never turned on: there is no listener on
 	// any other address, so this cannot be a request off the network. It is a
@@ -95,24 +117,32 @@ func (s *Server) gate(r *http.Request) (status int, reason string) {
 	// can reason about.
 	ps, _ := s.lanState()
 	if ps == nil {
-		return 0, ""
+		return 0, "", nil
 	}
 	if openToUnpairedDevices(r.URL.Path) {
-		return 0, ""
+		return 0, "", nil
 	}
 	tok := deviceTokenOf(r)
 	if tok == "" {
-		return http.StatusUnauthorized, "this device is not paired with Caprock"
+		return http.StatusUnauthorized, "this device is not paired with Caprock", nil
 	}
-	if _, err := ps.Check(tok); err != nil {
+	dev, err := ps.Check(tok)
+	if err != nil {
 		// One message for an unknown token and a revoked one. Telling them
 		// apart tells a stranger which of their guesses was once real.
-		return http.StatusUnauthorized, "this device is not paired with Caprock"
+		return http.StatusUnauthorized, "this device is not paired with Caprock", nil
 	}
-	if !s.pairedDeviceMay(r) {
-		return http.StatusForbidden, "a paired device can read Caprock, not control it"
+	switch s.deviceMay(r, dev.Role) {
+	case mayServe:
+		return 0, "", dev
+	case mayIfController:
+		return http.StatusForbidden, viewerRefusal, dev
+	default:
+		if dev.Role == pairing.RoleController {
+			return http.StatusForbidden, controllerRefusal, dev
+		}
+		return http.StatusForbidden, viewerRefusal, dev
 	}
-	return 0, ""
 }
 
 // What a paired device may do, named one route at a time.
@@ -134,9 +164,12 @@ func (s *Server) gate(r *http.Request) (status int, reason string) {
 //
 //   - /v1/agents/{id}/term — a WebSocket that writes every frame it receives
 //     into the session's terminal. Its method says read; it is a keyboard.
-//   - /v1/browse and /v1/recent-dirs — directory listings of this machine,
-//     there for the folder picker that starts a session, which a paired
-//     device cannot do.
+//     A controller has it (controllerRoutes).
+//   - /v1/browse — a directory listing of this machine, there for the folder
+//     picker that starts a session anywhere. Not even a controller has it: a
+//     phone starts sessions only where sessions have already run.
+//   - /v1/recent-dirs — the projects a controller picks from, and nothing a
+//     viewer needs.
 //   - /v1/pair/state — pairing is managed from the machine, and its handler
 //     refuses the network anyway.
 var pairedDeviceRoutes = map[string]bool{
@@ -162,19 +195,82 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/tasks/{id}":           true,
 	"GET /v1/approvals":            true,
 	"GET /v1/statusline/{id}":      true,
+	"GET /v1/pair/me":              true, // which role this device holds, so its screens draw the right controls
 }
 
-// pairedDeviceMay reports whether a paired device may make r.
-func (s *Server) pairedDeviceMay(r *http.Request) bool {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		return false
-	}
+// What a controller may do on top of reading (ADR-034), named one route at a
+// time for the same reason as above.
+//
+// The test for a route being here: it is something a person does to a session
+// from the sofa — start one in a project they already work in, carry one on,
+// type into it, answer it, attach a photo to it, stop it — and it acts only on
+// what Caprock itself started (rule 7 is enforced below this, in the agent
+// manager, whoever asks).
+//
+// Deliberately absent although a controller is trusted to type:
+//
+//   - POST /v1/sessions/{id}/open-terminal — it opens a window on the Mac's
+//     screen, which is not where the phone's owner is looking.
+//   - /v1/settings, /v1/pair*, /v1/hive, POST /v1/tasks, /v1/orchestrator/*,
+//     /v1/hooks/install, /v1/shutdown, /v1/update/check, /v1/report/test,
+//     /v1/gemini/ask — configuration of the machine, starting a fleet, or an
+//     outbound call; none of them is "work on a session".
+//   - POST /v1/tasks/{id}/verify — it runs the task's done-criteria commands.
+//   - /v1/browse — see above: a phone picks from projects, not the disk.
+var controllerRoutes = map[string]bool{
+	"POST /v1/agents":             true, // start or continue a session; narrowed further in handleSpawn
+	"GET /v1/agents/models":       true, // the start form's model list
+	"GET /v1/recent-dirs":         true, // the start form's project list
+	"GET /v1/sessions/{id}/relay": true, // the brief a relay offers, to read before starting it
+	"GET /v1/agents/{id}/term":    true, // the terminal: output, and typing
+	"POST /v1/agents/{id}/input":  true,
+	"POST /v1/agents/{id}/signal": true, // pause, resume, stop
+	"POST /v1/paste":              true, // a photo or file from the phone, typed in as its path
+	"POST /v1/tasks/{id}/approve": true,
+	"POST /v1/tasks/{id}/reject":  true,
+}
+
+// deviceVerdict is what a role may do with one request.
+type deviceVerdict int
+
+const (
+	mayNot          deviceVerdict = iota // no device may
+	mayIfController                      // a controller may, a viewer may not
+	mayServe                             // this device may
+)
+
+// deviceMay decides one request from a paired device holding role.
+func (s *Server) deviceMay(r *http.Request, role string) deviceVerdict {
 	if !strings.HasPrefix(r.URL.Path, "/v1/") {
 		// The dashboard's own files and /healthz, open even before pairing.
-		return true
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			return mayServe
+		}
+		return mayNot
 	}
 	_, pattern := s.mux.Handler(r)
-	return pairedDeviceRoutes[pattern]
+	if (r.Method == http.MethodGet || r.Method == http.MethodHead) && pairedDeviceRoutes[pattern] {
+		return mayServe
+	}
+	if !controllerRoutes[pattern] || !controllerMethod(r.Method, pattern) {
+		return mayNot
+	}
+	if role == pairing.RoleController {
+		return mayServe
+	}
+	return mayIfController
+}
+
+// controllerMethod reports whether method is the one pattern names. The
+// router already dispatches by method, so a POST to a GET-only route matches
+// no pattern of ours; this keeps a HEAD on a GET route behaving as the router
+// would and rules out anything else reaching a controller route by accident.
+func controllerMethod(method, pattern string) bool {
+	m, _, _ := strings.Cut(pattern, " ")
+	if m == http.MethodGet {
+		return method == http.MethodGet || method == http.MethodHead
+	}
+	return method == m
 }
 
 // fromPairedDevice reports whether r came over the network from a paired
@@ -190,17 +286,38 @@ func (s *Server) fromPairedDevice(r *http.Request) bool {
 
 // pairingGate refuses a networked request that has not proved itself, and a
 // paired device asking for more than reading.
-func (s *Server) pairingGate(w http.ResponseWriter, r *http.Request) bool {
-	status, reason := s.gate(r)
+//
+// It returns the request to carry on with: the same one for loopback, and one
+// whose context names the device for a request from the network, so handlers
+// can audit and narrow what a controller does (deviceFrom).
+func (s *Server) pairingGate(w http.ResponseWriter, r *http.Request) (*http.Request, bool) {
+	status, reason, dev := s.gateDevice(r)
 	if status == 0 {
-		return true
+		if dev != nil {
+			r = r.WithContext(context.WithValue(r.Context(), deviceKey{}, dev))
+		}
+		return r, true
 	}
 	detail := "Open Caprock on the machine it runs on, turn on network access, and pair this device with the code it shows."
 	if status == http.StatusForbidden {
-		detail = "Starting, typing into, pausing or stopping sessions, and changing settings, tasks or pairing, happen on the machine Caprock runs on."
+		if reason == viewerRefusal {
+			detail = "To start, type into or stop sessions from here, open Settings on the machine Caprock runs on and choose \u201cLet it control sessions\u201d beside this device."
+		} else {
+			detail = "Settings, pairing, the task runner and opening a terminal window happen on the machine Caprock runs on."
+		}
 	}
 	writeJSON(w, status, map[string]string{"error": reason, "detail": detail})
-	return false
+	return r, false
+}
+
+// deviceKey carries the paired device that made a request, in its context.
+type deviceKey struct{}
+
+// deviceFrom is the paired device that made r, or nil for a request from this
+// machine (or from anywhere while network access is off).
+func deviceFrom(r *http.Request) *pairing.Device {
+	d, _ := r.Context().Value(deviceKey{}).(*pairing.Device)
+	return d
 }
 
 // deviceTokenOf reads the device token from wherever this request could carry

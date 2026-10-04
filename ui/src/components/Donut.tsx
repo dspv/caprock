@@ -121,7 +121,7 @@ function clip(s: string, n: number): string {
 
 export function Legend({ segments, total }: { segments: Segment[]; total: number }) {
   return (
-    <ul className="m-0 p-0 list-none grid gap-1 min-w-0 flex-1 text-[11px]">
+    <ul className="m-0 p-0 list-none grid grid-cols-1 gap-1 min-w-0 flex-1 basis-full sm:basis-auto text-[11px]">
       {segments.map((s, i) => (
         <li key={s.key} className="flex items-baseline gap-2 min-w-0">
           <span className="inline-block w-2 h-2 rounded-[2px] shrink-0 translate-y-[1px]" style={{ background: colorOf(s, i) }} aria-hidden />

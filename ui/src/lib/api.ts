@@ -789,7 +789,8 @@ export function deviceToken(): string {
  * the LAN address while the machine itself uses loopback, so holding one is
  * exactly "this is the tablet". A paired device may read and nothing else
  * (ADR-029) — the daemon refuses the rest with 403 — so controls it cannot use
- * are not drawn there.
+ * are not drawn there. The exception is a device the owner made a controller
+ * (ADR-034): ask `useCanControl` for the controls that role unlocks.
  */
 export function isPairedDevice(): boolean {
   return deviceToken() !== ''
@@ -890,6 +891,9 @@ export interface PairedDevice {
   name: string
   paired_at: number
   last_seen: number
+  /** A viewer reads; a controller may also start, type into and stop
+   *  sessions (ADR-034). Granted on the machine, never by pairing. */
+  role: 'viewer' | 'controller'
 }
 
 /** What the owner sees on the pairing panel. */
@@ -940,6 +944,11 @@ export const api = {
   /** Turn network access on or off without restarting the daemon. */
   setLAN: (on: boolean) => post<{ enabled: boolean; url?: string }>('/v1/pair/lan', { on }),
   pairRevoke: (id: string) => post<{ revoked: number }>(`/v1/pair/devices/${encodeURIComponent(id)}`, {}, 'DELETE'),
+  /** Give a paired device control of sessions, or take it away. Machine only. */
+  pairSetRole: (id: string, role: PairedDevice['role']) =>
+    post<{ id: string; role: string }>(`/v1/pair/devices/${encodeURIComponent(id)}/role`, { role }, 'PUT'),
+  /** Which role this dashboard's device holds: "owner" on the machine itself. */
+  pairMe: () => get<{ role: 'owner' | PairedDevice['role']; id?: string; name?: string }>('/v1/pair/me'),
   settings: () => get<Settings>('/v1/settings'),
   update: () => get<UpdateStatus>('/v1/update'),
   checkUpdate: () => post<UpdateStatus>('/v1/update/check', {}),

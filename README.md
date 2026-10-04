@@ -533,11 +533,15 @@ loopback-only:
   refused until a device has traded a code for a token. Devices are listed in
   settings and can be removed one by one, which takes effect on the next
   request.
-- **A paired device reads; it does not control.** It sees sessions, costs,
-  answers, changes and the task board. Starting, typing into, pausing or
-  stopping a session, and changing settings, tasks or pairing, happen only on
-  the machine Caprock runs on — the daemon refuses them from anywhere else, and
-  the dashboard on the tablet does not offer them.
+- **A paired device reads, unless you let it control sessions.** It sees
+  sessions, costs, answers, changes and the task board. Beside each device in
+  settings, *Let it control sessions* lets that phone also start a session in
+  one of your projects with Claude Code, Codex or OpenCode, type into it (a big
+  input field plus Esc, Tab, arrows, Enter and Ctrl+C buttons), answer
+  approvals and stop it. *Take control away* undoes it at once, including in a
+  terminal already open on the phone. Changing settings or pairing, and
+  starting anything outside a project you already work in, stay on the machine
+  Caprock runs on — the daemon refuses them from anywhere else.
 - **It is off again next time.** Not a stored setting: a laptop opened
   somewhere you do not trust should not be carrying a decision you made at
   home. What survives a restart is the list of devices, so you do not walk back

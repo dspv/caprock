@@ -23,7 +23,7 @@ export function Attention({ items, now, onDismiss, sessions }: {
 }) {
   if (items.length === 0) return null
   return (
-    <div className="grid gap-1.5">
+    <div className="grid grid-cols-1 gap-1.5">
       {items.map((it) => (
         <Row
           key={it.id}
@@ -50,11 +50,11 @@ function Row({ it, now, onDismiss, session }: {
     : 'border-warn/50 bg-warn/10'
   return (
     <>
-    <div className={`border rounded-[var(--radius-panel)] px-3 py-2 flex items-center gap-3 ${frame}`}>
+    <div className={`border rounded-[var(--radius-panel)] px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-1 ${frame}`}>
       <span className={`font-medium text-[13px] shrink-0 ${high ? 'text-danger' : 'text-warn'}`}>
         {it.title}
       </span>
-      <span className="text-[12px] text-fg-muted truncate">
+      <span className="min-w-0 text-[12px] text-fg-muted truncate">
         {/* Not every item is about a session. A plan window is about the whole
           * account, and linking it to `#/session/` with an empty id produced a
           * dead link labelled with nothing. */}

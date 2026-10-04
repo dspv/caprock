@@ -147,7 +147,7 @@ function Row({ it, now, project }: { it: FeedItem; now: number; project?: string
   return (
     <a
       href={href({ name: 'session', id: it.sessionId })}
-      className="grid grid-cols-[auto_auto_1fr_auto] items-baseline gap-2 px-3 py-1 border-t border-border first:border-t-0 hover:bg-panel-2 no-underline text-fg"
+      className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-baseline gap-2 px-3 py-1 border-t border-border first:border-t-0 hover:bg-panel-2 no-underline text-fg"
     >
       <span className={`mono text-[12px] w-3 text-center ${toneClass(it.tone)}`}>{it.icon}</span>
       <span className="mono text-[11px] text-fg-muted truncate max-w-[12ch]">

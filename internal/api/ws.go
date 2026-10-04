@@ -37,18 +37,8 @@ type helloFrame struct {
 }
 
 func (h *wsHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Same-origin only: the dashboard is served by this daemon. Vite dev on
-	// :5173 proxies /v1 so the origin is still localhost. A LAN listener adds
-	// exactly one more origin — the address it was told to bind.
-	origins := []string{"localhost:*", "127.0.0.1:*", "[::1]:*"}
-	h.mu.Lock()
-	lanHost := h.lanHost
-	h.mu.Unlock()
-	if lanHost != "" {
-		origins = append(origins, lanHost+":*")
-	}
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		OriginPatterns: origins,
+		OriginPatterns: h.origins(),
 		// A device token arrives as a subprotocol, because a browser's
 		// WebSocket constructor cannot set headers and this is the only field
 		// it can carry. The token is echoed back as the negotiated protocol,
@@ -109,6 +99,21 @@ func (h *wsHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// origins are the browser origins a socket handshake admits. Same-origin
+// only: the dashboard is served by this daemon. Vite dev on :5173 proxies /v1
+// so the origin is still localhost. A LAN listener adds exactly one more
+// origin — the address it was told to bind.
+func (h *wsHub) origins() []string {
+	origins := []string{"localhost:*", "127.0.0.1:*", "[::1]:*"}
+	h.mu.Lock()
+	lanHost := h.lanHost
+	h.mu.Unlock()
+	if lanHost != "" {
+		origins = append(origins, lanHost+":*")
+	}
+	return origins
+}
+
 func writeFrame(ctx context.Context, c *websocket.Conn, f bus.Frame) error {
 	b, err := f.Marshal()
 	if err != nil {
@@ -145,9 +150,18 @@ func (h *wsHub) serveTerm(s *Server) http.HandlerFunc {
 			return
 		}
 		defer cancel()
-		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{"localhost:*", "127.0.0.1:*", "[::1]:*"}})
+		// A paired controller reaches this over the LAN address, with its
+		// token as a subprotocol, as on /v1/live (ADR-034). The gate has
+		// already refused every device that is not a controller.
+		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: h.origins(), Subprotocols: subprotocolsFor(r)})
 		if err != nil {
 			return
+		}
+		// Empty on the machine itself; a device's token otherwise, asked
+		// about again before every frame it sends.
+		var devTok string
+		if deviceFrom(r) != nil {
+			devTok = deviceTokenOf(r)
 		}
 		ctx, cctx := context.WithCancel(r.Context())
 		defer cctx()
@@ -175,6 +189,11 @@ func (h *wsHub) serveTerm(s *Server) http.HandlerFunc {
 			for {
 				typ, data, err := c.Read(ctx)
 				if err != nil {
+					cctx()
+					return
+				}
+				if devTok != "" && !s.stillControls(devTok) {
+					_ = c.Close(websocket.StatusPolicyViolation, "this device can no longer control sessions")
 					cctx()
 					return
 				}

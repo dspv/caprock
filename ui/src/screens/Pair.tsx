@@ -134,13 +134,29 @@ export function PairScreen() {
   )
 }
 
-/** A first guess at the device's name, so the field is not empty on a phone. */
-function defaultDeviceName(): string {
-  const ua = navigator.userAgent
+/** A first guess at the device's name, so the field is not empty on a phone:
+ *  the kind of device and the browser, which is what tells two of them apart
+ *  in the machine's list ("iPhone · Safari", "iPhone · Chrome"). */
+export function defaultDeviceName(ua: string = navigator.userAgent): string {
+  const kind = deviceKind(ua)
+  const browser = browserOf(ua)
+  return kind && browser ? `${kind} · ${browser}` : kind
+}
+
+function deviceKind(ua: string): string {
   if (/iPad/.test(ua)) return 'iPad'
   if (/iPhone/.test(ua)) return 'iPhone'
   if (/Android/.test(ua)) return /Mobile/.test(ua) ? 'Android phone' : 'Android tablet'
   if (/Macintosh/.test(ua)) return 'Mac'
   if (/Windows/.test(ua)) return 'Windows PC'
+  return ''
+}
+
+// Order matters: Chrome on iOS says Safari too, Edge says Chrome.
+function browserOf(ua: string): string {
+  if (/EdgiOS|EdgA|Edg\//.test(ua)) return 'Edge'
+  if (/FxiOS|Firefox\//.test(ua)) return 'Firefox'
+  if (/CriOS|Chrome\//.test(ua)) return 'Chrome'
+  if (/Safari\//.test(ua)) return 'Safari'
   return ''
 }

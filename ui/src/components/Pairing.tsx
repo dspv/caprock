@@ -30,7 +30,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, errText, type PairedDevice, type PairState } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { Section } from '@/components/SettingsParts'
-import { fmtAgo } from '@/lib/format'
+import { fmtAgo, fmtWhen } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { encodeQR, qrPath } from '@/lib/qr'
 
@@ -159,6 +159,18 @@ export function Pairing() {
     }
   }
 
+  // Control is a second decision, made here and nowhere else (ADR-034):
+  // pairing makes a viewer, and taking control away is one button.
+  async function setRole(id: string, role: PairedDevice['role']) {
+    setError('')
+    try {
+      await api.pairSetRole(id, role)
+      state.refresh()
+    } catch (e) {
+      setError(errText(e))
+    }
+  }
+
   if (!s) {
     return (
       <Section title="Open Caprock on your phone">
@@ -216,11 +228,11 @@ export function Pairing() {
           </div>
         )}
 
-        <Devices devices={s.devices} now={now} onRemove={remove} />
+        <Devices devices={s.devices} now={now} onRemove={remove} onRole={setRole} />
 
         <div className="grid gap-1 border-t border-border pt-3 text-[12px] leading-relaxed text-fg-muted">
           <p>
-            Only phones you pair get in, and they can look but not change anything. It switches off when Caprock restarts.
+            Only phones you pair get in, and they can look but not change anything — unless you let one control sessions below. It switches off when Caprock restarts.
           </p>
           {s.enabled && s.tunnelled ? (
             <p>This {machine.replace('this ', '')} is on Tailscale, so it works from anywhere your phone has Tailscale too — even on mobile data.</p>
@@ -325,10 +337,12 @@ function Devices({
   devices,
   now,
   onRemove,
+  onRole,
 }: {
   devices: PairedDevice[]
   now: number
   onRemove: (id: string) => void
+  onRole: (id: string, role: PairedDevice['role']) => void
 }) {
   if (devices.length === 0) return null
   return (
@@ -336,13 +350,41 @@ function Devices({
       <div className="text-[12px] text-fg-muted">Paired devices</div>
       <ul className="grid gap-1.5">
         {devices.map((d) => (
-          <li key={d.id} className="flex items-center gap-3 rounded-md border border-border px-3 py-2">
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-fg">{d.name}</span>
+          <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-border px-3 py-2">
+            <span className="min-w-0 flex-1 basis-40">
+              {/* Two phones of one model share a name, so each row also says
+                * when it was paired and the start of its id — enough to tell
+                * which one to take control away from. */}
+              <span className="flex min-w-0 items-baseline gap-1.5">
+                <span className="min-w-0 truncate text-fg" title={d.name}>{d.name}</span>
+                {/* Outside the truncation: on a narrow row the name gives way,
+                  * never the part that tells two of them apart. */}
+                <span className="mono shrink-0 text-[11px] text-fg-faint" title={`device id ${d.id}`}>#{d.id.slice(0, 4)}</span>
+              </span>
               <span className="block text-[11px] text-fg-faint">
+                {d.role === 'controller' ? <span className="text-accent">can control sessions</span> : 'view only'}
+                {' · '}
                 {d.last_seen ? `last seen ${fmtAgo(d.last_seen, now)}` : 'not seen yet'}
+                {d.paired_at ? ` · paired ${fmtWhen(d.paired_at, now)}` : ''}
               </span>
             </span>
+            {d.role === 'controller' ? (
+              <button
+                onClick={() => onRole(d.id, 'viewer')}
+                title="It goes back to view only on its next request, and an open terminal stops taking keys"
+                className="shrink-0 rounded-sm border border-border px-2 py-1 text-[12px] text-fg-muted hover:border-danger hover:text-danger"
+              >
+                Take control away
+              </button>
+            ) : (
+              <button
+                onClick={() => onRole(d.id, 'controller')}
+                title="It can start sessions in your projects, type into them, answer approvals and stop them. Settings and pairing stay on this machine."
+                className="shrink-0 rounded-sm border border-border px-2 py-1 text-[12px] text-fg-muted hover:border-accent hover:text-accent"
+              >
+                Let it control sessions
+              </button>
+            )}
             <button
               onClick={() => onRemove(d.id)}
               title="It stops working on its next request"
