@@ -104,11 +104,38 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `/v1/browse` and `/v1/recent-dirs` (directory listings for starting one). An
   allowlist, so a route added later is closed to a paired device until it is
   named. `GET /v1/settings` omits `license_key` for a paired device. Loopback is
-  unaffected.
+  unaffected. `GET /v1/pair/me` is on the list too: it answers `{role}` —
+  `"owner"` on loopback, else `{role: "viewer"|"controller", id, name}`.
+- **A controller may also work on sessions** ([ADR-034](08-decisions.md)). A
+  device is paired as a viewer; the owner makes it a controller with `PUT
+  /v1/pair/devices/{id}/role` (`{role: "viewer"|"controller"}`, loopback-only,
+  `400` for any other role, `404` for an unknown id, and while network access
+  is off it edits `devices.json`). `role` is stored per device in
+  `devices.json` (absent = viewer, which every file written before roles
+  reads as) and listed in `GET /v1/pair/state`. A controller may additionally
+  make exactly the requests in `controllerRoutes` (`internal/api/lanauth.go`):
+  `POST /v1/agents`, `GET /v1/agents/models`, `GET /v1/recent-dirs`,
+  `GET /v1/sessions/{id}/relay`, `GET /v1/agents/{id}/term`,
+  `POST /v1/agents/{id}/input`, `POST /v1/agents/{id}/signal`,
+  `POST /v1/paste`, `POST /v1/tasks/{id}/approve` and `/reject`. Everything
+  else stays `403` for every device: settings, pairing, hive, tasks creation
+  and verify, orchestrator, hooks install, shutdown, update check, report
+  test, Gemini ask, `open-terminal` and `/v1/browse`.
+- **What a controller's `POST /v1/agents` may say** (`controllerSpawnRefusal`):
+  `cwd` must be absolute and a directory some session has run in (`cwd` or
+  `repo_root`, `store.KnownDir`); `command`, `args`, `create` and `chat` are
+  refused unless empty or false. Refusal is `403` with `{error}`. A session
+  started from a device is logged with the device's id and name.
+- **The terminal socket from a device** admits the LAN origin and takes the
+  token as the `caprock.device.<token>` subprotocol, as `/v1/live` does. Before
+  every frame a device sends, its role is read again (`pairing.Store.RoleOf`);
+  once it is not a controller — demoted, revoked, or network access turned off
+  — the socket closes with `1008` and the frame is not written.
 - **Refusal is `401` with `{error, detail}`** for a device that has not paired,
-  and `403` with the same shape for a paired device asking for more than a read
-  — not a redirect: the caller is usually `fetch()`, and a redirect to HTML
-  becomes a parse error three frames later.
+  and `403` with the same shape for a paired device asking for more than its
+  role allows — the `detail` tells a viewer where control is granted — not a
+  redirect: the caller is usually `fetch()`, and a redirect to HTML becomes a
+  parse error three frames later.
 
 **Which address.** One private IPv4 address (RFC 1918), never link-local, never
 public. Tailscale's 100.64.0.0/10 is admitted **only on Tailscale's own
@@ -124,7 +151,8 @@ VPNs borrow it too. When a Tailscale address exists it is preferred, and
 **loopback-only, enforced in the handler** rather
 than by the gate: a paired tablet is somewhere to read figures, not a second
 control room, and it must not be able to admit a third device or revoke the
-laptop that let it in. `POST /v1/pair` takes `{code, name}` and returns
+laptop that let it in. `PUT /v1/pair/devices/{id}/role` is loopback-only the same
+way: a controller cannot promote another device, or itself. `POST /v1/pair` takes `{code, name}` and returns
 `{token, id, name}`; it is the one call a device makes before it is trusted, and
 it answers the same way for a wrong, expired, exhausted or never-issued code,
 because every distinction tells a guesser how close they are.

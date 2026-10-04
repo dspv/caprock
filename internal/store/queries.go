@@ -2864,6 +2864,20 @@ func RecentDirs(ctx context.Context, q Querier, limit int) ([]RecentDirDetail, e
 	return out, rows.Err()
 }
 
+// KnownDir reports whether any session has worked in dir, as its working
+// directory or its repository root. A paired controller may start sessions
+// only in such a directory (ADR-034): somewhere the owner already works,
+// never an arbitrary path on the disk.
+func KnownDir(ctx context.Context, q Querier, dir string) (bool, error) {
+	if dir == "" {
+		return false, nil
+	}
+	var n int
+	err := q.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM sessions WHERE cwd = ? OR repo_root = ?)`, dir, dir).Scan(&n)
+	return n == 1, err
+}
+
 // SpendSince is the total priced cost of events at or after fromMs.
 //
 // The daily spend cap's only question, asked after every priced turn, so it is

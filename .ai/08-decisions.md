@@ -900,6 +900,10 @@ contracts, the README or the changelog ever gave a paired device a control, and
 a kill from a tablet is still a kill. The terminal socket is excluded although
 it is a `GET`, because every frame it receives is typed into the session.
 
+*Amended 2026-10-04 by [ADR-034](#adr-034--a-phone-the-owner-chooses-can-work-on-sessions-and-nothing-else):*
+reading stays the default, and the owner can make one paired device a
+controller, on the machine, revocably.
+
 **Rules out:** a relay of ours (sessions would pass through a machine we run,
 which contradicts rule 4 and three sentences on the site); binding the wildcard
 address; a stored "LAN on" setting; pairing from a device that is already
@@ -1201,3 +1205,59 @@ the cleanup cannot see), if a service manager is found that kills detached
 processes by some other grouping (a launchd coalition, a Windows job without
 breakaway), or if the protocol needs a non-additive change — which is the
 moment the daemon's multi-version support has to be written, not before.
+
+---
+
+## ADR-034 — A phone the owner chooses can work on sessions, and nothing else
+
+**Date:** 2026-10-04 · **Status:** accepted
+
+The owner's top request: leave the desk and keep working — start a session in a
+project, pick the agent, type into it, answer what it asks, stop it — from the
+phone. ADR-029 made every paired device a reader on purpose, because a token
+had silently been a second control room. This keeps that default and adds one
+deliberate exception.
+
+**The decision.** A paired device holds a role: `viewer` (what pairing always
+gives) or `controller`. The owner grants it per device, on the machine, in
+Settings — **Let it control sessions** — and takes it away with one button.
+The role lives beside the token in `devices.json`; a file written before roles
+existed reads as all viewers, which is what those devices were. The gate checks
+the role on every request, and the terminal socket re-reads it before every
+frame a device sends, so taking control away stops the next keystroke on a
+terminal already open (the socket closes with 1008).
+
+**What a controller may do is an allowlist, like ADR-029's:** start a session,
+type into one (socket and `input`), pause/resume/kill one, paste a file into
+one, read the recent projects, models and relay brief the start form needs, and
+approve or reject a task. Rule 7 is unchanged and enforced below the API: the
+agent manager only types into or signals processes Caprock started.
+
+**Three narrower choices, each with an easier wrong answer:**
+
+- **A phone starts a coding agent in a known project, not a command anywhere.**
+  The dashboard on the machine may name any binary, arguments, folder or
+  `create`, because whoever sits there already can. A device token is a bearer
+  secret that can be copied off a phone, so from a device the spawn request may
+  not carry `command`, `args`, `create` or `chat`, and its folder must be one a
+  session has already run in. No folder browser: `/v1/browse` stays closed to
+  every device.
+- **The machine stays the machine's.** Settings, pairing (codes, roles,
+  revocation, network access), the hive and orchestrator, creating or verifying
+  tasks (verify runs commands), hooks install, shutdown, outbound calls, and
+  `open-terminal` (a window on the Mac's screen) remain loopback-only whatever
+  the role. A controller cannot promote another device or itself.
+- **No relay.** It works where the phone can reach the daemon — the same Wi-Fi,
+  or Tailscale — and nowhere else. Nothing leaves the machine (rule 4); a phone
+  on mobile data without Tailscale cannot reach it, and the pairing panel
+  already says which kind of address it shows.
+
+**Rules out:** control granted by pairing (a code read off a screen is proof of
+presence, not of intent to hand over a keyboard); a global "phones may control"
+switch (control is a property of one device, so losing one phone costs one
+button); typing into sessions Caprock did not start.
+
+**Revisit if** an owner needs control without either network (that is the relay
+ADR-029 rules out), or if a controller needs one of the machine-only actions —
+each would be its own decision, added to the allowlist by name.
+
