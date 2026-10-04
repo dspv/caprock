@@ -225,6 +225,7 @@ export function Pairing() {
           <div className="rounded-md border border-ok/40 bg-ok/10 px-3 py-2 text-[13px] text-fg">
             <span className="text-ok">✓</span> {joined.name} is connected. On it, Caprock is at{' '}
             <span className="mono select-all break-all">{s.url}</span> — add it to the home screen to keep it one tap away.
+            On an iPhone the home-screen app pairs once more: show another code and type it there.
           </div>
         )}
 

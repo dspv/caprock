@@ -27,6 +27,28 @@ function initial(): Theme {
 function apply(t: Theme) {
   document.documentElement.setAttribute('data-theme', t)
   document.documentElement.style.colorScheme = t
+  syncThemeColor()
+}
+
+/**
+ * The header's panel colour per palette (`--color-panel` in design/tokens.css),
+ * for `<meta name="theme-color">`: the phone's status bar and Android's
+ * toolbar take it, so a home-screen Caprock has no stripe of another colour
+ * above its header. Mirrored in the inline script in index.html.
+ */
+export const THEME_COLORS = { dark: '#211f1d', white: '#ffffff', paper: '#f4ecdd' } as const
+
+/** The theme-color for what <html> currently shows. */
+export function themeColor(theme: string | null, tone: string | null): string {
+  if (theme !== 'light') return THEME_COLORS.dark
+  return tone === 'white' ? THEME_COLORS.white : THEME_COLORS.paper
+}
+
+function syncThemeColor() {
+  const el = document.documentElement
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute('content', themeColor(el.getAttribute('data-theme'), el.getAttribute('data-tone')))
 }
 
 // Every useTheme on the page hears a change made by any other — the header's
@@ -66,6 +88,7 @@ export function useLightTone(): [LightTone, (t: LightTone) => void] {
   const [tone, setTone] = useState<LightTone>(initialTone)
   useEffect(() => {
     document.documentElement.setAttribute('data-tone', tone)
+    syncThemeColor()
   }, [tone])
   return [
     tone,

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { DEFAULT_TONE, useLightTone, useTheme } from './theme'
+import { DEFAULT_TONE, THEME_COLORS, themeColor, useLightTone, useTheme } from './theme'
 
 describe('useTheme', () => {
   afterEach(() => {
@@ -52,5 +52,35 @@ describe('useLightTone', () => {
     expect(result.current[0]).toBe('white')
     expect(localStorage.getItem('caprock-light-tone')).toBe('white')
     expect(document.documentElement.getAttribute('data-tone')).toBe('white')
+  })
+})
+
+describe('theme-color', () => {
+  afterEach(() => {
+    localStorage.clear()
+    vi.unstubAllGlobals()
+    document.head.querySelector('meta[name="theme-color"]')?.remove()
+    document.documentElement.removeAttribute('data-theme')
+    document.documentElement.removeAttribute('data-tone')
+  })
+
+  it('is the header panel colour of each palette', () => {
+    expect(themeColor('dark', 'paper')).toBe(THEME_COLORS.dark)
+    expect(themeColor(null, null)).toBe(THEME_COLORS.dark)
+    expect(themeColor('light', 'paper')).toBe(THEME_COLORS.paper)
+    expect(themeColor('light', null)).toBe(THEME_COLORS.paper)
+    expect(themeColor('light', 'white')).toBe(THEME_COLORS.white)
+  })
+
+  it('follows a theme switch, so the status bar matches the header', () => {
+    const meta = document.createElement('meta')
+    meta.name = 'theme-color'
+    document.head.appendChild(meta)
+    vi.stubGlobal('matchMedia', () => ({ matches: false }) as MediaQueryList)
+    const { result } = renderHook(() => useTheme())
+    expect(meta.content).toBe(THEME_COLORS.dark)
+    document.documentElement.setAttribute('data-tone', 'paper')
+    act(() => result.current[2]('light'))
+    expect(meta.content).toBe(THEME_COLORS.paper)
   })
 })

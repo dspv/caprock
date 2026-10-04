@@ -19,6 +19,13 @@
  * `#/pair?code=NNNNNN`; the code is read from the link, sent once, and wiped
  * from the address bar, so the phone's history keeps the dashboard and not a
  * spent code. A failure leaves the code in the field and says why.
+ *
+ * **From the home screen it pairs again, by typing.** iOS gives a home-screen
+ * web app its own storage, so the token Safari holds is not there, and the
+ * camera opens a scanned link in Safari rather than in the app. The screen
+ * says so instead of offering a scan that would pair the wrong one, and the
+ * name it suggests ends in "home screen", so the machine's list tells the two
+ * apart.
  */
 import { useEffect, useRef, useState } from 'react'
 import { api, errText, setDeviceToken } from '@/lib/api'
@@ -31,10 +38,17 @@ export function codeFromHash(hash: string): string {
   return c.length === 6 ? c : ''
 }
 
+/** Whether this page runs as a home-screen app rather than in a browser tab. */
+export function isStandalone(): boolean {
+  const nav = navigator as Navigator & { standalone?: boolean }
+  return nav.standalone === true || window.matchMedia?.('(display-mode: standalone)').matches === true
+}
+
 export function PairScreen() {
   const scanned = useRef(codeFromHash(window.location.hash))
+  const homeScreen = useRef(isStandalone()).current
   const [code, setCode] = useState(scanned.current)
-  const [name, setName] = useState(defaultDeviceName())
+  const [name, setName] = useState(defaultDeviceName(navigator.userAgent, homeScreen))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -77,13 +91,22 @@ export function PairScreen() {
   }
 
   return (
-    <div className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-4">
+    <div className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-4 pt-[env(safe-area-inset-top)]">
       <h1 className="text-[18px] text-fg">{busy ? 'Pairing…' : 'Pair this device'}</h1>
-      <p className="mt-1.5 text-[13px] leading-relaxed text-fg-muted">
-        On the computer running Caprock, open <span className="text-fg">Settings</span> and
-        press <span className="text-fg">Show a code</span>. Scan it with the camera, or type the
-        six digits here.
-      </p>
+      {homeScreen ? (
+        <p className="mt-1.5 text-[13px] leading-relaxed text-fg-muted">
+          Opened from the home screen, Caprock keeps its own sign-in, apart from the
+          browser&apos;s, so it pairs once more here. On the computer, open{' '}
+          <span className="text-fg">Settings</span>, press <span className="text-fg">Show a code</span>{' '}
+          and type the six digits. Don&apos;t scan it: the camera opens the browser, not this app.
+        </p>
+      ) : (
+        <p className="mt-1.5 text-[13px] leading-relaxed text-fg-muted">
+          On the computer running Caprock, open <span className="text-fg">Settings</span> and
+          press <span className="text-fg">Show a code</span>. Scan it with the camera, or type the
+          six digits here.
+        </p>
+      )}
 
       <form onSubmit={submit} className="mt-5 grid gap-3">
         <label className="grid gap-1.5">
@@ -136,10 +159,12 @@ export function PairScreen() {
 
 /** A first guess at the device's name, so the field is not empty on a phone:
  *  the kind of device and the browser, which is what tells two of them apart
- *  in the machine's list ("iPhone · Safari", "iPhone · Chrome"). */
-export function defaultDeviceName(ua: string = navigator.userAgent): string {
+ *  in the machine's list ("iPhone · Safari", "iPhone · Chrome"). A home-screen
+ *  app is "iPhone · home screen": it pairs separately from Safari on the same
+ *  phone, and the list should say which entry is which. */
+export function defaultDeviceName(ua: string = navigator.userAgent, homeScreen = false): string {
   const kind = deviceKind(ua)
-  const browser = browserOf(ua)
+  const browser = homeScreen ? 'home screen' : browserOf(ua)
   return kind && browser ? `${kind} · ${browser}` : kind
 }
 

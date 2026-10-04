@@ -71,7 +71,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
       {/* Wraps on a phone. One fixed-height row was 882px wide at 390, so
         * every screen on a paired phone scrolled sideways before it showed
         * anything. On a desktop it is still one row. */}
-      <header className="min-h-10 border-b border-border bg-panel flex flex-wrap items-center px-3 py-1 gap-x-4 gap-y-1 sticky top-0 z-10">
+      <header className="min-h-10 border-b border-border bg-panel flex flex-wrap items-center px-3 pb-1 pt-[max(0.25rem,env(safe-area-inset-top))] gap-x-4 gap-y-1 sticky top-0 z-10">
         <a href="#/" className="flex items-center gap-2 text-fg no-underline hover:no-underline">
           <svg width="16" height="16" viewBox="0 0 32 32" aria-hidden><path d="M6 22 L16 8 L26 22 Z" fill="none" stroke="var(--color-accent)" strokeWidth="3" strokeLinejoin="round" /><rect x="6" y="22" width="20" height="3" fill="var(--color-accent)" /></svg>
           <span className="font-medium tracking-wide text-[13px]">caprock</span>

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { Pairing, pairLink, phoneStatus } from './Pairing'
-import { codeFromHash, defaultDeviceName } from '@/screens/Pair'
+import { PairScreen, codeFromHash, defaultDeviceName } from '@/screens/Pair'
 import { api, type PairState } from '@/lib/api'
 
 const phone = { id: 'a', name: 'iPhone', paired_at: 1, last_seen: 1, role: 'viewer' as const }
@@ -118,6 +118,32 @@ describe('the name a device offers', () => {
     expect(defaultDeviceName(iosChrome)).toBe('iPhone · Chrome')
     expect(defaultDeviceName(androidChrome)).toBe('Android phone · Chrome')
     expect(defaultDeviceName('curl/8')).toBe('')
+  })
+
+  it('names a home-screen app apart from the browser, since it pairs separately', () => {
+    const iosSafari = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'
+    expect(defaultDeviceName(iosSafari, true)).toBe('iPhone · home screen')
+  })
+})
+
+describe('pairing from the home screen', () => {
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
+
+  it('asks for the typed code, not a scan, in a home-screen app', () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q === '(display-mode: standalone)' }) as MediaQueryList)
+    render(<PairScreen />)
+    expect(screen.getByText(/keeps its own sign-in/)).toBeTruthy()
+    expect(screen.getByText(/the camera opens the browser/)).toBeTruthy()
+  })
+
+  it('offers the scan in a browser tab', () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: false }) as MediaQueryList)
+    render(<PairScreen />)
+    expect(screen.getByText(/Scan it with the camera/)).toBeTruthy()
+    expect(screen.queryByText(/keeps its own sign-in/)).toBeNull()
   })
 })
 
