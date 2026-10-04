@@ -180,7 +180,7 @@ describe('ProjectsPanel figures', () => {
   }
 
   function rows(container: HTMLElement): HTMLElement[] {
-    return Array.from(container.querySelectorAll('.grid-cols-\\[1fr_128px_auto\\]')) as HTMLElement[]
+    return Array.from(container.querySelectorAll('[class*="grid-cols-[minmax(0,1fr)_128px_auto]"]')) as HTMLElement[]
   }
 
   it('states both tokens and cost on every row, each from its own project', async () => {

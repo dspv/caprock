@@ -53,6 +53,13 @@ type Session struct {
 	// ParentSession is the session this one continues: the one a /clear
 	// replaced, or the one it was forked from (FB-039).
 	ParentSession string `json:"parent_session,omitempty"`
+	// NativeID is the agent's own id for a Codex or OpenCode session Caprock
+	// started under an id of its own (migration 0032); empty otherwise.
+	NativeID string `json:"native_id,omitempty"`
+	// RelayFrom is the session whose work this one was started to carry on,
+	// with a brief rather than the conversation (migration 0036); empty
+	// otherwise.
+	RelayFrom string `json:"relay_from,omitempty"`
 }
 
 // Stats mirrors session_stats.
@@ -178,6 +185,117 @@ func InsertEvent(ctx context.Context, q Querier, ev *event.Event) (int64, error)
 	}
 	ev.ID = id
 	return id, nil
+}
+
+// MergeAssistantText folds the prose and tool names of a later line of one API
+// response into the turn row that response is stored as.
+//
+// Claude Code writes one response as several transcript lines — thinking, then
+// text, then each tool_use — every one carrying the same message id and usage.
+// The store keys turns on `msg:<id>` so usage is counted once, which keeps the
+// FIRST line and dropped the rest. While the first line was usually the text
+// that did not matter; once Claude Code began writing a thinking line first on
+// every response, the stored turn kept an empty `text` and the prose that
+// followed it never reached the database. On the owner's machine 93% of the
+// assistant turns stored after 2026-09-29 had no text, against 10-28% in every
+// earlier week (measured 2026-10-04), and the Answers tab of a session full of
+// long replies showed one line.
+//
+// Only the payload changes: usage, cost and id stay as the first line set
+// them. It is idempotent — a transcript re-read after a restart offers the
+// same lines again, and text already in the row is not appended twice.
+// Returns whether the row changed.
+func MergeAssistantText(ctx context.Context, q Querier, sessionID, key string, payload json.RawMessage) (bool, error) {
+	if key == "" {
+		return false, nil
+	}
+	var in struct {
+		Text  string   `json:"text"`
+		Tools []string `json:"tools"`
+	}
+	if err := json.Unmarshal(payload, &in); err != nil {
+		return false, nil //nolint:nilerr // an unreadable line has nothing to add
+	}
+	in.Text = strings.TrimSpace(in.Text)
+	if in.Text == "" && len(in.Tools) == 0 {
+		return false, nil
+	}
+	var id int64
+	var raw string
+	err := q.QueryRowContext(ctx, `SELECT id, payload FROM events WHERE session_id = ? AND key = ? AND kind = ?`,
+		sessionID, key, string(event.KindTurnAssistant)).Scan(&id, &raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var stored map[string]any
+	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
+		// A payload we cannot parse is left exactly as it is.
+		return false, nil //nolint:nilerr // never damage a row we do not understand
+	}
+	changed := false
+	if in.Text != "" {
+		cur, _ := stored["text"].(string)
+		switch {
+		case cur == "":
+			stored["text"] = clipProse(in.Text)
+			changed = true
+		case !strings.Contains(cur, in.Text) && utf8.RuneCountInString(cur) < event.MaxAssistantText:
+			// A row already at the cap would only have the addition clipped
+			// away again.
+			stored["text"] = clipProse(cur + "\n" + in.Text)
+			changed = true
+		}
+	}
+	if len(in.Tools) > 0 {
+		var tools []any
+		if t, ok := stored["tools"].([]any); ok {
+			tools = t
+		}
+		have := map[string]bool{}
+		for _, t := range tools {
+			if s, ok := t.(string); ok {
+				have[s] = true
+			}
+		}
+		for _, t := range in.Tools {
+			if t != "" && !have[t] {
+				tools = append(tools, t)
+				have[t] = true
+				changed = true
+			}
+		}
+		stored["tools"] = tools
+	}
+	if !changed {
+		return false, nil
+	}
+	enc, err := json.Marshal(stored)
+	if err != nil {
+		return false, err
+	}
+	if _, err := q.ExecContext(ctx, `UPDATE events SET payload = ? WHERE id = ?`, string(enc), id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// clipProse applies event.MaxAssistantText on a rune boundary, the way the
+// transcript parser does.
+func clipProse(s string) string {
+	if utf8.RuneCountInString(s) <= event.MaxAssistantText {
+		return s
+	}
+	n := 0
+	for i := range s {
+		if n == event.MaxAssistantText {
+			return s[:i] + "…"
+		}
+		n++
+	}
+	return s
 }
 
 // TurnPaidElsewhere reports whether a session other than sessionID already
@@ -357,10 +475,17 @@ func SetPrompt(ctx context.Context, q Querier, id, prompt string) error {
 
 // FirstPrompts returns up to limit of a session's earliest user prompts, oldest
 // first. Claude Code carries the text as `prompt`, DeepSeek Harness as `text`.
+//
+// Pinned to idx_events_user_turn (migration 0033). Left to itself SQLite
+// picked idx_events_kind_ts, which walks every turn.user row in the database
+// and reads each one to test its session: 6ms a session on the owner's 1 GB
+// database, run once per untitled row of /v1/sessions — 330ms of a 50-row
+// list. The partial index holds only user turns, keyed by session and time,
+// with the implicit rowid tail giving (ts, id) order and no sort.
 func FirstPrompts(ctx context.Context, q Querier, id string, limit int) ([]string, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT COALESCE(json_extract(payload,'$.prompt'), json_extract(payload,'$.text'), '')
-		FROM events WHERE session_id = ? AND kind = 'turn.user'
+		FROM events INDEXED BY idx_events_user_turn WHERE session_id = ? AND kind = 'turn.user'
 		ORDER BY ts, id LIMIT ?`, id, limit)
 	if err != nil {
 		return nil, err
@@ -471,7 +596,7 @@ func MarkIdleSessions(ctx context.Context, q Querier, before int64) ([]string, e
 // and a backstop is all there is.
 func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, error) {
 	rows, err := q.QueryContext(ctx,
-		`SELECT session_id, COALESCE(pid, 0), COALESCE(last_event_at, 0), COALESCE(agent, 'claude')
+		`SELECT session_id, COALESCE(pid, 0), COALESCE(last_event_at, 0), COALESCE(agent, 'claude'), COALESCE(owned, 0)
 		 FROM sessions WHERE status != 'ended'`)
 	if err != nil {
 		return nil, err
@@ -483,20 +608,23 @@ func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, 
 	var ids []string
 	for rows.Next() {
 		var id, agent string
-		var pid int
+		var pid, owned int
 		var lastEvent int64
-		if err := rows.Scan(&id, &pid, &lastEvent, &agent); err != nil {
+		if err := rows.Scan(&id, &pid, &lastEvent, &agent, &owned); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
 		switch {
-		case !ownsItsProcess(agent):
+		case !ownsItsProcess(agent) && owned == 0:
 			// Read out of another tool's database rather than watched: there is
 			// no process of ours behind it, and there never will be. Judging it
 			// by liveness would keep months of somebody's history permanently
 			// "live" — which is exactly what happened the first time this
 			// change was tried, with 97-day-old sessions filling the Now
 			// screen. The clock is the only rule these can have.
+			// A Codex or OpenCode session Caprock started is the exception:
+			// it has a process, recorded at spawn, and falls through to the
+			// pid rules below like any other session Caprock owns.
 			if lastEvent < before {
 				ids = append(ids, id)
 			}
@@ -587,6 +715,85 @@ func SetParent(ctx context.Context, q Querier, id, parent string) error {
 	return err
 }
 
+// SetNativeID links a session Caprock started to the agent's own id for it
+// (migration 0032). Written once: a link already made is never moved to a
+// different thread, because the events stored under it came from the first.
+// Reports whether the link was made.
+func SetNativeID(ctx context.Context, q Querier, id, nativeID string) (bool, error) {
+	if id == "" || nativeID == "" {
+		return false, nil
+	}
+	res, err := q.ExecContext(ctx, `UPDATE sessions SET native_id = ? WHERE session_id = ? AND native_id = ''`, nativeID, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// SessionForNative returns the Caprock session linked to an agent's own id, or
+// "" when none is.
+func SessionForNative(ctx context.Context, q Querier, agent, nativeID string) (string, error) {
+	if nativeID == "" {
+		return "", nil
+	}
+	var id string
+	err := q.QueryRowContext(ctx, `SELECT session_id FROM sessions WHERE agent = ? AND native_id = ? LIMIT 1`, agent, nativeID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return id, err
+}
+
+// SetRelayFrom records that a session was started to carry on another's work
+// (migration 0036).
+func SetRelayFrom(ctx context.Context, q Querier, id, from string) error {
+	if id == "" || from == "" || id == from {
+		return nil
+	}
+	_, err := q.ExecContext(ctx, `UPDATE sessions SET relay_from = ? WHERE session_id = ?`, from, id)
+	return err
+}
+
+// RelayLink is one end of a relay, as a session page names it.
+type RelayLink struct {
+	SessionID string `json:"session_id"`
+	Agent     string `json:"agent"`
+	Title     string `json:"title,omitempty"`
+	StartedAt int64  `json:"started_at"`
+}
+
+// RelayLinks returns the session this one was relayed from (nil when none or
+// unknown) and the sessions relayed from it, oldest first.
+func RelayLinks(ctx context.Context, q Querier, sess Session) (*RelayLink, []RelayLink, error) {
+	var from *RelayLink
+	if sess.RelayFrom != "" {
+		var l RelayLink
+		err := q.QueryRowContext(ctx, `SELECT session_id, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(started_at,0) FROM sessions WHERE session_id = ?`, sess.RelayFrom).
+			Scan(&l.SessionID, &l.Agent, &l.Title, &l.StartedAt)
+		switch {
+		case err == nil:
+			from = &l
+		case !errors.Is(err, sql.ErrNoRows):
+			return nil, nil, err
+		}
+	}
+	rows, err := q.QueryContext(ctx, `SELECT session_id, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(started_at,0) FROM sessions WHERE relay_from = ? ORDER BY started_at`, sess.SessionID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	to := []RelayLink{}
+	for rows.Next() {
+		var l RelayLink
+		if err := rows.Scan(&l.SessionID, &l.Agent, &l.Title, &l.StartedAt); err != nil {
+			return nil, nil, err
+		}
+		to = append(to, l)
+	}
+	return from, to, rows.Err()
+}
+
 func EndSupersededSiblings(ctx context.Context, q Querier, pid int, keep string) (int64, error) {
 	if pid <= 0 {
 		return 0, nil
@@ -629,13 +836,13 @@ func updateStatusByID(ctx context.Context, q Querier, ids []string, status strin
 	return nil
 }
 
-const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,''), COALESCE(worked_at,0), COALESCE(parent_session,'')`
+const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,''), COALESCE(worked_at,0), COALESCE(parent_session,''), COALESCE(native_id,''), COALESCE(relay_from,'')`
 
 func scanSession(sc interface{ Scan(...any) error }) (Session, error) {
 	var s Session
 	var hh, ht, owned int
 	var exit sql.NullInt64
-	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt, &s.WorkedAt, &s.ParentSession)
+	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt, &s.WorkedAt, &s.ParentSession, &s.NativeID, &s.RelayFrom)
 	s.HasHooks, s.HasTranscript, s.Owned = hh != 0, ht != 0, owned != 0
 	if exit.Valid {
 		v := int(exit.Int64)
@@ -846,6 +1053,16 @@ const assistantTextWhere = `
 	AND ` + MainThreadWhere + `
 	AND COALESCE(json_extract(e.payload, '$.text'), '') != ''`
 
+// sessionAssistantTextWhere is assistantTextWhere for a query already narrowed
+// to ONE session. The unary `+` on kind takes idx_events_kind_id out of the
+// planner's hands: with `ORDER BY e.id DESC` it preferred walking every
+// assistant turn on the machine backwards by id — and reading each one's
+// payload — over the session's own (session_id, id) index. On the owner's
+// database (330k events, 82k assistant turns) that was 3.3 s cold for a
+// session with 21 turns, measured 2026-10-04; on the session index it is
+// 20 ms. TestSessionNotesUsesTheSessionIndex holds the plan.
+var sessionAssistantTextWhere = strings.Replace(assistantTextWhere, "e.kind = 'turn.assistant'", "+e.kind = 'turn.assistant'", 1)
+
 // MainThreadWhere keeps the events of a session's main thread and drops its
 // subagents', for a query over `events e`. It is the SQL twin of
 // event.Event.Subagent and must say the same thing.
@@ -864,7 +1081,7 @@ func SessionNotes(ctx context.Context, q Querier, sessionID string, limit int) (
 		SELECT e.id, e.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''),
 		       COALESCE(json_extract(e.payload, '$.text'), '')
 		FROM events e LEFT JOIN sessions se ON se.session_id = e.session_id
-		WHERE e.session_id = ? AND `+assistantTextWhere+`
+		WHERE e.session_id = ? AND `+sessionAssistantTextWhere+`
 		ORDER BY e.id DESC LIMIT ?`, sessionID, limit)
 	if err != nil {
 		return nil, err
@@ -1331,6 +1548,12 @@ type ProjectShare struct {
 	Dir   string      `json:"dir,omitempty"`
 	Paths []PathShare `json:"paths,omitempty"`
 	Spark *Spark      `json:"spark,omitempty"`
+	// RepoURL is the repository's web address, from its git remote; set by
+	// the API, empty when there is no remote it can link to.
+	RepoURL string `json:"repo_url,omitempty"`
+	// LastPR is the latest pull request a session in this row opened or
+	// merged; set by the API.
+	LastPR *SessionPR `json:"last_pr,omitempty"`
 }
 
 // PathShare is tokens/cost for one directory inside a repository, charged by

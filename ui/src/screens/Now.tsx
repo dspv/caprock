@@ -6,12 +6,13 @@ import { fmtAgo, fmtPct, fmtSpan, fmtTokens, fmtUSD, fmtWhen, shortId } from '@/
 import { foldChains } from '@/lib/chains'
 import { ContinueSession } from '@/components/ContinueSession'
 import { InterruptedBanner } from '@/components/Interrupted'
-import { Badge, Empty, Panel, Skeleton, Stat } from '@/components/ui'
+import { Badge, Empty, Panel, Skeleton, StaleNote, Stat } from '@/components/ui'
 import { ProjectsPanel, AGENTS, agentName, type AgentFilter } from '@/components/Projects'
 import { ActivityFeed } from '@/components/ActivityFeed'
 import { LifetimeStrip } from '@/components/Lifetime'
 import { CacheStat } from '@/components/CacheStat'
-import { PlanLimitsStat } from '@/components/PlanLimits'
+import { PlanLimitsPanel } from '@/components/PlanLimits'
+import { AtAGlancePanel } from '@/components/AtAGlance'
 import { PremiumBanner } from '@/components/PremiumBanner'
 import { BreakdownPanel } from '@/components/Breakdown'
 import { PulsePanel } from '@/components/Pulse'
@@ -20,6 +21,7 @@ import { findAttention } from '@/lib/attention'
 import { UpdateBanner } from '@/components/UpdateBanner'
 import { UnpricedNote } from '@/components/Unpriced'
 import { SpawnDialog } from '@/components/SpawnDialog'
+import { spawnableAgents } from '@/components/AgentPicker'
 import { LastWord } from '@/components/LastWord'
 import { usePlan } from '@/components/PlanPicker'
 import { costBasis, costBasisLong, costLabel } from '@/components/CostBasis'
@@ -79,11 +81,13 @@ export function NowScreen() {
     { intervalMs: 5000 },
   )
   const status = useApi(() => api.status(), [], { live: false, intervalMs: 30000 })
-  const summary = useApi(() => api.summary('today', agent), [agent], { intervalMs: 5000 })
+  // The last figures this browser kept show at once, marked, while today's are
+  // read (lib/swr.ts): on a busy daemon the first answer can take seconds.
+  const summary = useApi(() => api.summary('today', agent), [agent], { intervalMs: 5000, cache: `summary:today:${agent}` })
   // All-time totals, for the one line that mentions the paid version. Slow
   // enough to be worth a long interval and cheap enough to share with the
   // strip below, which asks for the same thing.
-  const lifetime = useApi(() => api.history('all'), [], { intervalMs: 60000 })
+  const lifetime = useApi(() => api.history('all'), [], { intervalMs: 60000, cache: 'history:all' })
   const { alerts } = useLive()
   const now = useNow(1000)
   const everySession = sessions.data?.items ?? []
@@ -194,7 +198,7 @@ export function NowScreen() {
         {!isPairedDevice() && (
           <>
             <QuickChatButton available={status.data?.claude_available} />
-            <NewSessionButton available={status.data?.claude_available} onClick={() => setSpawning(true)} />
+            <NewSessionButton available={status.data ? spawnableAgents(status.data).length > 0 : undefined} onClick={() => setSpawning(true)} />
           </>
         )}
       </div>
@@ -248,7 +252,9 @@ export function NowScreen() {
           ) : null
         }
         right={
-          summary.data ? (
+          summary.stale ? (
+            <StaleNote at={summary.cachedAt} now={now} />
+          ) : summary.data ? (
             <span className="num">pricing {summary.data.pricing_version} · at API list price</span>
           ) : null
         }
@@ -258,7 +264,7 @@ export function NowScreen() {
           * permanent ~99%) and burn (tinted whenever anything runs) — so
           * colour pointed away from the money. The rest are reference figures
           * and step down, which is what makes room for the headline. */}
-        <div className="grid grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr_1fr] divide-x divide-border">
+        <div className="grid grid-cols-2 lg:grid-cols-[1.6fr_1fr_1fr_1fr_1fr] divide-x divide-border">
           <Stat label={`${costLabel(plan)} today`} value={measured ? fmtUSD(summary.data?.cost_usd) : '—'} sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : loading ? 'reading your figures…' : 'nothing measured yet'}</span>} tone="info" size="hero" />
           {/* While the daemon has been up for less than the window, the rate
             * is arithmetic on a handful of seconds — correct, and alarming:
@@ -266,16 +272,18 @@ export function NowScreen() {
             * dollars an hour. Say it is still measuring instead. */}
           <Stat
             label="Burn now"
-            value={measured && !summary.data!.burn.filling ? `${fmtUSD(summary.data!.burn.usd_per_hour)}/h` : '—'}
+            value={measured && !summary.stale && !summary.data!.burn.filling ? `${fmtUSD(summary.data!.burn.usd_per_hour)}/h` : '—'}
             sub={
               !measured
                 ? undefined
+                : summary.stale
+                  ? 'refreshing' // a rate is about now; a kept copy of one is not
                 : summary.data!.burn.filling
                   ? `measuring — needs ${summary.data!.burn.window_min} minutes of running`
                   : `${fmtTokens(Math.round(summary.data!.burn.tokens_per_min))} tok/min · last ${summary.data!.burn.window_min}m`
             }
           />
-          <Stat label="Sessions" value={measured ? summary.data!.sessions : '—'} sub={measured ? `${summary.data!.active_sessions} active` : undefined} size="compact" />
+          <Stat label="Sessions" value={measured ? summary.data!.sessions : '—'} sub={measured && !summary.stale ? `${summary.data!.active_sessions} active` : undefined} size="compact" />
           <Stat label="Turns" value={measured ? summary.data!.turns : '—'} sub={measured ? `${summary.data!.tool_calls} tool calls` : undefined} size="compact" />
           {/* Cache hit is ~99% forever on Claude Code, so it is reassurance
             * rather than news: it keeps its place but not a colour, and only
@@ -286,11 +294,16 @@ export function NowScreen() {
             * at the size of its neighbours — it had a full-width panel of its
             * own above this row, which made two stale percentages look like a
             * headline. */}
-          <PlanLimitsStat limits={summary.data?.rate_limits} now={now} />
           <CacheStat hitRate={summary.data?.savings.hit_rate} cutPct={summary.data?.savings.cut_pct} measured={measured} />
         </div>
         <UnpricedNote u={summary.data?.unpriced} background={summary.data?.background} className="mx-3 mb-2.5" />
       </Panel>
+
+      {/* Directly under Today, full width: "can I keep going" is the question
+        * that stops the work, and as one cell in the Today row it was the
+        * smallest thing on the screen. Every window the product tracks, by
+        * agent, as gauges with the reset counting down. */}
+      <PlanLimitsPanel limits={summary.data?.rate_limits} codex={summary.data?.codex_rate_limits} now={now} />
 
       {/* The shape of the work, above the detail of it: a glance says which
         * sessions are busy, which are grinding, and which have gone quiet. */}
@@ -307,6 +320,11 @@ export function NowScreen() {
         * still holds — expanded up there it pushed Today and the pulse below
         * the fold — so it goes under the pulse rather than above it. */}
       <BreakdownPanel />
+
+      {/* The same all-time figures as pictures: donuts with the share printed
+        * big, and the agents drawn as the Week card's characters. Collapsible,
+        * with a Numbers view that is also the charts' text alternative. */}
+      <AtAGlancePanel />
 
       {/* What is happening (left) beside what it costs (right). */}
       <div className="grid gap-3 lg:grid-cols-2">
@@ -399,6 +417,7 @@ export function NowScreen() {
         <SpawnDialog
           available={status.data?.claude_available ?? false}
           geminiAvailable={status.data?.gemini_available ?? false}
+          agents={status.data ? spawnableAgents(status.data) : undefined}
           onClose={() => { setSpawning(false); sessions.refresh() }}
         />
       )}
@@ -466,14 +485,14 @@ function NewSessionButton({ available, onClick }: { available: boolean | undefin
   return (
     <button
       onClick={onClick}
-      title={missing ? 'claude was not found on this machine — click for details' : 'start a session Caprock owns'}
+      title={missing ? 'no coding agent was found on this machine — click for details' : 'start a session Caprock owns'}
       className={`flex shrink-0 items-center rounded-[var(--radius-panel)] border px-3 text-[13px] leading-5 font-medium transition-colors ${
         missing
           ? 'border-border text-fg-faint hover:text-fg-muted'
           : 'border-accent/60 bg-accent/15 text-accent hover:bg-accent/25'
       }`}
     >
-      + New session{missing ? ' (claude not found)' : ''}
+      + New session{missing ? ' (no agent found)' : ''}
     </button>
   )
 }

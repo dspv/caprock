@@ -394,6 +394,20 @@ paid until the prices turned out to be cheaper to add than to gate: DeepSeek
 and MiniMax now cost out for everyone, and the feature was removed from the
 paid list rather than kept as a claim.
 
+**Amended 2026-10-04: the tool drill-down is gated on the server.** The
+drill-down's Premium half — output, failure rate and trend per group, and the
+hints — is new: the per-tool totals stay free in Breakdown and Lifetime, and
+nothing that used to be shown is now locked. Its gate goes further than
+[ADR-023](#adr-023--gemini-runs-on-a-key-caprock-never-holds-read-from-the-environment)
+drew it, which kept server checks for features that spend money or reach the
+network. A drill draws a panel, but its paid half *is* the response: a gate
+that only blurs the page hands every figure to anyone who opens the network
+tab. So `GET /v1/tools/drill` removes those fields without an active licence
+and sends one hint in full as the teaser, and the UI's blur is placeholder
+glyphs over nothing. A feature whose paid part is a computation gets this
+server gate; a feature whose paid part is a control, like the spend cap,
+keeps the page gate.
+
 **What this constrains.** Paid features must be things the local binary can
 switch on. Anything that needs our infrastructure — cross-machine aggregation,
 the weekly report's delivery — is enforced by that infrastructure and needs no
@@ -962,3 +976,100 @@ or after compaction; anything that types into a session.
 **Revisit if** the handoff is switched off in practice, which is the honest
 signal — or if a distilled summary measurably beats the last passage, which
 requires the same kind of measurement rather than an argument.
+
+## ADR-031 — Codex and OpenCode are started like Claude Code, and linked to what they write
+
+**Date:** 2026-10-04 · **Status:** accepted (owner approved 2026-10-04)
+
+[ADR-026](#adr-026--gemini-cli-is-a-session-caprock-starts-not-a-chat-panel-it-owns)
+put Gemini CLI in the New session dialog and said to revisit when a third CLI
+arrived: "two special cases in one switch is fine, four is a table". Codex and
+OpenCode are the third and fourth. Both are observed already; a user who works
+in them had to leave Caprock to start one.
+
+**The decision.** Both are agents in the dialog, started as their own TUI in a
+PTY with everything downstream unchanged — terminal tab, pause and kill, the
+daily cap, graceful shutdown. The dialog offers only agents whose binary is
+found and remembers the viewer's last choice. The argv is a table of one
+builder per agent, each written from that CLI's own `--help` and exercised
+before it shipped; the flags and the versions they were read from live in
+[19-codex.md](19-codex.md) and [16-opencode.md](16-opencode.md). A permission
+mode an agent has no honest counterpart for is left to the agent's own config
+and the dialog says so.
+
+**Neither CLI can be told an id, so the session has to be linked.** Codex names
+its thread itself; OpenCode creates its session on the first message. Without a
+link one session is two rows. `internal/sessionlink` makes it:
+
+- **OpenCode exactly.** The TUI runs a server on a port Caprock chose; its
+  `session.created` frame names the session it made.
+- **Codex by a heuristic, said to be one.** Same folder, written by the TUI,
+  thread started within two minutes of the spawn. Codex stamps a thread at TUI
+  start, measured, which is what makes the window tight. The failure modes are
+  in [19-codex.md](19-codex.md).
+
+The link is stored on the session (`native_id`, migration 0032) and the
+importers file the agent's events under Caprock's id. Rejected: keeping two
+rows and joining them on screen (every total and list would have to know about
+the pair), and renaming the Caprock row to the agent's id once known (the
+terminal's URL and websocket are keyed on the first id).
+
+**Continuing is resuming, never forking.** `codex resume <id>` and `opencode
+--session <id>` take the agent's own id. Both CLIs' forks copy history with its
+cost, which Caprock would count twice, so a session that is still running is
+offered nothing until it ends.
+
+**Rule 7 is not bent.** Every process typed into is one Caprock started on an
+explicit click. Reading the event stream of the OpenCode server Caprock started
+is reading, on a port it chose. Nothing is written into either tool's config:
+Codex's folder trust is a per-run `-c` override, OpenCode's ask-before-commands
+an environment variable for the child.
+
+**Rules out:** a model list written into Caprock for Codex (it reads Codex's own
+catalog); Claude Code's `~/.claude.json` trust grant for agents that are not
+Claude Code; claiming "bypass" for OpenCode, whose overrides cannot remove its
+own asks.
+
+**Revisit if** Codex gains a way to name a new thread, which would make its
+link exact, or OpenCode a way to pre-create a session.
+
+## ADR-032 — Continue in another agent is a new session with a brief, said to be one
+
+**Date:** 2026-10-04 · **Status:** accepted (owner approved 2026-10-04)
+
+A session's work sometimes has to move: to another agent (Codex is free this
+week, Claude Code is out of quota), or to a fresh session when continuing the
+old one cannot work (its transcript is gone, its agent is not one Caprock
+resumes). No agent can load another's conversation, and none of them can be
+handed one.
+
+**The decision.** "Continue in… ▾" on the session page starts a **new** session
+in the chosen agent, in the same folder, whose first message is a brief Caprock
+writes locally (`internal/relay`): the last substantial passage the agent wrote
+(recency beats retrieval — the SessionStart handoff's measured finding, and its
+clip, reused), the working tree as it is now, and the PRs the session opened.
+The brief is shown in full and editable before anything is sent; the user's
+click sends it. The dialog's first sentence says it is a new session with a
+summary, not the same conversation. The two sessions name each other
+(`sessions.relay_from`, migration 0036).
+
+**The brief goes on the command line, not into the terminal.** All four CLIs
+take a first message as an argument (read from their `--help` on 2026-10-04:
+claude `[prompt]`, codex `[PROMPT]`, opencode `--prompt`, gemini
+`--prompt-interactive`). Typing it into a TUI that may not have drawn its
+input yet would be a race, and a brief of many lines through a terminal
+depends on each TUI's newline handling. Rule 7 holds either way: the process is
+one Caprock starts for this purpose.
+
+**What it does not claim.** No PRs are listed for agents that do not record
+them; command text is not mined for URLs. The git section is the folder now,
+not what the old session saw. Through a Windows batch shim the brief arrives
+as one line.
+
+**Rejected:** injecting the brief as hidden context (the SessionStart route) —
+it works only for Claude Code and hides from the user what the new agent was
+told; and a model-written summary, which would spend money and tokens before
+the user has agreed to anything.
+
+**Revisit if** an agent gains a way to import another's history, which would
+make a real continuation possible.

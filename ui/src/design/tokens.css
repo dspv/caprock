@@ -8,6 +8,11 @@
 @import "tailwindcss";
 
 @theme {
+  /* The terminal's surface. Dark in EVERY theme, so never redefined below:
+   * TUIs draw for a dark ground, and Claude Code's dim text is unreadable on
+   * paper. Same values as TERMINAL_THEME in components/Terminal.tsx. */
+  --color-term-bg: #1b1b1a;
+  --color-term-border: #3a3835;
   /* surfaces — warm charcoal strata (matches caprock.dev) */
   --color-bg: #1b1b1a;
   --color-panel: #211f1d;

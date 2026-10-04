@@ -23,15 +23,13 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { useApi } from '@/lib/useApi'
-import { api, type History } from '@/lib/api'
-import { cardFilename, collectCardData, drawShareCard, PERIOD_LABEL, type SharePeriod } from './ShareCard'
-import { fmtUSD } from '@/lib/format'
-
-/** The words that travel with the image. Measured figures, no adjectives. */
-function caption(t: History['totals']): string {
-  const span = `over ${t.days} active days`
-  return `${fmtUSD(t.cost_usd)} of Claude Code ${span}, across ${t.sessions.toLocaleString('en-US')} sessions — measured on my own machine with Caprock. https://caprock.dev`
-}
+import { api, type Week } from '@/lib/api'
+import { cardFilename, drawShareCard, PERIOD_LABEL, type CardData, type SharePeriod } from './ShareCard'
+import { CARD_SIZE, WeekCard, type CardLayout } from './WeekCard'
+import { Scaled } from './Scaled'
+import { renderCardPNG } from '@/lib/cardimage'
+import { periodWords } from '@/lib/week'
+import { currentFigures, currentStory, fetchFigures, fetchStory, FRESH_MS, lastFigures, lastStory, warmShare } from '@/lib/sharecache'
 
 export function ShareButton() {
   const [open, setOpen] = useState(false)
@@ -50,6 +48,9 @@ export function ShareButton() {
         * nowhere to say so. */}
       <button
         onClick={() => setOpen(true)}
+        // The default card's figures start loading on the way to the click.
+        onMouseEnter={warmShare}
+        onFocus={warmShare}
         className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-[12px] font-medium text-bg hover:brightness-110"
         title="Draw a shareable picture of your figures"
       >
@@ -62,6 +63,34 @@ export function ShareButton() {
       {open && <ShareDialog onClose={() => setOpen(false)} />}
     </>
   )
+}
+
+type Style = 'figures' | 'story'
+
+const STYLE_KEY = 'caprock-share-style'
+const LAYOUT_KEY = 'caprock-share-layout'
+
+function remembered<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
+  try {
+    const v = localStorage.getItem(key) as T | null
+    return v && allowed.includes(v) ? v : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function remember(key: string, v: string) {
+  try { localStorage.setItem(key, v) } catch { /* a remembered choice is a convenience */ }
+}
+
+/** Two frames, so a card just given new figures has been laid out before it is captured. */
+const settled = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+
+const STEP_LABEL: Record<SharePeriod, string> = {
+  today: 'today',
+  '7d': 'this week',
+  '30d': 'this month',
+  all: 'all time',
 }
 
 export function ShareDialog({ onClose }: { onClose: () => void }) {
@@ -80,18 +109,39 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
   // the thing people actually finish and want to show, and an all-time total
   // shared on its own reads as a boast rather than a result.
   const [period, setPeriod] = useState<SharePeriod>('7d')
-  // The picture itself, drawn as soon as the sheet opens and again whenever
+  // Figures: the dense card of totals. Story: the Week screen's card — a
+  // headline, the money beside it, who did what, the longest loop — for any
+  // of the four periods.
+  const [style, setStyleState] = useState<Style>(() => remembered(STYLE_KEY, ['figures', 'story'] as const, 'figures'))
+  const [layout, setLayoutState] = useState<CardLayout>(() => remembered(LAYOUT_KEY, ['land', 'port'] as const, 'land'))
+  const setStyle = (s: Style) => { setStyleState(s); remember(STYLE_KEY, s) }
+  const setLayout = (l: CardLayout) => { setLayoutState(l); remember(LAYOUT_KEY, l) }
+
+  // The Figures picture, drawn as soon as the sheet opens and again whenever
   // the period changes.
   //
   // Without it the period buttons are a promise about a file nobody has seen:
   // you press Save, open your downloads, and only then find out what you
   // chose. A card is a picture — the way to choose one is to look at it.
   const [preview, setPreview] = useState<string>('')
-  // Whether the last draw gave up, so the box can say so instead of waiting.
+  // The Story card's figures; drawn as a live card rather than an image.
+  const [story, setStory] = useState<Week | undefined>(undefined)
+  // What is on screen is the last reading, and the current one is on its way.
+  const [stale, setStale] = useState<number>(0)
+  // Nothing kept for this period: the card on screen (if any) is another
+  // period's, so the progress is drawn over it until this one lands.
+  const [waiting, setWaiting] = useState(false)
+  // Whether the last fetch gave up with nothing to show, so the box can say so
+  // instead of waiting.
   const [failed, setFailed] = useState(false)
+  // Which ranges have answered, and since when the dialog has been waiting —
+  // the progress shown while there is no card yet.
+  const [steps, setSteps] = useState<Set<SharePeriod>>(new Set())
+  const [startedAt, setStartedAt] = useState(() => Date.now())
+  const card = useRef<HTMLElement>(null)
 
-  // Redrawn on every period change. Each draw is one canvas and three cached
-  // API calls, so it costs less than the click that opened the sheet.
+  // Figures. The last reading for the period is drawn at once (a canvas draw
+  // is milliseconds); the current one is fetched behind it and replaces it.
   //
   // The revoke has to happen when the *replacement* is on screen, not when the
   // effect tears down. Revoking in cleanup looked tidy and broke the feature:
@@ -100,36 +150,72 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
   // bitmap showing. Every period drew a correct new card that nobody ever saw —
   // the preview simply never changed.
   useEffect(() => {
+    if (style !== 'figures') return
     let live = true
-    void (async () => {
+    let freshShown = false
+    const show = (url: string) => setPreview((prev) => {
+      // The old bitmap is only unreachable once the new src is in place, so
+      // this is the one safe moment to let it go.
+      if (prev && prev !== url) URL.revokeObjectURL(prev)
+      return url
+    })
+    const draw = async (d: CardData, fresh: boolean) => {
       let blob: Blob | null = null
-      try {
-        blob = await drawShareCard(await collectCardData(period))
-      } catch {
-        blob = null // reported below, not swallowed into a permanent "drawing…"
-      }
-      if (!live) return
-      if (!blob) {
+      try { blob = await drawShareCard(d) } catch { blob = null }
+      if (!live || (!fresh && freshShown)) return false
+      if (!blob) return false
+      if (fresh) freshShown = true
+      show(URL.createObjectURL(blob))
+      return true
+    }
+    const kept = lastFigures(period)
+    setFailed(false)
+    setStartedAt(Date.now())
+    setSteps(new Set())
+    setWaiting(!kept)
+    // With nothing kept, the previous period's card stays under the progress
+    // until this one is drawn: clearing it would release a URL the <img> still
+    // shows, and the swap below is the one safe moment for that.
+    if (kept) void draw(kept.value, false)
+    if (kept && Date.now() - kept.at < FRESH_MS) { setStale(0); return () => { live = false } }
+    setStale(kept ? kept.at : 0)
+    fetchFigures(period, (done) => { if (live) setSteps(done) })
+      .then(async (d) => {
+        const ok = await draw(d, true)
+        if (!live) return
+        setStale(0)
+        setWaiting(false)
         // "drawing…" is a state that ends. Without this it was also the state
         // for "this will never draw", which is the same screen forever and no
         // way to tell the two apart.
-        setFailed(true)
-        return
-      }
-      setFailed(false)
-      const url = URL.createObjectURL(blob)
-      setPreview((prev) => {
-        // The old bitmap is only unreachable once the new src is in place, so
-        // this is the one safe moment to let it go. Without the release the
-        // whole bitmap stays alive for every period the reader clicks through.
-        if (prev) URL.revokeObjectURL(prev)
-        return url
+        if (!ok && !kept) setFailed(true)
       })
-    })()
-    return () => {
-      live = false
-    }
-  }, [period])
+      .catch(() => {
+        if (!live) return
+        setStale(0)
+        setWaiting(false)
+        if (!kept) setFailed(true)
+      })
+    return () => { live = false }
+  }, [period, style])
+
+  // Story: the same — last figures at once, current behind them.
+  useEffect(() => {
+    if (style !== 'story') return
+    let live = true
+    const kept = lastStory(period)
+    setStory(kept?.value)
+    setWaiting(false)
+    setFailed(false)
+    setStartedAt(Date.now())
+    setSteps(new Set())
+    if (kept && Date.now() - kept.at < FRESH_MS) { setStale(0); return () => { live = false } }
+    setStale(kept ? kept.at : 0)
+    fetchStory(period)
+      .then((w) => { if (live) { setStory(w); setStale(0) } })
+      .catch(() => { if (live) { setStale(0); if (!kept) setFailed(true) } })
+    return () => { live = false }
+  }, [period, style])
 
   // The last URL outlives the effect that made it, so releasing it belongs to
   // the component's own unmount rather than to any one draw. Held in a ref
@@ -141,10 +227,23 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
     if (latest.current) URL.revokeObjectURL(latest.current)
   }, [])
 
-  const build = async () => {
-    const [d, h] = await Promise.all([collectCardData(period), api.history('all')])
-    const blob = await drawShareCard(d)
-    return { blob, text: caption(h.totals) }
+  const size = CARD_SIZE[layout]
+  const fileName = () => style === 'figures'
+    ? cardFilename()
+    : cardFilename().replace('caprock-', `caprock-${period}-${size.w}x${size.h}-`)
+
+  /**
+   * The image that leaves the machine, always from the current figures. When
+   * the screen shows an earlier reading, this waits for the current one first.
+   */
+  const build = async (): Promise<Blob | null> => {
+    if (style === 'figures') return drawShareCard(await currentFigures(period))
+    const w = await currentStory(period)
+    setStory(w)
+    setStale(0)
+    await settled()
+    if (!card.current) return null
+    return renderCardPNG(card.current, size)
   }
 
   /** The good path: hand the file to the OS and let it offer every app. */
@@ -152,9 +251,9 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
     if (locked) return
     setLocked(true); setDrawing(true); setNote('')
     try {
-      const { blob } = await build()
+      const blob = await build()
       if (!blob) { setNote('Could not draw the card in this browser.'); setLocked(false); return }
-      const file = new File([blob], cardFilename(), { type: 'image/png' })
+      const file = new File([blob], fileName(), { type: 'image/png' })
       // The label stops saying "drawing" here, because the drawing is done.
       // The button stays disabled, because the share sheet is about to open
       // and pressing again behind it would draw a second card.
@@ -177,70 +276,74 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
     } finally { setDrawing(false) }
   }
 
-  /** The fallback: save the image, open the site with the words ready. */
-  const shareVia = async (to: 'x' | 'linkedin' | 'download') => {
+  /** The fallback: save the image to downloads. */
+  const save = async () => {
     if (locked) return
     setLocked(true); setDrawing(true); setNote('')
     try {
-      const { blob, text } = await build()
+      const blob = await build()
       if (!blob) { setNote('Could not draw the card in this browser.'); return }
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = cardFilename()
+      a.download = fileName()
+      document.body.appendChild(a)
       a.click()
-      URL.revokeObjectURL(url)
-      if (to === 'download') { setNote('Saved to your downloads.'); return }
-      const href = to === 'x'
-        ? `https://x.com/intent/tweet?text=${encodeURIComponent(text)}`
-        : `https://www.linkedin.com/feed/?shareActive=true&text=${encodeURIComponent(text)}`
-      window.open(href, '_blank', 'noopener')
-      setNote('Card saved and the post opened — drag the image in.')
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 10_000)
+      setNote('Saved to your downloads.')
+    } catch {
+      setNote('Could not read the figures — nothing was saved.')
     } finally { setDrawing(false); setLocked(false) }
   }
 
   const canNative = typeof navigator !== 'undefined' && typeof navigator.canShare === 'function'
     && navigator.canShare({ files: [new File([], 'x.png', { type: 'image/png' })] })
 
+  const words = periodWords(period)
+  const storyEmpty = style === 'story' && !!story && story.sessions === 0
+  const aspect = style === 'figures' ? '1200 / 630' : `${size.w} / ${size.h}`
+  const progressSteps = style === 'figures'
+    ? (['today', '7d', '30d', 'all'] as SharePeriod[]).map((p) => ({ label: `Reading ${STEP_LABEL[p]}`, done: steps.has(p) }))
+    : [{ label: `Counting PRs, commits and loops — ${STEP_LABEL[period]}`, done: false }]
+
+  const seg = (on: boolean) => `rounded-sm px-2 py-1 text-[12px] ${on ? 'bg-accent text-bg font-medium' : 'text-fg-muted hover:text-fg'}`
+
   return (
     <div
-      className="fixed inset-0 z-30 flex items-start justify-center bg-black/50 px-4 pt-[14vh]"
+      className="fixed inset-0 z-30 flex items-start justify-center overflow-y-auto bg-black/50 px-4 py-[8vh]"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label="Share your figures"
     >
-      <div className="w-[420px] max-w-full rounded-[var(--radius-panel)] border border-border-strong bg-panel" onClick={(e) => e.stopPropagation()}>
+      <div className="w-[520px] max-w-full rounded-[var(--radius-panel)] border border-border-strong bg-panel" onClick={(e) => e.stopPropagation()}>
         <header className="flex items-center border-b border-border px-4 py-3">
           <h2 className="text-[13px] font-medium text-fg">Share your figures</h2>
           <button onClick={onClose} className="ml-auto text-fg-muted hover:text-fg" aria-label="Close">✕</button>
         </header>
 
         <div className="px-4 py-4">
-          {/* Two buttons, and each says where the picture goes.
-            *
-            * This was three paragraphs of 12px caveats above a button labelled
-            * "Share…" — and the owner, who commissioned the feature, could not
-            * tell what it did. An ellipsis is not a destination. The caveats
-            * were all true and none of them was the question a person has
-            * standing in front of this dialog, which is: what happens if I
-            * press it. */}
-          {/* Which stretch, before where it goes. The card shows every period
-            * either way — this decides which one is the headline, and what the
-            * heading claims. */}
-          <div className="mb-3.5 flex items-center gap-1">
-            <span className="mr-1 text-[12px] text-fg-muted">Show</span>
+          <div className="mb-2 flex flex-wrap items-center gap-1" role="group" aria-label="Card style">
+            <span className="mr-1 w-11 text-[12px] text-fg-muted">Style</span>
+            <button onClick={() => setStyle('figures')} aria-pressed={style === 'figures'} className={seg(style === 'figures')}>Figures</button>
+            <button onClick={() => setStyle('story')} aria-pressed={style === 'story'} className={seg(style === 'story')}>Story</button>
+            {style === 'story' && (
+              <span className="ml-auto inline-flex gap-1" role="group" aria-label="Card size">
+                {(['land', 'port'] as CardLayout[]).map((l) => (
+                  <button key={l} onClick={() => setLayout(l)} aria-pressed={layout === l} className={seg(layout === l)}
+                    title={`${CARD_SIZE[l].w}×${CARD_SIZE[l].h}`}>
+                    {l === 'land' ? 'Landscape' : 'Portrait'}
+                  </button>
+                ))}
+              </span>
+            )}
+          </div>
+          {/* Which stretch, before where it goes. */}
+          <div className="mb-3.5 flex flex-wrap items-center gap-1" role="group" aria-label="Period">
+            <span className="mr-1 w-11 text-[12px] text-fg-muted">Show</span>
             {(['today', '7d', '30d', 'all'] as SharePeriod[]).map((p) => (
-              <button
-                key={p}
-                onClick={() => setPeriod(p)}
-                aria-pressed={period === p}
-                className={`rounded-sm px-2 py-1 text-[12px] ${
-                  period === p
-                    ? 'bg-accent text-bg font-medium'
-                    : 'text-fg-muted hover:text-fg'
-                }`}
-              >
+              <button key={p} onClick={() => setPeriod(p)} aria-pressed={period === p} className={seg(period === p)}>
                 {PERIOD_LABEL[p]}
               </button>
             ))}
@@ -250,17 +353,41 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
             * it is the thing being decided — the buttons only choose where it
             * goes. A fixed aspect box so switching period does not make the
             * dialog jump while the next draw lands. */}
-          <div
-            className="mb-3.5 overflow-hidden rounded-md border border-border bg-panel-2"
-            style={{ aspectRatio: '1200 / 630' }}
-          >
-            {preview ? (
-              <img src={preview} alt="Your figures, as they will be shared" className="block w-full" />
+          <div className="relative mb-3.5">
+            {style === 'figures' ? (
+              <div className="overflow-hidden rounded-md border border-border bg-panel-2" style={{ aspectRatio: aspect }}>
+                {failed ? (
+                  // Before the picture: a card from another period must not
+                  // stand in for one that could not be drawn.
+                  <Failed />
+                ) : preview ? (
+                  <div className="relative">
+                    <img src={preview} alt="Your figures, as they will be shared" className={`block w-full ${waiting ? 'opacity-25' : ''}`} />
+                    {waiting && <div className="absolute inset-0"><Progress steps={progressSteps} startedAt={startedAt} /></div>}
+                  </div>
+                ) : (
+                  <Progress steps={progressSteps} startedAt={startedAt} />
+                )}
+              </div>
+            ) : story && !storyEmpty ? (
+              <Scaled w={size.w} h={size.h} max={layout === 'port' ? 300 : 488}>
+                <WeekCard ref={card} week={story} layout={layout} when={words.when} noun={words.noun} />
+              </Scaled>
             ) : (
-              <div className="flex h-full items-center justify-center px-6 text-center text-[12px] text-fg-faint">
-                {failed
-                  ? 'Could not draw the card here. Save the image still works — it draws again on click.'
-                  : 'drawing…'}
+              <div className="mx-auto overflow-hidden rounded-md border border-border bg-panel-2"
+                style={{ aspectRatio: aspect, maxWidth: layout === 'port' ? 300 : undefined }}>
+                {storyEmpty ? (
+                  <div className="flex h-full items-center justify-center px-6 text-center text-[12px] text-fg-muted">
+                    Nothing ran {words.when.replace('— ', '')} on this machine, so there is no story to tell yet.
+                  </div>
+                ) : failed ? <Failed /> : (
+                  <Progress steps={progressSteps} startedAt={startedAt} />
+                )}
+              </div>
+            )}
+            {stale > 0 && (preview || story) && (
+              <div className="absolute right-2 top-2 rounded-sm bg-panel/90 px-1.5 py-0.5 text-[10.5px] text-fg-muted shadow-sm" role="status">
+                from {new Date(stale).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · updating…
               </div>
             )}
           </div>
@@ -269,7 +396,7 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
             {canNative && (
               <button
                 onClick={shareNative}
-                disabled={locked}
+                disabled={locked || storyEmpty}
                 className="rounded-md border border-accent bg-accent/15 px-4 py-3 text-[14px] font-medium text-accent hover:bg-accent/25 disabled:opacity-50"
               >
                 {drawing ? 'Drawing the card…' : 'Send it somewhere'}
@@ -285,13 +412,13 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
               * had happened. A control the eye cannot confirm it is pointing
               * at reads as disabled. */}
             <button
-              onClick={() => shareVia('download')}
-              disabled={locked}
+              onClick={save}
+              disabled={locked || storyEmpty}
               className="rounded-md border border-border bg-transparent px-4 py-3 text-[14px] text-fg transition-colors hover:border-border-strong hover:bg-panel-2 disabled:opacity-50"
             >
               {drawing && !canNative ? 'Drawing the card…' : 'Save the image'}
               <span className="mt-0.5 block text-[12px] text-fg-muted">
-                A PNG in your downloads, to post wherever you like
+                {style === 'story' ? `A ${size.w}×${size.h} PNG in your downloads` : 'A PNG in your downloads, to post wherever you like'}
               </span>
             </button>
           </div>
@@ -305,9 +432,54 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
           <ul className="mt-4 grid gap-1 text-[13px] text-fg-muted">
             <li>Totals only — no names, no paths, nothing Claude wrote.</li>
             <li>Drawn on your machine. Uploaded nowhere.</li>
+            {style === 'story' && <li>≈ marks an estimate. Merged means a merge the agents ran; Caprock does not ask GitHub.</li>}
           </ul>
-          {note && <p className="mt-2 text-[12px] text-fg-muted">{note}</p>}
+          {note && <p className="mt-2 text-[12px] text-fg-muted" role="status">{note}</p>}
         </div>
+      </div>
+    </div>
+  )
+}
+
+function Failed() {
+  return (
+    <div className="flex h-full items-center justify-center px-6 text-center text-[12px] text-fg-faint">
+      Could not draw the card here. Save the image still works — it draws again on click.
+    </div>
+  )
+}
+
+/**
+ * What the wait looks like: the card's outline, which ranges have answered,
+ * and how long it has been. An empty box saying "drawing…" read as stuck after
+ * two seconds; the same wait with each step ticking off reads as work.
+ */
+function Progress({ steps, startedAt }: { steps: { label: string; done: boolean }[]; startedAt: number }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 200)
+    return () => clearInterval(t)
+  }, [])
+  const secs = Math.max(0, (now - startedAt) / 1000)
+  return (
+    <div className="relative h-full" role="status" aria-live="polite" aria-label="Drawing your card">
+      <div className="absolute inset-0 grid content-start gap-2.5 p-4 opacity-50 motion-safe:animate-pulse" aria-hidden>
+        <div className="h-2.5 w-24 rounded-sm bg-border" />
+        <div className="h-6 w-3/4 rounded-sm bg-border" />
+        <div className="h-6 w-1/2 rounded-sm bg-border" />
+        <div className="mt-2 flex gap-2"><div className="h-10 flex-1 rounded-sm bg-border" /><div className="h-10 flex-1 rounded-sm bg-border" /><div className="h-10 flex-1 rounded-sm bg-border" /></div>
+      </div>
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-panel-2/60 px-4">
+        <div className="text-[13px] font-medium text-fg">Drawing your card…</div>
+        <ul className="grid gap-0.5 text-[12px]">
+          {steps.map((s) => (
+            <li key={s.label} className={s.done ? 'text-fg-muted' : 'text-fg-faint'}>
+              <span className={`mr-1.5 inline-block w-3 text-center ${s.done ? 'text-ok' : ''}`} aria-hidden>{s.done ? '✓' : '·'}</span>
+              {s.label}{s.done ? '' : '…'}
+            </li>
+          ))}
+        </ul>
+        <div className="num text-[11px] text-fg-faint">{secs.toFixed(1)} s</div>
       </div>
     </div>
   )
@@ -332,6 +504,8 @@ export function ShareCard() {
         * announced while it happens. */}
       <button
         onClick={() => setOpen(true)}
+        onMouseEnter={warmShare}
+        onFocus={warmShare}
         className="rounded-md border border-accent/45 bg-accent/[0.08] px-2.5 py-1 text-[12px] text-accent hover:bg-accent/[0.16]"
         title="Draw a shareable image of these figures"
       >

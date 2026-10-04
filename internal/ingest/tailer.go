@@ -303,11 +303,21 @@ func (t *Tailer) readFile(ctx context.Context, f *fileState, fi os.FileInfo) {
 	reader := bufio.NewReaderSize(fh, 256<<10)
 	consumed := int64(0)
 	batch := 0
+	stalled := false
 	for ctx.Err() == nil {
 		line, err := reader.ReadBytes('\n')
 		if err == nil {
+			if !t.handleLine(ctx, f, line, fi.ModTime()) {
+				// The line could not be written and is worth trying again: stop
+				// BEFORE it, so the offset stays on it and the next pass reads
+				// it once more. Moving past it was how SQLITE_BUSY turned into
+				// lost turns — the warning was logged and the line was never
+				// read again. Whatever part of the line did get stored is
+				// absorbed by keyed dedupe on the retry.
+				stalled = true
+				break
+			}
 			consumed += int64(len(line))
-			t.handleLine(ctx, f, line, fi.ModTime())
 			batch++
 			continue
 		}
@@ -326,12 +336,23 @@ func (t *Tailer) readFile(ctx context.Context, f *fileState, fi os.FileInfo) {
 	}
 	f.offset += consumed
 	f.lastSize, f.lastMod = fi.Size(), fi.ModTime()
+	if stalled {
+		// Forget the size and time we read up to, or the next pass would see
+		// an unchanged file and skip it — leaving the retry waiting on the
+		// session writing another line, which an ended session never does.
+		f.lastSize, f.lastMod = -1, time.Time{}
+	}
 	if batch > 0 || consumed > 0 {
 		_ = store.SetOffset(ctx, t.Store.DB(), f.path, f.sessionID, f.offset)
 	}
 }
 
-func (t *Tailer) handleLine(ctx context.Context, f *fileState, raw []byte, fallbackTs time.Time) {
+// handleLine records one transcript line. It returns false when a write
+// failed in a way that should be retried — the database was busy, or the
+// daemon is shutting down — and the caller must not move past the line.
+// Any other failure is logged and the line is consumed: an event the store
+// rejects for what it is would be rejected again on every pass.
+func (t *Tailer) handleLine(ctx context.Context, f *fileState, raw []byte, fallbackTs time.Time) bool {
 	l, err := ParseLine(bytes.TrimRight(raw, "\r\n"))
 	t.mu.Lock()
 	t.stats.LinesParsed++
@@ -344,13 +365,16 @@ func (t *Tailer) handleLine(ctx context.Context, f *fileState, raw []byte, fallb
 			t.stats.LinesSkipped++
 		}
 		t.mu.Unlock()
-		return
+		return true
 	}
 	if l.Type == TypeAITitle {
 		if err := store.SetTitle(ctx, t.Store.DB(), l.SessionID, l.AITitle); err != nil {
+			if retryable(ctx, err) {
+				return false
+			}
 			t.Log.Warn("record session title", "component", "ingest", "err", err, "path", f.path)
 		}
-		return
+		return true
 	}
 	if f.sessionID == "" {
 		f.sessionID = l.SessionID
@@ -363,6 +387,10 @@ func (t *Tailer) handleLine(ctx context.Context, f *fileState, raw []byte, fallb
 		ev := ev
 		res, err := t.Recorder.Record(ctx, &ev, info)
 		if err != nil {
+			if retryable(ctx, err) {
+				t.Log.Warn("record transcript event; will retry the line", "component", "ingest", "err", err, "path", f.path)
+				return false
+			}
 			t.Log.Warn("record transcript event", "component", "ingest", "err", err, "path", f.path)
 			continue
 		}
@@ -374,6 +402,14 @@ func (t *Tailer) handleLine(ctx context.Context, f *fileState, raw []byte, fallb
 		}
 		t.mu.Unlock()
 	}
+	return true
+}
+
+// retryable reports whether a failed write should be tried again later rather
+// than given up on: the database was locked by another writer, or the daemon is
+// stopping and cancelled the write mid-way.
+func retryable(ctx context.Context, err error) bool {
+	return store.IsBusy(err) || ctx.Err() != nil
 }
 
 // endsLineAt reports whether the byte at off-1 is a newline — that is, whether

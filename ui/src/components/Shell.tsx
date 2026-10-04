@@ -33,6 +33,9 @@ const NAV: { route: Route; label: string; phase?: string }[] = [
   // which is the most quotable number the product has and was hidden behind a
   // word that promised a list. The panel inside it already said 'Lifetime'.
   { route: { name: 'history' }, label: 'Lifetime' },
+  // A card of one week, to post. Beside Lifetime because it answers the same
+  // question for a shorter stretch, in a form made to leave the machine.
+  { route: { name: 'week' }, label: 'Week' },
   // "Memory" rather than "Answers": this screen and the handoff a new session
   // gets are the same thing — everything the agents said on this machine —
   // and nobody looking for the second would think to open the first.
@@ -51,6 +54,7 @@ function screenName(r: Route): string {
     case 'session': return 'Session detail'
     case 'cost': return 'Cost'
     case 'history': return 'Lifetime'
+    case 'week': return 'Week'
     case 'tasks': return 'Tasks'
     case 'graph': return 'Graph'
     case 'notes': return 'Memory'

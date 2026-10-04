@@ -24,7 +24,7 @@ import { ShareNudge } from '@/components/ShareNudge'
 export function BreakdownPanel() {
   // Lifetime figures move slowly; a minute is far more often than they change,
   // and this must not compete with the live panels above it for the socket.
-  const h = useApi(() => api.history('all'), [], { intervalMs: 60000 })
+  const h = useApi(() => api.history('all'), [], { intervalMs: 60000, cache: 'history:all' })
   const tools = (h.data?.tools ?? []).slice(0, 6)
   const models = (h.data?.summary?.models ?? []).slice(0, 5)
   if (tools.length === 0 && models.length === 0) return null

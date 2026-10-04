@@ -99,9 +99,16 @@ Caprock starts it. See
 [OpenCode, Codex and DeepSeek Harness](#opencode-codex-and-deepseek-harness) for
 what that covers and what it does not.
 
-To start a Gemini CLI session from Caprock, install the CLI
-(`npm install -g @google/gemini-cli`): it appears next to Claude Code in the New
-Session dialog — same terminal, same directory picker, its own filter chip.
+Caprock starts Codex, OpenCode and Gemini CLI sessions too: whichever of them
+is installed appears next to Claude Code in the New Session dialog — same
+terminal, same directory picker, its own filter chip — and the dialog remembers
+the one you picked last. A Codex or OpenCode session started here shows its
+cost and answers on the same page as its terminal, and one that has ended can
+be continued with "continue here". "Continue in…" on any session starts a new
+one in the agent of your choice with a summary you read first — what the agent
+last said, what changed in the folder, the PRs it opened. For Gemini, install
+the CLI
+(`npm install -g @google/gemini-cli`).
 With a Gemini key set (see [Premium](#premium) for where), Caprock passes it to
 the child process. Gemini has no hooks and writes no transcript, but it does
 write OpenTelemetry, and Caprock asks it to write that to a file it then reads;
@@ -286,9 +293,10 @@ Windows, but it has not been run on either.
   turns that called no tool at all.
 - **Know what it's worth** — your measured usage priced at the API rate, against
   what your plan actually costs.
-- **1-click terminal** — the `>_` on a project opens a terminal in it: straight
-  into the session Caprock is running there, or a choice to continue, branch or
-  start one. A running card on Now opens in its terminal too.
+- **1-click terminal** — the Terminal button on a project opens the session
+  Caprock is running there, picks up one started elsewhere, or starts a new one.
+  A running card on Now opens in its terminal too. Session pages and projects
+  link to the repository and the pull requests a session opened.
 - **Steer it** — spawn, pause, and kill sessions from the dashboard, and continue
   one that has ended. Each card says what the session was about and when it was
   worked in, says why when it cannot be continued, and ended sessions are

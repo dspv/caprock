@@ -1,5 +1,5 @@
 // Hash router — zero dependencies, good enough for five screens.
-// Routes: #/ (Now) · #/session/:id · #/cost · #/history · #/tasks
+// Routes: #/ (Now) · #/session/:id · #/cost · #/history · #/week · #/tasks
 import { useEffect, useState } from 'react'
 
 export type Route =
@@ -7,8 +7,9 @@ export type Route =
   // `at` is a unix-ms instant to reveal in the timeline: clicking a minute in
   // the pulse should land on those events, not at the top of a long session.
   | { name: 'session'; id: string; tab?: string; at?: number }
-  | { name: 'cost' }
+  | { name: 'cost'; section?: string }
   | { name: 'history' }
+  | { name: 'week'; start?: string }
   | { name: 'tasks' }
   | { name: 'graph' }
   | { name: 'notes' }
@@ -29,10 +30,16 @@ export function parseHash(hash: string): Route {
       return { name: 'now' }
     case 'session':
       return parts[1] ? { name: 'session', id: decodeURIComponent(parts[1]), tab, at } : { name: 'now' }
-    case 'cost':
-      return { name: 'cost' }
+    case 'cost': {
+      const section = params.get('section') ?? ''
+      return /^[a-z-]+$/.test(section) ? { name: 'cost', section } : { name: 'cost' }
+    }
     case 'history':
       return { name: 'history' }
+    case 'week': {
+      const start = params.get('start') ?? ''
+      return /^\d{4}-\d{2}-\d{2}$/.test(start) ? { name: 'week', start } : { name: 'week' }
+    }
     case 'tasks':
       return { name: 'tasks' }
     case 'graph':
@@ -56,8 +63,9 @@ export function href(r: Route): string {
       const s = q.toString()
       return `#/session/${encodeURIComponent(r.id)}${s ? `?${s}` : ''}`
     }
-    case 'cost': return '#/cost'
+    case 'cost': return r.section ? `#/cost?section=${r.section}` : '#/cost'
     case 'history': return '#/history'
+    case 'week': return r.start ? `#/week?start=${r.start}` : '#/week'
     case 'tasks': return '#/tasks'
     case 'graph': return '#/graph'
     case 'notes': return '#/notes'

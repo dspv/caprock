@@ -44,10 +44,11 @@ Percentages are deliberately coarse — they answer "is this track started, half
 - **All three phases are built and green.** The Go module + `ui/` exist and are exercised by `make check` (Go tests, `go vet`, `golangci-lint`, docs gates, and the UI typecheck/vitest/build) on the 3-OS CI matrix. Phase 2's orchestration loop has been driven end to end by a real `claude` orchestrator (see the Phase 2 log entry). **every phase is tagged and published** (Homebrew formula in `dspv/homebrew-tap`).
 - The Python measurer (`~/dev/caprock-legacy`, PyPI `caprock` 0.3.0) is frozen ([ADR-007](08-decisions.md#adr-007--the-harness-is-caprock-new-go-codebase-in-dspvcaprock-python-measurer-frozen)); the Go binary shipped its first release as **v0.1.0** on 2026-08-19.
 - **Five agent sources share the observation screens.** Claude Code remains the
-  full Observe → Control → Orchestrate path. OpenCode, Codex and DeepSeek
-  Harness are imported observation-only: Caprock cannot start, steer or stop
-  them, and the task runner does not work with any of them. Gemini sessions
-  started by Caprock are observed through OpenTelemetry, prompts included. The Now
+  full Observe → Control → Orchestrate path. Caprock can also start, type into,
+  continue and stop Codex and OpenCode TUIs, linked to the record their own
+  files keep ([ADR-031](08-decisions.md)); DeepSeek Harness is observation-only,
+  and the task runner works with Claude Code only. Gemini sessions started by
+  Caprock are observed through OpenTelemetry, prompts included. The Now
   filter is `all / claude / opencode / gemini / codex / deepseek`. See
   [16-opencode.md](16-opencode.md), [19-codex.md](19-codex.md) and
   [20-deepseek.md](20-deepseek.md).
@@ -70,6 +71,178 @@ Percentages are deliberately coarse — they answer "is this track started, half
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
 ## Log
+
+### 2026-10-04 (evening) — The terminal takes the keyboard first; repo links; kept figures
+
+The owner reported that opening a session's terminal froze the browser and
+typing lagged. Profiled in headless Chrome against a `.backup` copy, with a
+fake `claude` printing 4000 coloured lines and a 12 fps spinner:
+
+- **Before.** The WebGL addon was loaded synchronously before the socket was
+  created (context creation 1455 ms in the owner's Chrome; shader linking
+  420 ms of self time in one headless run). The terminal mounted only after
+  the session detail (about 500 KB) arrived, and that detail was refetched on
+  every live event. Nothing took focus, so keys typed on open went nowhere
+  until a click. First echo 1.2–1.6 s after navigation, with a click; a key's
+  dispatch blocked for up to 200–290 ms.
+- **After.** Focus and the socket first, WebGL after the first output and
+  1.5 s with no typing, the terminal mounted before the detail, and the detail
+  polled every 30 s on the Terminal tab. First echo 0.4–0.8 s with no click
+  (one cold-cache run 2.9 s); dispatch blocked for 13–94 ms. Steady echo once
+  WebGL is in is unchanged (20–70 ms).
+
+Also in this run, all in [04-ui.md](04-ui.md): the Projects row's terminal is a
+full-size button that says what it does (the faint `>_` from PR #137 was never
+found); the session header and project rows link the repository and the pull
+requests a session opened (migration 0035, `internal/gitremote`); slow
+figures show their last value, marked, while they refresh; and a starting
+terminal says so, with Retry after 30 s. Owned sessions still die when the
+daemon restarts (they exit with 143); that is a separate issue, not addressed
+here.
+
+### 2026-10-04 (later) — Answers kept, read from the session, and a dark terminal
+
+The owner opened a session full of long Russian replies and its Answers tab
+showed one line, slowly. Measured on a `.backup` copy of his database: the
+notes query walked `idx_events_kind_id` — every assistant turn on the machine,
+payload and all — instead of the session's own index, 3.3 s cold for 21 turns;
+it is 20 ms with the kind index taken out of the planner's hands, and a plan
+test holds it. The emptiness was the write path: Claude Code now writes a
+thinking line first on every response, the store keeps the first line of a
+message id, and the prose after it was dropped as a duplicate — 93% of turns
+stored after 2026-09-29 had no text. Later lines are now folded into the row
+(parser v4) and a background repair filled 745 turns on the copy. The
+terminal's palette is graphite in both themes and no longer read once at
+mount, and `/v1/status` reuses its two bulk reads (0.26 s event count, 0.64 s
+handoff coverage, cold) for a minute. See
+[03-contracts.md](03-contracts.md) and [04-ui.md § The terminal](04-ui.md#the-terminal).
+
+### 2026-10-04 — Click a tool for what it did
+
+- On Lifetime a tool's row opens into its calls grouped by command, file,
+  domain, query or MCP action (`GET /v1/tools/drill`). Groups, calls and
+  shares are free; output, failure rate, trend per group and hints are
+  Premium, removed by the daemon without a licence, with the strongest hint
+  sent in full as a teaser. The server gate is written into ADR-022. On the
+  owner's database, Bash all time: 1,191 failures in 53,905 results.
+
+### 2026-10-04 — Plan limits in plain words
+
+- Owner feedback: from a "limit at 95%" alert he reached Cost and "did not
+  understand anything" (translated). Every window is now a ring plus a
+  sentence (used, reset clock, countdown in minutes under an hour, what 100%
+  means), a "what these are" line, and advice when a live window passes 85%
+  (wait for the reset, or switch to Codex when it has room). One
+  `PlanLimitsPanel` on Now and Cost; the alert links to
+  `#/cost?section=limits` and the screen scrolls to it. The desktop app's
+  stale reading stays off this panel.
+
+### 2026-10-04 — Lifetime, in the site's reading style
+
+- The money leads at display size, then cost per active day and per session
+  (exact divisions), the cache, and the counts. Top projects first as a donut
+  and a table with shares; tool usage and the model mix as donuts with the
+  tail as "other", or as tables (Charts | Numbers). No endpoint changed.
+
+### 2026-10-04 — Share: a Story card, and no empty wait
+
+- The share dialog has a **Story** style: the Week card for today, 7 days,
+  30 days or all time (`GET /v1/week?period=`), landscape or portrait.
+- **No empty wait.** The owner reported the preview took very long to appear,
+  and `/v1/stats/summary` was 4.7 s on his live database. Server speed is a
+  separate branch; here the dialog draws the last figures it kept at once,
+  shows the card's outline with per-range progress when it has none, warms
+  the default card on hover, and shares one round of requests between the
+  preview and the save.
+- `WeekStats` runs its two payload readers beside the rest and no longer has
+  SQLite sort the loop replay's payloads: all time went from 18.8 s to about
+  11 s on a copy of the owner's database. Most of what is left is page reads:
+  the same loop query took 1.8 s warm in the sqlite3 shell and 0.46 s with
+  `PRAGMA mmap_size`, which is a store-wide setting and was left to the
+  endpoint-speed work.
+
+### 2026-10-04 — Now: At a glance, plan-limit gauges, who is working
+
+- **At a glance** (after All time) draws the all-time cost by model, the bill
+  by token type and tool calls as hand-drawn SVG donuts, with an agents row
+  and a Charts | Numbers switch. New `GET /v1/glance`; the agent split moved
+  into `store.AgentSplit`, which the Week uses too.
+- **Plan limits** moved from a Today cell to a full-width panel of ring
+  gauges under Today, grouped by agent, with reset countdowns; the forecast
+  stays the daemon's and Codex's stays absent.
+- **Live pulse** rows show the model name and live subagents ("×N").
+  `SessionSummary` gained `model_display` and `live_subagents`.
+- **Migration 0031** (`idx_events_turn_agent`): the first `/v1/glance` took
+  81 s on a copy of the owner's database, almost all of it one sidechain
+  lookup per session that SQLite planned on the `kind` index. Forced onto
+  `idx_events_session_ts` and with both all-time reads covered, it takes
+  0.44 s cold.
+- Verified on a copy of the owner's database with a near-limit fixture (82%
+  with a forecast, 64%, a stale 91%) in both themes and at 390px. At 390px
+  the page header and the All time tables still overflow sideways, as they
+  did before; the new blocks fit.
+
+### 2026-10-04 — Week: a card of what the agents shipped
+
+A **Week** tab draws one week of this machine's work as a card to post —
+landscape 1200×675 or portrait 1080×1350, in the dashboard's own theme —
+from `GET /v1/week`. Pull requests opened and merged, commits, files and
+≈lines are read from the agents' own successful tool calls; nothing asks
+GitHub. On a copy of the owner's database the week of 2026-09-27 in UTC came
+to 131 opened (all 131 confirmed on GitHub), 128 merged locally with 3
+unreadable merges left out (GitHub: 126 of the 131 merged, plus Dependabot and
+`shots/*` merges the agents also ran), 235 commits and $474.40 — the same
+figures the hand count produced. The longest loop is found by the live
+detector's rule and priced by the same function as the alert
+(`contexttax.PriceSeries`, extracted for it).
+
+### 2026-10-04 — Continue in another agent
+
+"Continue in… ▾" on a session page starts a new session in any agent Caprock
+can start, in the same folder, with a brief as its first message: the last
+substantial passage, the working tree now, and the PRs the session opened
+([ADR-032](08-decisions.md), `internal/relay`). The user reads and edits the
+brief before it is sent, and the dialog says first that this is a new session
+with a summary, not the same conversation. The two sessions name each other
+(`sessions.relay_from`, migration 0036). The brief goes on the agent's command
+line — every one of the four takes a first message there — so nothing races a
+TUI that has not drawn yet. The handoff's clip and age helpers moved into
+`internal/relay` and are shared. Verified on an isolated daemon at no cost:
+relayed into Codex pointed at a closed port (the multi-line brief arrived as
+its first message, intact) and into OpenCode (`--prompt`, linked exactly),
+from a seeded Claude Code session whose transcript was gone — the case where
+plain continue cannot help. PRs are found only for Claude Code, which records
+them; the others' are not guessed from command text.
+
+### 2026-10-04 — Choose the agent when starting a session
+
+The New session dialog starts Codex and OpenCode as well as Claude Code and
+Gemini CLI, offering only the agents whose binary the daemon finds (the login
+shell's PATH, then the installers' directories), and remembering the last
+choice per viewer. The argv per agent is a table (`internal/agents/argv.go`),
+which [ADR-026](08-decisions.md) asked for once a third CLI arrived, built from
+`codex --help` (0.160.0) and `opencode --help` (1.15.10) and then run, not from
+memory: the dotted `-c` trust override that looked right in the docs did
+nothing, and an inline table did ([19-codex.md](19-codex.md)).
+
+The half that took the time was the observer. A spawned Codex or OpenCode
+session would otherwise appear twice — a terminal with no cost, a cost with no
+terminal — because neither CLI can be told an id. `internal/sessionlink` joins
+them: OpenCode exactly, from `session.created` on the TUI's own server
+([16-opencode.md](16-opencode.md)); Codex by a stated heuristic on folder,
+originator and thread start time ([19-codex.md](19-codex.md)). The link is
+stored as `sessions.native_id` (migration 0032) and the importers file the
+agent's events under Caprock's session, so one page has the terminal and the
+cost; "continue here" now works for Codex and OpenCode sessions that have
+ended. Verified end to end on an isolated daemon with a scratch HOME, at no
+cost: Codex pointed at a closed local port, OpenCode's free tier refusing this
+version.
+
+Two smaller defects surfaced while using it. A session with no events showed
+"idle 739892d ago" — Go's zero time read as a timestamp. And an owned Codex or
+OpenCode row would have been ended by the clock while its process ran, because
+the staleness sweep treated every row of those agents as history; it now
+judges an owned one by its pid like any other session Caprock started.
 
 ### 2026-10-04 — Documents dropped into the terminal arrive, by name
 

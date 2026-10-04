@@ -206,6 +206,7 @@ Non-browser clients are unaffected, and each in-repo client was checked against 
 GET  /v1/sessions?active=true          → SessionSummary[]
 GET  /v1/sessions?dir=<path>           → SessionSummary[] — one Projects row's sessions, each with `resume`
 GET  /v1/sessions/{id}                 → SessionDetail (stats + last N events)
+GET  /v1/sessions/{id}/relay           → RelayBrief (the proposed first message for a relay)
 GET  /v1/sessions/{id}/events?after=…  → Event[] (paginated; newest=1 returns the tail)
 GET  /v1/sessions/{id}/notes           → AssistantNote[] — what Claude said, newest first
 GET  /v1/notes?q=…&before=…            → AssistantNote[] — search that prose across sessions, paged
@@ -219,6 +220,117 @@ GET  /v1/stats/daily?days=30           → DailyStat[]
 POST /v1/hook                          → 204 (shim only, bearer-token gated; the event is written even after the shim hangs up)
 WS   /v1/live                          → server-push frames: {type:"event"|"session"|"alert", data:…}
 ```
+
+### The Week (`GET /v1/week`)
+
+```
+GET  /v1/week?start=YYYY-MM-DD          → Week — seven local days from `start`; omitted, the seven days ending today
+GET  /v1/week?period=today|7d|30d|all   → Week — the same card for a named window, in whole local days ending today
+```
+
+`period` names the share dialog's windows: `today`, `7d` (the default
+window), `30d` (the last 30 local days, as the Cost screen's 30d range) and
+`all` (from the local day of the first recorded event). The response carries
+`period`, `days[]` has one entry per day of the window, and every other field
+means what it means for a week. `period` and `start` together, or an unknown
+period, is `400`. Long windows are cached for 2 minutes instead of 30 s: on
+a copy of the owner's 1 GB database (2026-10-04) `all` takes about 11 s
+cold, `30d` about 3 s, `7d` 1.5 s and `today` 0.3 s. The two payload readers
+(tool calls and the loop replay) run beside the rest, and the replay skips the
+detector's read-only tools in SQL rather than after reading them.
+
+The Week screen's shareable card. `start` is a local date and the window is
+`[start 00:00, start+7 00:00)` in the daemon's time zone: the same days the
+Cost screen's `7d` range uses, so the two never disagree about which day a
+turn fell on. A `start` that is not `YYYY-MM-DD` is `400`.
+
+`{start, end, partial, from_ms, to_ms, days[], sessions, active_days, turns,
+cost_usd, unpriced_turns?, models[], prs_opened, prs_merged,
+merges_unresolved, commits, files_edited, lines_added, lines_removed,
+ci_wait_ms, tool_ms, agents[], loop?, biggest?, tax?, cost_per_merged_pr?,
+estimates[], pricing_version?}`. `days[]` is `{day, prs_opened, cost_usd,
+active}` × 7; `agents[]` is `{agent, subagent, turns, cost_usd, sessions,
+threads?}`; `loop` is `{agent, tool, kind, calls, first_ms, last_ms, tax_usd?,
+tax_priced_calls?}`; `biggest` is `{agent, cost_usd, turns, active_days}`.
+
+Everything is computed from the local database (`store.WeekStats`); the daemon
+asks nothing of GitHub, so what can be said is bounded by what the agents'
+own tool calls recorded:
+
+- **Opened** is distinct `github.com/<owner>/<repo>/pull/<n>` URLs printed by
+  a successful Bash call that ran `gh pr create`, minus lines saying the pull
+  request already exists. Success is a hook-plane `PostToolUse` that was not
+  interrupted, or a transcript-plane `tool.post` with `is_error` false.
+- **Merged** is distinct pull requests named by a successful `gh pr merge`: by
+  URL, by number (made distinct by the repository the command ran in, mapped
+  to `owner/repo` through the URLs `gh pr create` printed there), or — for the
+  current-branch form — by the one URL the command printed. A merge whose
+  target cannot be read (`$N`, a branch name, several URLs) is counted in
+  `merges_unresolved` and nowhere else. It is a merge the agents ran, not
+  GitHub's state.
+- **Commits** are `git commit` statements, read with a small shell splitter
+  (quotes, heredoc bodies, `cd`, `-C`) so a commit message mentioning a commit
+  is not one; output saying "nothing to commit" takes one off.
+- **Files and lines** come from successful Edit, Write and MultiEdit calls
+  outside temp directories and `~/.claude`. Lines are estimates: a Write
+  counts its whole file.
+- **Cost** is the stored `cost_usd`, priced once per message id and never
+  twice across forks; `tax` prices each model's cache reads exactly as
+  `/v1/history` does. `cost_per_merged_pr` divides all of the week's cost by
+  the merges — an estimate, absent when nothing merged.
+- **CI wait** is the hook-plane `duration_ms` of Bash calls whose statement is
+  `gh pr checks`, `gh run watch`, or a script named like `wait-ci`. Tool time,
+  not wall clock: parallel calls overlap.
+- **The loop** is the longest episode the live detector would have alerted on
+  — `loop.Signature`, read-only tools skipped, at least `loop_k` calls within
+  `loop_t_minutes`, the episode running while repeats keep arriving within the
+  window — except that repeats issued by one assistant message count once (a
+  turn that launches eleven subagents decided once). `tax_usd` is priced by
+  `contexttax.PriceSeries`, the function the live alert uses, and is absent
+  when no call could be priced (Codex calls carry no message id).
+
+**Nothing in the response names a repository, a path, a prompt or a session
+title.** The card is made to be posted, so the guard is in the shape of the
+payload rather than in the screen that draws it; a store test asserts it.
+
+`estimates[]` lists the fields a renderer must mark with "≈"
+(`lines_added`, `lines_removed`, and `cost_per_merged_pr` / `loop.tax_usd`
+when present). Responses are cached for 30 s per `start`.
+
+### At a glance (`GET /v1/glance`)
+
+```
+GET  /v1/glance                         → Glance — all-time split by agent and the bill by token type
+```
+
+`{agents[], bill?, display}` for the Now screen's At a glance block, all time
+and never filtered by agent:
+
+- **`agents[]`** is the same shape as the Week's (`store.AgentSplit`, which
+  the Week now calls too): turns and stored `cost_usd` per agent, Claude
+  Code's split into main threads and subagents (`threads` = distinct agent
+  ids). A turn is a subagent's when it carries an `agent_id`, or when its
+  session is a sidechain (OpenCode child sessions, whose every turn says so).
+  The split reads `idx_events_turn_agent` (migration 0031) and one payload per
+  session rather than one per turn.
+- **`bill`** is `{input_usd, output_usd, cache_write_usd, cache_read_usd,
+  unpriced_tokens}`: each model's summed tokens priced at its **current**
+  pricing-table rates, the way the context tax is, so the four add up to
+  roughly — not exactly — the stored cost, which priced each turn at the rate
+  of its day. Cache writes are split into the 5-minute and 1-hour rates.
+  Tokens of a model with no row are counted in `unpriced_tokens` and priced
+  nowhere. Absent with no pricing table.
+- **`display`** maps each model id seen to the table's display name.
+
+Cached for 60 s; on the owner's 1 GB database (2026-10-04) a cold build takes
+0.44 s.
+
+`SessionSummary` gained `model_display` (the table's name for the session's
+model, "Claude " dropped) and `live_subagents` — for a session that has not
+ended, the agent ids heard from in the last 30 minutes whose latest event is
+not their `agent.stop`. Claude Code reports no subagent start, only events from
+inside it and a stop, so a subagent whose stop never arrived stops counting
+after 30 silent minutes. Both are omitted when empty or zero.
 
 `GET /v1/status` gained `platform` (`GOOS/GOARCH`) — the first thing a bug report needs and the last thing anyone remembers to include.
 
@@ -248,7 +360,11 @@ WS   /v1/live                          → first frame is {type:"hello", data:{s
 
 `/v1/sessions/{id}/notes` and `/v1/notes` return `AssistantNote[]` — `{event_id, session_id, project, ts, model, text, fragment}` — the prose Claude wrote, as opposed to the tool calls it made. Three rules are baked into the query rather than left to callers. **Subagent sidechains are excluded** (`agent_id = ''` and `payload.sidechain IS NOT 1`): about 45% of assistant turns are subagent chatter, so an unfiltered "what did Claude say" answers with a subagent's words roughly half the time. **`fragment` marks a note shorter than 240 runes** — mid-thought asides like "Let me check that" — so a caller can avoid presenting one as a session's conclusion; ~60% of all notes are legitimately short, so the flag qualifies a *final* note and must never be used to hide prose. **Search matches Claude's prose OR the prompt that produced it** — people remember their own question ("the SSO thing") far better than Claude's phrasing of the answer, so searching only the reply misses how memory works. Only the nearest preceding `turn.user` within a short event window counts, or every reply in an exchange would match rather than the passage that answers it; the row returned is always Claude's reply. "Preceding" is in time within the reply's own session — `(ts, id)` order, the prompt inside the reply's last 60 events there — not in event id: an id is when Caprock stored a row, and a prompt imported after its replies (OpenCode's history, a transcript read after its hooks) sits after them by id. Measured on a copy of the owner's database (2026-10-01): under the id window none of 3,048 OpenCode replies had a question, and 24 Claude Code replies matched a prompt older than the one they answered; in time order 2,878 OpenCode replies have one and Claude Code replies with a prompt in the window went from 17,679 to 17,773 of 31,521 (363 fell out of the window's edge, 457 came in). A search that matches nothing scans every note either way; the prompt lookups walk `(session_id, ts)` indexes and cost about the same. The prompt's text is `payload.prompt` (Claude Code, Gemini, OpenCode) or `payload.text` (DeepSeek Harness), read through one `COALESCE`; reading only `prompt` left every DeepSeek question unsearchable. **Wildcards are escaped**, so a query containing `%` or `_` matches literally; the corpus is one developer's own sessions, so a scan is cheap and avoids an FTS table that would need rebuilding for historical rows.
 
-`payload.text` on `turn.assistant` is capped at **16000 runes** (`ingest.MaxAssistantText`), clipped on a rune boundary. Parser schema v1 capped at 2000 **bytes** and sliced at an arbitrary offset, which cut multi-byte prose at roughly half the intended length and left `U+FFFD` at the end of about a fifth of clipped rows — disproportionately on closing summaries. `ingest.SchemaVersion` was raised to **2** for this (it is now **3**: v3 reads `ai-title` into `sessions.title`, see § Session title DDL), and a daemon started against a v1 database re-derives the affected rows once from the transcripts still on disk (`ingest.RepairAssistantText`), rewriting only `payload.text` and leaving every other key, event id, and cost untouched. Rows whose transcript is gone keep what they have. Extended thinking is never stored at all — only `type: "text"` blocks are read — so this content cannot leak Claude's reasoning.
+`payload.text` on `turn.assistant` is capped at **16000 runes** (`ingest.MaxAssistantText`), clipped on a rune boundary. Parser schema v1 capped at 2000 **bytes** and sliced at an arbitrary offset, which cut multi-byte prose at roughly half the intended length and left `U+FFFD` at the end of about a fifth of clipped rows — disproportionately on closing summaries. `ingest.SchemaVersion` was raised to **2** for this (it is now **3**: v3 reads `ai-title` into `sessions.title`, see § Session title DDL), and a daemon started against a v1 database re-derives the affected rows once from the transcripts still on disk (`ingest.RepairAssistantText`), rewriting only `payload.text` and leaving every other key, event id, and cost untouched. Rows whose transcript is gone keep what they have.
+
+**One response, several lines (parser v4, 2026-10-04).** Claude Code writes one API response as several transcript lines — thinking, then text, then each tool_use — each repeating the message id and usage. The turn is keyed `msg:<id>` so usage counts once, and the first line is the row. Once Claude Code began writing a thinking line first on every response, that row had no text, and the prose on the following lines was dropped as a duplicate: on the owner's database 93% of the assistant turns stored after 2026-09-29 had no `payload.text`, against 10–28% in earlier weeks. A later line's text and tool names are now folded into the stored row (`store.MergeAssistantText`): text is appended on a new line unless the row already contains it, tools are a set union, the 16000-rune cap applies, and usage, cost and id stay as the first line set them, so a re-read changes nothing. A daemon started against a database older than v4 sets `meta.empty_text_repair_pending` and, after the port opens, reads the prose back for every main-transcript turn with an empty `text` (`ingest.RepairEmptyAssistantText`) from the session's recorded transcript, its own main file and its own subagent directory — never the whole project tree. On a copy of the owner's database it filled 745 turns in ~5 s; turns that only called a tool stay empty. The flag clears when the repair finishes.
+
+Extended thinking is never stored at all — only `type: "text"` blocks are read — so this content cannot leak Claude's reasoning.
 
 **OpenCode turns carry `payload.text` and `payload.sidechain` in the same shape** (`internal/opencode`, `Texts`). The text is the message's `text` parts from `part.data` in order, trimmed, joined with a newline and clipped to the same 16000 runes; `reasoning` parts are never read, and parts OpenCode marks `synthetic` or `ignored` are skipped because OpenCode, not the model, wrote them. A turn in a child session (`session.parent_id` set — an OpenCode subagent) is stored with `sidechain: true`, so the notes query keeps it out of Memory exactly as it keeps out a Claude Code subagent. Because a turn is inserted once per key, a turn stored before the importer read text, or caught while OpenCode was still writing the reply, is mended on the next read of its session: `json_set` rewrites only those two keys, only where they differ, and leaves the event id, tokens and cost alone. The poller re-reads every session on its first pass after a start, so that pass is also the backfill for history — in the poller's own goroutine, never before the port opens. Measured on a copy of the owner's database (2026-10-01): 3,258 of 9,309 OpenCode turns gained text (6,011 of the rest called tools without writing prose, 40 carry neither), 3,048 of them main-thread notes across 23 sessions and 210 subagent turns marked sidechain; the database grew by 3.0 MB (0.35%); the pass took 3.0–3.6 s against 2.5 s before, and a restart with nothing to change 2.4–3.3 s.
 
@@ -258,7 +374,7 @@ WS   /v1/live                          → first frame is {type:"hello", data:{s
 
 **Codex writes `payload.text` too** (`source = codex`), under the same cap: the `output_text` of the assistant messages each sampling request produced, on that request's `turn.assistant`. Threads Codex imported from another agent store nothing at all, and subagent threads keep no text. Codex turns stored before this were given their text once from the rollouts still on disk (`meta.codex_text_backfilled`), rewriting only `payload.text` on the row whose key and timestamp match. See [19-codex.md § Prose](19-codex.md#prose).
 
-Five indexes exist purely for read speed, created by migrations 0006 to 0010: `idx_events_kind_ts` (kind, ts) and `idx_events_cost_cover`, which additionally carries `model`, `session_id`, the token/cost columns and (since migration 0026) `internal` so the summary aggregates are answered from the index without touching the table. Together they take `/v1/stats/summary?range=all` from ~820ms to ~340ms and `/v1/history` from ~830ms to ~470ms on a 184k-event database, for roughly 30MB of index on a 306MB file. `idx_events_session_id` (session_id, id) serves the per-session event lookup behind Now, and `idx_events_kind_id` (kind, id) serves the Memory screen — both order by id, which the ts-ordered indexes cannot satisfy, so without them SQLite read every matching row and sorted it in a temp B-tree to return the newest few. Migration 0026 rebuilt `idx_events_cost_cover`, `idx_events_tool_dist` and `idx_events_attr_work` with `internal` as their last column: every aggregate filters on `internal = 0` since migration 0024, and without the column none of them covered any more — each query fetched every full row to test one flag, which put `/v1/history?range=all` at 9s on a 300k-event database. It also added `idx_events_ts_cover` (ts, internal, kind, session_id, token/cost columns) for the two range aggregates that group by kind or count distinct sessions; both pin it with `INDEXED BY`, because without ANALYZE statistics SQLite picked `idx_events_kind_id` or `idx_events_session_id` and walked the whole table — 4.8s for today's 772 events. `idx_events_ts_model` (ts, model, cost_usd) serves the model mix, which every summary computes: `idx_events_cost_cover` carries `model` but leads on `kind`, so a ts-only filter cannot use it — 146ms against 56ms over 30 days on a 190k-event database.
+Five indexes exist purely for read speed, created by migrations 0006 to 0010: `idx_events_kind_ts` (kind, ts) and `idx_events_cost_cover`, which additionally carries `model`, `session_id`, the token/cost columns and (since migration 0026) `internal` so the summary aggregates are answered from the index without touching the table. Together they take `/v1/stats/summary?range=all` from ~820ms to ~340ms and `/v1/history` from ~830ms to ~470ms on a 184k-event database, for roughly 30MB of index on a 306MB file. `idx_events_session_id` (session_id, id) serves the per-session event lookup behind Now, and `idx_events_kind_id` (kind, id) serves the Memory screen — both order by id, which the ts-ordered indexes cannot satisfy, so without them SQLite read every matching row and sorted it in a temp B-tree to return the newest few. Migration 0026 rebuilt `idx_events_cost_cover`, `idx_events_tool_dist` and `idx_events_attr_work` with `internal` as their last column: every aggregate filters on `internal = 0` since migration 0024, and without the column none of them covered any more — each query fetched every full row to test one flag, which put `/v1/history?range=all` at 9s on a 300k-event database. It also added `idx_events_ts_cover` (ts, internal, kind, session_id, token/cost columns) for the two range aggregates that group by kind or count distinct sessions; both pin it with `INDEXED BY`, because without ANALYZE statistics SQLite picked `idx_events_kind_id` or `idx_events_session_id` and walked the whole table — 4.8s for today's 772 events. `idx_events_ts_model` (ts, model, cost_usd) serves the model mix, which every summary computes: `idx_events_cost_cover` carries `model` but leads on `kind`, so a ts-only filter cannot use it — 146ms against 56ms over 30 days on a 190k-event database. `idx_events_user_turn` (migration 0033) finds a session's first prompts for the sessions list's descriptions; see § First-prompt DDL.
 
 Note-**search** deliberately still scans: an FTS5 index answers in 6ms against ~165ms, but it matches whole words, so searching `chestr` finds 394 rows with LIKE and 0 with FTS. People search their own sessions for fragments — half an error message, part of a path — and a faster search that misses them is not the same feature.
 
@@ -348,20 +464,139 @@ reclaimable_bytes, growth_bytes_per_day_est, retention_days}`.
 
 `GET`/`PUT /v1/settings` carry `{plan_kind, plan_label, plan_usd_per_month}` — how the user pays for Claude Code. Caprock **cannot detect this and never guesses**: Claude Code does not report the plan, and inferring one from usage would be an invented number (rule 6), so the user states it and it is stored in `config.json` like every other setting. `plan_kind` is `""` (not stated), `"flat"` (Pro/Max/Team seat — usage at API list price is an *equivalent*, so comparing it to the fee is meaningful), or `"metered"` (API key, Bedrock, Vertex, or Enterprise usage billed at API rates — the API-list figure **is** approximately the bill, so it is never framed as a saving). `PUT` validates rather than coerces: an unknown `plan_kind` or a negative/non-finite price is a 400, because a typo would otherwise drive a wrong headline figure. Both return 501 when the daemon has no settings controller.
 
-`SessionSummary` = the `sessions` row + `stats` (session_stats) + `activity` ({phrase, tool, at, health, plan, repeats} from `internal/narrate`) + `savings` (cache math) + `loop` (active alert, if any) + `context` ({tokens, window, pct} — the main thread's last turn's prompt size vs that turn's model's context window from `pricing.json`; a subagent's turn is used only when the session has no main-thread turn at all, as in an OpenCode child session). When `context` is absent, **`context_note` says why**: `no turn yet` (the session has not answered, so there is no prompt to measure), `<id> not in pricing table` (naming the id, which is the one thing a user can report and we can fix), `unknown model`, or `no pricing table`. The reasons call for opposite reactions — one resolves itself in seconds, the other never will — and the client cannot tell them apart from the session row alone; captioning every empty Context "unknown model" put those words beside a Cost stat naming `claude-opus-5` in the same row. `SessionDetail` adds `files` and the last 60 `events`. `?range=` on `/v1/stats/summary` accepts `today` (default), `7d`, `30d`, `all`, or a Go duration; ranges are calendar-aware in the daemon's local time zone. The summary carries `burn` ($/h and tokens/min over the last 10 minutes) and `pricing_version`. Each entry in `projects` is `{project, tokens, cost_usd, sessions, dir?, paths?}` — one row per **repository** (see § Repository grouping DDL), where `sessions` counts the distinct sessions that touched it in the range, so a per-repo roll-up can state both what a repo cost and how many sessions worked in it. `dir` is the directory the row is keyed on — the repository root, or the session's own directory for work outside any repository — and is absent only on the row for spend whose session was deleted. `GET /v1/sessions?dir=<dir>` lists exactly that row's sessions: an **exact** match on `repo_root`, plus sessions with no repository whose `cwd` is the directory — the same grouping the summary uses, never the free-text search (`?q=`), which also reads prompts and would pull in every session that mentioned the name. Each entry there carries `resume` for live sessions too, not only ended ones, because the caller (1-click terminal, see [04-ui.md](04-ui.md)) offers to open, continue or branch from the list; `resume` is `null` for a session Caprock holds the terminal of. `paths` is the per-directory breakdown: `{path, tokens, cost_usd, turns, unattributed?, outside?, tokens_pct, cost_pct}`, charged by **carry-forward** from the files the repository's turns touched rather than by the directory a session was launched from (see § Touch attribution DDL). Two entries are not directories and must be rendered as their own thing: `unattributed` (turns before their session touched any file) and `outside` (turns whose most recent touch was outside the repository); a bucket row that cost $0 is omitted. `path` is the full directory relative to the repository root, written from it (`/`, `/services/api`). It is **omitted for a repository with fewer than two rows**, which would merely restate the row's own total, and it always sums exactly to the parent row — the panel must never state two different totals for one repository (rule 6). `turns` replaces a session count because a session touches many directories while a turn is charged to exactly one, so turns partition and add up. `tokens_pct` and `cost_pct` are shares of the **repository total including the unattributed row**, so each column sums to 100% and the share nothing could be attributed to is visible as its own number rather than hidden in the denominator; both are sent because cost per token varies by model and the two genuinely differ. Each entry may also carry `spark` — `{from_ms, width_ms, cost[], tokens[]}`, the row's spend over time, where bucket `i` covers `[from_ms + i*width_ms, from_ms + (i+1)*width_ms)`. Cost and tokens are parallel arrays over the **same** buckets, so which one the panel plots stays a display choice rather than a request — changing the basis must never cost a round-trip on a polled endpoint. The panel currently plots tokens (see [04-ui.md](04-ui.md)). The grid follows the range and starts at the same calendar-aligned instant: `today` → 24 hourly buckets, `7d` → 7 daily, `30d` → 30 daily, a typed `<n>d` (n ≤ 90) → n daily. `spark` is **absent for `range=all`**, whose start is the first event ever captured — a fixed bucket count would make a column mean a different span on every machine. The columns sum to at most the row total and never more: spend inside the range but outside the bucket grid still counts toward the row, because dropping it would understate the bill (rule 6). `paths` entries carry no series — a sparkline per directory would multiply a polled payload for a picture hidden until the row is expanded. The summary also carries `work` and `work_unlinked_calls` — what the money was spent **on**, by the kind of work each turn did (see § Work attribution DDL).
+`SessionSummary` = the `sessions` row + `stats` (session_stats) + `activity` ({phrase, tool, at, health, plan, repeats} from `internal/narrate`) + `savings` (cache math) + `loop` (active alert, if any) + `context` ({tokens, window, pct} — the main thread's last turn's prompt size vs that turn's model's context window from `pricing.json`; a subagent's turn is used only when the session has no main-thread turn at all, as in an OpenCode child session). When `context` is absent, **`context_note` says why**: `no turn yet` (the session has not answered, so there is no prompt to measure), `<id> not in pricing table` (naming the id, which is the one thing a user can report and we can fix), `unknown model`, or `no pricing table`. The reasons call for opposite reactions — one resolves itself in seconds, the other never will — and the client cannot tell them apart from the session row alone; captioning every empty Context "unknown model" put those words beside a Cost stat naming `claude-opus-5` in the same row. `SessionDetail` adds `files`, the last 60 `events`, `repo` and `prs` (see **Repository and pull-request links** under Phase 1 additions), and the relay chain: `relayed_from` (`{session_id, agent, title?, started_at}`, absent when none) and `relayed_to` (a list of the same, oldest first, `[]` when none). `?range=` on `/v1/stats/summary` accepts `today` (default), `7d`, `30d`, `all`, or a Go duration; ranges are calendar-aware in the daemon's local time zone. The summary carries `burn` ($/h and tokens/min over the last 10 minutes) and `pricing_version`. Each entry in `projects` is `{project, tokens, cost_usd, sessions, dir?, paths?}` — one row per **repository** (see § Repository grouping DDL), where `sessions` counts the distinct sessions that touched it in the range, so a per-repo roll-up can state both what a repo cost and how many sessions worked in it. `dir` is the directory the row is keyed on — the repository root, or the session's own directory for work outside any repository — and is absent only on the row for spend whose session was deleted. `GET /v1/sessions?dir=<dir>` lists exactly that row's sessions: an **exact** match on `repo_root`, plus sessions with no repository whose `cwd` is the directory — the same grouping the summary uses, never the free-text search (`?q=`), which also reads prompts and would pull in every session that mentioned the name. Each entry there carries `resume` for live sessions too, not only ended ones, because the caller (1-click terminal, see [04-ui.md](04-ui.md)) offers to open, continue or branch from the list; `resume` is `null` for a session Caprock holds the terminal of. `paths` is the per-directory breakdown: `{path, tokens, cost_usd, turns, unattributed?, outside?, tokens_pct, cost_pct}`, charged by **carry-forward** from the files the repository's turns touched rather than by the directory a session was launched from (see § Touch attribution DDL). Two entries are not directories and must be rendered as their own thing: `unattributed` (turns before their session touched any file) and `outside` (turns whose most recent touch was outside the repository); a bucket row that cost $0 is omitted. `path` is the full directory relative to the repository root, written from it (`/`, `/services/api`). It is **omitted for a repository with fewer than two rows**, which would merely restate the row's own total, and it always sums exactly to the parent row — the panel must never state two different totals for one repository (rule 6). `turns` replaces a session count because a session touches many directories while a turn is charged to exactly one, so turns partition and add up. `tokens_pct` and `cost_pct` are shares of the **repository total including the unattributed row**, so each column sums to 100% and the share nothing could be attributed to is visible as its own number rather than hidden in the denominator; both are sent because cost per token varies by model and the two genuinely differ. Each entry may also carry `spark` — `{from_ms, width_ms, cost[], tokens[]}`, the row's spend over time, where bucket `i` covers `[from_ms + i*width_ms, from_ms + (i+1)*width_ms)`. Cost and tokens are parallel arrays over the **same** buckets, so which one the panel plots stays a display choice rather than a request — changing the basis must never cost a round-trip on a polled endpoint. The panel currently plots tokens (see [04-ui.md](04-ui.md)). The grid follows the range and starts at the same calendar-aligned instant: `today` → 24 hourly buckets, `7d` → 7 daily, `30d` → 30 daily, a typed `<n>d` (n ≤ 90) → n daily. `spark` is **absent for `range=all`**, whose start is the first event ever captured — a fixed bucket count would make a column mean a different span on every machine. The columns sum to at most the row total and never more: spend inside the range but outside the bucket grid still counts toward the row, because dropping it would understate the bill (rule 6). `paths` entries carry no series — a sparkline per directory would multiply a polled payload for a picture hidden until the row is expanded. The summary also carries `work` and `work_unlinked_calls` — what the money was spent **on**, by the kind of work each turn did (see § Work attribution DDL).
 
 **The session's `model` is its main thread's.** `sessions.model` is the model of the newest event from the session's main thread (`rollup.Record`); a subagent's event — `agent_id` set, or `payload.sidechain` true, the same test the notes query uses (`event.Event.Subagent`, `store.MainThreadWhere`) — fills it only while it is empty, through `SessionPatch.SubagentModel`. An Opus session whose Explore subagent runs on Haiku is an Opus session on its card, in every list and in the window its context fill is measured against; the subagent's turns are still priced by their own model and counted in `session_stats` and `daily_stats` (keyed by the turn's model) exactly as before. A session whose every turn is a subagent's (an OpenCode child session) is named by them. Earlier versions let a subagent's turn overwrite the column; `rollup.RepairSessionModels` sets each session's model once (`meta.session_model_repaired`) to that of its newest main-thread `turn.assistant` (by `ts`, internal turns excluded) where the stored value differs, and leaves sessions with no main-thread turn alone. Measured on a copy of the owner's database (2026-10-01): 6 of the 140 sessions with a main-thread turn were wrong, all six named after a subagent's model; the pass took 3.3 s on an 879 MB file, once, in the background after the port opens. The context badge looks for the main thread's last turn among the session's newest 5000 events when the newest 60 hold none (`store.LastMainTurn`, about 20 ms on a 51k-event session).
 
-### Phase 1 additions
+### A tool's calls, grouped (`GET /v1/tools/drill`)
 
 ```
-POST   /v1/agents                    {cwd?, chat?, create?, worktree?, model?, permission_mode?, command?, args?} → {session_id, cwd}
+GET  /v1/tools/drill?tool=Bash&range=today|7d|30d|all&agent=   → ToolDrill — one tool's calls grouped by what they were about
+```
+
+`tool` is required (400 without it, or longer than 200 bytes); `range` and
+`agent` mean what they mean on `/v1/stats`. The response is
+`{tool, kind, group_by, calls, rows[], other, range, locked}` plus the
+Premium fields below:
+
+- **Grouping** (`kind`, `group_by`): a shell tool (Bash, Codex's `exec`,
+  `shell`, `exec_command`) by the command's head — the program, plus the
+  subcommand for tools where it is the point (`git commit`, `go test`,
+  `npm run`; `gh` keeps two words), with `cd`, `export` and other setup
+  statements skipped; Read, Edit, Write, MultiEdit and the notebook tools by
+  file, shown relative to the home directory; WebFetch by domain; WebSearch
+  by query; an MCP tool by its `action` input; any other tool by subagent
+  type (Task), pattern (Grep, Glob) or command, else one `call` group.
+  A call stored with an empty input (OpenCode's bash events carry none) is
+  grouped as `(input not recorded)`, one whose input names nothing
+  groupable as `(no detail)`; neither gets a hint. Counts in hint text are
+  written with thousands separators.
+- **`rows[]`** are the top 12 groups by calls, each `{key, calls}`;
+  **`other`** is the calls in every smaller group. Free.
+- **Premium** (left out without an active licence, [ADR-022](08-decisions.md)):
+  `results`, `failures` and `bytes` for the tool and per row — a result is a
+  `tool.post` matched to its `tool.pre` by `key` through the unique
+  `(session_id, key)` index, a failure is one whose `is_error` is set, bytes
+  are the stored `tool_bytes` (migration 0018); a call with no stored result
+  counts as a call and is left out of the rate. Each row's `trend` is 8
+  equal buckets of calls placed by `trend_from_ms` and `trend_width_ms`.
+  `hints[]` (`{kind, key, text}`, strongest first) are sentences built only
+  from those counts: a group failing at least 10% and twice the tool's own
+  rate (≥20 results, ≥5 failures), a group returning ≥25% of the tool's
+  output when there is more than one, a group holding ≥30% of ≥50 calls.
+- **Without a licence** `locked` is true, every Premium field is absent, and
+  **`teaser`** carries the strongest hint in full — the one place a Premium
+  figure is sent unpaid, on purpose, so the offer shows a real finding
+  rather than a blur.
+
+Every figure is counted from stored events; nothing is estimated. No new
+index or migration: the pres are read by `idx_events_kind_ts`, the posts by
+the unique key. Cached for 60 s; on the owner's 1 GB database (2026-10-04)
+Bash for all time — about 54k results — took ≈1.2 s cold.
+
+### Phase 1 additions
+
+**Repository and pull-request links (2026-10-04).** Both are read from the
+machine, never from a forge's API (rule 4):
+
+- **`SessionDetail.repo`** — `{root, url, branch?, default_branch?, branch_url?}`,
+  absent when the session's directory is not in a repository or the
+  repository has no remote a browser can open. `internal/gitremote.Lookup`
+  asks the local repository, with a 2 s budget, for its top level and then
+  `origin`, else the first remote. `url` is the remote turned into its web
+  address: scp-like (`git@host:o/r.git`), `ssh://` (credentials and the ssh
+  port dropped), `git://`, `http(s)://` with or without `.git`, GitHub, GitLab
+  (subgroups kept), Bitbucket, Azure DevOps ssh, and any other host as
+  `https://host/path`. A local path, a `file://` remote, a Windows path or a
+  bare alias is not a web address and gives no `url`. `branch_url` links the
+  checked-out branch where the host's layout is known — GitHub `/tree/<b>`,
+  GitLab `/-/tree/<b>`, Bitbucket `/src/<b>`, Codeberg, Gitea and Forgejo
+  `/src/branch/<b>` — and is empty on the default branch (or `main`/`master`
+  when the default is unknown) and on an unknown host. A worktree resolves to
+  its own top level and branch. The API keeps answers for a minute per
+  directory, 500 directories at most.
+- **`SessionDetail.prs`** — `[{url, number, title, opened_at, merged_at, closed_at, last_at}]`,
+  newest activity first, from `session_prs` (§ Session pull requests DDL).
+  Always an array.
+- **`projects[].repo_url`, `projects[].last_pr`** on `/v1/stats/summary` — the
+  web address of the row's `dir`, and the newest pull request any session in
+  that directory recorded (a `SessionPR`). Both are omitted when unknown.
+
+```
+POST   /v1/agents                    {cwd?, chat?, create?, worktree?, agent?, model?, permission_mode?, resume?, fork?, command?, args?} → {session_id, cwd}
+GET    /v1/agents/models?agent=      {agent, default?, models:[{id,label}]}
 POST   /v1/agents/{id}/input         {data}            → 204   (owned PTYs only)
 POST   /v1/agents/{id}/signal        {action: pause|resume|kill} → 204 (owned PTYs only)
 WS     /v1/agents/{id}/term          bidirectional stream (xterm.js): binary = keystrokes, text = control; snapshot on connect, closes on exit
 POST   /v1/paste                     {name, type, data:base64} → {path}; writes a pasted or dropped file so Claude Code can read it
 GET    /v1/history?range=…           lifetime totals + tool distribution + model mix + daily
 ```
+
+**`agent`** is `claude` (default), `codex`, `opencode` or `gemini`; any other
+value is a 400. `permission_mode` is always in Claude Code's words and each
+agent's argv builder translates or drops it (`internal/agents/argv.go`; the
+per-agent flags are in [19-codex.md](19-codex.md) and
+[16-opencode.md](16-opencode.md)). With `resume`, the agent is the stored
+session's, whatever the request says, and a Codex or OpenCode resume is given
+the session's `native_id` when it has one. `fork` with Codex or OpenCode is a
+400: their forks copy history with its cost. The endpoints answer 501 only when
+**no** agent can be started (`claude_available`, `codex_available`,
+`opencode_available` and `gemini_available` all false on `/v1/status`).
+
+**`prompt` and `relay_from` on `POST /v1/agents`** — a relay ([ADR-032](08-decisions.md)).
+`prompt` is the new session's first message, passed on the agent's command
+line (Claude Code and Codex positional, OpenCode `--prompt`, Gemini CLI
+`--prompt-interactive`), so it is sent as the session starts; at most 8000
+runes, a leading `-` gets a leading space so no parser reads it as a flag, and
+through a Windows `.cmd`/`.bat` shim it is joined onto one line with `%`
+doubled, because cmd.exe ends a command at a newline. `relay_from` names the
+session being carried on: it is stored as `sessions.relay_from`, and `cwd`
+defaults to that session's folder. Refused with 400 and a reason: `prompt`
+with `resume` (a continued session has its conversation), `relay_from` with
+`resume`, an unknown `relay_from`, a source folder that no longer exists when
+no `cwd` is given, and a brief over the limit.
+
+**`GET /v1/sessions/{id}/relay`** → `RelayBrief` `{session_id, agent, cwd,
+cwd_exists, passage_at?, git?: {branch?, base?, files[], more?, stat?,
+not_repo?}, prs: [{number, url}], text}` — what the "Continue in…" dialog
+proposes, built locally (`internal/relay`): the newest main-thread passage of
+at least 400 runes (else the newest), clipped to 2400; the working tree from
+`gitdiff.Diff`, up to 25 files as `<status> <path> (+a -d)`; and the PRs the
+session opened, from Claude Code's `tool_response.gitOperation.pr` with
+`action = "created"` (other agents record none, so none are listed). Nothing
+is sent anywhere by this call. Not open to paired devices.
+
+**`GET /v1/agents/models?agent=`** — the models an agent's own CLI lists. For
+`codex`: the `visibility: "list"` entries of `$CODEX_HOME/models_cache.json` in
+`priority` order, and `default` from the top-level `model` in `config.toml`.
+`claude`, `gemini` and `opencode` answer an empty list; an unknown agent is a
+400. No network I/O. Not open to paired devices (they cannot start sessions).
+
+**`/v1/status`** carries `codex_available` and `opencode_available` beside
+`claude_available` and `gemini_available`: the binary found on the daemon's
+PATH, the login shell's (once resolved — never waited for), or the installers'
+directories (`~/.local/bin`, `~/bin`, `/opt/homebrew/bin`, `/usr/local/bin`,
+`~/.opencode/bin`).
 
 **`POST /v1/agents` with `resume` is refused when the resume cannot work** —
 `400 {error}` carrying the same reason `GET /v1/sessions/{id}` gives in
@@ -384,13 +619,18 @@ this daemon does not hold its terminal. Such a session is started before a
 restart of Caprock and still has a process; it is marked **`detached: true`**
 on the list and the detail, and gets `resume` there too (FB-040): its terminal
 tab used to open an empty screen. Decided by what is on disk,
-not by who started the session (FB-036): the agent (Claude Code only; Codex and
-OpenCode get their own `command` — `codex resume <id>`, `opencode --session
-<id>`), the cwd still existing, and the main transcript
+not by who started the session (FB-036): the agent (Claude Code, Codex and
+OpenCode; Gemini is not continued), the cwd still existing, and for Claude Code
+the main transcript
 (`<project>/<session-id>.jsonl`, found from `transcript_path` or from the cwd's
 Claude Code folder) still existing. `command` is offered whenever the agent has
 one, including when Caprock cannot run it (folder gone, `claude` not found) —
-except when the transcript is gone, where no command could work.
+except when the transcript is gone, where no command could work. Codex and
+OpenCode: `command` is `cd <cwd> && codex resume <id>` / `opencode --session
+<id>` with the agent's own id (`native_id` when set); `ok` is false while the
+session is not ended (two processes on one thread), when its folder is gone,
+when Caprock started it and nothing was ever sent (nothing to continue), or
+when the binary is not found.
 
 **`SessionSummary.description` / `description_source`** — what tells a session
 from the others on the screen (FB-035): the stored `sessions.title`
@@ -492,7 +732,7 @@ measured and is quietly skewed is worse than one that is not there;
 
 **`create` makes the working directory, one level, under a parent that already exists.** Starting a new project otherwise meant leaving the dashboard, creating the folder in a terminal, and returning to type its path — a path the user had already typed. It is opt-in and defaults to false: this endpoint executes a command from its body, so a missing directory stays an error unless the caller explicitly asked for it to be made. Deliberately `Mkdir`, never `MkdirAll` — the parent must exist, so a typo in an absolute path fails loudly instead of materialising a chain of directories somewhere the user has never been. The path is cleaned before the parent is checked, so a path that climbs out with `..` is verified against where it actually lands. An existing directory is not an error.
 
-Owned sessions are spawned as `claude --session-id <uuid> [--model …] [--permission-mode …]`, so hooks and the transcript arrive under the id Caprock generated; the spawn environment is the user's login-shell environment (`internal/userenv`, see [02-architecture.md § Components](02-architecture.md#components)) with inherited Claude Code session markers stripped (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_PID`, … — `agents.childEnv`) so the session is a normal top-level one. Before spawning, Caprock pre-accepts Claude Code's folder-trust dialog for the session's cwd by setting `projects["<cwd>"].hasTrustDialogAccepted = true` in **`~/.claude.json`** (a second user-level Claude Code file, distinct from `settings.json`) — otherwise an interactive session blocks on the trust prompt, which `--dangerously-skip-permissions` does not suppress. The write is best-effort, atomic, and skipped if the folder is already trusted; an unparsable `~/.claude.json` is never modified. It goes through the **ordered-JSON codec**, preserving the user's key order and any integer beyond 2^53 — a `map[string]any` round-trip sorted the whole 200KB file alphabetically and truncated large integers through float64. Each grant Caprock makes is recorded in `<data_dir>/trust-grants.json`, so `caprock hooks uninstall` revokes exactly the folders Caprock trusted and never one the user accepted themselves; a folder already trusted when Caprock found it is never claimed. Spawning is unavailable (endpoints return 501, `status.claude_available=false`) when no `claude` binary is found; Caprock then stays observe-only. The manager resolves `claude` via PATH then `~/.local/bin`, `~/.claude/local`, `~/bin`, Homebrew and `/usr/local/bin`. Control operations are refused for sessions Caprock did not spawn.
+Owned sessions are spawned as `claude --session-id <uuid> [--model …] [--permission-mode …]`, so hooks and the transcript arrive under the id Caprock generated; the spawn environment is the user's login-shell environment (`internal/userenv`, see [02-architecture.md § Components](02-architecture.md#components)) with inherited Claude Code session markers stripped (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_PID`, … — `agents.childEnv`) so the session is a normal top-level one. Before spawning, Caprock pre-accepts Claude Code's folder-trust dialog for the session's cwd by setting `projects["<cwd>"].hasTrustDialogAccepted = true` in **`~/.claude.json`** (a second user-level Claude Code file, distinct from `settings.json`) — otherwise an interactive session blocks on the trust prompt, which `--dangerously-skip-permissions` does not suppress. The write is best-effort, atomic, and skipped if the folder is already trusted; an unparsable `~/.claude.json` is never modified. It goes through the **ordered-JSON codec**, preserving the user's key order and any integer beyond 2^53 — a `map[string]any` round-trip sorted the whole 200KB file alphabetically and truncated large integers through float64. Each grant Caprock makes is recorded in `<data_dir>/trust-grants.json`, so `caprock hooks uninstall` revokes exactly the folders Caprock trusted and never one the user accepted themselves; a folder already trusted when Caprock found it is never claimed. Spawning is unavailable (endpoints return 501) only when no agent's binary is found; Caprock then stays observe-only. Codex, OpenCode and Gemini get their own argv and are never written into `~/.claude.json` ([ADR-031](08-decisions.md)). The manager resolves `claude` via PATH then `~/.local/bin`, `~/.claude/local`, `~/bin`, Homebrew and `/usr/local/bin`. Control operations are refused for sessions Caprock did not spawn.
 
 ### Phase 2 additions
 
@@ -707,6 +947,41 @@ ALTER TABLE sessions ADD COLUMN parent_session TEXT NOT NULL DEFAULT '';
 `SessionSummary` carries both as `worked_at` and `parent_session`, omitted when
 unset, and `detached` (see `resume` above).
 
+### Relay DDL (migration 0036)
+
+```sql
+ALTER TABLE sessions ADD COLUMN relay_from TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_sessions_relay_from
+  ON sessions(relay_from) WHERE relay_from <> '';
+```
+
+The session whose work this one was started to carry on, with a brief rather
+than its conversation ([ADR-032](08-decisions.md)); written by the daemon when
+`POST /v1/agents` carries `relay_from`, after the spawn. Not
+`parent_session`: that is the same conversation continuing (a `/clear`, a
+fork), and the two must not be read as one. `SessionSummary` carries it as
+`relay_from`, omitted when empty.
+
+### Native id DDL (migration 0032)
+
+```sql
+ALTER TABLE sessions ADD COLUMN native_id TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_sessions_native
+  ON sessions(agent, native_id) WHERE native_id <> '';
+```
+
+The agent's own id for a Codex or OpenCode session Caprock started under an id
+of its own — the Codex thread id or the OpenCode session id
+(`internal/sessionlink`, [ADR-031](08-decisions.md)). Written once
+(`store.SetNativeID` only fills an empty column). The Codex and OpenCode
+importers look an agent id up here (`store.SessionForNative`) and file that
+session's events under the Caprock session instead; a Codex subagent's events
+follow its parent's link. Empty for every other session, including Claude Code
+and Gemini, which take Caprock's id on the command line. `SessionSummary`
+carries it as `native_id`, omitted when empty. The staleness sweep judges an
+**owned** Codex or OpenCode row by its pid like any session Caprock started;
+imported rows stay clock-judged.
+
 ### Turn message-id DDL (migration 0029)
 
 ```sql
@@ -721,6 +996,83 @@ Finds an assistant turn by message id across sessions — the per-turn
 Hook shim). `idx_events_msg` leads on `session_id` and cannot answer either.
 On the owner's database (2026-10-03) the repair found 827 copied turns from
 one fork and took $212.93 and 381M tokens out of the totals.
+
+### Turn agent DDL (migration 0031)
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_events_turn_agent
+  ON events(kind, ts, session_id, agent_id, model, cost_usd,
+            tokens_in, tokens_out, cache_read, cache_write, cache_write_1h, internal)
+  WHERE kind = 'turn.assistant';
+```
+
+Covers the two all-time reads behind `GET /v1/glance`: assistant turns grouped
+by session and agent id (`store.AgentSplit`) and tokens by model and type
+(`store.TokensByModel`). No earlier index holds `agent_id` or
+`cache_write_1h`, so both read every turn's row. On the owner's 1 GB database
+(2026-10-04) they took 3.5 s and 2 s; covered, 0.09 s and 0.06 s. The index
+is 11.8 MB there and took 1.8 s to build.
+
+### First-prompt DDL (migration 0033)
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_events_user_turn
+  ON events(session_id, ts)
+  WHERE kind = 'turn.user';
+```
+
+`store.FirstPrompts` pins it with `INDEXED BY`. Every untitled row of
+`/v1/sessions` is described by its first substantive prompt, and without an
+index leading on `session_id` that knows the kind, SQLite walked every
+`turn.user` in the database through `idx_events_kind_ts` and read each row to
+test its session: 330ms of a 50-row page on the owner's 1 GB database, 600ms
+cold. With the partial index the same page's prompts take ~5ms. The implicit
+rowid tail gives the query's `ORDER BY ts, id` with no sort.
+
+### Busy-loss re-read (migration 0034)
+
+```sql
+UPDATE transcript_offsets SET offset = 0 WHERE updated_at >= 1790985600000;
+```
+
+A data repair, no DDL. Migration 0029 made the recorder's transaction read
+before writing, which a plain `BEGIN` cannot do under contention (see
+[02-architecture.md](02-architecture.md), *How the database is opened*), and the
+tailer moved past every line whose write failed. Zeroing the offset of every
+transcript read since 0029 was merged (2026-10-03 00:00 UTC) makes the tailer
+read each once more from the start; keyed dedupe on `(session_id, key)`
+stores only what is missing. On a copy of the owner's database (2026-10-04):
+55 transcripts, 414 MB, ~20 s, and 259 assistant turns worth $18.52
+recovered, all dated after the cutoff.
+
+### Session pull requests DDL (migration 0035)
+
+```sql
+CREATE TABLE session_prs (
+  session_id TEXT    NOT NULL,
+  url        TEXT    NOT NULL,
+  number     INTEGER NOT NULL,
+  title      TEXT    NOT NULL DEFAULT '',
+  opened_at  INTEGER NOT NULL DEFAULT 0,  -- unix ms of a recorded "created", 0 if none
+  merged_at  INTEGER NOT NULL DEFAULT 0,  -- unix ms of a recorded "merged", 0 if none
+  closed_at  INTEGER NOT NULL DEFAULT 0,  -- unix ms of a recorded "closed", 0 if none
+  last_at    INTEGER NOT NULL,            -- unix ms of the latest command on it
+  PRIMARY KEY (session_id, url)
+);
+CREATE INDEX idx_session_prs_last ON session_prs(last_at);
+```
+
+A pull request a session created, merged or closed. Claude Code's
+PostToolUse payload for a `Bash` call that ran `gh pr …` carries
+`tool_response.gitOperation.pr` — `{number, url, action}`, with `action` one
+of `created`, `merged`, `closed`, `edited`, `commented` — and the rollup
+records `created`, `merged` and `closed` in the same transaction as the event
+(`gitremote.FromToolPost`, `store.RecordPR`). Without that record, a
+`gh pr create` whose output carries a PR URL is recorded as opened. A PR is
+**never shown as merged unless a merge was recorded**: an ended session is not
+a merged PR. `meta.session_prs_backfilled` gates a one-off pass over the
+`tool.post` rows already stored (`store.PRToolPosts`), run in the background
+after the port opens.
 
 ### Touch attribution DDL (migration 0012)
 
@@ -895,7 +1247,7 @@ No DDL change was needed for either fix here, only honest use of the existing co
 - **The daily spend cap (`settings.cap_usd_per_day`) pauses sessions Caprock started, and only those.** Zero is off and is the default — a threshold nobody chose would eventually stop work for a reason its owner could not explain. The check runs after a turn is **priced**, not on a timer: the day's total only moves when a turn is priced, so a poll would either lag the crossing or ask the database for a sum it already knows is unchanged. Four rules, each with a test that was verified by breaking it: **only owned sessions** — `agents.PauseOwned` refuses any id the manager did not spawn, so [rule 7](../CLAUDE.md) is enforced at the thing holding the process handles rather than by whoever is calling; **paused, not killed** — SIGSTOP, so the conversation, directory and context survive a resume; **once a day** — a session resumed by hand must not be re-paused seconds later, and the day is claimed under a mutex *before* any signal so concurrent turns cannot both fire; **fails open** — an unreadable spend does not pause, because a missed pause costs money while a spurious one stops work that was fine, and the second is the one nobody forgives. `cap_usd_per_day` carries **no `omitempty`**: zero means "off", and omitting it makes an off cap indistinguishable from a daemon too old to have the field — the panel could then be switched on but never off. A negative or non-finite value is a 400 rather than a clamp, like every other validated field here. The suggested limit is **twice the median day, rounded** (`cap.Suggest`, mirrored in the UI): the median rather than the mean because one runaway day would drag an average up and produce a ceiling that never fires — precisely the day the feature exists for — and twice it because a cap set *at* the median fires half the time by definition. It is offered as a click, never prefilled: a number that appears in the field on its own is a number nobody chose, and this one stops work.
 - **`GET /v1/browse` lists directories for the folder picker, and is the one endpoint that reads the filesystem on a web page's behalf.** Starting a session required typing an absolute path from memory into a dashboard already showing the reader's repositories. Four rules make this a picker rather than a filesystem-read API: **only directories and only names** (no contents, no sizes); **rooted at `settings.browse_root`** (default `$HOME`), with **symlinks resolved before the containment check** so a link inside the root pointing out of it cannot smuggle a caller past the boundary; **dotfile directories are never listed** — `.ssh` and `.aws` are precisely what a prober wants, while `.git` is reported as a *property* of its parent (`repo: true`) rather than somewhere to descend into; and **"outside the root" and "does not exist" return the identical 404**, so the endpoint cannot be used as an existence oracle for paths the caller may not see. Listings are capped at 500 entries with `X-Caprock-Truncated` set rather than silently cut. Repositories sort first because a repository is what is being looked for. `GET /v1/recent-dirs` is the other half and touches no filesystem beyond an existence check: it lists directories from the `sessions` table, newest first, grouped by repository root where one is known, and omits any that no longer exist — a picker offering a dead path spawns a session that fails.
 - **The weekly report states what changed, not what happened.** It is sold on the promise of the repository that cost 3× its usual week and of last week against the one before it, per repository and model — so it must ship as a comparison against the preceding period, not as a digest of the current one. This is not a presentation choice: five readers were shown a digest-shaped description of it and every one of them concluded they would be paying for delivery of figures the free dashboard already shows (FB-027). A digest is a notification; what moved is the thing a week of data can say and a live screen cannot.
-- **`/v1/history` is cached for 3 seconds, with single-flight.** The endpoint answers "everything, ever" — four aggregates over the whole events table, ~540ms warm on a 600 MB database — and **five components on the main screen request it on their own timers** (the lifetime strip, the breakdown panel, the share card, the share nudge, and the screen itself). One open tab therefore produced bursts of identical requests, each computed from scratch: 0.61s each, three at a time. Requests for the same resolved range that arrive while one is in flight now wait for it and share its result, and a settled result is reused for `historyTTL`. Measured on the owner's database: **0.61s → 0.001s** for every request after the first. The cache is keyed by the *resolved* range label, so `?range=` and `?range=today` share one entry. **Errors are never cached** — a transient failure held for the TTL turns one bad moment into seconds of a broken screen. The computation runs on a context detached from its first caller: browsers abandon requests routinely, and a caller hanging up must not take the answer away from the callers waiting behind it. Writes do not invalidate: an entry expires within seconds on its own, and the live pulse does not come through this endpoint.
+- **`/v1/history` and the wide ranges of `/v1/stats/summary` are cached, with single-flight and stale-while-revalidate** (`internal/api/answercache.go`). Both answer from aggregates over the whole events table — on the owner's 1 GB, 333k-event database `/v1/history?range=all` is ~1.5s and `/v1/stats/summary?range=all` ~1.0s through the Go driver, and 4.7s and 1.5s under a live dashboard (2026-10-04) — and they are asked for in bursts: **five components on the main screen request history on their own timers**, and the share dialog asks for today, 7d, 30d and all at once. Requests for the same key that arrive while one is in flight wait for it and share its result. A settled answer is served as it is for its TTL (`historyTTL` 3s, `summaryTTL` 10s); past that it is **still served at once and one background refresh replaces it**, so nobody waits on a whole-table scan once a key has been computed, and what is shown is at most one refresh behind. Past `answerMaxStale` (30 min) an answer is too old to present as current and the caller waits for a fresh one. The daemon computes history for all time and the 7d, 30d and all-time summaries in the background as it starts (`Server.Warm`), so the first screen after a restart finds them ready. **Today's summary is not cached** — it is ~40ms and is the figure people watch move — and neither are the burn rate, throttles and plan windows beside any range, which are read live on every request. Keys carry the range's resolved start as well as its label, so `today`, `7d` and `30d` become new keys at midnight rather than serving yesterday's answer; `?range=` and `?range=today` still share one entry. **Errors are never cached**, and a failed refresh keeps the stale answer. Computations run on a context detached from their first caller: browsers abandon requests routinely, and a caller hanging up must not take the answer away from the callers waiting behind it. Writes do not invalidate — ingest commits several times a second while anyone works, so an invalidated cache would be empty exactly when the screen is busiest. Measured on a copy of the owner's database with a writer committing every 200ms and the main screen's eleven requests fired at once: the slowest went from 3.6s to 0.09s (2026-10-04). `/v1/status` reads its stored-event count the same way, recounted in the background at most every 30 s: a `COUNT(*)` over 333k events is 600ms on a cold connection.
 - **Dated prices (migration-free, `pricing.json`).** A model may have more than one row. A superseded price keeps its own row carrying `until` — the last date it applied, inclusive, UTC — and the current price is the row with no `until`; rows for one id are ordered oldest-first. A turn is priced by `LookupAt`/`PriceAt` at **its own timestamp**, so a rate that has since lapsed still prices the turns that ran under it. Without this, the only way to record a price change is to overwrite the figure, which silently restates history at a price nobody was charged — an invented number (rule 6) about our own past. Sonnet 5 was the first case (introductory $2/$10 through 2026-08-30, $3/$15 announced from 2026-08-31) until the rise was cancelled; no row is dated today. A row whose `until` will not parse is treated as not applying, so an unparseable date falls through to the current price rather than pricing a turn at an expired one. Exactly one row per model id may omit `until`, and a test enforces it.
 - **Corrections (`pricing.json` `corrections`).** A list of `{model, from?, reason}`: turns an earlier table priced *wrongly* — a missing row that fell through to another model by prefix, or a price change that was announced and cancelled. That differs from a price that changed, which never restates history. On start the daemon (`rollup.ApplyCorrections`) reprices every `turn.assistant` whose model starts with `model` and whose time is on or after `from` (UTC; empty = all), at the row in force at the turn's own timestamp, and moves `session_stats` and `daily_stats` by the difference in the same transaction. It runs once per table version, recorded in `meta.price_corrections`; an interrupted pass is finished by the next start, because a turn already at the corrected figure moves by nothing. A malformed `from` or a correction with no model fails the table load. `2026-10-01.1` corrects `claude-opus-5-5` (all turns, previously priced as Opus 5) and `claude-sonnet-5` from 2026-08-31. `2026-10-03.1` adds `gemini-3.8-flash` and `gemini-3.1-flash-lite` with no correction: neither matched another id by prefix, so their turns were unpriced (named in `unpriced`), not mispriced.
 - Cost per assistant turn = `tokens_in × input + cache_write × cache_write_price + cache_read × cache_read_price + tokens_out × output`, all prices per token (table values are per MTok ÷ 1e6).

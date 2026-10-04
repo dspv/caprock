@@ -9,9 +9,9 @@ import (
 	"math/rand/v2"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/dspv/caprock/internal/hookd"
+	"github.com/dspv/caprock/internal/relay"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -84,7 +84,7 @@ func (d *Daemon) handoff(ctx context.Context, p hookd.Payload) []byte {
 		return nil
 	}
 
-	text := clipRunes(strings.TrimSpace(note.Text), handoffMaxRunes)
+	text := relay.Clip(strings.TrimSpace(note.Text), handoffMaxRunes)
 	if text == "" {
 		return nil
 	}
@@ -106,7 +106,7 @@ func (d *Daemon) handoff(ctx context.Context, p hookd.Payload) []byte {
 	body := fmt.Sprintf(
 		"Where this repository was left, %s ago (from Caprock's record of the previous session — "+
 			"the user has not said this to you, and it may be stale):\n\n%s",
-		humanAge(age), text)
+		relay.HumanAge(age), text)
 
 	reply, err := json.Marshal(map[string]any{
 		"hookSpecificOutput": map[string]any{
@@ -127,32 +127,6 @@ func (d *Daemon) holdoutRoll() int {
 		return d.roll()
 	}
 	return rand.IntN(100)
-}
-
-// clipRunes cuts to n runes at a sentence boundary where one is near the end,
-// so a handoff does not stop mid-word.
-func clipRunes(s string, n int) string {
-	if utf8.RuneCountInString(s) <= n {
-		return s
-	}
-	r := []rune(s)[:n]
-	cut := string(r)
-	if i := strings.LastIndexAny(cut, ".!?\n"); i > len(cut)*3/4 {
-		return strings.TrimSpace(cut[:i+1])
-	}
-	return strings.TrimSpace(cut) + "…"
-}
-
-// humanAge is the coarse form a person reads: minutes, hours, or days.
-func humanAge(d time.Duration) string {
-	switch {
-	case d < time.Hour:
-		return fmt.Sprintf("%d minutes", int(d.Minutes()))
-	case d < 48*time.Hour:
-		return fmt.Sprintf("%d hours", int(d.Hours()))
-	default:
-		return fmt.Sprintf("%d days", int(d.Hours()/24))
-	}
 }
 
 // memoryStatus is what the status screen shows about the handoff: how many

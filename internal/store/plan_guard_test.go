@@ -106,3 +106,42 @@ func touchesEvents(line string) bool {
 }
 
 func oneLineSQL(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// A session's notes are read from that session's rows, not from every
+// assistant turn on the machine. See sessionAssistantTextWhere.
+func TestSessionNotesUsesTheSessionIndex(t *testing.T) {
+	ctx := context.Background()
+	st, err := Open(ctx, ":memory:", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	rec := &planRecorder{Querier: st.DB()}
+	if _, err := SessionNotes(ctx, rec, "s1", 200); err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.seen) != 1 {
+		t.Fatalf("expected one statement, saw %d", len(rec.seen))
+	}
+	rows, err := st.DB().QueryContext(ctx, "EXPLAIN QUERY PLAN "+rec.seen[0].sql, rec.seen[0].args...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	var plan []string
+	for rows.Next() {
+		var id, parent, notused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, detail)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(plan, " | ")
+	if !strings.Contains(joined, "USING INDEX idx_events_session_id (session_id=?)") {
+		t.Fatalf("SessionNotes must walk the session's own index; plan: %s", joined)
+	}
+}

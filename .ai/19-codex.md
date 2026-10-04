@@ -1,9 +1,10 @@
 # Codex support
 
-**Status: the observation half is built.** Sessions, turns, tool calls and cost
-are imported from OpenAI Codex's own rollout transcripts, tagged with their
-agent, and shown on the same screens as Claude Code and OpenCode. Session
-control is not built and is scoped below. Everything here was measured against
+**Status: observation and starting sessions are built.** Sessions, turns, tool
+calls and cost are imported from OpenAI Codex's own rollout transcripts, tagged
+with their agent, and shown on the same screens as Claude Code and OpenCode.
+Caprock can also start, type into, continue and stop a Codex TUI (§ Starting a
+Codex session). Everything here was measured against
 100 real transcripts on a machine that runs Codex, not inferred from
 documentation; where a number appears it came from that measurement.
 
@@ -399,12 +400,89 @@ thread stores no events by design, so it is remembered with a flag (`x`) and
 trusted without that check; otherwise every start would parse all of them
 again.
 
+## Starting a Codex session
+
+Since 2026-10-04 the New session dialog starts Codex next to Claude Code: the
+TUI in a PTY, the same terminal tab, directory picker and pause/kill controls
+([ADR-031](08-decisions.md)). The argv was built from the real binary's help,
+not from memory — `codex --help` and `codex resume --help`, **codex-cli
+0.160.0**, read on 2026-10-04 — and every flag below was then exercised by
+starting the TUI with it:
+
+- **`--no-daemon`** — "Run without the shared background server". Without it
+  the TUI may hand the work to a shared app-server Caprock did not start, and
+  pause or kill would act on an empty client.
+- **`-c projects={"<cwd>"={trust_level="trusted"}}`** — answers the "Trust this
+  folder?" prompt for this run only. Measured: the dotted form
+  `-c 'projects."<cwd>".trust_level="trusted"'` does **not** suppress the
+  prompt; the inline table does, and `~/.codex/config.toml` is unchanged
+  afterwards. The path is written as a TOML string (quotes and backslashes
+  escaped), and both the given and the symlink-resolved path are listed,
+  because Codex looks the folder up by the path it resolved (`/tmp` is
+  `/private/tmp` on macOS). Same consent as Gemini's `--skip-trust`: the user
+  picked the folder.
+- **`-m <model>`** — the dialog offers the models Codex itself lists, read from
+  `$CODEX_HOME/models_cache.json` (`visibility: "list"`, in `priority` order;
+  `codex-auto-review` and other hidden entries are not offered), with the
+  top-level `model` of `config.toml` as the default. "Default" sends no `-m`.
+- **Permissions**, mapped from Claude's words onto Codex's two axes:
+  `acceptEdits` → `--sandbox workspace-write --ask-for-approval on-request`;
+  `plan` → `--sandbox read-only --ask-for-approval on-request`;
+  `bypassPermissions` → `--dangerously-bypass-approvals-and-sandbox`. Anything
+  else sends nothing and `config.toml` decides. 0.160.0's `-a` lists only
+  `on-request` and `never`.
+- **Resume** is `codex resume <thread id>` with the same flags after it. Codex
+  has no flag that names a *new* thread, so there is nothing like
+  `--session-id` to pass on a fresh start.
+- **A first message** is the positional `[PROMPT]` (`Usage: codex [OPTIONS]
+  [PROMPT]`), last on the line; a relay's brief goes there
+  ([ADR-032](08-decisions.md)). Measured on 0.160.0: a multi-line prompt
+  arrives intact and is sent as the TUI opens.
+- **Fork is refused.** `codex fork` copies the thread's history into a new
+  rollout, and Caprock would count its tokens again. A Codex session that is
+  still running is offered nothing; it can be continued once it has ended.
+- **Newlines.** ESC CR (what the terminal sends for Shift/Option+Enter and
+  Ctrl+J, see `Terminal.tsx`) inserts a line in Codex's composer with text
+  already in it, measured on 0.160.0 — the same bytes as Claude Code, so the
+  terminal needs no per-agent key map.
+
+### Linking the rollout to the session (heuristic)
+
+Caprock records the session under an id of its own, and Codex names its thread
+itself, so the two have to be joined (`internal/sessionlink`). **This is a
+match, not a fact**, and it is stated as one:
+
+- The importer takes a rollout for a waiting spawn when its `session_meta` says
+  it was written by the TUI (`originator` `codex-tui`, or the older
+  `codex_cli_rs`; not the desktop app, not a subagent, not an imported
+  thread), in the same folder, by a thread that **started** between 5 seconds
+  before and 2 minutes after the spawn. Two spawns in one folder each take the
+  thread that started closest after them.
+- The window can be that tight because Codex stamps a thread with the moment
+  the TUI started, not the moment its file is first written. Measured on the
+  14 CLI rollouts on the owner's machine (2026-10-04): `session_meta.timestamp`
+  precedes the first record by up to 4m40s — the time before the user typed.
+  The rollout itself appears only when the first message is sent; a session
+  nobody typed into has nothing to link and nothing to resume.
+- A thread the store already holds under its own id is never taken.
+- Once linked, the link is stored (`sessions.native_id`, migration 0032) and
+  the importer files the thread's events — and its subagents', which carry the
+  parent's id — under Caprock's session, so cost, turns and Answers appear on
+  the page with the terminal. Rollouts are read in name (start-time) order
+  while a link is pending, so a parent is linked before its subagents' events
+  need to know where to go. `codex resume` is given the thread id, not
+  Caprock's.
+- What would mislink: a second Codex TUI the user starts **by hand**, in the
+  same folder, within the window, while Caprock's spawn has not been typed
+  into. What would miss: a Codex release that renames its `originator` — the
+  thread is then shown as its own session, as before this feature, not lost.
+- Verified end to end on 2026-10-04 on an isolated daemon with Codex pointed
+  at a closed local port (no model call, no cost): the spawn's rollout was
+  linked 0.87s after the spawn by thread start, stored under Caprock's id with
+  no second row, and "continue here" resumed it with its history.
+
 ## Not built
 
-- **Session control.** Spawning, typing into, and killing a Codex session.
-  `codex exec`, `codex resume` and `codex proto` (a stdin/stdout protocol) all
-  exist, so it is feasible; `internal/agents` assumes the `claude` binary and
-  its flags throughout, which is the same obstacle OpenCode control has.
 - **The `notify` hook.** Codex supports one, but it is a **single slot** in
   `~/.codex/config.toml` — on the owner's machine it was already occupied by
   Codex Computer Use. Taking it would break whatever is there, so Codex is read
@@ -422,6 +500,10 @@ again.
   subagent rows stored by earlier versions (§ Imported threads and subagents).
 - `internal/codex/limits.go` — plan-limit windows into `rate_limit_latest`
   (§ Plan limits).
+- `internal/codex/models.go` — the model list Codex itself offers
+  (`models_cache.json`) and the configured default, for the dialog.
+- `internal/agents/argv.go` — the Codex argv (`codexLaunch`); the link is
+  `internal/sessionlink` (§ Linking the rollout to the session).
 - `internal/codex/names.go` — thread names and first messages from
   `$CODEX_HOME/state_<N>.sqlite` (§ Names).
 - `internal/codex/live_check_test.go` — a smoke check against whatever Codex is

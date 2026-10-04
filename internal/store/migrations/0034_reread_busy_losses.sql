@@ -1,0 +1,24 @@
+-- Read again every transcript written since the fork fix, to recover the
+-- assistant turns SQLITE_BUSY dropped.
+--
+-- Migration 0029 made the recorder ask, before each assistant turn's insert,
+-- whether another session already paid for it (store.TurnPaidElsewhere). That
+-- turned the recorder's transaction into one that reads and then writes, and
+-- a plain BEGIN cannot wait to upgrade: SQLite fails it at once with
+-- SQLITE_BUSY (or SQLITE_BUSY_SNAPSHOT, 517) whenever another writer holds the
+-- lock or has committed since. The tailer logged the failure and moved its
+-- offset past the line anyway, so the turn was never read again.
+--
+-- Transactions now begin IMMEDIATE (store.Open) and the tailer stops at a
+-- line whose write failed for a busy database instead of skipping it. That
+-- stops new losses; this recovers the old ones. Zeroing the offset makes the
+-- tailer read the file from the start once, and keyed dedupe on
+-- (session_id, key) absorbs everything already stored, so the only rows
+-- written are the ones that were missing.
+--
+-- Measured on a copy of the owner's database (2026-10-04): 55 transcripts,
+-- 414 MB, ~20 s of re-reading, 259 assistant turns and $18.52 recovered,
+-- dated 2026-10-03 07:20 to 2026-10-04 11:39 UTC. The cutoff is the day 0029
+-- was merged (2026-10-03 00:00 UTC, unix ms); a transcript last read before
+-- then cannot have lost anything to it.
+UPDATE transcript_offsets SET offset = 0 WHERE updated_at >= 1790985600000;
