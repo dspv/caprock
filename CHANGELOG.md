@@ -46,6 +46,11 @@ Phase 3 (Delight) has no plan by design.
 
 ### Changed
 
+- **Lifetime reads like the site.** The money leads, large, with what it
+  came to per active day and per session beside it, then the cache and the
+  counts. Top projects come first, as a donut beside the table; tool usage
+  and the model mix are donuts with the rest grouped as "other", or tables,
+  by a Charts | Numbers switch.
 - **The share dialog shows a card at once.** It draws the last figures for
   the period while the current ones load, and with nothing kept it shows the
   card's outline with each range ticking off as it answers, instead of an
