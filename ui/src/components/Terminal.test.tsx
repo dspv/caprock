@@ -16,6 +16,10 @@ const pasted = vi.hoisted(() => [] as string[])
 const opened = vi.hoisted(() => ({ fn: undefined as (() => void) | undefined }))
 const resizeHandler = vi.hoisted(() => ({ fn: undefined as ((s: { cols: number; rows: number }) => void) | undefined }))
 const keyHandler = vi.hoisted((): { fn: KeyHandler | null } => ({ fn: null }))
+// What the terminal did on mount, in order: "focus", "addon:webgl", and the
+// socket's creation — so a test can say the keyboard and the socket come
+// before the slow GPU set-up.
+const steps = vi.hoisted(() => [] as string[])
 
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
@@ -29,10 +33,12 @@ vi.mock('@xterm/xterm', () => ({
     // would die in a browser and pass every test here.
     loadAddon(a: unknown) {
       if ((a as { __webgl?: boolean })?.__webgl) {
+        steps.push('addon:webgl')
         throw new Error('WebGL is not supported in this environment')
       }
     }
     open() {}
+    focus() { steps.push('focus') }
     write(d: string) { written.push(d) }
     onData() { return { dispose() {} } }
     // The size the daemon is told about. A real terminal reports these after
@@ -91,7 +97,7 @@ vi.stubGlobal('ResizeObserver', class {
 Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get() { return hostSize.width } })
 Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get() { return hostSize.height } })
 
-import { TERMINAL_THEME, TerminalView } from './Terminal'
+import { START_TIMEOUT_MS, TERMINAL_THEME, TerminalView, WEBGL_QUIET_MS } from './Terminal'
 
 describe('TerminalView', () => {
   beforeEach(() => {
@@ -149,6 +155,78 @@ describe('TerminalView', () => {
     root.removeAttribute('data-tone')
     root.style.removeProperty('--color-bg')
     root.style.removeProperty('--color-fg')
+  })
+
+  it('says it is starting until the first output, and offers a retry when none comes', async () => {
+    // Owner report, 2026-10-04: after "continue in terminal" the panel stayed
+    // black for over half a minute while `claude --resume` started, with
+    // nothing to tell a slow start from a broken one.
+    vi.useFakeTimers()
+    const sockets: { onmessage?: (e: { data: unknown }) => void; onclose?: () => void }[] = []
+    vi.stubGlobal('WebSocket', class {
+      static OPEN = 1
+      readyState = 1
+      binaryType = ''
+      onmessage?: (e: { data: unknown }) => void
+      onclose?: () => void
+      constructor() { sockets.push(this) }
+      send() {}
+      close() {}
+    })
+    try {
+      render(<TerminalView sessionId="slow" owned />)
+      expect(screen.getByRole('status').textContent).toContain('Starting the session')
+      const { act } = await import('@testing-library/react')
+      act(() => { sockets[0]!.onmessage?.({ data: new Uint8Array([104, 105]).buffer }) })
+      expect(screen.queryByRole('status')).toBeNull()
+
+      // A second terminal that never prints: after the timeout, a retry that reconnects.
+      render(<TerminalView sessionId="mute" owned />)
+      act(() => { vi.advanceTimersByTime(START_TIMEOUT_MS + 1000) })
+      expect(screen.getByRole('status').textContent).toContain('Nothing from the session')
+      const before = sockets.length
+      act(() => { screen.getByRole('button', { name: 'Retry' }).click() })
+      expect(sockets.length).toBe(before + 1)
+      expect(screen.getByRole('status').textContent).toContain('Starting the session')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('opens the socket and takes the keyboard before the slow GPU set-up', async () => {
+    // Owner report, 2026-10-04: opening a session's terminal froze the tab
+    // and typing lagged. The WebGL renderer was set up synchronously before
+    // the socket was even created — 1.5 s of context creation in his Chrome,
+    // 0.4 s of shader linking in a profile — so input and output both waited
+    // behind it. Now the socket and focus come first, and WebGL only after
+    // the first output and a quiet moment with no typing.
+    vi.useFakeTimers()
+    steps.length = 0
+    const sockets: { onmessage?: (e: { data: unknown }) => void }[] = []
+    vi.stubGlobal('WebSocket', class {
+      static OPEN = 1
+      readyState = 1
+      binaryType = ''
+      onmessage?: (e: { data: unknown }) => void
+      constructor() { steps.push('socket'); sockets.push(this) }
+      send() {}
+      close() {}
+    })
+    try {
+      render(<TerminalView sessionId="quick" owned />)
+      expect(steps).toEqual(['focus', 'socket'])
+      const { act } = await import('@testing-library/react')
+      // No output yet: however long it waits, no WebGL.
+      act(() => { vi.advanceTimersByTime(WEBGL_QUIET_MS * 3) })
+      expect(steps).not.toContain('addon:webgl')
+      act(() => { sockets[0]!.onmessage?.({ data: new Uint8Array([104]).buffer }) })
+      act(() => { vi.advanceTimersByTime(WEBGL_QUIET_MS * 2) })
+      // Tried once, after the output; jsdom has no WebGL, and the terminal
+      // carries on without it.
+      expect(steps.filter((s) => s === 'addon:webgl')).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('asks for every subset the face ships, not just Latin', () => {

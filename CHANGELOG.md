@@ -9,19 +9,40 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
-## [0.69.0] - 2026-10-04
-
 ### Added
 
-- **Gemini 3.8 Flash and Gemini 3.1 Flash-Lite are priced.** A Gemini CLI
-  session on either model had its tokens counted but no cost, and the Cost
-  screen named the model as unpriced. Both now carry Google's list prices,
-  read 3 October 2026 (pricing table `2026-10-03.1`). Gemini 3.8 Flash is on
-  introductory pricing that doubles on 1 January 2027; the table will be
-  refreshed before then.
+- **Open the repository from a session or a project.** The session header
+  links the repository — the branch's page where the host has one — and the
+  pull requests the session opened, newest first, with "merged" only where a
+  merge was recorded. A project row links its repository and its last pull
+  request. The address is read from the local git remote (GitHub, GitLab,
+  Bitbucket, Codeberg and other hosts; ssh or https); nothing is asked of the
+  host.
+- **Screens show their last figures while the new ones load.** Now, Lifetime,
+  History and a session's header open with what this browser last saw,
+  marked "updated N min ago · refreshing", instead of dashes. Nothing about
+  the present — health, burn, controls — is drawn from the kept copy.
+
+### Changed
+
+- **A project's terminal is a button you can see.** Each Projects row has a
+  full-size button that says what it does: **Terminal** opens the session
+  Caprock is running there, **Pick up in a terminal** branches one started
+  elsewhere, **New session here** starts one. The full menu stays behind ⋯.
+  It replaces a small `>_` at the row's edge.
 
 ### Fixed
 
+- **Opening a session's terminal no longer freezes the page.** The terminal
+  set up its GPU renderer before it connected, and connected only after the
+  session's figures had loaded; the figures were then reloaded on every event.
+  It now connects and takes the keyboard first, switches to the GPU renderer
+  once you pause, and reloads the figures every 30 seconds while you type.
+  Keys typed the moment it opens reach the session.
+- **A terminal that is starting says so.** A resumed session can take half a
+  minute to print anything; the panel showed black until then. It now counts
+  the seconds, and after 30 seconds with nothing, or if the session closes
+  first, says so and offers Retry.
 - **A session's Answers tab shows what Claude wrote again.** Claude Code now
   writes a thinking line ahead of every reply, and Caprock kept only the first
   line of each reply — so the prose after it was never stored, and a session of
@@ -40,6 +61,20 @@ Phase 3 (Delight) has no plan by design.
 - **Now waits less for its figures.** The status the screen polls counted every
   event and searched a fortnight of prose on each call; both are reused for a
   minute now.
+
+## [0.69.0] - 2026-10-04
+
+### Added
+
+- **Gemini 3.8 Flash and Gemini 3.1 Flash-Lite are priced.** A Gemini CLI
+  session on either model had its tokens counted but no cost, and the Cost
+  screen named the model as unpriced. Both now carry Google's list prices,
+  read 3 October 2026 (pricing table `2026-10-03.1`). Gemini 3.8 Flash is on
+  introductory pricing that doubles on 1 January 2027; the table will be
+  refreshed before then.
+
+### Fixed
+
 - **Documents dropped into a session's terminal arrive.** Dragging a Markdown,
   CSV, JSON, YAML, log or source file from Finder printed "415 Unsupported
   Media Type", because the browser gives those files no type and only images,

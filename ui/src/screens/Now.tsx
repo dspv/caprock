@@ -6,7 +6,7 @@ import { fmtAgo, fmtPct, fmtSpan, fmtTokens, fmtUSD, fmtWhen, shortId } from '@/
 import { foldChains } from '@/lib/chains'
 import { ContinueSession } from '@/components/ContinueSession'
 import { InterruptedBanner } from '@/components/Interrupted'
-import { Badge, Empty, Panel, Skeleton, Stat } from '@/components/ui'
+import { Badge, Empty, Panel, Skeleton, StaleNote, Stat } from '@/components/ui'
 import { ProjectsPanel, AGENTS, agentName, type AgentFilter } from '@/components/Projects'
 import { ActivityFeed } from '@/components/ActivityFeed'
 import { LifetimeStrip } from '@/components/Lifetime'
@@ -79,11 +79,13 @@ export function NowScreen() {
     { intervalMs: 5000 },
   )
   const status = useApi(() => api.status(), [], { live: false, intervalMs: 30000 })
-  const summary = useApi(() => api.summary('today', agent), [agent], { intervalMs: 5000 })
+  // The last figures this browser kept show at once, marked, while today's are
+  // read (lib/swr.ts): on a busy daemon the first answer can take seconds.
+  const summary = useApi(() => api.summary('today', agent), [agent], { intervalMs: 5000, cache: `summary:today:${agent}` })
   // All-time totals, for the one line that mentions the paid version. Slow
   // enough to be worth a long interval and cheap enough to share with the
   // strip below, which asks for the same thing.
-  const lifetime = useApi(() => api.history('all'), [], { intervalMs: 60000 })
+  const lifetime = useApi(() => api.history('all'), [], { intervalMs: 60000, cache: 'history:all' })
   const { alerts } = useLive()
   const now = useNow(1000)
   const everySession = sessions.data?.items ?? []
@@ -248,7 +250,9 @@ export function NowScreen() {
           ) : null
         }
         right={
-          summary.data ? (
+          summary.stale ? (
+            <StaleNote at={summary.cachedAt} now={now} />
+          ) : summary.data ? (
             <span className="num">pricing {summary.data.pricing_version} · at API list price</span>
           ) : null
         }
@@ -266,16 +270,18 @@ export function NowScreen() {
             * dollars an hour. Say it is still measuring instead. */}
           <Stat
             label="Burn now"
-            value={measured && !summary.data!.burn.filling ? `${fmtUSD(summary.data!.burn.usd_per_hour)}/h` : '—'}
+            value={measured && !summary.stale && !summary.data!.burn.filling ? `${fmtUSD(summary.data!.burn.usd_per_hour)}/h` : '—'}
             sub={
               !measured
                 ? undefined
+                : summary.stale
+                  ? 'refreshing' // a rate is about now; a kept copy of one is not
                 : summary.data!.burn.filling
                   ? `measuring — needs ${summary.data!.burn.window_min} minutes of running`
                   : `${fmtTokens(Math.round(summary.data!.burn.tokens_per_min))} tok/min · last ${summary.data!.burn.window_min}m`
             }
           />
-          <Stat label="Sessions" value={measured ? summary.data!.sessions : '—'} sub={measured ? `${summary.data!.active_sessions} active` : undefined} size="compact" />
+          <Stat label="Sessions" value={measured ? summary.data!.sessions : '—'} sub={measured && !summary.stale ? `${summary.data!.active_sessions} active` : undefined} size="compact" />
           <Stat label="Turns" value={measured ? summary.data!.turns : '—'} sub={measured ? `${summary.data!.tool_calls} tool calls` : undefined} size="compact" />
           {/* Cache hit is ~99% forever on Claude Code, so it is reassurance
             * rather than news: it keeps its place but not a colour, and only

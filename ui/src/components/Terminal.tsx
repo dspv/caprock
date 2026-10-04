@@ -28,6 +28,57 @@ export const TERMINAL_THEME = {
   cursorAccent: '#1b1b1a',
   selectionBackground: '#3a3835',
 } as const
+/** How long the terminal must have been quiet (no typing) before WebGL is set up. */
+export const WEBGL_QUIET_MS = 1500
+
+/** How long a terminal may stay silent before it is reported as not starting. */
+export const START_TIMEOUT_MS = 30_000
+
+/**
+ * What the terminal area says before the session's first output: starting,
+ * with the seconds counting, or — after START_TIMEOUT_MS or a closed socket —
+ * that nothing came, with a retry. Drawn over the canvas, in the terminal's
+ * own dark palette, and gone at the first byte.
+ */
+function TerminalStart({ phase, since, onRetry }: { phase: 'waiting' | 'silent' | 'closed'; since: number; onRetry: () => void }) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    if (phase !== 'waiting') return
+    const id = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [phase])
+  const secs = Math.max(0, Math.floor((now - since) / 1000))
+  return (
+    <div
+      role="status"
+      className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-4 text-center pointer-events-none"
+      style={{ color: TERMINAL_THEME.foreground }}
+    >
+      {phase === 'waiting' ? (
+        <p className="mono text-[13px]">
+          Starting the session… <span className="opacity-60">{secs} s</span>
+        </p>
+      ) : (
+        <>
+          <p className="mono text-[13px]">
+            {phase === 'silent'
+              ? `Nothing from the session in ${START_TIMEOUT_MS / 1000} s.`
+              : 'The session closed before it printed anything.'}
+          </p>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="pointer-events-auto rounded-sm border px-3 py-1.5 text-[12px]"
+            style={{ borderColor: TERMINAL_THEME.cursor, color: TERMINAL_THEME.cursor }}
+          >
+            Retry
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
 /** Live terminal for an owned session over /v1/agents/:id/term (Phase 1). */
 export function TerminalView({
   sessionId,
@@ -52,8 +103,16 @@ export function TerminalView({
 }) {
   const [spawning, setSpawning] = useState(false)
   const host = useRef<HTMLDivElement>(null)
+  // Until the session's first output, the terminal is a black panel that
+  // could be broken or could be a `claude --resume` still starting — the
+  // owner waited on one for over half a minute (2026-10-04) with nothing to
+  // say which. `start` says which: waiting (with the seconds), or failed.
+  const [start, setStart] = useState<{ phase: 'waiting' | 'ready' | 'silent' | 'closed'; since: number }>({ phase: 'waiting', since: Date.now() })
+  const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     if (!host.current || !owned) return
+    setStart({ phase: 'waiting', since: Date.now() })
+    let gotOutput = false
     const css = getComputedStyle(document.documentElement)
     const v = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback
     const term = new Xterm({
@@ -75,31 +134,9 @@ export function TerminalView({
     term.loadAddon(fit)
     term.open(host.current)
 
-    // WebGL rendering, where the machine has it.
-    //
-    // The canvas renderer repaints the whole grid; the WebGL one uploads a
-    // texture atlas once and draws from it, which is the difference between
-    // a build log scrolling smoothly and the tab stuttering. Loaded after
-    // `open` because it needs the canvas to exist.
-    //
-    // Every failure path falls back rather than throwing: a machine with no
-    // WebGL, a driver that refuses, or a context lost when the GPU is reset
-    // must all leave a working terminal behind. A slower terminal is a cost;
-    // a blank one is a broken product.
-    try {
-      const webgl = new WebglAddon()
-      webgl.onContextLoss(() => {
-        // The GPU dropped the context — a sleep/wake or a driver reset.
-        // Disposing the addon returns xterm to its canvas renderer rather
-        // than leaving a terminal that has stopped painting.
-        webgl.dispose()
-      })
-      term.loadAddon(webgl)
-    } catch {
-      // No WebGL here. The canvas renderer is already what xterm falls back
-      // to, so there is nothing to do and nothing worth telling the user.
-    }
     try { fit.fit() } catch { /* not yet laid out */ }
+    // Input first: the keyboard goes to the terminal the moment it exists.
+    term.focus()
     // Ask for every subset the face ships, by name.
     //
     // Subsets load lazily, triggered by a matching character appearing in the
@@ -124,8 +161,69 @@ export function TerminalView({
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
     const ws = new WebSocket(`${proto}://${location.host}/v1/agents/${encodeURIComponent(sessionId)}/term`)
     ws.binaryType = 'arraybuffer'
-    ws.onmessage = (e) => { term.write(typeof e.data === 'string' ? e.data : new Uint8Array(e.data)) }
-    ws.onclose = () => term.write('\r\n\x1b[2m[session ended]\x1b[0m\r\n')
+    ws.onmessage = (e) => {
+      const chunk = typeof e.data === 'string' ? e.data : new Uint8Array(e.data)
+      term.write(chunk)
+      if (!gotOutput && chunk.length > 0) {
+        gotOutput = true
+        setStart((st) => ({ ...st, phase: 'ready' }))
+        // One size after the first output: a TUI that drew before the
+        // socket's first resize arrived redraws at the window's real size.
+        try { fit.fit() } catch { /* not laid out yet */ }
+        sendSize(term.cols, term.rows)
+      }
+    }
+    ws.onclose = () => {
+      term.write('\r\n\x1b[2m[session ended]\x1b[0m\r\n')
+      if (!gotOutput) setStart((st) => ({ ...st, phase: 'closed' }))
+    }
+    // Nothing in 30 s is not a slow start any more: say so, and offer a retry.
+    const silentTimer = window.setTimeout(() => {
+      if (!gotOutput) setStart((st) => (st.phase === 'waiting' ? { ...st, phase: 'silent' } : st))
+    }, START_TIMEOUT_MS)
+
+    // WebGL rendering, where the machine has it — but LATE.
+    //
+    // The canvas renderer repaints the whole grid; the WebGL one uploads a
+    // texture atlas once and draws from it, which is the difference between a
+    // build log scrolling smoothly and the tab stuttering. Setting it up is
+    // synchronous GPU work on the main thread: creating the context took
+    // 1.5 s in the owner's Chrome (2026-10-04) and compiling its shaders
+    // another 0.4 s, and it used to run before the socket even opened — so
+    // the page froze on open and the first keystrokes waited behind it. Now
+    // the socket, the first output and the keyboard come first; WebGL is
+    // swapped in once the terminal has shown something and the user has not
+    // typed for a moment, when a short pause costs nothing.
+    //
+    // Every failure path falls back rather than throwing: a machine with no
+    // WebGL, a driver that refuses, or a context lost when the GPU is reset
+    // must all leave a working terminal behind. A slower terminal is a cost;
+    // a blank one is a broken product.
+    let disposed = false
+    let lastInput = 0
+    let webglTimer = 0
+    const inputSub = term.onData(() => { lastInput = Date.now() })
+    const loadWebgl = () => {
+      if (disposed) return
+      if (!gotOutput || Date.now() - lastInput < WEBGL_QUIET_MS) {
+        webglTimer = window.setTimeout(loadWebgl, WEBGL_QUIET_MS)
+        return
+      }
+      try {
+        const webgl = new WebglAddon()
+        webgl.onContextLoss(() => {
+          // The GPU dropped the context — a sleep/wake or a driver reset.
+          // Disposing the addon returns xterm to its canvas renderer rather
+          // than leaving a terminal that has stopped painting.
+          webgl.dispose()
+        })
+        term.loadAddon(webgl)
+      } catch {
+        // No WebGL here. The default renderer is already drawing, so there
+        // is nothing to do and nothing worth telling the user.
+      }
+    }
+    webglTimer = window.setTimeout(loadWebgl, WEBGL_QUIET_MS)
     // Input goes as binary, control as text.
     //
     // Everything used to go as text and the daemon treated all of it as
@@ -384,9 +482,13 @@ export function TerminalView({
       el.removeEventListener('drop', onDrop)
       el.removeEventListener('dragover', onDragOver)
       if (raf) cancelAnimationFrame(raf)
+      disposed = true
+      window.clearTimeout(silentTimer)
+      window.clearTimeout(webglTimer)
+      inputSub.dispose()
       ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); ws.close(); term.dispose()
     }
-  }, [sessionId, owned])
+  }, [sessionId, owned, attempt])
   if (!owned && detached) {
     // Caprock started this session, and then Caprock restarted. The process
     // is still there, but the terminal was held by the run that stopped, so
@@ -460,8 +562,11 @@ export function TerminalView({
       {/* The canvas's own ground, in both themes: see TERMINAL_THEME. The
         * padding is the same colour so the dark surface reads as one block
         * rather than a canvas floating on paper. */}
-      <div className="bg-term-bg border border-term-border rounded-sm p-1.5">
+      <div className="relative bg-term-bg border border-term-border rounded-sm p-1.5">
         <div ref={host} data-term-host className="h-[70vh]" />
+        {start.phase !== 'ready' && (
+          <TerminalStart phase={start.phase} since={start.since} onRetry={() => setAttempt((n) => n + 1)} />
+        )}
       </div>
       {/* Said once, under the terminal, because there is no way to discover it.
         *

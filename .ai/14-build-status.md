@@ -71,6 +71,34 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-04 (evening) — The terminal takes the keyboard first; repo links; kept figures
+
+The owner reported that opening a session's terminal froze the browser and
+typing lagged. Profiled in headless Chrome against a `.backup` copy, with a
+fake `claude` printing 4000 coloured lines and a 12 fps spinner:
+
+- **Before.** The WebGL addon was loaded synchronously before the socket was
+  created (context creation 1455 ms in the owner's Chrome; shader linking
+  420 ms of self time in one headless run). The terminal mounted only after
+  the session detail (about 500 KB) arrived, and that detail was refetched on
+  every live event. Nothing took focus, so keys typed on open went nowhere
+  until a click. First echo 1.2–1.6 s after navigation, with a click; a key's
+  dispatch blocked for up to 200–290 ms.
+- **After.** Focus and the socket first, WebGL after the first output and
+  1.5 s with no typing, the terminal mounted before the detail, and the detail
+  polled every 30 s on the Terminal tab. First echo 0.4–0.8 s with no click
+  (one cold-cache run 2.9 s); dispatch blocked for 13–94 ms. Steady echo once
+  WebGL is in is unchanged (20–70 ms).
+
+Also in this run, all in [04-ui.md](04-ui.md): the Projects row's terminal is a
+full-size button that says what it does (the faint `>_` from PR #137 was never
+found); the session header and project rows link the repository and the pull
+requests a session opened (migration 0031, `internal/gitremote`); slow
+figures show their last value, marked, while they refresh; and a starting
+terminal says so, with Retry after 30 s. Owned sessions still die when the
+daemon restarts (they exit with 143); that is a separate issue, not addressed
+here.
+
 ### 2026-10-04 (later) — Answers kept, read from the session, and a dark terminal
 
 The owner opened a session full of long Russian replies and its Answers tab

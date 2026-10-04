@@ -8,6 +8,7 @@ const detail = vi.hoisted(() => ({ value: {} as SessionDetail }))
 const diffResult = vi.hoisted(() => ({ value: {} as DiffResult }))
 const earlier = vi.hoisted(() => ({ value: [] as Event[] }))
 const earlierCalls = vi.hoisted(() => ({ value: [] as { before: number; limit: number }[] }))
+const termsMade = vi.hoisted(() => ({ n: 0 }))
 
 // SessionScreen mounts the Terminal tab, and xterm asks jsdom for a canvas
 // context it does not have. The failure is noise rather than a defect — the
@@ -16,6 +17,7 @@ const earlierCalls = vi.hoisted(() => ({ value: [] as { before: number; limit: n
 // ones they can.
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
+    constructor() { termsMade.n++ }
     open() {}
     write() {}
     dispose() {}
@@ -305,5 +307,78 @@ d('SessionCard context tax', () => {
     render(<SessionCard s={s} now={Date.now()} />)
     expect(screen.getByText('unknown model')).toBeInTheDocument()
     expect(screen.queryByText(/\/call/)).not.toBeInTheDocument()
+  })
+})
+
+d('session page from the kept copy', () => {
+  it('shows the last figures and the terminal at once, then the fresh ones', async () => {
+    localStorage.clear()
+    const kept = {
+      session_id: 'k', cwd: '/r', project: 'kept-project', model: 'claude-opus-5', status: 'active',
+      started_at: 0, last_event_at: 1, git_branch: 'main', has_hooks: true, has_transcript: true, owned: true,
+      files: [], events: [],
+      stats: { session_id: 'k', turns: 3, tool_calls: 0, files_touched: 0, cost_usd: 1.25, tokens_in: 0, tokens_out: 0, cache_read: 0, cache_write: 0 },
+      savings: { hit_rate: 0 },
+      activity: { health: 'looping', phrase: 'looping on Bash', at: 1 },
+    }
+    localStorage.setItem('caprock-swr-v1:session:k', JSON.stringify({ data: kept, at: Date.now() - 3 * 60000 }))
+    let release: (v: SessionDetail) => void = () => {}
+    const pending = new Promise<SessionDetail>((r) => { release = r })
+    const { api } = await import('@/lib/api')
+    const spy = vi.spyOn(api, 'session').mockImplementation(() => pending)
+    render(<SessionScreen id="k" tab="terminal" />)
+    // Before any answer: the kept figures, marked, and the terminal mounted.
+    expect(screen.getByText('kept-project')).toBeInTheDocument()
+    expect(screen.getByText('$1.25')).toBeInTheDocument()
+    expect(screen.getByText(/updated 3 min ago · refreshing/)).toBeInTheDocument()
+    expect(document.querySelector('[data-term-host]')).not.toBeNull()
+    // Nothing about now comes from the copy.
+    expect(screen.queryByText('looping on Bash')).toBeNull()
+    release({ ...kept, stats: { ...kept.stats, cost_usd: 2.5 }, activity: { health: 'working', phrase: 'editing a file', at: Date.now() } } as unknown as SessionDetail)
+    await waitFor(() => expect(screen.getByText('$2.50')).toBeInTheDocument())
+    expect(screen.queryByText(/refreshing/)).toBeNull()
+    expect(screen.getByText('editing a file')).toBeInTheDocument()
+    spy.mockRestore()
+  })
+})
+
+d('the terminal before the figures', () => {
+  it('connects at once on a first visit, and is not rebuilt when the detail lands', async () => {
+    // Profiled 2026-10-04: the socket opened only after the session detail
+    // arrived, and on a busy daemon that took 3.3 s — the keyboard was dead
+    // for as long as the stats took.
+    localStorage.clear()
+    termsMade.n = 0
+    const sockets: string[] = []
+    vi.stubGlobal('WebSocket', class {
+      static OPEN = 1
+      readyState = 0
+      binaryType = ''
+      constructor(url: string) { sockets.push(url) }
+      send() {}
+      close() {}
+    })
+    let release: (v: SessionDetail) => void = () => {}
+    const pending = new Promise<SessionDetail>((r) => { release = r })
+    const { api } = await import('@/lib/api')
+    const spy = vi.spyOn(api, 'session').mockImplementation(() => pending)
+    try {
+      render(<SessionScreen id="first" tab="terminal" />)
+      expect(sockets).toHaveLength(1)
+      expect(sockets[0]).toContain('/v1/agents/first/term')
+      release({
+        session_id: 'first', cwd: '/r', project: 'fresh-project', model: 'claude-opus-5', status: 'active',
+        started_at: 0, last_event_at: 1, has_hooks: true, has_transcript: true, owned: true, files: [], events: [],
+        stats: { session_id: 'first', turns: 0, tool_calls: 0, files_touched: 0, cost_usd: 0, tokens_in: 0, tokens_out: 0, cache_read: 0, cache_write: 0 },
+        savings: { hit_rate: 0 }, activity: { health: 'working', phrase: '', at: 1 }, prs: [],
+      } as unknown as SessionDetail)
+      await waitFor(() => expect(screen.getByText('fresh-project')).toBeInTheDocument())
+      // The same terminal and the same socket: nothing was torn down.
+      expect(termsMade.n).toBe(1)
+      expect(sockets).toHaveLength(1)
+    } finally {
+      spy.mockRestore()
+      vi.unstubAllGlobals()
+    }
   })
 })

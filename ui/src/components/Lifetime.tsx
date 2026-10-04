@@ -14,6 +14,7 @@
  */
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
+import { StaleNote } from '@/components/ui'
 import { fmtUSD } from '@/lib/format'
 import { costBasis, costBasisLong } from '@/components/CostBasis'
 import type { Settings } from '@/lib/api'
@@ -21,7 +22,7 @@ import type { Settings } from '@/lib/api'
 export function LifetimeStrip({ plan }: { plan?: Settings }) {
   // Lifetime totals move slowly; a minute is far more often than they change,
   // and this must never compete with the live panels below it for the socket.
-  const h = useApi(() => api.history('all'), [], { intervalMs: 60000 })
+  const h = useApi(() => api.history('all'), [], { intervalMs: 60000, cache: 'history:all' })
   const t = h.data?.totals
   if (!t || t.sessions === 0) return null
 
@@ -52,6 +53,7 @@ export function LifetimeStrip({ plan }: { plan?: Settings }) {
         * two breakdowns people actually ask for. The Lifetime screen keeps the
         * full tables — this is the shape of them, where the total already is. */}
       <span className="ml-auto inline-flex items-baseline gap-4">
+        {h.stale && <StaleNote at={h.cachedAt} />}
         <CapHint />
       </span>
     </div>
@@ -81,8 +83,8 @@ function Figure({ value, label }: { value: string; label: string }) {
  * hint on exactly the days that follow it.
  */
 function CapHint() {
-  const daily = useApi(() => api.daily(30), [], { intervalMs: 300000 })
-  const today = useApi(() => api.summary('today'), [], { intervalMs: 30000 })
+  const daily = useApi(() => api.daily(30), [], { intervalMs: 300000, cache: 'daily:30' })
+  const today = useApi(() => api.summary('today'), [], { intervalMs: 30000, cache: 'summary:today:all' })
 
   const rows = daily.data ?? []
   if (rows.length === 0) return null

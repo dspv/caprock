@@ -18,7 +18,7 @@ type Range = 'today' | '7d' | '30d' | 'all'
 export function HistoryScreen() {
   const [range, setRange] = useState<Range>('all')
   const [activeDay, setActiveDay] = useState<string | null>(null)
-  const h = useApi(() => api.history(range), [range], { intervalMs: 15000 })
+  const h = useApi(() => api.history(range), [range], { intervalMs: 15000, cache: `history:${range}` })
   const [plan] = usePlan()
   const d = h.data
   // "Measured, not estimated" sat above an all-zero board on a fresh install.

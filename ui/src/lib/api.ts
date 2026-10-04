@@ -132,6 +132,10 @@ export interface Event {
 export interface SessionDetail extends SessionSummary {
   files: string[]
   events: Event[]
+  /** Absent when the session's directory is not in a git repository. */
+  repo?: RepoLink
+  /** Latest first. An older daemon sends none. */
+  prs?: SessionPR[]
 }
 
 /** Whether asking Gemini is possible here, and why not when it is not.
@@ -245,6 +249,35 @@ export interface ProjectShare {
   /** The directory the row is keyed on (repository root, else the session's own
    *  folder). `api.sessionsInDir` lists the row's sessions from it. */
   dir?: string
+  /** The repository's web address, from its git remote. Absent without one. */
+  repo_url?: string
+  /** The latest pull request any session in this row opened or merged. */
+  last_pr?: SessionPR
+}
+
+/** Where a session's directory lives on the web, read from its git remote. */
+export interface RepoLink {
+  /** The repository's top level on this machine. */
+  root: string
+  /** https address; absent when there is no remote a browser can open. */
+  url?: string
+  branch?: string
+  default_branch?: string
+  /** The branch's page, when it is not the default and the host is known. */
+  branch_url?: string
+}
+
+/** A pull request a session opened or merged, from its own `gh pr` output. */
+export interface SessionPR {
+  session_id: string
+  url: string
+  number: number
+  title?: string
+  opened_at?: number
+  /** Set only when a merge was recorded. Absent is "not known merged". */
+  merged_at?: number
+  closed_at?: number
+  last_at: number
 }
 /** The KIND of work one turn did — what the money was spent on, beside the cuts
  *  by model and by project. A turn belongs to exactly one kind, so the rows sum
