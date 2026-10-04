@@ -58,3 +58,42 @@ func TestWeekStartIsALocalDate(t *testing.T) {
 		t.Fatalf("bad start answered %d, want 400", code)
 	}
 }
+
+func TestWeekPeriodsAreWholeLocalDaysEndingToday(t *testing.T) {
+	e := newEnv(t)
+	cost := 2.0
+	old := event.Event{SessionID: "w2", Source: event.SourceTranscript, Kind: event.KindTurnAssistant,
+		Ts: e.now.AddDate(0, 0, -40), Key: "old", Model: "claude-opus-5", CostUSD: &cost, Tokens: &event.TokenDelta{In: 1, Out: 1}}
+	now := event.Event{SessionID: "w2", Source: event.SourceTranscript, Kind: event.KindTurnAssistant,
+		Ts: e.now, Key: "now", Model: "claude-opus-5", CostUSD: &cost, Tokens: &event.TokenDelta{In: 1, Out: 1}}
+	for _, ev := range []*event.Event{&old, &now} {
+		if _, err := store.InsertEvent(context.Background(), e.st.DB(), ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cases := []struct {
+		period, start string
+		days          int
+		cost          float64
+	}{
+		{"today", "2026-08-18", 1, 2},
+		{"7d", "2026-08-12", 7, 2},
+		{"30d", "2026-07-20", 30, 2},
+		{"all", e.now.AddDate(0, 0, -40).Format("2006-01-02"), 41, 4},
+	}
+	for _, c := range cases {
+		var w WeekResponse
+		if code := e.get(t, "/v1/week?period="+c.period, &w); code != 200 {
+			t.Fatalf("%s: status %d", c.period, code)
+		}
+		if w.Period != c.period || w.Start != c.start || w.End != "2026-08-18" || len(w.Days) != c.days || w.CostUSD != c.cost {
+			t.Fatalf("%s: period=%q %s..%s days=%d cost=%v", c.period, w.Period, w.Start, w.End, len(w.Days), w.CostUSD)
+		}
+	}
+	if code := e.get(t, "/v1/week?period=year", nil); code != 400 {
+		t.Fatalf("unknown period answered %d, want 400", code)
+	}
+	if code := e.get(t, "/v1/week?period=7d&start=2026-08-01", nil); code != 400 {
+		t.Fatalf("period and start together answered %d, want 400", code)
+	}
+}

@@ -20,6 +20,9 @@ import (
 // title: the card is made to be posted.
 type WeekResponse struct {
 	store.Week
+	// Period is the named window asked for (today, 7d, 30d, all), or empty
+	// for a week picked by its first day.
+	Period string `json:"period,omitempty"`
 	// Start and End are the first and last local day, inclusive.
 	Start string `json:"start"`
 	End   string `json:"end"`
@@ -44,21 +47,77 @@ type WeekResponse struct {
 // opened, not polled.
 const weekTTL = 30 * time.Second
 
+// weekLongTTL holds the long windows a little longer: a month or all of
+// history costs seconds to count on a large database, and the share dialog
+// may ask for it again as the reader flips between periods.
+const weekLongTTL = 2 * time.Minute
+
 func (s *Server) handleWeek(w http.ResponseWriter, r *http.Request) {
-	from, err := s.weekStart(r.URL.Query().Get("start"))
+	q := r.URL.Query()
+	period, raw := q.Get("period"), q.Get("start")
+	if period != "" && raw != "" {
+		s.failCode(w, http.StatusBadRequest, errors.New("ask for a period or a start, not both"))
+		return
+	}
+	var (
+		from, to time.Time
+		err      error
+	)
+	if period != "" {
+		from, to, err = s.weekPeriod(r.Context(), period)
+	} else {
+		from, err = s.weekStart(raw)
+		to = time.Date(from.Year(), from.Month(), from.Day()+7, 0, 0, 0, 0, from.Location())
+	}
 	if err != nil {
 		s.failCode(w, http.StatusBadRequest, err)
 		return
 	}
-	key := "week:" + from.Format("2006-01-02")
-	v, err := s.hist.getTTL(r.Context(), key, weekTTL, func() (any, error) {
-		return s.buildWeek(context.WithoutCancel(r.Context()), from)
+	ttl := weekTTL
+	if period == "30d" || period == "all" {
+		ttl = weekLongTTL
+	}
+	key := "week:" + period + ":" + from.Format("2006-01-02") + ":" + to.Format("2006-01-02")
+	v, err := s.hist.getTTL(r.Context(), key, ttl, func() (any, error) {
+		resp, err := s.buildWeek(context.WithoutCancel(r.Context()), from, to)
+		resp.Period = period
+		return resp, err
 	})
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
+}
+
+// weekPeriod is the window a named period covers, in whole local days ending
+// today: the same days the Cost screen's ranges use. "all" starts on the day
+// of the first event recorded.
+func (s *Server) weekPeriod(ctx context.Context, period string) (time.Time, time.Time, error) {
+	now := s.d.Now()
+	loc := now.Location()
+	y, m, d := now.Date()
+	day := func(n int) time.Time { return time.Date(y, m, d+n, 0, 0, 0, 0, loc) }
+	to := day(1)
+	switch period {
+	case "today":
+		return day(0), to, nil
+	case "7d":
+		return day(-6), to, nil
+	case "30d":
+		return day(-29), to, nil
+	case "all":
+		first, err := store.FirstEventTs(ctx, s.d.Store.DB())
+		if err != nil {
+			return time.Time{}, time.Time{}, err
+		}
+		if first <= 0 {
+			return day(0), to, nil
+		}
+		f := time.UnixMilli(first).In(loc)
+		return time.Date(f.Year(), f.Month(), f.Day(), 0, 0, 0, 0, loc), to, nil
+	}
+	return time.Time{}, time.Time{}, errors.New("period must be today, 7d, 30d or all")
 }
 
 // weekStart reads `start` as a local date. Unset means the seven days ending
@@ -77,9 +136,8 @@ func (s *Server) weekStart(raw string) (time.Time, error) {
 	return t, nil
 }
 
-func (s *Server) buildWeek(ctx context.Context, from time.Time) (WeekResponse, error) {
+func (s *Server) buildWeek(ctx context.Context, from, to time.Time) (WeekResponse, error) {
 	loc := from.Location()
-	to := time.Date(from.Year(), from.Month(), from.Day()+7, 0, 0, 0, 0, loc)
 	home, _ := os.UserHomeDir()
 	wk, err := store.WeekStats(ctx, s.d.Store.DB(), store.WeekOptions{
 		From: from, To: to, Loc: loc,

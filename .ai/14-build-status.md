@@ -71,6 +71,23 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-04 — Share: a Story card, and no empty wait
+
+- The share dialog has a **Story** style: the Week card for today, 7 days,
+  30 days or all time (`GET /v1/week?period=`), landscape or portrait.
+- **No empty wait.** The owner reported the preview took very long to appear,
+  and `/v1/stats/summary` was 4.7 s on his live database. Server speed is a
+  separate branch; here the dialog draws the last figures it kept at once,
+  shows the card's outline with per-range progress when it has none, warms
+  the default card on hover, and shares one round of requests between the
+  preview and the save.
+- `WeekStats` runs its two payload readers beside the rest and no longer has
+  SQLite sort the loop replay's payloads: all time went from 18.8 s to about
+  11 s on a copy of the owner's database. Most of what is left is page reads:
+  the same loop query took 1.8 s warm in the sqlite3 shell and 0.46 s with
+  `PRAGMA mmap_size`, which is a store-wide setting and was left to the
+  endpoint-speed work.
+
 ### 2026-10-04 — Now: At a glance, plan-limit gauges, who is working
 
 - **At a glance** (after All time) draws the all-time cost by model, the bill

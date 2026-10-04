@@ -170,3 +170,11 @@ func LiveSubagents(ctx context.Context, q Querier, sessionID string, since int64
 		) WHERE stopped < last`, sessionID, since).Scan(&n)
 	return n, err
 }
+
+// FirstEventTs is when the first event was recorded (unix ms), or 0 with
+// none: where "all time" starts.
+func FirstEventTs(ctx context.Context, q Querier) (int64, error) {
+	var ts int64
+	err := q.QueryRowContext(ctx, `SELECT COALESCE(MIN(ts),0) FROM events WHERE 1=1`+nonInternalEvent).Scan(&ts)
+	return ts, err
+}

@@ -39,6 +39,18 @@ Phase 3 (Delight) has no plan by design.
   never forecast and says how old its reading is. A stale reading is drawn
   grey and says so.
 
+- **Share: a Story card, for any period.** The share dialog gains a second
+  style beside Figures: the Week card — the headline, the money beside it,
+  who did what, the longest loop and the biggest session — for today, this
+  week, this month or all time, at 1200×675 or 1080×1350.
+
+### Changed
+
+- **The share dialog shows a card at once.** It draws the last figures for
+  the period while the current ones load, and with nothing kept it shows the
+  card's outline with each range ticking off as it answers, instead of an
+  empty box. Saving or sending always uses the current figures.
+
 ## [0.69.0] - 2026-10-04
 
 ### Added
