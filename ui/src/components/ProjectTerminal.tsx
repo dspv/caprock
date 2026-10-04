@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api, ApiError, isPairedDevice, type SessionSummary } from '@/lib/api'
 import { navigate } from '@/lib/router'
 import { fmtAgo, shortId } from '@/lib/format'
+import { OpenInTerminal } from './OpenInTerminal'
 
 /**
  * A terminal into a project, from its row on the Projects panel.
@@ -241,8 +242,8 @@ export function ProjectTerminal({ dir, label, sessions = [] }: { dir: string; la
             const live = s.status !== 'ended'
             const verb = mine ? 'open' : live ? 'branch' : 'continue'
             return (
+              <div key={s.session_id} className="flex items-center hover:bg-panel-2">
               <button
-                key={s.session_id}
                 type="button"
                 role="menuitem"
                 disabled={busy}
@@ -258,7 +259,7 @@ export function ProjectTerminal({ dir, label, sessions = [] }: { dir: string; la
                       ? 'Still running in another terminal: opens a branch, the original keeps running'
                       : 'Carry this conversation on, here'
                 }
-                className="w-full grid grid-cols-[4.5rem_1fr_auto] items-baseline gap-2 px-3 py-1.5 hover:bg-panel-2 disabled:opacity-50"
+                className="flex-1 min-w-0 grid grid-cols-[4.5rem_1fr_auto] items-baseline gap-2 pl-3 pr-1 py-1.5 disabled:opacity-50"
               >
                 <span className={`text-[11px] ${mine ? 'text-accent' : 'text-fg-muted'}`}>
                   {live && <span className="inline-block w-1.5 h-1.5 rounded-full bg-ok mr-1.5 align-middle" />}
@@ -267,6 +268,11 @@ export function ProjectTerminal({ dir, label, sessions = [] }: { dir: string; la
                 <span className="truncate text-[12px] text-fg text-left">{describe(s)}</span>
                 <span className="num text-[11px] text-fg-faint">{fmtAgo(s.worked_at || s.last_event_at)}</span>
               </button>
+              {/* The same session in the user's own terminal app. */}
+              <span className="pr-2">
+                <OpenInTerminal sessionID={s.session_id} info={s.open_terminal} compact />
+              </span>
+              </div>
             )
           })}
           {!paired && (

@@ -549,6 +549,8 @@ POST   /v1/agents/{id}/input         {data}            → 204   (owned PTYs onl
 POST   /v1/agents/{id}/signal        {action: pause|resume|kill} → 204 (owned PTYs only)
 WS     /v1/agents/{id}/term          bidirectional stream (xterm.js): binary = keystrokes, text = control; snapshot on connect, closes on exit
 POST   /v1/paste                     {name, type, data:base64} → {path}; writes a pasted or dropped file so Claude Code can read it
+GET    /v1/terminals                 → {terminals: [{id, name}], preferred}; terminal apps installed here, most preferred first
+POST   /v1/sessions/{id}/open-terminal {terminal?, mode?: resume|move|fork} → {terminal: {id, name}, mode, command}
 GET    /v1/history?range=…           lifetime totals + tool distribution + model mix + daily
 ```
 
@@ -631,6 +633,60 @@ OpenCode: `command` is `cd <cwd> && codex resume <id>` / `opencode --session
 session is not ended (two processes on one thread), when its folder is gone,
 when Caprock started it and nothing was ever sent (nothing to continue), or
 when the binary is not found.
+
+**`open_terminal`** — `{modes, reason?}`, filled wherever `resume` is: how the
+session can be opened in the user's **own** terminal application (Ghostty,
+iTerm2, Terminal, Windows Terminal, …), running the agent's resume command in
+its folder. Absent for an agent with no command that reopens a session by id
+(Gemini's `--resume` takes "latest" or an index, not an id; DeepSeek has none)
+and when the daemon cannot open terminals. `modes` is what is allowed, the
+first being what the main button does; empty, with `reason`, when nothing is.
+The rule is [rule 7](../CLAUDE.md) as a table (`openTerminalModes`, tested as
+one):
+
+- **Ended** → `resume`, whoever started it.
+- **Running, started by Caprock, and this daemon holds its terminal** → `move`
+  (and `fork` for Claude Code). The process is Caprock's to stop.
+- **Running anywhere else** — the user's own terminal, or a Caprock session
+  whose terminal went with a restart → `fork` for Claude Code only; nothing for
+  Codex and OpenCode, whose forks copy the history with its cost into a new
+  session Caprock would count twice.
+
+An ended Claude Code session whose transcript is gone, and an OpenCode session
+whose folder is gone, get no modes and the reason. A Claude Code or Codex
+session whose folder is gone opens from the home directory: both find a
+conversation by id from anywhere.
+
+**`POST /v1/sessions/{id}/open-terminal`** carries that out. `mode` defaults to
+the first allowed; one that is not allowed is `409 {error}` with the reason;
+`terminal` names one from `GET /v1/terminals` and defaults to the preferred
+one. The command is the agent's own (`agents.NativeResume`), built from the
+same resume arguments the dashboard's own launch uses (`agents.resumeArgs`,
+shared with `argv.go`), without the flags Caprock adds for a PTY it runs:
+`claude --resume <id>` (with `--fork-session` to fork), `codex resume <id>`,
+`opencode --session <id>`, where the id is `native_id` for a Codex or OpenCode
+session Caprock started. Such a session with no `native_id` sent nothing, so
+it gets no modes and says so, as `resume` does. **`move`** stops Caprock's process first — `resume`
+(a paused process cannot act on a signal), then `term`, up to
+`agents.ShutdownGrace` for Claude Code to write its transcript out, then `kill`
+— and only once this daemon no longer holds it does the window open, so two
+processes never append to one conversation. The session's `owned` is then
+cleared: it is the user's now, and would otherwise read as a Caprock session
+whose terminal was lost. The launch is planned before anything is stopped, so a
+refusal (no such terminal, an unsafe folder name) stops nothing. A failed
+launch answers `400` (no terminal, unsafe input) or `502` with `{error,
+command}` — the command, so the screen can offer it to copy. Session ids and
+command words are checked against a plain charset, a folder name with a control
+character (or a `"` on Windows) is refused, and everything else is quoted for
+the shell it reaches ([02-architecture.md](02-architecture.md#native-terminals)).
+Both endpoints are closed to a paired device: one is a `POST`, and
+`GET /v1/terminals` lists this machine's applications, which a tablet has no
+use for (ADR-029).
+
+`GET`/`PUT /v1/settings` carry **`terminal`**, the id of the terminal sessions
+open in; empty means the first installed. `PUT` accepts only an id this build
+knows for its OS (`nativeterm.IDs`) or `""`, else 400. Stored as `terminal` in
+`config.json`.
 
 **`SessionSummary.description` / `description_source`** — what tells a session
 from the others on the screen (FB-035): the stored `sessions.title`

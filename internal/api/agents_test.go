@@ -67,8 +67,21 @@ func (f *fakeAgents) Resize(_ string, cols, rows int) error {
 	f.sizes = append(f.sizes, [2]int{cols, rows})
 	return nil
 }
-func (f *fakeAgents) Signal(_ string, a string) error { f.sigs = append(f.sigs, a); return nil }
-func (f *fakeAgents) Holds(id string) bool            { return f.termCh != nil || f.held[id] }
+func (f *fakeAgents) Signal(id string, a string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sigs = append(f.sigs, a)
+	// A stopped process is no longer held, as with the real manager.
+	if (a == "term" || a == "kill") && f.held[id] {
+		delete(f.held, id)
+	}
+	return nil
+}
+func (f *fakeAgents) Holds(id string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.termCh != nil || f.held[id]
+}
 func (f *fakeAgents) Term(string) ([]byte, <-chan []byte, func(), bool) {
 	if f.termCh == nil {
 		return nil, nil, nil, false

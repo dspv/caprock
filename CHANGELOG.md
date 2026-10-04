@@ -9,6 +9,21 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **Open a session in your own terminal.** The session's title row (next to
+  Open repo, on every tab) and the Projects terminal menu carry **Open in
+  Ghostty ↗** (named for your terminal), which runs the agent's own resume command —
+  `claude --resume`, `codex resume`, `opencode --session` — in the session's
+  folder, in Ghostty, iTerm2, Terminal, WezTerm, kitty or Warp on macOS, your
+  `$TERMINAL` or a common terminal on Linux, and Windows Terminal, PowerShell
+  or cmd on Windows. Caprock keeps measuring it through hooks and the
+  transcript, as it does any session you start yourself. A session Caprock is
+  running can be **moved** (stopped here, carried on there) or **forked**; one
+  running somewhere else can only be forked, because Caprock never stops a
+  process it did not start. Pick another terminal from the ▾ menu and it
+  becomes the default.
+
 ## [0.70.0] - 2026-10-04
 
 ### Added

@@ -113,6 +113,32 @@ export interface SessionSummary extends Session {
   resume?: ResumeInfo
   /** Caprock started it before its last restart: still running, but its terminal is not here. */
   detached?: boolean
+  /** How it can be opened in the user's own terminal app; absent when it cannot at all. */
+  open_terminal?: OpenTerminalInfo
+}
+
+/** How a session can be opened in the user's own terminal application.
+ *  `modes` are what is allowed, the first being what the main button does;
+ *  `reason` says why there is none, or why one is missing. */
+export interface OpenTerminalInfo {
+  modes: OpenTerminalMode[]
+  reason?: string
+}
+
+/** resume: carry an ended session on. move: stop Caprock's process for it,
+ *  then resume it there. fork: branch it under a new id; the original runs on. */
+export type OpenTerminalMode = 'resume' | 'move' | 'fork'
+
+/** A terminal application installed on this machine. */
+export interface NativeTerminal {
+  id: string
+  name: string
+}
+
+export interface TerminalList {
+  terminals: NativeTerminal[]
+  /** The one a button opens when none is named. */
+  preferred: string
 }
 
 /** Whether a session can be carried on from here, and if not, why. */
@@ -429,6 +455,8 @@ export interface Settings {
   memory_holdout_pct?: number
   /** Where the folder picker may look. Empty means the home directory. */
   browse_root?: string
+  /** The terminal app sessions open in ("ghostty", "iterm2", ...). Empty: the first installed. */
+  terminal?: string
   /** The daily spend ceiling in USD; 0 is off. See internal/cap. */
   cap_usd_per_day?: number
   /** Where the weekly report goes. Not a credential, so it round-trips. */
@@ -933,6 +961,11 @@ export const api = {
   stopOrchestrator: () => post<{ stopped: number }>('/v1/orchestrator/stop', {}),
   status: () => get<Status>('/v1/status'),
   storage: () => get<StorageReport>('/v1/storage'),
+  /** Terminal applications installed here, most preferred first. */
+  terminals: () => get<TerminalList>('/v1/terminals'),
+  /** Open a session in the user's own terminal app. */
+  openTerminal: (id: string, req: { terminal?: string; mode?: OpenTerminalMode }) =>
+    post<{ terminal: NativeTerminal; mode: OpenTerminalMode; command: string }>(`/v1/sessions/${encodeURIComponent(id)}/open-terminal`, req),
   spawn: (req: SpawnRequest) => post<{ session_id: string; cwd: string }>('/v1/agents', req),
   /** The models an agent's own CLI lists — Codex's on-disk catalog and its
    *  configured default. Empty for the other agents. */
