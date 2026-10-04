@@ -53,6 +53,9 @@ type Session struct {
 	// ParentSession is the session this one continues: the one a /clear
 	// replaced, or the one it was forked from (FB-039).
 	ParentSession string `json:"parent_session,omitempty"`
+	// NativeID is the agent's own id for a Codex or OpenCode session Caprock
+	// started under an id of its own (migration 0032); empty otherwise.
+	NativeID string `json:"native_id,omitempty"`
 }
 
 // Stats mirrors session_stats.
@@ -589,7 +592,7 @@ func MarkIdleSessions(ctx context.Context, q Querier, before int64) ([]string, e
 // and a backstop is all there is.
 func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, error) {
 	rows, err := q.QueryContext(ctx,
-		`SELECT session_id, COALESCE(pid, 0), COALESCE(last_event_at, 0), COALESCE(agent, 'claude')
+		`SELECT session_id, COALESCE(pid, 0), COALESCE(last_event_at, 0), COALESCE(agent, 'claude'), COALESCE(owned, 0)
 		 FROM sessions WHERE status != 'ended'`)
 	if err != nil {
 		return nil, err
@@ -601,20 +604,23 @@ func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, 
 	var ids []string
 	for rows.Next() {
 		var id, agent string
-		var pid int
+		var pid, owned int
 		var lastEvent int64
-		if err := rows.Scan(&id, &pid, &lastEvent, &agent); err != nil {
+		if err := rows.Scan(&id, &pid, &lastEvent, &agent, &owned); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
 		switch {
-		case !ownsItsProcess(agent):
+		case !ownsItsProcess(agent) && owned == 0:
 			// Read out of another tool's database rather than watched: there is
 			// no process of ours behind it, and there never will be. Judging it
 			// by liveness would keep months of somebody's history permanently
 			// "live" — which is exactly what happened the first time this
 			// change was tried, with 97-day-old sessions filling the Now
 			// screen. The clock is the only rule these can have.
+			// A Codex or OpenCode session Caprock started is the exception:
+			// it has a process, recorded at spawn, and falls through to the
+			// pid rules below like any other session Caprock owns.
 			if lastEvent < before {
 				ids = append(ids, id)
 			}
@@ -705,6 +711,36 @@ func SetParent(ctx context.Context, q Querier, id, parent string) error {
 	return err
 }
 
+// SetNativeID links a session Caprock started to the agent's own id for it
+// (migration 0032). Written once: a link already made is never moved to a
+// different thread, because the events stored under it came from the first.
+// Reports whether the link was made.
+func SetNativeID(ctx context.Context, q Querier, id, nativeID string) (bool, error) {
+	if id == "" || nativeID == "" {
+		return false, nil
+	}
+	res, err := q.ExecContext(ctx, `UPDATE sessions SET native_id = ? WHERE session_id = ? AND native_id = ''`, nativeID, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// SessionForNative returns the Caprock session linked to an agent's own id, or
+// "" when none is.
+func SessionForNative(ctx context.Context, q Querier, agent, nativeID string) (string, error) {
+	if nativeID == "" {
+		return "", nil
+	}
+	var id string
+	err := q.QueryRowContext(ctx, `SELECT session_id FROM sessions WHERE agent = ? AND native_id = ? LIMIT 1`, agent, nativeID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return id, err
+}
+
 func EndSupersededSiblings(ctx context.Context, q Querier, pid int, keep string) (int64, error) {
 	if pid <= 0 {
 		return 0, nil
@@ -747,13 +783,13 @@ func updateStatusByID(ctx context.Context, q Querier, ids []string, status strin
 	return nil
 }
 
-const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,''), COALESCE(worked_at,0), COALESCE(parent_session,'')`
+const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,''), COALESCE(worked_at,0), COALESCE(parent_session,''), COALESCE(native_id,'')`
 
 func scanSession(sc interface{ Scan(...any) error }) (Session, error) {
 	var s Session
 	var hh, ht, owned int
 	var exit sql.NullInt64
-	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt, &s.WorkedAt, &s.ParentSession)
+	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt, &s.WorkedAt, &s.ParentSession, &s.NativeID)
 	s.HasHooks, s.HasTranscript, s.Owned = hh != 0, ht != 0, owned != 0
 	if exit.Valid {
 		v := int(exit.Int64)

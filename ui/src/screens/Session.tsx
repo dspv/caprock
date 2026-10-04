@@ -24,6 +24,8 @@ type Tab = 'timeline' | 'notes' | 'changes' | 'terminal'
  *  practically a lie. */
 function sourceLine(s: SessionDetail): string {
   if (s.agent === 'gemini') return 'telemetry'
+  if (s.agent === 'codex') return 'rollout transcript'
+  if (s.agent === 'opencode') return 'OpenCode database'
   const parts = [s.has_hooks ? 'hooks' : 'no hooks', s.has_transcript ? 'transcript' : 'no transcript']
   return parts.join(' · ')
 }
@@ -110,6 +112,13 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   // told apart and given its own line.
   const unmeasurable = !s.has_hooks && !s.has_transcript && total === 0 && s.stats.turns === 0
   const waitingOnTelemetry = unmeasurable && s.agent === 'gemini'
+  // Codex and OpenCode write nothing until the first message, and Caprock
+  // links what they write to this session when they do (sessionlink). Until
+  // then there is nothing to read, which is not the same as "not measured".
+  const waitingOnLink = unmeasurable && s.owned && (s.agent === 'codex' || s.agent === 'opencode')
+  // A session with no events yet has no activity time; Go's zero time is
+  // "two thousand years ago", which is what the line under the title said.
+  const activityAt = s.activity.at && !String(s.activity.at).startsWith('0001-') ? s.activity.at : s.last_event_at
   return (
     <div className="grid gap-3">
       <>
@@ -117,6 +126,11 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         <a href={href({ name: 'now' })} className="link text-fg-muted text-[12px]">← Now</a>
         <h1 className="text-[15px] font-medium">{s.project || 'unknown project'}</h1>
         <span className="mono text-[11px] text-fg-faint">{s.session_id}</span>
+        {s.native_id && (
+          <span className="mono text-[11px] text-fg-faint" title={`${agentName(s.agent)}'s own id for this session — what its resume takes`}>
+            {agentName(s.agent)} {s.native_id}
+          </span>
+        )}
         {s.git_branch && <span className="mono text-[11px] text-fg-muted">{s.git_branch}</span>}
         {/* Health and the controls are about now: never from a kept copy. */}
         {!detail.stale && <Badge health={s.activity.health} />}
@@ -142,7 +156,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
       )}
       {!detail.stale && <div className="text-[13px]">
         <span className="text-fg">{s.activity.phrase}</span>
-        <span className="text-fg-faint num text-[11px] ml-2">{fmtAgo(s.activity.at || s.last_event_at, now)}</span>
+        <span className="text-fg-faint num text-[11px] ml-2">{fmtAgo(activityAt, now)}</span>
         {s.loop && <span className="ml-3 text-danger text-[12px]">loop: {s.loop.sample} ×{s.loop.count} in {s.loop.window_min}m</span>}
       </div>}
       {/* A session Caprock starts but cannot read — Gemini today — produced six
@@ -152,7 +166,14 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
       {unmeasurable ? (
         <Panel>
           <div className="px-3 py-2.5 text-[13px] text-fg-muted">
-            {waitingOnTelemetry ? (
+            {waitingOnLink ? (
+              <>
+                {s.native_id
+                  ? <>Nothing measured yet — linked to {agentName(s.agent)}&rsquo;s own session, and its figures appear here as it answers.{' '}</>
+                  : <>Nothing measured yet — {agentName(s.agent)} writes nothing until the first message is sent, and Caprock links what it writes to this session then.{' '}</>}
+                {s.status !== 'ended' && <span className="text-fg-faint">The terminal below is live.</span>}
+              </>
+            ) : waitingOnTelemetry ? (
               <>
                 Nothing measured yet — Gemini reports its own figures, and the first
                 ones arrive with its first answer.{' '}

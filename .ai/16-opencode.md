@@ -1,9 +1,10 @@
 # OpenCode support
 
-**Status: the observation half is built.** Sessions, turns and tool calls are
-imported from OpenCode's database, tagged with their agent, and shown on the
-same screens as Claude Code. Live updates over OpenCode's SSE stream are built
-(`internal/opencode/stream.go`); session control is not, and is scoped below. Everything below was
+**Status: observation and starting sessions are built.** Sessions, turns and
+tool calls are imported from OpenCode's database, tagged with their agent, and
+shown on the same screens as Claude Code. Live updates over OpenCode's SSE
+stream are built (`internal/opencode/stream.go`), and Caprock can start, type
+into, continue and stop an OpenCode TUI (§ Starting an OpenCode session). Everything below was
 measured against a real OpenCode installation, not inferred from documentation;
 where a number appears it came from a live database.
 
@@ -99,8 +100,8 @@ Estimated at roughly seven hours for the observation half.
 Deliberately excluded from the first pass, each a separate piece of work:
 
 - ~~Live SSE~~ — **built.** See "The live stream" below.
-- **Spawning and controlling OpenCode sessions** — around two days;
-  `internal/agents` assumes the `claude` binary and its flags throughout.
+- ~~Spawning and controlling OpenCode sessions~~ — **built.** See "Starting an
+  OpenCode session" below.
 - **Verified Windows and Linux behaviour** — the first pass compiles everywhere
   but is only exercised on macOS.
 
@@ -319,6 +320,63 @@ contention rather than in the stream itself:
 `internal/opencode/stream_test.go` runs against a stub SSE server, so it covers
 frame parsing, the narrow event filter, malformed frames, cancellation and the
 retry — everywhere, not only where OpenCode is installed.
+
+## Starting an OpenCode session
+
+Since 2026-10-04 the New session dialog starts the OpenCode TUI in a PTY, next
+to Claude Code and Codex ([ADR-031](08-decisions.md)). Built from `opencode
+--help` and `opencode run --help`, **opencode 1.15.10**, read on 2026-10-04,
+and each flag exercised by starting the TUI with it:
+
+- **`--port <p>`** — the TUI runs its own server, and Caprock picks a free
+  loopback port for it so it can learn the session id (below). `--hostname`
+  defaults to `127.0.0.1` and is left alone.
+- **`-m provider/model`** — OpenCode's own syntax. The dialog takes it as typed;
+  empty sends nothing and the user's config decides. No list is offered:
+  `opencode models` fetches the catalog over the network, and the providers a
+  user has set up are theirs.
+- **Permissions.** `plan` → `--agent plan`, OpenCode's built-in plan agent
+  (`opencode agent list`: `edit` denied except plan files). `acceptEdits` →
+  `OPENCODE_PERMISSION={"bash":"ask"}` in the child's environment — verified
+  with `opencode agent list`, which then shows `bash: ask` on the build agent;
+  edits stay allowed. **Bypass is not claimed:** the build agent already allows
+  every tool, and `{"*":"allow"}` does not remove the asks OpenCode keeps for
+  `doom_loop` and directories outside the project (measured: the same four
+  `ask` rules before and after), so the dialog labels it "OpenCode's own
+  rules" and sends nothing.
+- **Resume** is `--session <id>`. **Fork is refused**, as for Codex: `--fork`
+  copies the session's messages, cost included, and Caprock would count them
+  twice.
+- **Newlines.** ESC CR inserts a line with text already in the prompt,
+  measured on 1.15.10 — no per-agent key map.
+- OpenCode may open an "Update available" dialog over the TUI on start. That
+  is its own UI and is left to the user; Caprock does not switch auto-update
+  off behind their back.
+
+### Linking the session (exact)
+
+OpenCode creates a session when the first message is sent, not when the TUI
+starts, so its id cannot be known at spawn and cannot be matched on start time.
+It does not need to be matched: the TUI's server on the port Caprock chose
+publishes `session.created` on `GET /event` for the session it made (measured:
+`server.connected`, then `session.created` with `properties.info.id`). The
+daemon follows that stream for the life of the process (`opencode.WaitCreated`),
+stores the first top-level id it announces (`parentID` empty) as
+`sessions.native_id`, and the importer then files the session's turns, prompts
+and tools under Caprock's id. Nothing else can be on that port, so this is a
+fact, not a guess. The stream is then kept open to re-read the session on each
+change, as the shared live stream does for `opencode serve`.
+
+- A port taken between Caprock choosing it and OpenCode binding it leaves the
+  session **unlinked** (shown as its own row, as before this feature), never
+  mislinked.
+- Subagent sessions keep their own rows, as for every OpenCode session.
+- On a machine where OpenCode has never run, the database is created by that
+  first session; the reader is started when the link is made.
+- Verified end to end on 2026-10-04 on an isolated daemon with a scratch HOME:
+  the prompt was linked and stored under Caprock's id with no second row,
+  `continue here` started `opencode --session <id>`, and the model call itself
+  was refused by OpenCode's free tier for this version, so no cost.
 
 ## Where the database is, exactly
 

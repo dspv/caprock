@@ -9,17 +9,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
-### Changed
-
-- **The Teams and Premium dialogs show what you get before they describe
-  it.** Each now opens with a small picture in the Week card's style — an
-  example team's week for Teams; the daily cap stopping at its line, a
-  question to Gemini about your own sessions, or the Monday report for
-  Premium — clearly tagged as an example, followed by a few short lines and
-  the two ways forward. Premium's prices are the site's: $30 a year, or $100
-  once marked Best value, in the product's amber rather than blue. Focus now
-  moves into the dialog and back to what opened it.
-
 ### Added
 
 - **Open the repository from a session or a project.** The session header
@@ -51,8 +40,26 @@ Phase 3 (Delight) has no plan by design.
 - **Live pulse says who is working and on what.** Each session row shows the
   current model by name and, when subagents are running, a crowd icon with
   "×N".
+- **Start Codex and OpenCode sessions from Caprock.** The New session dialog
+  has an agent picker — Claude Code, Codex, OpenCode, Gemini CLI — showing only
+  the ones installed on this machine, and it remembers the one you picked last.
+  Each runs as its own TUI in the terminal tab, with its own model choice
+  (Codex's own model list; OpenCode's `provider/model`) and the permission
+  choice translated into that agent's flags. Cost, turns and answers land on the
+  same session page as the terminal, and an ended Codex or OpenCode session can
+  be continued with "continue here".
 
 ### Changed
+
+- **The Teams and Premium dialogs show what you get before they describe
+  it.** Each now opens with a small picture in the Week card's style — an
+  example team's week for Teams; the daily cap stopping at its line, a
+  question to Gemini about your own sessions, or the Monday report for
+  Premium — clearly tagged as an example, followed by a few short lines and
+  the two ways forward. Premium's prices are the site's: $30 a year, or $100
+  once marked Best value, in the product's amber rather than blue. Focus now
+  moves into the dialog and back to what opened it.
+
 
 - **A project's terminal is a button you can see.** Each Projects row has a
   full-size button that says what it does: **Terminal** opens the session
@@ -71,7 +78,6 @@ Phase 3 (Delight) has no plan by design.
   who did what, the longest loop and the biggest session — for today, this
   week, this month or all time, at 1200×675 or 1080×1350.
 
-### Changed
 
 - **Plan limits explain themselves.** Each window says, in words, how much
   is used, when it resets and how long that is (in minutes under an hour),
@@ -139,6 +145,7 @@ Phase 3 (Delight) has no plan by design.
 - **Now waits less for its figures.** The status the screen polls counted every
   event and searched a fortnight of prose on each call; both are reused for a
   minute now.
+- **A session with no activity yet no longer reads "idle 739892d ago".**
 
 ## [0.69.0] - 2026-10-04
 

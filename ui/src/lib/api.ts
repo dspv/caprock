@@ -22,6 +22,10 @@ export interface Session {
   /** Which coding agent produced this session. Absent means Claude Code,
    *  which is what every session was before OpenCode support. */
   agent?: 'claude' | 'opencode' | 'gemini' | 'codex' | 'deepseek'
+  /** The agent's own id for a Codex or OpenCode session Caprock started under
+   *  an id of its own — the thread or session its importer files under this
+   *  one. Absent until the first message is sent, and for every other session. */
+  native_id?: string
 }
 
 export interface Stats {
@@ -567,6 +571,10 @@ export interface Status {
   /** The Gemini CLI is on PATH, so the new-session dialog can offer it as an
    *  agent. Absent on daemons older than this feature. */
   gemini_available?: boolean
+  /** Codex and OpenCode, found on the login shell's PATH or where their
+   *  installers put them. Absent on daemons older than this feature. */
+  codex_available?: boolean
+  opencode_available?: boolean
   owned_active: number
   loop_k: number
   loop_t_minutes: number
@@ -638,9 +646,11 @@ export interface BrowseResponse { dir: string; parent: string; root: string; ent
 export interface RecentDir { dir: string; name: string; sessions: number; last_event_at: number }
 
 export interface SpawnRequest {
-  /** Which coding agent to launch: "claude" (default) or "gemini". They take
-   *  different flags, so the daemon builds the argv per agent. */
-  agent?: 'claude' | 'gemini'
+  /** Which coding agent to launch: "claude" (default), "codex", "opencode" or
+   *  "gemini". They take different flags, so the daemon builds the argv per
+   *  agent. A resume is continued in the agent that ran the session,
+   *  whatever this says. */
+  agent?: 'claude' | 'codex' | 'opencode' | 'gemini'
   cwd?: string; chat?: boolean; create?: boolean; worktree?: string
   model?: string; permission_mode?: string; args?: string[]
   /** Continue an existing conversation instead of starting a new one. Caprock
@@ -862,6 +872,10 @@ export const api = {
   status: () => get<Status>('/v1/status'),
   storage: () => get<StorageReport>('/v1/storage'),
   spawn: (req: SpawnRequest) => post<{ session_id: string; cwd: string }>('/v1/agents', req),
+  /** The models an agent's own CLI lists — Codex's on-disk catalog and its
+   *  configured default. Empty for the other agents. */
+  agentModels: (agent: string) =>
+    get<{ agent: string; default?: string; models: { id: string; label: string }[] }>(`/v1/agents/models?agent=${encodeURIComponent(agent)}`),
   signal: (id: string, action: 'pause' | 'resume' | 'kill') => post<void>(`/v1/agents/${encodeURIComponent(id)}/signal`, { action }),
   /**
    * Write a pasted or dropped file and get back the path Claude Code can read.

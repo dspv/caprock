@@ -32,10 +32,9 @@ type SpawnRequest struct {
 	Model          string `json:"model,omitempty"`           // --model
 	PermissionMode string `json:"permission_mode,omitempty"` // --permission-mode
 	Command        string `json:"command,omitempty"`         // default "claude"
-	// Agent picks which coding agent to launch: "claude" (default) or
-	// "gemini". They take different flags — gemini spells the model -m and
-	// needs --skip-trust — so the argv is built per agent rather than
-	// pretending one shape fits both.
+	// Agent picks which coding agent to launch: "claude" (default), "codex",
+	// "opencode" or "gemini". They take different flags, so the argv is built
+	// per agent (argv.go) rather than pretending one shape fits all four.
 	Agent string `json:"agent,omitempty"`
 	// Resume continues an existing conversation instead of starting a new one.
 	//
@@ -55,6 +54,11 @@ type SpawnRequest struct {
 	// unless --fork-session is present, which is the same distinction from the
 	// other side.
 	Fork bool `json:"fork,omitempty"`
+	// NativeResume is the agent's own id for the session being resumed, when
+	// it differs from Caprock's (a Codex or OpenCode session Caprock started;
+	// sessions.native_id). Filled by the daemon from the store, never by the
+	// browser.
+	NativeResume string `json:"-"`
 	// GeminiKey is the key the daemon holds, passed into the child's
 	// environment. Never accepted from the browser — the API fills it in from
 	// settings, so a page cannot hand a spawned process someone else's
@@ -72,6 +76,12 @@ type Agent struct {
 	Worktree  string
 	Command   string
 	StartedAt time.Time
+	// Kind is which coding agent this is ("claude", "codex", …).
+	Kind string
+	// Port is the loopback port an OpenCode TUI's own server listens on, so
+	// the daemon can learn the session id it creates; 0 for other agents and
+	// for a resumed OpenCode session, whose id is already known.
+	Port int
 
 	sess   ptyman.Session
 	ring   *ring
@@ -86,12 +96,16 @@ type Agent struct {
 
 // Manager owns the set of running agents.
 type Manager struct {
-	pty      ptyman.Manager
-	store    *store.Store
-	log      *slog.Logger
-	dataDir  string
-	claude   string // resolved claude binary (or "claude")
-	gemini   string // resolved gemini binary (or "gemini")
+	pty     ptyman.Manager
+	store   *store.Store
+	log     *slog.Logger
+	dataDir string
+	claude  string // resolved claude binary (or "claude")
+	// bins overrides where an agent's binary is, by agent name; tests set it.
+	// Everything else is resolved at the moment it is needed (findBinary),
+	// because a CLI installed while the daemon runs should be offered without
+	// a restart.
+	bins     map[string]string
 	mu       sync.Mutex
 	agents   map[string]*Agent
 	OnExit   func(sessionID string, code int)
@@ -119,14 +133,41 @@ func NewManager(st *store.Store, dataDir, claudePath string, log *slog.Logger) *
 	if claudePath == "" {
 		claudePath = resolveClaude()
 	}
-	return &Manager{pty: ptyman.New(), store: st, log: log, dataDir: dataDir, claude: claudePath, gemini: resolveGemini(), agents: map[string]*Agent{}, NewSessionID: config.NewSessionID, Now: time.Now}
+	return &Manager{pty: ptyman.New(), store: st, log: log, dataDir: dataDir, claude: claudePath, agents: map[string]*Agent{}, NewSessionID: config.NewSessionID, Now: time.Now}
 }
 
-// AgentClaude and AgentGemini name the coding agents Caprock can launch.
-const (
-	AgentClaude = "claude"
-	AgentGemini = "gemini"
-)
+// binary is the executable to start for an agent: an absolute path when one
+// was found, the bare name otherwise (the start then fails with the PTY's own
+// "not found", which is what an unavailable agent should do).
+func (m *Manager) binary(agent string) string {
+	if agent == "" || agent == AgentClaude {
+		return m.claude
+	}
+	if p, ok := m.bins[agent]; ok {
+		return p
+	}
+	if p := findBinary(agent); p != "" {
+		return p
+	}
+	return agent
+}
+
+// AgentAvailable reports whether an agent's binary can be launched, so the
+// dialog offers only the agents this machine has: a choice that fails on
+// click is worse than no choice.
+func (m *Manager) AgentAvailable(agent string) bool {
+	if agent == "" || agent == AgentClaude {
+		return m.ClaudeAvailable()
+	}
+	if !IsSpawnable(agent) {
+		return false
+	}
+	p := m.binary(agent)
+	if !filepath.IsAbs(p) {
+		return false
+	}
+	return isExecutable(p)
+}
 
 // geminiApprovalMode maps a Claude permission mode onto Gemini's --approval-mode,
 // which covers the same ground with four values instead of six: default (ask),
@@ -147,16 +188,6 @@ func geminiApprovalMode(claudeMode string) string {
 	}
 }
 
-// resolveGemini finds the Gemini CLI, which is an ordinary npm global install
-// rather than something with a conventional home — so PATH is the only place
-// worth looking.
-func resolveGemini() string {
-	if p, err := exec.LookPath("gemini"); err == nil {
-		return p
-	}
-	return "gemini"
-}
-
 // telemetryPath is where a Gemini session's telemetry is written, and where
 // the ingester later reads it from. Empty when there is no data directory to
 // put it in, which turns the feature off rather than failing the spawn — a
@@ -173,17 +204,8 @@ func (m *Manager) telemetryPath(sessionID string) string {
 	return filepath.Join(dir, sessionID+".otel.log")
 }
 
-// GeminiAvailable reports whether the gemini binary can be launched, so the
-// dialog offers an agent the machine actually has rather than a choice that
-// fails on click.
-func (m *Manager) GeminiAvailable() bool {
-	if filepath.IsAbs(m.gemini) {
-		_, err := os.Stat(m.gemini)
-		return err == nil
-	}
-	_, err := exec.LookPath(m.gemini)
-	return err == nil
-}
+// GeminiAvailable reports whether the Gemini CLI can be launched.
+func (m *Manager) GeminiAvailable() bool { return m.AgentAvailable(AgentGemini) }
 
 // ClaudeAvailable reports whether the resolved claude binary can be launched.
 func (m *Manager) ClaudeAvailable() bool {
@@ -330,61 +352,58 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		}
 		cwd, worktree = wt, req.Worktree
 	}
+	agent := req.Agent
+	if agent == "" {
+		agent = AgentClaude
+	}
 	command := req.Command
-	var args []string
-	switch {
-	case command != "":
+	var args, extraEnv []string
+	port := 0
+	if command != "" {
 		// An explicit command is taken as given: the caller knows what it is
 		// launching, and guessing flags for an unknown binary is worse than
 		// launching it bare.
 		args = append(args, req.Args...)
-	case req.Agent == AgentGemini:
-		command = m.gemini
-		// Gemini CLI refuses to start in a directory it has not been told to
-		// trust, and in a PTY nobody is watching that is an invisible hang
-		// rather than an error. Caprock only ever launches a directory the user
-		// picked in the dialog, which is the same consent the prompt asks for.
-		args = []string{"--skip-trust", "--session-id", sessionID}
-		if req.Model != "" {
-			args = append(args, "-m", req.Model)
+	} else {
+		build, ok := builders[agent]
+		if !ok {
+			return nil, fmt.Errorf("caprock cannot start %q sessions", agent)
 		}
-		// Gemini spells the permission modes differently and accepts only its
-		// own four; an unmapped mode is left off rather than guessed at.
-		if mode := geminiApprovalMode(req.PermissionMode); mode != "" {
-			args = append(args, "--approval-mode", mode)
+		in := launchInput{
+			SessionID: sessionID, Cwd: cwd, Model: req.Model, Mode: req.PermissionMode,
+			Resume: req.Resume, NativeResume: req.NativeResume, Fork: req.Fork, Extra: req.Args,
 		}
-		args = append(args, req.Args...)
-	default:
-		command = m.claude
-		switch {
-		case req.Resume != "" && req.Fork:
-			// A branch: the original keeps running under its own id, and this
-			// process gets a fresh one. Both flags are required together —
-			// Claude Code refuses --session-id with --resume otherwise.
-			args = []string{"--resume", req.Resume, "--fork-session", "--session-id", sessionID}
-		case req.Resume != "":
-			// Continuing the same conversation, which already has an id.
-			args = []string{"--resume", req.Resume}
-			sessionID = req.Resume
-		default:
-			args = []string{"--session-id", sessionID}
+		// A new OpenCode session is named by OpenCode when the first message
+		// is sent; its TUI's own server announces the id, on a port chosen
+		// here so nothing else can be on it.
+		if agent == AgentOpenCode && req.Resume == "" {
+			p, err := freePort()
+			if err != nil {
+				m.log.Warn("no free port for opencode; its session will not be linked", "component", "agents", "err", err)
+			} else {
+				in.Port, port = p, p
+			}
 		}
-		if req.Model != "" {
-			args = append(args, "--model", req.Model)
+		l, err := build(in)
+		if err != nil {
+			return nil, err
 		}
-		if req.PermissionMode != "" {
-			args = append(args, "--permission-mode", req.PermissionMode)
-		}
-		args = append(args, req.Args...)
+		command, args, extraEnv, sessionID = m.binary(agent), l.args, l.env, l.sessionID
 	}
 
-	// Pre-accept the folder-trust dialog so the spawned session does not block on
-	// it (best-effort; a failure here must not stop the spawn).
-	if err := trustFolder(cwd); err != nil {
-		m.log.Warn("pre-trust folder", "component", "agents", "cwd", cwd, "err", err)
+	// Pre-accept Claude Code's folder-trust dialog so the spawned session does
+	// not block on it (best-effort; a failure here must not stop the spawn).
+	// Only for Claude Code: the other agents are told on their command line,
+	// and writing ~/.claude.json for a Codex session would claim a folder for
+	// a program that never asked.
+	if agent == AgentClaude {
+		if err := trustFolder(cwd); err != nil {
+			m.log.Warn("pre-trust folder", "component", "agents", "cwd", cwd, "err", err)
+		}
 	}
 
 	env := childEnv(userenv.Environ(m.log))
+	env = append(env, extraEnv...)
 	// The Gemini CLI reads GEMINI_API_KEY from its environment, and the key the
 	// user pasted into the dashboard lives in the daemon's config — so it has
 	// to be handed over here or the child asks for a key it cannot see. Only
@@ -425,7 +444,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		return nil, fmt.Errorf("spawn %s: %w", command, err)
 	}
 	a := &Agent{
-		SessionID: sessionID, Cwd: cwd, Worktree: worktree, Command: command + " " + join(args), StartedAt: time.Now(),
+		SessionID: sessionID, Cwd: cwd, Worktree: worktree, Command: command + " " + join(args), StartedAt: time.Now(), Kind: agent, Port: port,
 		sess: sess, ring: newRing(256 << 10), log: m.log, subs: map[chan []byte]struct{}{}, done: make(chan struct{}), onExit: m.OnExit,
 	}
 	m.mu.Lock()
@@ -438,17 +457,13 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		// row: the filter, the per-agent totals and the badge all read this
 		// column, and a Gemini session that arrived labelled "claude" would be
 		// counted under the wrong agent forever.
-		agent := req.Agent
-		if agent == "" {
-			agent = AgentClaude
-		}
 		if err := store.UpsertSession(ctx, q, sessionID, store.SessionPatch{Cwd: cwd, Agent: agent}); err != nil {
 			return err
 		}
 		if err := store.MarkOwned(ctx, q, sessionID, worktree, a.Command, sess.PID()); err != nil {
 			return err
 		}
-		if req.Fork {
+		if req.Fork && agent == AgentClaude {
 			// A fork is a new session id continuing req.Resume's conversation.
 			return store.SetParent(ctx, q, sessionID, req.Resume)
 		}
@@ -774,3 +789,6 @@ func join(args []string) string {
 	}
 	return out
 }
+
+// Done is closed when the process exits.
+func (a *Agent) Done() <-chan struct{} { return a.done }

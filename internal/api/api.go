@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/dspv/caprock/internal/bus"
+	"github.com/dspv/caprock/internal/codex"
 	"github.com/dspv/caprock/internal/contexttax"
 	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/event"
@@ -228,7 +229,10 @@ type TaskController interface {
 
 // AgentController is the subset of internal/agents the API needs (interface for tests).
 type AgentController interface {
+	// Available reports whether any agent can be started here.
 	Available() bool
+	// Has reports whether one agent ("claude", "codex", …) can be started.
+	Has(agent string) bool
 	Spawn(ctx context.Context, req any) (id string, cwd string, err error)
 	Input(sessionID string, data []byte) error
 	Signal(sessionID, action string) error
@@ -343,6 +347,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/orchestrator/start", s.handleStartOrchestrator)
 	m.HandleFunc("POST /v1/orchestrator/stop", s.handleStopOrchestrator)
 	m.HandleFunc("POST /v1/agents", s.handleSpawn)
+	m.HandleFunc("GET /v1/agents/models", s.handleAgentModels)
 	m.HandleFunc("POST /v1/agents/{id}/input", s.handleAgentInput)
 	m.HandleFunc("POST /v1/agents/{id}/signal", s.handleAgentSignal)
 	m.HandleFunc("POST /v1/paste", s.handlePaste)
@@ -1703,7 +1708,7 @@ func (s *Server) handleApprovals(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) requireAgents(w http.ResponseWriter) bool {
 	if s.d.Agents == nil || !s.d.Agents.Available() {
-		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "can't start sessions", "detail": "`claude` is not on your PATH — install Claude Code, or add it. Caprock still watches sessions you start yourself."})
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "can't start sessions", "detail": "No coding agent Caprock can start is on your PATH — install Claude Code, Codex, OpenCode or Gemini CLI, or add it. Caprock still watches sessions you start yourself."})
 		return false
 	}
 	return true
@@ -1737,6 +1742,33 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"session_id": id, "cwd": cwd})
+}
+
+// handleAgentModels lists the models an agent's own CLI offers, for the
+// new-session dialog. Codex keeps its catalog on disk; for the other agents
+// the dialog has its own checked list (Claude Code, Gemini CLI) or takes the
+// user's provider/model as typed (OpenCode), and this answers an empty list.
+// No network I/O: it reads files the CLI already wrote.
+func (s *Server) handleAgentModels(w http.ResponseWriter, r *http.Request) {
+	type resp struct {
+		Agent   string        `json:"agent"`
+		Default string        `json:"default,omitempty"`
+		Models  []codex.Model `json:"models"`
+	}
+	agent := r.URL.Query().Get("agent")
+	out := resp{Agent: agent, Models: []codex.Model{}}
+	switch agent {
+	case "codex":
+		if m := codex.ListedModels(); len(m) > 0 {
+			out.Models = m
+		}
+		out.Default = codex.ConfiguredModel()
+	case "claude", "gemini", "opencode":
+	default:
+		http.Error(w, `agent must be one of claude, codex, opencode, gemini`, http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) handleAgentInput(w http.ResponseWriter, r *http.Request) {

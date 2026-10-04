@@ -99,9 +99,13 @@ Caprock starts it. See
 [OpenCode, Codex and DeepSeek Harness](#opencode-codex-and-deepseek-harness) for
 what that covers and what it does not.
 
-To start a Gemini CLI session from Caprock, install the CLI
-(`npm install -g @google/gemini-cli`): it appears next to Claude Code in the New
-Session dialog — same terminal, same directory picker, its own filter chip.
+Caprock starts Codex, OpenCode and Gemini CLI sessions too: whichever of them
+is installed appears next to Claude Code in the New Session dialog — same
+terminal, same directory picker, its own filter chip — and the dialog remembers
+the one you picked last. A Codex or OpenCode session started here shows its
+cost and answers on the same page as its terminal, and one that has ended can
+be continued with "continue here". For Gemini, install the CLI
+(`npm install -g @google/gemini-cli`).
 With a Gemini key set (see [Premium](#premium) for where), Caprock passes it to
 the child process. Gemini has no hooks and writes no transcript, but it does
 write OpenTelemetry, and Caprock asks it to write that to a file it then reads;

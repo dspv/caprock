@@ -45,6 +45,7 @@ import (
 	"github.com/dspv/caprock/internal/pairing"
 	"github.com/dspv/caprock/internal/ptyman"
 	"github.com/dspv/caprock/internal/rollup"
+	"github.com/dspv/caprock/internal/sessionlink"
 	"github.com/dspv/caprock/internal/store"
 	"github.com/dspv/caprock/internal/update"
 	"github.com/dspv/caprock/internal/userenv"
@@ -121,8 +122,15 @@ type Daemon struct {
 	report reportState
 	det    *loop.Detector
 	tail   *ingest.Tailer
-	ocIn   *opencode.Ingester
-	cxIn   *codex.Ingester
+	// ingMu guards ocIn and cxIn, which can start after startup: a machine
+	// with Codex or OpenCode installed but never yet run has nothing to read
+	// until a session Caprock starts writes the first file.
+	ingMu sync.Mutex
+	ocIn  *opencode.Ingester
+	cxIn  *codex.Ingester
+	// link joins a Codex or OpenCode session Caprock started to the id the
+	// agent gives it (internal/sessionlink).
+	link *sessionlink.Linker
 	// dsIn reads DeepSeek Harness session transcripts. Like Codex it is a
 	// read-only file import — DSH writes a zstd JSONL transcript per session and
 	// Caprock reads it, so there is nothing to install and no config to rewrite.
@@ -353,6 +361,7 @@ func (d *Daemon) run(ctx context.Context) error {
 
 	// Owned-session manager (Phase 1).
 	d.mgr = agents.NewManager(d.store, d.opt.DataDir, "", d.log)
+	d.link = sessionlink.New(d.store, d.log)
 	// Resolve the login-shell environment sessions are started with now, so
 	// the first one the user starts does not wait on their shell profile.
 	userenv.Warm(d.log)
@@ -361,6 +370,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	logcap.Watch(config.LogPath(d.opt.DataDir), config.ServiceLogPath(d.opt.DataDir))
 	go logcap.Run(ctx, d.log)
 	d.mgr.OnExit = func(id string, code int) {
+		d.link.Ended(id)
 		if s, err := store.GetSession(ctx, d.store.DB(), id); err == nil {
 			st, _ := store.GetStats(ctx, d.store.DB(), id)
 			d.bus.Publish(bus.Frame{Type: bus.FrameSession, Data: rollup.SessionFrame{Session: s, Stats: st}})
@@ -479,86 +489,15 @@ func (d *Daemon) run(ctx context.Context) error {
 	// SQLite database with cost and tokens already computed, so the daemon
 	// reads it directly rather than installing anything. Its absence is the
 	// normal case and is silent: most machines run Claude Code only.
-	if !d.opt.DisableIngest {
-		p := d.opt.OpenCodeDB
-		if p == "" {
-			p = opencode.DBPath()
-		}
-		if p == "off" {
-			p = ""
-		}
-		if p != "" {
-			ocdb, err := opencode.Open(p)
-			if err != nil {
-				// Read-only import of another program's database is a
-				// convenience, never a reason to fail startup.
-				d.log.Warn("opencode found but not readable", "component", "opencode", "path", p, "err", err)
-			} else {
-				// Announce only after a read succeeds. Opening a file that is
-				// not a database succeeds — SQLite is lazy — so logging on open
-				// promised a user with a corrupt or foreign file that their
-				// sessions were being read while nothing was.
-				if _, err := opencode.Sessions(ctx, ocdb); err != nil {
-					d.log.Warn("opencode database found but not readable; skipping",
-						"component", "opencode", "path", p, "err", err)
-					_ = ocdb.Close()
-				} else {
-					d.ocIn = opencode.NewIngester(ocdb, d.rec, d.log, 5*time.Second)
-					go func() {
-						defer ocdb.Close()
-						if err := d.ocIn.Run(ctx); err != nil {
-							d.log.Error("opencode ingest stopped", "component", "opencode", "err", err)
-						}
-					}()
-					d.log.Info("opencode sessions are being read", "component", "opencode", "db", p)
-
-					// The poller is the floor; the stream removes the latency
-					// on top of it. `opencode serve` runs while a TUI is open
-					// and is gone otherwise, so failing to connect is the
-					// normal case rather than an error — the streamer retries
-					// with backoff and the poller covers the gap either way.
-					st := opencode.NewStreamer(d.opt.OpenCodeURL, d.log)
-					go st.Run(ctx, func(sessionID string) {
-						d.ocIn.Touch(ctx, sessionID)
-					})
-				}
-			}
-		}
-	}
+	d.startOpenCode(ctx)
 
 	// Codex, when this machine has it. Easier to observe than either of the
 	// others: it writes one append-only JSONL transcript per session carrying
 	// the model, tokens, tool calls and plan limits, so there is nothing to
 	// install and no config of someone else's to rewrite. Absence is the
-	// normal case and is silent.
-	if !d.opt.DisableIngest {
-		var dirs []string
-		switch d.opt.CodexDir {
-		case "":
-			dirs = codex.Dirs()
-		case "off":
-		default:
-			dirs = []string{d.opt.CodexDir}
-		}
-		if len(dirs) > 0 {
-			dir := strings.Join(dirs, string(os.PathListSeparator))
-			// Announce only after a listing succeeds, for the same reason the
-			// OpenCode branch waits for a read: a directory that exists but
-			// holds nothing we understand should not promise the user their
-			// sessions are being read.
-			if ts, err := codex.ListAll(dirs); err != nil {
-				d.log.Warn("codex transcripts found but not readable", "component", "codex", "dir", dir, "err", err)
-			} else if len(ts) > 0 {
-				d.cxIn = codex.NewIngester(dirs, d.rec, d.log, 5*time.Second)
-				go func() {
-					if err := d.cxIn.Run(ctx); err != nil && ctx.Err() == nil {
-						d.log.Error("codex ingest stopped", "component", "codex", "err", err)
-					}
-				}()
-				d.log.Info("codex sessions are being read", "component", "codex", "dir", dir, "transcripts", len(ts))
-			}
-		}
-	}
+	// normal case and is silent. With the CLI installed it starts even with no
+	// transcripts yet: the first rollout may be one a session Caprock starts.
+	d.startCodex(ctx, d.mgr.AgentAvailable(agents.AgentCodex))
 
 	// DeepSeek Harness, when this machine has it. The same shape as Codex: one
 	// zstd JSONL transcript per session under ~/.dsh/sessions, read-only, no
@@ -1108,6 +1047,10 @@ type Status struct {
 	// dialog offers an agent the machine actually has rather than a choice
 	// that fails on click.
 	GeminiAvailable bool `json:"gemini_available"`
+	// CodexAvailable and OpenCodeAvailable say the same of those CLIs, found on
+	// the login shell's PATH or where their installers put them.
+	CodexAvailable    bool `json:"codex_available"`
+	OpenCodeAvailable bool `json:"opencode_available"`
 	// OpenCode reports what the second agent's reader is doing, or is absent
 	// when OpenCode is not installed. Without it there was no way to tell
 	// whether a machine that runs OpenCode was having those sessions read:
@@ -1193,6 +1136,7 @@ func (d *Daemon) status(_ context.Context) any {
 		Codex:           d.codexStats(),
 		Deepseek:        d.deepseekStats(),
 		ClaudeAvailable: d.mgr.ClaudeAvailable(), GeminiAvailable: d.mgr.GeminiAvailable(), OwnedActive: len(d.mgr.List()),
+		CodexAvailable: d.mgr.AgentAvailable(agents.AgentCodex), OpenCodeAvailable: d.mgr.AgentAvailable(agents.AgentOpenCode),
 		ShellEnv:      userenv.Current(),
 		Orchestration: b != nil,
 	}
@@ -1360,7 +1304,20 @@ type agentAdapter struct {
 	d *Daemon
 }
 
-func (a *agentAdapter) Available() bool { return a.m.ClaudeAvailable() }
+// Available reports whether any agent can be started here. Claude Code is no
+// longer the only one, so a machine with Codex and no Claude Code can still
+// start sessions.
+func (a *agentAdapter) Available() bool {
+	for _, ag := range agents.Spawnable {
+		if a.m.AgentAvailable(ag) {
+			return true
+		}
+	}
+	return false
+}
+
+// Has reports whether one agent can be started here.
+func (a *agentAdapter) Has(agent string) bool { return a.m.AgentAvailable(agent) }
 
 func (a *agentAdapter) Spawn(ctx context.Context, req any) (string, string, error) {
 	b, err := json.Marshal(req)
@@ -1377,9 +1334,35 @@ func (a *agentAdapter) Spawn(ctx context.Context, req any) (string, string, erro
 	if sr.Agent == agents.AgentGemini {
 		sr.GeminiKey = a.d.config().GeminiAPIKey
 	}
+	if !agents.IsSpawnable(sr.Agent) {
+		return "", "", fmt.Errorf("caprock cannot start %q sessions", sr.Agent)
+	}
+	// Continuing a session is continuing it in the agent that ran it, whatever
+	// the request said — the pick-up button sends only the id — and with the
+	// agent's own id for it when Caprock started it under one of its own.
+	if sr.Resume != "" {
+		if prev, err := store.GetSession(ctx, a.d.store.DB(), sr.Resume); err == nil {
+			if prev.Agent != "" {
+				sr.Agent = prev.Agent
+			}
+			sr.NativeResume = prev.NativeID
+		}
+	}
+	if sr.Agent == agents.AgentCodex {
+		// The first rollout on a machine may be this session's.
+		a.d.startCodex(a.d.baseCtx, true)
+	}
 	ag, err := a.m.Spawn(ctx, sr)
 	if err != nil {
 		return "", "", err
+	}
+	switch {
+	case sr.Agent == agents.AgentCodex && sr.Resume == "":
+		// Codex names its own thread; the importer matches the rollout to
+		// this spawn when it appears (sessionlink, heuristic).
+		a.d.link.Expect(agents.AgentCodex, ag.SessionID, ag.Cwd, ag.StartedAt, true)
+	case sr.Agent == agents.AgentOpenCode && ag.Port > 0:
+		go a.d.linkOpenCode(ag)
 	}
 	if sr.Agent == agents.AgentGemini {
 		// Telemetry carries Gemini's own conversation id and its own idea of a
@@ -1582,20 +1565,180 @@ func (a *boardAdapter) StopOrchestrator(_ context.Context) (any, error) {
 
 // openCodeStats reports the OpenCode reader, or nil when it is not running.
 func (d *Daemon) openCodeStats() *opencode.Stats {
-	if d.ocIn == nil {
+	in := d.openCodeIngester()
+	if in == nil {
 		return nil
 	}
-	st := d.ocIn.Stats()
+	st := in.Stats()
 	return &st
 }
 
 // codexStats reports the Codex reader, or nil when it is not running.
 func (d *Daemon) codexStats() *codex.Stats {
-	if d.cxIn == nil {
+	in := d.codexIngester()
+	if in == nil {
 		return nil
 	}
-	st := d.cxIn.Stats()
+	st := in.Stats()
 	return &st
+}
+
+func (d *Daemon) openCodeIngester() *opencode.Ingester {
+	d.ingMu.Lock()
+	defer d.ingMu.Unlock()
+	return d.ocIn
+}
+
+func (d *Daemon) codexIngester() *codex.Ingester {
+	d.ingMu.Lock()
+	defer d.ingMu.Unlock()
+	return d.cxIn
+}
+
+// startOpenCode starts reading OpenCode's database when this machine has one
+// and the reader is not already running, and reports whether it is running.
+//
+// A second coding agent keeps its own SQLite database with cost and tokens
+// already computed, so the daemon reads it directly rather than installing
+// anything. Its absence is the normal case and is silent: most machines run
+// Claude Code only. It is called again after Caprock starts an OpenCode
+// session, because on a machine where OpenCode has never run the database is
+// created by that session.
+func (d *Daemon) startOpenCode(ctx context.Context) bool {
+	if d.opt.DisableIngest {
+		return false
+	}
+	d.ingMu.Lock()
+	defer d.ingMu.Unlock()
+	if d.ocIn != nil {
+		return true
+	}
+	p := d.opt.OpenCodeDB
+	if p == "" {
+		p = opencode.DBPath()
+	}
+	if p == "off" || p == "" {
+		return false
+	}
+	ocdb, err := opencode.Open(p)
+	if err != nil {
+		// Read-only import of another program's database is a
+		// convenience, never a reason to fail startup.
+		d.log.Warn("opencode found but not readable", "component", "opencode", "path", p, "err", err)
+		return false
+	}
+	// Announce only after a read succeeds. Opening a file that is not a
+	// database succeeds — SQLite is lazy — so logging on open promised a user
+	// with a corrupt or foreign file that their sessions were being read
+	// while nothing was.
+	if _, err := opencode.Sessions(ctx, ocdb); err != nil {
+		d.log.Warn("opencode database found but not readable; skipping",
+			"component", "opencode", "path", p, "err", err)
+		_ = ocdb.Close()
+		return false
+	}
+	in := opencode.NewIngester(ocdb, d.rec, d.log, 5*time.Second)
+	in.Link = d.link
+	d.ocIn = in
+	go func() {
+		defer ocdb.Close()
+		if err := in.Run(ctx); err != nil {
+			d.log.Error("opencode ingest stopped", "component", "opencode", "err", err)
+		}
+	}()
+	d.log.Info("opencode sessions are being read", "component", "opencode", "db", p)
+
+	// The poller is the floor; the stream removes the latency on top of it.
+	// `opencode serve` runs while a TUI is open and is gone otherwise, so
+	// failing to connect is the normal case rather than an error — the
+	// streamer retries with backoff and the poller covers the gap either way.
+	st := opencode.NewStreamer(d.opt.OpenCodeURL, d.log)
+	go st.Run(ctx, func(sessionID string) {
+		in.Touch(ctx, sessionID)
+	})
+	return true
+}
+
+// startCodex starts reading Codex's rollout transcripts unless the reader is
+// already running: when there are transcripts, or — force — when Codex is
+// installed and a session Caprock starts is about to write the first.
+//
+// Codex is easier to observe than either of the others: it writes one
+// append-only JSONL transcript per session carrying the model, tokens, tool
+// calls and plan limits, so there is nothing to install and no config of
+// someone else's to rewrite. Absence is the normal case and is silent.
+func (d *Daemon) startCodex(ctx context.Context, force bool) {
+	if d.opt.DisableIngest {
+		return
+	}
+	d.ingMu.Lock()
+	defer d.ingMu.Unlock()
+	if d.cxIn != nil {
+		return
+	}
+	var dirs []string
+	switch d.opt.CodexDir {
+	case "":
+		dirs = codex.Dirs()
+	case "off":
+	default:
+		dirs = []string{d.opt.CodexDir}
+	}
+	if len(dirs) == 0 {
+		return
+	}
+	dir := strings.Join(dirs, string(os.PathListSeparator))
+	// Announce only after a listing succeeds, for the same reason the OpenCode
+	// reader waits for a read: a directory that exists but holds nothing we
+	// understand should not promise the user their sessions are being read.
+	ts, err := codex.ListAll(dirs)
+	if err != nil {
+		d.log.Warn("codex transcripts found but not readable", "component", "codex", "dir", dir, "err", err)
+		return
+	}
+	if len(ts) == 0 && !force {
+		return
+	}
+	in := codex.NewIngester(dirs, d.rec, d.log, 5*time.Second)
+	in.Link = d.link
+	d.cxIn = in
+	go func() {
+		if err := in.Run(ctx); err != nil && ctx.Err() == nil {
+			d.log.Error("codex ingest stopped", "component", "codex", "err", err)
+		}
+	}()
+	d.log.Info("codex sessions are being read", "component", "codex", "dir", dir, "transcripts", len(ts))
+}
+
+// linkOpenCode learns the id OpenCode gives a session Caprock started, from
+// the TUI's own server on the port Caprock chose, and links the two. It then
+// follows that server's stream for as long as the process lives, so the
+// session's cost appears as it is spent rather than on the next poll.
+func (d *Daemon) linkOpenCode(ag *agents.Agent) {
+	ctx, cancel := context.WithCancel(d.baseCtx)
+	defer cancel()
+	go func() {
+		select {
+		case <-ag.Done():
+		case <-ctx.Done():
+		}
+		cancel()
+	}()
+	url := "http://127.0.0.1:" + strconv.Itoa(ag.Port)
+	nativeID, err := opencode.WaitCreated(ctx, url)
+	if err != nil || nativeID == "" {
+		// The process ended before anything was sent: nothing to link.
+		return
+	}
+	d.link.Claim(ctx, agents.AgentOpenCode, ag.SessionID, nativeID)
+	// On a machine where OpenCode had never run, this session created the
+	// database.
+	if !d.startOpenCode(d.baseCtx) {
+		return
+	}
+	in := d.openCodeIngester()
+	in.Touch(ctx, nativeID)
+	opencode.NewStreamer(url, d.log).Run(ctx, func(id string) { in.Touch(ctx, id) })
 }
 
 // deepseekStats reports the DeepSeek Harness reader, or nil when it is not
