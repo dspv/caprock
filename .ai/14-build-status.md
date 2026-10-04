@@ -44,10 +44,11 @@ Percentages are deliberately coarse — they answer "is this track started, half
 - **All three phases are built and green.** The Go module + `ui/` exist and are exercised by `make check` (Go tests, `go vet`, `golangci-lint`, docs gates, and the UI typecheck/vitest/build) on the 3-OS CI matrix. Phase 2's orchestration loop has been driven end to end by a real `claude` orchestrator (see the Phase 2 log entry). **every phase is tagged and published** (Homebrew formula in `dspv/homebrew-tap`).
 - The Python measurer (`~/dev/caprock-legacy`, PyPI `caprock` 0.3.0) is frozen ([ADR-007](08-decisions.md#adr-007--the-harness-is-caprock-new-go-codebase-in-dspvcaprock-python-measurer-frozen)); the Go binary shipped its first release as **v0.1.0** on 2026-08-19.
 - **Five agent sources share the observation screens.** Claude Code remains the
-  full Observe → Control → Orchestrate path. OpenCode, Codex and DeepSeek
-  Harness are imported observation-only: Caprock cannot start, steer or stop
-  them, and the task runner does not work with any of them. Gemini sessions
-  started by Caprock are observed through OpenTelemetry, prompts included. The Now
+  full Observe → Control → Orchestrate path. Caprock can also start, type into,
+  continue and stop Codex and OpenCode TUIs, linked to the record their own
+  files keep ([ADR-031](08-decisions.md)); DeepSeek Harness is observation-only,
+  and the task runner works with Claude Code only. Gemini sessions started by
+  Caprock are observed through OpenTelemetry, prompts included. The Now
   filter is `all / claude / opencode / gemini / codex / deepseek`. See
   [16-opencode.md](16-opencode.md), [19-codex.md](19-codex.md) and
   [20-deepseek.md](20-deepseek.md).
@@ -70,6 +71,36 @@ Percentages are deliberately coarse — they answer "is this track started, half
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
 ## Log
+
+### 2026-10-04 — Choose the agent when starting a session
+
+The New session dialog starts Codex and OpenCode as well as Claude Code and
+Gemini CLI, offering only the agents whose binary the daemon finds (the login
+shell's PATH, then the installers' directories), and remembering the last
+choice per viewer. The argv per agent is a table (`internal/agents/argv.go`),
+which [ADR-026](08-decisions.md) asked for once a third CLI arrived, built from
+`codex --help` (0.160.0) and `opencode --help` (1.15.10) and then run, not from
+memory: the dotted `-c` trust override that looked right in the docs did
+nothing, and an inline table did ([19-codex.md](19-codex.md)).
+
+The half that took the time was the observer. A spawned Codex or OpenCode
+session would otherwise appear twice — a terminal with no cost, a cost with no
+terminal — because neither CLI can be told an id. `internal/sessionlink` joins
+them: OpenCode exactly, from `session.created` on the TUI's own server
+([16-opencode.md](16-opencode.md)); Codex by a stated heuristic on folder,
+originator and thread start time ([19-codex.md](19-codex.md)). The link is
+stored as `sessions.native_id` (migration 0031) and the importers file the
+agent's events under Caprock's session, so one page has the terminal and the
+cost; "continue here" now works for Codex and OpenCode sessions that have
+ended. Verified end to end on an isolated daemon with a scratch HOME, at no
+cost: Codex pointed at a closed local port, OpenCode's free tier refusing this
+version.
+
+Two smaller defects surfaced while using it. A session with no events showed
+"idle 739892d ago" — Go's zero time read as a timestamp. And an owned Codex or
+OpenCode row would have been ended by the clock while its process ran, because
+the staleness sweep treated every row of those agents as history; it now
+judges an owned one by its pid like any other session Caprock started.
 
 ### 2026-10-04 — Documents dropped into the terminal arrive, by name
 

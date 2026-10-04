@@ -165,3 +165,75 @@ func (s *Streamer) follow(ctx context.Context, onChange func(sessionID string)) 
 	}
 	return nil
 }
+
+// createdEvent is the part of a `session.created` frame WaitCreated reads.
+type createdEvent struct {
+	Type       string `json:"type"`
+	Properties struct {
+		Info struct {
+			ID       string `json:"id"`
+			ParentID string `json:"parentID"`
+		} `json:"info"`
+	} `json:"properties"`
+}
+
+// WaitCreated follows the event stream of one OpenCode server — a TUI Caprock
+// started on a port it chose — and returns the id of the first top-level
+// session that server creates. A subagent's session (parentID set) is skipped:
+// it belongs to the session that spawned it.
+//
+// The server is not up the moment the process starts, so a refused connection
+// is retried until ctx ends, which the caller ties to the process's life. This
+// is exact, unlike matching on folder and time: nothing but the TUI Caprock
+// started is on that port, and the frame names the session it made.
+func WaitCreated(ctx context.Context, url string) (string, error) {
+	url = strings.TrimRight(url, "/")
+	client := &http.Client{}
+	backoff := 200 * time.Millisecond
+	for {
+		if id, _ := waitCreatedOnce(ctx, client, url); id != "" {
+			return id, nil
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(backoff):
+		}
+		if backoff < 5*time.Second {
+			backoff *= 2
+		}
+	}
+}
+
+func waitCreatedOnce(ctx context.Context, client *http.Client, url string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url+"/event", nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "text/event-stream")
+	res, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("opencode stream: %s", res.Status)
+	}
+	sc := bufio.NewScanner(res.Body)
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for sc.Scan() {
+		line := sc.Text()
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		var ev createdEvent
+		if err := json.Unmarshal([]byte(strings.TrimSpace(line[5:])), &ev); err != nil {
+			continue
+		}
+		if ev.Type != "session.created" || ev.Properties.Info.ID == "" || ev.Properties.Info.ParentID != "" {
+			continue
+		}
+		return ev.Properties.Info.ID, nil
+	}
+	return "", sc.Err()
+}

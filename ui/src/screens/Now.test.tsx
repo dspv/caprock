@@ -137,15 +137,23 @@ it('reports a dead ingest instead of telling the user to wait forever', async ()
   expect(screen.getByText(/permission denied/)).toBeInTheDocument()
 })
 
-it('explains a missing claude binary instead of hiding the control that says so', async () => {
+it('explains a machine with no agent instead of hiding the control that says so', async () => {
   state.summary = emptySummary()
   state.status = { claude_available: false }
   render(<NowScreen />)
 
   // The button used to be hidden entirely, which made the dialog that explains
-  // why `claude` is missing unreachable.
+  // why no agent can be started unreachable.
   const btn = await screen.findByRole('button', { name: /New session/ })
-  expect(btn.textContent).toMatch(/claude not found/)
+  expect(btn.textContent).toMatch(/no agent found/)
+})
+
+it('offers starting a session on a machine with Codex and no Claude Code', async () => {
+  state.summary = emptySummary()
+  state.status = { claude_available: false, codex_available: true }
+  render(<NowScreen />)
+  const btn = await screen.findByRole('button', { name: /New session/ })
+  expect(btn.textContent).not.toMatch(/no agent found/)
 })
 
 it('puts the one control that starts something above the session list', async () => {

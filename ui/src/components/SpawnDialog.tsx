@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { DirPicker } from './DirPicker'
+import { AgentPicker, useAgentChoice, useSpawnableAgents, type SpawnAgent } from './AgentPicker'
 import { api, errText } from '@/lib/api'
+import { useApi } from '@/lib/useApi'
 import { navigate } from '@/lib/router'
 
 // What the two selects start on, rather than an empty "default" that says
@@ -70,25 +72,65 @@ const MODES: [value: string, label: string][] = [
   ['bypassPermissions', 'Bypass · never asks'],
 ]
 
+// What each mode becomes in an agent that spells it differently, read from
+// that CLI's --help (codex-cli 0.160.0, opencode 1.15.10) and said in the
+// label, so the choice names the consequence rather than Claude's word for it.
+// The daemon builds the flags (internal/agents/argv.go); a mode an agent has
+// no honest counterpart for is left to that agent's own config and marked.
+const MODE_NOTE: Partial<Record<SpawnAgent, Record<string, string>>> = {
+  codex: {
+    acceptEdits: 'Accept edits · workspace sandbox, asks first',
+    plan: 'Plan · read-only sandbox',
+    bypassPermissions: 'Bypass · no sandbox, never asks',
+  },
+  opencode: {
+    acceptEdits: 'Accept edits · asks before commands',
+    plan: "Plan · OpenCode's plan agent",
+    bypassPermissions: "Bypass · OpenCode's own rules",
+  },
+}
+
+/** The model a session starts on, per agent. Codex and OpenCode start on
+ *  whatever the user's own config names, which Caprock does not try to
+ *  restate; "" means exactly that. */
+const DEFAULT_MODELS: Record<SpawnAgent, string> = {
+  claude: DEFAULT_MODEL,
+  gemini: GEMINI_MODELS[0]![0],
+  codex: '',
+  opencode: '',
+}
+
 export function SpawnDialog({
   available,
   geminiAvailable = false,
+  agents: given,
   onClose,
   // Where to start, when the caller already knows. Opening this from a session
   // whose repository is on screen and then asking for the directory again is
   // asking someone to retype what they are looking at.
   initialCwd = '',
 }: {
+  /** Whether Claude Code can be started. Kept for callers that know only
+   *  that; the dialog asks the daemon about the other agents itself. */
   available: boolean
-  /** Whether the Gemini CLI is on PATH, so the agent picker is worth showing. */
+  /** Whether the Gemini CLI is on PATH. */
   geminiAvailable?: boolean
+  /** The agents to offer, when the caller already knows them. */
+  agents?: SpawnAgent[]
   onClose: () => void
   initialCwd?: string
 }) {
+  const fetched = useSpawnableAgents({ claude_available: available, gemini_available: geminiAvailable })
+  const agents = given ?? fetched
+  const [agent, setAgent] = useAgentChoice(agents)
   const [cwd, setCwd] = useState(initialCwd)
-  const [agent, setAgent] = useState<'claude' | 'gemini'>('claude')
-  const [model, setModel] = useState(DEFAULT_MODEL)
+  const [models, setModels] = useState<Record<SpawnAgent, string>>(DEFAULT_MODELS)
+  const model = models[agent]
+  const setModel = (v: string) => setModels((m) => ({ ...m, [agent]: v }))
   const [mode, setMode] = useState(DEFAULT_MODE)
+  // Codex keeps its own model catalog on disk; the daemon reads it so the
+  // list is the one Codex itself offers this account, not one written here.
+  const codexModels = useApi(() => (agent === 'codex' ? api.agentModels('codex') : Promise.resolve(undefined)), [agent], { live: false })
   const [worktree, setWorktree] = useState('')
   const [create, setCreate] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -99,10 +141,10 @@ export function SpawnDialog({
     try {
       const req: Parameters<typeof api.spawn>[0] = { cwd: cwd.trim() }
       if (agent !== 'claude') req.agent = agent
-      if (model) req.model = model
-      // Gemini CLI has no permission modes; sending one would be a flag it
-      // does not understand.
-      if (mode && agent === 'claude') req.permission_mode = mode
+      if (model.trim()) req.model = model.trim()
+      // Every agent takes the mode in Claude's vocabulary; the daemon
+      // translates it, or leaves it off where the agent has no counterpart.
+      if (mode) req.permission_mode = mode
       if (worktree.trim()) req.worktree = worktree.trim()
       if (create) req.create = true
       const { session_id } = await api.spawn(req)
@@ -120,9 +162,9 @@ export function SpawnDialog({
           <h2 className="text-[12px] uppercase tracking-[0.08em] text-fg-muted">New session</h2>
           <button onClick={onClose} className="ml-auto text-fg-muted hover:text-fg">✕</button>
         </header>
-        {!available ? (
+        {!available && agents.length === 0 ? (
           <div className="px-4 py-6 text-[13px] text-fg-muted">
-            The <span className="mono">claude</span> binary was not found on this machine, so Caprock cannot spawn sessions. It still observes every session you start yourself.
+            No coding agent Caprock can start was found on this machine — not <span className="mono">claude</span>, <span className="mono">codex</span>, <span className="mono">opencode</span> or <span className="mono">gemini</span>. It still observes every session you start yourself.
           </div>
         ) : (
           // min-w-0 here and on every Field below: a grid item will not shrink
@@ -140,34 +182,31 @@ export function SpawnDialog({
                 <DirPicker value={cwd} onPick={setCwd} />
               </div>
             </Field>
-            {/* Only offered when the machine has both: a choice that fails on
-              * click is worse than no choice. */}
-            {geminiAvailable && (
-              <Field label="Agent">
-                <select
-                  className="input"
-                  value={agent}
-                  onChange={(e) => {
-                    const next = e.target.value as 'claude' | 'gemini'
-                    setAgent(next)
-                    // The model lists do not overlap, so carrying the old
-                    // selection across would launch with a model the agent
-                    // has never heard of.
-                    setModel(next === 'gemini' ? GEMINI_MODELS[0]![0] : DEFAULT_MODEL)
-                  }}
-                >
-                  <option value="claude">Claude Code</option>
-                  <option value="gemini">Gemini CLI · your own key</option>
+            {/* Only the agents whose binary the daemon found: a choice that
+              * fails on click is worse than no choice. The last one picked
+              * is remembered for this viewer. */}
+            <AgentPicker value={agent} agents={agents} onChange={setAgent} />
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Model" hint={agent === 'opencode' ? 'provider/model' : undefined}>
+                <ModelField
+                  agent={agent}
+                  value={model}
+                  onChange={setModel}
+                  codex={codexModels.data}
+                />
+              </Field>
+              {/* Every agent covers the same ground with its own words, and
+                * the daemon maps onto them — so the control stays live for
+                * all of them, labelled with what it becomes in this one. */}
+              <Field label="Permissions">
+                <select className="input" value={mode} onChange={(e) => setMode(e.target.value)}>
+                  {MODES.map(([v, label]) => (
+                    <option key={v} value={v}>
+                      {agent === 'gemini' && !GEMINI_MAPPED.has(v) ? `${label} · Gemini asks instead` : MODE_NOTE[agent]?.[v] ?? label}
+                    </option>
+                  ))}
                 </select>
               </Field>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Model"><select className="input" value={model} onChange={(e) => setModel(e.target.value)}>{(agent === 'gemini' ? GEMINI_MODELS : MODELS).map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select></Field>
-              {/* Gemini spells these differently — default, auto_edit, yolo,
-                * plan — and the daemon maps onto them, so the control stays
-                * live for both. Two of Claude's six have no counterpart worth
-                * guessing at, and are marked rather than silently ignored. */}
-              <Field label="Permissions"><select className="input" value={mode} onChange={(e) => setMode(e.target.value)}>{MODES.map(([v, label]) => <option key={v} value={v}>{agent === 'gemini' && !GEMINI_MAPPED.has(v) ? `${label} · Gemini asks instead` : label}</option>)}</select></Field>
             </div>
             {/* Two settings that matter to a handful of runs and to nobody
               * else, folded away rather than deleted. Every field on screen is
@@ -195,7 +234,7 @@ export function SpawnDialog({
             {error && <div className="text-danger text-[12px]">{error}</div>}
           </div>
         )}
-        {available && (
+        {(available || agents.length > 0) && (
           <footer className="px-4 py-2 border-t border-border flex gap-2 justify-end">
             <button onClick={onClose} className="border border-border px-3 py-1 rounded-sm text-fg-muted hover:text-fg">Cancel</button>
             <button onClick={submit} disabled={busy} className="border border-accent bg-accent/15 text-accent px-3 py-1 rounded-sm hover:bg-accent/25 disabled:opacity-50">{busy ? 'starting…' : 'Start session'}</button>
@@ -203,6 +242,48 @@ export function SpawnDialog({
         )}
       </div>
     </div>
+  )
+}
+
+/** The model control for one agent. Claude Code and Gemini get a checked list;
+ *  Codex its own catalog, with its configured default first; OpenCode a field,
+ *  because its models are whatever providers the user set up, written
+ *  provider/model. Empty means "what your own config says". */
+function ModelField({
+  agent,
+  value,
+  onChange,
+  codex,
+}: {
+  agent: SpawnAgent
+  value: string
+  onChange: (v: string) => void
+  codex?: { default?: string; models: { id: string; label: string }[] }
+}) {
+  if (agent === 'claude' || agent === 'gemini') {
+    return (
+      <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+        {(agent === 'gemini' ? GEMINI_MODELS : MODELS).map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+      </select>
+    )
+  }
+  if (agent === 'codex') {
+    const listed = codex?.models ?? []
+    return (
+      <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">{codex?.default ? `${codex.default} · your Codex default` : 'your Codex default'}</option>
+        {listed.filter((m) => m.id !== codex?.default).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+      </select>
+    )
+  }
+  return (
+    <input
+      className="input"
+      placeholder="your OpenCode default"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      spellCheck={false}
+    />
   )
 }
 

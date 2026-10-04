@@ -227,7 +227,8 @@ internal/api/         # REST + WS + embedded UI (dist/ committed for go install,
 internal/daemon/      # wiring, runtime.json lifecycle, sweeper, auto-pause, Stop-decision
 internal/smoke/       # the DoD scenario (build tag `smoke`), runs on the 3-OS matrix
 internal/ptyman/      # PTY backend (go-pty; ConPTY on Windows) — Control
-internal/agents/      # owned-session manager: spawn/stream/input/signal/exit, worktree, folder-trust — Control
+internal/agents/      # owned-session manager: spawn/stream/input/signal/exit, per-agent argv, worktree, folder-trust — Control
+internal/sessionlink/ # joins a spawned Codex/OpenCode session to the id the agent gives it — Control
 internal/hive/        # on-disk orchestration state: agents/tasks/mailboxes/ledger, YAML — Orchestrate
 internal/board/       # task board: verification runner, destructive-command policy, approvals — Orchestrate
 internal/orchestrator/ # orchestrator + worker lifecycle, the mailbox-router reconciler — Orchestrate

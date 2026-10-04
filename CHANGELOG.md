@@ -9,6 +9,21 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **Start Codex and OpenCode sessions from Caprock.** The New session dialog
+  has an agent picker — Claude Code, Codex, OpenCode, Gemini CLI — showing only
+  the ones installed on this machine, and it remembers the one you picked last.
+  Each runs as its own TUI in the terminal tab, with its own model choice
+  (Codex's own model list; OpenCode's `provider/model`) and the permission
+  choice translated into that agent's flags. Cost, turns and answers land on the
+  same session page as the terminal, and an ended Codex or OpenCode session can
+  be continued with "continue here".
+
+### Fixed
+
+- **A session with no activity yet no longer reads "idle 739892d ago".**
+
 ## [0.69.0] - 2026-10-04
 
 ### Added

@@ -20,6 +20,7 @@ import { findAttention } from '@/lib/attention'
 import { UpdateBanner } from '@/components/UpdateBanner'
 import { UnpricedNote } from '@/components/Unpriced'
 import { SpawnDialog } from '@/components/SpawnDialog'
+import { spawnableAgents } from '@/components/AgentPicker'
 import { LastWord } from '@/components/LastWord'
 import { usePlan } from '@/components/PlanPicker'
 import { costBasis, costBasisLong, costLabel } from '@/components/CostBasis'
@@ -194,7 +195,7 @@ export function NowScreen() {
         {!isPairedDevice() && (
           <>
             <QuickChatButton available={status.data?.claude_available} />
-            <NewSessionButton available={status.data?.claude_available} onClick={() => setSpawning(true)} />
+            <NewSessionButton available={status.data ? spawnableAgents(status.data).length > 0 : undefined} onClick={() => setSpawning(true)} />
           </>
         )}
       </div>
@@ -399,6 +400,7 @@ export function NowScreen() {
         <SpawnDialog
           available={status.data?.claude_available ?? false}
           geminiAvailable={status.data?.gemini_available ?? false}
+          agents={status.data ? spawnableAgents(status.data) : undefined}
           onClose={() => { setSpawning(false); sessions.refresh() }}
         />
       )}
@@ -466,14 +468,14 @@ function NewSessionButton({ available, onClick }: { available: boolean | undefin
   return (
     <button
       onClick={onClick}
-      title={missing ? 'claude was not found on this machine — click for details' : 'start a session Caprock owns'}
+      title={missing ? 'no coding agent was found on this machine — click for details' : 'start a session Caprock owns'}
       className={`flex shrink-0 items-center rounded-[var(--radius-panel)] border px-3 text-[13px] leading-5 font-medium transition-colors ${
         missing
           ? 'border-border text-fg-faint hover:text-fg-muted'
           : 'border-accent/60 bg-accent/15 text-accent hover:bg-accent/25'
       }`}
     >
-      + New session{missing ? ' (claude not found)' : ''}
+      + New session{missing ? ' (no agent found)' : ''}
     </button>
   )
 }

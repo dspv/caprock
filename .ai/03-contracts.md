@@ -355,13 +355,37 @@ reclaimable_bytes, growth_bytes_per_day_est, retention_days}`.
 ### Phase 1 additions
 
 ```
-POST   /v1/agents                    {cwd?, chat?, create?, worktree?, model?, permission_mode?, command?, args?} → {session_id, cwd}
+POST   /v1/agents                    {cwd?, chat?, create?, worktree?, agent?, model?, permission_mode?, resume?, fork?, command?, args?} → {session_id, cwd}
+GET    /v1/agents/models?agent=      {agent, default?, models:[{id,label}]}
 POST   /v1/agents/{id}/input         {data}            → 204   (owned PTYs only)
 POST   /v1/agents/{id}/signal        {action: pause|resume|kill} → 204 (owned PTYs only)
 WS     /v1/agents/{id}/term          bidirectional stream (xterm.js): binary = keystrokes, text = control; snapshot on connect, closes on exit
 POST   /v1/paste                     {name, type, data:base64} → {path}; writes a pasted or dropped file so Claude Code can read it
 GET    /v1/history?range=…           lifetime totals + tool distribution + model mix + daily
 ```
+
+**`agent`** is `claude` (default), `codex`, `opencode` or `gemini`; any other
+value is a 400. `permission_mode` is always in Claude Code's words and each
+agent's argv builder translates or drops it (`internal/agents/argv.go`; the
+per-agent flags are in [19-codex.md](19-codex.md) and
+[16-opencode.md](16-opencode.md)). With `resume`, the agent is the stored
+session's, whatever the request says, and a Codex or OpenCode resume is given
+the session's `native_id` when it has one. `fork` with Codex or OpenCode is a
+400: their forks copy history with its cost. The endpoints answer 501 only when
+**no** agent can be started (`claude_available`, `codex_available`,
+`opencode_available` and `gemini_available` all false on `/v1/status`).
+
+**`GET /v1/agents/models?agent=`** — the models an agent's own CLI lists. For
+`codex`: the `visibility: "list"` entries of `$CODEX_HOME/models_cache.json` in
+`priority` order, and `default` from the top-level `model` in `config.toml`.
+`claude`, `gemini` and `opencode` answer an empty list; an unknown agent is a
+400. No network I/O. Not open to paired devices (they cannot start sessions).
+
+**`/v1/status`** carries `codex_available` and `opencode_available` beside
+`claude_available` and `gemini_available`: the binary found on the daemon's
+PATH, the login shell's (once resolved — never waited for), or the installers'
+directories (`~/.local/bin`, `~/bin`, `/opt/homebrew/bin`, `/usr/local/bin`,
+`~/.opencode/bin`).
 
 **`POST /v1/agents` with `resume` is refused when the resume cannot work** —
 `400 {error}` carrying the same reason `GET /v1/sessions/{id}` gives in
@@ -384,13 +408,18 @@ this daemon does not hold its terminal. Such a session is started before a
 restart of Caprock and still has a process; it is marked **`detached: true`**
 on the list and the detail, and gets `resume` there too (FB-040): its terminal
 tab used to open an empty screen. Decided by what is on disk,
-not by who started the session (FB-036): the agent (Claude Code only; Codex and
-OpenCode get their own `command` — `codex resume <id>`, `opencode --session
-<id>`), the cwd still existing, and the main transcript
+not by who started the session (FB-036): the agent (Claude Code, Codex and
+OpenCode; Gemini is not continued), the cwd still existing, and for Claude Code
+the main transcript
 (`<project>/<session-id>.jsonl`, found from `transcript_path` or from the cwd's
 Claude Code folder) still existing. `command` is offered whenever the agent has
 one, including when Caprock cannot run it (folder gone, `claude` not found) —
-except when the transcript is gone, where no command could work.
+except when the transcript is gone, where no command could work. Codex and
+OpenCode: `command` is `cd <cwd> && codex resume <id>` / `opencode --session
+<id>` with the agent's own id (`native_id` when set); `ok` is false while the
+session is not ended (two processes on one thread), when its folder is gone,
+when Caprock started it and nothing was ever sent (nothing to continue), or
+when the binary is not found.
 
 **`SessionSummary.description` / `description_source`** — what tells a session
 from the others on the screen (FB-035): the stored `sessions.title`
@@ -492,7 +521,7 @@ measured and is quietly skewed is worse than one that is not there;
 
 **`create` makes the working directory, one level, under a parent that already exists.** Starting a new project otherwise meant leaving the dashboard, creating the folder in a terminal, and returning to type its path — a path the user had already typed. It is opt-in and defaults to false: this endpoint executes a command from its body, so a missing directory stays an error unless the caller explicitly asked for it to be made. Deliberately `Mkdir`, never `MkdirAll` — the parent must exist, so a typo in an absolute path fails loudly instead of materialising a chain of directories somewhere the user has never been. The path is cleaned before the parent is checked, so a path that climbs out with `..` is verified against where it actually lands. An existing directory is not an error.
 
-Owned sessions are spawned as `claude --session-id <uuid> [--model …] [--permission-mode …]`, so hooks and the transcript arrive under the id Caprock generated; the spawn environment is the user's login-shell environment (`internal/userenv`, see [02-architecture.md § Components](02-architecture.md#components)) with inherited Claude Code session markers stripped (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_PID`, … — `agents.childEnv`) so the session is a normal top-level one. Before spawning, Caprock pre-accepts Claude Code's folder-trust dialog for the session's cwd by setting `projects["<cwd>"].hasTrustDialogAccepted = true` in **`~/.claude.json`** (a second user-level Claude Code file, distinct from `settings.json`) — otherwise an interactive session blocks on the trust prompt, which `--dangerously-skip-permissions` does not suppress. The write is best-effort, atomic, and skipped if the folder is already trusted; an unparsable `~/.claude.json` is never modified. It goes through the **ordered-JSON codec**, preserving the user's key order and any integer beyond 2^53 — a `map[string]any` round-trip sorted the whole 200KB file alphabetically and truncated large integers through float64. Each grant Caprock makes is recorded in `<data_dir>/trust-grants.json`, so `caprock hooks uninstall` revokes exactly the folders Caprock trusted and never one the user accepted themselves; a folder already trusted when Caprock found it is never claimed. Spawning is unavailable (endpoints return 501, `status.claude_available=false`) when no `claude` binary is found; Caprock then stays observe-only. The manager resolves `claude` via PATH then `~/.local/bin`, `~/.claude/local`, `~/bin`, Homebrew and `/usr/local/bin`. Control operations are refused for sessions Caprock did not spawn.
+Owned sessions are spawned as `claude --session-id <uuid> [--model …] [--permission-mode …]`, so hooks and the transcript arrive under the id Caprock generated; the spawn environment is the user's login-shell environment (`internal/userenv`, see [02-architecture.md § Components](02-architecture.md#components)) with inherited Claude Code session markers stripped (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_PID`, … — `agents.childEnv`) so the session is a normal top-level one. Before spawning, Caprock pre-accepts Claude Code's folder-trust dialog for the session's cwd by setting `projects["<cwd>"].hasTrustDialogAccepted = true` in **`~/.claude.json`** (a second user-level Claude Code file, distinct from `settings.json`) — otherwise an interactive session blocks on the trust prompt, which `--dangerously-skip-permissions` does not suppress. The write is best-effort, atomic, and skipped if the folder is already trusted; an unparsable `~/.claude.json` is never modified. It goes through the **ordered-JSON codec**, preserving the user's key order and any integer beyond 2^53 — a `map[string]any` round-trip sorted the whole 200KB file alphabetically and truncated large integers through float64. Each grant Caprock makes is recorded in `<data_dir>/trust-grants.json`, so `caprock hooks uninstall` revokes exactly the folders Caprock trusted and never one the user accepted themselves; a folder already trusted when Caprock found it is never claimed. Spawning is unavailable (endpoints return 501) only when no agent's binary is found; Caprock then stays observe-only. Codex, OpenCode and Gemini get their own argv and are never written into `~/.claude.json` ([ADR-031](08-decisions.md)). The manager resolves `claude` via PATH then `~/.local/bin`, `~/.claude/local`, `~/bin`, Homebrew and `/usr/local/bin`. Control operations are refused for sessions Caprock did not spawn.
 
 ### Phase 2 additions
 
@@ -706,6 +735,26 @@ ALTER TABLE sessions ADD COLUMN parent_session TEXT NOT NULL DEFAULT '';
 
 `SessionSummary` carries both as `worked_at` and `parent_session`, omitted when
 unset, and `detached` (see `resume` above).
+
+### Native id DDL (migration 0031)
+
+```sql
+ALTER TABLE sessions ADD COLUMN native_id TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_sessions_native
+  ON sessions(agent, native_id) WHERE native_id <> '';
+```
+
+The agent's own id for a Codex or OpenCode session Caprock started under an id
+of its own — the Codex thread id or the OpenCode session id
+(`internal/sessionlink`, [ADR-031](08-decisions.md)). Written once
+(`store.SetNativeID` only fills an empty column). The Codex and OpenCode
+importers look an agent id up here (`store.SessionForNative`) and file that
+session's events under the Caprock session instead; a Codex subagent's events
+follow its parent's link. Empty for every other session, including Claude Code
+and Gemini, which take Caprock's id on the command line. `SessionSummary`
+carries it as `native_id`, omitted when empty. The staleness sweep judges an
+**owned** Codex or OpenCode row by its pid like any session Caprock started;
+imported rows stay clock-judged.
 
 ### Turn message-id DDL (migration 0029)
 

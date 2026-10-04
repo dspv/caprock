@@ -12,6 +12,7 @@ import (
 
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/rollup"
+	"github.com/dspv/caprock/internal/sessionlink"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -49,6 +50,11 @@ type Ingester struct {
 	// as the daemon's own sweeps failing with SQLITE_BUSY, not as a failure in
 	// the importer that caused it.
 	writing sync.Mutex
+
+	// Link files a session under the Caprock session that started it, when
+	// Caprock did (see internal/sessionlink). Nil leaves every session under
+	// OpenCode's own id.
+	Link *sessionlink.Linker
 }
 
 // Stats is what the daemon reports about OpenCode ingest.
@@ -176,6 +182,10 @@ func (in *Ingester) session(ctx context.Context, s Session) error {
 		return err
 	}
 	texts := joinTexts(parts)
+	// The id the session's rows are stored under: the Caprock session that
+	// started it, or OpenCode's own. OpenCode's id is still what its own
+	// database is queried by.
+	sid := in.storeID(ctx, s)
 
 	// Tool calls are grouped by the message that asked for them, which is what
 	// links a tool call to the turn that paid for it. Caprock uses that link
@@ -189,21 +199,21 @@ func (in *Ingester) session(ctx context.Context, s Session) error {
 	for _, m := range msgs {
 		switch m.Role {
 		case "assistant":
-			if err := in.turn(ctx, s, m, texts[m.ID]); err != nil {
+			if err := in.turn(ctx, sid, s, m, texts[m.ID]); err != nil {
 				return err
 			}
 		case "user":
-			if err := in.prompt(ctx, s, m, PromptText(parts[m.ID])); err != nil {
+			if err := in.prompt(ctx, sid, s, m, PromptText(parts[m.ID])); err != nil {
 				return err
 			}
 		}
 		for _, c := range byMsg[m.ID] {
-			if err := in.tool(ctx, s, m, c); err != nil {
+			if err := in.tool(ctx, sid, s, m, c); err != nil {
 				return err
 			}
 		}
 	}
-	if err := in.refreshText(ctx, s, msgs, texts); err != nil {
+	if err := in.refreshText(ctx, sid, s, msgs, texts); err != nil {
 		return err
 	}
 	// The title reaches the row through SessionInfo only when an event is
@@ -211,11 +221,21 @@ func (in *Ingester) session(ctx context.Context, s Session) error {
 	// before titles were kept, or renamed since, would never get its name.
 	// Written directly, after the events, so the row exists.
 	if in.rec != nil && in.rec.Store != nil {
-		if err := store.SetTitle(ctx, in.rec.Store.DB(), s.ID, sessionTitle(s.Title)); err != nil {
+		if err := store.SetTitle(ctx, in.rec.Store.DB(), sid, sessionTitle(s.Title)); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// storeID is the session OpenCode's session is stored under. Links are made
+// exactly, from the TUI's own server (sessionlink.Linker.Claim), so this only
+// looks one up and never matches.
+func (in *Ingester) storeID(ctx context.Context, s Session) string {
+	if in.Link == nil || s.IsChild() {
+		return s.ID
+	}
+	return in.Link.Resolve(ctx, Agent, sessionlink.Candidate{NativeID: s.ID})
 }
 
 // info is the session identity carried alongside every event. The recorder
@@ -233,7 +253,7 @@ func (in *Ingester) info(s Session) rollup.SessionInfo {
 // rather than in a sidechain of the parent, but they are the same thing: marked
 // sidechain, they stay out of "what did the agent say" exactly as a Claude Code
 // subagent's do.
-func (in *Ingester) turn(ctx context.Context, s Session, m Message, text string) error {
+func (in *Ingester) turn(ctx context.Context, sid string, s Session, m Message, text string) error {
 	cost := m.Cost
 	payload, _ := json.Marshal(map[string]any{
 		"provider":  m.Provider,
@@ -244,7 +264,7 @@ func (in *Ingester) turn(ctx context.Context, s Session, m Message, text string)
 	})
 	ev := &event.Event{
 		Ts:        time.UnixMilli(m.Created),
-		SessionID: s.ID,
+		SessionID: sid,
 		Source:    event.SourceOpenCode,
 		Kind:      event.KindTurnAssistant,
 		Model:     m.Model,
@@ -291,7 +311,7 @@ func (in *Ingester) turn(ctx context.Context, s Session, m Message, text string)
 // inserts the ones missing and finds the rest already there. A user message
 // read before its text part was written stores nothing yet; the next read of
 // the session — the reply that follows moves its update time — stores it.
-func (in *Ingester) prompt(ctx context.Context, s Session, m Message, text string) error {
+func (in *Ingester) prompt(ctx context.Context, sid string, s Session, m Message, text string) error {
 	if text == "" {
 		return nil
 	}
@@ -302,7 +322,7 @@ func (in *Ingester) prompt(ctx context.Context, s Session, m Message, text strin
 	})
 	ev := &event.Event{
 		Ts:        time.UnixMilli(m.Created),
-		SessionID: s.ID,
+		SessionID: sid,
 		Source:    event.SourceOpenCode,
 		Kind:      event.KindTurnUser,
 		Payload:   payload,
@@ -335,7 +355,7 @@ func (in *Ingester) prompt(ctx context.Context, s Session, m Message, text strin
 // Only `text` and `sidechain` are rewritten, via json_set, and only on rows
 // whose value differs: every other payload key, the event id, tokens and cost
 // are untouched, and a session already in step costs one read and no write.
-func (in *Ingester) refreshText(ctx context.Context, s Session, msgs []Message, texts map[string]string) error {
+func (in *Ingester) refreshText(ctx context.Context, sid string, s Session, msgs []Message, texts map[string]string) error {
 	if in.rec == nil || in.rec.Store == nil {
 		return nil
 	}
@@ -346,7 +366,7 @@ func (in *Ingester) refreshText(ctx context.Context, s Session, msgs []Message, 
 		FROM events
 		WHERE session_id = ? AND source = ? AND kind = 'turn.assistant'
 		  AND msg_id IS NOT NULL AND json_valid(payload)`,
-		s.ID, string(event.SourceOpenCode))
+		sid, string(event.SourceOpenCode))
 	if err != nil {
 		return fmt.Errorf("read stored text: %w", err)
 	}
@@ -397,7 +417,7 @@ func (in *Ingester) refreshText(ctx context.Context, s Session, msgs []Message, 
 				UPDATE events
 				SET payload = json_set(payload, '$.text', ?, '$.sidechain', json(?))
 				WHERE session_id = ? AND key = ? AND json_valid(payload)`,
-				f.text, side, s.ID, "oc-msg:"+f.id); err != nil {
+				f.text, side, sid, "oc-msg:"+f.id); err != nil {
 				return fmt.Errorf("refresh text: %w", err)
 			}
 		}
@@ -406,7 +426,7 @@ func (in *Ingester) refreshText(ctx context.Context, s Session, msgs []Message, 
 }
 
 // tool stores one tool call.
-func (in *Ingester) tool(ctx context.Context, s Session, m Message, c ToolCall) error {
+func (in *Ingester) tool(ctx context.Context, sid string, s Session, m Message, c ToolCall) error {
 	// Shaped like a Claude Code hook payload rather than like OpenCode's own
 	// row. Per-directory attribution derives touch_dir from the payload itself
 	// (store.TouchDir) so that no writer can supply a hand-made value, and the
@@ -430,7 +450,7 @@ func (in *Ingester) tool(ctx context.Context, s Session, m Message, c ToolCall) 
 	}
 	ev := &event.Event{
 		Ts:        time.UnixMilli(ts),
-		SessionID: s.ID,
+		SessionID: sid,
 		Source:    event.SourceOpenCode,
 		Kind:      event.KindToolPre,
 		Tool:      c.Tool,

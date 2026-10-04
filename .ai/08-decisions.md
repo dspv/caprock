@@ -962,3 +962,59 @@ or after compaction; anything that types into a session.
 **Revisit if** the handoff is switched off in practice, which is the honest
 signal — or if a distilled summary measurably beats the last passage, which
 requires the same kind of measurement rather than an argument.
+
+## ADR-031 — Codex and OpenCode are started like Claude Code, and linked to what they write
+
+**Date:** 2026-10-04 · **Status:** accepted (owner approved 2026-10-04)
+
+[ADR-026](#adr-026--gemini-cli-is-a-session-caprock-starts-not-a-chat-panel-it-owns)
+put Gemini CLI in the New session dialog and said to revisit when a third CLI
+arrived: "two special cases in one switch is fine, four is a table". Codex and
+OpenCode are the third and fourth. Both are observed already; a user who works
+in them had to leave Caprock to start one.
+
+**The decision.** Both are agents in the dialog, started as their own TUI in a
+PTY with everything downstream unchanged — terminal tab, pause and kill, the
+daily cap, graceful shutdown. The dialog offers only agents whose binary is
+found and remembers the viewer's last choice. The argv is a table of one
+builder per agent, each written from that CLI's own `--help` and exercised
+before it shipped; the flags and the versions they were read from live in
+[19-codex.md](19-codex.md) and [16-opencode.md](16-opencode.md). A permission
+mode an agent has no honest counterpart for is left to the agent's own config
+and the dialog says so.
+
+**Neither CLI can be told an id, so the session has to be linked.** Codex names
+its thread itself; OpenCode creates its session on the first message. Without a
+link one session is two rows. `internal/sessionlink` makes it:
+
+- **OpenCode exactly.** The TUI runs a server on a port Caprock chose; its
+  `session.created` frame names the session it made.
+- **Codex by a heuristic, said to be one.** Same folder, written by the TUI,
+  thread started within two minutes of the spawn. Codex stamps a thread at TUI
+  start, measured, which is what makes the window tight. The failure modes are
+  in [19-codex.md](19-codex.md).
+
+The link is stored on the session (`native_id`, migration 0031) and the
+importers file the agent's events under Caprock's id. Rejected: keeping two
+rows and joining them on screen (every total and list would have to know about
+the pair), and renaming the Caprock row to the agent's id once known (the
+terminal's URL and websocket are keyed on the first id).
+
+**Continuing is resuming, never forking.** `codex resume <id>` and `opencode
+--session <id>` take the agent's own id. Both CLIs' forks copy history with its
+cost, which Caprock would count twice, so a session that is still running is
+offered nothing until it ends.
+
+**Rule 7 is not bent.** Every process typed into is one Caprock started on an
+explicit click. Reading the event stream of the OpenCode server Caprock started
+is reading, on a port it chose. Nothing is written into either tool's config:
+Codex's folder trust is a per-run `-c` override, OpenCode's ask-before-commands
+an environment variable for the child.
+
+**Rules out:** a model list written into Caprock for Codex (it reads Codex's own
+catalog); Claude Code's `~/.claude.json` trust grant for agents that are not
+Claude Code; claiming "bypass" for OpenCode, whose overrides cannot remove its
+own asks.
+
+**Revisit if** Codex gains a way to name a new thread, which would make its
+link exact, or OpenCode a way to pre-create a session.
