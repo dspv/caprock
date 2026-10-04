@@ -50,6 +50,9 @@ Phase 3 (Delight) has no plan by design.
   replies stored since the change are filled from the transcripts on disk once,
   in the background, after an upgrade. Memory search and the handoff a new
   session receives read the same prose and are mended with it.
+- **A long link in an answer no longer widens the page.** One unbroken URL in
+  a reply made the Answers tab scroll sideways and pushed the session's
+  buttons off the screen; it now wraps.
 - **The Answers tab opens at once.** It read every reply on the machine to find
   one session's; on a 1 GB database that was 3.3 seconds cold for a session of
   21 replies, and is 20 ms now.

@@ -144,8 +144,11 @@ export function parseNotes(src: string): Block[] {
 /** Renders parsed notes. No `dangerouslySetInnerHTML` anywhere in this file. */
 export function Prose({ text }: { text: string }) {
   const blocks = parseNotes(text)
+  // min-w-0 and overflow-wrap:anywhere: a long URL in a reply is one
+  // unbreakable word, and as a grid item it set the session page's width —
+  // the Answers tab scrolled sideways and pushed the header's buttons off it.
   return (
-    <div className="grid gap-2.5 text-[13px] leading-relaxed text-fg-muted">
+    <div className="grid gap-2.5 min-w-0 [overflow-wrap:anywhere] text-[13px] leading-relaxed text-fg-muted">
       {blocks.map((b, i) => {
         if (b.kind === 'heading') {
           return (
