@@ -178,28 +178,24 @@ func resolveDir(base, to string) string {
 }
 
 // gitSubcommand returns the git subcommand of a statement, skipping git's
-// global options, and the directory `-C` points it at.
-func gitSubcommand(st shellStatement) (sub, dir string) {
+// global options (`-C dir` and `-c key=value` take a value).
+func gitSubcommand(st shellStatement) string {
 	w := st.words
 	if len(w) == 0 || w[0] != "git" {
-		return "", st.dir
+		return ""
 	}
-	dir = st.dir
 	for i := 1; i < len(w); i++ {
 		a := w[i]
 		switch {
-		case a == "-C" && i+1 < len(w):
-			dir = resolveDir(dir, w[i+1])
-			i++
-		case a == "-c" && i+1 < len(w):
+		case (a == "-C" || a == "-c") && i+1 < len(w):
 			i++
 		case strings.HasPrefix(a, "-"):
 			// --no-pager, --git-dir=..., and the like.
 		default:
-			return a, dir
+			return a
 		}
 	}
-	return "", dir
+	return ""
 }
 
 // countCommits is how many `git commit` statements a command ran. A command
@@ -207,7 +203,7 @@ func gitSubcommand(st shellStatement) (sub, dir string) {
 func countCommits(stmts []shellStatement, output string) int {
 	n := 0
 	for _, st := range stmts {
-		if sub, _ := gitSubcommand(st); sub == "commit" {
+		if gitSubcommand(st) == "commit" {
 			n++
 		}
 	}
