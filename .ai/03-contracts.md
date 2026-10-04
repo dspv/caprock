@@ -752,7 +752,7 @@ Hook shim). `idx_events_msg` leads on `session_id` and cannot answer either.
 On the owner's database (2026-10-03) the repair found 827 copied turns from
 one fork and took $212.93 and 381M tokens out of the totals.
 
-### Session pull requests DDL (migration 0031)
+### Session pull requests DDL (migration 0035)
 
 ```sql
 CREATE TABLE session_prs (

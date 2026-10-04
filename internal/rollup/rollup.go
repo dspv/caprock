@@ -147,7 +147,7 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 		res.Stored = true
 
 		// A `gh pr` command this session ran, as Claude Code recorded it: the
-		// session page and the Projects row link to it (migration 0031).
+		// session page and the Projects row link to it (migration 0035).
 		if ev.Kind == event.KindToolPost && ev.Tool == "Bash" {
 			if pr, ok := gitremote.FromToolPost(ev.Payload); ok {
 				if err := store.RecordPR(ctx, q, store.PRAction{SessionID: ev.SessionID, URL: pr.URL, Number: pr.Number,

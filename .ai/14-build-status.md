@@ -93,7 +93,7 @@ fake `claude` printing 4000 coloured lines and a 12 fps spinner:
 Also in this run, all in [04-ui.md](04-ui.md): the Projects row's terminal is a
 full-size button that says what it does (the faint `>_` from PR #137 was never
 found); the session header and project rows link the repository and the pull
-requests a session opened (migration 0031, `internal/gitremote`); slow
+requests a session opened (migration 0035, `internal/gitremote`); slow
 figures show their last value, marked, while they refresh; and a starting
 terminal says so, with Retry after 30 s. Owned sessions still die when the
 daemon restarts (they exit with 143); that is a separate issue, not addressed

@@ -1003,7 +1003,7 @@ func (d *Daemon) repairEmptyText(ctx context.Context) {
 }
 
 // backfillPRs fills session_prs from the `gh pr` commands stored before
-// migration 0031, once, in the background. On a copy of the owner's database
+// migration 0035, once, in the background. On a copy of the owner's database
 // the scan reads ~1,000 rows by a LIKE over Bash results, ~3 s cold.
 func (d *Daemon) backfillPRs(ctx context.Context) {
 	if v, _ := d.store.GetMeta(ctx, store.MetaPRsBackfilled); v == "1" {
