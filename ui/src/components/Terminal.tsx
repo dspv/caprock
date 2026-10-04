@@ -89,6 +89,7 @@ export function TerminalView({
   cwd,
   ended = false,
   detached = false,
+  canContinue = true,
   resume,
 }: {
   sessionId: string
@@ -96,8 +97,10 @@ export function TerminalView({
   cwd?: string
   /** The session is over: there is no process, whoever started it. */
   ended?: boolean
-  /** Caprock started it, but before its last restart: the terminal went with that run. */
+  /** Caprock started it, and its terminal closed when Caprock restarted. */
   detached?: boolean
+  /** Whether `resume` can actually continue it; when not, it carries the reason instead. */
+  canContinue?: boolean
   /** What to offer instead of a terminal once it has ended — continuing it. */
   resume?: ReactNode
 }) {
@@ -159,24 +162,9 @@ export function TerminalView({
     // Re-fitting once the faces are ready re-measures against them.
     document.fonts?.ready.then(() => { try { fit.fit() } catch { /* gone */ } })
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-    const ws = new WebSocket(`${proto}://${location.host}/v1/agents/${encodeURIComponent(sessionId)}/term`)
-    ws.binaryType = 'arraybuffer'
-    ws.onmessage = (e) => {
-      const chunk = typeof e.data === 'string' ? e.data : new Uint8Array(e.data)
-      term.write(chunk)
-      if (!gotOutput && chunk.length > 0) {
-        gotOutput = true
-        setStart((st) => ({ ...st, phase: 'ready' }))
-        // One size after the first output: a TUI that drew before the
-        // socket's first resize arrived redraws at the window's real size.
-        try { fit.fit() } catch { /* not laid out yet */ }
-        sendSize(term.cols, term.rows)
-      }
-    }
-    ws.onclose = () => {
-      term.write('\r\n\x1b[2m[session ended]\x1b[0m\r\n')
-      if (!gotOutput) setStart((st) => ({ ...st, phase: 'closed' }))
-    }
+    const url = `${proto}://${location.host}/v1/agents/${encodeURIComponent(sessionId)}/term`
+    // Reassigned on every reconnect; everything below reads the current one.
+    let ws!: WebSocket
     // Nothing in 30 s is not a slow start any more: say so, and offer a retry.
     const silentTimer = window.setTimeout(() => {
       if (!gotOutput) setStart((st) => (st.phase === 'waiting' ? { ...st, phase: 'silent' } : st))
@@ -248,12 +236,57 @@ export function TerminalView({
       ws.send(JSON.stringify({ resize: { cols, rows } }))
     }
     const sizeSub = term.onResize(({ cols, rows }) => sendSize(cols, rows))
-    ws.onopen = () => {
-      // The PTY was created before this socket existed, so the first thing it
-      // hears has to be the size the window actually is.
-      try { fit.fit() } catch { /* not laid out yet */ }
-      sendSize(term.cols, term.rows)
+
+    // The session outlives the daemon (ADR-033), so the socket going away is
+    // not the session ending. The daemon closes with 1000 when the process
+    // exits; anything else is the connection — Caprock restarting, an
+    // upgrade — and the terminal reconnects to the next daemon, which repaints
+    // it from the session's scrollback. Clearing first, so the repaint does
+    // not land under a copy of itself.
+    let retries = 0
+    let retryTimer = 0
+    let repaint = false
+    const connect = () => {
+      ws = new WebSocket(url)
+      ws.binaryType = 'arraybuffer'
+      ws.onmessage = (e) => {
+        if (repaint) { term.reset(); repaint = false }
+        const chunk = typeof e.data === 'string' ? e.data : new Uint8Array(e.data)
+        term.write(chunk)
+        if (!gotOutput && chunk.length > 0) {
+          gotOutput = true
+          setStart((st) => ({ ...st, phase: 'ready' }))
+          // One size after the first output: a TUI that drew before the
+          // socket's first resize arrived redraws at the window's real size.
+          try { fit.fit() } catch { /* not laid out yet */ }
+          sendSize(term.cols, term.rows)
+        }
+      }
+      ws.onopen = () => {
+        retries = 0
+        // The PTY was created before this socket existed, so the first thing it
+        // hears has to be the size the window actually is.
+        try { fit.fit() } catch { /* not laid out yet */ }
+        sendSize(term.cols, term.rows)
+      }
+      ws.onclose = (e: CloseEvent) => {
+        if (disposed) return
+        if (e?.code === 1000) {
+          term.write('\r\n\x1b[2m[session ended]\x1b[0m\r\n')
+          if (!gotOutput) setStart((st) => ({ ...st, phase: 'closed' }))
+          return
+        }
+        if (retries === 0) term.write('\r\n\x1b[2m[Caprock is restarting — reconnecting…]\x1b[0m\r\n')
+        if (retries >= 60) {
+          term.write('\r\n\x1b[2m[could not reconnect — reload the page]\x1b[0m\r\n')
+          return
+        }
+        retries++
+        repaint = true
+        retryTimer = window.setTimeout(connect, 1000)
+      }
     }
+    connect()
 
     // A newline in the prompt, however the user asks for one.
     //
@@ -486,17 +519,31 @@ export function TerminalView({
       window.clearTimeout(silentTimer)
       window.clearTimeout(webglTimer)
       inputSub.dispose()
+      window.clearTimeout(retryTimer)
       ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); ws.close(); term.dispose()
     }
   }, [sessionId, owned, attempt])
   if (!owned && detached) {
-    // Caprock started this session, and then Caprock restarted. The process
-    // is still there, but the terminal was held by the run that stopped, so
-    // attaching opened an empty black screen — while the list offered a
-    // continue that worked (FB-040). Say which, and offer the same thing.
+    // Caprock started this session and its terminal closed when Caprock
+    // restarted. Since ADR-033 a session's terminal is held outside the
+    // daemon and outlives a restart, so what is left here is a session
+    // started by an older release, or one whose terminal holder died.
+    //
+    // It used to say "Caprock restarted since this session began, and its
+    // terminal went with that run" over a "branch here" button, and the owner
+    // could not tell what had happened or what the button would do. Plain
+    // words now: what happened, that nothing is lost, and the one thing to do.
     return (
       <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
-        <p className="text-[14px] text-fg">Caprock restarted since this session began, and its terminal went with that run.</p>
+        <p className="text-[14px] text-fg">This session’s terminal was closed when Caprock restarted.</p>
+        {/* Only when there is a button to point at: with the transcript or
+          * the folder gone, `resume` says why instead, and "the conversation
+          * is saved" would be the one false sentence on the screen. */}
+        {canContinue && (
+          <p className="max-w-[52ch] text-[12px] leading-relaxed text-fg-muted">
+            The conversation is saved — <span className="text-fg">Continue it here</span> resumes it in a new terminal.
+          </p>
+        )}
         {resume}
       </div>
     )

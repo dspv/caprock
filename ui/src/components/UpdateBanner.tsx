@@ -22,7 +22,7 @@ export function UpdateBanner({ plan, onSave, now, owned = 0 }: {
   plan?: Settings
   onSave: (patch: Partial<Settings>) => void
   now: number
-  /** Live sessions Caprock started, which upgrading will close. */
+  /** Live sessions Caprock started that upgrading will close: those not in a pty-host. */
   owned?: number
 }) {
   const [st, setSt] = useState<UpdateStatus>()
@@ -78,11 +78,12 @@ export function UpdateBanner({ plan, onSave, now, owned = 0 }: {
         <span className="font-medium">Caprock {st.latest}</span> is available —
         you&apos;re on <span className="mono">{st.current}</span>.
       </span>
-      {/* Upgrading restarts the daemon, and the sessions it started are its
-        * children — so they end with it. They are asked to stop cleanly and
-        * given a few seconds, but the work still stops, and finding that out
-        * afterwards is how a user loses a turn they were in the middle of.
-        * Only shown when there is something to lose. */}
+      {/* Upgrading restarts the daemon. A session whose terminal is in a
+        * pty-host carries on and is picked back up (ADR-033); one in the
+        * daemon's own PTY — the fallback when a holder could not start — ends
+        * with it. Those are counted, and only shown when there are any:
+        * finding out afterwards is how a user loses a turn they were in the
+        * middle of. */}
       {owned > 0 && (
         <span className="text-[12px] text-warn shrink-0">
           {owned === 1 ? '1 session Caprock started will close' : `${owned} sessions Caprock started will close`}

@@ -27,6 +27,10 @@ func linuxUserUnitDir(home string) string {
 //     down. This is the systemd equivalent of launchd's SuccessfulExit=false.
 //   - WantedBy=default.target: the user-session equivalent of multi-user; this
 //     is what `systemctl --user enable` links against.
+//   - KillMode=process: stopping the unit signals the daemon only. The default,
+//     control-group, kills everything in the unit's cgroup, and the pty-host
+//     that keeps an owned session alive is in it whatever its process group —
+//     so without this an upgrade restart ended every session (ADR-033).
 //   - No [Install] Alias, no RestartSec heroics: a failing daemon that restarts
 //     every 5s is loud enough to notice, and StartLimit stops a crash loop.
 //
@@ -54,6 +58,7 @@ func renderUnit(p Plan) string {
 	}
 	b.WriteString("Restart=on-failure\n")
 	b.WriteString("RestartSec=5\n")
+	b.WriteString("KillMode=process\n")
 	// This is a watcher, not the user's foreground work.
 	b.WriteString("Nice=5\n")
 	b.WriteString("IOSchedulingClass=idle\n\n")

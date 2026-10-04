@@ -75,7 +75,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   const terminal = active === 'terminal' && (
     <Panel className="overflow-hidden">
       {s
-        ? <TerminalView sessionId={id} owned={s.owned && s.status !== 'ended' && !s.detached} ended={s.status === 'ended'} detached={s.detached} cwd={s.cwd} resume={s.resume && <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={s.status !== 'ended'} resume={s.resume} />} />
+        ? <TerminalView sessionId={id} owned={s.owned && s.status !== 'ended' && !s.detached} ended={s.status === 'ended'} detached={s.detached} canContinue={!!s.resume?.ok} cwd={s.cwd} resume={s.resume && <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={s.status !== 'ended' && !s.detached} detached={!!s.detached && s.status !== 'ended'} resume={s.resume} />} />
         : <TerminalView sessionId={id} owned />}
     </Panel>
   )
@@ -143,7 +143,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
           * agent it was, which was right for 39 of 116 ended Claude Code sessions
           * (FB-036). Caprock never types into a process it did not start
           * (rule 7); a resume starts a second process on the conversation. */}
-        {s.resume && <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={s.status !== 'ended'} resume={s.resume} />}
+        {s.resume && <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={s.status !== 'ended' && !s.detached} resume={s.resume} />}
         {/* A relay: a new session, in any agent, started with a summary of
           * this one that the user reads first — offered next to "continue"
           * because it answers the same wish when continuing cannot (another

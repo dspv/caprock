@@ -170,7 +170,7 @@ export function NowScreen() {
       {status.data?.hooks && <HooksBanner missing={status.data?.hooks?.missing ?? []} settingsPath={status.data?.hooks?.settings_path ?? ''} />}
       {/* Only sessions Caprock spawned end with the daemon; the ones the user
         * started themselves are untouched by an upgrade. */}
-      <UpdateBanner plan={plan} onSave={savePlan} now={now} owned={list.filter((s) => s.owned && s.status !== 'ended').length} />
+      <UpdateBanner plan={plan} onSave={savePlan} now={now} owned={list.filter((s) => s.owned && s.status !== 'ended' && !s.detached && !s.survives_restart).length} />
       <InterruptedBanner info={status.data?.interrupted} now={now} />
       <Attention items={attention} now={now} onDismiss={(id) => live.dismissAlert(id)} sessions={list} />
 

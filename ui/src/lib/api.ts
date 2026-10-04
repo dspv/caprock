@@ -111,8 +111,10 @@ export interface SessionSummary extends Session {
   parent_session?: string
   /** Whether it can be carried on from here. On the list: ended sessions only. */
   resume?: ResumeInfo
-  /** Caprock started it before its last restart: still running, but its terminal is not here. */
+  /** Caprock started it and still running, but its terminal is not here (an older release's session, or its pty-host died). */
   detached?: boolean
+  /** A live session Caprock started whose terminal is in a pty-host: restarting or upgrading Caprock leaves it running (ADR-033). */
+  survives_restart?: boolean
 }
 
 /** Whether a session can be carried on from here, and if not, why. */

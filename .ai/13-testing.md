@@ -29,6 +29,8 @@ column says what it is when the suite that actually covers it is included.
 | `hooks`            | 82.3%   |       |                                                                                 |
 | `hookd`            | 81.9%   |       |                                                                                 |
 | `ptyman`           | 81.4%   |       | Windows path covered by the `ptyspike` job, not here                            |
+| `termbuf`          | 97.0%   |       | Measured 2026-10-04                                                             |
+| `ptyhost`          | 76.2%   |       | Measured 2026-10-04; the test binary plays holder and child, all three OSes     |
 | `hive`             | 81.2%   |       |                                                                                 |
 | `board`            | 81.0%   |       |                                                                                 |
 | `statusline`       | 80.6%   |       |                                                                                 |

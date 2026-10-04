@@ -38,3 +38,31 @@ func (s *session) Signal(sig Signal) error {
 	}
 	return ErrNotSupported
 }
+
+// TerminatePID asks a process Caprock started, by pid, to stop: SIGTERM to
+// its process group when it leads one (go-pty starts every child in its own
+// session, so Claude Code's own children go with it), else to the process.
+//
+// For a process the daemon no longer holds a handle to — one an older daemon
+// started and lost the terminal of. Callers must have established that the
+// pid is a session Caprock owns (rule 7); this function cannot tell.
+func TerminatePID(pid int) error {
+	if pid <= 1 {
+		return nil
+	}
+	if pgid, err := syscall.Getpgid(pid); err == nil && pgid == pid {
+		return syscall.Kill(-pgid, syscall.SIGTERM)
+	}
+	return syscall.Kill(pid, syscall.SIGTERM)
+}
+
+// KillPID is TerminatePID's last resort: SIGKILL, group first.
+func KillPID(pid int) error {
+	if pid <= 1 {
+		return nil
+	}
+	if pgid, err := syscall.Getpgid(pid); err == nil && pgid == pid {
+		_ = syscall.Kill(-pgid, syscall.SIGKILL)
+	}
+	return syscall.Kill(pid, syscall.SIGKILL)
+}
