@@ -9,6 +9,28 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **Assistant turns are no longer lost when the database is busy.** Since
+  0.68.0 the recorder checks whether a forked session's turn was already paid
+  for before storing it, and that read-then-write transaction failed at once
+  with "database is locked" whenever another write was in progress — about
+  400 times an hour on a busy machine. The transcript reader logged the error
+  and moved past the line, so the turn never arrived. Transactions now take
+  the write lock up front and wait for it, a line that still meets a busy
+  database is read again instead of skipped, and on first start the
+  transcripts written since 3 October are read once more to recover what was
+  dropped (on the owner's machine: 259 turns, $18.52).
+- **Every page loads fast on a large database.** On a 1 GB database with
+  sessions running, the main screen's requests took up to 3.6 seconds each.
+  All-time history and the 7-day, 30-day and all-time summaries are now
+  computed in the background and served from memory, refreshed as they are
+  asked for; the whole database file is memory-mapped, so a read after a
+  write no longer starts cold; and the sessions list finds each session's
+  first prompt through its own index. The same requests now answer in under
+  0.1 seconds, and the share dialog's preview no longer waits on four
+  whole-history scans. Today's figures are still computed on every request.
+
 ## [0.69.0] - 2026-10-04
 
 ### Added

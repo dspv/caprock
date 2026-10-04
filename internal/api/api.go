@@ -246,8 +246,10 @@ type Server struct {
 	pairing *pairing.Store
 	lanURL  string
 	// hist collapses the burst of identical /v1/history requests one open
-	// screen produces. See histcache.go.
-	hist *historyCache
+	// screen produces, and summ does the same for the wide ranges of
+	// /v1/stats/summary. See answercache.go.
+	hist *answerCache
+	summ *answerCache
 }
 
 // New builds the router.
@@ -267,7 +269,7 @@ func New(d Deps) *Server {
 			lanHost = u.Hostname()
 		}
 	}
-	s := &Server{d: d, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newHistoryCache(historyTTL, d.Now)}
+	s := &Server{d: d, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now)}
 	// Seeded from Deps so `caprock up --lan` behaves exactly as before; the
 	// dashboard's switch goes through SetLAN.
 	s.pairing, s.lanURL = d.Pairing, d.LANURL
@@ -1022,7 +1024,7 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 		s.failCode(w, http.StatusBadRequest, err)
 		return
 	}
-	sum, err := store.SummarizeSparkFor(ctx, s.d.Store.DB(), from, s.sparkSpec(label, from), agent)
+	sum, err := s.rangeSummary(ctx, from, label, agent)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -1070,6 +1072,56 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	resp.RateLimits = s.rateLimits(ctx)
 	resp.CodexRateLimits = s.codexRateLimits(ctx)
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// Warm computes the whole-history answers the dashboard asks for first — the
+// lifetime strip's /v1/history?range=all and the 7d, 30d and all-time
+// summaries the Cost screen and the share dialog open with — so the first
+// screen after a start finds them cached instead of paying for the scans.
+// Run in the background; it returns when they are done or ctx ends. Errors are
+// dropped: a key that failed to warm is simply computed on first request, as
+// it would have been without this.
+func (s *Server) Warm(ctx context.Context) {
+	if ctx.Err() != nil {
+		return
+	}
+	from, label := s.rangeFrom("all")
+	_, _ = s.hist.get(ctx, label+"|"+strconv.FormatInt(from, 10), func() (any, error) {
+		return s.buildHistory(ctx, from, label)
+	})
+	for _, rng := range []string{"7d", "30d", "all"} {
+		if ctx.Err() != nil {
+			return
+		}
+		from, label := s.rangeFrom(rng)
+		_, _ = s.rangeSummary(ctx, from, label, "")
+	}
+}
+
+// rangeSummary is the aggregate behind /v1/stats/summary for one range.
+//
+// Today's is computed on every request: it is ~40ms, and it is the figure
+// people watch move. Every wider range goes through the answer cache, because
+// a 7d, 30d or all-time summary scans that much more of the events table —
+// ~1s for all time on the owner's 1 GB database — for figures that a few
+// seconds cannot visibly change. The returned Summary is a copy; its slices
+// are shared with the cache and must not be written to.
+func (s *Server) rangeSummary(ctx context.Context, from int64, label string, agent store.AgentFilter) (store.Summary, error) {
+	spark := s.sparkSpec(label, from)
+	compute := func(c context.Context) (store.Summary, error) {
+		return store.SummarizeSparkFor(c, s.d.Store.DB(), from, spark, agent)
+	}
+	if label == "today" {
+		return compute(ctx)
+	}
+	key := "summary|" + label + "|" + strconv.FormatInt(from, 10) + "|" + string(agent)
+	v, err := s.summ.get(ctx, key, func() (any, error) {
+		return compute(context.WithoutCancel(ctx))
+	})
+	if err != nil {
+		return store.Summary{}, err
+	}
+	return v.(store.Summary), nil
 }
 
 // codexRateLimits is Codex's latest observed windows, or nil. No forecast:
@@ -1196,8 +1248,9 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	from, label := s.rangeFrom(r.URL.Query().Get("range"))
 	// Keyed by the resolved range rather than the raw query string, so
 	// "?range=" and "?range=today" — the same question spelled two ways —
-	// share one answer.
-	v, err := s.hist.get(r.Context(), label, func() (any, error) {
+	// share one answer; and by its start, so "today" is a new key at midnight.
+	key := label + "|" + strconv.FormatInt(from, 10)
+	v, err := s.hist.get(r.Context(), key, func() (any, error) {
 		return s.buildHistory(context.WithoutCancel(r.Context()), from, label)
 	})
 	if err != nil {

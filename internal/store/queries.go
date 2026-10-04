@@ -357,10 +357,17 @@ func SetPrompt(ctx context.Context, q Querier, id, prompt string) error {
 
 // FirstPrompts returns up to limit of a session's earliest user prompts, oldest
 // first. Claude Code carries the text as `prompt`, DeepSeek Harness as `text`.
+//
+// Pinned to idx_events_user_turn (migration 0031). Left to itself SQLite
+// picked idx_events_kind_ts, which walks every turn.user row in the database
+// and reads each one to test its session: 6ms a session on the owner's 1 GB
+// database, run once per untitled row of /v1/sessions — 330ms of a 50-row
+// list. The partial index holds only user turns, keyed by session and time,
+// with the implicit rowid tail giving (ts, id) order and no sort.
 func FirstPrompts(ctx context.Context, q Querier, id string, limit int) ([]string, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT COALESCE(json_extract(payload,'$.prompt'), json_extract(payload,'$.text'), '')
-		FROM events WHERE session_id = ? AND kind = 'turn.user'
+		FROM events INDEXED BY idx_events_user_turn WHERE session_id = ? AND kind = 'turn.user'
 		ORDER BY ts, id LIMIT ?`, id, limit)
 	if err != nil {
 		return nil, err

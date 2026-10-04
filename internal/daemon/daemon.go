@@ -133,6 +133,8 @@ type Daemon struct {
 	api   *api.Server
 	rt    config.Runtime
 	start time.Time
+	// events is /v1/status's stored-event count, taken in the background.
+	events eventCounter
 
 	// storage is the cached measurement of what the data directory holds;
 	// see storage.go.
@@ -618,6 +620,12 @@ func (d *Daemon) run(ctx context.Context) error {
 
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
+	// The all-time aggregates take a second or more on a large database; work
+	// them out now so the first screen opened finds them cached.
+	go func() {
+		d.events.get(ctx, d.store)
+		d.api.Warm(ctx)
+	}()
 
 	// The second listener, when the user asked for one.
 	//
@@ -1179,7 +1187,7 @@ func (d *Daemon) status(_ context.Context) any {
 	d.mu.Unlock()
 	st.Interrupted = d.interrupted(context.Background())
 	st.RetentionDays = d.config().RetentionDays
-	if n, err := store.CountEvents(context.Background(), d.store.DB()); err == nil {
+	if n, ok := d.events.get(context.Background(), d.store); ok {
 		st.Events = n
 	}
 	return st
