@@ -220,6 +220,117 @@ POST /v1/hook                          → 204 (shim only, bearer-token gated; t
 WS   /v1/live                          → server-push frames: {type:"event"|"session"|"alert", data:…}
 ```
 
+### The Week (`GET /v1/week`)
+
+```
+GET  /v1/week?start=YYYY-MM-DD          → Week — seven local days from `start`; omitted, the seven days ending today
+GET  /v1/week?period=today|7d|30d|all   → Week — the same card for a named window, in whole local days ending today
+```
+
+`period` names the share dialog's windows: `today`, `7d` (the default
+window), `30d` (the last 30 local days, as the Cost screen's 30d range) and
+`all` (from the local day of the first recorded event). The response carries
+`period`, `days[]` has one entry per day of the window, and every other field
+means what it means for a week. `period` and `start` together, or an unknown
+period, is `400`. Long windows are cached for 2 minutes instead of 30 s: on
+a copy of the owner's 1 GB database (2026-10-04) `all` takes about 11 s
+cold, `30d` about 3 s, `7d` 1.5 s and `today` 0.3 s. The two payload readers
+(tool calls and the loop replay) run beside the rest, and the replay skips the
+detector's read-only tools in SQL rather than after reading them.
+
+The Week screen's shareable card. `start` is a local date and the window is
+`[start 00:00, start+7 00:00)` in the daemon's time zone: the same days the
+Cost screen's `7d` range uses, so the two never disagree about which day a
+turn fell on. A `start` that is not `YYYY-MM-DD` is `400`.
+
+`{start, end, partial, from_ms, to_ms, days[], sessions, active_days, turns,
+cost_usd, unpriced_turns?, models[], prs_opened, prs_merged,
+merges_unresolved, commits, files_edited, lines_added, lines_removed,
+ci_wait_ms, tool_ms, agents[], loop?, biggest?, tax?, cost_per_merged_pr?,
+estimates[], pricing_version?}`. `days[]` is `{day, prs_opened, cost_usd,
+active}` × 7; `agents[]` is `{agent, subagent, turns, cost_usd, sessions,
+threads?}`; `loop` is `{agent, tool, kind, calls, first_ms, last_ms, tax_usd?,
+tax_priced_calls?}`; `biggest` is `{agent, cost_usd, turns, active_days}`.
+
+Everything is computed from the local database (`store.WeekStats`); the daemon
+asks nothing of GitHub, so what can be said is bounded by what the agents'
+own tool calls recorded:
+
+- **Opened** is distinct `github.com/<owner>/<repo>/pull/<n>` URLs printed by
+  a successful Bash call that ran `gh pr create`, minus lines saying the pull
+  request already exists. Success is a hook-plane `PostToolUse` that was not
+  interrupted, or a transcript-plane `tool.post` with `is_error` false.
+- **Merged** is distinct pull requests named by a successful `gh pr merge`: by
+  URL, by number (made distinct by the repository the command ran in, mapped
+  to `owner/repo` through the URLs `gh pr create` printed there), or — for the
+  current-branch form — by the one URL the command printed. A merge whose
+  target cannot be read (`$N`, a branch name, several URLs) is counted in
+  `merges_unresolved` and nowhere else. It is a merge the agents ran, not
+  GitHub's state.
+- **Commits** are `git commit` statements, read with a small shell splitter
+  (quotes, heredoc bodies, `cd`, `-C`) so a commit message mentioning a commit
+  is not one; output saying "nothing to commit" takes one off.
+- **Files and lines** come from successful Edit, Write and MultiEdit calls
+  outside temp directories and `~/.claude`. Lines are estimates: a Write
+  counts its whole file.
+- **Cost** is the stored `cost_usd`, priced once per message id and never
+  twice across forks; `tax` prices each model's cache reads exactly as
+  `/v1/history` does. `cost_per_merged_pr` divides all of the week's cost by
+  the merges — an estimate, absent when nothing merged.
+- **CI wait** is the hook-plane `duration_ms` of Bash calls whose statement is
+  `gh pr checks`, `gh run watch`, or a script named like `wait-ci`. Tool time,
+  not wall clock: parallel calls overlap.
+- **The loop** is the longest episode the live detector would have alerted on
+  — `loop.Signature`, read-only tools skipped, at least `loop_k` calls within
+  `loop_t_minutes`, the episode running while repeats keep arriving within the
+  window — except that repeats issued by one assistant message count once (a
+  turn that launches eleven subagents decided once). `tax_usd` is priced by
+  `contexttax.PriceSeries`, the function the live alert uses, and is absent
+  when no call could be priced (Codex calls carry no message id).
+
+**Nothing in the response names a repository, a path, a prompt or a session
+title.** The card is made to be posted, so the guard is in the shape of the
+payload rather than in the screen that draws it; a store test asserts it.
+
+`estimates[]` lists the fields a renderer must mark with "≈"
+(`lines_added`, `lines_removed`, and `cost_per_merged_pr` / `loop.tax_usd`
+when present). Responses are cached for 30 s per `start`.
+
+### At a glance (`GET /v1/glance`)
+
+```
+GET  /v1/glance                         → Glance — all-time split by agent and the bill by token type
+```
+
+`{agents[], bill?, display}` for the Now screen's At a glance block, all time
+and never filtered by agent:
+
+- **`agents[]`** is the same shape as the Week's (`store.AgentSplit`, which
+  the Week now calls too): turns and stored `cost_usd` per agent, Claude
+  Code's split into main threads and subagents (`threads` = distinct agent
+  ids). A turn is a subagent's when it carries an `agent_id`, or when its
+  session is a sidechain (OpenCode child sessions, whose every turn says so).
+  The split reads `idx_events_turn_agent` (migration 0031) and one payload per
+  session rather than one per turn.
+- **`bill`** is `{input_usd, output_usd, cache_write_usd, cache_read_usd,
+  unpriced_tokens}`: each model's summed tokens priced at its **current**
+  pricing-table rates, the way the context tax is, so the four add up to
+  roughly — not exactly — the stored cost, which priced each turn at the rate
+  of its day. Cache writes are split into the 5-minute and 1-hour rates.
+  Tokens of a model with no row are counted in `unpriced_tokens` and priced
+  nowhere. Absent with no pricing table.
+- **`display`** maps each model id seen to the table's display name.
+
+Cached for 60 s; on the owner's 1 GB database (2026-10-04) a cold build takes
+0.44 s.
+
+`SessionSummary` gained `model_display` (the table's name for the session's
+model, "Claude " dropped) and `live_subagents` — for a session that has not
+ended, the agent ids heard from in the last 30 minutes whose latest event is
+not their `agent.stop`. Claude Code reports no subagent start, only events from
+inside it and a stop, so a subagent whose stop never arrived stops counting
+after 30 silent minutes. Both are omitted when empty or zero.
+
 `GET /v1/status` gained `platform` (`GOOS/GOARCH`) — the first thing a bug report needs and the last thing anyone remembers to include.
 
 The dashboard route `#/session/{id}?at=<unix-ms>` reveals a moment in the timeline (used by the pulse); it is a client-side concern and needs no endpoint.
@@ -770,6 +881,22 @@ Finds an assistant turn by message id across sessions — the per-turn
 Hook shim). `idx_events_msg` leads on `session_id` and cannot answer either.
 On the owner's database (2026-10-03) the repair found 827 copied turns from
 one fork and took $212.93 and 381M tokens out of the totals.
+
+### Turn agent DDL (migration 0031)
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_events_turn_agent
+  ON events(kind, ts, session_id, agent_id, model, cost_usd,
+            tokens_in, tokens_out, cache_read, cache_write, cache_write_1h, internal)
+  WHERE kind = 'turn.assistant';
+```
+
+Covers the two all-time reads behind `GET /v1/glance`: assistant turns grouped
+by session and agent id (`store.AgentSplit`) and tokens by model and type
+(`store.TokensByModel`). No earlier index holds `agent_id` or
+`cache_write_1h`, so both read every turn's row. On the owner's 1 GB database
+(2026-10-04) they took 3.5 s and 2 s; covered, 0.09 s and 0.06 s. The index
+is 11.8 MB there and took 1.8 s to build.
 
 ### Touch attribution DDL (migration 0012)
 

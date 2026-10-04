@@ -78,12 +78,19 @@ func newHistoryCache(ttl time.Duration, now func() time.Time) *historyCache {
 // browsers abandon requests routinely — a cancelled tab must not take the
 // answer away from the two tabs still waiting for it.
 func (c *historyCache) get(ctx context.Context, key string, fn func() (any, error)) (any, error) {
+	return c.getTTL(ctx, key, c.ttl, fn)
+}
+
+// getTTL is get with its own freshness for this key. The Week screen reuses
+// this cache with a longer TTL: a week is opened, not polled, and costs more
+// to compute than a history range.
+func (c *historyCache) getTTL(ctx context.Context, key string, ttl time.Duration, fn func() (any, error)) (any, error) {
 	c.mu.Lock()
 	if e, ok := c.m[key]; ok {
 		// Settled and fresh: hand it straight back.
 		select {
 		case <-e.done:
-			if c.now().Sub(e.at) < c.ttl {
+			if c.now().Sub(e.at) < ttl {
 				c.mu.Unlock()
 				return e.val, e.err
 			}

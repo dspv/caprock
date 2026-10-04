@@ -19,6 +19,66 @@ Phase 3 (Delight) has no plan by design.
   choice translated into that agent's flags. Cost, turns and answers land on the
   same session page as the terminal, and an ended Codex or OpenCode session can
   be continued with "continue here".
+- **Week: a card of what your agents shipped, to post.** A new Week tab
+  draws seven days of this machine's work — pull requests opened and merged,
+  commits, files and ≈lines written, what it cost at list price, ≈cost per
+  merged PR, the share spent re-reading context, who did what (Claude Code,
+  its subagents, Codex, OpenCode, Gemini CLI, DeepSeek), the longest loop and
+  the biggest session — as a 1200×675 or 1080×1350 card in your theme.
+  Download it as a PNG or copy it to paste. Everything is counted on your
+  machine from the agents' own tool calls; Caprock does not ask GitHub, and
+  no repository, path, prompt or session title is ever on the card.
+
+- **Now: At a glance.** A collapsible block after All time draws where the
+  money went, the bill by token type (with the share spent re-reading
+  context in the middle) and the most-used tools as donuts, plus one tile per
+  agent with its share of all-time cost. A Charts | Numbers switch shows the
+  same figures as tables; both choices are remembered.
+- **Live pulse says who is working and on what.** Each session row shows the
+  current model by name and, when subagents are running, a crowd icon with
+  "×N".
+
+### Changed
+
+- **The Teams and Premium dialogs show what you get before they describe
+  it.** Each now opens with a small picture in the Week card's style — an
+  example team's week for Teams; the daily cap stopping at its line, a
+  question to Gemini about your own sessions, or the Monday report for
+  Premium — clearly tagged as an example, followed by a few short lines and
+  the two ways forward. Premium's prices are the site's: $30 a year, or $100
+  once marked Best value, in the product's amber rather than blue. Focus now
+  moves into the dialog and back to what opened it.
+
+
+- **Plan limits are gauges, directly under Today.** Each window is a ring
+  that turns amber at 60% and red above 85%, with its reset time and a
+  countdown, grouped by agent. A forecast still appears only when your pace
+  would hit the limit before the reset, and is drawn on the ring; Codex is
+  never forecast and says how old its reading is. A stale reading is drawn
+  grey and says so.
+
+- **Share: a Story card, for any period.** The share dialog gains a second
+  style beside Figures: the Week card — the headline, the money beside it,
+  who did what, the longest loop and the biggest session — for today, this
+  week, this month or all time, at 1200×675 or 1080×1350.
+
+
+- **Plan limits explain themselves.** Each window says, in words, how much
+  is used, when it resets and how long that is (in minutes under an hour),
+  and that Claude Code pauses at 100% until then. One line says these are
+  Anthropic's limits per 5-hour window and per week, not Caprock's, and near
+  the limit a note says to wait for the reset or switch to Codex if it has
+  room. The same panel is on Now and Cost, and the limit alert now opens it
+  directly.
+- **Lifetime reads like the site.** The money leads, large, with what it
+  came to per active day and per session beside it, then the cache and the
+  counts. Top projects come first, as a donut beside the table; tool usage
+  and the model mix are donuts with the rest grouped as "other", or tables,
+  by a Charts | Numbers switch.
+- **The share dialog shows a card at once.** It draws the last figures for
+  the period while the current ones load, and with nothing kept it shows the
+  card's outline with each range ticking off as it answers, instead of an
+  empty box. Saving or sending always uses the current figures.
 
 ### Fixed
 

@@ -86,6 +86,10 @@ export interface ContextFill {
 
 export interface SessionSummary extends Session {
   stats: Stats
+  /** The pricing table's name for the session's latest main-thread model ("Opus 5.5"). */
+  model_display?: string
+  /** Subagents working in the session now (heard from in the last 30 minutes, not stopped). */
+  live_subagents?: number
   activity: Activity
   savings: Savings
   loop?: LoopAlert
@@ -440,6 +444,64 @@ export interface CreateTaskRequest { title: string; budget_usd?: number; done_cr
 /** What a range paid to re-send its own context: every turn re-reads the whole
  *  conversation before it does anything. Absent when nothing could be priced. */
 export interface ContextTax { tax_usd: number; cost_usd: number; share: number; unpriced_tokens?: number }
+/** GET /v1/glance — the all-time agent split and the bill by token type, for
+ *  the Now screen's At a glance block. */
+export interface Glance {
+  agents: WeekAgent[]
+  bill?: { input_usd: number; output_usd: number; cache_write_usd: number; cache_read_usd: number; unpriced_tokens?: number }
+  display: Record<string, string>
+}
+
+/** GET /v1/week — seven local days of what this machine's agents did, for the
+ *  Week card. Nothing in it names a repository, a path, a prompt or a session
+ *  title. `estimates` lists the fields a renderer must mark with "≈". */
+export interface WeekDay { day: string; prs_opened: number; cost_usd: number; active: boolean }
+export interface WeekAgent { agent: string; subagent: boolean; turns: number; cost_usd: number; sessions: number; threads?: number }
+export interface WeekLoop {
+  agent: string
+  tool: string
+  /** What the repeated call did: poll, input, command, edit, fetch, subagent, other. */
+  kind: string
+  calls: number
+  first_ms: number
+  last_ms: number
+  /** What the loop paid to re-read context — an estimate; absent when unpriceable. */
+  tax_usd?: number
+  tax_priced_calls?: number
+}
+export interface Week {
+  /** The named window asked for (`today`, `7d`, `30d`, `all`); absent for a week picked by its first day. */
+  period?: string
+  start: string
+  end: string
+  partial: boolean
+  from_ms: number
+  to_ms: number
+  days: WeekDay[]
+  sessions: number
+  active_days: number
+  turns: number
+  cost_usd: number
+  unpriced_turns?: number
+  models: { model: string; cache_read: number; cost_usd: number }[]
+  prs_opened: number
+  prs_merged: number
+  merges_unresolved: number
+  commits: number
+  files_edited: number
+  lines_added: number
+  lines_removed: number
+  ci_wait_ms: number
+  tool_ms: number
+  agents: WeekAgent[]
+  loop?: WeekLoop
+  biggest?: { agent: string; cost_usd: number; turns: number; active_days: number }
+  tax?: ContextTax
+  cost_per_merged_pr?: number
+  estimates: string[]
+  pricing_version?: string
+}
+
 export interface History { range: string; totals: HistoryTotals; tools: ToolCount[]; daily: DailyStat[]; savings: Savings; summary: Summary; tax?: ContextTax }
 
 export interface Status {
@@ -759,6 +821,11 @@ export const api = {
   browse: (dir = '') => get<BrowseResponse>(`/v1/browse${dir ? `?dir=${encodeURIComponent(dir)}` : ''}`),
   recentDirs: () => get<RecentDir[]>('/v1/recent-dirs'),
   history: (range: 'today' | '7d' | '30d' | 'all' = 'all') => get<History>(`/v1/history?range=${range}`),
+  /** `start` is the first local day (YYYY-MM-DD); omitted, the seven days ending today. */
+  glance: () => get<Glance>('/v1/glance'),
+  week: (start?: string) => get<Week>(`/v1/week${start ? `?start=${start}` : ''}`),
+  /** The same card for a named window: today, the last 7 or 30 days, or all time. */
+  weekFor: (period: 'today' | '7d' | '30d' | 'all') => get<Week>(`/v1/week?period=${period}`),
   /** Turns the task runner on over the running daemon — no restart. Empty
    *  fields mean the daemon's own suggestion (see status.suggested_hive). */
   enableHive: (hive?: string, repo?: string) => post<{ hive: string; repo: string }>('/v1/hive', { hive: hive ?? '', repo: repo ?? '' }),
