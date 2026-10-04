@@ -25,8 +25,8 @@ import (
 //
 // Why the *last* passage rather than a search: measured on the owner's own
 // database, searching prior prose by the terms of the opening prompt helped in
-// 4 of 15 resumed sessions and missed the clearest case of all ("напомни что мы
-// последний раз изучали" — 384 candidate passages, no term overlap, because an
+// 4 of 15 resumed sessions and missed the clearest case of all ("remind me what
+// we were looking into last time" — 384 candidate passages, no term overlap, because an
 // opening question shares no words with its own answer). Recency answered 12 of
 // 19. The cheap thing works better than the clever one here.
 

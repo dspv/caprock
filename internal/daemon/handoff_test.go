@@ -220,8 +220,8 @@ func TestClippingNeverBreaksARune(t *testing.T) {
 // Switched off means silent, and it takes effect on the next session rather
 // than the next restart.
 //
-// Vova's objection, and it is a real one: "иногда необходим контекст а иногда
-// нет". He had been bitten by an assistant that remembered he works in MLOps
+// Vova's objection, and it is a real one: "sometimes context is needed and
+// sometimes it isn't". He had been bitten by an assistant that remembered he works in MLOps
 // and volunteered it while he was asking about Rust. Memory that arrives
 // uninvited is worse than none.
 func TestSwitchedOffMeansSilent(t *testing.T) {

@@ -192,7 +192,7 @@ missing field, never a missing session.
 Codex keeps an index of its threads beside the transcripts,
 `$CODEX_HOME/state_<N>.sqlite`, and it is read for one thing: telling sessions
 apart on the screen (FB-035). `threads.name` is the short title Codex
-generates ("Проверь даты без двух статей") and becomes the session's title;
+generates ("Check the dates without two articles", in the user's language) and becomes the session's title;
 `threads.first_user_message` is kept for sessions it has not named yet. The
 transcript cannot supply either — of 60 rollouts checked, every user message
 it opens with is injected AGENTS.md, environment or auto-review text. The index

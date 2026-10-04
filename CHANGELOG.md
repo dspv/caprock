@@ -2374,7 +2374,7 @@ Both of these came from the first person to run a Gemini session in anger.
 
 - **The premium banner says what the feature does.** It read "Premium stops a
   day that runs away from you, and alerts before a plan window does" — a
-  metaphor for a mechanism, and the verdict on it was "непонятно". A banner has
+  metaphor for a mechanism, and the verdict on it was "unclear". A banner has
   one line to name something the reader can picture, so it now says what the
   modal behind it goes on to explain: sessions pause when the day crosses a
   limit you set.

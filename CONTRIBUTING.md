@@ -2,6 +2,12 @@
 
 Thanks for helping. Small PRs, green CI, honest numbers.
 
+## English only
+
+Everything in the repository is in English: code, comments, docs, commit
+messages and pull requests. Test input that exercises non-English text
+(Cyrillic, CJK, emoji) is the one exception.
+
 ## Dev setup
 
 Prereqs: **Go 1.26**, **Node 22**.
