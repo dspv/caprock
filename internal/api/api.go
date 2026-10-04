@@ -302,6 +302,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/history", s.handleHistory)
 	m.HandleFunc("GET /v1/week", s.handleWeek)
 	m.HandleFunc("GET /v1/glance", s.handleGlance)
+	m.HandleFunc("GET /v1/tools/drill", s.handleToolDrill)
 	// Picking a folder without typing its path: see browse.go for what stops
 	// this being a filesystem-read API.
 	m.HandleFunc("GET /v1/browse", s.handleBrowse)
