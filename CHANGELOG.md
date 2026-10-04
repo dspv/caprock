@@ -25,6 +25,16 @@ Phase 3 (Delight) has no plan by design.
   your Wi-Fi or Tailscale, with no relay.
   The paired-devices list tells two phones of one model apart by browser, id
   and when each was paired.
+- **Answer Claude Code's permission prompts with a button.** When a session
+  you started in Caprock asks before running a command or editing a file, its
+  page shows the command or file with **Yes**, Claude Code's own second option
+  (*don't ask again*, *allow all edits this session*) and **No** — on the phone
+  and on the machine. Claude Code sessions only; Codex and OpenCode prompts
+  are still answered from the keys bar. Uses a new hook, so the dashboard asks
+  once to install it.
+- **Attach a photo from the phone.** *Photo* beside the phone's terminal input
+  takes a picture or picks one from the library, shrinks it to 2048 px and
+  types its path into the session.
 
 ### Fixed
 

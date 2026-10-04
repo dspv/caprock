@@ -72,6 +72,25 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-04 (night) — Permission buttons and photos from the phone
+
+ADR-035. A Claude Code permission prompt in an owned session shows as Yes /
+the offered second option / No under the command, found by the
+`PermissionRequest` hook (now registered; existing installs see one missing
+hook and one-click Install adds it) and answered with `1`, `2` or Esc — keys
+measured on Claude Code 2.1.289. The phone's keys bar gains Photo (camera or
+library, downscaled to 2048 px). Verified on an isolated daemon (real HOME so
+a real `claude` could log in, separate data dir with a DB copy, `--no-hooks`,
+port 4611; the PermissionRequest hook registered only in the test project's
+`.claude/settings.local.json`): a real Claude Code session hit Bash and Write
+prompts; through the LAN address as a controller at 390px, Yes ran the
+command, No rejected the write, *Yes, and don't ask again* saved
+`Bash(python3 *)`; a 4032×3024, 11.6 MB photo arrived as a 2048×1536, 1.6 MB
+JPEG whose path was typed in. Demoted to viewer, the same page saw the prompt
+without buttons and got 403 on answering and on paste. No horizontal overflow
+at 320–390px. Not verified: a real phone's camera, Codex/OpenCode (no
+buttons: neither reports approvals in a structured way).
+
 ### 2026-10-04 (night) — Fully working from the phone
 
 Owner, the same evening: "I want to be able to fully work from the phone."
