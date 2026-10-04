@@ -543,7 +543,8 @@ nothing you need to work:
 - **Android adds a shortcut, not an installed app.** Chrome installs a web app
   only over HTTPS; *Add to Home screen* still works and opens Caprock.
 - **No push notifications.** Web Push needs HTTPS (and, on an iPhone, the
-  home-screen app). See the proposed ADR-035 in `.ai/08-decisions.md`.
+  home-screen app). Alerts that a session needs you go through your own
+  Telegram bot instead (Settings → *Phone alerts*, ADR-036).
 
 There is a flag too — `caprock up --lan` — for a machine you administer over
 SSH. The button exists because the person who wants this is usually holding the
