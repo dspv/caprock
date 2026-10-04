@@ -1229,28 +1229,33 @@ terminal already open (the socket closes with 1008).
 
 **What a controller may do is an allowlist, like ADR-029's:** start a session,
 type into one (socket and `input`), pause/resume/kill one, paste a file into
-one, read the recent projects, models and relay brief the start form needs, and
-approve or reject a task. Rule 7 is unchanged and enforced below the API: the
+one, read the recent projects, folder listing (under home), models and relay
+brief the start form needs, and approve or reject a task. Rule 7 is unchanged and enforced below the API: the
 agent manager only types into or signals processes Caprock started.
 
 **Four narrower choices, each with an easier wrong answer:**
 
-- **A phone starts a coding agent in a known project, not a command anywhere.**
-  The dashboard on the machine may name any binary, arguments, folder or
-  `create`, because whoever sits there already can. A device token is a bearer
-  secret that can be copied off a phone, so from a device the spawn request may
-  not carry `command`, `args`, `create` or `chat`, and its folder must be one a
-  session has already run in. No folder browser: `/v1/browse` stays closed to
-  every device.
-- **No session that never asks, from a phone** (owner decision, 2026-10-04).
-  A controller's spawn may not set `permission_mode: "bypassPermissions"` — for
-  any agent, so not Codex's `--dangerously-bypass-approvals-and-sandbox` or
-  Gemini's yolo either; the dialog on a phone does not offer it. The phone is
-  what is used when nobody is watching the machine, which is exactly when an
-  agent that never asks does the most damage; answering its approvals from the
-  phone is the safe path this feature exists for; and the token that would
-  start one is a bearer secret that can be copied off the phone. Bypass
-  sessions are started on the machine itself.
+- **A phone starts a coding agent under home, not a command anywhere.**
+  The dashboard on the machine may name any binary, arguments or folder,
+  because whoever sits there already can. From a device the spawn request may
+  not carry `command`, `args` or `chat`, and its folder must be under the home
+  directory — checked after `EvalSymlinks`, so `~/link-to-/etc` is outside — or
+  one a session has already run in. `create` may make one new folder, and only
+  when its parent resolves inside home. `/v1/browse` is open to a controller,
+  rooted at the owner's browse root when that lies inside home and at home
+  otherwise, so a phone's picker never lists anything above it.
+- **Bypass is allowed from a phone** (owner decision, 2026-10-04, reversing the
+  first cut of this ADR the same day). The first cut refused
+  `permission_mode: "bypassPermissions"` from a device: a phone is used when
+  nobody watches the machine, and its token is a bearer secret. The owner's
+  goal is to *fully work from the phone*, and the refusal bought nothing: a
+  controller can already run any command by typing `!cmd` into a session, so
+  controller already equals shell access in that folder. The real guard is who
+  holds the role — granted only on the machine, taken away there with one
+  click that holds on the next keystroke, and reachable only on the owner's own
+  network (Wi-Fi or Tailscale, no relay). The phone's dialog offers bypass
+  again and asks once, inline, before starting it: "The agent won't ask before
+  running commands or editing files. Start?"
 - **The machine stays the machine's.** Settings, pairing (codes, roles,
   revocation, network access), the hive and orchestrator, creating or verifying
   tasks (verify runs commands), hooks install, shutdown, outbound calls, and
@@ -1266,7 +1271,9 @@ presence, not of intent to hand over a keyboard); a global "phones may control"
 switch (control is a property of one device, so losing one phone costs one
 button); typing into sessions Caprock did not start.
 
-**Revisit if** an owner needs control without either network (that is the relay
+**Revisit if** a controller token is ever reachable off the owner's network
+(the bypass and folder decisions lean on that), if an owner needs control
+without either network (that is the relay
 ADR-029 rules out), or if a controller needs one of the machine-only actions —
 each would be its own decision, added to the allowlist by name.
 

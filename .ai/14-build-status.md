@@ -72,6 +72,14 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-04 (night) — Fully working from the phone
+
+Owner, the same evening: "I want to be able to fully work from the phone."
+ADR-034 amended: a controller may start in bypass mode (the phone asks once,
+inline), in any folder under home or a new one there (symlinks resolved), and
+browse folders under home. `command`, `args`, `chat` and paths outside home
+stay refused.
+
 ### 2026-10-04 (late) — The phone as a controller
 
 The owner's top priority: work from the phone, on his own network. A paired

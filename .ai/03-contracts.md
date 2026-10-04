@@ -115,19 +115,24 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   reads as) and listed in `GET /v1/pair/state`. A controller may additionally
   make exactly the requests in `controllerRoutes` (`internal/api/lanauth.go`):
   `POST /v1/agents`, `GET /v1/agents/models`, `GET /v1/recent-dirs`,
-  `GET /v1/sessions/{id}/relay`, `GET /v1/agents/{id}/term`,
+  `GET /v1/browse` (rooted inside home, see below), `GET /v1/sessions/{id}/relay`, `GET /v1/agents/{id}/term`,
   `POST /v1/agents/{id}/input`, `POST /v1/agents/{id}/signal`,
   `POST /v1/paste`, `POST /v1/tasks/{id}/approve` and `/reject`. Everything
   else stays `403` for every device: settings, pairing, hive, tasks creation
   and verify, orchestrator, hooks install, shutdown, update check, report
-  test, Gemini ask, `open-terminal` and `/v1/browse`.
+  test, Gemini ask and `open-terminal`.
 - **What a controller's `POST /v1/agents` may say** (`controllerSpawnRefusal`):
-  `cwd` must be absolute and a directory some session has run in (`cwd` or
-  `repo_root`, `store.KnownDir`); `command`, `args`, `create` and `chat` are
-  refused unless empty or false, and so is `permission_mode:
-  "bypassPermissions"` (every agent's never-ask mode). Refusal is `403` with
-  `{error}`. A session
-  started from a device is logged with the device's id and name.
+  `cwd` must be absolute and either a directory some session has run in (`cwd`
+  or `repo_root`, `store.KnownDir`) or, after `filepath.EvalSymlinks`, the home
+  directory or below it. With `create: true` a missing `cwd` passes when its
+  parent resolves inside home (the agent manager makes one level). `command`,
+  `args` and `chat` are refused unless empty or false. Every
+  `permission_mode` is allowed, `bypassPermissions` included (ADR-034).
+  Refusal is `403` with `{error}`. A session started from a device is logged
+  with the device's id and name.
+- **`GET /v1/browse` from a controller** is rooted at the owner's browse root
+  when that resolves inside home, else at home; a `dir` above it, outside it or
+  through a symlink out of it is `404`, as on the machine.
 - **The terminal socket from a device** admits the LAN origin and takes the
   token as the `caprock.device.<token>` subprotocol, as `/v1/live` does. Before
   every frame a device sends, its role is read again (`pairing.Store.RoleOf`);
