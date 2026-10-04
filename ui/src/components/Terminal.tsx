@@ -3,6 +3,8 @@ import { Terminal as Xterm } from '@xterm/xterm'
 import { api, deviceToken, errText, isPairedDevice } from '@/lib/api'
 import { SpawnDialog } from './SpawnDialog'
 import { TerminalKeys } from './TerminalKeys'
+import { PermissionPrompt } from './PermissionPrompt'
+import { downscalePhoto } from '@/lib/downscale'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
@@ -116,6 +118,8 @@ export function TerminalView({
   // The keys bar types through the same socket as the keyboard. Set while a
   // socket exists; a no-op otherwise.
   const sendRef = useRef<(d: string) => void>(() => {})
+  // The keys bar's photo button attaches through the same path as a drop.
+  const attachRef = useRef<(files: File[]) => Promise<void>>(async () => {})
   // A phone types from the bar under the terminal, not into xterm: focusing
   // the canvas would raise the on-screen keyboard over the very output the
   // person is reading.
@@ -478,6 +482,13 @@ export function TerminalView({
       queue = queue.then(async () => {
         for (const f of files) await sendFile(f)
       })
+      return queue
+    }
+    // A photo from the phone's camera or library: made small enough to send
+    // first (downscalePhoto), then the same path as a dropped file.
+    attachRef.current = async (files) => {
+      const photos = await Promise.all(files.map((f) => downscalePhoto(f)))
+      await sendFiles(photos)
     }
 
     const onPaste = (e: ClipboardEvent) => {
@@ -539,6 +550,7 @@ export function TerminalView({
       inputSub.dispose()
       window.clearTimeout(retryTimer)
       sendRef.current = () => {}
+      attachRef.current = async () => {}
       ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); ws.close(); term.dispose()
     }
   }, [sessionId, owned, attempt, phone])
@@ -635,6 +647,7 @@ export function TerminalView({
           <TerminalStart phase={start.phase} since={start.since} onRetry={() => setAttempt((n) => n + 1)} />
         )}
       </div>
+      <PermissionPrompt sessionId={sessionId} />
       {/* Said once, under the terminal, because there is no way to discover it.
         *
         * A user who wants a second line presses Enter, watches half a thought
@@ -648,7 +661,7 @@ export function TerminalView({
       {/* A keyboard without Esc, Tab, arrows or Ctrl: on a phone always, and
         * on any narrow window. */}
       <div className={phone ? '' : 'sm:hidden'}>
-        <TerminalKeys send={(d) => sendRef.current(d)} />
+        <TerminalKeys send={(d) => sendRef.current(d)} attach={(files) => attachRef.current(files)} />
       </div>
       <div className="hidden border-t border-border px-3 py-1.5 text-[11px] text-fg-faint sm:block">
         <span className="mono text-fg-muted">Shift</span>+

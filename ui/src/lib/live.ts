@@ -2,7 +2,7 @@
 // Reconnects with backoff; exposes connection state so screens can show a
 // staleness dot instead of a spinner (no spinner longer than 300ms).
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { Event, LoopAlert, Session, Stats, TaskFrame } from './api'
+import type { Event, LoopAlert, Permission, Session, Stats, TaskFrame } from './api'
 import { deviceToken } from './api'
 
 export type Frame =
@@ -12,6 +12,7 @@ export type Frame =
   | { type: 'alert'; data: LoopAlert }
   | { type: 'task'; data: TaskFrame }
   | { type: 'stats'; data: unknown }
+  | { type: 'permission'; data: { session_id: string; permission: Permission | null } }
 
 export type ConnState = 'connecting' | 'open' | 'closed'
 
