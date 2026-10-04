@@ -80,7 +80,7 @@ substantial passage, the working tree now, and the PRs the session opened
 ([ADR-032](08-decisions.md), `internal/relay`). The user reads and edits the
 brief before it is sent, and the dialog says first that this is a new session
 with a summary, not the same conversation. The two sessions name each other
-(`sessions.relay_from`, migration 0032). The brief goes on the agent's command
+(`sessions.relay_from`, migration 0036). The brief goes on the agent's command
 line — every one of the four takes a first message there — so nothing races a
 TUI that has not drawn yet. The handoff's clip and age helpers moved into
 `internal/relay` and are shared. Verified on an isolated daemon at no cost:

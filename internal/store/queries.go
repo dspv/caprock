@@ -57,7 +57,7 @@ type Session struct {
 	// started under an id of its own (migration 0031); empty otherwise.
 	NativeID string `json:"native_id,omitempty"`
 	// RelayFrom is the session whose work this one was started to carry on,
-	// with a brief rather than the conversation (migration 0032); empty
+	// with a brief rather than the conversation (migration 0036); empty
 	// otherwise.
 	RelayFrom string `json:"relay_from,omitempty"`
 }
@@ -628,7 +628,7 @@ func SessionForNative(ctx context.Context, q Querier, agent, nativeID string) (s
 }
 
 // SetRelayFrom records that a session was started to carry on another's work
-// (migration 0032).
+// (migration 0036).
 func SetRelayFrom(ctx context.Context, q Querier, id, from string) error {
 	if id == "" || from == "" || id == from {
 		return nil

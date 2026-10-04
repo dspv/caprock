@@ -1037,7 +1037,7 @@ clip, reused), the working tree as it is now, and the PRs the session opened.
 The brief is shown in full and editable before anything is sent; the user's
 click sends it. The dialog's first sentence says it is a new session with a
 summary, not the same conversation. The two sessions name each other
-(`sessions.relay_from`, migration 0032).
+(`sessions.relay_from`, migration 0036).
 
 **The brief goes on the command line, not into the terminal.** All four CLIs
 take a first message as an argument (read from their `--help` on 2026-10-04:

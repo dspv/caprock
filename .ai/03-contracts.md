@@ -760,7 +760,7 @@ ALTER TABLE sessions ADD COLUMN parent_session TEXT NOT NULL DEFAULT '';
 `SessionSummary` carries both as `worked_at` and `parent_session`, omitted when
 unset, and `detached` (see `resume` above).
 
-### Relay DDL (migration 0032)
+### Relay DDL (migration 0036)
 
 ```sql
 ALTER TABLE sessions ADD COLUMN relay_from TEXT NOT NULL DEFAULT '';
