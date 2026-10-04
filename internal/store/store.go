@@ -106,7 +106,7 @@ const (
 	// mid-repair runs it again.
 	MetaEmptyTextRepairPending = "empty_text_repair_pending"
 	// MetaPRsBackfilled is "1" once session_prs holds the pull requests of the
-	// events stored before migration 0031.
+	// events stored before migration 0035.
 	MetaPRsBackfilled = "session_prs_backfilled"
 	// ToolLinkDone is the MetaToolLinkCursor value meaning "no rows left".
 	// A cursor alone cannot say so: the pass ends by reading a short batch, and

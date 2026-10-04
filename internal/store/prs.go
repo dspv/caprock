@@ -6,7 +6,7 @@ import (
 	"errors"
 )
 
-// SessionPR is a pull request a session opened or merged (migration 0031).
+// SessionPR is a pull request a session opened or merged (migration 0035).
 type SessionPR struct {
 	SessionID string `json:"session_id"`
 	URL       string `json:"url"`
