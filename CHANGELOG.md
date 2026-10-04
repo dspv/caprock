@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.69.0] - 2026-10-04
+
 ### Added
 
 - **Gemini 3.8 Flash and Gemini 3.1 Flash-Lite are priced.** A Gemini CLI
