@@ -21,6 +21,19 @@ Phase 3 (Delight) has no plan by design.
 - **Attach a photo from the phone.** *Photo* beside the phone's terminal input
   takes a picture or picks one from the library, shrinks it to 2048 px and
   types its path into the session.
+- **Phone alerts through your own Telegram bot, free.** Settings → *Phone
+  alerts* sends a message when a session is waiting for approval (at once) or
+  has finished (after a minute with nothing new) — every Claude Code session on
+  the machine, each kind with its own switch, both on once a bot is set up. A
+  message names the project, what happened and the agent, with a link to the
+  session when phone access is on; never code, prompts, replies, file names or
+  commands. One message per question, at most one of a kind per session every
+  three minutes and 20 an hour. *Send a test alert* checks the bot. The bot is
+  set up in Settings now, so it no longer needs the weekly report's licence.
+- **Now says when a session is waiting for approval.** A session at a
+  permission dialog — any session, not only Caprock's — reads *waiting for
+  approval* with the call it asks about and the *waiting on you* badge, instead
+  of looking busy.
 
 ## [0.71.0] - 2026-10-04
 

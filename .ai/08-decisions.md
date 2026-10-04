@@ -1340,3 +1340,77 @@ for Claude Code. Their prompts are still answered with the keys bar.
 the tests would no longer match a real one), if the hook's decision output can
 be given after the hook returns, or if Codex or OpenCode report approvals in a
 structured way.
+
+*Amended 2026-10-04 by [ADR-036](#adr-036--a-phone-hears-that-a-session-needs-it-through-the-owners-own-telegram-bot):*
+the hook is also stored, as a `permission.prompt` event for every session, so
+Now can say *waiting for approval* and the phone can be told.
+
+---
+
+## ADR-036 — A phone hears that a session needs it through the owner's own Telegram bot
+
+**Date:** 2026-10-04 · **Status:** accepted (owner, 2026-10-04)
+
+*PR #189 carries the proposal this accepts, under the number it had there;
+the options weighed are summarised here, and the owner's answers to its open
+questions are the decision.*
+
+The phone can do the work (ADR-034) and answer a permission prompt with a
+button (ADR-035), but it only knows a session is waiting if someone opens it.
+The most common request of the 2026-10 interface panel was the same: tell me
+when an agent is waiting.
+
+**The signal is the `PermissionRequest` hook ADR-035 registered, now also
+stored.** It fires as the dialog is drawn, for every session on the machine.
+ADR-035 keeps it in memory for owned sessions only, because only those can be
+answered; an alert needs every session, so the hook is also stored as a
+`permission.prompt` event. Now and the session page say *waiting for
+approval* with the *waiting on you* badge, which they could not before:
+"waiting" meant only "the last event was `Stop`". Claude Code's `Notification`
+hook was the first candidate and is not registered: its `permission_prompt`
+says what `PermissionRequest` already says, and its `idle_prompt` repeats the
+`Stop` before it. One hook, one detector.
+
+**Delivery: Telegram, through the bot the weekly report already uses**
+(ADR-024). Weighed against Web Push (needs HTTPS, so a Tailscale certificate
+with its renewal, a new origin and re-pairing — about three times the work),
+a self-signed or local CA (a certificate profile on every phone — ruled out)
+and ntfy (a second app, no better on privacy). Telegram reaches a phone on
+mobile data with no Tailscale and no HTTPS, and its token, chat, sender and
+write-only field exist. The tap opens Telegram, not Caprock; the message
+carries the link.
+
+**What leaves the machine** — rule 4 is kept the way ADR-024 kept it. Telegram
+reads the text, so the text is the project's folder name, the status, the
+agent and a link to the session on the LAN or Tailscale address (omitted when
+phone access is off). Never a prompt, a reply, a tool, a command, a file name
+or a path. Nothing is sent until the owner has set up a bot.
+
+**The owner's answers:**
+
+- **Free.** The weekly report stays paid; alerts are not, so the bot is set
+  up in Settings outside the report's lock, and the daemon checks no licence.
+- **Every session**, not only those started from the phone, with one switch
+  per kind in Settings; both on by default once a bot is set.
+- **Waiting for approval at once; finished after a minute** with nothing new,
+  so an owner replying at the keyboard is never paged.
+- **No spam:** one message per dialog, one alert of a kind per session in 3
+  minutes, 20 an hour across all sessions (the twentieth says the rest are
+  held), and an event more than 2 minutes old pages nobody, so re-reading
+  transcripts after a restart stays quiet. A failed send is shown in Settings
+  and never retried: a late "waiting for approval" is worse than none.
+
+**Codex and OpenCode alert nothing yet.** Neither reports an approval prompt
+or a turn end in a structured way Caprock reads, so neither records a
+`permission.prompt` or an `agent.stop`. The rules run over every stored event
+from every source, so an agent that starts reporting either gets alerts with
+no change here.
+
+**Rules out:** a relay of ours; a self-signed or local-CA certificate;
+`tailscale serve` in front of the daemon (it would make every phone look
+local and bypass pairing); sending anything beyond project, status, agent and
+link.
+
+**Revisit if** Caprock serves HTTPS on Tailscale for another reason, or an
+owner refuses Telegram — then Web Push reuses the hook and the rules and swaps
+the sender.

@@ -306,8 +306,8 @@ Windows, but it has not been run on either.
   Caprock runs come back green.
 - **Local-first** — loopback only, no servers, no telemetry, no account. Nothing
   reaches the network unless you switch it on: the release check, the Gemini
-  chat on your own key, and the weekly report to your own Telegram bot are each
-  off by default.
+  chat on your own key, and the weekly report and phone alerts to your own
+  Telegram bot are each off by default.
 
 What your usage is actually worth — the same work priced at the API rate,
 against what your plan costs. Nobody else tells you this number:
@@ -565,6 +565,22 @@ loopback-only:
   nothing of ours in between. Tailscale's 100.x address is used only when it is
   on Tailscale's own interface: the same range is carrier-grade NAT, and on
   your Wi-Fi it would be shared with strangers.
+
+### Hear about it on your phone
+
+Settings → *Phone alerts* sends a Telegram message to a bot you own when a
+session is **waiting for approval** (at once) or **has finished** (after a
+minute with nothing new) — every session on the machine, from any terminal,
+each kind with its own switch. Free. Create a bot with `@BotFather`, paste its
+token and your chat id, and press *Send a test alert*.
+
+A message says the project, what happened and the agent, plus a link to the
+session when phone access is on — nothing else: no code, prompts, replies, file
+names or commands. One message per question, at most one of a kind per session
+every few minutes and 20 an hour. It goes from your machine straight to
+Telegram, which can read it; nothing passes a server of ours. Today this covers
+Claude Code; Codex and OpenCode do not report an approval or a finished turn
+that Caprock can read.
 
 ## Start it at login
 
