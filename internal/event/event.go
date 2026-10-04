@@ -9,6 +9,10 @@ import (
 	"time"
 )
 
+// MaxAssistantText caps the assistant prose kept per turn, in runes. See
+// ingest.MaxAssistantText, which is this value.
+const MaxAssistantText = 16000
+
 // Kind is the normalized event kind. Unknown kinds must be tolerated by every
 // consumer (logged and ignored, never fatal).
 type Kind string

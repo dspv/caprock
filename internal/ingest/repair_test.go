@@ -117,6 +117,69 @@ func TestRepairAssistantText(t *testing.T) {
 
 // A row whose transcript has been deleted must keep the text it has rather than
 // lose it or block startup.
+// Turns stored from a response's thinking line kept no text; the prose was on
+// the lines after it. The repair reads it back from the transcript, joins a
+// response's text lines in order, and leaves a tool-only turn empty.
+func TestRepairEmptyAssistantText(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	project := filepath.Join(dir, "projects", "-home-u-proj")
+	if err := os.MkdirAll(project, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	transcript := filepath.Join(project, "s1.jsonl")
+	line := func(msgID string, block map[string]any) string {
+		b, _ := json.Marshal(map[string]any{
+			"type": "assistant", "sessionId": "s1", "uuid": msgID + fmt.Sprint(block["type"]),
+			"timestamp": "2026-10-01T10:00:00Z",
+			"message":   map[string]any{"id": msgID, "model": "claude-opus-5-5", "content": []any{block}},
+		})
+		return string(b) + "\n"
+	}
+	body := line("msg_a", map[string]any{"type": "thinking", "thinking": ""}) +
+		line("msg_a", map[string]any{"type": "text", "text": "Прочитал спеку целиком."}) +
+		line("msg_a", map[string]any{"type": "tool_use", "id": "t1", "name": "Bash", "input": map[string]any{}}) +
+		line("msg_a", map[string]any{"type": "text", "text": "Собираю корпус."}) +
+		line("msg_b", map[string]any{"type": "thinking", "thinking": ""}) +
+		line("msg_b", map[string]any{"type": "tool_use", "id": "t2", "name": "Read", "input": map[string]any{}})
+	if err := os.WriteFile(transcript, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(ctx, filepath.Join(dir, "db.sqlite"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	for _, id := range []string{"msg_a", "msg_b"} {
+		payload, _ := json.Marshal(map[string]any{"model": "claude-opus-5-5", "message_id": id, "text": "", "tools": nil, "sidechain": false, "_from": "transcript"})
+		if _, err := store.InsertEvent(ctx, st.DB(), &event.Event{SessionID: "s1", Source: event.SourceTranscript,
+			Kind: event.KindTurnAssistant, Key: "msg:" + id, Payload: payload}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.UpsertSession(ctx, st.DB(), "s1", store.SessionPatch{TranscriptPath: transcript}); err != nil {
+		t.Fatal(err)
+	}
+	n, err := RepairEmptyAssistantText(ctx, st.DB(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("repaired %d rows, want 1 (the tool-only turn has no prose to fill)", n)
+	}
+	notes, _ := store.SessionNotes(ctx, st.DB(), "s1", 10)
+	if len(notes) != 1 || notes[0].Text != "Прочитал спеку целиком.\nСобираю корпус." {
+		t.Fatalf("notes = %+v", notes)
+	}
+	// Once is enough: a second run finds nothing more to do.
+	if n, _ := RepairEmptyAssistantText(ctx, st.DB(), nil); n != 0 {
+		t.Fatalf("second run repaired %d rows", n)
+	}
+	if !NeedsEmptyTextRepair("3") || NeedsEmptyTextRepair("4") || NeedsEmptyTextRepair("") {
+		t.Fatal("NeedsEmptyTextRepair: v3 needs it, v4 and a fresh database do not")
+	}
+}
+
 func TestRepairSurvivesMissingTranscript(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()

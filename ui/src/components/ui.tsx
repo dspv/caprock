@@ -167,3 +167,19 @@ export function Copyable({ command, className = '' }: { command: string; classNa
     </button>
   )
 }
+
+/**
+ * Says that the figures on screen are this browser's last copy, and how old,
+ * while the fresh ones are read (lib/swr.ts). Quiet on purpose: the numbers
+ * are useful, just not live — and nothing that means "now" is shown from them.
+ */
+export function StaleNote({ at, now = Date.now(), className = '' }: { at: number; now?: number; className?: string }) {
+  if (!at) return null
+  const mins = Math.max(0, Math.round((now - at) / 60000))
+  const age = mins < 1 ? 'just now' : mins < 60 ? `${mins} min ago` : mins < 48 * 60 ? `${Math.round(mins / 60)} h ago` : `${Math.round(mins / 1440)} d ago`
+  return (
+    <span className={`text-[11px] text-fg-faint whitespace-nowrap ${className}`} role="status" title="The last figures this browser kept; fresh ones are being read">
+      updated {age} · refreshing
+    </span>
+  )
+}

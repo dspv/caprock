@@ -69,10 +69,12 @@
  * destination. A click that lands a user somewhere they cannot orient is worse
  * than a row that does nothing.
  *
- * The repository row carries one control besides its expander: `>_`, which
- * opens a terminal in the project (ProjectTerminal). It is a separate button
- * at the row's right edge with its own label and tooltip, so it promises
- * exactly where it goes; the breakdown rows under it stay inert.
+ * The repository row carries a line of controls under its figures: a big
+ * button into a terminal in the project, whose label says what it will do
+ * (ProjectTerminal), the repository on the web, and the latest pull request a
+ * session in it opened (RepoLinks). Each is its own control with its own
+ * label, so it promises exactly where it goes; the breakdown rows under it
+ * stay inert.
  *
  * Two things the row shows are choices worth stating.
  *
@@ -102,6 +104,7 @@
  * modelled, never extrapolated (rule 6).
  */
 import { ProjectTerminal } from '@/components/ProjectTerminal'
+import { ProjectRepoLinks } from '@/components/RepoLinks'
 import { TeamsModal } from '@/components/TeamsModal'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { WorkMixStrip } from '@/components/WorkMix'
@@ -110,7 +113,7 @@ import { useApi } from '@/lib/useApi'
 import { fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
 import { buildSpark, bucketLabel, peak } from '@/lib/spark'
 import { buildPathTree, collapseChains, MAX_DEPTH, type PathNode } from '@/lib/pathtree'
-import { Panel, Skeleton } from '@/components/ui'
+import { Panel, Skeleton, StaleNote } from '@/components/ui'
 
 type Range = 'today' | '7d' | '30d' | 'all'
 
@@ -243,7 +246,7 @@ export function ProjectsPanel({ sessions, agent }: { sessions: SessionSummary[];
   // carry a project that was only touched once.
   const [range, setRange] = useState<Range>('7d')
   const [expanded, setExpanded] = useState(false)
-  const summary = useApi(() => api.summary(range), [range], { intervalMs: 30000 })
+  const summary = useApi(() => api.summary(range), [range], { intervalMs: 30000, cache: `summary:${range}:all` })
 
   const everything = summary.data?.projects ?? []
   // Whether a machine has both agents at all. The filter appears only then:
@@ -286,6 +289,7 @@ export function ProjectsPanel({ sessions, agent }: { sessions: SessionSummary[];
       title="Projects"
       right={
         <span className="flex items-center gap-2">
+          {summary.stale && <StaleNote at={summary.cachedAt} />}
           {/* The total is stated in the same relationship as the rows: tokens
             * first, cost second and quieter. A header that summed only one of
             * the two columns below it would be answering half the panel. */}
@@ -324,6 +328,7 @@ export function ProjectsPanel({ sessions, agent }: { sessions: SessionSummary[];
               max={maxRow}
               ceiling={ceiling}
               live={liveIn(sessions).has(p.project)}
+              sessions={sessions.filter((x) => x.project === p.project)}
             />
           ))}
           {all.length > 6 && (
@@ -356,11 +361,14 @@ function ProjectRow({
   max,
   ceiling,
   live,
+  sessions,
 }: {
   p: ProjectShare
   max: number
   ceiling: number
   live: boolean
+  /** This project's sessions from Now's list, for the terminal button. */
+  sessions: SessionSummary[]
 }) {
   // The breakdown is absent for a repository whose work all happened in one
   // directory: a single child row would restate the parent's own total.
@@ -390,7 +398,7 @@ function ProjectRow({
   )
 
   const body = (
-    <div className="grid grid-cols-[1fr_128px_auto] items-center gap-3 w-full text-left">
+    <div className="grid grid-cols-[minmax(0,1fr)_64px_auto] sm:grid-cols-[minmax(0,1fr)_128px_auto] items-center gap-2 sm:gap-3 w-full text-left">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           {live && <span className="inline-block w-1.5 h-1.5 rounded-full bg-ok shrink-0" title="a session is live in this project" />}
@@ -447,23 +455,27 @@ function ProjectRow({
             type="button"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
-            className="flex-1 min-w-0 pl-3 pr-1 py-1.5 hover:bg-panel-2/50"
+            className="flex-1 min-w-0 pl-3 pr-3 py-1.5 hover:bg-panel-2/50"
             title={`${label}: show cost by directory`}
           >
             {body}
           </button>
         ) : (
-          <div className="flex-1 min-w-0 pl-3 pr-1 py-1.5">{body}</div>
+          <div className="flex-1 min-w-0 pl-3 pr-3 py-1.5">{body}</div>
         )}
-        {/* Outside the expander, not inside it: a button in a button is
-          * invalid markup, and a click meant for the terminal must not also
-          * fold the row open. A row with no directory (spend whose session
-          * was deleted) has nowhere to open, so it gets an empty slot that
-          * keeps the numbers on one edge. */}
-        <div className="w-9 shrink-0 flex justify-center">
-          {p.dir ? <ProjectTerminal dir={p.dir} label={label} /> : null}
-        </div>
       </div>
+      {/* The way in, under the figures and outside the expander: a button in
+        * a button is invalid markup, and a click meant for the terminal must
+        * not also fold the row open. Its own line, so the buttons can be big
+        * enough to find (the `>_` that used to sit at the row's edge was not)
+        * and still fit a phone. A row with no directory (spend whose session
+        * was deleted) has nowhere to open and no line. */}
+      {(p.dir || p.repo_url || p.last_pr) && (
+        <div className="flex flex-wrap items-center gap-2 pl-3 pr-3 pb-2">
+          {p.dir ? <ProjectTerminal dir={p.dir} label={label} sessions={sessions} /> : null}
+          <ProjectRepoLinks url={p.repo_url} pr={p.last_pr} />
+        </div>
+      )}
       {expandable && open && (
         <div className="pb-1.5 bg-panel-2/30">
           {/* The basis of the percentage, said in words. The column's base is

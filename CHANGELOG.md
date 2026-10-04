@@ -9,6 +9,28 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **Open the repository from a session or a project.** The session header
+  links the repository — the branch's page where the host has one — and the
+  pull requests the session opened, newest first, with "merged" only where a
+  merge was recorded. A project row links its repository and its last pull
+  request. The address is read from the local git remote (GitHub, GitLab,
+  Bitbucket, Codeberg and other hosts; ssh or https); nothing is asked of the
+  host.
+- **Screens show their last figures while the new ones load.** Now, Lifetime,
+  History and a session's header open with what this browser last saw,
+  marked "updated N min ago · refreshing", instead of dashes. Nothing about
+  the present — health, burn, controls — is drawn from the kept copy.
+
+### Changed
+
+- **A project's terminal is a button you can see.** Each Projects row has a
+  full-size button that says what it does: **Terminal** opens the session
+  Caprock is running there, **Pick up in a terminal** branches one started
+  elsewhere, **New session here** starts one. The full menu stays behind ⋯.
+  It replaces a small `>_` at the row's edge.
+
 ### Fixed
 
 - **Assistant turns are no longer lost when the database is busy.** Since
@@ -30,6 +52,34 @@ Phase 3 (Delight) has no plan by design.
   first prompt through its own index. The same requests now answer in under
   0.1 seconds, and the share dialog's preview no longer waits on four
   whole-history scans. Today's figures are still computed on every request.
+- **Opening a session's terminal no longer freezes the page.** The terminal
+  set up its GPU renderer before it connected, and connected only after the
+  session's figures had loaded; the figures were then reloaded on every event.
+  It now connects and takes the keyboard first, switches to the GPU renderer
+  once you pause, and reloads the figures every 30 seconds while you type.
+  Keys typed the moment it opens reach the session.
+- **A terminal that is starting says so.** A resumed session can take half a
+  minute to print anything; the panel showed black until then. It now counts
+  the seconds, and after 30 seconds with nothing, or if the session closes
+  first, says so and offers Retry.
+- **A session's Answers tab shows what Claude wrote again.** Claude Code now
+  writes a thinking line ahead of every reply, and Caprock kept only the first
+  line of each reply — so the prose after it was never stored, and a session of
+  long answers showed one line. The rest of a reply is now kept with it, and
+  replies stored since the change are filled from the transcripts on disk once,
+  in the background, after an upgrade. Memory search and the handoff a new
+  session receives read the same prose and are mended with it.
+- **The Answers tab opens at once.** It read every reply on the machine to find
+  one session's; on a 1 GB database that was 3.3 seconds cold for a session of
+  21 replies, and is 20 ms now.
+- **The terminal is dark in the light theme.** Claude Code's dim text and
+  status line were grey on paper and could not be read. The terminal now keeps
+  its dark palette in both themes, and keeps it when you switch theme with a
+  terminal open — it used to stay in the colours of whichever theme was on
+  when it opened.
+- **Now waits less for its figures.** The status the screen polls counted every
+  event and searched a fortnight of prose on each call; both are reused for a
+  minute now.
 
 ## [0.69.0] - 2026-10-04
 

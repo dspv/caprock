@@ -3,7 +3,7 @@ import { api, ApiError, isPairedDevice, type DiffResult, type Event, type Sessio
 import { useApi } from '@/lib/useApi'
 import { live } from '@/lib/live'
 import { fmtAgo, fmtPct, fmtTokens, fmtUSD, basename } from '@/lib/format'
-import { Badge, Empty, Panel, Sparkline, Stat } from '@/components/ui'
+import { Badge, Empty, Panel, Skeleton, Sparkline, StaleNote, Stat } from '@/components/ui'
 import { href, navigate } from '@/lib/router'
 import { useNow } from './Now'
 import { SessionNotes } from '@/components/Notes'
@@ -12,6 +12,7 @@ import { costBasisLong } from '@/components/CostBasis'
 import { agentName } from '@/components/Projects'
 import { usePlan } from '@/components/PlanPicker'
 import { ContinueSession } from '@/components/ContinueSession'
+import { RepoLinks } from '@/components/RepoLinks'
 
 type Tab = 'timeline' | 'notes' | 'changes' | 'terminal'
 
@@ -28,7 +29,23 @@ function sourceLine(s: SessionDetail): string {
 }
 
 export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: number }) {
-  const detail = useApi(() => api.session(id), [id], { intervalMs: 5000 })
+  // The figures this browser last saw for this session show at once, marked
+  // (lib/swr.ts), so the header and the terminal do not wait on a busy
+  // daemon. Only the summary is kept: the events are about now, and their
+  // payloads are most of a 500 KB response.
+  //
+  // On the Terminal tab the detail stops following every live event: a busy
+  // session ticks several times a second, and fetching, parsing and diffing
+  // half a megabyte each time took the main thread away from the keyboard
+  // (owner report, 2026-10-04: typing lagged). The header there needs the
+  // status and the cost, which a slow poll keeps close enough.
+  const typing = tab === 'terminal'
+  const detail = useApi(() => api.session(id), [id], {
+    live: !typing,
+    intervalMs: typing ? 30_000 : 5000,
+    cache: `session:${id}`,
+    cacheTrim: (d) => ({ ...(d as SessionDetail), events: [], files: [] }),
+  })
   // 'diff' and 'files' were separate tabs answering one question between them
   // — what did this session change — so a reader had to visit both and hold
   // the two lists in their head. Old links keep working.
@@ -48,7 +65,38 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   if (detail.error && !s) {
     return <Empty title={detail.error instanceof ApiError && detail.error.status === 404 ? 'Session not found' : 'Cannot load session'}>{detail.error.message}</Empty>
   }
-  if (!s) return <div className="text-fg-muted px-1">loading…</div>
+  // One terminal element for both layouts below, at the same place in the
+  // tree (the grid's second child), so the detail arriving re-renders it
+  // instead of remounting it — a remount would drop the socket and the
+  // keystrokes in flight.
+  const terminal = active === 'terminal' && (
+    <Panel className="overflow-hidden">
+      {s
+        ? <TerminalView sessionId={id} owned={s.owned && s.status !== 'ended' && !s.detached} ended={s.status === 'ended'} detached={s.detached} cwd={s.cwd} resume={s.resume && <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={s.status !== 'ended'} resume={s.resume} />} />
+        : <TerminalView sessionId={id} owned />}
+    </Panel>
+  )
+  if (!s) {
+    // The terminal never waits on the figures. On a busy daemon the detail
+    // took 3.3 s to arrive in a profile (2026-10-04), and the socket was only
+    // opened after it — so the keyboard was dead for as long as the stats
+    // took. Connect at once and assume it is ours; the daemon only holds
+    // PTYs for processes it started (rule 7), so a session it does not own
+    // has no socket to reach, and the panel corrects itself when the detail
+    // lands.
+    if (active === 'terminal') {
+      return (
+        <div className="grid gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <a href={href({ name: 'now' })} className="link text-fg-muted text-[12px]">← Now</a>
+            <span className="mono text-[11px] text-fg-faint">{id}</span>
+          </div>
+          {terminal}
+        </div>
+      )
+    }
+    return <div className="text-fg-muted px-1">loading…</div>
+  }
   const setTab = (t: Tab) => navigate({ name: 'session', id, tab: t })
   const total = s.stats.tokens_in + s.stats.tokens_out + s.stats.cache_read + s.stats.cache_write
   // Nothing measured, and no source that could measure it. Both halves matter:
@@ -64,13 +112,15 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   const waitingOnTelemetry = unmeasurable && s.agent === 'gemini'
   return (
     <div className="grid gap-3">
+      <>
       <div className="flex items-center gap-3 flex-wrap">
         <a href={href({ name: 'now' })} className="link text-fg-muted text-[12px]">← Now</a>
         <h1 className="text-[15px] font-medium">{s.project || 'unknown project'}</h1>
         <span className="mono text-[11px] text-fg-faint">{s.session_id}</span>
         {s.git_branch && <span className="mono text-[11px] text-fg-muted">{s.git_branch}</span>}
-        <Badge health={s.activity.health} />
-        {s.owned && s.status !== 'ended' && !reader && <OwnedControls id={id} />}
+        {/* Health and the controls are about now: never from a kept copy. */}
+        {!detail.stale && <Badge health={s.activity.health} />}
+        {!detail.stale && s.owned && s.status !== 'ended' && !reader && <OwnedControls id={id} />}
         {/* Continue, branch, or the reason neither is possible. The server
           * decides, because what decides it is on disk: whether Claude Code
           * still has the transcript, whether the folder is still there. It
@@ -79,18 +129,22 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
           * (FB-036). Caprock never types into a process it did not start
           * (rule 7); a resume starts a second process on the conversation. */}
         {s.resume && <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={s.status !== 'ended'} resume={s.resume} />}
+        {detail.stale && <StaleNote at={detail.cachedAt} now={now} />}
         <span className="text-[12px] text-fg-muted ml-auto num">{s.cwd}</span>
       </div>
+      {/* The repository and the PRs this session opened, on every tab — the
+        * terminal included, which is where someone is when they want them. */}
+      <RepoLinks repo={s.repo} prs={s.prs} cwd={s.cwd} />
       {s.description && (
         <div className={`text-[13px] ${s.description_source === 'title' ? 'text-fg' : 'text-fg-muted'}`} title={s.description_source === 'prompt' ? 'first prompt' : undefined}>
           {s.description_source === 'title' ? s.description : `“${s.description}”`}
         </div>
       )}
-      <div className="text-[13px]">
+      {!detail.stale && <div className="text-[13px]">
         <span className="text-fg">{s.activity.phrase}</span>
         <span className="text-fg-faint num text-[11px] ml-2">{fmtAgo(s.activity.at || s.last_event_at, now)}</span>
         {s.loop && <span className="ml-3 text-danger text-[12px]">loop: {s.loop.sample} ×{s.loop.count} in {s.loop.window_min}m</span>}
-      </div>
+      </div>}
       {/* A session Caprock starts but cannot read — Gemini today — produced six
         * columns of zeros with the reason in 11px grey underneath. Zeros are
         * how this bar shows "nothing happened yet", so it read as broken
@@ -142,10 +196,12 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         ))}
         {!s.owned && s.status !== 'ended' && !reader && <span className="ml-auto text-[11px] text-fg-faint pr-1">observe-only — terminal is read/write for spawned sessions only</span>}
       </div>
-      {active === 'timeline' && <Timeline id={id} initial={s.events} now={now} at={at} />}
+      {/* The timeline starts from the fresh events, never from a kept copy. */}
+      {active === 'timeline' && (detail.stale ? <Skeleton rows={6} /> : <Timeline id={id} initial={s.events} now={now} at={at} />)}
       {active === 'notes' && <SessionNotes id={id} now={now} />}
       {active === 'changes' && <ChangesTab id={id} s={s} />}
-      {active === 'terminal' && <Panel className="overflow-hidden"><TerminalView sessionId={id} owned={s.owned && s.status !== 'ended' && !s.detached} ended={s.status === 'ended'} detached={s.detached} cwd={s.cwd} resume={s.resume && <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={s.status !== 'ended'} resume={s.resume} />} /></Panel>}
+      </>
+      {terminal}
     </div>
   )
 }

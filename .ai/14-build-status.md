@@ -71,6 +71,51 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-04 (evening) — The terminal takes the keyboard first; repo links; kept figures
+
+The owner reported that opening a session's terminal froze the browser and
+typing lagged. Profiled in headless Chrome against a `.backup` copy, with a
+fake `claude` printing 4000 coloured lines and a 12 fps spinner:
+
+- **Before.** The WebGL addon was loaded synchronously before the socket was
+  created (context creation 1455 ms in the owner's Chrome; shader linking
+  420 ms of self time in one headless run). The terminal mounted only after
+  the session detail (about 500 KB) arrived, and that detail was refetched on
+  every live event. Nothing took focus, so keys typed on open went nowhere
+  until a click. First echo 1.2–1.6 s after navigation, with a click; a key's
+  dispatch blocked for up to 200–290 ms.
+- **After.** Focus and the socket first, WebGL after the first output and
+  1.5 s with no typing, the terminal mounted before the detail, and the detail
+  polled every 30 s on the Terminal tab. First echo 0.4–0.8 s with no click
+  (one cold-cache run 2.9 s); dispatch blocked for 13–94 ms. Steady echo once
+  WebGL is in is unchanged (20–70 ms).
+
+Also in this run, all in [04-ui.md](04-ui.md): the Projects row's terminal is a
+full-size button that says what it does (the faint `>_` from PR #137 was never
+found); the session header and project rows link the repository and the pull
+requests a session opened (migration 0035, `internal/gitremote`); slow
+figures show their last value, marked, while they refresh; and a starting
+terminal says so, with Retry after 30 s. Owned sessions still die when the
+daemon restarts (they exit with 143); that is a separate issue, not addressed
+here.
+
+### 2026-10-04 (later) — Answers kept, read from the session, and a dark terminal
+
+The owner opened a session full of long Russian replies and its Answers tab
+showed one line, slowly. Measured on a `.backup` copy of his database: the
+notes query walked `idx_events_kind_id` — every assistant turn on the machine,
+payload and all — instead of the session's own index, 3.3 s cold for 21 turns;
+it is 20 ms with the kind index taken out of the planner's hands, and a plan
+test holds it. The emptiness was the write path: Claude Code now writes a
+thinking line first on every response, the store keeps the first line of a
+message id, and the prose after it was dropped as a duplicate — 93% of turns
+stored after 2026-09-29 had no text. Later lines are now folded into the row
+(parser v4) and a background repair filled 745 turns on the copy. The
+terminal's palette is graphite in both themes and no longer read once at
+mount, and `/v1/status` reuses its two bulk reads (0.26 s event count, 0.64 s
+handoff coverage, cold) for a minute. See
+[03-contracts.md](03-contracts.md) and [04-ui.md § The terminal](04-ui.md#the-terminal).
+
 ### 2026-10-04 — Documents dropped into the terminal arrive, by name
 
 The owner dragged documents from Finder into a session and nothing usable

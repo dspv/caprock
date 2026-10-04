@@ -190,6 +190,62 @@ func TestTailAppendsAndResumesOffsets(t *testing.T) {
 	}
 }
 
+// One response written as thinking, text and tool_use lines must keep its prose.
+// The turn row is the FIRST line — the thinking one, with no text — and the
+// prose on the next line was dropped with the duplicate: on the owner's
+// database 93% of turns after 2026-09-29 were stored without their text, and a
+// session's Answers tab showed one line of a long conversation.
+func TestProseOnALaterLineOfOneResponseIsKept(t *testing.T) {
+	root, path := copyFixture(t, "normal.jsonl")
+	tl, st := newTailer(t, root)
+	ctx := context.Background()
+	_ = tl.discover(nil)
+	tl.pass(ctx, false)
+	const sid = "11111111-2222-3333-4444-555555555555"
+	notes, err := store.SessionNotes(ctx, st.DB(), sid, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var texts []string
+	for _, n := range notes {
+		texts = append(texts, n.Text)
+	}
+	if len(texts) != 2 || texts[1] != "Adding the endpoint." {
+		t.Fatalf("notes = %q, want the closing line and \"Adding the endpoint.\"", texts)
+	}
+	var payload string
+	if err := st.DB().QueryRow(`SELECT payload FROM events WHERE session_id = ? AND key = 'msg:msg-1'`, sid).Scan(&payload); err != nil {
+		t.Fatal(err)
+	}
+	var p struct {
+		Tools []string `json:"tools"`
+	}
+	_ = json.Unmarshal([]byte(payload), &p)
+	if len(p.Tools) != 1 || p.Tools[0] != "Edit" {
+		t.Fatalf("tools = %v, want [Edit] from the tool_use line", p.Tools)
+	}
+
+	// Reading the whole file again — a lost offset, a restart mid-file — must
+	// neither repeat the prose nor count the usage a second time.
+	before, _ := store.GetStats(ctx, st.DB(), sid)
+	if err := store.SetOffset(ctx, st.DB(), path, sid, 0); err != nil {
+		t.Fatal(err)
+	}
+	tb, _ := cost.Embedded()
+	tl2 := New(root, rollup.New(st, tb, bus.New(), nil), st, nil)
+	tl2.BackfillWindow = 0
+	_ = tl2.discover(nil)
+	tl2.pass(ctx, false)
+	after, _ := store.GetStats(ctx, st.DB(), sid)
+	if after != before {
+		t.Fatalf("a re-read changed the totals:\n got %+v\nwant %+v", after, before)
+	}
+	again, _ := store.SessionNotes(ctx, st.DB(), sid, 50)
+	if len(again) != 2 || again[1].Text != "Adding the endpoint." {
+		t.Fatalf("a re-read changed the prose: %+v", again)
+	}
+}
+
 func TestHookAndTranscriptDedupeByKey(t *testing.T) {
 	root, _ := copyFixture(t, "normal.jsonl")
 	tl, st := newTailer(t, root)
