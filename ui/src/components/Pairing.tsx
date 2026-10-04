@@ -355,9 +355,11 @@ function Devices({
               {/* Two phones of one model share a name, so each row also says
                 * when it was paired and the start of its id — enough to tell
                 * which one to take control away from. */}
-              <span className="block truncate text-fg">
-                {d.name}
-                <span className="mono ml-1.5 text-[11px] text-fg-faint" title={`device id ${d.id}`}>#{d.id.slice(0, 4)}</span>
+              <span className="flex min-w-0 items-baseline gap-1.5">
+                <span className="min-w-0 truncate text-fg" title={d.name}>{d.name}</span>
+                {/* Outside the truncation: on a narrow row the name gives way,
+                  * never the part that tells two of them apart. */}
+                <span className="mono shrink-0 text-[11px] text-fg-faint" title={`device id ${d.id}`}>#{d.id.slice(0, 4)}</span>
               </span>
               <span className="block text-[11px] text-fg-faint">
                 {d.role === 'controller' ? <span className="text-accent">can control sessions</span> : 'view only'}
