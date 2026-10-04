@@ -43,3 +43,6 @@ scripts/shotdata/
 # TypeScript incremental build cache — a local artifact, never shared.
 *.tsbuildinfo
 /routing-spike
+
+# The macOS app's SwiftPM checkouts and objects (its .app lands in macos/build/).
+macos/.build/

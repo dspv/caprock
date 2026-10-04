@@ -71,6 +71,19 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-04 (later) — A native macOS app, as a spike
+
+The owner wants Caprock to be an app people live in, and finds typing in the
+browser terminal uncomfortable. `macos/` holds a SwiftUI app built with the
+Command Line Tools alone: a session sidebar, SwiftTerm on the existing
+`/v1/agents/{id}/term` socket, the dashboard in a web view and a menu bar
+extra. It is not built by CI or released; nothing in the Go module depends on
+it. Measured against the web terminal on one isolated daemon: keystroke echo
+differs by less than a display frame, while opening a session (about 0.1 s
+against 0.3–1.1 s) and memory (30–53 MB against 278–442 MB for a Chrome tab)
+differ a lot; native CPU is not lower. Method, figures and caveats are in
+[macos/README.md](../macos/README.md); the product plan is in the spike's PR.
+
 ### 2026-10-04 — Documents dropped into the terminal arrive, by name
 
 The owner dragged documents from Finder into a session and nothing usable

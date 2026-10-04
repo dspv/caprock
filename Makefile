@@ -6,7 +6,7 @@
 DOCS := $(shell find . -name '*.md' \
           -not -path './node_modules/*' -not -path './.git/*' \
           -not -path './vendor/*' -not -path './ui/node_modules/*' \
-          -not -path './ui/dist/*' | sort)
+          -not -path './ui/dist/*' -not -path './macos/.build/*' | sort)
 
 # Every recipe below is POSIX shell: pipelines, `[ -d ]`, single-quoted
 # -ldflags, `2>/dev/null`. On Windows, GNU make with no `sh` on PATH falls back
