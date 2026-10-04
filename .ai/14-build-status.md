@@ -78,7 +78,15 @@ Owner, the same evening: "I want to be able to fully work from the phone."
 ADR-034 amended: a controller may start in bypass mode (the phone asks once,
 inline), in any folder under home or a new one there (symlinks resolved), and
 browse folders under home. `command`, `args`, `chat` and paths outside home
-stay refused.
+stay refused. Verified on an isolated daemon (temp HOME, DB copy, fake
+`claude`): over the LAN address a controller token started a fake Claude Code
+with `--permission-mode bypassPermissions` in a folder it made under home;
+`/private/tmp` (a known project outside home), a symlink to `/etc` and `..`
+out of home were refused; Browse and Recent listed only folders under home. In
+Chrome at 320–390px the dialog showed Browse, the inline bypass confirm and a
+16px path field with nothing past the edge. The keys bar field, meant to be
+16px since the controller shipped, measured 12px (`.input` outranked the
+utility) and is fixed. Not verified: a real phone on Wi-Fi.
 
 ### 2026-10-04 (late) — The phone as a controller
 
