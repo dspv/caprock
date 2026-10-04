@@ -22,6 +22,24 @@ Phase 3 (Delight) has no plan by design.
   History and a session's header open with what this browser last saw,
   marked "updated N min ago · refreshing", instead of dashes. Nothing about
   the present — health, burn, controls — is drawn from the kept copy.
+- **Week: a card of what your agents shipped, to post.** A new Week tab
+  draws seven days of this machine's work — pull requests opened and merged,
+  commits, files and ≈lines written, what it cost at list price, ≈cost per
+  merged PR, the share spent re-reading context, who did what (Claude Code,
+  its subagents, Codex, OpenCode, Gemini CLI, DeepSeek), the longest loop and
+  the biggest session — as a 1200×675 or 1080×1350 card in your theme.
+  Download it as a PNG or copy it to paste. Everything is counted on your
+  machine from the agents' own tool calls; Caprock does not ask GitHub, and
+  no repository, path, prompt or session title is ever on the card.
+
+- **Now: At a glance.** A collapsible block after All time draws where the
+  money went, the bill by token type (with the share spent re-reading
+  context in the middle) and the most-used tools as donuts, plus one tile per
+  agent with its share of all-time cost. A Charts | Numbers switch shows the
+  same figures as tables; both choices are remembered.
+- **Live pulse says who is working and on what.** Each session row shows the
+  current model by name and, when subagents are running, a crowd icon with
+  "×N".
 
 ### Changed
 
@@ -30,6 +48,12 @@ Phase 3 (Delight) has no plan by design.
   Caprock is running there, **Pick up in a terminal** branches one started
   elsewhere, **New session here** starts one. The full menu stays behind ⋯.
   It replaces a small `>_` at the row's edge.
+- **Plan limits are gauges, directly under Today.** Each window is a ring
+  that turns amber at 60% and red above 85%, with its reset time and a
+  countdown, grouped by agent. A forecast still appears only when your pace
+  would hit the limit before the reset, and is drawn on the ring; Codex is
+  never forecast and says how old its reading is. A stale reading is drawn
+  grey and says so.
 
 ### Fixed
 

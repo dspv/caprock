@@ -107,6 +107,10 @@ var readOnlyTools = map[string]bool{
 	"NotebookRead": true,
 }
 
+// ReadOnly reports whether the detector ignores a tool, so a replay of stored
+// calls (the Week card's longest loop) skips exactly what the live alert skips.
+func ReadOnly(tool string) bool { return readOnlyTools[tool] }
+
 // Observe feeds a stored event. It returns an Alert (non-nil) when a loop is
 // detected for the first time in an episode.
 func (d *Detector) Observe(ev event.Event) *Alert {

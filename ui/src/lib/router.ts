@@ -1,5 +1,5 @@
 // Hash router — zero dependencies, good enough for five screens.
-// Routes: #/ (Now) · #/session/:id · #/cost · #/history · #/tasks
+// Routes: #/ (Now) · #/session/:id · #/cost · #/history · #/week · #/tasks
 import { useEffect, useState } from 'react'
 
 export type Route =
@@ -9,6 +9,7 @@ export type Route =
   | { name: 'session'; id: string; tab?: string; at?: number }
   | { name: 'cost' }
   | { name: 'history' }
+  | { name: 'week'; start?: string }
   | { name: 'tasks' }
   | { name: 'graph' }
   | { name: 'notes' }
@@ -33,6 +34,10 @@ export function parseHash(hash: string): Route {
       return { name: 'cost' }
     case 'history':
       return { name: 'history' }
+    case 'week': {
+      const start = params.get('start') ?? ''
+      return /^\d{4}-\d{2}-\d{2}$/.test(start) ? { name: 'week', start } : { name: 'week' }
+    }
     case 'tasks':
       return { name: 'tasks' }
     case 'graph':
@@ -58,6 +63,7 @@ export function href(r: Route): string {
     }
     case 'cost': return '#/cost'
     case 'history': return '#/history'
+    case 'week': return r.start ? `#/week?start=${r.start}` : '#/week'
     case 'tasks': return '#/tasks'
     case 'graph': return '#/graph'
     case 'notes': return '#/notes'

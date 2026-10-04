@@ -72,6 +72,11 @@ type Deps struct {
 	}
 	// ActiveLoops reports whether a session currently has an unexpired loop alert.
 	ActiveLoops func(sessionID string) *loop.Alert
+	// LoopK and LoopWindow are the loop detector's settings, so the Week
+	// card's longest loop is found by the same rule as the live alert. Zero
+	// means the detector's defaults.
+	LoopK      int
+	LoopWindow time.Duration
 	// IdleAfter is the silence threshold for the idle badge.
 	IdleAfter time.Duration
 	Now       func() time.Time
@@ -251,6 +256,10 @@ type Server struct {
 	// /v1/stats/summary. See answercache.go.
 	hist *answerCache
 	summ *answerCache
+	// week and glance hold the Week screen's and Now's at-a-glance answers,
+	// each with its own freshness (weekTTL, glanceTTL).
+	week   *answerCache
+	glance *answerCache
 	// repos answers "which repository, on which host" per directory.
 	repos *repoCache
 }
@@ -272,7 +281,8 @@ func New(d Deps) *Server {
 			lanHost = u.Hostname()
 		}
 	}
-	s := &Server{d: d, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now), repos: newRepoCache()}
+	s := &Server{d: d, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now), repos: newRepoCache(),
+		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now)}
 	// Seeded from Deps so `caprock up --lan` behaves exactly as before; the
 	// dashboard's switch goes through SetLAN.
 	s.pairing, s.lanURL = d.Pairing, d.LANURL
@@ -300,6 +310,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/stats/daily", s.handleDaily)
 	m.HandleFunc("GET /v1/events", s.handleEventsFeed)
 	m.HandleFunc("GET /v1/history", s.handleHistory)
+	m.HandleFunc("GET /v1/week", s.handleWeek)
+	m.HandleFunc("GET /v1/glance", s.handleGlance)
 	// Picking a folder without typing its path: see browse.go for what stops
 	// this being a filesystem-read API.
 	m.HandleFunc("GET /v1/browse", s.handleBrowse)
@@ -431,6 +443,14 @@ type SessionSummary struct {
 	// daemon does not hold — it was started before a restart. The terminal tab
 	// opened an empty screen for it (FB-040); what it can do is continue.
 	Detached bool `json:"detached,omitempty"`
+	// ModelDisplay is the pricing table's name for the session's model (its
+	// main thread's latest), "Opus 5.5" rather than the id. Empty when the
+	// table does not know the model.
+	ModelDisplay string `json:"model_display,omitempty"`
+	// LiveSubagents is how many subagents are working in the session now:
+	// heard from within the last 30 minutes and not yet stopped. Zero for an
+	// ended session. The main thread is not counted.
+	LiveSubagents int `json:"live_subagents,omitempty"`
 }
 
 // ContextFill is the "context fill %" badge input: last turn's prompt size vs the model window.
@@ -484,6 +504,14 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 	}
 	if sess.Status == store.StatusEnded || sum.Detached {
 		sum.Resume = s.resumeInfo(sess)
+	}
+	sum.ModelDisplay = s.modelDisplay(sess.Model)
+	if sess.Status != store.StatusEnded {
+		n, err := store.LiveSubagents(ctx, q, sess.SessionID, s.d.Now().Add(-liveSubagentWindow).UnixMilli())
+		if err != nil {
+			return SessionSummary{}, nil, err
+		}
+		sum.LiveSubagents = n
 	}
 	// Context fill: last assistant turn's input+cache tokens vs the model's window.
 	// When it cannot be computed, say which of the two reasons applies. The

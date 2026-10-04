@@ -116,6 +116,41 @@ mount, and `/v1/status` reuses its two bulk reads (0.26 s event count, 0.64 s
 handoff coverage, cold) for a minute. See
 [03-contracts.md](03-contracts.md) and [04-ui.md § The terminal](04-ui.md#the-terminal).
 
+### 2026-10-04 — Now: At a glance, plan-limit gauges, who is working
+
+- **At a glance** (after All time) draws the all-time cost by model, the bill
+  by token type and tool calls as hand-drawn SVG donuts, with an agents row
+  and a Charts | Numbers switch. New `GET /v1/glance`; the agent split moved
+  into `store.AgentSplit`, which the Week uses too.
+- **Plan limits** moved from a Today cell to a full-width panel of ring
+  gauges under Today, grouped by agent, with reset countdowns; the forecast
+  stays the daemon's and Codex's stays absent.
+- **Live pulse** rows show the model name and live subagents ("×N").
+  `SessionSummary` gained `model_display` and `live_subagents`.
+- **Migration 0031** (`idx_events_turn_agent`): the first `/v1/glance` took
+  81 s on a copy of the owner's database, almost all of it one sidechain
+  lookup per session that SQLite planned on the `kind` index. Forced onto
+  `idx_events_session_ts` and with both all-time reads covered, it takes
+  0.44 s cold.
+- Verified on a copy of the owner's database with a near-limit fixture (82%
+  with a forecast, 64%, a stale 91%) in both themes and at 390px. At 390px
+  the page header and the All time tables still overflow sideways, as they
+  did before; the new blocks fit.
+
+### 2026-10-04 — Week: a card of what the agents shipped
+
+A **Week** tab draws one week of this machine's work as a card to post —
+landscape 1200×675 or portrait 1080×1350, in the dashboard's own theme —
+from `GET /v1/week`. Pull requests opened and merged, commits, files and
+≈lines are read from the agents' own successful tool calls; nothing asks
+GitHub. On a copy of the owner's database the week of 2026-09-27 in UTC came
+to 131 opened (all 131 confirmed on GitHub), 128 merged locally with 3
+unreadable merges left out (GitHub: 126 of the 131 merged, plus Dependabot and
+`shots/*` merges the agents also ran), 235 commits and $474.40 — the same
+figures the hand count produced. The longest loop is found by the live
+detector's rule and priced by the same function as the alert
+(`contexttax.PriceSeries`, extracted for it).
+
 ### 2026-10-04 — Documents dropped into the terminal arrive, by name
 
 The owner dragged documents from Finder into a session and nothing usable
