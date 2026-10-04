@@ -195,7 +195,7 @@ func TestHungDaemonReturnsWithinBudget(t *testing.T) {
 // that Claude Code acts on, so a valid JSON body is passed through verbatim.
 func TestStopDecisionReachesStdout(t *testing.T) {
 	dir := isolate(t)
-	decision := `{"hookSpecificOutput":{"hookEventName":"Stop","decision":"block","reason":"keep going"}}`
+	decision := `{"decision":"block","reason":"keep going"}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
 			t.Errorf("Authorization = %q; the daemon rejects an unauthenticated shim", got)

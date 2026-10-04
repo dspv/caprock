@@ -151,7 +151,7 @@ func TestHandlerStopDecision(t *testing.T) {
 	h.Decide = func(_ context.Context, p Payload) []byte {
 		if p.SessionID == "sess-abc" {
 			// Canonical Stop-decision shape (the one board.StopDecision emits).
-			return []byte(`{"hookSpecificOutput":{"hookEventName":"Stop","decision":"block","reason":"process your inbox"}}`)
+			return []byte(`{"decision":"block","reason":"process your inbox"}`)
 		}
 		return nil
 	}
