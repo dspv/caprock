@@ -73,6 +73,15 @@ if keep:
 PLAN
 fi
 
+# Scrub before the daemon ever opens the copy. The daemon warms its figure
+# cache on start and serves it stale-while-revalidate, so scrubbing under a
+# running daemon left the v0.70.1 Cost screen printing real project names
+# for the whole capture. shots.py refuses to run if this did not happen:
+# publishing a screenshot of real repository names is not a thing to
+# discover afterwards.
+echo "→ scrubbing the copy (minutes on a large database)"
+CAPROCK_SHOT_DB="$WORK/data/caprock.db" CAPROCK_SHOT_SCRUB_ONLY=1 python3 scripts/shots.py
+
 # The published binary, not a working tree build: the header carries the
 # version, and a README showing "dev build" tells the reader they are looking
 # at something unreleased. CAPROCK_SHOT_BIN overrides it for testing an
@@ -129,9 +138,8 @@ python3 -m venv "$WORK/venv" >/dev/null
 OUT="$WORK/out"
 mkdir -p "$OUT"
 echo "→ capturing"
-# shots.py refuses to run if it cannot scrub the database first: publishing a
-# screenshot of real repository names is not a thing to discover afterwards.
-CAPROCK_SHOT_DB="$WORK/data/caprock.db" "$WORK/venv/bin/python" \
+# Scrubbed above, before the daemon started.
+CAPROCK_SHOT_DB="$WORK/data/caprock.db" CAPROCK_SHOT_SCRUBBED=1 "$WORK/venv/bin/python" \
   scripts/shots.py "http://localhost:$PORT" "$OUT"
 
 if [ "$DRY_RUN" = "1" ]; then
