@@ -206,6 +206,8 @@ type toolOpts struct {
 	End       int64
 	// InputKey lets a test use an argument name other than filePath.
 	InputKey string
+	// Input adds arguments beside FilePath, in OpenCode's spelling.
+	Input map[string]any
 	// RawData overrides the whole payload.
 	RawData *string
 	// Type overrides the part type, for filtering tests.
@@ -228,6 +230,9 @@ func (f *fixture) tool(o toolOpts) {
 		data = *o.RawData
 	} else {
 		input := map[string]any{}
+		for k, v := range o.Input {
+			input[k] = v
+		}
 		if o.FilePath != "" {
 			key := o.InputKey
 			if key == "" {

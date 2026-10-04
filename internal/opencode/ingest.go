@@ -216,6 +216,9 @@ func (in *Ingester) session(ctx context.Context, s Session) error {
 	if err := in.refreshText(ctx, sid, s, msgs, texts); err != nil {
 		return err
 	}
+	if err := in.refreshInputs(ctx, sid, s, calls); err != nil {
+		return err
+	}
 	// The title reaches the row through SessionInfo only when an event is
 	// stored, and a session already imported stores none — so a session read
 	// before titles were kept, or renamed since, would never get its name.
@@ -427,19 +430,10 @@ func (in *Ingester) refreshText(ctx context.Context, sid string, s Session, msgs
 
 // tool stores one tool call.
 func (in *Ingester) tool(ctx context.Context, sid string, s Session, m Message, c ToolCall) error {
-	// Shaped like a Claude Code hook payload rather than like OpenCode's own
-	// row. Per-directory attribution derives touch_dir from the payload itself
-	// (store.TouchDir) so that no writer can supply a hand-made value, and the
-	// work-kind and narration code reads the same shape. Emitting OpenCode's
-	// native field names here would leave every OpenCode tool call unplaced
-	// and invisible to the directory breakdown.
-	input := map[string]any{}
-	if c.FilePath != "" {
-		input["file_path"] = c.FilePath
-	}
 	payload, _ := json.Marshal(map[string]any{
 		"tool_name":  c.Tool,
-		"tool_input": input,
+		"tool_input": toolInput(c),
+		"cwd":        toolCwd(s, c),
 		"status":     c.Status,
 		// The agent's own spelling, kept for anyone inspecting raw events.
 		"opencode_tool": c.RawTool,
@@ -471,6 +465,130 @@ func (in *Ingester) tool(ctx context.Context, sid string, s Session, m Message, 
 		in.mu.Unlock()
 	}
 	return nil
+}
+
+// toolInput is a call's tool_input, shaped like a Claude Code hook payload's
+// rather than like OpenCode's own row (see ToolInput): `command` for bash,
+// `url` for webfetch, `file_path` for read, edit and write, `pattern` and
+// `path` for grep and glob, `query` for a search.
+//
+// `file_path` is the one key set from filePathFrom rather than by renaming, as
+// it always has been: per-directory attribution derives touch_dir from it
+// (store.TouchDir) so that no writer can supply a hand-made value, and every
+// row stored before inputs were kept carries exactly that one key. A grep or
+// glob that names a `path` keeps it there too, so a call is placed where it
+// was placed before.
+func toolInput(c ToolCall) map[string]any {
+	input := ToolInput(c.Input)
+	if input == nil {
+		input = map[string]any{}
+	}
+	if c.FilePath != "" {
+		input["file_path"] = c.FilePath
+	}
+	return input
+}
+
+// toolCwd is the directory a call ran in: bash's own `workdir` when it named
+// one, otherwise the session's. A Claude Code hook payload carries `cwd`
+// beside the input, and the drill-down reads it to follow a `cd` or a
+// `git -C` in a command.
+func toolCwd(s Session, c ToolCall) string {
+	var in struct {
+		Workdir string `json:"workdir"`
+	}
+	if len(c.Input) > 0 && json.Unmarshal(c.Input, &in) == nil && in.Workdir != "" {
+		return in.Workdir
+	}
+	return s.Directory
+}
+
+// refreshInputs fills in the input of tool calls stored without it.
+//
+// Until inputs were kept, a call was stored with a tool_input of at most a
+// `file_path`: every bash call had no command, every webfetch no URL, every
+// grep no pattern — 3,825 bash calls on the owner's machine that the tool
+// drill-down could only call "(input not recorded)". A call is stored once and
+// a re-read inserts nothing, so fixing the importer reaches none of those
+// rows, and a migration cannot either: the arguments were never written to
+// Caprock's database. OpenCode's still has them, and this reads them back.
+//
+// It runs where refreshText does, on every read of a session — so the
+// poller's first pass after a start, which reads every session, is the
+// backfill, in the poller's goroutine and never on startup's path. A row is
+// rewritten only while its tool_input holds nothing but `file_path` and
+// OpenCode has more to say; once filled it is never touched again, and a
+// session already in step costs one read and no write. Only `tool_input` and
+// `cwd` change, via json_set: the event id, key, tool, touch_dir and every
+// other payload field stay as they were.
+func (in *Ingester) refreshInputs(ctx context.Context, sid string, s Session, calls []ToolCall) error {
+	if in.rec == nil || in.rec.Store == nil || len(calls) == 0 {
+		return nil
+	}
+	db := in.rec.Store.DB()
+	// The key is matched as a range, not with LIKE, so the lookup walks the
+	// (session_id, key) index: with LIKE the planner chose (kind, id) and
+	// scanned every tool call in the database once per session, which tripled
+	// a full pass on the owner's database.
+	rows, err := db.QueryContext(ctx, `
+		SELECT key FROM events
+		WHERE session_id = ? AND key >= 'oc-tool:' AND key < 'oc-tool;'
+		  AND source = ? AND kind = 'tool.pre' AND json_valid(payload)
+		  AND NOT EXISTS (
+		    SELECT 1 FROM json_each(payload, '$.tool_input')
+		    WHERE json_each.key != 'file_path')`,
+		sid, string(event.SourceOpenCode))
+	if err != nil {
+		return fmt.Errorf("read stored inputs: %w", err)
+	}
+	empty := map[string]bool{}
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		empty[key] = true
+	}
+	_ = rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(empty) == 0 {
+		return nil
+	}
+	type fix struct{ key, input, cwd string }
+	var fixes []fix
+	for _, c := range calls {
+		key := "oc-tool:" + c.ID
+		if !empty[key] {
+			continue
+		}
+		input := toolInput(c)
+		if _, onlyPath := input["file_path"]; len(input) == 0 || (len(input) == 1 && onlyPath) {
+			continue // OpenCode has nothing more than what is stored
+		}
+		b, err := json.Marshal(input)
+		if err != nil {
+			continue
+		}
+		fixes = append(fixes, fix{key: key, input: string(b), cwd: toolCwd(s, c)})
+	}
+	if len(fixes) == 0 {
+		return nil
+	}
+	return in.rec.Store.WithTx(ctx, func(q store.Querier) error {
+		for _, f := range fixes {
+			if _, err := q.ExecContext(ctx, `
+				UPDATE events
+				SET payload = json_set(payload, '$.tool_input', json(?), '$.cwd', ?)
+				WHERE session_id = ? AND key = ? AND json_valid(payload)`,
+				f.input, f.cwd, sid, f.key); err != nil {
+				return fmt.Errorf("refresh input: %w", err)
+			}
+		}
+		return nil
+	})
 }
 
 // sessionTitle is OpenCode's name for a session, or "" while it still carries

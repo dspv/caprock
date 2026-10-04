@@ -9,6 +9,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **OpenCode tool calls keep their input.** A bash call's command, a fetch's
+  URL, a search's pattern and an edit's strings were not stored, so every
+  OpenCode bash call in the Tools drill-down read "(input not recorded)". They
+  are stored now, in Claude Code's spelling, and calls already imported are
+  filled in from OpenCode's own database the first time Caprock starts.
+
 ## [0.70.1] - 2026-10-04
 
 ### Added

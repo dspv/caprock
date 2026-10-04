@@ -235,8 +235,8 @@ var (
 // drillKey is the group a call belongs to, and what that group is called.
 func drillKey(kind, cwd, cmd, file, link, query, action, pat, sub, raw, home string) (string, string) {
 	if cmd == "" && file == "" && link == "" && query == "" && action == "" && pat == "" && sub == "" && raw == "" {
-		// The event arrived without its input — OpenCode's bash events, for
-		// one, are stored with an empty tool_input. Said as such, not lumped
+		// The event arrived without its input — an OpenCode call whose own
+		// record has none, for one. Said as such, not lumped
 		// in with calls whose input says nothing groupable.
 		return drillNotRecorded, "call"
 	}
