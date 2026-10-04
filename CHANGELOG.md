@@ -38,6 +38,14 @@ Phase 3 (Delight) has no plan by design.
 - **Now and a session's page fit a 390px phone.** Banners, the Today panel's
   agent switch, the breakdown bars, the donut legends and the session header
   ran past the right edge and dragged the whole page sideways.
+- **"What it went on" counts tool calls again.** Most tool calls were never
+  matched to the turn that paid for them, so their cost showed as "no tool
+  call" (93% of 30-day spend on the owner's machine). With hooks installed,
+  Claude Code's message id was dropped along with the transcript's copy of a
+  call the hook had already stored. Codex and DeepSeek calls were never
+  linked at all. All three are linked now, and calls already stored are
+  repaired the first time Caprock starts: on a copy of the owner's database,
+  unmatched calls went from 31,275 to 7 and "no tool call" from 93% to 5%.
 
 ## [0.70.1] - 2026-10-04
 

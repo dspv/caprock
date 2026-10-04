@@ -157,3 +157,14 @@ func TestParseLegacyFixture(t *testing.T) {
 		t.Fatalf("legacy turn: %+v", s.Turns[0])
 	}
 }
+
+// A tool/call record names the turn whose message holds its tool-call block.
+func TestToolCallNamesItsTurn(t *testing.T) {
+	s, err := ParseFile(writeSession(t, fixture(t, "session-v3.jsonl")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Tools[0].TurnKey == "" || s.Tools[0].TurnKey != s.Turns[0].Key {
+		t.Fatalf("TurnKey = %q, want %q", s.Tools[0].TurnKey, s.Turns[0].Key)
+	}
+}

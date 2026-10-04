@@ -491,3 +491,31 @@ func TestAClearAloneDoesNotEndTheSession(t *testing.T) {
 		t.Fatal("a /clear retired the session its owner is still sitting in")
 	}
 }
+
+// With hooks installed the PreToolUse hook stores a call before the transcript
+// line that names its message. The transcript's copy is a duplicate, but its
+// message id must still reach the stored row, or the call is never attached to
+// the turn that paid for it.
+func TestTranscriptLinksAToolCallTheHookStoredFirst(t *testing.T) {
+	ctx := context.Background()
+	r, _ := newRecorder(t)
+	payload := json.RawMessage(`{"tool_name":"Bash","tool_input":{"command":"ls"}}`)
+	mk := func(src event.Source, msg string) *event.Event {
+		return &event.Event{SessionID: "s1", Source: src, Kind: event.KindToolPre, Tool: "Bash",
+			Key: "pre:toolu_1", MsgID: msg, Payload: payload}
+	}
+	for _, e := range []*event.Event{mk(event.SourceHook, ""), mk(event.SourceTranscript, "msg_1"), mk(event.SourceTranscript, "msg_2")} {
+		if _, err := r.Record(ctx, e, SessionInfo{Cwd: "/p"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var n int
+	var msg, src string
+	if err := r.Store.DB().QueryRowContext(ctx,
+		`SELECT count(*), COALESCE(max(msg_id),''), max(source) FROM events WHERE kind = 'tool.pre'`).Scan(&n, &msg, &src); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 || msg != "msg_1" || src != "hook" {
+		t.Fatalf("rows=%d msg_id=%q source=%q, want one hook row linked to msg_1", n, msg, src)
+	}
+}
