@@ -1,13 +1,11 @@
 package api
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/dspv/caprock/internal/pairing"
-	"github.com/dspv/caprock/internal/store"
 )
 
 // What a phone holding the controller role may ask of POST /v1/agents
@@ -17,9 +15,9 @@ import (
 // say. The machine's own dashboard can start any binary in any folder, because
 // whoever sits at it already can. A phone is for working away from the desk,
 // so it starts one of the coding agents Caprock knows how to launch, in any
-// mode, in any folder under the home directory (or one where sessions have
-// already run), making that folder one level deep if asked — and nothing
-// else: no binary or flags of its own, no path outside home.
+// mode, in any folder under the home directory, making that folder one level
+// deep if asked — and nothing else: no binary or flags of its own, no path
+// outside home, not even one where sessions have run.
 //
 // Bypass mode is allowed (owner decision, ADR-034): a controller can already
 // run any command by typing `!cmd` into a session, so refusing the mode added
@@ -34,7 +32,7 @@ var spawnFieldsAControllerMayNotSet = []string{"command", "args", "chat"}
 
 // controllerSpawnRefusal returns why a paired controller may not make this
 // spawn request, or "" when it may.
-func (s *Server) controllerSpawnRefusal(ctx context.Context, req map[string]any) string {
+func (s *Server) controllerSpawnRefusal(req map[string]any) string {
 	for _, k := range spawnFieldsAControllerMayNotSet {
 		if v, ok := req[k]; ok && !isZero(v) {
 			return "a phone starts one of the coding agents Caprock knows, not " + k + " — set that up on the machine Caprock runs on"
@@ -44,12 +42,8 @@ func (s *Server) controllerSpawnRefusal(ctx context.Context, req map[string]any)
 	if cwd == "" || !filepath.IsAbs(cwd) {
 		return "pick a folder to start the session in"
 	}
-	cwd = filepath.Clean(cwd)
-	if known, err := store.KnownDir(ctx, s.d.Store.DB(), cwd); err == nil && known {
-		return ""
-	}
 	create, _ := req["create"].(bool)
-	if !underHome(cwd, create) {
+	if !underHome(filepath.Clean(cwd), create) {
 		return "a phone starts sessions in folders under your home directory"
 	}
 	return ""

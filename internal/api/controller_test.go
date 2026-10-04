@@ -297,8 +297,9 @@ func fakeHome(t *testing.T) string {
 	return home
 }
 
-// A controller starts a known agent, in any mode, in a folder under home or
-// in a known project, and nothing else. The machine itself is not narrowed.
+// A controller starts a known agent, in any mode, in a folder under home, and
+// nothing else — not even a project outside home where sessions have run. The
+// machine itself is not narrowed.
 func TestAControllerStartsAgentsUnderHome(t *testing.T) {
 	st, err := store.Open(context.Background(), ":memory:", nil)
 	if err != nil {
@@ -306,7 +307,7 @@ func TestAControllerStartsAgentsUnderHome(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	home := fakeHome(t)
-	known := t.TempDir() // outside home, but sessions have run there
+	known := t.TempDir() // sessions have run there, but it is outside home
 	if err := store.UpsertSession(context.Background(), st.DB(), "s1", store.SessionPatch{Cwd: known}); err != nil {
 		t.Fatal(err)
 	}
@@ -338,9 +339,10 @@ func TestAControllerStartsAgentsUnderHome(t *testing.T) {
 		name, from, token, body string
 		want                    int
 	}{
-		{"controller, known project", testPhone, controller.Token, `{"cwd":"` + known + `","agent":"codex"}`, 200},
-		{"controller, resume in a known project", testPhone, controller.Token, `{"cwd":"` + known + `","resume":"a-session-run-elsewhere"}`, 200},
-		{"controller, false flags ask for nothing", testPhone, controller.Token, `{"cwd":"` + known + `","create":false,"args":[]}`, 200},
+		{"controller, codex under home", testPhone, controller.Token, `{"cwd":"` + fresh + `","agent":"codex"}`, 200},
+		{"controller, resume under home", testPhone, controller.Token, `{"cwd":"` + fresh + `","resume":"a-session-run-elsewhere"}`, 200},
+		{"controller, false flags ask for nothing", testPhone, controller.Token, `{"cwd":"` + fresh + `","create":false,"args":[]}`, 200},
+		{"controller, a known project outside home", testPhone, controller.Token, `{"cwd":"` + known + `"}`, 403},
 		{"controller, a fresh folder under home", testPhone, controller.Token, `{"cwd":"` + fresh + `"}`, 200},
 		{"controller, home itself", testPhone, controller.Token, `{"cwd":"` + homeSlash + `"}`, 200},
 		{"controller, a new folder under home", testPhone, controller.Token, `{"cwd":"` + fresh + `/new","create":true}`, 200},
@@ -354,7 +356,7 @@ func TestAControllerStartsAgentsUnderHome(t *testing.T) {
 		{"controller, any flags", testPhone, controller.Token, `{"cwd":"` + fresh + `","args":["--x"]}`, 403},
 		{"controller, a scratch chat", testPhone, controller.Token, `{"chat":true}`, 403},
 		{"controller, bypass mode", testPhone, controller.Token, `{"cwd":"` + fresh + `","permission_mode":"bypassPermissions"}`, 200},
-		{"controller, codex in bypass mode", testPhone, controller.Token, `{"cwd":"` + known + `","agent":"codex","permission_mode":"bypassPermissions"}`, 200},
+		{"controller, codex in bypass mode", testPhone, controller.Token, `{"cwd":"` + fresh + `","agent":"codex","permission_mode":"bypassPermissions"}`, 200},
 		{"controller, plan mode", testPhone, controller.Token, `{"cwd":"` + fresh + `","permission_mode":"plan"}`, 200},
 		{"viewer, a folder under home", testPhone, viewer.Token, `{"cwd":"` + fresh + `"}`, 403},
 		{"the machine, any folder", "127.0.0.1:51000", "", `{"cwd":"` + outside + `","command":"sh"}`, 200},

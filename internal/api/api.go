@@ -1812,7 +1812,7 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 	}
 	dev := deviceFrom(r)
 	if dev != nil {
-		if msg := s.controllerSpawnRefusal(r.Context(), req); msg != "" {
+		if msg := s.controllerSpawnRefusal(req); msg != "" {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": msg})
 			return
 		}

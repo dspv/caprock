@@ -1239,8 +1239,10 @@ agent manager only types into or signals processes Caprock started.
   The dashboard on the machine may name any binary, arguments or folder,
   because whoever sits there already can. From a device the spawn request may
   not carry `command`, `args` or `chat`, and its folder must be under the home
-  directory — checked after `EvalSymlinks`, so `~/link-to-/etc` is outside — or
-  one a session has already run in. `create` may make one new folder, and only
+  directory — checked after `EvalSymlinks`, so `~/link-to-/etc` is outside.
+  The first cut's "a folder a session has already run in" is gone, so a
+  project outside home (`/private/tmp`, a volume) is started on the machine.
+  `create` may make one new folder, and only
   when its parent resolves inside home. `/v1/browse` is open to a controller,
   rooted at the owner's browse root when that lies inside home and at home
   otherwise, so a phone's picker never lists anything above it.

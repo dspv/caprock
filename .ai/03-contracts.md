@@ -122,9 +122,8 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   and verify, orchestrator, hooks install, shutdown, update check, report
   test, Gemini ask and `open-terminal`.
 - **What a controller's `POST /v1/agents` may say** (`controllerSpawnRefusal`):
-  `cwd` must be absolute and either a directory some session has run in (`cwd`
-  or `repo_root`, `store.KnownDir`) or, after `filepath.EvalSymlinks`, the home
-  directory or below it. With `create: true` a missing `cwd` passes when its
+  `cwd` must be absolute and, after `filepath.EvalSymlinks`, the home directory
+  or below it — a project outside home is refused even where sessions have run. With `create: true` a missing `cwd` passes when its
   parent resolves inside home (the agent manager makes one level). `command`,
   `args` and `chat` are refused unless empty or false. Every
   `permission_mode` is allowed, `bypassPermissions` included (ADR-034).
