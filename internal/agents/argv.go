@@ -61,10 +61,11 @@ func claudeLaunch(in launchInput) (launch, error) {
 		// A branch: the original keeps running under its own id, and this
 		// process gets a fresh one. Both flags are required together —
 		// Claude Code refuses --session-id with --resume otherwise.
-		l.args = []string{"--resume", in.Resume, "--fork-session", "--session-id", in.SessionID}
+		l.args, _ = resumeArgs(AgentClaude, in.Resume, true)
+		l.args = append(l.args, "--session-id", in.SessionID)
 	case in.Resume != "":
 		// Continuing the same conversation, which already has an id.
-		l.args = []string{"--resume", in.Resume}
+		l.args, _ = resumeArgs(AgentClaude, in.Resume, false)
 		l.sessionID = in.Resume
 	default:
 		l.args = []string{"--session-id", in.SessionID}
@@ -124,14 +125,15 @@ func geminiLaunch(in launchInput) (launch, error) {
 func codexLaunch(in launchInput) (launch, error) {
 	l := launch{sessionID: in.SessionID}
 	if in.Resume != "" {
-		if in.Fork {
-			return launch{}, errors.New("this Codex session is still running; continue it here once it has ended")
-		}
 		native := in.NativeResume
 		if native == "" {
 			native = in.Resume
 		}
-		l.args = []string{"resume", native}
+		args, err := resumeArgs(AgentCodex, native, in.Fork)
+		if err != nil {
+			return launch{}, err
+		}
+		l.args = args
 		l.sessionID = in.Resume
 	}
 	l.args = append(l.args, "--no-daemon", "-c", codexTrust(in.Cwd))
@@ -217,14 +219,15 @@ func tomlString(s string) string {
 func opencodeLaunch(in launchInput) (launch, error) {
 	l := launch{sessionID: in.SessionID}
 	if in.Resume != "" {
-		if in.Fork {
-			return launch{}, errors.New("this OpenCode session is still running; continue it here once it has ended")
-		}
 		native := in.NativeResume
 		if native == "" {
 			native = in.Resume
 		}
-		l.args = []string{"--session", native}
+		args, err := resumeArgs(AgentOpenCode, native, in.Fork)
+		if err != nil {
+			return launch{}, err
+		}
+		l.args = args
 		l.sessionID = in.Resume
 	}
 	if in.Port > 0 {

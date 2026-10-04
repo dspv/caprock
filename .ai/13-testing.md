@@ -182,6 +182,13 @@ tests that pass by skipping the interesting case.
   available". The test asserts the guarantee where it exists rather than
   lowering the bar everywhere.
 - **Permission-bit assertions skip on Windows**, which does not model them.
+- **Opening a native terminal is tested as argv, not as a window.**
+  `internal/nativeterm` builds each terminal's command as data and the tests
+  compare it per terminal per OS, on every OS; the shell quoting is proved by a
+  real `/bin/sh` (POSIX only). Nothing in CI opens a window: Terminal.app and
+  iTerm2 were run by hand on the owner's Mac (2026-10-04), and the rest are
+  written from their documentation — see
+  [02-architecture.md § Native terminals](02-architecture.md#native-terminals).
 
 ## What runs, and when
 

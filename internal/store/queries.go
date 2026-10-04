@@ -508,6 +508,15 @@ func MarkOwned(ctx context.Context, q Querier, id, worktree, spawnCommand string
 	return err
 }
 
+// ReleaseOwned records that a session is no longer Caprock's: its process
+// was stopped so the user could carry it on in their own terminal. Without
+// this, the resumed session would read as one Caprock started and then lost
+// the terminal of.
+func ReleaseOwned(ctx context.Context, q Querier, id string) error {
+	_, err := q.ExecContext(ctx, `UPDATE sessions SET owned = 0 WHERE session_id = ?`, id)
+	return err
+}
+
 // SetExit records an owned session's exit code and marks it ended.
 func SetExit(ctx context.Context, q Querier, id string, code int) error {
 	_, err := q.ExecContext(ctx, `UPDATE sessions SET exit_code = ?, status = 'ended', pid = 0 WHERE session_id = ?`, code, id)

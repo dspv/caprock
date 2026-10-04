@@ -14,6 +14,7 @@ import { usePlan } from '@/components/PlanPicker'
 import { ContinueSession } from '@/components/ContinueSession'
 import { RecentPRs, RepoButtons } from '@/components/RepoLinks'
 import { RelayChain, RelayMenu } from '@/components/RelayDialog'
+import { OpenInTerminal } from '@/components/OpenInTerminal'
 
 type Tab = 'timeline' | 'notes' | 'changes' | 'terminal'
 
@@ -164,7 +165,13 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         >
           {s.description ? (s.description_source === 'title' ? s.description : `“${s.description}”`) : null}
         </div>
-        <RepoButtons repo={s.repo} prs={s.prs} cwd={s.cwd} className="ml-auto" />
+        {/* The user's own terminal app, beside the repository: both open
+          * this session's work somewhere other than here, and the title row
+          * is on every tab, the Terminal tab included. */}
+        <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          {!reader && <OpenInTerminal sessionID={s.session_id} info={s.open_terminal} />}
+          <RepoButtons repo={s.repo} prs={s.prs} cwd={s.cwd} />
+        </span>
       </div>
       <RelayChain from={s.relayed_from} to={s.relayed_to} />
       {(!detail.stale || (s.prs?.length ?? 0) > 0) && <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[13px]">

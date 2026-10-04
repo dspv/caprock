@@ -119,6 +119,52 @@ work. `CAPROCK_DATA_DIR` stays pinned to the daemon's value. Spawned sessions
 (`internal/agents`) and verification commands (`internal/board`) both use it;
 Windows keeps the daemon's environment, which the registry already built.
 
+### Native terminals
+
+"Open in my terminal" hands a session to the user's own terminal application
+instead of the dashboard's xterm (owner request, 2026-10-04: typing in the web
+terminal is uncomfortable). Nothing new watches it: a session running in
+Ghostty is a session the user started themselves, observed through hooks and
+the transcript like any other (Phase 0). `internal/nativeterm` detects what is
+installed and builds the argv; `internal/api` decides what is allowed
+([03-contracts.md](03-contracts.md)). Each terminal is driven through its own
+interface:
+
+- **Terminal.app** — `open -a Terminal <file>.command`. Terminal runs the file
+  in a new window through the user's login shell, so the environment is
+  theirs; the file deletes itself first and ends with `exec "$SHELL" -l`, so
+  the window is a shell in the folder once the agent exits. No AppleScript,
+  so no Automation prompt. Verified on the owner's Mac, 2026-10-04, with a
+  folder named `w dir $HOME 'q' "dq"`.
+- **iTerm2** — `osascript`: `create window with default profile`, then
+  `write text` of the line into its shell. Verified the same day (iTerm2
+  3.6.6). The first use from the daemon asks for Automation permission
+  (System Settings → Privacy & Security → Automation). iTerm2 also opens
+  `.command` files, but asks "OK to run …?" every time, so it is not used.
+- **Ghostty, WezTerm, kitty** (macOS) — `open -na <App>.app --args …`, with
+  their documented flags: Ghostty `--working-directory=<dir> -e <shell> -l -i
+  -c <line>`, WezTerm `start --cwd <dir> -- …`, kitty `--directory <dir> …`.
+  Written from their documentation; none was installed on the owner's Mac on
+  2026-10-04, so none has been run.
+- **Warp** — runs commands only from a launch configuration: Caprock writes
+  `~/.warp/launch_configurations/caprock-open.yaml` (one file, overwritten)
+  and opens `warp://launch/<path>`. Best effort and not yet run: Warp was
+  installed on the owner's Mac but never set up.
+- **Linux** — `$TERMINAL -e`, `gnome-terminal --`, `konsole -e`, `kitty`,
+  `wezterm start --`, `alacritty -e`, `xterm -e`, each running the user's
+  shell with the line; looked up on the login-shell PATH, not the daemon's.
+- **Windows** — Windows Terminal `wt.exe -w new -d <dir> cmd.exe /k <argv>`
+  (a `;` in the folder escaped, or wt reads it as a second tab); otherwise
+  PowerShell or cmd started with `CREATE_NEW_CONSOLE` in the folder.
+
+The line is `cd <dir> && <argv>`, every word POSIX-quoted unless plain, and it
+is proved by a real `/bin/sh` in the tests against folder names with spaces,
+quotes, `$`, backticks and `;`. AppleScript and YAML get their own escaping.
+Argv words must match a plain charset, so an id can never carry shell syntax
+to Windows, where cmd's quoting is not something to trust. Preferred order
+when the user has not chosen: Ghostty, iTerm2, WezTerm, kitty, Terminal, Warp
+on macOS; `$TERMINAL` first on Linux; Windows Terminal, PowerShell, cmd.
+
 Phase 0 architecture slice (no `ptyman`; the ConPTY spike ran in T0 to de-risk Control) — historical:
 
 ```

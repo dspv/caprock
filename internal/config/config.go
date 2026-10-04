@@ -109,6 +109,10 @@ type Config struct {
 	GeminiAPIKey string `json:"gemini_api_key,omitempty"`
 	// BrowseRoot is where the folder picker may look. Empty means $HOME.
 	BrowseRoot string `json:"browse_root,omitempty"`
+	// Terminal is the terminal application "Open in my terminal" uses
+	// ("ghostty", "iterm2", ...; internal/nativeterm). Empty means the first
+	// one installed.
+	Terminal string `json:"terminal,omitempty"`
 }
 
 // Defaults returns the built-in configuration for a fresh install.

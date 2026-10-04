@@ -117,6 +117,26 @@ the same session, on all three OSes. Honest limit: a session started by the
 release before this one is in that daemon's PTY, so the upgrade that installs
 this still ends it. See [ADR-033](08-decisions.md#adr-033--an-owned-session-outlives-the-daemon-its-terminal-lives-in-a-pty-host)
 and [03-contracts.md § Terminal holders](03-contracts.md#terminal-holders-caprock-pty-host).
+### 2026-10-04 — Open a session in your own terminal
+
+The owner finds typing in the web terminal uncomfortable. A session now opens
+in the terminal application the user already has — **Open in Ghostty ↗** on
+the session's title row beside Open repo, and on the Projects `>_` menu — running the
+agent's own resume command in its folder, and Caprock goes on watching it
+through hooks and the transcript like any session started by hand. Ownership
+decides what is offered: an ended session resumes; one Caprock runs can be
+moved (its process stopped first, then the window opened, then `owned`
+cleared) or forked; one running elsewhere can only be forked, and only Claude
+Code forks without a copy of the cost. Verified for real on the owner's Mac:
+Terminal.app (a `.command` file, no Automation prompt) and iTerm2 3.6.6
+(AppleScript), each opening a folder named `w dir $HOME 'q' "dq"` and running
+a harmless `echo`. Ghostty, WezTerm and kitty are written from their
+documentation (none installed there), Warp is best effort (installed, never set
+up), and Linux and Windows argv are tested as data, not run. iTerm2 asks
+"OK to run …?" for every `.command`, which is why it is driven over AppleScript.
+No migration. See [02-architecture.md § Native terminals](02-architecture.md#native-terminals),
+[03-contracts.md](03-contracts.md) and [04-ui.md](04-ui.md#open-in-my-terminal).
+
 ### 2026-10-04 (evening) — The terminal takes the keyboard first; repo links; kept figures
 
 The owner reported that opening a session's terminal froze the browser and

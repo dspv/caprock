@@ -40,6 +40,7 @@ import (
 	"github.com/dspv/caprock/internal/lan"
 	"github.com/dspv/caprock/internal/logcap"
 	"github.com/dspv/caprock/internal/loop"
+	"github.com/dspv/caprock/internal/nativeterm"
 	"github.com/dspv/caprock/internal/opencode"
 	"github.com/dspv/caprock/internal/orchestrator"
 	"github.com/dspv/caprock/internal/pairing"
@@ -462,7 +463,12 @@ func (d *Daemon) run(ctx context.Context) error {
 		Tasks: &boardAdapter{d: d}, Settings: &settingsAdapter{d: d}, Update: d.upd,
 		AskGemini: d.askGemini,
 		DataDir:   d.opt.DataDir,
-		Pairing:   d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d,
+		Terminals: &nativeterm.Opener{
+			DataDir:   d.opt.DataDir,
+			Env:       func() []string { return userenv.Environ(d.log) },
+			Preferred: func() string { return d.config().Terminal },
+		},
+		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d,
 	})
 	srv := &http.Server{Handler: d.api, ReadHeaderTimeout: 10 * time.Second}
 	// Held so LAN access can be switched on later without a restart. The
@@ -1260,6 +1266,7 @@ func (a *settingsAdapter) Get() api.Settings {
 		LicenseKey:       c.LicenseKey,
 		CapUSDPerDay:     c.CapUSDPerDay,
 		BrowseRoot:       c.BrowseRoot,
+		Terminal:         c.Terminal,
 		ReportChatID:     c.ReportChatID,
 		// The token itself never crosses this boundary — only whether one
 		// exists, which is what a screen needs to render a state.
@@ -1294,6 +1301,7 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	capChanged := in.CapUSDPerDay != a.d.opt.Config.CapUSDPerDay
 	a.d.opt.Config.CapUSDPerDay = in.CapUSDPerDay
 	a.d.opt.Config.BrowseRoot = strings.TrimSpace(in.BrowseRoot)
+	a.d.opt.Config.Terminal = in.Terminal
 	a.d.opt.Config.ReportBotToken = strings.TrimSpace(in.ReportBotToken)
 	a.d.opt.Config.ReportChatID = strings.TrimSpace(in.ReportChatID)
 	a.d.opt.Config.GeminiAPIKey = strings.TrimSpace(in.GeminiAPIKey)
