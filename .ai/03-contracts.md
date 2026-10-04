@@ -775,7 +775,7 @@ than its conversation ([ADR-032](08-decisions.md)); written by the daemon when
 fork), and the two must not be read as one. `SessionSummary` carries it as
 `relay_from`, omitted when empty.
 
-### Native id DDL (migration 0031)
+### Native id DDL (migration 0032)
 
 ```sql
 ALTER TABLE sessions ADD COLUMN native_id TEXT NOT NULL DEFAULT '';

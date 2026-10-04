@@ -994,7 +994,7 @@ link one session is two rows. `internal/sessionlink` makes it:
   start, measured, which is what makes the window tight. The failure modes are
   in [19-codex.md](19-codex.md).
 
-The link is stored on the session (`native_id`, migration 0031) and the
+The link is stored on the session (`native_id`, migration 0032) and the
 importers file the agent's events under Caprock's id. Rejected: keeping two
 rows and joining them on screen (every total and list would have to know about
 the pair), and renaming the Caprock row to the agent's id once known (the

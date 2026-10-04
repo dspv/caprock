@@ -465,7 +465,7 @@ match, not a fact**, and it is stated as one:
   The rollout itself appears only when the first message is sent; a session
   nobody typed into has nothing to link and nothing to resume.
 - A thread the store already holds under its own id is never taken.
-- Once linked, the link is stored (`sessions.native_id`, migration 0031) and
+- Once linked, the link is stored (`sessions.native_id`, migration 0032) and
   the importer files the thread's events — and its subagents', which carry the
   parent's id — under Caprock's session, so cost, turns and Answers appear on
   the page with the terminal. Rollouts are read in name (start-time) order
