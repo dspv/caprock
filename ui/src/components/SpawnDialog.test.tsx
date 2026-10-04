@@ -8,14 +8,39 @@
  * auto, bypassPermissions, manual, dontAsk and plan — so the dialog could send
  * the binary a value it rejects.
  */
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SpawnDialog } from './SpawnDialog'
+
+const spawn = vi.hoisted(() => vi.fn(async () => ({ session_id: 's1', cwd: '/x' })))
 
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
-  return { ...actual, api: { ...actual.api, recentDirs: async () => [], browse: async () => ({ entries: [] }) } }
+  return {
+    ...actual,
+    api: {
+      ...actual.api,
+      recentDirs: async () => [],
+      browse: async () => ({ entries: [] }),
+      // The status is passed in by every test below; a fetch here would only
+      // race it.
+      status: () => new Promise(() => {}),
+      spawn,
+      // The shape GET /v1/agents/models answers for Codex, from a real
+      // models_cache.json (codex-cli 0.160.0): the configured default first.
+      agentModels: async () => ({
+        agent: 'codex',
+        default: 'gpt-6-astra',
+        models: [
+          { id: 'gpt-6-astra', label: 'GPT-6-Astra' },
+          { id: 'gpt-6-sol', label: 'GPT-6-Sol' },
+        ],
+      }),
+    },
+  }
 })
+
+vi.mock('@/lib/router', async (orig) => ({ ...(await orig<typeof import('@/lib/router')>()), navigate: () => {} }))
 
 /** Every permission mode `claude --help` accepts. Anything the dialog offers
  *  must be in here, or the spawn fails at the binary. */
@@ -127,5 +152,73 @@ describe('choosing an agent', () => {
     // pricing.json, per million output tokens: Fable 50, Opus 25, Sonnet 15,
     // Haiku 5. The list is a ranking, so it has to match the money.
     expect(offered).toEqual(REAL_CLAUDE_MODELS)
+  })
+})
+
+/**
+ * Codex and OpenCode are started like Claude Code — a TUI in a PTY — and take
+ * their own flags. The picker offers only what the daemon found, remembers the
+ * last choice for this viewer, and each agent's model control is its own.
+ */
+describe('Codex and OpenCode', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    spawn.mockClear()
+  })
+  const all = ['claude', 'codex', 'opencode', 'gemini'] as const
+  const open = () => render(<SpawnDialog available agents={[...all]} onClose={() => {}} initialCwd="/x" />)
+
+  it('offers every agent the daemon found, and only those', () => {
+    render(<SpawnDialog available agents={['claude', 'opencode']} onClose={() => {}} initialCwd="/x" />)
+    const offered = Array.from(screen.getByLabelText<HTMLSelectElement>('Agent').options).map((o) => o.value)
+    expect(offered).toEqual(['claude', 'opencode'])
+  })
+
+  it("offers Codex's own catalog, starting on the user's configured default", async () => {
+    open()
+    fireEvent.change(screen.getByLabelText<HTMLSelectElement>('Agent'), { target: { value: 'codex' } })
+    await waitFor(() => expect(screen.getByLabelText<HTMLSelectElement>(/Model/).options.length).toBe(2))
+    const model = screen.getByLabelText<HTMLSelectElement>(/Model/)
+    // "" is "what your config says": the default is not restated as a flag.
+    expect(model.value).toBe('')
+    expect(model.options[0]!.textContent).toMatch(/gpt-6-astra · your Codex default/)
+    expect(Array.from(model.options).map((o) => o.value)).toEqual(['', 'gpt-6-sol'])
+  })
+
+  it('takes an OpenCode model as provider/model text', () => {
+    open()
+    fireEvent.change(screen.getByLabelText<HTMLSelectElement>('Agent'), { target: { value: 'opencode' } })
+    const model = screen.getByLabelText<HTMLInputElement>(/Model/)
+    expect(model.tagName).toBe('INPUT')
+    expect(model.placeholder).toMatch(/OpenCode default/)
+  })
+
+  it('labels each mode with what it becomes in that agent', () => {
+    open()
+    fireEvent.change(screen.getByLabelText<HTMLSelectElement>('Agent'), { target: { value: 'opencode' } })
+    const labels = Array.from(screen.getByLabelText<HTMLSelectElement>(/Permissions/).options).map((o) => o.textContent)
+    expect(labels).toContain("Bypass · OpenCode's own rules")
+  })
+
+  it('remembers the last agent chosen, for this viewer', () => {
+    const first = open()
+    fireEvent.change(screen.getByLabelText<HTMLSelectElement>('Agent'), { target: { value: 'opencode' } })
+    first.unmount()
+    open()
+    expect(screen.getByLabelText<HTMLSelectElement>('Agent').value).toBe('opencode')
+  })
+
+  it('falls back when the remembered agent is gone from this machine', () => {
+    localStorage.setItem('caprock.spawn.agent', 'codex')
+    render(<SpawnDialog available agents={['claude', 'gemini']} onClose={() => {}} initialCwd="/x" />)
+    expect(screen.getByLabelText<HTMLSelectElement>('Agent').value).toBe('claude')
+  })
+
+  it("sends the agent, and the mode in Claude's words for the daemon to translate", async () => {
+    open()
+    fireEvent.change(screen.getByLabelText<HTMLSelectElement>('Agent'), { target: { value: 'codex' } })
+    fireEvent.click(screen.getByText('Start session'))
+    await waitFor(() => expect(spawn).toHaveBeenCalled())
+    expect(spawn.mock.calls[0]).toEqual([{ cwd: '/x', agent: 'codex', permission_mode: 'acceptEdits' }])
   })
 })

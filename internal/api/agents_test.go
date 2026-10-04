@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -44,6 +45,7 @@ func (f *fakeAgents) sized() [][2]int {
 }
 
 func (f *fakeAgents) Available() bool { return f.avail }
+func (f *fakeAgents) Has(string) bool { return f.avail }
 func (f *fakeAgents) Spawn(_ context.Context, req any) (string, string, error) {
 	m := req.(map[string]any)
 	return "new-session", m["cwd"].(string), nil
@@ -316,5 +318,34 @@ func TestPasteWithoutADataDir(t *testing.T) {
 	e.srv.Config.Handler.ServeHTTP(rr, req)
 	if rr.Code != http.StatusNotImplemented {
 		t.Errorf("status %d, want 501", rr.Code)
+	}
+}
+
+// The Codex model list is the CLI's own catalog, read off disk; the other
+// agents answer an empty list, and an agent Caprock does not know is a 400.
+func TestAgentModels(t *testing.T) {
+	e := newEnv(t)
+	home := t.TempDir()
+	t.Setenv("CODEX_HOME", home)
+	cache := `{"models":[{"slug":"gpt-6-astra","display_name":"GPT-6-Astra","visibility":"list","priority":2},{"slug":"codex-auto-review","visibility":"hide","priority":43}]}`
+	if err := os.WriteFile(filepath.Join(home, "models_cache.json"), []byte(cache), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte("model = \"gpt-6-astra\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	get := func(q string) (int, string) {
+		rr := httptest.NewRecorder()
+		e.srv.Config.Handler.ServeHTTP(rr, httptest.NewRequest("GET", "/v1/agents/models?agent="+q, nil))
+		return rr.Code, rr.Body.String()
+	}
+	if code, body := get("codex"); code != 200 || !strings.Contains(body, `"id":"gpt-6-astra"`) || strings.Contains(body, "auto-review") || !strings.Contains(body, `"default":"gpt-6-astra"`) {
+		t.Fatalf("codex: %d %s", code, body)
+	}
+	if code, body := get("opencode"); code != 200 || !strings.Contains(body, `"models":[]`) {
+		t.Fatalf("opencode: %d %s", code, body)
+	}
+	if code, _ := get("cursor"); code != 400 {
+		t.Fatalf("unknown agent: %d", code)
 	}
 }

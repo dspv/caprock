@@ -42,12 +42,10 @@ func (s *Server) resumeInfo(sess store.Session) *ResumeInfo {
 	}
 	switch agent {
 	case "claude":
-	case "codex":
-		return &ResumeInfo{Reason: "Caprock continues Claude Code sessions only; resume this one in Codex.", Command: "codex resume " + sess.SessionID}
-	case "opencode":
-		return &ResumeInfo{Reason: "Caprock continues Claude Code sessions only; resume this one in OpenCode.", Command: "opencode --session " + sess.SessionID}
+	case "codex", "opencode":
+		return s.resumeOther(sess, agent)
 	default:
-		return &ResumeInfo{Reason: "Caprock continues Claude Code sessions only."}
+		return &ResumeInfo{Reason: "Caprock continues Claude Code, Codex and OpenCode sessions."}
 	}
 	info := &ResumeInfo{OK: true, Command: "claude --resume " + sess.SessionID}
 	if sess.Cwd != "" {
@@ -78,8 +76,53 @@ func (s *Server) resumeInfo(sess store.Session) *ResumeInfo {
 		info.Command = ""
 		return info
 	}
-	if s.d.Agents == nil || !s.d.Agents.Available() {
+	if s.d.Agents == nil || !s.d.Agents.Has("claude") {
 		info.OK, info.Reason = false, "Caprock cannot find claude to start it; run the command in a terminal."
+	}
+	return info
+}
+
+// resumeOther answers for Codex and OpenCode, whose conversations live in
+// their own stores rather than in a transcript Caprock can look for. The
+// agent's own id is the one its resume flag takes: for a session Caprock
+// started, that is the linked id (sessions.native_id), not Caprock's.
+func (s *Server) resumeOther(sess store.Session, agent string) *ResumeInfo {
+	name, flag := "Codex", "codex resume "
+	if agent == "opencode" {
+		name, flag = "OpenCode", "opencode --session "
+	}
+	native := sess.NativeID
+	if native == "" {
+		if sess.Owned {
+			// Started here and never linked: nothing was sent, so the agent
+			// never made a thread or a session to go back to.
+			return &ResumeInfo{Reason: "Nothing was sent in this session, so " + name + " has nothing to continue. Start a new one."}
+		}
+		native = sess.SessionID
+	}
+	info := &ResumeInfo{OK: true, Command: flag + native}
+	if sess.Cwd != "" {
+		info.Command = "cd " + strconv.Quote(sess.Cwd) + " && " + info.Command
+		if st, err := os.Stat(sess.Cwd); err != nil || !st.IsDir() {
+			info.OK, info.Reason = false, "The folder it ran in no longer exists: "+sess.Cwd
+			info.Command = ""
+			if agent == "codex" {
+				// Codex finds a thread by id from any folder.
+				info.Command = flag + native
+			}
+			return info
+		}
+	}
+	if sess.Status != store.StatusEnded {
+		// Two processes on one thread would append to one rollout between
+		// them; Claude Code's answer is a fork, and the forks these two CLIs
+		// make copy the history with its cost, which Caprock would count
+		// twice. So it waits for the session to end.
+		info.OK, info.Reason = false, "It is still running. Caprock continues a "+name+" session once it has ended."
+		return info
+	}
+	if s.d.Agents == nil || !s.d.Agents.Has(agent) {
+		info.OK, info.Reason = false, "Caprock cannot find "+agent+" to start it; run the command in a terminal."
 	}
 	return info
 }

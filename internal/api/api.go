@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/dspv/caprock/internal/bus"
+	"github.com/dspv/caprock/internal/codex"
 	"github.com/dspv/caprock/internal/contexttax"
 	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/event"
@@ -72,6 +73,11 @@ type Deps struct {
 	}
 	// ActiveLoops reports whether a session currently has an unexpired loop alert.
 	ActiveLoops func(sessionID string) *loop.Alert
+	// LoopK and LoopWindow are the loop detector's settings, so the Week
+	// card's longest loop is found by the same rule as the live alert. Zero
+	// means the detector's defaults.
+	LoopK      int
+	LoopWindow time.Duration
 	// IdleAfter is the silence threshold for the idle badge.
 	IdleAfter time.Duration
 	Now       func() time.Time
@@ -223,7 +229,10 @@ type TaskController interface {
 
 // AgentController is the subset of internal/agents the API needs (interface for tests).
 type AgentController interface {
+	// Available reports whether any agent can be started here.
 	Available() bool
+	// Has reports whether one agent ("claude", "codex", …) can be started.
+	Has(agent string) bool
 	Spawn(ctx context.Context, req any) (id string, cwd string, err error)
 	Input(sessionID string, data []byte) error
 	Signal(sessionID, action string) error
@@ -247,8 +256,18 @@ type Server struct {
 	pairing *pairing.Store
 	lanURL  string
 	// hist collapses the burst of identical /v1/history requests one open
-	// screen produces. See histcache.go.
-	hist *historyCache
+	// screen produces, and summ does the same for the wide ranges of
+	// /v1/stats/summary. See answercache.go.
+	hist *answerCache
+	summ *answerCache
+	// week, weekLong and glance hold the Week and Share answers (short and
+	// long periods) and Now's at-a-glance, each with its own freshness
+	// (weekTTL, weekLongTTL, glanceTTL).
+	week     *answerCache
+	weekLong *answerCache
+	glance   *answerCache
+	// drill holds the tool drill-downs (drillTTL).
+	drill *answerCache
 	// repos answers "which repository, on which host" per directory.
 	repos *repoCache
 }
@@ -270,7 +289,9 @@ func New(d Deps) *Server {
 			lanHost = u.Hostname()
 		}
 	}
-	s := &Server{d: d, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newHistoryCache(historyTTL, d.Now), repos: newRepoCache()}
+	s := &Server{d: d, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now),
+		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
+		drill: newAnswerCache(drillTTL, answerMaxStale, time.Now), repos: newRepoCache()}
 	// Seeded from Deps so `caprock up --lan` behaves exactly as before; the
 	// dashboard's switch goes through SetLAN.
 	s.pairing, s.lanURL = d.Pairing, d.LANURL
@@ -298,6 +319,9 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/stats/daily", s.handleDaily)
 	m.HandleFunc("GET /v1/events", s.handleEventsFeed)
 	m.HandleFunc("GET /v1/history", s.handleHistory)
+	m.HandleFunc("GET /v1/week", s.handleWeek)
+	m.HandleFunc("GET /v1/glance", s.handleGlance)
+	m.HandleFunc("GET /v1/tools/drill", s.handleToolDrill)
 	// Picking a folder without typing its path: see browse.go for what stops
 	// this being a filesystem-read API.
 	m.HandleFunc("GET /v1/browse", s.handleBrowse)
@@ -327,6 +351,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/orchestrator/start", s.handleStartOrchestrator)
 	m.HandleFunc("POST /v1/orchestrator/stop", s.handleStopOrchestrator)
 	m.HandleFunc("POST /v1/agents", s.handleSpawn)
+	m.HandleFunc("GET /v1/agents/models", s.handleAgentModels)
 	m.HandleFunc("POST /v1/agents/{id}/input", s.handleAgentInput)
 	m.HandleFunc("POST /v1/agents/{id}/signal", s.handleAgentSignal)
 	m.HandleFunc("POST /v1/paste", s.handlePaste)
@@ -429,6 +454,14 @@ type SessionSummary struct {
 	// daemon does not hold — it was started before a restart. The terminal tab
 	// opened an empty screen for it (FB-040); what it can do is continue.
 	Detached bool `json:"detached,omitempty"`
+	// ModelDisplay is the pricing table's name for the session's model (its
+	// main thread's latest), "Opus 5.5" rather than the id. Empty when the
+	// table does not know the model.
+	ModelDisplay string `json:"model_display,omitempty"`
+	// LiveSubagents is how many subagents are working in the session now:
+	// heard from within the last 30 minutes and not yet stopped. Zero for an
+	// ended session. The main thread is not counted.
+	LiveSubagents int `json:"live_subagents,omitempty"`
 }
 
 // ContextFill is the "context fill %" badge input: last turn's prompt size vs the model window.
@@ -482,6 +515,14 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 	}
 	if sess.Status == store.StatusEnded || sum.Detached {
 		sum.Resume = s.resumeInfo(sess)
+	}
+	sum.ModelDisplay = s.modelDisplay(sess.Model)
+	if sess.Status != store.StatusEnded {
+		n, err := store.LiveSubagents(ctx, q, sess.SessionID, s.d.Now().Add(-liveSubagentWindow).UnixMilli())
+		if err != nil {
+			return SessionSummary{}, nil, err
+		}
+		sum.LiveSubagents = n
 	}
 	// Context fill: last assistant turn's input+cache tokens vs the model's window.
 	// When it cannot be computed, say which of the two reasons applies. The
@@ -1037,7 +1078,7 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 		s.failCode(w, http.StatusBadRequest, err)
 		return
 	}
-	sum, err := store.SummarizeSparkFor(ctx, s.d.Store.DB(), from, s.sparkSpec(label, from), agent)
+	sum, err := s.rangeSummary(ctx, from, label, agent)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -1046,9 +1087,9 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	if sum.Models == nil {
 		sum.Models = []store.ModelShare{}
 	}
-	if sum.Projects == nil {
-		sum.Projects = []store.ProjectShare{}
-	}
+	// The rows are shared with the summary cache (rangeSummary), so links go
+	// on a copy: writing them in place would race other readers of the entry.
+	sum.Projects = append([]store.ProjectShare{}, sum.Projects...)
 	s.linkProjects(ctx, sum.Projects)
 	resp := SummaryResponse{Summary: sum, Savings: cost.ComputeSavings(sum.TokensIn, sum.CacheRead, sum.CacheWrite)}
 	if s.d.Table != nil {
@@ -1086,6 +1127,56 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	resp.RateLimits = s.rateLimits(ctx)
 	resp.CodexRateLimits = s.codexRateLimits(ctx)
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// Warm computes the whole-history answers the dashboard asks for first — the
+// lifetime strip's /v1/history?range=all and the 7d, 30d and all-time
+// summaries the Cost screen and the share dialog open with — so the first
+// screen after a start finds them cached instead of paying for the scans.
+// Run in the background; it returns when they are done or ctx ends. Errors are
+// dropped: a key that failed to warm is simply computed on first request, as
+// it would have been without this.
+func (s *Server) Warm(ctx context.Context) {
+	if ctx.Err() != nil {
+		return
+	}
+	from, label := s.rangeFrom("all")
+	_, _ = s.hist.get(ctx, label+"|"+strconv.FormatInt(from, 10), func() (any, error) {
+		return s.buildHistory(ctx, from, label)
+	})
+	for _, rng := range []string{"7d", "30d", "all"} {
+		if ctx.Err() != nil {
+			return
+		}
+		from, label := s.rangeFrom(rng)
+		_, _ = s.rangeSummary(ctx, from, label, "")
+	}
+}
+
+// rangeSummary is the aggregate behind /v1/stats/summary for one range.
+//
+// Today's is computed on every request: it is ~40ms, and it is the figure
+// people watch move. Every wider range goes through the answer cache, because
+// a 7d, 30d or all-time summary scans that much more of the events table —
+// ~1s for all time on the owner's 1 GB database — for figures that a few
+// seconds cannot visibly change. The returned Summary is a copy; its slices
+// are shared with the cache and must not be written to.
+func (s *Server) rangeSummary(ctx context.Context, from int64, label string, agent store.AgentFilter) (store.Summary, error) {
+	spark := s.sparkSpec(label, from)
+	compute := func(c context.Context) (store.Summary, error) {
+		return store.SummarizeSparkFor(c, s.d.Store.DB(), from, spark, agent)
+	}
+	if label == "today" {
+		return compute(ctx)
+	}
+	key := "summary|" + label + "|" + strconv.FormatInt(from, 10) + "|" + string(agent)
+	v, err := s.summ.get(ctx, key, func() (any, error) {
+		return compute(context.WithoutCancel(ctx))
+	})
+	if err != nil {
+		return store.Summary{}, err
+	}
+	return v.(store.Summary), nil
 }
 
 // linkProjects gives each Projects row its repository's web address and the
@@ -1242,8 +1333,9 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	from, label := s.rangeFrom(r.URL.Query().Get("range"))
 	// Keyed by the resolved range rather than the raw query string, so
 	// "?range=" and "?range=today" — the same question spelled two ways —
-	// share one answer.
-	v, err := s.hist.get(r.Context(), label, func() (any, error) {
+	// share one answer; and by its start, so "today" is a new key at midnight.
+	key := label + "|" + strconv.FormatInt(from, 10)
+	v, err := s.hist.get(r.Context(), key, func() (any, error) {
 		return s.buildHistory(context.WithoutCancel(r.Context()), from, label)
 	})
 	if err != nil {
@@ -1620,7 +1712,7 @@ func (s *Server) handleApprovals(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) requireAgents(w http.ResponseWriter) bool {
 	if s.d.Agents == nil || !s.d.Agents.Available() {
-		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "can't start sessions", "detail": "`claude` is not on your PATH — install Claude Code, or add it. Caprock still watches sessions you start yourself."})
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "can't start sessions", "detail": "No coding agent Caprock can start is on your PATH — install Claude Code, Codex, OpenCode or Gemini CLI, or add it. Caprock still watches sessions you start yourself."})
 		return false
 	}
 	return true
@@ -1654,6 +1746,33 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"session_id": id, "cwd": cwd})
+}
+
+// handleAgentModels lists the models an agent's own CLI offers, for the
+// new-session dialog. Codex keeps its catalog on disk; for the other agents
+// the dialog has its own checked list (Claude Code, Gemini CLI) or takes the
+// user's provider/model as typed (OpenCode), and this answers an empty list.
+// No network I/O: it reads files the CLI already wrote.
+func (s *Server) handleAgentModels(w http.ResponseWriter, r *http.Request) {
+	type resp struct {
+		Agent   string        `json:"agent"`
+		Default string        `json:"default,omitempty"`
+		Models  []codex.Model `json:"models"`
+	}
+	agent := r.URL.Query().Get("agent")
+	out := resp{Agent: agent, Models: []codex.Model{}}
+	switch agent {
+	case "codex":
+		if m := codex.ListedModels(); len(m) > 0 {
+			out.Models = m
+		}
+		out.Default = codex.ConfiguredModel()
+	case "claude", "gemini", "opencode":
+	default:
+		http.Error(w, `agent must be one of claude, codex, opencode, gemini`, http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) handleAgentInput(w http.ResponseWriter, r *http.Request) {

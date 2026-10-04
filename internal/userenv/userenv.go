@@ -168,6 +168,22 @@ func Environ(log *slog.Logger) []string {
 	return os.Environ()
 }
 
+// Cached returns the login-shell environment if one has been resolved, and nil
+// otherwise, without waiting and without starting a resolution. It is for
+// questions asked on every status poll — "is codex installed?" — which must
+// never hold a request for the user's shell profile. The caller owns the slice.
+func Cached() []string {
+	if runtime.GOOS == "windows" {
+		return os.Environ()
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if cached == nil {
+		return nil
+	}
+	return append([]string(nil), cached...)
+}
+
 // Warm resolves the environment in the background, so the first session the
 // user starts does not wait for their shell. A failure retries on its own.
 func Warm(log *slog.Logger) {

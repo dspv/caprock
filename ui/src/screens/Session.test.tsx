@@ -49,6 +49,43 @@ vi.mock('@/lib/api', async (orig) => {
   }
 })
 
+/**
+ * A Codex or OpenCode session Caprock started has nothing to read until the
+ * first message is sent; then the importer links the agent's own session to
+ * it. Neither moment is "not measured", which is what the page said.
+ */
+d('a spawned Codex or OpenCode session', () => {
+  const spawned = (over: Partial<SessionDetail>) => {
+    detail.value = {
+      session_id: 'cap-1', cwd: '/r', project: 'p', model: '', status: 'active',
+      started_at: Date.now(), last_event_at: Date.now(), git_branch: '',
+      has_hooks: false, has_transcript: false, owned: true, agent: 'codex',
+      files: [], events: [],
+      stats: { session_id: 'cap-1', turns: 0, tool_calls: 0, files_touched: 0, cost_usd: 0, tokens_in: 0, tokens_out: 0, cache_read: 0, cache_write: 0 },
+      savings: { hit_rate: 0 },
+      // Go's zero time: a session with no events has no activity yet.
+      activity: { health: 'idle', phrase: 'idle', at: '0001-01-01T00:00:00Z' },
+      ...over,
+    } as unknown as SessionDetail
+  }
+
+  it('says it is waiting for the first message, not that it cannot measure', async () => {
+    spawned({})
+    render(<SessionScreen id="cap-1" tab="timeline" />)
+    expect(await screen.findByText(/Codex writes nothing until the first message/)).toBeInTheDocument()
+    expect(screen.queryByText(/does not measure it/)).not.toBeInTheDocument()
+    // Not "739892d ago".
+    expect(screen.queryByText(/\d{4,}d ago/)).not.toBeInTheDocument()
+  })
+
+  it("names the agent's own id once linked", async () => {
+    spawned({ agent: 'opencode', native_id: 'ses_abc' })
+    render(<SessionScreen id="cap-1" tab="timeline" />)
+    expect(await screen.findByText('OpenCode ses_abc')).toBeInTheDocument()
+    expect(screen.getByText(/linked to OpenCode/)).toBeInTheDocument()
+  })
+})
+
 const base: Event = { id: 1, ts: '2026-08-18T12:00:00Z', session_id: 's', source: 'hook', kind: 'tool.pre', payload: {} }
 
 d('event describe', () => {

@@ -147,7 +147,7 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Store, error) {
 		// *unnamed* database is shared process-wide, so parallel tests would
 		// see each other's rows. A unique name per Open gives each caller one
 		// database that its own pool shares and nobody else can reach.
-		dsn = fmt.Sprintf("file:memdb%d?mode=memory&cache=shared&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)",
+		dsn = fmt.Sprintf("file:memdb%d?mode=memory&cache=shared&_txlock=immediate&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)",
 			memSeq.Add(1))
 	} else {
 		// _pragma is modernc's DSN syntax. WAL lets the UI read while ingest writes;
@@ -164,7 +164,36 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Store, error) {
 		//
 		// 64 MiB is a ceiling, not an allocation: SQLite grows into it only as
 		// pages are touched, so a small database still costs a small process.
-		dsn = "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)&_pragma=cache_size(-65536)&_pragma=mmap_size(268435456)"
+		//
+		// The page cache is not enough on its own, because it does not survive
+		// a write. Under WAL a connection that sees another one has committed
+		// throws its whole page cache away at the start of its next read, and
+		// ingest commits several times a second while anyone is working — so
+		// on a live machine every dashboard read started cold, and each of the
+		// pool's connections paid that separately. mmap_size is what makes a
+		// cold start cheap: mapped pages are read straight out of the OS page
+		// cache, which survives commits and is shared by every connection. It
+		// used to be 256 MiB against a 1 GB database, so three quarters of
+		// every scan still went through read() into a freshly emptied cache:
+		// /v1/stats/summary?range=today measured 587ms on a connection's first
+		// read after a commit and 39ms with the whole file mapped (2026-10-04,
+		// the owner's 1 GB database). 2147418112 is the driver's
+		// SQLITE_MAX_MMAP_SIZE; asking for more is clamped to it. It reserves
+		// address space, not memory: mapped pages are the OS's clean file
+		// cache, and SQLite maps no more than the file's size.
+		//
+		// _txlock=immediate makes every transaction BEGIN IMMEDIATE, which
+		// takes the write lock up front and waits for it under busy_timeout.
+		// A plain BEGIN starts as a reader, and a reader that later writes
+		// cannot wait: SQLite fails the upgrade at once with SQLITE_BUSY
+		// rather than risk a deadlock, or with SQLITE_BUSY_SNAPSHOT (517) when
+		// another writer committed since it began. The recorder's transaction
+		// reads before it writes (TurnPaidElsewhere, then the insert), so with
+		// the tailer, the hook path and the rollup jobs all writing it lost
+		// that race ~400 times an hour on the owner's machine, and busy_timeout
+		// never got a chance to help. Every transaction in the daemon writes,
+		// so none of them pays for taking the lock early.
+		dsn = "file:" + path + "?_txlock=immediate&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)&_pragma=cache_size(-65536)&_pragma=mmap_size(2147418112)"
 	}
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
