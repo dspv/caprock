@@ -11,7 +11,8 @@ import { ProjectsPanel, AGENTS, agentName, type AgentFilter } from '@/components
 import { ActivityFeed } from '@/components/ActivityFeed'
 import { LifetimeStrip } from '@/components/Lifetime'
 import { CacheStat } from '@/components/CacheStat'
-import { PlanLimitsStat } from '@/components/PlanLimits'
+import { PlanLimitsPanel } from '@/components/PlanLimits'
+import { AtAGlancePanel } from '@/components/AtAGlance'
 import { PremiumBanner } from '@/components/PremiumBanner'
 import { BreakdownPanel } from '@/components/Breakdown'
 import { PulsePanel } from '@/components/Pulse'
@@ -258,7 +259,7 @@ export function NowScreen() {
           * permanent ~99%) and burn (tinted whenever anything runs) — so
           * colour pointed away from the money. The rest are reference figures
           * and step down, which is what makes room for the headline. */}
-        <div className="grid grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr_1fr] divide-x divide-border">
+        <div className="grid grid-cols-2 lg:grid-cols-[1.6fr_1fr_1fr_1fr_1fr] divide-x divide-border">
           <Stat label={`${costLabel(plan)} today`} value={measured ? fmtUSD(summary.data?.cost_usd) : '—'} sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : loading ? 'reading your figures…' : 'nothing measured yet'}</span>} tone="info" size="hero" />
           {/* While the daemon has been up for less than the window, the rate
             * is arithmetic on a handful of seconds — correct, and alarming:
@@ -286,11 +287,16 @@ export function NowScreen() {
             * at the size of its neighbours — it had a full-width panel of its
             * own above this row, which made two stale percentages look like a
             * headline. */}
-          <PlanLimitsStat limits={summary.data?.rate_limits} now={now} />
           <CacheStat hitRate={summary.data?.savings.hit_rate} cutPct={summary.data?.savings.cut_pct} measured={measured} />
         </div>
         <UnpricedNote u={summary.data?.unpriced} background={summary.data?.background} className="mx-3 mb-2.5" />
       </Panel>
+
+      {/* Directly under Today, full width: "can I keep going" is the question
+        * that stops the work, and as one cell in the Today row it was the
+        * smallest thing on the screen. Every window the product tracks, by
+        * agent, as gauges with the reset counting down. */}
+      <PlanLimitsPanel limits={summary.data?.rate_limits} codex={summary.data?.codex_rate_limits} now={now} />
 
       {/* The shape of the work, above the detail of it: a glance says which
         * sessions are busy, which are grinding, and which have gone quiet. */}
@@ -307,6 +313,11 @@ export function NowScreen() {
         * still holds — expanded up there it pushed Today and the pulse below
         * the fold — so it goes under the pulse rather than above it. */}
       <BreakdownPanel />
+
+      {/* The same all-time figures as pictures: donuts with the share printed
+        * big, and the agents drawn as the Week card's characters. Collapsible,
+        * with a Numbers view that is also the charts' text alternative. */}
+      <AtAGlancePanel />
 
       {/* What is happening (left) beside what it costs (right). */}
       <div className="grid gap-3 lg:grid-cols-2">

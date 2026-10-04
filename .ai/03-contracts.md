@@ -284,6 +284,41 @@ payload rather than in the screen that draws it; a store test asserts it.
 (`lines_added`, `lines_removed`, and `cost_per_merged_pr` / `loop.tax_usd`
 when present). Responses are cached for 30 s per `start`.
 
+### At a glance (`GET /v1/glance`)
+
+```
+GET  /v1/glance                         → Glance — all-time split by agent and the bill by token type
+```
+
+`{agents[], bill?, display}` for the Now screen's At a glance block, all time
+and never filtered by agent:
+
+- **`agents[]`** is the same shape as the Week's (`store.AgentSplit`, which
+  the Week now calls too): turns and stored `cost_usd` per agent, Claude
+  Code's split into main threads and subagents (`threads` = distinct agent
+  ids). A turn is a subagent's when it carries an `agent_id`, or when its
+  session is a sidechain (OpenCode child sessions, whose every turn says so).
+  The split reads `idx_events_turn_agent` (migration 0031) and one payload per
+  session rather than one per turn.
+- **`bill`** is `{input_usd, output_usd, cache_write_usd, cache_read_usd,
+  unpriced_tokens}`: each model's summed tokens priced at its **current**
+  pricing-table rates, the way the context tax is, so the four add up to
+  roughly — not exactly — the stored cost, which priced each turn at the rate
+  of its day. Cache writes are split into the 5-minute and 1-hour rates.
+  Tokens of a model with no row are counted in `unpriced_tokens` and priced
+  nowhere. Absent with no pricing table.
+- **`display`** maps each model id seen to the table's display name.
+
+Cached for 60 s; on the owner's 1 GB database (2026-10-04) a cold build takes
+0.44 s.
+
+`SessionSummary` gained `model_display` (the table's name for the session's
+model, "Claude " dropped) and `live_subagents` — for a session that has not
+ended, the agent ids heard from in the last 30 minutes whose latest event is
+not their `agent.stop`. Claude Code reports no subagent start, only events from
+inside it and a stop, so a subagent whose stop never arrived stops counting
+after 30 silent minutes. Both are omitted when empty or zero.
+
 `GET /v1/status` gained `platform` (`GOOS/GOARCH`) — the first thing a bug report needs and the last thing anyone remembers to include.
 
 The dashboard route `#/session/{id}?at=<unix-ms>` reveals a moment in the timeline (used by the pulse); it is a client-side concern and needs no endpoint.
@@ -785,6 +820,22 @@ Finds an assistant turn by message id across sessions — the per-turn
 Hook shim). `idx_events_msg` leads on `session_id` and cannot answer either.
 On the owner's database (2026-10-03) the repair found 827 copied turns from
 one fork and took $212.93 and 381M tokens out of the totals.
+
+### Turn agent DDL (migration 0031)
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_events_turn_agent
+  ON events(kind, ts, session_id, agent_id, model, cost_usd,
+            tokens_in, tokens_out, cache_read, cache_write, cache_write_1h, internal)
+  WHERE kind = 'turn.assistant';
+```
+
+Covers the two all-time reads behind `GET /v1/glance`: assistant turns grouped
+by session and agent id (`store.AgentSplit`) and tokens by model and type
+(`store.TokensByModel`). No earlier index holds `agent_id` or
+`cache_write_1h`, so both read every turn's row. On the owner's 1 GB database
+(2026-10-04) they took 3.5 s and 2 s; covered, 0.09 s and 0.06 s. The index
+is 11.8 MB there and took 1.8 s to build.
 
 ### Touch attribution DDL (migration 0012)
 

@@ -301,6 +301,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/events", s.handleEventsFeed)
 	m.HandleFunc("GET /v1/history", s.handleHistory)
 	m.HandleFunc("GET /v1/week", s.handleWeek)
+	m.HandleFunc("GET /v1/glance", s.handleGlance)
 	// Picking a folder without typing its path: see browse.go for what stops
 	// this being a filesystem-read API.
 	m.HandleFunc("GET /v1/browse", s.handleBrowse)
@@ -432,6 +433,14 @@ type SessionSummary struct {
 	// daemon does not hold — it was started before a restart. The terminal tab
 	// opened an empty screen for it (FB-040); what it can do is continue.
 	Detached bool `json:"detached,omitempty"`
+	// ModelDisplay is the pricing table's name for the session's model (its
+	// main thread's latest), "Opus 5.5" rather than the id. Empty when the
+	// table does not know the model.
+	ModelDisplay string `json:"model_display,omitempty"`
+	// LiveSubagents is how many subagents are working in the session now:
+	// heard from within the last 30 minutes and not yet stopped. Zero for an
+	// ended session. The main thread is not counted.
+	LiveSubagents int `json:"live_subagents,omitempty"`
 }
 
 // ContextFill is the "context fill %" badge input: last turn's prompt size vs the model window.
@@ -480,6 +489,14 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 	}
 	if sess.Status == store.StatusEnded || sum.Detached {
 		sum.Resume = s.resumeInfo(sess)
+	}
+	sum.ModelDisplay = s.modelDisplay(sess.Model)
+	if sess.Status != store.StatusEnded {
+		n, err := store.LiveSubagents(ctx, q, sess.SessionID, s.d.Now().Add(-liveSubagentWindow).UnixMilli())
+		if err != nil {
+			return SessionSummary{}, nil, err
+		}
+		sum.LiveSubagents = n
 	}
 	// Context fill: last assistant turn's input+cache tokens vs the model's window.
 	// When it cannot be computed, say which of the two reasons applies. The

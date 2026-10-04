@@ -21,6 +21,24 @@ Phase 3 (Delight) has no plan by design.
   machine from the agents' own tool calls; Caprock does not ask GitHub, and
   no repository, path, prompt or session title is ever on the card.
 
+- **Now: At a glance.** A collapsible block after All time draws where the
+  money went, the bill by token type (with the share spent re-reading
+  context in the middle) and the most-used tools as donuts, plus one tile per
+  agent with its share of all-time cost. A Charts | Numbers switch shows the
+  same figures as tables; both choices are remembered.
+- **Live pulse says who is working and on what.** Each session row shows the
+  current model by name and, when subagents are running, a crowd icon with
+  "×N".
+
+### Changed
+
+- **Plan limits are gauges, directly under Today.** Each window is a ring
+  that turns amber at 60% and red above 85%, with its reset time and a
+  countdown, grouped by agent. A forecast still appears only when your pace
+  would hit the limit before the reset, and is drawn on the ring; Codex is
+  never forecast and says how old its reading is. A stale reading is drawn
+  grey and says so.
+
 ## [0.69.0] - 2026-10-04
 
 ### Added

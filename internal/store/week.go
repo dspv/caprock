@@ -222,35 +222,14 @@ func weekActivity(ctx context.Context, q Querier, from, to int64, w *Week, dayOf
 		from, to).Scan(&w.Sessions)
 }
 
-// weekAgents splits the turns by agent, and Claude Code's by main thread and
-// subagent (store.MainThreadWhere's rule, negated).
+// weekAgents splits the week's turns by agent, and Claude Code's by main
+// thread and subagent.
 func weekAgents(ctx context.Context, q Querier, from, to int64, w *Week) error {
-	rows, err := q.QueryContext(ctx, `
-		SELECT COALESCE(s.agent,'claude'),
-		       NOT (`+MainThreadWhere+`),
-		       COUNT(*), COALESCE(SUM(e.cost_usd),0),
-		       COUNT(DISTINCT e.session_id), COUNT(DISTINCT NULLIF(e.agent_id,''))
-		FROM events e LEFT JOIN sessions s ON s.session_id = e.session_id
-		WHERE e.kind = 'turn.assistant' AND e.ts >= ? AND e.ts < ?`+nonInternalEventE+`
-		GROUP BY 1, 2`, from, to)
+	a, err := AgentSplit(ctx, q, from, to)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var a WeekAgent
-		if err := rows.Scan(&a.Agent, &a.Subagent, &a.Turns, &a.CostUSD, &a.Sessions, &a.Threads); err != nil {
-			return err
-		}
-		if !a.Subagent {
-			a.Threads = 0
-		}
-		w.Agents = append(w.Agents, a)
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	sort.SliceStable(w.Agents, func(i, j int) bool { return w.Agents[i].CostUSD > w.Agents[j].CostUSD })
+	w.Agents = a
 	return nil
 }
 
