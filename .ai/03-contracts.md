@@ -124,7 +124,9 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
 - **What a controller's `POST /v1/agents` may say** (`controllerSpawnRefusal`):
   `cwd` must be absolute and a directory some session has run in (`cwd` or
   `repo_root`, `store.KnownDir`); `command`, `args`, `create` and `chat` are
-  refused unless empty or false. Refusal is `403` with `{error}`. A session
+  refused unless empty or false, and so is `permission_mode:
+  "bypassPermissions"` (every agent's never-ask mode). Refusal is `403` with
+  `{error}`. A session
   started from a device is logged with the device's id and name.
 - **The terminal socket from a device** admits the LAN origin and takes the
   token as the `caprock.device.<token>` subprotocol, as `/v1/live` does. Before

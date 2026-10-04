@@ -23,6 +23,10 @@ import (
 // made from nothing, or a scratch folder outside every project.
 var spawnFieldsAControllerMayNotSet = []string{"command", "args", "create", "chat"}
 
+// bypassMode is Claude Code's never-ask mode; every agent's argv maps it to
+// its own (Codex: --dangerously-bypass-approvals-and-sandbox). ADR-034.
+const bypassMode = "bypassPermissions"
+
 // controllerSpawnRefusal returns why a paired controller may not make this
 // spawn request, or "" when it may.
 func (s *Server) controllerSpawnRefusal(ctx context.Context, req map[string]any) string {
@@ -30,6 +34,13 @@ func (s *Server) controllerSpawnRefusal(ctx context.Context, req map[string]any)
 		if v, ok := req[k]; ok && !isZero(v) {
 			return "a phone starts one of the coding agents Caprock knows, not " + k + " — set that up on the machine Caprock runs on"
 		}
+	}
+	// The phone is what is used when nobody is watching the machine, so a
+	// session that never asks is started there, not from here. Approving from
+	// the phone is the safe path; the token that would skip it is a bearer
+	// secret that can be copied off the phone.
+	if mode, _ := req["permission_mode"].(string); mode == bypassMode {
+		return "start bypass sessions on the Mac itself — from a phone, pick a mode that asks first"
 	}
 	cwd, _ := req["cwd"].(string)
 	if cwd == "" || !filepath.IsAbs(cwd) {

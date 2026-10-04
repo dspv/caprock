@@ -212,7 +212,9 @@ export function SpawnDialog({
                 * all of them, labelled with what it becomes in this one. */}
               <Field label="Permissions">
                 <select className="input" value={mode} onChange={(e) => setMode(e.target.value)}>
-                  {MODES.map(([v, label]) => (
+                  {/* No bypass from a phone (ADR-034): the daemon refuses it,
+                    * because a phone is used when nobody watches the machine. */}
+                  {MODES.filter(([v]) => !remote || v !== 'bypassPermissions').map(([v, label]) => (
                     <option key={v} value={v}>
                       {agent === 'gemini' && !GEMINI_MAPPED.has(v) ? `${label} · Gemini asks instead` : MODE_NOTE[agent]?.[v] ?? label}
                     </option>

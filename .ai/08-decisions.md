@@ -1233,7 +1233,7 @@ one, read the recent projects, models and relay brief the start form needs, and
 approve or reject a task. Rule 7 is unchanged and enforced below the API: the
 agent manager only types into or signals processes Caprock started.
 
-**Three narrower choices, each with an easier wrong answer:**
+**Four narrower choices, each with an easier wrong answer:**
 
 - **A phone starts a coding agent in a known project, not a command anywhere.**
   The dashboard on the machine may name any binary, arguments, folder or
@@ -1242,6 +1242,15 @@ agent manager only types into or signals processes Caprock started.
   not carry `command`, `args`, `create` or `chat`, and its folder must be one a
   session has already run in. No folder browser: `/v1/browse` stays closed to
   every device.
+- **No session that never asks, from a phone** (owner decision, 2026-10-04).
+  A controller's spawn may not set `permission_mode: "bypassPermissions"` — for
+  any agent, so not Codex's `--dangerously-bypass-approvals-and-sandbox` or
+  Gemini's yolo either; the dialog on a phone does not offer it. The phone is
+  what is used when nobody is watching the machine, which is exactly when an
+  agent that never asks does the most damage; answering its approvals from the
+  phone is the safe path this feature exists for; and the token that would
+  start one is a bearer secret that can be copied off the phone. Bypass
+  sessions are started on the machine itself.
 - **The machine stays the machine's.** Settings, pairing (codes, roles,
   revocation, network access), the hive and orchestrator, creating or verifying
   tasks (verify runs commands), hooks install, shutdown, outbound calls, and

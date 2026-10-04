@@ -324,8 +324,13 @@ func TestAControllerStartsAgentsOnlyInKnownProjects(t *testing.T) {
 		{"controller, any flags", testPhone, controller.Token, `{"cwd":"` + known + `","args":["--x"]}`, 403},
 		{"controller, a new folder", testPhone, controller.Token, `{"cwd":"` + known + `/new","create":true}`, 403},
 		{"controller, a scratch chat", testPhone, controller.Token, `{"chat":true}`, 403},
+		{"controller, bypass mode", testPhone, controller.Token, `{"cwd":"` + known + `","permission_mode":"bypassPermissions"}`, 403},
+		{"controller, codex in bypass mode", testPhone, controller.Token, `{"cwd":"` + known + `","agent":"codex","permission_mode":"bypassPermissions"}`, 403},
+		{"controller, a mode that asks", testPhone, controller.Token, `{"cwd":"` + known + `","permission_mode":"acceptEdits"}`, 200},
+		{"controller, plan mode", testPhone, controller.Token, `{"cwd":"` + known + `","permission_mode":"plan"}`, 200},
 		{"viewer, known project", testPhone, viewer.Token, `{"cwd":"` + known + `"}`, 403},
 		{"the machine, any folder", "127.0.0.1:51000", "", `{"cwd":"` + unknown + `","command":"sh"}`, 200},
+		{"the machine, bypass mode", "127.0.0.1:51000", "", `{"cwd":"` + known + `","permission_mode":"bypassPermissions"}`, 200},
 	} {
 		if got := spawn(tc.from, tc.token, tc.body); got != tc.want {
 			t.Errorf("%s: %d, want %d", tc.name, got, tc.want)
