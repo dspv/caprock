@@ -22,6 +22,24 @@ Phase 3 (Delight) has no plan by design.
 
 ### Fixed
 
+- **A session's Answers tab shows what Claude wrote again.** Claude Code now
+  writes a thinking line ahead of every reply, and Caprock kept only the first
+  line of each reply — so the prose after it was never stored, and a session of
+  long answers showed one line. The rest of a reply is now kept with it, and
+  replies stored since the change are filled from the transcripts on disk once,
+  in the background, after an upgrade. Memory search and the handoff a new
+  session receives read the same prose and are mended with it.
+- **The Answers tab opens at once.** It read every reply on the machine to find
+  one session's; on a 1 GB database that was 3.3 seconds cold for a session of
+  21 replies, and is 20 ms now.
+- **The terminal is dark in the light theme.** Claude Code's dim text and
+  status line were grey on paper and could not be read. The terminal now keeps
+  its dark palette in both themes, and keeps it when you switch theme with a
+  terminal open — it used to stay in the colours of whichever theme was on
+  when it opened.
+- **Now waits less for its figures.** The status the screen polls counted every
+  event and searched a fortnight of prose on each call; both are reused for a
+  minute now.
 - **Documents dropped into a session's terminal arrive.** Dragging a Markdown,
   CSV, JSON, YAML, log or source file from Finder printed "415 Unsupported
   Media Type", because the browser gives those files no type and only images,

@@ -26,7 +26,11 @@ import (
 //
 // v3 (2026-09-29): `ai-title` lines are read into sessions.title. Rows from
 // earlier versions are filled once by BackfillTitles.
-const SchemaVersion = 3
+//
+// v4 (2026-10-04): the prose on a response's later lines is folded into its
+// turn (store.MergeAssistantText). Turns stored earlier without their text are
+// filled once by RepairEmptyAssistantText.
+const SchemaVersion = 4
 
 // Line is the subset of a transcript line the parser understands.
 type Line struct {
@@ -299,7 +303,10 @@ func (l *Line) Events(fallbackTs time.Time) []event.Event {
 // pathological turn from bloating the database, not to summarise: the value is
 // well above a normal closing summary so the thing people actually come back
 // for — "what changed, and what I still need from you" — is stored whole.
-const MaxAssistantText = 16000
+//
+// It lives in package event so the store can apply the same cap when it folds
+// a later line of one response into the stored turn (store.MergeAssistantText).
+const MaxAssistantText = event.MaxAssistantText
 
 // clipRunes truncates to at most n RUNES. The previous cap counted bytes, which
 // cut multi-byte prose at roughly half the intended length (Cyrillic is 2 bytes

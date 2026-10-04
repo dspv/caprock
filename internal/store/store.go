@@ -99,6 +99,12 @@ const (
 	MetaInterrupted = "interrupted"
 	// MetaReportLastSent is when a report last went out, unix ms as a string.
 	MetaReportLastSent = "report_last_sent"
+	// MetaEmptyTextRepairPending is "1" while assistant turns stored before
+	// parser v4 still wait to have their prose read back from the transcripts
+	// (ingest.RepairEmptyAssistantText). Set when a start finds an older
+	// parser version, cleared when the repair has run, so a daemon stopped
+	// mid-repair runs it again.
+	MetaEmptyTextRepairPending = "empty_text_repair_pending"
 	// ToolLinkDone is the MetaToolLinkCursor value meaning "no rows left".
 	// A cursor alone cannot say so: the pass ends by reading a short batch, and
 	// new unlinked rows never appear behind the cursor.

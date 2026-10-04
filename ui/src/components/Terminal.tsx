@@ -5,6 +5,29 @@ import { SpawnDialog } from './SpawnDialog'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
+
+/**
+ * The terminal's palette: graphite, in BOTH app themes, fixed at build time.
+ *
+ * It used to be read from the theme tokens when the terminal opened. Two
+ * defects came out of that (owner reports, 2026-10-04). On paper, Claude Code's
+ * dim text and status line — drawn for a dark background, as every TUI assumes —
+ * were grey on cream and unreadable. And the colours were read ONCE, at mount:
+ * switch the app to dark with a terminal open and it stayed paper, faint text
+ * on a light ground, so either theme could end up wrong. A terminal is a dark
+ * surface the way a code block is; the page around it stays paper.
+ *
+ * These are the dark palette's values (tokens.css), written out rather than
+ * read from CSS so no theme switch can reach them. `--color-term-*` carries the
+ * same two surface colours for the container around the canvas.
+ */
+export const TERMINAL_THEME = {
+  background: '#1b1b1a',
+  foreground: '#e8e6e2',
+  cursor: '#feb157',
+  cursorAccent: '#1b1b1a',
+  selectionBackground: '#3a3835',
+} as const
 /** Live terminal for an owned session over /v1/agents/:id/term (Phase 1). */
 export function TerminalView({
   sessionId,
@@ -31,7 +54,6 @@ export function TerminalView({
   const host = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!host.current || !owned) return
-    // Pull the terminal palette from the theme tokens so it matches light/dark.
     const css = getComputedStyle(document.documentElement)
     const v = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback
     const term = new Xterm({
@@ -42,12 +64,8 @@ export function TerminalView({
       // entirely, which is what made the terminal unreadable for the one user
       // who moved onto it full-time.
       convertEol: false, cursorBlink: true, fontFamily: v('--font-mono', 'monospace'), fontSize: 12,
-      theme: {
-        background: v('--color-bg', '#0b0e14'),
-        foreground: v('--color-fg', '#d3dae3'),
-        cursor: v('--color-accent', '#5ea1ff'),
-        selectionBackground: v('--color-border-strong', '#2b3646'),
-      },
+      // A copy: xterm keeps the object it is given.
+      theme: { ...TERMINAL_THEME },
       // 10k lines: a build log or a long `claude` session scrolls past 5k
       // easily, and losing the start of what you are reading is the moment a
       // terminal stops being one you can work in.
@@ -439,7 +457,12 @@ export function TerminalView({
   }
   return (
     <>
-      <div ref={host} className="h-[70vh] bg-bg" />
+      {/* The canvas's own ground, in both themes: see TERMINAL_THEME. The
+        * padding is the same colour so the dark surface reads as one block
+        * rather than a canvas floating on paper. */}
+      <div className="bg-term-bg border border-term-border rounded-sm p-1.5">
+        <div ref={host} data-term-host className="h-[70vh]" />
+      </div>
       {/* Said once, under the terminal, because there is no way to discover it.
         *
         * A user who wants a second line presses Enter, watches half a thought

@@ -71,6 +71,23 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-04 (later) — Answers kept, read from the session, and a dark terminal
+
+The owner opened a session full of long Russian replies and its Answers tab
+showed one line, slowly. Measured on a `.backup` copy of his database: the
+notes query walked `idx_events_kind_id` — every assistant turn on the machine,
+payload and all — instead of the session's own index, 3.3 s cold for 21 turns;
+it is 20 ms with the kind index taken out of the planner's hands, and a plan
+test holds it. The emptiness was the write path: Claude Code now writes a
+thinking line first on every response, the store keeps the first line of a
+message id, and the prose after it was dropped as a duplicate — 93% of turns
+stored after 2026-09-29 had no text. Later lines are now folded into the row
+(parser v4) and a background repair filled 745 turns on the copy. The
+terminal's palette is graphite in both themes and no longer read once at
+mount, and `/v1/status` reuses its two bulk reads (0.26 s event count, 0.64 s
+handoff coverage, cold) for a minute. See
+[03-contracts.md](03-contracts.md) and [04-ui.md § The terminal](04-ui.md#the-terminal).
+
 ### 2026-10-04 — Documents dropped into the terminal arrive, by name
 
 The owner dragged documents from Finder into a session and nothing usable

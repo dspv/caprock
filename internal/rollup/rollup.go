@@ -306,6 +306,13 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 	})
 	if errors.Is(err, store.ErrDuplicate) {
 		res.Stored = false
+		// A later line of a response already stored: its prose belongs to that
+		// turn, though its usage does not (store.MergeAssistantText).
+		if ev.Kind == event.KindTurnAssistant && ev.Key != "" {
+			if _, mErr := store.MergeAssistantText(ctx, r.Store.DB(), ev.SessionID, ev.Key, ev.Payload); mErr != nil {
+				return res, mErr
+			}
+		}
 		return res, nil
 	}
 	if err != nil {
