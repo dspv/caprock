@@ -32,6 +32,7 @@ import (
 	"github.com/dspv/caprock/internal/desktop"
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/gemini"
+	"github.com/dspv/caprock/internal/gitremote"
 	"github.com/dspv/caprock/internal/hive"
 	"github.com/dspv/caprock/internal/hookd"
 	"github.com/dspv/caprock/internal/hooks"
@@ -621,6 +622,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	go d.weeklyLoop(ctx)
 	go d.backfillToolLinks(ctx)
 	go d.repairEmptyText(ctx)
+	go d.backfillPRs(ctx)
 	go d.storageLoop(ctx)
 	if d.config().RetentionDays > 0 {
 		go d.pruneLoop(ctx)
@@ -998,6 +1000,33 @@ func (d *Daemon) repairEmptyText(ctx context.Context) {
 	_ = d.store.SetMeta(ctx, store.MetaEmptyTextRepairPending, "0")
 	d.log.Info("filled assistant text dropped with a response's later lines", "component", "ingest",
 		"events", n, "took", time.Since(start).Round(time.Millisecond).String())
+}
+
+// backfillPRs fills session_prs from the `gh pr` commands stored before
+// migration 0031, once, in the background. On a copy of the owner's database
+// the scan reads ~1,000 rows by a LIKE over Bash results, ~3 s cold.
+func (d *Daemon) backfillPRs(ctx context.Context) {
+	if v, _ := d.store.GetMeta(ctx, store.MetaPRsBackfilled); v == "1" {
+		return
+	}
+	n := 0
+	err := store.PRToolPosts(ctx, d.store.DB(), func(sid string, ts int64, payload []byte) error {
+		pr, ok := gitremote.FromToolPost(payload)
+		if !ok {
+			return nil
+		}
+		n++
+		return store.RecordPR(ctx, d.store.DB(), store.PRAction{SessionID: sid, URL: pr.URL, Number: pr.Number,
+			Title: pr.Title, Action: pr.Action, Ts: ts})
+	})
+	if err != nil {
+		d.log.Warn("could not read pull requests from history", "component", "daemon", "err", err)
+		return
+	}
+	_ = d.store.SetMeta(ctx, store.MetaPRsBackfilled, "1")
+	if n > 0 {
+		d.log.Info("read pull requests from history", "component", "daemon", "commands", n)
+	}
 }
 
 func (d *Daemon) backfillToolLinks(ctx context.Context) {

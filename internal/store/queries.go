@@ -1452,6 +1452,12 @@ type ProjectShare struct {
 	Dir   string      `json:"dir,omitempty"`
 	Paths []PathShare `json:"paths,omitempty"`
 	Spark *Spark      `json:"spark,omitempty"`
+	// RepoURL is the repository's web address, from its git remote; set by
+	// the API, empty when there is no remote it can link to.
+	RepoURL string `json:"repo_url,omitempty"`
+	// LastPR is the latest pull request a session in this row opened or
+	// merged; set by the API.
+	LastPR *SessionPR `json:"last_pr,omitempty"`
 }
 
 // PathShare is tokens/cost for one directory inside a repository, charged by

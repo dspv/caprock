@@ -26,6 +26,7 @@ import (
 	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/gitdiff"
+	"github.com/dspv/caprock/internal/gitremote"
 	"github.com/dspv/caprock/internal/license"
 	"github.com/dspv/caprock/internal/loop"
 	"github.com/dspv/caprock/internal/narrate"
@@ -248,6 +249,8 @@ type Server struct {
 	// hist collapses the burst of identical /v1/history requests one open
 	// screen produces. See histcache.go.
 	hist *historyCache
+	// repos answers "which repository, on which host" per directory.
+	repos *repoCache
 }
 
 // New builds the router.
@@ -267,7 +270,7 @@ func New(d Deps) *Server {
 			lanHost = u.Hostname()
 		}
 	}
-	s := &Server{d: d, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newHistoryCache(historyTTL, d.Now)}
+	s := &Server{d: d, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newHistoryCache(historyTTL, d.Now), repos: newRepoCache()}
 	// Seeded from Deps so `caprock up --lan` behaves exactly as before; the
 	// dashboard's switch goes through SetLAN.
 	s.pairing, s.lanURL = d.Pairing, d.LANURL
@@ -446,6 +449,11 @@ type SessionDetail struct {
 	SessionSummary
 	Files  []string      `json:"files"`
 	Events []event.Event `json:"events"`
+	// Repo is where the session's directory lives on the web, from its git
+	// remote; absent when the directory is not in a repository.
+	Repo *gitremote.Repo `json:"repo,omitempty"`
+	// PRs are the pull requests this session opened or merged, latest first.
+	PRs []store.SessionPR `json:"prs"`
 }
 
 func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSummary, []event.Event, error) {
@@ -638,7 +646,14 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		last = []event.Event{}
 	}
 	sum.Resume = s.resumeInfo(sess)
-	writeJSON(w, http.StatusOK, SessionDetail{SessionSummary: sum, Files: files, Events: last})
+	detail := SessionDetail{SessionSummary: sum, Files: files, Events: last, PRs: []store.SessionPR{}}
+	if r, ok := s.repos.get(ctx, sess.Cwd); ok {
+		detail.Repo = &r
+	}
+	if prs, err := store.SessionPRs(ctx, s.d.Store.DB(), id); err == nil && prs != nil {
+		detail.PRs = prs
+	}
+	writeJSON(w, http.StatusOK, detail)
 }
 
 // handleSessionNotes returns what Claude said in a session, in prose, newest
@@ -1034,6 +1049,7 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	if sum.Projects == nil {
 		sum.Projects = []store.ProjectShare{}
 	}
+	s.linkProjects(ctx, sum.Projects)
 	resp := SummaryResponse{Summary: sum, Savings: cost.ComputeSavings(sum.TokensIn, sum.CacheRead, sum.CacheWrite)}
 	if s.d.Table != nil {
 		resp.Pricing = s.d.Table.Version
@@ -1070,6 +1086,36 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	resp.RateLimits = s.rateLimits(ctx)
 	resp.CodexRateLimits = s.codexRateLimits(ctx)
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// linkProjects gives each Projects row its repository's web address and the
+// latest pull request any session in it opened. Both are local reads: the
+// remote from git (cached per directory), the PR from session_prs.
+func (s *Server) linkProjects(ctx context.Context, rows []store.ProjectShare) {
+	latest, _ := store.LatestPRByDir(ctx, s.d.Store.DB())
+	// Directories are looked up side by side: a first, uncached answer is a
+	// few git processes per row, and a panel of rows in sequence was most of
+	// the summary's first response.
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 8)
+	for i := range rows {
+		if rows[i].Dir == "" {
+			continue
+		}
+		if pr, ok := latest[rows[i].Dir]; ok {
+			rows[i].LastPR = &pr
+		}
+		wg.Add(1)
+		go func(row *store.ProjectShare) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			if r, ok := s.repos.get(ctx, row.Dir); ok {
+				row.RepoURL = r.URL
+			}
+		}(&rows[i])
+	}
+	wg.Wait()
 }
 
 // codexRateLimits is Codex's latest observed windows, or nil. No forecast:

@@ -16,6 +16,7 @@ import (
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/event"
+	"github.com/dspv/caprock/internal/gitremote"
 	"github.com/dspv/caprock/internal/modelclass"
 	"github.com/dspv/caprock/internal/store"
 )
@@ -144,6 +145,17 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 			return err
 		}
 		res.Stored = true
+
+		// A `gh pr` command this session ran, as Claude Code recorded it: the
+		// session page and the Projects row link to it (migration 0031).
+		if ev.Kind == event.KindToolPost && ev.Tool == "Bash" {
+			if pr, ok := gitremote.FromToolPost(ev.Payload); ok {
+				if err := store.RecordPR(ctx, q, store.PRAction{SessionID: ev.SessionID, URL: pr.URL, Number: pr.Number,
+					Title: pr.Title, Action: pr.Action, Ts: ev.Ts.UnixMilli()}); err != nil {
+					return err
+				}
+			}
+		}
 
 		// The daily "sessions" count used to be driven from here, by asking
 		// whether this session had any turn before. It is answered by
