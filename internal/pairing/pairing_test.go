@@ -261,3 +261,98 @@ func TestRandomDigitsAreNotSkewed(t *testing.T) {
 		}
 	}
 }
+
+// ADR-034: pairing makes a viewer, always. Control is a second decision made
+// on the machine, never something a code can grant.
+func TestPairingMakesAViewer(t *testing.T) {
+	s, _ := clock(t)
+	code, _ := s.NewCode()
+	d, err := s.Redeem(code, "phone")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Role != RoleViewer {
+		t.Fatalf("a freshly paired device is %q, want viewer", d.Role)
+	}
+	if got := s.RoleOf(d.Token); got != RoleViewer {
+		t.Fatalf("RoleOf = %q", got)
+	}
+}
+
+func TestSetRoleGivesAndTakesControl(t *testing.T) {
+	s, _ := clock(t)
+	code, _ := s.NewCode()
+	d, _ := s.Redeem(code, "phone")
+
+	if !s.SetRole(d.ID, RoleController) {
+		t.Fatal("SetRole refused a paired device")
+	}
+	if got := s.RoleOf(d.Token); got != RoleController {
+		t.Fatalf("after promotion RoleOf = %q", got)
+	}
+	if c, _ := s.Check(d.Token); c.Role != RoleController {
+		t.Fatalf("Check reports %q", c.Role)
+	}
+	if got := s.Devices()[0].Role; got != RoleController {
+		t.Fatalf("Devices lists %q", got)
+	}
+	if !s.SetRole(d.ID, RoleViewer) || s.RoleOf(d.Token) != RoleViewer {
+		t.Fatal("control was not taken away")
+	}
+
+	if s.SetRole("no-such-id", RoleController) {
+		t.Fatal("SetRole accepted an unknown device")
+	}
+	if s.SetRole(d.ID, "owner") {
+		t.Fatal("SetRole accepted a role that does not exist")
+	}
+	if s.RoleOf("not-a-token") != "" || s.RoleOf("") != "" {
+		t.Fatal("an unknown token has a role")
+	}
+}
+
+// A revoked controller has no role at all: an open terminal asks RoleOf per
+// keystroke, and must stop.
+func TestARevokedControllerHasNoRole(t *testing.T) {
+	s, _ := clock(t)
+	code, _ := s.NewCode()
+	d, _ := s.Redeem(code, "phone")
+	s.SetRole(d.ID, RoleController)
+	s.Revoke(d.ID)
+	if got := s.RoleOf(d.Token); got != "" {
+		t.Fatalf("a revoked device still holds %q", got)
+	}
+}
+
+// Check hands out a copy, so the role a request was admitted with cannot be
+// changed under it without the lock — and changing the copy changes nothing.
+func TestCheckReturnsACopy(t *testing.T) {
+	s, _ := clock(t)
+	code, _ := s.NewCode()
+	d, _ := s.Redeem(code, "phone")
+	c, _ := s.Check(d.Token)
+	c.Role = RoleController
+	if s.RoleOf(d.Token) != RoleViewer {
+		t.Fatal("editing Check's result promoted the stored device")
+	}
+}
+
+// Every devices.json written before roles existed has no "role" key. Those
+// devices were viewers, and must still be.
+func TestADeviceSavedBeforeRolesIsAViewer(t *testing.T) {
+	s := New()
+	s.Load([]Device{{ID: "old", Name: "tablet", Token: "tok-old", PairedAt: 1}})
+	if got := s.RoleOf("tok-old"); got != RoleViewer {
+		t.Fatalf("legacy device role = %q, want viewer", got)
+	}
+	if got := s.Devices()[0].Role; got != RoleViewer {
+		t.Fatalf("legacy device listed as %q", got)
+	}
+	// And the role survives a save and a load.
+	s.SetRole("old", RoleController)
+	again := New()
+	again.Load(s.Snapshot())
+	if got := again.RoleOf("tok-old"); got != RoleController {
+		t.Fatalf("role lost across Snapshot/Load: %q", got)
+	}
+}

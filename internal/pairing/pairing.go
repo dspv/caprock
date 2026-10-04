@@ -7,9 +7,11 @@
 // screen issues codes and lists devices. It was built and tested before that
 // feature, because it is the part that decides who gets in.
 //
-// A token makes a device a reader, not the owner. What a paired device may do
-// is decided in internal/api (pairedDeviceRoutes), not here: this package
-// answers "which device is this", never "what may it do".
+// A token makes a device a reader, not the owner — unless the owner, at the
+// machine, gives that one device the controller role (ADR-034). What each role
+// may do is decided in internal/api (pairedDeviceRoutes, controllerRoutes), not
+// here: this package answers "which device is this, and which role did the
+// owner give it", never "what may it do".
 //
 // The rule that shapes everything here is rule 4: all data stays on the
 // machine. Nothing in this package reaches the network, registers a name, or
@@ -72,6 +74,31 @@ var (
 	ErrUnknownDevice = errors.New("this device is not paired")
 )
 
+// The roles a paired device can hold (ADR-034).
+//
+// A device is paired as a viewer and stays one until the owner, on the machine
+// Caprock runs on, makes it a controller. An empty Role is a viewer: every
+// devices.json written before roles existed reads as "viewer", which is what
+// those devices were.
+const (
+	// RoleViewer reads figures and nothing else (ADR-029).
+	RoleViewer = "viewer"
+	// RoleController may also start sessions in known projects, type into the
+	// sessions Caprock started, stop them, and answer task approvals.
+	RoleController = "controller"
+)
+
+// ValidRole reports whether r names a role a device may be given.
+func ValidRole(r string) bool { return r == RoleViewer || r == RoleController }
+
+// roleOf is the role a stored device holds, with "" read as a viewer.
+func roleOf(d *Device) string {
+	if d.Role == RoleController {
+		return RoleController
+	}
+	return RoleViewer
+}
+
 // Device is one thing that has been let in.
 type Device struct {
 	// ID identifies the device in the UI and for revocation. Not a secret.
@@ -85,6 +112,10 @@ type Device struct {
 	// PairedAt and LastSeen are unix milliseconds.
 	PairedAt int64 `json:"paired_at"`
 	LastSeen int64 `json:"last_seen"`
+	// Role is RoleViewer or RoleController; empty reads as a viewer. Set only
+	// by the owner on loopback (SetRole), never by the device: pairing always
+	// makes a viewer.
+	Role string `json:"role,omitempty"`
 }
 
 // Public is a Device without its token, for listing in the dashboard.
@@ -93,6 +124,8 @@ type Public struct {
 	Name     string `json:"name"`
 	PairedAt int64  `json:"paired_at"`
 	LastSeen int64  `json:"last_seen"`
+	// Role is always set here: "viewer" or "controller".
+	Role string `json:"role"`
 }
 
 // Store holds the pairing state. The zero value is not usable; call New.
@@ -202,7 +235,9 @@ func (s *Store) Redeem(code, name string) (*Device, error) {
 		return nil, err
 	}
 	now := s.Now().UnixMilli()
-	d := &Device{ID: id, Name: cleanName(name), Token: tok, PairedAt: now, LastSeen: now}
+	// Always a viewer. Control is granted on the machine, afterwards, by a
+	// separate decision — never by knowing a code (ADR-034).
+	d := &Device{ID: id, Name: cleanName(name), Token: tok, PairedAt: now, LastSeen: now, Role: RoleViewer}
 	s.devices[tok] = d
 	// Single use: the code is spent whether or not another device is waiting.
 	s.code, s.attempts = "", 0
@@ -210,6 +245,11 @@ func (s *Store) Redeem(code, name string) (*Device, error) {
 }
 
 // Check validates a device token and records that the device was seen.
+//
+// It returns a copy: the role can change under a request in flight (the owner
+// revokes control while the phone is typing), and a pointer into the store
+// would be read without the lock. A caller that needs the role *now* — a
+// terminal socket that stays open for an hour — asks again.
 func (s *Store) Check(token string) (*Device, error) {
 	if token == "" {
 		return nil, ErrUnknownDevice
@@ -221,7 +261,43 @@ func (s *Store) Check(token string) (*Device, error) {
 		return nil, ErrUnknownDevice
 	}
 	d.LastSeen = s.Now().UnixMilli()
-	return d, nil
+	cp := *d
+	cp.Role = roleOf(d)
+	return &cp, nil
+}
+
+// RoleOf is the current role of the device holding token, or "" when the
+// token is unknown or revoked. It does not touch LastSeen: it is asked once
+// per keystroke on an open terminal, which is not the device being seen again.
+func (s *Store) RoleOf(token string) string {
+	if token == "" {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d, ok := s.devices[token]
+	if !ok {
+		return ""
+	}
+	return roleOf(d)
+}
+
+// SetRole gives one device, by id, a role. It reports false when there is no
+// such device or the role is not one ValidRole accepts. Takes effect on that
+// device's next request, and on its next keystroke into an open terminal.
+func (s *Store) SetRole(id, role string) bool {
+	if !ValidRole(role) {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, d := range s.devices {
+		if d.ID == id {
+			d.Role = role
+			return true
+		}
+	}
+	return false
 }
 
 // Devices lists what is paired, without tokens, oldest first.
@@ -230,7 +306,7 @@ func (s *Store) Devices() []Public {
 	defer s.mu.Unlock()
 	out := make([]Public, 0, len(s.devices))
 	for _, d := range s.devices {
-		out = append(out, Public{ID: d.ID, Name: d.Name, PairedAt: d.PairedAt, LastSeen: d.LastSeen})
+		out = append(out, Public{ID: d.ID, Name: d.Name, PairedAt: d.PairedAt, LastSeen: d.LastSeen, Role: roleOf(d)})
 	}
 	// Stable order so the list does not shuffle between polls.
 	for i := 1; i < len(out); i++ {
