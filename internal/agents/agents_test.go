@@ -49,10 +49,15 @@ type fakeSession struct {
 	// shutdown path's kill-after-grace can be tested.
 	ignoreTerm bool
 	termed     atomic.Bool
+	// written is every byte typed into the session.
+	written []byte
 }
 
 func (s *fakeSession) Output() io.Reader { return &chanReader{ch: s.out, done: s.done} }
 func (s *fakeSession) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	s.written = append(s.written, p...)
+	s.mu.Unlock()
 	if strings.Contains(string(p), "exit") {
 		s.finish(7)
 	}

@@ -274,3 +274,31 @@ func TestAnEventOutlivesTheShimHangingUp(t *testing.T) {
 		t.Fatalf("stored %d events after a hang-up, want 1", len(evs))
 	}
 }
+
+// PermissionRequest (Claude Code 2.1.289, captured from a real prompt) is a
+// moment rather than an event: Observe sees it with its suggestions, and
+// nothing is stored.
+func TestAPermissionRequestIsObservedNotStored(t *testing.T) {
+	h, st := newHandler(t)
+	var seen []Payload
+	h.Observe = func(p Payload) { seen = append(seen, p) }
+	if rr := post(h, "secret", fixture(t, "permission_request.json")); rr.Code != http.StatusNoContent {
+		t.Fatalf("status %d", rr.Code)
+	}
+	if len(seen) != 1 || seen[0].HookEventName != "PermissionRequest" || seen[0].ToolName != "Bash" ||
+		!bytes.Contains(seen[0].PermissionSuggestions, []byte("addRules")) {
+		t.Fatalf("observed %+v", seen)
+	}
+	evs, _ := store.ListEvents(context.Background(), st.DB(), "sess-abc", 0, 0)
+	if len(evs) != 0 {
+		t.Fatalf("stored %d events", len(evs))
+	}
+	// Every other event is observed too, and still stored.
+	post(h, "secret", fixture(t, "post_tool_use.json"))
+	if len(seen) != 2 || seen[1].HookEventName != "PostToolUse" {
+		t.Fatalf("observed %+v", seen)
+	}
+	if evs, _ = store.ListEvents(context.Background(), st.DB(), "sess-abc", 0, 0); len(evs) != 1 {
+		t.Fatalf("stored %d events", len(evs))
+	}
+}

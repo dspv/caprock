@@ -43,3 +43,27 @@ describe('TerminalKeys — typing from a phone', () => {
     expect(send).toHaveBeenCalledWith('\r')
   })
 })
+
+describe('TerminalKeys — attaching a photo', () => {
+  afterEach(cleanup)
+
+  it('has no photo button where nothing can attach one', () => {
+    render(<TerminalKeys send={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Attach a photo' })).toBeNull()
+  })
+
+  it('opens the picker for images, from the camera or the library, and attaches what is picked', async () => {
+    const attach = vi.fn(async () => {})
+    render(<TerminalKeys send={vi.fn()} attach={attach} />)
+    const picker = screen.getByTestId('photo-picker') as HTMLInputElement
+    expect(picker.accept).toBe('image/*')
+    // `capture` would make iOS open the camera only, with no library.
+    expect(picker.hasAttribute('capture')).toBe(false)
+    const click = vi.spyOn(picker, 'click')
+    fireEvent.click(screen.getByRole('button', { name: 'Attach a photo' }))
+    expect(click).toHaveBeenCalled()
+    const photo = new File(['x'], 'IMG_0001.jpg', { type: 'image/jpeg' })
+    fireEvent.change(picker, { target: { files: [photo] } })
+    await vi.waitFor(() => expect(attach).toHaveBeenCalledWith([photo]))
+  })
+})

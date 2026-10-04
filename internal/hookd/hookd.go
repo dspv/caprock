@@ -43,7 +43,15 @@ type Payload struct {
 	Trigger        string          `json:"trigger"` // PreCompact
 	Reason         string          `json:"reason"`  // SessionEnd
 	Error          string          `json:"error"`   // StopFailure / PostToolUseFailure
+	// PermissionSuggestions is what PermissionRequest's "don't ask again"
+	// option would add, verbatim.
+	PermissionSuggestions json.RawMessage `json:"permission_suggestions"`
 }
+
+// permissionRequest is the hook Claude Code fires when it draws a permission
+// dialog. It is a moment, not an event: nothing is stored, and Observe is
+// told so the session's buttons can be drawn (ADR-035).
+const permissionRequest = "PermissionRequest"
 
 // endsTheSession reports whether a SessionEnd reason means the session is over.
 //
@@ -191,6 +199,9 @@ type Handler struct {
 	// left behind, returned to the one now opening. nil or empty ⇒ 204, and
 	// the session starts exactly as it does today.
 	Handoff func(ctx context.Context, p Payload) []byte
+	// Observe sees every payload that names a session, PermissionRequest
+	// included, before it is recorded. It must not block.
+	Observe func(p Payload)
 }
 
 // ServeHTTP implements the contract: bearer-token gated, 204 on success,
@@ -222,6 +233,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	if h.Now != nil {
 		now = h.Now()
+	}
+	if h.Observe != nil {
+		var p Payload
+		if json.Unmarshal(body, &p) == nil && p.SessionID != "" {
+			h.Observe(p)
+			if p.HookEventName == permissionRequest {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+		}
 	}
 	ev, info, err := Normalize(body, now)
 	switch {

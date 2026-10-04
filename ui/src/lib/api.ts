@@ -1008,4 +1008,23 @@ export const api = {
    */
   paste: (file: { name: string; type: string; data: string }) => post<{ path: string }>('/v1/paste', file),
   agentInput: (id: string, data: string) => post<void>(`/v1/agents/${encodeURIComponent(id)}/input`, { data }),
+  /** The permission prompt an owned session is waiting on, or null (ADR-035). */
+  permission: (id: string) => get<{ permission: Permission | null }>(`/v1/agents/${encodeURIComponent(id)}/permission`),
+  /** Answer it: the daemon presses the key, while `promptId` is still the one waiting (409 otherwise). */
+  answerPermission: (id: string, promptId: string, choice: PermissionChoice) =>
+    post<void>(`/v1/agents/${encodeURIComponent(id)}/permission`, { id: promptId, choice }),
 }
+
+/** A permission prompt an owned Claude Code session is showing (ADR-035). */
+export interface Permission {
+  id: string
+  /** The tool being asked about: Bash, Write, an MCP tool… */
+  tool: string
+  /** What it would do: the command, the file, the URL. */
+  detail: string
+  /** The second option's label, when Claude Code offers one. */
+  always?: string
+  since: string
+}
+
+export type PermissionChoice = 'allow' | 'always' | 'deny'

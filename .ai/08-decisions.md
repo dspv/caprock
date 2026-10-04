@@ -1279,3 +1279,64 @@ without either network (that is the relay
 ADR-029 rules out), or if a controller needs one of the machine-only actions —
 each would be its own decision, added to the allowlist by name.
 
+
+---
+
+## ADR-035 — A permission prompt is answered with a button, found by its hook
+
+**Date:** 2026-10-04 · **Status:** accepted
+
+The owner wants to work fully from the phone. The phone's terminal already had
+Esc, arrows and Enter (ADR-034), and answering a Claude Code permission prompt
+with them works — on a five-inch screen, reading a menu drawn for a terminal,
+counting rows to the one wanted. The prompt is the most common thing a session
+waits on, so it gets buttons: **Yes**, the second option when Claude Code
+offers one (*Yes, and don't ask again*, *Yes, allow all edits this session*),
+and **No**, under the command or file being asked about. They show on the
+machine's dashboard too.
+
+**Found by Claude Code's `PermissionRequest` hook, not by reading the screen.**
+The hook fires as the dialog is drawn and carries the tool, its input and
+`permission_suggestions` — what the second option would add. The screen holds
+the same facts as cursor moves between words (Ink writes
+`Do\x1b[5Gyou\x1b[9Gwant`), so reading it means emulating a terminal, and its
+wording changes between releases. The hook is registered like the other nine,
+fire-and-forget, and nothing is stored: it is a moment, not an event.
+
+**Answered with the keys a person would press**, measured on Claude Code
+2.1.289 against three real prompts (Bash with a rule, Bash outside the
+project, Write): `1` picks Yes at once, `2` picks the suggestion's option, Esc
+is No. The menu is not always the same length — Bash adds *switch to auto
+mode*, so No is `4` there and `3` for Write — which is why No is Esc rather than
+a digit. The second button is offered only when the first suggestion is a kind
+seen on a real prompt (`addRules`, `addDirectories`, `setMode acceptEdits`),
+never for `ExitPlanMode`, and `AskUserQuestion` gets no buttons at all, because
+its menu is the question's answers and `1` would pick one.
+
+**Rules out the hook's own decision output.** `PermissionRequest` may answer
+`{"behavior":"allow"}` itself, and that would need no keys. But it has to be
+printed before the hook exits, and the shim exits within a second (rule 3) —
+long before anyone has looked at a phone. Holding the hook open for a person
+would put Caprock in front of every prompt on the machine, including in
+sessions nobody is watching from a phone.
+
+**A button cannot answer a question it did not show.** Each prompt gets a
+random id, and `POST /v1/agents/{id}/permission` presses a key only while that
+id is still waiting. A prompt is cleared by whatever answers it: a button; a
+single Enter, Esc, Ctrl+C or digit typed into the terminal (arrow keys move
+through the menu and do not); its own tool's `PostToolUse`; the next prompt or
+`Stop`; the session ending.
+
+**Rule 7 is untouched:** only sessions Caprock started get buttons, the agent
+manager refuses the rest below the API, and a viewer phone sees the prompt
+(the live socket already carries tool inputs) but gets 403 on the answer.
+
+**Codex and OpenCode get no buttons.** Neither reports an approval prompt in a
+structured way (Codex's `notify` fires at the end of a turn; OpenCode has no
+hook), and the screen is the only signal — the reading this decision rules out
+for Claude Code. Their prompts are still answered with the keys bar.
+
+**Revisit if** Claude Code renumbers its menu (the three captured prompts in
+the tests would no longer match a real one), if the hook's decision output can
+be given after the hook returns, or if Codex or OpenCode report approvals in a
+structured way.

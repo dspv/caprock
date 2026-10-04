@@ -9,6 +9,7 @@ import { href, navigate } from '@/lib/router'
 import { useNow } from './Now'
 import { SessionNotes } from '@/components/Notes'
 import { TerminalView } from '@/components/Terminal'
+import { PermissionPrompt } from '@/components/PermissionPrompt'
 import { costBasisLong } from '@/components/CostBasis'
 import { agentName } from '@/components/Projects'
 import { usePlan } from '@/components/PlanPicker'
@@ -234,6 +235,9 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         </div>
       </Panel>
       )}
+      {/* A waiting permission prompt on every tab, not only beside the
+        * terminal: a phone opens on Timeline. The Terminal tab draws its own. */}
+      {active !== 'terminal' && s.owned && s.status !== 'ended' && <PermissionPrompt sessionId={id} />}
       <div className="flex items-center gap-1 border-b border-border">
         {tabs.map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`px-3 py-1.5 text-[12px] border-b-2 -mb-px ${active === t ? 'border-accent text-fg' : 'border-transparent text-fg-muted hover:text-fg'}`}>

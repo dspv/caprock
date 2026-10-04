@@ -382,6 +382,11 @@ func (d *Daemon) run(ctx context.Context) error {
 			d.bus.Publish(bus.Frame{Type: bus.FrameSession, Data: rollup.SessionFrame{Session: s, Stats: st}})
 		}
 	}
+	// A permission prompt appearing or going away in an owned session reaches
+	// every open dashboard at once, so a phone's buttons come and go with it.
+	d.mgr.OnPermission = func(id string, p *agents.Permission) {
+		d.bus.Publish(bus.Frame{Type: bus.FramePermission, Data: map[string]any{"session_id": id, "permission": p}})
+	}
 	// Sessions this daemon starts live in pty-hosts, and the ones the last
 	// daemon started are picked back up here: after OnExit, which each
 	// session captures, and before the first liveness sweep and the API.
@@ -428,7 +433,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	// Hook receiver. Decide is wired unconditionally: it is a method that
 	// answers nil while no board exists, so the Stop-loop starts working the
 	// moment the task runner is turned on rather than only on the next restart.
-	hh := &hookd.Handler{Token: rt.Token, Recorder: d.rec, Log: d.log, Decide: d.stopDecision, Handoff: d.handoff}
+	hh := &hookd.Handler{Token: rt.Token, Recorder: d.rec, Log: d.log, Decide: d.stopDecision, Handoff: d.handoff, Observe: d.observeHook}
 
 	// API.
 	// LAN access, decided before the API is built so the pairing screen has an
@@ -1416,6 +1421,28 @@ func (a *agentAdapter) Resize(id string, cols, rows int) error { return a.m.Resi
 
 func (a *agentAdapter) Signal(id, action string) error {
 	return a.m.Signal(id, ptyman.Signal(action))
+}
+
+// Permission is the permission prompt an owned session is waiting on.
+func (a *agentAdapter) Permission(id string) (any, bool) {
+	p, ok := a.m.PendingPermission(id)
+	if !ok {
+		return nil, false
+	}
+	return p, true
+}
+
+// AnswerPermission answers it with "allow", "always" or "deny".
+func (a *agentAdapter) AnswerPermission(id, promptID, choice string) error {
+	return a.m.AnswerPermission(id, promptID, agents.PermissionChoice(choice))
+}
+
+// observeHook hands the manager what a hook says about a permission prompt.
+func (d *Daemon) observeHook(p hookd.Payload) {
+	d.mgr.ObserveHook(agents.HookSignal{
+		SessionID: p.SessionID, Event: p.HookEventName, AgentID: p.AgentID,
+		Tool: p.ToolName, Input: p.ToolInput, Suggestions: p.PermissionSuggestions,
+	})
 }
 
 // Survives reports whether the session's terminal is in a pty-host, so a
