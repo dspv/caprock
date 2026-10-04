@@ -4,8 +4,8 @@ import { Pairing, pairLink, phoneStatus } from './Pairing'
 import { codeFromHash } from '@/screens/Pair'
 import { api, type PairState } from '@/lib/api'
 
-const phone = { id: 'a', name: 'iPhone', paired_at: 1, last_seen: 1 }
-const tablet = { id: 'b', name: 'iPad', paired_at: 2, last_seen: 2 }
+const phone = { id: 'a', name: 'iPhone', paired_at: 1, last_seen: 1, role: 'viewer' as const }
+const tablet = { id: 'b', name: 'iPad', paired_at: 2, last_seen: 2, role: 'viewer' as const }
 
 describe('phoneStatus — the state at a glance', () => {
   it('says Off when nothing listens', () => {
@@ -87,6 +87,18 @@ describe('Pairing panel', () => {
     expect(await screen.findByText('1 phone connected')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
     await waitFor(() => expect(revoke).toHaveBeenCalledWith('a'))
+  })
+
+  it('gives a phone control with one button, and takes it away with one', async () => {
+    stubState([{ enabled: true, url: 'http://192.168.1.10:22776', devices: [phone, { ...tablet, role: 'controller' }] }])
+    const setRole = vi.spyOn(api, 'pairSetRole').mockResolvedValue({ id: 'a', role: 'controller' })
+    render(<Pairing />)
+    expect(await screen.findByText('view only', { exact: false })).toBeTruthy()
+    expect(screen.getByText('can control sessions')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Let it control sessions' }))
+    await waitFor(() => expect(setRole).toHaveBeenCalledWith('a', 'controller'))
+    fireEvent.click(screen.getByRole('button', { name: 'Take control away' }))
+    await waitFor(() => expect(setRole).toHaveBeenCalledWith('b', 'viewer'))
   })
 
   it('names Tailscale as the requirement when the address is a tunnel', async () => {

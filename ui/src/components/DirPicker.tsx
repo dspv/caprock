@@ -28,21 +28,32 @@ import { api, type BrowseEntry, type RecentDir } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtAgo } from '@/lib/format'
 
-export function DirPicker({ value, onPick }: { value: string; onPick: (dir: string) => void }) {
+export function DirPicker({
+  value,
+  onPick,
+  recentOnly = false,
+}: {
+  value: string
+  onPick: (dir: string) => void
+  /** Only where sessions have already run: a paired phone may start sessions
+   *  there and nowhere else, and the daemon does not list its disk to one
+   *  (ADR-034). */
+  recentOnly?: boolean
+}) {
   const [tab, setTab] = useState<'recent' | 'browse'>('recent')
   // Where the browse list currently is. Empty means the root, which is what
   // the daemon returns for a missing dir.
   const [dir, setDir] = useState('')
 
   const recent = useApi(() => api.recentDirs(), [], { live: false })
-  const browse = useApi(() => api.browse(dir), [dir], { live: false })
+  const browse = useApi(() => (recentOnly ? Promise.resolve(undefined) : api.browse(dir)), [dir, recentOnly], { live: false })
 
   // Open on whichever list can actually answer. A machine with no history — a
   // fresh install, the case where a picker matters most — would otherwise open
   // on an empty tab.
   useEffect(() => {
-    if (recent.data && recent.data.length === 0) setTab('browse')
-  }, [recent.data])
+    if (!recentOnly && recent.data && recent.data.length === 0) setTab('browse')
+  }, [recent.data, recentOnly])
 
   // The surface matches the .input above it — panel-2 on border-strong, same
   // radius. It sat on a transparent background with the lighter border,
@@ -54,9 +65,11 @@ export function DirPicker({ value, onPick }: { value: string; onPick: (dir: stri
         <Tab on={tab === 'recent'} onClick={() => setTab('recent')}>
           Recent
         </Tab>
-        <Tab on={tab === 'browse'} onClick={() => setTab('browse')}>
-          Browse
-        </Tab>
+        {!recentOnly && (
+          <Tab on={tab === 'browse'} onClick={() => setTab('browse')}>
+            Browse
+          </Tab>
+        )}
         {tab === 'browse' && browse.data && (
           <span className="mono ml-auto min-w-0 truncate pl-2 text-[11px] text-fg-faint" title={browse.data.dir}>
             {shorten(browse.data.dir, browse.data.root)}
@@ -72,7 +85,7 @@ export function DirPicker({ value, onPick }: { value: string; onPick: (dir: stri
         * rather than being truncated inside it. */}
       <div className="h-[168px] overflow-y-auto overflow-x-hidden">
         {tab === 'recent' ? (
-          <RecentList rows={recent.data} value={value} onPick={onPick} />
+          <RecentList rows={recent.data} value={value} onPick={onPick} recentOnly={recentOnly} />
         ) : (
           <BrowseList
             data={browse.data}
@@ -103,14 +116,16 @@ function RecentList({
   rows,
   value,
   onPick,
+  recentOnly,
 }: {
   rows: RecentDir[] | undefined
   value: string
   onPick: (d: string) => void
+  recentOnly: boolean
 }) {
   if (!rows) return <Note>…</Note>
   if (rows.length === 0) {
-    return <Note>No sessions yet — use Browse, or type a path.</Note>
+    return <Note>{recentOnly ? 'No projects yet — start the first session on the machine Caprock runs on.' : 'No sessions yet — use Browse, or type a path.'}</Note>
   }
   return (
     <ul>

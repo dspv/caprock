@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { api, ApiError, errText, isPairedDevice, type DiffResult, type Status, type Task, type TaskVerification, type TaskWork } from '@/lib/api'
+import { useCanControl } from '@/lib/useCanControl'
 import { useApi } from '@/lib/useApi'
 import { fmtUSD, shortId } from '@/lib/format'
 import { Copyable, Empty, Panel, Skeleton } from '@/components/ui'
@@ -226,6 +227,8 @@ function OrchestratorButton({ available }: { available: boolean }) {
 }
 
 function TaskCard({ t, onApprove, onOpen }: { t: Task; onApprove: () => void; onOpen: () => void }) {
+  // Answering an approval is a controller's to do as well (ADR-034).
+  const canControl = useCanControl()
   const over = t.budget_usd > 0 && t.cost_usd > t.budget_usd
   // A worker's output landed on a branch the board never named, and the session
   // diff endpoint existed but nothing linked to it — so the card was a title, an
@@ -247,7 +250,7 @@ function TaskCard({ t, onApprove, onOpen }: { t: Task; onApprove: () => void; on
         </div>
       </button>
       {worked && <div className="mt-1 text-[10px] text-fg-faint mono truncate">caprock/{t.assignee}</div>}
-      {t.status === 'needs_you' && !isPairedDevice() && (
+      {t.status === 'needs_you' && canControl && (
         <div className="flex gap-1 mt-1.5">
           <button onClick={() => api.approve(t.id, true).then(onApprove)} className="flex-1 text-[11px] border border-ok/40 text-ok rounded-sm hover:bg-ok/10">approve</button>
           <button onClick={() => api.approve(t.id, false).then(onApprove)} className="flex-1 text-[11px] border border-danger/40 text-danger rounded-sm hover:bg-danger/10">reject</button>

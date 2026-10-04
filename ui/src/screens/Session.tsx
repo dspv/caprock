@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, ApiError, isPairedDevice, type DiffResult, type Event, type SessionDetail } from '@/lib/api'
+import { api, ApiError, type DiffResult, type Event, type SessionDetail } from '@/lib/api'
+import { useCanControl } from '@/lib/useCanControl'
 import { useApi } from '@/lib/useApi'
 import { live } from '@/lib/live'
 import { fmtAgo, fmtPct, fmtTokens, fmtUSD, basename } from '@/lib/format'
@@ -54,8 +55,9 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   // — what did this session change — so a reader had to visit both and hold
   // the two lists in their head. Old links keep working.
   // A paired device reads; the terminal is a keyboard into the session, and
-  // the daemon refuses it one (ADR-029).
-  const reader = isPairedDevice()
+  // the daemon refuses it one (ADR-029) — unless the owner made this device a
+  // controller (ADR-034).
+  const reader = !useCanControl()
   const tabs: Tab[] = reader ? ['timeline', 'notes', 'changes'] : ['timeline', 'notes', 'changes', 'terminal']
   const active: Tab =
     tab === 'changes' || tab === 'diff' || tab === 'files'
@@ -90,7 +92,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
     // lands.
     if (active === 'terminal') {
       return (
-        <div className="grid gap-2">
+        <div className="grid grid-cols-1 gap-2">
           <div className="flex items-center gap-3 flex-wrap">
             <a href={href({ name: 'now' })} className="link text-fg-muted text-[12px]">← Now</a>
             <span className="mono text-[11px] text-fg-faint">{id}</span>
@@ -122,7 +124,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   // "two thousand years ago", which is what the line under the title said.
   const activityAt = s.activity.at && !String(s.activity.at).startsWith('0001-') ? s.activity.at : s.last_event_at
   return (
-    <div className="grid gap-2">
+    <div className="grid grid-cols-1 gap-2">
       <>
       <div className="flex items-center gap-3 flex-wrap">
         <a href={href({ name: 'now' })} className="link text-fg-muted text-[12px]">← Now</a>
@@ -168,7 +170,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         {/* The user's own terminal app, beside the repository: both open
           * this session's work somewhere other than here, and the title row
           * is on every tab, the Terminal tab included. */}
-        <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <span className="ml-auto flex min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-1.5">
           {!reader && <OpenInTerminal sessionID={s.session_id} info={s.open_terminal} />}
           <RepoButtons repo={s.repo} prs={s.prs} cwd={s.cwd} />
         </span>

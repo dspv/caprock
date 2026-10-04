@@ -22,6 +22,7 @@ import { findAttention } from '@/lib/attention'
 import { UpdateBanner } from '@/components/UpdateBanner'
 import { UnpricedNote } from '@/components/Unpriced'
 import { SpawnDialog } from '@/components/SpawnDialog'
+import { useCanControl } from '@/lib/useCanControl'
 import { spawnableAgents } from '@/components/AgentPicker'
 import { LastWord } from '@/components/LastWord'
 import { usePlan } from '@/components/PlanPicker'
@@ -65,6 +66,7 @@ export function NowScreen() {
   // quoting the wrong number.
   const [agent, setAgent] = useState<AgentFilter>('all')
   const [spawning, setSpawning] = useState(false)
+  const canControl = useCanControl()
   // Finding one ended session among hundreds (FB-035). The search goes to the
   // server, which also reads every prompt typed in a session — not only what
   // is on its card — and the list grows in pages rather than stopping at the
@@ -153,7 +155,7 @@ export function NowScreen() {
   const loading = isLoading(summary.data, summary.error)
   const ingestError = status.data?.ingest_error
   return (
-    <div className="grid gap-3">
+    <div className="grid grid-cols-1 gap-3">
       {/* A dead tailer used to be a log line: the daemon reported healthy, the
         * status said "backfill done", and this screen told the user to start
         * `claude` and wait for sessions that could never arrive. */}
@@ -167,7 +169,8 @@ export function NowScreen() {
           </span>
         </div>
       )}
-      {status.data?.hooks && <HooksBanner missing={status.data?.hooks?.missing ?? []} settingsPath={status.data?.hooks?.settings_path ?? ''} />}
+      {/* Installing hooks is done on the machine; on a phone the button would only answer 403. */}
+      {status.data?.hooks && !isPairedDevice() && <HooksBanner missing={status.data?.hooks?.missing ?? []} settingsPath={status.data?.hooks?.settings_path ?? ''} />}
       {/* Only sessions Caprock spawned end with the daemon; the ones the user
         * started themselves are untouched by an upgrade. */}
       <UpdateBanner plan={plan} onSave={savePlan} now={now} owned={list.filter((s) => s.owned && s.status !== 'ended' && !s.detached && !s.survives_restart).length} />
@@ -188,12 +191,12 @@ export function NowScreen() {
           * the last place anyone reading top-down would look. A user who had
           * moved onto Caprock full-time still could not find it. Top of the
           * screen, at the size of an action. */}
-        {/* A paired device reads; starting a session is done on the machine. */}
-        {!isPairedDevice() && (
-          <>
-            <QuickChatButton available={status.data?.claude_available} />
-            <NewSessionButton available={status.data ? spawnableAgents(status.data).length > 0 : undefined} onClick={() => setSpawning(true)} />
-          </>
+        {/* A paired device reads, unless the owner made it a controller
+          * (ADR-034); then it starts sessions in known projects. A quick chat
+          * picks its own folder, which a phone may not, so it stays here. */}
+        {!isPairedDevice() && <QuickChatButton available={status.data?.claude_available} />}
+        {canControl && (
+          <NewSessionButton available={status.data ? spawnableAgents(status.data).length > 0 : undefined} onClick={() => setSpawning(true)} />
         )}
       </div>
 
@@ -532,7 +535,7 @@ function SessionGrid({
   )
   if (cells.length === 0) return null
   return (
-    <div data-testid="session-grid" className="mt-3 grid gap-2 gap-y-6">
+    <div data-testid="session-grid" className="mt-3 grid grid-cols-1 gap-2 gap-y-6">
       {cells.map(({ s, dim, label }) => (
         <div key={s.session_id} className={`relative ${dim ? 'opacity-80' : ''}`}>
           {label && (

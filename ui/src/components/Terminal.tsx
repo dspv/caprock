@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Terminal as Xterm } from '@xterm/xterm'
-import { api, errText } from '@/lib/api'
+import { api, deviceToken, errText, isPairedDevice } from '@/lib/api'
 import { SpawnDialog } from './SpawnDialog'
+import { TerminalKeys } from './TerminalKeys'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
@@ -112,6 +113,13 @@ export function TerminalView({
   // say which. `start` says which: waiting (with the seconds), or failed.
   const [start, setStart] = useState<{ phase: 'waiting' | 'ready' | 'silent' | 'closed'; since: number }>({ phase: 'waiting', since: Date.now() })
   const [attempt, setAttempt] = useState(0)
+  // The keys bar types through the same socket as the keyboard. Set while a
+  // socket exists; a no-op otherwise.
+  const sendRef = useRef<(d: string) => void>(() => {})
+  // A phone types from the bar under the terminal, not into xterm: focusing
+  // the canvas would raise the on-screen keyboard over the very output the
+  // person is reading.
+  const phone = isPairedDevice()
   useEffect(() => {
     if (!host.current || !owned) return
     setStart({ phase: 'waiting', since: Date.now() })
@@ -139,7 +147,7 @@ export function TerminalView({
 
     try { fit.fit() } catch { /* not yet laid out */ }
     // Input first: the keyboard goes to the terminal the moment it exists.
-    term.focus()
+    if (!phone) term.focus()
     // Ask for every subset the face ships, by name.
     //
     // Subsets load lazily, triggered by a matching character appearing in the
@@ -223,6 +231,7 @@ export function TerminalView({
     const enc = new TextEncoder()
     const send = (d: string) => { if (ws.readyState === WebSocket.OPEN) ws.send(enc.encode(d)) }
     const dataSub = term.onData(send)
+    sendRef.current = send
 
     // Tell the daemon the size, on connect and whenever it changes.
     //
@@ -247,7 +256,10 @@ export function TerminalView({
     let retryTimer = 0
     let repaint = false
     const connect = () => {
-      ws = new WebSocket(url)
+      // A paired controller's token rides as a subprotocol, as on /v1/live:
+      // a browser's WebSocket cannot set a header (ADR-034).
+      const tok = deviceToken()
+      ws = tok ? new WebSocket(url, [`caprock.device.${tok}`]) : new WebSocket(url)
       ws.binaryType = 'arraybuffer'
       ws.onmessage = (e) => {
         if (repaint) { term.reset(); repaint = false }
@@ -274,6 +286,12 @@ export function TerminalView({
         if (e?.code === 1000) {
           term.write('\r\n\x1b[2m[session ended]\x1b[0m\r\n')
           if (!gotOutput) setStart((st) => ({ ...st, phase: 'closed' }))
+          return
+        }
+        // 1008: the owner took control away from this phone. Reconnecting
+        // would only be refused again.
+        if (e?.code === 1008) {
+          term.write('\r\n\x1b[33m[this device can no longer control sessions — ask on the machine Caprock runs on]\x1b[0m\r\n')
           return
         }
         if (retries === 0) term.write('\r\n\x1b[2m[Caprock is restarting — reconnecting…]\x1b[0m\r\n')
@@ -520,9 +538,10 @@ export function TerminalView({
       window.clearTimeout(webglTimer)
       inputSub.dispose()
       window.clearTimeout(retryTimer)
+      sendRef.current = () => {}
       ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); ws.close(); term.dispose()
     }
-  }, [sessionId, owned, attempt])
+  }, [sessionId, owned, attempt, phone])
   if (!owned && detached) {
     // Caprock started this session and its terminal closed when Caprock
     // restarted. Since ADR-033 a session's terminal is held outside the
@@ -610,7 +629,8 @@ export function TerminalView({
         * padding is the same colour so the dark surface reads as one block
         * rather than a canvas floating on paper. */}
       <div className="relative bg-term-bg border border-term-border rounded-sm p-1.5">
-        <div ref={host} data-term-host className="h-[70vh]" />
+        {/* Shorter on a narrow screen, so the keys bar under it stays in view. */}
+        <div ref={host} data-term-host className="h-[52vh] sm:h-[70vh]" />
         {start.phase !== 'ready' && (
           <TerminalStart phase={start.phase} since={start.since} onRetry={() => setAttempt((n) => n + 1)} />
         )}
@@ -625,7 +645,12 @@ export function TerminalView({
         * Shift+Enter leads because it is what people expect; Ctrl+J is named
         * because it is the one that works in every terminal with no setup, so
         * it is the answer when someone's keyboard or OS eats the others. */}
-      <div className="border-t border-border px-3 py-1.5 text-[11px] text-fg-faint">
+      {/* A keyboard without Esc, Tab, arrows or Ctrl: on a phone always, and
+        * on any narrow window. */}
+      <div className={phone ? '' : 'sm:hidden'}>
+        <TerminalKeys send={(d) => sendRef.current(d)} />
+      </div>
+      <div className="hidden border-t border-border px-3 py-1.5 text-[11px] text-fg-faint sm:block">
         <span className="mono text-fg-muted">Shift</span>+
         <span className="mono text-fg-muted">Enter</span> for a new line —{' '}
         <span className="mono text-fg-muted">Option</span>+

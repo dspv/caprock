@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { api, ApiError, isPairedDevice, type ResumeInfo } from '@/lib/api'
+import { api, ApiError, type ResumeInfo } from '@/lib/api'
+import { useCanControl } from '@/lib/useCanControl'
 import { navigate } from '@/lib/router'
 
 /**
@@ -57,8 +58,10 @@ export function ContinueSession({
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState('')
 
-  // Continuing starts a process, which a paired device may not do.
-  if (isPairedDevice()) return null
+  // Continuing starts a process, which only a controller among paired devices
+  // may do (ADR-034).
+  const canControl = useCanControl()
+  if (!canControl) return null
 
   const command = resume.command ?? ''
 
