@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // renderPlist writes the LaunchAgent. The shape follows the reference agent that
@@ -83,14 +84,35 @@ func darwinLoad(path string) error {
 	domain := launchctlDomain()
 	// Best-effort removal of a previous registration; a missing one errors and
 	// is exactly what we want to ignore.
-	_ = exec.Command("launchctl", "bootout", domain+"/"+Label).Run()                                   //nolint:gosec // fixed argv
-	if out, err := exec.Command("launchctl", "bootstrap", domain, path).CombinedOutput(); err != nil { //nolint:gosec // fixed argv
+	_ = exec.Command("launchctl", "bootout", domain+"/"+Label).Run() //nolint:gosec // fixed argv
+	// bootout returns before launchd has finished tearing the job down; a
+	// bootstrap in that window fails with "5: Input/output error" and leaves
+	// the daemon stopped (seen 2026-10-05 on a running install). Wait for the
+	// label to go, then retry the bootstrap briefly.
+	waitUnregistered(5 * time.Second)
+	var out []byte
+	var err error
+	for i := 0; i < 5; i++ {
+		if out, err = exec.Command("launchctl", "bootstrap", domain, path).CombinedOutput(); err == nil { //nolint:gosec // fixed argv
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	if err != nil {
 		return fmt.Errorf("launchctl bootstrap: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	// bootstrap honours RunAtLoad, but kickstart makes "started now" explicit
 	// and is a no-op when it is already running.
 	_ = exec.Command("launchctl", "kickstart", domain+"/"+Label).Run() //nolint:gosec // fixed argv
 	return nil
+}
+
+// waitUnregistered polls until launchd no longer knows the label, or the
+// timeout passes.
+func waitUnregistered(timeout time.Duration) {
+	for deadline := time.Now().Add(timeout); darwinRegistered() && time.Now().Before(deadline); {
+		time.Sleep(200 * time.Millisecond)
+	}
 }
 
 // darwinUnload deregisters the label. A label that is not loaded is not an

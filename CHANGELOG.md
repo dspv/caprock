@@ -39,6 +39,14 @@ Phase 3 (Delight) has no plan by design.
   the home bar. On an iPhone the home-screen app pairs once more — type the
   code, since a scan opens Safari — and shows up as "iPhone · home screen".
 
+### Fixed
+
+- **`caprock service install` no longer leaves the daemon stopped on macOS.**
+  It booted the old service out and bootstrapped the new one at once; launchd
+  was still tearing the old one down, the bootstrap failed with "5:
+  Input/output error", and nothing was running. It now waits for the old one
+  to go and retries briefly.
+
 ## [0.71.0] - 2026-10-04
 
 ### Added
