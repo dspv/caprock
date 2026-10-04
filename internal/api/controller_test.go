@@ -425,6 +425,12 @@ func TestAControllerBrowsesOnlyUnderHome(t *testing.T) {
 		if code, _ := browse(controller.Token, filepath.Join(home, "escape")); code != 404 {
 			t.Errorf("controller through a symlink out of home: %d, want 404", code)
 		}
+		_, out := browse(controller.Token, "")
+		for _, e := range out.Entries {
+			if e.Name == "escape" {
+				t.Error("a controller was shown a symlink out of home")
+			}
+		}
 	}
 	if code, _ := browse(viewer.Token, ""); code != 403 {
 		t.Errorf("viewer: %d, want 403", code)
@@ -506,5 +512,44 @@ func TestPairingFromThisMachinesOwnAddressSaysSo(t *testing.T) {
 	}
 	if got := redeem(testPhone, "iPhone · Safari"); got != "iPhone · Safari" {
 		t.Errorf("from a phone: %q", got)
+	}
+}
+
+// A phone's Recent list holds only folders under home: anything else would be
+// refused when picked. The machine's list is unchanged.
+func TestAControllersRecentFoldersAreUnderHome(t *testing.T) {
+	st, err := store.Open(context.Background(), ":memory:", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	home := fakeHome(t)
+	inside, outside := filepath.Join(home, "app"), t.TempDir()
+	if err := os.Mkdir(inside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for i, dir := range []string{inside, outside} {
+		if err := store.UpsertSession(context.Background(), st.DB(), "s"+string(rune('1'+i)), store.SessionPatch{Cwd: dir}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s, _, _, controller := pairedPhones(t, Deps{Store: st})
+	recent := func(from, token string) []recentDir {
+		r := httptest.NewRequest(http.MethodGet, "/v1/recent-dirs", nil)
+		r.RemoteAddr = from
+		if token != "" {
+			r.Header.Set(deviceTokenHeader, token)
+		}
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		var out []recentDir
+		_ = json.Unmarshal(w.Body.Bytes(), &out)
+		return out
+	}
+	if got := recent(testPhone, controller.Token); len(got) != 1 || got[0].Dir != inside {
+		t.Errorf("controller: %+v, want only %s", got, inside)
+	}
+	if got := recent("127.0.0.1:51000", ""); len(got) != 2 {
+		t.Errorf("the machine: %+v, want both", got)
 	}
 }

@@ -131,7 +131,9 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   with the device's id and name.
 - **`GET /v1/browse` from a controller** is rooted at the owner's browse root
   when that resolves inside home, else at home; a `dir` above it, outside it or
-  through a symlink out of it is `404`, as on the machine.
+  through a symlink out of it is `404`, as on the machine, and an entry that
+  links out of it is not listed. `GET /v1/recent-dirs` from a device lists only
+  folders under home.
 - **The terminal socket from a device** admits the LAN origin and takes the
   token as the `caprock.device.<token>` subprotocol, as `/v1/live` does. Before
   every frame a device sends, its role is read again (`pairing.Store.RoleOf`);

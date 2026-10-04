@@ -166,6 +166,7 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out := make([]browseEntry, 0, len(des))
+	remote := deviceFrom(r) != nil
 	for _, de := range des {
 		name := de.Name()
 		if strings.HasPrefix(name, ".") {
@@ -178,6 +179,13 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		p := filepath.Join(dir, name)
+		// A phone is not shown a link out of its root: it could not open or
+		// start a session in it (ADR-034).
+		if remote {
+			if _, err := resolveInRoot(root, p); err != nil {
+				continue
+			}
+		}
 		if _, err := os.Stat(filepath.Join(p, ".git")); err == nil {
 			out = append(out, browseEntry{Name: name, Path: p, Repo: true})
 			continue
@@ -237,11 +245,16 @@ func (s *Server) handleRecentDirs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := make([]recentDir, 0, len(dirs))
+	remote := deviceFrom(r) != nil
 	for _, d := range dirs {
 		// A directory that has since been deleted or renamed is not offered:
 		// clicking it would spawn a session that fails, and a picker that
 		// offers dead paths is worse than a shorter list.
 		if fi, err := os.Stat(d.Dir); err != nil || !fi.IsDir() {
+			continue
+		}
+		// Nor, to a phone, one outside home: the spawn would refuse it (ADR-034).
+		if remote && !underHome(d.Dir, false) {
 			continue
 		}
 		out = append(out, recentDir{
