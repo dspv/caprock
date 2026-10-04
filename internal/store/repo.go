@@ -366,7 +366,7 @@ func unrootedInfo(cwd string) RepoInfo {
 // name was chosen so two chats started in the same second cannot collide. It
 // was never meant to be read: the dashboard showed a session called
 // `2026-08-26-212735` beside repositories with names, and the owner's reaction
-// on seeing one was "не очень понятно что это" — which is the correct reaction
+// on seeing one was "not really clear what this is" — which is the correct reaction
 // to a timestamp presented as an identity.
 //
 // The date is still what distinguishes one chat from another, so it stays —

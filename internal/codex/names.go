@@ -18,8 +18,8 @@ import (
 // Codex keeps its own index of threads beside the transcripts, in
 // `~/.codex/state_<N>.sqlite`. Two columns there tell sessions apart (FB-035):
 //
-//   - `name` — the short title Codex generates for a thread ("Проверь даты без
-//     двух статей"), which is what its own thread list shows. Present on 94 of
+//   - `name` — the short title Codex generates for a thread ("Check the dates
+//     without two articles", in the user's language), which is what its own thread list shows. Present on 94 of
 //     160 threads on the machine this was built against.
 //   - `first_user_message` — what the user actually typed first, already
 //     stripped of the AGENTS.md and environment blocks Codex injects ahead of

@@ -52,6 +52,6 @@ The docs are the source of truth, so they go stale the moment code moves without
 - Phase order is the product: Observe → Control → Orchestrate.
 - No task is done with a red Windows CI job.
 - The shim never breaks a user's Claude session; all data stays on the machine.
-- English everywhere in code/commits/PRs; Conventional Commits.
+- English only in every file — code, comments, docs, data, commits, PRs. Quotes are translated; drafts in other languages live outside the repo. Only test input that exercises non-English text is exempt. Conventional Commits.
 - No invented numbers — a figure you do not have is an open question, not a guess.
 - Never signal or type into a process Caprock did not start.

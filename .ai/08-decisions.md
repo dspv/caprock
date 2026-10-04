@@ -914,8 +914,8 @@ the *agent* said — 48k turns, 28.4 MB, since May, across 31 repositories.
 
 **Recency beats retrieval, and that was a surprise.** The first design searched
 prior prose by the terms of the opening prompt. It helped in 4 of 15 resumed
-sessions and missed the clearest case there is — *"напомни что мы последний раз
-изучали"*, 384 candidate passages, no term overlap, because an opening question
+sessions and missed the clearest case there is — *"remind me what we were looking
+into last time"* (asked in Russian), 384 candidate passages, no term overlap, because an opening question
 shares no words with its own answer. Taking the **last substantial passage**
 instead answers 12 of 19. The cheap thing works better than the clever one, so
 the clever one is not built.

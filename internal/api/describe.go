@@ -18,8 +18,8 @@ import (
 // the session by. Without one, the first prompt that says something.
 const (
 	descriptionMaxRunes = 120
-	// minPromptRunes drops the prompts that name nothing: "так", "say ok",
-	// "проверь". A session that opened with one of those usually said what it
+	// minPromptRunes drops the prompts that name nothing: "so", "say ok",
+	// "check". A session that opened with one of those usually said what it
 	// was about in the next.
 	minPromptRunes = 12
 	promptsScanned = 8

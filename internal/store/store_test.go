@@ -1047,8 +1047,8 @@ func TestUnpricedIsScopedToTheAgentAsked(t *testing.T) {
 //
 // Recency rather than retrieval, and that is a measured choice. Searching prior
 // prose by the terms of the opening prompt answered 4 of 15 resumed sessions on
-// the owner's database and missed the clearest case — "напомни что мы последний
-// раз изучали" found nothing among 384 candidate passages, because an opening
+// the owner's database and missed the clearest case — "remind me what we were
+// looking into last time" found nothing among 384 candidate passages, because an opening
 // question shares no words with its own answer. Taking the last passage answers
 // 12 of 19.
 func TestWhereWeLeftOffHandsBackTheLastSubstantialTurn(t *testing.T) {

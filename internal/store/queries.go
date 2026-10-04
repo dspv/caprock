@@ -2652,8 +2652,8 @@ func SpendSince(ctx context.Context, q Querier, fromMs int64) (float64, error) {
 // The question a person asks on returning is not "find something similar" — it
 // is "what were we doing". Measured on the owner's database: searching prior
 // prose by the terms of the opening prompt found something useful in 4 of 15
-// resumed sessions, and missed the clearest case of all ("напомни что мы
-// последний раз изучали", 384 candidate passages, nothing matched) because an
+// resumed sessions, and missed the clearest case of all ("remind me what
+// we were looking into last time", 384 candidate passages, nothing matched) because an
 // opening question shares no words with its own answer. Taking the last
 // substantial passage instead answers 12 of 19. Recency beats retrieval here.
 //
