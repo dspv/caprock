@@ -337,6 +337,9 @@ ACTIONS = {
 NO_MONEY = {"tasks", "notes"}
 WIDTH, HEIGHT = 1600, 1400
 MIN_H, PAD = 300, 28          # never crop tighter than this; breathing room below
+# A screen whose crop ends at a named panel rather than at the viewport. Now
+# runs far past 1400px, and the fixed height cut At a glance's donuts in half.
+CROP_TO = {"now": "at a glance"}
 
 
 def rpc(ws, method, params=None, _id=[0]):
@@ -351,6 +354,25 @@ def rpc(ws, method, params=None, _id=[0]):
 def evaluate(ws, expr):
     r = rpc(ws, "Runtime.evaluate", {"expression": expr, "returnByValue": True})
     return r.get("result", {}).get("value")
+
+
+def wait_for_burn_window():
+    """Wait until Burn now has a rate rather than "measuring".
+
+    The daemon reports a rate only once it has been up for the burn window
+    (ten minutes); before that the Now screen and its home-page crop read
+    "measuring — needs 10 minutes of running". On a copy nothing new arrives,
+    so the rate it settles on is the honest one: none.
+    """
+    for _ in range(15 * 6):
+        try:
+            burn = json.load(urllib.request.urlopen(f"{BASE}/v1/stats/summary?range=today")).get("burn") or {}
+        except Exception:
+            burn = {"filling": True}
+        if not burn.get("filling"):
+            return
+        time.sleep(10)
+    print("  Burn now was still measuring after 15 minutes; capturing anyway")
 
 
 def interrupted_dismissal():
@@ -420,6 +442,7 @@ def main():
         # dismissable strips across the top of every capture, taking a sixth of
         # the frame before a single figure appeared. Set the keys against the
         # origin, then load the document once so they are read.
+        wait_for_burn_window()
         rpc(ws, "Page.navigate", {"url": f"{BASE}/#/now"})
         time.sleep(1.5)
         evaluate(ws, interrupted_dismissal())
@@ -563,6 +586,22 @@ def main():
                 """)
                 if snapped:
                     h = max(MIN_H, min(HEIGHT, int(snapped) + PAD))
+                if route in CROP_TO:
+                    bottom = evaluate(ws, """
+                      ((want) => {
+                        const hit = [...document.querySelectorAll('div,section')].find((el) => {
+                          const t = (el.textContent || '').trim().toLowerCase().replace(/^[^a-z0-9]+/, '');
+                          const r = el.getBoundingClientRect();
+                          return t.startsWith(want) && r.height > 110;
+                        });
+                        return hit ? Math.ceil(hit.getBoundingClientRect().bottom + window.scrollY) : 0;
+                      })(%s)
+                    """ % json.dumps(CROP_TO[route]))
+                    if not bottom:
+                        sys.exit(f"{name}: no panel {CROP_TO[route]!r} to crop to")
+                    # Less than the gap to the next panel, or its top edge
+                    # shows as a stray line of headings.
+                    h = int(bottom) + 10
 
                 # Verify the theme actually took before naming the file after
                 # it: a capture saved under the wrong name puts a white
@@ -582,6 +621,7 @@ def main():
 
                 shot = rpc(ws, "Page.captureScreenshot", {
                     "format": "png",
+                    "captureBeyondViewport": True,
                     "clip": {"x": 0, "y": 0, "width": WIDTH, "height": h, "scale": 1},
                 })
                 suffix = "" if theme == "dark" else "-light"
