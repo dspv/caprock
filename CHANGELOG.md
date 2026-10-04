@@ -51,6 +51,10 @@ Phase 3 (Delight) has no plan by design.
   your Wi-Fi or Tailscale, with no relay.
   The paired-devices list tells two phones of one model apart by browser, id
   and when each was paired.
+- **Caprock on your phone's home screen.** Add it from Safari or Chrome and it
+  opens full-screen with its own icon, in your theme, clear of the notch and
+  the home bar. On an iPhone the home-screen app pairs once more — type the
+  code, since a scan opens Safari — and shows up as "iPhone · home screen".
 
 ### Fixed
 

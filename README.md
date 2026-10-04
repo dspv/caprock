@@ -525,6 +525,26 @@ tablet:
 The QR code is drawn by the dashboard itself; nothing is sent anywhere to make
 it.
 
+**Put it on the home screen.** On an iPhone, Share → *Add to Home Screen*; on
+Android, Chrome's menu → *Add to Home screen*. It opens full-screen with the
+Caprock icon, in your light or dark theme, clear of the notch. An iPhone keeps
+a home-screen app's storage apart from Safari's, so the first time you open it
+from there it asks to pair again: press *Show a code* on the computer and type
+the six digits (scanning would open Safari, not the app). The machine lists it
+as a second device, "iPhone · home screen".
+
+Over a plain `http://` address — your Wi-Fi or a Tailscale `100.x` address —
+the browser treats the page as not secure, which costs three things and
+nothing you need to work:
+
+- **No offline copy.** Caprock registers no service worker, on purpose: every
+  figure is live and must never come from a cache. Without the computer, the
+  app shows nothing rather than something stale.
+- **Android adds a shortcut, not an installed app.** Chrome installs a web app
+  only over HTTPS; *Add to Home screen* still works and opens Caprock.
+- **No push notifications.** Web Push needs HTTPS (and, on an iPhone, the
+  home-screen app). See the proposed ADR-035 in `.ai/08-decisions.md`.
+
 There is a flag too — `caprock up --lan` — for a machine you administer over
 SSH. The button exists because the person who wants this is usually holding the
 tablet, and telling them to go and find a terminal is telling them not to

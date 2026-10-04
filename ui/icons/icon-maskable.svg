@@ -1,0 +1,9 @@
+<!-- The same mark at 75%, inside the maskable safe zone (a centred circle
+     40% of the width in radius), so Android's mask never clips it. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" fill="#1b1b1a"/>
+  <g transform="translate(32 33) scale(0.75) translate(-32 -33)">
+    <path d="M13 45 L32 17 L51 45 Z" fill="none" stroke="#feb157" stroke-width="6" stroke-linejoin="round"/>
+    <rect x="13" y="45" width="38" height="6" rx="1" fill="#feb157"/>
+  </g>
+</svg>

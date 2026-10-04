@@ -116,6 +116,14 @@
 }
 [data-theme="light"] { color-scheme: light; }
 
+/* Edge to edge on a phone (viewport-fit=cover in index.html): keep content
+ * clear of the notch in landscape and of the home bar. The top inset is the
+ * sticky header's own padding (Shell), so its colour runs up under the status
+ * bar instead of the page scrolling there. All zero on a desktop. */
+body {
+  padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
 /* Paper: the light palette caprock.dev uses — a cream ground, cards a shade
  * lighter, warm hairlines — so the product and its screenshots on the site
  * are one tone. Only the surfaces change; ink, status and accent colours are

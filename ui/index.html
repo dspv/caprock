@@ -2,9 +2,23 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover: drawn edge to edge on a phone, with the notch and
+         home bar kept clear by the safe-area padding in design/tokens.css. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="dark light" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- Home screen (iOS Safari "Add to Home Screen", Android Chrome "Install").
+         No service worker: every figure is live and must never come from a
+         cache, and a LAN http:// origin cannot register one anyway. -->
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Caprock" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- The header's colour, set before first paint by the script below and
+         kept in step by lib/theme.ts. -->
+    <meta name="theme-color" content="#211f1d" />
     <title>Caprock — mission control</title>
     <script>
       // Set the theme before first paint so a light-preferring user never sees a
@@ -20,6 +34,9 @@
           // Light palette; the fallback mirrors DEFAULT_TONE in lib/theme.ts.
           var tone = localStorage.getItem('caprock-light-tone');
           document.documentElement.setAttribute('data-tone', tone === 'white' ? 'white' : 'paper');
+          // Mirrors THEME_COLORS in lib/theme.ts: the header's panel colour.
+          var bar = t === 'dark' ? '#211f1d' : tone === 'white' ? '#ffffff' : '#f4ecdd';
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', bar);
         } catch (e) {}
       })();
     </script>
