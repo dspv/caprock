@@ -62,6 +62,19 @@ func InstallFor(dataDir, settingsPath string) (Status, string, error) {
 	if err != nil {
 		return Status{}, "", err
 	}
-	st, err := Inspect(settingsPath, cmd)
+	st, err := StatusFor(dataDir, settingsPath)
 	return st, backup, err
+}
+
+// StatusFor is what is registered, checked against the command an install
+// would write — the one question /v1/status, `caprock status` and the
+// Install button must all answer the same way.
+//
+// The daemon used to check against the data-dir shim path alone. When no
+// caprock-hook sat beside the executable, install registered the fallback
+// `"<exe>" hook`, which the check recognised only if the executable was named
+// caprock; under any other name (a renamed or preview build) the button said
+// "installed" and the next status said all nine events were missing.
+func StatusFor(dataDir, settingsPath string) (Status, error) {
+	return Inspect(settingsPath, ShimCommand(dataDir))
 }

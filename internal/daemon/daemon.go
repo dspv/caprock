@@ -1166,7 +1166,7 @@ func (d *Daemon) status(_ context.Context) any {
 		st.Desktop = &r
 	}
 	if p, err := hooks.DefaultSettingsPath(); err == nil {
-		if hs, err := hooks.Inspect(p, config.ShimPath(d.opt.DataDir)); err == nil {
+		if hs, err := hooks.StatusFor(d.opt.DataDir, p); err == nil {
 			st.Hooks = &hs
 		}
 	}
