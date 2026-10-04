@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.71.0] - 2026-10-04
+
 ### Added
 
 - **Your phone as a controller.** In settings, *Let it control sessions* beside
