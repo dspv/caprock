@@ -136,6 +136,37 @@ describe('PremiumModal', () => {
     expect(onClose).toHaveBeenCalledTimes(4)
   })
 
+  it('shows the feature first, and every figure in the picture is tagged an example', () => {
+    for (const f of ['cap', 'gemini', 'report'] as const) {
+      const { unmount } = render(<PremiumModal feature={f} onClose={() => {}} />)
+      const picture = screen.getByRole('dialog').querySelector('figure[role="img"]')!
+      expect(picture, f).toBeTruthy()
+      expect(picture.textContent, f).toMatch(/^Example/)
+      expect(picture.getAttribute('aria-label'), f).toMatch(/^Example:/)
+      unmount()
+    }
+  })
+
+  it('marks the lifetime "Best value", as the site does, and offers no monthly plan', async () => {
+    render(<PremiumModal feature="cap" onClose={() => {}} />)
+    await waitFor(() => expect(screen.getByRole('link', { name: /\$100/ })).toBeInTheDocument())
+    const once = screen.getByRole('link', { name: /\$100/ }).parentElement!
+    expect(once.textContent).toMatch(/Best value/)
+    expect(screen.getByRole('link', { name: /year/i }).parentElement!.textContent).not.toMatch(/Best value/)
+    expect(screen.queryByRole('link', { name: /month/i })).toBeNull()
+  })
+
+  it('takes focus when it opens and gives it back when it closes', () => {
+    const opener = document.createElement('button')
+    document.body.appendChild(opener)
+    opener.focus()
+    const { unmount } = render(<PremiumModal feature="cap" onClose={() => {}} />)
+    expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true)
+    unmount()
+    expect(document.activeElement).toBe(opener)
+    opener.remove()
+  })
+
   it('does not close when the dialog body itself is clicked', () => {
     const onClose = vi.fn()
     render(<PremiumModal feature="cap" onClose={onClose} />)
