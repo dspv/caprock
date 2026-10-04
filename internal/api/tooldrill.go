@@ -45,7 +45,7 @@ func (s *Server) handleToolDrill(w http.ResponseWriter, r *http.Request) {
 	}
 	from, label := s.rangeFrom(q.Get("range"))
 	key := "drill:" + label + ":" + string(agent) + ":" + tool
-	v, err := s.hist.getTTL(r.Context(), key, drillTTL, func() (any, error) {
+	v, err := s.drill.get(r.Context(), key, func() (any, error) {
 		home, _ := os.UserHomeDir()
 		return store.ToolDrillStats(context.WithoutCancel(r.Context()), s.d.Store.DB(), store.DrillOptions{
 			Tool: tool, FromMs: from, ToMs: s.d.Now().UnixMilli(), Agent: agent, Home: home,

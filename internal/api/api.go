@@ -265,6 +265,8 @@ type Server struct {
 	week     *answerCache
 	weekLong *answerCache
 	glance   *answerCache
+	// drill holds the tool drill-downs (drillTTL).
+	drill *answerCache
 }
 
 // New builds the router.
@@ -285,7 +287,8 @@ func New(d Deps) *Server {
 		}
 	}
 	s := &Server{d: d, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now),
-		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now)}
+		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
+		drill: newAnswerCache(drillTTL, answerMaxStale, time.Now)}
 	// Seeded from Deps so `caprock up --lan` behaves exactly as before; the
 	// dashboard's switch goes through SetLAN.
 	s.pairing, s.lanURL = d.Pairing, d.LANURL
