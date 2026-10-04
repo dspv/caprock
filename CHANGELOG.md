@@ -20,6 +20,14 @@ Phase 3 (Delight) has no plan by design.
 
 ### Fixed
 
+- **Documents dropped into a session's terminal arrive.** Dragging a Markdown,
+  CSV, JSON, YAML, log or source file from Finder printed "415 Unsupported
+  Media Type", because the browser gives those files no type and only images,
+  PDF and plain text were accepted by type. Files are now accepted by
+  extension — images, PDF, text and documents, Office files, data and source
+  files — every dropped file is attached, not only the first, and each keeps
+  its own name, so Claude reads `contract.pdf` rather than a timestamp. A file
+  that is refused says which types are accepted.
 - **The README no longer lists starting a Gemini CLI session as Premium.** It
   never was: the New Session dialog offers Gemini CLI to everyone, like every
   other agent. Asking Gemini about your numbers is the paid part.

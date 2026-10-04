@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Terminal as Xterm } from '@xterm/xterm'
-import { api } from '@/lib/api'
+import { api, errText } from '@/lib/api'
 import { SpawnDialog } from './SpawnDialog'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
@@ -268,49 +268,67 @@ export function TerminalView({
     // Safari asks for on every read. The daemon restores the modes a late
     // terminal missed, so "asked for it" holds after a reconnect too.
 
-    // Paste an image, get a path.
+    // Paste or drop a file, get a path.
     //
-    // A browser hands over an image's bytes and never a path — there is no
-    // path for something copied out of a screenshot tool — and Claude Code
-    // reads files by path. So the bytes go to the daemon, which writes them
-    // into its own data directory, and the path it returns is typed into the
-    // session as if the user had typed it.
+    // A browser hands over a file's bytes and never a path — there is no path
+    // for something copied out of a screenshot tool, and a file dragged from
+    // Finder arrives as a name and its contents — while Claude Code reads
+    // files by path. So the bytes go to the daemon, which writes them into its
+    // own data directory under the file's own (sanitised) name, and the path
+    // it returns is typed into the session as if the user had typed it.
+    //
+    // The name travels with the bytes because the daemon decides what it
+    // accepts by extension: a browser leaves `type` empty for Markdown, CSV,
+    // JSON, YAML and every source file, and a type-only check refused them all.
     //
     // The path is quoted, because a data directory on macOS contains spaces
-    // ("Application Support") and an unquoted path there is two arguments.
+    // ("Application Support") and an unquoted path there is two arguments. Not
+    // with JSON.stringify, which doubles every backslash in a Windows path.
     const sendFile = async (file: File) => {
-      const type = file.type || 'application/octet-stream'
-      const buf = new Uint8Array(await file.arrayBuffer())
-      // btoa over a large array in one call blows the argument limit, so the
-      // string is built in chunks. 8k is well under any engine's cap.
-      let bin = ''
-      for (let i = 0; i < buf.length; i += 8192) {
-        bin += String.fromCharCode(...buf.subarray(i, i + 8192))
-      }
       try {
-        const { path } = await api.paste(type, btoa(bin))
+        const buf = new Uint8Array(await file.arrayBuffer())
+        // btoa over a large array in one call blows the argument limit, so the
+        // string is built in chunks. 8k is well under any engine's cap.
+        let bin = ''
+        for (let i = 0; i < buf.length; i += 8192) {
+          bin += String.fromCharCode(...buf.subarray(i, i + 8192))
+        }
+        const { path } = await api.paste({ name: file.name, type: file.type, data: btoa(bin) })
         // Typed, not pasted: the user is about to talk about this file, and a
         // path in the prompt is what Claude Code reads.
-        send(JSON.stringify(path) + ' ')
+        send(`"${path}" `)
       } catch (err) {
-        term.write(`\r\n\x1b[33m[caprock: ${err instanceof Error ? err.message : 'could not save that file'}]\x1b[0m\r\n`)
+        // The daemon's refusal says what it accepts; errText keeps that part.
+        const what = file.name ? `${file.name}: ` : ''
+        term.write(`\r\n\x1b[33m[caprock: ${what}${err instanceof Error ? errText(err) : 'could not save that file'}]\x1b[0m\r\n`)
       }
+    }
+    // Every file, one at a time and in order, so the paths land in the order
+    // they were dropped and a second drop waits for the first rather than
+    // interleaving with it. One refused file does not stop the rest.
+    let queue = Promise.resolve()
+    const sendFiles = (files: File[]) => {
+      queue = queue.then(async () => {
+        for (const f of files) await sendFile(f)
+      })
     }
 
     const onPaste = (e: ClipboardEvent) => {
-      const file = [...(e.clipboardData?.items ?? [])]
-        .find((i) => i.kind === 'file')?.getAsFile()
-      if (!file) return  // ordinary text: xterm's own handling is correct
+      const files = [...(e.clipboardData?.items ?? [])]
+        .filter((i) => i.kind === 'file')
+        .map((i) => i.getAsFile())
+        .filter((f): f is File => f !== null)
+      if (files.length === 0) return  // ordinary text: xterm's own handling is correct
       e.preventDefault()
       // Or xterm's textarea handler pastes the (empty) text as well.
       e.stopPropagation()
-      void sendFile(file)
+      sendFiles(files)
     }
     const onDrop = (e: DragEvent) => {
-      const file = e.dataTransfer?.files?.[0]
-      if (!file) return
+      const files = [...(e.dataTransfer?.files ?? [])]
+      if (files.length === 0) return
       e.preventDefault()
-      void sendFile(file)
+      sendFiles(files)
     }
     // preventDefault on dragover, or the browser navigates away to the file.
     const onDragOver = (e: DragEvent) => { e.preventDefault() }
