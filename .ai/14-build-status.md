@@ -71,6 +71,20 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-04 — Documents dropped into the terminal arrive, by name
+
+The owner dragged documents from Finder into a session and nothing usable
+happened. Measured against the live daemon: `text/markdown` and an empty type
+both came back 415, and a browser gives an empty type for `.md`, `.csv`,
+`.json`, `.yaml`, `.log` and source files. Only the first dropped file was
+sent, and it was stored as `<timestamp>-<rand>.<ext>`, so Claude saw a
+meaningless name. Now the name travels with the bytes, the daemon decides by
+extension from an allow-list (MIME as the fallback), keeps the sanitised name
+in a directory of its own per paste, and the terminal sends every file in order
+and says which types are accepted when it refuses one. See
+[04-ui.md § The terminal](04-ui.md#the-terminal) and
+[03-contracts.md](03-contracts.md).
+
 ### 2026-10-01 — `caprock export`: the record, out
 
 A stranger on Threads read Caprock as "parsing heavy JSON" and proposed one

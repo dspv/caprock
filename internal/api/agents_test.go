@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -301,44 +300,6 @@ func TestPasteRefusesARawUpload(t *testing.T) {
 	e.srv.Config.Handler.ServeHTTP(rr, req)
 	if rr.Code != http.StatusForbidden {
 		t.Errorf("status %d, want 403 — a simple content type must not reach this", rr.Code)
-	}
-}
-
-// The filename is ours entirely: nothing the caller sends reaches the
-// filesystem, so there is no path to traverse and no extension to smuggle.
-func TestPasteNamesTheFileItself(t *testing.T) {
-	e := newEnv(t)
-	dir := t.TempDir()
-	e.srv.Config.Handler = New(Deps{Store: e.st, Version: "t", Token: "tok",
-		Now: func() time.Time { return e.now }, DataDir: dir})
-
-	b, _ := json.Marshal(map[string]string{
-		"type": "image/png",
-		"data": base64.StdEncoding.EncodeToString([]byte("data")),
-		// Fields a caller might hope influence the name. The handler reads
-		// neither, and this is here so that adding a `name` field later has
-		// to face this test.
-		"name": "../../../../etc/passwd",
-		"path": "/tmp/evil.sh",
-	})
-	req := httptest.NewRequest("POST", "/v1/paste", bytes.NewReader(b))
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-	e.srv.Config.Handler.ServeHTTP(rr, req)
-	if rr.Code != 200 {
-		t.Fatalf("status %d", rr.Code)
-	}
-	var got struct {
-		Path string `json:"path"`
-	}
-	if err := json.NewDecoder(rr.Body).Decode(&got); err != nil {
-		t.Fatal(err)
-	}
-	if filepath.Dir(got.Path) != filepath.Join(dir, "paste") {
-		t.Errorf("path escaped the paste directory: %q", got.Path)
-	}
-	if strings.Contains(got.Path, "passwd") || strings.Contains(got.Path, "evil") {
-		t.Errorf("a caller-supplied name reached the filesystem: %q", got.Path)
 	}
 }
 

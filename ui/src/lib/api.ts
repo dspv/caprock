@@ -765,6 +765,9 @@ export const api = {
   signal: (id: string, action: 'pause' | 'resume' | 'kill') => post<void>(`/v1/agents/${encodeURIComponent(id)}/signal`, { action }),
   /**
    * Write a pasted or dropped file and get back the path Claude Code can read.
+   * `name` is the file's own name: the daemon keeps a sanitised copy of it and
+   * decides what is accepted by its extension, because a browser leaves
+   * `type` empty for Markdown, CSV, JSON and source files.
    *
    * Base64 inside JSON rather than a raw upload, because the daemon's forgery
    * guard turns away a state-changing request that is not `application/json` —
@@ -772,6 +775,6 @@ export const api = {
    * an endpoint any page in the browser could use to write files into the
    * user's data directory.
    */
-  paste: (type: string, data: string) => post<{ path: string }>('/v1/paste', { type, data }),
+  paste: (file: { name: string; type: string; data: string }) => post<{ path: string }>('/v1/paste', file),
   agentInput: (id: string, data: string) => post<void>(`/v1/agents/${encodeURIComponent(id)}/input`, { data }),
 }

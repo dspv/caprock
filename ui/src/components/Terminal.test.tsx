@@ -9,7 +9,8 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 const ctor = vi.hoisted(() => vi.fn())
 
 type KeyHandler = (e: KeyboardEvent) => boolean
-const pasteCalls = vi.hoisted(() => [] as { type: string; data: string }[])
+const pasteCalls = vi.hoisted(() => [] as { name: string; type: string; data: string }[])
+const written = vi.hoisted(() => [] as string[])
 const selection = vi.hoisted(() => ({ text: '' }))
 const pasted = vi.hoisted(() => [] as string[])
 const opened = vi.hoisted(() => ({ fn: undefined as (() => void) | undefined }))
@@ -29,7 +30,7 @@ vi.mock('@xterm/xterm', () => ({
       }
     }
     open() {}
-    write() {}
+    write(d: string) { written.push(d) }
     onData() { return { dispose() {} } }
     // The size the daemon is told about. A real terminal reports these after
     // it has measured its own cell; the fake reports a plausible pair so the
@@ -55,9 +56,16 @@ vi.mock('@/lib/api', async (orig) => {
     ...actual,
     api: {
       ...actual.api,
-      paste: async (type: string, data: string) => {
-        pasteCalls.push({ type, data })
-        return { path: '/data/paste/x.png' }
+      // Answers like the daemon: a path under paste/ named after the file,
+      // and a 415 carrying {error, detail} for a type it does not take.
+      paste: async (f: { name: string; type: string; data: string }) => {
+        pasteCalls.push(f)
+        if (f.name.endsWith('.exe')) {
+          throw new actual.ApiError(415, '415 Unsupported Media Type', {
+            error: 'unsupported file type: .exe', detail: 'accepted: PDF (pdf); data (csv)',
+          })
+        }
+        return { path: f.name === 'shot.png' ? '/data/paste/x.png' : `/data/paste/d/${f.name}` }
       },
     },
   }
@@ -543,9 +551,70 @@ describe('Shift+Enter', () => {
     host?.dispatchEvent(ev)
     await vi.waitFor(() => expect(pasteCalls.length).toBe(1))
     expect(pasteCalls[0]?.type).toBe('image/png')
+    expect(pasteCalls[0]?.name).toBe('shot.png')
     // Quoted: a data directory on macOS contains "Application Support", and an
     // unquoted path there is two arguments rather than one.
     await vi.waitFor(() => expect(sent.some((x) => x.includes('"/data/paste/x.png"'))).toBe(true))
+  })
+
+  /**
+   * Documents dragged from Finder: every file, not only the first, each with
+   * its own name — a browser leaves `type` empty for Markdown and CSV, so the
+   * name is what the daemon decides by.
+   */
+  const fileOf = (name: string, type: string) => {
+    const f = new File([new Uint8Array([7])], name, { type })
+    Object.defineProperty(f, 'arrayBuffer', { value: async () => new Uint8Array([7]).buffer })
+    return f
+  }
+  const drop = (files: File[]) => {
+    const host = [...document.querySelectorAll('div')].find((d) => d.className.includes('bg-bg'))
+    const ev = new Event('drop', { cancelable: true }) as DragEvent
+    Object.defineProperty(ev, 'dataTransfer', { value: { files } })
+    host?.dispatchEvent(ev)
+    return ev
+  }
+
+  it('sends every dropped file, in order, with its name, and types each path quoted', async () => {
+    pasteCalls.length = 0
+    mount()
+    const ev = drop([fileOf('Contract Notes.md', ''), fileOf('scan.pdf', 'application/pdf'), fileOf('data.csv', '')])
+    expect(ev.defaultPrevented).toBe(true)
+    await vi.waitFor(() => expect(pasteCalls.length).toBe(3))
+    expect(pasteCalls.map((c) => c.name)).toEqual(['Contract Notes.md', 'scan.pdf', 'data.csv'])
+    // The empty type goes as it is: the daemon decides by the name.
+    expect(pasteCalls[0]?.type).toBe('')
+    await vi.waitFor(() => expect(sent.filter((x) => x.startsWith('"/data/paste/')).length).toBe(3))
+    expect(sent.filter((x) => x.startsWith('"/data/paste/'))).toEqual([
+      '"/data/paste/d/Contract Notes.md" ',
+      '"/data/paste/d/scan.pdf" ',
+      '"/data/paste/d/data.csv" ',
+    ])
+  })
+
+  it('says which file was refused and what is accepted, and still sends the rest', async () => {
+    pasteCalls.length = 0
+    written.length = 0
+    mount()
+    drop([fileOf('setup.exe', ''), fileOf('notes.md', '')])
+    await vi.waitFor(() => expect(pasteCalls.length).toBe(2))
+    await vi.waitFor(() => expect(written.some((w) => w.includes('[caprock: setup.exe: unsupported file type: .exe — accepted: PDF (pdf)'))).toBe(true))
+    // Yellow, like every caprock line in the terminal.
+    expect(written.find((w) => w.includes('setup.exe'))).toContain('\x1b[33m')
+    await vi.waitFor(() => expect(sent).toContain('"/data/paste/d/notes.md" '))
+  })
+
+  it('sends every file in a paste, not only the first', async () => {
+    pasteCalls.length = 0
+    mount()
+    const host = [...document.querySelectorAll('div')].find((d) => d.className.includes('bg-bg'))
+    const ev = new Event('paste', { cancelable: true }) as ClipboardEvent
+    const a = fileOf('a.md', ''), b = fileOf('b.json', '')
+    Object.defineProperty(ev, 'clipboardData', {
+      value: { items: [{ kind: 'file', getAsFile: () => a }, { kind: 'string', getAsFile: () => null }, { kind: 'file', getAsFile: () => b }] },
+    })
+    host?.dispatchEvent(ev)
+    await vi.waitFor(() => expect(pasteCalls.map((c) => c.name)).toEqual(['a.md', 'b.json']))
   })
 
   it('leaves an ordinary text paste to xterm', () => {
