@@ -9,6 +9,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **Week: a card of what your agents shipped, to post.** A new Week tab
+  draws seven days of this machine's work — pull requests opened and merged,
+  commits, files and ≈lines written, what it cost at list price, ≈cost per
+  merged PR, the share spent re-reading context, who did what (Claude Code,
+  its subagents, Codex, OpenCode, Gemini CLI, DeepSeek), the longest loop and
+  the biggest session — as a 1200×675 or 1080×1350 card in your theme.
+  Download it as a PNG or copy it to paste. Everything is counted on your
+  machine from the agents' own tool calls; Caprock does not ask GitHub, and
+  no repository, path, prompt or session title is ever on the card.
+
 ## [0.69.0] - 2026-10-04
 
 ### Added

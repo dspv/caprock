@@ -11,7 +11,49 @@
 // Mythos 5.1 read cache at 0.025x, not the 0.1x the rest of the table uses.
 package contexttax
 
-import "github.com/dspv/caprock/internal/cost"
+import (
+	"time"
+
+	"github.com/dspv/caprock/internal/cost"
+)
+
+// TimedCall is a call with what its rates are looked up by: the model that
+// issued it and when.
+type TimedCall struct {
+	Call
+	Model string
+	At    time.Time
+}
+
+// RateTable is the subset of the pricing table that prices an instant.
+type RateTable interface {
+	LookupAt(model string, at time.Time) (cost.Model, bool)
+}
+
+// PriceSeries keeps the calls of a series that can be priced and returns the
+// rates to price them at. It is how a loop is priced, by the live alert and by
+// the Week card alike, so the two can never disagree about one loop.
+//
+// A call with no context or no model is dropped, never priced as free. The
+// series is priced at the rates of the model that ran it; a series that
+// changed model mid-way is rare and the last row wins, because refusing to
+// price it at all helps nobody.
+func PriceSeries(calls []TimedCall, t RateTable) ([]Call, Prices) {
+	var priced []Call
+	var p Prices
+	for _, c := range calls {
+		if c.Context <= 0 || c.Model == "" {
+			continue
+		}
+		row, ok := t.LookupAt(c.Model, c.At)
+		if !ok {
+			continue
+		}
+		p = PricesOf(row)
+		priced = append(priced, c.Call)
+	}
+	return priced, p
+}
 
 const perMTok = 1_000_000.0
 

@@ -71,6 +71,20 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-04 — Week: a card of what the agents shipped
+
+A **Week** tab draws one week of this machine's work as a card to post —
+landscape 1200×675 or portrait 1080×1350, in the dashboard's own theme —
+from `GET /v1/week`. Pull requests opened and merged, commits, files and
+≈lines are read from the agents' own successful tool calls; nothing asks
+GitHub. On a copy of the owner's database the week of 2026-09-27 in UTC came
+to 131 opened (all 131 confirmed on GitHub), 128 merged locally with 3
+unreadable merges left out (GitHub: 126 of the 131 merged, plus Dependabot and
+`shots/*` merges the agents also ran), 235 commits and $474.40 — the same
+figures the hand count produced. The longest loop is found by the live
+detector's rule and priced by the same function as the alert
+(`contexttax.PriceSeries`, extracted for it).
+
 ### 2026-10-04 — Documents dropped into the terminal arrive, by name
 
 The owner dragged documents from Finder into a session and nothing usable

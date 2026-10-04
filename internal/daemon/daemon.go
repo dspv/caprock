@@ -422,6 +422,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.api = api.New(api.Deps{
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d,
 		Status: d.status, Storage: d.storageReport, ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
+		LoopK: d.det.K, LoopWindow: d.det.Window,
 		Token: rt.Token, Shutdown: cancel, Agents: &agentAdapter{m: d.mgr, d: d},
 		Tasks: &boardAdapter{d: d}, Settings: &settingsAdapter{d: d}, Update: d.upd,
 		AskGemini: d.askGemini,
@@ -824,22 +825,7 @@ func (d *Daemon) priceLoop(ctx context.Context, a *loop.Alert) {
 	if err != nil || len(calls) == 0 {
 		return
 	}
-	var priced []contexttax.Call
-	var prices contexttax.Prices
-	for _, c := range calls {
-		if c.Context <= 0 || c.Model == "" {
-			continue
-		}
-		row, ok := d.table.LookupAt(c.Model, c.Ts)
-		if !ok {
-			continue
-		}
-		// The series is priced at the rates of the model that ran it. A series
-		// that changed model mid-way is rare and the last row wins; the
-		// alternative is refusing to price it at all, which helps nobody.
-		prices = contexttax.PricesOf(row)
-		priced = append(priced, contexttax.Call{Context: c.Context, Result: c.Result})
-	}
+	priced, prices := contexttax.PriceSeries(store.TimedCalls(calls), d.table)
 	if len(priced) == 0 {
 		return
 	}

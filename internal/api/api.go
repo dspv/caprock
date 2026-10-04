@@ -71,6 +71,11 @@ type Deps struct {
 	}
 	// ActiveLoops reports whether a session currently has an unexpired loop alert.
 	ActiveLoops func(sessionID string) *loop.Alert
+	// LoopK and LoopWindow are the loop detector's settings, so the Week
+	// card's longest loop is found by the same rule as the live alert. Zero
+	// means the detector's defaults.
+	LoopK      int
+	LoopWindow time.Duration
 	// IdleAfter is the silence threshold for the idle badge.
 	IdleAfter time.Duration
 	Now       func() time.Time
@@ -295,6 +300,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/stats/daily", s.handleDaily)
 	m.HandleFunc("GET /v1/events", s.handleEventsFeed)
 	m.HandleFunc("GET /v1/history", s.handleHistory)
+	m.HandleFunc("GET /v1/week", s.handleWeek)
 	// Picking a folder without typing its path: see browse.go for what stops
 	// this being a filesystem-read API.
 	m.HandleFunc("GET /v1/browse", s.handleBrowse)

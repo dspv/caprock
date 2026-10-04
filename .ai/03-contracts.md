@@ -220,6 +220,70 @@ POST /v1/hook                          → 204 (shim only, bearer-token gated; t
 WS   /v1/live                          → server-push frames: {type:"event"|"session"|"alert", data:…}
 ```
 
+### The Week (`GET /v1/week`)
+
+```
+GET  /v1/week?start=YYYY-MM-DD          → Week — seven local days from `start`; omitted, the seven days ending today
+```
+
+The Week screen's shareable card. `start` is a local date and the window is
+`[start 00:00, start+7 00:00)` in the daemon's time zone: the same days the
+Cost screen's `7d` range uses, so the two never disagree about which day a
+turn fell on. A `start` that is not `YYYY-MM-DD` is `400`.
+
+`{start, end, partial, from_ms, to_ms, days[], sessions, active_days, turns,
+cost_usd, unpriced_turns?, models[], prs_opened, prs_merged,
+merges_unresolved, commits, files_edited, lines_added, lines_removed,
+ci_wait_ms, tool_ms, agents[], loop?, biggest?, tax?, cost_per_merged_pr?,
+estimates[], pricing_version?}`. `days[]` is `{day, prs_opened, cost_usd,
+active}` × 7; `agents[]` is `{agent, subagent, turns, cost_usd, sessions,
+threads?}`; `loop` is `{agent, tool, kind, calls, first_ms, last_ms, tax_usd?,
+tax_priced_calls?}`; `biggest` is `{agent, cost_usd, turns, active_days}`.
+
+Everything is computed from the local database (`store.WeekStats`); the daemon
+asks nothing of GitHub, so what can be said is bounded by what the agents'
+own tool calls recorded:
+
+- **Opened** is distinct `github.com/<owner>/<repo>/pull/<n>` URLs printed by
+  a successful Bash call that ran `gh pr create`, minus lines saying the pull
+  request already exists. Success is a hook-plane `PostToolUse` that was not
+  interrupted, or a transcript-plane `tool.post` with `is_error` false.
+- **Merged** is distinct pull requests named by a successful `gh pr merge`: by
+  URL, by number (made distinct by the repository the command ran in, mapped
+  to `owner/repo` through the URLs `gh pr create` printed there), or — for the
+  current-branch form — by the one URL the command printed. A merge whose
+  target cannot be read (`$N`, a branch name, several URLs) is counted in
+  `merges_unresolved` and nowhere else. It is a merge the agents ran, not
+  GitHub's state.
+- **Commits** are `git commit` statements, read with a small shell splitter
+  (quotes, heredoc bodies, `cd`, `-C`) so a commit message mentioning a commit
+  is not one; output saying "nothing to commit" takes one off.
+- **Files and lines** come from successful Edit, Write and MultiEdit calls
+  outside temp directories and `~/.claude`. Lines are estimates: a Write
+  counts its whole file.
+- **Cost** is the stored `cost_usd`, priced once per message id and never
+  twice across forks; `tax` prices each model's cache reads exactly as
+  `/v1/history` does. `cost_per_merged_pr` divides all of the week's cost by
+  the merges — an estimate, absent when nothing merged.
+- **CI wait** is the hook-plane `duration_ms` of Bash calls whose statement is
+  `gh pr checks`, `gh run watch`, or a script named like `wait-ci`. Tool time,
+  not wall clock: parallel calls overlap.
+- **The loop** is the longest episode the live detector would have alerted on
+  — `loop.Signature`, read-only tools skipped, at least `loop_k` calls within
+  `loop_t_minutes`, the episode running while repeats keep arriving within the
+  window — except that repeats issued by one assistant message count once (a
+  turn that launches eleven subagents decided once). `tax_usd` is priced by
+  `contexttax.PriceSeries`, the function the live alert uses, and is absent
+  when no call could be priced (Codex calls carry no message id).
+
+**Nothing in the response names a repository, a path, a prompt or a session
+title.** The card is made to be posted, so the guard is in the shape of the
+payload rather than in the screen that draws it; a store test asserts it.
+
+`estimates[]` lists the fields a renderer must mark with "≈"
+(`lines_added`, `lines_removed`, and `cost_per_merged_pr` / `loop.tax_usd`
+when present). Responses are cached for 30 s per `start`.
+
 `GET /v1/status` gained `platform` (`GOOS/GOARCH`) — the first thing a bug report needs and the last thing anyone remembers to include.
 
 The dashboard route `#/session/{id}?at=<unix-ms>` reveals a moment in the timeline (used by the pulse); it is a client-side concern and needs no endpoint.
