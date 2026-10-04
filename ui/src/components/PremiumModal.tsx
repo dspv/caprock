@@ -158,7 +158,7 @@ function Picture({ feature }: { feature: PaidFeature }) {
           ))}
         </ul>
         <p className="mt-2.5 text-[12.5px] leading-snug text-fg">
-          <span className="font-semibold">`git diff` returned 41% of all Bash output</span>
+          <span className="font-semibold"><code className="font-mono">git diff</code> returned 41% of all Bash output</span>
           <span className="text-fg-muted"> — every byte of it read back by the model.</span>
         </p>
       </MiniCard>

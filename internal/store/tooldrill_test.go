@@ -57,6 +57,7 @@ func TestCommandHeadNamesWhatAShellCallRan(t *testing.T) {
 		"export A=1; make check":                    "make check",
 		"sudo docker ps":                            "docker ps",
 		"sleep 5; curl -s http://x":                 "sleep",
+		"for f in *.go; do gofmt -l $f; done":       "for loop",
 	} {
 		if got := commandHead(cmd, "/r"); got != want {
 			t.Errorf("%q: got %q, want %q", cmd, got, want)
@@ -159,11 +160,13 @@ func TestToolDrillGroupsTheWebByDomainAndCodexByItsCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	found := false
+	found, empty := false, false
 	for _, r := range c.Rows {
 		found = found || r.Key == "go vet"
+		// The call with an empty input is said as such, not as "no detail".
+		empty = empty || r.Key == drillNotRecorded
 	}
-	if !found {
+	if !found || !empty {
 		t.Fatalf("codex drill %+v", c.Rows)
 	}
 }

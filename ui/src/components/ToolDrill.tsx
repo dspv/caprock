@@ -93,8 +93,8 @@ export function ToolDrill({ tool, range, agent }: { tool: string; range: Range; 
                 <td className="py-[3px] px-2 num text-right">{r.calls.toLocaleString('en-US')}</td>
                 <td className="py-[3px] px-2">
                   <span className="flex items-center gap-1.5">
-                    <span className="h-1.5 flex-1 rounded-sm bg-panel-2"><span className="block h-full rounded-sm bg-accent/70" style={{ width: `${(100 * r.calls) / maxCalls}%` }} /></span>
-                    <span className="num w-8 text-right text-fg-muted">{share(r.calls, x.calls)}</span>
+                    <span className="hidden h-1.5 flex-1 rounded-sm bg-panel-2 sm:block"><span className="block h-full rounded-sm bg-accent/70" style={{ width: `${(100 * r.calls) / maxCalls}%` }} /></span>
+                    <span className="num ml-auto w-8 text-right text-fg-muted">{share(r.calls, x.calls)}</span>
                   </span>
                 </td>
                 {locked ? (
@@ -106,7 +106,7 @@ export function ToolDrill({ tool, range, agent }: { tool: string; range: Range; 
                 ) : (
                   <>
                     <td className="py-[3px] px-2 num text-right text-fg-muted">{r.bytes ? fmtBytes(r.bytes) : '—'}</td>
-                    <td className={`py-[3px] px-2 num text-right ${r.results && (r.failures ?? 0) / r.results >= 0.1 ? 'text-danger' : 'text-fg-muted'}`}>{failRate(r)}</td>
+                    <td className={`py-[3px] px-2 num text-right ${(r.results ?? 0) >= 20 && (r.failures ?? 0) / (r.results ?? 1) >= 0.1 ? 'text-danger' : 'text-fg-muted'}`}>{failRate(r)}</td>
                     <td className="py-[3px] pl-2 text-right">{r.trend ? <Trend values={r.trend} /> : null}</td>
                   </>
                 )}

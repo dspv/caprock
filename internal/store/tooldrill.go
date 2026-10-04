@@ -234,6 +234,12 @@ var (
 
 // drillKey is the group a call belongs to, and what that group is called.
 func drillKey(kind, cwd, cmd, file, link, query, action, pat, sub, raw, home string) (string, string) {
+	if cmd == "" && file == "" && link == "" && query == "" && action == "" && pat == "" && sub == "" && raw == "" {
+		// The event arrived without its input — OpenCode's bash events, for
+		// one, are stored with an empty tool_input. Said as such, not lumped
+		// in with calls whose input says nothing groupable.
+		return drillNotRecorded, "call"
+	}
 	switch kind {
 	case "shell":
 		if cmd == "" && raw != "" {
@@ -284,8 +290,17 @@ func drillKey(kind, cwd, cmd, file, link, query, action, pat, sub, raw, home str
 			}
 		}
 	}
-	return "(no detail)", "call"
+	return drillNoDetail, "call"
 }
+
+// The two groups that are not about anything a reader can act on, and so
+// never get a hint.
+const (
+	drillNotRecorded = "(input not recorded)"
+	drillNoDetail    = "(no detail)"
+)
+
+func opaqueGroup(key string) bool { return key == drillNotRecorded || key == drillNoDetail }
 
 // heads whose next word says what they did: "git commit", "go test".
 var subcommandHeads = map[string]int{
@@ -310,6 +325,14 @@ func commandHead(cmd, cwd string) string {
 		if head == "sudo" && len(w) > 1 {
 			w = w[1:]
 			head = filepath.Base(w[0])
+		}
+		switch head {
+		case "for", "while", "until":
+			// A loop's body is what it ran, but the loop is the thing the
+			// reader typed; name it as one.
+			return head + " loop"
+		case "if":
+			return "if block"
 		}
 		if head == "git" {
 			if sub := gitSubcommand(shellStatement{words: w, dir: st.dir}); sub != "" {
@@ -361,7 +384,7 @@ func drillHints(d ToolDrill, all []*drillAcc) []DrillHint {
 	overall := pct(d.Failures, d.Results)
 	var worst *drillAcc
 	for _, g := range all {
-		if g.Results < 20 || g.Failures < 5 {
+		if g.Results < 20 || g.Failures < 5 || opaqueGroup(g.Key) {
 			continue
 		}
 		r := pct(g.Failures, g.Results)
@@ -376,7 +399,7 @@ func drillHints(d ToolDrill, all []*drillAcc) []DrillHint {
 		r := pct(worst.Failures, worst.Results)
 		out = append(out, DrillHint{
 			Kind: "failures", Key: worst.Key, Weight: pct(worst.Failures, d.Failures) / 100,
-			Text: fmt.Sprintf("%s failed %d of %d times (%.0f%%), against %.0f%% for %s overall.", name(worst.Key), worst.Failures, worst.Results, r, overall, d.Tool),
+			Text: fmt.Sprintf("%s failed %s of %s times (%.0f%%), against %.0f%% for %s overall.", name(worst.Key), groupDigits(worst.Failures), groupDigits(worst.Results), r, overall, d.Tool),
 		})
 	}
 	if d.Bytes > 0 {
@@ -387,22 +410,38 @@ func drillHints(d ToolDrill, all []*drillAcc) []DrillHint {
 			}
 		}
 		// With one group the share is 100% by construction, which says nothing.
-		if big != nil && len(all) > 1 && pct(big.Bytes, d.Bytes) >= 25 && big.Key != "(no detail)" {
+		if big != nil && len(all) > 1 && pct(big.Bytes, d.Bytes) >= 25 && !opaqueGroup(big.Key) {
 			out = append(out, DrillHint{
 				Kind: "output", Key: big.Key, Weight: pct(big.Bytes, d.Bytes) / 100,
-				Text: fmt.Sprintf("%s returned %s in %d calls — %.0f%% of everything %s returned to the model.", name(big.Key), fmtBytes(big.Bytes), big.Calls, pct(big.Bytes, d.Bytes), d.Tool),
+				Text: fmt.Sprintf("%s returned %s in %s calls — %.0f%% of everything %s returned to the model.", name(big.Key), fmtBytes(big.Bytes), groupDigits(big.Calls), pct(big.Bytes, d.Bytes), d.Tool),
 			})
 		}
 	}
-	if len(all) > 1 && all[0].Calls >= 50 && pct(all[0].Calls, d.Calls) >= 30 && all[0].Key != "(no detail)" {
+	if len(all) > 1 && all[0].Calls >= 50 && pct(all[0].Calls, d.Calls) >= 30 && !opaqueGroup(all[0].Key) {
 		top := all[0]
 		out = append(out, DrillHint{
 			Kind: "repeats", Key: top.Key, Weight: pct(top.Calls, d.Calls) / 100,
-			Text: fmt.Sprintf("%s is %.0f%% of %s calls (%d of %d).", name(top.Key), pct(top.Calls, d.Calls), d.Tool, top.Calls, d.Calls),
+			Text: fmt.Sprintf("%s is %.0f%% of %s calls (%s of %s).", name(top.Key), pct(top.Calls, d.Calls), d.Tool, groupDigits(top.Calls), groupDigits(d.Calls)),
 		})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Weight > out[j].Weight })
 	return out
+}
+
+// groupDigits writes 11504 as 11,504, the way every count on screen reads.
+func groupDigits(n int64) string {
+	s := strconv.FormatInt(n, 10)
+	neg := strings.HasPrefix(s, "-")
+	if neg {
+		s = s[1:]
+	}
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	if neg {
+		s = "-" + s
+	}
+	return s
 }
 
 func pct(a, b int64) float64 {

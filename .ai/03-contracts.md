@@ -482,6 +482,10 @@ Premium fields below:
   file, shown relative to the home directory; WebFetch by domain; WebSearch
   by query; an MCP tool by its `action` input; any other tool by subagent
   type (Task), pattern (Grep, Glob) or command, else one `call` group.
+  A call stored with an empty input (OpenCode's bash events carry none) is
+  grouped as `(input not recorded)`, one whose input names nothing
+  groupable as `(no detail)`; neither gets a hint. Counts in hint text are
+  written with thousands separators.
 - **`rows[]`** are the top 12 groups by calls, each `{key, calls}`;
   **`other`** is the calls in every smaller group. Free.
 - **Premium** (left out without an active licence, [ADR-022](08-decisions.md)):
