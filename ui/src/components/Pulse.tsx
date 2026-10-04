@@ -341,8 +341,9 @@ function ProjectNow({ s, all, now }: { s: SessionSummary; all: SessionSummary[];
               {model && <span className="mono text-[11.5px] text-fg">{model}</span>}
               <StatePill state={st} />
               {(x.live_subagents ?? 0) > 0 && <span className="text-fg-muted">+{x.live_subagents} subagent{x.live_subagents === 1 ? '' : 's'}</span>}
-              <span className="min-w-0 flex-1 truncate text-fg-muted" title={doing}>{doing}</span>
-              <span className="text-[11px] text-fg-faint whitespace-nowrap">{fmtAgo(x.last_event_at, now)} ago</span>
+              {/* Its own line on a phone, where it was squeezed to "s…". */}
+              <span className="order-last basis-full pl-[32px] sm:order-none sm:basis-auto sm:pl-0 min-w-0 sm:flex-1 truncate text-fg-muted" title={doing}>{doing}</span>
+              <span className="text-[11px] text-fg-faint whitespace-nowrap">{fmtAgo(x.last_event_at, now)}</span>
               <a href={href({ name: 'session', id: x.session_id })} className="link text-[11.5px] whitespace-nowrap">open</a>
             </li>
           )
