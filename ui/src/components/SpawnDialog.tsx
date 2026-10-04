@@ -184,8 +184,9 @@ export function SpawnDialog({
           <div className="px-4 py-3 grid min-w-0 gap-3 text-[13px]">
             <Field label="Working directory" hint={remote ? 'a folder under your home' : 'pick one, or type a path'}>
               {/* No autofocus on a phone: it would open the keyboard over the
-                * picker the phone is meant to use. 16px there, or iOS zooms. */}
-              <input autoFocus={!remote} className={`input ${remote ? 'text-[16px] sm:text-[12px]' : ''}`} placeholder="/Users/you/dev/project" value={cwd} onChange={(e) => setCwd(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
+                * picker the phone is meant to use. 16px there, or iOS zooms;
+                * inline, because .input's own size outranks a utility. */}
+              <input autoFocus={!remote} className="input" style={remote ? { fontSize: 16 } : undefined} placeholder="/Users/you/dev/project" value={cwd} onChange={(e) => setCwd(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
               {/* The lists write into the field above rather than replacing it,
                 * so what will actually be used stays visible and editable. */}
               <div className="mt-1.5 min-w-0 max-w-full">
