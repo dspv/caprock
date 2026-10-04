@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -311,6 +312,9 @@ func TestAControllerStartsAgentsOnlyInKnownProjects(t *testing.T) {
 		return w.Code
 	}
 	unknown := t.TempDir()
+	// Forward slashes keep a Windows path valid inside the JSON bodies below;
+	// the handler's filepath.Clean turns them back.
+	known, unknown = filepath.ToSlash(known), filepath.ToSlash(unknown)
 	for _, tc := range []struct {
 		name, from, token, body string
 		want                    int
