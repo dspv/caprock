@@ -17,25 +17,30 @@ Conventions that apply to every contract here: JSON casing is **snake_case**; al
 
 Claude Code sends one JSON object per event on the shim's stdin. Fields common to all events (per the hooks reference, verified 2026-08-18): `session_id`, `prompt_id`, `transcript_path`, `cwd`, `permission_mode`, `hook_event_name`, `effort` (`{level}`), and for subagents `agent_id`, `agent_type`. Event-specific fields the daemon reads:
 
-| Event               | Fields consumed                                                  |
-| ------------------- | ---------------------------------------------------------------- |
-| `PreToolUse`        | `tool_name`, `tool_input`, `tool_use_id`                         |
-| `PostToolUse`       | `tool_name`, `tool_input`, `tool_use_id`, `tool_response`        |
-| `UserPromptSubmit`  | `prompt`                                                         |
-| `Stop`              | `stop_reason`, `last_assistant_message`                          |
-| `SubagentStop`      | `stop_reason`, `last_assistant_message`, `agent_id`              |
-| `SessionStart`      | `source` (`startup`, `resume`, `clear`, `compact`, `fork`)       |
-| `SessionEnd`        | `reason` (payload stored; only some reasons end the session)     |
-| `PreCompact`        | `trigger` (`manual`, `auto`)                                     |
-| `StopFailure`       | `error` / `stop_reason` (rate_limit, overloaded, billing)        |
-| `PermissionRequest` | `tool_name`, `tool_input`, `permission_suggestions` (not stored) |
+| Event               | Fields consumed                                              |
+| ------------------- | ------------------------------------------------------------ |
+| `PreToolUse`        | `tool_name`, `tool_input`, `tool_use_id`                     |
+| `PostToolUse`       | `tool_name`, `tool_input`, `tool_use_id`, `tool_response`    |
+| `UserPromptSubmit`  | `prompt`                                                     |
+| `Stop`              | `stop_reason`, `last_assistant_message`                      |
+| `SubagentStop`      | `stop_reason`, `last_assistant_message`, `agent_id`          |
+| `SessionStart`      | `source` (`startup`, `resume`, `clear`, `compact`, `fork`)   |
+| `SessionEnd`        | `reason` (payload stored; only some reasons end the session) |
+| `PreCompact`        | `trigger` (`manual`, `auto`)                                 |
+| `StopFailure`       | `error` / `stop_reason` (rate_limit, overloaded, billing)    |
+| `PermissionRequest` | `tool_name`, `tool_input`, `permission_suggestions`          |
 
-**`PermissionRequest` is observed, not stored** ([ADR-035](08-decisions.md)).
-Claude Code fires it as it draws a permission dialog; the shim forwards it
-fire-and-forget and never answers it, so the dialog appears exactly as without
-Caprock. For a session Caprock started, the daemon remembers it as the prompt
-that session waits on (`GET /v1/agents/{id}/permission`) until something
-answers it, and nothing goes into `events`.
+**`PermissionRequest` is observed, and stored as `permission.prompt`**
+([ADR-035](08-decisions.md), [ADR-036](08-decisions.md)). Claude Code fires it
+as it draws a permission dialog; the shim forwards it fire-and-forget and never
+answers it, so the dialog appears exactly as without Caprock. For a session
+Caprock started, the daemon also remembers it as the prompt that session waits
+on (`GET /v1/agents/{id}/permission`) until something answers it. For every
+session the stored event makes Now and the session page say *waiting for
+approval* (naming the call; *waiting for your answer* for `AskUserQuestion`)
+with the *waiting on you* badge, until the session's next event, and is what a
+phone alert is sent on. A dialog dismissed with Esc fires no hook, so the state
+holds until the next prompt.
 
 The daemon stores the raw payload untouched in `events.payload`; unknown events and unknown fields are logged and ignored, never fatal ([06-engineering-rules.md](06-engineering-rules.md)).
 
@@ -423,6 +428,7 @@ GET  /v1/storage                       → what the data directory holds; see §
 GET  /v1/pricing                       → the pricing table in force
 GET  /v1/premium                       → what the paid plan costs and where to buy it
 POST /v1/report/test                   → sends this week's report now → {sent:"ok"}; 502 with Telegram's error, 501 when reporting is unavailable
+POST /v1/alerts/test                   → sends a test phone alert now, no licence needed → {sent:"ok"}; 502 with Telegram's error or "no bot configured"
 POST /v1/shutdown                      → 200 (bearer-token gated; `caprock down`)
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows
 GET  /v1/statusline/{id}               → 200 (bearer-token gated) session counters for the status line; zeros for an unknown session
@@ -544,6 +550,31 @@ reclaimable_bytes, growth_bytes_per_day_est, retention_days}`.
 `PUT /v1/settings` also accepts `gemini_api_key`, stored write-only in the same way. `GET` reports `gemini_key_set` and `gemini_key_from_env` instead of the value; `GEMINI_API_KEY` in the daemon's environment takes precedence over the stored key when both exist ([ADR-025](08-decisions.md)).
 
 `PUT /v1/settings` accepts `report_bot_token` and `report_chat_id` for the weekly report. The **token is write-only**: it is stored and never returned by `GET /v1/settings`, which instead carries `report_bot_set` (a bool), `report_last_error` and `report_last_sent_ms`. This is the only write-only field in the API and it exists because the settings response is read on every dashboard render and by `caprock report` — a credential should not ride along on either ([ADR-024](08-decisions.md)). Omitting `report_bot_token` from a PUT leaves the stored one alone, since a UI that reads settings and writes them back always omits it; sending `""` clears it. The chat id is not a credential and round-trips normally.
+
+**Phone alerts** ([ADR-036](08-decisions.md)) go through the same bot and are
+free: no licence is checked. `PUT /v1/settings` accepts `alert_approval` and
+`alert_finished` (bools, both on unless turned off, stored as pointers in
+`config.json` so "never set" means on); `GET` returns them with
+`alert_last_error` and `alert_last_sent_ms`, held in memory since the daemon
+started. Nothing is sent until a bot token and chat id are set. The rules, in
+`internal/alerts` over every stored event from every source:
+
+- **Waiting for approval** — a `permission.prompt` sends at once, once per
+  dialog; the dialog is over at the session's next later event or `Stop`.
+- **Finished** — a main-thread `agent.stop` sends after a minute with no later
+  event in the session. Only hooks record `agent.stop` today, so this is
+  Claude Code's; Codex and OpenCode report no turn end or approval.
+- **No spam** — at most one alert of a kind per session in 3 minutes, and 20 in
+  any hour across all sessions; the twentieth says the rest are held. An event
+  more than 2 minutes old pages nobody, so a transcript re-read after a restart
+  stays quiet. A failed send is logged and shown, never retried.
+
+The message is plain text: `Caprock · <project> is waiting for approval` (or
+`has finished`), the agent's name, and a link to `#/session/<id>` on the
+address phone access listens on — the LAN or Tailscale one — omitted when phone
+access is off. Never a prompt, a reply, a tool, a command or a path.
+`CAPROCK_TELEGRAM_API` in the daemon's environment replaces
+`https://api.telegram.org` for both senders, to test against a stub.
 
 `GET /v1/gemini` reports whether asking Gemini is possible here: `{available, env_var, licensed, model}`. It performs **no network I/O** and **never returns the key** — `available` says only that one is present. `POST /v1/gemini/ask` takes `{prompt, model?}` and answers `{text, model, usage}`, where `usage` carries the response's own `promptTokenCount` / `candidatesTokenCount` / `cachedContentTokenCount` / `thoughtsTokenCount`. It is the one endpoint in the product that checks the licence **server-side** (402 without an active key) rather than leaving the paywall to the UI, because the call spends the user's Gemini quota and opens an outbound connection — the reasoning and its limits are in [ADR-023](08-decisions.md). With no key set it answers 412 with the variable to set, which is a different problem from 402 and is reported separately so the screen can say which. The key is read from `GEMINI_API_KEY` in the daemon's environment at call time; it is never stored, never accepted by `PUT /v1/settings`, and never present in `GET /v1/settings`.
 

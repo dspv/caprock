@@ -101,6 +101,13 @@ type Config struct {
 	// inside a 0700 data dir, and the token is never returned over HTTP.
 	ReportBotToken string `json:"report_bot_token,omitempty"`
 	ReportChatID   string `json:"report_chat_id,omitempty"`
+	// AlertApproval and AlertFinished switch the phone alerts sent through
+	// the same bot: a session waiting for approval, a session that finished
+	// (ADR-036). Pointers so "never set" means on: they take effect only once
+	// a bot is configured, and someone who set one up wants to hear. Free,
+	// unlike the weekly report.
+	AlertApproval *bool `json:"alert_approval,omitempty"`
+	AlertFinished *bool `json:"alert_finished,omitempty"`
 	// GeminiAPIKey is the user's Google AI Studio key, entered in the dashboard.
 	// GEMINI_API_KEY in the environment takes precedence when both exist, so a
 	// machine already configured that way is untouched (ADR-025). Stored under
@@ -335,4 +342,16 @@ func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
 // would have silently re-enabled it for everyone who had said no.
 func (c Config) MemoryOn() bool {
 	return c.Memory == nil || *c.Memory
+}
+
+// AlertApprovalOn reports whether a session waiting for approval is sent to
+// the phone. On unless switched off.
+func (c Config) AlertApprovalOn() bool {
+	return c.AlertApproval == nil || *c.AlertApproval
+}
+
+// AlertFinishedOn reports whether a finished session is sent to the phone.
+// On unless switched off.
+func (c Config) AlertFinishedOn() bool {
+	return c.AlertFinished == nil || *c.AlertFinished
 }

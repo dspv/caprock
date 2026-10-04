@@ -396,7 +396,7 @@ function EventRow({ e, now, toolByUse, inMinute }: {
   const kindCls =
     e.kind === 'turn.user' ? 'text-info' :
     e.kind === 'turn.assistant' ? 'text-fg' :
-    e.kind === 'agent.stop' ? 'text-warn' :
+    e.kind === 'agent.stop' || e.kind === 'permission.prompt' ? 'text-warn' :
     e.kind === 'context.compact' || e.kind === 'context.clear' ? 'text-warn' :
     'text-fg-muted'
   return (
@@ -462,6 +462,9 @@ export function describe(e: Event, p: Record<string, unknown>): string {
       return `context compaction (${String(p.trigger ?? 'auto')})`
     case 'context.clear':
       return 'context cleared (/clear)'
+    // Claude Code drew a permission dialog: the session waits for an answer.
+    case 'permission.prompt':
+      return e.tool === 'AskUserQuestion' ? 'waiting for your answer' : `waiting for approval: ${e.tool ?? String(p.tool_name ?? 'tool')}`
     // Escape at the prompt, or a reason Claude Code did not specify. Neither
     // ends the session; both are worth a line so a gap in the timeline has a
     // cause. Without a case here the row read as the raw kind string.

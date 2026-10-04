@@ -79,6 +79,10 @@ func TestSummarizeBadgePerLastEvent(t *testing.T) {
 		// call-to-action on a session that needs nothing.
 		{"a subagent stopped", event.Event{Kind: event.KindAgentStop, AgentID: "sub-1", Ts: base}, HealthWorking, "subagent finished"},
 		{"the session stopped", ev(event.KindAgentStop), HealthWaiting, "waiting for you"},
+		// A permission dialog is the session asking the user something, so it
+		// carries the same call to action as a Stop — and says which.
+		{"a permission dialog", ev(event.KindPermissionPrompt), HealthWaiting, "waiting for approval"},
+		{"a question", event.Event{Kind: event.KindPermissionPrompt, Tool: "AskUserQuestion", Ts: base}, HealthWaiting, "waiting for your answer"},
 		// An unrecognised kind must still render something, not an empty badge:
 		// new event kinds are added ahead of the UI that names them.
 		{"an event kind narrate does not know", ev(event.KindCostTick), HealthWorking, "working"},
@@ -389,5 +393,22 @@ func TestCommandHeadCutsAtTheFirstBoundary(t *testing.T) {
 	}
 	if len([]rune(long)) > 64 {
 		t.Errorf("clipped command is %d runes; the activity column cannot hold that", len([]rune(long)))
+	}
+}
+
+// A session at a permission dialog names the call it is asking about, and the
+// badge outlives the silence that follows: nobody has answered yet.
+func TestAPermissionDialogNamesTheCallAndStaysWaiting(t *testing.T) {
+	base := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	evs := []event.Event{
+		{Kind: event.KindToolPre, Tool: "Bash", Ts: base, Payload: []byte(`{"tool_input":{"command":"go test ./..."}}`)},
+		{Kind: event.KindPermissionPrompt, Ts: base.Add(time.Second)},
+	}
+	act := Summarize(evs, Options{Now: base.Add(time.Hour), IdleAfter: time.Minute})
+	if act.Health != HealthWaiting {
+		t.Fatalf("health = %q; want %q", act.Health, HealthWaiting)
+	}
+	if act.Phrase != "waiting for approval — running `go test ./...`" || act.Tool != "Bash" {
+		t.Errorf("phrase = %q tool = %q", act.Phrase, act.Tool)
 	}
 }

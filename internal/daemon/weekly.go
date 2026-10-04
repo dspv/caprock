@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,8 +41,17 @@ type reportState struct {
 func (d *Daemon) sender() *weekly.Sender {
 	d.report.mu.RLock()
 	defer d.report.mu.RUnlock()
-	return &weekly.Sender{Base: d.report.base}
+	base := d.report.base
+	if base == "" {
+		// A stand-in for api.telegram.org, so a preview daemon can be checked
+		// end to end without messaging anybody's real bot.
+		base = os.Getenv(EnvTelegramAPI)
+	}
+	return &weekly.Sender{Base: base}
 }
+
+// EnvTelegramAPI replaces the Telegram API host, for testing against a stub.
+const EnvTelegramAPI = "CAPROCK_TELEGRAM_API"
 
 // loadReportState restores what the last send did, so a failure survives a
 // restart. Without this the settings panel forgets the reason a message never

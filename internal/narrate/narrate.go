@@ -326,6 +326,18 @@ func Summarize(events []event.Event, opt Options) Activity {
 			act.Phrase = "subagent finished"
 			act.Health = HealthWorking
 		}
+	case event.KindPermissionPrompt:
+		// Claude Code is showing a permission dialog, and nothing moves until
+		// somebody answers it. The call it asks about is the last one made.
+		act.Phrase = "waiting for approval"
+		if last.Tool == "AskUserQuestion" {
+			// Its dialog is a question with answers, not Yes and No.
+			act.Phrase = "waiting for your answer"
+		} else if lastTool != nil {
+			act.Phrase += " — " + Phrase(lastTool.Tool, lastTool.Payload)
+			act.Tool = lastTool.Tool
+		}
+		act.Health = HealthWaiting
 	case event.KindTurnUser:
 		act.Phrase = "reading your prompt"
 		act.Health = HealthWorking

@@ -45,6 +45,7 @@ func TestNormalizeAllHookEvents(t *testing.T) {
 		{"session_end.json", event.KindSessionEnd, "", "", ""},
 		{"pre_compact.json", event.KindContextCompact, "", "", ""},
 		{"stop_failure.json", event.KindThrottle, "", "", ""},
+		{"permission_request.json", event.KindPermissionPrompt, "Bash", "", ""},
 	}
 	for _, c := range cases {
 		raw := fixture(t, c.file)
@@ -275,10 +276,10 @@ func TestAnEventOutlivesTheShimHangingUp(t *testing.T) {
 	}
 }
 
-// PermissionRequest (Claude Code 2.1.289, captured from a real prompt) is a
-// moment rather than an event: Observe sees it with its suggestions, and
-// nothing is stored.
-func TestAPermissionRequestIsObservedNotStored(t *testing.T) {
+// PermissionRequest (Claude Code 2.1.289, captured from a real prompt) is
+// observed with its suggestions, for an owned session's buttons, and stored as
+// permission.prompt, so every session can say it is waiting for approval.
+func TestAPermissionRequestIsObservedAndStored(t *testing.T) {
 	h, st := newHandler(t)
 	var seen []Payload
 	h.Observe = func(p Payload) { seen = append(seen, p) }
@@ -290,15 +291,15 @@ func TestAPermissionRequestIsObservedNotStored(t *testing.T) {
 		t.Fatalf("observed %+v", seen)
 	}
 	evs, _ := store.ListEvents(context.Background(), st.DB(), "sess-abc", 0, 0)
-	if len(evs) != 0 {
-		t.Fatalf("stored %d events", len(evs))
+	if len(evs) != 1 || evs[0].Kind != event.KindPermissionPrompt || evs[0].Tool != "Bash" {
+		t.Fatalf("stored %+v", evs)
 	}
 	// Every other event is observed too, and still stored.
 	post(h, "secret", fixture(t, "post_tool_use.json"))
 	if len(seen) != 2 || seen[1].HookEventName != "PostToolUse" {
 		t.Fatalf("observed %+v", seen)
 	}
-	if evs, _ = store.ListEvents(context.Background(), st.DB(), "sess-abc", 0, 0); len(evs) != 1 {
+	if evs, _ = store.ListEvents(context.Background(), st.DB(), "sess-abc", 0, 0); len(evs) != 2 {
 		t.Fatalf("stored %d events", len(evs))
 	}
 }

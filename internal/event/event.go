@@ -60,6 +60,12 @@ const (
 	// session.end, which rollup treats as "retire this session", nor as a
 	// context event, since neither reason touches the context.
 	KindSessionContinue Kind = "session.continue"
+
+	// KindPermissionPrompt is Claude Code's `PermissionRequest` hook: the
+	// session is showing a permission dialog and nothing moves until somebody
+	// answers it. Distinct from approval.requested, which is the orchestrator's
+	// own approval queue.
+	KindPermissionPrompt Kind = "permission.prompt"
 )
 
 // Source says which data plane produced the event.
