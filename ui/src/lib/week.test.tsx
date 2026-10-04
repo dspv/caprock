@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { render } from '@testing-library/react'
 import type { Week } from './api'
-import { addDays, biggestSentence, compact, crew, headline, loopSentence, money, rangeLabel, sideStats, tally, weekWord } from './week'
+import { addDays, biggestSentence, compact, crew, dayBars, headline, loopSentence, money, periodWords, rangeLabel, sideStats, tally, weekWord } from './week'
 import { WeekCard } from '@/components/WeekCard'
 
 function week(over: Partial<Week> = {}): Week {
@@ -85,5 +85,47 @@ describe('week card wording', () => {
       expect(text).toContain('≈ = estimate · API list prices')
       unmount()
     }
+  })
+
+  it('speaks about any period, and folds a long one into weeks or months', () => {
+    expect(periodWords('today')).toEqual({ when: 'today', noun: 'day' })
+    expect(periodWords('30d').when).toBe('this month')
+    expect(headline(busy, periodWords('all').when, 'total').tail).toBe('— all time.')
+    expect(headline(week(), 'today', 'day').lead).toBe('A quiet day:')
+    expect(biggestSentence(busy, 'month')!.share).toBe('91% of the month.')
+
+    // Thirty days fold into weeks counted back from the last day, so the
+    // newest column is whole and the oldest is the two days left over.
+    const month = week({
+      start: '2026-09-05', end: '2026-10-04', prs_opened: 30,
+      days: Array.from({ length: 30 }, (_, i) => ({ day: addDays('2026-09-05', i), prs_opened: 1, cost_usd: 1, active: true })),
+    })
+    const m = dayBars(month)
+    expect(m.label).toBe('PRs opened per week')
+    expect(m.values).toEqual([2, 7, 7, 7, 7])
+    expect(m.values.reduce((a, b) => a + b, 0)).toBe(30)
+    expect(m.ticks[0]).toBe('Sep 5')
+
+    // Longer than five weeks: calendar months, summed, nothing averaged.
+    const year = week({
+      start: '2026-08-30', end: '2026-10-04', cost_usd: 36,
+      days: Array.from({ length: 36 }, (_, i) => ({ day: addDays('2026-08-30', i), prs_opened: 0, cost_usd: 1, active: true })),
+    })
+    const y = dayBars(year)
+    expect(y.label).toBe('Cost per month')
+    expect(y.values).toEqual([2, 30, 4])
+    expect(y.ticks).toEqual(['Aug', 'Sep', 'Oct'])
+
+    expect(dayBars(busy).values).toHaveLength(7)
+  })
+
+  it('draws a one-day card without a bar strip', () => {
+    const day = week({
+      start: '2026-10-04', end: '2026-10-04', sessions: 2, active_days: 1, turns: 40, cost_usd: 12, prs_opened: 3, prs_merged: 2,
+      days: [{ day: '2026-10-04', prs_opened: 3, cost_usd: 12, active: true }],
+    })
+    const { container } = render(<WeekCard week={day} layout="port" when="today" noun="day" />)
+    expect(container.textContent).toContain('My agents shipped 2 PRs today.')
+    expect(container.querySelector('.wk-barrow')).toBeNull()
   })
 })

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dspv/caprock/internal/loop"
@@ -153,24 +154,45 @@ func WeekStats(ctx context.Context, q Querier, o WeekOptions) (Week, error) {
 		return i, ok
 	}
 
-	if err := weekActivity(ctx, q, from, to, &w, dayOf); err != nil {
-		return w, err
+	// The two payload readers are most of the time on a long window — all of
+	// history took 7 s and 9 s on a copy of the owner's 1 GB database
+	// (2026-10-04), almost all of it waiting on the disk — and they touch
+	// separate fields, so they run beside the rest rather than after it. Each
+	// writes into a Week of its own, merged below, so no two goroutines touch
+	// one struct. The pool has several connections; with one they would
+	// simply take turns.
+	var (
+		wg               sync.WaitGroup
+		toolErr, loopErr error
+		tw               = Week{Days: make([]WeekDay, len(w.Days))}
+		lw               Week
+	)
+	wg.Add(2)
+	go func() { defer wg.Done(); toolErr = weekTools(ctx, q, from, to, &tw, o, dayOf) }()
+	go func() { defer wg.Done(); loopErr = weekLoop(ctx, q, from, to, &lw, o) }()
+	err := weekActivity(ctx, q, from, to, &w, dayOf)
+	if err == nil {
+		err = weekAgents(ctx, q, from, to, &w)
 	}
-	if err := weekAgents(ctx, q, from, to, &w); err != nil {
-		return w, err
+	if err == nil {
+		err = weekModels(ctx, q, from, to, &w)
 	}
-	if err := weekModels(ctx, q, from, to, &w); err != nil {
-		return w, err
+	if err == nil {
+		err = weekBiggest(ctx, q, from, to, &w, o.Loc)
 	}
-	if err := weekBiggest(ctx, q, from, to, &w, o.Loc); err != nil {
-		return w, err
+	wg.Wait()
+	for _, e := range []error{err, toolErr, loopErr} {
+		if e != nil {
+			return w, e
+		}
 	}
-	if err := weekTools(ctx, q, from, to, &w, o, dayOf); err != nil {
-		return w, err
+	w.PRsOpened, w.PRsMerged, w.MergesUnresolved, w.Commits = tw.PRsOpened, tw.PRsMerged, tw.MergesUnresolved, tw.Commits
+	w.FilesEdited, w.LinesAdded, w.LinesRemoved = tw.FilesEdited, tw.LinesAdded, tw.LinesRemoved
+	w.ToolMs, w.CIWaitMs = tw.ToolMs, tw.CIWaitMs
+	for i := range w.Days {
+		w.Days[i].PRsOpened = tw.Days[i].PRsOpened
 	}
-	if err := weekLoop(ctx, q, from, to, &w, o); err != nil {
-		return w, err
-	}
+	w.Loop = lw.Loop
 	return w, nil
 }
 
@@ -615,7 +637,7 @@ func weekLoop(ctx context.Context, q Querier, from, to int64, w *Week, o WeekOpt
 		SELECT e.session_id, COALESCE(s.agent,'claude'), COALESCE(e.tool,''), e.ts, COALESCE(e.msg_id,''), e.payload
 		FROM events e LEFT JOIN sessions s ON s.session_id = e.session_id
 		WHERE e.kind = 'tool.pre' AND e.ts >= ? AND e.ts < ?`+nonInternalEventE+`
-		ORDER BY e.session_id, e.ts, e.id`, from, to)
+		  AND COALESCE(e.tool,'') NOT IN (`+readOnlyList+`)`, from, to)
 	if err != nil {
 		return err
 	}
@@ -664,6 +686,9 @@ func weekLoop(ctx context.Context, q Querier, from, to int64, w *Week, o WeekOpt
 	sort.Strings(keys) // deterministic ties
 	for _, key := range keys {
 		s := all[key]
+		// Sorted here rather than by the query: an ORDER BY made SQLite sort
+		// every payload in the window before handing back the first row.
+		sort.SliceStable(s.hits, func(i, j int) bool { return s.hits[i].ts < s.hits[j].ts })
 		// One hit per message: a turn that issued the same call five times in
 		// parallel decided once.
 		var hits []hit
@@ -695,6 +720,16 @@ func weekLoop(ctx context.Context, q Querier, from, to int64, w *Week, o WeekOpt
 	w.Loop = best
 	return nil
 }
+
+// readOnlyList is the detector's read-only tools as an SQL list, so their
+// payloads are never read only to be skipped.
+var readOnlyList = func() string {
+	names := loop.ReadOnlyTools()
+	for i, n := range names {
+		names[i] = "'" + strings.ReplaceAll(n, "'", "''") + "'"
+	}
+	return strings.Join(names, ",")
+}()
 
 func maxInWindow[T any](xs []T, win int64, ts func(T) int64) int {
 	best, j := 0, 0

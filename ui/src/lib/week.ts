@@ -40,6 +40,7 @@ export function rangeLabel(start: string, end: string): string {
   const a = parseDay(start)
   const b = parseDay(end)
   const md = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  if (start === end) return `${md(a)}, ${a.getFullYear()}`
   const sameYear = a.getFullYear() === b.getFullYear()
   return `${md(a)}${sameYear ? '' : `, ${a.getFullYear()}`} – ${md(b)}, ${b.getFullYear()}`
 }
@@ -54,6 +55,29 @@ export function addDays(day: string, n: number): string {
   d.setDate(d.getDate() + n)
   const p = (x: number) => String(x).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+/** A named window the card can be drawn for, as the share dialog names them. */
+export type StoryPeriod = 'today' | '7d' | '30d' | 'all'
+
+/**
+ * How the card speaks about a window: the words after the headline figure
+ * ("this week."), the noun a share is "of" ("91% of the week."), and the
+ * word a quiet window starts with ("A quiet day:").
+ *
+ * "this month" is the last 30 days, the same days the share dialog's month
+ * and the Cost screen's 30d range cover; the card prints the dates, so the
+ * reader is never left to guess which 30.
+ */
+export interface PeriodWords { when: string; noun: string }
+
+export function periodWords(period: StoryPeriod): PeriodWords {
+  switch (period) {
+    case 'today': return { when: 'today', noun: 'day' }
+    case '30d': return { when: 'this month', noun: 'month' }
+    case 'all': return { when: '— all time', noun: 'total' }
+    default: return { when: 'this week', noun: 'week' }
+  }
 }
 
 /** "this week" for a window that reaches into the last seven days, else "that week". */
@@ -82,14 +106,14 @@ export interface Headline {
  * requests first; a week with none falls back through opened, commits, lines
  * and sessions, so the card never shouts "0 PRs".
  */
-export function headline(w: Week, when: string): Headline {
+export function headline(w: Week, when: string, noun = 'week'): Headline {
   const tail = `${when}.`
   if (w.prs_merged > 0) return { lead: 'My agents shipped', figure: plural(w.prs_merged, 'PR'), tail, led: 'merged', approx: false }
   if (w.prs_opened > 0) return { lead: 'My agents opened', figure: plural(w.prs_opened, 'PR'), tail, led: 'opened', approx: false }
   if (w.commits > 0) return { lead: 'My agents made', figure: plural(w.commits, 'commit'), tail, led: 'commits', approx: false }
   if (w.lines_added > 0) return { lead: 'My agents wrote', figure: `≈${compact(w.lines_added)} lines`, tail, led: 'lines', approx: true }
   if (w.sessions > 0) return { lead: 'My agents ran', figure: plural(w.sessions, 'session'), tail, led: 'sessions', approx: false }
-  return { lead: 'A quiet week:', figure: 'no agent activity', tail: '', led: 'none', approx: false }
+  return { lead: `A quiet ${noun === 'total' ? 'machine' : noun}:`, figure: 'no agent activity', tail: '', led: 'none', approx: false }
 }
 
 export interface TallyItem { value: string; label: string; approx?: boolean }
@@ -228,18 +252,66 @@ export function loopSentence(l: WeekLoop): { what: string; count: string } {
 }
 
 /** "One Claude Code session, five days, $431. 91% of the week." */
-export function biggestSentence(w: Week): { lead: string; cost: string; share: string } | null {
+export function biggestSentence(w: Week, noun = 'week'): { lead: string; cost: string; share: string } | null {
   const b = w.biggest
   if (!b || w.cost_usd <= 0 || w.sessions < 2) return null
   const share = Math.round((100 * b.cost_usd) / w.cost_usd)
   const days = ['', 'one day', 'two days', 'three days', 'four days', 'five days', 'six days', 'seven days'][b.active_days] ?? `${b.active_days} days`
-  return { lead: `One ${agentName(b.agent)} session, ${days},`, cost: money(b.cost_usd), share: `${share}% of the week.` }
+  return { lead: `One ${agentName(b.agent)} session, ${days},`, cost: money(b.cost_usd), share: `${share}% of the ${noun}.` }
 }
 
-/** The bar strip: PRs opened per day, or the cost per day when no PR was opened. */
-export function dayBars(w: Week): { label: string; values: number[]; format: (v: number) => string } {
-  if (w.prs_opened > 0) return { label: 'PRs opened per day', values: w.days.map((d) => d.prs_opened), format: (v) => String(v) }
-  return { label: 'Cost per day', values: w.days.map((d) => d.cost_usd), format: money }
+export interface BarStrip {
+  label: string
+  values: number[]
+  /** One short label per column: a day of the month, a week's first day, a month. */
+  ticks: string[]
+  /** What the strip spans: "Sat → Fri", "Sep 5 → Oct 4", "Oct 2025 → Oct 2026". */
+  span: string
+  format: (v: number) => string
+}
+
+/**
+ * The bar strip: PRs opened per column, or the cost when no PR was opened.
+ *
+ * Seven days are seven columns. A longer window is folded so the card keeps
+ * room for its figures: up to five weeks into weeks (counted back from the
+ * last day, so the newest column is a whole week and the oldest may be
+ * short), anything longer into calendar months. Folding sums; nothing is
+ * averaged or filled in. A single day has no strip.
+ */
+export function dayBars(w: Week): BarStrip {
+  const prs = w.prs_opened > 0
+  const pick = (d: Week['days'][number]) => (prs ? d.prs_opened : d.cost_usd)
+  const unit = w.days.length <= 7 ? 'day' : w.days.length <= 35 ? 'week' : 'month'
+  const label = `${prs ? 'PRs opened' : 'Cost'} per ${unit}`
+  const format = prs ? (v: number) => String(v) : money
+  if (unit === 'day') {
+    return { label, values: w.days.map(pick), ticks: w.days.map((d) => String(Number(d.day.slice(8)))), span: weekdaySpan(w), format }
+  }
+  const groups: { first: string; value: number }[] = []
+  if (unit === 'week') {
+    for (let end = w.days.length; end > 0; end -= 7) {
+      const part = w.days.slice(Math.max(0, end - 7), end)
+      groups.unshift({ first: part[0]!.day, value: part.reduce((a, d) => a + pick(d), 0) })
+    }
+  } else {
+    for (const d of w.days) {
+      const month = d.day.slice(0, 7)
+      const last = groups[groups.length - 1]
+      if (last && last.first.slice(0, 7) === month) last.value += pick(d)
+      else groups.push({ first: d.day, value: pick(d) })
+    }
+  }
+  const md = (day: string) => parseDay(day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const mon = (day: string) => parseDay(day).toLocaleDateString('en-US', { month: 'short' })
+  const monY = (day: string) => parseDay(day).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+  return {
+    label,
+    values: groups.map((g) => g.value),
+    ticks: groups.map((g) => (unit === 'week' ? md(g.first) : mon(g.first))),
+    span: unit === 'week' ? `${md(w.start)} → ${md(w.end)}` : `${monY(w.start)} → ${monY(w.end)}`,
+    format,
+  }
 }
 
 /** "Sat → Fri". */

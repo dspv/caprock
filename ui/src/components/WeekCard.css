@@ -93,9 +93,9 @@
 .wk-port .wk-bars { margin-top: 30px; padding-bottom: 26px; }
 .wk-port .wk-barrow { display: grid; grid-template-columns: repeat(7, 1fr); align-items: end; height: 146px; margin-top: 6px; border-bottom: 1px solid var(--wk-line); position: relative; }
 .wk-port .wk-barcol { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 120px; position: relative; }
-.wk-port .wk-barval { font: 700 16px/1 var(--font-mono); color: var(--wk-ink); margin-bottom: 9px; }
-.wk-port .wk-bar { width: 92px; border-radius: 3px 3px 0 0; }
-.wk-port .wk-barday { position: absolute; bottom: -24px; font: 500 16px/1 var(--font-mono); color: var(--wk-dim); }
+.wk-port .wk-barval { font: 700 16px/1 var(--font-mono); color: var(--wk-ink); margin-bottom: 9px; white-space: nowrap; }
+.wk-port .wk-bar { width: min(92px, 72%); border-radius: 3px 3px 0 0; }
+.wk-port .wk-barday { position: absolute; bottom: -24px; font: 500 16px/1 var(--font-mono); color: var(--wk-dim); white-space: nowrap; }
 .wk-bar-zero { background: var(--wk-line); }
 .wk-bar-low { background: color-mix(in srgb, var(--wk-amber) 78%, #000); }
 .wk-bar-mid { background: var(--wk-amber); }

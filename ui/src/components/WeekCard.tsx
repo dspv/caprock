@@ -13,7 +13,7 @@ import { forwardRef, type ReactNode } from 'react'
 import type { Week } from '@/lib/api'
 import {
   biggestSentence, crew, dayBars, eyebrow, headline, loopSentence, money, rangeLabel,
-  sideStats, tally, weekdaySpan, type CrewMember, type Headline, type SideStat, type TallyItem,
+  sideStats, tally, type CrewMember, type Headline, type SideStat, type TallyItem,
 } from '@/lib/week'
 import { AgentCharacter, CaprockMark } from './Characters'
 import './WeekCard.css'
@@ -28,17 +28,19 @@ export const CARD_SIZE: Record<CardLayout, { w: number; h: number }> = {
 interface Props {
   week: Week
   layout: CardLayout
-  /** "this week" or "that week". */
+  /** "this week" or "that week"; "today", "this month", "— all time". */
   when: string
+  /** What a share of the cost is "of": "week" unless the card is for another period. */
+  noun?: string
 }
 
-export const WeekCard = forwardRef<HTMLElement, Props>(function WeekCard({ week, layout, when }, ref) {
-  const h = headline(week, when)
+export const WeekCard = forwardRef<HTMLElement, Props>(function WeekCard({ week, layout, when, noun = 'week' }, ref) {
+  const h = headline(week, when, noun)
   const items = tally(week, h.led)
   const stats = sideStats(week)
   const members = crew(week)
   const loop = week.loop ? loopSentence(week.loop) : null
-  const big = biggestSentence(week)
+  const big = biggestSentence(week, noun)
   const range = rangeLabel(week.start, week.end)
   const label = `${h.lead} ${h.figure} ${h.tail} ${range}.`
 
@@ -59,7 +61,7 @@ export const WeekCard = forwardRef<HTMLElement, Props>(function WeekCard({ week,
     // Room for three characters beside one callout. The loop is the funnier
     // story; the biggest session stands in when there was no loop.
     const shown = members.slice(0, loop || big ? 3 : 4)
-    const callout = loop ? <LoopCallout week={week} short /> : big ? <BiggestCallout week={week} /> : null
+    const callout = loop ? <LoopCallout week={week} short /> : big ? <BiggestCallout week={week} noun={noun} /> : null
     return (
       <section ref={ref} className="wk-card wk-land" role="img" aria-label={label}>
         {top}
@@ -111,10 +113,10 @@ export const WeekCard = forwardRef<HTMLElement, Props>(function WeekCard({ week,
           {stats.map((s) => <Stat key={s.label} s={s} />)}
         </div>
       )}
-      {bars.values.some((v) => v > 0) && (
+      {bars.values.length > 1 && bars.values.some((v) => v > 0) && (
         <div className="wk-bars">
-          <div className="wk-cap"><span>{bars.label}</span><span>{weekdaySpan(week)}</span></div>
-          <Bars values={bars.values} days={week.days.map((d) => d.day)} format={bars.format} />
+          <div className="wk-cap"><span>{bars.label}</span><span>{bars.span}</span></div>
+          <Bars values={bars.values} ticks={bars.ticks} format={bars.format} />
         </div>
       )}
       {members.length > 0 && (
@@ -133,7 +135,7 @@ export const WeekCard = forwardRef<HTMLElement, Props>(function WeekCard({ week,
       {(loop || big) && (
         <div className={`wk-callouts${loop && big ? '' : ' wk-solo'}`}>
           {loop && <LoopCallout week={week} />}
-          {big && <BiggestCallout week={week} />}
+          {big && <BiggestCallout week={week} noun={noun} />}
         </div>
       )}
       {foot}
@@ -187,8 +189,8 @@ function LoopCallout({ week, short }: { week: Week; short?: boolean }) {
   )
 }
 
-function BiggestCallout({ week }: { week: Week }) {
-  const b = biggestSentence(week)!
+function BiggestCallout({ week, noun }: { week: Week; noun: string }) {
+  const b = biggestSentence(week, noun)!
   return (
     <div className="wk-callout">
       <div className="wk-k">Biggest session</div>
@@ -197,23 +199,24 @@ function BiggestCallout({ week }: { week: Week }) {
   )
 }
 
-/** Seven columns, the tallest day the brightest. Zero days get a stub.
+/** One column per day (or folded week or month), the tallest the brightest.
+ * Zero columns get a stub.
  *
  * Plain boxes rather than an SVG: the PNG is drawn from a clone with computed
  * styles inlined, and SVG fills given by a theme variable came out black in
  * the file while looking right on screen. */
-function Bars({ values, days, format }: { values: number[]; days: string[]; format: (v: number) => string }) {
+function Bars({ values, ticks, format }: { values: number[]; ticks: string[]; format: (v: number) => string }) {
   const max = Math.max(...values, 1)
   return (
-    <div className="wk-barrow" aria-hidden="true">
+    <div className="wk-barrow" aria-hidden="true" style={{ gridTemplateColumns: `repeat(${values.length}, 1fr)` }}>
       {values.map((v, i) => {
         const tone = v <= 0 ? 'wk-bar-zero' : v === max ? 'wk-bar-top' : v >= max / 2 ? 'wk-bar-mid' : 'wk-bar-low'
         const h = v <= 0 ? 3 : Math.max(6, Math.round((v / max) * 96))
         return (
-          <div className="wk-barcol" key={days[i] ?? i}>
+          <div className="wk-barcol" key={`${ticks[i] ?? ''}${i}`}>
             <div className="wk-barval">{v > 0 ? format(v) : ''}</div>
             <div className={`wk-bar ${tone}`} style={{ height: h }} />
-            <div className="wk-barday">{days[i] ? Number(days[i].slice(8)) : ''}</div>
+            <div className="wk-barday">{ticks[i] ?? ''}</div>
           </div>
         )
       })}

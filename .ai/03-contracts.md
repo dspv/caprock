@@ -224,7 +224,19 @@ WS   /v1/live                          → server-push frames: {type:"event"|"se
 
 ```
 GET  /v1/week?start=YYYY-MM-DD          → Week — seven local days from `start`; omitted, the seven days ending today
+GET  /v1/week?period=today|7d|30d|all   → Week — the same card for a named window, in whole local days ending today
 ```
+
+`period` names the share dialog's windows: `today`, `7d` (the default
+window), `30d` (the last 30 local days, as the Cost screen's 30d range) and
+`all` (from the local day of the first recorded event). The response carries
+`period`, `days[]` has one entry per day of the window, and every other field
+means what it means for a week. `period` and `start` together, or an unknown
+period, is `400`. Long windows are cached for 2 minutes instead of 30 s: on
+a copy of the owner's 1 GB database (2026-10-04) `all` takes about 11 s
+cold, `30d` about 3 s, `7d` 1.5 s and `today` 0.3 s. The two payload readers
+(tool calls and the loop replay) run beside the rest, and the replay skips the
+detector's read-only tools in SQL rather than after reading them.
 
 The Week screen's shareable card. `start` is a local date and the window is
 `[start 00:00, start+7 00:00)` in the daemon's time zone: the same days the

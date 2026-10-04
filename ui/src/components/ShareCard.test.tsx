@@ -5,10 +5,18 @@
  * all.
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { cardFilename, collectCardData, drawShareCard, PERIOD_LABEL } from './ShareCard'
 import { ShareCard } from './Share'
 import type { History } from '@/lib/api'
+import { resetShareCache } from '@/lib/sharecache'
+
+// The dialog keeps the last figures per period, in memory and in
+// localStorage; every test starts from a dialog that has never drawn.
+beforeEach(() => {
+  resetShareCache()
+  try { localStorage.clear() } catch { /* jsdom always has it */ }
+})
 
 const data = vi.hoisted(() => ({ value: undefined as unknown }))
 const drawn = vi.hoisted(() => ({ text: [] as string[] }))
@@ -39,6 +47,16 @@ vi.mock('@/lib/api', async (orig) => {
       // draw a month's breakdown under a week's heading without any test
       // noticing: every range returned the same object. The model ids come
       // from the fixture, so a test that sets one still sees it.
+      // The Story card's figures: one per period, so a card for the wrong
+      // period shows in its headline.
+      weekFor: async (period: string) => ({
+        period, start: '2026-10-04', end: '2026-10-04', partial: true, from_ms: 0, to_ms: 0,
+        days: [{ day: '2026-10-04', prs_opened: 3, cost_usd: 12, active: true }],
+        sessions: 2, active_days: 1, turns: 40, cost_usd: 12, models: [],
+        prs_opened: 3, prs_merged: period === 'today' ? 2 : 5, merges_unresolved: 0, commits: 4, files_edited: 3,
+        lines_added: 100, lines_removed: 0, ci_wait_ms: 0, tool_ms: 0,
+        agents: [{ agent: 'claude', subagent: false, turns: 40, cost_usd: 12, sessions: 2 }], estimates: [],
+      }),
       summary: async (range: string) => ({
         ...summary,
         models: summary.models.map((m) => ({ ...m, cost_usd: RANGE_COST[range] ?? m.cost_usd })),
@@ -230,21 +248,23 @@ describe('the share button', () => {
  */
 describe('the share dialog', () => {
   it('starts one draw however fast the button is pressed', async () => {
+    stubCanvas()
     data.value = history()
     calls.n = 0
     render(<ShareCard />)
-    fireEvent.click(await screen.findByRole('button', { name: /share these numbers/i }))
+    const open = await screen.findByRole('button', { name: /share these numbers/i })
     // The mounted button itself fetches history once; count only from here.
     const before = calls.n
+    fireEvent.click(open)
     const save = await screen.findByRole('button', { name: /save the image/i })
     fireEvent.click(save)
     fireEvent.click(save)
     fireEvent.click(save)
-    await waitFor(() => expect(calls.n).toBeGreaterThan(before))
-    // One press = one build(), and build() makes exactly two history calls
-    // (the card's own collection plus the caption's totals). Three presses
-    // through an unguarded button would be six.
-    expect(calls.n - before).toBe(2)
+    await screen.findByText(/saved to your downloads/i)
+    // The preview's reading and the save share one round of requests: the
+    // save waits for the reading already in flight rather than starting its
+    // own, and the guarded button starts one save, not three.
+    expect(calls.n - before).toBe(1)
   })
 })
 
@@ -485,5 +505,23 @@ describe('a draw that cannot finish', () => {
     } finally {
       proto.getContext = orig
     }
+  })
+})
+
+describe('the story card', () => {
+  it('draws the Week card for the chosen period, in its words, and remembers the style', async () => {
+    stubCanvas()
+    data.value = history()
+    render(<ShareCard />)
+    fireEvent.click(await screen.findByRole('button', { name: /share these numbers/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /^story$/i }))
+    await screen.findByText(/this week\./)
+    expect(document.body.textContent).toContain('My agents shipped 5 PRs this week.')
+    fireEvent.click(screen.getByRole('button', { name: /^today$/i }))
+    await waitFor(() => expect(document.body.textContent).toContain('My agents shipped 2 PRs today.'))
+    expect(localStorage.getItem('caprock-share-style')).toBe('story')
+    // Landscape and portrait, as on the Week screen.
+    fireEvent.click(screen.getByRole('button', { name: /^portrait$/i }))
+    expect(screen.getByText(/1080×1350 PNG/)).toBeTruthy()
   })
 })

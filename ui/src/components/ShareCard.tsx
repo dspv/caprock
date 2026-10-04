@@ -295,12 +295,15 @@ export function cardFilename(d = new Date()): string {
  * and $5,473 of Opus against $1,936. The heading named one stretch and the
  * chart drew another.
  */
-export async function collectCardData(period: SharePeriod = 'all'): Promise<CardData> {
+export async function collectCardData(period: SharePeriod = 'all', onStep?: (step: SharePeriod) => void): Promise<CardData> {
+  // Each range reports when it lands, so the dialog can tick it off rather
+  // than show one undifferentiated wait while the slowest of four answers.
+  const step = <T,>(p: Promise<T>, k: SharePeriod) => p.then((v) => { onStep?.(k); return v })
   const [today, week, month, hist] = await Promise.all([
-    api.summary('today'),
-    api.summary('7d'),
-    api.summary('30d'),
-    api.history('all'),
+    step(api.summary('today'), 'today'),
+    step(api.summary('7d'), '7d'),
+    step(api.summary('30d'), '30d'),
+    step(api.history('all'), 'all'),
   ])
   // The chosen period's own summary. 'all' has no summary range of its own —
   // history carries the totals but not the per-model split — so it borrows the

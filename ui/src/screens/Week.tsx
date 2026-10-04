@@ -9,13 +9,14 @@
  * Weeks are seven local days, the same days the Cost screen's 7d range uses;
  * the default ends today, and the arrows step a week at a time.
  */
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { addDays, rangeLabel, weekWord } from '@/lib/week'
 import { Empty, Panel, Skeleton } from '@/components/ui'
 import { CARD_SIZE, WeekCard, type CardLayout } from '@/components/WeekCard'
 import { renderCardPNG } from '@/lib/cardimage'
+import { Scaled } from '@/components/Scaled'
 
 const LAYOUT_KEY = 'caprock-week-layout'
 
@@ -168,35 +169,6 @@ export function WeekScreen({ start: initial }: { start?: string } = {}) {
         agents ran on this machine, in a call that did not fail — Caprock does not ask GitHub. ≈ marks estimates: lines count a whole file on every Write, and
         cost per PR divides all of the week's spend by the merges.
       </p>
-    </div>
-  )
-}
-
-/**
- * Shows a fixed-size card at whatever width the screen has, without changing
- * the card itself: the export reads the unscaled node, so the PNG is always
- * the full 1200 or 1080 pixels wide.
- */
-function Scaled({ w, h, max, children }: { w: number; h: number; max: number; children: React.ReactNode }) {
-  const box = useRef<HTMLDivElement>(null)
-  const [width, setWidth] = useState(0)
-  useLayoutEffect(() => {
-    const el = box.current
-    if (!el) return
-    const measure = () => setWidth(el.clientWidth)
-    measure()
-    if (typeof ResizeObserver === 'undefined') return
-    const ro = new ResizeObserver(measure)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-  const shown = Math.min(width || max, max)
-  const scale = shown / w
-  return (
-    <div ref={box} className="w-full flex justify-center">
-      <div style={{ width: shown, height: h * scale, overflow: 'hidden', borderRadius: 12 }} className="shadow-[var(--shadow-panel)]">
-        <div style={{ width: w, height: h, transform: `scale(${scale})`, transformOrigin: 'top left' }}>{children}</div>
-      </div>
     </div>
   )
 }

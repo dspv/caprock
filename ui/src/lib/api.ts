@@ -499,6 +499,8 @@ export interface WeekLoop {
   tax_priced_calls?: number
 }
 export interface Week {
+  /** The named window asked for (`today`, `7d`, `30d`, `all`); absent for a week picked by its first day. */
+  period?: string
   start: string
   end: string
   partial: boolean
@@ -845,6 +847,8 @@ export const api = {
   /** `start` is the first local day (YYYY-MM-DD); omitted, the seven days ending today. */
   glance: () => get<Glance>('/v1/glance'),
   week: (start?: string) => get<Week>(`/v1/week${start ? `?start=${start}` : ''}`),
+  /** The same card for a named window: today, the last 7 or 30 days, or all time. */
+  weekFor: (period: 'today' | '7d' | '30d' | 'all') => get<Week>(`/v1/week?period=${period}`),
   /** Turns the task runner on over the running daemon — no restart. Empty
    *  fields mean the daemon's own suggestion (see status.suggested_hive). */
   enableHive: (hive?: string, repo?: string) => post<{ hive: string; repo: string }>('/v1/hive', { hive: hive ?? '', repo: repo ?? '' }),

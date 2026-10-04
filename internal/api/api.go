@@ -256,10 +256,12 @@ type Server struct {
 	// /v1/stats/summary. See answercache.go.
 	hist *answerCache
 	summ *answerCache
-	// week and glance hold the Week screen's and Now's at-a-glance answers,
-	// each with its own freshness (weekTTL, glanceTTL).
-	week   *answerCache
-	glance *answerCache
+	// week, weekLong and glance hold the Week and Share answers (short and
+	// long periods) and Now's at-a-glance, each with its own freshness
+	// (weekTTL, weekLongTTL, glanceTTL).
+	week     *answerCache
+	weekLong *answerCache
+	glance   *answerCache
 	// repos answers "which repository, on which host" per directory.
 	repos *repoCache
 }
@@ -282,7 +284,7 @@ func New(d Deps) *Server {
 		}
 	}
 	s := &Server{d: d, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now), repos: newRepoCache(),
-		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now)}
+		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now)}
 	// Seeded from Deps so `caprock up --lan` behaves exactly as before; the
 	// dashboard's switch goes through SetLAN.
 	s.pairing, s.lanURL = d.Pairing, d.LANURL
