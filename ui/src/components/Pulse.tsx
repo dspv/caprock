@@ -18,8 +18,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type Event, type SessionSummary } from '@/lib/api'
 import { live } from '@/lib/live'
 import { buildPulse, costTier, medianCost, trackState, windowCost, windowEvents, PULSE_MINUTES, type Pulse as PulseModel } from '@/lib/pulse'
-import { fmtAgo, fmtModel, fmtUSD, shortId } from '@/lib/format'
-import { AgentCharacter, characterFor } from '@/components/Characters'
+import { fmtAgo, fmtModel, fmtTokens, fmtUSD, shortId } from '@/lib/format'
+import { AgentCharacter, agentName, characterFor } from '@/components/Characters'
+import { ProjectTerminal } from '@/components/ProjectTerminal'
+import { RepoButtons } from '@/components/RepoLinks'
+import { useApi } from '@/lib/useApi'
 import { Panel } from '@/components/ui'
 import { href, navigate } from '@/lib/router'
 import { agentMark } from '@/components/Projects'
@@ -30,6 +33,17 @@ const MAX_TRACKS = 6
 /** Events pulled per session to seed a track. At ~33 events/minute in a busy
  * session, an hour needs about two thousand. */
 const SEED_LIMIT = 2000
+
+const OPEN_KEY = 'caprock-pulse-open'
+
+function readOpen(): Set<string> {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(OPEN_KEY) ?? '[]')
+    return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+  } catch {
+    return new Set()
+  }
+}
 
 export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now: number }) {
   // Newest first — the tracks people care about are the ones running. Ended
@@ -93,6 +107,17 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
     [tracked, events, minute],
   )
 
+  // Which rows are open, remembered in this browser by session id.
+  const [open, setOpen] = useState<Set<string>>(readOpen)
+  const toggle = (id: string) =>
+    setOpen((cur) => {
+      const next = new Set(cur)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      try { localStorage.setItem(OPEN_KEY, JSON.stringify([...next].slice(-20))) } catch { /* a convenience */ }
+      return next
+    })
+
   if (tracked.length === 0) return null
 
   return (
@@ -108,7 +133,8 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
           </div>
         ) : (
           rows.map(({ s, pulse }) => (
-            <Track key={s.session_id} s={s} pulse={pulse} minute={minute} showId={rows.length > 1} />
+            <Track key={s.session_id} s={s} pulse={pulse} minute={minute} showId={rows.length > 1}
+              all={sessions} open={open.has(s.session_id)} onToggle={() => toggle(s.session_id)} />
           ))
         )}
       </div>
@@ -169,78 +195,168 @@ function Track({
   pulse,
   minute,
   showId,
+  all,
+  open,
+  onToggle,
 }: {
   s: SessionSummary
   pulse: PulseModel
   minute: number
   /** Whether to name which session this is. See the header below. */
   showId: boolean
+  /** Every session the screen knows, for the project's other live sessions. */
+  all: SessionSummary[]
+  open: boolean
+  onToggle: () => void
 }) {
   // Health comes from the daemon's narrator, which knows "your turn" from the
   // agent.stop event. The bars cannot: they describe the hour, not this moment.
   const state = trackState(pulse, s.activity?.health)
-  const stateCls =
-    state.kind === 'repeat' || state.kind === 'waiting'
-      ? 'text-warn'
-      : state.kind === 'error'
-        ? 'text-danger'
-        : state.kind === 'quiet'
-          ? 'text-fg-faint'
-          : 'text-ok'
 
+  // The row opens in place rather than navigating: the owner wanted to see
+  // what a project's sessions are doing without leaving Now. The session page
+  // is one click further, from inside. A click on the chart itself still
+  // opens the session at that minute (PulseCanvas stops the event).
   return (
-    <a
-      href={href({ name: 'session', id: s.session_id })}
-      className="grid grid-cols-[132px_1fr_72px_auto] sm:grid-cols-[132px_1fr_92px_minmax(104px,auto)] items-center gap-3 px-3 py-2 border-t border-border first:border-t-0 hover:bg-panel-2 no-underline text-fg"
-    >
-      {/* Working all day in one repository used to draw six rows all labelled
-        * "caprock", told apart only by a phrase like "was responding" that
-        * three of them shared. The branch and the session id are what actually
-        * differ, so they go where the eye already is. Only when there is more
-        * than one track: a lone row needs no disambiguation.
-        *
-        * The project never shrinks and the branch is what gives way, because
-        * the first attempt had it backwards: `shrink-0` on the branch let a
-        * long one (`fix/session-end-and-pulse-tracks`) squeeze the project to
-        * nothing, so the row lost the name it is actually about and read as a
-        * branch floating with no repository. A label that can erase the
-        * primary identity is worse than no label. */}
-      <div className="min-w-0">
-        <div className="text-[13px] font-medium flex items-baseline gap-1.5 min-w-0">
-          <span className="shrink-0">{s.project || 'unknown project'}</span>
-          {s.git_branch && (
-            <span className="min-w-0 truncate text-[10px] text-fg-faint mono" title={s.git_branch}>
-              {s.git_branch}
-            </span>
-          )}
-          {agentMark(s.agent) && (
-            <span className="shrink-0 text-[9px] uppercase tracking-[0.08em] text-fg-faint border border-border px-1 rounded-sm">
-              {agentMark(s.agent)}
-            </span>
-          )}
-        </div>
-        <div className="text-[10px] text-fg-faint mono truncate">
-          {showId && <span title={`session ${s.session_id} · started ${fmtAgo(s.started_at)} ago`}>{shortId(s.session_id)} · </span>}
-          {s.activity?.phrase ?? ''}
-        </div>
-      </div>
-      <PulseCanvas pulse={pulse} now={minute * 60_000} sessionID={s.session_id} />
-      {/* The window's cost, not the session's. The bars describe an hour; a
-        * lifetime figure beside them invited the reader to add a number to a
-        * picture it does not belong to. */}
+    <div className="border-t border-border first:border-t-0">
       <div
-        className="num text-[13px] font-semibold text-right"
-        title={`${fmtUSD(s.stats?.cost_usd)} for the whole session`}
+        onClick={onToggle}
+        className="grid cursor-pointer grid-cols-[minmax(0,1fr)_auto_auto] sm:grid-cols-[150px_1fr_92px_minmax(150px,auto)] items-center gap-x-3 gap-y-1.5 px-3 py-2 hover:bg-panel-2 text-fg"
       >
-        {fmtUSD(windowCost(pulse))}
-      </div>
-      <div className="min-w-0 text-right">
-        <div className={`text-[11px] ${stateCls}`} title={pulse.repeatSample}>
-          {state.label}
+        {/* Working all day in one repository used to draw six rows all labelled
+          * "caprock", told apart only by a phrase like "was responding" that
+          * three of them shared. The branch and the session id are what actually
+          * differ, so they go where the eye already is. Only when there is more
+          * than one track: a lone row needs no disambiguation.
+          *
+          * The project never shrinks and the branch is what gives way, because
+          * the first attempt had it backwards: `shrink-0` on the branch let a
+          * long one (`fix/session-end-and-pulse-tracks`) squeeze the project to
+          * nothing, so the row lost the name it is actually about and read as a
+          * branch floating with no repository. A label that can erase the
+          * primary identity is worse than no label. */}
+        <div className="min-w-0">
+          <div className="text-[13px] font-medium flex items-baseline gap-1.5 min-w-0">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onToggle() }}
+              aria-expanded={open}
+              aria-label={`${open ? 'Hide' : 'Show'} what is running in ${s.project || 'this project'}`}
+              className="shrink-0 -ml-1 w-4 text-center text-fg-faint hover:text-fg"
+            >
+              <span aria-hidden className={`inline-block transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
+            </button>
+            <span className="shrink-0">{s.project || 'unknown project'}</span>
+            {s.git_branch && (
+              <span className="min-w-0 truncate text-[10px] text-fg-faint mono" title={s.git_branch}>
+                {s.git_branch}
+              </span>
+            )}
+            {agentMark(s.agent) && (
+              <span className="shrink-0 text-[9px] uppercase tracking-[0.08em] text-fg-faint border border-border px-1 rounded-sm">
+                {agentMark(s.agent)}
+              </span>
+            )}
+          </div>
+          <div className="text-[10px] text-fg-faint mono truncate pl-3.5">
+            {showId && <span title={`session ${s.session_id} · started ${fmtAgo(s.started_at)} ago`}>{shortId(s.session_id)} · </span>}
+            {s.activity?.phrase ?? ''}
+          </div>
         </div>
-        <WorkingNow s={s} />
+        {/* At phone width the chart takes its own line under the row: squeezed
+          * between the name and the agents it was thirty pixels of noise. */}
+        <div className="col-span-3 order-last sm:col-span-1 sm:order-none min-w-0">
+          <PulseCanvas pulse={pulse} now={minute * 60_000} sessionID={s.session_id} />
+        </div>
+        {/* The window's cost, not the session's. The bars describe an hour; a
+          * lifetime figure beside them invited the reader to add a number to a
+          * picture it does not belong to. */}
+        <div
+          className="num text-[13px] font-semibold text-right"
+          title={`${fmtUSD(s.stats?.cost_usd)} for the whole session`}
+        >
+          {fmtUSD(windowCost(pulse))}
+        </div>
+        <WorkingNow s={s} state={state} repeatSample={pulse.repeatSample} />
       </div>
-    </a>
+      {open && <ProjectNow s={s} all={all} now={minute * 60_000} />}
+    </div>
+  )
+}
+
+/** A track state as a small coloured pill: what the session is doing now. */
+function StatePill({ state, title }: { state: { kind: string; label: string }; title?: string }) {
+  const tone =
+    state.kind === 'repeat' || state.kind === 'waiting'
+      ? 'border-warn/50 bg-warn/15 text-warn'
+      : state.kind === 'error'
+        ? 'border-danger/50 bg-danger/15 text-danger'
+        : state.kind === 'quiet'
+          ? 'border-border-strong bg-panel-2 text-fg-muted'
+          : 'border-ok/50 bg-ok/15 text-ok'
+  return (
+    <span title={title} className={`inline-flex items-center rounded-full border px-2 py-[1px] text-[11px] font-medium leading-[1.35] whitespace-nowrap ${tone}`}>
+      {state.label}
+    </span>
+  )
+}
+
+/**
+ * A project's row, opened: every live session in it with who, which model,
+ * what state and what it is doing; what the project has cost today; and the
+ * two ways in — a terminal in the folder, or the session's own page.
+ */
+function ProjectNow({ s, all, now }: { s: SessionSummary; all: SessionSummary[]; now: number }) {
+  const today = useApi(() => api.summary('today'), [], { intervalMs: 30000 })
+  // The repository link and the session's PRs live on the session's detail,
+  // read once when the row opens (the same buttons as the session page).
+  const detail = useApi(() => api.session(s.session_id), [s.session_id], { live: false })
+  const live = all
+    .filter((x) => x.project === s.project && x.status !== 'ended')
+    .sort((a, b) => b.last_event_at - a.last_event_at)
+  // Today's figures for this project, matched on the directory the Projects
+  // panel keys it on; the session's own folder is inside it.
+  const proj = today.data?.projects?.find((p) => (p.dir ? s.cwd === p.dir || s.cwd.startsWith(p.dir + '/') || s.cwd.startsWith(p.dir + '\\') : p.project === s.project))
+  const dir = proj?.dir || s.cwd
+  return (
+    <div className="bg-panel-2/40 border-t border-border px-3 py-2.5 pl-7 text-[12px]">
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-fg-muted">
+        <span>
+          <span className="text-fg-faint">Today in {s.project || 'this project'}:</span>{' '}
+          {proj ? (
+            <span className="num text-fg">{fmtUSD(proj.cost_usd)} · {fmtTokens(proj.tokens)} tokens · {proj.sessions} session{proj.sessions === 1 ? '' : 's'}</span>
+          ) : today.data ? <span>nothing yet</span> : <span className="text-fg-faint">…</span>}
+        </span>
+        <span className="text-fg-faint">{live.length} live session{live.length === 1 ? '' : 's'}</span>
+      </div>
+      <ul className="mt-2 grid gap-1.5">
+        {live.map((x) => {
+          const st = trackState({ bars: [], repeats: 0 } as unknown as PulseModel, x.activity?.health)
+          const model = x.model_display || (x.model ? fmtModel(x.model) : '')
+          const doing = x.activity?.phrase || x.description || x.title || ''
+          return (
+            <li key={x.session_id} className="flex flex-wrap items-center gap-x-2.5 gap-y-1 min-w-0">
+              <AgentCharacter who={characterFor(x.agent ?? 'claude')} size={22} />
+              <span className="font-medium text-fg">{agentName(x.agent ?? 'claude')}</span>
+              {model && <span className="mono text-[11.5px] text-fg">{model}</span>}
+              <StatePill state={st} />
+              {(x.live_subagents ?? 0) > 0 && <span className="text-fg-muted">+{x.live_subagents} subagent{x.live_subagents === 1 ? '' : 's'}</span>}
+              <span className="min-w-0 flex-1 truncate text-fg-muted" title={doing}>{doing}</span>
+              <span className="text-[11px] text-fg-faint whitespace-nowrap">{fmtAgo(x.last_event_at, now)} ago</span>
+              <a href={href({ name: 'session', id: x.session_id })} className="link text-[11.5px] whitespace-nowrap">open</a>
+            </li>
+          )
+        })}
+      </ul>
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+        {dir ? <ProjectTerminal dir={dir} label={s.project || dir} sessions={live} /> : null}
+        <RepoButtons repo={detail.data?.repo} prs={detail.data?.prs} cwd={s.cwd} />
+        <a href={href({ name: 'session', id: s.session_id })}
+          className="inline-flex items-center rounded-sm border border-border px-3 py-1.5 text-[12.5px] text-fg-muted no-underline hover:text-fg hover:border-border-strong">
+          Open session
+        </a>
+      </div>
+    </div>
   )
 }
 
@@ -411,29 +527,33 @@ function PulseCanvas({ pulse, now, sessionID }: { pulse: PulseModel; now: number
 }
 
 /**
- * Who is working in the session now and on what model: the session's
- * character, a crowd beside it with "×N" when subagents are live, and the
- * model's display name. Both are measured — the model is the main thread's
- * latest, live subagents are those heard from and not yet stopped — and a
- * session that is not working shows its last model dimmed. At phone width the
- * model gives way and the icon and count stay.
+ * Who is working in the session now, on what model, in what state: a status
+ * pill, the session's character with a crowd beside it when subagents are
+ * live, "N agents" in words, and the model's display name. Both are measured —
+ * the model is the main thread's latest, live subagents are those heard from
+ * and not yet stopped. The owner could not read the first version (15 px icons,
+ * a faint "×4", a grey model), so everything here is at reading size. At phone
+ * width the model gives way; the pill, the icons and the count stay.
  */
-export function WorkingNow({ s }: { s: SessionSummary }) {
+export function WorkingNow({ s, state, repeatSample }: { s: SessionSummary; state: { kind: string; label: string }; repeatSample?: string }) {
   const subs = s.live_subagents ?? 0
   const working = s.activity?.health === 'working' || s.activity?.health === 'looping'
   const model = s.model_display || (s.model ? fmtModel(s.model) : '')
-  if (!model && subs === 0) return null
   const lead = characterFor(s.agent ?? 'claude')
+  const agents = subs + 1
   const title = `${model ? `${model}${working ? '' : ' (last turn)'}` : 'model unknown'} · ${subs > 0 ? `main thread and ${subs} live subagent${subs === 1 ? '' : 's'}` : 'main thread only'}`
   return (
-    <div className="flex items-center justify-end gap-1 text-[10px] leading-none mt-0.5" title={title}>
-      <span className="inline-flex items-center -space-x-1.5" aria-hidden>
-        <AgentCharacter who={lead} size={15} />
-        {subs > 0 && <AgentCharacter who="crowd" size={15} />}
-      </span>
-      {subs > 0 && <span className="num text-fg-muted">×{subs + 1}</span>}
-      {model && <span className={`hidden sm:inline mono truncate max-w-[88px] ${working ? 'text-fg-muted' : 'text-fg-faint opacity-70'}`}>{model}</span>}
-      <span className="sr-only">{title}</span>
+    <div className="min-w-0 flex flex-col items-end gap-1">
+      <StatePill state={state} title={repeatSample} />
+      <div className="flex items-center justify-end gap-1.5 text-[11.5px] leading-none" title={title}>
+        <span className="inline-flex items-center -space-x-2" aria-hidden>
+          <AgentCharacter who={lead} size={26} />
+          {subs > 0 && <AgentCharacter who="crowd" size={26} />}
+        </span>
+        <span className="num text-fg whitespace-nowrap">{agents} agent{agents === 1 ? '' : 's'}</span>
+        {model && <span className="hidden sm:inline mono truncate max-w-[96px] text-fg">{model}</span>}
+        <span className="sr-only">{title}</span>
+      </div>
     </div>
   )
 }

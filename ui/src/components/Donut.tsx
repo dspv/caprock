@@ -136,8 +136,9 @@ export function Legend({ segments, total }: { segments: Segment[]; total: number
 
 /**
  * A single-value ring: a share of a whole, or a gauge of a limit. `marker`
- * draws a dashed arc from the value onward — the plan-limit forecast uses it
- * to show "at this pace it reaches the end before the reset".
+ * draws a thin arc on the outer edge from the value onward — the plan-limit
+ * forecast uses it to show "at this pace it reaches the end before the reset"
+ * without painting the empty track.
  */
 export function Ring({
   value,
@@ -165,8 +166,10 @@ export function Ring({
     <span className="relative inline-flex items-center justify-center shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} viewBox={`${-size / 2} ${-size / 2} ${size} ${size}`} role={ariaLabel ? 'img' : undefined} aria-label={ariaLabel} aria-hidden={ariaLabel ? undefined : true}>
         <circle r={r} fill="none" style={{ stroke: 'var(--color-panel-2)' }} strokeWidth={width} />
-        {marker && marker.to > v && <Arc r={r} from={v} to={Math.min(1, marker.to)} color={marker.color} width={width} dashed />}
         {v > 0 && <Arc r={r} from={0} to={v} color={dim ? 'var(--color-fg-faint)' : color} width={width} />}
+        {/* A projection, not a reading: a hairline on the outer edge, so the
+          * track stays an empty neutral and only the filled arc is "used". */}
+        {marker && marker.to > v && <Arc r={size / 2 - 1.5} from={v} to={Math.min(1, marker.to)} color={marker.color} width={2} />}
       </svg>
       {children && <span className="absolute inset-0 flex flex-col items-center justify-center text-center leading-none">{children}</span>}
     </span>

@@ -386,6 +386,8 @@ export interface RateWindow {
   used_percentage: number
   resets_at: number
   forecast?: string
+  /** When the same pace reaches 100% (unix ms); set exactly when `forecast` is. */
+  limit_at?: number
   /** When the agent wrote the figure (unix ms). Set for Codex, whose windows
    *  come from a transcript that may be hours old. */
   observed_at?: number
@@ -589,6 +591,9 @@ export interface ToolDrill {
   teaser?: DrillHint
 }
 
+/** Which Caprock hook events are registered in Claude Code's settings file. */
+export interface HooksStatus { settings_path: string; shim_path: string; installed: string[] | null; missing: string[] | null; shim_exists: boolean }
+
 export interface History { range: string; totals: HistoryTotals; tools: ToolCount[]; daily: DailyStat[]; savings: Savings; summary: Summary; tax?: ContextTax }
 
 export interface Status {
@@ -612,7 +617,7 @@ export interface Status {
   data_dir: string
   pricing: { version: string; source: string; fetched_at: string; user_override: boolean; models: number }
   ingest?: { files_known: number; lines_parsed: number; lines_malformed: number; lines_skipped: number; events_stored: number; events_deduped: number; backfill_done: boolean }
-  hooks?: { settings_path: string; shim_path: string; installed: string[] | null; missing: string[] | null; shim_exists: boolean }
+  hooks?: HooksStatus
   /** The terminal error that stopped transcript ingest, when one happened.
    *  While this is set nothing new is being captured, however healthy the rest
    *  of the status looks. */
@@ -893,6 +898,8 @@ export const api = {
    *  for Monday. The failure mode of this feature is silence, which is
    *  indistinguishable from a quiet week. */
   testReport: () => post<{ sent: string }>('/v1/report/test', {}),
+  /** Runs `caprock hooks install` in the daemon; answers with what is registered after. */
+  installHooks: () => post<{ hooks: HooksStatus; backup?: string }>('/v1/hooks/install', {}),
   pairState: () => get<PairState>('/v1/pair/state'),
   /** Exchange a code for a token. The one call a device makes before it is trusted. */
   pairRedeem: (code: string, name: string) =>

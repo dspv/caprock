@@ -136,22 +136,34 @@ export function AtAGlancePanel() {
               ariaLabel={`Tool calls by tool: ${c.tools.map((s) => `${s.label} ${s.display}, ${sharePct(s.value, c.toolTotal)}`).join('; ')}`} />
           </div>
           {rows.length > 0 && (
-            <div className="flex flex-wrap gap-2 border-t border-border px-3 py-3">
-              {rows.map((r) => (
-                <div key={r.key} className="flex items-center gap-2.5 rounded-xl border border-border-strong bg-panel-2 py-1.5 pl-1.5 pr-3 min-w-0">
-                  <AgentCharacter who={r.who} size={36} />
-                  <div className="min-w-0">
-                    <div className="text-[12px] font-semibold leading-tight truncate">{r.name}</div>
-                    <div className="num text-[11px] text-fg-muted leading-tight whitespace-nowrap">
-                      {r.turns.toLocaleString('en-US')} turns · {fmtUSD(r.cost)}
+            <div className="flex flex-wrap gap-2.5 border-t border-border px-3 py-3">
+              {rows.map((r) => {
+                // The ring is this agent's share of all-time spend across
+                // every agent. The owner read "81%" and could not tell of
+                // what, so it says so beside the ring and in the tooltip.
+                const share = sharePct(r.cost, agentTotal)
+                const tip = `${share} of all-time spend across every agent — ${fmtUSD(r.cost)} of ${fmtUSD(agentTotal)}`
+                return (
+                  <div key={r.key} title={tip} className="flex items-center gap-3 rounded-xl border border-border-strong bg-panel py-2 pl-2 pr-3.5 min-w-0">
+                    <AgentCharacter who={r.who} size={48} />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[14px] font-semibold leading-tight truncate">{r.name}</div>
+                      {/* Two pieces that wrap as wholes: on a phone the cost
+                        * drops under the turns instead of running into the ring. */}
+                      <div className="num text-[12.5px] text-fg-muted leading-snug flex flex-wrap gap-x-1.5">
+                        <span className="whitespace-nowrap">{r.turns.toLocaleString('en-US')} turns ·</span>
+                        <span className="whitespace-nowrap text-fg">{fmtUSD(r.cost)}</span>
+                      </div>
                     </div>
+                    <span className="flex items-center gap-1.5">
+                      <Ring value={agentTotal > 0 ? r.cost / agentTotal : 0} size={40} width={5} ariaLabel={tip}>
+                        <span className="num text-[10.5px] font-medium text-fg">{share}</span>
+                      </Ring>
+                      <span aria-hidden className="text-[10px] leading-[1.15] text-fg-faint">of<br />spend</span>
+                    </span>
                   </div>
-                  <Ring value={agentTotal > 0 ? r.cost / agentTotal : 0} size={30} width={4}
-                    ariaLabel={`${sharePct(r.cost, agentTotal)} of the cost`}>
-                    <span className="num text-[8.5px] text-fg-muted">{sharePct(r.cost, agentTotal)}</span>
-                  </Ring>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
           {c.bill.length > 0 && (

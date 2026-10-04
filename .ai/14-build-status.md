@@ -72,6 +72,17 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-04 (night) — Feedback round on Now
+
+- Owner feedback on the preview, all on Now: bigger agent tiles with the ring
+  labelled "of spend"; Live pulse rows open in place (today's cost and
+  tokens, live sessions with state, terminal / Open repo / Open session),
+  remembered per browser; the pulse's agent indicator at reading size with a
+  state pill; plan-limit rings that show only what is used, a forecast as
+  one sentence from the new `limit_at`, and a one-line explainer; the hooks
+  banner installs hooks itself (`POST /v1/hooks/install`, the CLI's code
+  path), names the settings file and can be dismissed.
+
 ### 2026-10-04 (evening) — The terminal takes the keyboard first; repo links; kept figures
 
 The owner reported that opening a session's terminal froze the browser and

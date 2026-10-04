@@ -13,7 +13,7 @@
  * exactly the judgement that produced the bug.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { PulsePanel, TIER_TOKEN, IDLE_TOKEN } from './Pulse'
 import type { Event, SessionSummary } from '@/lib/api'
 
@@ -24,7 +24,12 @@ vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
   return {
     ...actual,
-    api: { ...actual.api, recentEvents: async (id: string) => seeded.value[id] ?? [] },
+    api: {
+      ...actual.api,
+      recentEvents: async (id: string) => seeded.value[id] ?? [],
+      session: async () => ({ repo: { url: 'https://github.com/o/caprock', root: '/r/caprock' } }),
+      summary: async () => ({ projects: [{ project: 'caprock', dir: '/r/caprock', tokens: 1_200_000, cost_usd: 42.5, sessions: 3 }] }),
+    },
   }
 })
 
@@ -245,6 +250,32 @@ describe('pulse track selection', () => {
     const name = await waitFor(() => screen.getByText('caprock'))
     expect(name.className).not.toMatch(/\btruncate\b/)
     expect(screen.getByText('fix/session-end-and-pulse-tracks').className).toMatch(/\btruncate\b/)
+  })
+})
+
+describe('a pulse row, opened', () => {
+  const NOW = Date.parse('2026-08-21T12:00:00Z')
+
+  it('expands in place into the project now, and remembers it', async () => {
+    localStorage.clear()
+    seeded.value = { a: [turn('a', NOW - 60_000)] }
+    const sessions = [
+      session({ session_id: 'a', project: 'caprock', cwd: '/r/caprock', live_subagents: 3, model_display: 'Opus 5.5', activity: { phrase: 'running go test', health: 'working', at: '' } }),
+      session({ session_id: 'b', project: 'caprock', cwd: '/r/caprock/ui', agent: 'codex', activity: { phrase: 'editing Pulse.tsx', health: 'idle', at: '' } }),
+    ]
+    const { unmount } = render(<PulsePanel sessions={sessions} now={NOW} />)
+    await waitFor(() => expect(screen.getByText('caprock')).toBeInTheDocument())
+    // Who is working, at reading size: words, not a faint ×4.
+    expect(screen.getByText('4 agents')).toBeInTheDocument()
+    expect(screen.queryByText('Open session')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /what is running in caprock/i }))
+    expect(await screen.findByText(/\$42\.50 · 1\.20M tokens · 3 sessions/)).toBeInTheDocument()
+    expect(screen.getByText('editing Pulse.tsx')).toBeInTheDocument()
+    expect(screen.getByText('Open session')).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: 'Open repo ↗' })).toBeInTheDocument()
+    unmount()
+    render(<PulsePanel sessions={sessions} now={NOW} />)
+    await waitFor(() => expect(screen.getByText('Open session')).toBeInTheDocument())
   })
 })
 

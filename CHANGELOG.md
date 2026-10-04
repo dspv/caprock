@@ -9,6 +9,31 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **Install hooks from the dashboard.** The "Hooks not installed" banner on
+  Now has an **Install hooks** button that does what `caprock hooks install`
+  does and then says what changed: sessions started from now on report live;
+  ones already running keep their hooks until restarted. It names the
+  settings file it checked, and it can be dismissed until the missing set
+  changes.
+- **Open a Live pulse row in place.** Clicking a project's row shows today's
+  cost and tokens for it, every live session in it with agent, model, state
+  and what it is doing, and the terminal, Open repo and Open session buttons.
+  Open rows are remembered.
+
+### Changed
+
+- **Plan limits read at a glance.** The ring's filled arc is what is used,
+  coloured by level, on an empty neutral track; a forecast is one plain
+  sentence — "At this pace you'll hit 100% around 19:10 — about 1 h before it
+  resets." — amber unless it is under half an hour away, not a red dashed
+  ring. The explainer is one line, with the details behind "more".
+- **Agents are easier to read.** At a glance's agent tiles are bigger and
+  their ring says "of spend"; the Live pulse row shows its state as a
+  coloured pill and its agents as "4 agents" with the model at full
+  contrast.
+
 ## [0.70.0] - 2026-10-04
 
 ### Added
