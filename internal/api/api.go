@@ -239,8 +239,8 @@ type AgentController interface {
 	Resize(sessionID string, cols, rows int) error
 	Term(sessionID string) (snapshot []byte, sub <-chan []byte, cancel func(), ok bool)
 	// Holds reports whether this daemon has the session's terminal. A session
-	// Caprock started before its last restart does not: the terminal went with
-	// the process that held it.
+	// Caprock started under an older release, or whose pty-host died, does
+	// not (ADR-033).
 	Holds(sessionID string) bool
 	Write(sessionID string, data []byte) error
 }
@@ -463,7 +463,16 @@ type SessionSummary struct {
 	// heard from within the last 30 minutes and not yet stopped. Zero for an
 	// ended session. The main thread is not counted.
 	LiveSubagents int `json:"live_subagents,omitempty"`
+	// SurvivesRestart marks a live session Caprock started whose terminal is
+	// held by a pty-host (ADR-033), so restarting or upgrading Caprock leaves
+	// it running. A live owned session without it is in the daemon's own PTY
+	// (the fallback) and ends with the daemon; the upgrade notice counts those.
+	SurvivesRestart bool `json:"survives_restart,omitempty"`
 }
+
+// survivor is the optional half of AgentController that knows which sessions
+// outlive the daemon. Optional so test doubles need not grow a method.
+type survivor interface{ Survives(sessionID string) bool }
 
 // ContextFill is the "context fill %" badge input: last turn's prompt size vs the model window.
 type ContextFill struct {
@@ -517,6 +526,11 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 	sum.Description, sum.DescriptionSource = describe(ctx, q, sess)
 	if sess.Owned && sess.Status != store.StatusEnded && s.d.Agents != nil && !s.d.Agents.Holds(sess.SessionID) {
 		sum.Detached = true
+	}
+	if sess.Owned && sess.Status != store.StatusEnded && !sum.Detached {
+		if sv, ok := s.d.Agents.(survivor); ok && sv.Survives(sess.SessionID) {
+			sum.SurvivesRestart = true
+		}
 	}
 	if sess.Status == store.StatusEnded || sum.Detached {
 		sum.Resume = s.resumeInfo(sess)

@@ -490,6 +490,13 @@ caprock down && caprock up
 lost, and history from before the upgrade stays exactly where it was. Check
 what you ended up on with `caprock status`.
 
+Sessions you started from the dashboard keep running through the restart: each
+one's terminal lives in a small process of its own, and the new daemon picks it
+back up, screen and all. If autostart is installed, run `caprock service
+install` once after upgrading so its file carries the settings that let
+sessions outlive a service restart (`caprock service status` tells you when it
+differs).
+
 Caprock can also tell you when a release is out: turn on release checks from
 the banner on the Now screen, or on the status page. That is the only outbound
 call it makes, it is off until you switch it on, and it sends nothing about

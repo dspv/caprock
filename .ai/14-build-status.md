@@ -72,6 +72,25 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-04 — Sessions Caprock starts survive a Caprock restart
+
+The owner upgraded, Caprock restarted through `launchctl kickstart`, and the
+session he had started from the dashboard was gone — `claude` exited 143, the
+SIGTERM the daemon's own shutdown sent it. He expected to come back to it
+running. Now each owned session runs under a `caprock pty-host` process that
+holds its PTY and scrollback and outlives the daemon; the next daemon
+reattaches it at startup, repaints the terminal from the holder's ring, and
+typing carries on. Pause, kill and resize go through the holder; the session's
+pid is still the agent's. The plist gains `AbandonProcessGroup` and the systemd
+unit `KillMode=process` — existing installs pick them up on `caprock service
+install`. The "terminal went with that run" panel is rewritten for what is left
+(sessions from older releases, a holder that died) with **Continue it here** as
+the primary action. A smoke test runs the real binary with a fake `claude`,
+stops the daemon (SIGTERM, then a hard kill), starts a new one, and types into
+the same session, on all three OSes. Honest limit: a session started by the
+release before this one is in that daemon's PTY, so the upgrade that installs
+this still ends it. See [ADR-033](08-decisions.md#adr-033--an-owned-session-outlives-the-daemon-its-terminal-lives-in-a-pty-host)
+and [03-contracts.md § Terminal holders](03-contracts.md#terminal-holders-caprock-pty-host).
 ### 2026-10-04 (evening) — The terminal takes the keyboard first; repo links; kept figures
 
 The owner reported that opening a session's terminal froze the browser and

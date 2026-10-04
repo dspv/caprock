@@ -26,7 +26,7 @@ How the system is built: the daemon, its two data planes, cross-platform rules, 
 
 Two data planes, mirroring what works in Munder Difflin, but in Go:
 
-- **Terminal plane** — `ptyman` spawns each agent as a `claude` process in a PTY, streams bytes to the UI (xterm.js in browser), accepts stdin writes. Shipped in Control (v0.2.0); see [ADR-006](08-decisions.md#adr-006--pty-backend-conpty-capable-wrapper-behind-our-own-ptyman-interface) for the backend choice.
+- **Terminal plane** — `ptyman` spawns each agent as a `claude` process in a PTY, streams bytes to the UI (xterm.js in browser), accepts stdin writes. Shipped in Control (v0.2.0); see [ADR-006](08-decisions.md#adr-006--pty-backend-conpty-capable-wrapper-behind-our-own-ptyman-interface) for the backend choice. The PTY is not held by the daemon: each owned session runs under its own `caprock pty-host` process, which outlives the daemon, so a restart or an upgrade leaves the session running and the next daemon reattaches it ([ADR-033](08-decisions.md#adr-033--an-owned-session-outlives-the-daemon-its-terminal-lives-in-a-pty-host)).
 - **Event plane** — `hookd` is a local HTTP server; a tiny shim registered in each agent's `.claude/settings.json` POSTs hook payloads (PreToolUse, PostToolUse, Stop, SubagentStop, SessionStart, SessionEnd, PreCompact, …). **This is the source of truth for "what is the agent doing."**
 
 **Why not Electron:** the only thing Electron buys is bundling Chromium. A Go daemon + browser tab gives the same UI with zero ABI pain, one `go build` per platform, and the option of a TUI later. Desktop wrapper (Tauri/Wails) is a packaging decision for later, not an architecture decision now ([ADR-003](08-decisions.md#adr-003--ui-stack-react--vite-embedded-in-the-go-binary-via-goembed)).
@@ -88,6 +88,7 @@ Full detail, including what is not supported, is in
 | `api`      | REST + WebSocket fan-out, serves the embedded UI                  | 0     |
 | `ui`       | React + Vite SPA, `go:embed`-ded                                  | 0     |
 | `ptyman`   | Spawn / stream / write / resize / kill PTY sessions               | 1     |
+| `ptyhost`  | Per-session terminal holder that outlives the daemon (ADR-033)    | 1     |
 | `hive`     | Hive dir layout, atomic file ops, single-committer git, ledger    | 2     |
 | `router`   | Mailbox delivery outbox → inbox, ledger append, `mail.*` events   | 2     |
 | `orchestr` | Orchestrator lifecycle, Stop-loop, verification runner, approvals | 2     |
@@ -198,7 +199,7 @@ Implementation notes (`internal/loop`): "normalized-similar" = same tool + `tool
 
 A session is over when its process is gone, not when it goes quiet: Caprock knows the pid of every session it spawns, and the shim reports its parent — the Claude Code that ran it — as `X-Caprock-Ppid`. So a session left alone for a week stays open, and one whose terminal was closed ends on the next sweep. The `SessionEnd` hook still ends a session immediately when it means an exit — and only then, since it also fires on `/clear` and Escape — and Caprock ends the sessions it kills. A `/clear` is the one case liveness cannot judge: it starts a new session id inside the *same* process, so the row it replaces shares a live pid with its replacement and is retired explicitly rather than by the sweep ([ADR-028](08-decisions.md#adr-028--a-session-ends-when-its-process-does)). Three silence thresholds preceded this and every one was wrong for somebody — see [ADR-028](08-decisions.md#adr-028--a-session-ends-when-its-process-does).
 
-A reboot is the exception to trusting a pid: it hands the old numbers to other programs, so a session last heard from before the machine booted is ended whatever its pid answers (`store.BootTime`). A session Caprock started before its own restart still has its process but not its terminal; it is marked `detached` and offered continue ([03-contracts.md](03-contracts.md)).
+A reboot is the exception to trusting a pid: it hands the old numbers to other programs, so a session last heard from before the machine booted is ended whatever its pid answers (`store.BootTime`). A session Caprock starts outlives a restart of Caprock: its terminal is held by a `pty-host` process, and the next daemon reattaches it before its first sweep ([ADR-033](08-decisions.md#adr-033--an-owned-session-outlives-the-daemon-its-terminal-lives-in-a-pty-host)). One that still has its process but no terminal here — started by a release from before pty-hosts, or whose holder died — is marked `detached` and offered continue ([03-contracts.md](03-contracts.md)).
 
 Two carve-outs: agents Caprock only observes (OpenCode) are judged by the clock alone, since their rows come out of another tool's database with no process behind them; and sessions with no pid keep a 24-hour staleness sweep, because there is nothing to ask.
 
@@ -236,12 +237,14 @@ internal/ptyman/      # PTY backend (go-pty; ConPTY on Windows) — Control
 internal/agents/      # owned-session manager: spawn/stream/input/signal/exit, per-agent argv, worktree, folder-trust — Control
 internal/sessionlink/ # joins a spawned Codex/OpenCode session to the id the agent gives it — Control
 internal/relay/       # the brief that carries a session on in a new one, any agent (ADR-032) — Control
+internal/ptyhost/     # `caprock pty-host`: one process per owned session holding its PTY, so it outlives the daemon (ADR-033) — Control
+internal/termbuf/     # scrollback ring + terminal-mode tracking, shared by the daemon and the pty-host
 internal/hive/        # on-disk orchestration state: agents/tasks/mailboxes/ledger, YAML — Orchestrate
 internal/board/       # task board: verification runner, destructive-command policy, approvals — Orchestrate
 internal/orchestrator/ # orchestrator + worker lifecycle, the mailbox-router reconciler — Orchestrate
 ui/                   # React + Vite app; builds into internal/api/dist (go:embed)
 pricing/              # pricing.json + embed.go (versioned pricing table)
-testdata/             # hook payloads, transcript fixtures + expected totals, loop fixtures
+testdata/             # hook payloads, transcript fixtures + expected totals, loop fixtures, fakeclaude (a Go line-REPL `claude`)
 ```
 
 Tooling, versions, CI, and release mechanics: [10-infrastructure.md](10-infrastructure.md).

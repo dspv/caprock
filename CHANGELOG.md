@@ -9,6 +9,29 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Changed
+
+- **A session you start in Caprock survives Caprock restarting.** Upgrading
+  Caprock, `launchctl kickstart`, `caprock down` and `up`: each used to end the
+  sessions started from the dashboard. Each session's terminal now lives in a
+  small process of its own (`caprock pty-host`), and the restarted Caprock
+  picks it back up — the terminal shows what was on screen and takes typing
+  again, and stop, pause and kill work as before. `caprock down` stops
+  Caprock, not your sessions; end a session from its page or by exiting it.
+  **Sessions started by an earlier release are still ended by the upgrade that
+  installs this one**: their terminal is inside the old Caprock process.
+- **Autostart keeps sessions alive across service restarts.** The launchd agent
+  sets `AbandonProcessGroup` and the systemd unit `KillMode=process`. An
+  existing autostart keeps its old file until you run `caprock service
+  install`; `caprock service status` says when the file differs. On Linux this
+  step is needed for sessions to survive a service restart.
+- **A session whose terminal closed says so plainly.** For a session started by
+  an earlier release, the Terminal tab now reads "This session's terminal was
+  closed when Caprock restarted. The conversation is saved — Continue it here
+  resumes it in a new terminal." **Continue it here** carries the same
+  conversation on (stopping the old terminal-less process first, which Caprock
+  started); **open a copy instead** leaves that process running.
+
 ## [0.70.0] - 2026-10-04
 
 ### Added

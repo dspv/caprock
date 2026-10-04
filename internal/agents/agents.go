@@ -14,10 +14,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/dspv/caprock/internal/config"
+	"github.com/dspv/caprock/internal/ptyhost"
 	"github.com/dspv/caprock/internal/ptyman"
 	"github.com/dspv/caprock/internal/store"
 	"github.com/dspv/caprock/internal/userenv"
@@ -104,6 +106,7 @@ type Agent struct {
 // Manager owns the set of running agents.
 type Manager struct {
 	pty     ptyman.Manager
+	hosts   *ptyhost.Manager // set by UseHosts; nil runs sessions in-process
 	store   *store.Store
 	log     *slog.Logger
 	dataDir string
@@ -447,7 +450,18 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 			)
 		}
 	}
-	spec := ptyman.Spec{Command: command, Args: args, Dir: cwd, Env: env, Cols: req.Cols, Rows: req.Rows}
+	// Continuing a conversation under its own id while an earlier process of
+	// ours still runs it would put two writers on one transcript. That process
+	// is one Caprock started and has lost the terminal of, so it is stopped
+	// first (see stopLeftover).
+	if req.Resume != "" && !req.Fork {
+		m.stopLeftover(ctx, req.Resume)
+	}
+	spec := ptyman.Spec{ID: sessionID, Command: command, Args: args, Dir: cwd, Env: env, Cols: req.Cols, Rows: req.Rows,
+		Meta: map[string]string{metaKind: agent}}
+	if port > 0 {
+		spec.Meta[metaPort] = strconv.Itoa(port)
+	}
 	// The PTY process is controlled explicitly via Signal/Close; it must not die
 	// when the caller's context (e.g. an HTTP request) ends.
 	sess, err := m.pty.Spawn(context.WithoutCancel(ctx), spec)
@@ -575,19 +589,29 @@ func (m *Manager) Resize(sessionID string, cols, rows int) error {
 // the way out; none of that survives a SIGKILL.
 const ShutdownGrace = 5 * time.Second
 
-// Shutdown ends every owned session, giving each a chance to stop cleanly.
+// Shutdown lets go of every owned session that lives in a pty-host — it keeps
+// running, and the next daemon reattaches it (ADR-033) — and ends the rest,
+// giving each a chance to stop cleanly.
 //
 // It used to SIGKILL them outright, so upgrading Caprock — or any restart of
 // the daemon — silently destroyed whatever the user had running under it,
 // mid-turn, with no warning and nothing written out. A tool that watches your
-// work must not be the thing that eats it.
+// work must not be the thing that eats it. SIGTERM first was better and still
+// ended the session; a pty-host is the fix. What is left for this path is a
+// session that could not be given one (the in-process fallback).
 //
 // Every session is signalled first and waited on together, so the grace period
 // is spent once rather than once per session. Anything still alive at the end
 // is killed: shutdown has to terminate, and a process that ignores SIGTERM has
 // had its chance.
 func (m *Manager) Shutdown() {
-	agents := m.List()
+	var agents []*Agent
+	for _, a := range m.List() {
+		if d, ok := a.sess.(ptyman.Detacher); ok && d.Detach() == nil {
+			continue
+		}
+		agents = append(agents, a)
+	}
 	if len(agents) == 0 {
 		return
 	}
@@ -673,6 +697,19 @@ func (a *Agent) wait(m *Manager) {
 		default:
 			code = -1
 		}
+	}
+	if errors.Is(err, ptyman.ErrDetached) {
+		// The daemon let go; the session runs on in its pty-host and the next
+		// daemon reattaches it. Not an exit, so nothing is recorded as one —
+		// and the open terminals are not told the session ended: closing their
+		// channels would send them a normal "session ended" close, and the
+		// browser would believe it. They drop when the daemon exits, which a
+		// terminal reads as "reconnect".
+		m.mu.Lock()
+		delete(m.agents, a.SessionID)
+		m.mu.Unlock()
+		m.log.Info("owned session left running in its pty-host", "component", "agents", "session_id", a.SessionID, "pid", a.sess.PID())
+		return
 	}
 	a.mu.Lock()
 	a.exit, a.exited = code, true

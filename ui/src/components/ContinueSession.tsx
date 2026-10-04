@@ -25,6 +25,14 @@ import { navigate } from '@/lib/router'
  *
  * The command is also offered for a terminal of one's own, because somebody
  * who lives in tmux does not want a second place to type.
+ *
+ * A third shape, `detached`, is a session Caprock started whose terminal
+ * closed when Caprock restarted — one started by a release from before
+ * sessions outlived restarts (ADR-033), or whose terminal holder died. Its
+ * process has no terminal anyone can type into, so continuing it under its
+ * own id is the useful thing: the daemon stops that process first, which it
+ * may, because Caprock started it. A copy alongside is offered second, for
+ * someone who wants the old process left alone.
  */
 export function ContinueSession({
   sessionID,
@@ -32,6 +40,7 @@ export function ContinueSession({
   live,
   resume,
   compact = false,
+  detached = false,
 }: {
   sessionID: string
   cwd: string
@@ -41,6 +50,8 @@ export function ContinueSession({
   resume: ResumeInfo
   /** On a card: one word, the reason on hover, no copy command. */
   compact?: boolean
+  /** Caprock started it and its terminal closed with a restart: lead with continue, offer a copy second. */
+  detached?: boolean
 }) {
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -51,15 +62,20 @@ export function ContinueSession({
 
   const command = resume.command ?? ''
 
-  async function open() {
+  async function open(fork: boolean = live) {
     setBusy(true)
     setError('')
     try {
-      const res = await api.spawn({ cwd, resume: sessionID, fork: live })
+      const res = await api.spawn({ cwd, resume: sessionID, fork })
       navigate({ name: 'session', id: res.session_id, tab: 'terminal' })
+      // Continuing under the same id lands on the page already open, so
+      // nothing navigates; the screen swaps to the live terminal on its next
+      // poll. Stay "Opening…" until then rather than looking like the click
+      // did nothing.
+      if (res.session_id === sessionID) return
+      setBusy(false)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e))
-    } finally {
       setBusy(false)
     }
   }
@@ -89,7 +105,7 @@ export function ContinueSession({
     return (
       <span className="inline-flex items-center gap-2">
         <button
-          onClick={open}
+          onClick={() => open()}
           disabled={busy}
           title="Carry this conversation on, here"
           className="text-[11px] border border-accent text-accent px-1.5 rounded-sm hover:bg-accent/10 disabled:opacity-50"
@@ -111,10 +127,36 @@ export function ContinueSession({
     )
   }
 
+  if (detached) {
+    // The button says what happens; the line under it says what the other
+    // choice is and why anyone would want it, in words a reader without the
+    // vocabulary ("fork", "PTY") can act on.
+    return (
+      <div className="flex flex-col items-center gap-2">
+        <button
+          onClick={() => open(false)}
+          disabled={busy}
+          className="rounded-sm bg-accent px-3.5 py-2 text-[13px] font-medium text-bg hover:brightness-110 disabled:opacity-50"
+        >
+          {busy ? 'Opening…' : 'Continue it here'}
+        </button>
+        <p className="max-w-[52ch] text-[12px] leading-relaxed text-fg-faint">
+          Or{' '}
+          <button onClick={() => open(true)} disabled={busy} className="underline hover:text-fg disabled:opacity-50">
+            open a copy instead
+          </button>
+          : the old process is left running, and the copy carries the conversation on separately.
+        </p>
+        {copyButton}
+        {error && <span className="text-[11px] text-danger">{error}</span>}
+      </div>
+    )
+  }
+
   return (
     <span className="inline-flex items-center gap-2">
       <button
-        onClick={open}
+        onClick={() => open()}
         disabled={busy}
         title={
           live

@@ -615,10 +615,23 @@ instead of leaving everything past the first page unreachable.
 **`resume`** — `{ok, reason?, command?}`. On the list it is filled for ended
 sessions only, so a card can offer continue; on `GET /v1/sessions/{id}` for any
 session except a live one Caprock started (that one is typed into) — unless
-this daemon does not hold its terminal. Such a session is started before a
-restart of Caprock and still has a process; it is marked **`detached: true`**
+this daemon does not hold its terminal. Since
+[ADR-033](08-decisions.md#adr-033--an-owned-session-outlives-the-daemon-its-terminal-lives-in-a-pty-host)
+a restart reattaches the sessions it started, so such a session is one started
+by a release from before pty-hosts, or one whose pty-host died, and it still has
+a process; it is marked **`detached: true`**
 on the list and the detail, and gets `resume` there too (FB-040): its terminal
-tab used to open an empty screen. Decided by what is on disk,
+tab used to open an empty screen. Continuing it under its own id
+(`POST /v1/agents` with `resume` and no `fork`) first stops that terminal-less
+process — SIGTERM, then SIGKILL after 5s; a kill on Windows — and only when the
+row says Caprock started it (`owned`) and its recorded pid is alive, so two
+processes never write one transcript (rule 7: it is Caprock's own process).
+
+**`survives_restart`** — `true` on a live session Caprock started whose
+terminal is in a pty-host, so restarting or upgrading Caprock leaves it
+running; absent on one in the daemon's own PTY (the fallback), which ends with
+the daemon. The upgrade notice counts only the latter. On the list and the
+detail. Decided by what is on disk,
 not by who started the session (FB-036): the agent (Claude Code, Codex and
 OpenCode; Gemini is not continued), the cwd still existing, and for Claude Code
 the main transcript
@@ -1259,9 +1272,11 @@ No DDL change was needed for either fix here, only honest use of the existing co
 
 `caprock service install` registers the daemon with the OS's own login supervisor. One user-level mechanism per platform; nothing is written outside the user's home, and never into `~/.claude/`.
 
-- **macOS** — a launchd agent at `~/Library/LaunchAgents/dev.caprock.daemon.plist`, loaded with `launchctl bootstrap gui/<uid>`. `RunAtLoad` starts it at login; `KeepAlive` with `SuccessfulExit=false` restarts a crash but leaves a deliberate `caprock down` alone. No `ProcessType` is declared, deliberately: the daemon watches files, so `Background` with `LowPriorityIO` looks correct and was measured to make the dashboard answer in 1.2s what the same binary answered in 185ms from a terminal; `Adaptive` changed nothing, leaving the process at scheduler priority 4 against a normal 20. Any `ProcessType` puts the job in a managed band, so the key is omitted.
-- **Linux** — a systemd **user** unit at `~/.config/systemd/user/caprock.service` (honouring `XDG_CONFIG_HOME`), enabled with `systemctl --user enable --now`, `Restart=on-failure`. Without a systemd user session the install fails with an actionable message and writes nothing.
+- **macOS** — a launchd agent at `~/Library/LaunchAgents/dev.caprock.daemon.plist`, loaded with `launchctl bootstrap gui/<uid>`. `RunAtLoad` starts it at login; `KeepAlive` with `SuccessfulExit=false` restarts a crash but leaves a deliberate `caprock down` alone. No `ProcessType` is declared, deliberately: the daemon watches files, so `Background` with `LowPriorityIO` looks correct and was measured to make the dashboard answer in 1.2s what the same binary answered in 185ms from a terminal; `Adaptive` changed nothing, leaving the process at scheduler priority 4 against a normal 20. Any `ProcessType` puts the job in a managed band, so the key is omitted. `AbandonProcessGroup` is `true`, so stopping the job does not kill what is left in its process group.
+- **Linux** — a systemd **user** unit at `~/.config/systemd/user/caprock.service` (honouring `XDG_CONFIG_HOME`), enabled with `systemctl --user enable --now`, `Restart=on-failure`, `KillMode=process`. Without a systemd user session the install fails with an actionable message and writes nothing.
 - **Windows** — a `.cmd` script in the Startup folder. A Scheduled Task cannot be rendered into a temp directory for a test, so verifying one means leaving a real logon task in the runner's store; the Startup script is an ordinary user-owned file, so its generation is unit-tested on every OS. The cost is that Windows restarts the daemon at logon but not mid-session.
+
+**Owned sessions outlive the service's restarts** ([ADR-033](08-decisions.md#adr-033--an-owned-session-outlives-the-daemon-its-terminal-lives-in-a-pty-host)). Each runs under a `caprock pty-host` started in its own session (POSIX `setsid`) or its own process group with its own hidden console (Windows), which is already out of reach of launchd's process-group kill; `AbandonProcessGroup` is the second lock. systemd kills the whole cgroup whatever the process group, so on Linux `KillMode=process` is what keeps them. An install written by an earlier release lacks both keys: `caprock service status` reports the file as differing, and `caprock service install` rewrites it. Until then a macOS install still keeps sessions (the `setsid` alone suffices against a process-group kill); a Linux one does not.
 
 The service runs the daemon with `--foreground` (the supervisor owns the process lifetime, so the daemon must not detach), `--no-open`, and `--no-hooks` — hook and statusline registration stay an interactive consent decision, never something a login agent performs.
 
@@ -1278,6 +1293,44 @@ The database is included because it stores prompts and responses in cleartext �
 The mode is applied by `store.secureDBFiles` on **every** `store.Open`, not only at creation: a database written by an earlier version keeps its `0644` until something changes it, and SQLite recreates `-wal`/`-shm` on demand under the umask, so a creation-time fix alone would regress on the next open. A filesystem that refuses `chmod` (a network share, a container volume) produces a logged warning and a running daemon rather than a failed start — a permissions limitation must not become an outage.
 
 **Windows is a deliberate no-op**: NTFS has no POSIX mode bits, `os.Chmod` there only toggles the read-only attribute, and applying `0600` would risk a read-only database while achieving nothing. Access is governed by the ACL inherited from the per-user data directory. The permission tests skip on Windows with that reason (rule 2).
+
+## Terminal holders (`caprock pty-host`)
+
+One process per owned session holds its PTY, so the session outlives the daemon ([ADR-033](08-decisions.md#adr-033--an-owned-session-outlives-the-daemon-its-terminal-lives-in-a-pty-host)). Code: `internal/ptyhost`.
+
+**Starting one.** The daemon runs `<caprock> pty-host` (hidden subcommand) detached — POSIX `setsid`; Windows `CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW`, plus `CREATE_BREAKAWAY_FROM_JOB` when the job allows it — with its working directory in the system temp directory. On Windows `<caprock>` is a copy of the binary at `<data_dir>/ptyhost/bin/caprock-<sha256[:16]>.exe`, so a running session never pins the install directory against `scoop update`; copies nothing runs from are deleted at the next daemon start. The launch spec is one JSON object on the holder's **stdin** — never argv (readable machine-wide) or disk — because it carries the token and the child's environment:
+
+```json
+{"proto": 1, "session_id": "<uuid>", "dir": "<data_dir>/ptyhost", "token": "<64 hex>", "version": "<caprock version>",
+ "spec": {"ID": "<uuid>", "Meta": {"kind": "claude"}, "Command": "/abs/claude", "Args": ["--session-id", "<uuid>"], "Dir": "<cwd>", "Env": ["K=V", "…"], "Cols": 120, "Rows": 40}}
+```
+
+The holder starts the child, listens on `127.0.0.1:0`, writes its registry entry, answers one line on **stdout** — `{"ok":true,"addr":"127.0.0.1:<port>","child_pid":N}` or `{"ok":false,"error":"…"}` — and closes stdout. A holder that cannot be started falls back to the in-process PTY (the session works and ends with the daemon); a child that cannot start is reported as the spawn's error.
+
+**Registry** — `<data_dir>/ptyhost/` (`0700`):
+
+- `<session-id>.json` (`0600`, written atomically by the holder, removed by it when the session ends): `{"proto", "session_id", "host_pid", "child_pid", "addr", "token", "cwd", "command", "started_at", "version", "meta"}`, where `meta` is `{"kind": "claude"|"codex"|"opencode"|"gemini", "port": "<OpenCode TUI server port>"}` — what the next daemon needs to keep watching the session (absent from holders written before it existed: treated as the row's agent, else Claude Code). The daemon removes an entry only when nothing listens at `addr` (the holder is gone). Continuing a session under its own id starts a second holder for the same id, so a holder removes the entry — or writes an exit file — only while the entry still names its own `host_pid` and token, and the daemon ignores an exit file beside a live holder for that id.
+- `<session-id>.exit` (`0600`): `{"session_id", "code", "at"}`, written when the child exits while no daemon is connected; the next daemon records the code (`SetExit`) and deletes the file.
+- `host.log` — holders' stderr, appended; empty in the normal course.
+- Session ids must match `[A-Za-z0-9_-]{1,128}` to be used as a file name; any other id starts in-process.
+
+**Wire protocol, version 1.** A frame is one type byte, a 4-byte big-endian payload length (≤ 8 MiB), the payload. The client's first frame is `H` and must arrive within 5s; a wrong token is answered `E` and closed. One client at a time: a new authenticated client replaces the previous one.
+
+| Frame | Direction       | Payload                                                                  |
+| ----- | --------------- | ------------------------------------------------------------------------ |
+| `H`   | daemon → holder | `{"proto":1,"token":"…","resume":false}`                                 |
+| `W`   | holder → daemon | `{"proto":1,"child_pid":N,"paused":false,"version":"…"}`                 |
+| `S`   | holder → daemon | the scrollback ring (256 KiB + mode prefix), once; skipped when `resume` |
+| `O`   | holder → daemon | terminal bytes                                                           |
+| `X`   | holder → daemon | `{"code":N}`, then the holder closes and exits                           |
+| `E`   | holder → daemon | a refusal as text, then close                                            |
+| `I`   | daemon → holder | typed bytes                                                              |
+| `R`   | daemon → holder | `{"cols":N,"rows":N}`                                                    |
+| `G`   | daemon → holder | `{"signal":"pause"\                                                      |
+
+**Compatibility rule.** A holder started by one release must work with the daemon of the next. Frame types are never renumbered or repurposed; a side ignores a frame type it does not know. A change that cannot be made additively raises `proto`, and the daemon keeps speaking every older version while a holder of it can still be running. A registry entry with a newer `proto` than the daemon's is left alone (a downgrade).
+
+**Lifecycle.** The daemon reattaches every registry entry at startup — after `OnExit` is wired, before the first liveness sweep and before the API serves. On shutdown it closes its connections and leaves holders running (`ptyman.ErrDetached` is not an exit and is not recorded as one). The session's pid in `sessions.pid` is the **child's**, so liveness ([ADR-028](08-decisions.md#adr-028--a-session-ends-when-its-process-does)) is unchanged. The holder ignores `SIGHUP` and `SIGINT`, passes `SIGTERM` to its child, and exits when the child does. Pause, resume, kill and resize go through the holder.
 
 ## Transcript JSONL (observed shape)
 

@@ -52,7 +52,7 @@ func newRoot() *cobra.Command {
 		SilenceErrors: true,
 		Version:       version.Version,
 	}
-	root.AddCommand(upCmd(), downCmd(), statusCmd(), reportCmd(), exportCmd(), tasksCmd(), taskCmd(), hooksCmd(), hookCmd(), statuslineCmd(), licenseCmd(), serviceCmd(), versionCmd())
+	root.AddCommand(upCmd(), downCmd(), statusCmd(), reportCmd(), exportCmd(), tasksCmd(), taskCmd(), hooksCmd(), hookCmd(), statuslineCmd(), licenseCmd(), serviceCmd(), versionCmd(), ptyHostCmd())
 	return root
 }
 
@@ -137,7 +137,8 @@ func runForeground(cmd *cobra.Command, dir string, cfg config.Config, noOpen, us
 	defer stop()
 	return daemon.Run(ctx, daemon.Options{
 		DataDir: dir, Config: cfg, Version: version.Version, Log: log, HiveDir: hiveDir, RepoCwd: repoDir,
-		LAN: useLAN,
+		HolderExe: holderExe(dir),
+		LAN:       useLAN,
 		OnReady: func(url string) {
 			fmt.Fprintf(cmd.OutOrStdout(), "caprock is up at %s  (data: %s)\n", url, dir)
 			printHive(cmd, hiveDir)
@@ -400,7 +401,7 @@ func confirm(cmd *cobra.Command, prompt string) bool {
 func downCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "down",
-		Short: "Stop the daemon (keeps all data)",
+		Short: "Stop the daemon (keeps all data; sessions started in Caprock keep running)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dir, err := config.DataDir()
 			if err != nil {

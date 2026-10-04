@@ -1,4 +1,4 @@
-package agents
+package termbuf
 
 import (
 	"bytes"
@@ -43,10 +43,10 @@ func TestModeTrackerIgnoresOtherSequences(t *testing.T) {
 // The case that broke paste: the startup sequence scrolled out of the ring,
 // and a terminal attaching late must still be told bracketed paste is on.
 func TestRingSnapshotRestoresModesThatScrolledOut(t *testing.T) {
-	r := newRing(64)
-	r.write([]byte("\x1b[?2004h"))
-	r.write(bytes.Repeat([]byte("x"), 200))
-	snap := r.snapshot()
+	r := NewRing(64)
+	r.Write([]byte("\x1b[?2004h"))
+	r.Write(bytes.Repeat([]byte("x"), 200))
+	snap := r.Snapshot()
 	if !bytes.HasPrefix(snap, []byte("\x1b[?2004h")) {
 		t.Fatalf("snapshot does not restore bracketed paste: %q", snap[:16])
 	}

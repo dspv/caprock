@@ -25,6 +25,11 @@ import (
 //     the standard user class, which is what a process serving a local UI needs.
 //   - StandardOutPath/StandardErrorPath — into the data dir, so a login-time
 //     failure is diagnosable instead of vanishing into launchd's void.
+//   - AbandonProcessGroup — when the daemon's job stops (an upgrade restart,
+//     `launchctl kickstart -k`, logout), launchd otherwise kills every process
+//     left in the job's process group. A session's pty-host has already left
+//     that group (it starts in a session of its own), so this is the second
+//     lock on the same door rather than the only one (ADR-033).
 //
 // EnvironmentVariables carries CAPROCK_DATA_DIR because a login agent inherits
 // almost nothing from a shell profile: a user with a custom data dir would
@@ -50,6 +55,7 @@ func renderPlist(p Plan) string {
 
 	b.WriteString("  <key>RunAtLoad</key>\n  <true/>\n")
 	b.WriteString("  <key>KeepAlive</key>\n  <dict>\n    <key>SuccessfulExit</key>\n    <false/>\n  </dict>\n\n")
+	b.WriteString("  <key>AbandonProcessGroup</key>\n  <true/>\n\n")
 	b.WriteString("  <key>StandardOutPath</key>\n  <string>" + plistEscape(p.LogPath()) + "</string>\n")
 	b.WriteString("  <key>StandardErrorPath</key>\n  <string>" + plistEscape(p.LogPath()) + "</string>\n")
 	b.WriteString("</dict>\n</plist>\n")
