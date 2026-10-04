@@ -85,6 +85,42 @@ if [ -z "$SHOT_BIN" ]; then
 fi
 echo "→ shooting with $SHOT_BIN ($("$SHOT_BIN" --version))"
 
+# Let the copy catch up with the binary before anything is rewritten. A
+# migration can re-arm a backfill that reads transcripts by the paths stored
+# in the database — 0037 links tool calls to their turns that way, and
+# without it Cost's "What it went on" filed most spend under "no tool call".
+# The scrub rewrites those paths, so the backfill has to finish first, on
+# the unscrubbed copy, by a daemon nobody looks at.
+echo "→ migrating the copy and waiting for its backfill"
+mkdir -p "$WORK/migrate-home"
+HOME="$WORK/migrate-home" "$SHOT_BIN" up --no-open --no-hooks --port "$PORT" --data-dir "$WORK/data" >/dev/null 2>&1 || true
+for i in $(seq 1 360); do
+  cursor="$(sqlite3 "$WORK/data/caprock.db" "SELECT v FROM meta WHERE k='tool_link_cursor'" 2>/dev/null || true)"
+  [ "$cursor" = "done" ] && break
+  # A binary without that backfill never writes the key.
+  [ -z "$cursor" ] && [ "$i" -ge 12 ] && cursor=done && break
+  sleep 5
+done
+CAPROCK_DATA_DIR="$WORK/data" "$SHOT_BIN" down >/dev/null 2>&1 || true
+for _ in $(seq 1 30); do
+  curl -sf "http://127.0.0.1:$PORT/v1/status" >/dev/null 2>&1 || break
+  sleep 1
+done
+if [ "$cursor" != "done" ]; then
+  echo "the tool-link backfill did not finish within 30 minutes (cursor: ${cursor:-none})" >&2
+  exit 1
+fi
+
+# Scrub before the daemon ever opens the copy. The daemon warms its figure
+# cache on start and serves it stale-while-revalidate, so scrubbing under a
+# running daemon left the v0.70.1 Cost screen printing real project names
+# for the whole capture. shots.py refuses to run if this did not happen:
+# publishing a screenshot of real repository names is not a thing to
+# discover afterwards.
+echo "→ scrubbing the copy (minutes on a large database)"
+CAPROCK_SHOT_DB="$WORK/data/caprock.db" CAPROCK_SHOT_SCRUB_ONLY=1 python3 scripts/shots.py
+
+
 # --no-hooks so a throwaway daemon never edits the user's Claude Code settings.
 echo "→ starting a daemon on :$PORT against the copy"
 # An empty HOME, so it finds no transcripts to tail: the database copy is
@@ -129,9 +165,8 @@ python3 -m venv "$WORK/venv" >/dev/null
 OUT="$WORK/out"
 mkdir -p "$OUT"
 echo "→ capturing"
-# shots.py refuses to run if it cannot scrub the database first: publishing a
-# screenshot of real repository names is not a thing to discover afterwards.
-CAPROCK_SHOT_DB="$WORK/data/caprock.db" "$WORK/venv/bin/python" \
+# Scrubbed above, before the daemon started.
+CAPROCK_SHOT_DB="$WORK/data/caprock.db" CAPROCK_SHOT_SCRUBBED=1 "$WORK/venv/bin/python" \
   scripts/shots.py "http://localhost:$PORT" "$OUT"
 
 if [ "$DRY_RUN" = "1" ]; then

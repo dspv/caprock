@@ -51,6 +51,10 @@ TITLES = [
     "Split the billing worker into two queues", "Review the rate limiter",
     "Dark mode for the admin panel", "Upgrade to React 19",
 ]
+BRANCHES = [
+    "feat/webhook-retry", "fix/flaky-checkout", "feat/orders-pagination",
+    "chore/react-19", "fix/token-expiry", "feat/admin-dark-mode",
+]
 STAND_INS = [
     "acme-api", "acme-web", "payments-core", "billing", "checkout",
     "inventory", "notify-svc", "search-index", "data-pipeline", "auth-gateway",
@@ -83,6 +87,17 @@ def scrub():
                                  ("-Users-ds-", "-Users-dev-")):
                 c.execute(f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
                           (old_s, new_s, f"%{old_s}%"))
+        # A session can run in a checkout that lives OUTSIDE its repository —
+        # a worktree manager that keeps its workspaces in a directory of its
+        # own (`~/orca/workspaces/<repo>/<name>`). Flattening below rewrites
+        # paths under the repository root, so such a cwd kept the real
+        # repository name and the v0.70.1 capture refused to run. Put the
+        # session at its repository root first; that is the label the screens
+        # derive from it anyway.
+        c.execute("UPDATE sessions SET cwd=repo_root, repo_path=repo_root "
+                  "WHERE repo_root IS NOT NULL AND repo_root != '' "
+                  "AND cwd IS NOT NULL AND cwd != repo_root "
+                  "AND substr(cwd, 1, length(repo_root) + 1) != repo_root || '/'")
         # Flatten every repository onto /Users/dev/dev/<name> before renaming
         # anything. Renaming only the project label leaves the directories ABOVE
         # the checkout intact, and those reach the screen: when two checkouts
@@ -154,12 +169,19 @@ def scrub():
 
         # Rename every project that is not explicitly kept. Done after the
         # path rewrites so a name reintroduced through a path is caught too.
-        c.execute("SELECT DISTINCT project FROM sessions WHERE project IS NOT NULL AND project != ''")
+        # The daily rollups carry the label too, and the Week screen and the
+        # wide Cost ranges read them; a name that only survives there (its
+        # sessions long gone) is still a name on screen.
+        c.execute("SELECT project FROM sessions WHERE project IS NOT NULL AND project != '' "
+                  "UNION SELECT project FROM daily_stats WHERE project IS NOT NULL AND project != '' "
+                  "UNION SELECT project FROM daily_sessions WHERE project IS NOT NULL AND project != ''")
         # Longest first. These are substring replacements, so renaming `repo`
         # before `reporting` turns the latter into `<stand-in>rting` — which is
         # both wrong and a giveaway that something was rewritten.
         names = sorted((r[0] for r in c.fetchall() if r[0] not in KEEP_PROJECTS),
                        key=lambda n: (-len(n), n))
+        c.execute("SELECT DISTINCT project FROM sessions")
+        session_names = {r[0] for r in c.fetchall()}
         # Two passes through a placeholder no repository name contains. A single
         # pass rewrites into names that later iterations then rewrite again —
         # `reporting` became `<stand-in>rting` because an earlier round had
@@ -188,6 +210,8 @@ def scrub():
         path_cols = [tc for tc in cols if tc != ("sessions", "project")]
         for real, token, _ in mapping:
             c.execute("UPDATE sessions SET project=? WHERE project=?", (token, real))
+            c.execute("UPDATE daily_stats SET project=? WHERE project=?", (token, real))
+            c.execute("UPDATE daily_sessions SET project=? WHERE project=?", (token, real))
             for t, col in path_cols:
                 for a, b in ((root + real + "/", root + token + "/"), (root + real + '"', root + token + '"')):
                     c.execute(f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
@@ -204,9 +228,23 @@ def scrub():
                     c.execute(f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
                               (real, token, f"%{real}%"))
         for _, token, fake in mapping:
+            c.execute("UPDATE daily_stats SET project=? WHERE project=?", (fake, token))
+            c.execute("UPDATE daily_sessions SET project=? WHERE project=?", (fake, token))
             for t, col in cols:
                 c.execute(f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
                           (token, fake, f"%{token}%"))
+        # Branch names are the owner's words too — the v0.70.1 Live pulse
+        # printed `dspv/assess-minimum-lovable` beside a scrubbed project.
+        # Anything but the generic names becomes a neutral one.
+        c.execute("SELECT DISTINCT git_branch FROM sessions WHERE git_branch IS NOT NULL "
+                  "AND git_branch NOT IN ('', 'HEAD', 'main', 'master')")
+        for i, branch in enumerate(sorted(r[0] for r in c.fetchall())):
+            c.execute("UPDATE sessions SET git_branch=? WHERE git_branch=?",
+                      (BRANCHES[i % len(BRANCHES)], branch))
+        # A session's pull requests are links and titles from whatever
+        # repository it worked in — private ones included. Only Caprock's own,
+        # public repository may stay.
+        c.execute("DELETE FROM session_prs WHERE url NOT LIKE 'https://github.com/dspv/caprock/%'")
         c.execute("SELECT session_id FROM sessions ORDER BY session_id")
         for i, (sid,) in enumerate(c.fetchall()):
             c.execute("UPDATE sessions SET title=?, prompt='' WHERE session_id=?",
@@ -240,6 +278,15 @@ def scrub():
             # The capturing session was renamed to a stand-in at the top, so
             # a stand-in can be among the names; it is not a real one.
             if re.sub(r"-\d+$", "", real) in STAND_INS:
+                continue
+            c.execute("SELECT (SELECT COUNT(*) FROM daily_stats WHERE project=?) + "
+                      "(SELECT COUNT(*) FROM daily_sessions WHERE project=?)", (real, real))
+            if c.fetchone()[0]:
+                raise RuntimeError(f"a real project name survived in the daily rollups: {real!r}")
+            # A name only the rollups carried (its sessions are gone) is
+            # checked there alone: as a path segment it is often a generic
+            # directory — `app` — inside some other repository.
+            if real not in session_names:
                 continue
             # Bounded like the rewrite: `repo` must not match `reporting`.
             seg = "/" + real
@@ -290,6 +337,9 @@ ACTIONS = {
 NO_MONEY = {"tasks", "notes"}
 WIDTH, HEIGHT = 1600, 1400
 MIN_H, PAD = 300, 28          # never crop tighter than this; breathing room below
+# A screen whose crop ends at a named panel rather than at the viewport. Now
+# runs far past 1400px, and the fixed height cut At a glance's donuts in half.
+CROP_TO = {"now": "at a glance"}
 
 
 def rpc(ws, method, params=None, _id=[0]):
@@ -306,6 +356,42 @@ def evaluate(ws, expr):
     return r.get("result", {}).get("value")
 
 
+def wait_for_burn_window():
+    """Wait until Burn now has a rate rather than "measuring".
+
+    The daemon reports a rate only once it has been up for the burn window
+    (ten minutes); before that the Now screen and its home-page crop read
+    "measuring — needs 10 minutes of running". On a copy nothing new arrives,
+    so the rate it settles on is the honest one: none.
+    """
+    for _ in range(15 * 6):
+        try:
+            burn = json.load(urllib.request.urlopen(f"{BASE}/v1/stats/summary?range=today")).get("burn") or {}
+        except Exception:
+            burn = {"filling": True}
+        if not burn.get("filling"):
+            return
+        time.sleep(10)
+    print("  Burn now was still measuring after 15 minutes; capturing anyway")
+
+
+def interrupted_dismissal():
+    """JS that dismisses the "still running when Caprock last stopped" banner.
+
+    The copy's daemon reads the owner's last stop as its own, so every capture
+    led with a banner about a reboot on someone else's machine. It is
+    dismissed per stop, by the stop's timestamp.
+    """
+    try:
+        info = json.load(urllib.request.urlopen(f"{BASE}/v1/status")).get("interrupted") or {}
+    except Exception:
+        info = {}
+    stopped = info.get("stopped_at")
+    if not stopped:
+        return "void 0"
+    return f"try {{ localStorage.setItem('caprock.interrupted.dismissed', '{int(stopped)}') }} catch (e) {{}}"
+
+
 def main():
     try:
         from websocket import create_connection
@@ -318,7 +404,7 @@ def main():
     # first time someone forgot. A failure here is fatal rather than a
     # warning: publishing a screenshot of real repository names is not a thing
     # to discover afterwards.
-    if not scrub():
+    if os.environ.get("CAPROCK_SHOT_SCRUBBED") != "1" and not scrub():
         print("refusing to shoot: the database was not scrubbed")
         return 1
 
@@ -356,8 +442,10 @@ def main():
         # dismissable strips across the top of every capture, taking a sixth of
         # the frame before a single figure appeared. Set the keys against the
         # origin, then load the document once so they are read.
+        wait_for_burn_window()
         rpc(ws, "Page.navigate", {"url": f"{BASE}/#/now"})
         time.sleep(1.5)
+        evaluate(ws, interrupted_dismissal())
         evaluate(ws, """
           try {
             localStorage.setItem('caprock.update.dismissed', 'offer');
@@ -498,6 +586,22 @@ def main():
                 """)
                 if snapped:
                     h = max(MIN_H, min(HEIGHT, int(snapped) + PAD))
+                if route in CROP_TO:
+                    bottom = evaluate(ws, """
+                      ((want) => {
+                        const hit = [...document.querySelectorAll('div,section')].find((el) => {
+                          const t = (el.textContent || '').trim().toLowerCase().replace(/^[^a-z0-9]+/, '');
+                          const r = el.getBoundingClientRect();
+                          return t.startsWith(want) && r.height > 110;
+                        });
+                        return hit ? Math.ceil(hit.getBoundingClientRect().bottom + window.scrollY) : 0;
+                      })(%s)
+                    """ % json.dumps(CROP_TO[route]))
+                    if not bottom:
+                        sys.exit(f"{name}: no panel {CROP_TO[route]!r} to crop to")
+                    # Less than the gap to the next panel, or its top edge
+                    # shows as a stray line of headings.
+                    h = int(bottom) + 10
 
                 # Verify the theme actually took before naming the file after
                 # it: a capture saved under the wrong name puts a white
@@ -517,6 +621,7 @@ def main():
 
                 shot = rpc(ws, "Page.captureScreenshot", {
                     "format": "png",
+                    "captureBeyondViewport": True,
                     "clip": {"x": 0, "y": 0, "width": WIDTH, "height": h, "scale": 1},
                 })
                 suffix = "" if theme == "dark" else "-light"
@@ -530,4 +635,9 @@ def main():
 
 
 if __name__ == "__main__":
+    # refresh-shots.sh scrubs before the daemon starts: the daemon warms its
+    # figure cache on start and serves it stale-while-revalidate, so a scrub
+    # under a running daemon left the v0.70.1 Cost screen printing real names.
+    if os.environ.get("CAPROCK_SHOT_SCRUB_ONLY") == "1":
+        sys.exit(0 if scrub() else 1)
     sys.exit(main())

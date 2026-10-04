@@ -451,6 +451,11 @@ Built.
 what changed against the median of the last four weeks — sent to your own
 Telegram bot.
 
+**Where each tool failed.** On Lifetime a tool's row opens into its calls
+grouped by what they were about — Bash by command, Read and Edit by file,
+WebFetch by domain — and that much is free. Output, failure rate and a trend
+per group are Premium; without a licence the daemon leaves those figures out.
+
 $5/month, $30/year, or $100 once — [caprock.dev/premium](https://caprock.dev/premium/).
 
 A key arrives by email and goes in the dashboard's settings, or:
