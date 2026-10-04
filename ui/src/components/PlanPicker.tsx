@@ -124,14 +124,26 @@ export function PlanChip({ plan, onSave }: { plan?: Settings; onSave: (patch: Pa
 }
 
 function PlanMenu({ plan, onSave }: { plan?: Settings; onSave: (patch: Partial<Settings>) => void }) {
-  const [custom, setCustom] = useState(String(plan?.plan_usd_per_month || ''))
-  // Carry every other setting through: changing the plan must not silently
-  // reset an unrelated preference such as release checks.
   return (
     <div className="absolute right-0 top-7 z-20 w-[268px] border border-border-strong bg-panel rounded-[var(--radius-panel)] shadow-lg p-2">
       <div className="text-[11px] text-fg-muted px-1 pb-1.5">
         How do you pay for Claude Code? Caprock can&apos;t detect this and never guesses.
       </div>
+      <PlanOptions plan={plan} onSave={onSave} />
+    </div>
+  )
+}
+
+/**
+ * The plan choices themselves: the header's popover and the Settings screen
+ * show the same list, so a plan set in one is the plan the other shows.
+ */
+export function PlanOptions({ plan, onSave }: { plan?: Settings; onSave: (patch: Partial<Settings>) => void }) {
+  const [custom, setCustom] = useState(String(plan?.plan_usd_per_month || ''))
+  // Only the plan fields are sent: changing the plan must not silently reset
+  // an unrelated preference such as release checks.
+  return (
+    <div>
       {PRESETS.map((p) => {
         const active = plan?.plan_label === p.label
         return (

@@ -309,6 +309,7 @@ func New(d Deps) *Server {
 	// cannot admit a third device or revoke the laptop that let it in.
 	m.HandleFunc("GET /v1/pair/state", s.handlePairState)
 	m.HandleFunc("POST /v1/pair/code", s.handlePairNewCode)
+	m.HandleFunc("DELETE /v1/pair/code", s.handlePairClearCode)
 	m.HandleFunc("POST /v1/pair", s.handlePairRedeem)
 	m.HandleFunc("DELETE /v1/pair/devices/{id}", s.handlePairRevoke)
 	m.HandleFunc("POST /v1/pair/lan", s.handleSetLAN)

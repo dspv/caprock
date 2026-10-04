@@ -58,7 +58,7 @@ function screenName(r: Route): string {
     case 'tasks': return 'Tasks'
     case 'graph': return 'Graph'
     case 'notes': return 'Memory'
-    case 'settings': return 'Status'
+    case 'settings': return 'Settings'
   }
 }
 
@@ -68,7 +68,10 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
   const active = (r: Route) => (r.name === route.name) || (r.name === 'now' && route.name === 'session')
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="h-10 border-b border-border bg-panel flex items-center px-3 gap-4 sticky top-0 z-10">
+      {/* Wraps on a phone. One fixed-height row was 882px wide at 390, so
+        * every screen on a paired phone scrolled sideways before it showed
+        * anything. On a desktop it is still one row. */}
+      <header className="min-h-10 border-b border-border bg-panel flex flex-wrap items-center px-3 py-1 gap-x-4 gap-y-1 sticky top-0 z-10">
         <a href="#/" className="flex items-center gap-2 text-fg no-underline hover:no-underline">
           <svg width="16" height="16" viewBox="0 0 32 32" aria-hidden><path d="M6 22 L16 8 L26 22 Z" fill="none" stroke="var(--color-accent)" strokeWidth="3" strokeLinejoin="round" /><rect x="6" y="22" width="20" height="3" fill="var(--color-accent)" /></svg>
           <span className="font-medium tracking-wide text-[13px]">caprock</span>
@@ -81,7 +84,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           * lightness apart, with the label one step of grey brighter; on open
           * there was nothing saying which screen you were on. Inactive labels
           * move up to full `text-fg` too, since the row was uniformly dim. */}
-        <nav className="inline-flex items-center gap-0.5 ml-2 rounded-md bg-panel-2 p-0.5">
+        <nav className="inline-flex flex-wrap items-center gap-0.5 sm:ml-2 rounded-md bg-panel-2 p-0.5">
           {NAV.map((n) => (
             <a key={n.label} href={href(n.route)}
               aria-current={active(n.route) ? 'page' : undefined}
@@ -95,7 +98,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
             </a>
           ))}
         </nav>
-        <div className="ml-auto flex items-center gap-3 text-[11px] text-fg-muted">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-fg-muted">
           {/* The screen name rides along, so a report never has to answer
             * "where were you when this happened". */}
           {/* Beside feedback rather than buried in a panel on one screen: a
@@ -118,7 +121,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           {!isPairedDevice() && <PlanChip plan={plan} onSave={savePlan} />}
           <ThemeToggle />
           <VersionChip />
-          <a href="#/settings" className="text-fg-muted hover:text-fg no-underline">status</a>
+          <a href="#/settings" className="text-fg-muted hover:text-fg no-underline">settings</a>
         </div>
       </header>
       <main className="flex-1 p-3 max-w-[1600px] w-full mx-auto">{children}</main>

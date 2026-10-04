@@ -120,3 +120,68 @@ func TestATunnelAddressIsPreferredOverALANOne(t *testing.T) {
 		t.Errorf("chose %v with a tunnel address available — the tunnel is the one that reaches another network", chosen)
 	}
 }
+
+// 100.64.0.0/10 is the carrier-grade NAT block, which Tailscale borrows. On
+// any interface but Tailscale's it is an address shared with strangers — every
+// other customer behind the same carrier NAT — and must never be bound.
+func TestTheCGNATRangeCountsOnlyOnTailscalesInterface(t *testing.T) {
+	ip := net.ParseIP
+	for _, tc := range []struct {
+		name  string
+		ifc   Interface
+		wants []string
+	}{
+		{
+			name:  "wifi behind a carrier's NAT",
+			ifc:   Interface{Name: "en0", IPs: []net.IP{ip("100.72.10.4")}},
+			wants: nil,
+		},
+		{
+			name:  "phone hotspot handing out CGNAT",
+			ifc:   Interface{Name: "wlan0", IPs: []net.IP{ip("100.100.1.2"), ip("fe80::1")}},
+			wants: nil,
+		},
+		{
+			name:  "another VPN borrowing the range on a utun",
+			ifc:   Interface{Name: "utun4", IPs: []net.IP{ip("100.96.0.7"), ip("2606:4700:110::1")}},
+			wants: nil,
+		},
+		{
+			name:  "Tailscale on macOS: utun with Tailscale's IPv6 prefix",
+			ifc:   Interface{Name: "utun6", IPs: []net.IP{ip("100.101.102.103"), ip("fd7a:115c:a1e0::1234")}},
+			wants: []string{"100.101.102.103"},
+		},
+		{
+			name:  "Tailscale on Linux",
+			ifc:   Interface{Name: "tailscale0", IPs: []net.IP{ip("100.64.0.9")}},
+			wants: []string{"100.64.0.9"},
+		},
+		{
+			name:  "Tailscale on Windows",
+			ifc:   Interface{Name: "Tailscale", IPs: []net.IP{ip("100.88.1.1")}},
+			wants: []string{"100.88.1.1"},
+		},
+		{
+			name:  "a public address on Tailscale's interface is still public",
+			ifc:   Interface{Name: "tailscale0", IPs: []net.IP{ip("8.8.8.8")}},
+			wants: nil,
+		},
+		{
+			name:  "home wifi",
+			ifc:   Interface{Name: "en0", IPs: []net.IP{ip("192.168.1.5"), ip("169.254.3.3"), ip("fe80::2")}},
+			wants: []string{"192.168.1.5"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := choose([]Interface{tc.ifc})
+			if len(got) != len(tc.wants) {
+				t.Fatalf("choose = %v, want %v", got, tc.wants)
+			}
+			for i, w := range tc.wants {
+				if got[i].String() != w {
+					t.Errorf("choose[%d] = %v, want %s", i, got[i], w)
+				}
+			}
+		})
+	}
+}

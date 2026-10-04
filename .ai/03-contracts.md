@@ -110,14 +110,38 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   — not a redirect: the caller is usually `fetch()`, and a redirect to HTML
   becomes a parse error three frames later.
 
-**Pairing endpoints.** `GET /v1/pair/state`, `POST /v1/pair/code` and `DELETE
-/v1/pair/devices/{id|all}` are **loopback-only, enforced in the handler** rather
+**Which address.** One private IPv4 address (RFC 1918), never link-local, never
+public. Tailscale's 100.64.0.0/10 is admitted **only on Tailscale's own
+interface** — one named `tailscale*` (Linux, Windows) or carrying an address in
+Tailscale's IPv6 prefix `fd7a:115c:a1e0::/48` (macOS, where it is a `utunN`).
+The block is carrier-grade NAT, which Tailscale borrows; on any other interface
+it is an address shared with every customer behind the same carrier, and other
+VPNs borrow it too. When a Tailscale address exists it is preferred, and
+`GET /v1/pair/state` says so with `tunnelled: true` (`internal/lan`).
+
+**Pairing endpoints.** `GET /v1/pair/state`, `POST /v1/pair/code`,
+`DELETE /v1/pair/code` and `DELETE /v1/pair/devices/{id|all}` are
+**loopback-only, enforced in the handler** rather
 than by the gate: a paired tablet is somewhere to read figures, not a second
 control room, and it must not be able to admit a third device or revoke the
 laptop that let it in. `POST /v1/pair` takes `{code, name}` and returns
 `{token, id, name}`; it is the one call a device makes before it is trusted, and
 it answers the same way for a wrong, expired, exhausted or never-issued code,
 because every distinction tells a guesser how close they are.
+
+- `DELETE /v1/pair/code` withdraws the outstanding code and answers
+  `{cleared: true}` whether or not there was one — the dashboard's **Cancel**,
+  so a code hidden from the owner is not still valid behind them.
+- **While network access is off**, `GET /v1/pair/state` lists the devices saved
+  in `devices.json` (without tokens), and `DELETE /v1/pair/devices/{id|all}`
+  removes them from that file (`404` for an unknown id). Off is not forgotten:
+  every saved device is let back in when network access is turned on, so the
+  owner sees and edits that list without opening the door first. Without a
+  data directory (tests) the delete is still `409`.
+- **The scanned link** is `http://<address>:<port>/#/pair?code=NNNNNN`. The
+  code rides in the fragment, which the browser never sends to the server; the
+  pairing page reads it, redeems it once with `POST /v1/pair`, and replaces the
+  address with `#/` so the phone's history does not keep a spent code.
 
 Codes are six digits, single-use, valid five minutes, and burned after five
 wrong guesses (`internal/pairing`, unchanged since it was written). Device

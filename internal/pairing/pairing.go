@@ -2,7 +2,7 @@
 // that is otherwise bound to loopback.
 //
 // It is the store behind LAN access (ADR-029): `caprock up --lan` or the
-// status screen's switch opens a second listener, internal/api's gate checks
+// Settings screen's Show a code opens a second listener, internal/api's gate checks
 // every request from the network against the tokens kept here, and the status
 // screen issues codes and lists devices. It was built and tested before that
 // feature, because it is the part that decides who gets in.

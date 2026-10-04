@@ -9,6 +9,41 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Changed
+
+- **Settings is plain now, and opening Caprock on your phone is three steps.**
+  The screen behind the header's link (now called **settings**) is short
+  sections with plain titles: Open Caprock on your phone, Plan & licence,
+  Appearance, Privacy, Memory between sessions, Storage, About this install.
+  Each option says in one line what happens when it is on.
+  - **Phone:** one button, **Show a code**, turns network access on and shows a
+    QR code with the six digits in big type beside it. Scan it with the
+    phone's camera and the phone pairs by itself, then appears in the list
+    with a **Remove** button. The corner says the state at a glance — Off,
+    Waiting for your phone…, 1 phone connected. The QR code is drawn in the
+    browser; nothing is sent anywhere to render it. **Cancel** withdraws the
+    code on the machine, not just from the screen. Phones paired before stay
+    listed while network access is off and can be removed then too.
+  - **Plan:** set it right there — the same choices as the header's picker.
+  - **Theme:** Dark or Light, and Paper or White, from Appearance; the header
+    toggle and this control stay in step.
+  - **Memory:** the setting says what Claude is handed; the "measure whether
+    it helps" experiment is under **Experiments**.
+  - **Storage** and the install's own figures keep their detail one click
+    down, under **Details**.
+- **The header wraps on a phone.** It was one row 882px wide, so every screen
+  on a paired phone scrolled sideways.
+
+### Fixed
+
+- **A carrier-NAT address is no longer offered as Tailscale.** Network access
+  admitted any address in 100.64.0.0/10 as a Tailscale one. That block is
+  carrier-grade NAT, which Tailscale borrows: a laptop tethered to a phone or
+  behind an ISP's CGNAT can hold such an address on its Wi-Fi, and binding it
+  invites everyone behind the same carrier. The range now counts only on
+  Tailscale's own interface — named `tailscale*`, or carrying Tailscale's IPv6
+  prefix `fd7a:115c:a1e0::/48`, which is how it looks on macOS.
+
 ## [0.70.0] - 2026-10-04
 
 ### Added

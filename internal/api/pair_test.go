@@ -88,6 +88,7 @@ func TestOnlyTheOwnerManagesPairing(t *testing.T) {
 	}{
 		{"read the device list", http.MethodGet, "/v1/pair/state", ""},
 		{"issue a new code", http.MethodPost, "/v1/pair/code", `{}`},
+		{"withdraw the code", http.MethodDelete, "/v1/pair/code", ""},
 		{"revoke one device", http.MethodDelete, "/v1/pair/devices/some-id", ""},
 		{"revoke every device", http.MethodDelete, "/v1/pair/devices/all", ""},
 	} {
@@ -501,5 +502,87 @@ func TestTheDeviceListNeverCarriesTokens(t *testing.T) {
 		if strings.Contains(strings.ToLower(k), "token") || strings.Contains(strings.ToLower(k), "secret") {
 			t.Errorf("the device list exposes a %q field", k)
 		}
+	}
+}
+
+// Off is not the same as forgotten: the guest list is kept on disk and every
+// phone on it gets back in when network access is turned on. So the screen has
+// to see it while off — "Off" alone hid a phone that would be readmitted — and
+// removing one must not require opening the door to it first.
+func TestThePairedListIsShownAndEditableWhileOff(t *testing.T) {
+	dir := t.TempDir()
+	ps := pairing.New()
+	code, _ := ps.NewCode()
+	dev, err := ps.Redeem(code, "iPhone")
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, _ = ps.NewCode()
+	if _, err := ps.Redeem(code, "iPad"); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.WriteDevices(dir, ps.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	s := New(Deps{Version: "test", Token: "tok", DataDir: dir}) // LAN off
+
+	var st pairState
+	if err := json.Unmarshal(serveAs(s, http.MethodGet, "/v1/pair/state", owner, "").Body.Bytes(), &st); err != nil {
+		t.Fatal(err)
+	}
+	if st.Enabled || len(st.Devices) != 2 {
+		t.Fatalf("state while off = %+v; want disabled with both saved devices", st)
+	}
+	if strings.Contains(serveAs(s, http.MethodGet, "/v1/pair/state", owner, "").Body.String(), dev.Token) {
+		t.Fatal("the saved list leaked a device token")
+	}
+
+	if w := serveAs(s, http.MethodDelete, "/v1/pair/devices/"+dev.ID, owner, ""); w.Code != http.StatusOK {
+		t.Fatalf("remove while off: %d %s", w.Code, w.Body)
+	}
+	saved, err := config.ReadDevices(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(saved) != 1 || saved[0].Name != "iPad" {
+		t.Errorf("after removing the iPhone the disk holds %+v; want only the iPad", saved)
+	}
+	if w := serveAs(s, http.MethodDelete, "/v1/pair/devices/nope", owner, ""); w.Code != http.StatusNotFound {
+		t.Errorf("removing an unknown device while off: %d; want 404", w.Code)
+	}
+	// Still owner-only.
+	if w := serveAs(s, http.MethodDelete, "/v1/pair/devices/all", tablet, ""); w.Code != http.StatusForbidden && w.Code != http.StatusUnauthorized {
+		t.Errorf("a request off the network removed devices: %d", w.Code)
+	}
+}
+
+// Cancel on the screen withdraws the code on the daemon. Hiding it only from
+// the owner would leave a working code behind them for the rest of its five
+// minutes — an invitation nobody can see.
+func TestCancellingACodeStopsItWorking(t *testing.T) {
+	e := newPairEnv(t)
+	w := e.do(t, http.MethodPost, "/v1/pair/code", owner, `{}`)
+	var issued struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &issued); err != nil {
+		t.Fatal(err)
+	}
+	if w := e.do(t, http.MethodDelete, "/v1/pair/code", owner, ""); w.Code != http.StatusOK {
+		t.Fatalf("withdraw: %d %s", w.Code, w.Body)
+	}
+	if w := e.do(t, http.MethodPost, "/v1/pair", tablet, `{"code":"`+issued.Code+`"}`); w.Code != http.StatusUnauthorized {
+		t.Errorf("a withdrawn code still paired a device: %d %s", w.Code, w.Body)
+	}
+	var st pairState
+	if err := json.Unmarshal(e.do(t, http.MethodGet, "/v1/pair/state", owner, "").Body.Bytes(), &st); err != nil {
+		t.Fatal(err)
+	}
+	if st.Code != "" {
+		t.Errorf("state still shows code %q after it was withdrawn", st.Code)
+	}
+	// Nothing to withdraw is not an error: either way, no code works now.
+	if w := e.do(t, http.MethodDelete, "/v1/pair/code", owner, ""); w.Code != http.StatusOK {
+		t.Errorf("withdrawing twice: %d %s", w.Code, w.Body)
 	}
 }

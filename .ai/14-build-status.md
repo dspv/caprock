@@ -72,6 +72,22 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-04 (later) — Settings in plain words, and the phone by QR code
+
+The owner on the Settings screen, translated: "honestly, NOTHING here is
+understandable, and it should be easy and simple" — above all the block for
+reading Caprock from a phone. It is now sections with plain titles and a
+one-line description per option; the phone is three steps and one button that
+turns network access on and shows a QR code drawn in the browser
+(`ui/src/lib/qr.ts`). Scanning it pairs the phone with no typing. Verified on an
+isolated daemon: the rendered code decoded to the pairing link, a second
+browser on the LAN address paired from that link alone and read the dashboard,
+and Remove (while on and while off) took it out. Three defects found on the
+way: the CGNAT range was admitted as Tailscale on any interface (now only on
+Tailscale's own), the off state reported no devices although `devices.json`
+kept them, and the header was 882px wide on a 390px phone. See
+[04-ui.md § Settings](04-ui.md#settings) and [03-contracts.md](03-contracts.md).
+
 ### 2026-10-04 (evening) — The terminal takes the keyboard first; repo links; kept figures
 
 The owner reported that opening a session's terminal froze the browser and

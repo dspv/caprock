@@ -491,7 +491,7 @@ lost, and history from before the upgrade stays exactly where it was. Check
 what you ended up on with `caprock status`.
 
 Caprock can also tell you when a release is out: turn on release checks from
-the banner on the Now screen, or on the status page. That is the only outbound
+the banner on the Now screen, or under Privacy in settings. That is the only outbound
 call it makes, it is off until you switch it on, and it sends nothing about
 you. It never installs anything by itself — it shows the one command above for
 your install method, and you run it.
@@ -499,12 +499,19 @@ your install method, and you run it.
 Downloaded the binary directly? Replace it with a fresh one from
 [Releases](https://github.com/dspv/caprock/releases) and restart.
 
-## Read it from a tablet
+## Open it on your phone
 
-Caprock answers only the machine it runs on. To read it from a tablet or a
-phone on the same network, open **status** and press *Let this network in*. The
-same screen then shows an address to open on the other device; press *Show a
-code* there for the six-digit code to type.
+Caprock answers only the machine it runs on. To read it from a phone or a
+tablet:
+
+1. Your phone and the computer are on the same Wi-Fi.
+2. Open **settings** and press *Show a code*, then point the phone's camera at
+   the QR code. The phone opens Caprock and pairs by itself. (No camera? The
+   same screen shows the address and a six-digit code to type.)
+3. The phone appears under *Paired devices*, with a *Remove* button.
+
+The QR code is drawn by the dashboard itself; nothing is sent anywhere to make
+it.
 
 There is a flag too — `caprock up --lan` — for a machine you administer over
 SSH. The button exists because the person who wants this is usually holding the
@@ -516,9 +523,9 @@ A few things worth knowing, because this is the one place Caprock stops being
 loopback-only:
 
 - **Nothing gets in without pairing.** Every request from the network is
-  refused until a device has traded a code for a token. Devices are listed on
-  the status screen and can be revoked one by one, which takes effect on the
-  next request.
+  refused until a device has traded a code for a token. Devices are listed in
+  settings and can be removed one by one, which takes effect on the next
+  request.
 - **A paired device reads; it does not control.** It sees sessions, costs,
   answers, changes and the task board. Starting, typing into, pausing or
   stopping a session, and changing settings, tasks or pairing, happen only on
@@ -537,7 +544,9 @@ loopback-only:
   arrive. For anywhere else, install [Tailscale](https://tailscale.com/kb/1017/install)
   on both devices: Caprock then shows its address instead, and it works from
   mobile data. The traffic goes directly between your own machines, with
-  nothing of ours in between.
+  nothing of ours in between. Tailscale's 100.x address is used only when it is
+  on Tailscale's own interface: the same range is carrier-grade NAT, and on
+  your Wi-Fi it would be shared with strangers.
 
 ## Start it at login
 
