@@ -517,6 +517,7 @@ func (in *Ingester) turn(ctx context.Context, s *Session, t Turn, info rollup.Se
 		Model:     s.Model,
 		Payload:   payload,
 		Key:       t.Key,
+		MsgID:     turnMsgID(s, t.Key),
 		AgentID:   subagentID(s),
 		// Codex's `input_tokens` is the TOTAL prompt, with `cached_input_tokens`
 		// a subset of it — verified on all 239 token samples in 100 real
@@ -581,6 +582,7 @@ func (in *Ingester) tool(ctx context.Context, s *Session, c ToolCall, info rollu
 		Tool:      c.Name,
 		Payload:   payload,
 		Key:       c.Key,
+		MsgID:     turnMsgID(s, c.TurnKey),
 		AgentID:   subagentID(s),
 	}
 	res, err := in.rec.Record(ctx, ev, info)
@@ -593,6 +595,19 @@ func (in *Ingester) tool(ctx context.Context, s *Session, c ToolCall, info rollu
 		in.mu.Unlock()
 	}
 	return nil
+}
+
+// turnMsgID is the msg_id that ties a Codex turn and its tool calls together,
+// the link Claude Code's message id provides (see ToolCall.TurnKey). Codex
+// records no response id, so the turn's key stands in for one, prefixed with
+// the session: msg_id is matched across sessions to catch a fork's copied
+// turns (store.TurnPaidElsewhere), and a bare key repeats in every file.
+// Migration 0037 writes the same value for rows stored before. "" for no turn.
+func turnMsgID(s *Session, turnKey string) string {
+	if turnKey == "" {
+		return ""
+	}
+	return s.ID + "/" + turnKey
 }
 
 // subagentID is the agent_id a subagent's events carry — its own thread id, as

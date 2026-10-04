@@ -84,6 +84,11 @@ type Session struct {
 	// never imported now, and what the one-time cleanup of rows stored before
 	// that rule deletes. Read from the transcript, never guessed from text.
 	Injected []string
+
+	// callTurn maps a tool-call block's id to the key of the turn whose
+	// message holds it, so the `tool/call` record that follows can name the
+	// turn that paid for it (ToolCall.TurnKey).
+	callTurn map[string]string
 }
 
 // Turn is one assistant turn: its token usage (already reduced to a delta) and
@@ -117,6 +122,9 @@ type ToolCall struct {
 	Name string
 	// Input is the raw arguments JSON as recorded.
 	Input string
+	// TurnKey is the Key of the turn whose assistant message carries this
+	// call's tool-call block, matched by call id. Empty when none does.
+	TurnKey string
 }
 
 // UserMsg is one user prompt.
@@ -249,6 +257,9 @@ type record struct {
 type contentBlock struct {
 	Type string `json:"type"`
 	Text string `json:"text"`
+	// ID is set on a tool-call block; the `tool/call` record repeats it as
+	// callId.
+	ID string `json:"id"`
 }
 
 // parseLine consumes one JSONL record. Fields are read defensively: an
@@ -305,10 +316,19 @@ func (s *Session) parseLine(line []byte) error {
 		if t.Model != "" {
 			s.Model = t.Model
 		}
+		for _, b := range m.Message.Content {
+			if b.Type == "tool-call" && b.ID != "" {
+				if s.callTurn == nil {
+					s.callTurn = map[string]string{}
+				}
+				s.callTurn[b.ID] = t.Key
+			}
+		}
 		s.Turns = append(s.Turns, t)
 
 	case "tool/call":
 		var c struct {
+			CallID    string `json:"callId"`
 			Name      string `json:"name"`
 			Arguments string `json:"arguments"`
 		}
@@ -316,10 +336,11 @@ func (s *Session) parseLine(line []byte) error {
 			return err
 		}
 		s.Tools = append(s.Tools, ToolCall{
-			At:    at,
-			Key:   "dsh:tool:" + strconv.FormatInt(r.Seq, 10),
-			Name:  c.Name,
-			Input: c.Arguments,
+			At:      at,
+			Key:     "dsh:tool:" + strconv.FormatInt(r.Seq, 10),
+			Name:    c.Name,
+			Input:   c.Arguments,
+			TurnKey: s.callTurn[c.CallID],
 		})
 
 	case "user/message":

@@ -167,6 +167,12 @@ type ToolCall struct {
 	// Input is the raw argument payload, stored so the dashboard can show what
 	// a call actually did.
 	Input string
+	// TurnKey is the Key of the turn that paid for this call: the first turn
+	// recorded after it. Codex writes a response's items (reasoning, message,
+	// function calls) first and the token_count that bills that response
+	// after them, so the call's turn is the next one in the file. Empty when
+	// no turn followed, as at the end of an aborted response.
+	TurnKey string
 }
 
 // Limits is the plan-limit sample a transcript last recorded.
@@ -606,6 +612,7 @@ func Parse(r io.Reader, path string) (*Session, error) {
 			s.Tools[i].Key = subagentKey(s.ThreadID, s.Tools[i].Line, "tool")
 		}
 	}
+	linkToolsToTurns(s)
 	if s.Imported || s.Subagent {
 		// Imported prose is another agent's, already stored from its own
 		// transcript. A subagent's would be hidden from Memory anyway, as
@@ -615,6 +622,20 @@ func Parse(r io.Reader, path string) (*Session, error) {
 		}
 	}
 	return s, nil
+}
+
+// linkToolsToTurns gives every call the key of the first turn after it (see
+// ToolCall.TurnKey). Both lists are in file order.
+func linkToolsToTurns(s *Session) {
+	j := 0
+	for i := range s.Tools {
+		for j < len(s.Turns) && s.Turns[j].Line < s.Tools[i].Line {
+			j++
+		}
+		if j < len(s.Turns) {
+			s.Tools[i].TurnKey = s.Turns[j].Key
+		}
+	}
 }
 
 // joinText joins a turn's messages the way Claude Code's text blocks are

@@ -325,6 +325,13 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 				return res, mErr
 			}
 		}
+		// A tool call the hook stored first, now offered again with the message
+		// id that ties it to its turn (store.LinkToolCall).
+		if ev.Kind == event.KindToolPre && ev.MsgID != "" {
+			if _, lErr := store.LinkToolCall(ctx, r.Store.DB(), ev.SessionID, ev.Key, ev.MsgID); lErr != nil {
+				return res, lErr
+			}
+		}
 		return res, nil
 	}
 	if err != nil {

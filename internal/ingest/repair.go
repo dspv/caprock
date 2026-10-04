@@ -486,6 +486,8 @@ func BackfillToolMessageIDs(ctx context.Context, db *sql.DB, log *slog.Logger, a
 		       COALESCE(se.transcript_path,'')
 		FROM events e JOIN sessions se ON se.session_id = e.session_id
 		WHERE e.kind = 'tool.pre' AND e.msg_id IS NULL
+		  -- Claude Code's own sources: no other agent's call is in a Claude transcript.
+		  AND e.source IN ('hook', 'transcript')
 		  AND e.id > ?
 		  AND COALESCE(se.transcript_path,'') != ''
 		ORDER BY e.id LIMIT ?`, after, limit)
