@@ -222,3 +222,41 @@ describe('Codex and OpenCode', () => {
     expect(spawn.mock.calls[0]).toEqual([{ cwd: '/x', agent: 'codex', permission_mode: 'acceptEdits' }])
   })
 })
+
+/**
+ * On a controller phone (ADR-034): the full dialog, and bypass behind one
+ * inline confirm, because nobody may be at the machine to see what it does.
+ */
+describe('on a paired phone', () => {
+  beforeEach(async () => {
+    localStorage.clear()
+    spawn.mockClear()
+    const { setDeviceToken } = await import('@/lib/api')
+    setDeviceToken('tok')
+  })
+  const open = () => render(<SpawnDialog available onClose={() => {}} initialCwd="/home/me/fresh" />)
+
+  it('offers the folder browser and bypass, as the machine does', async () => {
+    open()
+    expect(await screen.findByRole('button', { name: 'Browse' })).toBeTruthy()
+    const modes = Array.from(screen.getByLabelText<HTMLSelectElement>(/Permissions/).options).map((o) => o.value)
+    expect(modes).toContain('bypassPermissions')
+  })
+
+  it('asks once before starting in bypass, inline', async () => {
+    open()
+    fireEvent.change(screen.getByLabelText<HTMLSelectElement>(/Permissions/), { target: { value: 'bypassPermissions' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
+    expect(screen.getByText("The agent won't ask before running commands or editing files. Start?")).toBeTruthy()
+    expect(spawn).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Start in bypass' }))
+    await waitFor(() => expect(spawn).toHaveBeenCalledWith(expect.objectContaining({ cwd: '/home/me/fresh', permission_mode: 'bypassPermissions' })))
+  })
+
+  it('starts a mode that asks without a confirm', async () => {
+    open()
+    fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
+    await waitFor(() => expect(spawn).toHaveBeenCalledOnce())
+    expect(screen.queryByText(/won't ask/)).toBeNull()
+  })
+})

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -42,7 +43,7 @@ var viewerMay = map[string]bool{
 // What a controller may do on top (ADR-034): work on a session, nothing about
 // the machine.
 var controllerMayAlso = map[string]bool{
-	"POST /v1/agents": true, "GET /v1/agents/models": true, "GET /v1/recent-dirs": true,
+	"POST /v1/agents": true, "GET /v1/agents/models": true, "GET /v1/recent-dirs": true, "GET /v1/browse": true,
 	"GET /v1/sessions/{id}/relay": true, "GET /v1/agents/{id}/term": true,
 	"POST /v1/agents/{id}/input": true, "POST /v1/agents/{id}/signal": true, "POST /v1/paste": true,
 	"POST /v1/tasks/{id}/approve": true, "POST /v1/tasks/{id}/reject": true,
@@ -286,18 +287,37 @@ func TestSetRoleWhileNetworkAccessIsOff(t *testing.T) {
 	}
 }
 
-// A controller starts a known agent in a known project, and nothing else.
-// The machine itself is not narrowed.
-func TestAControllerStartsAgentsOnlyInKnownProjects(t *testing.T) {
+// fakeHome points the home directory at a fresh folder, on every platform
+// (Windows reads USERPROFILE, not HOME), and returns it.
+func fakeHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	return home
+}
+
+// A controller starts a known agent, in any mode, in a folder under home, and
+// nothing else — not even a project outside home where sessions have run. The
+// machine itself is not narrowed.
+func TestAControllerStartsAgentsUnderHome(t *testing.T) {
 	st, err := store.Open(context.Background(), ":memory:", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	known := t.TempDir()
+	home := fakeHome(t)
+	known := t.TempDir() // sessions have run there, but it is outside home
 	if err := store.UpsertSession(context.Background(), st.DB(), "s1", store.SessionPatch{Cwd: known}); err != nil {
 		t.Fatal(err)
 	}
+	fresh := filepath.Join(home, "dev", "fresh")
+	if err := os.MkdirAll(fresh, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	escape := filepath.Join(home, "escape")
+	hasSymlink := os.Symlink(outside, escape) == nil
 	fa := &fakeAgents{avail: true}
 	s, _, viewer, controller := pairedPhones(t, Deps{Store: st, Agents: fa})
 	spawn := func(from, token, body string) int {
@@ -311,34 +331,109 @@ func TestAControllerStartsAgentsOnlyInKnownProjects(t *testing.T) {
 		s.ServeHTTP(w, r)
 		return w.Code
 	}
-	unknown := t.TempDir()
 	// Forward slashes keep a Windows path valid inside the JSON bodies below;
 	// the handler's filepath.Clean turns them back.
-	known, unknown = filepath.ToSlash(known), filepath.ToSlash(unknown)
-	for _, tc := range []struct {
+	known, outside, fresh = filepath.ToSlash(known), filepath.ToSlash(outside), filepath.ToSlash(fresh)
+	homeSlash, escapeSlash := filepath.ToSlash(home), filepath.ToSlash(escape)
+	cases := []struct {
 		name, from, token, body string
 		want                    int
 	}{
-		{"controller, known project", testPhone, controller.Token, `{"cwd":"` + known + `","agent":"codex"}`, 200},
-		{"controller, resume in a known project", testPhone, controller.Token, `{"cwd":"` + known + `","resume":"a-session-run-elsewhere"}`, 200},
-		{"controller, false flags ask for nothing", testPhone, controller.Token, `{"cwd":"` + known + `","create":false,"args":[]}`, 200},
-		{"controller, unknown folder", testPhone, controller.Token, `{"cwd":"` + unknown + `"}`, 403},
+		{"controller, codex under home", testPhone, controller.Token, `{"cwd":"` + fresh + `","agent":"codex"}`, 200},
+		{"controller, resume under home", testPhone, controller.Token, `{"cwd":"` + fresh + `","resume":"a-session-run-elsewhere"}`, 200},
+		{"controller, false flags ask for nothing", testPhone, controller.Token, `{"cwd":"` + fresh + `","create":false,"args":[]}`, 200},
+		{"controller, a known project outside home", testPhone, controller.Token, `{"cwd":"` + known + `"}`, 403},
+		{"controller, a fresh folder under home", testPhone, controller.Token, `{"cwd":"` + fresh + `"}`, 200},
+		{"controller, home itself", testPhone, controller.Token, `{"cwd":"` + homeSlash + `"}`, 200},
+		{"controller, a new folder under home", testPhone, controller.Token, `{"cwd":"` + fresh + `/new","create":true}`, 200},
+		{"controller, a missing folder without create", testPhone, controller.Token, `{"cwd":"` + fresh + `/missing"}`, 403},
+		{"controller, two new levels under home", testPhone, controller.Token, `{"cwd":"` + fresh + `/a/b","create":true}`, 403},
+		{"controller, a folder outside home", testPhone, controller.Token, `{"cwd":"` + outside + `"}`, 403},
+		{"controller, a new folder outside home", testPhone, controller.Token, `{"cwd":"` + outside + `/new","create":true}`, 403},
+		{"controller, dot-dot out of home", testPhone, controller.Token, `{"cwd":"` + homeSlash + `/../x"}`, 403},
 		{"controller, relative path", testPhone, controller.Token, `{"cwd":"dev/x"}`, 403},
-		{"controller, any binary", testPhone, controller.Token, `{"cwd":"` + known + `","command":"sh"}`, 403},
-		{"controller, any flags", testPhone, controller.Token, `{"cwd":"` + known + `","args":["--x"]}`, 403},
-		{"controller, a new folder", testPhone, controller.Token, `{"cwd":"` + known + `/new","create":true}`, 403},
+		{"controller, any binary", testPhone, controller.Token, `{"cwd":"` + fresh + `","command":"sh"}`, 403},
+		{"controller, any flags", testPhone, controller.Token, `{"cwd":"` + fresh + `","args":["--x"]}`, 403},
 		{"controller, a scratch chat", testPhone, controller.Token, `{"chat":true}`, 403},
-		{"controller, bypass mode", testPhone, controller.Token, `{"cwd":"` + known + `","permission_mode":"bypassPermissions"}`, 403},
-		{"controller, codex in bypass mode", testPhone, controller.Token, `{"cwd":"` + known + `","agent":"codex","permission_mode":"bypassPermissions"}`, 403},
-		{"controller, a mode that asks", testPhone, controller.Token, `{"cwd":"` + known + `","permission_mode":"acceptEdits"}`, 200},
-		{"controller, plan mode", testPhone, controller.Token, `{"cwd":"` + known + `","permission_mode":"plan"}`, 200},
-		{"viewer, known project", testPhone, viewer.Token, `{"cwd":"` + known + `"}`, 403},
-		{"the machine, any folder", "127.0.0.1:51000", "", `{"cwd":"` + unknown + `","command":"sh"}`, 200},
+		{"controller, bypass mode", testPhone, controller.Token, `{"cwd":"` + fresh + `","permission_mode":"bypassPermissions"}`, 200},
+		{"controller, codex in bypass mode", testPhone, controller.Token, `{"cwd":"` + fresh + `","agent":"codex","permission_mode":"bypassPermissions"}`, 200},
+		{"controller, plan mode", testPhone, controller.Token, `{"cwd":"` + fresh + `","permission_mode":"plan"}`, 200},
+		{"viewer, a folder under home", testPhone, viewer.Token, `{"cwd":"` + fresh + `"}`, 403},
+		{"the machine, any folder", "127.0.0.1:51000", "", `{"cwd":"` + outside + `","command":"sh"}`, 200},
 		{"the machine, bypass mode", "127.0.0.1:51000", "", `{"cwd":"` + known + `","permission_mode":"bypassPermissions"}`, 200},
-	} {
+	}
+	if hasSymlink {
+		cases = append(cases,
+			struct {
+				name, from, token, body string
+				want                    int
+			}{"controller, a symlink out of home", testPhone, controller.Token, `{"cwd":"` + escapeSlash + `"}`, 403},
+			struct {
+				name, from, token, body string
+				want                    int
+			}{"controller, a new folder through a symlink out of home", testPhone, controller.Token, `{"cwd":"` + escapeSlash + `/new","create":true}`, 403},
+		)
+	} else {
+		t.Log("symlinks unavailable here; the escape cases are skipped")
+	}
+	for _, tc := range cases {
 		if got := spawn(tc.from, tc.token, tc.body); got != tc.want {
 			t.Errorf("%s: %d, want %d", tc.name, got, tc.want)
 		}
+	}
+}
+
+// A controller's folder picker lists home and below, never above it and never
+// through a symlink out of it; a viewer has no picker.
+func TestAControllerBrowsesOnlyUnderHome(t *testing.T) {
+	home := fakeHome(t)
+	if err := os.MkdirAll(filepath.Join(home, "dev", "app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	hasSymlink := os.Symlink(outside, filepath.Join(home, "escape")) == nil
+	// The owner's own browse root is the filesystem: the phone still stops at home.
+	set := &fakeSettings{}
+	if err := set.Set(Settings{BrowseRoot: filepath.Dir(home)}); err != nil {
+		t.Fatal(err)
+	}
+	s, _, viewer, controller := pairedPhones(t, Deps{Settings: set})
+	browse := func(token, dir string) (int, browseResponse) {
+		r := httptest.NewRequest(http.MethodGet, "/v1/browse?dir="+url.QueryEscape(dir), nil)
+		r.RemoteAddr = testPhone
+		r.Header.Set(deviceTokenHeader, token)
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		var out browseResponse
+		_ = json.Unmarshal(w.Body.Bytes(), &out)
+		return w.Code, out
+	}
+	realHome, _ := filepath.EvalSymlinks(home)
+	if code, out := browse(controller.Token, ""); code != 200 || out.Root != realHome || out.Parent != "" {
+		t.Errorf("controller at the root: %d root=%q parent=%q, want home %q", code, out.Root, out.Parent, realHome)
+	}
+	if code, _ := browse(controller.Token, filepath.Join(home, "dev")); code != 200 {
+		t.Errorf("controller under home: %d", code)
+	}
+	if code, _ := browse(controller.Token, filepath.Dir(home)); code != 404 {
+		t.Errorf("controller above home: %d, want 404", code)
+	}
+	if code, _ := browse(controller.Token, outside); code != 404 {
+		t.Errorf("controller outside home: %d, want 404", code)
+	}
+	if hasSymlink {
+		if code, _ := browse(controller.Token, filepath.Join(home, "escape")); code != 404 {
+			t.Errorf("controller through a symlink out of home: %d, want 404", code)
+		}
+		_, out := browse(controller.Token, "")
+		for _, e := range out.Entries {
+			if e.Name == "escape" {
+				t.Error("a controller was shown a symlink out of home")
+			}
+		}
+	}
+	if code, _ := browse(viewer.Token, ""); code != 403 {
+		t.Errorf("viewer: %d, want 403", code)
 	}
 }
 
@@ -417,5 +512,44 @@ func TestPairingFromThisMachinesOwnAddressSaysSo(t *testing.T) {
 	}
 	if got := redeem(testPhone, "iPhone · Safari"); got != "iPhone · Safari" {
 		t.Errorf("from a phone: %q", got)
+	}
+}
+
+// A phone's Recent list holds only folders under home: anything else would be
+// refused when picked. The machine's list is unchanged.
+func TestAControllersRecentFoldersAreUnderHome(t *testing.T) {
+	st, err := store.Open(context.Background(), ":memory:", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	home := fakeHome(t)
+	inside, outside := filepath.Join(home, "app"), t.TempDir()
+	if err := os.Mkdir(inside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for i, dir := range []string{inside, outside} {
+		if err := store.UpsertSession(context.Background(), st.DB(), "s"+string(rune('1'+i)), store.SessionPatch{Cwd: dir}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s, _, _, controller := pairedPhones(t, Deps{Store: st})
+	recent := func(from, token string) []recentDir {
+		r := httptest.NewRequest(http.MethodGet, "/v1/recent-dirs", nil)
+		r.RemoteAddr = from
+		if token != "" {
+			r.Header.Set(deviceTokenHeader, token)
+		}
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		var out []recentDir
+		_ = json.Unmarshal(w.Body.Bytes(), &out)
+		return out
+	}
+	if got := recent(testPhone, controller.Token); len(got) != 1 || got[0].Dir != inside {
+		t.Errorf("controller: %+v, want only %s", got, inside)
+	}
+	if got := recent("127.0.0.1:51000", ""); len(got) != 2 {
+		t.Errorf("the machine: %+v, want both", got)
 	}
 }

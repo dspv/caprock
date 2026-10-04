@@ -44,7 +44,8 @@ export function TerminalKeys({ send }: { send: (bytes: string) => void }) {
     <div className="grid gap-2 border-t border-border px-2 py-2">
       <div className="flex items-end gap-2">
         {/* 16px: iOS zooms the page into any field set smaller, and the
-          * terminal above would be cut off when it did. */}
+          * terminal above would be cut off when it did. Inline, because
+          * .input's own 12px outranked the text-[16px] utility. */}
         <textarea
           ref={field}
           value={text}
@@ -61,7 +62,8 @@ export function TerminalKeys({ send }: { send: (bytes: string) => void }) {
           autoCapitalize="off"
           autoCorrect="off"
           spellCheck={false}
-          className="input min-w-0 flex-1 resize-none text-[16px] leading-snug"
+          className="input min-w-0 flex-1 resize-none leading-snug"
+          style={{ fontSize: 16 }}
         />
         <button
           type="button"

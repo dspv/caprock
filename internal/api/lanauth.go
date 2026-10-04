@@ -166,8 +166,7 @@ func (s *Server) gateDevice(r *http.Request) (status int, reason string, dev *pa
 //     into the session's terminal. Its method says read; it is a keyboard.
 //     A controller has it (controllerRoutes).
 //   - /v1/browse — a directory listing of this machine, there for the folder
-//     picker that starts a session anywhere. Not even a controller has it: a
-//     phone starts sessions only where sessions have already run.
+//     picker. A controller has it, rooted inside home (controllerRoutes).
 //   - /v1/recent-dirs — the projects a controller picks from, and nothing a
 //     viewer needs.
 //   - /v1/pair/state — pairing is managed from the machine, and its handler
@@ -202,7 +201,7 @@ var pairedDeviceRoutes = map[string]bool{
 // time for the same reason as above.
 //
 // The test for a route being here: it is something a person does to a session
-// from the sofa — start one in a project they already work in, carry one on,
+// away from the desk — start one in a folder under home, carry one on,
 // type into it, answer it, attach a photo to it, stop it — and it acts only on
 // what Caprock itself started (rule 7 is enforced below this, in the agent
 // manager, whoever asks).
@@ -216,11 +215,11 @@ var pairedDeviceRoutes = map[string]bool{
 //     /v1/gemini/ask — configuration of the machine, starting a fleet, or an
 //     outbound call; none of them is "work on a session".
 //   - POST /v1/tasks/{id}/verify — it runs the task's done-criteria commands.
-//   - /v1/browse — see above: a phone picks from projects, not the disk.
 var controllerRoutes = map[string]bool{
 	"POST /v1/agents":             true, // start or continue a session; narrowed further in handleSpawn
 	"GET /v1/agents/models":       true, // the start form's model list
 	"GET /v1/recent-dirs":         true, // the start form's project list
+	"GET /v1/browse":              true, // the start form's folder picker, rooted inside home (handleBrowse)
 	"GET /v1/sessions/{id}/relay": true, // the brief a relay offers, to read before starting it
 	"GET /v1/agents/{id}/term":    true, // the terminal: output, and typing
 	"POST /v1/agents/{id}/input":  true,

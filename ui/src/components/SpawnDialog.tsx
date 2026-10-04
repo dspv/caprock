@@ -135,12 +135,16 @@ export function SpawnDialog({
   const [create, setCreate] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  // On a paired phone (a controller, or this dialog is not shown): a project
-  // from the list, and none of the options that make a folder or a worktree.
-  // The daemon refuses the rest from a phone anyway (ADR-034).
+  // On a paired phone (a controller, or this dialog is not shown): the same
+  // dialog, with folders under home only (the daemon enforces it, ADR-034),
+  // and one confirm before a session that never asks — nobody may be at the
+  // machine to notice what it does.
   const remote = isPairedDevice()
+  const [confirming, setConfirming] = useState(false)
   const submit = async () => {
-    if (!cwd.trim()) { setError(remote ? 'Pick a project.' : 'Working directory is required.'); return }
+    if (!cwd.trim()) { setError('Working directory is required.'); return }
+    if (remote && mode === 'bypassPermissions' && !confirming) { setConfirming(true); return }
+    setConfirming(false)
     setBusy(true); setError('')
     try {
       const req: Parameters<typeof api.spawn>[0] = { cwd: cwd.trim() }
@@ -178,22 +182,17 @@ export function SpawnDialog({
           // that; the container has to be allowed to be narrower than what it
           // holds.
           <div className="px-4 py-3 grid min-w-0 gap-3 text-[13px]">
-            {remote ? (
-              <Field label="Project" hint="where sessions have already run">
-                <div className="min-w-0 max-w-full">
-                  <DirPicker value={cwd} onPick={setCwd} recentOnly />
-                </div>
-              </Field>
-            ) : (
-              <Field label="Working directory" hint="pick one, or type a path">
-                <input autoFocus className="input" placeholder="/Users/you/dev/project" value={cwd} onChange={(e) => setCwd(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
-                {/* The lists write into the field above rather than replacing it,
-                  * so what will actually be used stays visible and editable. */}
-                <div className="mt-1.5 min-w-0 max-w-full">
-                  <DirPicker value={cwd} onPick={setCwd} />
-                </div>
-              </Field>
-            )}
+            <Field label="Working directory" hint={remote ? 'a folder under your home' : 'pick one, or type a path'}>
+              {/* No autofocus on a phone: it would open the keyboard over the
+                * picker the phone is meant to use. 16px there, or iOS zooms;
+                * inline, because .input's own size outranks a utility. */}
+              <input autoFocus={!remote} className="input" style={remote ? { fontSize: 16 } : undefined} placeholder="/Users/you/dev/project" value={cwd} onChange={(e) => setCwd(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
+              {/* The lists write into the field above rather than replacing it,
+                * so what will actually be used stays visible and editable. */}
+              <div className="mt-1.5 min-w-0 max-w-full">
+                <DirPicker value={cwd} onPick={setCwd} />
+              </div>
+            </Field>
             {/* Only the agents whose binary the daemon found: a choice that
               * fails on click is worse than no choice. The last one picked
               * is remembered for this viewer. */}
@@ -211,10 +210,8 @@ export function SpawnDialog({
                 * the daemon maps onto them — so the control stays live for
                 * all of them, labelled with what it becomes in this one. */}
               <Field label="Permissions">
-                <select className="input" value={mode} onChange={(e) => setMode(e.target.value)}>
-                  {/* No bypass from a phone (ADR-034): the daemon refuses it,
-                    * because a phone is used when nobody watches the machine. */}
-                  {MODES.filter(([v]) => !remote || v !== 'bypassPermissions').map(([v, label]) => (
+                <select className="input" value={mode} onChange={(e) => { setMode(e.target.value); setConfirming(false) }}>
+                  {MODES.map(([v, label]) => (
                     <option key={v} value={v}>
                       {agent === 'gemini' && !GEMINI_MAPPED.has(v) ? `${label} · Gemini asks instead` : MODE_NOTE[agent]?.[v] ?? label}
                     </option>
@@ -225,7 +222,7 @@ export function SpawnDialog({
             {/* Two settings that matter to a handful of runs and to nobody
               * else, folded away rather than deleted. Every field on screen is
               * a decision asked of someone who wanted to press one button. */}
-            {!remote && <details className="text-[12px] group">
+            <details className="text-[12px] group">
               <summary className="cursor-pointer select-none text-fg-muted hover:text-fg list-none marker:content-none">
                 <span className="inline-block transition-transform group-open:rotate-90 text-fg-faint">▶</span> Advanced
               </summary>
@@ -244,11 +241,22 @@ export function SpawnDialog({
                   <input className="input" placeholder="feature-x" value={worktree} onChange={(e) => setWorktree(e.target.value)} />
                 </Field>
               </div>
-            </details>}
+            </details>
             {error && <div className="text-danger text-[12px]">{error}</div>}
           </div>
         )}
-        {(available || agents.length > 0) && (
+        {(available || agents.length > 0) && confirming && (
+          // Inline, not window.confirm: a browser dialog on a phone is easy to
+          // dismiss without reading, and some in-app browsers suppress it.
+          <footer role="alertdialog" aria-label="Confirm bypass" className="px-4 py-2 border-t border-border grid gap-2 text-[13px]">
+            <p className="text-warn">The agent won't ask before running commands or editing files. Start?</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setConfirming(false)} className="border border-border px-3 py-1 rounded-sm text-fg-muted hover:text-fg">Back</button>
+              <button onClick={submit} disabled={busy} className="border border-accent bg-accent/15 text-accent px-3 py-1 rounded-sm hover:bg-accent/25 disabled:opacity-50">{busy ? 'starting…' : 'Start in bypass'}</button>
+            </div>
+          </footer>
+        )}
+        {(available || agents.length > 0) && !confirming && (
           <footer className="px-4 py-2 border-t border-border flex gap-2 justify-end">
             <button onClick={onClose} className="border border-border px-3 py-1 rounded-sm text-fg-muted hover:text-fg">Cancel</button>
             <button onClick={submit} disabled={busy} className="border border-accent bg-accent/15 text-accent px-3 py-1 rounded-sm hover:bg-accent/25 disabled:opacity-50">{busy ? 'starting…' : 'Start session'}</button>

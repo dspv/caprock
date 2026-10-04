@@ -536,12 +536,14 @@ loopback-only:
 - **A paired device reads, unless you let it control sessions.** It sees
   sessions, costs, answers, changes and the task board. Beside each device in
   settings, *Let it control sessions* lets that phone also start a session in
-  one of your projects with Claude Code, Codex or OpenCode, type into it (a big
-  input field plus Esc, Tab, arrows, Enter and Ctrl+C buttons), answer
-  approvals and stop it. *Take control away* undoes it at once, including in a
-  terminal already open on the phone. Changing settings or pairing, and
-  starting anything outside a project you already work in, stay on the machine
-  Caprock runs on — the daemon refuses them from anywhere else.
+  any folder under your home directory with Claude Code, Codex or OpenCode, in
+  any permission mode (Bypass asks once first), type into it (a big input
+  field plus Esc, Tab, arrows, Enter and Ctrl+C buttons), answer approvals and
+  stop it. That is as much power as a shell in that folder, so grant it only to
+  your own phone. *Take control away* undoes it at once, including in a
+  terminal already open on the phone. Changing settings or pairing, custom
+  commands and folders outside home stay on the machine Caprock runs on — the
+  daemon refuses them from anywhere else.
 - **It is off again next time.** Not a stored setting: a laptop opened
   somewhere you do not trust should not be carrying a decision you made at
   home. What survives a restart is the list of devices, so you do not walk back
