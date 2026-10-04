@@ -30,7 +30,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, errText, type PairedDevice, type PairState } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { Section } from '@/components/SettingsParts'
-import { fmtAgo } from '@/lib/format'
+import { fmtAgo, fmtWhen } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { encodeQR, qrPath } from '@/lib/qr'
 
@@ -352,11 +352,18 @@ function Devices({
         {devices.map((d) => (
           <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-border px-3 py-2">
             <span className="min-w-0 flex-1 basis-40">
-              <span className="block truncate text-fg">{d.name}</span>
+              {/* Two phones of one model share a name, so each row also says
+                * when it was paired and the start of its id — enough to tell
+                * which one to take control away from. */}
+              <span className="block truncate text-fg">
+                {d.name}
+                <span className="mono ml-1.5 text-[11px] text-fg-faint" title={`device id ${d.id}`}>#{d.id.slice(0, 4)}</span>
+              </span>
               <span className="block text-[11px] text-fg-faint">
                 {d.role === 'controller' ? <span className="text-accent">can control sessions</span> : 'view only'}
                 {' · '}
                 {d.last_seen ? `last seen ${fmtAgo(d.last_seen, now)}` : 'not seen yet'}
+                {d.paired_at ? ` · paired ${fmtWhen(d.paired_at, now)}` : ''}
               </span>
             </span>
             {d.role === 'controller' ? (

@@ -389,3 +389,29 @@ func TestAControllerTypesUntilControlIsTakenAway(t *testing.T) {
 		t.Fatalf("keystrokes after demotion reached the session: %q", w)
 	}
 }
+
+// A browser on the Mac that opened the network address pairs like a phone; the
+// list must say it is this computer rather than show a stray "Mac".
+func TestPairingFromThisMachinesOwnAddressSaysSo(t *testing.T) {
+	ps := pairing.New()
+	s := New(Deps{Pairing: ps, LANURL: testLANURL})
+	redeem := func(from, name string) string {
+		code, _ := ps.NewCode()
+		r := httptest.NewRequest(http.MethodPost, "/v1/pair", strings.NewReader(`{"code":"`+code+`","name":"`+name+`"}`))
+		r.RemoteAddr = from
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		var out pairResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil || w.Code != 200 {
+			t.Fatalf("pair from %s: %d %s", from, w.Code, w.Body)
+		}
+		return out.Name
+	}
+	if got := redeem("192.168.1.10:50000", "Mac · Chrome"); got != "This computer · Mac · Chrome" {
+		t.Errorf("from the machine's own address: %q", got)
+	}
+	if got := redeem(testPhone, "iPhone · Safari"); got != "iPhone · Safari" {
+		t.Errorf("from a phone: %q", got)
+	}
+}

@@ -154,8 +154,10 @@ VPNs borrow it too. When a Tailscale address exists it is preferred, and
 than by the gate: a paired tablet is somewhere to read figures, not a second
 control room, and it must not be able to admit a third device or revoke the
 laptop that let it in. `PUT /v1/pair/devices/{id}/role` is loopback-only the same
-way: a controller cannot promote another device, or itself. `POST /v1/pair` takes `{code, name}` and returns
-`{token, id, name}`; it is the one call a device makes before it is trusted, and
+way: a controller cannot promote another device, or itself. `POST /v1/pair`
+takes `{code, name}` and returns `{token, id, name}` — the name prefixed
+`This computer · ` when the request came from the machine's own network
+address; it is the one call a device makes before it is trusted, and
 it answers the same way for a wrong, expired, exhausted or never-issued code,
 because every distinction tells a guesser how close they are.
 

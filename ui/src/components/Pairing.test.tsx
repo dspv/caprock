@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { Pairing, pairLink, phoneStatus } from './Pairing'
-import { codeFromHash } from '@/screens/Pair'
+import { codeFromHash, defaultDeviceName } from '@/screens/Pair'
 import { api, type PairState } from '@/lib/api'
 
 const phone = { id: 'a', name: 'iPhone', paired_at: 1, last_seen: 1, role: 'viewer' as const }
@@ -106,5 +106,34 @@ describe('Pairing panel', () => {
     render(<Pairing />)
     expect(await screen.findByText(/Tailscale is on, on your phone/)).toBeTruthy()
     expect(screen.queryByText(/Not on the same Wi-Fi\?/)).toBeNull()
+  })
+})
+
+describe('the name a device offers', () => {
+  it('says the kind of device and the browser, so two iPhones differ', () => {
+    const iosSafari = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'
+    const iosChrome = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/130.0 Mobile/15E148 Safari/604.1'
+    const androidChrome = 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36'
+    expect(defaultDeviceName(iosSafari)).toBe('iPhone · Safari')
+    expect(defaultDeviceName(iosChrome)).toBe('iPhone · Chrome')
+    expect(defaultDeviceName(androidChrome)).toBe('Android phone · Chrome')
+    expect(defaultDeviceName('curl/8')).toBe('')
+  })
+})
+
+describe('Paired devices list', () => {
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+  it('tells two devices with one name apart by id and pairing time', async () => {
+    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: true, url: 'http://192.168.1.10:22776', devices: [
+      { ...phone, id: 'ab12cd', paired_at: Date.UTC(2026, 9, 4, 9, 0) },
+      { ...phone, id: 'ef34gh', paired_at: Date.UTC(2026, 9, 4, 10, 0) },
+    ] })
+    render(<Pairing />)
+    expect(await screen.findByText('#ab12')).toBeTruthy()
+    expect(screen.getByText('#ef34')).toBeTruthy()
+    expect(screen.getAllByText(/paired 4 Oct/)).toHaveLength(2)
   })
 })
