@@ -1,0 +1,57 @@
+{
+  "seconds": 60.1,
+  "processes": 8,
+  "cpu_pct": 5.0,
+  "rss_mb_end": 420.3,
+  "rss_mb_peak": 456.1,
+  "by_process": [
+    {
+      "pid": 2953,
+      "comm": "Orca Helper (Renderer)",
+      "rss_mb": 139.1,
+      "cpu_pct": 1.3
+    },
+    {
+      "pid": 1605,
+      "comm": "Orca",
+      "rss_mb": 99.9,
+      "cpu_pct": 0.3
+    },
+    {
+      "pid": 3371,
+      "comm": "Orca Helper",
+      "rss_mb": 88.0,
+      "cpu_pct": 0.7
+    },
+    {
+      "pid": 2872,
+      "comm": "Orca Helper",
+      "rss_mb": 38.4,
+      "cpu_pct": 2.6
+    },
+    {
+      "pid": 2935,
+      "comm": "Orca Helper",
+      "rss_mb": 34.5,
+      "cpu_pct": 0.1
+    },
+    {
+      "pid": 3388,
+      "comm": "Orca Helper",
+      "rss_mb": 11.0,
+      "cpu_pct": 0.0
+    },
+    {
+      "pid": 2879,
+      "comm": "Orca Helper",
+      "rss_mb": 7.7,
+      "cpu_pct": 0.0
+    },
+    {
+      "pid": 2846,
+      "comm": "chrome_crashpad_handler",
+      "rss_mb": 1.7,
+      "cpu_pct": 0.0
+    }
+  ]
+}

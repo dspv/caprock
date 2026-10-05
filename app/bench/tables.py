@@ -8,7 +8,11 @@ runs = {}
 for f in sorted(glob.glob(f"{R}/tauri-*-r[0-9].json") + glob.glob(f"{R}/web-*-r[0-9].json")):
     name = os.path.basename(f)[:-5]
     client, lps, _ = name.rsplit("-", 2)
-    runs.setdefault((client, int(lps)), []).append(json.load(open(f)))
+    try:
+        data = json.load(open(f))
+        runs.setdefault((client, int(lps)), []).append(data)
+    except ValueError:
+        print(f"skipping unreadable {name}", file=sys.stderr)
 
 def pooled(ds, p):
     v = sorted(x for d in ds for x in d.get("paint_ms", []))
