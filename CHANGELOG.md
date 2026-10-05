@@ -67,6 +67,14 @@ Phase 3 (Delight) has no plan by design.
   timeline or the live activity feed, new rows arriving above keep your place,
   in Safari as in Chrome, and a pill says how many arrived.
 
+- **Session cards tell same-named folders apart and say ended when ended.**
+  Two folders both called `caprock` now read *Downloads/caprock* and
+  *dev/caprock* — the shortest path that tells them apart — on Now, the pulse
+  and the app sidebar; the card leads with the session's title or first
+  prompt, the short id after it. A folder that is not a repository, or a
+  detached checkout, no longer shows `HEAD` as its branch. A session the
+  daemon lists as ended never shows as idle.
+
 ### Fixed
 
 - **Gemini CLI is no longer labelled "your own key" in the agent picker.**

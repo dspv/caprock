@@ -5,6 +5,7 @@
  * one pass and can be tested without a screen.
  */
 import type { SessionSummary } from './api'
+import { branchLabel, sessionHealth } from './sessionLabels'
 import { inProject, worktreeKeyOf, type Project } from './projects'
 
 export type Dot = 'working' | 'waiting' | 'looping' | 'idle' | 'ended'
@@ -66,9 +67,8 @@ export interface SidebarModel {
 
 /** The status dot for a session. A pending prompt outranks everything: it is the one thing only you can do. */
 export function dotOf(s: SessionSummary, hasPermission: boolean): Dot {
-  if (hasPermission) return 'waiting'
-  if (s.status === 'ended') return 'ended'
-  switch (s.activity?.health) {
+  if (hasPermission && s.status !== 'ended') return 'waiting'
+  switch (sessionHealth(s)) {
     case 'working': return 'working'
     case 'waiting-on-you': return 'waiting'
     case 'looping':
@@ -80,8 +80,9 @@ export function dotOf(s: SessionSummary, hasPermission: boolean): Dot {
 
 /** What a session is called in a row: the agent's title, else its first meaningful prompt, else its folder's branch. */
 export function sessionTitle(s: SessionSummary): string {
-  if (s.kind === 'shell') return s.git_branch ? `shell · ${s.git_branch}` : 'shell'
-  return (s.title || s.description || '').trim() || (s.git_branch ? `on ${s.git_branch}` : 'new session')
+  const branch = branchLabel(s.git_branch)
+  if (s.kind === 'shell') return branch ? `shell · ${branch}` : 'shell'
+  return (s.title || s.description || '').trim() || (branch ? `on ${branch}` : 'new session')
 }
 
 function ms(v: string | number | undefined): number {
@@ -128,7 +129,7 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
       const known = node.project.worktrees?.find((w) => w.name === key)
       wt = {
         key,
-        branch: known?.branch || (key === 'main' ? node.project.branch : '') || s.git_branch || key,
+        branch: branchLabel(known?.branch || (key === 'main' ? node.project.branch : '') || s.git_branch) || (key === 'main' ? '' : key),
         path: known?.path ?? (key === 'main' ? node.project.root : s.cwd),
         isMain: key === 'main',
         ahead: known?.ahead ?? (key === 'main' ? node.project.ahead : undefined),

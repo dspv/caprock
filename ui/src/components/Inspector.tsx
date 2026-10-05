@@ -13,6 +13,7 @@ import { fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
 import { agentName } from './Projects'
 import { PermissionPrompt } from './PermissionPrompt'
 import { StatusDot } from './ProjectRow'
+import { branchLabel } from '@/lib/sessionLabels'
 import { dotOf, sessionTitle } from '@/lib/sidebar'
 import { href } from '@/lib/router'
 import { CloseIcon, ExternalIcon, StopIcon } from './AppIcons'
@@ -64,7 +65,7 @@ function Body({ session: s, sessionId, hasPermission, onDetach }: { session?: Se
           <p className="text-[12px] text-fg-muted">
             {isShell ? 'Login shell' : agentName(s.agent)}
             {!isShell && (s.model_display || s.model) ? ` · ${s.model_display || s.model}` : ''}
-            {s.git_branch ? <> · <span className="mono">{s.git_branch}</span></> : null}
+            {branchLabel(s.git_branch) ? <> · <span className="mono">{branchLabel(s.git_branch)}</span></> : null}
           </p>
         )}
         {s?.cwd && <p className="mono truncate text-[11px] text-fg-faint" title={s.cwd}>{s.cwd}</p>}

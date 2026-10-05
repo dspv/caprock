@@ -11,6 +11,7 @@
  * quietly.
  */
 import { ApiError, deviceToken, type SessionSummary } from './api'
+import { branchLabel, uniqueSuffixes } from './sessionLabels'
 
 export interface Worktree {
   /** The worktree's name: its directory name, or `main` for the primary checkout. */
@@ -206,7 +207,7 @@ export function deriveProjects(sessions: SessionSummary[], local: LocalProject[]
     const known = byRoot.get(root)
     if (known) {
       if (known.kind === 'folder' && s.repo_root) known.kind = 'repo'
-      if (!known.branch && s.git_branch && !s.worktree) known.branch = s.git_branch
+      if (!known.branch && branchLabel(s.git_branch) && !s.worktree) known.branch = branchLabel(s.git_branch)
       continue
     }
     byRoot.set(root, {
@@ -214,25 +215,24 @@ export function deriveProjects(sessions: SessionSummary[], local: LocalProject[]
       root,
       name: labels.get(root) || s.project || folderName(root),
       kind: s.repo_root ? 'repo' : 'folder',
-      branch: s.worktree ? undefined : s.git_branch || undefined,
+      branch: s.worktree ? undefined : branchLabel(s.git_branch) || undefined,
     })
   }
   return disambiguate([...byRoot.values()])
 }
 
 /**
- * Two projects with one name ("proj" in two places) get the folder above
- * each, so a row never has to be opened to tell them apart.
+ * Two projects with one name ("caprock" in ~/dev and in ~/Downloads) get the
+ * shortest path suffix that tells them apart, so a row never has to be
+ * opened to know which is which.
  */
 export function disambiguate(list: Project[]): Project[] {
   const count = new Map<string, number>()
   for (const p of list) count.set(p.name, (count.get(p.name) ?? 0) + 1)
-  return list.map((p) => {
-    if ((count.get(p.name) ?? 0) < 2) return p
-    const parts = p.root.replace(/[\\/]+$/, '').split(/[\\/]/).filter(Boolean)
-    const parent = parts[parts.length - 2]
-    return parent ? { ...p, name: `${parent}/${p.name}` } : p
-  })
+  const clashing = list.filter((p) => (count.get(p.name) ?? 0) > 1)
+  if (clashing.length === 0) return list
+  const labels = uniqueSuffixes(clashing.map((p) => p.root))
+  return list.map((p) => ((count.get(p.name) ?? 0) > 1 ? { ...p, name: labels.get(p.root) ?? p.name } : p))
 }
 
 /**

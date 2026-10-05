@@ -2,6 +2,7 @@ import { api, errText, isPairedDevice, type SessionSummary } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { navigate } from '@/lib/router'
 import { live, useLive } from '@/lib/live'
+import { branchLabel, projectLabels, sessionHealth } from '@/lib/sessionLabels'
 import { fmtAgo, fmtPct, fmtSpan, fmtTokens, fmtUSD, fmtWhen, shortId } from '@/lib/format'
 import { foldChains } from '@/lib/chains'
 import { ContinueSession } from '@/components/ContinueSession'
@@ -515,6 +516,9 @@ function SessionGrid({
   earlier?: Map<string, SessionSummary[]>
   now: number
 }) {
+  // Two folders with one name ("caprock" in ~/dev and in ~/Downloads) read as
+  // one project counted twice; each gets the path suffix that tells it apart.
+  const labels = projectLabels(groups.flatMap((g) => g.items))
   const cells = groups.flatMap((g) =>
     g.items.map((s, i) => ({
       s,
@@ -543,14 +547,14 @@ function SessionGrid({
               {label}
             </div>
           )}
-          <SessionCard s={s} now={now} earlier={earlier?.get(s.session_id)} />
+          <SessionCard s={s} now={now} earlier={earlier?.get(s.session_id)} projectLabel={labels.get(s.session_id)} />
         </div>
       ))}
     </div>
   )
 }
 
-export function SessionCard({ s, now, earlier }: { s: SessionSummary; now: number; earlier?: SessionSummary[] }) {
+export function SessionCard({ s, now, earlier, projectLabel }: { s: SessionSummary; now: number; earlier?: SessionSummary[]; projectLabel?: string }) {
   const ctx = s.context
   const ctxTone = ctx ? (ctx.pct >= 85 ? 'danger' : ctx.pct >= 60 ? 'warn' : undefined) : undefined
   const [asking, setAsking] = useState(false)
@@ -560,14 +564,14 @@ export function SessionCard({ s, now, earlier }: { s: SessionSummary; now: numbe
   return (
     <a href={href({ name: 'session', id: s.session_id })} className="block border border-border bg-panel rounded-[var(--radius-panel)] hover:border-border-strong no-underline hover:no-underline text-fg">
       <div className="px-3 pt-2 pb-1 flex items-center gap-2">
-        <span className="font-medium truncate text-[15px]">{s.project || 'unknown project'}</span>
+        <span className="font-medium truncate text-[15px]" title={s.repo_root || s.cwd}>{projectLabel || s.project || 'unknown project'}</span>
         <span className="mono text-[11px] text-fg-faint">{shortId(s.session_id)}</span>
         {s.agent && s.agent !== 'claude' && (
           <span className="text-[10px] uppercase tracking-[0.08em] text-fg-muted border border-border px-1 py-px rounded-sm">
             {s.agent}
           </span>
         )}
-        {s.git_branch && <span className="mono text-[11px] text-fg-muted truncate">{s.git_branch}</span>}
+        {branchLabel(s.git_branch) && <span className="mono text-[11px] text-fg-muted truncate">{branchLabel(s.git_branch)}</span>}
         <span className="ml-auto flex items-center gap-2">
           {waiting && (
             <button
@@ -596,7 +600,7 @@ export function SessionCard({ s, now, earlier }: { s: SessionSummary; now: numbe
               &gt;_
             </button>
           )}
-          <Badge health={s.activity.health} />
+          <Badge health={sessionHealth(s)} />
         </span>
       </div>
       {asking && <LastWord session={s} now={now} onClose={() => setAsking(false)} />}
@@ -606,7 +610,7 @@ export function SessionCard({ s, now, earlier }: { s: SessionSummary; now: numbe
         * a quotation and is shown as one. */}
       {s.description && (
         <div
-          className={`px-3 pb-0.5 text-[13px] truncate ${s.description_source === 'title' ? 'text-fg' : 'text-fg-muted'}`}
+          className={`px-3 pb-0.5 text-[14px] truncate ${s.description_source === 'title' ? 'text-fg font-medium' : 'text-fg'}`}
           title={s.description_source === 'title' ? s.description : `first prompt: ${s.description}`}
         >
           {s.description_source === 'title' ? s.description : `“${s.description}”`}

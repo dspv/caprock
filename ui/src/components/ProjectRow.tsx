@@ -3,6 +3,7 @@
  * then — expanded — its worktrees and the sessions and shells in each.
  */
 import { memo } from 'react'
+import { branchLabel } from '@/lib/sessionLabels'
 import type { Dot, ProjectNode, SessionNode, WorktreeNode } from '@/lib/sidebar'
 import { fmtUSD } from '@/lib/format'
 import { AgentGlyph, BranchIcon, ChevronIcon, PlusIcon, TerminalIcon } from './AppIcons'
@@ -64,8 +65,8 @@ export const ProjectRow = memo(function ProjectRow({
   // directly under the project and its branch rides in the project's row.
   const flat = node.worktrees.length <= 1
   const branch = flat ? node.worktrees[0]?.branch || p.branch : p.branch
-  // A detached checkout says HEAD, which names nothing worth a column.
-  const mainBranch = branch === 'HEAD' ? '' : branch
+  // A detached checkout, or a folder that is no repository, says HEAD.
+  const mainBranch = branchLabel(branch)
   const cost = fmtCostShort(node.costToday)
   return (
     <li className="grid grid-cols-1" data-project={id}>
