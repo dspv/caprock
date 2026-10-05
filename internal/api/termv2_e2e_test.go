@@ -300,6 +300,14 @@ func TestTermV2InputExactlyOnceAcrossDropsAndADaemonRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	data := t.TempDir()
+	// On Windows a holder still exiting keeps its log open; retry the
+	// removal before t.TempDir's own cleanup runs.
+	t.Cleanup(func() {
+		deadline := time.Now().Add(20 * time.Second)
+		for os.RemoveAll(data) != nil && time.Now().Before(deadline) {
+			time.Sleep(100 * time.Millisecond)
+		}
+	})
 	logPath := data + string(os.PathSeparator) + "typed.log"
 	newMgr := func() *ptyhost.Manager {
 		return &ptyhost.Manager{Exe: exe, Args: []string{}, Env: append(os.Environ(), envTermHolder+"=1"), DataDir: data, Version: "test"}

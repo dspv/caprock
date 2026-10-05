@@ -17,6 +17,33 @@ import (
 	"github.com/dspv/caprock/internal/ptyman"
 )
 
+// holderDir is a data directory for a test that starts holders. On Windows a
+// holder that is still exiting keeps host.log open and the directory cannot
+// be removed yet, so removal is retried until it goes (it runs before
+// t.TempDir's own cleanup, which then finds nothing left to do).
+func holderDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	t.Cleanup(func() {
+		deadline := time.Now().Add(20 * time.Second)
+		for os.RemoveAll(dir) != nil && time.Now().Before(deadline) {
+			time.Sleep(100 * time.Millisecond)
+		}
+	})
+	return dir
+}
+
+// endHolder ends a session whose daemon has let go: a new daemon picks it up
+// and kills it through its holder.
+func endHolder(t *testing.T, data, id string) {
+	t.Helper()
+	att, _ := newManager(t, data).Reattach()
+	for _, a := range att {
+		_ = a.Session.Close()
+	}
+	waitGone(t, recordPath(Dir(data), id))
+}
+
 func ringOf(t *testing.T, s ptyman.Session) interface {
 	Total() uint64
 	Start() uint64
@@ -45,7 +72,7 @@ func waitRing(t *testing.T, s ptyman.Session, want string) {
 }
 
 func TestOffsetsAndSequencedInputSurviveADaemonRestart(t *testing.T) {
-	data := t.TempDir()
+	data := holderDir(t)
 	s, err := newManager(t, data).Spawn(context.Background(), childSpec(t, "s-v2"))
 	if err != nil {
 		t.Fatal(err)
@@ -101,12 +128,11 @@ func TestOffsetsAndSequencedInputSurviveADaemonRestart(t *testing.T) {
 // A daemon whose connection to the holder dropped asks for what it missed,
 // and gets exactly that — or the whole screen when the ring has moved on.
 func TestResumeSendsWhatTheDaemonMissed(t *testing.T) {
-	data := t.TempDir()
+	data := holderDir(t)
 	s, err := newManager(t, data).Spawn(context.Background(), childSpec(t, "s-catch"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
 	readAll(s.Output())
 	waitRing(t, s, "child ready")
 	ring := ringOf(t, s)
@@ -117,7 +143,11 @@ func TestResumeSendsWhatTheDaemonMissed(t *testing.T) {
 	waitRing(t, s, "you-said:missed")
 	want, _ := ring.Since(off)
 
+	// This test is the daemon now: the remote lets go, so it does not
+	// reconnect and take the holder back mid-handshake.
 	rec := s.(*remote).rec
+	_ = s.(ptyman.Detacher).Detach()
+	defer endHolder(t, data, rec.SessionID)
 	conn, w, _, err := dial(rec, hello{Resume: true, Since: &off})
 	if err != nil {
 		t.Fatal(err)
@@ -148,7 +178,7 @@ func TestResumeSendsWhatTheDaemonMissed(t *testing.T) {
 // offsets (the ring counts from the clock), no J frames (input is written
 // plainly and the daemon deduplicates).
 func TestHolderFromBeforeV2StillWorks(t *testing.T) {
-	data := t.TempDir()
+	data := holderDir(t)
 	m := newManager(t, data)
 	m.Env = append(m.Env, envPreV2+"=1")
 	before := uint64(time.Now().UnixMicro()) //nolint:gosec // after 1970
@@ -174,13 +204,14 @@ func TestHolderFromBeforeV2StillWorks(t *testing.T) {
 
 // What an old daemon sends, a new holder still answers the old way.
 func TestOldDaemonHelloStillGetsWelcomeAndSnapshot(t *testing.T) {
-	data := t.TempDir()
+	data := holderDir(t)
 	s, err := newManager(t, data).Spawn(context.Background(), childSpec(t, "s-olddaemon"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
 	readAll(s.Output()).waitFor(t, "child ready")
+	_ = s.(ptyman.Detacher).Detach()
+	defer endHolder(t, data, "s-olddaemon")
 	b, err := os.ReadFile(recordPath(Dir(data), "s-olddaemon"))
 	if err != nil {
 		t.Fatal(err)
