@@ -228,7 +228,7 @@ func drillKind(tool string) string {
 // Codex's exec tool wraps its calls in a script: tools.exec_command({cmd:
 // "..."}) for a shell command, tools.web__run(...) for the web.
 var (
-	codexCmd  = regexp.MustCompile(`cmd:\s*"((?:[^"\\]|\\.)*)"`)
+	codexCmd  = regexp.MustCompile(`"?cmd"?:\s*"((?:[^"\\]|\\.)*)"`)
 	codexTool = regexp.MustCompile(`tools\.([A-Za-z0-9_]+)\(`)
 )
 
@@ -242,6 +242,11 @@ func drillKey(kind, cwd, cmd, file, link, query, action, pat, sub, raw, home str
 	}
 	switch kind {
 	case "shell":
+		// Codex's ingest stores the script under tool_input.command, so it
+		// arrives as cmd; read it as the script it is, not as a command line.
+		if raw == "" && codexTool.MatchString(cmd) {
+			raw, cmd = cmd, ""
+		}
 		if cmd == "" && raw != "" {
 			if m := codexCmd.FindStringSubmatch(raw); m != nil {
 				if s, err := strconv.Unquote(`"` + m[1] + `"`); err == nil {

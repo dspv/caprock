@@ -116,6 +116,9 @@ const (
 	// It is needed because a tool call that named no path keeps touch_dir NULL
 	// forever, so the rows themselves cannot say whether the pass has run.
 	metaTouchBackfilled = "touch_backfilled"
+	// metaInnerToolBackfilled marks migration 0038's Go-side backfill as
+	// finished.
+	metaInnerToolBackfilled = "inner_tool_backfilled"
 )
 
 // maxOpenConns bounds the pool. Loopback traffic is one dashboard plus the
@@ -260,7 +263,74 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Store, error) {
 		s.log.Warn("touch backfill incomplete; some historical spend reports as unattributed",
 			"component", "store", "err", err)
 	}
+	if err := s.backfillInnerTool(ctx); err != nil {
+		s.log.Warn("inner tool backfill incomplete; some Codex edits still count as commands",
+			"component", "store", "err", err)
+	}
 	return s, nil
+}
+
+// backfillInnerTool fills events.inner_tool (migration 0038) for Codex `exec`
+// calls stored before it existed, from the script already in their payload.
+// innerTool never returns "" for an `exec` call, so a NULL row is one not yet
+// read and an interrupted pass resumes by itself. The marker is what keeps a
+// finished pass off every later open: finding no NULL row costs ~110 ms on the
+// owner's database, because no index leads on `tool`.
+func (s *Store) backfillInnerTool(ctx context.Context) error {
+	if done, err := s.GetMeta(ctx, metaInnerToolBackfilled); err == nil && done == "1" {
+		return nil
+	}
+	const batch = 5000
+	for {
+		rows, err := s.db.QueryContext(ctx,
+			`SELECT id, payload FROM events
+			  WHERE kind = 'tool.pre' AND tool = 'exec' AND inner_tool IS NULL
+			  LIMIT ?`, batch)
+		if err != nil {
+			return err
+		}
+		type row struct {
+			id    int64
+			inner string
+		}
+		var pending []row
+		for rows.Next() {
+			var r row
+			var payload []byte
+			if err := rows.Scan(&r.id, &payload); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			r.inner = innerTool("exec", payload)
+			pending = append(pending, r)
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+		if len(pending) == 0 {
+			break
+		}
+		err = s.WithTx(ctx, func(q Querier) error {
+			for _, r := range pending {
+				if _, err := q.ExecContext(ctx,
+					`UPDATE events SET inner_tool = ? WHERE id = ?`, r.inner, r.id); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		if len(pending) < batch {
+			break
+		}
+	}
+	return s.SetMeta(ctx, metaInnerToolBackfilled, "1")
 }
 
 // backfillTouch fills events.touch_dir for tool.pre rows written before

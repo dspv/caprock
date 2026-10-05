@@ -986,7 +986,8 @@ CREATE TABLE events (
   msg_id      TEXT,                          -- assistant message id (migration 0012)
   touch_dir   TEXT,                          -- directory the tool touched (migration 0012)
   tool_bytes  INTEGER NOT NULL DEFAULT 0,    -- bytes the tool returned (migration 0018)
-  internal    INTEGER NOT NULL DEFAULT 0     -- 1 = hidden product machinery (0024)
+  internal    INTEGER NOT NULL DEFAULT 0,    -- 1 = hidden product machinery (0024)
+  inner_tool  TEXT                           -- tool a Codex `exec` script ran (0038)
 );
 CREATE INDEX idx_events_session_ts ON events(session_id, ts);
 CREATE INDEX idx_events_ts ON events(ts);
@@ -1312,6 +1313,7 @@ The per-directory breakdown is charged by **which files Claude touched**, not by
 - **Work kind does NOT carry forward**, unlike per-directory attribution. A directory carries because work happens in stretches; a work kind is a property of the turn itself. A turn that ran the test suite did command work whether or not the turn before it edited a file, and carrying "edit" onto it would report editing that did not happen.
 - **`work_unlinked_calls` travels with the breakdown.** A tool call whose `msg_id` is NULL cannot be attached to any turn, so that turn reports as having called nothing — indistinguishable from a turn that genuinely did. The count of such calls is published so a degraded database says so instead of quietly producing a finding. The dashboard warns above 1% of the range's tool calls; `caprock report` **withholds the breakdown entirely** above 5% and prints the reason, because that output is written to be pasted in public and a wrong ranking becomes someone else's headline.
 - **No query of its own.** The rows the breakdown needs are exactly the rows the carry-forward scan already reads, so the classification rides along in that scan. Measured through the Go driver on the owner's 191k-event database (2026-08-23, 30d, best of fifteen): the summary answers in **249 ms** before and **279 ms** after (+30 ms). A separate aggregate over the same events cost **292 ms** on its own — nearly ten times as much for the same seven numbers.
+- **Codex's `exec` is classified by the tool its script ran (migration 0038).** `exec` wraps a JavaScript script that calls the real tools (`tools.exec_command(…)`, `tools.apply_patch(…)`); of 13,086 calls on the owner's machine 63% ran a command and 14% applied a patch, so counting every `exec` as a command read 30-day editing as 0.4% of spend instead of 4.8% (2026-10-05). `store.innerTool` names the tool when the event is written — of several, the one whose kind wins the precedence; `exec` when the script names none — into `events.inner_tool`, and the scan classifies `COALESCE(inner_tool, tool)`. Stored, not read from the payload in the scan, because that broke the covering index: 30-day summary ~270 ms → ~760 ms. Migration 0038 adds the column to `idx_events_attr_work`; `Store.backfillInnerTool` fills rows already stored (Go, so the script is read by one regex), gated by the `inner_tool_backfilled` meta key.
 - **Why `tool` had to enter the index.** The scan reads it per row, and it was carried by no existing index, so the plan fell off the covering path onto the table: **~578 ms** against **~80 ms** covering. Migration 0014 widens `idx_events_attr` into `idx_events_attr_work` and drops the original; SQLite cannot add a column to an index in place, and a stale duplicate would cost write throughput on every ingested event for nothing.
 
 ### Rate-limit snapshots DDL (migration 0005)
