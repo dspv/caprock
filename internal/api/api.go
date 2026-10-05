@@ -199,6 +199,9 @@ type Settings struct {
 	// (ADR-036). Free, unlike the weekly report that shares the bot.
 	AlertApproval bool `json:"alert_approval"`
 	AlertFinished bool `json:"alert_finished"`
+	// AlertReply puts the first line of the final reply in a finished alert;
+	// on unless turned off.
+	AlertReply bool `json:"alert_reply"`
 	// AlertLastError is why the last alert failed to send, empty when it did
 	// not; AlertLastSentMs is when one last arrived, 0 for never since the
 	// daemon started.
@@ -1040,6 +1043,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		GeminiAPIKey   *string `json:"gemini_api_key"`
 		AlertApproval  *bool   `json:"alert_approval"`
 		AlertFinished  *bool   `json:"alert_finished"`
+		AlertReply     *bool   `json:"alert_reply"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&patch); err != nil {
 		s.failCode(w, http.StatusBadRequest, fmt.Errorf("parse body: %w", err))
@@ -1103,6 +1107,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.AlertFinished != nil {
 		in.AlertFinished = *patch.AlertFinished
+	}
+	if patch.AlertReply != nil {
+		in.AlertReply = *patch.AlertReply
 	}
 	if patch.LicenseKey != nil {
 		in.LicenseKey = *patch.LicenseKey

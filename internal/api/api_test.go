@@ -984,12 +984,18 @@ func TestSessionsInProjectDir(t *testing.T) {
 // leave the other where it was (ADR-036).
 func TestAlertSwitchesRoundTrip(t *testing.T) {
 	e := newEnv(t)
-	e.settings.cur.AlertApproval, e.settings.cur.AlertFinished = true, true
+	e.settings.cur.AlertApproval, e.settings.cur.AlertFinished, e.settings.cur.AlertReply = true, true, true
 	if code := e.putSettings(t, map[string]any{"alert_finished": false}); code != 200 {
 		t.Fatalf("PUT: %d", code)
 	}
 	var got Settings
-	if code := e.get(t, "/v1/settings", &got); code != 200 || !got.AlertApproval || got.AlertFinished {
-		t.Errorf("approval=%v finished=%v, want true/false", got.AlertApproval, got.AlertFinished)
+	if code := e.get(t, "/v1/settings", &got); code != 200 || !got.AlertApproval || got.AlertFinished || !got.AlertReply {
+		t.Errorf("approval=%v finished=%v reply=%v, want true/false/true", got.AlertApproval, got.AlertFinished, got.AlertReply)
+	}
+	if code := e.putSettings(t, map[string]any{"alert_reply": false}); code != 200 {
+		t.Fatalf("PUT: %d", code)
+	}
+	if code := e.get(t, "/v1/settings", &got); code != 200 || got.AlertReply || !got.AlertApproval {
+		t.Errorf("reply=%v approval=%v, want false/true", got.AlertReply, got.AlertApproval)
 	}
 }

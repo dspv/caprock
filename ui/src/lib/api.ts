@@ -499,6 +499,8 @@ export interface Settings {
   /** Phone alerts through the same bot (ADR-035): on unless turned off, free. */
   alert_approval?: boolean
   alert_finished?: boolean
+  /** The first line of the final reply in a finished alert; on unless turned off. */
+  alert_reply?: boolean
   /** Why the last alert failed, absent when it did not; when one last arrived. */
   alert_last_error?: string
   alert_last_sent_ms?: number

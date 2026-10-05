@@ -31,6 +31,13 @@ const (
 	DescriptionPrompt = "prompt"
 )
 
+// Describe is a session's name as Now shows it, for a caller outside the API:
+// the phone alerts name a session the way its card does.
+func Describe(ctx context.Context, q store.Querier, sess store.Session) string {
+	text, _ := describe(ctx, q, sess)
+	return text
+}
+
 func describe(ctx context.Context, q store.Querier, sess store.Session) (text, source string) {
 	if t := clipLine(sess.Title); t != "" {
 		return t, DescriptionTitle

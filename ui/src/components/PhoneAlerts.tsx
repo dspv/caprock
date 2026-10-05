@@ -27,7 +27,7 @@ export function PhoneAlerts() {
   const s: Settings = { ...loaded, ...patch }
   const configured = !!s.report_bot_set && !!s.report_chat_id
 
-  const toggle = (key: 'alert_approval' | 'alert_finished', on: boolean) => {
+  const toggle = (key: 'alert_approval' | 'alert_finished' | 'alert_reply', on: boolean) => {
     setPatch((p) => ({ ...p, [key]: on }))
     void api.saveSettings({ [key]: on } as Partial<Settings> as Settings).catch((e) => setError(errText(e)))
   }
@@ -56,9 +56,10 @@ export function PhoneAlerts() {
       aside={<span className="text-[12px] text-fg-muted">{configured ? 'via your Telegram bot' : 'needs a Telegram bot'}</span>}
     >
       <p className="text-[12px] leading-relaxed text-fg-muted">
-        A Telegram message when a session needs you, from any terminal. It says the project, what happened and
-        which agent, with a link to the session when your phone can open this dashboard — never code, prompts,
-        replies, file names or commands.
+        A Telegram message when a session needs you, from any terminal. It names the session (its title, or
+        its first prompt), its folder and branch, with a link when your phone can open this dashboard. A
+        dialog adds the tool and the command or file it asks about; a finished run adds its time, cost, tool
+        calls and changed files. Telegram can read every message; code and tool output are never sent.
       </p>
       <Toggle
         checked={s.alert_approval !== false}
@@ -71,6 +72,12 @@ export function PhoneAlerts() {
         onChange={(on) => toggle('alert_finished', on)}
         label="When a session has finished"
         hint="After a minute with nothing new, so replying straight away sends nothing."
+      />
+      <Toggle
+        checked={s.alert_reply !== false}
+        onChange={(on) => toggle('alert_reply', on)}
+        label="Include the last reply's first line"
+        hint="Up to 120 characters of what the agent said last, in the finished message."
       />
       {configured ? (
         <>

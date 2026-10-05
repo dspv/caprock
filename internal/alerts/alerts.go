@@ -47,11 +47,16 @@ type Alert struct {
 	// LastThisHour says this alert used the hour's final slot, so the message
 	// can say the rest are held back rather than leaving a silence to explain.
 	LastThisHour bool
+	// Trigger is the event the alert is about: the permission.prompt, or the
+	// Stop (or StopFailure, recorded as throttle) that ended the turn. The
+	// message reads what it asks about or how the turn ended from it.
+	Trigger event.Event
 }
 
 type session struct {
-	waitingSince time.Time // a permission dialog is open since then; zero if none
-	stoppedAt    time.Time // a Stop is pending as "finished"; zero if none
+	waitingSince time.Time   // a permission dialog is open since then; zero if none
+	stoppedAt    time.Time   // a Stop is pending as "finished"; zero if none
+	stop         event.Event // the event that set stoppedAt
 	lastSent     map[Kind]time.Time
 }
 
@@ -97,6 +102,7 @@ func (r *Rules) Observe(ev event.Event, now time.Time) []Alert {
 		out := r.emit(KindApproval, ev.SessionID, now)
 		for i := range out {
 			out[i].Question = ev.Tool == "AskUserQuestion"
+			out[i].Trigger = ev
 		}
 		return out
 	}
@@ -104,10 +110,17 @@ func (r *Rules) Observe(ev event.Event, now time.Time) []Alert {
 		return nil
 	}
 	s, ok := r.sessions[ev.SessionID]
-	if ev.Kind == event.KindAgentStop {
+	// A turn that failed (StopFailure: rate limit, overload, billing) has
+	// ended as surely as one that stopped, and is the one the owner most
+	// needs to hear about.
+	if ev.Kind == event.KindAgentStop || ev.Kind == event.KindThrottle {
 		s = r.state(ev.SessionID)
 		s.waitingSince = time.Time{}
+		failed := !s.stoppedAt.IsZero() && s.stop.Kind == event.KindThrottle
 		s.stoppedAt = ev.Ts
+		if !failed {
+			s.stop = ev // a Stop right after a failure does not hide it
+		}
 		return nil
 	}
 	if !ok {
@@ -132,7 +145,10 @@ func (r *Rules) Due(now time.Time) []Alert {
 	for id, s := range r.sessions {
 		if !s.stoppedAt.IsZero() && now.Sub(s.stoppedAt) >= FinishedAfter {
 			s.stoppedAt = time.Time{}
-			out = append(out, r.emit(KindFinished, id, now)...)
+			for _, a := range r.emit(KindFinished, id, now) {
+				a.Trigger = s.stop
+				out = append(out, a)
+			}
 		}
 		if s.waitingSince.IsZero() && s.stoppedAt.IsZero() && r.quiet(s, now) {
 			delete(r.sessions, id)

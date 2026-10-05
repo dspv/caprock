@@ -1290,6 +1290,7 @@ func (a *settingsAdapter) Get() api.Settings {
 		ReportLastSentMs: a.d.reportLastSent(),
 		AlertApproval:    c.AlertApprovalOn(),
 		AlertFinished:    c.AlertFinishedOn(),
+		AlertReply:       c.AlertReplyOn(),
 		AlertLastError:   alertErr,
 		AlertLastSentMs:  alertSent,
 	}
@@ -1320,9 +1321,10 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	a.d.opt.Config.ReportBotToken = strings.TrimSpace(in.ReportBotToken)
 	a.d.opt.Config.ReportChatID = strings.TrimSpace(in.ReportChatID)
 	a.d.opt.Config.GeminiAPIKey = strings.TrimSpace(in.GeminiAPIKey)
-	approval, finished := in.AlertApproval, in.AlertFinished
+	approval, finished, reply := in.AlertApproval, in.AlertFinished, in.AlertReply
 	a.d.opt.Config.AlertApproval = &approval
 	a.d.opt.Config.AlertFinished = &finished
+	a.d.opt.Config.AlertReply = &reply
 	cfg := a.d.opt.Config
 	a.d.cfgMu.Unlock()
 	if capChanged && a.d.cap != nil {

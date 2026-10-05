@@ -580,25 +580,36 @@ reclaimable_bytes, growth_bytes_per_day_est, retention_days}`.
 **Phone alerts** ([ADR-036](08-decisions.md)) go through the same bot and are
 free: no licence is checked. `PUT /v1/settings` accepts `alert_approval` and
 `alert_finished` (bools, both on unless turned off, stored as pointers in
-`config.json` so "never set" means on); `GET` returns them with
+`config.json` so "never set" means on) and `alert_reply` (the same, for the
+first line of the final reply in a finished alert); `GET` returns them with
 `alert_last_error` and `alert_last_sent_ms`, held in memory since the daemon
 started. Nothing is sent until a bot token and chat id are set. The rules, in
 `internal/alerts` over every stored event from every source:
 
 - **Waiting for approval** — a `permission.prompt` sends at once, once per
   dialog; the dialog is over at the session's next later event or `Stop`.
-- **Finished** — a main-thread `agent.stop` sends after a minute with no later
-  event in the session. Only hooks record `agent.stop` today, so this is
-  Claude Code's; Codex and OpenCode report no turn end or approval.
+- **Finished** — a main-thread `agent.stop`, or a `throttle` (StopFailure),
+  sends after a minute with no later event in the session. Only hooks record
+  either today, so this is Claude Code's; Codex and OpenCode report no turn
+  end or approval.
 - **No spam** — at most one alert of a kind per session in 3 minutes, and 20 in
   any hour across all sessions; the twentieth says the rest are held. An event
   more than 2 minutes old pages nobody, so a transcript re-read after a restart
   stays quiet. A failed send is logged and shown, never retried.
 
-The message is plain text: `Caprock · <project> is waiting for approval` (or
-`has finished`), the agent's name, and a link to `#/session/<id>` on the
-address phone access listens on — the LAN or Tailscale one — omitted when phone
-access is off. Never a prompt, a reply, a tool, a command or a path.
+The message is sent with `parse_mode: HTML`, every string from a session
+escaped (`&`, `<`, `>`). Its first line is the status and the session's name
+as Now shows it (`✅ Finished · <title>`, `⚠️ Stopped: <error> · <title>`,
+`⏳ Needs approval · <title>`, `❓ Needs your answer · <title>`); then the
+folder with home as `~`, the branch and a non-Claude agent; for a dialog the
+tool and its command, file, URL or question (100 characters); for a finished
+run — since the last main-thread prompt — its duration, cost, tool calls and
+changed files (`Edit`/`Write`/`MultiEdit`/`NotebookEdit` paths, three named),
+and while `alert_reply` is on the first line of the final reply (the Stop
+hook's `last_assistant_message`, else the newest main-thread prose; 120
+characters); last, a link to `#/session/<id>` on the address phone access
+listens on — the LAN or Tailscale one — omitted when phone access is off. Code,
+diffs and tool output are never sent (ADR-036, amended 2026-10-05).
 `CAPROCK_TELEGRAM_API` in the daemon's environment replaces
 `https://api.telegram.org` for both senders, to test against a stub.
 

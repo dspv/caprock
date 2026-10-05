@@ -39,6 +39,7 @@ describe('PhoneAlerts', () => {
     expect(screen.getByPlaceholderText('123456:ABC-DEF…')).toBeInTheDocument()
     expect(screen.getByLabelText(/waiting for approval/)).toBeChecked()
     expect(screen.getByLabelText(/has finished/)).toBeChecked()
+    expect(screen.getByLabelText(/last reply's first line/)).toBeChecked()
     expect(screen.queryByText('Send a test alert')).toBeNull()
   })
 
@@ -49,6 +50,17 @@ describe('PhoneAlerts', () => {
     const box = await screen.findByLabelText(/has finished/)
     fireEvent.click(box)
     expect(saved.calls).toEqual([{ alert_finished: false }])
+    expect(box).not.toBeChecked()
+  })
+
+  it('turns the reply line off on its own', async () => {
+    saved.calls = []
+    settings.value = { report_bot_set: true, report_chat_id: '1' } as Settings
+    render(<PhoneAlerts />)
+    const box = await screen.findByLabelText(/last reply's first line/)
+    expect(box).toBeChecked()
+    fireEvent.click(box)
+    expect(saved.calls).toEqual([{ alert_reply: false }])
     expect(box).not.toBeChecked()
   })
 

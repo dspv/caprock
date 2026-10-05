@@ -108,6 +108,10 @@ type Config struct {
 	// unlike the weekly report.
 	AlertApproval *bool `json:"alert_approval,omitempty"`
 	AlertFinished *bool `json:"alert_finished,omitempty"`
+	// AlertReply puts the first line of the agent's final reply in a
+	// finished alert. On unless switched off, like the two above; Telegram
+	// reads it, which the Settings line says.
+	AlertReply *bool `json:"alert_reply,omitempty"`
 	// GeminiAPIKey is the user's Google AI Studio key, entered in the dashboard.
 	// GEMINI_API_KEY in the environment takes precedence when both exist, so a
 	// machine already configured that way is untouched (ADR-025). Stored under
@@ -354,4 +358,10 @@ func (c Config) AlertApprovalOn() bool {
 // On unless switched off.
 func (c Config) AlertFinishedOn() bool {
 	return c.AlertFinished == nil || *c.AlertFinished
+}
+
+// AlertReplyOn reports whether a finished alert carries the first line of the
+// final reply. On unless switched off.
+func (c Config) AlertReplyOn() bool {
+	return c.AlertReply == nil || *c.AlertReply
 }

@@ -2,13 +2,16 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/dspv/caprock/internal/alerts"
+	"github.com/dspv/caprock/internal/api"
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/relay"
@@ -106,19 +109,70 @@ func (d *Daemon) alertLoop(ctx context.Context, sub *bus.Subscriber) {
 func (d *Daemon) sendAlert(ctx context.Context, a alerts.Alert) {
 	ctx, cancel := context.WithTimeout(ctx, alertSendTimeout)
 	defer cancel()
-	project, agent := "", relay.AgentName("")
-	if s, err := store.GetSession(ctx, d.store.DB(), a.SessionID); err == nil {
-		project, agent = s.Project, relay.AgentName(s.Agent)
-	}
-	msg := alerts.Message(a, project, agent, d.sessionLink(a.SessionID))
+	msg := alerts.Message(a, d.alertDetails(ctx, a))
 	cfg := d.config()
-	err := d.sender().Send(ctx, cfg.ReportBotToken, cfg.ReportChatID, msg)
+	err := d.sender().SendFormatted(ctx, cfg.ReportBotToken, cfg.ReportChatID, msg, alerts.ParseMode)
 	d.phone.record(err)
 	if err != nil {
 		d.log.Warn("phone alert: send failed", "component", "alerts", "kind", a.Kind, "session_id", a.SessionID, "err", err)
 		return
 	}
 	d.log.Info("phone alert sent", "component", "alerts", "kind", a.Kind, "session_id", a.SessionID)
+}
+
+// runSlack widens a run's end past its Stop: the transcript writes the last
+// turn with its own clock, a moment either side of the hook's.
+const runSlack = 2 * time.Second
+
+// alertDetails gathers what an alert says about its session. A failed read
+// leaves a field empty rather than holding the alert back.
+func (d *Daemon) alertDetails(ctx context.Context, a alerts.Alert) alerts.Details {
+	det := alerts.Details{Agent: relay.AgentName(""), Link: d.sessionLink(a.SessionID)}
+	det.Home, _ = os.UserHomeDir()
+	q := d.store.DB()
+	s, err := store.GetSession(ctx, q, a.SessionID)
+	if err == nil {
+		det.Title, det.Cwd, det.Branch, det.Agent = api.Describe(ctx, q, s), s.Cwd, s.GitBranch, relay.AgentName(s.Agent)
+	}
+	if a.Kind != alerts.KindFinished {
+		return det
+	}
+	end := a.Trigger.Ts
+	if end.IsZero() {
+		end = d.rec.Now()
+	}
+	if run, err := store.LastRun(ctx, q, a.SessionID, end.Add(runSlack).UnixMilli()); err == nil {
+		det.CostUSD, det.Tools, det.Files = run.CostUSD, run.ToolCalls, run.Files
+		if run.PromptAt > 0 {
+			det.Run = end.Sub(time.UnixMilli(run.PromptAt))
+		} else if s.StartedAt > 0 {
+			det.Run = end.Sub(time.UnixMilli(s.StartedAt))
+		}
+	}
+	if d.config().AlertReplyOn() {
+		det.Reply = d.finalReply(ctx, a)
+	}
+	return det
+}
+
+// finalReply is the agent's last reply: what the Stop hook carries, or the
+// newest main-thread prose stored when the hook does not (older Claude Code,
+// a failed turn).
+func (d *Daemon) finalReply(ctx context.Context, a alerts.Alert) string {
+	var p struct {
+		LastAssistantMessage string `json:"last_assistant_message"`
+	}
+	if json.Unmarshal(a.Trigger.Payload, &p) == nil && strings.TrimSpace(p.LastAssistantMessage) != "" {
+		return p.LastAssistantMessage
+	}
+	if a.Trigger.Kind == event.KindThrottle {
+		return "" // the turn failed; its last prose is not its reply
+	}
+	notes, err := store.SessionNotes(ctx, d.store.DB(), a.SessionID, 1)
+	if err != nil || len(notes) == 0 {
+		return ""
+	}
+	return notes[0].Text
 }
 
 // sessionLink is the session's page on the dashboard at the address a phone
@@ -148,7 +202,7 @@ func (d *Daemon) SendAlertCheck(ctx context.Context) error {
 		return fmt.Errorf("no bot configured")
 	}
 	cfg := d.config()
-	err := d.sender().Send(ctx, cfg.ReportBotToken, cfg.ReportChatID, alerts.CheckMessage(d.sessionLink("")))
+	err := d.sender().SendFormatted(ctx, cfg.ReportBotToken, cfg.ReportChatID, alerts.CheckMessage(d.sessionLink("")), alerts.ParseMode)
 	d.phone.record(err)
 	return err
 }

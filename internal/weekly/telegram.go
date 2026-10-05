@@ -45,18 +45,29 @@ func (s *Sender) base() string {
 }
 
 // Send posts one message. token and chat are the user's own bot and chat.
+//
+// No parse mode: Markdown would need every repository name escaped, and a
+// name with an underscore in it would either break the message or silently
+// italicise half of it. Plain text always renders.
 func (s *Sender) Send(ctx context.Context, token, chat, text string) error {
+	return s.SendFormatted(ctx, token, chat, text, "")
+}
+
+// SendFormatted posts one message in a Telegram parse mode ("HTML"); the
+// caller has escaped the text for it. An empty mode is plain text.
+func (s *Sender) SendFormatted(ctx context.Context, token, chat, text, parseMode string) error {
 	if strings.TrimSpace(token) == "" || strings.TrimSpace(chat) == "" {
 		return fmt.Errorf("telegram: not configured")
 	}
-	body, err := json.Marshal(map[string]any{
-		"chat_id": chat,
-		"text":    text,
-		// No parse mode: Markdown would need every repository name escaped, and
-		// a name with an underscore in it would either break the message or
-		// silently italicise half of it. Plain text always renders.
+	msg := map[string]any{
+		"chat_id":                  chat,
+		"text":                     text,
 		"disable_web_page_preview": true,
-	})
+	}
+	if parseMode != "" {
+		msg["parse_mode"] = parseMode
+	}
+	body, err := json.Marshal(msg)
 	if err != nil {
 		return err
 	}
