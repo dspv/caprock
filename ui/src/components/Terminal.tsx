@@ -167,7 +167,11 @@ export function TerminalView({
     // Thai are NOT in the face at all and cannot be turned on here — they fall
     // through to the stack in --font-mono, which is why that stack has to keep
     // a real system monospace at the end rather than ending at the webfont.
-    for (const sample of ['A', 'ā', 'Ы', 'Ѣ', 'Ω', 'ế']) {
+    // The two Cyrillic samples (U+042B, U+0462) are built at run time, through
+    // map so the minifier cannot fold them back: the repository and its
+    // bundle hold no Cyrillic.
+    const cyrillic = [0x42b, 0x462].map((code) => String.fromCharCode(code))
+    for (const sample of ['A', 'ā', ...cyrillic, 'Ω', 'ế']) {
       document.fonts?.load('12px "JetBrains Mono Variable"', sample)
         .catch(() => { /* face unavailable; the fallback still renders */ })
     }

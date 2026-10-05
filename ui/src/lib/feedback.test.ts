@@ -81,7 +81,7 @@ describe('body', () => {
   it('reproduces what the user typed, unaltered', () => {
     // No rewriting: their words are the report. Anything else needs a model,
     // and reaching for one would mean sending their text somewhere.
-    const text = 'кнопка косая на History'
+    const text = 'the button on History is crooked'
     expect(body('bug', text, ['Caprock v0.10.1'])).toContain(text)
   })
 

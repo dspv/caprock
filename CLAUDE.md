@@ -43,9 +43,11 @@ whole corpus. Contributing? See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 5. **English only, in every file.** Code, comments, docs, data, commits, PR
    titles and descriptions: no Russian and no other language. A quote from a
    user or the owner is translated, with a note that it was. Drafts in other
-   languages (a Habr article, a Telegram post) live outside the repo. The one
-   exception is test input whose point is non-English text (rune clipping,
-   Cyrillic case folding, CJK width). Conventional Commits with scope.
+   languages (a Habr article, a Telegram post) live outside the repo. Test
+   input whose point is non-English text (rune clipping, case folding, width)
+   uses Greek, Japanese, accented Latin or emoji — never Cyrillic, which
+   `make lang-check` (in `make check` and CI) rejects outside the generated
+   `internal/api/dist`. Conventional Commits with scope.
 
 6. **No invented numbers anywhere public** — prices, costs, forecasts, performance claims. Measured or sourced with a date; otherwise an open question in `.ai/12-risks.md`. Forecasts are labeled estimates.
 

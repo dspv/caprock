@@ -49,7 +49,7 @@ export function PremiumBanner({ costUSD, days, now }: { costUSD: number; days: n
         *
         * This read "Premium stops a day that runs away from you, and alerts
         * before a plan window does" — a metaphor for a mechanism, and the
-        * owner's verdict was simply "непонятно". A banner has one line to
+        * owner's verdict was simply "unclear" (translated). A banner has one line to
         * name a thing the reader can picture; "pauses sessions when the day
         * crosses a limit you set" is that thing, and it is what the modal
         * behind the button goes on to explain. */}

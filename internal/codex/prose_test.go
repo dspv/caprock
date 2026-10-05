@@ -45,7 +45,7 @@ func TestAssistantProseLandsOnItsTurn(t *testing.T) {
 // The cap is the one Claude Code's prose is cut with: runes, not bytes, so
 // multi-byte text is never split mid-character.
 func TestAssistantProseIsClippedOnRunes(t *testing.T) {
-	long := strings.Repeat("д", ingest.MaxAssistantText+50)
+	long := strings.Repeat("δ", ingest.MaxAssistantText+50)
 	src := `{"timestamp":"2026-09-15T09:25:25.100Z","type":"session_meta","payload":{"id":"s-clip","cwd":"/p","source":"cli"}}
 {"timestamp":"2026-09-15T09:25:31.001Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"` + long + `"}]}}
 {"timestamp":"2026-09-15T09:25:31.500Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15}}}}

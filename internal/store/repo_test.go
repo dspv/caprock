@@ -626,12 +626,12 @@ func TestListSessionsMatchingSearchesPromptsAndTitles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := SetTitle(ctx, db, "a", "Проверь даты статей"); err != nil {
+	if err := SetTitle(ctx, db, "a", "Έλεγξε τις ημερομηνίες"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO events(ts, session_id, source, kind, payload, key) VALUES
-		(1, 'b', 'hook', 'turn.user', '{"prompt":"сначала одно"}', 'k1'),
-		(2, 'b', 'hook', 'turn.user', '{"prompt":"потом глянь таблицы в BigQuery"}', 'k2')`); err != nil {
+		(1, 'b', 'hook', 'turn.user', '{"prompt":"πρώτα ένα"}', 'k1'),
+		(2, 'b', 'hook', 'turn.user', '{"prompt":"μετά δες τους πίνακες στο BigQuery"}', 'k2')`); err != nil {
 		t.Fatal(err)
 	}
 	ids := func(search string) []string {
@@ -652,9 +652,9 @@ func TestListSessionsMatchingSearchesPromptsAndTitles(t *testing.T) {
 		return out
 	}
 	for search, want := range map[string]string{
-		"проверь":  "a", // title typed with a capital
+		"έλεγξε":   "a", // title typed with a capital
 		"bigquery": "b", // ASCII case folds, and a later prompt counts
-		"Глянь":    "b",
+		"Δες":      "b",
 		"50%":      "", // a LIKE wildcard is a literal
 		"":         "a,b,c",
 	} {

@@ -122,8 +122,12 @@ docs-check: ## Fail if any markdown table is unaligned (CI gate)
 docs-links: ## Fail if any relative markdown link does not resolve
 	@python3 scripts/check-links.py $(DOCS)
 
+.PHONY: lang-check
+lang-check: ## Fail if any tracked text file holds Cyrillic (generated dist and binaries skipped)
+	@python3 scripts/check-no-cyrillic.py
+
 .PHONY: check
-check: docs-check docs-links lint test dist-check smoke ## Docs gates + lint + test + dist sync + smoke (what CI runs, minus the OS matrix)
+check: docs-check docs-links lang-check lint test dist-check smoke ## Docs gates + lint + test + dist sync + smoke (what CI runs, minus the OS matrix)
 
 .PHONY: release-ready
 release-ready: check ## Everything `check` does, plus the things only a release forgets

@@ -32,14 +32,14 @@ func TestIngestStoresAssistantProse(t *testing.T) {
 	h.f.text(textOpts{ID: "prt_t0", MessageID: "msg_a1", SessionID: "ses_a", Type: "reasoning",
 		Text: "secret thinking about the token", Start: 1_700_000_100_500})
 	h.f.text(textOpts{ID: "prt_t1", MessageID: "msg_a1", SessionID: "ses_a",
-		Text: "  Проверил оба пути.  ", Start: 1_700_000_101_000})
+		Text: "  Checked both paths.  ", Start: 1_700_000_101_000})
 	h.f.text(textOpts{ID: "prt_t2", MessageID: "msg_a1", SessionID: "ses_a",
 		Text: "The SSO header now resolves to user_id.", Start: 1_700_000_130_000})
 	h.f.text(textOpts{ID: "prt_t3", MessageID: "msg_a2", SessionID: "ses_a", Synthetic: true,
 		Text: "Continue if you have next steps, or stop and ask for clarification."})
 	h.poll()
 
-	want := "Проверил оба пути.\nThe SSO header now resolves to user_id."
+	want := "Checked both paths.\nThe SSO header now resolves to user_id."
 	if got := storedText(t, h, "msg_a1"); got != want {
 		t.Fatalf("payload.text = %q, want %q", got, want)
 	}
@@ -142,7 +142,7 @@ func TestTextsClipOnRunes(t *testing.T) {
 	f := newFixture(t)
 	f.session(sessionOpts{ID: "s", Directory: "/d", Title: "t"})
 	f.message(messageOpts{ID: "m", SessionID: "s"})
-	f.text(textOpts{ID: "p", MessageID: "m", SessionID: "s", Text: strings.Repeat("я", ingest.MaxAssistantText+5)})
+	f.text(textOpts{ID: "p", MessageID: "m", SessionID: "s", Text: strings.Repeat("ω", ingest.MaxAssistantText+5)})
 
 	texts, err := Texts(context.Background(), f.open(), "s")
 	if err != nil {

@@ -330,7 +330,7 @@ func TestDisplayWidthIgnoresANSIAndCountsRunes(t *testing.T) {
 	if got := displayWidth(colorPct("5h", 42)); got != len("5h 42%") {
 		t.Fatalf("ANSI counted: got %d, want %d", got, len("5h 42%"))
 	}
-	if got := displayWidth("привет"); got != 6 {
+	if got := displayWidth("γειάσου"); got != 7 {
 		t.Fatalf("multibyte runes counted as bytes: got %d", got)
 	}
 }

@@ -109,7 +109,7 @@ func TestNastyTextIsEscaped(t *testing.T) {
 }
 
 func TestLongTextIsClippedOnARuneBoundary(t *testing.T) {
-	d := Details{Title: strings.Repeat("ж", 200), Reply: strings.Repeat("é", 300)}
+	d := Details{Title: strings.Repeat("ω", 200), Reply: strings.Repeat("é", 300)}
 	got := Message(finished(`{}`), d)
 	first := strings.Split(got, "\n")[0]
 	if !strings.HasSuffix(first, "…") || len([]rune(first)) > 100 {

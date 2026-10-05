@@ -159,11 +159,11 @@ func TestDescriptionPrefersTitleThenASubstantivePrompt(t *testing.T) {
 		}
 	}
 	prompt("s1", "<local-command-caveat>Caveat: the messages below…</local-command-caveat>", 1)
-	prompt("s1", "так", 2)
+	prompt("s1", "ok", 2)
 	prompt("s1", "/Users/ds/Desktop/shot.png", 3)
-	prompt("s1", "Почини вставку в терминале:\nона дублируется", 4)
+	prompt("s1", "Fix the paste in the terminal:\nit comes out twice", 4)
 	sess, _ := store.GetSession(ctx, db, "s1")
-	if text, src := describe(ctx, db, sess); text != "Почини вставку в терминале:" || src != DescriptionPrompt {
+	if text, src := describe(ctx, db, sess); text != "Fix the paste in the terminal:" || src != DescriptionPrompt {
 		t.Fatalf("prompt fallback: %q %q", text, src)
 	}
 	if err := store.SetTitle(ctx, db, "s1", "Terminal paste fix"); err != nil {
@@ -173,7 +173,7 @@ func TestDescriptionPrefersTitleThenASubstantivePrompt(t *testing.T) {
 	if text, src := describe(ctx, db, sess); text != "Terminal paste fix" || src != DescriptionTitle {
 		t.Fatalf("title: %q %q", text, src)
 	}
-	long := strings.Repeat("я", 200)
+	long := strings.Repeat("ω", 200)
 	if got := clipLine(long); len([]rune(got)) != descriptionMaxRunes || !strings.HasSuffix(got, "…") {
 		t.Fatalf("clip: %d runes", len([]rune(got)))
 	}

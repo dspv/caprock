@@ -93,7 +93,7 @@ func TestSummarizeHealthAndRepeats(t *testing.T) {
 // Slicing UTF-8 by byte cut through characters, and encoding/json silently
 // substitutes U+FFFD rather than erroring — so the dashboard showed mojibake.
 func TestNarrateClipsOnRunes(t *testing.T) {
-	long := "эхо " + strings.Repeat("ф", 200)
+	long := "ηχώ " + strings.Repeat("φ", 200)
 	for name, got := range map[string]string{
 		"commandHead": commandHead(long),
 		"quote":       quote(long),
@@ -106,7 +106,7 @@ func TestNarrateClipsOnRunes(t *testing.T) {
 		}
 	}
 	// Short input is untouched.
-	if q := quote("привет"); q != "“привет”" {
+	if q := quote("γεια σας"); q != "“γεια σας”" {
 		t.Errorf("quote clipped a short string: %q", q)
 	}
 }

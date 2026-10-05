@@ -182,10 +182,9 @@ func TestPasteNameIsSanitised(t *testing.T) {
 		{"   ", "image/png", "file.png"},
 		{"a\x00b\nc\x1b[31m.md", "", "a_b_c_31m.md"},
 		{`he said "hi".md`, "", "he said _hi_.md"},
-		// The point of this case is non-ASCII text: a Cyrillic name collapses
-		// to one underscore, keeping the extension (rule 5's test-input
-		// exception).
-		{"Договор аренды.pdf", "", "_ _.pdf"},
+		// The point of this case is non-ASCII text: a Greek name collapses
+		// to one underscore, keeping the extension.
+		{"Σύμβαση μίσθωσης.pdf", "", "_ _.pdf"},
 		{"日本語.csv", "", "_.csv"},
 		{"résumé.docx", "", "r_sum_.docx"},
 		// A wrong extension stays in the stem and an allowed one is appended;

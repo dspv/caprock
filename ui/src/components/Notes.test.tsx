@@ -32,7 +32,7 @@ describe('NoteCard', () => {
   })
 
   it('collapses a long answer but always offers the whole thing', () => {
-    const long = 'Готово. '.repeat(300) // ~2400 characters, a real summary size
+    const long = 'Done.   '.repeat(300) // ~2400 characters, a real summary size
     render(<NoteCard note={note({ text: long })} now={NOW} />)
     const expander = screen.getByText(/show all/)
     expect(expander.textContent).toContain('2,400')
@@ -41,8 +41,8 @@ describe('NoteCard', () => {
   })
 
   it('counts characters, not bytes, when offering the full text', () => {
-    // The bug that started all this counted bytes; Cyrillic would read double.
-    const text = 'я'.repeat(1000)
+    // The bug that started all this counted bytes; Greek would read double.
+    const text = 'ω'.repeat(1000)
     render(<NoteCard note={note({ text })} now={NOW} />)
     expect(screen.getByText(/show all 1,000 characters/)).toBeTruthy()
   })

@@ -46,17 +46,17 @@ func storedPrompt(t *testing.T, h *harness, msgID string) (prompt string, sidech
 func TestIngestStoresPrompts(t *testing.T) {
 	h := newHarness(t)
 	h.f.typical()
-	h.f.userPart("prt_u1", "msg_a2", "ses_a", "  почему SSO заголовок резолвится так?  ", nil, 1_700_000_050_001)
+	h.f.userPart("prt_u1", "msg_a2", "ses_a", "  why does the SSO title resolve that way?  ", nil, 1_700_000_050_001)
 	h.f.text(textOpts{ID: "prt_t1", MessageID: "msg_a1", SessionID: "ses_a",
 		Text: "The room set is checked before the body.", Start: 1_700_000_101_000})
 	h.poll()
 
 	p, side, ok := storedPrompt(t, h, "msg_a2")
-	if !ok || p != "почему SSO заголовок резолвится так?" || side {
+	if !ok || p != "why does the SSO title resolve that way?" || side {
 		t.Fatalf("prompt = %q sidechain=%v stored=%v", p, side, ok)
 	}
 	ctx := context.Background()
-	if got, _ := store.SearchNotes(ctx, h.out, "SSO заголовок", 0, 0); len(got) != 1 || !strings.Contains(got[0].Text, "room set") {
+	if got, _ := store.SearchNotes(ctx, h.out, "SSO title", 0, 0); len(got) != 1 || !strings.Contains(got[0].Text, "room set") {
 		t.Fatalf("search by the question returned %+v", got)
 	}
 	if got, _ := store.FirstPrompts(ctx, h.out, "ses_a", 8); len(got) != 1 || got[0] != p {
@@ -150,7 +150,7 @@ func TestIngestBackfillsPromptsOfSessionsAlreadyImported(t *testing.T) {
 
 // Clipped on runes to the cap every agent's text shares.
 func TestPromptTextClipsOnRunes(t *testing.T) {
-	got := PromptText([]string{strings.Repeat("я", ingest.MaxAssistantText+5)})
+	got := PromptText([]string{strings.Repeat("ω", ingest.MaxAssistantText+5)})
 	if !utf8.ValidString(got) || utf8.RuneCountInString(got) != ingest.MaxAssistantText+1 {
 		t.Fatalf("clipped to %d runes", utf8.RuneCountInString(got))
 	}
