@@ -62,7 +62,7 @@ fn main() {
             .build(),
     )
     .setup(move |app| {
-        shell::build(app.handle(), start, !quiet)?;
+        shell::build(app.handle(), monitored.clone(), start, !quiet)?;
         #[cfg(target_os = "macos")]
         menu::install(app.handle(), &monitored)?;
         shell::monitor(app.handle().clone(), monitored);

@@ -7,6 +7,7 @@ use crate::discovery;
 use crate::supervisor::{State, Supervisor};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -67,10 +68,16 @@ fn is_local(url: &Url) -> bool {
     matches!(url.scheme(), "tauri") || url.host_str() == Some("tauri.localhost")
 }
 
-pub fn build(app: &AppHandle, start: WebviewUrl, focus: bool) -> tauri::Result<WebviewWindow> {
+pub fn build(
+    app: &AppHandle,
+    sup: Arc<Supervisor>,
+    start: WebviewUrl,
+    focus: bool,
+) -> tauri::Result<WebviewWindow> {
     let opener = app.clone();
     let opener2 = app.clone();
-    let mut b = WebviewWindowBuilder::new(app, MAIN, start)
+    let shown = Arc::new(AtomicBool::new(false));
+    let b = WebviewWindowBuilder::new(app, MAIN, start)
         .title("Caprock")
         .inner_size(1280.0, 800.0)
         .min_inner_size(720.0, 480.0)
@@ -78,9 +85,12 @@ pub fn build(app: &AppHandle, start: WebviewUrl, focus: bool) -> tauri::Result<W
         .focused(focus)
         .initialization_script(INIT_SCRIPT)
         .on_navigation(move |url| {
-            // Main-frame navigation stays on the daemon or the fallback page;
-            // anything else is a link the user meant for the browser.
-            if is_daemon(url, None) || is_local(url) || url.scheme() == "about" {
+            // Main-frame navigation stays on this daemon or the fallback page;
+            // anything else, another local port included, is a link the user
+            // meant for the browser.
+            let port = sup.runtime().map(|rt| rt.port);
+            if (port.is_some() && is_daemon(url, port)) || is_local(url) || url.scheme() == "about"
+            {
                 return true;
             }
             open_external(&opener, url);
@@ -91,33 +101,39 @@ pub fn build(app: &AppHandle, start: WebviewUrl, focus: bool) -> tauri::Result<W
             NewWindowResponse::Deny
         })
         .on_download(save_download)
-        .on_page_load(|w, p| {
-            if matches!(p.event(), tauri::webview::PageLoadEvent::Finished) {
-                #[cfg(all(feature = "snapshot", target_os = "macos"))]
-                crate::snapshot::loaded(p.url());
+        .on_page_load(move |w, p| {
+            if !matches!(p.event(), tauri::webview::PageLoadEvent::Finished) {
+                return;
+            }
+            #[cfg(all(feature = "snapshot", target_os = "macos"))]
+            crate::snapshot::loaded(p.url());
+            // Shown once, when the first page is ready (no white flash); a
+            // later reload must not pull the window forward.
+            if !shown.swap(true, Ordering::Relaxed) {
                 let _ = w.show();
             }
         });
     #[cfg(target_os = "macos")]
-    {
+    let b = {
         use tauri::utils::config::WindowEffectsConfig;
         use tauri::window::Effect;
-        b = b
-            .title_bar_style(tauri::TitleBarStyle::Overlay)
+        b.title_bar_style(tauri::TitleBarStyle::Overlay)
             .hidden_title(true)
             .traffic_light_position(tauri::LogicalPosition::new(14.0, 18.0))
             .transparent(true)
             .effects(WindowEffectsConfig {
                 effects: vec![Effect::Sidebar],
                 ..Default::default()
-            });
-    }
+            })
+    };
     let w = b.build()?;
     // If the first page is slow, show the window anyway rather than nothing.
     let late = w.clone();
     thread::spawn(move || {
         thread::sleep(Duration::from_millis(1200));
-        let _ = late.show();
+        if !late.is_visible().unwrap_or(true) {
+            let _ = late.show();
+        }
     });
     Ok(w)
 }
