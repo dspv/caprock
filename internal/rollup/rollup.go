@@ -123,6 +123,14 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 	}
 
 	err := r.Store.WithTx(ctx, func(q store.Querier) error {
+		// The owner removed this session (ADR-037). Its transcript is still on
+		// disk, and every re-read of it would record it again.
+		if removed, err := store.IsRemoved(ctx, q, ev.SessionID); err != nil || removed {
+			if err == nil {
+				err = store.ErrRemovedSession
+			}
+			return err
+		}
 		if ev.Kind == event.KindTurnAssistant && ev.MsgID != "" && ev.Tokens != nil {
 			// A fork's transcript repeats its parent's turns under its own
 			// session id. The row stays — it is the fork's history, prose and
@@ -316,6 +324,9 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 		res.Session = s
 		return nil
 	})
+	if errors.Is(err, store.ErrRemovedSession) {
+		return Result{}, nil
+	}
 	if errors.Is(err, store.ErrDuplicate) {
 		res.Stored = false
 		// A later line of a response already stored: its prose belongs to that

@@ -189,3 +189,12 @@ func (c *answerCache) refresh(key string, old *answerEntry, fn func() (any, erro
 
 // wait blocks until every background refresh started so far has finished.
 func (c *answerCache) wait() { c.bg.Wait() }
+
+// forget drops every answer, so the next read of each key computes it afresh.
+// For the rare write that changes history rather than adds to it — removing a
+// session — not for ingest (see the package comment).
+func (c *answerCache) forget() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.m = map[string]*answerEntry{}
+}

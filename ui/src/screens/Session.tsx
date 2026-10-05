@@ -19,6 +19,7 @@ import { RelayChain, RelayMenu } from '@/components/RelayDialog'
 import { OpenInTerminal } from '@/components/OpenInTerminal'
 import { DiffFiles } from '@/components/DiffFiles'
 import { setDraft } from '@/lib/draft'
+import { RemoveSession } from '@/components/RemoveSession'
 
 type Tab = 'timeline' | 'notes' | 'changes' | 'terminal'
 
@@ -157,6 +158,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         {s.cwd && !reader && <RelayMenu sessionID={s.session_id} />}
         {detail.stale && <StaleNote at={detail.cachedAt} now={now} />}
         <span className="text-[12px] text-fg-muted ml-auto num min-w-0 [overflow-wrap:anywhere]">{s.cwd}</span>
+        {!detail.stale && <RemoveSession sessionID={s.session_id} costUSD={s.stats.cost_usd} running={s.status === 'active' || (s.owned && s.status !== 'ended' && !s.detached)} />}
       </div>
       {/* The title line, with the repository and its PR at its right end, on
         * every tab — the terminal included, which is where someone is when
