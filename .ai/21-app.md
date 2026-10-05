@@ -676,6 +676,28 @@ connection and the work survive a bad network.
   messages, more revealed at the top — rather than with
   `content-visibility: auto`, whose estimated heights change without a DOM
   mutation and so move the reader past the anchor correction.
+  Polished for the phone (2026-10-06):
+  - *Offline queue.* The field follows the live socket's state (the chat
+    types over HTTP, and `/v1/live` is what says the daemon is reachable):
+    the WP-13 rules apply as in the terminal's keys bar, and held messages
+    share its `sessionStorage` key. When the session ends, the field stays
+    for what was waiting, as drafts; one typed after the end is a draft at
+    once.
+  - *A reconnect that left a hole.* When the newest page starts after the
+    newest message held, earlier pages are fetched with `before=` until one
+    reaches it — at most 10 (3,000 events) — and merged at once, so the
+    reader's first visible message stays put and the pill counts what
+    arrived. Past that bound it starts again from the newest page.
+  - *Bottom-anchored.* A conversation shorter than the view sits at its
+    bottom (a flex column; the first row's auto top margin, zero once the
+    log overflows).
+  - *Compact header.* On the Chat tab under 640 px: back, project, title,
+    state and a Details toggle on one line; pause, resume, kill, continue
+    and relay on one row; ids, folder, links, activity, Remove and the
+    figures under Details or on the other tabs.
+  - *Photo.* The keys bar's Photo button saves the picture through
+    `POST /v1/paste` (downscaled first, as in the terminal) and puts its
+    quoted path in the field, sent with the words about it.
 - **Start work.** New project, clone and worktree from the phone (see
   [§ Projects](#projects)), then a session in it, with the clone's progress
   surviving a drop.

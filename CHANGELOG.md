@@ -36,6 +36,25 @@ Phase 3 (Delight) has no plan by design.
   you pick — *Wi-Fi*, *Tailscale* (works on mobile data) or the Tailscale name.
   Without Tailscale it says plainly that a phone off the Wi-Fi cannot reach it.
 
+### Changed
+
+- **The chat on a phone.** Its field now holds a message typed while the
+  connection is down ("Will send when connected") and sends it on reconnect
+  unless a permission prompt waits, as the terminal's keys bar does; if the
+  session ends meanwhile it stays as a draft to edit. Back from a long drop,
+  the chat fetches everything it missed instead of starting over at the
+  newest page, and what you were reading stays where it was. A short
+  conversation sits at the bottom, by the field. On the Chat tab the session
+  header is one line and one row of controls, with the rest under
+  **Details**, so the conversation starts about 270 px higher at 390 px.
+  **Photo** puts the picture's path in the field, to send with your words.
+
+### Fixed
+
+- **The terminal no longer covers its own text field on a phone.** Once
+  the faster renderer took over, the terminal grew past its box and over
+  the field under it; it now fits itself again.
+
 ## [0.76.0] - 2026-10-06
 
 ### Added

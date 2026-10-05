@@ -21,6 +21,8 @@ const keyHandler = vi.hoisted((): { fn: KeyHandler | null } => ({ fn: null }))
 // before the slow GPU set-up.
 const steps = vi.hoisted(() => [] as string[])
 const resets = vi.hoisted(() => ({ n: 0 }))
+// xterm's grid (.xterm-screen), whose height a renderer swap changes.
+const grid = vi.hoisted(() => ({ el: undefined as HTMLElement | undefined, height: 300 }))
 
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
@@ -38,7 +40,17 @@ vi.mock('@xterm/xterm', () => ({
         throw new Error('WebGL is not supported in this environment')
       }
     }
-    open() {}
+    element: HTMLElement | undefined
+    open(parent: HTMLElement) {
+      const el = document.createElement('div')
+      const g = document.createElement('div')
+      g.className = 'xterm-screen'
+      Object.defineProperty(g, 'clientHeight', { configurable: true, get: () => grid.height })
+      el.appendChild(g)
+      parent.appendChild(el)
+      this.element = el
+      grid.el = g
+    }
     focus() { steps.push('focus') }
     write(d: string) { written.push(d) }
     reset() { resets.n++ }
@@ -90,10 +102,11 @@ vi.mock('@xterm/xterm/css/xterm.css', () => ({}))
 // jsdom lays nothing out, so clientWidth/clientHeight are 0 for everything and
 // the "did the geometry change" guard could not otherwise be exercised.
 const roHandler: { fn?: () => void } = {}
+const observed: Element[] = []
 const hostSize = { width: 400, height: 300 }
 vi.stubGlobal('ResizeObserver', class {
   constructor(fn: () => void) { roHandler.fn = fn }
-  observe() {}
+  observe(el: Element) { observed.push(el) }
   disconnect() { roHandler.fn = undefined }
 })
 Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get() { return hostSize.width } })
@@ -590,6 +603,23 @@ describe('Shift+Enter', () => {
     await new Promise((r) => requestAnimationFrame(() => r(null)))
     // One frame, one fit — not ten.
     expect(fitCalls - before).toBe(1)
+  })
+
+  // A renderer swap (WebGL loaded late, or dropped after a context loss)
+  // changes the cell and keeps the row count: the grid grew past its box at
+  // 390px and covered the keys bar's field, with the box itself unchanged.
+  it('refits when the grid changes size inside an unchanged box', async () => {
+    mount()
+    await new Promise((r) => requestAnimationFrame(() => r(null)))
+    roHandler.fn?.()
+    await new Promise((r) => requestAnimationFrame(() => r(null)))
+    expect(observed).toContain(grid.el)
+    const before = fitCalls
+    grid.height = 496
+    roHandler.fn?.()
+    await new Promise((r) => requestAnimationFrame(() => r(null)))
+    expect(fitCalls - before).toBe(1)
+    grid.height = 300
   })
 
   it('never sends a zero size', () => {
