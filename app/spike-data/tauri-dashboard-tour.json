@@ -1,0 +1,164 @@
+{
+  "client": "tauri-dash-tour",
+  "keys": 0,
+  "lps": "0",
+  "page_events": [
+    {
+      "at": 1791219669484.5,
+      "kind": "ready",
+      "timer_res_ms": 1,
+      "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+    },
+    {
+      "at": 1791219675006.5,
+      "boundary_failures": 0,
+      "elements": 208,
+      "errors": [],
+      "font_hanken": true,
+      "font_jetbrains": true,
+      "hash": "#/",
+      "kind": "tour",
+      "text_chars": 1253,
+      "xterm": 0,
+      "xterm_canvases": 0
+    },
+    {
+      "at": 1791219677510.5,
+      "boundary_failures": 0,
+      "elements": 137,
+      "errors": [],
+      "font_hanken": true,
+      "font_jetbrains": true,
+      "hash": "#/session/f41e3fed-cdb7-4b1e-be3f-009f31201d4a",
+      "kind": "tour",
+      "text_chars": 724,
+      "xterm": 0,
+      "xterm_canvases": 0
+    },
+    {
+      "at": 1791219677561.5,
+      "kind": "ws_open"
+    },
+    {
+      "at": 1791219683514.5,
+      "boundary_failures": 0,
+      "elements": 148,
+      "errors": [],
+      "font_hanken": true,
+      "font_jetbrains": true,
+      "hash": "#/session/f41e3fed-cdb7-4b1e-be3f-009f31201d4a?tab=terminal",
+      "kind": "tour",
+      "text_chars": 939,
+      "xterm": 1,
+      "xterm_canvases": 2
+    },
+    {
+      "at": 1791219686018.5,
+      "boundary_failures": 0,
+      "elements": 213,
+      "errors": [],
+      "font_hanken": true,
+      "font_jetbrains": true,
+      "hash": "#/cost",
+      "kind": "tour",
+      "text_chars": 1441,
+      "xterm": 0,
+      "xterm_canvases": 0
+    },
+    {
+      "at": 1791219688521.5,
+      "boundary_failures": 0,
+      "elements": 181,
+      "errors": [],
+      "font_hanken": true,
+      "font_jetbrains": true,
+      "hash": "#/history",
+      "kind": "tour",
+      "text_chars": 1103,
+      "xterm": 0,
+      "xterm_canvases": 0
+    },
+    {
+      "at": 1791219691024.5,
+      "boundary_failures": 0,
+      "elements": 94,
+      "errors": [],
+      "font_hanken": true,
+      "font_jetbrains": true,
+      "hash": "#/week",
+      "kind": "tour",
+      "text_chars": 565,
+      "xterm": 0,
+      "xterm_canvases": 0
+    },
+    {
+      "at": 1791219693526.5,
+      "boundary_failures": 0,
+      "elements": 97,
+      "errors": [],
+      "font_hanken": true,
+      "font_jetbrains": true,
+      "hash": "#/tasks",
+      "kind": "tour",
+      "text_chars": 487,
+      "xterm": 0,
+      "xterm_canvases": 0
+    },
+    {
+      "at": 1791219696029.5,
+      "boundary_failures": 0,
+      "elements": 90,
+      "errors": [],
+      "font_hanken": true,
+      "font_jetbrains": true,
+      "hash": "#/graph",
+      "kind": "tour",
+      "text_chars": 163,
+      "xterm": 0,
+      "xterm_canvases": 0
+    },
+    {
+      "at": 1791219698531.5,
+      "boundary_failures": 0,
+      "elements": 75,
+      "errors": [],
+      "font_hanken": true,
+      "font_jetbrains": true,
+      "hash": "#/notes",
+      "kind": "tour",
+      "text_chars": 133,
+      "xterm": 0,
+      "xterm_canvases": 0
+    },
+    {
+      "at": 1791219701035.5,
+      "boundary_failures": 0,
+      "elements": 347,
+      "errors": [],
+      "font_hanken": true,
+      "font_jetbrains": true,
+      "hash": "#/settings",
+      "kind": "tour",
+      "text_chars": 4135,
+      "xterm": 0,
+      "xterm_canvases": 0
+    },
+    {
+      "apis": {
+        "clipboard_write": "function",
+        "clipboard_write_text": "function",
+        "notification": "function",
+        "share": "function",
+        "webgl2": true
+      },
+      "at": 1791219701039.5,
+      "css_supports": {
+        "color_mix": true,
+        "container": true,
+        "has": true,
+        "oklch": true
+      },
+      "kind": "tour_done"
+    }
+  ]
+}

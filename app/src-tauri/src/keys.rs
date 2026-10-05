@@ -57,3 +57,17 @@ pub fn post(ns_window: usize, c: char) {
         }
     }
 }
+
+/// Opts the bench out of App Nap: it runs in the background on purpose, and
+/// a napping app's timers are coalesced, which would bias every latency.
+pub fn no_app_nap() {
+    // NSActivityUserInitiatedAllowingIdleSystemSleep | NSActivityLatencyCritical
+    const OPTIONS: u64 = 0x00EF_FFFF | 0xFF_0000_0000;
+    unsafe {
+        let info: *mut AnyObject = msg_send![class!(NSProcessInfo), processInfo];
+        let reason = NSString::from_str("Caprock spike typing benchmark");
+        let token: *mut AnyObject = msg_send![info, beginActivityWithOptions: OPTIONS, reason: &*reason];
+        // Held for the life of the process.
+        let _: *mut AnyObject = msg_send![token, retain];
+    }
+}

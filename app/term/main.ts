@@ -24,6 +24,7 @@ interface BenchState {
   keydown: number | null
   arm: (expect: string | null, first: boolean) => void
   grid: () => void
+  tour: (routes: readonly string[]) => Promise<void>
 }
 
 type Invoke = (cmd: string, args: Record<string, unknown>) => Promise<unknown>
@@ -58,6 +59,7 @@ const installHook = (): BenchState => {
       const t = currentTerm()
       report({ kind: 'grid', cols: t?.cols, rows: t?.rows, dpr: window.devicePixelRatio, inner: [innerWidth, innerHeight], clock_skew_ms: performance.timeOrigin + performance.now() - Date.now() })
     },
+    tour: (routes) => tourDashboard(routes),
   }
   ;(window as unknown as { __bench: BenchState }).__bench = B
   const W = window.WebSocket
@@ -86,6 +88,38 @@ const installHook = (): BenchState => {
   window.WebSocket = Hooked as unknown as typeof WebSocket
   window.addEventListener('keydown', () => { if (B.keydown === null) B.keydown = epoch() }, true)
   return B
+}
+
+// Every error the page raises, for the WKWebView compatibility check.
+const pageErrors: string[] = []
+const captureErrors = (): void => {
+  window.addEventListener('error', (e) => pageErrors.push(`error: ${e.message} @ ${e.filename}:${e.lineno}`))
+  window.addEventListener('unhandledrejection', (e) => pageErrors.push(`rejection: ${String(e.reason)}`))
+  const orig = console.error.bind(console)
+  console.error = (...a: unknown[]) => { pageErrors.push(`console.error: ${a.map(String).join(' ').slice(0, 300)}`); orig(...a) }
+  const warn = console.warn.bind(console)
+  console.warn = (...a: unknown[]) => { pageErrors.push(`console.warn: ${a.map(String).join(' ').slice(0, 300)}`); warn(...a) }
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+
+/** Visits each route of the unchanged dashboard and reports what rendered. */
+const tourDashboard = async (routes: readonly string[]): Promise<void> => {
+  for (const hash of routes) {
+    const before = pageErrors.length
+    location.hash = hash
+    await sleep(hash.includes('terminal') ? 6000 : 2500)
+    const main = document.querySelector('main') ?? document.body
+    report({
+      kind: 'tour', hash,
+      boundary_failures: [...document.querySelectorAll('div')].filter((d) => / failed to render$/.test(d.firstElementChild?.textContent ?? '')).length,
+      text_chars: main.textContent?.length ?? 0, elements: document.querySelectorAll('*').length,
+      xterm: document.querySelectorAll('.xterm').length, xterm_canvases: document.querySelectorAll('.xterm-screen canvas').length,
+      font_jetbrains: document.fonts.check('12px "JetBrains Mono Variable"'), font_hanken: document.fonts.check('14px "Hanken Grotesk Variable"'),
+      errors: pageErrors.slice(before),
+    })
+  }
+  report({ kind: 'tour_done', css_supports: { has: CSS.supports('selector(:has(a))'), container: CSS.supports('container-type: inline-size'), color_mix: CSS.supports('color: color-mix(in oklab, red, blue)'), oklch: CSS.supports('color: oklch(0.5 0.1 200)') }, apis: { share: typeof navigator.share, clipboard_write: typeof navigator.clipboard?.write, clipboard_write_text: typeof navigator.clipboard?.writeText, notification: typeof (window as unknown as { Notification?: unknown }).Notification, webgl2: !!document.createElement('canvas').getContext('webgl2') } })
 }
 
 const timerResolution = (): number => {
@@ -131,7 +165,7 @@ html,body{margin:0;height:100%;background:#0b0d10;overflow:hidden}#t{position:ab
   report({ kind: 'ready', renderer, webgl_ms: glMs, cols: t.cols, rows: t.rows, timer_res_ms: timerResolution(), ua: navigator.userAgent })
 }
 
-if (cfg.bench) installHook()
+if (cfg.bench) { installHook(); captureErrors() }
 if (cfg.mode === 'term') {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mountTerminal)
   else mountTerminal()

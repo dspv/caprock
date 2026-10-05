@@ -1,0 +1,38 @@
+{
+  "client": "tauri-idle-dashboard",
+  "keys": 0,
+  "lps": "0",
+  "watch": {
+    "by_process": [
+      {
+        "comm": "caprock-app",
+        "cpu_pct": 0.2,
+        "pid": 55751,
+        "rss_mb": 76.5
+      },
+      {
+        "comm": "com.apple.WebKit.WebContent",
+        "cpu_pct": 0.9,
+        "pid": 55754,
+        "rss_mb": 51.8
+      },
+      {
+        "comm": "com.apple.WebKit.GPU",
+        "cpu_pct": 0.2,
+        "pid": 55753,
+        "rss_mb": 16.5
+      },
+      {
+        "comm": "com.apple.WebKit.Networking",
+        "cpu_pct": 0.1,
+        "pid": 55755,
+        "rss_mb": 14.8
+      }
+    ],
+    "cpu_pct": 1.4,
+    "processes": 4,
+    "rss_mb_end": 159.6,
+    "rss_mb_peak": 232.0,
+    "seconds": 30.2
+  }
+}

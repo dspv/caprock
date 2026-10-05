@@ -22,6 +22,7 @@ pub enum Mode {
     Term,
     Dash,
     Idle,
+    Tour,
 }
 
 pub struct Cfg {
@@ -38,6 +39,7 @@ impl Cfg {
         let mode = match arg("--bench-mode").as_deref() {
             Some("dash") => Mode::Dash,
             Some("idle") => Mode::Idle,
+            Some("tour") => Mode::Tour,
             _ => Mode::Term,
         };
         Some(Cfg {
@@ -71,6 +73,8 @@ fn pct(v: &[f64], p: f64) -> Option<f64> {
 
 pub fn start(app: AppHandle, port: u16, sid: String, cfg: Cfg, rx: Receiver<Report>) {
     ACTIVE.store(true, Ordering::Relaxed);
+    #[cfg(target_os = "macos")]
+    crate::keys::no_app_nap();
     std::thread::spawn(move || {
         let mut b = Bench { app: app.clone(), port, sid, rx, log: vec![] };
         let result = b.run(&cfg);
@@ -94,6 +98,7 @@ impl Bench {
         let mut r = json!({ "lps": std::env::var("BENCH_LPS").ok(), "keys": cfg.keys });
         let win = match cfg.mode {
             Mode::Idle => return self.idle(cfg, r),
+            Mode::Tour => return self.tour(r),
             Mode::Term => {
                 r["client"] = json!("tauri-term");
                 let n = nonce();
@@ -158,6 +163,20 @@ impl Bench {
         let _w = open_dash(&self.app, "dash", self.port, false).expect("dash window");
         std::thread::sleep(Duration::from_secs(10));
         r["watch"] = self.watch(cfg.watch);
+        r
+    }
+
+    /// The unchanged dashboard in WKWebView: every route, errors and fonts.
+    fn tour(&mut self, mut r: Value) -> Value {
+        r["client"] = json!("tauri-dash-tour");
+        let w = open_dash(&self.app, "dash", self.port, true).expect("dash window");
+        self.wait_kind("ready", Duration::from_secs(30));
+        std::thread::sleep(Duration::from_secs(3));
+        let sid = &self.sid;
+        let routes = json!(["#/", format!("#/session/{sid}"), format!("#/session/{sid}?tab=terminal"), "#/cost", "#/history", "#/week", "#/tasks", "#/graph", "#/notes", "#/settings"]);
+        let _ = w.eval(&format!("window.__bench.tour({routes})"));
+        self.wait_kind("tour_done", Duration::from_secs(90));
+        r["page_events"] = json!(self.log);
         r
     }
 

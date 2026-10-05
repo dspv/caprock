@@ -21,7 +21,11 @@ const KEYS = Number(keysArg || 60)
 const WATCH = Number(watchArg || 20)
 const cdpPort = 9300 + Math.floor(Math.random() * 400)
 const dir = mkdtempSync(join(process.env.TMPDIR || tmpdir(), 'chr-macspike-'))
-const chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [
+// Headless (new headless: the full browser, no window). A headed Chrome takes
+// the foreground on launch even with \`open -g\`, and this bench must never
+// take focus from the person at the machine. CDP input stays inside it. The
+// 2026-10-04 run in macos/ was headed.
+const chrome = spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', ['--headless=new',
   `--remote-debugging-port=${cdpPort}`, `--user-data-dir=${dir}`, '--window-size=1400,900', '--window-position=40,40',
   '--no-first-run', '--no-default-browser-check',
   // The window must count as visible even if another window covers it, or rAF stops.
@@ -85,7 +89,6 @@ await send('Page.enable')
 await send('Runtime.addBinding', { name: '__benchFirst' })
 await send('Runtime.addBinding', { name: '__benchKey' })
 await send('Page.addScriptToEvaluateOnNewDocument', { source: hook })
-await send('Page.bringToFront')
 
 const typeChar = async (c) => {
   if (c === '\r') {
@@ -192,6 +195,7 @@ Object.assign(result, {
 console.log(JSON.stringify(result, null, 2))
 ws.close()
 chrome.kill()
+try { execSync(`pkill -f -- '--user-data-dir=${dir}'`) } catch { /* gone */ }
 await sleep(500)
 try { rmSync(dir, { recursive: true, force: true }) } catch { /* ignore */ }
 process.exit(0)
