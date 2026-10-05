@@ -604,6 +604,10 @@ connection and the work survive a bad network.
 - **Chat view.** The conversation as messages (what the agent wrote, tool
   calls collapsed to one line, prompts), built from the events Caprock already
   stores, with the scrolling rule; the input box types into the session.
+  Built (WP-14): it keeps the DOM small by windowing — the newest 120
+  messages, more revealed at the top — rather than with
+  `content-visibility: auto`, whose estimated heights change without a DOM
+  mutation and so move the reader past the anchor correction.
 - **Start work.** New project, clone and worktree from the phone (see
   [§ Projects](#projects)), then a session in it, with the clone's progress
   surviving a drop.

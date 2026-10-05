@@ -34,6 +34,7 @@ import { TabStrip, TerminalStack } from '@/components/TerminalTabs'
 import { Inspector } from '@/components/Inspector'
 import { StatusStrip } from '@/components/StatusStrip'
 import { PermissionPrompt } from '@/components/PermissionPrompt'
+import { ChatView } from '@/components/ChatView'
 import { NewAgentSheet } from '@/components/NewAgentSheet'
 import { AddProjectSheet, splitPath } from '@/components/AddProjectSheet'
 import { CommandPalette, type PaletteItem } from '@/components/CommandPalette'
@@ -109,6 +110,9 @@ export function AppShell() {
   const [sheet, setSheet] = useState<SheetState>(null)
   const [toast, setToast] = useState('')
   const [paneStatus, setPaneStatus] = useState<Record<string, PaneStatus>>({})
+  // Sessions whose tab shows the chat over the terminal; the terminal stays
+  // mounted behind it.
+  const [chatOpen, setChatOpen] = useState<ReadonlySet<string>>(() => new Set())
   const [version, setVersion] = useState<string | undefined>(undefined)
   const [, toggleTheme] = useTheme()
 
@@ -301,6 +305,16 @@ export function AppShell() {
   }, [ws.tabs, model.projects, sessionsById, projectsById, openSessions, prefs.inspector, onNewAgent, onNewShell, onAddProject, onDashboard, toggleTheme, run, showWorkspace, openSession, onSelectProject])
 
   const focusedIsAgent = !!focused && focused.kind === 'session' && focusedSession?.kind !== 'shell'
+  const showChat = focusedIsAgent && !!focused && chatOpen.has(focused.sessionId)
+  const toggleChat = useCallback(() => {
+    if (!focused) return
+    const id = focused.sessionId
+    setChatOpen((cur) => {
+      const next = new Set(cur)
+      if (!next.delete(id)) next.add(id)
+      return next
+    })
+  }, [focused])
 
   return (
     <div className="flex h-dvh flex-col text-fg">
@@ -339,6 +353,8 @@ export function AppShell() {
               onNewAgent={() => onNewAgent()}
               onNewShell={() => onNewShell()}
               onToggleInspector={() => setPrefs((p) => ({ ...p, inspector: !p.inspector }))}
+              chatOpen={showChat}
+              onToggleChat={focusedIsAgent ? toggleChat : undefined}
             />
           )}
           <div className="flex min-h-0 flex-1">
@@ -346,6 +362,14 @@ export function AppShell() {
               <div className="absolute inset-0 flex flex-col" hidden={!workspaceShown}>
                 <div className="relative min-h-0 flex-1">
                   <TerminalStack tabs={ws.tabs} visibleTabId={workspaceShown ? current?.id : undefined} onPaneStatus={onPaneStatus} />
+                  {showChat && focused && (
+                    <ChatView
+                      key={focused.sessionId}
+                      sessionId={focused.sessionId}
+                      canType={!!focusedSession && focusedSession.owned && focusedSession.status !== 'ended' && !focusedSession.detached}
+                      className="app-slab absolute inset-0 z-10"
+                    />
+                  )}
                   {!current && (
                     <EmptyWorkspace
                       project={activeProject}

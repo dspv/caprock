@@ -72,6 +72,25 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-06 — The chat view (WP-14)
+
+A session as a conversation, on the session page (Chat tab, the default at
+phone width) and in the app workspace (a tab's chat button). Built from
+stored events through the existing endpoints, merged by id and ordered by
+`(ts, id)`; input through `POST /v1/agents/{id}/input`. No new endpoint; one
+fix to `?before=`, which skipped rows sharing the cursor's millisecond. Tests:
+50 messages out of order plus 10 duplicates over the live socket render in
+server order, once; a reset refetches in place; 200 streamed while scrolled
+up and older pages revealed keep the first visible message (jsdom geometry).
+In headless Chrome on a preview daemon with a synthetic 2,000-message
+session: at 1400×900, 390 px and 320 px the first visible message moved
+0 px while 200 messages streamed (sampled every frame) and 0–0.5 px across
+eight older-page reveals; the pill read "↓ 200 new"; following at the
+bottom, no frame over 17 ms; the Chat tab painted the newest window in
+26–45 ms and a cold page load reached it in 328–352 ms; no horizontal
+scroll. Typing from the chat at 390 px reached a fake `claude` session
+(`you-said:` echoed Greek, Japanese and emoji).
+
 ### 2026-10-06 — The notify frame and OS notifications (WP-09)
 
 `internal/alerts` gains a second sender: each decision is also a `notify`

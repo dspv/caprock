@@ -11,6 +11,14 @@ Phase 3 (Delight) has no plan by design.
 
 ### Added
 
+- **Read a session as a chat.** A new Chat tab shows the conversation — your
+  prompts, what the agent wrote, each tool call on one line that opens — with
+  a field and keys that type into the session. On a phone a session opens on
+  it; in the app, an agent tab switches between terminal and chat. Messages
+  always appear in the order the session produced them, never twice, however
+  late they arrive; scrolled up, nothing moves while new ones come in, and a
+  "↓ N new" pill takes you back down.
+
 - **The desktop app tells you when a session needs you.** An OS
   notification names the project and session and what it wants — `Bash: go
   test ./...`, the file an edit would change, the question asked — the moment
@@ -36,6 +44,11 @@ Phase 3 (Delight) has no plan by design.
   up from any app, changed or turned off in Settings → Global shortcut;
   Wayland does not allow global shortcuts. On macOS closing the window now
   keeps Caprock in the menu bar.
+
+### Fixed
+
+- **Paging back through a session no longer skips events.** Events sharing a
+  millisecond with the oldest one shown were left out of the page before it.
 
 ## [0.75.0] - 2026-10-05
 

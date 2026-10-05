@@ -481,6 +481,8 @@ after 30 silent minutes. Both are omitted when empty or zero.
 
 The dashboard route `#/session/{id}?at=<unix-ms>` reveals a moment in the timeline (used by the pulse); it is a client-side concern and needs no endpoint.
 
+**`?before=<id>` pages by `(ts, id)`**, the same key the page is ordered by: rows sharing the cursor row's millisecond with a lower id are included. With `ts <` alone they were skipped at a page boundary, and the chat view (WP-14) lost the tool call made in the same millisecond as its turn.
+
 **`GET /v1/sessions/{id}/events?newest=1` returns the tail rather than the head**, oldest-first within the page. Paging from the start is right for a timeline read forwards and wrong for anything showing recent activity: on a session with thousands of events, `after=0` hands back the first few hundred — hours old — so a caller asking "what just happened" renders an empty window with no indication why.
 
 **An unmatched `/v1/` path is `404` with a JSON body**, not the dashboard. The UI is served from `/` so client-side routes resolve, which previously meant any unknown API path fell through to `index.html` — a caller that mistyped an endpoint, or used one removed in an upgrade, got `200` and a document, then failed later parsing HTML as JSON. Page routes (`/`, `/cost`, `/session/{id}`) still serve the SPA.

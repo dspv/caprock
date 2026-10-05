@@ -43,6 +43,7 @@ vi.mock('@/lib/api', async (orig) => {
       summary: async () => ({ cost_usd: 1.25, projects: [{ project: 'app', dir: '/w/app', cost_usd: 1.25, tokens: 0, sessions: 2 }], rate_limits: { five_hour: { used_percentage: 40, resets_at: 0 } } }),
       permission: async () => ({ permission: null }),
       diff: async () => ({ root: '/w/app', branch: 'main', files: [], stat: '' }),
+      recentEvents: async () => [{ id: 1, ts: '2026-10-05T10:00:00Z', session_id: 'agent-1', source: 'hook', kind: 'turn.user', payload: { prompt: 'Fix it, please' } }],
     },
   }
 })
@@ -94,6 +95,17 @@ describe('the app workspace', () => {
     expect(screen.getByTestId('pane-agent-1')).toHaveAttribute('data-active', 'true')
     await cmd('w')
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+  })
+
+  it('shows an agent tab as its chat, over the terminal that stays mounted', async () => {
+    await renderApp()
+    fireEvent.click(screen.getByText('Fix the login bug'))
+    await screen.findByRole('tab', { name: /Fix the login bug/ })
+    fireEvent.click(screen.getByRole('button', { name: 'Show the chat' }))
+    expect(await screen.findByText('Fix it, please')).toBeInTheDocument()
+    expect(screen.getByTestId('pane-agent-1')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Show the terminal' }))
+    expect(screen.queryByRole('log')).not.toBeInTheDocument()
   })
 
   it('opens a session it does not own in the dashboard, never as a terminal (rule 7)', async () => {

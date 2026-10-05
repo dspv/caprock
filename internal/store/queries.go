@@ -1297,8 +1297,12 @@ func EventsBefore(ctx context.Context, q Querier, sessionID string, before int64
 		// is by time: mixing an id cursor with a ts ordering skips rows on any
 		// session whose insert order and chronology disagree — which is every
 		// session that was ever backfilled from a transcript.
-		where += ` AND ts < (SELECT ts FROM events WHERE id = ?)`
-		args = append(args, before)
+		// The id breaks a tie on ts, as it does in the ORDER BY: events sharing
+		// a millisecond (a turn and the tool call it asked for) straddling a
+		// page boundary were skipped by `ts <` alone, and a chat paging back
+		// lost them (WP-14).
+		where += ` AND (ts < (SELECT ts FROM events WHERE id = ?) OR (ts = (SELECT ts FROM events WHERE id = ?) AND id < ?))`
+		args = append(args, before, before, before)
 	}
 	args = append(args, n)
 	// Ordered by ts, not by id. The two agree for a session captured live, and

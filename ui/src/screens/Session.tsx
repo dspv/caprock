@@ -22,8 +22,9 @@ import { NewPill } from '@/components/NewPill'
 import { useStickToBottom } from '@/lib/useStickToBottom'
 import { setDraft } from '@/lib/draft'
 import { RemoveSession } from '@/components/RemoveSession'
+import { ChatView } from '@/components/ChatView'
 
-type Tab = 'timeline' | 'notes' | 'changes' | 'terminal'
+type Tab = 'chat' | 'timeline' | 'notes' | 'changes' | 'terminal'
 
 /** Names the source a session's figures come from.
  *
@@ -64,13 +65,15 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   // the daemon refuses it one (ADR-029) — unless the owner made this device a
   // controller (ADR-034).
   const reader = !useCanControl()
-  const tabs: Tab[] = reader ? ['timeline', 'notes', 'changes'] : ['timeline', 'notes', 'changes', 'terminal']
+  const tabs: Tab[] = reader ? ['chat', 'timeline', 'notes', 'changes'] : ['chat', 'timeline', 'notes', 'changes', 'terminal']
+  // A phone opens a session on its conversation (WP-14); a desktop on the
+  // timeline, as before.
   const active: Tab =
     tab === 'changes' || tab === 'diff' || tab === 'files'
       ? 'changes'
-      : (tab === 'terminal' && !reader) || tab === 'notes'
+      : (tab === 'terminal' && !reader) || tab === 'notes' || tab === 'chat' || tab === 'timeline'
         ? tab
-        : 'timeline'
+        : narrowScreen() ? 'chat' : 'timeline'
   const now = useNow(1000)
   const [plan] = usePlan()
   const s = detail.data
@@ -220,7 +223,8 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
           </div>
         </Panel>
       ) : (
-      <Panel>
+      // On a phone the chat is the page: the figures stay on the other tabs.
+      <Panel className={active === 'chat' ? 'max-sm:hidden' : ''}>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-border">
           {/* One of six columns, so the basis cannot fit beside the model
               name without truncating — and it is the basis that would be cut.
@@ -246,14 +250,19 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
       {active !== 'terminal' && s.owned && s.status !== 'ended' && <PermissionPrompt sessionId={id} />}
       <div className="flex items-center gap-1 border-b border-border">
         {tabs.map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={`px-3 py-1.5 text-[12px] border-b-2 -mb-px ${active === t ? 'border-accent text-fg' : 'border-transparent text-fg-muted hover:text-fg'}`}>
-            {t === 'timeline' ? 'Timeline' : t === 'notes' ? 'Answers' : t === 'changes' ? 'Changes' : 'Terminal'}
+          <button key={t} onClick={() => setTab(t)} className={`px-2 sm:px-3 py-1.5 text-[12px] border-b-2 -mb-px ${active === t ? 'border-accent text-fg' : 'border-transparent text-fg-muted hover:text-fg'}`}>
+            {t === 'chat' ? 'Chat' : t === 'timeline' ? 'Timeline' : t === 'notes' ? 'Answers' : t === 'changes' ? 'Changes' : 'Terminal'}
           </button>
         ))}
-        {!s.owned && s.status !== 'ended' && !reader && <span className="ml-auto text-[11px] text-fg-faint pr-1">observe-only — terminal is read/write for spawned sessions only</span>}
+        {!s.owned && s.status !== 'ended' && !reader && <span className="ml-auto text-[11px] text-fg-faint pr-1 max-sm:hidden">observe-only — terminal is read/write for spawned sessions only</span>}
       </div>
       {/* The timeline starts from the fresh events, never from a kept copy. */}
       {active === 'timeline' && (detail.stale ? <Skeleton rows={6} /> : <Timeline id={id} initial={s.events} now={now} at={at} />)}
+      {active === 'chat' && (
+        <Panel className="overflow-hidden">
+          <ChatView sessionId={id} canType={!reader && s.owned && s.status !== 'ended' && !s.detached} className="h-[70dvh] min-h-[360px]" />
+        </Panel>
+      )}
       {active === 'notes' && <SessionNotes id={id} now={now} />}
       {active === 'changes' && <ChangesTab id={id} s={s} />}
       </>
@@ -374,6 +383,11 @@ function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now:
       </div>
     </div>
   )
+}
+
+/** A phone-width window, where a session opens on its chat. */
+function narrowScreen(): boolean {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 639px)').matches
 }
 
 /** True when an event falls inside the minute the caller asked to see. */
