@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.77.0] - 2026-10-06
+
 ### Added
 
 - **Install the desktop app.** Each release now carries the app beside the
