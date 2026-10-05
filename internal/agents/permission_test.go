@@ -6,6 +6,10 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/dspv/caprock/internal/event"
+	"github.com/dspv/caprock/internal/store"
 )
 
 // Payloads as Claude Code 2.1.289 sent them for three real prompts, trimmed to
@@ -211,5 +215,117 @@ func TestDetailIsClipped(t *testing.T) {
 	}
 	if d := describeToolInput(json.RawMessage(`{ "a" : 1 }`)); d != `{"a":1}` {
 		t.Fatalf("detail %q", d)
+	}
+}
+
+// restartedMgr is a second manager on the same store, holding the same
+// session, the way a daemon that reattached it would.
+func restartedMgr(t *testing.T, st *store.Store) (*Manager, *fakePTY) {
+	t.Helper()
+	f := &fakePTY{}
+	m := &Manager{pty: f, store: st, log: discardLogger(), dataDir: t.TempDir(), claude: "claude", agents: map[string]*Agent{}, NewSessionID: func() string { return "fixed-session-id" }}
+	t.Cleanup(m.Shutdown)
+	if _, err := m.Spawn(context.Background(), SpawnRequest{Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	return m, f
+}
+
+// The dialog stays on the session's screen across a daemon restart (ADR-033),
+// so its buttons come back with it — under the same id, so a button drawn
+// before the restart still answers it and nothing else does.
+func TestAPromptSurvivesADaemonRestart(t *testing.T) {
+	m1, st, _ := newMgr(t)
+	t.Cleanup(m1.Shutdown)
+	if _, err := m1.Spawn(context.Background(), SpawnRequest{Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	m1.ObserveHook(signalFrom(t, "fixed-session-id", bashRule))
+	before, _ := m1.PendingPermission("fixed-session-id")
+	m1.persisting.Wait()
+
+	m2, f2 := restartedMgr(t, st)
+	m2.restorePermission(context.Background(), "fixed-session-id")
+	after, ok := m2.PendingPermission("fixed-session-id")
+	if !ok || after.ID != before.ID || after.Tool != before.Tool || after.Detail != before.Detail || after.Always != before.Always {
+		t.Fatalf("after a restart: %+v, %v; before: %+v", after, ok, before)
+	}
+	if err := m2.AnswerPermission("fixed-session-id", "not-that-one", PermissionAllow); !errors.Is(err, ErrNoPermission) {
+		t.Fatalf("a stale id answered: %v", err)
+	}
+	if err := m2.AnswerPermission("fixed-session-id", before.ID, PermissionAllow); err != nil {
+		t.Fatal(err)
+	}
+	if got := f2.session.typed(); got != "1" {
+		t.Fatalf("typed %q", got)
+	}
+	// Its own PostToolUse is still recognised after the restart.
+	m2.ObserveHook(signalFrom(t, "fixed-session-id", bashRule))
+	post := signalFrom(t, "fixed-session-id", bashRule)
+	post.Event = "PostToolUse"
+	m2.ObserveHook(post)
+	if _, ok := m2.PendingPermission("fixed-session-id"); ok {
+		t.Fatal("the PostToolUse did not clear a prompt")
+	}
+}
+
+// A prompt answered before the restart stays answered after it.
+func TestAnAnsweredPromptDoesNotComeBack(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		answer func(t *testing.T, m *Manager, st *store.Store)
+	}{
+		{"enter in the terminal", func(_ *testing.T, m *Manager, _ *store.Store) { _ = m.Input("fixed-session-id", []byte("\r")) }},
+		{"a button", func(t *testing.T, m *Manager, _ *store.Store) {
+			p, _ := m.PendingPermission("fixed-session-id")
+			if err := m.AnswerPermission("fixed-session-id", p.ID, PermissionDeny); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"Stop", func(_ *testing.T, m *Manager, _ *store.Store) {
+			m.ObserveHook(HookSignal{SessionID: "fixed-session-id", Event: "Stop"})
+		}},
+		// The write that would have cleared it was lost, but the session's
+		// events say it moved on: the restore believes the events.
+		{"a later event", func(t *testing.T, _ *Manager, st *store.Store) {
+			ctx := context.Background()
+			err := st.WithTx(ctx, func(q store.Querier) error {
+				_, err := store.InsertEvent(ctx, q, &event.Event{
+					Ts: time.Now().Add(time.Second), SessionID: "fixed-session-id", Source: event.SourceHook,
+					Kind: event.KindToolPost, Tool: "Bash", Payload: json.RawMessage(`{}`),
+				})
+				return err
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m1, st, _ := newMgr(t)
+			t.Cleanup(m1.Shutdown)
+			if _, err := m1.Spawn(context.Background(), SpawnRequest{Cwd: t.TempDir()}); err != nil {
+				t.Fatal(err)
+			}
+			m1.ObserveHook(signalFrom(t, "fixed-session-id", bashRule))
+			m1.persisting.Wait()
+			tc.answer(t, m1, st)
+			m1.persisting.Wait()
+
+			m2, f2 := restartedMgr(t, st)
+			m2.restorePermission(context.Background(), "fixed-session-id")
+			if p, ok := m2.PendingPermission("fixed-session-id"); ok {
+				t.Fatalf("an answered prompt came back: %+v", p)
+			}
+			if err := m2.AnswerPermission("fixed-session-id", "anything", PermissionAllow); !errors.Is(err, ErrNoPermission) {
+				t.Fatalf("got %v", err)
+			}
+			if f2.session.typed() != "" {
+				t.Fatalf("typed %q", f2.session.typed())
+			}
+			if _, ok, _ := store.GetPendingPermission(context.Background(), st.DB(), "fixed-session-id"); ok {
+				t.Fatal("the stored prompt is still there")
+			}
+		})
 	}
 }

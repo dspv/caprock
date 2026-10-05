@@ -2,6 +2,7 @@ package agents
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/dspv/caprock/internal/store"
 )
 
 // A permission prompt an owned Claude Code session is waiting on, and the
@@ -178,6 +181,7 @@ func (m *Manager) AnswerPermission(sessionID, id string, choice PermissionChoice
 	m.permMu.Unlock()
 	m.notifyPermission(sessionID, nil)
 	_, err := a.sess.Write([]byte(key))
+	m.persistLater(sessionID)
 	return err
 }
 
@@ -200,6 +204,7 @@ func (m *Manager) setPermission(sessionID string, p *Permission) {
 	m.permMu.Unlock()
 	cp := *p
 	m.notifyPermission(sessionID, &cp)
+	m.persistLater(sessionID)
 }
 
 func (m *Manager) clearPermission(sessionID string) {
@@ -209,7 +214,87 @@ func (m *Manager) clearPermission(sessionID string) {
 	m.permMu.Unlock()
 	if had {
 		m.notifyPermission(sessionID, nil)
+		m.persistLater(sessionID)
 	}
+}
+
+// persistLater writes a session's prompt — or its absence — to the store off
+// the caller's goroutine: a hook must not block, and a keystroke that answers
+// a menu must not wait on a busy database.
+func (m *Manager) persistLater(sessionID string) {
+	if m.store == nil {
+		return
+	}
+	m.persisting.Add(1)
+	go func() {
+		defer m.persisting.Done()
+		m.persistPermission(sessionID)
+	}()
+}
+
+// persistPermission makes the stored row match what memory says now, so a
+// daemon restart brings the buttons back (migration 0039).
+//
+// It writes the state current when it runs, not the change that queued it,
+// and the writes are serialised: whatever order the goroutines run in, the
+// last one to run writes the last state. A stale row is the failure that
+// matters — buttons that would press a key into a session no longer asking —
+// and restorePermission checks the events as well.
+func (m *Manager) persistPermission(sessionID string) {
+	m.persistMu.Lock()
+	defer m.persistMu.Unlock()
+	m.permMu.Lock()
+	var cp *Permission
+	if p := m.perms[sessionID]; p != nil {
+		c := *p
+		cp = &c
+	}
+	m.permMu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	err := m.store.WithTx(ctx, func(q store.Querier) error {
+		if cp == nil {
+			return store.ClearPendingPermission(ctx, q, sessionID)
+		}
+		return store.SavePendingPermission(ctx, q, store.PendingPermission{
+			SessionID: sessionID, PromptID: cp.ID, Tool: cp.Tool, Detail: cp.Detail,
+			Always: cp.Always, SinceMs: cp.Since.UnixMilli(), Input: cp.input,
+		})
+	})
+	if err != nil {
+		m.log.Warn("could not store the permission prompt", "component", "agents", "session_id", sessionID, "err", err)
+	}
+}
+
+// restorePermission brings back the prompt a reattached session was waiting
+// on when the last daemon stopped, unless anything since shows it was
+// answered. Called from Reattach, before the API serves anything.
+//
+// Nobody can type into a held session while no daemon runs, but a hook or a
+// transcript line can still say the dialog went away — a write lost at the
+// moment the daemon stopped, or a transcript read again on this start. Any
+// event after the prompt that means the session moved on drops it: a missing
+// button costs a tap in the terminal, a stale one types "1" into a prompt.
+func (m *Manager) restorePermission(ctx context.Context, sessionID string) {
+	sp, ok, err := store.GetPendingPermission(ctx, m.store.DB(), sessionID)
+	if err != nil || !ok {
+		return
+	}
+	moved, err := store.MovedOnSince(ctx, m.store.DB(), sessionID, sp.SinceMs)
+	if err != nil || moved {
+		_ = m.store.WithTx(ctx, func(q store.Querier) error { return store.ClearPendingPermission(ctx, q, sessionID) })
+		return
+	}
+	m.permMu.Lock()
+	if m.perms == nil {
+		m.perms = map[string]*Permission{}
+	}
+	m.perms[sessionID] = &Permission{
+		ID: sp.PromptID, Tool: sp.Tool, Detail: sp.Detail, Always: sp.Always,
+		Since: time.UnixMilli(sp.SinceMs).UTC(), input: sp.Input,
+	}
+	m.permMu.Unlock()
+	m.log.Info("restored the permission prompt a session was waiting on", "component", "agents", "session_id", sessionID, "tool", sp.Tool)
 }
 
 func (m *Manager) notifyPermission(sessionID string, p *Permission) {

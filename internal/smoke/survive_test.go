@@ -76,6 +76,11 @@ func TestOwnedSessionSurvivesDaemonRestart(t *testing.T) {
 	term.waitFor(t, "you-said:before")
 	term.close()
 
+	// A permission dialog is open when the daemon goes (ADR-035): its buttons
+	// must come back with the session, under the same prompt id.
+	hookPermissionRequest(t, base, data, id)
+	promptID := waitPermission(t, base, id, true)
+
 	// The upgrade path: launchd and systemd stop the daemon with SIGTERM.
 	// Windows has no SIGTERM, so it gets the harder stop.
 	d1.stop(t, runtime.GOOS != "windows")
@@ -89,16 +94,30 @@ func TestOwnedSessionSurvivesDaemonRestart(t *testing.T) {
 		t.Fatalf("after a restart the session reads owned=%v status=%s detached=%v; want it running and attached\ndaemon log:\n%s",
 			sess.Owned, sess.Status, sess.Detached, d2.log())
 	}
+	if got := waitPermission(t, base, id, true); got != promptID {
+		t.Fatalf("after a restart the prompt is %q, want %q\ndaemon log:\n%s", got, promptID, d2.log())
+	}
+	// A button drawn for another prompt still answers nothing.
+	if code := answerPermission(t, base, id, "not-"+promptID); code != http.StatusConflict {
+		t.Fatalf("a stale prompt id was answered: %d", code)
+	}
+	if code := answerPermission(t, base, id, promptID); code != http.StatusNoContent {
+		t.Fatalf("answering the restored prompt: %d\ndaemon log:\n%s", code, d2.log())
+	}
+	waitPermission(t, base, id, false)
 	term = attachTerm(t, base, id)
 	// The holder's scrollback repaints what happened before the restart.
 	term.waitFor(t, "you-said:before")
+	// The answer pressed "1" into the session; the next line carries it.
 	term.send(t, "after\r")
-	term.waitFor(t, "you-said:after")
+	term.waitFor(t, "you-said:1after")
 	term.close()
 
 	// A crash, not a stop: the daemon gets no chance to let go cleanly.
 	d2.stop(t, false)
 	d3 := startBinary(t, caprock, env, port, data, "third")
+	// Answered before the crash, so it does not come back after it.
+	waitPermission(t, base, id, false)
 	term = attachTerm(t, base, id)
 	term.send(t, "again\r")
 	term.waitFor(t, "you-said:again")
@@ -376,4 +395,77 @@ func killHolders(t *testing.T, data string) {
 		}
 		t.Logf("cleaned up a leftover pty-host (pid %d)", r.HostPID)
 	}
+}
+
+// hookPermissionRequest sends the hook Claude Code fires as it draws a
+// permission dialog, the way the shim would.
+func hookPermissionRequest(t *testing.T, base, data, id string) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(data, "runtime.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rt struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(raw, &rt); err != nil || rt.Token == "" {
+		t.Fatalf("runtime.json: %v", err)
+	}
+	body := `{"session_id":"` + id + `","hook_event_name":"PermissionRequest","tool_name":"Bash",` +
+		`"tool_input":{"command":"date > out.txt"},` +
+		`"permission_suggestions":[{"type":"addDirectories","directories":["/x"],"destination":"session"}]}`
+	req, _ := http.NewRequest(http.MethodPost, base+"/v1/hook", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+rt.Token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		t.Fatalf("hook: %d", resp.StatusCode)
+	}
+}
+
+// waitPermission waits until the session is (or is not) waiting on a prompt,
+// and returns the prompt's id.
+func waitPermission(t *testing.T, base, id string, want bool) string {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		resp, err := http.Get(base + "/v1/agents/" + id + "/permission")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var v struct {
+			Permission *struct {
+				ID string `json:"id"`
+			} `json:"permission"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&v)
+		_ = resp.Body.Close()
+		if (v.Permission != nil) == want {
+			if v.Permission != nil {
+				return v.Permission.ID
+			}
+			return ""
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("permission prompt present = %v, want %v", v.Permission != nil, want)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func answerPermission(t *testing.T, base, id, promptID string) int {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodPost, base+"/v1/agents/"+id+"/permission",
+		strings.NewReader(`{"id":"`+promptID+`","choice":"allow"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	return resp.StatusCode
 }

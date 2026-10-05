@@ -125,6 +125,10 @@ type Manager struct {
 	OnPermission func(sessionID string, p *Permission)
 	permMu       sync.Mutex
 	perms        map[string]*Permission
+	// persistMu serialises writing perms to the store, and persisting tracks
+	// the writes in flight (see persistPermission).
+	persistMu  sync.Mutex
+	persisting sync.WaitGroup
 	// NewSessionID generates a session id; overridable in tests.
 	NewSessionID func() string
 	// Now is the clock chat directory names are stamped from; overridable in
@@ -614,6 +618,8 @@ const ShutdownGrace = 5 * time.Second
 // is killed: shutdown has to terminate, and a process that ignores SIGTERM has
 // had its chance.
 func (m *Manager) Shutdown() {
+	// A prompt answered a moment ago must not come back after the restart.
+	m.persisting.Wait()
 	var agents []*Agent
 	for _, a := range m.List() {
 		if d, ok := a.sess.(ptyman.Detacher); ok && d.Detach() == nil {
