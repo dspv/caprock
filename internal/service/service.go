@@ -43,6 +43,29 @@ import (
 // installs, so it is a constant, not a setting.
 const Label = "dev.caprock.daemon"
 
+// EnvLabel names a different label for a second, isolated install — a preview
+// daemon or a test of the desktop app's supervisor with its own data dir. Left
+// unset, every command acts on Label; the override exists so that such a test
+// never boots out, rewrites or starts the user's real login agent.
+const EnvLabel = "CAPROCK_SERVICE_LABEL"
+
+// labelFromEnv returns the override from EnvLabel when it is a plausible
+// reverse-DNS name, and Label otherwise. A value with a slash or a space would
+// end up in a launchctl target or a file name, so it is ignored rather than
+// trusted.
+func labelFromEnv() string {
+	v := os.Getenv(EnvLabel)
+	if v == "" || v == Label {
+		return Label
+	}
+	for _, r := range v {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '.' && r != '-' && r != '_' {
+			return Label
+		}
+	}
+	return v
+}
+
 // Plan is everything the generated definition needs. It is resolved once by
 // NewPlan and then passed to the pure generator functions, which is what makes
 // the file contents testable on an OS other than the one they target.
@@ -63,6 +86,9 @@ type Plan struct {
 	// Home is the user's home directory. Injected rather than looked up so
 	// tests never touch the real home.
 	Home string
+	// Label is the launchd label and, when it is not the default, the stem of
+	// the systemd unit and the Startup script. Empty means Label.
+	Label string
 	// GOOS selects the mechanism. Defaults to runtime.GOOS; tests set it to
 	// generate every platform's file from one machine.
 	GOOS string
@@ -75,6 +101,27 @@ func (p Plan) os() string {
 	}
 	return runtime.GOOS
 }
+
+// label is the label in force: the plan's, or the default.
+func (p Plan) label() string {
+	if p.Label != "" {
+		return p.Label
+	}
+	return Label
+}
+
+// fileStem is the systemd unit's and the Startup script's name without its
+// extension: "caprock" for the default label, so existing installs keep their
+// file names, and the overriding label otherwise.
+func (p Plan) fileStem() string {
+	if p.label() == Label {
+		return "caprock"
+	}
+	return p.label()
+}
+
+// unitName is the systemd user unit this plan manages.
+func (p Plan) unitName() string { return p.fileStem() + ".service" }
 
 // OS is the target OS this plan generates for. Exported so the command layer
 // can tailor its output (the Windows caveat) without duplicating the default.
@@ -92,7 +139,7 @@ func NewPlan(exe, dataDir string, port int, hiveDir string) (Plan, error) {
 	if err != nil {
 		return Plan{}, fmt.Errorf("resolve %s: %w", exe, err)
 	}
-	return Plan{Exe: abs, DataDir: dataDir, Port: port, HiveDir: hiveDir, Home: home}, nil
+	return Plan{Exe: abs, DataDir: dataDir, Port: port, HiveDir: hiveDir, Home: home, Label: labelFromEnv()}, nil
 }
 
 // Args is the argument vector the installed service runs, after the binary
@@ -115,15 +162,15 @@ func (p Plan) Args() []string {
 func (p Plan) Path() (string, error) {
 	switch p.os() {
 	case "darwin":
-		return filepath.Join(p.Home, "Library", "LaunchAgents", Label+".plist"), nil
+		return filepath.Join(p.Home, "Library", "LaunchAgents", p.label()+".plist"), nil
 	case "windows":
 		dir, err := windowsStartupDir(p.Home)
 		if err != nil {
 			return "", err
 		}
-		return filepath.Join(dir, "caprock.cmd"), nil
+		return filepath.Join(dir, p.fileStem()+".cmd"), nil
 	case "linux":
-		return filepath.Join(linuxUserUnitDir(p.Home), "caprock.service"), nil
+		return filepath.Join(linuxUserUnitDir(p.Home), p.unitName()), nil
 	default:
 		return "", fmt.Errorf("caprock service is not supported on %s — start the daemon with `caprock up` instead", p.os())
 	}

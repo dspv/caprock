@@ -606,3 +606,54 @@ func TestPlistDoesNotThrottleTheDashboard(t *testing.T) {
 	}
 
 }
+
+// The override exists so that a second install — the desktop app's supervisor
+// under test, a preview daemon — never touches the user's real login agent. If
+// it reached the plist but not the file name (or the reverse), a test install
+// would still boot out dev.caprock.daemon.
+func TestLabelOverrideReachesEveryName(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("APPDATA", "")
+	t.Setenv(EnvLabel, "dev.caprock.apptest")
+	if got := labelFromEnv(); got != "dev.caprock.apptest" {
+		t.Fatalf("labelFromEnv = %q", got)
+	}
+	for goos, want := range map[string]string{
+		"darwin":  "dev.caprock.apptest.plist",
+		"linux":   "dev.caprock.apptest.service",
+		"windows": "dev.caprock.apptest.cmd",
+	} {
+		p := testPlan(t, goos)
+		p.Label = labelFromEnv()
+		path, err := p.Path()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if filepath.Base(path) != want {
+			t.Errorf("%s: path %s, want base %s", goos, path, want)
+		}
+	}
+	p := testPlan(t, "darwin")
+	p.Label = labelFromEnv()
+	body, _, _ := p.Render()
+	if !strings.Contains(string(body), "<string>dev.caprock.apptest</string>") || strings.Contains(string(body), Label) {
+		t.Errorf("plist does not carry the override label:\n%s", body)
+	}
+	if p.unitName() != "dev.caprock.apptest.service" {
+		t.Errorf("unit name %s", p.unitName())
+	}
+}
+
+// A label that could escape into a launchctl target or a path is ignored.
+func TestLabelOverrideRejectsUnsafeValues(t *testing.T) {
+	for _, bad := range []string{"../x", "a b", "gui/501/x", "a;b"} {
+		t.Setenv(EnvLabel, bad)
+		if got := labelFromEnv(); got != Label {
+			t.Errorf("%q accepted as %q", bad, got)
+		}
+	}
+	t.Setenv(EnvLabel, "")
+	if p := testPlan(t, "linux"); p.unitName() != "caprock.service" {
+		t.Errorf("default unit name changed: %s", p.unitName())
+	}
+}

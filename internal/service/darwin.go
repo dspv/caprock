@@ -40,7 +40,7 @@ func renderPlist(p Plan) string {
 	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
 	b.WriteString(`<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">` + "\n")
 	b.WriteString("<plist version=\"1.0\">\n<dict>\n")
-	b.WriteString("  <key>Label</key>\n  <string>" + plistEscape(Label) + "</string>\n\n")
+	b.WriteString("  <key>Label</key>\n  <string>" + plistEscape(p.label()) + "</string>\n\n")
 
 	b.WriteString("  <key>ProgramArguments</key>\n  <array>\n")
 	for _, a := range append([]string{p.Exe}, p.Args()...) {
@@ -80,16 +80,16 @@ func launchctlDomain() string { return fmt.Sprintf("gui/%d", os.Getuid()) }
 // an already-bootstrapped label fails with "service already loaded" (EEXIST,
 // exit 5 / 17) — that is the idempotent case, not an error, so we boot it out
 // first and bootstrap again, which also picks up a rewritten plist.
-func darwinLoad(path string) error {
+func darwinLoad(label, path string) error {
 	domain := launchctlDomain()
 	// Best-effort removal of a previous registration; a missing one errors and
 	// is exactly what we want to ignore.
-	_ = exec.Command("launchctl", "bootout", domain+"/"+Label).Run() //nolint:gosec // fixed argv
+	_ = exec.Command("launchctl", "bootout", domain+"/"+label).Run() //nolint:gosec // fixed argv
 	// bootout returns before launchd has finished tearing the job down; a
 	// bootstrap in that window fails with "5: Input/output error" and leaves
 	// the daemon stopped (seen 2026-10-05 on a running install). Wait for the
 	// label to go, then retry the bootstrap briefly.
-	waitUnregistered(5 * time.Second)
+	waitUnregistered(label, 5*time.Second)
 	var out []byte
 	var err error
 	for i := 0; i < 5; i++ {
@@ -103,28 +103,28 @@ func darwinLoad(path string) error {
 	}
 	// bootstrap honours RunAtLoad, but kickstart makes "started now" explicit
 	// and is a no-op when it is already running.
-	_ = exec.Command("launchctl", "kickstart", domain+"/"+Label).Run() //nolint:gosec // fixed argv
+	_ = exec.Command("launchctl", "kickstart", domain+"/"+label).Run() //nolint:gosec // fixed argv
 	return nil
 }
 
 // waitUnregistered polls until launchd no longer knows the label, or the
 // timeout passes.
-func waitUnregistered(timeout time.Duration) {
-	for deadline := time.Now().Add(timeout); darwinRegistered() && time.Now().Before(deadline); {
+func waitUnregistered(label string, timeout time.Duration) {
+	for deadline := time.Now().Add(timeout); darwinRegistered(label) && time.Now().Before(deadline); {
 		time.Sleep(200 * time.Millisecond)
 	}
 }
 
 // darwinUnload deregisters the label. A label that is not loaded is not an
 // error here: uninstall must be a clean no-op.
-func darwinUnload() error {
-	_ = exec.Command("launchctl", "bootout", launchctlDomain()+"/"+Label).Run() //nolint:gosec // fixed argv
+func darwinUnload(label string) error {
+	_ = exec.Command("launchctl", "bootout", launchctlDomain()+"/"+label).Run() //nolint:gosec // fixed argv
 	return nil
 }
 
 // darwinRegistered asks launchd whether the label is known to it, which is a
 // different question from "is the plist file on disk" — a user can delete a
 // plist while the agent stays loaded until logout.
-func darwinRegistered() bool {
-	return exec.Command("launchctl", "print", launchctlDomain()+"/"+Label).Run() == nil //nolint:gosec // fixed argv
+func darwinRegistered(label string) bool {
+	return exec.Command("launchctl", "print", launchctlDomain()+"/"+label).Run() == nil //nolint:gosec // fixed argv
 }
