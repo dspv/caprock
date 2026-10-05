@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, ApiError, type DiffResult, type Event, type SessionDetail } from '@/lib/api'
+import { api, ApiError, isPairedDevice, type DiffResult, type Event, type SessionDetail } from '@/lib/api'
 import { useCanControl } from '@/lib/useCanControl'
 import { useApi } from '@/lib/useApi'
 import { live } from '@/lib/live'
@@ -17,6 +17,8 @@ import { ContinueSession } from '@/components/ContinueSession'
 import { RecentPRs, RepoButtons } from '@/components/RepoLinks'
 import { RelayChain, RelayMenu } from '@/components/RelayDialog'
 import { OpenInTerminal } from '@/components/OpenInTerminal'
+import { DiffFiles } from '@/components/DiffFiles'
+import { setDraft } from '@/lib/draft'
 
 type Tab = 'timeline' | 'notes' | 'changes' | 'terminal'
 
@@ -481,12 +483,17 @@ function ChangesTab({ id, s }: { id: string; s: SessionDetail }) {
   // changes means seeing both at once, and the old one-at-a-time accordion
   // made that impossible — opening the second closed the first.
   const [open, setOpen] = useState<Set<string>>(new Set())
-  const toggle = (p: string) =>
-    setOpen((cur) => {
-      const next = new Set(cur)
-      if (!next.delete(p)) next.add(p)
-      return next
-    })
+  // Wrapped on a phone, where a sideways scroll per line is the slower read;
+  // one long row per line on a desktop, as a diff is usually read there.
+  const [wrap, setWrap] = useState(() => typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 639px)').matches)
+  // A controller phone types from the keys bar under the terminal, so a line
+  // picked here can become the start of a message there (ADR-034). A viewer
+  // reads; the machine itself types into the terminal directly.
+  const canAsk = useCanControl() && isPairedDevice() && s.owned && s.status !== 'ended' && !s.detached
+  const ask = (path: string, line: number) => {
+    setDraft(id, `In ${path} around line ${line}: `)
+    navigate({ name: 'session', id, tab: 'terminal' })
+  }
 
   if (diff.error && !diff.data) {
     const e = diff.error
@@ -525,7 +532,17 @@ function ChangesTab({ id, s }: { id: string; s: SessionDetail }) {
             {d.base && <span className="text-[11px] text-fg-faint">{d.base}</span>}
             {d.files.length > 0 && (
               <button
-                className="text-[11px] text-fg-muted hover:text-fg border border-border px-1.5 py-0.5 rounded-sm"
+                className={`text-[11px] hover:text-fg border px-1.5 py-0.5 min-h-11 sm:min-h-0 rounded-sm ${wrap ? 'border-accent text-fg' : 'border-border text-fg-muted'}`}
+                onClick={() => setWrap((w) => !w)}
+                aria-pressed={wrap}
+                title="Wrap long lines instead of scrolling them sideways"
+              >
+                wrap
+              </button>
+            )}
+            {d.files.length > 0 && (
+              <button
+                className="text-[11px] text-fg-muted hover:text-fg border border-border px-1.5 py-0.5 min-h-11 sm:min-h-0 rounded-sm"
                 onClick={() => setOpen(allOpen ? new Set() : new Set(d.files.map((f) => f.path)))}
               >
                 {allOpen ? 'collapse all' : 'expand all'}
@@ -536,43 +553,10 @@ function ChangesTab({ id, s }: { id: string; s: SessionDetail }) {
         }
       >
         {d.files.length === 0 && <Empty title="Clean working tree" />}
-        <ul>
-          {d.files.map((f) => {
-            const isOpen = open.has(f.path)
-            return (
-              <li key={f.path} className="border-b border-border/60 last:border-0">
-                <button
-                  className="w-full text-left px-3 py-1.5 flex items-center gap-3 hover:bg-panel-2"
-                  onClick={() => toggle(f.path)}
-                  aria-expanded={isOpen}
-                >
-                  {/* A disclosure caret, because a row that expands should look
-                    * like one before it is clicked. */}
-                  <span className={`text-fg-faint text-[10px] shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`}>▶</span>
-                  <span className={`mono text-[10px] w-16 shrink-0 ${f.status === 'added' || f.status === 'untracked' ? 'text-ok' : f.status === 'deleted' ? 'text-danger' : 'text-fg-muted'}`}>{f.status}</span>
-                  <span className="mono text-[12px] truncate">{f.path}</span>
-                  <span className="ml-auto num text-[11px] shrink-0"><span className="text-ok">+{f.additions}</span> <span className="text-danger">−{f.deletions}</span></span>
-                </button>
-                {isOpen && f.patch && <Patch patch={f.patch} />}
-                {isOpen && !f.patch && <div className="px-3 pb-2 text-[11px] text-fg-faint">{f.binary ? 'binary file' : 'no patch'}</div>}
-              </li>
-            )
-          })}
-        </ul>
+        <DiffFiles files={d.files} open={open} setOpen={setOpen} wrap={wrap} onAsk={canAsk ? ask : undefined} />
       </Panel>
       {alsoTouched.length > 0 && <TouchedPanel s={s} only={alsoTouched} />}
     </div>
-  )
-}
-
-function Patch({ patch }: { patch: string }) {
-  return (
-    <pre className="mono text-[11px] leading-[1.35] px-3 pb-2 overflow-auto max-h-[50vh]">
-      {patch.split('\n').map((line, i) => {
-        const cls = line.startsWith('+') && !line.startsWith('+++') ? 'text-ok' : line.startsWith('-') && !line.startsWith('---') ? 'text-danger' : line.startsWith('@@') ? 'text-info' : 'text-fg-muted'
-        return <div key={i} className={cls}>{line || ' '}</div>
-      })}
-    </pre>
   )
 }
 

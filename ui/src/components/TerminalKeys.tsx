@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 /** A newline inside the prompt: ESC CR, what a terminal sends for Alt+Enter
  *  (see Terminal.tsx — a bare line feed submits once text is typed). */
@@ -25,10 +25,17 @@ const KEYS: [label: string, bytes: string, title: string][] = [
  * keys are buttons, and the text goes in a field big enough to read what is
  * being sent before sending it, rather than letter by letter into a canvas.
  */
-export function TerminalKeys({ send, attach }: { send: (bytes: string) => void; attach?: (files: File[]) => Promise<void> }) {
-  const [text, setText] = useState('')
+export function TerminalKeys({ send, attach, initial = '' }: { send: (bytes: string) => void; attach?: (files: File[]) => Promise<void>; initial?: string }) {
+  const [text, setText] = useState(initial)
   const [attaching, setAttaching] = useState(false)
   const field = useRef<HTMLTextAreaElement>(null)
+  // Arriving with a started message means the next thing is to finish it.
+  useEffect(() => {
+    const el = field.current
+    if (!initial || !el) return
+    el.focus()
+    el.setSelectionRange(initial.length, initial.length)
+  }, [initial])
   const picker = useRef<HTMLInputElement>(null)
 
   // The picked photos' paths are typed into the session, as a drop's are;
