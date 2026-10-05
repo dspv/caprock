@@ -1,0 +1,36 @@
+[package]
+name = "caprock-app"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+publish = false
+license = "Apache-2.0"
+description = "Caprock desktop app: a thin Tauri shell around the daemon's dashboard (ADR-038)."
+
+[[bin]]
+name = "caprock-app"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
+[dependencies]
+# >= 2.11.1: GHSA-7gmj-67g7-phm9 let remote origins call local-only commands.
+tauri = { version = "2.12", features = ["macos-private-api"] }
+tauri-plugin-window-state = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "6"
+
+
+[dev-dependencies]
+tauri = { version = "2.12", features = ["macos-private-api", "test"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
+panic = "abort"

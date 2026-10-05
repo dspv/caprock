@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "fallback",
+  "description": "The bundled fallback page (the app's own origin): it shows the daemon's state and starts, updates or reconfigures it.",
+  "windows": ["main"],
+  "permissions": [
+    "core:window:allow-start-dragging",
+    "allow-daemon-status",
+    "allow-start-daemon",
+    "allow-update-daemon",
+    "allow-set-background",
+    "allow-open-external"
+  ]
+}
