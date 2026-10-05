@@ -23,14 +23,19 @@ type wsHub struct {
 
 	mu    sync.Mutex
 	conns map[*websocket.Conn]context.CancelFunc
-	// lanHost is the one private address this daemon answers on, or "". It
-	// changes when LAN access is switched on from the dashboard, and every
-	// handshake reads it, so it is guarded by mu with the connections.
-	lanHost string
+	// lanHosts are the network addresses this daemon answers on (the LAN
+	// one, the Tailscale one and its MagicDNS name), empty when off. They
+	// change when LAN access is switched on from the dashboard, and every
+	// handshake reads them, so they are guarded by mu with the connections.
+	lanHosts []string
 }
 
 func newWSHub(b *bus.Bus, log *slog.Logger, lanHost string) *wsHub {
-	return &wsHub{bus: b, log: log, conns: map[*websocket.Conn]context.CancelFunc{}, lanHost: lanHost}
+	h := &wsHub{bus: b, log: log, conns: map[*websocket.Conn]context.CancelFunc{}}
+	if lanHost != "" {
+		h.lanHosts = []string{lanHost}
+	}
+	return h
 }
 
 // helloFrame is the first frame every client receives.
@@ -211,10 +216,12 @@ func readLive(ctx context.Context, c *websocket.Conn, heard *atomic.Int64, pings
 func (h *wsHub) origins() []string {
 	origins := []string{"localhost:*", "127.0.0.1:*", "[::1]:*"}
 	h.mu.Lock()
-	lanHost := h.lanHost
+	lanHosts := h.lanHosts
 	h.mu.Unlock()
-	if lanHost != "" {
-		origins = append(origins, lanHost+":*")
+	for _, lanHost := range lanHosts {
+		if lanHost != "" {
+			origins = append(origins, lanHost+":*")
+		}
 	}
 	return origins
 }
@@ -369,10 +376,10 @@ func subprotocolsFor(r *http.Request) []string {
 	return nil
 }
 
-// setLANHost updates the origin the handshake admits, when LAN access is
+// setLANHosts updates the origins the handshake admits, when LAN access is
 // switched on or off while the daemon runs.
-func (h *wsHub) setLANHost(host string) {
+func (h *wsHub) setLANHosts(hosts []string) {
 	h.mu.Lock()
-	h.lanHost = host
+	h.lanHosts = hosts
 	h.mu.Unlock()
 }

@@ -109,6 +109,7 @@ export function SpawnDialog({
   // whose repository is on screen and then asking for the directory again is
   // asking someone to retype what they are looking at.
   initialCwd = '',
+  landOn = 'terminal',
 }: {
   /** Whether Claude Code can be started. Kept for callers that know only
    *  that; the dialog asks the daemon about the other agents itself. */
@@ -119,6 +120,8 @@ export function SpawnDialog({
   agents?: SpawnAgent[]
   onClose: () => void
   initialCwd?: string
+  /** The session's tab to open once started: the phone's start-work flow lands on the chat. */
+  landOn?: 'terminal' | 'chat'
 }) {
   const fetched = useSpawnableAgents({ claude_available: available, gemini_available: geminiAvailable })
   const agents = given ?? fetched
@@ -157,7 +160,7 @@ export function SpawnDialog({
       if (create) req.create = true
       const { session_id } = await api.spawn(req)
       onClose()
-      navigate({ name: 'session', id: session_id, tab: 'terminal' })
+      navigate({ name: 'session', id: session_id, tab: landOn })
     } catch (e) {
       // errText also surfaces `detail`, the half that says what to do about it.
       setError(errText(e))
@@ -168,7 +171,7 @@ export function SpawnDialog({
       <div className="border border-border-strong bg-panel rounded-[var(--radius-panel)] w-[620px] max-w-[94vw] max-h-[calc(100dvh-2rem)] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <header className="px-3 py-2 border-b border-border flex items-center">
           <h2 className="text-[12px] uppercase tracking-[0.08em] text-fg-muted">New session</h2>
-          <button onClick={onClose} className="ml-auto text-fg-muted hover:text-fg">✕</button>
+          <button onClick={onClose} aria-label="Close" className="ml-auto text-fg-muted hover:text-fg max-sm:-my-2 max-sm:-mr-2 max-sm:h-11 max-sm:w-11">✕</button>
         </header>
         {!available && agents.length === 0 ? (
           <div className="px-4 py-6 text-[13px] text-fg-muted">
@@ -251,15 +254,15 @@ export function SpawnDialog({
           <footer role="alertdialog" aria-label="Confirm bypass" className="px-4 py-2 border-t border-border grid gap-2 text-[13px]">
             <p className="text-warn">The agent won't ask before running commands or editing files. Start?</p>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setConfirming(false)} className="border border-border px-3 py-1 rounded-sm text-fg-muted hover:text-fg">Back</button>
-              <button onClick={submit} disabled={busy} className="border border-accent bg-accent/15 text-accent px-3 py-1 rounded-sm hover:bg-accent/25 disabled:opacity-50">{busy ? 'starting…' : 'Start in bypass'}</button>
+              <button onClick={() => setConfirming(false)} className="border border-border px-3 py-1 rounded-sm max-sm:min-h-11 max-sm:px-4 text-fg-muted hover:text-fg">Back</button>
+              <button onClick={submit} disabled={busy} className="border border-accent bg-accent/15 text-accent px-3 py-1 rounded-sm max-sm:min-h-11 max-sm:px-4 hover:bg-accent/25 disabled:opacity-50">{busy ? 'starting…' : 'Start in bypass'}</button>
             </div>
           </footer>
         )}
         {(available || agents.length > 0) && !confirming && (
           <footer className="px-4 py-2 border-t border-border flex gap-2 justify-end">
-            <button onClick={onClose} className="border border-border px-3 py-1 rounded-sm text-fg-muted hover:text-fg">Cancel</button>
-            <button onClick={submit} disabled={busy} className="border border-accent bg-accent/15 text-accent px-3 py-1 rounded-sm hover:bg-accent/25 disabled:opacity-50">{busy ? 'starting…' : 'Start session'}</button>
+            <button onClick={onClose} className="border border-border px-3 py-1 rounded-sm max-sm:min-h-11 max-sm:px-4 text-fg-muted hover:text-fg">Cancel</button>
+            <button onClick={submit} disabled={busy} className="border border-accent bg-accent/15 text-accent px-3 py-1 rounded-sm max-sm:min-h-11 max-sm:px-4 hover:bg-accent/25 disabled:opacity-50">{busy ? 'starting…' : 'Start session'}</button>
           </footer>
         )}
       </div>

@@ -70,7 +70,7 @@ func safeMethod(m string) bool {
 
 // checkOrigin decides whether a /v1 request may proceed. It returns an empty
 // string when the request is allowed, or a reason to refuse with 403.
-func checkOrigin(r *http.Request, lanHost string) string {
+func checkOrigin(r *http.Request, lanHosts ...string) string {
 	// Fetch metadata first: a browser always sends it and script cannot forge
 	// it, so a cross-site value is decisive regardless of the other headers.
 	// It is checked for reads as well as writes — a cross-site page must not be
@@ -92,7 +92,7 @@ func checkOrigin(r *http.Request, lanHost string) string {
 	// under another name never gets this far as the owner: the gate treats it
 	// as relayed by a proxy or tunnel and wants a device token (isLocal); from
 	// a paired device the name is the LAN address, admitted below.
-	if (sfs != "" || r.Header.Get("Origin") != "") && !isLoopbackHost(r.Host) && !isTheLANHost(r.Host, lanHost) {
+	if (sfs != "" || r.Header.Get("Origin") != "") && !isLoopbackHost(r.Host) && !isTheLANHost(r.Host, lanHosts...) {
 		return "forbidden host"
 	}
 
@@ -100,7 +100,7 @@ func checkOrigin(r *http.Request, lanHost string) string {
 	// was told to answer on, which is the dashboard as a tablet sees it. This
 	// is what the dashboard sends, and what a cross-origin fetch() from a page
 	// sends.
-	if o := r.Header.Get("Origin"); o != "" && !isLoopbackOrigin(o) && !isLANOrigin(o, lanHost) {
+	if o := r.Header.Get("Origin"); o != "" && !isLoopbackOrigin(o) && !isLANOrigin(o, lanHosts...) {
 		return "forbidden origin"
 	}
 
@@ -182,28 +182,37 @@ func isLoopbackHost(host string) bool {
 // answer on — and admitting the whole private range would leave that door open
 // for every address in it. One address, chosen by the user when they started
 // the daemon with --lan, is a hole the size of the feature and no larger.
-func isTheLANHost(host, lanHost string) bool {
-	if lanHost == "" {
-		return false
-	}
+//
+// Since WP-15 a machine on Wi-Fi and Tailscale listens on one address of each
+// kind, and its MagicDNS name reaches the Tailscale one: each is named, so the
+// list is still the addresses the pairing panel shows and no others.
+func isTheLANHost(host string, lanHosts ...string) bool {
 	h := host
 	if hh, _, err := net.SplitHostPort(host); err == nil {
 		h = hh
 	}
-	return strings.EqualFold(strings.Trim(h, "[]"), lanHost)
+	h = strings.Trim(h, "[]")
+	for _, lanHost := range lanHosts {
+		if lanHost != "" && strings.EqualFold(h, lanHost) {
+			return true
+		}
+	}
+	return false
 }
 
 // isLANOrigin reports whether an Origin header names the one private address
 // this daemon listens on. Same reasoning as isTheLANHost: exactly that
 // address, so widening the origin check costs exactly the feature and nothing
 // around it.
-func isLANOrigin(origin, lanHost string) bool {
-	if lanHost == "" {
-		return false
-	}
+func isLANOrigin(origin string, lanHosts ...string) bool {
 	u, err := url.Parse(origin)
 	if err != nil || u.Scheme != "http" {
 		return false
 	}
-	return strings.EqualFold(u.Hostname(), lanHost)
+	for _, lanHost := range lanHosts {
+		if lanHost != "" && strings.EqualFold(u.Hostname(), lanHost) {
+			return true
+		}
+	}
+	return false
 }

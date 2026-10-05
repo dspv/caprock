@@ -13,6 +13,7 @@ import { TasksScreen } from '@/screens/Tasks'
 import { OrchestrationScreen } from '@/screens/Orchestration'
 import { NotesScreen } from '@/screens/Notes'
 import { PairScreen } from '@/screens/Pair'
+import { NewProjectScreen } from '@/components/NewProject'
 
 /**
  * Whether this browser may see the figures at all.
@@ -70,6 +71,7 @@ export function Dashboard({ route }: { route: Route }) {
         {route.name === 'tasks' && <TasksScreen />}
         {route.name === 'graph' && <OrchestrationScreen />}
         {route.name === 'notes' && <NotesScreen />}
+        {route.name === 'start' && <NewProjectScreen mode={route.mode} />}
       </ErrorBoundary>
     </Shell>
   )

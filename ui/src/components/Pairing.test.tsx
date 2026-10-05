@@ -101,6 +101,36 @@ describe('Pairing panel', () => {
     await waitFor(() => expect(setRole).toHaveBeenCalledWith('b', 'viewer'))
   })
 
+  it('offers the Tailscale address and its MagicDNS name as QR codes beside the Wi-Fi one', async () => {
+    localStorage.removeItem('caprock.pair.address')
+    stubState([{
+      enabled: true, url: 'http://100.101.102.103:22776', tunnelled: true, code: '482913', expires_in_sec: 300, devices: [],
+      addresses: [
+        { url: 'http://100.101.102.103:22776', kind: 'tailscale' },
+        { url: 'http://192.168.1.10:22776', kind: 'lan' },
+        { url: 'http://studio-mac.tail1234.ts.net:22776', kind: 'magicdns' },
+      ],
+    }])
+    render(<Pairing />)
+    // Wi-Fi first: it needs nothing installed on the phone.
+    expect(await screen.findByRole('img', { name: /opens http:\/\/192\.168\.1\.10:22776 / })).toBeTruthy()
+    expect(screen.getByText(/same Wi-Fi\./)).toBeTruthy()
+    fireEvent.click(screen.getByRole('radio', { name: 'Tailscale' }))
+    expect(screen.getByRole('img', { name: /opens http:\/\/100\.101\.102\.103:22776 / })).toBeTruthy()
+    expect(screen.getByText(/even on mobile data\./)).toBeTruthy()
+    fireEvent.click(screen.getByRole('radio', { name: 'Tailscale name' }))
+    expect(screen.getByRole('img', { name: /opens http:\/\/studio-mac\.tail1234\.ts\.net:22776 / })).toBeTruthy()
+    // Remembered for the next code.
+    expect(localStorage.getItem('caprock.pair.address')).toBe('magicdns')
+  })
+
+  it('says what happens without Tailscale: Wi-Fi only, nothing relayed', async () => {
+    stubState([{ enabled: true, url: 'http://192.168.1.10:22776', devices: [], addresses: [{ url: 'http://192.168.1.10:22776', kind: 'lan' }] }])
+    render(<Pairing />)
+    expect(await screen.findByText(/cannot reach Caprock at all; nothing is relayed/)).toBeTruthy()
+    expect(screen.queryByRole('radio')).toBeNull()
+  })
+
   it('names Tailscale as the requirement when the address is a tunnel', async () => {
     stubState([{ enabled: true, url: 'http://100.101.102.103:22776', tunnelled: true, devices: [] }])
     render(<Pairing />)

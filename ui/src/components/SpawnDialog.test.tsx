@@ -260,3 +260,13 @@ describe('on a paired phone', () => {
     expect(screen.queryByText(/won't ask/)).toBeNull()
   })
 })
+
+describe('on a phone', () => {
+  it('gives every footer button and the close button a 44 px target', () => {
+    render(<SpawnDialog available onClose={() => {}} />)
+    for (const name of ['Cancel', 'Start session']) {
+      expect(screen.getByRole('button', { name }).className).toContain('max-sm:min-h-11')
+    }
+    expect(screen.getByRole('button', { name: 'Close' }).className).toContain('max-sm:h-11')
+  })
+})

@@ -164,7 +164,7 @@ func (s *Service) Clone(opID, rawURL, parent, name string) (Op, bool, error) {
 	if err != nil {
 		return Op{}, false, err
 	}
-	if _, err := os.Stat(dest); err == nil {
+	if _, err := os.Lstat(dest); err == nil { // Lstat: a dangling link is not a free name
 		return Op{}, false, fmt.Errorf("%s already exists; add it instead, or clone under another name", dest)
 	}
 	now := s.Now().UnixMilli()

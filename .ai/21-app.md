@@ -676,8 +676,17 @@ connection and the work survive a bad network.
 - **Start work.** New project, clone and worktree from the phone (see
   [§ Projects](#projects)), then a session in it, with the clone's progress
   surviving a drop.
+  Built in WP-15 (2026-10-06): `#/start` (`ui/src/components/NewProject.tsx`),
+  reached from **Start work** on Now on a controller phone; a clone is
+  followed by `ui/src/lib/startwork.ts`, which keeps the request (with its
+  `op_id`) in localStorage, asks `GET /v1/projects/ops` on every reconnect and
+  re-sends the same `op_id` only when the daemon never heard of it; then
+  **Start an agent here** opens the spawn dialog and lands on the chat.
 - **Tailscale by QR.** The pairing panel shows the Tailscale address
   (MagicDNS name or `100.x`) as a QR beside the LAN one when Tailscale is up.
+  Built in WP-15: the daemon listens on both addresses, and the panel picks
+  *Wi-Fi*, *Tailscale* or *Tailscale name* for the QR. Without Tailscale the
+  panel says that a phone off the Wi-Fi cannot reach Caprock at all.
 
 ### Phase B — off the owner's network (P1, owner decides)
 

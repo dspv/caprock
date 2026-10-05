@@ -191,6 +191,11 @@ type Daemon struct {
 	srv   *http.Server
 	port  int
 	lanLn net.Listener
+	// lanIP2 and lanLn2 are the second network address, of the other kind
+	// than lanIP: Tailscale's beside a LAN one, or the reverse (WP-15). Nil
+	// when the machine has only one kind.
+	lanIP2 net.IP
+	lanLn2 net.Listener
 	// pairing decides which devices get in; nil when LAN access is off.
 	pairing *pairing.Store
 	// ingestErr is the terminal error from the tailer goroutine, if it died.
@@ -468,7 +473,7 @@ func (d *Daemon) run(ctx context.Context) error {
 			d.log.Warn("LAN access requested but this machine has no private network address",
 				"component", "daemon", "err", err)
 		} else {
-			d.lanIP = ip
+			d.lanIP, d.lanIP2 = ip, lan.Other(ip)
 			d.lanURL = "http://" + net.JoinHostPort(ip.String(), strconv.Itoa(port))
 			d.pairing = pairing.New()
 			if snap, err := config.ReadDevices(d.opt.DataDir); err == nil {
@@ -654,6 +659,9 @@ func (d *Daemon) run(ctx context.Context) error {
 			}()
 			d.log.Info("also listening on the local network — devices must pair before they get in",
 				"component", "daemon", "url", d.lanURL)
+			d.mu.Lock()
+			d.listenAlternateLocked(ctx)
+			d.mu.Unlock()
 		}
 	}
 
@@ -1979,7 +1987,7 @@ func (d *Daemon) EnableLAN() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("could not listen on %s: %w", ip, err)
 	}
-	d.lanLn, d.lanIP = ln, ip
+	d.lanLn, d.lanIP, d.lanIP2 = ln, ip, lan.Other(ip)
 	d.lanURL = "http://" + net.JoinHostPort(ip.String(), strconv.Itoa(d.port))
 	if d.pairing == nil {
 		d.pairing = pairing.New()
@@ -1997,7 +2005,64 @@ func (d *Daemon) EnableLAN() (string, error) {
 	}()
 	d.log.Info("now also listening on the local network — devices must pair before they get in",
 		"component", "daemon", "url", d.lanURL)
+	ctx := d.baseCtx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	d.listenAlternateLocked(ctx)
 	return d.lanURL, nil
+}
+
+// listenAlternateLocked opens the listener on the other kind of address than
+// the first — the Tailscale address beside a LAN one, or the reverse — so the
+// pairing panel can offer a QR for each (WP-15). Still a named address, never
+// 0.0.0.0, and one more at most. A failure is logged and survived: the first
+// address still works. The MagicDNS name of a Tailscale address is looked up
+// in the background (`tailscale status --json`, read-only) and added when it
+// answers. Callers hold d.mu.
+func (d *Daemon) listenAlternateLocked(ctx context.Context) {
+	urls := []string{}
+	var tsIP net.IP
+	if lan.Tunnelled(d.lanIP) {
+		tsIP = d.lanIP
+	}
+	if d.lanIP2 != nil {
+		ln, err := net.Listen("tcp", net.JoinHostPort(d.lanIP2.String(), strconv.Itoa(d.port)))
+		if err != nil {
+			d.log.Warn("could not also listen on the second network address", "component", "daemon", "addr", d.lanIP2.String(), "err", err)
+			d.lanIP2 = nil
+		} else {
+			d.lanLn2 = ln
+			srv := d.srv
+			go func() {
+				if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+					d.log.Warn("second network listener stopped", "component", "daemon", "err", err)
+				}
+			}()
+			urls = append(urls, "http://"+net.JoinHostPort(d.lanIP2.String(), strconv.Itoa(d.port)))
+			if lan.Tunnelled(d.lanIP2) {
+				tsIP = d.lanIP2
+			}
+			d.log.Info("also listening on the second network address", "component", "daemon", "url", urls[0])
+		}
+	}
+	d.api.SetLANAlternates(urls)
+	if tsIP == nil {
+		return
+	}
+	first, port := d.lanLn, d.port
+	go func() {
+		name := lan.MagicDNSName(ctx, tsIP)
+		if name == "" {
+			return
+		}
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		if d.lanLn != first { // turned off, or on again, meanwhile
+			return
+		}
+		d.api.SetLANAlternates(append(urls, "http://"+net.JoinHostPort(name, strconv.Itoa(port))))
+	}()
 }
 
 // DisableLAN closes the second listener. Paired devices are kept — they are the
@@ -2010,7 +2075,11 @@ func (d *Daemon) DisableLAN() error {
 		return nil
 	}
 	err := d.lanLn.Close()
+	if d.lanLn2 != nil {
+		_ = d.lanLn2.Close()
+	}
 	d.lanLn, d.lanIP, d.lanURL = nil, nil, ""
+	d.lanLn2, d.lanIP2 = nil, nil
 	d.api.SetLAN(nil, "")
 	d.log.Info("stopped listening on the local network", "component", "daemon")
 	return err

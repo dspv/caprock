@@ -58,6 +58,7 @@ function screenName(r: Route): string {
     case 'graph': return 'Graph'
     case 'notes': return 'Memory'
     case 'settings': return 'Settings'
+    case 'start': return 'Start work'
   }
 }
 

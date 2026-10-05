@@ -40,3 +40,13 @@ describe('a session route can carry a moment', () => {
     }
   })
 })
+
+describe('the start-work route', () => {
+  it('round-trips each mode and drops an unknown one', () => {
+    for (const mode of ['clone', 'new', 'worktree'] as const) {
+      expect(parseHash(href({ name: 'start', mode }))).toEqual({ name: 'start', mode })
+    }
+    expect(parseHash('#/start')).toEqual({ name: 'start' })
+    expect(parseHash('#/start?mode=shell')).toEqual({ name: 'start' })
+  })
+})
