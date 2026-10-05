@@ -14,9 +14,9 @@ package service
 func (p Plan) Load(path string) error {
 	switch p.os() {
 	case "darwin":
-		return darwinLoad(path)
+		return darwinLoad(p.label(), path)
 	case "linux":
-		return linuxLoad()
+		return linuxLoad(p.unitName())
 	case "windows":
 		return nil
 	default:
@@ -30,9 +30,9 @@ func (p Plan) Load(path string) error {
 func (p Plan) Unload() error {
 	switch p.os() {
 	case "darwin":
-		return darwinUnload()
+		return darwinUnload(p.label())
 	case "linux":
-		return linuxUnload()
+		return linuxUnload(p.unitName())
 	default:
 		return nil
 	}
@@ -46,9 +46,9 @@ func (p Plan) Unload() error {
 func (p Plan) Registered() bool {
 	switch p.os() {
 	case "darwin":
-		return darwinRegistered()
+		return darwinRegistered(p.label())
 	case "linux":
-		return linuxRegistered()
+		return linuxRegistered(p.unitName())
 	case "windows":
 		path, err := p.Path()
 		if err != nil {

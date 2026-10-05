@@ -52,6 +52,7 @@ import (
 	"github.com/dspv/caprock/internal/termbuf"
 	"github.com/dspv/caprock/internal/update"
 	"github.com/dspv/caprock/internal/userenv"
+	"github.com/dspv/caprock/internal/version"
 )
 
 // Options configure a daemon run.
@@ -327,6 +328,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	rt.APILevel = version.APILevel
 	d.rt = rt
 	if err := config.WriteRuntime(d.opt.DataDir, rt); err != nil {
 		return fmt.Errorf("write runtime.json: %w", err)
@@ -1066,6 +1068,9 @@ func (d *Daemon) sweep(ctx context.Context) {
 // Status is /v1/status.
 type Status struct {
 	Version string `json:"version"`
+	// APILevel is version.APILevel: what a client compares against the
+	// minimum it needs, instead of parsing Version.
+	APILevel int `json:"api_level"`
 	// Platform is GOOS/GOARCH — the first thing a bug report needs and the
 	// last thing anyone remembers to include.
 	Platform  string        `json:"platform"`
@@ -1173,7 +1178,7 @@ type MemoryStatus struct {
 func (d *Daemon) status(_ context.Context) any {
 	b, _ := d.hiveState()
 	st := Status{
-		Version: d.opt.Version, Platform: runtime.GOOS + "/" + runtime.GOARCH, PID: os.Getpid(), StartedAt: d.start.UnixMilli(), UptimeS: int64(time.Since(d.start).Seconds()),
+		Version: d.opt.Version, APILevel: version.APILevel, Platform: runtime.GOOS + "/" + runtime.GOARCH, PID: os.Getpid(), StartedAt: d.start.UnixMilli(), UptimeS: int64(time.Since(d.start).Seconds()),
 		URL: d.url, DataDir: d.opt.DataDir, UIBuilt: api.UIBuilt(),
 		Pricing: PricingStatus{Version: d.table.Version, Source: d.table.Source, FetchedAt: d.table.FetchedAt, UserOverride: d.table.UserOverride, Models: len(d.table.Models)},
 		LoopK:   d.det.K, LoopTMin: int(d.det.Window / time.Minute),

@@ -26,6 +26,7 @@ import (
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/daemon"
 	"github.com/dspv/caprock/internal/hooks"
+	"github.com/dspv/caprock/internal/version"
 )
 
 const sessionID = "smoke-1111-2222-3333-444444444444"
@@ -241,8 +242,21 @@ func TestPhase0DefinitionOfDone(t *testing.T) {
 	if !strings.Contains(string(b), "say hi") || !strings.Contains(string(b), `"model": "opus"`) {
 		t.Fatalf("user settings damaged:\n%s", b)
 	}
-	if _, err := os.Stat(config.RuntimePath(h.dataDir)); err != nil {
+	rt, err := config.ReadRuntime(h.dataDir)
+	if err != nil {
 		t.Fatalf("runtime.json missing: %v", err)
+	}
+	// The desktop app reads both before deciding the daemon is new enough
+	// (ADR-038); a missing level reads as zero, an upgrade prompt for everyone.
+	var status struct {
+		APILevel int `json:"api_level"`
+	}
+	h.getJSON("/v1/status", &status)
+	if rt.APILevel != version.APILevel || status.APILevel != version.APILevel {
+		t.Fatalf("api_level: runtime.json %d, /v1/status %d, want %d", rt.APILevel, status.APILevel, version.APILevel)
+	}
+	if rt.Exe == "" || !filepath.IsAbs(rt.Exe) {
+		t.Fatalf("runtime.json exe = %q, want the daemon's absolute path", rt.Exe)
 	}
 
 	// DoD 2+3 — user starts claude and gives it a task; within 2s Now shows activity.

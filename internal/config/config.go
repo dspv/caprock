@@ -239,6 +239,14 @@ type Runtime struct {
 	PID       int    `json:"pid"`
 	StartedAt int64  `json:"started_at"` // unix ms
 	Version   string `json:"version"`
+	// APILevel is the daemon's API level (version.APILevel), so a client that
+	// reads this file knows before any request whether the daemon is new
+	// enough for it. Zero means a daemon from before the field existed.
+	APILevel int `json:"api_level"`
+	// Exe is the absolute path of the running daemon binary. The desktop app
+	// uses it to tell a daemon it installed (and may update) from one a
+	// package manager owns (which it must not touch). Empty when unknown.
+	Exe string `json:"exe,omitempty"`
 }
 
 // NewSessionID returns a random RFC-4122-ish v4 UUID for `claude --session-id`.
@@ -263,7 +271,21 @@ func NewRuntime(port int, version string) (Runtime, error) {
 		PID:       os.Getpid(),
 		StartedAt: time.Now().UnixMilli(),
 		Version:   version,
+		Exe:       executable(),
 	}, nil
+}
+
+// executable is this process's binary with symlinks resolved, or "" when the
+// OS will not say.
+func executable() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		return resolved
+	}
+	return exe
 }
 
 // WriteRuntime persists runtime.json with 0600 permissions, atomically.

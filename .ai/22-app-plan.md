@@ -61,7 +61,7 @@ its lane.
   job that builds and tests the app on macOS, Windows and Linux.
 - **Files.** `app/src-tauri/{Cargo.toml,tauri.conf.json,capabilities/,src/}`,
   `app/fallback/index.html`, `.github/workflows/` (app job), `Makefile`
-  (`app`, `app-dev`, `app-test`), [10-infrastructure.md](10-infrastructure.md).
+  (`app`, `app-test`, `app-bundle`, `app-sidecar`), [10-infrastructure.md](10-infrastructure.md).
 - **Depends on.** Open decision 5 (minimum OS versions) for the CI images.
 - **Parallel with.** Everything; it is the first package of its lane.
 - **Acceptance.** `make app` produces an app on each OS from a clean checkout;

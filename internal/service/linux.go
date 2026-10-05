@@ -110,15 +110,15 @@ func haveSystemdUser() bool {
 
 // linuxLoad reloads the unit files and enables + starts the unit. `enable --now`
 // is idempotent: re-running it on an enabled unit relinks and leaves it running.
-func linuxLoad() error {
+func linuxLoad(unit string) error {
 	if !haveSystemdUser() {
 		return errNoSystemd
 	}
 	if out, err := exec.Command("systemctl", "--user", "daemon-reload").CombinedOutput(); err != nil { //nolint:gosec // fixed argv
 		return fmt.Errorf("systemctl --user daemon-reload: %w: %s", err, strings.TrimSpace(string(out)))
 	}
-	if out, err := exec.Command("systemctl", "--user", "enable", "--now", "caprock.service").CombinedOutput(); err != nil { //nolint:gosec // fixed argv
-		return fmt.Errorf("systemctl --user enable --now caprock.service: %w: %s", err, strings.TrimSpace(string(out)))
+	if out, err := exec.Command("systemctl", "--user", "enable", "--now", unit).CombinedOutput(); err != nil { //nolint:gosec // fixed argv
+		return fmt.Errorf("systemctl --user enable --now %s: %w: %s", unit, err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
@@ -126,23 +126,23 @@ func linuxLoad() error {
 // linuxUnload stops and disables the unit. Every step is best-effort: uninstall
 // must succeed even when systemd never knew about the unit (the file was
 // written but `enable` failed, say).
-func linuxUnload() error {
+func linuxUnload(unit string) error {
 	if !haveSystemdUser() {
 		return nil // nothing systemd-side to undo; the file removal still happens
 	}
-	_ = exec.Command("systemctl", "--user", "disable", "--now", "caprock.service").Run() //nolint:gosec // fixed argv
-	_ = exec.Command("systemctl", "--user", "daemon-reload").Run()                       //nolint:gosec // fixed argv
+	_ = exec.Command("systemctl", "--user", "disable", "--now", unit).Run() //nolint:gosec // fixed argv
+	_ = exec.Command("systemctl", "--user", "daemon-reload").Run()          //nolint:gosec // fixed argv
 	return nil
 }
 
 // linuxRegistered reports whether systemd has the unit enabled — i.e. whether it
 // will actually come back at the next login, which is the question `service
 // status` is really asking.
-func linuxRegistered() bool {
+func linuxRegistered(unit string) bool {
 	if !haveSystemdUser() {
 		return false
 	}
-	out, err := exec.Command("systemctl", "--user", "is-enabled", "caprock.service").Output() //nolint:gosec // fixed argv
+	out, err := exec.Command("systemctl", "--user", "is-enabled", unit).Output() //nolint:gosec // fixed argv
 	if err != nil {
 		return false
 	}

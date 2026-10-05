@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Caprock</title>
+  <link rel="stylesheet" href="fallback.css" />
+  <script src="fallback.js" defer></script>
+</head>
+<body>
+  <div class="drag" data-tauri-drag-region></div>
+  <main>
+    <img class="mark" src="mark.svg" alt="" width="44" height="44" />
+
+    <section data-state="searching connected">
+      <h1>Opening Caprock</h1>
+      <p class="muted"><span class="spinner"></span><span data-text="searching">Looking for the Caprock daemon…</span></p>
+    </section>
+
+    <section data-state="first_run">
+      <h1>Welcome to Caprock</h1>
+      <p>Caprock runs a small service on this computer that watches your coding-agent sessions and keeps their terminals alive. Nothing leaves this machine.</p>
+      <label class="switch-row">
+        <span class="switch-text">
+          <span class="switch-title">Keep Caprock running in the background</span>
+          <span class="muted">Starts at login, so sessions and monitoring go on when this window is closed. You can change it later from the Caprock menu.</span>
+        </span>
+        <input type="checkbox" role="switch" id="background" checked />
+      </label>
+      <div class="actions"><button class="primary" id="start">Start Caprock</button></div>
+    </section>
+
+    <section data-state="starting">
+      <h1>Starting Caprock</h1>
+      <p class="muted"><span class="spinner"></span><span id="step"></span></p>
+    </section>
+
+    <section data-state="stopped">
+      <h1>The Caprock daemon stopped</h1>
+      <p class="muted"><span class="spinner"></span>Reconnecting by itself when it is back. Your sessions keep running.</p>
+      <div class="actions"><button id="restart">Start it now</button></div>
+    </section>
+
+    <section data-state="too_old">
+      <h1>This Caprock daemon needs an update</h1>
+      <p id="old-detail"></p>
+      <div data-ours="yes">
+        <p class="muted">It was installed by this app, which carries a newer one. Your sessions keep running through the update.</p>
+        <div class="actions"><button class="primary" id="update">Update</button></div>
+      </div>
+      <div data-ours="no">
+        <p class="muted" id="cmd-intro">Upgrade it the way it was installed, then the app reconnects by itself:</p>
+        <div class="command"><code id="command"></code><button id="copy">Copy</button></div>
+      </div>
+    </section>
+
+    <section data-state="failed">
+      <h1>Caprock could not start</h1>
+      <pre id="error"></pre>
+      <div class="actions"><button class="primary" id="retry">Try again</button></div>
+    </section>
+  </main>
+</body>
+</html>

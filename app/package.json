@@ -1,0 +1,12 @@
+{
+  "name": "caprock-app",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Tauri CLI for the Caprock desktop app; the UI itself is served by the daemon.",
+  "scripts": {
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.10.0"
+  }
+}

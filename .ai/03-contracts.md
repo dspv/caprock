@@ -470,7 +470,7 @@ Added during T6 (same conventions; not in the spec's list):
 
 ```
 GET  /v1/events?after=…&limit=…        → Event[] across all sessions (live-feed catch-up)
-GET  /v1/status                        → daemon status: version, pid, uptime, data dir, pricing, ingest, hooks
+GET  /v1/status                        → daemon status: version, api_level, pid, uptime, data dir, pricing, ingest, hooks
 GET  /v1/storage                       → what the data directory holds; see § Storage below
 GET  /v1/pricing                       → the pricing table in force
 GET  /v1/premium                       → what the paid plan costs and where to buy it
@@ -1706,13 +1706,19 @@ No DDL change was needed for either fix here, only honest use of the existing co
 - **Linux** — a systemd **user** unit at `~/.config/systemd/user/caprock.service` (honouring `XDG_CONFIG_HOME`), enabled with `systemctl --user enable --now`, `Restart=on-failure`, `KillMode=process`. Without a systemd user session the install fails with an actionable message and writes nothing.
 - **Windows** — a `.cmd` script in the Startup folder. A Scheduled Task cannot be rendered into a temp directory for a test, so verifying one means leaving a real logon task in the runner's store; the Startup script is an ordinary user-owned file, so its generation is unit-tested on every OS. The cost is that Windows restarts the daemon at logon but not mid-session.
 
+**`CAPROCK_SERVICE_LABEL`** replaces the label `dev.caprock.daemon` for a second, isolated install — a preview daemon, or the desktop app's supervisor under test with its own data dir and port. It reaches every name the commands act on: the launchd label and plist name, and the stem of the systemd unit (`<label>.service`) and the Startup script (`<label>.cmd`). Unset, or set to anything but letters, digits, `.`, `-` and `_`, the default label and file names are used, so an existing install keeps its files.
+
 **Owned sessions outlive the service's restarts** ([ADR-033](08-decisions.md#adr-033--an-owned-session-outlives-the-daemon-its-terminal-lives-in-a-pty-host)). Each runs under a `caprock pty-host` started in its own session (POSIX `setsid`) or its own process group with its own hidden console (Windows), which is already out of reach of launchd's process-group kill; `AbandonProcessGroup` is the second lock. systemd kills the whole cgroup whatever the process group, so on Linux `KillMode=process` is what keeps them. An install written by an earlier release lacks both keys: `caprock service status` reports the file as differing, and `caprock service install` rewrites it. Until then a macOS install still keeps sessions (the `setsid` alone suffices against a process-group kill); a Linux one does not.
 
 The service runs the daemon with `--foreground` (the supervisor owns the process lifetime, so the daemon must not detach), `--no-open`, and `--no-hooks` — hook and statusline registration stay an interactive consent decision, never something a login agent performs.
 
 ## Runtime file
 
-`<data_dir>/runtime.json` = `{"port": 22776, "token": "<random per run>", "pid": <daemon pid>, "started_at": <unix ms>}`; written 0600 by `caprock up`, deleted by `caprock down`; the shim reads it on every invocation. What `<data_dir>` resolves to per OS is owned by [ADR-013](08-decisions.md#adr-013--data-dir-and-config-conventions).
+`<data_dir>/runtime.json` = `{"port": 22776, "token": "<random per run>", "pid": <daemon pid>, "started_at": <unix ms>, "version": "<daemon version>", "api_level": 1, "exe": "<absolute path of the daemon binary>"}`; written 0600 by `caprock up`, deleted by `caprock down`; the shim reads it on every invocation.
+
+**`api_level`** (also in `GET /v1/status`) is an integer raised by every change a client must know about and never lowered: `1` is the first level, added for the desktop app ([ADR-038](08-decisions.md#adr-038--the-desktop-app-is-a-thin-tauri-v2-shell-around-the-existing-react-ui-and-xtermjs-on-the-go-daemon)). A client declares the minimum it needs; a daemon below it, or one with no `api_level` (read as `0`), is shown as needing an upgrade. **`exe`** is how the desktop app tells a daemon it installed (`<data_dir>/bin/caprock`, which it may replace) from one a package manager owns (which it must not touch); omitted when the OS cannot say.
+
+**The desktop app's files in `<data_dir>`.** `bin/caprock` (`caprock.exe` on Windows) is the daemon the app installed, copied from its bundle by write-then-rename; the login service it registers runs that copy. `app.json` = `{"background": true}` records the first-run choice (run as a login service or not); its absence means the app has never started a daemon here, and the first-run screen is shown. Both are written by the app, never by the daemon. What `<data_dir>` resolves to per OS is owned by [ADR-013](08-decisions.md#adr-013--data-dir-and-config-conventions).
 
 ### File permissions
 

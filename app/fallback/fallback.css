@@ -1,0 +1,141 @@
+/* The fallback page. On macOS the window is translucent (sidebar vibrancy),
+   so the page paints no background there; elsewhere it paints its own. */
+:root {
+  --bg: #f5f4f0;
+  --text: #1c1c1a;
+  --muted: #6b6a64;
+  --line: rgba(0, 0, 0, 0.1);
+  --field: rgba(255, 255, 255, 0.7);
+  --accent: #e8892b;
+  --accent-text: #1c1c1a;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1c1a;
+    --text: #ecebe6;
+    --muted: #9c9a92;
+    --line: rgba(255, 255, 255, 0.12);
+    --field: rgba(255, 255, 255, 0.06);
+    --accent: #ffad5a;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+html.mac body { background: transparent; }
+.drag { position: fixed; inset: 0 0 auto 0; height: 36px; }
+main {
+  max-width: 460px;
+  min-height: 100%;
+  margin: 0 auto;
+  padding: 48px 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.mark { margin-bottom: 20px; border-radius: 10px; }
+h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 8px; }
+p { margin: 0 0 12px; }
+.muted { color: var(--muted); }
+section[hidden], [data-ours][hidden], button[hidden] { display: none; }
+.switch-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  margin: 16px 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--field);
+}
+.switch-text { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.switch-title { font-weight: 500; }
+input[role="switch"] {
+  appearance: none;
+  flex: none;
+  width: 32px;
+  height: 18px;
+  margin-top: 2px;
+  border-radius: 9px;
+  background: var(--line);
+  position: relative;
+  transition: background 0.15s;
+}
+input[role="switch"]::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s;
+}
+input[role="switch"]:checked { background: var(--accent); }
+input[role="switch"]:checked::after { transform: translateX(14px); }
+input[role="switch"]:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.actions { display: flex; gap: 8px; margin-top: 16px; }
+button {
+  font: inherit;
+  font-weight: 500;
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--field);
+  color: var(--text);
+}
+button.primary { background: var(--accent); border-color: transparent; color: var(--accent-text); }
+button:disabled { opacity: 0.5; }
+.command {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 8px 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field);
+}
+.command code {
+  flex: 1;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  -webkit-user-select: text;
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+pre {
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field);
+  max-height: 40vh;
+  overflow: auto;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  border: 1.5px solid var(--muted);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  vertical-align: -1px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }

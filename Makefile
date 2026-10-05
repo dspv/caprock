@@ -6,7 +6,8 @@
 DOCS := $(shell find . -name '*.md' \
           -not -path './node_modules/*' -not -path './.git/*' \
           -not -path './vendor/*' -not -path './ui/node_modules/*' \
-          -not -path './ui/dist/*' -not -path './.claude/*' | sort)
+          -not -path './ui/dist/*' -not -path './.claude/*' \
+          -not -path './app/node_modules/*' -not -path './app/src-tauri/target/*' | sort)
 
 # Every recipe below is POSIX shell: pipelines, `[ -d ]`, single-quoted
 # -ldflags, `2>/dev/null`. On Windows, GNU make with no `sh` on PATH falls back
@@ -108,6 +109,38 @@ lint-ui: ## tsc --noEmit
 .PHONY: smoke
 smoke: build-go ## Phase 0 DoD scenario + the Phase 2 e2e (what CI's smoke step runs)
 	go test -tags smoke -count=1 ./internal/smoke/... ./internal/board/...
+
+# --- desktop app (app/, Tauri v2; ADR-038) ----------------------------------
+# The app bundles the daemon as a Tauri sidecar, which Tauri looks for as
+# app/src-tauri/binaries/caprock-<rust host triple>[.exe]; app-sidecar builds
+# it from this checkout so the app always carries the daemon it was built with.
+APP_DIR    := app/src-tauri
+APP_TRIPLE  = $(shell rustc -vV 2>/dev/null | sed -n 's/^host: //p')
+# Bundle formats for app-bundle; empty means every format tauri.conf.json lists
+# for this OS. `make app-bundle APP_BUNDLES=app` skips the macOS .dmg, whose
+# layout step drives Finder.
+APP_BUNDLES ?=
+
+.PHONY: app-sidecar
+app-sidecar: ## Build the daemon the app bundles (app/src-tauri/binaries/caprock-<triple>)
+	@[ -n "$(APP_TRIPLE)" ] || { echo "rustc not found: install Rust with rustup (see app/README.md)"; exit 1; }
+	@mkdir -p $(APP_DIR)/binaries
+	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(APP_DIR)/binaries/caprock-$(APP_TRIPLE)$(EXE) ./cmd/caprock
+
+.PHONY: app
+app: app-sidecar ## Run the desktop app in development (debug build; finds or starts a daemon)
+	cargo run --manifest-path $(APP_DIR)/Cargo.toml
+
+.PHONY: app-test
+app-test: app-sidecar ## Desktop app: cargo fmt --check, clippy -D warnings, cargo test
+	cargo fmt --manifest-path $(APP_DIR)/Cargo.toml --check
+	cargo clippy --manifest-path $(APP_DIR)/Cargo.toml --all-targets -- -D warnings
+	cargo test --manifest-path $(APP_DIR)/Cargo.toml
+
+.PHONY: app-bundle
+app-bundle: app-sidecar ## Build the release app bundle(s) under app/src-tauri/target/release/bundle
+	cd app && { [ -d node_modules ] || npm ci; }
+	cd app && npx tauri build $(if $(APP_BUNDLES),--bundles $(APP_BUNDLES),)
 
 # --- docs -----------------------------------------------------------------
 .PHONY: docs-fmt
