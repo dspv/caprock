@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { Event, LoopAlert, Permission, Session, Stats, TaskFrame } from './api'
 import { deviceToken } from './api'
+import type { OpFrame, ProjectFrame } from './projects'
 
 export type Frame =
   | { type: 'hello'; data: { server_time: number } }
@@ -13,6 +14,9 @@ export type Frame =
   | { type: 'task'; data: TaskFrame }
   | { type: 'stats'; data: unknown }
   | { type: 'permission'; data: { session_id: string; permission: Permission | null } }
+  // The app's projects (.ai/21-app.md § Projects): git state, and long operations.
+  | { type: 'project'; data: ProjectFrame }
+  | { type: 'op'; data: OpFrame }
 
 export type ConnState = 'connecting' | 'open' | 'closed'
 
@@ -175,4 +179,10 @@ function useDebouncedValue<T>(initial: T, ms: number): [T, (v: T) => void] {
     timer.current = window.setTimeout(() => { timer.current = null; setV(pending.current) }, ms)
   }, [ms])
   return [v, set]
+}
+
+/** The connection state alone: re-renders only when it changes, not on every frame. */
+export function useLiveConn(): ConnState {
+  const get = () => live.getState().conn
+  return useSyncExternalStore(live.subscribe, get, get)
 }

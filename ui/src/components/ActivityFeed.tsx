@@ -15,10 +15,16 @@ import { pushItem, toFeedItem, type FeedItem } from '@/lib/feed'
 import { fmtAgo, shortId } from '@/lib/format'
 import { Panel } from '@/components/ui'
 import { href } from '@/lib/router'
+import { NewPill } from './NewPill'
+import { useStickToBottom } from '@/lib/useStickToBottom'
 
 export function ActivityFeed({ sessions, now, emptyHint }: { sessions: SessionSummary[]; now: number; emptyHint?: ReactNode }) {
   const [items, setItems] = useState<FeedItem[]>([])
   const [paused, setPaused] = useState(false)
+  // Newest first: a reader scrolled down the feed keeps their row while new
+  // ones arrive above (the scrolling rule, WP-11).
+  const [received, setReceived] = useState(0)
+  const stick = useStickToBottom({ edge: 'top', total: received })
   // Held in a ref so the WS subscription never re-subscribes when sessions load.
   const projects = useRef(new Map<string, string>())
   const pausedRef = useRef(paused)
@@ -89,7 +95,10 @@ export function ActivityFeed({ sessions, now, emptyHint }: { sessions: SessionSu
       // that a filter would have excluded.
       if (id && projects.current.has(id) && !allowed.current.has(id)) return
       const item = toFeedItem(f.data)
-      if (item) setItems((cur) => pushItem(cur, item))
+      if (item) {
+        setItems((cur) => pushItem(cur, item))
+        setReceived((n) => n + 1)
+      }
     })
   }, [])
 
@@ -122,12 +131,15 @@ export function ActivityFeed({ sessions, now, emptyHint }: { sessions: SessionSu
         // gradient sits above the content and ignores pointer events, so it
         // hints without taking a click.
         <div className="relative">
-          <div className="max-h-[420px] overflow-y-auto">
+          <div ref={stick.ref} className="max-h-[420px] overflow-y-auto">
           {items.map((it) => (
             <Row key={it.id} it={it} now={now} project={projects.current.get(it.sessionId)} />
           ))}
           </div>
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-panel to-transparent" />
+          <div className="pointer-events-none absolute inset-x-0 top-1.5 flex justify-center">
+            <NewPill count={stick.newCount} edge="top" onJump={stick.jump} />
+          </div>
         </div>
       )}
     </Panel>

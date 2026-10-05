@@ -14,6 +14,7 @@
  * you read it is worse than a still one. The only motion is a CSS pulse on the
  * newest bar, which costs nothing and means "this minute is still filling".
  */
+import { branchLabel, projectLabels, sessionHealth } from '@/lib/sessionLabels'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type Event, type SessionSummary } from '@/lib/api'
 import { live } from '@/lib/live'
@@ -59,6 +60,7 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
     [sessions],
   )
   const ids = tracked.map((s) => s.session_id).join(',')
+  const labels = useMemo(() => projectLabels(sessions), [sessions])
 
   const [events, setEvents] = useState<Map<string, Event[]>>(new Map())
 
@@ -133,7 +135,7 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
           </div>
         ) : (
           rows.map(({ s, pulse }) => (
-            <Track key={s.session_id} s={s} pulse={pulse} minute={minute} showId={rows.length > 1}
+            <Track key={s.session_id} s={s} pulse={pulse} minute={minute} showId={rows.length > 1} label={labels.get(s.session_id)}
               all={sessions} open={open.has(s.session_id)} onToggle={() => toggle(s.session_id)} />
           ))
         )}
@@ -195,6 +197,7 @@ function Track({
   pulse,
   minute,
   showId,
+  label,
   all,
   open,
   onToggle,
@@ -202,6 +205,8 @@ function Track({
   s: SessionSummary
   pulse: PulseModel
   minute: number
+  /** The project's name, told apart from a same-named folder elsewhere. */
+  label?: string
   /** Whether to name which session this is. See the header below. */
   showId: boolean
   /** Every session the screen knows, for the project's other live sessions. */
@@ -211,7 +216,7 @@ function Track({
 }) {
   // Health comes from the daemon's narrator, which knows "your turn" from the
   // agent.stop event. The bars cannot: they describe the hour, not this moment.
-  const state = trackState(pulse, s.activity?.health)
+  const state = trackState(pulse, sessionHealth(s))
 
   // The row opens in place rather than navigating: the owner wanted to see
   // what a project's sessions are doing without leaving Now. The session page
@@ -246,10 +251,10 @@ function Track({
             >
               <span aria-hidden className={`inline-block transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
             </button>
-            <span className="shrink-0">{s.project || 'unknown project'}</span>
-            {s.git_branch && (
+            <span className="shrink-0" title={s.repo_root || s.cwd}>{label || s.project || 'unknown project'}</span>
+            {branchLabel(s.git_branch) && (
               <span className="min-w-0 truncate text-[10px] text-fg-faint mono" title={s.git_branch}>
-                {s.git_branch}
+                {branchLabel(s.git_branch)}
               </span>
             )}
             {agentMark(s.agent) && (
@@ -331,7 +336,7 @@ function ProjectNow({ s, all, now }: { s: SessionSummary; all: SessionSummary[];
       </div>
       <ul className="mt-2 grid gap-1.5">
         {live.map((x) => {
-          const st = trackState({ bars: [], repeats: 0 } as unknown as PulseModel, x.activity?.health)
+          const st = trackState({ bars: [], repeats: 0 } as unknown as PulseModel, sessionHealth(x))
           const model = x.model_display || (x.model ? fmtModel(x.model) : '')
           const doing = x.activity?.phrase || x.description || x.title || ''
           return (

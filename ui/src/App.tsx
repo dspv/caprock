@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Shell } from '@/components/Shell'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
-import { useRoute } from '@/lib/router'
+import { useRoute, type Route } from '@/lib/router'
 import { api, ApiError } from '@/lib/api'
 import { NowScreen } from '@/screens/Now'
 import { SessionScreen } from '@/screens/Session'
@@ -53,6 +53,11 @@ export default function App() {
   if (access === 'checking') return null
   if (access === 'needs-pairing') return <PairScreen />
 
+  return <Dashboard route={route} />
+}
+
+/** The dashboard's screens in their shell: the browser's whole page, and a view inside the app. */
+export function Dashboard({ route }: { route: Route }) {
   return (
     <Shell route={route}>
       <ErrorBoundary label={route.name}>

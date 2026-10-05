@@ -10,12 +10,15 @@ the weeks, work packages and definitions of done are in
 work package that builds them moves them into [03-contracts.md](03-contracts.md)
 in the same commit (rule 8).
 
-**Status (2026-10-05): specified; built so far:** the shell in `app/` (WP-01,
-WP-02: window, fallback page, per-origin commands, daemon supervisor,
-`api_level`; behaviour in [`app/README.md`](../app/README.md)) and the engine
-side of projects, shell tabs and worktrees (WP-05, WP-07, WP-08 API; contract
-in [03-contracts.md § Projects and shells](03-contracts.md#projects-and-shells-desktop-app-wp-05-wp-07-wp-08)).
-Nothing in `ui/` uses them yet.
+**Status (2026-10-05): built so far:** the shell in `app/` (WP-01, WP-02:
+window, fallback page, per-origin commands, daemon supervisor, `api_level`;
+behaviour in [`app/README.md`](../app/README.md)), the engine side of
+projects, shell tabs and worktrees (WP-05, WP-07, WP-08 API; contract in
+[03-contracts.md § Projects and shells](03-contracts.md#projects-and-shells-desktop-app-wp-05-wp-07-wp-08)),
+terminal protocol v2 (WP-03), and the app workspace (WP-04 layout and tabs,
+WP-06 sidebar, WP-11 scrolling rule) that uses them at `#/app`
+([04-ui.md § The app workspace](04-ui.md#the-app-workspace)), falling back to
+sessions-derived projects on an older daemon.
 
 ## Goal
 
