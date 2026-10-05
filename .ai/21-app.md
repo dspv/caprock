@@ -550,7 +550,9 @@ there, and worktrees as first-class places to work.
   crate beyond the official plugins (UNUserNotificationCenter on macOS, toast
   activation on Windows, D-Bus actions on Linux) and wait for that decision.
   On Linux, where a click does not raise the app, the notification informs
-  only.
+  only. The window's background throttling is off (macOS 14+): WKWebView
+  suspends a hidden or covered page, and a test with the window behind
+  others got no notification in 30 s with it on, against 0.03–0.12 s off.
 
 ## The scrolling rule
 

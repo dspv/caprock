@@ -83,6 +83,9 @@ pub fn build(
         .min_inner_size(720.0, 480.0)
         .visible(false)
         .focused(focus)
+        // A hidden or covered window still hears the live socket, or a
+        // notification would wait for the app to come forward (WP-09).
+        .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
         .initialization_script(INIT_SCRIPT)
         .on_navigation(move |url| {
             // Main-frame navigation stays on this daemon or the fallback page;

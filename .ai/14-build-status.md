@@ -84,7 +84,11 @@ the session in front of a focused window and for a prompt no longer waiting;
 the click opens the session with its prompt card. Smoke test on the real
 binary and the fake `claude`: the frame arrived 2 ms after the
 PermissionRequest hook; a stale prompt id 409, the waiting one 204, a second
-press 409. Notification buttons wait for a decision on a non-plugin crate
+press 409. In the debug app (hidden window, `CAPROCK_APP_NOTIFY_LOG`, a
+throw-away daemon): nothing within 30 s while WKWebView's background
+throttling was on, 0.03–0.12 s over six prompts with it off (one outlier of
+2.9 s right after launch); a focus event opened the session and its prompt
+card's Yes answered the prompt. Notification buttons wait for a decision on a non-plugin crate
 ([21-app.md § Notifications](21-app.md#notifications)). Not verified with a
 real OS notification on screen: the owner's machine was in use.
 

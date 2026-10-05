@@ -73,7 +73,8 @@ A page on any other origin gets nothing; `cargo test` checks each refusal.
 `open_external` opens `http` and `https` only.
 `notify` shows one OS notification (`{title, body}`) through the official
 `tauri-plugin-notification`; the page decides when (`ui/src/lib/notify.ts`,
-WP-09).
+WP-09). The window turns WKWebView's background throttling off (macOS 14+),
+or a hidden or covered page would not hear the frame until brought forward.
 
 ## Contract with the UI (`ui/`)
 
