@@ -44,6 +44,12 @@ type ready struct {
 // ringSize matches the daemon's own ring: what a reattached terminal repaints.
 const ringSize = 256 << 10
 
+// preV2 makes this holder answer as one from before terminal protocol v2: no
+// offsets in its welcome, no catch-up on resume, J frames ignored. Only the
+// compatibility tests set it, to stand in for a holder an older release
+// started.
+var preV2 bool
+
 // clientQueue is how many frames may wait for a slow client before it is
 // dropped. The daemon reads continuously, so a full queue means it is gone or
 // wedged, and the child must not stall on it.
@@ -322,10 +328,14 @@ func (h *host) handle(conn net.Conn) {
 	// ones the snapshot or the catch-up that follows it starts from.
 	snap, offset := h.ring.SnapshotAt()
 	start := h.ring.Start()
-	w, _ := json.Marshal(welcome{
+	wel := welcome{
 		Proto: Proto, ChildPID: h.rec.ChildPID, Paused: h.sess.Paused(), Version: h.spec.Version,
 		Offset: &offset, RingStart: &start, SeqInput: true,
-	})
+	}
+	if preV2 {
+		wel.Offset, wel.RingStart, wel.SeqInput, hi.Since = nil, nil, false, nil
+	}
+	w, _ := json.Marshal(wel)
 	c.send(encodeFrame(frameWelcome, w))
 	switch {
 	case !hi.Resume:
@@ -370,7 +380,9 @@ func (h *host) handle(conn net.Conn) {
 				_ = h.sess.Signal(ptyman.Signal(m.Signal))
 			}
 		case frameSeqInput:
-			h.seqInput(c, payload)
+			if !preV2 {
+				h.seqInput(c, payload)
+			}
 		default:
 			// A newer daemon's frame this holder does not know: ignored, so
 			// the two keep talking (see the package comment).

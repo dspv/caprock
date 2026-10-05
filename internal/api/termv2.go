@@ -140,13 +140,16 @@ func (h *wsHub) serveTermV2(s *Server, src termV2Source, w http.ResponseWriter, 
 	ring := ts.Ring()
 	changed := ring.Changed()
 	hello := termHello{V: 2, Ack: ack}
+	// Resume from the client's offset when the ring still has it; otherwise
+	// the snapshot, which always follows a reset (even when empty) and
+	// brings the client to hello.Offset.
 	var first []byte
+	resumed := false
 	if since != nil {
-		if data, ok := ring.Since(*since); ok {
-			hello.Offset, first = *since, data
-		}
+		first, resumed = ring.Since(*since)
+		hello.Offset = *since
 	}
-	if first == nil {
+	if !resumed {
 		snap, total := ring.SnapshotAt()
 		hello.Offset, hello.Reset, first = total, true, snap
 	}
@@ -154,7 +157,7 @@ func (h *wsHub) serveTermV2(s *Server, src termV2Source, w http.ResponseWriter, 
 		return
 	}
 	pos := hello.Offset
-	if len(first) > 0 && t.binary(outputFrame(pos, first)) != nil {
+	if (hello.Reset || len(first) > 0) && t.binary(outputFrame(pos, first)) != nil {
 		return
 	}
 	if !hello.Reset {
