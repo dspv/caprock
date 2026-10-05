@@ -19,6 +19,7 @@ make app          # debug build, run it: finds or starts a daemon
 make app-test     # cargo fmt --check, clippy -D warnings, cargo test
 make app-bundle   # release bundle(s) in app/src-tauri/target/release/bundle
 make app-bundle APP_BUNDLES=app   # macOS: the .app only (the .dmg step drives Finder)
+make app-release TAG=vX.Y.Z       # macOS: the universal .dmg for a release (docs/RELEASING.md)
 ```
 
 Each target first builds the daemon from this checkout into
@@ -40,9 +41,12 @@ daemon uses (`$CAPROCK_DATA_DIR`, else `<user config dir>/caprock`):
    **Update** when the app installed it, which replaces the binary and restarts
    it through its own `/v1/shutdown`.
 3. With no daemon on the first run, the app asks once, with the **Keep Caprock
-   running in the background** switch on by default (decision 7). It copies
-   the bundled daemon to `<data_dir>/bin/caprock`, runs `caprock service
-   install` when the switch is on, and falls back to `caprock up`. The choice
+   running in the background** switch on by default (decision 7). It uses
+   the `caprock` formula's binary when Homebrew installed one (a
+   `/opt/homebrew`, `/usr/local` or Linuxbrew `bin/caprock` that resolves into
+   a Cellar), else copies the bundled daemon to `<data_dir>/bin/caprock`; then
+   it runs `caprock service install` when the switch is on, and falls back to
+   `caprock up`. The choice
    is stored in `<data_dir>/app.json`; later launches start the same way
    without asking. The macOS app menu keeps the switch afterwards.
 4. It polls twice a second. A daemon gone for 1.2 s is shown as stopped (the

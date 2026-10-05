@@ -134,6 +134,52 @@ git tag -a v0.1.0 -m "…" && git push origin v0.1.0
 `goreleaser release --clean` is idempotent; with `HOMEBREW_TAP_TOKEN` set it will
 complete the formula push it previously skipped.
 
+## The desktop app
+
+The app (`app/`, WP-17) ships on the same release as the daemon, built from the
+same tagged commit so it bundles that daemon. `release.yml` does it after
+goreleaser:
+
+- **`app-macos`** runs `scripts/app-release.sh` on the tag:
+  `Caprock_<version>_universal.dmg` (arm64 + x86_64, ad-hoc signed), checked
+  before upload (`hdiutil verify`, `codesign --verify`, `lipo` on the app and
+  the bundled daemon, bundle id `dev.caprock.app`, `caprock version` of the
+  bundled daemon). It renders the cask from `app/packaging/caprock-app.rb.tmpl`
+  and, on a stable tag with `HOMEBREW_TAP_TOKEN` set, pushes it to
+  `Casks/caprock-app.rb` in `dspv/homebrew-tap`.
+- **`app-other`** builds `Caprock_<version>_x64-setup.exe` (NSIS) on Windows
+  and the AppImage, `.deb` and `.rpm` on Ubuntu 22.04. Each OS is its own job;
+  a failure there never holds up the `.dmg`.
+
+**Without Actions**, on a Mac, after the daemon release exists:
+
+```bash
+git fetch --tags && git checkout vX.Y.Z
+make app-release TAG=vX.Y.Z ARGS=--no-upload   # build and check only
+make app-release TAG=vX.Y.Z                    # build, check, attach the .dmg
+make app-release TAG=vX.Y.Z ARGS=--cask-pr     # …and open a cask PR on the tap
+```
+
+It needs Go, Node 22, Rust via rustup (it adds the two macOS targets itself)
+and `gh` logged in. It refuses a checkout that is not exactly the tag or has
+uncommitted changes, and refuses to replace a `.dmg` already on the release
+unless given `--clobber`. The `.dmg` and the rendered `caprock-app.rb` land in
+`app/src-tauri/target/app-release/`; merge the cask PR (or push the file to
+`Casks/caprock-app.rb`) to publish it. The `.dmg` step lays out its window
+through Finder; with `CI=true` in the environment it skips that and the window
+keeps Finder's default arrangement.
+
+**Signing.** No Apple Developer ID yet (decision 2), so the app is ad-hoc
+signed (`signingIdentity: "-"` in `tauri.conf.json`) and the cask clears the
+quarantine flag after Homebrew's sha256 check; [docs/install-app.md](install-app.md)
+tells `.dmg` users how to open it. When the account exists: put the Developer ID
+certificate (`APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`) and an App
+Store Connect API key in the release secrets, set `APPLE_SIGNING_IDENTITY` and
+`APPLE_API_KEY`/`APPLE_API_ISSUER`/`APPLE_API_KEY_PATH` for `tauri build` (Tauri signs and notarizes when they are present), change
+the script's `Signature=adhoc` check to `Authority=Developer ID Application`,
+and delete the cask's `postflight_steps`. Windows stays unsigned until a certificate
+is chosen (decision 3).
+
 ## Never move a tag that has already run (2026-08-27)
 
 `release.draft: false` means the first `goreleaser` run **publishes** — the

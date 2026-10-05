@@ -14,7 +14,7 @@ cask "caprock-app" do
     strategy :github_latest
   end
 
-  depends_on macos: ">= :ventura"
+  depends_on macos: :ventura
 
   app "Caprock.app"
 
@@ -23,9 +23,10 @@ cask "caprock-app" do
   # already checked the download against the sha256 above; clear the
   # quarantine flag so Caprock opens like any other app. Drop this once the
   # build is signed and notarized.
-  postflight do
-    system_command "/usr/bin/xattr",
-                   args: ["-dr", "com.apple.quarantine", "#{appdir}/Caprock.app"]
+  postflight_steps do
+    run "/usr/bin/xattr",
+        args:           ["-dr", "com.apple.quarantine", "{{appdir}}/Caprock.app"],
+        writable_paths: ["{{appdir}}/Caprock.app"]
   end
 
   uninstall quit: "dev.caprock.app"

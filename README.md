@@ -25,6 +25,18 @@ scoop install caprock
 caprock up        # opens localhost:22776; offers to set up hooks + plan-limit status line
 ```
 
+**Or the desktop app**, which bundles the daemon and opens on your terminals:
+
+```bash
+brew install --cask dspv/tap/caprock-app       # macOS (universal)
+```
+
+Windows: `Caprock_<version>_x64-setup.exe`; Linux: `.AppImage`, `.deb` or
+`.rpm` — all on [Releases](https://github.com/dspv/caprock/releases). The app is
+not notarized or code-signed yet; [docs/install-app.md](docs/install-app.md)
+has the one-time "Open Anyway" step for the `.dmg` and SmartScreen's "Run
+anyway".
+
 Have Go? `go install github.com/dspv/caprock/cmd/caprock@latest` — the dashboard
 is embedded, so it works with no Node build. No package manager? Grab a binary
 from [Releases](https://github.com/dspv/caprock/releases).
@@ -486,6 +498,7 @@ Use the command that matches how you installed it:
 ```bash
 brew update && brew upgrade caprock                     # Homebrew
 scoop update caprock                                    # Scoop
+brew upgrade --cask caprock-app                         # the desktop app (macOS)
 go install github.com/dspv/caprock/cmd/caprock@latest   # go install
 ```
 
@@ -670,13 +683,13 @@ restart it only when it *crashes*, never when you shut it down on purpose.
 This repo (**[`dspv/caprock`](https://github.com/dspv/caprock)**) is the home of the
 Caprock binary and its docs. The rest of the project:
 
-| Where                                                         | What                                                               |
-| ------------------------------------------------------------- | ------------------------------------------------------------------ |
-| **[caprock.dev](https://caprock.dev)**                        | Website — landing, install guide, changelog                        |
-| **[dspv/homebrew-tap](https://github.com/dspv/homebrew-tap)** | Homebrew formula (macOS / Linux) — `brew install dspv/tap/caprock` |
-| **[dspv/scoop-bucket](https://github.com/dspv/scoop-bucket)** | Scoop bucket (Windows) — `scoop install caprock`                   |
-| **[Releases](https://github.com/dspv/caprock/releases)**      | Prebuilt binaries for every OS/arch                                |
+| Where                                                         | What                                                                              |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| **[caprock.dev](https://caprock.dev)**                        | Website — landing, install guide, changelog                                       |
+| **[dspv/homebrew-tap](https://github.com/dspv/homebrew-tap)** | Homebrew: formula `caprock` (macOS / Linux), cask `caprock-app` (the desktop app) |
+| **[dspv/scoop-bucket](https://github.com/dspv/scoop-bucket)** | Scoop bucket (Windows) — `scoop install caprock`                                  |
+| **[Releases](https://github.com/dspv/caprock/releases)**      | Prebuilt binaries for every OS/arch                                               |
 
-The Homebrew formula and Scoop manifest are generated and pushed from here on
-each release ([docs/RELEASING.md](docs/RELEASING.md)); the website lives in its
+The Homebrew formula, the app's cask and the Scoop manifest are generated and
+pushed from here on each release ([docs/RELEASING.md](docs/RELEASING.md)); the website lives in its
 own repo and deploys to caprock.dev.
