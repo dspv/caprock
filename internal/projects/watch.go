@@ -136,7 +136,7 @@ func (w *watcher) watch(dir string, who watched) {
 func (w *watcher) watchTree(dir string, who watched) {
 	_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			return err
 		}
 		if d.IsDir() {
 			w.watch(p, who)
@@ -178,13 +178,10 @@ func (w *watcher) handle(ev fsnotify.Event) {
 	if strings.HasSuffix(name, ".lock") {
 		return
 	}
-	dir := filepath.Dir(ev.Name)
 	w.mu.Lock()
-	who, ok := w.dirs[dir]
-	_, isDir := w.dirs[ev.Name]
-	if !ok && isDir {
-		who, ok = w.dirs[ev.Name], true
-		dir = ev.Name
+	who, ok := w.dirs[filepath.Dir(ev.Name)]
+	if !ok {
+		who, ok = w.dirs[ev.Name]
 	}
 	w.mu.Unlock()
 	if !ok {

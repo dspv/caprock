@@ -244,6 +244,10 @@ func ProjectActivityByDir(ctx context.Context, q Querier, sinceMs int64) (map[st
 		p := get(d)
 		p.Total, p.Live, p.LastActivity = a.Total, a.Live, a.LastActivity
 	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
@@ -265,6 +269,10 @@ func ProjectActivityByDir(ctx context.Context, q Querier, sinceMs int64) (map[st
 		if strings.HasPrefix(last.String, "permission.prompt|") || last.String == "agent.stop|" {
 			get(d).Waiting++
 		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

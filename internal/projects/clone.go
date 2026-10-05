@@ -201,7 +201,8 @@ func (s *Service) runClone(ctx context.Context, opID, rawURL, dest string) {
 	if s.Env != nil {
 		env = s.Env()
 	}
-	cmd.Env = append(env, "GIT_TERMINAL_PROMPT=0", "LC_ALL=C")
+	env = append(env, "GIT_TERMINAL_PROMPT=0", "LC_ALL=C")
+	cmd.Env = env
 	cmd.Dir = filepath.Dir(dest)
 	cmd.WaitDelay = 5 * time.Second
 	stderr, err := cmd.StderrPipe()

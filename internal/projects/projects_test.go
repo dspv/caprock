@@ -91,18 +91,17 @@ func session(t *testing.T, st *store.Store, id, cwd string) {
 }
 
 // waitFrame waits for a project frame for id that satisfies ok.
-func waitFrame(t *testing.T, sub *bus.Subscriber, id int64, within time.Duration, ok func(View) bool) View {
+func waitFrame(t *testing.T, sub *bus.Subscriber, id int64, within time.Duration, ok func(View) bool) {
 	t.Helper()
 	deadline := time.After(within)
 	for {
 		select {
 		case f := <-sub.C:
 			if v, isView := f.Data.(View); f.Type == FrameProject && isView && v.ID == id && ok(v) {
-				return v
+				return
 			}
 		case <-deadline:
 			t.Fatalf("no matching project frame for %d within %s", id, within)
-			return View{}
 		}
 	}
 }
