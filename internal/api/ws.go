@@ -137,10 +137,16 @@ func (h *wsHub) Close() {
 // serveTerm bridges an owned session's PTY to a bidirectional WebSocket for
 // xterm.js: binary frames both ways, snapshot on connect, closes when the
 // process exits. Returns 501 when the session is not owned / spawning is off.
+// A client that asks for caprock.term.v2 is served by serveTermV2; this is
+// version 1, kept unchanged for clients that predate it.
 func (h *wsHub) serveTerm(s *Server) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.d.Agents == nil || !s.d.Agents.Available() {
 			http.Error(w, "spawning unavailable", http.StatusNotImplemented)
+			return
+		}
+		if src, ok := s.d.Agents.(termV2Source); ok && wantsTermV2(r) {
+			h.serveTermV2(s, src, w, r)
 			return
 		}
 		id := r.PathValue("id")

@@ -9,6 +9,8 @@ import (
 	"context"
 	"errors"
 	"io"
+
+	"github.com/dspv/caprock/internal/termbuf"
 )
 
 // Spec describes a process to spawn.
@@ -55,6 +57,22 @@ var ErrDetached = errors.New("ptyman: detached; the process keeps running in its
 // daemon restart or upgrade does to it.
 type Detacher interface {
 	Detach() error
+}
+
+// Ringed is a session that keeps its own scrollback ring, with offsets that
+// continue across daemon restarts (a pty-host's). The daemon uses that ring
+// rather than starting one at zero.
+type Ringed interface {
+	Ring() *termbuf.Ring
+}
+
+// SeqWriter is a session that applies sequenced input exactly once per client
+// itself (terminal protocol v2), so the guarantee outlives the daemon.
+// WriteSeq returns the client's last applied sequence; sequence 0 writes
+// nothing and only asks for it. ErrNotSupported means the daemon must
+// deduplicate on its own.
+type SeqWriter interface {
+	WriteSeq(client string, seq uint64, p []byte) (uint64, error)
 }
 
 // ErrNotSupported is returned for signals the platform cannot honour.

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dspv/caprock/internal/ptyman"
+	"github.com/dspv/caprock/internal/termbuf"
 	"github.com/dspv/caprock/internal/userenv"
 )
 
@@ -49,7 +50,7 @@ func (m *Manager) SpawnShell(ctx context.Context, req ShellRequest) (*Agent, err
 	}
 	a := &Agent{
 		SessionID: id, Cwd: req.Cwd, Command: command + " " + join(args), StartedAt: time.Now(), Kind: KindShell,
-		sess: sess, ring: newRing(256 << 10), log: m.log, subs: map[chan []byte]struct{}{}, done: make(chan struct{}), onExit: m.OnExit,
+		sess: sess, ring: ringFor(sess, 256<<10), inputs: termbuf.NewInputs(termbuf.InputTTL), log: m.log, subs: map[chan []byte]struct{}{}, done: make(chan struct{}), onExit: m.OnExit,
 	}
 	m.mu.Lock()
 	m.agents[id] = a

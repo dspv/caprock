@@ -49,6 +49,8 @@ const (
 	frameInput    byte = 'I' // client → holder: typed bytes
 	frameResize   byte = 'R' // client → holder: JSON resize
 	frameSignal   byte = 'G' // client → holder: JSON signal
+	frameSeqInput byte = 'J' // client → holder: sequenced input (see encodeSeqInput)
+	frameSeqAck   byte = 'K' // holder → client: JSON seqAck, the answer to one J
 )
 
 // maxFrame bounds a payload. Output is read 32 KiB at a time and the ring is
@@ -61,6 +63,10 @@ type hello struct {
 	// Resume skips the snapshot: the client already has the screen and is
 	// reconnecting after a dropped connection, not attaching fresh.
 	Resume bool `json:"resume,omitempty"`
+	// Since asks a resuming holder for the output from this offset on, so
+	// nothing printed while the connection was down is lost. A holder that
+	// no longer has it sends a snapshot instead. Older holders ignore it.
+	Since *uint64 `json:"since,omitempty"`
 }
 
 type welcome struct {
@@ -68,6 +74,23 @@ type welcome struct {
 	ChildPID int    `json:"child_pid"`
 	Paused   bool   `json:"paused,omitempty"`
 	Version  string `json:"version,omitempty"`
+	// Offset is the offset one past the newest byte the holder has output,
+	// and RingStart that of the oldest byte its ring holds: the snapshot that
+	// follows is the mode prefix plus bytes [RingStart, Offset). Absent from
+	// holders that predate terminal protocol v2.
+	Offset    *uint64 `json:"offset,omitempty"`
+	RingStart *uint64 `json:"ring_start,omitempty"`
+	// SeqInput says the holder understands J frames.
+	SeqInput bool `json:"seq_input,omitempty"`
+}
+
+// seqAck answers one J frame: the client's last applied sequence after it,
+// which is at least Req when Req was applied now or before.
+type seqAck struct {
+	Client string `json:"client"`
+	Req    uint64 `json:"req"`
+	Seq    uint64 `json:"seq"`
+	Error  string `json:"error,omitempty"`
 }
 
 type resizeMsg struct {
@@ -100,6 +123,29 @@ func encodeFrame(typ byte, payload []byte) []byte {
 	binary.BigEndian.PutUint32(buf[1:5], uint32(len(payload))) //nolint:gosec // see writeFrame
 	copy(buf[5:], payload)
 	return buf
+}
+
+// encodeSeqInput is a J payload: the client id's length (one byte), the id,
+// the 8-byte big-endian sequence, the typed bytes.
+func encodeSeqInput(client string, seq uint64, p []byte) []byte {
+	b := make([]byte, 0, 1+len(client)+8+len(p))
+	b = append(b, byte(len(client)))
+	b = append(b, client...)
+	b = binary.BigEndian.AppendUint64(b, seq)
+	return append(b, p...)
+}
+
+var errBadSeqInput = errors.New("ptyhost: malformed sequenced input")
+
+func decodeSeqInput(b []byte) (string, uint64, []byte, error) {
+	if len(b) < 1 {
+		return "", 0, nil, errBadSeqInput
+	}
+	n := int(b[0])
+	if n == 0 || len(b) < 1+n+8 {
+		return "", 0, nil, errBadSeqInput
+	}
+	return string(b[1 : 1+n]), binary.BigEndian.Uint64(b[1+n : 1+n+8]), b[1+n+8:], nil
 }
 
 var errFrameTooLarge = errors.New("ptyhost: frame too large")

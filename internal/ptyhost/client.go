@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/dspv/caprock/internal/ptyman"
+	"github.com/dspv/caprock/internal/termbuf"
 )
 
 // Manager starts sessions inside pty-host processes and reattaches to the ones
@@ -295,6 +296,20 @@ type remote struct {
 	pr *io.PipeReader
 	pw *io.PipeWriter
 
+	// ring is this session's output as the holder counts it: restored from
+	// the holder's snapshot, so an offset a browser holds stays valid across
+	// a daemon restart. Written only by read.
+	ring *termbuf.Ring
+	// wel is the welcome of the current connection. Read and written only by
+	// read (and reconnect, which read calls).
+	wel welcome
+	// initial is the snapshot read during the handshake, still to be piped.
+	initial []byte
+
+	seqInput atomic.Bool // the holder understands J frames
+	seqMu    sync.Mutex  // one J in flight at a time
+	acks     chan seqAck // K frames, from read to WriteSeq
+
 	done     chan struct{}
 	err      error
 	paused   atomic.Bool
@@ -304,44 +319,90 @@ type remote struct {
 
 // attach dials a holder and completes the handshake.
 func attach(dir string, rec Record, resume bool) (*remote, error) {
-	conn, w, err := dial(rec, resume)
+	conn, w, snap, err := dial(rec, hello{Resume: resume})
 	if err != nil {
 		return nil, err
 	}
 	pr, pw := io.Pipe()
-	r := &remote{dir: dir, rec: rec, childPID: w.ChildPID, conn: conn, pr: pr, pw: pw, done: make(chan struct{})}
+	r := &remote{
+		dir: dir, rec: rec, childPID: w.ChildPID, conn: conn, pr: pr, pw: pw, done: make(chan struct{}),
+		ring: termbuf.NewRing(ringSize), wel: w, initial: snap, acks: make(chan seqAck, 16),
+	}
 	r.paused.Store(w.Paused)
+	r.seqInput.Store(w.SeqInput)
+	if w.Offset != nil {
+		r.restore(w, snap)
+	} else {
+		// A holder from before offsets counts nothing. Start this run's
+		// count at the clock, in nanoseconds: past any offset an earlier
+		// daemon handed out for this session (no terminal prints a byte a
+		// nanosecond), so a browser holding one is sent a fresh screen rather
+		// than the wrong bytes.
+		base := uint64(time.Now().UnixNano()) //nolint:gosec // the clock is after 1970
+		r.ring.Restore(nil, snap, base+uint64(len(snap)))
+	}
 	go r.read()
 	return r, nil
 }
 
-func dial(rec Record, resume bool) (net.Conn, welcome, error) {
+// restore loads a holder's snapshot into the ring at the holder's offsets.
+// The snapshot is the mode prefix followed by bytes [RingStart, Offset).
+func (r *remote) restore(w welcome, snap []byte) {
+	if w.Offset == nil {
+		r.ring.Write(snap)
+		return
+	}
+	held := len(snap)
+	if w.RingStart != nil && *w.Offset-*w.RingStart <= uint64(len(snap)) {
+		held = int(*w.Offset - *w.RingStart) //nolint:gosec // bounded by len(snap) just above
+	}
+	cut := len(snap) - held
+	r.ring.Restore(snap[:cut], snap[cut:], *w.Offset)
+}
+
+// Ring is the session's output, counted as the holder counts it.
+func (r *remote) Ring() *termbuf.Ring { return r.ring }
+
+// dial connects and completes the handshake. Unless the hello resumes, the
+// holder's snapshot follows its welcome and is returned with it.
+func dial(rec Record, hi hello) (net.Conn, welcome, []byte, error) {
 	conn, err := net.DialTimeout("tcp", rec.Addr, 2*time.Second)
 	if err != nil {
-		return nil, welcome{}, fmt.Errorf("%w: %w", errUnreachable, err)
+		return nil, welcome{}, nil, fmt.Errorf("%w: %w", errUnreachable, err)
 	}
-	b, _ := json.Marshal(hello{Proto: Proto, Token: rec.Token, Resume: resume})
+	hi.Proto, hi.Token = Proto, rec.Token
+	b, _ := json.Marshal(hi)
 	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
 	if err := writeFrame(conn, frameHello, b); err != nil {
 		_ = conn.Close()
-		return nil, welcome{}, err
+		return nil, welcome{}, nil, err
 	}
 	typ, payload, err := readFrame(conn)
 	if err != nil {
 		_ = conn.Close()
-		return nil, welcome{}, err
+		return nil, welcome{}, nil, err
 	}
 	if typ == frameError {
 		_ = conn.Close()
-		return nil, welcome{}, fmt.Errorf("%w: %s", errRefused, payload)
+		return nil, welcome{}, nil, fmt.Errorf("%w: %s", errRefused, payload)
 	}
 	var w welcome
 	if typ != frameWelcome || json.Unmarshal(payload, &w) != nil {
 		_ = conn.Close()
-		return nil, welcome{}, fmt.Errorf("%w: unexpected first frame %q", errRefused, typ)
+		return nil, welcome{}, nil, fmt.Errorf("%w: unexpected first frame %q", errRefused, typ)
+	}
+	var snap []byte
+	if !hi.Resume {
+		// Every holder, of every version, sends its snapshot next.
+		typ, payload, err = readFrame(conn)
+		if err != nil || typ != frameSnapshot {
+			_ = conn.Close()
+			return nil, welcome{}, nil, fmt.Errorf("%w: no snapshot after the welcome (%q, %v)", errRefused, typ, err)
+		}
+		snap = payload
 	}
 	_ = conn.SetDeadline(time.Time{})
-	return conn, w, nil
+	return conn, w, snap, nil
 }
 
 // read moves the holder's frames into the output pipe until the session ends,
@@ -349,6 +410,10 @@ func dial(rec Record, resume bool) (net.Conn, welcome, error) {
 func (r *remote) read() {
 	defer close(r.done)
 	defer func() { _ = r.pw.Close() }()
+	if len(r.initial) > 0 {
+		_, _ = r.pw.Write(r.initial)
+		r.initial = nil
+	}
 	for {
 		r.cmu.Lock()
 		conn := r.conn
@@ -373,6 +438,12 @@ func (r *remote) read() {
 		}
 		switch typ {
 		case frameSnapshot, frameOutput:
+			if typ == frameSnapshot {
+				// Only after a reconnect the holder could not catch up.
+				r.restore(r.wel, payload)
+			} else {
+				r.ring.Write(payload)
+			}
 			if len(payload) > 0 {
 				if _, werr := r.pw.Write(payload); werr != nil {
 					// Nobody reads the output any more; keep the
@@ -392,6 +463,14 @@ func (r *remote) read() {
 			r.err = fmt.Errorf("pty-host: %s", payload)
 			_ = conn.Close()
 			return
+		case frameSeqAck:
+			var a seqAck
+			if json.Unmarshal(payload, &a) == nil {
+				select {
+				case r.acks <- a:
+				default:
+				}
+			}
 		default:
 			// A newer holder's frame; ignored by protocol rule.
 		}
@@ -403,8 +482,16 @@ func (r *remote) reconnect() bool {
 		if r.detached.Load() || r.closed.Load() {
 			return false
 		}
-		conn, _, err := dial(r.rec, true)
+		hi := hello{Resume: true}
+		if r.wel.Offset != nil {
+			// Ask for what was printed while the connection was down.
+			since := r.ring.Total()
+			hi.Since = &since
+		}
+		conn, w, _, err := dial(r.rec, hi)
 		if err == nil {
+			r.wel = w
+			r.seqInput.Store(w.SeqInput)
 			r.cmu.Lock()
 			r.conn = conn
 			r.cmu.Unlock()
@@ -460,6 +547,51 @@ func (r *remote) Write(p []byte) (int, error) {
 		return 0, err
 	}
 	return len(p), nil
+}
+
+// SeqAckTimeout is how long sequenced input waits for the holder's answer.
+// Past it the input counts as not applied, and the browser resends it.
+const SeqAckTimeout = 5 * time.Second
+
+var errSeqTimeout = errors.New("ptyhost: no answer to sequenced input")
+
+// WriteSeq types p unless the holder has already applied this client's seq,
+// and returns the client's last applied sequence. The holder keeps the
+// numbering, so it survives this daemon.
+func (r *remote) WriteSeq(client string, seq uint64, p []byte) (uint64, error) {
+	if !r.seqInput.Load() {
+		return 0, ptyman.ErrNotSupported
+	}
+	r.seqMu.Lock()
+	defer r.seqMu.Unlock()
+	for drained := false; !drained; {
+		select {
+		case <-r.acks: // an answer whose asker gave up waiting
+		default:
+			drained = true
+		}
+	}
+	if err := r.send(frameSeqInput, encodeSeqInput(client, seq, p)); err != nil {
+		return 0, err
+	}
+	timer := time.NewTimer(SeqAckTimeout)
+	defer timer.Stop()
+	for {
+		select {
+		case a := <-r.acks:
+			if a.Client != client || a.Req != seq {
+				continue
+			}
+			if a.Error != "" {
+				return a.Seq, fmt.Errorf("pty-host: %s", a.Error)
+			}
+			return a.Seq, nil
+		case <-timer.C:
+			return 0, errSeqTimeout
+		case <-r.done:
+			return 0, errors.New("ptyhost: session ended")
+		}
+	}
 }
 
 func (r *remote) Resize(cols, rows int) error {

@@ -8,6 +8,7 @@ import (
 	"github.com/dspv/caprock/internal/ptyhost"
 	"github.com/dspv/caprock/internal/ptyman"
 	"github.com/dspv/caprock/internal/store"
+	"github.com/dspv/caprock/internal/termbuf"
 )
 
 // UseHosts starts every new session inside a pty-host process (ADR-033), so it
@@ -109,7 +110,7 @@ func (m *Manager) adopt(rec ptyhost.Record, sess ptyman.Session, kind, worktree 
 	a := &Agent{
 		SessionID: rec.SessionID, Cwd: rec.Cwd, Worktree: worktree, Command: rec.Command, StartedAt: rec.StartedAt,
 		Kind: kind, Port: port,
-		sess: sess, ring: newRing(256 << 10), log: m.log, subs: map[chan []byte]struct{}{}, done: make(chan struct{}), onExit: m.OnExit,
+		sess: sess, ring: ringFor(sess, 256<<10), inputs: termbuf.NewInputs(termbuf.InputTTL), log: m.log, subs: map[chan []byte]struct{}{}, done: make(chan struct{}), onExit: m.OnExit,
 	}
 	m.mu.Lock()
 	m.agents[rec.SessionID] = a
