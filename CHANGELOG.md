@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.75.0] - 2026-10-05
+
 ### Added
 
 - **A terminal-first workspace for the desktop app,** at `#/app` (or `?app=1`).
