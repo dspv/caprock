@@ -139,10 +139,10 @@ func TestNoHistoryIsNotAnError(t *testing.T) {
 // decided to stay quiet" — the distinction the whole schedule is made of — and
 // it keeps the suite off the network (rule 4).
 type telegramStub struct {
-	mu   sync.Mutex
+	mu    sync.Mutex
 	sent  []string
 	modes []string // parse_mode of each, "" for plain text
-	fail  string // non-empty ⇒ answer like Telegram refusing the message
+	fail  string   // non-empty ⇒ answer like Telegram refusing the message
 }
 
 func (s *telegramStub) start(t *testing.T) string {

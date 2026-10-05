@@ -9,6 +9,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Changed
+
+- **Phone alerts say which session and what it did.** The first line, the one
+  a lock screen shows, is what happened and the session's title —
+  *✅ Finished · Fix the cache test*, *⏳ Needs approval · …*. Then the folder
+  as `~/dev/caprock` (not just `caprock`) and the branch; for a dialog, the
+  tool and the command or file it asks about; for a finished run, how long it
+  worked since your last prompt, what it cost, its tool calls and the files it
+  changed. A turn that stopped on an error (a rate limit, an overload) now
+  alerts too and says why. Settings → *Phone alerts* has a new switch,
+  *Include the last reply's first line*, on by default. Telegram can read all
+  of it; code and tool output are never sent (ADR-036, amended).
+
 ## [0.73.1] - 2026-10-05
 
 ### Security

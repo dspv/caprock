@@ -604,9 +604,13 @@ minute with nothing new) — every session on the machine, from any terminal,
 each kind with its own switch. Free. Create a bot with `@BotFather`, paste its
 token and your chat id, and press *Send a test alert*.
 
-A message says the project, what happened and the agent, plus a link to the
-session when phone access is on — nothing else: no code, prompts, replies, file
-names or commands. One message per question, at most one of a kind per session
+The first line, the one a lock screen shows, says what happened and which
+session — *✅ Finished · Fix the cache test*, *⏳ Needs approval · …*. Below it:
+the folder (`~/dev/caprock`) and branch; for a dialog, the command or file it
+asks about; for a finished run, how long it worked since your last prompt, what
+it cost, its tool calls, the files it changed and the first line of its reply
+(a switch turns that off); and a link to the session when phone access is on.
+Code and tool output are never sent. One message per question, at most one of a kind per session
 every few minutes and 20 an hour. It goes from your machine straight to
 Telegram, which can read it; nothing passes a server of ours. Today this covers
 Claude Code; Codex and OpenCode do not report an approval or a finished turn

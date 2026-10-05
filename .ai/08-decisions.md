@@ -1447,6 +1447,35 @@ link.
 owner refuses Telegram — then Web Push reuses the hook and the rules and swaps
 the sender.
 
+*Amended 2026-10-05 (owner):* the message carries more than "What leaves the
+machine" above allowed, because the first version said too little to act on —
+the owner got "Caprock · caprock has finished / Claude Code / link" and could
+not tell which session it was or what had happened. It is his own bot, and he
+chose usefulness. A message is now Telegram HTML, every session-derived string
+escaped, and its first line — what a lock screen shows — says what happened and
+which session: *✅ Finished · <title>*, *⚠️ Stopped: rate limit · <title>*,
+*⏳ Needs approval · <title>*, *❓ Needs your answer · <title>*. The title is
+the name Now shows: the agent's own title, or the first prompt that says
+something. Then:
+
+- **Where:** the session's folder with the home directory as `~`
+  (`~/Downloads/caprock`, since several folders share a name), its git branch,
+  and the agent unless it is Claude Code.
+- **A dialog:** the tool and what it asks about, clipped to 100 characters — a
+  Bash command's first line, a file path relative to the session's folder, a
+  URL, or AskUserQuestion's question.
+- **A finished run** (since the owner's last prompt): how long it took, what
+  it cost, the tool calls, how many files it changed with the first three
+  names, and, while *Include the last reply's first line* is on (the default),
+  up to 120 characters of the final reply. A StopFailure (rate limit,
+  overload, billing) now ends a turn for the alert as a Stop does, and says so.
+
+Telegram reads all of it: titles, paths, branches, commands and that reply
+line. Code, diffs and tool output are still never sent, and nothing is sent
+until a bot is set up. This replaces the list under "What leaves the machine"
+and the "sending anything beyond project, status, agent and link" in *Rules
+out*; the rules of when an alert fires are unchanged.
+
 ---
 
 ## ADR-037 — A session can be removed, for good, from the machine
