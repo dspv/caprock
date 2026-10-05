@@ -282,11 +282,40 @@ The macOS spike, 2026-10-04, one Apple Silicon machine, macOS 14.6.1, 60 Hz:
 The Tauri spike (branch `spike/tauri-app`, `app/SPIKE.md`) measures the same
 cells for the app:
 
-<!-- SPIKE: Tauri echo p50/p95 at load 0/200/1000 on macOS, Windows, Linux -->
-<!-- SPIKE: Tauri open session (click to first echo) at load 0/200/1000 -->
-<!-- SPIKE: Tauri memory with 1, 5 and 10 terminal tabs, all processes -->
-<!-- SPIKE: Tauri CPU idle and at load 1000 -->
-<!-- SPIKE: Tauri cold start to first echo; installer and installed size -->
+measured on 2026-10-05 on one Apple Silicon Mac (M1 Pro, macOS 27.0.1, 60 Hz),
+same harness and fake `claude`; keystrokes injected in-process. The native and
+Chrome columns are the 2026-10-04 figures above, not re-run:
+
+| Metric                     | Tauri, lean terminal | Tauri, full dashboard | Chrome tab  | Native     |
+| -------------------------- | -------------------- | --------------------- | ----------- | ---------- |
+| Echo p50 / p95, load 0     | 9.2 / 17.7 ms        | 13.3 / 25.2 ms        | 11.9 / 21.7 | 5.7 / 10.0 |
+| Echo p50 / p95, load 1000  | 10.2 / 18.0 ms       | 16.4 / 26.2 ms        | 14.3 / 21.1 | 5.5 / 9.1  |
+| Open session to first echo | ~280 ms (new window) | 143–212 ms (route)    | 434–1119 ms | 97–113 ms  |
+| Cold start to usable       | 0.65–0.93 s          | 0.54–0.85 s           | –           | 0.7–1.2 s  |
+| CPU, load 0 / 1000         | 6% / 20%             | 8% / 24%              | 5.5% / 20%  | 7% / 14%   |
+| Memory, all app processes  | 177–252 MB           | 206–529 MB            | 278–442 MB  | 34–53 MB   |
+| Download / installed       | 2.0 MB dmg / 4.5 MB  | same app              | –           | –          |
+
+Orca on the same Mac, observed while idle with the owner's sessions open: 8
+processes, 420–541 MB, about 5% CPU, 624 MB installed. Its echo latency and
+cold start were not measured, so as not to touch the owner's sessions; the MVP
+definition of done measures them on a clean profile.
+
+What it says:
+
+- The lean terminal is faster than a Chrome tab and within a few milliseconds
+  of native; the full dashboard route is slower. The app's terminal view must
+  stay lean (no dashboard work on the terminal's thread or route).
+- Memory is the gap to native and the win over Chrome and Orca. The 150 MB
+  one-tab budget was set before measuring and is revised below.
+- The existing dashboard renders in WKWebView unchanged (10 routes, no
+  console errors, WebGL terminal). It still needs: external links and
+  `window.open` sent to the system browser, a download handler, and
+  notification actions, which the official plugin lacks.
+- Not yet measured: Windows (WebView2) and Linux (WebKitGTK). Linux is the
+  risk: blank windows on NVIDIA/Wayland, WebGL lag without DMABUF
+  (`preserveDrawingBuffer: true` mitigates), no global shortcuts on Wayland,
+  tray clicks not delivered. Tauri ≥ 2.11.1 is required (security advisory).
 
 ### Budgets
 
@@ -299,8 +328,8 @@ cells for the app:
 | Switch to an open tab, to first paint      | ≤ 50 ms            |
 | Cold start to interactive window           | ≤ 1.5 s            |
 | Cold start to first echo in a restored tab | ≤ 2.5 s            |
-| Memory, all app processes, 1 tab           | ≤ 150 MB           |
-| Memory, all app processes, 10 tabs         | ≤ 350 MB           |
+| Memory, all app processes, 1 tab           | ≤ 250 MB           |
+| Memory, all app processes, 10 tabs         | ≤ 450 MB           |
 | CPU, window visible, no output             | ≤ 1% of one core   |
 | CPU, window hidden                         | ≤ 0.2% of one core |
 | CPU, one visible tab at 1000 lines/s       | ≤ 25% of one core  |
@@ -314,8 +343,8 @@ cells for the app:
 The echo budget is the web figure's p50 with headroom, not the native one: the
 app renders with xterm.js like the web, and the spike showed echo latency is
 not where native wins (ADR-038). What the app must win is opening, memory,
-focus and the absence of stalls. <!-- SPIKE: revisit echo and memory budgets
-if the Tauri spike measures materially better or worse -->
+focus and the absence of stalls. The memory budgets were raised after the Tauri spike measured 177–252 MB for
+one lean terminal; they stay below Orca (420–541 MB idle) and a Chrome tab.
 
 ## Architecture
 
