@@ -194,8 +194,8 @@ type Settings struct {
 	ReportLastError string `json:"report_last_error,omitempty"`
 	// ReportLastSentMs is when a report last went out, 0 for never.
 	ReportLastSentMs int64 `json:"report_last_sent_ms,omitempty"`
-	// AlertApproval and AlertFinished are the phone alerts' two switches, on
-	// unless turned off; they send nothing until a bot is configured
+	// AlertApproval and AlertFinished are the phone alerts' two switches, off
+	// unless turned on; they send nothing until a bot is configured
 	// (ADR-036). Free, unlike the weekly report that shares the bot.
 	AlertApproval bool `json:"alert_approval"`
 	AlertFinished bool `json:"alert_finished"`

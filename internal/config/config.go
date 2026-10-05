@@ -103,9 +103,9 @@ type Config struct {
 	ReportChatID   string `json:"report_chat_id,omitempty"`
 	// AlertApproval and AlertFinished switch the phone alerts sent through
 	// the same bot: a session waiting for approval, a session that finished
-	// (ADR-036). Pointers so "never set" means on: they take effect only once
-	// a bot is configured, and someone who set one up wants to hear. Free,
-	// unlike the weekly report.
+	// (ADR-036). "Never set" means off: a bot set up for the weekly report
+	// does not start sending alerts on its own. Free, unlike the weekly
+	// report.
 	AlertApproval *bool `json:"alert_approval,omitempty"`
 	AlertFinished *bool `json:"alert_finished,omitempty"`
 	// AlertReply puts the first line of the agent's final reply in a
@@ -349,15 +349,16 @@ func (c Config) MemoryOn() bool {
 }
 
 // AlertApprovalOn reports whether a session waiting for approval is sent to
-// the phone. On unless switched off.
+// the phone. Off unless switched on: a bot set up for the weekly report must
+// not start sending alerts nobody asked for (owner, 2026-10-05).
 func (c Config) AlertApprovalOn() bool {
-	return c.AlertApproval == nil || *c.AlertApproval
+	return c.AlertApproval != nil && *c.AlertApproval
 }
 
 // AlertFinishedOn reports whether a finished session is sent to the phone.
-// On unless switched off.
+// Off unless switched on, like AlertApprovalOn.
 func (c Config) AlertFinishedOn() bool {
-	return c.AlertFinished == nil || *c.AlertFinished
+	return c.AlertFinished != nil && *c.AlertFinished
 }
 
 // AlertReplyOn reports whether a finished alert carries the first line of the

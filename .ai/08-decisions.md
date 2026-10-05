@@ -1425,7 +1425,9 @@ or a path. Nothing is sent until the owner has set up a bot.
 - **Free.** The weekly report stays paid; alerts are not, so the bot is set
   up in Settings outside the report's lock, and the daemon checks no licence.
 - **Every session**, not only those started from the phone, with one switch
-  per kind in Settings; both on by default once a bot is set.
+  per kind in Settings; both on by default once a bot is set. *Amended
+  2026-10-05 (owner):* both are off until switched on, so a bot set up for
+  the weekly report does not start sending alerts on its own.
 - **Waiting for approval at once; finished after a minute** with nothing new,
   so an owner replying at the keyboard is never paged.
 - **No spam:** one message per dialog, one alert of a kind per session in 3

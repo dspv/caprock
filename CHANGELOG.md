@@ -9,6 +9,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Changed
+
+- **Phone alerts are off until you switch them on.** A Telegram bot saved for
+  the weekly report started sending alerts by itself; now *Settings → Phone
+  alerts* turns each kind on.
+
 ## [0.74.0] - 2026-10-05
 
 ### Changed
