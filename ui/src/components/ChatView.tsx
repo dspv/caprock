@@ -6,18 +6,23 @@
  * - **Order is the server's.** Events are held merged by id and sorted by the
  *   daemon's `(ts, id)` (lib/chat.ts), so a late or replayed event lands in
  *   place and never twice. After a reconnect the newest page is fetched again
- *   and merged; whatever overlaps is dropped by id.
+ *   and merged; whatever overlaps is dropped by id. A page that does not reach
+ *   back to what is held is filled with earlier pages until it does.
  * - **The scrolling rule** (useStickToBottom): it follows only at the bottom,
  *   a reader scrolled up stays put to the pixel, and a "↓ N new" pill counts
  *   what arrived. Live events are batched to one update per frame.
  * - **Windowed.** Only the newest messages are in the DOM at first; scrolling
  *   to the top reveals the next page from memory, then from the daemon, and
  *   the hook keeps the first visible message where it was.
+ * - **Bottom-anchored.** A conversation shorter than the view sits at its
+ *   bottom, next to the field, as in a messenger.
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, errText, type Event } from '@/lib/api'
+import { downscalePhoto } from '@/lib/downscale'
 import { compareEvents, isMessageEvent, mergeEvents, toMessages, type ChatMessage } from '@/lib/chat'
-import { live, useLiveConn } from '@/lib/live'
+import { live, useLiveConn, useLiveLink } from '@/lib/live'
+import type { TermState } from '@/lib/termv2'
 import { useStickToBottom } from '@/lib/useStickToBottom'
 import { NewPill } from './NewPill'
 import { Prose } from './Prose'
@@ -28,6 +33,8 @@ import { ChevronIcon } from './AppIcons'
 export const CHAT_PAGE_EVENTS = 300
 /** Messages in the DOM when the view opens, and revealed per step back. */
 export const CHAT_WINDOW = 120
+/** Pages fetched back to close the hole a reconnect left, before starting over. */
+export const CHAT_GAP_PAGES = 10
 /** How near the top a reader gets before the next page is revealed. */
 const REVEAL_PX = 400
 /** A tool result longer than this is cut, with the remainder counted. */
@@ -51,13 +58,41 @@ function keyOf(m: ChatMessage | undefined): Key | null {
   return m ? { ts: m.ts, id: m.id } : null
 }
 
+/**
+ * The events between `held` (the newest event this view has) and `page` (the
+ * newest page, which starts after it), by paging back with `before=` until a
+ * page reaches `held`. Null when CHAT_GAP_PAGES are not enough.
+ */
+async function fillGap(sessionId: string, page: readonly Event[], held: Key): Promise<Event[] | null> {
+  const got: Event[][] = [page.slice()]
+  let oldest = page[0]!
+  for (let i = 0; i < CHAT_GAP_PAGES; i++) {
+    const back = await api.eventsBefore(sessionId, oldest.id, CHAT_PAGE_EVENTS)
+    if (back.length === 0) return got.flat()
+    got.unshift(back)
+    oldest = back[0]!
+    if (compareEvents(oldest, held) <= 0 || back.length < CHAT_PAGE_EVENTS) return got.flat()
+  }
+  return null
+}
+
+/** A file's bytes as base64, in chunks: one call over a large array blows the argument limit. */
+async function base64Of(file: File): Promise<string> {
+  const buf = new Uint8Array(await file.arrayBuffer())
+  let bin = ''
+  for (let i = 0; i < buf.length; i += 8192) bin += String.fromCharCode(...buf.subarray(i, i + 8192))
+  return btoa(bin)
+}
+
 const nextFrame: (fn: () => void) => void =
   typeof requestAnimationFrame === 'function' ? (fn) => { requestAnimationFrame(fn) } : (fn) => { setTimeout(fn, 16) }
 
-export function ChatView({ sessionId, canType, className = '' }: {
+export function ChatView({ sessionId, canType, ended = false, className = '' }: {
   sessionId: string
   /** The session takes input from here: owned, live, and this device may control. */
   canType: boolean
+  /** The session's process is gone: what waits to be sent becomes a draft. */
+  ended?: boolean
   className?: string
 }) {
   const [events, setEvents] = useState<readonly Event[]>([])
@@ -86,16 +121,20 @@ export function ChatView({ sessionId, canType, className = '' }: {
     try {
       const page = await api.recentEvents(sessionId, CHAT_PAGE_EVENTS)
       const held = eventsRef.current[eventsRef.current.length - 1]
-      // A full page that starts after the newest event held leaves a hole of
-      // unknown size between them: start again from this page rather than
-      // show the two halves as one conversation.
-      const hole = !first && held && page.length === CHAT_PAGE_EVENTS && compareEvents(page[0]!, held) > 0
+      // A full page that starts after the newest event held leaves a hole
+      // between them. It is filled by paging back to what is held, so the
+      // reader keeps their place; only a hole wider than CHAT_GAP_PAGES starts
+      // again from this page rather than show two halves as one conversation.
+      const gap = !first && held && page.length === CHAT_PAGE_EVENTS && compareEvents(page[0]!, held) > 0
+      const filled = gap ? await fillGap(sessionId, page, held) : page
+      const hole = gap && filled === null
       if (hole) {
         eventsRef.current = []
         setStartKey(null)
         setExhausted(false)
       }
-      commit(page)
+      const added = commit(filled ?? page)
+      if (!first && !hole && added > 0) setReceived((n) => n + added)
       if (first || hole) {
         if (page.length < CHAT_PAGE_EVENTS) setExhausted(true)
         const msgs = toMessages(eventsRef.current)
@@ -211,6 +250,37 @@ export function ChatView({ sessionId, canType, className = '' }: {
       .catch((e: unknown) => setSendError(`Not sent: ${errText(e)}`))
   }, [sessionId])
 
+  // The offline queue (WP-13) on the live socket's state: the chat types over
+  // HTTP, and the live socket is what says the daemon is reachable now.
+  const link = useLiveLink()
+  const inputState: TermState = ended ? 'ended' : link.phase
+  const isPromptWaiting = useCallback(
+    () => api.permission(sessionId).then((r) => r.permission !== null),
+    [sessionId],
+  )
+  // Typed while it was live, then it ended: the field stays, so what waited
+  // to be sent shows as a draft rather than vanishing with it.
+  const [typable, setTypable] = useState(canType)
+  if (canType && !typable) setTypable(true)
+  const showInput = canType || (ended && typable)
+
+  // A photo: made small enough to send, saved by the daemon (the paste path a
+  // dropped file takes), and its path put in the field, where it is read
+  // with the words about it and sent with them.
+  const attachPhotos = useCallback(async (files: File[]): Promise<string[]> => {
+    const paths: string[] = []
+    for (const f of files) {
+      try {
+        const photo = await downscalePhoto(f)
+        const { path } = await api.paste({ name: photo.name, type: photo.type, data: await base64Of(photo) })
+        paths.push(path)
+      } catch (e) {
+        setSendError(`${f.name ? `${f.name}: ` : ''}not added — ${errText(e)}`)
+      }
+    }
+    return paths
+  }, [])
+
   const stickRef = stick.ref
   const attach = useCallback((el: HTMLDivElement | null) => {
     box.current = el
@@ -225,13 +295,15 @@ export function ChatView({ sessionId, canType, className = '' }: {
           onScroll={onScroll}
           role="log"
           aria-label="Conversation"
-          className="absolute inset-0 overflow-y-auto overscroll-contain px-3 pt-9 pb-2"
+          className="absolute inset-0 flex flex-col overflow-y-auto [&>*]:shrink-0 overscroll-contain px-3 pt-9 pb-2"
         >
           {/* No height of its own, drawn in the padding above the first
             * message: the scrolling rule anchors on the first visible row with
             * a height, and older messages are inserted below this one — as an
-            * anchor it would let them push the reader down. */}
-          <div className="relative h-0">
+            * anchor it would let them push the reader down. Its auto top
+            * margin puts a short conversation at the bottom; once the log
+            * overflows, the margin is zero and it scrolls as before. */}
+          <div className="relative mt-auto h-0">
             <div className="absolute inset-x-0 -top-7 text-center text-[11px] text-fg-faint">
             {error ? (
               <span className="text-danger">{error} <button type="button" className="link" onClick={() => void (loaded ? revealOlder() : loadNewest(true))}>retry</button></span>
@@ -247,10 +319,10 @@ export function ChatView({ sessionId, canType, className = '' }: {
           <NewPill count={stick.newCount} onJump={stick.jump} />
         </div>
       </div>
-      {canType && (
+      {showInput && (
         <div className="shrink-0">
           {sendError && <div role="alert" className="px-3 pt-1.5 text-[12px] text-danger">{sendError}</div>}
-          <TerminalKeys send={send} />
+          <TerminalKeys send={send} attach={attachPhotos} state={inputState} sessionId={sessionId} isPromptWaiting={isPromptWaiting} />
         </div>
       )}
     </div>

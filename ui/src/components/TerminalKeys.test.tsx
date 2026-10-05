@@ -67,6 +67,18 @@ describe('TerminalKeys — attaching a photo', () => {
     await vi.waitFor(() => expect(attach).toHaveBeenCalledWith([photo]))
   })
 
+  // The chat's attach returns the saved paths rather than typing them.
+  it('puts the paths an attach returns into the field, quoted, after what is typed', async () => {
+    const attach = vi.fn(async () => ['/data/paste/IMG 1.jpg', '/data/paste/IMG_2.jpg'])
+    const send = vi.fn()
+    render(<TerminalKeys send={send} attach={attach} />)
+    const field = screen.getByLabelText('Type to the session') as HTMLTextAreaElement
+    fireEvent.change(field, { target: { value: 'look at' } })
+    fireEvent.change(screen.getByTestId('photo-picker'), { target: { files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] } })
+    await vi.waitFor(() => expect(field.value).toBe('look at "/data/paste/IMG 1.jpg" "/data/paste/IMG_2.jpg" '))
+    expect(send).not.toHaveBeenCalled()
+  })
+
   // The Changes tab's "Ask the agent" arrives with the start of a message.
   it('starts from a draft, focused, ready to finish', () => {
     render(<TerminalKeys send={vi.fn()} initial="In a.ts around line 5: " />)
@@ -140,6 +152,15 @@ describe('TerminalKeys — the offline queue (WP-13)', () => {
     rerender(<TerminalKeys send={send} state="ended" />)
     expect(screen.getByText('Not sent — the session ended')).toBeTruthy()
     expect((screen.getByRole('button', { name: 'Send now' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('a message sent after the session ended is a draft at once, never "will send"', () => {
+    const send = vi.fn()
+    render(<TerminalKeys send={send} state="ended" />)
+    type('too late')
+    expect(screen.getByText('Not sent — the session ended')).toBeTruthy()
+    expect(screen.queryByText('Will send when connected')).toBeNull()
     expect(send).not.toHaveBeenCalled()
   })
 

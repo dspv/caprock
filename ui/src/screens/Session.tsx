@@ -23,6 +23,7 @@ import { useStickToBottom } from '@/lib/useStickToBottom'
 import { setDraft } from '@/lib/draft'
 import { RemoveSession } from '@/components/RemoveSession'
 import { ChatView } from '@/components/ChatView'
+import { ChevronIcon } from '@/components/AppIcons'
 
 type Tab = 'chat' | 'timeline' | 'notes' | 'changes' | 'terminal'
 
@@ -76,6 +77,8 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         : narrowScreen() ? 'chat' : 'timeline'
   const now = useNow(1000)
   const [plan] = usePlan()
+  // The phone's Chat tab: a compact header, its details behind a toggle.
+  const [details, setDetails] = useState(false)
   const s = detail.data
   if (detail.error && !s) {
     return <Empty title={detail.error instanceof ApiError && detail.error.status === 404 ? 'Session not found' : 'Cannot load session'}>{detail.error.message}</Empty>
@@ -132,12 +135,58 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   // A session with no events yet has no activity time; Go's zero time is
   // "two thousand years ago", which is what the line under the title said.
   const activityAt = s.activity.at && !String(s.activity.at).startsWith('0001-') ? s.activity.at : s.last_event_at
+  // On a phone the Chat tab is the page, and the header above it was a third
+  // of a 390px screen. There it is one line (back, project, title, state, the
+  // details toggle) and one row of the session's controls; ids, folder,
+  // links, activity and Remove are one tap away under Details. Re-read every
+  // render (the clock ticks each second), so turning the phone follows.
+  const compact = active === 'chat' && narrowScreen()
+  const controls = (
+    <>
+      {!detail.stale && s.owned && s.status !== 'ended' && !reader && <OwnedControls id={id} />}
+      {/* Continue, branch, or the reason neither is possible. The server
+        * decides, because what decides it is on disk: whether Claude Code
+        * still has the transcript, whether the folder is still there. It
+        * used to be decided here from who started the session and which
+        * agent it was, which was right for 39 of 116 ended Claude Code sessions
+        * (FB-036). Caprock never types into a process it did not start
+        * (rule 7); a resume starts a second process on the conversation. */}
+      {s.resume && <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={s.status !== 'ended' && !s.detached} resume={s.resume} />}
+      {/* A relay: a new session, in any agent, started with a summary of
+        * this one that the user reads first — offered next to "continue"
+        * because it answers the same wish when continuing cannot (another
+        * agent, a transcript gone) or is not wanted. */}
+      {s.cwd && !reader && <RelayMenu sessionID={s.session_id} />}
+    </>
+  )
   return (
     <div className="grid grid-cols-1 gap-2">
       <>
+      {compact && (
+        <div data-compact-header className="grid gap-1.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <a href={href({ name: 'now' })} aria-label="Back to Now" className="link shrink-0 text-fg-muted text-[13px] py-1">←</a>
+            <h1 className="max-w-[45%] shrink-0 truncate text-[15px] font-medium">{s.project || 'unknown project'}</h1>
+            <span className={`min-w-0 flex-1 truncate text-[12px] ${s.description_source === 'title' ? 'text-fg' : 'text-fg-muted'}`}>{s.description}</span>
+            {!detail.stale && <Badge health={s.activity.health} />}
+            <button
+              type="button"
+              aria-expanded={details}
+              aria-label="Session details"
+              onClick={() => setDetails((v) => !v)}
+              className="-mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-fg-muted hover:bg-panel-2 hover:text-fg"
+            >
+              <ChevronIcon size={16} className={`transition-transform motion-reduce:transition-none ${details ? '-rotate-90' : 'rotate-90'}`} />
+            </button>
+          </div>
+          {/* One row, scrolled sideways if it must: never a second. */}
+          <div className="flex items-center gap-3 overflow-x-auto whitespace-nowrap [scrollbar-width:none] empty:hidden">{controls}</div>
+        </div>
+      )}
+      {(!compact || details) && <>
       <div className="flex items-center gap-3 flex-wrap">
-        <a href={href({ name: 'now' })} className="link text-fg-muted text-[12px]">← Now</a>
-        <h1 className="text-[15px] font-medium">{s.project || 'unknown project'}</h1>
+        {!compact && <a href={href({ name: 'now' })} className="link text-fg-muted text-[12px]">← Now</a>}
+        {!compact && <h1 className="text-[15px] font-medium">{s.project || 'unknown project'}</h1>}
         <span className="mono text-[11px] text-fg-faint">{s.session_id}</span>
         {s.native_id && (
           <span className="mono text-[11px] text-fg-faint" title={`${agentName(s.agent)}'s own id for this session — what its resume takes`}>
@@ -146,21 +195,8 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         )}
         {s.git_branch && <span className="mono text-[11px] text-fg-muted">{s.git_branch}</span>}
         {/* Health and the controls are about now: never from a kept copy. */}
-        {!detail.stale && <Badge health={s.activity.health} />}
-        {!detail.stale && s.owned && s.status !== 'ended' && !reader && <OwnedControls id={id} />}
-        {/* Continue, branch, or the reason neither is possible. The server
-          * decides, because what decides it is on disk: whether Claude Code
-          * still has the transcript, whether the folder is still there. It
-          * used to be decided here from who started the session and which
-          * agent it was, which was right for 39 of 116 ended Claude Code sessions
-          * (FB-036). Caprock never types into a process it did not start
-          * (rule 7); a resume starts a second process on the conversation. */}
-        {s.resume && <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={s.status !== 'ended' && !s.detached} resume={s.resume} />}
-        {/* A relay: a new session, in any agent, started with a summary of
-          * this one that the user reads first — offered next to "continue"
-          * because it answers the same wish when continuing cannot (another
-          * agent, a transcript gone) or is not wanted. */}
-        {s.cwd && !reader && <RelayMenu sessionID={s.session_id} />}
+        {!compact && !detail.stale && <Badge health={s.activity.health} />}
+        {!compact && controls}
         {detail.stale && <StaleNote at={detail.cachedAt} now={now} />}
         <span className="text-[12px] text-fg-muted ml-auto num min-w-0 [overflow-wrap:anywhere]">{s.cwd}</span>
         {!detail.stale && <RemoveSession sessionID={s.session_id} costUSD={s.stats.cost_usd} running={s.status === 'active' || (s.owned && s.status !== 'ended' && !s.detached)} />}
@@ -194,12 +230,13 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         </span>}
         <RecentPRs prs={s.prs} className="ml-auto" />
       </div>}
+      </>}
       {/* A session Caprock starts but cannot read — Gemini today — produced six
         * columns of zeros with the reason in 11px grey underneath. Zeros are
         * how this bar shows "nothing happened yet", so it read as broken
         * rather than as out of scope. Say the one true thing instead. */}
       {unmeasurable ? (
-        <Panel>
+        <Panel className={active === 'chat' ? 'max-sm:hidden' : ''}>
           <div className="px-3 py-2.5 text-[13px] text-fg-muted">
             {waitingOnLink ? (
               <>
@@ -260,7 +297,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
       {active === 'timeline' && (detail.stale ? <Skeleton rows={6} /> : <Timeline id={id} initial={s.events} now={now} at={at} />)}
       {active === 'chat' && (
         <Panel className="overflow-hidden">
-          <ChatView sessionId={id} canType={!reader && s.owned && s.status !== 'ended' && !s.detached} className="h-[70dvh] min-h-[360px]" />
+          <ChatView sessionId={id} canType={!reader && s.owned && s.status !== 'ended' && !s.detached} ended={s.status === 'ended' || !!s.detached} className="h-[70dvh] min-h-[360px]" />
         </Panel>
       )}
       {active === 'notes' && <SessionNotes id={id} now={now} />}

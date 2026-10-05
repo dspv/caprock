@@ -66,7 +66,8 @@ function saveHeld(sessionId: string | undefined, held: readonly Held[]): void {
  */
 export function TerminalKeys({ send, attach, initial = '', state, isPromptWaiting, sessionId }: {
   send: (bytes: string) => void
-  attach?: (files: File[]) => Promise<void>
+  /** Attaches photos; the paths it returns, if any, go into the field (the chat). */
+  attach?: (files: File[]) => Promise<void | readonly string[]>
   initial?: string
   /** The terminal's connection; absent, it is taken as live. */
   state?: TermState
@@ -92,11 +93,12 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
     const id = window.setTimeout(() => setNotice(''), NOTICE_MS)
     return () => window.clearTimeout(id)
   }, [notice])
+  // Why a message cannot wait for a reconnect: none is coming.
+  const finalReason = state === 'ended' ? 'the session ended' : state === 'revoked' ? 'this device can no longer type' : ''
   useEffect(() => {
     const toDraft = (reason: string) => setHeld((list) => list.map((h) => (h.draft ? h : { ...h, draft: reason })))
     if (!heldRef.current.some((h) => !h.draft)) return
-    if (state === 'ended') { toDraft('the session ended'); return }
-    if (state === 'revoked') { toDraft('this device can no longer type'); return }
+    if (finalReason) { toDraft(finalReason); return }
     if (!live) return
     let current = true
     void (async () => {
@@ -140,12 +142,18 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
   const picker = useRef<HTMLInputElement>(null)
 
   // The picked photos' paths are typed into the session, as a drop's are;
-  // what to say about them goes in the field and is sent after.
+  // what to say about them goes in the field and is sent after. Where attach
+  // returns the paths instead (the chat), they go into the field, quoted.
   const onPicked = async (files: File[]) => {
     if (!attach || files.length === 0) return
     setAttaching(true)
     try {
-      await attach(files)
+      const paths = await attach(files)
+      if (paths && paths.length > 0) {
+        const quoted = paths.map((p) => `"${p}" `).join('')
+        setText((t) => (t && !/\s$/.test(t) ? `${t} ${quoted}` : `${t}${quoted}`))
+        field.current?.focus()
+      }
     } finally {
       setAttaching(false)
       if (picker.current) picker.current.value = ''
@@ -165,7 +173,8 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
 
   const submit = () => {
     if (text && !live) {
-      setHeld((list) => [...list, { id: Date.now() + Math.random(), text }])
+      // Sent after the end: a draft at once, never "will send".
+      setHeld((list) => [...list, { id: Date.now() + Math.random(), text, ...(finalReason ? { draft: finalReason } : {}) }])
     } else if (text) {
       void deliver(text)
     } else {

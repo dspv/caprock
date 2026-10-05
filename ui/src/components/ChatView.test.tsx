@@ -11,9 +11,10 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Event } from '@/lib/api'
 import { live } from '@/lib/live'
-import { ChatView, CHAT_PAGE_EVENTS, CHAT_WINDOW } from './ChatView'
+import type { LinkPhase } from '@/lib/reconnect'
+import { ChatView, CHAT_GAP_PAGES, CHAT_PAGE_EVENTS, CHAT_WINDOW } from './ChatView'
 
-const store = vi.hoisted(() => ({ events: [] as Event[], inputs: [] as string[] }))
+const store = vi.hoisted(() => ({ events: [] as Event[], inputs: [] as string[], before: 0, prompt: false }))
 
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
@@ -24,11 +25,14 @@ vi.mock('@/lib/api', async (orig) => {
       ...actual.api,
       recentEvents: async (_id: string, limit: number) => store.events.slice().sort(order).slice(-limit),
       eventsBefore: async (_id: string, before: number, limit: number) => {
+        store.before++
         const all = store.events.slice().sort(order)
         const at = all.findIndex((e) => e.id === before)
         return all.slice(Math.max(0, at - limit), at)
       },
       agentInput: async (_id: string, data: string) => { store.inputs.push(data) },
+      permission: async () => ({ permission: store.prompt ? { id: 'p', tool: 'Bash', detail: 'ls', since: '' } : null }),
+      paste: async (f: { name: string }) => ({ path: `/data/paste/${f.name}` }),
     },
   }
 })
@@ -61,9 +65,18 @@ const realRect = Element.prototype.getBoundingClientRect
 const GEOMETRY = ['clientHeight', 'scrollHeight', 'scrollTop'] as const
 const originals = GEOMETRY.map((k) => Object.getOwnPropertyDescriptor(HTMLElement.prototype, k))
 
+/** The live socket's state, as the reconnect policy would set it. */
+function setPhase(phase: LinkPhase) {
+  act(() => { (live as unknown as { set: (p: object) => void }).set({ link: { phase, attempt: 0, nextAt: null, downSince: null } }) })
+}
+
 beforeEach(() => {
   store.events = []
   store.inputs = []
+  store.before = 0
+  store.prompt = false
+  sessionStorage.clear()
+  setPhase('live')
   Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get(this: Element) { return isLog(this) ? VIEW : 0 } })
   Object.defineProperty(HTMLElement.prototype, 'scrollHeight', { configurable: true, get(this: Element) { return isLog(this) ? contentHeight(this) : 0 } })
   Object.defineProperty(HTMLElement.prototype, 'scrollTop', {
@@ -210,6 +223,112 @@ describe('ChatView', () => {
     fireEvent.change(field, { target: { value: 'καλημέρα' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     await waitFor(() => expect(store.inputs).toEqual(['καλημέρα', '\r']), { timeout: 1000 })
+  })
+
+  it('a reconnect whose newest page misses what is held pages back to it: nothing lost, the reader stays put', async () => {
+    store.events = Array.from({ length: CHAT_PAGE_EVENTS }, (_, i) => msg(i + 1))
+    render(<ChatView sessionId="s" canType={false} />)
+    await waitFor(() => expect(renderedIds()).toHaveLength(CHAT_WINDOW))
+    const el = log()
+    act(() => { el.scrollTop = 1000; fireEvent.scroll(el) })
+    const before = firstVisible()
+    const shownFirst = renderedIds()[0]!
+    // 1,200 events arrived while away, more than one page past what is held.
+    const total = CHAT_PAGE_EVENTS * 5
+    store.events = Array.from({ length: total }, (_, i) => msg(i + 1))
+    store.before = 0
+    await act(async () => { live.handle({ type: 'reset', data: { seq: 1 } }); await new Promise((r) => setTimeout(r, 40)) })
+    await waitFor(() => expect(renderedIds()[renderedIds().length - 1]).toBe(total))
+    const ids = renderedIds()
+    expect(ids[0]).toBe(shownFirst)
+    expect(ids).toEqual(Array.from({ length: total - shownFirst + 1 }, (_, i) => shownFirst + i))
+    expect(store.before).toBe(4)
+    const after = firstVisible()
+    expect(after.id).toBe(before.id)
+    expect(Math.abs(after.top - before.top)).toBeLessThanOrEqual(1)
+    // 1,200 new, which the pill caps at 999+.
+    expect(screen.getByRole('button', { name: /999\+/ })).toBeInTheDocument()
+  })
+
+  it('a hole wider than the pages it may fetch starts again from the newest page', async () => {
+    store.events = Array.from({ length: CHAT_PAGE_EVENTS }, (_, i) => msg(i + 1))
+    render(<ChatView sessionId="s" canType={false} />)
+    await waitFor(() => expect(renderedIds()).toHaveLength(CHAT_WINDOW))
+    const total = CHAT_PAGE_EVENTS * (CHAT_GAP_PAGES + 3)
+    store.events = Array.from({ length: total }, (_, i) => msg(i + 1))
+    store.before = 0
+    await act(async () => { live.handle({ type: 'reset', data: { seq: 1 } }); await new Promise((r) => setTimeout(r, 40)) })
+    await waitFor(() => expect(renderedIds()[0]).toBe(total - CHAT_WINDOW + 1))
+    expect(store.before).toBe(CHAT_GAP_PAGES)
+    expect(renderedIds()).toHaveLength(CHAT_WINDOW)
+  })
+
+  it('a short conversation sits at the bottom, next to the field', async () => {
+    store.events = [msg(1), msg(2)]
+    render(<ChatView sessionId="s" canType={false} />)
+    await waitFor(() => expect(renderedIds()).toEqual([1, 2]))
+    // The flex column and the first row's auto top margin are what push it
+    // down in a browser; the measurements at 390, 320 and 1400 px are in the PR.
+    expect(log().className).toMatch(/\bflex-col\b/)
+    expect(log().firstElementChild!.className).toMatch(/\bmt-auto\b/)
+  })
+
+  it('offline, a message is held as "will send", and goes when the live socket is back', async () => {
+    render(<ChatView sessionId="s" canType />)
+    setPhase('reconnecting')
+    fireEvent.change(screen.getByLabelText('Type to the session'), { target: { value: 'ciao' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(screen.getByText('Will send when connected')).toBeInTheDocument()
+    await new Promise((r) => setTimeout(r, 150))
+    expect(store.inputs).toEqual([])
+    act(() => { live.handle({ type: 'hello', data: { server_time: Date.now() } }) })
+    await waitFor(() => expect(store.inputs).toEqual(['ciao', '\r']), { timeout: 1000 })
+    expect(screen.queryByText('Will send when connected')).toBeNull()
+  })
+
+  it('offline, a raw key is refused, never queued', () => {
+    render(<ChatView sessionId="s" canType />)
+    setPhase('reconnecting')
+    fireEvent.click(screen.getByRole('button', { name: /^Escape/ }))
+    expect(screen.getByText(/Esc was not sent/)).toBeInTheDocument()
+    expect(store.inputs).toEqual([])
+  })
+
+  it('back with a permission prompt waiting, the held message stays a draft', async () => {
+    store.prompt = true
+    render(<ChatView sessionId="s" canType />)
+    setPhase('reconnecting')
+    fireEvent.change(screen.getByLabelText('Type to the session'), { target: { value: 'yes do it' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    act(() => { live.handle({ type: 'hello', data: { server_time: Date.now() } }) })
+    expect(await screen.findByText('Not sent — a permission prompt is waiting')).toBeInTheDocument()
+    expect(store.inputs).toEqual([])
+  })
+
+  it('the session ending while a message waits turns it into a draft, still on screen', () => {
+    const { rerender } = render(<ChatView sessionId="s" canType />)
+    setPhase('reconnecting')
+    fireEvent.change(screen.getByLabelText('Type to the session'), { target: { value: 'one more' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    rerender(<ChatView sessionId="s" canType={false} ended />)
+    expect(screen.getByText('Not sent — the session ended')).toBeInTheDocument()
+    expect(store.inputs).toEqual([])
+  })
+
+  it('an ended session opened afresh has no input', () => {
+    render(<ChatView sessionId="s" canType={false} ended />)
+    expect(screen.queryByLabelText('Type to the session')).toBeNull()
+  })
+
+  it('a photo is saved by the daemon and its path goes into the field, sent with the words', async () => {
+    render(<ChatView sessionId="s" canType />)
+    const field = screen.getByLabelText('Type to the session') as HTMLTextAreaElement
+    fireEvent.change(screen.getByTestId('photo-picker'), { target: { files: [new File(['x'], 'IMG_0001.png', { type: 'image/png' })] } })
+    await waitFor(() => expect(field.value).toBe('"/data/paste/IMG_0001.png" '))
+    expect(store.inputs).toEqual([])
+    fireEvent.change(field, { target: { value: `${field.value}what is wrong here?` } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    await waitFor(() => expect(store.inputs).toEqual(['"/data/paste/IMG_0001.png" what is wrong here?', '\r']), { timeout: 1000 })
   })
 
   it('a viewer gets no input', async () => {

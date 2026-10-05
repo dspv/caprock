@@ -340,7 +340,7 @@ export function TerminalView({
       raf = 0
       const el = host.current
       if (!el) return
-      const geom = `${el.clientWidth}x${el.clientHeight}`
+      const geom = `${el.clientWidth}x${el.clientHeight}:${grid?.clientHeight ?? 0}`
       if (geom === last) return
       last = geom
       try { fit.fit() } catch { /* not laid out yet */ }
@@ -350,6 +350,12 @@ export function TerminalView({
       raf = requestAnimationFrame(refit)
     })
     ro.observe(host.current)
+    // The grid as well: a renderer swap (WebGL, or back after a context loss)
+    // changes the cell size and keeps the row count, so the grid grows with
+    // the box unchanged — at 390px it ran 62px past it, over the keys bar's
+    // field (WP-13's 320px screenshot). Its new size is a reason to fit.
+    const grid = term.element?.querySelector('.xterm-screen')
+    if (grid) ro.observe(grid)
     return () => {
       input.dispose()
       if (raf) cancelAnimationFrame(raf)
