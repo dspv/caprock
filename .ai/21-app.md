@@ -10,10 +10,12 @@ the weeks, work packages and definitions of done are in
 work package that builds them moves them into [03-contracts.md](03-contracts.md)
 in the same commit (rule 8).
 
-**Status (2026-10-05): specified; the engine side of projects, shell tabs and
-worktrees is built** (WP-05, WP-07, WP-08 API; contract in
-[03-contracts.md § Projects and shells](03-contracts.md#projects-and-shells-desktop-app-wp-05-wp-07-wp-08)).
-Nothing in `ui/` uses it yet.
+**Status (2026-10-05): specified; built so far:** the shell in `app/` (WP-01,
+WP-02: window, fallback page, per-origin commands, daemon supervisor,
+`api_level`; behaviour in [`app/README.md`](../app/README.md)) and the engine
+side of projects, shell tabs and worktrees (WP-05, WP-07, WP-08 API; contract
+in [03-contracts.md § Projects and shells](03-contracts.md#projects-and-shells-desktop-app-wp-05-wp-07-wp-08)).
+Nothing in `ui/` uses them yet.
 
 ## Goal
 
@@ -298,6 +300,11 @@ Chrome columns are the 2026-10-04 figures above, not re-run:
 | Memory, all app processes  | 177–252 MB           | 206–529 MB            | 278–442 MB  | 34–53 MB   |
 | Download / installed       | 2.0 MB dmg / 4.5 MB  | same app              | –           | –          |
 
+The scaffold (WP-01/WP-02, 2026-10-05, same Mac): launch to the dashboard's
+`load` event with a running daemon, 0.44–0.59 s over five runs (1.48 s on the
+first launch after a rebuild, Gatekeeper's scan); a 4.3 MB app binary and a
+19.2 MB `.app` with the 15.7 MB daemon inside.
+
 Orca on the same Mac, observed while idle with the owner's sessions open: 8
 processes, 420–541 MB, about 5% CPU, 624 MB installed. Its echo latency and
 cold start were not measured, so as not to touch the owner's sessions; the MVP
@@ -380,10 +387,17 @@ one lean terminal; they stay below Orca (420–541 MB idle) and a Chrome tab.
 - **The shell talks to the page through Tauri commands**, allowlisted for the
   daemon's origin only: `notify`, `set_badge`, `set_tray`, `register_hotkey`,
   `open_external` (https and the editors' schemes only), `daemon_status`. No
-  shell, filesystem or HTTP plugin is exposed to the page.
+  shell, filesystem or HTTP plugin is exposed to the page. The bundled
+  fallback page, on the app's own origin, alone gets `start_daemon`,
+  `update_daemon` and `set_background` (built in WP-02; the others arrive
+  with their work packages).
 - **The daemon supervisor** reads `runtime.json`, starts the bundled binary
   when no daemon answers, and never stops a daemon it did not start. Quitting
-  the app leaves the daemon and every session running.
+  the app leaves the daemon and every session running. It runs its copy from
+  `<data_dir>/bin/caprock`, never from inside the app bundle: an unsigned app
+  can run translocated from a read-only path, and a login service must
+  survive the app moving. The first-run choice is kept in
+  `<data_dir>/app.json` ([03-contracts.md § Runtime file](03-contracts.md#runtime-file)).
 - **api_level.** `GET /v1/status` and `runtime.json` gain `api_level`, an
   integer raised by every change a client must know about. The app declares
   the minimum it needs. A daemon below it is shown as "needs an upgrade" with

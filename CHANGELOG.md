@@ -28,6 +28,16 @@ Phase 3 (Delight) has no plan by design.
   shell is in no total, card or count.
 - **From the phone**, a controller can add, create and clone a project under
   home and make or remove a worktree. Shells stay on the machine for now.
+- **`api_level` in `GET /v1/status` and `runtime.json`**, an integer raised by
+  every API change a client must know about, so the desktop app (and later a
+  bundled UI) can tell whether a daemon is new enough without parsing its
+  version. `runtime.json` also records the daemon's executable path.
+- **`CAPROCK_SERVICE_LABEL`** runs `caprock service install|uninstall|status`
+  under another label, so a second, isolated install (a preview, a test) never
+  touches the real `dev.caprock.daemon` login agent.
+- **The desktop app's shell** in `app/` (Tauri v2): it finds or starts the
+  daemon and opens its dashboard in a native window. Built and tested in CI on
+  macOS, Windows and Linux; `make app` runs it from a checkout.
 
 ### Changed
 

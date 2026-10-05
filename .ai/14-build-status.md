@@ -72,6 +72,31 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-05 — The desktop app: shell, supervisor and CI (WP-01, WP-02)
+
+`app/` is the Tauri v2 shell: one window, native chrome on macOS (overlay
+title bar, inset traffic lights, sidebar vibrancy), size and position
+remembered, links to the system browser, downloads through a save dialog. It
+loads the dashboard from the daemon at `/?app=1#/app`, or a bundled fallback
+page when no compatible daemon answers. The supervisor uses a running daemon
+whoever installed it, refuses one below `MIN_API_LEVEL` with its upgrade
+command (or **Update** for a daemon the app installed), and on a first run
+asks once with the background-service switch on, then copies the bundled
+daemon to `<data_dir>/bin` and runs `caprock service install` or `caprock up`.
+Commands are granted per origin; tests check that the daemon's pages cannot
+start, update or reconfigure the daemon and that other origins get nothing.
+The daemon gained `api_level` (`/v1/status`, `runtime.json`), `exe` in
+`runtime.json`, and `CAPROCK_SERVICE_LABEL` so an isolated install never
+touches the real login agent. CI builds, tests and bundles the app on three
+OS. Checked against isolated daemons on the owner's Mac without taking focus:
+first run with the service on, reuse of a running daemon (one process),
+`caprock down` and `kill -9` (fallback in 2.0 s, back 0.6 s after the service
+restarted it), a Homebrew 0.74.0 daemon refused with `brew update && brew
+upgrade caprock`, and an outdated app-installed daemon updated in place.
+Launch to the dashboard: 0.44–0.59 s. Not exercised live: the external-link
+and download handlers and the menu switch, which would have opened a browser
+or a dialog on a desktop in use.
+
 ### 2026-10-05 — Terminal protocol v2 (WP-03)
 
 The terminal socket gained version 2 beside version 1
@@ -90,6 +115,7 @@ client; holders and daemons from before v2 against new ones. Checked in a
 headless Chromium on a preview daemon: `kill -9` of the daemon mid-word and
 25 s of network loss mid-word, and the program received each word once. Left
 for WP-04: the hidden-tab close after 30 s and the mode reset on exit.
+
 ### 2026-10-05 — Projects, shell tabs and worktrees in the daemon (WP-05, WP-07, WP-08 engine)
 
 Migration 0041 (`projects`), `internal/projects` (list, seeding, fsnotify git
