@@ -496,7 +496,7 @@ export interface Settings {
   report_last_sent_ms?: number
   /** Write-only: accepted by PUT, never present in a GET response. */
   report_bot_token?: string
-  /** Phone alerts through the same bot (ADR-035): on unless turned off, free. */
+  /** Phone alerts through the same bot (ADR-036): off unless turned on, free. */
   alert_approval?: boolean
   alert_finished?: boolean
   /** The first line of the final reply in a finished alert; on unless turned off. */

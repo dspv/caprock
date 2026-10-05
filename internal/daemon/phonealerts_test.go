@@ -18,7 +18,8 @@ import (
 // says what happened, where, and the command the dialog asks about, in HTML.
 func TestADialogReachesThePhoneWithoutALicence(t *testing.T) {
 	tg := &telegramStub{}
-	d, _ := reportDaemon(t, tg.start(t), config.Config{ReportBotToken: "tok", ReportChatID: "chat"})
+	on := true
+	d, _ := reportDaemon(t, tg.start(t), config.Config{ReportBotToken: "tok", ReportChatID: "chat", AlertApproval: &on})
 	d.bus = d.rec.Bus
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -62,10 +63,19 @@ func TestNoBotNoAlerts(t *testing.T) {
 }
 
 func TestASwitchTurnsOneKindOff(t *testing.T) {
-	off := false
-	d, _ := reportDaemon(t, "http://127.0.0.1:1", config.Config{ReportBotToken: "tok", ReportChatID: "chat", AlertFinished: &off})
+	on, off := true, false
+	d, _ := reportDaemon(t, "http://127.0.0.1:1", config.Config{ReportBotToken: "tok", ReportChatID: "chat", AlertApproval: &on, AlertFinished: &off})
 	if !d.alertEnabled("approval") || d.alertEnabled("finished") {
 		t.Fatal("switches not honoured")
+	}
+}
+
+// A bot set up for the weekly report does not start sending alerts on its
+// own: both kinds stay off until switched on (owner, 2026-10-05).
+func TestAlertsAreOffUntilSwitchedOn(t *testing.T) {
+	d, _ := reportDaemon(t, "http://127.0.0.1:1", config.Config{ReportBotToken: "tok", ReportChatID: "chat"})
+	if d.alertEnabled("approval") || d.alertEnabled("finished") {
+		t.Fatal("an alert kind is on although nobody switched it on")
 	}
 }
 

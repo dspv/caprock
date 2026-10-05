@@ -3,8 +3,8 @@
  * approval, and when one has finished (ADR-036).
  *
  * Free, through the bot the weekly report uses — so the bot is set up here as
- * well, outside the report's lock. Both switches are on by default and do
- * nothing until a bot is saved. The test button exists for the same reason as
+ * well, outside the report's lock. Both switches are off until switched on,
+ * so a bot saved for the weekly report never starts alerting on its own. The test button exists for the same reason as
  * the report's: the failure mode of an alert is silence.
  */
 import { useState } from 'react'
@@ -62,13 +62,13 @@ export function PhoneAlerts() {
         calls and changed files. Telegram can read every message; code and tool output are never sent.
       </p>
       <Toggle
-        checked={s.alert_approval !== false}
+        checked={s.alert_approval === true}
         onChange={(on) => toggle('alert_approval', on)}
         label="When a session is waiting for approval"
         hint="At once, once per question. A burst of questions in one session is one message."
       />
       <Toggle
-        checked={s.alert_finished !== false}
+        checked={s.alert_finished === true}
         onChange={(on) => toggle('alert_finished', on)}
         label="When a session has finished"
         hint="After a minute with nothing new, so replying straight away sends nothing."

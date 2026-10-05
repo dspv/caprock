@@ -579,8 +579,8 @@ reclaimable_bytes, growth_bytes_per_day_est, retention_days}`.
 
 **Phone alerts** ([ADR-036](08-decisions.md)) go through the same bot and are
 free: no licence is checked. `PUT /v1/settings` accepts `alert_approval` and
-`alert_finished` (bools, both on unless turned off, stored as pointers in
-`config.json` so "never set" means on) and `alert_reply` (the same, for the
+`alert_finished` (bools, both off unless turned on, stored as pointers in
+`config.json` so "never set" means off) and `alert_reply` (on unless turned off, for the
 first line of the final reply in a finished alert); `GET` returns them with
 `alert_last_error` and `alert_last_sent_ms`, held in memory since the daemon
 started. Nothing is sent until a bot token and chat id are set. The rules, in
