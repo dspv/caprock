@@ -127,6 +127,19 @@ pub fn build(
             })
     };
     let w = b.build()?;
+    // macOS: closing the window hides it; the app stays in the menu bar
+    // with its hotkey and badge (Cmd+Q quits). Elsewhere closing quits, as
+    // a tray may not be shown at all (GNOME without an indicator extension).
+    #[cfg(target_os = "macos")]
+    {
+        let hidden = w.clone();
+        w.on_window_event(move |e| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = e {
+                api.prevent_close();
+                let _ = hidden.hide();
+            }
+        });
+    }
     // If the first page is slow, show the window anyway rather than nothing.
     let late = w.clone();
     thread::spawn(move || {
@@ -227,6 +240,7 @@ pub fn monitor(app: AppHandle, sup: Arc<Supervisor>) {
     thread::spawn(move || {
         let mut absent_since: Option<Instant> = None;
         let mut resume: Option<Url> = None;
+        let mut was_connected = false;
         loop {
             let found = discovery::find(&sup.data_dir);
             let absent_for = match found {
@@ -237,6 +251,11 @@ pub fn monitor(app: AppHandle, sup: Arc<Supervisor>) {
                 }
             };
             let state = sup.observe(found, absent_for);
+            let connected = matches!(state, State::Connected { .. });
+            if was_connected && !connected {
+                crate::tray::daemon_gone(&app);
+            }
+            was_connected = connected;
             if let Some(w) = app.get_webview_window(MAIN) {
                 follow(&w, &sup, &state, &mut resume);
             }

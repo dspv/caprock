@@ -4,12 +4,15 @@
 //! in the Go daemon and the React UI it serves.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod badge;
 mod commands;
 mod discovery;
+mod hotkey;
 mod shell;
 #[cfg(all(feature = "snapshot", target_os = "macos"))]
 mod snapshot;
 mod supervisor;
+mod tray;
 
 use std::path::PathBuf;
 use supervisor::{State, Supervisor};
@@ -24,7 +27,11 @@ macro_rules! handler {
             commands::start_daemon,
             commands::update_daemon,
             commands::set_background,
-            commands::open_external
+            commands::open_external,
+            commands::set_tray,
+            commands::set_badge,
+            commands::hotkey_status,
+            commands::register_hotkey
         ]
     };
 }
@@ -32,8 +39,11 @@ macro_rules! handler {
 fn configure<R: tauri::Runtime>(b: tauri::Builder<R>, sup: commands::Sup) -> tauri::Builder<R> {
     b.plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .manage(hotkey::Hotkey::new(&sup.data_dir))
         .manage(sup)
         .manage(shell::Downloads::default())
+        .manage(tray::Tray::default())
+        .manage(badge::Badge::default())
         .invoke_handler(handler!())
 }
 
@@ -55,6 +65,15 @@ fn main() {
     #[cfg(target_os = "macos")]
     let b = b.activate_ignoring_other_apps(!quiet);
     b.plugin(
+        tauri_plugin_global_shortcut::Builder::new()
+            .with_handler(|app, _, event| {
+                if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                    hotkey::toggle(app);
+                }
+            })
+            .build(),
+    )
+    .plugin(
         // Size and position are remembered; visibility is the shell's call
         // (shown when the first page has loaded).
         tauri_plugin_window_state::Builder::new()
@@ -63,6 +82,8 @@ fn main() {
     )
     .setup(move |app| {
         shell::build(app.handle(), monitored.clone(), start, !quiet)?;
+        tray::install(app.handle())?;
+        hotkey::load(app.handle());
         #[cfg(target_os = "macos")]
         menu::install(app.handle(), &monitored)?;
         shell::monitor(app.handle().clone(), monitored);
@@ -70,8 +91,16 @@ fn main() {
         snapshot::watch(app.handle().clone());
         Ok(())
     })
-    .run(tauri::generate_context!())
-    .expect("run the Caprock app");
+    .build(tauri::generate_context!())
+    .expect("build the Caprock app")
+    .run(|_app, _event| {
+        // macOS: closing the window keeps the app in the menu bar; a click
+        // on the Dock icon brings the window back.
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Reopen { .. } = _event {
+            hotkey::show(_app);
+        }
+    });
 }
 
 /// The macOS app menu gains the background switch (decision 7): the same
@@ -169,6 +198,36 @@ mod tests {
         ] {
             let err = invoke(DAEMON, cmd, body).expect_err(cmd);
             assert!(err.to_string().contains("not allowed"), "{cmd}: {err}");
+        }
+    }
+
+    #[test]
+    fn the_daemon_page_may_fill_the_tray_and_badge_and_read_the_hotkey() {
+        let view =
+            serde_json::json!({"view": {"title": "42%", "lines": ["Today $1.00"], "waiting": []}});
+        invoke(DAEMON, "set_tray", view).expect("set_tray");
+        invoke(DAEMON, "set_badge", serde_json::json!({"count": 2})).expect("set_badge");
+        let st = invoke(DAEMON, "hotkey_status", serde_json::json!({})).expect("hotkey_status");
+        assert_eq!(st["default"], hotkey::DEFAULT);
+    }
+
+    #[test]
+    fn only_the_daemon_page_may_touch_the_tray_badge_or_hotkey() {
+        // The bundled page is not granted these either (capabilities/fallback.json);
+        // the mock context loads no app manifest, so only remote origins are checked.
+        for url in ["https://example.com/", "http://localhost:4391/"] {
+            for (cmd, body) in [
+                ("set_tray", serde_json::json!({"view": {}})),
+                ("set_badge", serde_json::json!({"count": 1})),
+                ("register_hotkey", serde_json::json!({"accelerator": null})),
+                ("hotkey_status", serde_json::json!({})),
+            ] {
+                let err = invoke(url, cmd, body).expect_err(&format!("{url} {cmd}"));
+                assert!(
+                    err.to_string().contains("not allowed"),
+                    "{url} {cmd}: {err}"
+                );
+            }
         }
     }
 

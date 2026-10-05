@@ -59,3 +59,31 @@ pub fn open_external<R: Runtime>(url: String, app: AppHandle<R>) -> Result<(), S
         .open_url(parsed.as_str(), None::<&str>)
         .map_err(|e| e.to_string())
 }
+
+/// What the menu bar or tray shows (F08), computed by the page.
+#[tauri::command]
+pub fn set_tray<R: Runtime>(view: crate::tray::View, app: AppHandle<R>) -> Result<(), String> {
+    crate::tray::set(&app, view).map_err(|e| e.to_string())
+}
+
+/// The dock or taskbar badge: sessions waiting on you (F10).
+#[tauri::command]
+pub fn set_badge<R: Runtime>(count: u32, app: AppHandle<R>) {
+    crate::badge::set(&app, count);
+}
+
+/// The global hotkey as configured, and whether the OS took it (F09).
+#[tauri::command]
+pub fn hotkey_status(hk: tauri::State<'_, crate::hotkey::Hotkey>) -> crate::hotkey::Status {
+    hk.status()
+}
+
+/// Replace the global hotkey; `null` turns it off. A shortcut the OS
+/// refuses is an error and the previous one stays.
+#[tauri::command]
+pub fn register_hotkey<R: Runtime>(
+    accelerator: Option<String>,
+    app: AppHandle<R>,
+) -> Result<crate::hotkey::Status, String> {
+    crate::hotkey::change(&app, accelerator)
+}

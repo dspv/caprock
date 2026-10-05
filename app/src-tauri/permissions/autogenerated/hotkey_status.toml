@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-hotkey-status"
+description = "Enables the hotkey_status command without any pre-configured scope."
+commands.allow = ["hotkey_status"]
+
+[[permission]]
+identifier = "deny-hotkey-status"
+description = "Denies the hotkey_status command without any pre-configured scope."
+commands.deny = ["hotkey_status"]

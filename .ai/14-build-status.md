@@ -72,6 +72,34 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-06 — Menu bar / tray, badge, global hotkey (WP-10)
+
+The shell gained a menu bar item (tray on Windows and Linux), the Dock or
+taskbar badge and one global hotkey ([app/README.md § Menu bar, badge and
+global hotkey](../app/README.md#menu-bar-badge-and-global-hotkey)). The page
+computes the tray's rows with the dashboard's own formatting
+(`ui/src/lib/tray.ts`): Claude's and Codex's plan windows from
+`/v1/stats/summary`, asked on the live tick and every 5 s as Now asks it,
+today's spend, and the sessions with a permission prompt pending, from the
+live socket's `permission` frames; the shell draws them and clears both when
+the daemon stops. After a live `reset` (WP-12) or a reconnect without replay,
+every live owned session's prompt is asked again (test). Four commands for the daemon's origin only (`set_tray`,
+`set_badge`, `hotkey_status`, `register_hotkey`), refused elsewhere (test).
+Plugin added: `tauri-plugin-global-shortcut`. The default hotkey is ⌃⌥⌘C on
+macOS and Win+Alt+C elsewhere, not the ⌥⌘C / Ctrl+Alt+C first proposed
+(Finder and browser conflicts; AltGr on Windows); Settings → Global shortcut
+records, resets or turns it off. Checked on the owner's Mac against an
+isolated daemon, launched without focus and with an obscure hotkey so no
+key of his was taken: hotkey registered (log), a 5-hour window posted
+through `/v1/statusline` reached the tray in 4.95 s (the summary's 5 s
+interval, as on Now; status-line posts send no live frame), the tray said
+"The daemon is not running" when the daemon was stopped and returned with
+it, a change from the Settings command was registered and kept, `KeyC` alone
+was refused, the badge set and cleared, and the open-session event opened
+the session route. Not exercised live, because each needs a key press or a
+click on a desktop in use: pressing the hotkey, clicking a tray row, the
+badge with a real permission prompt, Windows and Linux.
+
 ### 2026-10-05 — The app workspace (WP-04, WP-06, WP-11 interface)
 
 `#/app` is a terminal-first workspace: sidebar (inbox, projects, worktrees,

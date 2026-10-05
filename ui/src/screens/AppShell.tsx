@@ -25,6 +25,8 @@ import {
   type TabTarget,
 } from '@/lib/tabs'
 import { useWorkspaceData } from '@/lib/useWorkspaceData'
+import { useShellTray } from '@/lib/tray'
+import { OPEN_SESSION_EVENT } from '@/lib/shell'
 import { useTheme } from '@/lib/theme'
 import { Sidebar } from '@/components/Sidebar'
 import { TabStrip, TerminalStack } from '@/components/TerminalTabs'
@@ -178,6 +180,21 @@ export function AppShell() {
 
   const onOpenNode = useCallback((n: SessionNode, projectId: string) => openSession(n.session, projectId), [openSession])
   const onOpenInbox = useCallback((i: InboxItem) => openSession(i.session, i.projectId), [openSession])
+
+  // The menu bar or tray and the badge (WP-10); a waiting session clicked
+  // there arrives as an event from the shell.
+  useShellTray(model.inbox)
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const id = (e as CustomEvent<unknown>).detail
+      if (typeof id !== 'string') return
+      const item = model.inbox.find((i) => i.session.session_id === id)
+      if (item) onOpenInbox(item)
+      else location.hash = `#/session/${encodeURIComponent(id)}`
+    }
+    window.addEventListener(OPEN_SESSION_EVENT, onOpen)
+    return () => window.removeEventListener(OPEN_SESSION_EVENT, onOpen)
+  }, [model.inbox, onOpenInbox])
   const onSelectProject = useCallback((id: string) => {
     dispatch({ type: 'project', projectId: id })
     showWorkspace()
