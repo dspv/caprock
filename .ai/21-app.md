@@ -669,7 +669,7 @@ user turns it on.
   data directory.
 - **Rust creep.** *Mitigation:* the line budget and principle 1; review
   rejects logic that belongs in Go.
-- **Unsigned installs deter people.** *Mitigation:* the open decisions on the
+- **Unsigned installs deter people.** *Mitigation:* the decisions on the
   Apple account and Windows signing; clear install pages meanwhile.
 - **Tauri mobile is young.** *Mitigation:* the phone stays web through P1;
   F22 starts only with measurements.
@@ -679,27 +679,26 @@ user turns it on.
   every screen that exists; the plan is about seven weeks, with the phone
   track in parallel ([22-app-plan.md](22-app-plan.md)).
 
-## Open decisions for the owner
+## Decisions (owner, 2026-10-05)
 
-Each blocks a named work package in [22-app-plan.md](22-app-plan.md); none
-blocks the start of the MVP.
+The owner said to go ahead with the proposals ("build it to the end"). Taken:
 
-1. **Phone Phase B route** — Tailscale only, the user's tunnel, WebRTC, or a
-   Caprock E2E multi-region relay (needs a new ADR overriding the relay clauses
-   of ADR-029 and ADR-034). Blocks F19.
-2. **Apple Developer Program, $99 a year** — signing and notarization on
-   macOS. Blocks a warning-free macOS install, not the release.
-3. **Windows code signing** — an OV/EV certificate or a cloud signing
-   service. Blocks a warning-free Windows install, not the release.
-4. **GitHub auth method** — OAuth device flow with a Caprock OAuth app
-   (recommended), a GitHub App, or tokens pasted by the user. Blocks F14.
-5. **Minimum OS versions** — proposed macOS 13, Windows 10 22H2, WebKitGTK 4.1
-   distributions. Blocks WP-01's CI matrix.
-6. **App name and bundle id** — proposed "Caprock" and `dev.caprock.app`.
-   Blocks WP-17 (it is baked into signing, data paths of the shell, and
-   updates).
-7. **Background service by default** — whether the app installs the daemon's
-   autostart service on first run (proposed: yes, with a visible switch).
-   Blocks WP-02's first-run screen.
-8. **Phone capabilities beyond ADR-034** — clone and worktrees (proposed for
-   P0), shell tabs (proposed for P1). Blocks WP-15.
+1. **Phone off the home network:** Tailscale for the MVP, with Phase A
+   resilience (resume, replay, endless reconnect). A Caprock relay stays a
+   later decision with its own ADR (would override the relay clauses of
+   ADR-029 and ADR-034). F19 waits for it.
+2. **Apple Developer Program:** not yet. The macOS build ships unsigned
+   (ad-hoc) with the "Open Anyway" note; signing and notarization when the
+   account exists.
+3. **Windows code signing:** not yet; unsigned with a SmartScreen note.
+4. **GitHub auth:** OAuth device flow with a Caprock OAuth app. Errors are
+   always shown, never swallowed.
+5. **Minimum OS versions:** macOS 13, Windows 10 22H2, WebKitGTK 4.1
+   distributions.
+6. **Name and bundle id:** "Caprock", `dev.caprock.app`.
+7. **Background service:** installed on first run, with a visible switch.
+8. **Phone:** clone and worktrees in P0; shell tabs in P1.
+9. **How the app gets its UI:** from the daemon's own URL (as in the Tauri
+   spike), so the UI ships with the daemon and no new origin is admitted.
+10. **Focus:** macOS first for polish and release; Windows and Linux stay
+    green in CI and follow.

@@ -27,7 +27,7 @@ unmeasured (rule 6); actuals go in the build-status log.
   numbers are copied into [21-app.md § Performance budgets](21-app.md#performance-budgets)
   (the `SPIKE` slots). If a budget is out of reach on an OS, the budget or the
   plan changes now, in writing, not at M4. WP-01 is green on CI. The owner
-  answers open decisions 5, 6 and 7 of [21-app.md](21-app.md#open-decisions-for-the-owner).
+  decisions are recorded in [21-app.md](21-app.md#decisions-owner-2026-10-05).
 - **M1 — weeks of 2026-10-12 and 2026-10-19.** WP-02, WP-03, WP-04: the app
   finds or starts the daemon and opens agent sessions in tabs that resume
   from their byte offset and never double a keystroke.
