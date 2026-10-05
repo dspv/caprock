@@ -11,11 +11,19 @@
  *   window: whoever would read it is already looking at it.
  * - **Never stale.** An approval whose prompt is no longer waiting — answered
  *   in the terminal, or replayed after the laptop slept — is not shown.
- * - **The click opens the prompt.** The official plugin reports no clicks or
- *   actions on desktop, so Approve and Deny live in the app: a click brings
- *   the app forward, and the app coming forward soon after a notification it
- *   showed while in the background opens that session, its prompt card in
- *   view. The card answers with the prompt's id (ADR-035), so a stale one is
+ * - **Buttons on macOS.** The shell gets the frame's session, prompt and
+ *   actions; on macOS it shows Approve and Deny itself and answers them with
+ *   the prompt id, and a click on the body opens the session through
+ *   `caprock:shown` and `caprock:open-session` (app/README.md).
+ * - **Withdrawn when answered elsewhere.** When a session's prompt goes away
+ *   (a `permission` frame with none), the approval notifications shown for it
+ *   are withdrawn by id (`withdraw_notifications`; macOS), so Notification
+ *   Center keeps no stale Approve button.
+ * - **Elsewhere the click opens the prompt.** The official plugin reports no
+ *   clicks or actions there, so Approve and Deny live in the app: a click
+ *   brings the app forward, and the app coming forward soon after a
+ *   notification it showed while in the background opens that session, its
+ *   prompt card in view. The card answers with the prompt's id (ADR-035), so a stale one is
  *   refused. A show from the menu bar, tray or hotkey is the user's own
  *   (`caprock:shown`, sent before the window comes up) and opens nothing:
  *   the open waits a moment for that word and drops the notification.
@@ -71,6 +79,8 @@ export function promptRoute(n: NotifyFrame): string {
 export class Notifier {
   private seen = new Set<string>()
   private pending: { n: NotifyFrame; at: number } | null = null
+  /** Approval notifications shown, by session, until their prompt goes away. */
+  private shownFor = new Map<string, string[]>()
 
   constructor(private deps: NotifierDeps) {}
 
@@ -87,7 +97,10 @@ export class Notifier {
     if (isWatched(n, this.deps.viewing())) return false
     if (!this.deps.viewing().focused) this.pending = { n, at: this.now() }
     try {
-      await this.deps.invoke('notify', { title: n.title, body: n.body })
+      await this.deps.invoke('notify', {
+        title: n.title, body: n.body, id: n.id, sessionId: n.session_id, promptId: n.prompt_id, actions: n.actions,
+      })
+      if (n.prompt_id) this.shownFor.set(n.session_id, [...(this.shownFor.get(n.session_id) ?? []), n.id])
       return true
     } catch {
       return false
@@ -118,9 +131,17 @@ export class Notifier {
     this.pending = null
   }
 
-  /** A session's prompt went away: coming forward no longer opens it for that. */
+  /**
+   * A session's prompt went away — answered in the terminal, on the card, from
+   * a phone or the notification itself: coming forward no longer opens it, and
+   * its notifications are withdrawn so none keeps a stale Approve button.
+   */
   answered(sessionId: string): void {
     if (this.pending?.n.kind === 'approval' && this.pending.n.session_id === sessionId) this.pending = null
+    const ids = this.shownFor.get(sessionId)
+    if (!ids) return
+    this.shownFor.delete(sessionId)
+    this.deps.invoke('withdraw_notifications', { ids }).catch(() => {}) // an older shell has no such command
   }
 }
 

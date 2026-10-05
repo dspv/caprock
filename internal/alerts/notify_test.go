@@ -3,6 +3,7 @@ package alerts
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,6 +43,32 @@ func TestNoPromptNoActions(t *testing.T) {
 	q := Notify(approval("AskUserQuestion", `{"tool_input":{"questions":[{"question":"Which port?"}]}}`), d, "p2")
 	if q.Actions != nil || q.Title != "Needs your answer · proj" || q.Body != "proj · Codex\nWhich port?" {
 		t.Fatalf("question: %+v", q)
+	}
+}
+
+// Approve is offered only for a request the notification shows whole: a
+// clipped or multi-line command, or a tool whose input it does not show, gets
+// Deny alone, and its card in the app has Approve.
+func TestApproveOnlyWhatTheNotificationShows(t *testing.T) {
+	d := Details{Cwd: "/w/proj"}
+	for name, payload := range map[string]string{
+		"long":      `{"tool_input":{"command":"` + strings.Repeat("x", subjectMaxRunes+1) + `"}}`,
+		"two lines": `{"tool_input":{"command":"echo ok\nrm -rf ~"}}`,
+		"no input":  `{"tool_input":{"title":"a","body":"b"}}`,
+	} {
+		n := Notify(approval("Bash", payload), d, "p")
+		if !reflect.DeepEqual(n.Actions, []string{"deny"}) || n.PromptID != "p" {
+			t.Errorf("%s: actions %v prompt %q", name, n.Actions, n.PromptID)
+		}
+	}
+	for name, payload := range map[string]string{
+		"command": `{"tool_input":{"command":"  go test ./...\n"}}`,
+		"file":    `{"tool_input":{"file_path":"/w/proj/a.go"}}`,
+		"url":     `{"tool_input":{"url":"https://example.com/"}}`,
+	} {
+		if n := Notify(approval("Bash", payload), d, "p"); !reflect.DeepEqual(n.Actions, []string{"allow", "deny"}) {
+			t.Errorf("%s: actions %v", name, n.Actions)
+		}
 	}
 }
 

@@ -1405,6 +1405,12 @@ restored on reattach under the same id. A prompt whose session recorded
 anything since that means it moved on is dropped instead — a missing button
 costs a tap in the terminal, a stale one would type `1` into a prompt.
 
+*Amended 2026-10-06:* the desktop app's macOS notification answers the prompt
+too, with the same `prompt_id`. It offers Approve only when its text shows the
+whole request; a clipped or multi-line command, or a tool whose input it does
+not show, gets Deny and a link to the card. Never "always" from a
+notification. See [21-app.md § Notifications](21-app.md#notifications).
+
 ---
 
 ## ADR-036 — A phone hears that a session needs it through the owner's own Telegram bot

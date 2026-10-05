@@ -32,7 +32,23 @@ describe('Notifier', () => {
     expect(await n.receive(approval())).toBe(true)
     expect(await n.receive(approval())).toBe(false) // a replay after a reconnect
     expect(invoke).toHaveBeenCalledTimes(1)
-    expect(invoke).toHaveBeenCalledWith('notify', { title: 'Needs approval · caprock', body: 'Tidy the cache · main\nBash: go test ./...' })
+    expect(invoke).toHaveBeenCalledWith('notify', {
+      title: 'Needs approval · caprock', body: 'Tidy the cache · main\nBash: go test ./...',
+      id: 'approval-s1-1', sessionId: 's1', promptId: 'p1', actions: ['allow', 'deny'],
+    })
+  })
+
+  it('withdraws a session\'s approval notifications when its prompt goes away, once', async () => {
+    const { n, invoke } = setup({ focused: false })
+    await n.receive(approval())
+    await n.receive(approval({ id: 'approval-s1-2', prompt_id: 'p2' }))
+    await n.receive(approval({ id: 'f', kind: 'finished', prompt_id: undefined, actions: undefined }))
+    await n.receive(approval({ id: 'approval-s2-1', session_id: 's2' }))
+    n.answered('s1')
+    expect(invoke).toHaveBeenCalledWith('withdraw_notifications', { ids: ['approval-s1-1', 'approval-s1-2'] })
+    n.answered('s1')
+    n.answered('s3')
+    expect(invoke.mock.calls.filter((c) => (c as unknown[])[0] === 'withdraw_notifications')).toHaveLength(1)
   })
 
   it('is quiet for the session in front of a focused window, and only then', async () => {

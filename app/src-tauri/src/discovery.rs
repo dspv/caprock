@@ -145,6 +145,22 @@ pub fn request(
     path: &str,
     bearer: Option<&str>,
 ) -> std::io::Result<(u16, String)> {
+    send(port, method, path, bearer, "")
+}
+
+/// A POST with a JSON body: the daemon requires `application/json` on a
+/// state-changing request from a client that is not a browser.
+pub fn post_json(port: u16, path: &str, json: &str) -> std::io::Result<(u16, String)> {
+    send(port, "POST", path, None, json)
+}
+
+fn send(
+    port: u16,
+    method: &str,
+    path: &str,
+    bearer: Option<&str>,
+    json: &str,
+) -> std::io::Result<(u16, String)> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let timeout = Duration::from_millis(800);
     let mut s = TcpStream::connect_timeout(&addr, timeout)?;
@@ -153,9 +169,15 @@ pub fn request(
     let auth = bearer
         .map(|t| format!("Authorization: Bearer {t}\r\n"))
         .unwrap_or_default();
+    let kind = if json.is_empty() {
+        ""
+    } else {
+        "Content-Type: application/json\r\n"
+    };
     write!(
         s,
-        "{method} {path} HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n{auth}Content-Length: 0\r\nConnection: close\r\n\r\n"
+        "{method} {path} HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n{auth}{kind}Content-Length: {}\r\nConnection: close\r\n\r\n{json}",
+        json.len()
     )?;
     let mut raw = Vec::new();
     s.take(4 << 20).read_to_end(&mut raw)?;

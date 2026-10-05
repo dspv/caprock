@@ -13,6 +13,7 @@ fn main() {
             "hotkey_status",
             "register_hotkey",
             "notify",
+            "withdraw_notifications",
         ]),
     ))
     .expect("tauri build");

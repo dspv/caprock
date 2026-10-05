@@ -56,24 +56,37 @@ daemon and every session running.
 
 Commands are granted per origin (`src-tauri/capabilities/`):
 
-| Command           | Daemon page | Bundled page |
-| ----------------- | ----------- | ------------ |
-| `daemon_status`   | yes         | yes          |
-| `open_external`   | yes         | yes          |
-| `notify`          | yes         | no           |
-| `start_daemon`    | no          | yes          |
-| `update_daemon`   | no          | yes          |
-| `set_background`  | no          | yes          |
-| `set_tray`        | yes         | no           |
-| `set_badge`       | yes         | no           |
-| `hotkey_status`   | yes         | no           |
-| `register_hotkey` | yes         | no           |
+| Command                  | Daemon page | Bundled page |
+| ------------------------ | ----------- | ------------ |
+| `daemon_status`          | yes         | yes          |
+| `open_external`          | yes         | yes          |
+| `notify`                 | yes         | no           |
+| `withdraw_notifications` | yes         | no           |
+| `start_daemon`           | no          | yes          |
+| `update_daemon`          | no          | yes          |
+| `set_background`         | no          | yes          |
+| `set_tray`               | yes         | no           |
+| `set_badge`              | yes         | no           |
+| `hotkey_status`          | yes         | no           |
+| `register_hotkey`        | yes         | no           |
 
 A page on any other origin gets nothing; `cargo test` checks each refusal.
 `open_external` opens `http` and `https` only.
-`notify` shows one OS notification (`{title, body}`) through the official
-`tauri-plugin-notification`; the page decides when (`ui/src/lib/notify.ts`,
-WP-09). The window turns WKWebView's background throttling off (macOS 14+),
+`notify` shows one OS notification (`{title, body, id?, sessionId?,
+promptId?, actions?}`); the page decides when (`ui/src/lib/notify.ts`,
+WP-09). On macOS, inside the `.app`, it goes through UNUserNotificationCenter
+(`src-tauri/src/notify_macos.rs`): an approval with `actions`
+`["allow","deny"]` carries **Approve** and **Deny**, one with `["deny"]`
+**Open in Caprock** and **Deny**. The shell answers a button itself with
+`POST /v1/agents/{sessionId}/permission` `{id: promptId, choice}` to the
+loopback daemon it is connected to, so the window stays where it is; a 409
+is followed by an "Already answered" notification. A click on the body opens
+the session as the tray does. macOS asks for permission on the first
+notification. `withdraw_notifications` (`{ids}`) removes delivered ones by
+their notify id: the page calls it when a session's prompt goes away, so a
+prompt answered in the terminal or on the card leaves no Approve button behind
+(macOS; a no-op elsewhere). Everywhere else, and from `cargo run` (no bundle), the official
+`tauri-plugin-notification` shows a title and body only. The window turns WKWebView's background throttling off (macOS 14+),
 or a hidden or covered page would not hear the frame until brought forward.
 Every show from the menu bar, tray or hotkey first dispatches `caprock:shown`
 in the page, so it is not taken for a click on a notification.
@@ -148,8 +161,16 @@ CAPROCK_APP_BACKGROUND=1 src-tauri/target/release/bundle/macos/Caprock.app/Conte
 ```
 
 `CAPROCK_SERVICE_LABEL` keeps `caprock service install` away from the real
-`dev.caprock.daemon` login agent. `CAPROCK_APP_NOTIFY_LOG=<file>` appends each
-notification to that file as a JSON line instead of showing it. A build with `--features snapshot` (never
+`dev.caprock.daemon` login agent. Write `{"accelerator": null}` to
+`$D/data/app-hotkey.json` first, or the test app takes ⌃⌥⌘C.
+`CAPROCK_APP_NOTIFY_LOG=<file>` appends each notification to that file as a
+JSON line (with its session, prompt and buttons) instead of showing it. To
+see real macOS notifications from a test build without touching
+`dev.caprock.app`'s permission, copy the bundle, give the copy another
+`CFBundleIdentifier` with `plutil`, re-sign it with `codesign --force --deep
+-s -`, and start it with `open -g -n --env …`: macOS refuses notifications to
+a bundle LaunchServices has not registered at that path (`lsregister -f`
+registers one, `-u` forgets it). A build with `--features snapshot` (never
 shipped) also reads `CAPROCK_APP_SNAPSHOT_DIR`: a name written to
 `<dir>/request` captures the window to `<dir>/<name>.png`, a script written to
 `<dir>/eval` runs in the page, and page loads are logged to `<dir>/loads.txt`.
