@@ -18,7 +18,10 @@ projects, shell tabs and worktrees (WP-05, WP-07, WP-08 API; contract in
 terminal protocol v2 (WP-03), and the app workspace (WP-04 layout and tabs,
 WP-06 sidebar, WP-11 scrolling rule) that uses them at `#/app`
 ([04-ui.md § The app workspace](04-ui.md#the-app-workspace)), falling back to
-sessions-derived projects on an older daemon.
+sessions-derived projects on an older daemon. Packaging (WP-17): a universal
+`.dmg` and the `caprock-app` cask, NSIS, AppImage, `.deb` and `.rpm` from the
+release tag ([docs/RELEASING.md § The desktop app](../docs/RELEASING.md#the-desktop-app),
+[docs/install-app.md](../docs/install-app.md)).
 
 ## Goal
 

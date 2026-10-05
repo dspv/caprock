@@ -11,6 +11,18 @@ Phase 3 (Delight) has no plan by design.
 
 ### Added
 
+- **Install the desktop app.** Each release now carries the app beside the
+  daemon, built from the same tag and bundling that daemon: a universal
+  `.dmg` for Apple silicon and Intel Macs and a Homebrew cask
+  (`brew install --cask dspv/tap/caprock-app`), an installer for Windows, and
+  an AppImage, `.deb` and `.rpm` for Linux. The app is not notarized or
+  code-signed yet; the cask opens it without a Gatekeeper prompt, and
+  [docs/install-app.md](docs/install-app.md) has the one-time step for the
+  `.dmg` and for SmartScreen. On first launch the app starts the `caprock`
+  formula's daemon when Homebrew installed one, so `brew upgrade caprock`
+  keeps it current, and its own bundled daemon otherwise. A release can now
+  add the `.dmg` from a Mac with `make app-release TAG=vX.Y.Z` when Actions is
+  down.
 - **Start work from the phone.** A phone allowed to control sessions gets
   **Start work** on Now: clone a repository (an `https://` or `git@`
   address, into a folder under your home), make a new project, or make a

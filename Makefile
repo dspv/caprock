@@ -120,6 +120,9 @@ APP_TRIPLE  = $(shell rustc -vV 2>/dev/null | sed -n 's/^host: //p')
 # for this OS. `make app-bundle APP_BUNDLES=app` skips the macOS .dmg, whose
 # layout step drives Finder.
 APP_BUNDLES ?=
+# The app's version for app-bundle (release jobs pass the tag without the v);
+# empty keeps tauri.conf.json's.
+APP_VERSION ?=
 
 .PHONY: app-sidecar
 app-sidecar: ## Build the daemon the app bundles (app/src-tauri/binaries/caprock-<triple>)
@@ -140,7 +143,12 @@ app-test: app-sidecar ## Desktop app: cargo fmt --check, clippy -D warnings, car
 .PHONY: app-bundle
 app-bundle: app-sidecar ## Build the release app bundle(s) under app/src-tauri/target/release/bundle
 	cd app && { [ -d node_modules ] || npm ci; }
-	cd app && npx tauri build $(if $(APP_BUNDLES),--bundles $(APP_BUNDLES),)
+	cd app && npx tauri build $(if $(APP_BUNDLES),--bundles $(APP_BUNDLES),) $(if $(APP_VERSION),--config '{"version":"$(APP_VERSION)"}',)
+
+.PHONY: app-release
+app-release: ## macOS: build the universal .dmg for TAG=vX.Y.Z, check it, attach it to the release, render the cask
+	@[ -n "$(TAG)" ] || { echo "usage: make app-release TAG=vX.Y.Z [ARGS='--no-upload --clobber --cask-pr']"; exit 1; }
+	@bash scripts/app-release.sh $(TAG) $(ARGS)
 
 # --- docs -----------------------------------------------------------------
 .PHONY: docs-fmt

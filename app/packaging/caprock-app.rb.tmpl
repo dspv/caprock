@@ -1,0 +1,54 @@
+# Rendered by scripts/app-release.sh for each tag; edit the template in
+# dspv/caprock (app/packaging/caprock-app.rb.tmpl), not this file.
+cask "caprock-app" do
+  version "@VERSION@"
+  sha256 "@SHA256@"
+
+  url "https://github.com/dspv/caprock/releases/download/v#{version}/Caprock_#{version}_universal.dmg"
+  name "Caprock"
+  desc "Desktop app for running and watching coding agent sessions"
+  homepage "https://caprock.dev/"
+
+  livecheck do
+    url :url
+    strategy :github_latest
+  end
+
+  depends_on macos: :ventura
+
+  app "Caprock.app"
+
+  # The app is ad-hoc signed, not notarized (no Apple Developer ID yet), so
+  # Gatekeeper would refuse the first launch and every upgrade. Homebrew has
+  # already checked the download against the sha256 above; clear the
+  # quarantine flag so Caprock opens like any other app. Drop this once the
+  # build is signed and notarized.
+  postflight_steps do
+    run "/usr/bin/xattr",
+        args:           ["-dr", "com.apple.quarantine", "{{appdir}}/Caprock.app"],
+        writable_paths: ["{{appdir}}/Caprock.app"]
+  end
+
+  uninstall quit: "dev.caprock.app"
+
+  # The data directory (~/Library/Application Support/caprock) holds the
+  # sessions and history the daemon keeps; it is shared with the caprock
+  # formula, so zap leaves it alone.
+  zap trash: [
+    "~/Library/Application Support/dev.caprock.app",
+    "~/Library/Caches/dev.caprock.app",
+    "~/Library/Preferences/dev.caprock.app.plist",
+    "~/Library/Saved Application State/dev.caprock.app.savedState",
+    "~/Library/WebKit/dev.caprock.app",
+  ]
+
+  caveats <<~EOS
+    Caprock is not notarized yet. This cask clears the download's quarantine
+    flag so the app opens normally; if macOS still refuses it, open
+    System Settings > Privacy & Security and click "Open Anyway".
+
+    The app bundles the daemon from the same release. If the caprock formula
+    is installed (brew install dspv/tap/caprock), the app starts that one
+    instead, and `brew upgrade caprock` keeps it current.
+  EOS
+end
