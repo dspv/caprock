@@ -47,6 +47,7 @@ func projectsServer(t *testing.T) (s *Server, home string, viewer, controller st
 	if err := svc.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(svc.Close) // before home is removed: Windows will not delete a watched folder
 	sh = &fakeShells{dir: home}
 	s, _, v, c := pairedPhones(t, Deps{Store: st, Projects: svc, Shells: sh, Agents: &fakeAgents{avail: true}})
 	return s, home, v.Token, c.Token, sh

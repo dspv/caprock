@@ -81,6 +81,10 @@ func start(t *testing.T, s *Service) {
 	if err := s.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
+	// Before the folders made earlier are removed: Windows will not delete a
+	// folder a watcher or a git still holds. A folder made after start would
+	// be removed first, so tests make theirs before.
+	t.Cleanup(s.Close)
 }
 
 func session(t *testing.T, st *store.Store, id, cwd string) {
@@ -164,10 +168,10 @@ func TestSeedingListsTheRepositoriesSessionsRanIn(t *testing.T) {
 // A session in a repository not yet listed lists it, as the session runs.
 func TestASessionInANewRepositoryListsIt(t *testing.T) {
 	needGit(t)
+	repo := newRepo(t, filepath.Join(t.TempDir(), "gamma"))
 	s, st, b := newService(t)
 	start(t, s)
 	sub := b.Subscribe(256)
-	repo := newRepo(t, filepath.Join(t.TempDir(), "gamma"))
 	session(t, st, "s1", repo)
 	s.noteSession(context.Background(), mustSession(t, st, "s1"))
 	list, _ := s.List(context.Background())
@@ -196,9 +200,9 @@ func sameDir(a, b string) bool {
 // project frame within a second, without polling.
 func TestACommitOutsideCaprockReachesAFrameWithinASecond(t *testing.T) {
 	needGit(t)
+	repo := newRepo(t, filepath.Join(t.TempDir(), "delta"))
 	s, _, b := newService(t)
 	start(t, s)
-	repo := newRepo(t, filepath.Join(t.TempDir(), "delta"))
 	sub := b.Subscribe(1024)
 	v, _, err := s.Add(context.Background(), repo)
 	if err != nil {
@@ -206,9 +210,15 @@ func TestACommitOutsideCaprockReachesAFrameWithinASecond(t *testing.T) {
 	}
 	waitFrame(t, sub, v.ID, 5*time.Second, func(v View) bool { return v.Git != nil && v.Git.Branch == "main" && v.Git.At > 0 })
 
+	// The budget is a second after the debounce; Windows CI runners start a
+	// git in a few hundred milliseconds on their own, so they get three.
+	budget := time.Second + DefaultDebounce
+	if runtime.GOOS == "windows" {
+		budget = 3 * time.Second
+	}
 	git(t, repo, "checkout", "-q", "-b", "topic")
 	done := time.Now()
-	waitFrame(t, sub, v.ID, time.Second+DefaultDebounce, func(v View) bool { return v.Git.Branch == "topic" })
+	waitFrame(t, sub, v.ID, budget, func(v View) bool { return v.Git.Branch == "topic" })
 	t.Logf("checkout to frame: %s", time.Since(done))
 
 	if err := os.WriteFile(filepath.Join(repo, "g"), []byte("y\n"), 0o600); err != nil {
@@ -216,12 +226,12 @@ func TestACommitOutsideCaprockReachesAFrameWithinASecond(t *testing.T) {
 	}
 	git(t, repo, "add", "g")
 	done = time.Now()
-	waitFrame(t, sub, v.ID, time.Second+DefaultDebounce, func(v View) bool { return v.Git.Dirty && v.Git.Changed == 1 })
+	waitFrame(t, sub, v.ID, budget, func(v View) bool { return v.Git.Dirty && v.Git.Changed == 1 })
 	t.Logf("stage to frame: %s", time.Since(done))
 
 	git(t, repo, "commit", "-q", "-m", "g")
 	done = time.Now()
-	waitFrame(t, sub, v.ID, time.Second+DefaultDebounce, func(v View) bool { return !v.Git.Dirty })
+	waitFrame(t, sub, v.ID, budget, func(v View) bool { return !v.Git.Dirty })
 	t.Logf("commit to frame: %s", time.Since(done))
 }
 
@@ -262,10 +272,10 @@ func TestAGitThatHangsIsStoppedAndReported(t *testing.T) {
 	old := gitBin
 	gitBin = hang
 	t.Cleanup(func() { gitBin = old })
+	repo := newRepo(t, filepath.Join(t.TempDir(), "eps"))
 	s, _, _ := newService(t)
 	s.GitTimeout = 300 * time.Millisecond
 	start(t, s)
-	repo := newRepo(t, filepath.Join(t.TempDir(), "eps"))
 	began := time.Now()
 	v, _, err := s.Add(context.Background(), repo)
 	if err != nil {
@@ -295,9 +305,9 @@ func TestCloneIsOneOperationPerOpID(t *testing.T) {
 		return append(os.Environ(), "GIT_CONFIG_COUNT=1",
 			"GIT_CONFIG_KEY_0=url."+filepath.ToSlash(srcParent)+"/.insteadOf", "GIT_CONFIG_VALUE_0=https://example.invalid/")
 	}
+	parent := t.TempDir()
 	start(t, s)
 	sub := b.Subscribe(1024)
-	parent := t.TempDir()
 	op, existing, err := s.Clone("phone-op-1", "https://example.invalid/src", parent, "")
 	if err != nil || existing {
 		t.Fatalf("clone: %v existing=%v", err, existing)
@@ -497,9 +507,9 @@ func TestAddAndCreate(t *testing.T) {
 
 func TestPatch(t *testing.T) {
 	needGit(t)
+	repo := newRepo(t, filepath.Join(t.TempDir(), "p"))
 	s, _, _ := newService(t)
 	start(t, s)
-	repo := newRepo(t, filepath.Join(t.TempDir(), "p"))
 	v, _, _ := s.Add(context.Background(), repo)
 	name, pinned, sort := "Renamed", true, int64(3)
 	defaults := jsonRaw(`{"agent":"codex","model":"gpt-5.6"}`)

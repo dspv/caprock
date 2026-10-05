@@ -117,6 +117,11 @@ type Service struct {
 
 	// gitRuns counts git processes started for status; tests read it.
 	gitRuns atomic.Int64
+	// closed stops refreshes once Close has run; each refresh holds life
+	// for reading, so Close returns with no git running in a project's
+	// folder.
+	closed atomic.Bool
+	life   sync.RWMutex
 }
 
 type gitState struct {
@@ -199,11 +204,32 @@ func (s *Service) Start(ctx context.Context) error {
 	}
 	go func() {
 		<-ctx.Done()
-		if s.watch != nil {
-			_ = s.watch.w.Close()
-		}
+		s.Close()
 	}()
 	return nil
+}
+
+// Close stops watching and asking git, and returns once no refresh is
+// running. Safe to call more than once.
+func (s *Service) Close() {
+	if !s.closed.CompareAndSwap(false, true) {
+		return
+	}
+	s.mu.Lock()
+	for id, t := range s.timers {
+		t.Stop()
+		delete(s.timers, id)
+	}
+	for id, t := range s.frames {
+		t.Stop()
+		delete(s.frames, id)
+	}
+	s.mu.Unlock()
+	if s.watch != nil {
+		_ = s.watch.w.Close()
+	}
+	s.life.Lock()
+	defer s.life.Unlock()
 }
 
 // seed lists, once, the repositories sessions have run in.
@@ -598,7 +624,7 @@ func (s *Service) schedule(id int64, wt string, after time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	g := s.git[id]
-	if g == nil {
+	if g == nil || s.closed.Load() {
 		return
 	}
 	if wt == "" {
@@ -615,7 +641,14 @@ func (s *Service) schedule(id int64, wt string, after time.Duration) {
 
 // refresh asks git what is stale about a project and sends a frame.
 func (s *Service) refresh(id int64) {
+	s.life.RLock()
+	defer s.life.RUnlock()
+	if s.closed.Load() {
+		return
+	}
 	s.mu.Lock()
+	// A change from here on schedules a refresh of its own.
+	delete(s.timers, id)
 	p, ok := s.projects[id]
 	g := s.git[id]
 	if !ok || g == nil {
@@ -678,7 +711,6 @@ func (s *Service) refresh(id int64) {
 	if g2 := s.git[id]; g2 == g {
 		g.status, g.worktrees, g.primed = next, worktrees, true
 	}
-	delete(s.timers, id)
 	s.mu.Unlock()
 	if found && (next.RemoteURL != p.RemoteURL || next.DefaultBranch != p.DefaultBranch) {
 		_ = store.SetProjectGit(ctx, s.Store.DB(), id, next.RemoteURL, next.DefaultBranch)
