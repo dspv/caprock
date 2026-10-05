@@ -134,6 +134,21 @@ func TestAnUnknownSessionStillReads(t *testing.T) {
 	}
 }
 
+// A long path keeps its end, where the file's name is, and a detached
+// checkout's HEAD is not a branch.
+func TestLongPathsKeepTheirName(t *testing.T) {
+	deep := "/private/tmp/" + strings.Repeat("x", 120) + "/proj"
+	d := Details{Title: "t", Cwd: deep, Branch: "HEAD"}
+	got := Message(approval("Write", `{"tool_input":{"file_path":"/elsewhere/`+strings.Repeat("y", 120)+`/hello.txt"}}`), d)
+	lines := strings.Split(got, "\n")
+	if !strings.HasPrefix(lines[1], "<code>…") || !strings.HasSuffix(lines[1], "/proj</code>") {
+		t.Fatalf("folder line: %q", lines[1])
+	}
+	if !strings.HasSuffix(lines[2], "/hello.txt</code>") || !strings.Contains(lines[2], "<code>…") {
+		t.Fatalf("subject line: %q", lines[2])
+	}
+}
+
 func TestDurations(t *testing.T) {
 	for d, want := range map[time.Duration]string{45 * time.Second: "45s", 12 * time.Minute: "12m", 65 * time.Minute: "1h 05m"} {
 		if got := duration(d); got != want {

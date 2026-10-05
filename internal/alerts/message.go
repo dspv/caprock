@@ -43,6 +43,7 @@ type Details struct {
 // Limits that keep one alert readable on a lock screen.
 const (
 	titleMaxRunes   = 80
+	folderMaxRunes  = 60
 	subjectMaxRunes = 100
 	replyMaxRunes   = 120
 	filesNamed      = 3
@@ -108,10 +109,11 @@ func name(d Details) string {
 // location is "~/dev/caprock · main", plus the agent when it is not Claude Code.
 func location(d Details) string {
 	var parts []string
-	if p := shortPath(d.Cwd, d.Home); p != "" {
+	if p := clipStart(shortPath(d.Cwd, d.Home), folderMaxRunes); p != "" {
 		parts = append(parts, "<code>"+html(p)+"</code>")
 	}
-	if d.Branch != "" {
+	// HEAD is what a detached checkout reports: no branch to name.
+	if d.Branch != "" && d.Branch != "HEAD" {
 		parts = append(parts, html(d.Branch))
 	}
 	if d.Agent != "" && d.Agent != "Claude Code" {
@@ -184,16 +186,16 @@ func subject(ev event.Event, d Details) string {
 	var what string
 	switch {
 	case in.Command != "":
-		what = in.Command
+		what = clip(in.Command, subjectMaxRunes)
 	case in.FilePath != "" || in.NotebookPath != "" || in.Path != "":
-		what = relPath(firstOf(in.FilePath, in.NotebookPath, in.Path), d.Cwd, d.Home)
+		what = clipStart(relPath(firstOf(in.FilePath, in.NotebookPath, in.Path), d.Cwd, d.Home), subjectMaxRunes)
 	case in.URL != "":
-		what = in.URL
+		what = clip(in.URL, subjectMaxRunes)
 	default:
-		what = firstOf(in.Query, in.Pattern)
+		what = clip(firstOf(in.Query, in.Pattern), subjectMaxRunes)
 	}
 	label := toolLabel(tool)
-	if what = clip(what, subjectMaxRunes); what == "" {
+	if what == "" {
 		return html(label)
 	}
 	if label == "" {
@@ -278,6 +280,15 @@ func clip(s string, limit int) string {
 		return strings.TrimSpace(string([]rune(line)[:limit-1])) + "…"
 	}
 	return ""
+}
+
+// clipStart keeps a path's end, where its name is: "…/preview/proj/a.go".
+func clipStart(s string, limit int) string {
+	r := []rune(strings.TrimSpace(s))
+	if len(r) <= limit {
+		return string(r)
+	}
+	return "…" + string(r[len(r)-limit+1:])
 }
 
 // html escapes text for Telegram's HTML parse mode, which needs exactly these
