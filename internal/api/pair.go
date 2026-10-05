@@ -52,9 +52,42 @@ type pairState struct {
 	// not draw it sends someone to try their tablet on mobile data and
 	// conclude the feature is broken.
 	Tunnelled bool `json:"tunnelled,omitempty"`
+	// Addresses are every address network access answers on, url first:
+	// the LAN one, the Tailscale one and its MagicDNS name (WP-15). The
+	// pairing panel draws a QR for the one the owner picks; a code works on
+	// any of them. Empty when off.
+	Addresses []pairAddress `json:"addresses,omitempty"`
 	// ExpiresInSec counts the code down. Zero when there is none.
 	ExpiresInSec int              `json:"expires_in_sec,omitempty"`
 	Devices      []pairing.Public `json:"devices"`
+}
+
+// pairAddress is one address a phone can open: kind "lan" (the same Wi-Fi
+// only), "tailscale" (a 100.x address: anywhere the phone has Tailscale) or
+// "magicdns" (the Tailscale address by its MagicDNS name).
+type pairAddress struct {
+	URL  string `json:"url"`
+	Kind string `json:"kind"`
+}
+
+// pairAddresses lists url and the alternates as the panel offers them.
+func pairAddresses(url string, alts []string) []pairAddress {
+	var out []pairAddress
+	for _, u := range append([]string{url}, alts...) {
+		host := hostOf(u)
+		if host == "" {
+			continue
+		}
+		kind := "magicdns"
+		if ip := net.ParseIP(host); ip != nil {
+			kind = "lan"
+			if lan.Tunnelled(ip) {
+				kind = "tailscale"
+			}
+		}
+		out = append(out, pairAddress{URL: u, Kind: kind})
+	}
+	return out
 }
 
 // handlePairState reports what the owner needs to see: whether the network
@@ -69,6 +102,7 @@ func (s *Server) handlePairState(w http.ResponseWriter, r *http.Request) {
 	st := pairState{Enabled: ps != nil, URL: lanURL, Devices: []pairing.Public{}}
 	if host := hostOf(lanURL); host != "" {
 		st.Tunnelled = lan.Tunnelled(net.ParseIP(host))
+		st.Addresses = pairAddresses(lanURL, s.lanAlternates())
 	}
 	if ps != nil {
 		if live, left := ps.CodeActive(); live {
@@ -142,7 +176,7 @@ func (s *Server) handlePairRedeem(w http.ResponseWriter, r *http.Request) {
 		// a person pairing a tablet will not name it unprompted.
 		name = "a device"
 	}
-	if fromThisMachine(r, s.lanHost()) {
+	if fromThisMachine(r, s.lanHosts()...) {
 		// A browser on this machine opened the network address rather than
 		// loopback, and paired like a phone. Said in the name, first so a long
 		// name cannot cut it off, or the list shows a "Mac" nobody remembers
@@ -373,7 +407,15 @@ func (s *Server) setRoleOnDisk(w http.ResponseWriter, id, role string) {
 
 // fromThisMachine reports whether r came from the machine's own network
 // address — the one the LAN listener is bound to.
-func fromThisMachine(r *http.Request, lanHost string) bool {
+func fromThisMachine(r *http.Request, lanHosts ...string) bool {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	return err == nil && lanHost != "" && host == lanHost
+	if err != nil {
+		return false
+	}
+	for _, lanHost := range lanHosts {
+		if lanHost != "" && host == lanHost {
+			return true
+		}
+	}
+	return false
 }

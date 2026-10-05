@@ -300,6 +300,10 @@ type Server struct {
 	lanMu   sync.RWMutex
 	pairing *pairing.Store
 	lanURL  string
+	// altURLs are the other addresses network access answers on, beside
+	// lanURL: the Tailscale one when lanURL is the LAN one, or the reverse,
+	// and the MagicDNS name (WP-15). Empty when off.
+	altURLs []string
 	// hist collapses the burst of identical /v1/history requests one open
 	// screen produces, and summ does the same for the wide ranges of
 	// /v1/stats/summary. See answercache.go.
@@ -449,7 +453,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// protect this API — it stops a page reading the response, not sending
 		// the request — and POST /v1/agents runs a command from its body. See
 		// csrf.go for the layering and why a missing Origin is not trusted.
-		if reason := checkOrigin(r, s.lanHost()); reason != "" {
+		if reason := checkOrigin(r, s.lanHosts()...); reason != "" {
 			http.Error(w, reason, http.StatusForbidden)
 			return
 		}
@@ -2069,21 +2073,58 @@ func agentFilter(v string) (store.AgentFilter, error) {
 	}
 }
 
-// lanHost is the bare address of the LAN listener, or "" when there is none.
-// Used by the origin check, which must admit the one address this daemon
-// answers on and no other.
-func (s *Server) lanHost() string {
-	_, lanURL := s.lanState()
-	return hostOf(lanURL)
+// lanHosts are the bare names of every network address this daemon answers
+// on, empty when there is none. Used by the origin check, which must admit
+// those addresses and no other.
+func (s *Server) lanHosts() []string {
+	s.lanMu.RLock()
+	defer s.lanMu.RUnlock()
+	return s.lanHostsLocked()
+}
+
+func (s *Server) lanHostsLocked() []string {
+	var out []string
+	for _, u := range append([]string{s.lanURL}, s.altURLs...) {
+		if h := hostOf(u); h != "" {
+			out = append(out, h)
+		}
+	}
+	return out
 }
 
 // SetLAN switches network access on or off while the daemon is running. A nil
-// store means off: from then on nothing off-loopback is served.
+// store means off: from then on nothing off-loopback is served, and the other
+// addresses (SetLANAlternates) are forgotten too.
 func (s *Server) SetLAN(p *pairing.Store, url string) {
 	s.lanMu.Lock()
 	s.pairing, s.lanURL = p, url
+	if p == nil || url == "" {
+		s.altURLs = nil
+	}
+	hosts := s.lanHostsLocked()
 	s.lanMu.Unlock()
-	s.ws.setLANHost(hostOf(url))
+	s.ws.setLANHosts(hosts)
+}
+
+// SetLANAlternates names the addresses network access answers on besides
+// the one SetLAN gave: the second listener's, and the MagicDNS name of the
+// Tailscale one. Ignored while network access is off.
+func (s *Server) SetLANAlternates(urls []string) {
+	s.lanMu.Lock()
+	if s.lanURL == "" {
+		urls = nil
+	}
+	s.altURLs = append([]string(nil), urls...)
+	hosts := s.lanHostsLocked()
+	s.lanMu.Unlock()
+	s.ws.setLANHosts(hosts)
+}
+
+// lanAlternates reads what SetLANAlternates wrote.
+func (s *Server) lanAlternates() []string {
+	s.lanMu.RLock()
+	defer s.lanMu.RUnlock()
+	return append([]string(nil), s.altURLs...)
 }
 
 // lanState reads what SetLAN wrote. Every request calls it, so it takes the

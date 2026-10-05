@@ -200,6 +200,16 @@ export function NowScreen() {
           <NewSessionButton available={status.data ? spawnableAgents(status.data).length > 0 : undefined} onClick={() => setSpawning(true)} />
         )}
       </div>
+      {/* A controller phone can also start work, not only sessions (WP-15):
+        * clone, a new project, a worktree. A row of its own, thumb-sized. */}
+      {canControl && isPairedDevice() && (
+        <a
+          href="#/start"
+          className="flex min-h-12 items-center justify-center rounded-[var(--radius-panel)] border border-accent/60 bg-accent/15 px-3 text-center text-[15px] font-medium text-accent"
+        >
+          + Start work · clone, new project, worktree
+        </a>
+      )}
 
       {/* The share offer lives beside the figures it is about, in the ALL TIME
         * panel — see ShareNudge. It used to be a second banner here, which put

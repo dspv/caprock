@@ -947,7 +947,18 @@ export interface PairState {
   expires_in_sec?: number
   /** The address reaches other networks (a tunnel), not just this one. */
   tunnelled?: boolean
+  /** Every address a phone can open, `url` first: the LAN one, the Tailscale
+   *  one and its MagicDNS name (WP-15). A code works on any of them. */
+  addresses?: PairAddress[]
   devices: PairedDevice[]
+}
+
+/** One address network access answers on. */
+export interface PairAddress {
+  url: string
+  /** `lan`: the same Wi-Fi only; `tailscale`: a 100.x address, anywhere the
+   *  phone has Tailscale; `magicdns`: the same, by its MagicDNS name. */
+  kind: 'lan' | 'tailscale' | 'magicdns'
 }
 
 export const api = {

@@ -9,6 +9,21 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **Start work from the phone.** A phone allowed to control sessions gets
+  **Start work** on Now: clone a repository (an `https://` or `git@`
+  address, into a folder under your home), make a new project, or make a
+  worktree — then **Start an agent here**, which opens on the session's chat.
+  A clone runs on the computer and the phone follows it: lose the signal or
+  lock the phone mid-clone and the page catches up when it is back, without
+  cloning twice. A view-only phone is refused each of these, on the screen and
+  by the daemon.
+- **Pair over Tailscale by QR.** When the computer is on Wi-Fi and Tailscale,
+  Caprock listens on both, and the pairing panel draws the code for the one
+  you pick — *Wi-Fi*, *Tailscale* (works on mobile data) or the Tailscale name.
+  Without Tailscale it says plainly that a phone off the Wi-Fi cannot reach it.
+
 ## [0.76.0] - 2026-10-06
 
 ### Added

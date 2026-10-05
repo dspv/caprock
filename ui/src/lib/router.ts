@@ -1,5 +1,5 @@
 // Hash router — zero dependencies, good enough for five screens.
-// Routes: #/ (Now) · #/session/:id · #/cost · #/history · #/week · #/tasks
+// Routes: #/ (Now) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/start
 import { useEffect, useState } from 'react'
 
 export type Route =
@@ -14,6 +14,10 @@ export type Route =
   | { name: 'graph' }
   | { name: 'notes' }
   | { name: 'settings' }
+  // Start work from the phone (WP-15): clone, a new project, a worktree.
+  | { name: 'start'; mode?: StartMode }
+
+export type StartMode = 'clone' | 'new' | 'worktree'
 
 export function parseHash(hash: string): Route {
   const h = hash.replace(/^#\/?/, '')
@@ -48,6 +52,10 @@ export function parseHash(hash: string): Route {
       return { name: 'notes' }
     case 'settings':
       return { name: 'settings' }
+    case 'start': {
+      const mode = params.get('mode')
+      return mode === 'clone' || mode === 'new' || mode === 'worktree' ? { name: 'start', mode } : { name: 'start' }
+    }
     default:
       return { name: 'now' }
   }
@@ -70,6 +78,7 @@ export function href(r: Route): string {
     case 'graph': return '#/graph'
     case 'notes': return '#/notes'
     case 'settings': return '#/settings'
+    case 'start': return r.mode ? `#/start?mode=${r.mode}` : '#/start'
   }
 }
 

@@ -27,7 +27,7 @@
  * rendered.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, errText, type PairedDevice, type PairState } from '@/lib/api'
+import { api, errText, type PairAddress, type PairedDevice, type PairState } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { Section } from '@/components/SettingsParts'
 import { fmtAgo, fmtWhen } from '@/lib/format'
@@ -38,6 +38,25 @@ import { encodeQR, qrPath } from '@/lib/qr'
 export function pairLink(url: string, code: string): string {
   return `${url.replace(/\/+$/, '')}/#/pair?code=${encodeURIComponent(code)}`
 }
+
+/**
+ * Every address a phone can open, from the daemon's list or, from an older
+ * daemon, its one url. The LAN one first: it is what a phone on the same
+ * Wi-Fi uses without installing anything.
+ */
+export function addressesOf(s: Pick<PairState, 'url' | 'tunnelled' | 'addresses'>): PairAddress[] {
+  const all: PairAddress[] = s.addresses?.length ? s.addresses : s.url ? [{ url: s.url, kind: s.tunnelled ? 'tailscale' : 'lan' }] : []
+  const rank = { lan: 0, tailscale: 1, magicdns: 2 } as const
+  return [...all].sort((a, b) => rank[a.kind] - rank[b.kind])
+}
+
+const ADDRESS_LABEL: Record<PairAddress['kind'], string> = { lan: 'Wi-Fi', tailscale: 'Tailscale', magicdns: 'Tailscale name' }
+const ADDRESS_NOTE: Record<PairAddress['kind'], string> = {
+  lan: 'Works while your phone is on the same Wi-Fi.',
+  tailscale: 'Works anywhere your phone has Tailscale on — even on mobile data.',
+  magicdns: 'The Tailscale address by name; needs MagicDNS on in Tailscale.',
+}
+const ADDRESS_KEY = 'caprock.pair.address'
 
 export type PhoneStatus = { tone: 'off' | 'waiting' | 'ok' | 'on'; label: string }
 
@@ -183,19 +202,23 @@ export function Pairing() {
   const secondsLeft = codeUntil ? Math.max(0, Math.ceil((codeUntil - now) / 1000)) : 0
   const showingCode = Boolean(code && s.url && secondsLeft > 0)
   const machine = thisMachine()
+  const addresses = addressesOf(s)
+  const hasTailscale = addresses.some((a) => a.kind !== 'lan')
 
   return (
     <Section title="Open Caprock on your phone" aside={<StatusPill status={status} />}>
       <div className="grid gap-4">
         {showingCode ? (
-          <CodeView url={s.url!} code={code} secondsLeft={secondsLeft} onNew={showCode} onCancel={cancelCode} busy={busy} />
+          <CodeView addresses={addresses} code={code} secondsLeft={secondsLeft} onNew={showCode} onCancel={cancelCode} busy={busy} />
         ) : (
           <>
             <ol className="grid gap-2">
               <Step n={1}>
-                {s.enabled && s.tunnelled
+                {s.enabled && addresses.length > 0 && addresses.every((a) => a.kind !== 'lan')
                   ? <>Tailscale is on, on your phone and {machine}.</>
-                  : <>Your phone and {machine} are on the same Wi-Fi.</>}
+                  : s.enabled && hasTailscale
+                    ? <>Your phone and {machine} are on the same Wi-Fi — or Tailscale is on, on both.</>
+                    : <>Your phone and {machine} are on the same Wi-Fi.</>}
               </Step>
               <Step n={2}>
                 Press <span className="text-fg font-medium">Show a code</span> and point your phone&apos;s camera at it.
@@ -235,18 +258,29 @@ export function Pairing() {
           <p>
             Only phones you pair get in, and they can look but not change anything — unless you let one control sessions below. It switches off when Caprock restarts.
           </p>
-          {s.enabled && s.tunnelled ? (
-            <p>This {machine.replace('this ', '')} is on Tailscale, so it works from anywhere your phone has Tailscale too — even on mobile data.</p>
+          {s.enabled && hasTailscale ? (
+            <p>
+              This {machine.replace('this ', '')} is on Tailscale, so it works from anywhere your phone has Tailscale too — even on mobile data:
+              pick <span className="text-fg">Tailscale</span> above the code. Each address pairs on its own, because the phone keeps its sign-in per address.
+            </p>
           ) : (
             <p>
               Not on the same Wi-Fi? Install{' '}
               <a href="https://tailscale.com/download" target="_blank" rel="noreferrer" className="text-accent">Tailscale</a>{' '}
-              on both — then it works from anywhere.
+              on both — then it works from anywhere. Without it, a phone off this Wi-Fi cannot reach Caprock at all; nothing is relayed.
+              {s.enabled && ' Installed it just now? Turn off below, then show a code again.'}
             </p>
           )}
           {s.enabled && !showingCode && (
             <div className="flex flex-wrap items-center gap-x-3 pt-1">
-              {s.url && <span className="text-fg-faint">Listening at <span className="mono break-all">{s.url}</span></span>}
+              {addresses.length > 0 && (
+                <span className="min-w-0 text-fg-faint">
+                  Listening at{' '}
+                  {addresses.map((a, i) => (
+                    <span key={a.url}>{i > 0 && ' · '}<span className="mono break-all">{a.url}</span></span>
+                  ))}
+                </span>
+              )}
               <button onClick={() => turn(false)} disabled={busy} className="text-fg-faint underline hover:text-danger disabled:opacity-50">
                 Turn off
               </button>
@@ -280,20 +314,31 @@ function Step({ n, children }: { n: number; children: React.ReactNode }) {
 }
 
 function CodeView({
-  url,
+  addresses,
   code,
   secondsLeft,
   onNew,
   onCancel,
   busy,
 }: {
-  url: string
+  addresses: PairAddress[]
   code: string
   secondsLeft: number
   onNew: () => void
   onCancel: () => void
   busy: boolean
 }) {
+  // Which address the QR opens, remembered for this viewer: the owner who
+  // pairs over Tailscale once will want it again.
+  const [kind, setKind] = useState<PairAddress['kind'] | ''>(() => {
+    try { return (localStorage.getItem(ADDRESS_KEY) as PairAddress['kind'] | null) ?? '' } catch { return '' }
+  })
+  const chosen = addresses.find((a) => a.kind === kind) ?? addresses[0]!
+  const choose = (k: PairAddress['kind']) => {
+    setKind(k)
+    try { localStorage.setItem(ADDRESS_KEY, k) } catch { /* remembered for this page only */ }
+  }
+  const url = chosen.url
   const link = pairLink(url, code)
   const qr = useMemo(() => qrPath(encodeQR(link)), [link])
   const mm = Math.floor(secondsLeft / 60)
@@ -312,6 +357,25 @@ function CodeView({
         <path d={qr.d} fill="#000" />
       </svg>
       <div className="grid min-w-0 flex-1 basis-[220px] gap-3">
+        {addresses.length > 1 && (
+          <div className="grid gap-1">
+            <div role="radiogroup" aria-label="Address the code opens" className="flex flex-wrap gap-1">
+              {addresses.map((a) => (
+                <button
+                  key={a.url}
+                  type="button"
+                  role="radio"
+                  aria-checked={a.url === url}
+                  onClick={() => choose(a.kind)}
+                  className={`rounded-md border px-2.5 py-1 text-[12px] ${a.url === url ? 'border-accent bg-accent/15 text-accent' : 'border-border text-fg-muted hover:text-fg'}`}
+                >
+                  {ADDRESS_LABEL[a.kind]}
+                </button>
+              ))}
+            </div>
+            <div className="text-[12px] text-fg-muted">{ADDRESS_NOTE[chosen.kind]}</div>
+          </div>
+        )}
         <div>
           <div className="text-[15px] text-fg">Point your phone&apos;s camera at the code.</div>
           <div className="mt-0.5 text-[12px] text-fg-muted">Tap the link it shows. The phone pairs by itself.</div>

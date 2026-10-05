@@ -1332,6 +1332,23 @@ the clones in flight. **Shell tabs stay off the phone** (P1, owner decision
 signal are refused to every device in the handler, although those routes are
 a controller's for a session.
 
+*Amended 2026-10-06 (WP-15, the phone's start-work screens):* the four
+start-work actions are named controller actions — **add** and **create**
+(`POST /v1/projects` with `path` or `create`), **clone** (`POST /v1/projects`
+with `clone`) and **worktree** (`POST /v1/projects/{id}/worktrees`) — and a
+viewer is refused each with `403` (tests in `internal/api/startwork_test.go`).
+From a phone a clone address must also start with `https://` or `git@`: the
+machine's wider `user@host:path` is narrowed to what a hosting service hands
+out, and anything else is `400` before git runs. A clone or new project never
+lands on an existing name, a dangling link included. The listener rule of
+"one named address" becomes **at most two named addresses**, one of each
+kind: when the machine has both a LAN and a Tailscale address, LAN access
+listens on both (still never `0.0.0.0`), and the origin check admits those two
+and the Tailscale address's MagicDNS name, read once from `tailscale status
+--json` (read-only; Tailscale's configuration is never written). Without
+Tailscale nothing changes: a phone off the Wi-Fi cannot reach the daemon, and
+nothing is relayed.
+
 
 ---
 

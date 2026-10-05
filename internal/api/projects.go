@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/projects"
@@ -124,6 +125,12 @@ func (s *Server) handleAddProject(w http.ResponseWriter, r *http.Request) {
 		}
 		if !filepath.IsAbs(dir) || !underHome(filepath.Clean(dir), false) {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "a phone adds, creates and clones projects in folders under your home directory"})
+			return
+		}
+		// Narrower than the machine's user@host:path: a phone clones what a
+		// hosting service hands out, https:// or git@ (WP-15).
+		if req.Clone != nil && !strings.HasPrefix(req.Clone.URL, "https://") && !strings.HasPrefix(req.Clone.URL, "git@") {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "a phone clones an https:// or git@host:owner/repo address"})
 			return
 		}
 	}

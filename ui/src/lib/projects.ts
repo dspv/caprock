@@ -252,6 +252,11 @@ export const projectsApi = {
     if (v?.project) return { project: fromApiProject(v.project), created: !!v.created }
     throw new Error('The daemon answered without a project.')
   },
+  /** GET /v1/projects/ops: the clones the daemon remembers, for a client that missed their frames. */
+  ops: async (): Promise<OpFrame[]> => {
+    const v = await call<{ ops?: OpFrame[] }>('Clone progress', '/v1/projects/ops')
+    return Array.isArray(v?.ops) ? v.ops.filter((o) => o && typeof o.op_id === 'string') : []
+  },
   patch: async (id: string, patch: Partial<Pick<Project, 'name' | 'pinned' | 'sort'>>): Promise<Project> => {
     const v = await call<{ project: ApiProject }>('Editing a project', `/v1/projects/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch })
     return fromApiProject(v.project)

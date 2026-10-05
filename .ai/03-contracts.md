@@ -153,7 +153,8 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   start work from the phone (2026-10-05, [21-app.md](21-app.md) decision 8) —
   `POST /v1/projects`, `PATCH` and `DELETE /v1/projects/{id}`, and `POST` and
   `DELETE /v1/projects/{id}/worktrees…` (see § Projects and shells for the
-  folder rules). Everything
+  folder rules). From a device a clone URL must also begin `https://` or
+  `git@` (`400` otherwise, before git runs). Everything
   else stays `403` for every device: settings, pairing, hive, tasks creation
   and verify, orchestrator, hooks install, shutdown, update check, report
   test, Gemini ask, `open-terminal`, `POST /v1/sessions/remove`, and every
@@ -192,6 +193,16 @@ The block is carrier-grade NAT, which Tailscale borrows; on any other interface
 it is an address shared with every customer behind the same carrier, and other
 VPNs borrow it too. When a Tailscale address exists it is preferred, and
 `GET /v1/pair/state` says so with `tunnelled: true` (`internal/lan`).
+When the machine has both kinds, LAN access listens on one of each (WP-15,
+ADR-034 amended 2026-10-06), and `GET /v1/pair/state` lists them in
+`addresses: [{url, kind}]`, `url` first, `kind` one of `lan`, `tailscale`
+or `magicdns` — the last the Tailscale address by its MagicDNS name, from
+`tailscale status --json` when the CLI answers within 2 s and the name is that
+address's. The Host and Origin checks admit exactly these names. A code works
+on any of them; a phone's token is kept per address (browser storage is per
+origin), so each address pairs once. An address appearing later (Tailscale
+installed while LAN access is on) is listened on after LAN access is turned
+off and on.
 
 **Pairing endpoints.** `GET /v1/pair/state`, `POST /v1/pair/code`,
 `DELETE /v1/pair/code` and `DELETE /v1/pair/devices/{id|all}` are
