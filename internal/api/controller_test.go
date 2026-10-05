@@ -39,6 +39,7 @@ var viewerMay = map[string]bool{
 	"GET /v1/live": true, "GET /v1/tasks": true, "GET /v1/tasks/{id}": true, "GET /v1/approvals": true,
 	"GET /v1/statusline/{id}": true, "GET /v1/pair/me": true, "GET /healthz": true,
 	"GET /v1/agents/{id}/permission": true,
+	"GET /v1/glance":                 true, "GET /v1/week": true, "GET /v1/tools/drill": true,
 }
 
 // What a controller may do on top (ADR-034): work on a session, nothing about

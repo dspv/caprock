@@ -52,6 +52,13 @@ describe('the hooks banner', () => {
     expect(screen.getByText('Hooks not installed')).toBeTruthy()
   })
 
+  it('says update, not install, when some hooks are already there', () => {
+    render(<HooksBanner missing={['PermissionRequest']} settingsPath={PATH} partial />)
+    expect(screen.getByText('Hooks need an update')).toBeTruthy()
+    expect(screen.queryByText('Hooks not installed')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Update hooks' })).toBeTruthy()
+  })
+
   it('draws nothing when no hook is missing', () => {
     const { container } = render(<HooksBanner missing={[]} settingsPath={PATH} />)
     expect(container.textContent).toBe('')

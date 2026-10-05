@@ -37,7 +37,8 @@ function readDismissed(): string | null {
 export const INSTALLED_NOTE =
   'Sessions started from now on report live, including resumed ones. A session already running keeps the hooks it started with until it is restarted.'
 
-export function HooksBanner({ missing, settingsPath }: { missing: string[]; settingsPath: string }) {
+/** `partial`: some hook events are installed already, so this is an update (a newer Caprock listens for more), not a first install. */
+export function HooksBanner({ missing, settingsPath, partial = false }: { missing: string[]; settingsPath: string; partial?: boolean }) {
   const key = hooksKey(missing)
   const [dismissed, setDismissed] = useState(readDismissed)
   const [state, setState] = useState<'idle' | 'busy' | 'done' | 'failed'>('idle')
@@ -89,13 +90,15 @@ export function HooksBanner({ missing, settingsPath }: { missing: string[]; sett
     <div role="status" className="border border-warn/50 bg-warn/10 px-3 py-2 text-[12px] rounded-[var(--radius-panel)] flex items-start gap-3">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <span className="text-warn font-medium">Hooks not installed</span>
+          <span className="text-warn font-medium">{partial ? 'Hooks need an update' : 'Hooks not installed'}</span>
           <span className="text-fg-muted min-w-0">
-            Activity still arrives from transcripts, a few seconds late. Hooks make it live.
+            {partial
+              ? 'This Caprock listens for more hook events than are installed. Install to add them.'
+              : 'Activity still arrives from transcripts, a few seconds late. Hooks make it live.'}
           </span>
           <button type="button" onClick={install} disabled={state === 'busy'}
             className="rounded-md bg-accent px-2.5 py-1 text-[12px] font-medium text-panel hover:opacity-90 disabled:opacity-60">
-            {state === 'busy' ? 'Installing…' : 'Install hooks'}
+            {state === 'busy' ? 'Installing…' : partial ? 'Update hooks' : 'Install hooks'}
           </button>
         </div>
         <div className="mt-1 text-[11px] text-fg-faint">

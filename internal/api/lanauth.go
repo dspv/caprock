@@ -195,6 +195,9 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/approvals":            true,
 	"GET /v1/statusline/{id}":      true,
 	"GET /v1/pair/me":              true, // which role this device holds, so its screens draw the right controls
+	"GET /v1/glance":               true, // Now's At a glance
+	"GET /v1/week":                 true, // the Week screen
+	"GET /v1/tools/drill":          true, // the tool drill-down; its Premium half is gated in the handler
 
 	// The permission prompt an owned session waits on (ADR-035); the live
 	// socket already carries it to a viewer.

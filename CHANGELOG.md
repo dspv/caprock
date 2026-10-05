@@ -41,6 +41,12 @@ Phase 3 (Delight) has no plan by design.
 
 ### Fixed
 
+- **A paired phone opens Week, At a glance and the tool drill-down.** They
+  were left out of what a paired device may read and answered 403; the drill's
+  Premium half stays gated as on the machine.
+- **"Hooks need an update" when only some are missing.** After an upgrade adds
+  a hook event, Now said *Hooks not installed* for one missing event; it now
+  says the hooks need an update, with an *Update hooks* button.
 - **Codex edits count as edits in *What it went on*.** Codex runs its tools
   through one `exec` wrapper, so every patch it applied counted as a command.
   Each call is now placed by the tool it actually ran — a patch is an edit, a
