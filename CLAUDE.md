@@ -20,6 +20,7 @@ this line does not. See `.ai/14-build-status.md`.
   repo `cybrixcc/caprock-web`, not here: this repo is public.
 - `cmd/`, `internal/` — Go daemon, CLI, hook shim (layout in `.ai/02-architecture.md`).
 - `ui/` — React + Vite dashboard, embedded into the binary via `go:embed`.
+- `app/` — the desktop app, a Tauri v2 shell around that dashboard (`app/README.md`).
 - `pricing/` — versioned model pricing table. `testdata/` — fixtures, fake `claude`.
 - `scripts/` — `align-tables.py`, `check-links.py` (docs gates); `shots.py`, `feature-shots.py`, `refresh-shots.sh` (the documented screenshots).
 - `docs/` — human-facing docs; the spec-migration audit record.

@@ -9,6 +9,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **A guide to the desktop app.** [docs/app.md](docs/app.md) walks through
+  the window — projects, tabs, terminal, chat, inspector, the keys — the
+  menu bar, badge and ⌃⌥⌘C, notifications with Approve and Deny (and when
+  Approve is offered), pairing a phone over Wi-Fi or Tailscale, and starting
+  work from the phone. The README now leads with the app, with a screenshot
+  made from demo data; the daemon, the dashboard and the CLI are documented
+  as before.
+
 ## [0.77.0] - 2026-10-06
 
 ### Added

@@ -46,12 +46,13 @@ Supporting directories:
 | `docs/`             | Human-facing docs; the migration audit record                                                                                                                                      |
 | `cmd/`, `internal/` | Go daemon, CLI, shim (see 02-architecture § Repository layout)                                                                                                                     |
 | `ui/`               | React + Vite dashboard, embedded into the binary                                                                                                                                   |
+| `app/`              | The desktop app: Tauri v2 shell around the dashboard ([app/README.md](../app/README.md))                                                                                           |
 | `pricing/`          | `pricing.json` — versioned model pricing table                                                                                                                                     |
 | `testdata/`         | Transcript fixtures, hook payloads, fake `claude`                                                                                                                                  |
 
 ## Current State
 
-**Last updated: 2026-09-30** · Owner: Dima · Phase: **Phase 2 complete; the product is released and paid plans are live**
+**Last updated: 2026-10-06** · Owner: Dima · Phase: **Phase 2 complete; the product is released and paid plans are live; the desktop app ships with each release**
 
 - **Documentation:** corpus built from the spec on 2026-08-18; loss audit green; spec deleted; kept current with the code.
 - **Code:** all three phases built, green on the 3-OS CI matrix, tagged and published — `git describe`, the releases page and [CHANGELOG.md](../CHANGELOG.md) say which version, and this file deliberately does not ([rule 9](../CLAUDE.md)). Homebrew formula in `dspv/homebrew-tap` (`brew install dspv/tap/caprock`); Windows via Scoop. Post-Orchestrate work is polish and paid surfaces. The Phase 2 tag gate — a live unattended orchestrator run with hooks — passed: a real `claude` orchestrator drove a task to green verification with no human input. See [14-build-status.md](14-build-status.md) for the live per-track state.
@@ -59,7 +60,7 @@ Supporting directories:
 - **Paid plans:** free, $30/year or $5/month, $100 once. A licence key with its own expiry unlocks the daily spend cap, weekly report and Gemini on the user's own key, and is checked offline ([ADR-022](08-decisions.md)); Stripe issues it and emails it on payment. The team tier is specified, not built ([ADR-021](08-decisions.md)).
 - **Users:** what real people asked for, and what came of it, is in `.fdck/` in the private site repo — dated, in their own words, with a ledger.
 - **Security:** a v0.17.0 audit found six defects sharing one root cause — the hive treated files written by a worker session (which runs with permissions skipped) as trusted input. All six are fixed: an arbitrary file write outside the hive via a mailbox `to:` field, a `git worktree add -B` that destroyed user commits, path traversal via task ids, a `~/.claude.json` rewrite that lost key order and truncated large integers, a settings.json backup that never refreshed (plus `caprock hooks restore`), and an unreachable-but-catastrophic prune path. See [ADR-020](08-decisions.md) and the 2026-08-23 entry in [14-build-status.md](14-build-status.md).
-- **Desktop app:** planned, not built. A Tauri v2 shell around the same React UI and xterm.js, on the Go daemon, for macOS, Windows and Linux ([ADR-038](08-decisions.md)); spec in [21-app.md](21-app.md), plan and definitions of done in [22-app-plan.md](22-app-plan.md).
+- **Desktop app:** built and shipped with each release beside the daemon, which it bundles: a Tauri v2 shell around the same React UI and xterm.js, on the Go daemon, for macOS (universal `.dmg`, cask `caprock-app`), Windows and Linux ([ADR-038](08-decisions.md)). It opens on the terminal-first workspace ([04-ui.md § The app workspace](04-ui.md#the-app-workspace)) with the menu bar, badge, global hotkey and actionable notifications; the phone gained chat, self-reconnect, start work and Tailscale pairing. The README leads with it; user docs are [docs/install-app.md](../docs/install-app.md) and [docs/app.md](../docs/app.md). Spec in [21-app.md](21-app.md); work packages and the MVP definition of done in [22-app-plan.md](22-app-plan.md).
 - **Unmeasured / undecided:** see [12-risks.md § Open questions](12-risks.md#open-questions); `OQ-01`, `OQ-03`, and `OQ-07` are resolved (all open questions OQ-01–09 are closed); no open question blocks shipping.
 
 ## Rules of engagement — non-negotiable

@@ -22,6 +22,12 @@ sessions-derived projects on an older daemon. Packaging (WP-17): a universal
 `.dmg` and the `caprock-app` cask, NSIS, AppImage, `.deb` and `.rpm` from the
 release tag ([docs/RELEASING.md § The desktop app](../docs/RELEASING.md#the-desktop-app),
 [docs/install-app.md](../docs/install-app.md)).
+Since (2026-10-06): notifications with Approve and Deny on macOS (WP-09), menu
+bar, badge and global hotkey (WP-10), live replay (WP-12), the phone's
+reconnect and offline queue (WP-13), the chat view (WP-14), start work and
+Tailscale pairing (WP-15), and the repo side of the docs (WP-18: README,
+[docs/app.md](../docs/app.md)); the site's download page is in the private
+site repo.
 
 ## Goal
 

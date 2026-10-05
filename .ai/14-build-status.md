@@ -72,6 +72,27 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-06 — Docs for the desktop app (WP-18, repo side)
+
+The README now leads with the app: what it is, the cask and the daemon's
+install side by side, a screenshot of the workspace, and a short section on
+the window, the menu bar, the hotkey and notifications; the daemon, the
+dashboard and every CLI section stay. [docs/app.md](../docs/app.md) is the
+new user page — the layout, the keys, the menu bar and badge, the hotkey,
+notifications (when Approve is offered), pairing with the Tailscale QR, and
+starting work from the phone — linked from
+[docs/install-app.md](../docs/install-app.md). [04-ui.md](04-ui.md) gained
+the tab strip, the outside-the-window surfaces, Settings → Global shortcut,
+the pairing address picker and Start work.
+
+The screenshots (`docs/shot-app.png`, `docs/shot-app-light.png`) use demo
+data only: a throwaway daemon with its own HOME and data directory, four git
+repositories and five synthetic transcripts made up for the picture, hook
+payloads for the live and waiting states, and a shell tab running
+`git log` and `go test` in the demo repository, captured in a headless Chrome
+at `/?app=1#/app`. They show no path, name or figure from a real machine.
+The site's download page is WP-18's other half, in the private site repo.
+
 ### 2026-10-06 — Phone resilience client (WP-13)
 
 One reconnect policy for `/v1/live` and every terminal
