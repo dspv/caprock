@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.72.0] - 2026-10-05
+
 ### Added
 
 - **Answer Claude Code's permission prompts with a button.** When a session
