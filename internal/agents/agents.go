@@ -115,7 +115,9 @@ type Manager struct {
 	// Everything else is resolved at the moment it is needed (findBinary),
 	// because a CLI installed while the daemon runs should be offered without
 	// a restart.
-	bins     map[string]string
+	bins map[string]string
+	// shellCmd overrides the login shell a shell tab runs; tests set it.
+	shellCmd func() (string, []string)
 	mu       sync.Mutex
 	agents   map[string]*Agent
 	OnExit   func(sessionID string, code int)
@@ -534,11 +536,17 @@ func (m *Manager) List() []*Agent {
 // The name says "owned" rather than "all" because that distinction is the whole
 // safety story: `m.agents` holds only sessions this manager spawned, and a
 // caller must not have to remember that. See PauseOwned.
+//
+// Shell tabs are not sessions and are left out: the spend cap pauses work
+// that costs money, and a shell costs none.
 func (m *Manager) OwnedRunning() []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := make([]string, 0, len(m.agents))
-	for id := range m.agents {
+	for id, a := range m.agents {
+		if a.Kind == KindShell {
+			continue
+		}
 		out = append(out, id)
 	}
 	return out
@@ -738,7 +746,9 @@ func (a *Agent) wait(m *Manager) {
 	delete(m.agents, a.SessionID)
 	m.mu.Unlock()
 	m.clearPermission(a.SessionID)
-	_ = m.store.WithTx(context.Background(), func(q store.Querier) error { return store.SetExit(context.Background(), q, a.SessionID, code) })
+	if a.Kind != KindShell {
+		_ = m.store.WithTx(context.Background(), func(q store.Querier) error { return store.SetExit(context.Background(), q, a.SessionID, code) })
+	}
 	m.log.Info("owned session exited", "component", "agents", "session_id", a.SessionID, "code", code, "err", errStr(err))
 	if a.onExit != nil {
 		a.onExit(a.SessionID, code)

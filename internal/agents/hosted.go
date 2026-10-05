@@ -50,6 +50,14 @@ func (m *Manager) Reattach(ctx context.Context) []*Agent {
 	}
 	for _, at := range attached {
 		rec := at.Record
+		if rec.Meta[metaKind] == KindShell {
+			// A shell tab has no session row to bring up to date and no
+			// prompt to restore; it only needs its terminal back.
+			a := m.adopt(rec, at.Session, KindShell, "", 0)
+			m.run(a, rec.Version)
+			out = append(out, a)
+			continue
+		}
 		worktree := ""
 		s, err := store.GetSession(ctx, m.store.DB(), rec.SessionID)
 		if err == nil {
@@ -65,14 +73,7 @@ func (m *Manager) Reattach(ctx context.Context) []*Agent {
 			kind = AgentClaude
 		}
 		port, _ := strconv.Atoi(rec.Meta[metaPort])
-		a := &Agent{
-			SessionID: rec.SessionID, Cwd: rec.Cwd, Worktree: worktree, Command: rec.Command, StartedAt: rec.StartedAt,
-			Kind: kind, Port: port,
-			sess: at.Session, ring: newRing(256 << 10), log: m.log, subs: map[chan []byte]struct{}{}, done: make(chan struct{}), onExit: m.OnExit,
-		}
-		m.mu.Lock()
-		m.agents[rec.SessionID] = a
-		m.mu.Unlock()
+		a := m.adopt(rec, at.Session, kind, worktree, port)
 		// The row normally already says all of this. It does not when the
 		// sweep of an older run ended it, or the database is newer than the
 		// session; then the holder is the evidence and the row follows it.
@@ -89,9 +90,7 @@ func (m *Manager) Reattach(ctx context.Context) []*Agent {
 		if kind == AgentClaude {
 			m.restorePermission(ctx, rec.SessionID)
 		}
-		go a.pump(m.OnOutput)
-		go a.wait(m)
-		m.log.Info("reattached owned session", "component", "agents", "session_id", rec.SessionID, "agent", kind, "pid", at.Session.PID(), "host_version", rec.Version)
+		m.run(a, rec.Version)
 		out = append(out, a)
 	}
 	// A prompt stored for a session that is not running again is waiting on
@@ -102,6 +101,26 @@ func (m *Manager) Reattach(ctx context.Context) []*Agent {
 	}
 	_ = m.store.WithTx(ctx, func(q store.Querier) error { return store.PrunePendingPermissions(ctx, q, keep) })
 	return out
+}
+
+// adopt registers a session a previous daemon left in its pty-host; run then
+// starts reading it, once the caller has brought its row up to date.
+func (m *Manager) adopt(rec ptyhost.Record, sess ptyman.Session, kind, worktree string, port int) *Agent {
+	a := &Agent{
+		SessionID: rec.SessionID, Cwd: rec.Cwd, Worktree: worktree, Command: rec.Command, StartedAt: rec.StartedAt,
+		Kind: kind, Port: port,
+		sess: sess, ring: newRing(256 << 10), log: m.log, subs: map[chan []byte]struct{}{}, done: make(chan struct{}), onExit: m.OnExit,
+	}
+	m.mu.Lock()
+	m.agents[rec.SessionID] = a
+	m.mu.Unlock()
+	return a
+}
+
+func (m *Manager) run(a *Agent, hostVersion string) {
+	go a.pump(m.OnOutput)
+	go a.wait(m)
+	m.log.Info("reattached owned session", "component", "agents", "session_id", a.SessionID, "agent", a.Kind, "pid", a.sess.PID(), "host_version", hostVersion)
 }
 
 // Survives reports whether a running owned session is held by a pty-host and
