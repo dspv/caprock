@@ -334,6 +334,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/notes", s.handleSearchNotes)
 	m.HandleFunc("GET /v1/sessions/{id}/diff", s.handleSessionDiff)
 	m.HandleFunc("POST /v1/sessions/{id}/open-terminal", s.handleOpenTerminal)
+	m.HandleFunc("POST /v1/sessions/remove", s.handleRemoveSessions)
 	m.HandleFunc("GET /v1/terminals", s.handleTerminals)
 	m.HandleFunc("GET /v1/stats/summary", s.handleSummary)
 	m.HandleFunc("GET /v1/update", s.handleUpdate)

@@ -1345,6 +1345,13 @@ structured way.
 the hook is also stored, as a `permission.prompt` event for every session, so
 Now can say *waiting for approval* and the phone can be told.
 
+*Amended 2026-10-05:* the prompt an owned session waits on is no longer held in
+memory only. The dialog outlives a daemon restart on the session's screen
+(ADR-033), so its buttons do too: the prompt is stored (migration 0039) and
+restored on reattach under the same id. A prompt whose session recorded
+anything since that means it moved on is dropped instead — a missing button
+costs a tap in the terminal, a stale one would type `1` into a prompt.
+
 ---
 
 ## ADR-036 — A phone hears that a session needs it through the owner's own Telegram bot
@@ -1414,3 +1421,52 @@ link.
 **Revisit if** Caprock serves HTTPS on Tailscale for another reason, or an
 owner refuses Telegram — then Web Push reuses the hook and the rules and swaps
 the sender.
+
+---
+
+## ADR-037 — A session can be removed, for good, from the machine
+
+**Date:** 2026-10-05 · **Status:** accepted
+
+Test runs left about thirty sessions in the owner's database — their folders
+under `/private/tmp/claude-501/…/scratchpad` — and they showed in Recent
+projects and every total. Nothing could take them out.
+
+**The decision.** `POST /v1/sessions/remove`, *Remove from Caprock* on the
+session page (two clicks, the second on a line naming the cost) and
+`caprock sessions rm` (by id or `--cwd-prefix`, a dry run unless `--yes`)
+delete a session's events and everything counted from them, take its turns
+back out of each day's totals, and record a tombstone in `removed_sessions`.
+The recorder stores nothing for a tombstoned session, so the transcript still
+on disk is never recorded again. Contract in
+[03-contracts.md](03-contracts.md) (*Removing sessions*).
+
+**Delete with a tombstone, not a `deleted_at` column.** A soft delete on
+`sessions` would keep every row and leave every screen to filter it out:
+dozens of queries over `sessions` and `events`, several on covering indexes a
+new filter column would uncover (as `internal = 0` did, migration 0026). A missed filter is a total that silently still counts the
+session — the failure this exists to fix. With the rows gone there is nothing
+to filter. It follows the repository's own precedent: the Codex repair
+deletes imported threads' rows and takes them out of the rollups the same way
+(`internal/codex/repair.go`).
+
+**What it costs.** It cannot be undone from the dashboard. The tombstone keeps
+the folder and the cost for the record, and the transcript is untouched, so a
+restore would be deleting the tombstone and re-reading the file — not built.
+Hook events are not in any file and would not come back.
+
+**The machine only.** A phone gets `403` whatever its role (ADR-029,
+ADR-034): removing history is not working on a session. A session still
+running — held by Caprock, or `active` — is skipped, because every event it
+went on to send would be dropped.
+
+**Verified** on a copy of the owner's database (2026-10-05): removing the 31
+sessions under `/private/tmp/claude-501` took Lifetime, the all-time summary
+and the daily totals down by exactly $24.5953297, their summed session cost,
+and the session counts by 31. One day row had been filed under a project name
+the folder no longer resolves to (`repo`, now `hive2`); a row of that day and
+model holding exactly the session's tokens and cost is taken as its own.
+
+**Revisit if** a removed session is wanted back, or removal is wanted from a
+phone.
+

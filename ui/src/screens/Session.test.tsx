@@ -386,12 +386,14 @@ d('the terminal before the figures', () => {
     // for as long as the stats took.
     localStorage.clear()
     termsMade.n = 0
+    // Terminal sockets only: the shared live socket (/v1/live) may or may not
+    // (re)connect during this test depending on what ran before it.
     const sockets: string[] = []
     vi.stubGlobal('WebSocket', class {
       static OPEN = 1
       readyState = 0
       binaryType = ''
-      constructor(url: string) { sockets.push(url) }
+      constructor(url: string) { if (url.includes('/term')) sockets.push(url) }
       send() {}
       close() {}
     })

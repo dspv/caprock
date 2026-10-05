@@ -131,6 +131,28 @@ export interface OpenTerminalInfo {
  *  then resume it there. fork: branch it under a new id; the original runs on. */
 export type OpenTerminalMode = 'resume' | 'move' | 'fork'
 
+/** A session as POST /v1/sessions/remove lists it (ADR-037). */
+export interface RemovalCandidate {
+  session_id: string
+  cwd: string
+  project: string
+  agent: string
+  status: string
+  owned: boolean
+  last_event_at: number
+  turns: number
+  cost_usd: number
+}
+
+/** What removing sessions did, or with dry_run would do. */
+export interface RemoveResult {
+  dry_run: boolean
+  sessions: RemovalCandidate[]
+  skipped: (RemovalCandidate & { reason: string })[]
+  cost_usd: number
+  unmatched_usd: number
+}
+
 /** A terminal application installed on this machine. */
 export interface NativeTerminal {
   id: string
@@ -993,6 +1015,8 @@ export const api = {
   /** Open a session in the user's own terminal app. */
   openTerminal: (id: string, req: { terminal?: string; mode?: OpenTerminalMode }) =>
     post<{ terminal: NativeTerminal; mode: OpenTerminalMode; command: string }>(`/v1/sessions/${encodeURIComponent(id)}/open-terminal`, req),
+  /** Remove sessions from Caprock for good — the machine only (ADR-037). */
+  removeSessions: (req: { ids?: string[]; cwd_prefix?: string; dry_run?: boolean }) => post<RemoveResult>('/v1/sessions/remove', req),
   spawn: (req: SpawnRequest) => post<{ session_id: string; cwd: string }>('/v1/agents', req),
   /** The models an agent's own CLI lists — Codex's on-disk catalog and its
    *  configured default. Empty for the other agents. */

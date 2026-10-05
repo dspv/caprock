@@ -86,11 +86,21 @@ func (m *Manager) Reattach(ctx context.Context) []*Agent {
 				return store.MarkOwned(ctx, q, rec.SessionID, worktree, rec.Command, at.Session.PID())
 			})
 		}
+		if kind == AgentClaude {
+			m.restorePermission(ctx, rec.SessionID)
+		}
 		go a.pump(m.OnOutput)
 		go a.wait(m)
 		m.log.Info("reattached owned session", "component", "agents", "session_id", rec.SessionID, "agent", kind, "pid", at.Session.PID(), "host_version", rec.Version)
 		out = append(out, a)
 	}
+	// A prompt stored for a session that is not running again is waiting on
+	// nothing.
+	keep := map[string]bool{}
+	for _, a := range out {
+		keep[a.SessionID] = true
+	}
+	_ = m.store.WithTx(ctx, func(q store.Querier) error { return store.PrunePendingPermissions(ctx, q, keep) })
 	return out
 }
 

@@ -134,7 +134,7 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `POST /v1/paste`, `POST /v1/tasks/{id}/approve` and `/reject`. Everything
   else stays `403` for every device: settings, pairing, hive, tasks creation
   and verify, orchestrator, hooks install, shutdown, update check, report
-  test, Gemini ask and `open-terminal`.
+  test, Gemini ask, `open-terminal` and `POST /v1/sessions/remove`.
 - **What a controller's `POST /v1/agents` may say** (`controllerSpawnRefusal`):
   `cwd` must be absolute and, after `filepath.EvalSymlinks`, the home directory
   or below it — a project outside home is refused even where sessions have run. With `create: true` a missing `cwd` passes when its
@@ -456,7 +456,9 @@ Esc — only while `id` is still the waiting prompt. A prompt is cleared by an
 answer here, a single Enter, Esc, Ctrl+C or digit typed into the terminal
 (arrows are not answers), its own tool's `PostToolUse` (same tool and input),
 the session's next `UserPromptSubmit` or `Stop`, `SessionEnd`, or the process
-exiting; each change is a `permission` frame.
+exiting; each change is a `permission` frame. The prompt is stored, and a
+session reattached after a daemon restart is waiting on it again under the
+same `id` (migration 0039).
 
 `/v1/sessions/{id}/notes` and `/v1/notes` return `AssistantNote[]` — `{event_id, session_id, project, ts, model, text, fragment}` — the prose Claude wrote, as opposed to the tool calls it made. Three rules are baked into the query rather than left to callers. **Subagent sidechains are excluded** (`agent_id = ''` and `payload.sidechain IS NOT 1`): about 45% of assistant turns are subagent chatter, so an unfiltered "what did Claude say" answers with a subagent's words roughly half the time. **`fragment` marks a note shorter than 240 runes** — mid-thought asides like "Let me check that" — so a caller can avoid presenting one as a session's conclusion; ~60% of all notes are legitimately short, so the flag qualifies a *final* note and must never be used to hide prose. **Search matches Claude's prose OR the prompt that produced it** — people remember their own question ("the SSO thing") far better than Claude's phrasing of the answer, so searching only the reply misses how memory works. Only the nearest preceding `turn.user` within a short event window counts, or every reply in an exchange would match rather than the passage that answers it; the row returned is always Claude's reply. "Preceding" is in time within the reply's own session — `(ts, id)` order, the prompt inside the reply's last 60 events there — not in event id: an id is when Caprock stored a row, and a prompt imported after its replies (OpenCode's history, a transcript read after its hooks) sits after them by id. Measured on a copy of the owner's database (2026-10-01): under the id window none of 3,048 OpenCode replies had a question, and 24 Claude Code replies matched a prompt older than the one they answered; in time order 2,878 OpenCode replies have one and Claude Code replies with a prompt in the window went from 17,679 to 17,773 of 31,521 (363 fell out of the window's edge, 457 came in). A search that matches nothing scans every note either way; the prompt lookups walk `(session_id, ts)` indexes and cost about the same. The prompt's text is `payload.prompt` (Claude Code, Gemini, OpenCode) or `payload.text` (DeepSeek Harness), read through one `COALESCE`; reading only `prompt` left every DeepSeek question unsearchable. **Wildcards are escaped**, so a query containing `%` or `_` matches literally; the corpus is one developer's own sessions, so a scan is cheap and avoids an FTS table that would need rebuilding for historical rows.
 
@@ -682,8 +684,29 @@ WS     /v1/agents/{id}/term          bidirectional stream (xterm.js): binary = k
 POST   /v1/paste                     {name, type, data:base64} → {path}; writes a pasted or dropped file so Claude Code can read it
 GET    /v1/terminals                 → {terminals: [{id, name}], preferred}; terminal apps installed here, most preferred first
 POST   /v1/sessions/{id}/open-terminal {terminal?, mode?: resume|move|fork} → {terminal: {id, name}, mode, command}
+POST   /v1/sessions/remove           {ids?: [id], cwd_prefix?, dry_run?} → {dry_run, sessions: [RemovalCandidate], skipped: [RemovalCandidate + reason], cost_usd, unmatched_usd}
 GET    /v1/history?range=…           lifetime totals + tool distribution + model mix + daily
 ```
+
+**Removing sessions** ([ADR-037](08-decisions.md)). `POST /v1/sessions/remove`
+is the machine's alone: every paired device gets `403`, whatever its role, at
+the gate and again in the handler. It names sessions by `ids` (at most 500) or
+by `cwd_prefix` — the folder itself and everything under it, matched on a path
+boundary; a request with neither is a `400`. A `RemovalCandidate` is
+`{session_id, cwd, project, agent, status, owned, last_event_at, turns,
+cost_usd}`. A session Caprock holds a terminal for, or whose status is
+`active`, is listed in `skipped` with a reason and left alone. With `dry_run`
+nothing changes. Otherwise, in one transaction per request, each session's
+events, `session_stats`, `session_files`, `session_prs`,
+`throttle_observations`, `forced_continues`, `pending_permissions` and
+`sessions` rows are deleted; its counted turns are taken back out of
+`daily_stats` and its `daily_sessions` marks out of the day's session count;
+and it is written to `removed_sessions`. `unmatched_usd` is cost whose day row
+could not be found to subtract from (zero on the owner's database). The
+recorder refuses every later event for a removed session, so a transcript
+still on disk never brings it back. The cached aggregates are dropped, so the
+next read of any total is without it. `caprock sessions rm [ids…]
+[--cwd-prefix dir] [--yes]` calls it; without `--yes` it is a dry run.
 
 **`agent`** is `claude` (default), `codex`, `opencode` or `gemini`; any other
 value is a 400. `permission_mode` is always in Claude Code's words and each
@@ -1162,6 +1185,45 @@ than its conversation ([ADR-032](08-decisions.md)); written by the daemon when
 `parent_session`: that is the same conversation continuing (a `/clear`, a
 fork), and the two must not be read as one. `SessionSummary` carries it as
 `relay_from`, omitted when empty.
+
+### Pending permission DDL (migration 0039)
+
+```sql
+CREATE TABLE IF NOT EXISTS pending_permissions (
+  session_id TEXT    NOT NULL PRIMARY KEY,
+  prompt_id  TEXT    NOT NULL,
+  tool       TEXT    NOT NULL,
+  detail     TEXT    NOT NULL DEFAULT '',
+  always     TEXT    NOT NULL DEFAULT '',
+  since      INTEGER NOT NULL,              -- unix ms the dialog was drawn
+  input      TEXT    NOT NULL DEFAULT ''
+);
+```
+
+The permission prompt an owned session waits on ([ADR-035](08-decisions.md)),
+kept across a daemon restart. The agent manager writes the row whenever the
+prompt in memory changes — off the caller's goroutine, serialised, always
+writing the state current when it runs — and deletes it when the prompt is
+cleared. On reattach a Claude Code session gets its prompt back under the same
+`prompt_id`, so the `409` check holds, unless the session recorded a
+`tool.post`, `turn.user`, `turn.assistant`, `agent.stop`, `session.end` or
+another `permission.prompt` after `since`; rows of sessions not reattached are
+deleted.
+
+### Removed sessions DDL (migration 0040)
+
+```sql
+CREATE TABLE IF NOT EXISTS removed_sessions (
+  session_id TEXT    NOT NULL PRIMARY KEY,
+  removed_at INTEGER NOT NULL,            -- unix ms
+  cwd        TEXT    NOT NULL DEFAULT '',
+  cost_usd   REAL    NOT NULL DEFAULT 0
+) WITHOUT ROWID;
+```
+
+A tombstone per session the owner removed ([ADR-037](08-decisions.md)); the
+session's own rows are gone. `rollup.Record` checks it inside its transaction
+and stores nothing for a listed session.
 
 ### Native id DDL (migration 0032)
 
