@@ -118,6 +118,7 @@ func TestEveryEndpointForEveryRole(t *testing.T) {
 		t.Run(pattern, func(t *testing.T) {
 			local := phoneRequest(pattern, "")
 			local.RemoteAddr = "127.0.0.1:51000"
+			local.Host = "127.0.0.1:22776"
 			if got, why := s.gate(local); got != 0 {
 				t.Errorf("the machine itself: %d (%s)", got, why)
 			}
@@ -214,6 +215,7 @@ func TestPairMeNamesTheRole(t *testing.T) {
 	} {
 		r := httptest.NewRequest(http.MethodGet, "/v1/pair/me", nil)
 		r.RemoteAddr = tc.from
+		r.Host = "127.0.0.1:22776" // what a client on the machine sends
 		if tc.token != "" {
 			r.Header.Set(deviceTokenHeader, tc.token)
 		}
@@ -233,6 +235,7 @@ func TestOnlyTheMachineSetsARole(t *testing.T) {
 	put := func(from, token, id, body string) int {
 		r := httptest.NewRequest(http.MethodPut, "/v1/pair/devices/"+id+"/role", strings.NewReader(body))
 		r.RemoteAddr = from
+		r.Host = "127.0.0.1:22776" // what a client on the machine sends
 		r.Header.Set("Content-Type", "application/json")
 		if token != "" {
 			r.Header.Set(deviceTokenHeader, token)
@@ -278,6 +281,7 @@ func TestSetRoleWhileNetworkAccessIsOff(t *testing.T) {
 	s := New(Deps{DataDir: dir}) // LAN off
 	r := httptest.NewRequest(http.MethodPut, "/v1/pair/devices/"+dev.ID+"/role", strings.NewReader(`{"role":"controller"}`))
 	r.RemoteAddr = "127.0.0.1:51000"
+	r.Host = "127.0.0.1:22776"
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, r)
@@ -328,6 +332,7 @@ func TestAControllerStartsAgentsUnderHome(t *testing.T) {
 	spawn := func(from, token, body string) int {
 		r := httptest.NewRequest(http.MethodPost, "/v1/agents", bytes.NewBufferString(body))
 		r.RemoteAddr = from
+		r.Host = "127.0.0.1:22776" // what a client on the machine sends
 		r.Header.Set("Content-Type", "application/json")
 		if token != "" {
 			r.Header.Set(deviceTokenHeader, token)
@@ -503,6 +508,7 @@ func TestPairingFromThisMachinesOwnAddressSaysSo(t *testing.T) {
 		code, _ := ps.NewCode()
 		r := httptest.NewRequest(http.MethodPost, "/v1/pair", strings.NewReader(`{"code":"`+code+`","name":"`+name+`"}`))
 		r.RemoteAddr = from
+		r.Host = "127.0.0.1:22776" // what a client on the machine sends
 		r.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		s.ServeHTTP(w, r)
@@ -542,6 +548,7 @@ func TestAControllersRecentFoldersAreUnderHome(t *testing.T) {
 	recent := func(from, token string) []recentDir {
 		r := httptest.NewRequest(http.MethodGet, "/v1/recent-dirs", nil)
 		r.RemoteAddr = from
+		r.Host = "127.0.0.1:22776" // what a client on the machine sends
 		if token != "" {
 			r.Header.Set(deviceTokenHeader, token)
 		}

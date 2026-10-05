@@ -9,6 +9,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Security
+
+- **A tunnel on the Mac no longer hands out the owner's rights.** Caprock
+  trusted any request that reached it over 127.0.0.1, so cloudflared, ngrok,
+  Caddy, `tailscale serve` or `ssh -R` running on the machine let anyone who
+  reached the tunnel read everything and start commands, with no pairing. A
+  loopback request that carries a proxy header (`X-Forwarded-*`, `Forwarded`,
+  `Via`, `X-Real-IP`, `CF-*`, `Tailscale-*`, `Ngrok-*`, …) or names a host other
+  than localhost or a loopback address is now treated as a device: it needs a
+  paired device's token and gets that device's role, and without one it gets
+  `401` — on the API and on both WebSockets. The CLI, the hook shim, the
+  statusline, the dashboard and an `ssh -L` forward are unchanged.
+
 ## [0.73.0] - 2026-10-05
 
 ### Added

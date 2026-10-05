@@ -90,6 +90,23 @@ moment one rule decides every request: **anything that did not come from this
 machine must carry a device token** ([ADR-029](08-decisions.md)).
 
 - **Loopback is unaffected.** No token, no change, no existing client touched.
+- **Unless a relay put it there.** A proxy or tunnel on the machine
+  (cloudflared, ngrok, Caddy, nginx, `tailscale serve`, `ssh -R`) connects from
+  127.0.0.1 on a visitor's behalf, so loopback alone is not the owner
+  (`isLocal`, `internal/api/lanauth.go`). A loopback request is **relayed** when
+  it carries any of `Forwarded`, `Via`, `X-Real-IP`, `True-Client-IP`, or a
+  header starting `X-Forwarded-`, `CF-`, `Tailscale-`, `Ngrok-` or `X-Ngrok-`
+  (presence only; values are never read), or when its `Host` hostname is not
+  `localhost`, `*.localhost` or a loopback IP (empty included; the port is not
+  compared, so `ssh -L 8080:127.0.0.1:22776` stays the owner). A relayed
+  request is a device: it needs a valid `X-Caprock-Device` token (or the
+  WebSocket subprotocol) and gets exactly its role, `401` without one, and
+  loopback-only handlers (`/v1/pair/*`) refuse it. With network access off
+  there is no pairing store, so every relayed `/v1` request is `401`. The
+  dashboard's files still load. Every client of ours — CLI, shim, statusline,
+  dashboard, Vite's dev proxy — addresses 127.0.0.1 or localhost and sends none
+  of these headers. A relay set up to strip them all and rewrite `Host` to
+  localhost cannot be told apart from a local client.
 - **From the network, three things are reachable without a token:** `POST
   /v1/pair`, the dashboard's own files (they carry no figures), and nothing
   else. Every other `/v1` path is closed by default, so a route added later is
@@ -255,7 +272,7 @@ Every request under `/v1` passes `checkOrigin` (`internal/api/csrf.go`) before r
 
 - **`Sec-Fetch-Site`** — sent by every current browser and not settable by script, so it is the one signal a forgery cannot fake. `cross-site` or `same-site` is refused on **every** method, reads included: a foreign page must not read the session list either. `same-origin` and `none` (an address-bar navigation or bookmark) are the dashboard itself.
 - **`Origin`** — when present it must be loopback. Parsed as a URL rather than prefix-matched: `http://localhost.evil.example` has the right prefix and is not loopback, so the earlier `strings.HasPrefix` form accepted any hostname an attacker registered under a `localhost.` or `127.0.0.1.` label.
-- **`Host`** — must name this machine, checked only when the request is browser-shaped (`Origin` or `Sec-Fetch-Site` present). This is the DNS-rebinding case: a hostname the attacker controls, pointed at `127.0.0.1`, is genuinely same-origin with the daemon and passes every check above, but the `Host` header still carries the attacker's name. It is not applied to non-browser clients, which legitimately address the daemon by other names (a tunnel, a test harness) with no rebinding risk.
+- **`Host`** — must name this machine, checked only when the request is browser-shaped (`Origin` or `Sec-Fetch-Site` present). This is the DNS-rebinding case: a hostname the attacker controls, pointed at `127.0.0.1`, is genuinely same-origin with the daemon and passes every check above, but the `Host` header still carries the attacker's name. It is not applied here to non-browser clients, which carry no rebinding risk; a non-browser request over loopback under a name that is not loopback is caught one step earlier, by the gate, as a relayed request that needs a device token (see *Who may connect*).
 - **A bearer token, or `Content-Type: application/json`** — required on a state-changing method that carries no browser provenance at all. Either one is sufficient. The per-run token lives in `runtime.json` (mode 0600) and a web page can neither read nor guess it. A JSON content type cannot be set by a cross-site *simple* request: doing so forces a CORS preflight, which this server approves for nothing, so the real request is never sent — while a form POST is limited to the three simple content types and so cannot reach the endpoint at all.
 
 **`POST /v1/paste` takes base64 inside JSON, not a raw body — and that is the security design.** A browser hands over a file's bytes and never a path (there is no path for something copied out of a screenshot tool, and a file dragged from Finder arrives as a name and contents), while Claude Code reads files by path, so the bytes have to become a file. That makes this the one endpoint that writes to disk on a web page's say-so.

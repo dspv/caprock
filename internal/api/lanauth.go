@@ -20,7 +20,9 @@ import (
 // The replacement is one rule: **a request that did not come from this machine
 // must carry a device token.** Loopback keeps working exactly as before, so
 // nothing about the local experience changes and no existing client needs a
-// token. A request from the network is a stranger until it proves otherwise,
+// token. Loopback means this machine's own clients: a request a proxy or tunnel
+// on the machine relays onto loopback counts as from the network (isLocal).
+// A request from the network is a stranger until it proves otherwise,
 // and it proves it with a token issued in exchange for a code the owner read
 // off their own screen.
 //
@@ -46,18 +48,76 @@ import (
 // property that makes CSRF possible, and this API runs commands.
 const deviceTokenHeader = "X-Caprock-Device"
 
-// isLocal reports whether the request arrived over loopback.
+// isLocal reports whether the request came from this machine: over loopback,
+// and not relayed from somewhere else by a proxy or tunnel running on it.
 //
 // RemoteAddr is the kernel's view of the peer and cannot be set by the caller —
-// unlike X-Forwarded-For, which is a claim. Caprock sits behind no proxy by
-// design, so the kernel's answer is the only one worth reading.
+// unlike X-Forwarded-For, which is a claim. But the kernel only names the last
+// hop. cloudflared, ngrok, Caddy, `tailscale serve` or an `ssh -R` on the Mac
+// all connect from 127.0.0.1 on behalf of somebody else, and believing the
+// kernel alone handed that somebody the owner's rights with no token. So a
+// loopback request is the owner's only while it looks like one (forwarded).
 func isLocal(r *http.Request) bool {
+	return fromLoopback(r) && !forwarded(r)
+}
+
+// fromLoopback reports whether the kernel saw the peer on a loopback address.
+func fromLoopback(r *http.Request) bool {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// Headers a proxy or tunnel adds and no client of ours sends. Their values are
+// claims and are never read; their presence is the signal. Canonical form, as
+// net/http stores them.
+var (
+	proxyHeaders = map[string]bool{
+		"Forwarded":      true,
+		"Via":            true,
+		"X-Real-Ip":      true,
+		"True-Client-Ip": true,
+	}
+	proxyHeaderPrefixes = []string{
+		"X-Forwarded-", // -For, -Host, -Proto, -Port, … (Caddy, nginx, ngrok, tailscale serve)
+		"Cf-",          // Cf-Connecting-Ip, Cf-Ray, … (cloudflared)
+		"Tailscale-",   // Tailscale-User-Login, … (tailscale serve)
+		"Ngrok-",
+		"X-Ngrok-",
+	}
+)
+
+// forwarded reports whether a request carries the marks of having been relayed:
+// a proxy header, or a Host that does not name this machine.
+//
+// The Host test catches what adds no header — `ssh -R`, `tailscale serve
+// --tcp`, a TCP tunnel — because the visitor addressed the relay, not us. Only
+// the hostname is compared: `ssh -L 8080:127.0.0.1:22776` sends
+// localhost:8080 and is the owner, and a relay that rewrites Host could write
+// our port as easily. Every client of ours (the CLI, the shim, the statusline,
+// the dashboard, Vite's dev proxy) addresses 127.0.0.1 or localhost. An empty
+// Host is refused too: HTTP/1.0 allows it and no client of ours sends one.
+//
+// A relay set up to strip every one of these and rewrite Host to localhost is
+// indistinguishable from a local client; only the owner can configure that.
+func forwarded(r *http.Request) bool {
+	if !isLoopbackHost(r.Host) {
+		return true
+	}
+	for name := range r.Header {
+		if proxyHeaders[name] {
+			return true
+		}
+		for _, p := range proxyHeaderPrefixes {
+			if strings.HasPrefix(name, p) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // openToUnpairedDevices reports whether a path may be served to a device that
@@ -115,15 +175,20 @@ func (s *Server) gateDevice(r *http.Request) (status int, reason string, dev *pa
 	// kernel labels differently. Behave exactly as before the feature existed —
 	// a gate that changes what happens when it is switched off is a gate nobody
 	// can reason about.
+	//
+	// Except a request relayed onto loopback by a proxy or tunnel on this
+	// machine: that one did come off the network, through a listener that is
+	// not ours, and with network access off there is no device it could be.
 	ps, _ := s.lanState()
-	if ps == nil {
+	relayed := fromLoopback(r)
+	if ps == nil && !relayed {
 		return 0, "", nil
 	}
 	if openToUnpairedDevices(r.URL.Path) {
 		return 0, "", nil
 	}
 	tok := deviceTokenOf(r)
-	if tok == "" {
+	if tok == "" || ps == nil {
 		return http.StatusUnauthorized, "this device is not paired with Caprock", nil
 	}
 	dev, err := ps.Check(tok)
