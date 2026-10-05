@@ -44,6 +44,11 @@ Phase 3 (Delight) has no plan by design.
   *Reconnecting — your keys will be sent* instead of a line written into it.
   Up to 4 KB of typing is kept while offline.
 
+### Fixed
+
+- **Gemini CLI is no longer labelled "your own key" in the agent picker.**
+  It also signs in with Google, so the note was wrong for most people.
+
 ## [0.74.0] - 2026-10-05
 
 ### Changed

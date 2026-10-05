@@ -18,9 +18,9 @@ export const SPAWN_AGENTS: { key: SpawnAgent; label: string }[] = [
   { key: 'claude', label: 'Claude Code' },
   { key: 'codex', label: 'Codex' },
   { key: 'opencode', label: 'OpenCode' },
-  // Gemini runs on the user's own key, which is worth saying at the moment of
-  // choosing it rather than when it asks for one.
-  { key: 'gemini', label: 'Gemini CLI · your own key' },
+  // No billing note here: Gemini CLI signs in with Google as well as with a
+  // key, so "your own key" told most people something untrue.
+  { key: 'gemini', label: 'Gemini CLI' },
 ]
 
 /** The agents this machine can start, from the daemon's status. An agent is
