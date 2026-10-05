@@ -11,7 +11,7 @@ import { navigate } from '@/lib/router'
 // session alone with — a dialog whose defaults you would not choose is a
 // dialog you have to read every time.
 const DEFAULT_MODEL = 'claude-opus-5'
-const DEFAULT_MODE = 'acceptEdits'
+export const DEFAULT_MODE = 'acceptEdits'
 
 // Labelled, because `bypassPermissions` is not a phrase anyone thinks in and
 // the consequence is the part that matters.
@@ -64,9 +64,9 @@ const MODELS: [value: string, label: string][] = [
 // com…") is the one label where truncation hides the consequence.
 // The modes the daemon can express as a Gemini --approval-mode; the rest fall
 // back to Gemini's own default, which asks.
-const GEMINI_MAPPED = new Set(['acceptEdits', 'auto', 'bypassPermissions', 'plan'])
+export const GEMINI_MAPPED = new Set(['acceptEdits', 'auto', 'bypassPermissions', 'plan'])
 
-const MODES: [value: string, label: string][] = [
+export const MODES: [value: string, label: string][] = [
   ['acceptEdits', 'Accept edits · asks first'],
   ['plan', 'Plan · changes nothing'],
   ['bypassPermissions', 'Bypass · never asks'],
@@ -77,7 +77,7 @@ const MODES: [value: string, label: string][] = [
 // label, so the choice names the consequence rather than Claude's word for it.
 // The daemon builds the flags (internal/agents/argv.go); a mode an agent has
 // no honest counterpart for is left to that agent's own config and marked.
-const MODE_NOTE: Partial<Record<SpawnAgent, Record<string, string>>> = {
+export const MODE_NOTE: Partial<Record<SpawnAgent, Record<string, string>>> = {
   codex: {
     acceptEdits: 'Accept edits · workspace sandbox, asks first',
     plan: 'Plan · read-only sandbox',
@@ -93,7 +93,7 @@ const MODE_NOTE: Partial<Record<SpawnAgent, Record<string, string>>> = {
 /** The model a session starts on, per agent. Codex and OpenCode start on
  *  whatever the user's own config names, which Caprock does not try to
  *  restate; "" means exactly that. */
-const DEFAULT_MODELS: Record<SpawnAgent, string> = {
+export const DEFAULT_MODELS: Record<SpawnAgent, string> = {
   claude: DEFAULT_MODEL,
   gemini: GEMINI_MODELS[0]![0],
   codex: '',
@@ -271,7 +271,7 @@ export function SpawnDialog({
  *  Codex its own catalog, with its configured default first; OpenCode a field,
  *  because its models are whatever providers the user set up, written
  *  provider/model. Empty means "what your own config says". */
-function ModelField({
+export function ModelField({
   agent,
   value,
   onChange,

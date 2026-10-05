@@ -1,14 +1,23 @@
-import { StrictMode } from 'react'
+import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
 // Self-hosted brand faces (same as caprock.dev) — bundled, never fetched at
 // runtime, so the dashboard stays local-first with no outbound calls.
 import '@fontsource-variable/hanken-grotesk'
 import '@fontsource-variable/jetbrains-mono'
 import '@/design/tokens.css'
-import App from './App'
+import { isAppMode } from '@/lib/appmode'
+
+// Two entry points from one bundle: the dashboard, or the app's terminal-first
+// workspace (WP-04). Each is its own chunk, so the app's terminal route never
+// loads or renders the dashboard's screens until the dashboard is opened: the
+// Tauri spike measured a terminal beside the full dashboard 4–6 ms slower to
+// echo than a lean one (.ai/21-app.md § Performance budgets).
+const Root = isAppMode() ? lazy(() => import('./screens/AppShell')) : lazy(() => import('./App'))
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <Suspense fallback={null}>
+      <Root />
+    </Suspense>
   </StrictMode>,
 )

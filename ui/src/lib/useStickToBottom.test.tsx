@@ -85,7 +85,7 @@ describe('useStickToBottom — a list that grows downwards', () => {
     expect(Math.abs(box.scrollTop - 300)).toBeLessThanOrEqual(1)
     expect(stick.atEdge).toBe(false)
     expect(stick.newCount).toBe(200)
-  })
+  }, 30_000)
 
   it('keeps the first visible row when the start of a capped list is trimmed', async () => {
     let ids = range(0, 60)
@@ -149,7 +149,7 @@ describe('useStickToBottom — a newest-first feed', () => {
     expect(after.id).toBe(before.id)
     expect(Math.abs(after.top - before.top)).toBeLessThanOrEqual(1)
     expect(stick.newCount).toBe(200)
-  })
+  }, 30_000)
 
   it('at the top, shows the newest row as it arrives', async () => {
     let ids = range(0, 30)

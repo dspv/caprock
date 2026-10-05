@@ -217,7 +217,22 @@ export function deriveProjects(sessions: SessionSummary[], local: LocalProject[]
       branch: s.worktree ? undefined : s.git_branch || undefined,
     })
   }
-  return [...byRoot.values()]
+  return disambiguate([...byRoot.values()])
+}
+
+/**
+ * Two projects with one name ("proj" in two places) get the folder above
+ * each, so a row never has to be opened to tell them apart.
+ */
+export function disambiguate(list: Project[]): Project[] {
+  const count = new Map<string, number>()
+  for (const p of list) count.set(p.name, (count.get(p.name) ?? 0) + 1)
+  return list.map((p) => {
+    if ((count.get(p.name) ?? 0) < 2) return p
+    const parts = p.root.replace(/[\\/]+$/, '').split(/[\\/]/).filter(Boolean)
+    const parent = parts[parts.length - 2]
+    return parent ? { ...p, name: `${parent}/${p.name}` } : p
+  })
 }
 
 /**
