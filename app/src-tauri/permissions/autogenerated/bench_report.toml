@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-bench-report"
+description = "Enables the bench_report command without any pre-configured scope."
+commands.allow = ["bench_report"]
+
+[[permission]]
+identifier = "deny-bench-report"
+description = "Denies the bench_report command without any pre-configured scope."
+commands.deny = ["bench_report"]

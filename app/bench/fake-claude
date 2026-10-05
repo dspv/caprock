@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+# A fake `claude` for the macOS spike's typing benchmark. No model calls.
+#
+# It behaves like a busy Claude Code TUI:
+#   - 4000 coloured lines at start (fills the daemon's replay ring),
+#   - then a continuous stream of coloured log lines, FAKE_LPS per second
+#     (default 200; read from $FAKE_LPS or <cwd>/.fake_lps),
+#   - a spinner redrawn 12x/s on the second-to-last row,
+#   - raw mode, and every typed byte redrawn at once as an input line on the
+#     last row:  "> <everything typed since the last Enter>".
+# The benchmark knows what it typed, so it waits for "> <line>" in the output.
+import os, sys, threading, time, random, tty, termios
+
+fd_in = sys.stdin.fileno()
+try:
+    tty.setraw(fd_in)
+except termios.error:
+    pass
+out = sys.stdout.buffer
+lock = threading.Lock()
+
+def w(b):
+    with lock:
+        out.write(b)
+        out.flush()
+
+def rows():
+    try:
+        return os.get_terminal_size(1).lines
+    except OSError:
+        return 40
+
+def lps():
+    try:
+        return float(open(os.path.join(os.getcwd(), ".fake_lps")).read().strip())
+    except Exception:
+        return float(os.environ.get("FAKE_LPS", "200"))
+
+# Two Cyrillic words on purpose: the renderers must also draw non-Latin glyphs
+# (the one exception CLAUDE.md rule 5 allows — test input about non-English text).
+words = "Reading corpus mapping the product the quick brown fox jumps over the lazy dog Пишу корпус".split()
+def line(i):
+    body = " ".join(random.choice(words) for _ in range(10))
+    return f"\x1b[38;5;{i % 200 + 16}m{i:06d}\x1b[0m \x1b[2m{body}\x1b[0m\r\n"
+
+w(b"\x1b[?2004h")  # ask for bracketed paste, as Claude Code does
+w("".join(line(i) for i in range(4000)).encode())
+
+typed = bytearray()
+def echo():
+    global typed
+    while True:
+        b = os.read(fd_in, 1024)
+        if not b:
+            os._exit(0)
+        for c in b:
+            if c in (13, 10):
+                typed = bytearray()
+            elif c in (127, 8):
+                typed = typed[:-1]
+            elif c >= 32:
+                typed.append(c)
+        if len(typed) > 60:
+            typed = typed[-1:]
+        w(b"\x1b7\x1b[999;1H\x1b[2K> " + bytes(typed) + b"\x1b8")
+
+threading.Thread(target=echo, daemon=True).start()
+
+def stream():
+    i = 4000
+    while True:
+        rate = lps()
+        if rate <= 0:
+            time.sleep(0.2)
+            continue
+        # 20 batches a second
+        n = max(1, int(rate / 20))
+        # scroll region excludes the last two rows (spinner + input)
+        try:
+            rows = os.get_terminal_size(1).lines
+        except OSError:
+            rows = 40
+        bottom = max(3, rows - 2)
+        # scroll inside rows 1..rows-2, so the spinner and the input line stay put
+        w(f"\x1b7\x1b[1;{bottom}r\x1b[{bottom};1H".encode() + "".join(line(i + k) for k in range(n)).encode() + b"\x1b[r\x1b8")
+        i += n
+        time.sleep(0.05)
+
+threading.Thread(target=stream, daemon=True).start()
+frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+n = 0
+while True:
+    n += 1
+    w(f"\x1b7\x1b[{rows() - 1};1H\x1b[2K\x1b[38;5;208m{frames[n % 10]}\x1b[0m Thinking… ({n // 12}s · esc to interrupt)\x1b8".encode())
+    time.sleep(1 / 12)

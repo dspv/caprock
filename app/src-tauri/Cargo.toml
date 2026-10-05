@@ -1,0 +1,25 @@
+[package]
+name = "caprock-app"
+version = "0.0.1"
+edition = "2021"
+publish = false
+description = "Caprock desktop shell spike (Tauri v2). Not the product."
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2.12", features = [] }
+serde_json = "1"
+rand = "0.8"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSString", "NSGeometry"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
+panic = "abort"
