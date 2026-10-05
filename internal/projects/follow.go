@@ -2,6 +2,7 @@ package projects
 
 import (
 	"context"
+	"path/filepath"
 	"time"
 
 	"github.com/dspv/caprock/internal/bus"
@@ -93,7 +94,7 @@ func (s *Service) noteSession(ctx context.Context, sess store.Session) {
 		s.mu.Lock()
 		s.known[sess.RepoRoot] = true // asked once per root, eligible or not
 		s.mu.Unlock()
-		if s.Eligible(sess.RepoRoot) {
+		if _, dup := s.sameAsListed(ctx, filepath.FromSlash(sess.RepoRoot)); !dup && s.Eligible(sess.RepoRoot) {
 			added, err := store.SeedProject(ctx, s.Store.DB(), store.Project{
 				Root: sess.RepoRoot, Name: baseName(sess.RepoRoot), Kind: store.ProjectKindRepo, Source: store.ProjectSourceSession, AddedAt: s.Now().UnixMilli(),
 			})

@@ -141,7 +141,7 @@ func AddWorktree(ctx context.Context, repoDir string, spec WorktreeSpec) (Worktr
 	if err != nil {
 		return Worktree{}, fmt.Errorf("%s is not a git repository", repoDir)
 	}
-	repo := filepath.Clean(strings.TrimSpace(top))
+	repo := sameDirAs(repoDir, strings.TrimSpace(top))
 	dir := filepath.Join(repo, WorktreeDir, WorktreeName(branch))
 	if _, err := os.Stat(dir); err == nil {
 		return Worktree{}, fmt.Errorf("%s already exists; remove it or pick another branch", dir)
@@ -269,7 +269,7 @@ func RemoveWorktree(ctx context.Context, repoDir, name string) error {
 	if err != nil {
 		return fmt.Errorf("%s is not a git repository", repoDir)
 	}
-	dir := filepath.Join(filepath.Clean(strings.TrimSpace(top)), WorktreeDir, name)
+	dir := filepath.Join(sameDirAs(repoDir, strings.TrimSpace(top)), WorktreeDir, name)
 	if fi, err := os.Stat(filepath.Join(dir, ".git")); err != nil || fi.IsDir() {
 		return fmt.Errorf("%s is not a worktree Caprock made", dir)
 	}
@@ -282,4 +282,18 @@ func RemoveWorktree(ctx context.Context, repoDir, name string) error {
 	}
 	_, err = gitOut(ctx, repoDir, "worktree", "remove", dir)
 	return err
+}
+
+// sameDirAs is top — git's answer for the repository's root, with symlinks
+// resolved — spelled as the caller spelled it when the two are the same
+// folder, so paths Caprock reports keep the form the project is listed under
+// (/var/… rather than /private/var/… on macOS).
+func sameDirAs(given, top string) string {
+	top = filepath.Clean(top)
+	a, errA := filepath.EvalSymlinks(given)
+	b, errB := filepath.EvalSymlinks(top)
+	if errA == nil && errB == nil && a == b {
+		return filepath.Clean(given)
+	}
+	return top
 }

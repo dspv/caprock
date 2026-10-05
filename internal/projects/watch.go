@@ -166,6 +166,12 @@ func (w *watcher) run(ctx context.Context) {
 
 // handle maps one change to the project and worktree it belongs to.
 func (w *watcher) handle(ev fsnotify.Event) {
+	// Chmod alone is an attribute change — a read's access time, a
+	// permission bit — never a change to what git would say. Reading the
+	// repository (git status does) must not wake the watcher it serves.
+	if ev.Op == fsnotify.Chmod {
+		return
+	}
 	name := filepath.Base(ev.Name)
 	// A lock file is git about to write; the rename that follows is the
 	// change.

@@ -216,10 +216,21 @@ func (s *Service) seed(ctx context.Context) error {
 		return err
 	}
 	n := 0
+	seen := map[string]bool{}
 	for _, r := range roots {
 		if !s.Eligible(r.Dir) {
 			continue
 		}
+		// One folder reached by two spellings (/var and /private/var on
+		// macOS, a symlinked ~/dev) is one project: the most recent wins.
+		real := r.Dir
+		if rp, err := filepath.EvalSymlinks(filepath.FromSlash(r.Dir)); err == nil {
+			real = rp
+		}
+		if seen[real] {
+			continue
+		}
+		seen[real] = true
 		added, err := store.SeedProject(ctx, s.Store.DB(), store.Project{
 			Root: r.Dir, Name: baseName(r.Dir), Kind: store.ProjectKindRepo, Source: store.ProjectSourceSeed, AddedAt: s.Now().UnixMilli(),
 		})
@@ -422,8 +433,26 @@ func (s *Service) Create(ctx context.Context, parent, name string, gitInit bool)
 	return v, err
 }
 
+// sameAsListed finds a project row for the folder root names under another
+// spelling (a symlink), listed or not.
+func (s *Service) sameAsListed(ctx context.Context, root string) (store.Project, bool) {
+	all, err := store.ListProjects(ctx, s.Store.DB(), true)
+	if err != nil {
+		return store.Project{}, false
+	}
+	for _, p := range all {
+		if sameFolder(filepath.FromSlash(p.Root), root) {
+			return p, true
+		}
+	}
+	return store.Project{}, false
+}
+
 // insert adds or relists a project at root and starts tracking it.
 func (s *Service) insert(ctx context.Context, root, kind, source string) (View, bool, error) {
+	if p, ok := s.sameAsListed(ctx, root); ok {
+		root = filepath.FromSlash(p.Root)
+	}
 	p, created, err := store.InsertProject(ctx, s.Store.DB(), store.Project{
 		Root: root, Name: baseName(root), Kind: kind, Source: source, AddedAt: s.Now().UnixMilli(),
 	})

@@ -267,6 +267,12 @@ var pairedDeviceRoutes = map[string]bool{
 	// The permission prompt an owned session waits on (ADR-035); the live
 	// socket already carries it to a viewer.
 	"GET /v1/agents/{id}/permission": true,
+
+	// The projects list, a project's worktrees and the clones in flight
+	// (WP-05, WP-08): what the sidebar shows, as the session list is.
+	"GET /v1/projects":                true,
+	"GET /v1/projects/ops":            true,
+	"GET /v1/projects/{id}/worktrees": true,
 }
 
 // What a controller may do on top of reading (ADR-034), named one route at a
@@ -302,6 +308,17 @@ var controllerRoutes = map[string]bool{
 
 	// Answer a permission prompt with a button (ADR-035).
 	"POST /v1/agents/{id}/permission": true,
+
+	// Start work from the phone (21-app.md decision 8, ADR-034 amended):
+	// add, create or clone a project under home, rename, pin or unlist one
+	// (unlisting deletes nothing), and create or remove a worktree in one
+	// under home. The folder checks are in the handlers. Shells are not
+	// here: from the phone they are P1.
+	"POST /v1/projects":                         true,
+	"PATCH /v1/projects/{id}":                   true,
+	"DELETE /v1/projects/{id}":                  true,
+	"POST /v1/projects/{id}/worktrees":          true,
+	"DELETE /v1/projects/{id}/worktrees/{name}": true,
 }
 
 // deviceVerdict is what a role may do with one request.

@@ -220,7 +220,7 @@ func readWorktrees(common, caprockDir string) []WorktreeView {
 		if _, err := os.Stat(path); err != nil {
 			w.Missing = true
 		}
-		w.Caprock = filepath.Dir(path) == filepath.Clean(caprockDir)
+		w.Caprock = sameFolder(filepath.Dir(path), caprockDir)
 		out = append(out, w)
 	}
 	return out
@@ -255,4 +255,14 @@ func runGit(ctx context.Context, timeout time.Duration, dir string, args ...stri
 		return nil, errors.New(msg)
 	}
 	return out.Bytes(), nil
+}
+
+// sameFolder reports whether a and b are one folder, symlinks resolved.
+func sameFolder(a, b string) bool {
+	if filepath.Clean(a) == filepath.Clean(b) {
+		return true
+	}
+	ra, errA := filepath.EvalSymlinks(a)
+	rb, errB := filepath.EvalSymlinks(b)
+	return errA == nil && errB == nil && ra == rb
 }
