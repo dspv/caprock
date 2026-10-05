@@ -12,6 +12,14 @@
 /** The hash route of the workspace. The Tauri shell loads `<daemon>/#/app`. */
 export const APP_ROUTE = '#/app'
 
+/** The menu bar popover's route (macOS): the shell loads `<daemon>/?app=1#/tray` in its own small window. */
+export const TRAY_ROUTE = '#/tray'
+
+/** Whether this page is the menu bar popover rather than the workspace. */
+export function isTrayRoute(hash: string = typeof location === 'undefined' ? '' : location.hash): boolean {
+  return hash === TRAY_ROUTE || hash.startsWith(`${TRAY_ROUTE}?`)
+}
+
 /** The query flag that turns the app mode on for any route. */
 export const APP_QUERY = 'app'
 

@@ -11,6 +11,7 @@ mod hotkey;
 mod notify;
 #[cfg(target_os = "macos")]
 mod notify_macos;
+mod popover;
 mod shell;
 #[cfg(all(feature = "snapshot", target_os = "macos"))]
 mod snapshot;
@@ -36,7 +37,10 @@ macro_rules! handler {
             commands::hotkey_status,
             commands::register_hotkey,
             notify::notify,
-            notify::withdraw_notifications
+            notify::withdraw_notifications,
+            popover::tray_open,
+            popover::tray_hide,
+            popover::tray_fit
         ]
     };
 }
@@ -49,6 +53,7 @@ fn configure<R: tauri::Runtime>(b: tauri::Builder<R>, sup: commands::Sup) -> tau
         .manage(sup)
         .manage(shell::Downloads::default())
         .manage(tray::Tray::default())
+        .manage(popover::Popover::default())
         .manage(badge::Badge::default())
         .invoke_handler(handler!())
 }
@@ -166,12 +171,21 @@ mod tests {
         cmd: &str,
         body: serde_json::Value,
     ) -> Result<serde_json::Value, serde_json::Value> {
+        invoke_in("main", url, cmd, body)
+    }
+
+    fn invoke_in(
+        label: &str,
+        url: &str,
+        cmd: &str,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, serde_json::Value> {
         let dir = std::env::temp_dir().join(format!("caprock-acl-{}", std::process::id()));
         let app = configure(mock_builder(), Supervisor::new(dir))
             .build(tauri::generate_context!(test = true))
             .expect("mock app");
         let page: tauri::Url = url.parse().unwrap();
-        let w = WebviewWindowBuilder::new(&app, "main", WebviewUrl::External(page.clone()))
+        let w = WebviewWindowBuilder::new(&app, label, WebviewUrl::External(page.clone()))
             .build()
             .unwrap();
         get_ipc_response(
@@ -258,6 +272,64 @@ mod tests {
         for url in ["https://example.com/", "http://localhost:4391/"] {
             let err = invoke(url, "withdraw_notifications", none.clone()).expect_err(url);
             assert!(err.to_string().contains("not allowed"), "{url}: {err}");
+        }
+    }
+
+    const POPOVER: &str = "http://127.0.0.1:4391/?app=1#/tray";
+
+    #[test]
+    fn the_popover_may_hide_size_and_open_and_read_the_hotkey() {
+        invoke_in("tray", POPOVER, "tray_hide", serde_json::json!({})).expect("tray_hide");
+        invoke_in(
+            "tray",
+            POPOVER,
+            "tray_fit",
+            serde_json::json!({"height": 300.0}),
+        )
+        .expect("tray_fit");
+        invoke_in(
+            "tray",
+            POPOVER,
+            "tray_open",
+            serde_json::json!({"session": null}),
+        )
+        .expect("tray_open");
+        invoke_in("tray", POPOVER, "hotkey_status", serde_json::json!({})).expect("hotkey");
+    }
+
+    #[test]
+    fn the_popover_may_not_do_what_the_main_page_does() {
+        // daemon_status above all: a page polling it owns the "daemon
+        // stopped" banner, and the popover is not that page.
+        for (cmd, body) in [
+            ("daemon_status", serde_json::json!({})),
+            ("set_tray", serde_json::json!({"view": {}})),
+            ("set_badge", serde_json::json!({"count": 1})),
+            ("register_hotkey", serde_json::json!({"accelerator": null})),
+            ("notify", serde_json::json!({"title": "x", "body": ""})),
+            (
+                "open_external",
+                serde_json::json!({"url": "https://example.com/"}),
+            ),
+        ] {
+            let err = invoke_in("tray", POPOVER, cmd, body).expect_err(cmd);
+            assert!(err.to_string().contains("not allowed"), "{cmd}: {err}");
+        }
+    }
+
+    #[test]
+    fn only_the_popover_may_call_the_popover_commands() {
+        for (label, url) in [
+            ("main", DAEMON),
+            ("tray", "https://example.com/"),
+            ("tray", "http://localhost:4391/"),
+        ] {
+            let err = invoke_in(label, url, "tray_hide", serde_json::json!({}))
+                .expect_err(&format!("{label} {url}"));
+            assert!(
+                err.to_string().contains("not allowed"),
+                "{label} {url}: {err}"
+            );
         }
     }
 

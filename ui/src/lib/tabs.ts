@@ -2,9 +2,10 @@
  * The workspace's tabs: which terminals are open, in which project, in which
  * order, and which one is in front (WP-04).
  *
- * A tab holds a tree of panes rather than one terminal, so split panes (F15)
- * slot in later without changing what is stored: today every tab is a single
- * leaf. The whole workspace is kept in localStorage and restored on relaunch;
+ * A tab holds a tree of panes rather than one terminal: split panes (F15)
+ * are a split node in that tree, so they changed nothing about what is
+ * stored. A tab's title, the inspector and the status strip follow the
+ * focused pane. The whole workspace is kept in localStorage and restored on relaunch;
  * what it restores is only which sessions were open — the terminals reconnect
  * and the daemon repaints them.
  */
@@ -61,6 +62,15 @@ export type WorkspaceAction =
   | { type: 'project'; projectId: string }
   | { type: 'retitle'; sessionId: string; title: string }
   | { type: 'drop-session'; sessionId: string }
+  /** Show a session beside the focused pane of the tab in front. */
+  | { type: 'split'; target: TabTarget; direction: 'row' | 'column'; projectId: string; title: string }
+  | { type: 'focus-pane'; tabId: string; paneId: string }
+  | { type: 'cycle-pane'; delta: 1 | -1 }
+  | { type: 'close-pane'; tabId: string; paneId: string }
+  | { type: 'resize'; tabId: string; splitId: string; sizes: number[] }
+
+/** Panes in one tab, at most: past four a terminal is too small to read. */
+export const MAX_PANES = 4
 
 export const EMPTY_WORKSPACE: Workspace = { version: 1, tabs: [], activeByProject: {}, activeProject: '' }
 
@@ -97,6 +107,65 @@ export function activeTab(ws: Workspace): Tab | undefined {
 /** The tab already showing a session, anywhere in the workspace. */
 export function findTabBySession(ws: Workspace, sessionId: string): Tab | undefined {
   return ws.tabs.find((t) => leaves(t.root).some((l) => l.target.sessionId === sessionId))
+}
+
+/**
+ * The tree with `paneId` split into itself and `leaf`. A split of the same
+ * direction gains a sibling instead of nesting, and every child gets an
+ * equal share, as in iTerm and Ghostty.
+ */
+function splitAt(node: PaneNode, paneId: string, leaf: PaneLeaf, direction: 'row' | 'column'): PaneNode {
+  if (node.type === 'pane') {
+    if (node.id !== paneId) return node
+    return { type: 'split', id: newId('split'), direction, children: [node, leaf], sizes: [0.5, 0.5] }
+  }
+  const at = node.children.findIndex((c) => c.type === 'pane' && c.id === paneId)
+  if (at >= 0 && node.direction === direction) {
+    const children = [...node.children.slice(0, at + 1), leaf, ...node.children.slice(at + 1)]
+    return { ...node, children, sizes: children.map(() => 1 / children.length) }
+  }
+  return { ...node, children: node.children.map((c) => splitAt(c, paneId, leaf, direction)) }
+}
+
+/** The tree without `paneId`, a split left with one child collapsing into it; null when nothing is left. */
+function removePane(node: PaneNode, paneId: string): PaneNode | null {
+  if (node.type === 'pane') return node.id === paneId ? null : node
+  const kept: { child: PaneNode; size: number }[] = []
+  node.children.forEach((c, i) => {
+    const next = removePane(c, paneId)
+    if (next) kept.push({ child: next, size: node.sizes[i] ?? 0 })
+  })
+  if (kept.length === 0) return null
+  if (kept.length === 1) return kept[0]!.child
+  const total = kept.reduce((a, k) => a + k.size, 0) || 1
+  return { ...node, children: kept.map((k) => k.child), sizes: kept.map((k) => k.size / total) }
+}
+
+function resizeSplit(node: PaneNode, splitId: string, sizes: number[]): PaneNode {
+  if (node.type === 'pane') return node
+  if (node.id === splitId) return { ...node, sizes }
+  return { ...node, children: node.children.map((c) => resizeSplit(c, splitId, sizes)) }
+}
+
+/** Sizes that are usable: one per child, each at least 10%, summing to 1. */
+function sane(sizes: number[], n: number): number[] | null {
+  if (sizes.length !== n || sizes.some((v) => !Number.isFinite(v) || v < 0.1)) return null
+  const total = sizes.reduce((a, v) => a + v, 0)
+  return sizes.map((v) => v / total)
+}
+
+function findSplit(node: PaneNode, splitId: string): PaneSplit | undefined {
+  if (node.type === 'pane') return undefined
+  if (node.id === splitId) return node
+  for (const c of node.children) {
+    const hit = findSplit(c, splitId)
+    if (hit) return hit
+  }
+  return undefined
+}
+
+function replaceTab(ws: Workspace, tab: Tab): Workspace {
+  return { ...ws, tabs: ws.tabs.map((t) => (t.id === tab.id ? tab : t)) }
 }
 
 function withActive(ws: Workspace, projectId: string, tabId: string | undefined): Workspace {
@@ -168,7 +237,53 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
     }
     case 'drop-session': {
       const tab = findTabBySession(ws, a.sessionId)
-      return tab ? workspaceReducer(ws, { type: 'close', tabId: tab.id }) : ws
+      const leaf = tab && leaves(tab.root).find((l) => l.target.sessionId === a.sessionId)
+      return tab && leaf ? workspaceReducer(ws, { type: 'close-pane', tabId: tab.id, paneId: leaf.id }) : ws
+    }
+    case 'split': {
+      const tab = activeTab(ws)
+      // Already open somewhere: show it where it is rather than twice.
+      if (!tab || findTabBySession(ws, a.target.sessionId)) {
+        return workspaceReducer(ws, { type: 'open', target: a.target, projectId: a.projectId, title: a.title })
+      }
+      if (leaves(tab.root).length >= MAX_PANES) return ws
+      const leaf: PaneLeaf = { type: 'pane', id: newId('pane'), target: a.target }
+      const focused = focusedLeaf(tab)
+      return replaceTab(ws, { ...tab, root: splitAt(tab.root, focused.id, leaf, a.direction), focusedPaneId: leaf.id })
+    }
+    case 'focus-pane': {
+      const tab = ws.tabs.find((t) => t.id === a.tabId)
+      if (!tab || tab.focusedPaneId === a.paneId || !leaves(tab.root).some((l) => l.id === a.paneId)) return ws
+      return replaceTab(ws, { ...tab, focusedPaneId: a.paneId })
+    }
+    case 'cycle-pane': {
+      const tab = activeTab(ws)
+      if (!tab) return ws
+      const all = leaves(tab.root)
+      if (all.length < 2) return ws
+      const at = all.findIndex((l) => l.id === focusedLeaf(tab).id)
+      const next = all[(at + a.delta + all.length) % all.length]!
+      return replaceTab(ws, { ...tab, focusedPaneId: next.id })
+    }
+    case 'close-pane': {
+      const tab = ws.tabs.find((t) => t.id === a.tabId)
+      if (!tab) return ws
+      const all = leaves(tab.root)
+      const at = all.findIndex((l) => l.id === a.paneId)
+      if (at < 0) return ws
+      const root = removePane(tab.root, a.paneId)
+      if (!root) return workspaceReducer(ws, { type: 'close', tabId: tab.id })
+      // The focus goes where the closed pane's neighbour is, as with tabs.
+      const rest = leaves(root)
+      const focusedPaneId = tab.focusedPaneId === a.paneId ? rest[Math.min(at, rest.length - 1)]!.id : tab.focusedPaneId
+      return replaceTab(ws, { ...tab, root, focusedPaneId })
+    }
+    case 'resize': {
+      const tab = ws.tabs.find((t) => t.id === a.tabId)
+      const split = tab && findSplit(tab.root, a.splitId)
+      const sizes = split && sane(a.sizes, split.children.length)
+      if (!tab || !sizes) return ws
+      return replaceTab(ws, { ...tab, root: resizeSplit(tab.root, a.splitId, sizes) })
     }
   }
 }

@@ -19,6 +19,8 @@ export function NewAgentSheet({
   projects,
   projectId,
   cwd: initialCwd,
+  prompt: initialPrompt = '',
+  worktree: initialWorktree,
   onClose,
   onStarted,
 }: {
@@ -26,6 +28,10 @@ export function NewAgentSheet({
   projectId?: string
   /** A worktree's folder, when the sheet was opened from one. */
   cwd?: string
+  /** A first message already typed (the palette's "new task"). */
+  prompt?: string
+  /** A new worktree's name, proposed: the sheet opens on "New worktree…" with it filled in. */
+  worktree?: string
   onClose: () => void
   onStarted: (sessionId: string, projectId: string, title: string) => void
 }) {
@@ -36,11 +42,11 @@ export function NewAgentSheet({
   const [pid, setPid] = useState(projectId ?? projects[0]?.id ?? '')
   const project = projects.find((p) => p.id === pid)
   const worktrees = useMemo(() => (project?.worktrees ?? []).filter((w) => w.path !== project?.root), [project])
-  const [where, setWhere] = useState(initialCwd && initialCwd !== project?.root ? initialCwd : '')
-  const [newBranch, setNewBranch] = useState('')
+  const [where, setWhere] = useState(initialWorktree ? NEW_WORKTREE : initialCwd && initialCwd !== project?.root ? initialCwd : '')
+  const [newBranch, setNewBranch] = useState(initialWorktree ?? '')
   const [models, setModels] = useState<Record<SpawnAgent, string>>(DEFAULT_MODELS)
   const [mode, setMode] = useState(DEFAULT_MODE)
-  const [prompt, setPrompt] = useState('')
+  const [prompt, setPrompt] = useState(initialPrompt)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const codexModels = useApi(() => (agent === 'codex' ? api.agentModels('codex') : Promise.resolve(undefined)), [agent], { live: false })
@@ -105,7 +111,7 @@ export function NewAgentSheet({
           </div>
           {where === NEW_WORKTREE && (
             <SheetField label="Worktree name" hint="a new branch, checked out in .caprock-worktrees/<name>">
-              <input className="input" autoFocus placeholder="feature-x" value={newBranch} onChange={(e) => setNewBranch(e.target.value)} />
+              <input className="input" autoFocus={!initialPrompt} placeholder="feature-x" value={newBranch} onChange={(e) => setNewBranch(e.target.value)} />
             </SheetField>
           )}
           <div className="grid grid-cols-2 gap-3">
@@ -126,7 +132,7 @@ export function NewAgentSheet({
           <SheetField label="First message" hint="optional · ⌘↩ starts">
             <textarea
               className="input min-h-[84px] resize-y font-[family-name:var(--font-sans)] text-[13px] leading-relaxed"
-              autoFocus={where !== NEW_WORKTREE}
+              autoFocus={where !== NEW_WORKTREE || !!initialPrompt}
               placeholder="What should it do?"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}

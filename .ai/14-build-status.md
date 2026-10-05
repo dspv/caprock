@@ -93,6 +93,30 @@ payloads for the live and waiting states, and a shell tab running
 at `/?app=1#/app`. They show no path, name or figure from a real machine.
 The site's download page is WP-18's other half, in the private site repo.
 
+### 2026-10-06 — App UX from Orca; the menu bar popover
+
+The best of the reference app's workspace at the least cost, picked by value
+per effort against what already existed ([04-ui.md § The app
+workspace](04-ui.md#the-app-workspace)): split panes (F15, on the pane tree
+WP-04 stored; ⌘E, ⇧⌘E, ⌘[ ⌘], ⇧Enter in the palette, draggable and
+keyboard dividers), ⌘J to the next session waiting on you, and a palette that
+ranks matches, lists what waits first and turns unmatched text into a new
+agent in a new worktree. Not taken: a changes view with commit and pull
+request (GitHub is P1 under decision 4, and it needs new daemon write
+endpoints); unread markers (the amber dot and the inbox already say "your
+turn"); search in scrollback (needs `@xterm/addon-search`, a new
+dependency). On macOS a left click on the menu bar icon now opens a popover
+window (`app/src-tauri/src/popover.rs`, page `#/tray`, capability `tray` with
+`tray_open`, `tray_hide`, `tray_fit`, `hotkey_status` only; ACL tests); a
+right click keeps the WP-10 menu. The status strip's plan percentage now
+rounds as Now does (it floored: 41% beside Now's 42%). Checked in headless
+Chrome against an isolated daemon with fake sessions at 1440×900 and
+1280×800, light and dark (splits, palette, the new-task sheet; no
+horizontal scroll, no console errors), and the popover page at 380 px in both
+themes; a 12 s run of the app built from this branch created the hidden
+popover window beside the main one. Not exercised: clicking the real menu
+bar icon (input on a desktop in use), Windows and Linux.
+
 ### 2026-10-06 — Phone resilience client (WP-13)
 
 One reconnect policy for `/v1/live` and every terminal

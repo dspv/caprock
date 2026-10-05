@@ -45,7 +45,8 @@ function Limit({ label, pct }: { label: string; pct: number }) {
       <span className="relative h-[4px] w-[38px] overflow-hidden rounded-full bg-[var(--app-hairline-strong)]">
         <span className={`absolute inset-y-0 left-0 rounded-full ${tone}`} style={{ width: `${v}%` }} />
       </span>
-      <span className="num text-fg">{Math.floor(v)}%</span>
+      {/* Rounded as Now and the menu bar round it (readWindow), so one figure never reads 41% here and 42% there. */}
+      <span className="num text-fg">{Math.round(v)}%</span>
     </span>
   )
 }

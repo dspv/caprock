@@ -22,6 +22,10 @@ export type AppCommand =
   | { kind: 'next-tab' }
   | { kind: 'prev-tab' }
   | { kind: 'tab'; index: number }
+  | { kind: 'split'; direction: 'row' | 'column' }
+  | { kind: 'next-pane' }
+  | { kind: 'prev-pane' }
+  | { kind: 'next-waiting' }
 
 /** The subset of a KeyboardEvent the map reads. */
 export interface KeyLike {
@@ -57,9 +61,14 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
         case 'd': return { kind: 'dashboard' }
         case '[': return { kind: 'prev-tab' }
         case ']': return { kind: 'next-tab' }
+        case 'e': return { kind: 'split', direction: 'column' }
         default: return null
       }
     }
+    // ⌘[ and ⌘] move between panes, as in iTerm; off macOS Ctrl+Shift+[ ]
+    // already cycle tabs, so panes are reached from the palette there.
+    if (k === '[') return { kind: 'prev-pane' }
+    if (k === ']') return { kind: 'next-pane' }
     return plain(k)
   }
   // Off macOS every app shortcut is Ctrl+Shift, and the terminal keeps Ctrl alone.
@@ -86,6 +95,8 @@ function plain(k: string): AppCommand | null {
     case 'k': return { kind: 'palette' }
     case 'i': return { kind: 'inspector' }
     case '\\': return { kind: 'sidebar' }
+    case 'e': return { kind: 'split', direction: 'row' }
+    case 'j': return { kind: 'next-waiting' }
     default:
       if (/^[1-9]$/.test(k)) return { kind: 'tab', index: Number(k) - 1 }
       return null

@@ -60,19 +60,22 @@ daemon and every session running.
 
 Commands are granted per origin (`src-tauri/capabilities/`):
 
-| Command                  | Daemon page | Bundled page |
-| ------------------------ | ----------- | ------------ |
-| `daemon_status`          | yes         | yes          |
-| `open_external`          | yes         | yes          |
-| `notify`                 | yes         | no           |
-| `withdraw_notifications` | yes         | no           |
-| `start_daemon`           | no          | yes          |
-| `update_daemon`          | no          | yes          |
-| `set_background`         | no          | yes          |
-| `set_tray`               | yes         | no           |
-| `set_badge`              | yes         | no           |
-| `hotkey_status`          | yes         | no           |
-| `register_hotkey`        | yes         | no           |
+| Command                  | Daemon page | Bundled page | Popover |
+| ------------------------ | ----------- | ------------ | ------- |
+| `daemon_status`          | yes         | yes          | no      |
+| `open_external`          | yes         | yes          | no      |
+| `notify`                 | yes         | no           | no      |
+| `withdraw_notifications` | yes         | no           | no      |
+| `start_daemon`           | no          | yes          | no      |
+| `update_daemon`          | no          | yes          | no      |
+| `set_background`         | no          | yes          | no      |
+| `set_tray`               | yes         | no           | no      |
+| `set_badge`              | yes         | no           | no      |
+| `hotkey_status`          | yes         | no           | yes     |
+| `register_hotkey`        | yes         | no           | no      |
+| `tray_open`              | no          | no           | yes     |
+| `tray_hide`              | no          | no           | yes     |
+| `tray_fit`               | no          | no           | yes     |
 
 A page on any other origin gets nothing; `cargo test` checks each refusal.
 `open_external` opens `http` and `https` only.
@@ -147,6 +150,19 @@ in the page, so it is not taken for a click on a notification.
   registered through X11 and works only under XWayland while an X11 window
   has focus, if at all. Settings says so in a Wayland session; the tray's
   **Show Caprock** still works.
+- **Menu bar popover (macOS)** (`src-tauri/src/popover.rs`): a left click on
+  the menu bar icon shows a 380 px borderless window under it (popover
+  vibrancy, on top, on every Space) with the daemon's `/?app=1#/tray` page:
+  sessions waiting for you first, with Approve only when the whole request is
+  shown, then Deny and Open; then running sessions; today's spend and the
+  Claude and Codex windows with their reset countdown. It is created hidden
+  once a daemon answers, so it opens at once, and it hides on blur or Escape.
+  Its page may call only `tray_open` (hide it and show the window, on a
+  session when named), `tray_hide`, `tray_fit` (its height, clamped 140–640
+  px) and `hotkey_status` (capability `tray`). A right click keeps the native
+  menu. The shell dispatches `caprock:tray-shown` and `caprock:tray-hidden`
+  in the page; the page asks the daemon only while shown. It is an ordinary
+  window, not a non-activating panel, so showing it activates the app.
 - **Closing the window.** On macOS it hides the window and the app stays in
   the menu bar (Cmd+Q or **Quit Caprock** quits; the Dock icon reopens it).
   On Windows and Linux closing still quits, because a tray may not be shown

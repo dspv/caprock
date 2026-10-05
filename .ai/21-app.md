@@ -195,7 +195,10 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
   alerts ([ADR-036](08-decisions.md#adr-036--a-phone-hears-that-a-session-needs-it-through-the-owners-own-telegram-bot)).
   No notification for the session in the focused tab.
 - **F08 — Menu bar / tray.** The 5-hour and 7-day plan usage, today's spend,
-  and the sessions waiting on you, each a click from its session.
+  and the sessions waiting on you, each a click from its session. On macOS a
+  left click opens a popover with the same figures plus the running sessions
+  and Approve/Deny ([app/README.md](../app/README.md) § Menu bar popover); a
+  right click keeps the menu.
 - **F09 — Global hotkey and keyboard map.** One configurable hotkey shows or
   hides the window from anywhere. New tab, close tab, next/previous tab, tab
   1–9, new session, new shell, dashboard, find.
@@ -225,8 +228,12 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
   health line says when it last worked and with which scopes
   ([§ GitHub](#github)).
 - **F15 — Split panes.** Two or more terminals side by side or stacked.
+  Built ahead of P1 on 2026-10-06, up to four per tab
+  ([04-ui.md](04-ui.md#the-app-workspace)).
 - **F16 — Search in scrollback** of the focused terminal.
 - **F17 — Command palette** over projects, sessions, tabs and actions.
+  Built with the workspace; ranking, the waiting group and "new agent on
+  this text" added 2026-10-06.
 - **F18 — Open in editor.** The project or worktree in VS Code, Cursor, Zed or
   the system default.
 - **F19 — Phone v2 Phase B.** Reaching the machine when the phone is off its

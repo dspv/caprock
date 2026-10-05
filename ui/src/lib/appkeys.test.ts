@@ -48,4 +48,19 @@ describe('the app keyboard map', () => {
     expect(matchAppShortcut(k('Tab', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'prev-tab' })
     expect(matchAppShortcut(k('Tab'), true)).toBeNull()
   })
+
+  it('splits, moves between panes and jumps to the next session waiting on you', () => {
+    const br = (code: string, key: string, mods: Partial<KeyLike>) => ({ ...k(key, mods), code })
+    expect(matchAppShortcut(k('e', { metaKey: true }), true)).toEqual({ kind: 'split', direction: 'row' })
+    expect(matchAppShortcut(k('E', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'split', direction: 'column' })
+    expect(matchAppShortcut(k('j', { metaKey: true }), true)).toEqual({ kind: 'next-waiting' })
+    expect(matchAppShortcut(br('BracketRight', ']', { metaKey: true }), true)).toEqual({ kind: 'next-pane' })
+    expect(matchAppShortcut(br('BracketLeft', '[', { metaKey: true }), true)).toEqual({ kind: 'prev-pane' })
+    // ⇧⌘[ ] stay the tabs'.
+    expect(matchAppShortcut(br('BracketRight', '}', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'next-tab' })
+    expect(matchAppShortcut(k('E', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'split', direction: 'row' })
+    expect(matchAppShortcut(k('J', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'next-waiting' })
+    expect(matchAppShortcut(k('e', { ctrlKey: true }), false)).toBeNull()
+    expect(matchAppShortcut(k('j', { ctrlKey: true }), false)).toBeNull()
+  })
 })

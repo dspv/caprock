@@ -51,4 +51,10 @@ export const shell = {
   hotkeyStatus: () => shellInvoke<HotkeyStatus>('hotkey_status'),
   /** `null` turns the hotkey off. Rejects with the system's reason when it refuses one. */
   registerHotkey: (accelerator: string | null) => shellInvoke<HotkeyStatus>('register_hotkey', { accelerator }),
+  /** From the menu bar popover: hide it and bring the window up, on a session when one is named. */
+  trayOpen: (session?: string) => shellInvoke<void>('tray_open', { session: session ?? null }),
+  /** From the menu bar popover: the height its content needs (the shell clamps it). */
+  trayFit: (height: number) => shellInvoke<void>('tray_fit', { height }),
+  /** From the menu bar popover: hide it. */
+  trayHide: () => shellInvoke<void>('tray_hide'),
 }

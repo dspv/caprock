@@ -150,4 +150,62 @@ describe('the app workspace', () => {
     await cmd('t')
     expect(await screen.findByText(/Shell tabs needs a newer Caprock daemon/)).toBeInTheDocument()
   })
+
+  it('⌘J jumps to the session waiting on you', async () => {
+    await renderApp()
+    await cmd('j')
+    expect(await screen.findByRole('tab', { name: /Waiting one/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('⇧Enter in the palette opens a session beside the one in front, and ⌘W closes just that pane', async () => {
+    await renderApp()
+    fireEvent.click(screen.getByText('Fix the login bug'))
+    await screen.findByRole('tab')
+    await cmd('k')
+    const input = screen.getByRole('combobox', { name: 'Search' })
+    fireEvent.change(input, { target: { value: 'waiting one' } })
+    const options = screen.getAllByRole('option')
+    // The waiting row first, then the same session under Sessions, which can split.
+    expect(options[0]).toHaveTextContent('Waiting one')
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    fireEvent.keyDown(input, { key: 'Enter', shiftKey: true })
+    await waitFor(() => expect(screen.getByTestId('pane-agent-2')).toBeInTheDocument())
+    expect(screen.getAllByRole('tab')).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: /Close pane/ })).toHaveLength(2)
+    await cmd('w')
+    expect(screen.queryByTestId('pane-agent-2')).not.toBeInTheDocument()
+    expect(screen.getByTestId('pane-agent-1')).toBeInTheDocument()
+    expect(screen.getAllByRole('tab')).toHaveLength(1)
+  })
+
+  it('text the palette cannot match starts an agent on it, in a worktree named after it', async () => {
+    await renderApp()
+    await cmd('k')
+    const input = screen.getByRole('combobox', { name: 'Search' })
+    fireEvent.change(input, { target: { value: 'Add dark mode toggle' } })
+    expect(screen.getByRole('option')).toHaveTextContent('New agent on “Add dark mode toggle”')
+    fireEvent.keyDown(input, { key: 'Enter' })
+    const sheet = await screen.findByRole('dialog', { name: 'New agent' })
+    expect(await within(sheet).findByDisplayValue('add-dark-mode-toggle')).toBeInTheDocument()
+    expect(within(sheet).getByDisplayValue('Add dark mode toggle')).toBeInTheDocument()
+  })
+})
+
+describe('workspace helpers', () => {
+  it('names a worktree after a task', async () => {
+    const { worktreeSlug } = await import('./AppShell')
+    expect(worktreeSlug('Fix the login bug!')).toBe('fix-the-login-bug')
+    expect(worktreeSlug('  ***  ')).toBe('')
+    expect(worktreeSlug('one two three four five six seven eight').split('-')).toHaveLength(6)
+  })
+
+  it('cycles through what waits, from the one in front', async () => {
+    const { nextWaiting } = await import('./AppShell')
+    const item = (id: string) => ({ session: sess({ session_id: id }), projectId: 'p', projectName: 'p', reason: 'waiting' as const, title: id, since: 0 })
+    const inbox = [item('a'), item('b'), item('c')]
+    expect(nextWaiting([], 'a')).toBeUndefined()
+    expect(nextWaiting(inbox, 'x')?.title).toBe('a')
+    expect(nextWaiting(inbox, 'a')?.title).toBe('b')
+    expect(nextWaiting(inbox, 'c')?.title).toBe('a')
+  })
 })

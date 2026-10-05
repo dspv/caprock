@@ -18,6 +18,27 @@ Phase 3 (Delight) has no plan by design.
   work from the phone. The README now leads with the app, with a screenshot
   made from demo data; the daemon, the dashboard and the CLI are documented
   as before.
+- **Split panes in the app.** ⌘E puts a new shell beside the terminal in
+  front, ⇧⌘E below it; ⇧Enter in the palette opens a session there. Each
+  pane has a header with its status, the focused one a ring; ⌘[ and ⌘]
+  move between them, the divider drags or takes the arrow keys, ⌘W closes
+  the pane (the session keeps running). Up to four panes a tab, restored on
+  relaunch.
+- **Jump to what is waiting.** ⌘J opens the next session waiting on you,
+  permission prompts first, and wraps; the palette lists them at the top.
+- **A sharper command palette.** Results rank by where they match (start of
+  the name, start of a word, anywhere); "New agent in <project>" for every
+  project; text that matches nothing starts an agent on it in a new worktree
+  named after it, with the text as its first message.
+- **Menu bar popover (macOS).** A click on Caprock's menu bar icon opens a
+  panel under it: what needs you (approve or deny a prompt shown in full),
+  what is running with its cost, today's spend and the Claude and Codex plan
+  windows with when they reset. A right click keeps the menu.
+
+### Fixed
+
+- **The app's status strip rounds plan usage as Now does.** It floored, so
+  the same window read 41% there and 42% on Now.
 
 ## [0.77.0] - 2026-10-06
 

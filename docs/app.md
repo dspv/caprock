@@ -37,6 +37,15 @@ others. Installing it: [install-app.md](install-app.md).
   shell each. Tabs come back when you reopen the app. Closing a tab (⌘W)
   never stops its session; *Stop the session…* in the inspector does, after
   asking.
+- **Split panes.** ⌘E opens a new shell beside the terminal in front, ⇧⌘E
+  below it; ⇧Enter on a session in the palette opens it there. Up to four
+  panes a tab. Click a pane or press ⌘[ ⌘] to move between them; drag the
+  divider, or focus it and use the arrow keys. ⌘W closes the focused pane and
+  its session keeps running.
+- **Command palette** (⌘K). Sessions waiting on you come first, then actions,
+  tabs, sessions and projects, best match first. Type a task that matches
+  nothing — "Add rate limiting to the API" — and Enter opens *New agent* with
+  it as the first message, in a new worktree named after it.
 - **Terminal.** A real terminal for every session Caprock started and every
   shell, and it keeps running when the app or the daemon restarts. Scrolled
   up, new output never moves what you are reading; a "↓ N new lines" pill
@@ -63,6 +72,9 @@ On macOS:
 | ⌘1–8, ⌘9    | A tab by position; the last tab         |
 | ⌃Tab, ⇧⌘[ ] | Next and previous tab                   |
 | ⌘W          | Close the tab (the session keeps going) |
+| ⌘E, ⇧⌘E     | Split: a new shell beside, below        |
+| ⌘[ ]        | Previous and next pane                  |
+| ⌘J          | Next session waiting on you             |
 | ⌘K          | Command palette                         |
 | ⌘I          | Inspector                               |
 | ⌘\          | Hide or show the sidebar                |
@@ -74,10 +86,17 @@ and Ctrl+Shift+V stay the terminal's copy and paste. The terminal's own keys
 
 ## Outside the window
 
-- **Menu bar** (a tray icon on Windows and Linux). The 5-hour and 7-day plan
-  usage for Claude and Codex with their reset times, today's spend, and the
-  sessions waiting for your approval; click one to open it. On macOS the
-  5-hour figure and the waiting count sit beside the icon.
+- **Menu bar** (a tray icon on Windows and Linux). On macOS a click on the
+  icon opens a small panel under it without leaving the app you are in: what
+  needs you first (a permission prompt with **Approve** when the whole
+  request fits on the panel, else **Deny** and *Review in Caprock*; then
+  sessions whose turn ended), then what is running with its cost, today's
+  spend, and the Claude and Codex 5-hour and 7-day windows with when they
+  reset. Click a session to open it in the window; Escape or a click
+  elsewhere closes the panel. A right click shows the menu: the same figures,
+  the sessions waiting for approval, *Show Caprock* and *Quit*. On Windows
+  and Linux the menu is the whole tray. On macOS the 5-hour figure and the
+  waiting count sit beside the icon.
 - **Badge.** The Dock icon (a dot on the Windows taskbar) counts the sessions
   waiting for approval, and clears when none do.
 - **Global shortcut.** ⌃⌥⌘C on macOS, Win+Alt+C on Windows and Linux, brings

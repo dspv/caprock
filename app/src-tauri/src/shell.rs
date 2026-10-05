@@ -258,6 +258,10 @@ pub fn monitor(app: AppHandle, sup: Arc<Supervisor>) {
             if was_connected && !connected {
                 crate::tray::daemon_gone(&app);
             }
+            #[cfg(target_os = "macos")]
+            if let State::Connected { port, .. } = &state {
+                crate::popover::ensure(&app, *port);
+            }
             was_connected = connected;
             if let Some(w) = app.get_webview_window(MAIN) {
                 follow(&w, &sup, &state, &mut resume);
