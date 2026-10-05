@@ -11,7 +11,6 @@ import { dotOf, sessionTitle } from '@/lib/sidebar'
 import { TerminalPane, type PaneStatus } from './TerminalPane'
 import { AgentGlyph, CloseIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
 import { StatusDot } from './ProjectRow'
-import { isTauri } from '@/lib/appmode'
 
 export interface TabStripProps {
   tabs: Tab[]
@@ -41,7 +40,7 @@ export function TabStrip(props: TabStripProps) {
       data-tauri-drag-region
       role="tablist"
       aria-label="Terminals"
-      className={`flex h-[40px] shrink-0 items-end gap-0.5 border-b border-[var(--app-hairline)] bg-[var(--app-chrome-bg)] pr-2 ${!props.sidebarOpen && isTauri() ? 'pl-[80px]' : 'pl-2'}`}
+      className={`flex h-[40px] shrink-0 items-end gap-0.5 border-b border-[var(--app-hairline)] bg-[var(--app-chrome-bg)] pr-2 ${props.sidebarOpen ? 'pl-2' : 'pl-[max(8px,calc(var(--caprock-traffic-lights-inset,0px)+2px))]'}`}
     >
       <div className="flex min-w-0 flex-1 items-end gap-0.5 overflow-hidden" data-tauri-drag-region>
         {tabs.map((t, i) => {

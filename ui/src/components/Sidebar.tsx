@@ -11,7 +11,6 @@ import type { ProjectSource } from '@/lib/projects'
 import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { useTheme } from '@/lib/theme'
-import { isTauri } from '@/lib/appmode'
 import { ProjectRow, StatusDot } from './ProjectRow'
 import { AgentGlyph, CaprockMark, DashboardIcon, FolderPlusIcon, MoonIcon, SearchIcon, SunIcon } from './AppIcons'
 
@@ -78,7 +77,7 @@ export function Sidebar(props: SidebarProps) {
     <aside className="app-sidebar flex h-full min-h-0 flex-col border-r border-[var(--app-hairline)]" aria-label="Projects">
       <div
         data-tauri-drag-region
-        className={`flex h-[44px] shrink-0 items-center gap-2 pr-2 ${isTauri() ? 'pl-[80px]' : 'pl-3.5'}`}
+        className={`flex h-[44px] shrink-0 items-center gap-2 pr-2 pl-[max(14px,calc(var(--caprock-traffic-lights-inset,0px)+2px))]`}
       >
         <span data-tauri-drag-region className="flex min-w-0 flex-1 items-center gap-2">
           <CaprockMark size={15} />

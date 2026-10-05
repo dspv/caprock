@@ -110,6 +110,14 @@ export function AppShell() {
   const [, toggleTheme] = useTheme()
 
   useEffect(() => { saveWorkspace(ws) }, [ws])
+  // The sidebar and tab strip lay out around the macOS traffic lights and
+  // carry their own drag regions, so the shell's padding and strip go
+  // (app/README.md § Title bar).
+  useEffect(() => {
+    const root = document.documentElement
+    root.setAttribute('data-caprock-chrome', '')
+    return () => root.removeAttribute('data-caprock-chrome')
+  }, [])
   useEffect(() => {
     try { localStorage.setItem(UI_KEY, JSON.stringify(prefs)) } catch { /* not kept */ }
   }, [prefs])
@@ -334,7 +342,9 @@ export function AppShell() {
                 )}
               </div>
               {!workspaceShown && (
-                <div className="app-scroll absolute inset-0 overflow-y-auto bg-bg">
+                <div
+                  className={`app-scroll absolute inset-0 overflow-y-auto bg-bg ${prefs.sidebar ? '' : 'pt-[var(--caprock-titlebar-inset,0px)]'}`}
+                >
                   <Suspense fallback={null}>
                     <Dashboard route={parseHash(hash)} />
                   </Suspense>

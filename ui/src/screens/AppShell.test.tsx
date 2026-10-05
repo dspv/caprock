@@ -79,6 +79,13 @@ describe('the app workspace', () => {
     expect(screen.getByLabelText('1 waiting on you')).toBeInTheDocument()
   })
 
+  it('tells the desktop shell it lays out around the title bar itself, and stops saying so when gone', async () => {
+    const view = await renderApp()
+    expect(document.documentElement.hasAttribute('data-caprock-chrome')).toBe(true)
+    view.unmount()
+    expect(document.documentElement.hasAttribute('data-caprock-chrome')).toBe(false)
+  })
+
   it('opens a session as a tab, and ⌘W closes the tab without stopping anything', async () => {
     await renderApp()
     fireEvent.click(screen.getByText('Fix the login bug'))
