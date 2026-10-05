@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"testing"
 
 	"github.com/dspv/caprock/internal/event"
@@ -276,5 +277,27 @@ func seedIn(t *testing.T, e *env, sessionID, cwd string) {
 	}
 	if _, err := e.rec.Record(context.Background(), ev, rollup.SessionInfo{Cwd: cwd}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// "/", home and a temp directory are not projects: something running `claude`
+// from "/" every ten minutes held the top of the picker on the owner's Mac.
+func TestRecentDirsLeavesOutRootHomeAndTemp(t *testing.T) {
+	e := newEnv(t)
+	live := t.TempDir()
+	e.seed(t, live)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home directory")
+	}
+	for i, dir := range []string{"/", home, os.TempDir()} {
+		seedIn(t, e, "bare"+strconv.Itoa(i), dir)
+	}
+	var got []recentDir
+	if code := e.get(t, "/v1/recent-dirs", &got); code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	if len(got) != 1 || got[0].Dir != live {
+		t.Fatalf("recent dirs = %+v, want only %s", got, live)
 	}
 }

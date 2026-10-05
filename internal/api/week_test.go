@@ -97,3 +97,23 @@ func TestWeekPeriodsAreWholeLocalDaysEndingToday(t *testing.T) {
 		t.Fatalf("period and start together answered %d, want 400", code)
 	}
 }
+
+// The all-time Week took 7-13 s on the owner's database when first asked for,
+// so a start computes it (and the 30-day one) before anyone opens the dialog.
+func TestWarmComputesTheLongWeeks(t *testing.T) {
+	e := newEnv(t)
+	e.api.Warm(context.Background())
+	for _, period := range []string{"all", "30d"} {
+		from, to, err := e.api.weekPeriod(context.Background(), period)
+		if err != nil {
+			t.Fatal(err)
+		}
+		key := "week:" + period + ":" + from.Format("2006-01-02") + ":" + to.Format("2006-01-02")
+		e.api.weekLong.mu.Lock()
+		_, ok := e.api.weekLong.m[key]
+		e.api.weekLong.mu.Unlock()
+		if !ok {
+			t.Errorf("Warm left the %s Week to the first request", period)
+		}
+	}
+}

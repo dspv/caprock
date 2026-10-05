@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -316,5 +317,25 @@ func TestTheHoldoutRecordsWhoGotTheHandoffAndWhoDidNot(t *testing.T) {
 	}
 	if *ms.Withheld != (store.HandoffGroup{Sessions: 1, Reached: 1, MedianMin: 15, MedianCall: 4}) {
 		t.Errorf("withheld = %+v", *ms.Withheld)
+	}
+}
+
+// "/", the home directory and a temp directory are nobody's repository. A
+// background `claude` on the owner's Mac opened in "/" every ten minutes, and
+// each one ran the lookup — so these get nothing, and run nothing.
+func TestNoHandoffOutsideAnyProject(t *testing.T) {
+	now := time.Date(2026, 10, 5, 7, 0, 0, 0, time.UTC)
+	d := handoffDaemon(t, now)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home directory")
+	}
+	for _, dir := range []string{"/", home, os.TempDir()} {
+		said(t, d, store.ProjectFromCwd(dir), strings.Repeat("What was said here last time. ", 20), now.Add(-time.Hour))
+		if reply := d.handoff(context.Background(), hookd.Payload{
+			HookEventName: "SessionStart", Source: "startup", Cwd: dir,
+		}); len(reply) > 0 {
+			t.Errorf("a session opening in %q was handed %.40s", dir, reply)
+		}
 	}
 }

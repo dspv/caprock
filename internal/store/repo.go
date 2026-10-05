@@ -481,6 +481,29 @@ func isRootPath(p string) bool {
 	return len(p) == 3 && p[1] == ':' && p[2] == '/'
 }
 
+// NotAProject reports whether cwd is a place nobody works in as a project: a
+// filesystem root, the home directory itself, or a temp directory itself.
+//
+// Sessions do start there — on the owner's Mac a background `claude` opens in
+// "/" every ten minutes and exits seconds later — but such a directory is no
+// project to offer in the New session picker, and no repository whose last
+// passage a new session should be handed. Subdirectories are unaffected.
+func NotAProject(cwd string) bool {
+	c := normalizeCwd(cwd)
+	if c == "" || isRootPath(c) {
+		return true
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" && pathEqual(c, home) {
+		return true
+	}
+	for _, t := range DefaultTempDirs() {
+		if pathEqual(c, t) {
+			return true
+		}
+	}
+	return false
+}
+
 // lastSegment is the final path segment of an already-normalized path, "" for a
 // root.
 func lastSegment(p string) string {

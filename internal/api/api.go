@@ -1225,7 +1225,8 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 
 // Warm computes the whole-history answers the dashboard asks for first — the
 // lifetime strip's /v1/history?range=all and the 7d, 30d and all-time
-// summaries the Cost screen and the share dialog open with — so the first
+// summaries the Cost screen and the share dialog open with, and the share
+// dialog's all-time and 30-day Weeks — so the first
 // screen after a start finds them cached instead of paying for the scans.
 // Run in the background; it returns when they are done or ctx ends. Errors are
 // dropped: a key that failed to warm is simply computed on first request, as
@@ -1245,6 +1246,7 @@ func (s *Server) Warm(ctx context.Context) {
 		from, label := s.rangeFrom(rng)
 		_, _ = s.rangeSummary(ctx, from, label, "")
 	}
+	s.warmWeek(ctx)
 }
 
 // rangeSummary is the aggregate behind /v1/stats/summary for one range.

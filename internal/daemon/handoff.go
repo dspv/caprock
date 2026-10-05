@@ -67,6 +67,11 @@ func (d *Daemon) handoff(ctx context.Context, p hookd.Payload) []byte {
 	if p.Source != "startup" {
 		return nil
 	}
+	// "/", the home directory and a temp directory are nobody's repository:
+	// there is nothing of theirs to hand over, so the lookup is not even run.
+	if store.NotAProject(p.Cwd) {
+		return nil
+	}
 	project := store.ProjectFromCwd(p.Cwd)
 	if project == "" {
 		return nil
