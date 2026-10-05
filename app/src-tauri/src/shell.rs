@@ -67,7 +67,7 @@ fn is_local(url: &Url) -> bool {
     matches!(url.scheme(), "tauri") || url.host_str() == Some("tauri.localhost")
 }
 
-pub fn build(app: &AppHandle, start: WebviewUrl) -> tauri::Result<WebviewWindow> {
+pub fn build(app: &AppHandle, start: WebviewUrl, focus: bool) -> tauri::Result<WebviewWindow> {
     let opener = app.clone();
     let opener2 = app.clone();
     let mut b = WebviewWindowBuilder::new(app, MAIN, start)
@@ -75,6 +75,7 @@ pub fn build(app: &AppHandle, start: WebviewUrl) -> tauri::Result<WebviewWindow>
         .inner_size(1280.0, 800.0)
         .min_inner_size(720.0, 480.0)
         .visible(false)
+        .focused(focus)
         .initialization_script(INIT_SCRIPT)
         .on_navigation(move |url| {
             // Main-frame navigation stays on the daemon or the fallback page;
@@ -90,8 +91,12 @@ pub fn build(app: &AppHandle, start: WebviewUrl) -> tauri::Result<WebviewWindow>
             NewWindowResponse::Deny
         })
         .on_download(save_download)
-        .on_page_load(|w, _| {
-            let _ = w.show();
+        .on_page_load(|w, p| {
+            if matches!(p.event(), tauri::webview::PageLoadEvent::Finished) {
+                #[cfg(all(feature = "snapshot", target_os = "macos"))]
+                crate::snapshot::loaded(p.url());
+                let _ = w.show();
+            }
         });
     #[cfg(target_os = "macos")]
     {
@@ -198,10 +203,10 @@ fn save_download(webview: tauri::Webview, event: DownloadEvent<'_>) -> bool {
     }
 }
 
-/// Follows the daemon for the life of the app: polls once a second, moves
+/// Follows the daemon for the life of the app: polls twice a second, moves
 /// the window to the dashboard when a compatible daemon answers (again, or
-/// on a new port) and to the fallback page when it is gone for 2 s and the
-/// page is not showing that itself.
+/// on a new port) and to the fallback page when it has stopped and the page
+/// is not showing that itself.
 pub fn monitor(app: AppHandle, sup: Arc<Supervisor>) {
     thread::spawn(move || {
         let mut absent_since: Option<Instant> = None;
@@ -220,7 +225,7 @@ pub fn monitor(app: AppHandle, sup: Arc<Supervisor>) {
                 follow(&w, &sup, &state, &mut resume);
             }
             let fast = matches!(state, State::Searching | State::Starting { .. });
-            thread::sleep(Duration::from_millis(if fast { 250 } else { 1000 }));
+            thread::sleep(Duration::from_millis(if fast { 250 } else { 500 }));
         }
     });
 }

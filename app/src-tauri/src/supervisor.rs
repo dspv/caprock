@@ -18,6 +18,10 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+/// How long a daemon must be gone before the app says so. With a 500 ms
+/// poll, a stop is shown in under 2 s (WP-02).
+pub const STOPPED_AFTER: Duration = Duration::from_millis(1200);
+
 const EXE: &str = if cfg!(windows) {
     "caprock.exe"
 } else {
@@ -51,7 +55,7 @@ pub enum State {
         /// The upgrade command for how it was installed, from `/v1/update`.
         command: String,
     },
-    /// The daemon went away; waiting for it to come back.
+    /// The daemon has been gone for `STOPPED_AFTER`; waiting for it.
     Stopped,
     /// Starting failed; `error` is what went wrong, verbatim.
     Failed { error: String },
@@ -157,13 +161,14 @@ impl Supervisor {
             Found::Running { rt, status } => {
                 let ours = discovery::is_ours(&rt, &bin);
                 let port = rt.port;
+                let rt_for_command = rt.clone();
                 g.rt = Some(rt);
                 if status.api_level < MIN_API_LEVEL {
                     let command = match &g.state {
                         State::TooOld {
                             command, port: p, ..
                         } if *p == port => command.clone(),
-                        _ => upgrade_command(port),
+                        _ => upgrade_command(&rt_for_command),
                     };
                     State::TooOld {
                         port,
@@ -184,9 +189,7 @@ impl Supervisor {
             }
             Found::Absent => match &g.state {
                 _ if g.busy => g.state.clone(),
-                State::Connected { .. } | State::TooOld { .. }
-                    if absent_for >= Duration::from_secs(2) =>
-                {
+                State::Connected { .. } | State::TooOld { .. } if absent_for >= STOPPED_AFTER => {
                     State::Stopped
                 }
                 // A login service may be a moment away from listening; after
@@ -294,8 +297,15 @@ impl Supervisor {
         self.set(State::Starting {
             step: "Starting the daemon".into(),
         });
+        // `up` itself waits up to 10 s for the daemon and says why it failed
+        // (most often: the port is taken), so a failure needs no second wait.
         let up = self.run(&self.bin(), &["up", "--no-open", "--no-hooks"]);
-        if self.wait_up(Duration::from_secs(10)) {
+        let wait = if up.is_ok() {
+            Duration::from_secs(10)
+        } else {
+            Duration::from_secs(1)
+        };
+        if self.wait_up(wait) {
             return Ok(());
         }
         let mut msg = up
@@ -376,19 +386,29 @@ impl Supervisor {
     }
 }
 
-/// The upgrade command the daemon infers from its own path (`/v1/update`);
-/// empty when no package manager owns it.
-fn upgrade_command(port: u16) -> String {
+/// How to upgrade the daemon: its own answer (`/v1/update` names a command
+/// only once it has seen a newer release), else the same inference from the
+/// binary's path; empty when no package manager owns it.
+fn upgrade_command(rt: &Runtime) -> String {
     #[derive(Deserialize)]
     struct Update {
         #[serde(default)]
         command: String,
     }
-    discovery::request(port, "GET", "/v1/update", None)
+    let told = discovery::request(rt.port, "GET", "/v1/update", None)
         .ok()
         .and_then(|(_, body)| serde_json::from_str::<Update>(&body).ok())
         .map(|u| u.command)
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if !told.is_empty() {
+        return told;
+    }
+    let exe = if rt.exe.is_empty() {
+        discovery::exe_of_pid(rt.pid)
+    } else {
+        rt.exe.clone()
+    };
+    discovery::command_for_path(&exe).to_string()
 }
 
 /// Copies the bundled daemon to `dst` when it differs, atomically (write a
@@ -478,17 +498,14 @@ mod tests {
     }
 
     #[test]
-    fn a_daemon_that_goes_away_reads_stopped_after_two_seconds() {
+    fn a_daemon_that_goes_away_reads_stopped_after_a_moment() {
         let s = sup("stop");
         s.observe(running(MIN_API_LEVEL, ""), Duration::ZERO);
         assert!(matches!(
             s.observe(Found::Absent, Duration::from_millis(900)),
             State::Connected { .. }
         ));
-        assert_eq!(
-            s.observe(Found::Absent, Duration::from_secs(2)),
-            State::Stopped
-        );
+        assert_eq!(s.observe(Found::Absent, STOPPED_AFTER), State::Stopped);
         assert!(matches!(
             s.observe(running(MIN_API_LEVEL, ""), Duration::ZERO),
             State::Connected { .. }

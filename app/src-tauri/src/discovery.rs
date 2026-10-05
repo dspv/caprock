@@ -99,6 +99,44 @@ pub fn is_ours(rt: &Runtime, bin: &Path) -> bool {
     canon(Path::new(&rt.exe)) == canon(bin)
 }
 
+/// The executable of a process, for a daemon too old to write `exe` into
+/// `runtime.json`. Empty when the OS will not say.
+pub fn exe_of_pid(pid: u32) -> String {
+    if pid == 0 {
+        return String::new();
+    }
+    #[cfg(target_os = "linux")]
+    return std::fs::read_link(format!("/proc/{pid}/exe"))
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    #[cfg(target_os = "macos")]
+    return std::process::Command::new("/bin/ps")
+        .args(["-o", "comm=", "-p", &pid.to_string()])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    String::new()
+}
+
+/// The upgrade command for a daemon binary at `exe`, inferred from its path
+/// the same way the daemon does (`internal/update.commandForPath`).
+pub fn command_for_path(exe: &str) -> &'static str {
+    let p = exe.replace('\\', "/");
+    let lower = p.to_lowercase();
+    if p.contains("/Cellar/") || p.contains("/homebrew/") || p.contains("/linuxbrew/") {
+        "brew update && brew upgrade caprock"
+    } else if lower.contains("/scoop/apps/") {
+        "scoop update caprock"
+    } else if p.ends_with("/go/bin/caprock") || lower.ends_with("/go/bin/caprock.exe") {
+        "go install github.com/dspv/caprock/cmd/caprock@latest"
+    } else {
+        ""
+    }
+}
+
 /// One HTTP/1.0 request to the daemon on loopback, with a short timeout. The
 /// body is read to EOF (HTTP/1.0 closes the connection).
 pub fn request(
@@ -251,6 +289,34 @@ mod tests {
         assert!(!is_ours(&rt, &bin));
         rt.exe = String::new();
         assert!(!is_ours(&rt, &bin));
+    }
+
+    #[test]
+    fn names_the_upgrade_command_by_install_path() {
+        let brew = "brew update && brew upgrade caprock";
+        assert_eq!(command_for_path("/opt/homebrew/bin/caprock"), brew);
+        assert_eq!(
+            command_for_path("/usr/local/Cellar/caprock/0.74.0/bin/caprock"),
+            brew
+        );
+        assert_eq!(
+            command_for_path(r"C:\Users\a\scoop\apps\caprock\1.0\caprock.exe"),
+            "scoop update caprock"
+        );
+        assert!(command_for_path("/Users/a/go/bin/caprock").starts_with("go install"));
+        assert_eq!(
+            command_for_path("/Users/a/Library/Application Support/caprock/bin/caprock"),
+            ""
+        );
+        assert_eq!(command_for_path(""), "");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn finds_the_executable_of_a_live_process() {
+        let me = exe_of_pid(std::process::id());
+        assert!(me.contains("caprock_app"), "{me}");
+        assert_eq!(exe_of_pid(0), "");
     }
 
     #[test]

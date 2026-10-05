@@ -7,11 +7,14 @@
 mod commands;
 mod discovery;
 mod shell;
+#[cfg(all(feature = "snapshot", target_os = "macos"))]
+mod snapshot;
 mod supervisor;
 
 use std::path::PathBuf;
 use supervisor::{State, Supervisor};
 use tauri::WebviewUrl;
+use tauri_plugin_window_state::StateFlags;
 
 /// Every command, for the handler and the ACL test.
 macro_rules! handler {
@@ -45,17 +48,30 @@ fn main() {
         _ => WebviewUrl::App("index.html".into()),
     };
     let monitored = sup.clone();
-    configure(tauri::Builder::default(), sup)
-        .plugin(tauri_plugin_window_state::Builder::new().build())
-        .setup(move |app| {
-            shell::build(app.handle(), start)?;
-            #[cfg(target_os = "macos")]
-            menu::install(app.handle(), &monitored)?;
-            shell::monitor(app.handle().clone(), monitored);
-            Ok(())
-        })
-        .run(tauri::generate_context!())
-        .expect("run the Caprock app");
+    // For automated checks on a machine someone is using: launch without
+    // taking focus. Not a user setting.
+    let quiet = std::env::var_os("CAPROCK_APP_BACKGROUND").is_some();
+    let b = configure(tauri::Builder::default(), sup);
+    #[cfg(target_os = "macos")]
+    let b = b.activate_ignoring_other_apps(!quiet);
+    b.plugin(
+        // Size and position are remembered; visibility is the shell's call
+        // (shown when the first page has loaded).
+        tauri_plugin_window_state::Builder::new()
+            .with_state_flags(StateFlags::all() & !StateFlags::VISIBLE)
+            .build(),
+    )
+    .setup(move |app| {
+        shell::build(app.handle(), start, !quiet)?;
+        #[cfg(target_os = "macos")]
+        menu::install(app.handle(), &monitored)?;
+        shell::monitor(app.handle().clone(), monitored);
+        #[cfg(all(feature = "snapshot", target_os = "macos"))]
+        snapshot::watch(app.handle().clone());
+        Ok(())
+    })
+    .run(tauri::generate_context!())
+    .expect("run the Caprock app");
 }
 
 /// The macOS app menu gains the background switch (decision 7): the same
