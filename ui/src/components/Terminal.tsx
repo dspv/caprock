@@ -3,6 +3,7 @@ import { Terminal as Xterm } from '@xterm/xterm'
 import { api, deviceToken, errText, isPairedDevice } from '@/lib/api'
 import { SpawnDialog } from './SpawnDialog'
 import { TerminalKeys } from './TerminalKeys'
+import { takeDraft } from '@/lib/draft'
 import { PermissionPrompt } from './PermissionPrompt'
 import { downscalePhoto } from '@/lib/downscale'
 import { FitAddon } from '@xterm/addon-fit'
@@ -124,6 +125,8 @@ export function TerminalView({
   // the canvas would raise the on-screen keyboard over the very output the
   // person is reading.
   const phone = isPairedDevice()
+  // What the Changes tab left for the field ("In <file> around line N: ").
+  const [draft] = useState(() => takeDraft(sessionId))
   useEffect(() => {
     if (!host.current || !owned) return
     setStart({ phase: 'waiting', since: Date.now() })
@@ -661,7 +664,7 @@ export function TerminalView({
       {/* A keyboard without Esc, Tab, arrows or Ctrl: on a phone always, and
         * on any narrow window. */}
       <div className={phone ? '' : 'sm:hidden'}>
-        <TerminalKeys send={(d) => sendRef.current(d)} attach={(files) => attachRef.current(files)} />
+        <TerminalKeys send={(d) => sendRef.current(d)} attach={(files) => attachRef.current(files)} initial={draft} />
       </div>
       <div className="hidden border-t border-border px-3 py-1.5 text-[11px] text-fg-faint sm:block">
         <span className="mono text-fg-muted">Shift</span>+

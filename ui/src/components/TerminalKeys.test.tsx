@@ -66,4 +66,18 @@ describe('TerminalKeys — attaching a photo', () => {
     fireEvent.change(picker, { target: { files: [photo] } })
     await vi.waitFor(() => expect(attach).toHaveBeenCalledWith([photo]))
   })
+
+  // The Changes tab's "Ask the agent" arrives with the start of a message.
+  it('starts from a draft, focused, ready to finish', () => {
+    render(<TerminalKeys send={vi.fn()} initial="In a.ts around line 5: " />)
+    const field = screen.getByLabelText('Type to the session') as HTMLTextAreaElement
+    expect(field.value).toBe('In a.ts around line 5: ')
+    expect(document.activeElement).toBe(field)
+  })
+
+  // Idle it is one line, so the bar does not push the terminal up for nothing.
+  it('starts one line tall', () => {
+    render(<TerminalKeys send={vi.fn()} />)
+    expect((screen.getByLabelText('Type to the session') as HTMLTextAreaElement).rows).toBe(1)
+  })
 })
