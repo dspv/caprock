@@ -69,15 +69,20 @@ export interface PaneStatus {
 export function TerminalPane({
   sessionId,
   active,
+  focused = true,
   onStatus,
 }: {
   sessionId: string
   /** The tab is in front and the workspace is showing. */
   active: boolean
+  /** The pane the keyboard goes to, in a tab split into several (F15). */
+  focused?: boolean
   onStatus?: (s: PaneStatus) => void
 }) {
   const host = useRef<HTMLDivElement>(null)
-  const api = useRef<{ show: () => void; hide: () => void; scrollToBottom: () => void } | null>(null)
+  const api = useRef<{ show: () => void; hide: () => void; scrollToBottom: () => void; focus: () => void } | null>(null)
+  const focusedRef = useRef(focused)
+  focusedRef.current = focused
   const [phase, setPhase] = useState<'waiting' | 'ready'>('waiting')
   const [status, setStatus] = useState<TermState>('connecting')
   const [newLines, setNewLines] = useState(0)
@@ -254,7 +259,7 @@ export function TerminalPane({
         lastGeom = ''
         refit()
         if (webglLost || !webgl) scheduleWebgl()
-        term.focus()
+        if (focusedRef.current) term.focus()
       },
       hide: () => {
         visible = false
@@ -268,6 +273,7 @@ export function TerminalPane({
         term.scrollToBottom()
         term.focus()
       },
+      focus: () => term.focus(),
     }
     conn.start()
     return () => {
@@ -294,6 +300,10 @@ export function TerminalPane({
     if (active) api.current?.show()
     else api.current?.hide()
   }, [active, sessionId])
+
+  useEffect(() => {
+    if (active && focused) api.current?.focus()
+  }, [active, focused])
 
   return (
     <div className="relative h-full w-full bg-term-bg">

@@ -2,11 +2,12 @@
  * The tab strip of the project in front, and every open terminal behind it
  * (WP-04). Terminals of every project stay mounted — switching a tab or a
  * project shows one that is already painted — and each pane tree renders
- * through one recursive view, so split panes (F15) add a layout, not a rewrite.
+ * through one recursive view: a split tab (F15) shows its panes side by side
+ * or stacked, each with a header, behind dividers that drag or take arrows.
  */
-import { memo, useState, type DragEvent, type ReactNode } from 'react'
+import { Fragment, memo, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { SessionSummary } from '@/lib/api'
-import { focusedLeaf, type PaneNode, type Tab } from '@/lib/tabs'
+import { focusedLeaf, type PaneNode, type PaneSplit, type Tab } from '@/lib/tabs'
 import { dotOf, sessionTitle } from '@/lib/sidebar'
 import { TerminalPane, type PaneStatus } from './TerminalPane'
 import { AgentGlyph, ChatIcon, CloseIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
@@ -123,38 +124,167 @@ export const TerminalStack = memo(function TerminalStack({
   tabs,
   visibleTabId,
   onPaneStatus,
+  sessions,
+  permissions,
+  onFocusPane,
+  onClosePane,
+  onResize,
 }: {
   tabs: Tab[]
   /** The tab shown, or undefined when the workspace itself is hidden. */
   visibleTabId?: string
   onPaneStatus?: (sessionId: string, s: PaneStatus) => void
+  /** For the header a pane gets once its tab is split (F15). */
+  sessions?: ReadonlyMap<string, SessionSummary>
+  permissions?: ReadonlySet<string>
+  onFocusPane?: (tabId: string, paneId: string) => void
+  onClosePane?: (tabId: string, paneId: string) => void
+  onResize?: (tabId: string, splitId: string, sizes: number[]) => void
 }) {
   return (
     <div className="app-slab relative h-full w-full">
       {tabs.map((t) => (
         <div key={t.id} className="absolute inset-0" hidden={t.id !== visibleTabId} data-tab-panel={t.id}>
-          <PaneView node={t.root} visible={t.id === visibleTabId} onPaneStatus={onPaneStatus} />
+          <PaneView
+            node={t.root}
+            visible={t.id === visibleTabId}
+            ctx={{
+              tab: t,
+              split: t.root.type === 'split',
+              onPaneStatus,
+              sessions,
+              permissions,
+              onFocusPane: onFocusPane && ((paneId: string) => onFocusPane(t.id, paneId)),
+              onClosePane: onClosePane && ((paneId: string) => onClosePane(t.id, paneId)),
+              onResize: onResize && ((splitId: string, sizes: number[]) => onResize(t.id, splitId, sizes)),
+            }}
+          />
         </div>
       ))}
     </div>
   )
 })
 
-function PaneView({ node, visible, onPaneStatus }: { node: PaneNode; visible: boolean; onPaneStatus?: (sessionId: string, s: PaneStatus) => void }) {
+interface PaneCtx {
+  tab: Tab
+  /** The tab holds more than one pane: each gets a header and the focused one a ring. */
+  split: boolean
+  onPaneStatus?: (sessionId: string, s: PaneStatus) => void
+  sessions?: ReadonlyMap<string, SessionSummary>
+  permissions?: ReadonlySet<string>
+  onFocusPane?: (paneId: string) => void
+  onClosePane?: (paneId: string) => void
+  onResize?: (splitId: string, sizes: number[]) => void
+}
+
+function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ctx: PaneCtx }) {
   if (node.type === 'pane') {
     const id = node.target.sessionId
-    return <TerminalPane sessionId={id} active={visible} onStatus={onPaneStatus ? (s) => onPaneStatus(id, s) : undefined} />
+    const focused = ctx.tab.focusedPaneId === node.id || (!ctx.split)
+    const term = <TerminalPane sessionId={id} active={visible} focused={focused} onStatus={ctx.onPaneStatus ? (s) => ctx.onPaneStatus!(id, s) : undefined} />
+    if (!ctx.split) return term
+    const s = ctx.sessions?.get(id)
+    const isShell = node.target.kind === 'shell' || s?.kind === 'shell'
+    const title = s ? sessionTitle(s) : isShell ? 'shell' : 'session'
+    return (
+      <div
+        className="flex h-full w-full flex-col"
+        data-pane={node.id}
+        data-focused={focused || undefined}
+        onFocusCapture={() => { if (!focused) ctx.onFocusPane?.(node.id) }}
+        onMouseDown={() => { if (!focused) ctx.onFocusPane?.(node.id) }}
+      >
+        <div className={`flex h-[24px] shrink-0 items-center gap-1.5 bg-term-bg pl-3 pr-1 text-[11.5px] ${focused ? 'text-[#e8e4dc]' : 'text-[#8f8a82]'}`}>
+          <StatusDot dot={s ? dotOf(s, !!ctx.permissions?.has(s.session_id)) : 'idle'} />
+          <AgentGlyph agent={s?.agent} shell={isShell} />
+          <span className="min-w-0 flex-1 truncate">{title}</span>
+          <button
+            type="button"
+            aria-label={`Close pane ${title} — the session keeps running`}
+            title="Close pane (⌘W) — the session keeps running"
+            onClick={(e) => { e.stopPropagation(); ctx.onClosePane?.(node.id) }}
+            className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[4px] text-[#8f8a82] hover:bg-white/10 hover:text-[#e8e4dc]"
+          >
+            <CloseIcon size={11} />
+          </button>
+        </div>
+        <div className="relative min-h-0 flex-1">
+          {term}
+          {/* The focused pane carries a ring; the others dim a little, as in Ghostty. */}
+          <div aria-hidden className={`pointer-events-none absolute inset-0 ${focused ? 'shadow-[inset_0_0_0_1px_rgba(231,187,99,0.45)]' : 'bg-black/15'}`} />
+        </div>
+      </div>
+    )
+  }
+  return <SplitView node={node} visible={visible} ctx={ctx} />
+}
+
+/** A split's children with a divider between each pair, dragged or moved with the arrow keys. */
+function SplitView({ node, visible, ctx }: { node: PaneSplit; visible: boolean; ctx: PaneCtx }) {
+  const box = useRef<HTMLDivElement>(null)
+  // While dragging, the sizes live here and reach the workspace on release.
+  const [draft, setDraft] = useState<number[] | null>(null)
+  const sizes = draft ?? node.sizes
+  const row = node.direction === 'row'
+  const moved = (i: number, at: number): number[] | null => {
+    const before = sizes.slice(0, i - 1).reduce((a, v) => a + v, 0)
+    const pair = sizes[i - 1]! + sizes[i]!
+    const left = Math.min(pair - 0.1, Math.max(0.1, at - before))
+    const next = sizes.slice()
+    next[i - 1] = left
+    next[i] = pair - left
+    return next
+  }
+  const drag = (i: number) => (e: ReactPointerEvent<HTMLDivElement>) => {
+    const el = box.current
+    if (!el) return
+    e.preventDefault()
+    const r = el.getBoundingClientRect()
+    let last: number[] | null = null
+    const onMove = (m: PointerEvent) => {
+      const at = row ? (m.clientX - r.left) / r.width : (m.clientY - r.top) / r.height
+      last = moved(i, at)
+      setDraft(last)
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      if (last) ctx.onResize?.(node.id, last)
+      setDraft(null)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+  const nudge = (i: number) => (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const step = { ArrowLeft: -0.05, ArrowUp: -0.05, ArrowRight: 0.05, ArrowDown: 0.05 }[e.key]
+    if (step === undefined) return
+    e.preventDefault()
+    const at = sizes.slice(0, i).reduce((a, v) => a + v, 0) + step
+    const next = moved(i, at)
+    if (next) ctx.onResize?.(node.id, next)
   }
   return (
-    <div className={`flex h-full w-full ${node.direction === 'row' ? 'flex-row' : 'flex-col'}`}>
+    <div ref={box} className={`flex h-full w-full ${row ? 'flex-row' : 'flex-col'}`}>
       {node.children.map((c, i) => (
-        <div
-          key={c.id}
-          style={{ flexBasis: `${(node.sizes[i] ?? 1 / node.children.length) * 100}%` }}
-          className={`relative min-h-0 min-w-0 grow-0 shrink ${i > 0 ? (node.direction === 'row' ? 'border-l' : 'border-t') + ' border-[var(--app-hairline-strong)]' : ''}`}
-        >
-          <PaneView node={c} visible={visible} onPaneStatus={onPaneStatus} />
-        </div>
+        <Fragment key={c.id}>
+          {i > 0 && (
+            <div
+              role="separator"
+              aria-orientation={row ? 'vertical' : 'horizontal'}
+              aria-label="Resize panes"
+              aria-valuenow={Math.round(sizes.slice(0, i).reduce((a, v) => a + v, 0) * 100)}
+              tabIndex={0}
+              onPointerDown={drag(i)}
+              onKeyDown={nudge(i)}
+              className={`group relative z-10 shrink-0 bg-[var(--app-hairline-strong)] outline-none focus-visible:bg-accent ${row ? 'w-px cursor-col-resize' : 'h-px cursor-row-resize'}`}
+            >
+              <span aria-hidden className={`absolute ${row ? '-left-[3px] -right-[3px] inset-y-0' : '-top-[3px] -bottom-[3px] inset-x-0'}`} />
+            </div>
+          )}
+          <div style={{ flex: `${sizes[i] ?? 1 / node.children.length} 1 0px` }} className="relative min-h-0 min-w-0">
+            <PaneView node={c} visible={visible} ctx={ctx} />
+          </div>
+        </Fragment>
       ))}
     </div>
   )

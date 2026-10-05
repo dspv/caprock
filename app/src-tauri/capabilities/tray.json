@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "tray",
+  "description": "The menu bar popover (macOS), the daemon's #/tray page in its own small window. It may hide itself, size itself, bring the main window up on a session and read the global hotkey for its hint; nothing else.",
+  "windows": ["tray"],
+  "remote": { "urls": ["http://127.0.0.1:*"] },
+  "permissions": [
+    "allow-tray-open",
+    "allow-tray-hide",
+    "allow-tray-fit",
+    "allow-hotkey-status"
+  ]
+}

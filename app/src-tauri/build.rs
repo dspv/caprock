@@ -14,6 +14,9 @@ fn main() {
             "register_hotkey",
             "notify",
             "withdraw_notifications",
+            "tray_open",
+            "tray_hide",
+            "tray_fit",
         ]),
     ))
     .expect("tauri build");

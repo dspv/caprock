@@ -3,7 +3,9 @@ import {
   activeTab,
   EMPTY_WORKSPACE,
   findTabBySession,
+  focusedLeaf,
   leaves,
+  MAX_PANES,
   parseWorkspace,
   tabsOf,
   workspaceReducer,
@@ -80,5 +82,66 @@ describe('workspace tabs', () => {
     const back = parseWorkspace(JSON.stringify(split))
     expect(leaves(back.tabs[0]!.root).map((l) => l.target.sessionId)).toEqual(['a', 'sh'])
     expect(findTabBySession(back, 'sh')?.id).toBe(tab.id)
+  })
+})
+
+describe('split panes', () => {
+  const split = (sessionId: string, direction: 'row' | 'column' = 'row'): WorkspaceAction => ({ type: 'split', target: { kind: 'shell', sessionId }, direction, projectId: 'p1', title: sessionId })
+  const ids = (ws: Workspace) => leaves(activeTab(ws)!.root).map((l) => l.target.sessionId)
+
+  it('puts the new pane beside the focused one and focuses it', () => {
+    const ws = run(open('a'), split('b'))
+    expect(ws.tabs).toHaveLength(1)
+    expect(ids(ws)).toEqual(['a', 'b'])
+    expect(focusedLeaf(activeTab(ws)!).target.sessionId).toBe('b')
+  })
+
+  it('a same-direction split gains a sibling with equal shares; the other direction nests', () => {
+    const row = run(open('a'), split('b'), split('c'))
+    const root = activeTab(row)!.root
+    expect(root.type === 'split' && root.children.length).toBe(3)
+    expect(root.type === 'split' && root.sizes.map((v) => v.toFixed(3))).toEqual(['0.333', '0.333', '0.333'])
+    const nested = run(open('a'), split('b'), split('c', 'column'))
+    const r = activeTab(nested)!.root
+    expect(r.type === 'split' && r.children[1]!.type).toBe('split')
+    expect(ids(nested)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('stops at MAX_PANES, and a session already open is shown where it is, not twice', () => {
+    let ws = run(open('a'))
+    for (let i = 1; i < MAX_PANES + 2; i++) ws = workspaceReducer(ws, split(`s${i}`))
+    expect(ids(ws)).toHaveLength(MAX_PANES)
+    const twice = run(open('a'), open('x'), split('a'))
+    expect(leaves(activeTab(twice)!.root).map((l) => l.target.sessionId)).toEqual(['a'])
+  })
+
+  it('cycles the focus, and closing a pane collapses the split and focuses the neighbour', () => {
+    let ws = run(open('a'), split('b'), split('c'))
+    ws = workspaceReducer(ws, { type: 'cycle-pane', delta: 1 })
+    expect(focusedLeaf(activeTab(ws)!).target.sessionId).toBe('a')
+    const tab = activeTab(ws)!
+    const a = leaves(tab.root)[0]!
+    ws = workspaceReducer(ws, { type: 'close-pane', tabId: tab.id, paneId: a.id })
+    expect(ids(ws)).toEqual(['b', 'c'])
+    expect(focusedLeaf(activeTab(ws)!).target.sessionId).toBe('b')
+    ws = workspaceReducer(ws, { type: 'drop-session', sessionId: 'c' })
+    expect(activeTab(ws)!.root.type).toBe('pane')
+    ws = workspaceReducer(ws, { type: 'drop-session', sessionId: 'b' })
+    expect(ws.tabs).toHaveLength(0)
+  })
+
+  it('resizes only to sane shares', () => {
+    const ws = run(open('a'), split('b'))
+    const tab = activeTab(ws)!
+    const id = tab.root.id
+    const ok = workspaceReducer(ws, { type: 'resize', tabId: tab.id, splitId: id, sizes: [0.7, 0.3] })
+    expect(activeTab(ok)!.root.type === 'split' && (activeTab(ok)!.root as { sizes: number[] }).sizes).toEqual([0.7, 0.3])
+    expect(workspaceReducer(ws, { type: 'resize', tabId: tab.id, splitId: id, sizes: [0.95, 0.05] })).toBe(ws)
+    expect(workspaceReducer(ws, { type: 'resize', tabId: tab.id, splitId: id, sizes: [1] })).toBe(ws)
+  })
+
+  it('a split tab survives storage', () => {
+    const ws = run(open('a'), split('b'))
+    expect(parseWorkspace(JSON.stringify(ws))).toEqual(ws)
   })
 })

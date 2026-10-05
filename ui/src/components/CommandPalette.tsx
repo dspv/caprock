@@ -1,18 +1,24 @@
 /**
- * The command palette (⌘K): every project, open tab, live session and action
- * in one list, filtered as you type. ↑ ↓ move, Enter runs, Escape closes.
+ * The command palette (⌘K): sessions waiting on you, every project, open tab,
+ * live session and action in one list, ranked as you type (a match at the
+ * start of the name first, then at the start of a word, then anywhere).
+ * ↑ ↓ move, Enter runs, ⇧Enter opens a session beside the one in front (a
+ * split pane), Escape closes. With nothing matching, the text can start an
+ * agent in a new worktree.
  */
 import { useMemo, useState, type ReactNode } from 'react'
 import { Sheet } from './Sheet'
 
 export interface PaletteItem {
   id: string
-  group: 'Actions' | 'Tabs' | 'Sessions' | 'Projects'
+  group: 'Waiting' | 'Actions' | 'Tabs' | 'Sessions' | 'Projects'
   label: string
   detail?: string
   hint?: string
   icon?: ReactNode
   run: () => void
+  /** ⇧Enter: open it in a split pane instead. */
+  runAlt?: () => void
 }
 
 /** Whether every word of the query appears in the text, in any order. */
@@ -21,20 +27,57 @@ export function matches(query: string, text: string): boolean {
   return query.toLowerCase().split(/\s+/).filter(Boolean).every((w) => hay.includes(w))
 }
 
-const GROUP_ORDER: PaletteItem['group'][] = ['Actions', 'Tabs', 'Sessions', 'Projects']
+/**
+ * How well an item matches, 0 for not at all: every word must appear; the
+ * label starting with the query scores highest, a word of the label starting
+ * with it next, the label containing it next, the detail last.
+ */
+export function score(query: string, item: Pick<PaletteItem, 'label' | 'detail' | 'group'>): number {
+  const q = query.trim().toLowerCase()
+  if (!q) return 1
+  if (!matches(q, `${item.label} ${item.detail ?? ''} ${item.group}`)) return 0
+  const label = item.label.toLowerCase()
+  if (label.startsWith(q)) return 4
+  if (label.split(/[\s·/_.-]+/).some((w) => w.startsWith(q))) return 3
+  if (label.includes(q)) return 2
+  return 1
+}
 
-export function CommandPalette({ items, onClose }: { items: PaletteItem[]; onClose: () => void }) {
+const GROUP_ORDER: PaletteItem['group'][] = ['Waiting', 'Actions', 'Tabs', 'Sessions', 'Projects']
+
+/** The items shown for a query: by group, the group with the best match first once something is typed. */
+export function rank(items: PaletteItem[], q: string): PaletteItem[] {
+  const scored = items.map((i) => ({ i, s: score(q, i) })).filter((x) => x.s > 0)
+  const groups = GROUP_ORDER.map((g, order) => {
+    const hits = scored.filter((x) => x.i.group === g).sort((a, b) => b.s - a.s)
+    return { hits, best: hits[0]?.s ?? 0, order }
+  }).filter((g) => g.hits.length > 0)
+  if (q.trim()) groups.sort((a, b) => b.best - a.best || a.order - b.order)
+  return groups.flatMap((g) => g.hits.map((x) => x.i)).slice(0, 60)
+}
+
+export function CommandPalette({
+  items,
+  onClose,
+  fallback,
+}: {
+  items: PaletteItem[]
+  onClose: () => void
+  /** What the typed text can do when nothing matches it. */
+  fallback?: (q: string) => PaletteItem | undefined
+}) {
   const [q, setQ] = useState('')
   const [at, setAt] = useState(0)
   const shown = useMemo(() => {
-    const hit = items.filter((i) => !q.trim() || matches(q, `${i.label} ${i.detail ?? ''} ${i.group}`))
-    return GROUP_ORDER.flatMap((g) => hit.filter((i) => i.group === g)).slice(0, 60)
-  }, [items, q])
-  const run = (i: PaletteItem | undefined) => {
+    const hit = rank(items, q)
+    const extra = hit.length === 0 && q.trim() ? fallback?.(q.trim()) : undefined
+    return extra ? [extra] : hit
+  }, [items, q, fallback])
+  const run = (i: PaletteItem | undefined, alt = false) => {
     if (!i) return
     onClose()
     // After the sheet has handed focus back, so the action's own focus wins.
-    window.setTimeout(i.run, 0)
+    window.setTimeout(alt && i.runAlt ? i.runAlt : i.run, 0)
   }
   let lastGroup = ''
   return (
@@ -54,7 +97,7 @@ export function CommandPalette({ items, onClose }: { items: PaletteItem[]; onClo
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown') { e.preventDefault(); setAt((n) => Math.min(shown.length - 1, n + 1)) }
             else if (e.key === 'ArrowUp') { e.preventDefault(); setAt((n) => Math.max(0, n - 1)) }
-            else if (e.key === 'Enter') { e.preventDefault(); run(shown[at]) }
+            else if (e.key === 'Enter') { e.preventDefault(); run(shown[at], e.shiftKey) }
           }}
         />
       </div>
@@ -71,13 +114,14 @@ export function CommandPalette({ items, onClose }: { items: PaletteItem[]; onClo
                 role="option"
                 aria-selected={n === at}
                 onMouseMove={() => setAt(n)}
-                onClick={() => run(i)}
+                onClick={(e) => run(i, e.shiftKey)}
                 className={`flex h-[34px] cursor-default items-center gap-2.5 rounded-[7px] px-3 text-[13px] ${n === at ? 'bg-[var(--app-row-active)] text-fg' : 'text-fg'}`}
               >
                 <span className="flex w-4 justify-center text-fg-muted">{i.icon}</span>
                 <span className="min-w-0 truncate">{i.label}</span>
                 {i.detail && <span className="min-w-0 flex-1 truncate text-[12px] text-fg-faint">{i.detail}</span>}
                 {!i.detail && <span className="flex-1" />}
+                {n === at && i.runAlt && <kbd className="mono shrink-0 text-[11px] text-fg-faint" title="Open beside the terminal in front">⇧↩ split</kbd>}
                 {i.hint && <kbd className="mono shrink-0 text-[11px] text-fg-faint">{i.hint}</kbd>}
               </div>
             </li>

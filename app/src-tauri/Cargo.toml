@@ -31,14 +31,16 @@ dirs = "6"
 # automated check capture the app's own window to PNG (CAPROCK_APP_SNAPSHOT_DIR)
 # on a machine where the terminal has no screen-recording permission.
 [features]
-snapshot = ["dep:objc2-app-kit", "dep:objc2-core-graphics", "dep:objc2-core-foundation"]
+snapshot = ["dep:objc2-core-graphics", "dep:objc2-core-foundation"]
 
 # objc2, objc2-foundation, objc2-user-notifications and block2: notifications
 # with Approve and Deny through UNUserNotificationCenter (src/notify_macos.rs),
 # which the official notification plugin does not offer on desktop.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", optional = true, features = ["NSWindow", "NSResponder", "NSBitmapImageRep", "NSImageRep", "NSGraphics"] }
+# NSPanel: the menu bar popover is a non-activating panel (src/popover.rs),
+# so opening it never activates the app or raises the main window.
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSPanel", "NSWindow", "NSResponder", "NSBitmapImageRep", "NSImageRep", "NSGraphics"] }
 objc2-core-graphics = { version = "0.3", optional = true, features = ["CGWindow", "CGImage"] }
 objc2-foundation = { version = "0.3", features = ["NSData", "NSDictionary", "NSString", "NSBundle", "NSError", "NSSet", "NSArray"] }
 objc2-core-foundation = { version = "0.3", optional = true, features = ["CFCGTypes"] }

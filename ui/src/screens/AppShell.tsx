@@ -40,6 +40,7 @@ import { AddProjectSheet, splitPath } from '@/components/AddProjectSheet'
 import { CommandPalette, type PaletteItem } from '@/components/CommandPalette'
 import { DashboardIcon, FolderIcon, FolderPlusIcon, InspectorIcon, PlusIcon, SparkIcon, TerminalIcon } from '@/components/AppIcons'
 import type { PaneStatus } from '@/components/TerminalPane'
+import { StatusDot } from '@/components/ProjectRow'
 
 const Dashboard = lazy(() => import('@/App').then((m) => ({ default: m.Dashboard })))
 const PairScreen = lazy(() => import('@/screens/Pair').then((m) => ({ default: m.PairScreen })))
@@ -61,10 +62,22 @@ function loadPrefs(): UiPrefs {
 }
 
 type SheetState =
-  | { kind: 'agent'; projectId?: string; cwd?: string }
+  | { kind: 'agent'; projectId?: string; cwd?: string; prompt?: string; worktree?: string }
   | { kind: 'project' }
   | { kind: 'palette' }
   | null
+
+/** A worktree name from a task's words: "Fix the login bug" → "fix-the-login-bug". */
+export function worktreeSlug(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').split('-').slice(0, 6).join('-').slice(0, 40).replace(/-+$/, '')
+}
+
+/** The next session waiting on you after the one in front, wrapping; the first when the one in front is not waiting. */
+export function nextWaiting(inbox: InboxItem[], currentSessionId?: string): InboxItem | undefined {
+  if (inbox.length === 0) return undefined
+  const at = inbox.findIndex((i) => i.session.session_id === currentSessionId)
+  return inbox[(at + 1) % inbox.length]
+}
 
 function useHash(): string {
   const [hash, setHash] = useState(() => location.hash)
@@ -176,6 +189,12 @@ export function AppShell() {
     showWorkspace()
   }, [showWorkspace])
 
+  /** Beside the focused pane of the tab in front (F15); a new tab when there is none. */
+  const openSplit = useCallback((target: TabTarget, projectId: string, title: string, direction: 'row' | 'column' = 'row') => {
+    dispatch({ type: 'split', target, projectId, title, direction })
+    showWorkspace()
+  }, [showWorkspace])
+
   /** A session's terminal when Caprock holds one; its details otherwise (rule 7). */
   const openSession = useCallback((s: SessionSummary, projectId: string) => {
     const attachable = s.owned && s.status !== 'ended' && !s.detached
@@ -188,6 +207,11 @@ export function AppShell() {
 
   const onOpenNode = useCallback((n: SessionNode, projectId: string) => openSession(n.session, projectId), [openSession])
   const onOpenInbox = useCallback((i: InboxItem) => openSession(i.session, i.projectId), [openSession])
+  const jumpToWaiting = useCallback(() => {
+    const item = nextWaiting(model.inbox, focused?.sessionId)
+    if (item) onOpenInbox(item)
+    else setToast('Nothing is waiting on you.')
+  }, [model.inbox, focused?.sessionId, onOpenInbox])
 
   // The menu bar or tray and the badge (WP-10); a waiting session clicked
   // there arrives as an event from the shell.
@@ -211,7 +235,7 @@ export function AppShell() {
   const { source, refresh } = data
   const closeSheet = useCallback(() => setSheet(null), [])
   const onProjectAdded = useCallback((projectId: string) => { refresh(); dispatch({ type: 'project', projectId }) }, [refresh])
-  const newShell = useCallback(async (projectId?: string, cwd?: string) => {
+  const newShell = useCallback(async (projectId?: string, cwd?: string, split?: 'row' | 'column') => {
     const p: Project | undefined = projectsById.get(projectId ?? activeProjectId)
     if (!p || (!p.root && !cwd)) { setSheet({ kind: 'project' }); return }
     try {
@@ -220,12 +244,13 @@ export function AppShell() {
         ? { project_id: projectNumber, cols: 120, rows: 32 }
         : { cwd: cwd ?? p.root, cols: 120, rows: 32 }
       const shell = await projectsApi.startShell(req)
-      openTab({ kind: 'shell', sessionId: shell.id }, p.id, 'shell')
+      if (split) openSplit({ kind: 'shell', sessionId: shell.id }, p.id, 'shell', split)
+      else openTab({ kind: 'shell', sessionId: shell.id }, p.id, 'shell')
       refresh()
     } catch (e) {
       setToast(e instanceof NotSupportedError ? `${e.message} Start an agent with ⇧⌘N meanwhile.` : `Could not start a shell: ${errText(e)}`)
     }
-  }, [projectsById, activeProjectId, source, refresh, openTab])
+  }, [projectsById, activeProjectId, source, refresh, openTab, openSplit])
 
   const onNewAgent = useCallback((projectId?: string, cwd?: string) => setSheet({ kind: 'agent', projectId: projectId ?? activeProjectId, cwd }), [activeProjectId])
   const onNewShell = useCallback((projectId?: string, cwd?: string) => { void newShell(projectId, cwd) }, [newShell])
@@ -233,8 +258,22 @@ export function AppShell() {
   const onPalette = useCallback(() => setSheet({ kind: 'palette' }), [])
   const onDashboard = useCallback(() => { location.hash = '#/' }, [])
   const onPaneStatus = useCallback((sessionId: string, s: PaneStatus) => setPaneStatus((cur) => ({ ...cur, [sessionId]: s })), [])
+  const onFocusPane = useCallback((tabId: string, paneId: string) => dispatch({ type: 'focus-pane', tabId, paneId }), [])
+  const onClosePane = useCallback((tabId: string, paneId: string) => dispatch({ type: 'close-pane', tabId, paneId }), [])
+  const onResizePanes = useCallback((tabId: string, splitId: string, sizes: number[]) => dispatch({ type: 'resize', tabId, splitId, sizes }), [])
 
-  const detach = useCallback(() => { if (current) dispatch({ type: 'close', tabId: current.id }) }, [current])
+  // ⌘W closes the focused pane of a split tab, else the tab; the session runs on either way.
+  const detach = useCallback(() => {
+    if (!current) return
+    if (current.root.type === 'split') dispatch({ type: 'close-pane', tabId: current.id, paneId: focusedLeaf(current).id })
+    else dispatch({ type: 'close', tabId: current.id })
+  }, [current])
+  /** A new shell beside the focused pane, in the same folder, as a terminal's split does. */
+  const splitShell = useCallback((direction: 'row' | 'column') => {
+    if (!current) { onNewShell(); return }
+    const cwd = focusedSession?.cwd || undefined
+    void newShell(current.projectId, cwd, direction)
+  }, [current, focusedSession, newShell, onNewShell])
 
   const run = useCallback((c: AppCommand) => {
     switch (c.kind) {
@@ -249,8 +288,12 @@ export function AppShell() {
       case 'next-tab': dispatch({ type: 'cycle', delta: 1 }); showWorkspace(); break
       case 'prev-tab': dispatch({ type: 'cycle', delta: -1 }); showWorkspace(); break
       case 'tab': dispatch({ type: 'activate-index', index: c.index }); showWorkspace(); break
+      case 'split': if (workspaceShown) splitShell(c.direction); break
+      case 'next-pane': dispatch({ type: 'cycle-pane', delta: 1 }); break
+      case 'prev-pane': dispatch({ type: 'cycle-pane', delta: -1 }); break
+      case 'next-waiting': jumpToWaiting(); break
     }
-  }, [onNewShell, onNewAgent, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard])
+  }, [onNewShell, onNewAgent, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting])
 
   // The app's keys, before anything else on the page sees them. The terminal
   // already lets them through (xtermInput), and they are never its keys.
@@ -280,14 +323,36 @@ export function AppShell() {
   }, [hash, sessionsById, model.projects, activeProjectId, openTab])
 
   const paletteItems = useMemo<PaletteItem[]>(() => {
-    const items: PaletteItem[] = [
+    const items: PaletteItem[] = model.inbox.map((i) => ({
+      id: `w-${i.session.session_id}`,
+      group: 'Waiting' as const,
+      label: i.title,
+      detail: `${i.projectName} · ${i.reason === 'permission' ? 'asks for permission' : 'your turn'}`,
+      icon: <StatusDot dot="waiting" />,
+      run: () => onOpenInbox(i),
+    }))
+    const split = current && current.root.type === 'split'
+    items.push(
       { id: 'a-agent', group: 'Actions', label: 'New agent', hint: '⇧⌘N', icon: <PlusIcon size={14} />, run: () => onNewAgent() },
       { id: 'a-shell', group: 'Actions', label: 'New shell', hint: '⌘T', icon: <TerminalIcon size={14} />, run: () => onNewShell() },
       { id: 'a-project', group: 'Actions', label: 'Add a project', hint: '⌘O', icon: <FolderPlusIcon size={14} />, run: onAddProject },
       { id: 'a-inspector', group: 'Actions', label: prefs.inspector ? 'Hide the inspector' : 'Show the inspector', hint: '⌘I', icon: <InspectorIcon size={14} />, run: () => run({ kind: 'inspector' }) },
       { id: 'a-dashboard', group: 'Actions', label: 'Open the dashboard', hint: '⇧⌘D', icon: <DashboardIcon size={14} />, run: onDashboard },
       { id: 'a-theme', group: 'Actions', label: 'Switch theme', icon: <SparkIcon size={14} />, run: toggleTheme },
-    ]
+      { id: 'a-waiting', group: 'Actions', label: 'Next session waiting on you', hint: '⌘J', icon: <SparkIcon size={14} />, run: jumpToWaiting },
+    )
+    if (current) {
+      items.push(
+        { id: 'a-split-right', group: 'Actions', label: 'Split right: a new shell beside', hint: '⌘E', icon: <TerminalIcon size={14} />, run: () => splitShell('row') },
+        { id: 'a-split-down', group: 'Actions', label: 'Split down: a new shell below', hint: '⇧⌘E', icon: <TerminalIcon size={14} />, run: () => splitShell('column') },
+      )
+    }
+    if (split) {
+      items.push(
+        { id: 'a-pane-next', group: 'Actions', label: 'Focus the next pane', hint: '⌘]', icon: <TerminalIcon size={14} />, run: () => dispatch({ type: 'cycle-pane', delta: 1 }) },
+        { id: 'a-pane-close', group: 'Actions', label: 'Close the pane', hint: '⌘W', icon: <TerminalIcon size={14} />, run: detach },
+      )
+    }
     for (const t of ws.tabs) {
       const s = sessionsById.get(focusedLeaf(t).target.sessionId)
       items.push({ id: `t-${t.id}`, group: 'Tabs', label: s ? sessionTitle(s) : t.title, detail: projectsById.get(t.projectId)?.name, icon: <TerminalIcon size={14} />, run: () => { dispatch({ type: 'activate', tabId: t.id }); showWorkspace() } })
@@ -296,13 +361,34 @@ export function AppShell() {
       for (const w of n.worktrees) {
         for (const x of w.sessions) {
           if (x.dot === 'ended' || openSessions.has(x.session.session_id)) continue
-          items.push({ id: `s-${x.session.session_id}`, group: 'Sessions', label: x.title, detail: `${n.project.name} · ${w.branch}`, icon: <SparkIcon size={14} />, run: () => openSession(x.session, n.project.id) })
+          const attachable = x.session.owned && !x.session.detached
+          items.push({
+            id: `s-${x.session.session_id}`, group: 'Sessions', label: x.title, detail: `${n.project.name} · ${w.branch}`, icon: <SparkIcon size={14} />,
+            run: () => openSession(x.session, n.project.id),
+            runAlt: attachable && current ? () => openSplit({ kind: x.isShell ? 'shell' : 'session', sessionId: x.session.session_id }, n.project.id, x.title) : undefined,
+          })
         }
       }
       items.push({ id: `p-${n.project.id}`, group: 'Projects', label: n.project.name, detail: n.project.root, icon: <FolderIcon size={14} />, run: () => onSelectProject(n.project.id) })
+      if (n.project.root) {
+        items.push({ id: `pa-${n.project.id}`, group: 'Projects', label: `New agent in ${n.project.name}`, detail: n.project.branch, icon: <PlusIcon size={14} />, run: () => onNewAgent(n.project.id) })
+      }
     }
     return items
-  }, [ws.tabs, model.projects, sessionsById, projectsById, openSessions, prefs.inspector, onNewAgent, onNewShell, onAddProject, onDashboard, toggleTheme, run, showWorkspace, openSession, onSelectProject])
+  }, [ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, current, onNewAgent, onNewShell, onAddProject, onDashboard, toggleTheme, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach])
+
+  // Orca's "new task": text that matches nothing starts an agent on it, in a worktree named after it.
+  const paletteFallback = useCallback((q: string): PaletteItem | undefined => {
+    const project = projectsById.get(activeProjectId)
+    if (!project?.root) return undefined
+    const worktree = worktreeSlug(q)
+    return {
+      id: 'new-task', group: 'Actions', label: `New agent on “${q}”`,
+      detail: worktree ? `${project.name} · new worktree ${worktree}` : project.name,
+      icon: <PlusIcon size={14} />,
+      run: () => setSheet({ kind: 'agent', projectId: project.id, prompt: q, worktree: worktree || undefined }),
+    }
+  }, [projectsById, activeProjectId])
 
   const focusedIsAgent = !!focused && focused.kind === 'session' && focusedSession?.kind !== 'shell'
   const showChat = focusedIsAgent && !!focused && chatOpen.has(focused.sessionId)
@@ -361,7 +447,16 @@ export function AppShell() {
             <div className="relative min-w-0 flex-1">
               <div className="absolute inset-0 flex flex-col" hidden={!workspaceShown}>
                 <div className="relative min-h-0 flex-1">
-                  <TerminalStack tabs={ws.tabs} visibleTabId={workspaceShown ? current?.id : undefined} onPaneStatus={onPaneStatus} />
+                  <TerminalStack
+                    tabs={ws.tabs}
+                    visibleTabId={workspaceShown ? current?.id : undefined}
+                    onPaneStatus={onPaneStatus}
+                    sessions={sessionsById}
+                    permissions={data.permissions}
+                    onFocusPane={onFocusPane}
+                    onClosePane={onClosePane}
+                    onResize={onResizePanes}
+                  />
                   {showChat && focused && (
                     <ChatView
                       key={focused.sessionId}
@@ -422,6 +517,8 @@ export function AppShell() {
           projects={model.projects.map((n) => n.project).filter((p) => p.root || p.id === sheet.projectId)}
           projectId={sheet.projectId}
           cwd={sheet.cwd}
+          prompt={sheet.prompt}
+          worktree={sheet.worktree}
           onClose={() => setSheet(null)}
           onStarted={(id, projectId, title) => { openTab({ kind: 'session', sessionId: id }, projectId, title); data.refresh() }}
         />
@@ -436,7 +533,7 @@ export function AppShell() {
           onAddLocal={(p) => { data.addLocal(p); dispatch({ type: 'project', projectId: `dir:${p.root}` }) }}
         />
       )}
-      {sheet?.kind === 'palette' && <CommandPalette items={paletteItems} onClose={() => setSheet(null)} />}
+      {sheet?.kind === 'palette' && <CommandPalette items={paletteItems} fallback={paletteFallback} onClose={closeSheet} />}
     </div>
   )
 }

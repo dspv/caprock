@@ -1,7 +1,9 @@
 //! The menu bar item (macOS) or tray icon (F08): plan limits, today's spend
 //! and the sessions waiting on you, each a click from its session. The page
 //! sends what to show (`set_tray`), formatted by the same code as the
-//! dashboard, so the two never disagree; the shell only draws it.
+//! dashboard, so the two never disagree; the shell only draws it. On macOS
+//! a left click opens the popover instead (popover.rs) and this menu is the
+//! right click.
 
 use crate::hotkey;
 use crate::shell::MAIN;
@@ -77,8 +79,26 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let b = TrayIconBuilder::with_id(ID)
         .tooltip(&view.tooltip)
         .menu(&menu(app, &view)?)
-        .show_menu_on_left_click(true)
         .on_menu_event(|app, event| on_menu(app, event.id().as_ref()));
+    // macOS: a left click opens the popover (popover.rs); the menu stays on
+    // a right click. Elsewhere the menu is the whole tray.
+    #[cfg(target_os = "macos")]
+    let b = b
+        .show_menu_on_left_click(false)
+        .on_tray_icon_event(|tray, event| {
+            use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                rect,
+                ..
+            } = event
+            {
+                crate::popover::toggle(tray.app_handle(), rect);
+            }
+        });
+    #[cfg(not(target_os = "macos"))]
+    let b = b.show_menu_on_left_click(true);
     #[cfg(target_os = "macos")]
     let b = b
         .icon(Image::from_bytes(include_bytes!("../icons/tray.png"))?)
