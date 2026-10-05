@@ -98,3 +98,6 @@ Quitting the app leaves the daemon and every session running. Uninstalling the
 app leaves the data directory (your sessions and history) and any Homebrew or
 Scoop daemon untouched; `caprock service uninstall` then removes the
 background service if you want it gone too.
+
+Next: [using the app](app.md) — the window, the shortcuts, notifications
+and pairing your phone.

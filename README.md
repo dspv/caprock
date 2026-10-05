@@ -1,16 +1,36 @@
 # Caprock
 
-### See what your Claude Code is actually doing.
+### Run your coding agents in one window, and see what they are doing.
 
-![The live pulse: one bar per minute, coloured by what the minute cost](docs/pulse.gif)
+![The Caprock app: projects with their worktrees and sessions on the left, a terminal tab on the right, plan limits and today's spend along the bottom](docs/shot-app.png)
 
-*Real capture, 46 seconds. One session working; the bars advance as the minutes roll over
-and the cost ticks with them.*
+*The desktop app, with demo projects and sessions made up for this picture.*
 
 [![release](https://img.shields.io/github/v/release/dspv/caprock?color=feb157)](https://github.com/dspv/caprock/releases)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![CI](https://github.com/dspv/caprock/actions/workflows/ci.yml/badge.svg)](https://github.com/dspv/caprock/actions/workflows/ci.yml)
 ![platform](https://img.shields.io/badge/macOS%20·%20Linux%20·%20Windows-informational)
+
+Caprock is a desktop app for working with Claude Code, Codex and OpenCode
+across many projects: a terminal for every project, the sessions waiting on
+you, what each repository costs and how much of your plan is left — and a
+phone that can pick the work up. Under it runs a local daemon that also serves
+a browser dashboard; the app bundles it. No account, no cloud, no telemetry.
+
+**The desktop app** — macOS first, with Windows and Linux builds:
+
+```bash
+brew install --cask dspv/tap/caprock-app       # macOS (universal)
+```
+
+Windows: `Caprock_<version>_x64-setup.exe`; Linux: `.AppImage`, `.deb` or
+`.rpm` — all on [Releases](https://github.com/dspv/caprock/releases). The app is
+not notarized or code-signed yet; [docs/install-app.md](docs/install-app.md)
+has the one-time "Open Anyway" step for the `.dmg` and SmartScreen's "Run
+anyway". What is in the window, the shortcuts and the phone:
+[docs/app.md](docs/app.md).
+
+**Or the daemon and its browser dashboard** on their own:
 
 ```bash
 # macOS / Linux
@@ -24,18 +44,6 @@ scoop install caprock
 
 caprock up        # opens localhost:22776; offers to set up hooks + plan-limit status line
 ```
-
-**Or the desktop app**, which bundles the daemon and opens on your terminals:
-
-```bash
-brew install --cask dspv/tap/caprock-app       # macOS (universal)
-```
-
-Windows: `Caprock_<version>_x64-setup.exe`; Linux: `.AppImage`, `.deb` or
-`.rpm` — all on [Releases](https://github.com/dspv/caprock/releases). The app is
-not notarized or code-signed yet; [docs/install-app.md](docs/install-app.md)
-has the one-time "Open Anyway" step for the `.dmg` and SmartScreen's "Run
-anyway".
 
 Have Go? `go install github.com/dspv/caprock/cmd/caprock@latest` — the dashboard
 is embedded, so it works with no Node build. No package manager? Grab a binary
@@ -128,6 +136,11 @@ what you ask it is kept there too, so the Memory screen can find a Gemini
 session by your question. Starting and watching Gemini sessions is free, like
 every other agent.
 
+![The live pulse: one bar per minute, coloured by what the minute cost](docs/pulse.gif)
+
+*Real capture, 46 seconds. One session working; the bars advance as the minutes roll over
+and the cost ticks with them.*
+
 ![Live activity and cost, right now](docs/shot-now.png)
 
 *Top: the live pulse — one bar per minute of the last hour, per session, so the
@@ -142,6 +155,25 @@ it happens, and what each repo costs you. Real numbers from a real machine.*
 *It follows your system by default, and the toggle in the header overrides it.*
 
 </details>
+
+## The desktop app
+
+The app opens on your terminals, not on charts. Each project in the sidebar
+opens to its worktrees and the agent sessions and shells in each, with its
+branch, today's cost and a dot for what every session is doing; whatever is
+waiting on you sits at the top. ⌘T opens a shell, ⇧⌘N an agent, ⌘O adds,
+creates or clones a project. Tabs come back when you reopen it, and closing
+one never stops its session. An agent's tab switches between its terminal
+and a chat view of the same conversation.
+
+Outside the window: the menu bar shows your plan limits, today's spend and
+the sessions waiting for approval; the Dock badge counts them; ⌃⌥⌘C brings
+the window up from anywhere. When an agent stops on a permission prompt, a
+macOS notification carries **Approve** and **Deny** — Approve only when the
+notification shows the whole request, so you never answer a command you have
+not read. Every dashboard screen below is inside it too.
+
+The whole tour is in [docs/app.md](docs/app.md).
 
 ## Your numbers, ready to publish
 
@@ -213,8 +245,9 @@ caprock sessions rm --cwd-prefix /private/tmp/scratch --yes  # remove them
 
 ## What it is
 
-Claude Code runs in your terminal. Caprock is the window into it.
-One local binary. Your data never leaves your machine.
+Claude Code runs in a terminal. Caprock is the app that terminal lives in,
+and the window into what it does. One local daemon, with an app and a browser
+dashboard on top. Your data never leaves your machine.
 
 **What that database holds.** Everything Claude Code read and wrote: your
 prompts, its replies, and the full output of every tool call. That output is
@@ -538,10 +571,14 @@ Downloaded the binary directly? Replace it with a fresh one from
 Caprock answers only the machine it runs on. To read it from a phone or a
 tablet:
 
-1. Your phone and the computer are on the same Wi-Fi.
-2. Open **settings** and press *Show a code*, then point the phone's camera at
-   the QR code. The phone opens Caprock and pairs by itself. (No camera? The
-   same screen shows the address and a six-digit code to type.)
+1. Your phone and the computer are on the same Wi-Fi — or both have
+   [Tailscale](https://tailscale.com/kb/1017/install) on, which works from
+   mobile data too.
+2. Open **settings** and press *Show a code*. When the computer is on
+   Tailscale, pick what the code carries — *Wi-Fi*, *Tailscale* or
+   *Tailscale name*. Point the phone's camera at the QR code; the phone opens
+   Caprock and pairs by itself. (No camera? The same screen shows the address
+   and a six-digit code to type.)
 3. The phone appears under *Paired devices*, with a *Remove* button.
 
 The QR code is drawn by the dashboard itself; nothing is sent anywhere to make
@@ -587,8 +624,10 @@ loopback-only:
   any folder under your home directory with Claude Code, Codex or OpenCode, in
   any permission mode (Bypass asks once first), type into it (a big input
   field plus Esc, Tab, arrows, Enter and Ctrl+C buttons), answer approvals and
-  stop it. That is as much power as a shell in that folder, so grant it only to
-  your own phone. *Take control away* undoes it at once, including in a
+  stop it. *Start work* on Now also lets it clone a repository, make a new
+  project or a worktree, and start an agent there, opening on the session's
+  chat. That is as much power as a shell in your home directory, so grant it
+  only to your own phone. *Take control away* undoes it at once, including in a
   terminal already open on the phone. Changing settings or pairing, custom
   commands and folders outside home stay on the machine Caprock runs on — the
   daemon refuses them from anywhere else.
@@ -596,9 +635,10 @@ loopback-only:
   somewhere you do not trust should not be carrying a decision you made at
   home. What survives a restart is the list of devices, so you do not walk back
   to the tablet.
-- **One address, not all of them.** The second listener binds the machine's
-  own private address rather than every interface, so a VPN or a container
-  bridge coming up later does not quietly widen it.
+- **Its own addresses, not all of them.** The extra listeners bind the
+  machine's private Wi-Fi address and, when it is up, its Tailscale one —
+  never every interface — so a VPN or a container bridge coming up later does
+  not quietly widen it.
 - **A LAN address is same-network only, and the screen says so.** A tablet on
   mobile data, or on a network that separates its clients from each other, will
   never reach it — no setting here changes that, because the packets do not
