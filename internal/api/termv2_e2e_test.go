@@ -164,7 +164,7 @@ func (v *v2Client) connect(ctx context.Context, srv string) error {
 	var h termHello
 	if err != nil || json.Unmarshal(f.text["hello"], &h) != nil {
 		_ = c.CloseNow()
-		return fmt.Errorf("no hello: %v", err)
+		return fmt.Errorf("no hello: %w", err)
 	}
 	v.mu.Lock()
 	if h.Reset {
@@ -188,12 +188,18 @@ func (v *v2Client) connect(ctx context.Context, srv string) error {
 	lost := v.lost
 	v.mu.Unlock()
 	go v.read(ctx, c, lost)
-	for _, p := range resend {
+	resendAll(ctx, c, resend)
+	return nil
+}
+
+// resendAll sends what was not acknowledged. A failed write is a dropped
+// socket, and the next reconnect resends again.
+func resendAll(ctx context.Context, c *websocket.Conn, list []pendingInput) {
+	for _, p := range list {
 		if c.Write(ctx, websocket.MessageBinary, input(p.seq, p.data)) != nil {
-			break
+			return
 		}
 	}
-	return nil
 }
 
 func (v *v2Client) ackLocked(a uint64) {

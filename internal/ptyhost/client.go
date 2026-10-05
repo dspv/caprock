@@ -395,9 +395,13 @@ func dial(rec Record, hi hello) (net.Conn, welcome, []byte, error) {
 	if !hi.Resume {
 		// Every holder, of every version, sends its snapshot next.
 		typ, payload, err = readFrame(conn)
-		if err != nil || typ != frameSnapshot {
+		if err != nil {
 			_ = conn.Close()
-			return nil, welcome{}, nil, fmt.Errorf("%w: no snapshot after the welcome (%q, %v)", errRefused, typ, err)
+			return nil, welcome{}, nil, err
+		}
+		if typ != frameSnapshot {
+			_ = conn.Close()
+			return nil, welcome{}, nil, fmt.Errorf("%w: frame %q where the snapshot belongs", errRefused, typ)
 		}
 		snap = payload
 	}

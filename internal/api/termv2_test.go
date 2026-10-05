@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -447,5 +446,3 @@ func TestTermV2RefusesABadQuery(t *testing.T) {
 		}
 	}
 }
-
-var errDropped = errors.New("dropped")
