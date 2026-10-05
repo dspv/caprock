@@ -85,7 +85,7 @@ func TestARemovedSessionLeavesTheTotalsAndStaysGone(t *testing.T) {
 	}
 	for _, table := range []string{"events", "sessions", "session_stats", "session_files", "daily_sessions"} {
 		var n int
-		if err := r.Store.DB().QueryRow(`SELECT COUNT(*) FROM `+table+` WHERE session_id = 'junk'`).Scan(&n); err != nil || n != 0 {
+		if err := r.Store.DB().QueryRow(`SELECT COUNT(*) FROM ` + table + ` WHERE session_id = 'junk'`).Scan(&n); err != nil || n != 0 {
 			t.Errorf("%s still holds %d rows of the removed session (%v)", table, n, err)
 		}
 	}
@@ -137,5 +137,32 @@ func TestRemovalCandidatesByFolder(t *testing.T) {
 	}
 	if _, err := store.FindRemovalCandidates(ctx, r.Store.DB(), nil, "  "); err == nil {
 		t.Fatal("an empty filter matched")
+	}
+}
+
+// A day row filed under a project name the folder no longer resolves to is
+// still found when it holds exactly the session's turns.
+func TestARemovedSessionsRenamedDayRowIsStillFound(t *testing.T) {
+	ctx := context.Background()
+	r, _ := newRecorder(t)
+	at := time.Date(2026, 8, 22, 10, 0, 0, 0, time.UTC)
+	if _, err := r.Record(ctx, turn("old", "k", at, "/work/hive2"), SessionInfo{Cwd: "/work/hive2"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Store.DB().Exec(`UPDATE daily_stats SET project = 'repo'`); err != nil {
+		t.Fatal(err)
+	}
+	cands, _ := store.FindRemovalCandidates(ctx, r.Store.DB(), []string{"old"}, "")
+	var missed float64
+	err := r.Store.WithTx(ctx, func(q store.Querier) error {
+		var err error
+		missed, err = store.RemoveSession(ctx, q, cands[0], time.UTC, at.UnixMilli())
+		return err
+	})
+	if err != nil || missed != 0 {
+		t.Fatalf("missed $%v, %v", missed, err)
+	}
+	if c, tokens, _ := dayTotals(t, r.Store); c != 0 || tokens != 0 {
+		t.Fatalf("the renamed day row still holds $%v, %d tokens", c, tokens)
 	}
 }

@@ -72,6 +72,21 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-05 — Permission prompts survive a restart; removing a session
+
+ADR-035 amended, ADR-037. The prompt an owned session waits on is stored
+(migration 0039) and restored on reattach under the same id; a prompt whose
+session moved on since is dropped. Sessions can be removed — events, rollups,
+day totals — with a tombstone (migration 0040) the recorder honours, from the
+session page (machine only) or `caprock sessions rm` (dry run unless `--yes`).
+Verified on a preview daemon (temp HOME, DB copy, fake `claude`, port 4791):
+a fake session's prompt came back with its buttons after a SIGTERM restart,
+Yes typed `1` into the reattached terminal; the 31 scratchpad sessions came out
+with every total dropping by exactly their $24.5953297 and the counts by 31; a
+transcript written afterwards for a removed id was not recorded while one for a
+new id was. The smoke test now carries a prompt across the restart. Not
+verified: a real `claude` dialog across a real `launchctl` restart.
+
 ### 2026-10-04 (night) — Permission buttons and photos from the phone
 
 ADR-035. A Claude Code permission prompt in an owned session shows as Yes /

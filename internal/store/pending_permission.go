@@ -71,6 +71,10 @@ func PrunePendingPermissions(ctx context.Context, q Querier, keep map[string]boo
 			drop = append(drop, id)
 		}
 	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
 	if err := rows.Close(); err != nil {
 		return err
 	}

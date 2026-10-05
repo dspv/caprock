@@ -7,6 +7,24 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **Remove a session from Caprock.** *Remove from Caprock* on a session's page
+  (on the machine, never on a paired phone) takes the session, its events and
+  its cost out of Recent projects, every total, Week, Lifetime and exports,
+  after a confirm that names the cost. `caprock sessions rm <id>` or
+  `--cwd-prefix <dir>` does the same in bulk; it only lists what it would
+  remove until you add `--yes`. A removed session is never read back in from
+  its transcript. A session still running is skipped. It cannot be undone.
+
+### Fixed
+
+- **A permission prompt's buttons survive a Caprock restart.** A session
+  Caprock started keeps running through an upgrade, and so does the dialog on
+  its screen; its **Yes** / **No** buttons now come back with it instead of
+  waiting for the next prompt. A prompt that was answered meanwhile does not
+  come back.
+
 Phase 3 (Delight) has no plan by design.
 
 ### Added

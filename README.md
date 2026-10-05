@@ -190,6 +190,15 @@ in [`docs/schema.md`](docs/schema.md). The record also outlives the agents' own:
 Claude Code removes its transcripts after 30 days by default, and Caprock
 keeps what it read from them.
 
+A session you do not want counted — a test run, say — comes out with *Remove
+from Caprock* on its page, or in bulk from the terminal. It lists first and
+removes only with `--yes`; a removed session is never read back in:
+
+```bash
+caprock sessions rm --cwd-prefix /private/tmp/scratch        # what would go, and its cost
+caprock sessions rm --cwd-prefix /private/tmp/scratch --yes  # remove them
+```
+
 ## What it is
 
 Claude Code runs in your terminal. Caprock is the window into it.

@@ -198,6 +198,10 @@ func subtractDayTurns(ctx context.Context, q Querier, c RemovalCandidate, g dayT
 		}
 		projects = append(projects, p)
 	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return false, err
+	}
 	if err := rows.Close(); err != nil {
 		return false, err
 	}
@@ -218,7 +222,22 @@ func subtractDayTurns(ctx context.Context, q Querier, c RemovalCandidate, g dayT
 			return true, nil
 		}
 	}
-	return false, nil
+	// A project is re-resolved from its folder over time, and a day row keeps
+	// the name it was filed under: seen on the owner's database, a session now
+	// named hive2 whose day row still read "repo". When no name matches, a row
+	// of that day and model holding exactly these tokens and this cost is this
+	// session's alone, and is emptied. Anything less certain is left, and the
+	// caller reports it.
+	res, err := q.ExecContext(ctx, `
+		UPDATE daily_stats SET tokens_total = 0, cost_usd = 0
+		 WHERE rowid = (SELECT rowid FROM daily_stats
+		                 WHERE day = ? AND model = ? AND tokens_total = ? AND abs(cost_usd - ?) < 1e-9
+		                 LIMIT 1)`, g.day, g.model, g.tokens, g.cost)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
 }
 
 // uncountDailySessions takes the session out of each day's session count.
@@ -238,6 +257,10 @@ func uncountDailySessions(ctx context.Context, q Querier, sessionID string) erro
 			return err
 		}
 		marks = append(marks, m)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
 	}
 	if err := rows.Close(); err != nil {
 		return err
