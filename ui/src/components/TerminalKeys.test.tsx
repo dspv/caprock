@@ -74,4 +74,10 @@ describe('TerminalKeys — attaching a photo', () => {
     expect(field.value).toBe('In a.ts around line 5: ')
     expect(document.activeElement).toBe(field)
   })
+
+  // Idle it is one line, so the bar does not push the terminal up for nothing.
+  it('starts one line tall', () => {
+    render(<TerminalKeys send={vi.fn()} />)
+    expect((screen.getByLabelText('Type to the session') as HTMLTextAreaElement).rows).toBe(1)
+  })
 })

@@ -20,6 +20,10 @@ Phase 3 (Delight) has no plan by design.
   drawn 400 lines at a time with very long lines cut until asked for. From a
   phone that controls sessions, tap a line and *Ask the agent* opens the
   terminal with "In <file> around line N: " already typed.
+- **A roomier phone terminal input.** The field under a phone's terminal is
+  full width and grows with what you type (up to five lines, then scrolls),
+  with Photo and Send beneath it; the Esc/Tab/arrow/Ctrl+C keys sit in two
+  rows of three so their labels fit at 320px.
 
 ## [0.72.0] - 2026-10-05
 

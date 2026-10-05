@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 /** A newline inside the prompt: ESC CR, what a terminal sends for Alt+Enter
  *  (see Terminal.tsx — a bare line feed submits once text is typed). */
@@ -7,6 +7,9 @@ const NEWLINE = '\x1b\r'
 /** How long to wait between the text and the Enter that submits it. Sent in
  *  one write, a TUI reads the pair as a paste and keeps the Enter as a line. */
 const SUBMIT_DELAY_MS = 80
+
+/** The field's tallest: five 22px lines, its 10px padding and border. */
+const FIELD_MAX_PX = 5 * 22 + 20 + 2
 
 const KEYS: [label: string, bytes: string, title: string][] = [
   ['Esc', '\x1b', 'Escape — close a menu, interrupt Claude Code'],
@@ -29,6 +32,17 @@ export function TerminalKeys({ send, attach, initial = '' }: { send: (bytes: str
   const [text, setText] = useState(initial)
   const [attaching, setAttaching] = useState(false)
   const field = useRef<HTMLTextAreaElement>(null)
+  // One line idle, growing with what is typed up to MAX_LINES, then scrolling:
+  // a fixed two-line box hid most of a pre-filled "In <file> around line N: ".
+  useLayoutEffect(() => {
+    const el = field.current
+    if (!el) return
+    el.style.height = 'auto'
+    // Hidden (the bar is display:none on a wide window) it measures 0; leave
+    // it at its one-row height rather than pin it to nothing.
+    if (el.scrollHeight === 0) return
+    el.style.height = `${Math.min(el.scrollHeight + 2, FIELD_MAX_PX)}px`
+  }, [text])
   // Arriving with a started message means the next thing is to finish it.
   useEffect(() => {
     const el = field.current
@@ -64,10 +78,13 @@ export function TerminalKeys({ send, attach, initial = '' }: { send: (bytes: str
 
   return (
     <div className="grid gap-2 border-t border-border px-2 py-2">
-      <div className="flex items-end gap-2">
+      {/* The field on a row of its own, full width: beside Photo and Send it
+        * was a third of a 320px screen. */}
+      <div className="grid gap-2">
         {/* 16px: iOS zooms the page into any field set smaller, and the
           * terminal above would be cut off when it did. Inline, because
-          * .input's own 12px outranked the text-[16px] utility. */}
+          * .input's own 12px outranked the text-[16px] utility; the padding
+          * likewise, and it makes one line a 44px target. */}
         <textarea
           ref={field}
           value={text}
@@ -78,15 +95,16 @@ export function TerminalKeys({ send, attach, initial = '' }: { send: (bytes: str
               submit()
             }
           }}
-          rows={2}
+          rows={1}
           placeholder="Type to the session…"
           aria-label="Type to the session"
           autoCapitalize="off"
           autoCorrect="off"
           spellCheck={false}
-          className="input min-w-0 flex-1 resize-none leading-snug"
-          style={{ fontSize: 16 }}
+          className="input w-full min-w-0 resize-none overflow-y-auto leading-snug"
+          style={{ fontSize: 16, lineHeight: '22px', paddingTop: 10, paddingBottom: 10, maxHeight: FIELD_MAX_PX }}
         />
+        <div className="flex items-center justify-end gap-2">
         {attach && (
           <>
             {/* No `capture`: with it iOS opens only the camera; without it the
@@ -121,8 +139,11 @@ export function TerminalKeys({ send, attach, initial = '' }: { send: (bytes: str
         >
           Send
         </button>
+        </div>
       </div>
-      <div className="grid grid-cols-6 gap-1.5">
+      {/* Two rows of three below `sm`: in one row of six, "Ctrl+C" filled its
+        * button edge to edge even at 390px. */}
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
         {KEYS.map(([label, bytes, title]) => (
           <button
             key={label}
