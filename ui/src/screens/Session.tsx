@@ -18,6 +18,8 @@ import { RecentPRs, RepoButtons } from '@/components/RepoLinks'
 import { RelayChain, RelayMenu } from '@/components/RelayDialog'
 import { OpenInTerminal } from '@/components/OpenInTerminal'
 import { DiffFiles } from '@/components/DiffFiles'
+import { NewPill } from '@/components/NewPill'
+import { useStickToBottom } from '@/lib/useStickToBottom'
 import { setDraft } from '@/lib/draft'
 import { RemoveSession } from '@/components/RemoveSession'
 
@@ -270,7 +272,10 @@ function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now:
   const [events, setEvents] = useState<Event[]>(initial)
   const [filter, setFilter] = useState<Filter>('all')
   const lastId = useRef(initial.length ? initial[initial.length - 1]!.id : 0)
-  const list = useRef<HTMLOListElement>(null)
+  // Newest rows arrive at the top: the scrolling rule keeps a reader who has
+  // scrolled down where they are, and counts what arrived above (WP-11).
+  const [received, setReceived] = useState(0)
+  const stick = useStickToBottom({ edge: 'top', total: received })
   // The session detail ships only the newest events, so a long session opened
   // to its timeline showed a peephole of its final seconds with no way back.
   const [loadingEarlier, setLoadingEarlier] = useState(false)
@@ -299,6 +304,7 @@ function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now:
     if (f.type !== 'event' || f.data.session_id !== id || f.data.id <= lastId.current) return
     lastId.current = f.data.id
     setEvents((evs) => [...evs, f.data].slice(-5000))
+    setReceived((n) => n + 1)
   }), [id])
   const cost = useMemo(() => {
     let acc = 0
@@ -328,7 +334,11 @@ function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now:
           ))}
         </span>
       }>
-        <ol ref={list} className="max-h-[70vh] overflow-auto">
+        <div className="relative">
+        <div className="pointer-events-none absolute inset-x-0 top-2 z-10 flex justify-center">
+          <NewPill count={stick.newCount} edge="top" onJump={stick.jump} />
+        </div>
+        <ol ref={stick.ref} className="max-h-[70vh] overflow-auto">
           {visible.length === 0 && <Empty title="No events yet" />}
           {visible.map((e) => (
             <EventRow key={e.id} e={e} now={now} toolByUse={toolByUse} inMinute={at !== undefined && sameMinute(e.ts, at)} />
@@ -350,6 +360,7 @@ function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now:
           )}
           {exhausted && <li className="px-3 py-1 text-[11px] text-fg-faint">start of session</li>}
         </ol>
+        </div>
       </Panel>
       <div className="grid gap-3 content-start">
         <Panel title="Cost, cumulative">

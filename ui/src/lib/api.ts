@@ -29,6 +29,12 @@ export interface Session {
   /** The session this one was started to carry on, with a brief rather than
    *  its conversation (a relay). */
   relay_from?: string
+  /** The repository the session's folder belongs to (a linked worktree resolves to its main repository). */
+  repo_root?: string
+  /** The worktree's name when the session runs in a linked worktree. */
+  worktree?: string
+  /** `shell` for a shell tab's session (.ai/21-app.md § Shell tabs); absent for an agent. */
+  kind?: 'agent' | 'shell'
 }
 
 export interface Stats {
