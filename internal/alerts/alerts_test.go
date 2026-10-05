@@ -1,7 +1,6 @@
 package alerts
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -147,21 +146,29 @@ func TestQuietSessionsAreForgotten(t *testing.T) {
 	}
 }
 
-// What leaves the machine is held to project, status, agent and link.
-func TestTheMessageCarriesNothingElse(t *testing.T) {
-	got := Message(Alert{Kind: KindApproval, SessionID: "s"}, "caprock", "Claude Code", "http://100.64.0.2:4173/#/session/s")
-	want := "Caprock · caprock is waiting for approval\nClaude Code\nhttp://100.64.0.2:4173/#/session/s"
-	if got != want {
-		t.Fatalf("got %q\nwant %q", got, want)
+// A turn that fails is a turn that ended, and the alert says how: the
+// StopFailure is what the message reads, even when a Stop follows it.
+func TestAFailedTurnIsFinishedAndKeepsItsFailure(t *testing.T) {
+	r := New(allOn)
+	fail := ev("s", event.KindThrottle, t0)
+	r.Observe(fail, t0)
+	r.Observe(ev("s", event.KindAgentStop, t0.Add(time.Second)), t0.Add(time.Second))
+	got := r.Due(t0.Add(time.Second + FinishedAfter))
+	if len(got) != 1 || got[0].Kind != KindFinished || got[0].Trigger.Kind != event.KindThrottle {
+		t.Fatalf("failed turn: %+v", got)
 	}
-	if got := Message(Alert{Kind: KindApproval, Question: true}, "caprock", "Claude Code", ""); got != "Caprock · caprock is waiting for your answer\nClaude Code" {
-		t.Fatalf("question: %q", got)
+}
+
+func TestAnAlertCarriesItsTrigger(t *testing.T) {
+	r := New(allOn)
+	ask := ev("s", event.KindPermissionPrompt, t0)
+	ask.Tool = "Bash"
+	if got := r.Observe(ask, t0); len(got) != 1 || got[0].Trigger.Tool != "Bash" {
+		t.Fatalf("approval trigger: %+v", got)
 	}
-	got = Message(Alert{Kind: KindFinished, LastThisHour: true}, "", "Codex", "")
-	if !strings.HasPrefix(got, "Caprock · a session has finished\nCodex\n\nThat is 20 alerts") {
-		t.Fatalf("got %q", got)
-	}
-	if strings.Contains(CheckMessage(""), "http") {
-		t.Fatal("test message invented a link")
+	stop := ev("f", event.KindAgentStop, t0)
+	r.Observe(stop, t0)
+	if got := r.Due(t0.Add(FinishedAfter)); len(got) != 1 || got[0].Trigger.Kind != event.KindAgentStop {
+		t.Fatalf("finished trigger: %+v", got)
 	}
 }

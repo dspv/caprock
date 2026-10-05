@@ -140,19 +140,22 @@ func TestNoHistoryIsNotAnError(t *testing.T) {
 // it keeps the suite off the network (rule 4).
 type telegramStub struct {
 	mu   sync.Mutex
-	sent []string
-	fail string // non-empty ⇒ answer like Telegram refusing the message
+	sent  []string
+	modes []string // parse_mode of each, "" for plain text
+	fail  string // non-empty ⇒ answer like Telegram refusing the message
 }
 
 func (s *telegramStub) start(t *testing.T) string {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
-			Text string `json:"text"`
+			Text      string `json:"text"`
+			ParseMode string `json:"parse_mode"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&in)
 		s.mu.Lock()
 		s.sent = append(s.sent, in.Text)
+		s.modes = append(s.modes, in.ParseMode)
 		fail := s.fail
 		s.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
