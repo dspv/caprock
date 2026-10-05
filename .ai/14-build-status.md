@@ -72,6 +72,26 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-05 — Projects, shell tabs and worktrees in the daemon (WP-05, WP-07, WP-08 engine)
+
+Migration 0041 (`projects`), `internal/projects` (list, seeding, fsnotify git
+watcher, clone ops), `agents.AddWorktree`/`RemoveWorktree` and
+`agents.SpawnShell`, the `/v1/projects` and `/v1/shells` endpoints and the
+`project`/`op` live frames; ADR-034 amended for the phone. A shell writes no
+session row at all (rather than a row flagged `internal`), so no query can
+forget to leave it out. Verified on a preview daemon (temp HOME, copy of the
+owner's database, fake `claude`, port 4637): 22 repositories seeded from the
+sessions table, every one with git state, `GET /v1/projects` in 19 ms; no git
+process in 30 s idle with 22 projects watched (801 watcher descriptors, 253 of
+them one repository with 24 worktrees); `octocat/Hello-World` cloned with
+progress frames, a repeated `op_id` returned the same op; a checkout in a
+terminal reached a `project` frame in 0.32 s; worktrees on a remote-only
+branch (tracking), a new branch, a branch checked out elsewhere refused with
+git's message, a dirty one refused, a clean one removed with its branch kept;
+a shell survived a SIGTERM restart of the daemon, its screen repainted and
+typed into after it, with no session row. Not done here: the sidebar (WP-06),
+the New shell action in the UI, and Windows run only in CI.
+
 ### 2026-10-05 — The desktop app, planned before any code
 
 Owner decision: a desktop app on Tauri v2 — a thin Rust shell around the

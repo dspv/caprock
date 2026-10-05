@@ -15,6 +15,11 @@ import (
 // files of whoever runs the suite. Making it the package default means a new
 // test cannot forget; trustTestHome still gives an individual test its own pair.
 func TestMain(m *testing.M) {
+	// The shell-survives-a-restart test runs this binary as a pty-host and
+	// as the shell it holds (shell_test.go).
+	if runAsHelper() {
+		return
+	}
 	home, err := os.MkdirTemp("", "caprock-agents-home")
 	if err != nil {
 		panic(err)

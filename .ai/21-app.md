@@ -10,8 +10,10 @@ the weeks, work packages and definitions of done are in
 work package that builds them moves them into [03-contracts.md](03-contracts.md)
 in the same commit (rule 8).
 
-**Status (2026-10-05): specified, not built.** Nothing in `cmd/`, `internal/`
-or `ui/` depends on this file yet.
+**Status (2026-10-05): specified; the engine side of projects, shell tabs and
+worktrees is built** (WP-05, WP-07, WP-08 API; contract in
+[03-contracts.md § Projects and shells](03-contracts.md#projects-and-shells-desktop-app-wp-05-wp-07-wp-08)).
+Nothing in `ui/` uses it yet.
 
 ## Goal
 
@@ -448,17 +450,22 @@ there, and worktrees as first-class places to work.
   time a session runs in a folder not yet listed. Archiving hides it; nothing
   is deleted from disk. Cost attribution keeps using the repository key of
   migration 0011, so no total changes.
-- **API.** `GET /v1/projects`; `POST /v1/projects` with
-  `{"source":"folder"|"new"|"clone", "path"?, "url"?, "name"?, "op_id"}`;
-  `PATCH /v1/projects/{id}` (name, pinned, sort, archived);
-  `GET /v1/projects/{id}/branches`;
+- **API.** `GET /v1/projects`; `POST /v1/projects` with `{"path"}`,
+  `{"create": {parent, name, git_init}}` or `{"clone": {url, parent}, "op_id"}`;
+  `PATCH /v1/projects/{id}` (name, pinned, sort, defaults);
+  `DELETE /v1/projects/{id}` (unlists; never touches files);
+  `GET /v1/projects/{id}/worktrees`;
   `POST /v1/projects/{id}/worktrees` with `{"branch", "create"?, "base"?}`;
   `DELETE /v1/projects/{id}/worktrees/{name}` (only a clean worktree Caprock
-  created; anything else is refused with the reason).
-- **Long operations** (clone, worktree) take a client-generated `op_id`, are
+  created; anything else is refused with the reason). As built, a project
+  also records how it came to the list (`source`) and its start-form
+  `defaults`; `GET /v1/projects/{id}/branches` is not built yet.
+- **Long operations** (clone) take a client-generated `op_id`, are
   idempotent on it, and report progress as `op` frames on `/v1/live`
   (`{op_id, state, progress, error}`), so a phone that drops mid-clone sees the
-  result when it returns instead of starting a second clone.
+  result when it returns instead of starting a second clone; `GET
+  /v1/projects/ops` lists them for a client that missed the frames. Creating
+  or removing a worktree is quick and answers in the request.
 - **Git state without polling.** The daemon watches each project's `.git`
   (`HEAD`, `index`, `refs/`, `worktrees/`) with fsnotify, debounces 300 ms,
   then runs `git status --porcelain=v2 --branch` under a 5-second timeout with
@@ -477,8 +484,12 @@ there, and worktrees as first-class places to work.
   user's login shell (`$SHELL -l` on POSIX; PowerShell 7, else Windows
   PowerShell, else `cmd.exe` on Windows, configurable) under a pty-host. The
   terminal socket and protocol are the agent session's.
-- The row is a session of kind `shell` with `internal = 1`, so it is excluded
-  from Now, cost, Lifetime and every total, as Codex's review sessions are.
+- A shell is kind `shell` and `internal` in the API, and as built it writes
+  **no session row at all**: it is excluded from Now, cost, Lifetime and every
+  total because there is nothing for a query to count, rather than because
+  every query remembers a filter (the reasoning of ADR-037). Its pty-host
+  registry entry (`meta.kind = "shell"`) is what brings it back after a
+  restart.
 - Rule 7 holds: Caprock started the shell. A shell from a controller phone is
   P1 and needs its own ADR-034 amendment.
 

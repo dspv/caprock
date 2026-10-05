@@ -94,3 +94,206 @@ func gitOut(ctx context.Context, dir string, args ...string) (string, error) {
 	}
 	return out.String(), nil
 }
+
+// WorktreeSpec asks for a worktree on any branch (WP-08): an existing local
+// branch, a branch only a remote has (created locally, tracking it), or with
+// Create a new branch from Base (HEAD when empty).
+type WorktreeSpec struct {
+	Branch string
+	Create bool
+	Base   string
+}
+
+// Worktree is a worktree AddWorktree made.
+type Worktree struct {
+	Path   string `json:"path"`
+	Branch string `json:"branch"`
+	// Tracks is the remote branch a new local branch was set to track, empty
+	// when none.
+	Tracks string `json:"tracks,omitempty"`
+}
+
+// WorktreeName is the directory name a branch's worktree gets under
+// <repo>/.caprock-worktrees: the branch with its slashes made dashes, so
+// `feat/x` is `feat-x`.
+func WorktreeName(branch string) string {
+	return strings.NewReplacer("/", "-", `\`, "-", ":", "-").Replace(branch)
+}
+
+// AddWorktree checks out a branch in a new worktree at
+// <repo>/.caprock-worktrees/<WorktreeName(branch)>.
+//
+// createWorktree, which an agent's `worktree` field uses, makes a branch of
+// its own name (`caprock/<worker>`). This is the general form a person asks
+// for from the sidebar or the phone. It never resets a branch (no -B) and
+// never forces: a branch checked out in another worktree is refused with
+// git's own message, which names where.
+func AddWorktree(ctx context.Context, repoDir string, spec WorktreeSpec) (Worktree, error) {
+	branch := strings.TrimSpace(spec.Branch)
+	if err := checkBranchName(ctx, repoDir, branch); err != nil {
+		return Worktree{}, err
+	}
+	base := strings.TrimSpace(spec.Base)
+	if strings.HasPrefix(base, "-") {
+		return Worktree{}, fmt.Errorf("base %q is not a branch or commit", base)
+	}
+	top, err := gitOut(ctx, repoDir, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return Worktree{}, fmt.Errorf("%s is not a git repository", repoDir)
+	}
+	repo := sameDirAs(repoDir, strings.TrimSpace(top))
+	dir := filepath.Join(repo, WorktreeDir, WorktreeName(branch))
+	if _, err := os.Stat(dir); err == nil {
+		return Worktree{}, fmt.Errorf("%s already exists; remove it or pick another branch", dir)
+	}
+	ensureExcluded(ctx, repo)
+	local := branchExists(ctx, repo, branch)
+	switch {
+	case spec.Create && local:
+		return Worktree{}, fmt.Errorf("branch %s already exists; pick it without creating a new one", branch)
+	case spec.Create:
+		args := []string{"worktree", "add", "-b", branch, dir}
+		if base != "" {
+			args = append(args, base)
+		}
+		if _, err := gitOut(ctx, repo, args...); err != nil {
+			return Worktree{}, err
+		}
+		return Worktree{Path: dir, Branch: branch}, nil
+	case local:
+		if _, err := gitOut(ctx, repo, "worktree", "add", dir, branch); err != nil {
+			return Worktree{}, err
+		}
+		return Worktree{Path: dir, Branch: branch}, nil
+	}
+	remote, err := remoteBranch(ctx, repo, branch)
+	if err != nil {
+		return Worktree{}, err
+	}
+	if _, err := gitOut(ctx, repo, "worktree", "add", "--track", "-b", branch, dir, remote); err != nil {
+		return Worktree{}, err
+	}
+	return Worktree{Path: dir, Branch: branch, Tracks: remote}, nil
+}
+
+// WorktreeDir is where Caprock puts the worktrees it makes, under the
+// repository root (store.WorktreeDir; the resolver strips it by name).
+const WorktreeDir = ".caprock-worktrees"
+
+// checkBranchName refuses what git would not take as a branch name, and a
+// leading dash that git would take as an option.
+func checkBranchName(ctx context.Context, repoDir, branch string) error {
+	if branch == "" {
+		return errors.New("name the branch")
+	}
+	if strings.HasPrefix(branch, "-") {
+		return fmt.Errorf("%q is not a valid branch name", branch)
+	}
+	if _, err := gitOut(ctx, repoDir, "check-ref-format", "--branch", branch); err != nil {
+		return fmt.Errorf("%q is not a valid branch name", branch)
+	}
+	return nil
+}
+
+// remoteBranch finds the one remote that has branch, as `<remote>/<branch>`.
+func remoteBranch(ctx context.Context, repo, branch string) (string, error) {
+	out, err := gitOut(ctx, repo, "for-each-ref", "--format=%(refname:short)", "refs/remotes/*/"+branch)
+	if err != nil {
+		return "", err
+	}
+	var found []string
+	for _, l := range strings.Split(strings.TrimSpace(out), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			found = append(found, l)
+		}
+	}
+	switch len(found) {
+	case 0:
+		return "", fmt.Errorf("no branch %s here or on a remote; create it to start one", branch)
+	case 1:
+		return found[0], nil
+	default:
+		return "", fmt.Errorf("branch %s is on more than one remote (%s); check it out by hand", branch, strings.Join(found, ", "))
+	}
+}
+
+// ensureExcluded keeps the worktrees directory out of the repository's own
+// status: a checkout inside the tree is otherwise an untracked directory, and
+// every project with a worktree would read as changed. Written to
+// .git/info/exclude, the repository's local ignore file, never to a tracked
+// .gitignore. Best effort.
+func ensureExcluded(ctx context.Context, repo string) {
+	p, err := gitOut(ctx, repo, "rev-parse", "--git-path", "info/exclude")
+	if err != nil {
+		return
+	}
+	path := strings.TrimSpace(p)
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(repo, path)
+	}
+	line := "/" + WorktreeDir + "/"
+	b, _ := os.ReadFile(path)
+	for _, l := range strings.Split(string(b), "\n") {
+		if strings.TrimSpace(l) == line {
+			return
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	if len(b) > 0 && !bytes.HasSuffix(b, []byte("\n")) {
+		_, _ = f.WriteString("\n")
+	}
+	_, _ = f.WriteString(line + "\n")
+}
+
+// ErrWorktreeDirty refuses to remove a worktree with changes.
+var ErrWorktreeDirty = errors.New("the worktree has uncommitted or untracked changes")
+
+// RemoveWorktree removes a clean worktree Caprock made, and leaves its branch.
+//
+// Only a worktree under <repo>/.caprock-worktrees is removed: one the user
+// made elsewhere is theirs. A worktree with any change — modified, staged or
+// untracked — is refused with ErrWorktreeDirty, checked here and again by
+// git itself (no --force), so a race cannot lose work.
+func RemoveWorktree(ctx context.Context, repoDir, name string) error {
+	if name == "" || strings.ContainsAny(name, `/\:`) || name == "." || name == ".." {
+		return fmt.Errorf("%q is not a worktree name", name)
+	}
+	top, err := gitOut(ctx, repoDir, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return fmt.Errorf("%s is not a git repository", repoDir)
+	}
+	dir := filepath.Join(sameDirAs(repoDir, strings.TrimSpace(top)), WorktreeDir, name)
+	if fi, err := os.Stat(filepath.Join(dir, ".git")); err != nil || fi.IsDir() {
+		return fmt.Errorf("%s is not a worktree Caprock made", dir)
+	}
+	status, err := gitOut(ctx, dir, "--no-optional-locks", "status", "--porcelain")
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(status) != "" {
+		return ErrWorktreeDirty
+	}
+	_, err = gitOut(ctx, repoDir, "worktree", "remove", dir)
+	return err
+}
+
+// sameDirAs is top — git's answer for the repository's root, with symlinks
+// resolved — spelled as the caller spelled it when the two are the same
+// folder, so paths Caprock reports keep the form the project is listed under
+// (/var/… rather than /private/var/… on macOS).
+func sameDirAs(given, top string) string {
+	top = filepath.Clean(top)
+	a, errA := filepath.EvalSymlinks(given)
+	b, errB := filepath.EvalSymlinks(top)
+	if errA == nil && errB == nil && a == b {
+		return filepath.Clean(given)
+	}
+	return top
+}

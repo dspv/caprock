@@ -144,6 +144,9 @@ func (h *wsHub) serveTerm(s *Server) http.HandlerFunc {
 			return
 		}
 		id := r.PathValue("id")
+		if s.refuseShellToDevice(w, r, id) {
+			return
+		}
 		snapshot, sub, cancel, ok := s.d.Agents.Term(id)
 		if !ok {
 			http.Error(w, "session is not owned by caprock", http.StatusConflict)

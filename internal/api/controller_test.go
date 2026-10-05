@@ -40,6 +40,7 @@ var viewerMay = map[string]bool{
 	"GET /v1/statusline/{id}": true, "GET /v1/pair/me": true, "GET /healthz": true,
 	"GET /v1/agents/{id}/permission": true,
 	"GET /v1/glance":                 true, "GET /v1/week": true, "GET /v1/tools/drill": true,
+	"GET /v1/projects": true, "GET /v1/projects/ops": true, "GET /v1/projects/{id}/worktrees": true,
 }
 
 // What a controller may do on top (ADR-034): work on a session, nothing about
@@ -50,6 +51,10 @@ var controllerMayAlso = map[string]bool{
 	"POST /v1/agents/{id}/input": true, "POST /v1/agents/{id}/signal": true, "POST /v1/paste": true,
 	"POST /v1/agents/{id}/permission": true,
 	"POST /v1/tasks/{id}/approve":     true, "POST /v1/tasks/{id}/reject": true,
+	// Start work from the phone (21-app.md decision 8). Shells are not
+	// here: from the phone they are P1, so POST and GET /v1/shells are 403.
+	"POST /v1/projects": true, "PATCH /v1/projects/{id}": true, "DELETE /v1/projects/{id}": true,
+	"POST /v1/projects/{id}/worktrees": true, "DELETE /v1/projects/{id}/worktrees/{name}": true,
 }
 
 // registeredRoutes reads every route New registers out of api.go, so a route

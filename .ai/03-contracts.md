@@ -127,7 +127,8 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `/v1/stats/summary`, `/v1/stats/daily`, `/v1/events`, `/v1/history`,
   `/v1/status`, `/v1/storage`, `/v1/update`, `/v1/settings`, `/v1/premium`, `/v1/gemini`,
   `/v1/pricing`, `/v1/live`, `/v1/tasks`, `/v1/tasks/{id}`, `/v1/approvals`,
-  `/v1/statusline/{id}`, `/v1/agents/{id}/permission`. Everything else is `403` — every `POST`, `PUT` and
+  `/v1/statusline/{id}`, `/v1/agents/{id}/permission`, `/v1/projects`,
+  `/v1/projects/ops` and `/v1/projects/{id}/worktrees`. Everything else is `403` — every `POST`, `PUT` and
   `DELETE` (spawn, input, signal, paste, settings, tasks, approvals,
   orchestrator, hive, licence, pairing, shutdown), and three `GET`s that are
   not reads: `/v1/agents/{id}/term` (its socket types into the session), and
@@ -148,10 +149,17 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `GET /v1/browse` (rooted inside home, see below), `GET /v1/sessions/{id}/relay`, `GET /v1/agents/{id}/term`,
   `POST /v1/agents/{id}/input`, `POST /v1/agents/{id}/signal`,
   `POST /v1/agents/{id}/permission`,
-  `POST /v1/paste`, `POST /v1/tasks/{id}/approve` and `/reject`. Everything
+  `POST /v1/paste`, `POST /v1/tasks/{id}/approve` and `/reject`, and — to
+  start work from the phone (2026-10-05, [21-app.md](21-app.md) decision 8) —
+  `POST /v1/projects`, `PATCH` and `DELETE /v1/projects/{id}`, and `POST` and
+  `DELETE /v1/projects/{id}/worktrees…` (see § Projects and shells for the
+  folder rules). Everything
   else stays `403` for every device: settings, pairing, hive, tasks creation
   and verify, orchestrator, hooks install, shutdown, update check, report
-  test, Gemini ask, `open-terminal` and `POST /v1/sessions/remove`.
+  test, Gemini ask, `open-terminal`, `POST /v1/sessions/remove`, and every
+  shell route — `POST`/`GET /v1/shells`, and a shell's terminal, input and
+  signal through the agent routes a controller otherwise has (a shell from the
+  phone is P1).
 - **What a controller's `POST /v1/agents` may say** (`controllerSpawnRefusal`):
   `cwd` must be absolute and, after `filepath.EvalSymlinks`, the home directory
   or below it — a project outside home is refused even where sessions have run. With `create: true` a missing `cwd` passes when its
@@ -457,7 +465,7 @@ POST /v1/shutdown                      → 200 (bearer-token gated; `caprock dow
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows
 GET  /v1/statusline/{id}               → 200 (bearer-token gated) session counters for the status line; zeros for an unknown session
 GET  /healthz                          → {status:"ok", version}
-WS   /v1/live                          → first frame is {type:"hello", data:{server_time}}; a "session" frame carries {session, stats}; a "permission" frame carries {session_id, permission | null}
+WS   /v1/live                          → first frame is {type:"hello", data:{server_time}}; a "session" frame carries {session, stats}; a "permission" frame carries {session_id, permission | null}; a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells)
 ```
 
 **Permission prompts** ([ADR-035](08-decisions.md)). `permission` is the
@@ -891,6 +899,134 @@ not a tag-wrapped command or notification, not a bare path, at least 12
 characters. First line only, clipped to 120 characters.
 
 **Non-Anthropic pricing.** `pricing/pricing.json` carries rows for the models Caprock observes through OpenCode — DeepSeek and MiniMax at the providers' own published rates, fetched with a date and noted in the file. They are priced so a total that includes non-Anthropic usage is a total; before this, $155 of the owner's own spend sat outside his. `normalizeModel` strips a gateway's vendor prefix, so `minimax/minimax-m3` from OpenRouter and `MiniMax-M3` from the direct API are one row rather than two, one of them unpriced. The unpriced warning fires only on turns whose tokens are greater than zero: a turn recorded with explicit zeroes has nothing to price, and warning about it says a total is missing money it is not missing.
+
+### Projects and shells (desktop app, WP-05, WP-07, WP-08)
+
+The desktop app's sidebar ([21-app.md § Projects](21-app.md#projects)). Code:
+`internal/projects`, `internal/agents/worktree.go` and `shell.go`,
+`internal/api/projects.go`. State-changing requests need
+`Content-Type: application/json`, `DELETE` included (§ Cross-site request
+protection).
+
+```
+GET    /v1/projects                        → {projects: [Project]}; pinned first, then sort, then name
+POST   /v1/projects                        {path} | {create: {parent, name, git_init?}} | {clone: {url, parent, name?}, op_id?}
+                                           path, create → 200 {project, created}; clone → 202 {op, existing}
+GET    /v1/projects/ops                    → {ops: [Op]}; clones running or ended in the last hour, newest first
+PATCH  /v1/projects/{id}                   {name?, pinned?, sort?, defaults?: {agent?, model?, permission_mode?}} → {project}
+DELETE /v1/projects/{id}                   → 204; unlists it: nothing on disk is touched, no session or cost changes
+GET    /v1/projects/{id}/worktrees         → {worktrees: [Worktree]}
+POST   /v1/projects/{id}/worktrees         {branch, create?, base?} → {worktree: {path, branch, tracks?}}
+DELETE /v1/projects/{id}/worktrees/{name}  → 204; 409 {error} when it has any change
+POST   /v1/shells                          {cwd | project_id, cols?, rows?} → {shell: Shell}
+GET    /v1/shells?project=<id>             → {shells: [Shell]}; every running shell without project
+```
+
+- **`Project`** — `{id, name, root, kind: "repo"|"folder", source:
+  "seed"|"session"|"folder"|"new"|"clone", pinned, sort, added_at, archived?,
+  exists, defaults, git, sessions: {live, waiting, total}, cost_today,
+  last_activity, worktrees: [Worktree], removed?}`. `root` is in the OS's own
+  form (backslashes on Windows), so it can be sent back as a `cwd`. `git` is
+  `null` for a folder and otherwise `{branch, detached?, dirty, changed,
+  ahead, behind, upstream?, default_branch?, remote_url?, error?, at}`:
+  `changed` counts modified, staged, conflicted and untracked files; `at` is
+  when git last answered (0 until the first answer); `error` is git's own
+  message, or the timeout, with the last good figures kept. `sessions` and
+  `cost_today` count the sessions whose repository root (else cwd) lies in
+  `root`, the longest listed root winning: `live` is not ended, `waiting` is
+  live with a main-thread `agent.stop` or a `permission.prompt` as its newest
+  event, and `cost_today` is the non-internal events since local midnight. A
+  `project` frame with `removed: true` and only `id` is sent on unlisting.
+- **`Worktree`** — `{name, path, branch?, head?, caprock, locked?, missing?,
+  dirty, changed, error?}`, read from `<git common dir>/worktrees/*` without
+  running git; `caprock` is true for one under `<root>/.caprock-worktrees/`.
+- **Adding.** `path` must be an absolute folder; a folder inside a repository
+  lists the repository root. Adding a listed root returns it (`created:
+  false`); an unlisted one is listed again with its old name and settings.
+  `create` makes one folder `name` (one plain segment) in an existing
+  `parent`, refuses one that exists, and runs `git init` when `git_init`.
+  `clone` takes an `https://` URL or `user@host:path` and nothing else (no
+  local path, `file://`, `ssh://`, `ext::`, leading `-` or whitespace), into
+  `parent/<name>` (default: the URL's last segment without `.git`), refused
+  when that exists. It runs `git clone --progress` in the background with the
+  login shell's environment and `GIT_TERMINAL_PROMPT=0`, for the daemon's
+  life, not the request's. A `POST` whose `op_id` (`[A-Za-z0-9_-]{1,64}`,
+  generated when absent) is already known returns that operation with
+  `existing: true` and starts nothing.
+- **`Op`** — `{op_id, kind: "clone", state: "running"|"done"|"failed", phase?,
+  progress, url, dest, project_id?, error?, started_at, updated_at}`. `phase`
+  and `progress` (0 to 100 within the phase) are git's own ("Receiving
+  objects", "Resolving deltas"); an `op` frame goes out per step, at most four
+  a second plus the last. `error` is the last lines git printed. Kept in
+  memory for an hour after it ends; a daemon restart forgets them.
+- **Worktrees.** `POST` puts the worktree at
+  `<root>/.caprock-worktrees/<branch, / made ->` and adds
+  `/.caprock-worktrees/` to the repository's `.git/info/exclude` (never a
+  tracked file), so the main checkout does not read as changed. An existing
+  local branch is checked out; a branch only one remote has is created
+  tracking it (`tracks`); `create` makes a new branch from `base` (default
+  `HEAD`) and refuses an existing one. A branch checked out elsewhere is
+  refused with git's own message (`400`). `DELETE` removes only a worktree
+  under `<root>/.caprock-worktrees/`, never with `--force`: any change,
+  untracked included, is `409`; the branch is kept; a name with a separator
+  is `400`.
+- **From a controller phone**, `path`, `create.parent` and `clone.parent`
+  must be absolute and resolve under home (`403` otherwise), and the worktree
+  routes refuse a project whose root is outside home. The `GET` routes are
+  open to every paired device; the shell routes to none.
+- **`Shell`** — `{id, cwd, command, started_at, survives_restart, project_id?,
+  internal: true, kind: "shell"}`. The user's login shell — `$SHELL -l` from
+  the login environment on POSIX; `pwsh.exe -NoLogo`, else `powershell.exe
+  -NoLogo`, else `%ComSpec%` on Windows — under a pty-host with `meta.kind =
+  "shell"`, so it outlives the daemon like an agent session. Its terminal,
+  input, resize and kill are `/v1/agents/{id}/term`, `input` and `signal`.
+  **A shell is not a session:** it writes no `sessions` row and no event, so it
+  is in no total, Now card, export or count (`/v1/status`'s `owned_active`
+  included), and the daily spend cap never pauses one. A restart reattaches it
+  from its registry entry and writes nothing to the store.
+- **Seeding.** On the first start with migration 0041, every
+  `sessions.repo_root` that is still a folder with a `.git` directory of its
+  own, is not `NotAProject`, is not under a temp directory and is not under
+  `.caprock-worktrees` is listed (`source: "seed"`); one folder under two
+  spellings (a symlink) is listed once. `meta.projects_seeded = "1"` stops it
+  running again. After that, a session in a repository not yet listed lists
+  it by the same test (`source: "session"`). An unlisted root is never listed
+  again by either.
+- **Git state.** fsnotify watches each repository's git dir (HEAD, index,
+  packed-refs, FETCH_HEAD, config), its `refs/heads` tree, `worktrees/` and
+  each linked worktree's git dir, never objects or logs; attribute-only
+  (chmod) events and `*.lock` files are ignored. A change is debounced 300 ms,
+  then `git --no-optional-locks status --porcelain=v2 --branch` runs under a
+  5 s timeout, at most two at once, for the part that changed only (the main
+  checkout, or one linked worktree). Remote URL, default branch
+  (`refs/remotes/origin/HEAD`, else `main` or `master`) and the worktree list
+  are read from files. An agent's `tool.post` of an edit or shell tool asks
+  git again after 2 s; a session starting, stopping, asking or ending sends a
+  `project` frame after 1 s. Nothing runs on a timer: idle projects run no git.
+
+### Projects DDL (migration 0041)
+
+```sql
+CREATE TABLE IF NOT EXISTS projects (
+  id             INTEGER PRIMARY KEY,
+  root           TEXT    NOT NULL UNIQUE,
+  name           TEXT    NOT NULL,
+  kind           TEXT    NOT NULL DEFAULT 'repo' CHECK (kind IN ('repo','folder')),
+  source         TEXT    NOT NULL DEFAULT 'seed' CHECK (source IN ('seed','session','folder','new','clone')),
+  remote_url     TEXT    NOT NULL DEFAULT '',
+  default_branch TEXT    NOT NULL DEFAULT '',
+  added_at       INTEGER NOT NULL,             -- unix ms
+  pinned         INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0,1)),
+  sort           INTEGER NOT NULL DEFAULT 0,
+  defaults       TEXT    NOT NULL DEFAULT '{}', -- JSON: {agent?, model?, permission_mode?}
+  archived_at    INTEGER                       -- unix ms; NULL = listed
+);
+```
+
+`root` is normalised like `sessions.repo_root` (forward slashes, no trailing
+separator), so the two join on equality. Cost attribution still uses
+`sessions.repo_root` and `sessions.project`: adding or unlisting a project
+changes no total.
 
 ### Reclassifying the /clear events already recorded (migration 0021)
 
@@ -1588,7 +1724,7 @@ The holder starts the child, listens on `127.0.0.1:0`, writes its registry entry
 
 **Registry** — `<data_dir>/ptyhost/` (`0700`):
 
-- `<session-id>.json` (`0600`, written atomically by the holder, removed by it when the session ends): `{"proto", "session_id", "host_pid", "child_pid", "addr", "token", "cwd", "command", "started_at", "version", "meta"}`, where `meta` is `{"kind": "claude"|"codex"|"opencode"|"gemini", "port": "<OpenCode TUI server port>"}` — what the next daemon needs to keep watching the session (absent from holders written before it existed: treated as the row's agent, else Claude Code). The daemon removes an entry only when nothing listens at `addr` (the holder is gone). Continuing a session under its own id starts a second holder for the same id, so a holder removes the entry — or writes an exit file — only while the entry still names its own `host_pid` and token, and the daemon ignores an exit file beside a live holder for that id.
+- `<session-id>.json` (`0600`, written atomically by the holder, removed by it when the session ends): `{"proto", "session_id", "host_pid", "child_pid", "addr", "token", "cwd", "command", "started_at", "version", "meta"}`, where `meta` is `{"kind": "claude"|"codex"|"opencode"|"gemini"|"shell", "port": "<OpenCode TUI server port>"}` (`shell` is a shell tab, which has no session row) — what the next daemon needs to keep watching the session (absent from holders written before it existed: treated as the row's agent, else Claude Code). The daemon removes an entry only when nothing listens at `addr` (the holder is gone). Continuing a session under its own id starts a second holder for the same id, so a holder removes the entry — or writes an exit file — only while the entry still names its own `host_pid` and token, and the daemon ignores an exit file beside a live holder for that id.
 - `<session-id>.exit` (`0600`): `{"session_id", "code", "at"}`, written when the child exits while no daemon is connected; the next daemon records the code (`SetExit`) and deletes the file.
 - `host.log` — holders' stderr, appended; empty in the normal course.
 - Session ids must match `[A-Za-z0-9_-]{1,128}` to be used as a file name; any other id starts in-process.

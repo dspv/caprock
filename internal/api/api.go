@@ -35,6 +35,7 @@ import (
 	"github.com/dspv/caprock/internal/nativeterm"
 	"github.com/dspv/caprock/internal/pairing"
 	"github.com/dspv/caprock/internal/premium"
+	"github.com/dspv/caprock/internal/projects"
 	"github.com/dspv/caprock/internal/store"
 	"github.com/dspv/caprock/internal/update"
 )
@@ -110,6 +111,11 @@ type Deps struct {
 	// Terminals opens a session in the user's own terminal application. nil ⇒
 	// the open-terminal endpoints return 501 and no session offers it.
 	Terminals TerminalController
+	// Projects is the projects list, its git state and clones (nil ⇒ the
+	// /v1/projects endpoints return 501).
+	Projects *projects.Service
+	// Shells starts and lists shell tabs (nil ⇒ /v1/shells returns 501).
+	Shells ShellController
 	// DataDir is where Caprock keeps its own state. Needed so a file pasted
 	// into the terminal can be written somewhere Claude Code can read it by
 	// path. Empty ⇒ POST /v1/paste returns 501.
@@ -401,6 +407,16 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/agents/{id}/permission", s.handleAnswerPermission)
 	m.HandleFunc("POST /v1/paste", s.handlePaste)
 	m.HandleFunc("GET /v1/agents/{id}/term", s.ws.serveTerm(s))
+	m.HandleFunc("GET /v1/projects", s.handleProjects)
+	m.HandleFunc("POST /v1/projects", s.handleAddProject)
+	m.HandleFunc("GET /v1/projects/ops", s.handleProjectOps)
+	m.HandleFunc("PATCH /v1/projects/{id}", s.handlePatchProject)
+	m.HandleFunc("DELETE /v1/projects/{id}", s.handleUnlistProject)
+	m.HandleFunc("GET /v1/projects/{id}/worktrees", s.handleWorktrees)
+	m.HandleFunc("POST /v1/projects/{id}/worktrees", s.handleAddWorktree)
+	m.HandleFunc("DELETE /v1/projects/{id}/worktrees/{name}", s.handleRemoveWorktree)
+	m.HandleFunc("POST /v1/shells", s.handleStartShell)
+	m.HandleFunc("GET /v1/shells", s.handleShells)
 	m.HandleFunc("POST /v1/shutdown", s.handleShutdown)
 	m.HandleFunc("POST /v1/statusline", s.handleStatusline)
 	m.HandleFunc("GET /v1/statusline/{id}", s.handleStatuslineStats)
@@ -1908,6 +1924,9 @@ func (s *Server) handleAgentInput(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+	if s.refuseShellToDevice(w, r, r.PathValue("id")) {
+		return
+	}
 	if err := s.d.Agents.Input(r.PathValue("id"), []byte(body.Data)); err != nil {
 		s.agentErr(w, err)
 		return
@@ -1932,6 +1951,9 @@ func (s *Server) handleAgentSignal(w http.ResponseWriter, r *http.Request) {
 		// Name the field, not just the values: the old message ("action must be
 		// pause|resume|kill") left a caller who sent the wrong key guessing.
 		http.Error(w, `body must be {"action": "pause"|"resume"|"kill"}`, http.StatusBadRequest)
+		return
+	}
+	if s.refuseShellToDevice(w, r, r.PathValue("id")) {
 		return
 	}
 	if err := s.d.Agents.Signal(r.PathValue("id"), body.Action); err != nil {

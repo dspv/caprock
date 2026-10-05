@@ -1306,6 +1306,21 @@ without either network (that is the relay
 ADR-029 rules out), or if a controller needs one of the machine-only actions —
 each would be its own decision, added to the allowlist by name.
 
+*Amended 2026-10-05 (WP-05, WP-08; [21-app.md](21-app.md) decision 8):* a
+controller may also start work, not only sessions — add, create or clone a
+project (`POST /v1/projects`), rename, pin or unlist one (unlisting deletes
+nothing), and create or remove a worktree (`POST`/`DELETE
+/v1/projects/{id}/worktrees…`). The folder rule is this ADR's: the path, or
+the parent a project is created or cloned in, resolves under home, and the
+worktree routes refuse a project outside it. A clone takes an `https://` or
+`user@host:path` address only, so it cannot name a local path or a
+transport that runs a command. Removing a worktree never forces and refuses
+one with any change. A viewer may read the projects list, its worktrees and
+the clones in flight. **Shell tabs stay off the phone** (P1, owner decision
+8): `/v1/shells` is not on the list, and a shell's terminal, input and
+signal are refused to every device in the handler, although those routes are
+a controller's for a session.
+
 
 ---
 

@@ -44,6 +44,7 @@ import (
 	"github.com/dspv/caprock/internal/opencode"
 	"github.com/dspv/caprock/internal/orchestrator"
 	"github.com/dspv/caprock/internal/pairing"
+	"github.com/dspv/caprock/internal/projects"
 	"github.com/dspv/caprock/internal/ptyman"
 	"github.com/dspv/caprock/internal/rollup"
 	"github.com/dspv/caprock/internal/sessionlink"
@@ -148,6 +149,8 @@ type Daemon struct {
 	// then observes nothing about it — which is what 0.44.x shipped.
 	gemIn *gemini.Ingester
 	mgr   *agents.Manager
+	// projs is the projects list and its git watcher (WP-05).
+	projs *projects.Service
 	board *board.Board
 	orch  *orchestrator.Orchestrator
 	api   *api.Server
@@ -401,6 +404,15 @@ func (d *Daemon) run(ctx context.Context) error {
 		d.log.Info("reattached sessions that outlived the last run", "component", "daemon", "count", len(reattached))
 	}
 
+	// The projects list: seeded once from the repositories sessions ran in,
+	// then each repository's .git watched for changes (never polled).
+	d.projs = projects.New(d.store, d.bus, d.log)
+	d.projs.Env = func() []string { return userenv.Environ(d.log) }
+	if err := d.projs.Start(ctx); err != nil {
+		d.log.Warn("projects list unavailable", "component", "daemon", "err", err)
+		d.projs = nil
+	}
+
 	// The daily spend cap. Built here because it needs the manager: it may only
 	// ever pause sessions Caprock started, and the manager is what knows which
 	// those are (rule 7 lives in PauseOwned, not in a filter here).
@@ -479,6 +491,7 @@ func (d *Daemon) run(ctx context.Context) error {
 			Preferred: func() string { return d.config().Terminal },
 		},
 		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d,
+		Projects: d.projs, Shells: &shellAdapter{m: d.mgr},
 	})
 	srv := &http.Server{Handler: d.api, ReadHeaderTimeout: 10 * time.Second}
 	// Held so LAN access can be switched on later without a restart. The
@@ -1167,7 +1180,7 @@ func (d *Daemon) status(_ context.Context) any {
 		OpenCode:        d.openCodeStats(),
 		Codex:           d.codexStats(),
 		Deepseek:        d.deepseekStats(),
-		ClaudeAvailable: d.mgr.ClaudeAvailable(), GeminiAvailable: d.mgr.GeminiAvailable(), OwnedActive: len(d.mgr.List()),
+		ClaudeAvailable: d.mgr.ClaudeAvailable(), GeminiAvailable: d.mgr.GeminiAvailable(), OwnedActive: len(d.mgr.OwnedRunning()),
 		CodexAvailable: d.mgr.AgentAvailable(agents.AgentCodex), OpenCodeAvailable: d.mgr.AgentAvailable(agents.AgentOpenCode),
 		ShellEnv:      userenv.Current(),
 		Orchestration: b != nil,
@@ -1463,6 +1476,31 @@ func (d *Daemon) observeHook(p hookd.Payload) {
 // Survives reports whether the session's terminal is in a pty-host, so a
 // restart of the daemon leaves it running (ADR-033).
 func (a *agentAdapter) Survives(id string) bool { return a.m.Survives(id) }
+
+// shellAdapter bridges the manager's shell tabs to api.ShellController.
+type shellAdapter struct{ m *agents.Manager }
+
+func (a *shellAdapter) StartShell(ctx context.Context, cwd string, cols, rows int) (api.ShellInfo, error) {
+	sh, err := a.m.SpawnShell(ctx, agents.ShellRequest{Cwd: cwd, Cols: cols, Rows: rows})
+	if err != nil {
+		return api.ShellInfo{}, err
+	}
+	return a.info(sh), nil
+}
+
+func (a *shellAdapter) Shells() []api.ShellInfo {
+	var out []api.ShellInfo
+	for _, sh := range a.m.Shells() {
+		out = append(out, a.info(sh))
+	}
+	return out
+}
+
+func (a *shellAdapter) IsShell(id string) bool { return a.m.IsShell(id) }
+
+func (a *shellAdapter) info(sh *agents.Agent) api.ShellInfo {
+	return api.ShellInfo{ID: sh.SessionID, Cwd: sh.Cwd, Command: sh.Command, StartedAt: sh.StartedAt.UnixMilli(), SurvivesRestart: a.m.Survives(sh.SessionID)}
+}
 
 func (a *agentAdapter) Holds(id string) bool {
 	_, ok := a.m.Get(id)
