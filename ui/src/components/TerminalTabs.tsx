@@ -9,7 +9,7 @@ import type { SessionSummary } from '@/lib/api'
 import { focusedLeaf, type PaneNode, type Tab } from '@/lib/tabs'
 import { dotOf, sessionTitle } from '@/lib/sidebar'
 import { TerminalPane, type PaneStatus } from './TerminalPane'
-import { AgentGlyph, CloseIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
+import { AgentGlyph, ChatIcon, CloseIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
 import { StatusDot } from './ProjectRow'
 
 export interface TabStripProps {
@@ -25,6 +25,10 @@ export interface TabStripProps {
   onNewAgent: () => void
   onNewShell: () => void
   onToggleInspector: () => void
+  /** The tab in front shows its chat instead of its terminal (WP-14). */
+  chatOpen?: boolean
+  /** Absent when the tab in front has no conversation: a shell. */
+  onToggleChat?: () => void
 }
 
 export function TabStrip(props: TabStripProps) {
@@ -87,7 +91,10 @@ export function TabStrip(props: TabStripProps) {
           <StripButton label="New shell (⌘T)" onClick={props.onNewShell}><TerminalIcon size={15} /></StripButton>
         </div>
       </div>
-      <div className="mb-1 flex shrink-0 items-center">
+      <div className="mb-1 flex shrink-0 items-center gap-0.5">
+        {props.onToggleChat && (
+          <StripButton label={props.chatOpen ? 'Show the terminal' : 'Show the chat'} pressed={props.chatOpen} onClick={props.onToggleChat}><ChatIcon size={15} /></StripButton>
+        )}
         <StripButton label="Inspector (⌘I)" pressed={props.inspectorOpen} onClick={props.onToggleInspector}><InspectorIcon size={15} /></StripButton>
       </div>
     </div>

@@ -78,6 +78,20 @@ d('a spawned Codex or OpenCode session', () => {
     expect(screen.queryByText(/\d{4,}d ago/)).not.toBeInTheDocument()
   })
 
+  it('opens on the chat at phone width, and on the timeline on a desktop (WP-14)', async () => {
+    spawned({})
+    const mq = (matches: boolean) => (q: string) => ({ matches: matches && q.includes('max-width: 639px'), media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList
+    vi.stubGlobal('matchMedia', mq(true))
+    const { unmount } = render(<SessionScreen id="cap-1" />)
+    expect(await screen.findByRole('log', { name: 'Conversation' })).toBeInTheDocument()
+    unmount()
+    vi.stubGlobal('matchMedia', mq(false))
+    render(<SessionScreen id="cap-1" />)
+    expect(await screen.findByText(/Events ·/)).toBeInTheDocument()
+    expect(screen.queryByRole('log', { name: 'Conversation' })).not.toBeInTheDocument()
+    vi.unstubAllGlobals()
+  })
+
   it("names the agent's own id once linked", async () => {
     spawned({ agent: 'opencode', native_id: 'ses_abc' })
     render(<SessionScreen id="cap-1" tab="timeline" />)

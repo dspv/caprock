@@ -670,6 +670,33 @@ func TestEventsBeforePagesBackwards(t *testing.T) {
 	}
 }
 
+// Rows sharing a millisecond are ordered by id, and paging back from one of
+// them must return the others: `ts <` alone skipped them at a page boundary,
+// and a chat reading backwards lost the tool call made in the same millisecond
+// as its turn (WP-14).
+func TestEventsBeforeKeepsRowsSharingATimestamp(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	at := time.UnixMilli(5000)
+	for i := 0; i < 4; i++ {
+		ev := &event.Event{SessionID: "s", Source: event.SourceHook, Kind: event.KindTurnUser, Ts: at}
+		if _, err := InsertEvent(ctx, s.db, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	all, err := LastEvents(ctx, s.db, "s", 10)
+	if err != nil || len(all) != 4 {
+		t.Fatalf("seed: %d %v", len(all), err)
+	}
+	page, err := EventsBefore(ctx, s.db, "s", all[2].ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page) != 2 || page[0].ID != all[0].ID || page[1].ID != all[1].ID {
+		t.Fatalf("before row 3 of 4 in one millisecond: got %d rows %v, want ids %d, %d", len(page), page, all[0].ID, all[1].ID)
+	}
+}
+
 // The newest events are the newest by TIME, not by rowid.
 //
 // The two agree for a session captured live and diverge for one whose
