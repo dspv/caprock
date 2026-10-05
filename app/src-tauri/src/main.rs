@@ -9,6 +9,8 @@ mod commands;
 mod discovery;
 mod hotkey;
 mod notify;
+#[cfg(target_os = "macos")]
+mod notify_macos;
 mod shell;
 #[cfg(all(feature = "snapshot", target_os = "macos"))]
 mod snapshot;
@@ -89,6 +91,8 @@ fn main() {
         hotkey::load(app.handle());
         #[cfg(target_os = "macos")]
         menu::install(app.handle(), &monitored)?;
+        #[cfg(target_os = "macos")]
+        notify_macos::install(app.handle());
         shell::monitor(app.handle().clone(), monitored);
         #[cfg(all(feature = "snapshot", target_os = "macos"))]
         snapshot::watch(app.handle().clone());

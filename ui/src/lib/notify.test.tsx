@@ -32,7 +32,10 @@ describe('Notifier', () => {
     expect(await n.receive(approval())).toBe(true)
     expect(await n.receive(approval())).toBe(false) // a replay after a reconnect
     expect(invoke).toHaveBeenCalledTimes(1)
-    expect(invoke).toHaveBeenCalledWith('notify', { title: 'Needs approval · caprock', body: 'Tidy the cache · main\nBash: go test ./...' })
+    expect(invoke).toHaveBeenCalledWith('notify', {
+      title: 'Needs approval · caprock', body: 'Tidy the cache · main\nBash: go test ./...',
+      id: 'approval-s1-1', sessionId: 's1', promptId: 'p1', actions: ['allow', 'deny'],
+    })
   })
 
   it('is quiet for the session in front of a focused window, and only then', async () => {

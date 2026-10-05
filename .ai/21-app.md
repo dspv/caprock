@@ -548,11 +548,52 @@ there, and worktrees as first-class places to work.
   the app forward and the app opens the session with its prompt card, whose
   buttons answer with the `prompt_id`. Buttons inside the notification need a
   crate beyond the official plugins (UNUserNotificationCenter on macOS, toast
-  activation on Windows, D-Bus actions on Linux) and wait for that decision.
+  activation on Windows, D-Bus actions on Linux); macOS has them now (below).
   On Linux, where a click does not raise the app, the notification informs
   only. The window's background throttling is off (macOS 14+): WKWebView
   suspends a hidden or covered page, and a test with the window behind
   others got no notification in 30 s with it on, against 0.03–0.12 s off.
+- **Buttons on macOS (2026-10-06).** The owner left the design to us ("do
+  what is most convenient for users"; translated). macOS gets
+  UNUserNotificationCenter through `objc2-user-notifications`
+  (`app/src-tauri/src/notify_macos.rs`); Windows and Linux keep the floor.
+  - **Unsigned works.** Measured on macOS 27.0.1 with the ad-hoc-signed
+    bundle `make app-bundle` builds: the app connects as a modern client,
+    registers its categories, and its first request shows the system's
+    "would like to send notifications" prompt. The system refuses
+    (`UNErrorDomain` 1, "Notifications are not allowed for this
+    application") a bundle LaunchServices cannot match to its path — one
+    under a temporary directory, or a binary started directly from a bundle
+    never opened — and, it appears, while an earlier request of the same
+    bundle id still awaits the user. In the first case the shell falls back
+    to the plugin's plain notification; a process that has used the modern
+    center cannot (macOS refuses to mix the two). Every Apple-silicon binary
+    is at least ad-hoc signed, so "unsigned" means ad-hoc here.
+  - **What signing would add.** Developer ID and notarization remove the
+    "Open Anyway" step; a provisioning profile, which needs the Apple
+    Developer account, unlocks Time Sensitive notifications (through Focus)
+    and push (F24). Neither is needed for buttons. NSUserNotification, the
+    plugin's API, is deprecated since macOS 11 and shows buttons only in the
+    Alerts style, so it was not the route.
+  - **Approve** answers allow for that `prompt_id` from Rust, without
+    bringing the window forward (the page may be throttled or closed), on
+    the daemon the supervisor is connected to over loopback. **Deny**
+    answers deny. A click on the body opens the session. A 409 shows
+    "Already answered"; any other failure "Could not answer" with the
+    reason; success shows nothing, since the badge and card change.
+  - **Approve only what it shows.** The daemon offers allow only when the
+    body holds the whole request — the command, file, URL or query on one
+    line, unclipped (ADR-035: a button must not answer a question it did not
+    show). Otherwise the notification offers **Open in Caprock** and
+    **Deny**. No list of destructive commands: Claude Code asks only for
+    what the user's rules do not allow, and a list would be incomplete and
+    read as a safety promise. "Always" is never offered from a notification:
+    it writes a rule. Approve carries the authentication-required option.
+  - **Not built.** Withdrawing a delivered notification when its prompt is
+    answered elsewhere (its buttons then get "Already answered"); Windows
+    toast buttons (needs a registered AppUserModelID and a COM activator)
+    and Linux D-Bus actions (servers differ; a click does not raise the
+    app). Both stay follow-ups.
 
 ## The scrolling rule
 

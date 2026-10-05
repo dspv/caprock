@@ -31,7 +31,15 @@ Phase 3 (Delight) has no plan by design.
   always appear in the order the session produced them, never twice, however
   late they arrive; scrolled up, nothing moves while new ones come in, and a
   "↓ N new" pill takes you back down.
-
+- **Approve and Deny right in the macOS notification.** A permission prompt's
+  notification now carries the buttons: Approve answers that prompt without
+  bringing Caprock forward, Deny refuses it, and a click on the notification
+  opens the session. Approve is offered only when the notification shows the
+  whole request; a longer command offers Open in Caprock and Deny, so you read
+  it on the prompt card first. A prompt answered in the meantime is never
+  typed into: you get "Already answered" instead. macOS asks once whether
+  Caprock may send notifications. Windows and Linux keep the click that opens
+  the prompt.
 - **The desktop app tells you when a session needs you.** An OS
   notification names the project and session and what it wants — `Bash: go
   test ./...`, the file an edit would change, the question asked — the moment

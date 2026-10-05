@@ -180,7 +180,7 @@ fn on_menu<R: Runtime>(app: &AppHandle<R>, id: &str) {
 
 /// Brings the window up and asks the page to open the session (it listens
 /// for `caprock:open-session`; app/README.md).
-fn open_session<R: Runtime>(app: &AppHandle<R>, session: &str) {
+pub fn open_session<R: Runtime>(app: &AppHandle<R>, session: &str) {
     hotkey::show(app);
     let Some(w) = app.get_webview_window(MAIN) else {
         return;

@@ -36,7 +36,7 @@ const kindError = "error"
 
 // Notify renders an alert for the app. promptID is the owned session's waiting
 // prompt, empty when there is none Caprock can answer; with one, the
-// notification offers Approve and Deny.
+// notification offers Deny, and Approve too when it shows the whole request.
 func Notify(a Alert, d Details, promptID string) Notification {
 	kind := string(a.Kind)
 	if a.Kind == KindFinished && a.Trigger.Kind == event.KindThrottle {
@@ -51,9 +51,22 @@ func Notify(a Alert, d Details, promptID string) Notification {
 		Body:      strings.Join(bodyLines(a, d), "\n"),
 	}
 	if promptID != "" && a.Kind == KindApproval && !a.Question {
-		n.PromptID, n.Actions = promptID, []string{"allow", "deny"}
+		n.PromptID, n.Actions = promptID, []string{"deny"}
+		if shownWhole(a.Trigger, d) {
+			n.Actions = []string{"allow", "deny"}
+		}
 	}
 	return n
+}
+
+// shownWhole reports whether the body shows all of what the dialog asks about:
+// its command, file, URL or query, on one line and not clipped. Approve from a
+// notification is offered only then, because a button must not answer a
+// question it did not show (ADR-035); otherwise the prompt card has it.
+func shownWhole(ev event.Event, d Details) bool {
+	_, what, _ := subjectParts(ev, d)
+	_, full, _, _ := subjectSource(ev, d)
+	return what != "" && what == strings.TrimSpace(full)
 }
 
 // project is what the title names: the project, else the folder, else the

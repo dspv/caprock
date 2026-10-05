@@ -188,6 +188,16 @@ func subject(ev event.Event, d Details) string {
 // command, the file, the URL or the query; or the question AskUserQuestion
 // puts, with question set.
 func subjectParts(ev event.Event, d Details) (label, what string, question bool) {
+	label, full, path, question := subjectSource(ev, d)
+	if path {
+		return label, clipStart(full, subjectMaxRunes), false
+	}
+	return label, clip(full, subjectMaxRunes), question
+}
+
+// subjectSource is subjectParts before clipping; path says full is a file,
+// whose end is the part to keep.
+func subjectSource(ev event.Event, d Details) (label, full string, path, question bool) {
 	var p struct {
 		ToolName  string `json:"tool_name"`
 		ToolInput struct {
@@ -210,19 +220,19 @@ func subjectParts(ev event.Event, d Details) (label, what string, question bool)
 	}
 	in := p.ToolInput
 	if len(in.Questions) > 0 {
-		return "", clip(in.Questions[0].Question, subjectMaxRunes), true
+		return "", in.Questions[0].Question, false, true
 	}
 	switch {
 	case in.Command != "":
-		what = clip(in.Command, subjectMaxRunes)
+		full = in.Command
 	case in.FilePath != "" || in.NotebookPath != "" || in.Path != "":
-		what = clipStart(relPath(firstOf(in.FilePath, in.NotebookPath, in.Path), d.Cwd, d.Home), subjectMaxRunes)
+		return toolLabel(tool), relPath(firstOf(in.FilePath, in.NotebookPath, in.Path), d.Cwd, d.Home), true, false
 	case in.URL != "":
-		what = clip(in.URL, subjectMaxRunes)
+		full = in.URL
 	default:
-		what = clip(firstOf(in.Query, in.Pattern), subjectMaxRunes)
+		full = firstOf(in.Query, in.Pattern)
 	}
-	return toolLabel(tool), what, false
+	return toolLabel(tool), full, false, false
 }
 
 // toolLabel names an MCP tool the way a person would: "create_issue via github".
