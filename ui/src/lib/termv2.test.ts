@@ -103,6 +103,29 @@ describe('TermClient (protocol v2)', () => {
     expect(t.resets()).toBe(0)
   })
 
+  it('suspends a hidden tab without reconnecting, and resumes from its offset on wake', () => {
+    const t = mount()
+    const s1 = last()
+    s1.accept()
+    // A snapshot that ends at offset 3.
+    s1.text({ hello: { v: 2, offset: 3, reset: true, ack: 0 } })
+    s1.bytes(0, 'abc')
+    expect(t.c.protocol).toBe('v2')
+    t.c.suspend()
+    expect(t.c.protocol).toBeUndefined()
+    vi.advanceTimersByTime(60_000)
+    expect(FakeSocket.all).toHaveLength(1)
+    t.c.wake()
+    const s2 = last()
+    expect(FakeSocket.all).toHaveLength(2)
+    expect(s2.query.get('since')).toBe('3')
+    s2.accept()
+    s2.text({ hello: { v: 2, offset: 3, reset: false, ack: 0 } })
+    s2.bytes(3, 'd')
+    expect(t.out.join('')).toBe('abcd')
+    expect(t.resets()).toBe(0)
+  })
+
   it('repaints only when the daemon says the offset is gone', () => {
     const t = mount()
     last().accept()

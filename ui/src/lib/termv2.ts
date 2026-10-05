@@ -98,6 +98,8 @@ export class TermClient {
   /** The socket was let go because the terminal is behind. */
   private drained = true
   private stateNow: TermState = 'connecting'
+  /** Let go on purpose while out of sight (the app's hidden tabs); `wake` resumes. */
+  private suspended = false
 
   constructor(private readonly opts: TermOptions) {
     this.random = opts.random ?? Math.random
@@ -106,6 +108,12 @@ export class TermClient {
   }
 
   get state(): TermState { return this.stateNow }
+  /** The protocol of the open socket, if one is open. */
+  get protocol(): 'v1' | 'v2' | undefined {
+    const ws = this.ws
+    if (!ws || ws.readyState !== WebSocket.OPEN) return undefined
+    return this.isV2(ws) ? 'v2' : 'v1'
+  }
   /** Bytes typed and not yet acknowledged. */
   get unacked(): number { return this.pending.reduce((n, p) => n + p.size, 0) }
 
@@ -144,6 +152,7 @@ export class TermClient {
    * socket that has been silent too long to trust.
    */
   wake(): void {
+    this.suspended = false
     if (this.ended || this.disposed || !this.drained) return
     const ws = this.ws
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -154,6 +163,20 @@ export class TermClient {
     if (ws && ws.readyState === WebSocket.CONNECTING) return
     clearTimeout(this.retryTimer)
     this.connect()
+  }
+
+  /**
+   * Let the socket go without reconnecting — a tab out of sight — keeping the
+   * offset, so `wake` resumes from the last byte instead of repainting.
+   */
+  suspend(): void {
+    if (this.ended || this.disposed) return
+    this.suspended = true
+    clearTimeout(this.retryTimer)
+    clearInterval(this.pingTimer)
+    const ws = this.ws
+    this.ws = null
+    if (ws) { ws.onclose = null; ws.onmessage = null; ws.close() }
   }
 
   dispose(): void {
@@ -174,7 +197,7 @@ export class TermClient {
   }
 
   private connect(): void {
-    if (this.disposed || this.ended) return
+    if (this.disposed || this.ended || this.suspended) return
     const q = new URLSearchParams({ client: this.clientId })
     if (this.pos !== null) q.set('since', String(this.pos))
     const protocols = [TERM_V2_PROTOCOL]

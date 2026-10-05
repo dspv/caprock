@@ -7,8 +7,8 @@
  * budgets), so this component subscribes to nothing but its own socket: no
  * live frames, no polling, no React state touched per byte.
  *
- * - **Hidden tabs disconnect after 30 s** and catch up when shown: v2 from the
- *   byte last seen, v1 from the daemon's snapshot. The xterm instance and its
+ * - **Hidden tabs disconnect after 30 s** (`TermClient.suspend`) and catch up
+ *   when shown: v2 from the byte last seen, v1 from the daemon's snapshot. The xterm instance and its
  *   scrollback stay, so switching back paints at once.
  * - **WebGL, late and recoverable.** Swapped in after the first output once
  *   typing pauses (as in the dashboard), dropped while hidden so ten tabs
@@ -23,7 +23,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import { deviceToken } from '@/lib/api'
-import { TermConnection, type TermStatus } from '@/lib/termv2'
+import { TermClient, type TermState } from '@/lib/termv2'
 import { attachTerminalInput } from '@/lib/xtermInput'
 import { matchAppShortcut } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
@@ -60,9 +60,8 @@ export const APP_TERMINAL_THEME = {
 } as const
 
 export interface PaneStatus {
-  status: TermStatus
-  attempt: number
-  protocol: 'v1' | 'v2'
+  status: TermState
+  protocol?: 'v1' | 'v2'
   cols: number
   rows: number
 }
@@ -80,7 +79,7 @@ export function TerminalPane({
   const host = useRef<HTMLDivElement>(null)
   const api = useRef<{ show: () => void; hide: () => void; scrollToBottom: () => void } | null>(null)
   const [phase, setPhase] = useState<'waiting' | 'ready'>('waiting')
-  const [status, setStatus] = useState<{ s: TermStatus; attempt: number }>({ s: 'connecting', attempt: 0 })
+  const [status, setStatus] = useState<TermState>('connecting')
   const [newLines, setNewLines] = useState(0)
   const onStatusRef = useRef(onStatus)
   onStatusRef.current = onStatus
@@ -120,30 +119,33 @@ export function TerminalPane({
     let webglTimer = 0
     let hideTimer = 0
 
-    const report = (s: TermStatus, attempt: number) => {
-      setStatus({ s, attempt })
-      onStatusRef.current?.({ status: s, attempt, protocol: conn.protocol, cols: term.cols, rows: term.rows })
+    const report = (s: TermState) => {
+      setStatus(s)
+      onStatusRef.current?.({ status: s, protocol: conn.protocol, cols: term.cols, rows: term.rows })
     }
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-    const conn = new TermConnection({
+    const conn = new TermClient({
       url: `${proto}://${location.host}/v1/agents/${encodeURIComponent(sessionId)}/term`,
       deviceToken: deviceToken() || undefined,
-      sink: {
-        write: (d, done) => term.write(d, done),
+      callbacks: {
+        write: (d, done) => {
+          if (!gotOutput) {
+            gotOutput = true
+            setPhase('ready')
+            try { if (visible) fit.fit() } catch { /* not laid out */ }
+            conn.resize(term.cols, term.rows)
+          }
+          term.write(d, done)
+        },
         // Clears the screen and every mode a dead TUI left on (mouse tracking,
         // bracketed paste, the alternate screen) before a repaint.
         reset: () => term.reset(),
-      },
-      onStatus: report,
-      onOpen: () => {
-        try { if (visible) fit.fit() } catch { /* not laid out */ }
-        conn.resize(term.cols, term.rows)
-      },
-      onFirstOutput: () => {
-        gotOutput = true
-        setPhase('ready')
-        try { if (visible) fit.fit() } catch { /* not laid out */ }
-        conn.resize(term.cols, term.rows)
+        state: report,
+        open: () => {
+          try { if (visible) fit.fit() } catch { /* not laid out */ }
+          conn.resize(term.cols, term.rows)
+          report(conn.state)
+        },
       },
     })
 
@@ -232,7 +234,8 @@ export function TerminalPane({
     ro.observe(el)
 
     const onWake = () => {
-      if (document.visibilityState === 'visible') conn.nudge()
+      // A suspended background tab stays let go until it is shown.
+      if (document.visibilityState === 'visible' && visible) conn.wake()
     }
     document.addEventListener('visibilitychange', onWake)
     window.addEventListener('online', onWake)
@@ -242,7 +245,7 @@ export function TerminalPane({
         visible = true
         if (hideTimer) window.clearTimeout(hideTimer)
         hideTimer = 0
-        conn.resume()
+        conn.wake()
         lastGeom = ''
         refit()
         if (webglLost || !webgl) scheduleWebgl()
@@ -261,7 +264,7 @@ export function TerminalPane({
         term.focus()
       },
     }
-    conn.open()
+    conn.start()
     return () => {
       disposed = true
       api.current = null
@@ -277,7 +280,7 @@ export function TerminalPane({
       sizeSub.dispose()
       parsedSub.dispose()
       scrollSub.dispose()
-      conn.close()
+      conn.dispose()
       term.dispose()
     }
   }, [sessionId])
@@ -293,17 +296,17 @@ export function TerminalPane({
       <div className="absolute inset-0 pl-3 pt-2 pr-1 pb-1">
         <div ref={host} data-term-host className="h-full w-full" />
       </div>
-      {phase === 'waiting' && status.s !== 'ended' && (
+      {phase === 'waiting' && status !== 'ended' && (
         <div role="status" className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <p className="mono text-[12px]" style={{ color: TERMINAL_THEME.foreground, opacity: 0.6 }}>
-            {status.s === 'reconnecting' ? 'Connecting to the session…' : 'Starting…'}
+            {status === 'reconnecting' ? 'Connecting to the session…' : 'Starting…'}
           </p>
         </div>
       )}
-      {(status.s === 'reconnecting' || status.s === 'refused') && phase === 'ready' && (
+      {(status === 'reconnecting' || status === 'revoked') && phase === 'ready' && (
         <div className="pointer-events-none absolute right-3 top-2 app-fade-in">
           <span className="mono rounded-full border border-white/10 bg-black/40 px-2.5 py-1 text-[11px] text-[#e7bb63] backdrop-blur-sm">
-            {status.s === 'refused' ? 'This device can no longer type here' : `Reconnecting${status.attempt > 1 ? ` (${status.attempt})` : ''}…`}
+            {status === 'revoked' ? 'This device can no longer type here' : 'Reconnecting…'}
           </span>
         </div>
       )}

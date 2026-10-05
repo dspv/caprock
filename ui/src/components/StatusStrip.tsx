@@ -28,8 +28,8 @@ export function StatusStrip({ summary, pane, version }: { summary?: Summary; pan
       <span className="ml-auto flex items-center gap-4">
         {pane && (
           <span className="num" title="The terminal in front: protocol and size">
-            {pane.status === 'live' ? '' : `${pane.status === 'reconnecting' ? `reconnecting${pane.attempt > 1 ? ` (${pane.attempt})` : ''}` : pane.status} · `}
-            {pane.protocol} · {pane.cols}×{pane.rows}
+            {pane.status === 'live' ? '' : `${pane.status} · `}
+            {pane.protocol ? `${pane.protocol} · ` : ''}{pane.cols}×{pane.rows}
           </span>
         )}
         {version && <span className="mono text-fg-faint">{version}</span>}

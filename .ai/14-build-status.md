@@ -75,7 +75,7 @@ Percentages are deliberately coarse — they answer "is this track started, half
 ### 2026-10-05 — The app workspace (WP-04, WP-06, WP-11 interface)
 
 `#/app` is a terminal-first workspace: sidebar (inbox, projects, worktrees,
-sessions), per-project tabs on a v2 terminal client with v1 fallback, an
+sessions), per-project tabs on the WP-03 terminal client (`TermClient`), an
 inspector, a status strip and the keyboard map ([04-ui.md § The app
 workspace](04-ui.md#the-app-workspace)). Projects and shells use the
 engine's `/v1/projects` and `/v1/shells` (#213), with sessions-derived
