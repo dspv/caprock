@@ -580,6 +580,8 @@ connection and the work survive a bad network.
   `?since=<seq>` and gets the gap, or a `reset` frame and refetches its views.
   Notifications are in that ring, so a phone that was offline sees what it
   missed.
+  Built in WP-12 (2026-10-06); the wire contract is in
+  [03-contracts.md § Live socket, replay](03-contracts.md#live-socket-replay).
 - **Offline queue.** A message sent from the keys bar while offline is held,
   shown as "will send", and sent on reconnect — only if the session is still
   live and no permission prompt is pending; otherwise it stays as a draft with
