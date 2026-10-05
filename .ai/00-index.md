@@ -24,6 +24,8 @@ Caprock is a local, open-source **mission control for Claude Code**: a single st
 | [18-postmortem.md](18-postmortem.md)               | The ~0% compression finding that closed the prior direction     | Before reopening token optimisation (FB-031)       |
 | [19-codex.md](19-codex.md)                         | Codex support: what it gives us, what it cannot price, plan     | Adding or changing Codex support                   |
 | [20-deepseek.md](20-deepseek.md)                   | DeepSeek Harness support: what it gives us, what is not built   | Adding or changing DeepSeek Harness support        |
+| [21-app.md](21-app.md)                             | The desktop app: goal, features by priority, budgets, protocols | Working on the app, terminal protocol v2, projects |
+| [22-app-plan.md](22-app-plan.md)                   | The desktop app: milestones, work packages, definitions of done | Picking up or finishing an app work package        |
 
 These files absorbed the hand-off specification (`CaprockV2-SPEC.md`, deleted after the loss audit recorded in [docs/migration-audit.md](../docs/migration-audit.md)). The spec is not a separate source of truth — **these files are**. (Numbering is non-contiguous by design — 11 was never used; nothing is missing.)
 
@@ -57,6 +59,7 @@ Supporting directories:
 - **Paid plans:** free, $30/year or $5/month, $100 once. A licence key with its own expiry unlocks the daily spend cap, weekly report and Gemini on the user's own key, and is checked offline ([ADR-022](08-decisions.md)); Stripe issues it and emails it on payment. The team tier is specified, not built ([ADR-021](08-decisions.md)).
 - **Users:** what real people asked for, and what came of it, is in `.fdck/` in the private site repo — dated, in their own words, with a ledger.
 - **Security:** a v0.17.0 audit found six defects sharing one root cause — the hive treated files written by a worker session (which runs with permissions skipped) as trusted input. All six are fixed: an arbitrary file write outside the hive via a mailbox `to:` field, a `git worktree add -B` that destroyed user commits, path traversal via task ids, a `~/.claude.json` rewrite that lost key order and truncated large integers, a settings.json backup that never refreshed (plus `caprock hooks restore`), and an unreachable-but-catastrophic prune path. See [ADR-020](08-decisions.md) and the 2026-08-23 entry in [14-build-status.md](14-build-status.md).
+- **Desktop app:** planned, not built. A Tauri v2 shell around the same React UI and xterm.js, on the Go daemon, for macOS, Windows and Linux ([ADR-038](08-decisions.md)); spec in [21-app.md](21-app.md), plan and definitions of done in [22-app-plan.md](22-app-plan.md).
 - **Unmeasured / undecided:** see [12-risks.md § Open questions](12-risks.md#open-questions); `OQ-01`, `OQ-03`, and `OQ-07` are resolved (all open questions OQ-01–09 are closed); no open question blocks shipping.
 
 ## Rules of engagement — non-negotiable

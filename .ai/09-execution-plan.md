@@ -296,6 +296,10 @@ open in the ledger, which owns the reasoning.
 Each definition of done is new here; the shape and boundary of each item are
 owned by the file linked, which is the home for the details.
 
+- **The desktop app.** Specified in [21-app.md](21-app.md) and decided in
+  [ADR-038](08-decisions.md); milestones, work packages and the definitions of
+  done for each package, the MVP release and phone v2 are owned by
+  [22-app-plan.md](22-app-plan.md), which this list does not restate.
 - **Teams tier.** Specified in [17-teams.md](17-teams.md), not built, gated on
   demand from the `/teams` form. **DoD:** a second mode (or a second binary)
   receives aggregate reports from more than one machine — session identity,

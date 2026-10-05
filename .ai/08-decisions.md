@@ -40,6 +40,10 @@ Single-binary distribution is preserved: `go build` yields one file per OS that 
 
 **Revisit if:** a desktop wrapper is wanted for Phase 3 — Tauri/Wails is a *packaging* decision layered on top, not an architecture change.
 
+*Amended 2026-10-05 by [ADR-038](#adr-038--the-desktop-app-is-a-thin-tauri-v2-shell-around-the-existing-react-ui-and-xtermjs-on-the-go-daemon):*
+the wrapper is now wanted, and is that packaging decision: a Tauri v2 window
+around this same UI, still served by the binary.
+
 ---
 
 ## ADR-004 — Observe-only for externally started sessions: yes, it is the Phase 0 wedge
@@ -1524,3 +1528,107 @@ model holding exactly the session's tokens and cost is taken as its own.
 **Revisit if** a removed session is wanted back, or removal is wanted from a
 phone.
 
+
+---
+
+## ADR-038 — The desktop app is a thin Tauri v2 shell around the existing React UI and xterm.js, on the Go daemon
+
+**Date:** 2026-10-05 · **Status:** accepted (owner, 2026-10-05)
+
+**Context.** The owner wants people to *live* in Caprock: an installed app in
+the dock or taskbar, terminal-first, across many projects, with the monitoring
+Caprock has and a phone that can start work. The reference app (Orca) has that
+shape and fails on freezes, dropped phone connections, a jumping chat scroll,
+hidden GitHub errors and hanging terminals. He needs macOS, Windows and Linux,
+and a mobile app later from the same code; speed to market matters. Developers
+use the app; managers use the Caprock Teams web dashboard; the app is free and
+teams pay.
+
+The first plan (2026-10-04) was a Swift app with SwiftTerm, macOS only. Its
+spike (PR #180, branch `spike/macos-app`) measured, on one Apple Silicon Mac:
+native echo 5–6 ms p50 against 12–19 ms for the web terminal, opening a
+session in about 0.1 s against 0.25–1.1 s, and 34–53 MB against 280–440 MB for
+a Chrome tab. **That plan is superseded by this decision; its numbers stand**
+and are the baseline in [21-app.md](21-app.md#performance-budgets). The spike
+also found that echo latency is not where native wins — up to a frame of the
+web figure is vsync alignment, and neither stalled at 1,000 lines a second —
+while opening, memory and focus are.
+
+**The decision.**
+
+- **Tauri v2** is the app shell on all three desktop OS: Rust, kept minimal —
+  the window, tray or menu bar, OS notifications, global hotkey, badge, update
+  notice and starting the bundled daemon. Nothing else is written in Rust.
+- **The existing React UI (`ui/`)** is the app's interface, loaded from the
+  daemon's loopback URL so the UI and the API it calls always come from the
+  same release. It gains an app layout (sidebar, terminal tabs) when it
+  detects the shell.
+- **xterm.js** stays the terminal, behind the tab component, so a native
+  renderer can replace it without touching the rest.
+- **The Go daemon stays the only engine**: sessions, pty-hosts (ADR-033), the
+  store, hooks, pricing, pairing and the phone's roles (ADR-034 to ADR-037),
+  alerts. The app is one more client of its API, beside the browser and the
+  phone.
+- **Mobile later from the same codebase** (Tauri v2 targets iOS and Android);
+  until then the phone is the web dashboard, made resilient.
+
+**Alternatives, and why not.**
+
+- **Swift with SwiftTerm (the first plan).** Best measured latency and memory,
+  macOS only. Windows and Linux would each need another app, and rule 2 says a
+  feature is not done until it works on Windows.
+- **Native per OS, three times** (SwiftUI, WinUI, GTK). The best feel, three
+  codebases and three terminal integrations to keep equal; months before the
+  first release on all three.
+- **Rust with gpui and alacritty_terminal.** One native codebase and a fast
+  GPU terminal, but every screen Caprock has would be rewritten in a young UI
+  toolkit, and the phone would still need web.
+- **Electron.** The UI as is, Chromium's rendering everywhere, but a
+  bundled Chromium in every install (the reference app's `app.asar` alone is
+  126 MB, measured 2026-10-05), a Chromium process tree per window, and the
+  reference app's freezes come from this shape. ADR-003 ruled it out.
+- **Flutter.** One codebase including mobile, but every screen rewritten in
+  Dart and no mature terminal widget at xterm.js's level.
+- **Qt** (C++ or QML). Native-feeling and fast, but a rewrite of the UI, C++
+  or a binding, and licensing to read.
+- **Wails** (Go and a system WebView). The same WebView as Tauri and Go
+  instead of Rust, but no mobile targets, a smaller ecosystem for tray,
+  notifications and updates, and the shell would tempt logic into the app
+  process the engine already owns.
+- **Rewrite the engine** in Rust inside the app. Throws away a released,
+  three-OS-tested daemon and the pty-host work, and the phone and browser
+  would lose the server they talk to.
+
+**Why Tauri, in short.** It reuses every screen that exists, runs on the system
+WebView (no bundled Chromium), targets the three desktops and both phones, and
+keeps the native part small enough that the engine stays in Go. The one cost
+is that the terminal is xterm.js in a WebView, which the spike says costs
+latency we can afford and saves everything else.
+
+**Consequences.**
+
+- `ui/` serves three layouts (browser, app, phone) from one codebase; the
+  app's surfaces are switched on by detection, never forked.
+- The daemon grows what the app needs, and the phone benefits from all of it:
+  `api_level`, terminal protocol v2 (byte offsets, resume, exactly-once
+  input), projects (migration 0041), shell tabs, the `notify` live frame and
+  `/v1/live` replay. The specs are in [21-app.md](21-app.md); each lands in
+  [03-contracts.md](03-contracts.md) with its work package.
+- Releases ship two artefacts from one tag: the binaries and the app, which
+  bundles the daemon it was built with.
+- A new toolchain (Rust, Tauri's bundler, per-OS signing) joins CI; the app
+  is built and tested on all three OS like the daemon.
+- The app keeps rule 4: no telemetry, outbound calls only when switched on.
+
+**Rules out:** Electron; a native app per OS for the MVP; business logic in
+the Rust shell; a UI bundled in the app that can disagree with the daemon's
+API (until mobile, which brings `api_level` into force); a second terminal
+backend beside the pty-host.
+
+**Revisit if** echo latency or typing comfort draws complaints that a budget
+in [21-app.md](21-app.md#performance-budgets) confirms on any OS — then a
+native terminal view per OS via libghostty behind the same tab interface (F23)
+is the next step, not a new shell; if WebKitGTK cannot meet the budgets on
+Linux with any xterm.js renderer; if Tauri's mobile targets cannot host the
+phone UI acceptably when F22 starts; or if the Rust shell passes its line
+budget because something belongs in it that the daemon cannot do.
