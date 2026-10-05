@@ -113,9 +113,15 @@ rounds as Now does (it floored: 41% beside Now's 42%). Checked in headless
 Chrome against an isolated daemon with fake sessions at 1440×900 and
 1280×800, light and dark (splits, palette, the new-task sheet; no
 horizontal scroll, no console errors), and the popover page at 380 px in both
-themes; a 12 s run of the app built from this branch created the hidden
-popover window beside the main one. Not exercised: clicking the real menu
-bar icon (input on a desktop in use), Windows and Linux.
+themes. The popover is a non-activating `NSPanel`: in a background run of
+the app (`--features snapshot`, its `popover` hook toggling it as a click
+would, the app first hidden and shown again without activation), the front
+application stayed the one the user was in, the main window stayed behind
+it, and after closing nothing of Caprock's was above it; the control run
+with an ordinary window switched the front application to Caprock and left
+its main window on top and key. Not exercised: clicking the real menu bar
+icon or a button in the panel (input on a desktop in use), Windows and
+Linux.
 
 ### 2026-10-06 — Phone resilience client (WP-13)
 

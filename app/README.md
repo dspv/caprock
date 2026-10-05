@@ -161,8 +161,14 @@ in the page, so it is not taken for a click on a notification.
   session when named), `tray_hide`, `tray_fit` (its height, clamped 140–640
   px) and `hotkey_status` (capability `tray`). A right click keeps the native
   menu. The shell dispatches `caprock:tray-shown` and `caprock:tray-hidden`
-  in the page; the page asks the daemon only while shown. It is an ordinary
-  window, not a non-activating panel, so showing it activates the app.
+  in the page; the page asks the daemon only while shown. It is a
+  non-activating `NSPanel` (the window Tauri builds changes class to a panel
+  subclass laid out like Tao's window, through objc2 — no extra crate):
+  opening it, typing in it and closing it leave the app you were in active
+  and the main window where it was; only *Open* brings Caprock forward. The
+  `snapshot` dev feature can toggle it and report whether the app activated
+  (`src/snapshot.rs`), which is how this was checked without input on a
+  shared desktop.
 - **Closing the window.** On macOS it hides the window and the app stays in
   the menu bar (Cmd+Q or **Quit Caprock** quits; the Dock icon reopens it).
   On Windows and Linux closing still quits, because a tray may not be shown

@@ -33,7 +33,8 @@ Phase 3 (Delight) has no plan by design.
 - **Menu bar popover (macOS).** A click on Caprock's menu bar icon opens a
   panel under it: what needs you (approve or deny a prompt shown in full),
   what is running with its cost, today's spend and the Claude and Codex plan
-  windows with when they reset. A right click keeps the menu.
+  windows with when they reset. It opens over the app you are in without
+  switching to Caprock or raising its window. A right click keeps the menu.
 
 ### Fixed
 
