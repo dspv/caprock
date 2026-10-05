@@ -125,7 +125,8 @@ if [[ "$CASK_PR" == 1 ]]; then
   git -C "$TAP" add Casks/caprock-app.rb
   git -C "$TAP" commit -q -m "caprock-app $VERSION"
   git -C "$TAP" push -q -u origin "caprock-app-$VERSION"
-  (cd "$TAP" && gh pr create --title "caprock-app $VERSION" \
+  # --repo and --head: in a fresh clone gh cannot infer the pushed branch.
+  (cd "$TAP" && gh pr create --repo dspv/homebrew-tap --head "caprock-app-$VERSION" --title "caprock-app $VERSION" \
     --body "The desktop app's cask for $TAG, rendered by scripts/app-release.sh in dspv/caprock.")
 fi
 
