@@ -53,6 +53,21 @@ Phase 3 (Delight) has no plan by design.
   was still tearing the old one down, the bootstrap failed with "5:
   Input/output error", and nothing was running. It now waits for the old one
   to go and retries briefly.
+- **"/" is no longer offered as a recent project.** The New session picker
+  leaves out the filesystem root, your home directory and the temp directory
+  itself, so something on the machine running `claude` from "/" every few
+  minutes no longer sits at the top of the list. Folders inside them are
+  offered as before.
+- **No more "handoff lookup failed … context canceled" in the log.** A session
+  opening in "/", your home directory or the temp directory gets no handoff
+  and runs no lookup. The lookup itself now skips other projects' passages on
+  the index instead of reading each one: a project with nothing to hand over
+  took 4-6 s on a 1.2 GB database, longer than Claude Code waits for the hook,
+  and now takes under 0.1 s.
+- **The share dialog's all-time card is ready when you open it.** The daemon
+  works out the all-time and 30-day Weeks when it starts, and reads the tool
+  calls behind them in parallel slices: all time went from 5.0 s to 1.9 s on a
+  copy of a 1.2 GB database, with the same figures.
 
 ## [0.71.0] - 2026-10-04
 

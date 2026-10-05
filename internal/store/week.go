@@ -383,38 +383,30 @@ type bashCall struct {
 // weekTools reads the successful Bash, Edit, Write and MultiEdit calls: pull
 // requests, commits, files and lines, and the time spent waiting on CI.
 func weekTools(ctx context.Context, q Querier, from, to int64, w *Week, o WeekOptions, dayOf func(int64) (int, bool)) error {
-	rows, err := q.QueryContext(ctx, `
-		SELECT e.session_id, COALESCE(e.key,''), COALESCE(e.tool,''), e.ts, e.payload
-		FROM events e
-		WHERE e.kind = 'tool.post' AND e.ts >= ? AND e.ts < ?`+nonInternalEventE+`
-		  AND e.tool IN ('Bash','Edit','Write','MultiEdit')
-		ORDER BY e.ts, e.id`, from, to)
+	// Read in slices side by side, then joined in time order: pull requests
+	// are matched to their merges in the order the calls ran.
+	spans, err := weekSpans(ctx, q, "tool.post", from, to, toolScanWorkers)
 	if err != nil {
 		return err
 	}
-	type row struct {
-		session, key, tool string
-		ts                 int64
-		p                  toolPost
+	parts := make([][]toolRow, len(spans))
+	errs := make([]error, len(spans))
+	var wg sync.WaitGroup
+	for i, sp := range spans {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			parts[i], errs[i] = scanToolPosts(ctx, q, sp[0], sp[1])
+		}()
 	}
-	var posts []row
-	for rows.Next() {
-		var r row
-		var payload []byte
-		if err := rows.Scan(&r.session, &r.key, &r.tool, &r.ts, &payload); err != nil {
-			_ = rows.Close()
-			return err
-		}
-		if json.Unmarshal(payload, &r.p) != nil || !r.p.succeeded() {
-			continue
-		}
-		posts = append(posts, r)
-	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
+	wg.Wait()
+	if err := errors.Join(errs...); err != nil {
 		return err
 	}
-	_ = rows.Close()
+	var posts []toolRow
+	for _, part := range parts {
+		posts = append(posts, part...)
+	}
 
 	var bash []bashCall
 	files := map[string]bool{}
@@ -469,6 +461,44 @@ func weekTools(ctx context.Context, q Querier, from, to int64, w *Week, o WeekOp
 	w.FilesEdited = len(files)
 	countPRs(bash, w, dayOf)
 	return nil
+}
+
+// toolScanWorkers is how many slices of the window weekTools reads at once.
+const toolScanWorkers = 2
+
+// toolRow is one successful tool call weekTools counts.
+type toolRow struct {
+	session, key, tool string
+	ts                 int64
+	p                  toolPost
+}
+
+// scanToolPosts reads the successful Bash, Edit, Write and MultiEdit calls in
+// [from, to), in time order.
+func scanToolPosts(ctx context.Context, q Querier, from, to int64) ([]toolRow, error) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT e.session_id, COALESCE(e.key,''), COALESCE(e.tool,''), e.ts, e.payload
+		FROM events e
+		WHERE e.kind = 'tool.post' AND e.ts >= ? AND e.ts < ?`+nonInternalEventE+`
+		  AND e.tool IN ('Bash','Edit','Write','MultiEdit')
+		ORDER BY e.ts, e.id`, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var posts []toolRow
+	for rows.Next() {
+		var r toolRow
+		var payload []byte
+		if err := rows.Scan(&r.session, &r.key, &r.tool, &r.ts, &payload); err != nil {
+			return nil, err
+		}
+		if json.Unmarshal(payload, &r.p) != nil || !r.p.succeeded() {
+			continue
+		}
+		posts = append(posts, r)
+	}
+	return posts, rows.Err()
 }
 
 func preInput(ctx context.Context, q Querier, session, postKey string) (json.RawMessage, error) {
@@ -633,49 +663,38 @@ func weekLoop(ctx context.Context, q Querier, from, to int64, w *Week, o WeekOpt
 	if win <= 0 {
 		win = 3 * time.Minute
 	}
-	rows, err := q.QueryContext(ctx, `
-		SELECT e.session_id, COALESCE(s.agent,'claude'), COALESCE(e.tool,''), e.ts, COALESCE(e.msg_id,''), e.payload
-		FROM events e LEFT JOIN sessions s ON s.session_id = e.session_id
-		WHERE e.kind = 'tool.pre' AND e.ts >= ? AND e.ts < ?`+nonInternalEventE+`
-		  AND COALESCE(e.tool,'') NOT IN (`+readOnlyList+`)`, from, to)
+	// The scan reads and fingerprints every tool call's payload — most of the
+	// Week's all-time wait — so it runs over slices of the window side by side
+	// and the slices are put back in order: the same series, hits and first
+	// payloads as one pass would build.
+	spans, err := weekSpans(ctx, q, "tool.pre", from, to, loopScanWorkers)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
-	type hit struct {
-		ts  int64
-		msg string
+	parts := make([]loopScan, len(spans))
+	errs := make([]error, len(spans))
+	var wg sync.WaitGroup
+	for i, sp := range spans {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			parts[i], errs[i] = scanLoopSeries(ctx, q, sp[0], sp[1])
+		}()
 	}
-	type series struct {
-		session, agent, tool string
-		payload              []byte
-		hits                 []hit
+	wg.Wait()
+	if err := errors.Join(errs...); err != nil {
+		return err
 	}
-	all := map[string]*series{}
-	for rows.Next() {
-		var sess, agent, tool, msg string
-		var ts int64
-		var payload []byte
-		if err := rows.Scan(&sess, &agent, &tool, &ts, &msg, &payload); err != nil {
-			return err
-		}
-		if tool == "" || loop.ReadOnly(tool) {
-			continue
-		}
-		sig, _ := loop.Signature(tool, payload)
-		if sig == "" {
-			continue
-		}
-		key := sess + "\x00" + sig
-		s := all[key]
-		if s == nil {
-			s = &series{session: sess, agent: agent, tool: tool, payload: payload}
+	all := map[string]*loopSeries{}
+	for _, part := range parts {
+		for _, key := range part.order {
+			s := part.series[key]
+			if have := all[key]; have != nil {
+				have.hits = append(have.hits, s.hits...)
+				continue
+			}
 			all[key] = s
 		}
-		s.hits = append(s.hits, hit{ts, msg})
-	}
-	if err := rows.Err(); err != nil {
-		return err
 	}
 	winMs := win.Milliseconds()
 	var best *WeekLoop
@@ -691,7 +710,7 @@ func weekLoop(ctx context.Context, q Querier, from, to int64, w *Week, o WeekOpt
 		sort.SliceStable(s.hits, func(i, j int) bool { return s.hits[i].ts < s.hits[j].ts })
 		// One hit per message: a turn that issued the same call five times in
 		// parallel decided once.
-		var hits []hit
+		var hits []loopHit
 		seenMsg := map[string]bool{}
 		for _, h := range s.hits {
 			if h.msg != "" {
@@ -708,7 +727,7 @@ func weekLoop(ctx context.Context, q Querier, from, to int64, w *Week, o WeekOpt
 				end++
 			}
 			ep := hits[start:end]
-			if len(ep) >= k && maxInWindow(ep, winMs, func(h hit) int64 { return h.ts }) >= k {
+			if len(ep) >= k && maxInWindow(ep, winMs, func(h loopHit) int64 { return h.ts }) >= k {
 				first, last := ep[0].ts, ep[len(ep)-1].ts
 				if best == nil || len(ep) > best.Calls || (len(ep) == best.Calls && last-first > best.LastMs-best.FirstMs) {
 					best = &WeekLoop{SessionID: s.session, Agent: s.agent, Tool: s.tool, Kind: loopKind(s.tool, s.payload), Calls: len(ep), FirstMs: first, LastMs: last}
@@ -719,6 +738,103 @@ func weekLoop(ctx context.Context, q Querier, from, to int64, w *Week, o WeekOpt
 	}
 	w.Loop = best
 	return nil
+}
+
+// loopScanWorkers is how many slices of the window weekLoop reads at once.
+// With weekTools' two beside them and the main queries, seven of the pool's
+// eight connections: one stays free for ingest and the next request.
+const loopScanWorkers = 4
+
+// loopHit is one call of a repeated signature.
+type loopHit struct {
+	ts  int64
+	msg string
+}
+
+// loopSeries is every call of one signature in one session.
+type loopSeries struct {
+	session, agent, tool string
+	payload              []byte // the first call's, for loopKind
+	hits                 []loopHit
+}
+
+// loopScan is one slice's series, with the order each key first appeared.
+type loopScan struct {
+	series map[string]*loopSeries
+	order  []string
+}
+
+// scanLoopSeries groups the non-read-only tool calls in [from, to) by session
+// and signature.
+func scanLoopSeries(ctx context.Context, q Querier, from, to int64) (loopScan, error) {
+	out := loopScan{series: map[string]*loopSeries{}}
+	rows, err := q.QueryContext(ctx, `
+		SELECT e.session_id, COALESCE(s.agent,'claude'), COALESCE(e.tool,''), e.ts, COALESCE(e.msg_id,''), e.payload
+		FROM events e LEFT JOIN sessions s ON s.session_id = e.session_id
+		WHERE e.kind = 'tool.pre' AND e.ts >= ? AND e.ts < ?`+nonInternalEventE+`
+		  AND COALESCE(e.tool,'') NOT IN (`+readOnlyList+`)`, from, to)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var sess, agent, tool, msg string
+		var ts int64
+		var payload []byte
+		if err := rows.Scan(&sess, &agent, &tool, &ts, &msg, &payload); err != nil {
+			return out, err
+		}
+		if tool == "" || loop.ReadOnly(tool) {
+			continue
+		}
+		sig, _ := loop.Signature(tool, payload)
+		if sig == "" {
+			continue
+		}
+		key := sess + "\x00" + sig
+		s := out.series[key]
+		if s == nil {
+			s = &loopSeries{session: sess, agent: agent, tool: tool, payload: payload}
+			out.series[key] = s
+			out.order = append(out.order, key)
+		}
+		s.hits = append(s.hits, loopHit{ts, msg})
+	}
+	return out, rows.Err()
+}
+
+// weekSpans cuts [from, to) into at most n contiguous slices holding about
+// as many `kind` events each, read off idx_events_kind_ts without touching a
+// row. Slices are [start, end) and cover the window exactly once.
+func weekSpans(ctx context.Context, q Querier, kind string, from, to int64, n int) ([][2]int64, error) {
+	var count int64
+	if err := q.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM events INDEXED BY idx_events_kind_ts WHERE kind = ? AND ts >= ? AND ts < ?`,
+		kind, from, to).Scan(&count); err != nil {
+		return nil, err
+	}
+	bounds := []int64{from}
+	for i := 1; i < n && count > int64(n); i++ {
+		var ts int64
+		err := q.QueryRowContext(ctx,
+			`SELECT ts FROM events INDEXED BY idx_events_kind_ts WHERE kind = ? AND ts >= ? AND ts < ? ORDER BY ts LIMIT 1 OFFSET ?`,
+			kind, from, to, count*int64(i)/int64(n)).Scan(&ts)
+		if errors.Is(err, sql.ErrNoRows) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if ts > bounds[len(bounds)-1] {
+			bounds = append(bounds, ts)
+		}
+	}
+	bounds = append(bounds, to)
+	spans := make([][2]int64, 0, len(bounds)-1)
+	for i := 0; i+1 < len(bounds); i++ {
+		spans = append(spans, [2]int64{bounds[i], bounds[i+1]})
+	}
+	return spans, nil
 }
 
 // readOnlyList is the detector's read-only tools as an SQL list, so their

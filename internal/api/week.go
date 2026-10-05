@@ -73,21 +73,42 @@ func (s *Server) handleWeek(w http.ResponseWriter, r *http.Request) {
 		s.failCode(w, http.StatusBadRequest, err)
 		return
 	}
-	cache := s.week
-	if period == "30d" || period == "all" {
-		cache = s.weekLong
-	}
-	key := "week:" + period + ":" + from.Format("2006-01-02") + ":" + to.Format("2006-01-02")
-	v, err := cache.get(r.Context(), key, func() (any, error) {
-		resp, err := s.buildWeek(context.WithoutCancel(r.Context()), from, to)
-		resp.Period = period
-		return resp, err
-	})
+	v, err := s.weekAnswer(r.Context(), period, from, to)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
+}
+
+// weekAnswer is the cached Week for one window.
+func (s *Server) weekAnswer(ctx context.Context, period string, from, to time.Time) (any, error) {
+	cache := s.week
+	if period == "30d" || period == "all" {
+		cache = s.weekLong
+	}
+	key := "week:" + period + ":" + from.Format("2006-01-02") + ":" + to.Format("2006-01-02")
+	return cache.get(ctx, key, func() (any, error) {
+		resp, err := s.buildWeek(context.WithoutCancel(ctx), from, to)
+		resp.Period = period
+		return resp, err
+	})
+}
+
+// warmWeek computes the share dialog's all-time and 30-day Weeks, the two
+// that cost seconds on a large database, so the first open after a start
+// finds them cached.
+func (s *Server) warmWeek(ctx context.Context) {
+	for _, period := range []string{"all", "30d"} {
+		if ctx.Err() != nil {
+			return
+		}
+		from, to, err := s.weekPeriod(ctx, period)
+		if err != nil {
+			continue
+		}
+		_, _ = s.weekAnswer(ctx, period, from, to)
+	}
 }
 
 // weekPeriod is the window a named period covers, in whole local days ending

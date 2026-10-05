@@ -28,6 +28,7 @@ import (
 
 type env struct {
 	srv *httptest.Server
+	api *Server
 	rec *rollup.Recorder
 	st  *store.Store
 	now time.Time
@@ -71,7 +72,7 @@ func newEnv(t *testing.T) *env {
 	loops["looper"] = &loop.Alert{Kind: "loop", SessionID: "looper", Tool: "Bash", Count: 5, LastTs: now}
 	srv := httptest.NewServer(s)
 	t.Cleanup(srv.Close)
-	return &env{srv: srv, rec: rec, st: st, now: now, settings: settings}
+	return &env{srv: srv, api: s, rec: rec, st: st, now: now, settings: settings}
 }
 
 func (e *env) get(t *testing.T, path string, out any) int {

@@ -2874,6 +2874,10 @@ type RecentDirDetail struct {
 // directory otherwise: two sessions started from different subdirectories of
 // one repository are one entry, because they are one project to the person
 // choosing.
+//
+// "/", the home directory and a temp directory are left out (NotAProject):
+// something on the machine running `claude` from "/" every few minutes would
+// otherwise hold the top of the list for good.
 func RecentDirs(ctx context.Context, q Querier, limit int) ([]RecentDirDetail, error) {
 	if limit <= 0 {
 		limit = 8
@@ -2882,16 +2886,19 @@ func RecentDirs(ctx context.Context, q Querier, limit int) ([]RecentDirDetail, e
 		SELECT d, COUNT(*), MAX(last_event_at) FROM (
 			SELECT COALESCE(NULLIF(repo_root,''), cwd) AS d, last_event_at FROM sessions
 			WHERE COALESCE(NULLIF(repo_root,''), cwd) != ''
-		) GROUP BY d ORDER BY 3 DESC LIMIT ?`, limit)
+		) GROUP BY d ORDER BY 3 DESC`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []RecentDirDetail
-	for rows.Next() {
+	for len(out) < limit && rows.Next() {
 		var d RecentDirDetail
 		if err := rows.Scan(&d.Dir, &d.Sessions, &d.LastEventAt); err != nil {
 			return nil, err
+		}
+		if NotAProject(d.Dir) {
+			continue
 		}
 		out = append(out, d)
 	}
@@ -2926,19 +2933,28 @@ func SpendSince(ctx context.Context, q Querier, fromMs int64) (float64, error) {
 // `before` excludes the session now starting, so a session cannot be handed its
 // own output; `minLen` skips one-liners like "Done." that say nothing about
 // where the work stood.
+//
+// The project is tested on the covering index, before any payload is read. As
+// a join on sessions, every assistant turn in the database had its payload
+// fetched and parsed before the project was checked, so a project with no
+// passage long enough — every session from "/" — walked all of history: 4-6 s
+// on the owner's 1.2 GB database (2026-10-05), longer than the SessionStart
+// hook waits, and the lookup died cancelled every time. The session ids are
+// on idx_events_cost_cover, so rows of other projects are skipped without
+// touching their payloads: under 0.1 s for any project, same answers.
 func WhereWeLeftOff(ctx context.Context, q Querier, project string, before int64, minLen int) (AssistantNote, error) {
 	if minLen <= 0 {
 		minLen = 400
 	}
 	row := q.QueryRowContext(ctx, `
-		SELECT e.id, e.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''),
+		SELECT e.id, e.session_id, ?, e.ts, COALESCE(e.model,''),
 		       COALESCE(json_extract(e.payload, '$.text'), '')
-		FROM events e JOIN sessions se ON se.session_id = e.session_id
-		WHERE `+assistantTextWhere+`
-		  AND se.project = ?
+		FROM events e INDEXED BY idx_events_cost_cover
+		WHERE e.session_id IN (SELECT session_id FROM sessions WHERE project = ?)
+		  AND `+assistantTextWhere+`
 		  AND e.ts < ?
 		  AND LENGTH(json_extract(e.payload, '$.text')) >= ?
-		ORDER BY e.ts DESC LIMIT 1`, project, before, minLen)
+		ORDER BY e.ts DESC LIMIT 1`, project, project, before, minLen)
 	var n AssistantNote
 	var ts int64
 	err := row.Scan(&n.EventID, &n.SessionID, &n.Project, &ts, &n.Model, &n.Text)

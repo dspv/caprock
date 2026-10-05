@@ -337,3 +337,40 @@ func TestWeekStatsEmptyWindow(t *testing.T) {
 		t.Fatalf("empty week %+v", w)
 	}
 }
+
+// The loop scan reads slices of the window side by side. An episode that
+// straddles a slice boundary is still one episode, as in a single pass.
+func TestWeekLoopAcrossScanSlices(t *testing.T) {
+	ctx := context.Background()
+	f := &weekFixture{t: t, s: openTest(t), loc: time.UTC}
+	from := time.Date(2026, 9, 27, 0, 0, 0, 0, time.UTC)
+	f.session("s", "claude", "")
+	t0 := from.Add(time.Hour)
+	// Forty identical calls 20 s apart: every slice holds some of them.
+	for i := 0; i < 40; i++ {
+		f.put(event.Event{SessionID: "s", Source: event.SourceHook, Kind: event.KindToolPre, Tool: "Bash",
+			Ts: t0.Add(time.Duration(i) * 20 * time.Second), Payload: json.RawMessage(`{"tool_input":{"command":"gh pr checks 12"}}`)})
+	}
+	spans, err := weekSpans(ctx, f.s.DB(), "tool.pre", from.UnixMilli(), from.AddDate(0, 0, 7).UnixMilli(), loopScanWorkers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(spans) < 2 {
+		t.Fatalf("spans %v: the window was not cut, so this test proves nothing", spans)
+	}
+	if spans[0][0] != from.UnixMilli() || spans[len(spans)-1][1] != from.AddDate(0, 0, 7).UnixMilli() {
+		t.Fatalf("spans %v do not cover the window", spans)
+	}
+	for i := 1; i < len(spans); i++ {
+		if spans[i][0] != spans[i-1][1] {
+			t.Fatalf("spans %v leave a gap or overlap", spans)
+		}
+	}
+	w, err := WeekStats(ctx, f.s.DB(), WeekOptions{From: from, To: from.AddDate(0, 0, 7), Loc: time.UTC, LoopK: 5, LoopWindow: 3 * time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.Loop == nil || w.Loop.Calls != 40 {
+		t.Fatalf("loop %+v, want one episode of 40", w.Loop)
+	}
+}
