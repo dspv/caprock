@@ -72,6 +72,20 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-05 — The desktop app, planned before any code
+
+Owner decision: a desktop app on Tauri v2 — a thin Rust shell around the
+existing React UI and xterm.js, with the Go daemon as the only engine — for
+macOS, Windows and Linux, mobile later from the same code ([ADR-038](08-decisions.md)).
+It supersedes the Swift plan of PR #180, whose measurements stand. The product
+spec is [21-app.md](21-app.md) (features P0–P2, performance budgets, terminal
+protocol v2, projects, notifications, phone v2, security, distribution, open
+decisions); the execution plan with milestones from 2026-10-06 to the MVP on
+2026-12-01, work packages and definitions of done is
+[22-app-plan.md](22-app-plan.md). The Tauri spike's numbers go into the
+`SPIKE` slots of 21-app.md. The competitor teardown moved to the private site
+repo. Nothing is built.
+
 ### 2026-10-05 — Permission prompts survive a restart; removing a session
 
 ADR-035 amended, ADR-037. The prompt an owned session waits on is stored
