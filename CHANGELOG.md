@@ -9,6 +9,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **Review a session's changes on the phone.** The session page's *Changes*
+  tab has 44px file rows, an open file's name stays pinned at the top while its
+  diff scrolls, *next* moves to the following file, and lines wrap on a phone
+  (*wrap* switches it; a desktop scrolls them sideways inside the diff, never
+  the page). Added and removed lines are tinted in both themes, line numbers
+  take one narrow column on a phone and two on a desktop, and a big diff is
+  drawn 400 lines at a time with very long lines cut until asked for. From a
+  phone that controls sessions, tap a line and *Ask the agent* opens the
+  terminal with "In <file> around line N: " already typed.
+
 ## [0.72.0] - 2026-10-05
 
 ### Added

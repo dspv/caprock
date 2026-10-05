@@ -156,7 +156,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
           * agent, a transcript gone) or is not wanted. */}
         {s.cwd && !reader && <RelayMenu sessionID={s.session_id} />}
         {detail.stale && <StaleNote at={detail.cachedAt} now={now} />}
-        <span className="text-[12px] text-fg-muted ml-auto num">{s.cwd}</span>
+        <span className="text-[12px] text-fg-muted ml-auto num min-w-0 [overflow-wrap:anywhere]">{s.cwd}</span>
       </div>
       {/* The title line, with the repository and its PR at its right end, on
         * every tab — the terminal included, which is where someone is when

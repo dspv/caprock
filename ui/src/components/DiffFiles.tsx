@@ -6,6 +6,9 @@ import { parsePatch, type PatchLine } from '@/lib/patch'
  *  thousands of rows — and drawing them all at once stalls a phone. */
 const PAGE = 400
 
+/** Characters of one line drawn before it is cut (see Patch). */
+const LONG_LINE = 2000
+
 const STATUS_LETTER: Record<string, string> = { added: 'A', untracked: 'U', deleted: 'D', modified: 'M', renamed: 'R', copied: 'C' }
 
 interface Selected { path: string; line: number }
@@ -110,8 +113,8 @@ export function DiffFiles({ files, open, setOpen, wrap, onAsk }: {
                   </span>
                   {/* The directory gives way before the file name does. */}
                   <span className="mono text-[12px] min-w-0 flex">
-                    {slash >= 0 && <span className="truncate shrink-[100] text-fg-faint">{f.path.slice(0, slash + 1)}</span>}
-                    <span className="truncate">{f.path.slice(slash + 1)}</span>
+                    {slash >= 0 && <span className="truncate min-w-0 text-fg-faint">{f.path.slice(0, slash + 1)}</span>}
+                    <span className="truncate shrink-0 max-w-full">{f.path.slice(slash + 1)}</span>
                   </span>
                   <span className="ml-auto num text-[11px] shrink-0"><span className="text-ok">+{f.additions}</span> <span className="text-danger">−{f.deletions}</span></span>
                 </button>
@@ -122,7 +125,7 @@ export function DiffFiles({ files, open, setOpen, wrap, onAsk }: {
                     aria-label={`Next file: ${nextPath}`}
                     title={`Next file: ${nextPath}`}
                   >
-                    next ↓
+                    <span className="hidden sm:inline">next </span>↓
                   </button>
                 )}
               </div>
@@ -149,6 +152,8 @@ export function DiffFiles({ files, open, setOpen, wrap, onAsk }: {
           )
         })}
       </ul>
+      {/* Room under the last line, so the bar never covers it. */}
+      {onAsk && selected && <div className="h-16" aria-hidden />}
       {onAsk && selected && (
         <div className="fixed inset-x-0 bottom-0 z-20 border-t border-border-strong bg-panel px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] flex items-center gap-2 shadow-[var(--shadow-panel)]">
           <span className="min-w-0 flex-1 text-[12px] text-fg-muted truncate">
@@ -184,6 +189,9 @@ const ROW_TONE: Record<PatchLine['kind'], string> = {
 function Patch({ patch, wrap, selected, onSelect }: { patch: string; wrap: boolean; selected?: number; onSelect?: (line: number) => void }) {
   const lines = useMemo(() => parsePatch(patch), [patch])
   const [shown, setShown] = useState(PAGE)
+  // Lines past LONG_LINE are cut until asked for: a minified JSON line can be
+  // 75 KB, which wrapped is thousands of rows of one line.
+  const [full, setFull] = useState<Set<number>>(new Set())
   const digits = useMemo(() => String(lines.reduce((m, l) => Math.max(m, l.old ?? 0, l.new ?? 0), 0)).length, [lines])
   // A gutter as wide as the longest number and no wider: on a 320px screen
   // every column it takes is a column of code that wraps.
@@ -191,7 +199,7 @@ function Patch({ patch, wrap, selected, onSelect }: { patch: string; wrap: boole
   const left = lines.length - shown
   return (
     <div>
-      <div className={`mono text-[11px] leading-[1.45] pb-1 ${wrap ? '' : 'overflow-x-auto'} sm:max-h-[50vh] sm:overflow-y-auto`}>
+      <div className={`mono text-[12px] sm:text-[11px] leading-[1.45] pb-1 ${wrap ? '' : 'overflow-x-auto'} sm:max-h-[50vh] sm:overflow-y-auto`}>
         <div className={wrap ? '' : 'w-max min-w-full'}>
           {lines.slice(0, shown).map((l, i) => {
             if (l.kind === 'hunk' || l.kind === 'meta') {
@@ -206,13 +214,24 @@ function Patch({ patch, wrap, selected, onSelect }: { patch: string; wrap: boole
                 onClick={onSelect && l.at !== undefined ? () => onSelect(l.at as number) : undefined}
               >
                 <span className="hidden sm:block shrink-0 text-right pr-1.5 select-none text-fg-faint" style={gutter}>{l.old ?? ''}</span>
-                <span className="shrink-0 text-right pr-2 select-none text-fg-faint" style={gutter}>
+                {/* One column at phone width: the new file's number, or the old
+                  * one on a removed line, tinted so it does not read as a new-file
+                  * number out of order. */}
+                <span className={`shrink-0 text-right pr-2 select-none ${l.kind === 'del' ? 'text-danger/70 sm:text-fg-faint' : 'text-fg-faint'}`} style={gutter}>
                   <span className="sm:hidden">{l.new ?? l.old}</span>
                   <span className="hidden sm:inline">{l.new ?? ''}</span>
                 </span>
                 <span className={`flex-1 min-w-0 pr-3 ${wrap ? 'whitespace-pre-wrap [overflow-wrap:anywhere]' : 'whitespace-pre'}`}>
                   <span className={l.kind === 'add' ? 'text-ok' : l.kind === 'del' ? 'text-danger' : 'text-fg-faint'}>{mark === ' ' ? ' ' : mark}</span>
-                  <span className={l.kind === 'ctx' ? 'text-fg-muted' : 'text-fg'}>{l.text.slice(1)}</span>
+                  <span className={l.kind === 'ctx' ? 'text-fg-muted' : 'text-fg'}>{l.text.length > LONG_LINE && !full.has(i) ? l.text.slice(1, LONG_LINE) : l.text.slice(1)}</span>
+                  {l.text.length > LONG_LINE && !full.has(i) && (
+                    <button
+                      className="ml-1 text-fg-muted underline decoration-dotted hover:text-fg"
+                      onClick={(e) => { e.stopPropagation(); setFull((cur) => new Set(cur).add(i)) }}
+                    >
+                      … {(l.text.length - LONG_LINE).toLocaleString()} more characters
+                    </button>
+                  )}
                 </span>
               </div>
             )
