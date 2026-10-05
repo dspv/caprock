@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -34,9 +36,30 @@ func newWSHub(b *bus.Bus, log *slog.Logger, lanHost string) *wsHub {
 // helloFrame is the first frame every client receives.
 type helloFrame struct {
 	ServerTime int64 `json:"server_time"`
+	// Reset says a "reset" frame follows: the frames after the client's
+	// since are gone (as the terminal's protocol v2 hello says).
+	Reset bool `json:"reset"`
 }
 
+// liveControl is a text frame from a /v1/live client, as on the terminal's
+// protocol v2: {"ping":t}, answered with a pong, or {"pong":t}.
+type liveControl struct {
+	Ping *int64 `json:"ping"`
+}
+
+// ServeHTTP serves /v1/live (.ai/03-contracts.md § Live socket, replay). Every frame
+// carries a seq; a client that reconnects with ?since=<seq> gets the frames it
+// missed, or a "reset" frame when the replay ring no longer holds them.
 func (h *wsHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	var since *uint64
+	if v := r.URL.Query().Get("since"); v != "" {
+		n, err := strconv.ParseUint(v, 10, 64)
+		if err != nil {
+			http.Error(w, "since must be a frame seq", http.StatusBadRequest)
+			return
+		}
+		since = &n
+	}
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		OriginPatterns: h.origins(),
 		// A device token arrives as a subprotocol, because a browser's
@@ -60,22 +83,34 @@ func (h *wsHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = c.CloseNow()
 	}()
 	c.SetReadLimit(64 << 10)
-	sub := h.bus.Subscribe(1024)
+	sub, missed, seq, resumed := h.bus.Resume(1024, since)
 	defer sub.Unsubscribe()
 
-	if err := writeFrame(ctx, c, bus.Frame{Type: "hello", Data: helloFrame{ServerTime: time.Now().UnixMilli()}}); err != nil {
+	// The hello's seq is where the client stands: its own since when the
+	// missed frames follow, else the newest frame.
+	pos := seq
+	if since != nil && resumed {
+		pos = *since
+	}
+	if err := writeFrame(ctx, c, bus.Frame{Type: "hello", Seq: pos, Data: helloFrame{ServerTime: time.Now().UnixMilli(), Reset: !resumed}}); err != nil {
 		return
 	}
-	// Drain client messages (we ignore them) so pings/close frames are processed.
-	go func() {
-		for {
-			if _, _, err := c.Read(ctx); err != nil {
-				cancel()
-				return
-			}
+	if !resumed {
+		if err := writeFrame(ctx, c, resetFrame(seq)); err != nil {
+			return
 		}
-	}()
-	ping := time.NewTicker(25 * time.Second)
+	}
+	for _, f := range missed {
+		if err := writeFrame(ctx, c, f); err != nil {
+			return
+		}
+		pos = f.Seq
+	}
+	var heard atomic.Int64
+	heard.Store(time.Now().UnixNano())
+	pings := make(chan int64, 4)
+	go readLive(ctx, c, &heard, pings, cancel)
+	ping := time.NewTicker(termPingEvery)
 	defer ping.Stop()
 	for {
 		select {
@@ -85,16 +120,86 @@ func (h *wsHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			if err := writeFrame(ctx, c, f); err != nil {
+			if f.Seq <= pos {
+				continue // already sent while filling a gap
+			}
+			frames := []bus.Frame{f}
+			if f.Seq > pos+1 {
+				frames = h.catchUp(pos)
+			}
+			for _, f := range frames {
+				if err := writeFrame(ctx, c, f); err != nil {
+					return
+				}
+				pos = f.Seq
+			}
+		case <-sub.Lagged():
+			// This subscriber's buffer overflowed and the bus dropped frames
+			// for it, maybe the newest ones, which no later frame would
+			// reveal: catch up from the ring now.
+			for _, f := range h.catchUp(pos) {
+				if err := writeFrame(ctx, c, f); err != nil {
+					return
+				}
+				pos = f.Seq
+			}
+		case t := <-pings:
+			if err := writeFrame(ctx, c, bus.Frame{Type: "pong", Seq: pos, Data: t}); err != nil {
 				return
 			}
 		case <-ping.C:
-			pctx, pcancel := context.WithTimeout(ctx, 5*time.Second)
-			err := c.Ping(pctx)
-			pcancel()
-			if err != nil {
+			if time.Since(time.Unix(0, heard.Load())) > termDeadAfter {
 				return
 			}
+			if err := writeFrame(ctx, c, bus.Frame{Type: "ping", Seq: pos, Data: time.Now().UnixMilli()}); err != nil {
+				return
+			}
+			// A client that predates the ping frame never answers it, but
+			// every browser answers a protocol ping by itself.
+			go func() {
+				pctx, pcancel := context.WithTimeout(ctx, termDeadAfter)
+				defer pcancel()
+				if c.Ping(pctx) == nil {
+					heard.Store(time.Now().UnixNano())
+				}
+			}()
+		}
+	}
+}
+
+// catchUp is every frame after pos from the ring, or a reset when the ring no
+// longer holds them.
+func (h *wsHub) catchUp(pos uint64) []bus.Frame {
+	frames, newest, ok := h.bus.Since(pos)
+	if !ok {
+		return []bus.Frame{resetFrame(newest)}
+	}
+	return frames
+}
+
+// resetFrame tells a client the frames it asked for are gone: refetch, and
+// continue from seq.
+func resetFrame(seq uint64) bus.Frame {
+	return bus.Frame{Type: "reset", Seq: seq, Data: map[string]uint64{"seq": seq}}
+}
+
+// readLive takes the client's frames: anything heard keeps the socket alive,
+// and a ping is handed to the writer to answer with a pong.
+func readLive(ctx context.Context, c *websocket.Conn, heard *atomic.Int64, pings chan<- int64, cancel context.CancelFunc) {
+	defer cancel()
+	for {
+		typ, data, err := c.Read(ctx)
+		if err != nil {
+			return
+		}
+		heard.Store(time.Now().UnixNano())
+		var m liveControl
+		if typ != websocket.MessageText || json.Unmarshal(data, &m) != nil || m.Ping == nil {
+			continue
+		}
+		select {
+		case pings <- *m.Ping:
+		default: // a flood of pings needs no answer to each
 		}
 	}
 }

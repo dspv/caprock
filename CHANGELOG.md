@@ -9,6 +9,17 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **The live feed replays what you missed.** Every `/v1/live` frame now
+  carries a `seq`, and the daemon keeps the last 2,000 frames or 10 minutes.
+  A dashboard that drops off — a phone locking, Wi-Fi changing — reconnects
+  with `?since=` and receives exactly the frames it missed, in order, so a
+  notification sent while it was offline still arrives; when the gap is older
+  than that, a `reset` frame makes every screen refetch instead. A socket
+  silent for 25 seconds is taken for dead and reconnected, as the terminal
+  already does. Clients that predate this keep working unchanged.
+
 ## [0.75.0] - 2026-10-05
 
 ### Added

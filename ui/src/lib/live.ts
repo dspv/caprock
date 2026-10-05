@@ -1,13 +1,34 @@
-// /v1/live WebSocket client + a tiny store. Frames: {type: "event"|"session"|"alert"|"stats"|"hello", data}.
+// /v1/live WebSocket client + a tiny store. Frames: {type: "event"|"session"|"alert"|"stats"|"hello", seq, data}.
 // Reconnects with backoff; exposes connection state so screens can show a
 // staleness dot instead of a spinner (no spinner longer than 300ms).
+// Live replay (.ai/03-contracts.md): every frame carries a seq, a reconnect asks
+// for what came after the last one with ?since=, and a "reset" frame (the
+// daemon no longer holds them) makes screens refetch. Liveness is protocol v2's:
+// a ping every 10 s, and 25 s of silence means the socket is dead.
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { Event, LoopAlert, Permission, Session, Stats, TaskFrame } from './api'
 import { deviceToken } from './api'
 import type { OpFrame, ProjectFrame } from './projects'
+import { DEAD_MS, PING_MS } from './termv2'
 
-export type Frame =
-  | { type: 'hello'; data: { server_time: number } }
+/**
+ * A notification (.ai/21-app.md § Notifications), sent by WP-09. It travels in
+ * the replay ring like any frame, so one sent while this client was offline
+ * arrives after the reconnect.
+ */
+export interface NotifyFrame {
+  id: string
+  kind: 'approval' | 'finished' | 'loop' | 'limit' | 'error'
+  session_id: string
+  project?: string
+  title: string
+  body: string
+  prompt_id?: string
+  actions?: string[]
+}
+
+export type Frame = (
+  | { type: 'hello'; data: { server_time: number; reset?: boolean } }
   | { type: 'event'; data: Event }
   | { type: 'session'; data: { session: Session; stats: Stats } }
   | { type: 'alert'; data: LoopAlert }
@@ -17,6 +38,13 @@ export type Frame =
   // The app's projects (.ai/21-app.md § Projects): git state, and long operations.
   | { type: 'project'; data: ProjectFrame }
   | { type: 'op'; data: OpFrame }
+  // Live replay: the frames after this client's since are gone; refetch.
+  | { type: 'reset'; data: { seq: number } }
+  | { type: 'notify'; data: NotifyFrame }
+) & { seq?: number }
+
+/** Control frames: liveness, never part of the stream a screen reads. */
+type ControlFrame = { type: 'ping' | 'pong'; seq?: number; data: number }
 
 export type ConnState = 'connecting' | 'open' | 'closed'
 
@@ -26,17 +54,25 @@ interface LiveState {
   /** Monotonic counter bumped on every session/event frame — screens refetch on change. */
   tick: number
   alerts: LoopAlert[]
+  /** Notifications received, newest first, one per id (a replay never doubles one). */
+  notifications: NotifyFrame[]
   lastEvent?: Event
 }
 
 type Listener = () => void
 
 class LiveStore {
-  private state: LiveState = { conn: 'connecting', lastFrameAt: 0, tick: 0, alerts: [] }
+  private state: LiveState = { conn: 'connecting', lastFrameAt: 0, tick: 0, alerts: [], notifications: [] }
   private listeners = new Set<Listener>()
   private backoff = 500
   private timer: number | null = null
   private started = false
+  /** The seq of the last frame applied; null until the first hello. */
+  private lastSeq: number | null = null
+  private ws: WebSocket | null = null
+  private heard = 0
+  private lastPing = 0
+  private pingTimer: ReturnType<typeof setInterval> | null = null
   /** Per-frame subscribers (session detail wants raw events without re-rendering everything). */
   private frameSubs = new Set<(f: Frame) => void>()
 
@@ -71,7 +107,8 @@ class LiveStore {
     if (typeof location === 'undefined' || typeof WebSocket === 'undefined') return
 
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-    const url = `${proto}://${location.host}/v1/live`
+    const since = this.lastSeq === null ? '' : `?since=${this.lastSeq}`
+    const url = `${proto}://${location.host}/v1/live${since}`
     this.set({ conn: 'connecting' })
     let ws: WebSocket
     try {
@@ -86,14 +123,50 @@ class LiveStore {
       this.scheduleReconnect()
       return
     }
-    ws.onopen = () => { this.backoff = 500; this.set({ conn: 'open' }) }
+    this.ws = ws
+    this.heard = Date.now()
+    ws.onopen = () => { this.backoff = 500; this.heard = Date.now(); this.set({ conn: 'open' }) }
     ws.onmessage = (m) => {
-      let f: Frame
-      try { f = JSON.parse(String(m.data)) as Frame } catch { return }
-      this.handle(f)
+      this.heard = Date.now()
+      let f: Frame | ControlFrame
+      try { f = JSON.parse(String(m.data)) as Frame | ControlFrame } catch { return }
+      if (f.type === 'ping' || f.type === 'pong') {
+        if (f.type === 'ping') ws.send(JSON.stringify({ pong: (f as ControlFrame).data }))
+        return
+      }
+      this.handle(f as Frame)
     }
-    ws.onclose = () => { this.set({ conn: 'closed' }); this.scheduleReconnect() }
+    ws.onclose = () => {
+      if (this.ws === ws) this.ws = null
+      this.set({ conn: 'closed' })
+      this.scheduleReconnect()
+    }
     ws.onerror = () => { ws.close() }
+    if (this.pingTimer === null) this.pingTimer = setInterval(() => this.tickLiveness(), PING_MS / 2)
+  }
+
+  /** A socket silent for DEAD_MS is dead, whatever the browser thinks. */
+  private tickLiveness() {
+    const ws = this.ws
+    if (!ws) return
+    const now = Date.now()
+    if (now - this.heard > DEAD_MS) { ws.close(); return }
+    if (ws.readyState === WebSocket.OPEN && now - this.lastPing >= PING_MS) {
+      this.lastPing = now
+      ws.send(JSON.stringify({ ping: now }))
+    }
+  }
+
+  /**
+   * Applies the frame's seq: false for a frame this client already has. A
+   * hello or reset states the position outright (a new daemon's numbers may
+   * be anywhere); any other frame must be newer than the last one.
+   */
+  private advance(f: Frame): boolean {
+    if (typeof f.seq !== 'number') return true
+    if (f.type !== 'hello' && f.type !== 'reset' && this.lastSeq !== null && f.seq <= this.lastSeq) return false
+    this.lastSeq = f.seq
+    return true
   }
 
   private scheduleReconnect() {
@@ -103,6 +176,7 @@ class LiveStore {
   }
 
   handle(f: Frame) {
+    if (!this.advance(f)) return
     const now = Date.now()
     // One throwing subscriber must not starve the others, or stop the state
     // update below: this runs inside ws.onmessage, outside React, so an
@@ -132,6 +206,16 @@ class LiveStore {
         break
       case 'session':
         this.set({ lastFrameAt: now, tick: this.state.tick + 1 })
+        break
+      case 'reset':
+        // What was missed is gone: every screen refetches on the tick.
+        this.set({ lastFrameAt: now, tick: this.state.tick + 1 })
+        break
+      case 'notify':
+        this.set({
+          lastFrameAt: now,
+          notifications: [f.data, ...this.state.notifications.filter((n) => n.id !== f.data.id)].slice(0, 50),
+        })
         break
       case 'task':
         // The orchestration graph subscribes per-frame via onFrame for smooth

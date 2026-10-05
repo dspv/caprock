@@ -314,6 +314,18 @@ Every output byte has an offset and every input frame a sequence number, so a re
 - **End.** When the process exits: the last output, `{"exit":{"code":N}}`, then close **1000**. Close **1008**: the device lost the controller role, do not reconnect. Any other close is the connection, and the client reconnects (forever, backing off from 250 ms to 5 s with jitter, at once on `visibilitychange`, `online` and `pageshow`).
 - **Client backpressure.** The dashboard closes the socket while more than 1 MiB it has received waits for xterm.js to parse, and reconnects with `since` once that drops to 256 KiB.
 
+### Live socket, replay
+
+Every `/v1/live` frame carries a `seq`, so a client that reconnects gets exactly the frames it missed, or is told to refetch ([21-app.md § Phase A](21-app.md#phase-a--resilience-and-starting-work-p0), WP-12). It mirrors [protocol v2](#terminal-socket-protocol-v2) with frames in the `{type, seq, data}` envelope. Code: `internal/bus` (numbering and the ring), `internal/api/ws.go`, `ui/src/lib/live.ts`.
+
+- **Seq.** One counter per daemon, raised by one for every frame published (`event`, `session`, `alert`, `permission`, `task`, `project`, `op`, and WP-09's `notify`). It starts at the daemon's start time in microseconds, so a seq handed out by an earlier daemon is never inside a later one's range, and stays below 2^53 (exact in JavaScript). Clients compare seqs only for order within one daemon.
+- **Ring.** The daemon keeps the last **2,000 frames or 10 minutes**, whichever is fewer.
+- **Resume.** Query `?since=<seq>`, the seq of the last frame the client applied (decimal; malformed is **400**). Omitted on a first connect, and by every client that predates replay: those get the stream as before, each frame now also carrying `seq`, which they ignore.
+- **Hello.** The first frame is `{type:"hello", seq, data:{server_time, reset}}`. `reset:false` with a `since`: `seq` equals it, and the frames after it follow, in order, then the live stream with no gap and no duplicate. `reset:true` (the ring no longer holds `since`, or never did — another daemon, a seq from the future): `seq` is the newest frame and `{type:"reset", seq, data:{seq}}` follows; the client refetches what it shows and continues from `seq`. Without `since`, `reset` is false and `seq` is the newest frame.
+- **Falling behind.** A socket whose per-client buffer (1,024 frames) overflowed is caught up from the ring at once, or sent a `reset` when the ring no longer reaches back far enough; it never stalls the publisher or another client.
+- **Liveness.** The daemon sends `{type:"ping", seq, data:t}` every 10 s, and answers a client's `{"ping":t}` with `{type:"pong", seq, data:t}`; the client answers the daemon's ping with `{"pong":t}`. A ping or pong's `seq` is the client's position, not a new frame. Either side takes 25 s with nothing received for a dead socket and closes it (the daemon also counts a WebSocket protocol pong, which every browser sends by itself, so a client that predates the ping frame is not cut off); the client reconnects with `since`.
+- **Client.** `ui/src/lib/live.ts` drops a frame whose seq is not above the last applied (a hello or reset sets the position outright), bumps the refetch tick on `reset`, and keeps the `notify` frames it received, newest first and one per `id`, for WP-09 to show.
+
 `GET`/`HEAD`/`OPTIONS` are otherwise permissive because every `GET` route on the router is a query. The two that reach a live process — `WS /v1/live` and `WS /v1/agents/{id}/term` — are WebSocket upgrades guarded by coder/websocket's `OriginPatterns`, which already refuses a missing or foreign `Origin`. **A new `GET` with a side effect belongs behind a `POST`**, not on the safe-method list.
 
 Non-browser clients are unaffected, and each in-repo client was checked against its real request shape: the hook shim and `caprock statusline` send JSON + a bearer token, `caprock down` sends a bearer token with no body, `caprock task create` sends JSON, and `caprock tasks`/`status` are plain reads. The dashboard's single mutation helper (`ui/src/lib/api.ts`) already sets `Content-Type: application/json`. `curl` with `-H 'Content-Type: application/json'` works as documented.
@@ -480,7 +492,7 @@ POST /v1/shutdown                      → 200 (bearer-token gated; `caprock dow
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows
 GET  /v1/statusline/{id}               → 200 (bearer-token gated) session counters for the status line; zeros for an unknown session
 GET  /healthz                          → {status:"ok", version}
-WS   /v1/live                          → first frame is {type:"hello", data:{server_time}}; a "session" frame carries {session, stats}; a "permission" frame carries {session_id, permission | null}; a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells)
+WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; a "permission" frame carries {session_id, permission | null}; a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells)
 ```
 
 **Permission prompts** ([ADR-035](08-decisions.md)). `permission` is the
