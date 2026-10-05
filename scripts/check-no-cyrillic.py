@@ -18,7 +18,7 @@ import re
 import subprocess
 import sys
 
-CYRILLIC = re.compile("[Ѐ-ӿԀ-ԯⷠ-ⷿꙀ-ꚟᲀ-᲏]")
+CYRILLIC = re.compile("[\u0400-\u04ff\u0500-\u052f\u1c80-\u1c8f\u2de0-\u2dff\ua640-\ua69f]")
 SKIP_PREFIXES = ("internal/api/dist/",)
 
 
