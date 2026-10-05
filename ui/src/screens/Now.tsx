@@ -170,7 +170,7 @@ export function NowScreen() {
         </div>
       )}
       {/* Installing hooks is done on the machine; on a phone the button would only answer 403. */}
-      {status.data?.hooks && !isPairedDevice() && <HooksBanner missing={status.data?.hooks?.missing ?? []} settingsPath={status.data?.hooks?.settings_path ?? ''} />}
+      {status.data?.hooks && !isPairedDevice() && <HooksBanner missing={status.data?.hooks?.missing ?? []} settingsPath={status.data?.hooks?.settings_path ?? ''} partial={(status.data?.hooks?.installed?.length ?? 0) > 0} />}
       {/* Only sessions Caprock spawned end with the daemon; the ones the user
         * started themselves are untouched by an upgrade. */}
       <UpdateBanner plan={plan} onSave={savePlan} now={now} owned={list.filter((s) => s.owned && s.status !== 'ended' && !s.detached && !s.survives_restart).length} />
