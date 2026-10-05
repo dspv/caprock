@@ -24,6 +24,9 @@ type Details struct {
 	// Agent is the agent's display name. Claude Code, the usual one, is not
 	// repeated on every message.
 	Agent string
+	// Project is the session's project as the dashboard names it; the app's
+	// notification leads with it.
+	Project string
 	// Link is the session's page at an address the phone can open; empty
 	// when phone access is off, and then the line is left out rather than
 	// offering a loopback address that opens nothing.
@@ -124,7 +127,19 @@ func location(d Details) string {
 
 // writeRun adds what the run took, what it changed and how its reply began.
 func writeRun(b *strings.Builder, d Details) {
-	var stats []string
+	for _, line := range runLines(d, html) {
+		b.WriteString("\n" + line)
+	}
+	if r := clip(plainReply(d.Reply), replyMaxRunes); r != "" {
+		b.WriteString("\n💬 <i>" + html(r) + "</i>")
+	}
+}
+
+// runLines is what the run took ("12m · $0.75 · 4 tool calls") and what it
+// changed ("2 files changed: a.go, b.go"), each line left out when empty;
+// esc escapes the file names for the message they go into.
+func runLines(d Details, esc func(string) string) []string {
+	var lines, stats []string
 	if d.Run > 0 {
 		stats = append(stats, duration(d.Run))
 	}
@@ -135,7 +150,7 @@ func writeRun(b *strings.Builder, d Details) {
 		stats = append(stats, plural(d.Tools, "tool call"))
 	}
 	if len(stats) > 0 {
-		b.WriteString("\n" + strings.Join(stats, " · "))
+		lines = append(lines, strings.Join(stats, " · "))
 	}
 	if len(d.Files) > 0 {
 		names := make([]string, 0, filesNamed)
@@ -143,22 +158,36 @@ func writeRun(b *strings.Builder, d Details) {
 			if i == filesNamed {
 				break
 			}
-			names = append(names, html(path.Base(slashes(f))))
+			names = append(names, esc(path.Base(slashes(f))))
 		}
 		line := plural(len(d.Files), "file") + " changed: " + strings.Join(names, ", ")
 		if more := len(d.Files) - filesNamed; more > 0 {
 			line += fmt.Sprintf(" +%d", more)
 		}
-		b.WriteString("\n" + line)
+		lines = append(lines, line)
 	}
-	if r := clip(plainReply(d.Reply), replyMaxRunes); r != "" {
-		b.WriteString("\n💬 <i>" + html(r) + "</i>")
-	}
+	return lines
 }
 
 // subject is what a dialog asks about: "Bash: <code>go test ./...</code>", the
 // file an edit would change, or the question AskUserQuestion puts.
 func subject(ev event.Event, d Details) string {
+	label, what, question := subjectParts(ev, d)
+	switch {
+	case question:
+		return html(what)
+	case what == "":
+		return html(label)
+	case label == "":
+		return "<code>" + html(what) + "</code>"
+	}
+	return html(label) + ": <code>" + html(what) + "</code>"
+}
+
+// subjectParts reads a dialog's tool and what it is about, clipped: the
+// command, the file, the URL or the query; or the question AskUserQuestion
+// puts, with question set.
+func subjectParts(ev event.Event, d Details) (label, what string, question bool) {
 	var p struct {
 		ToolName  string `json:"tool_name"`
 		ToolInput struct {
@@ -181,9 +210,8 @@ func subject(ev event.Event, d Details) string {
 	}
 	in := p.ToolInput
 	if len(in.Questions) > 0 {
-		return html(clip(in.Questions[0].Question, subjectMaxRunes))
+		return "", clip(in.Questions[0].Question, subjectMaxRunes), true
 	}
-	var what string
 	switch {
 	case in.Command != "":
 		what = clip(in.Command, subjectMaxRunes)
@@ -194,14 +222,7 @@ func subject(ev event.Event, d Details) string {
 	default:
 		what = clip(firstOf(in.Query, in.Pattern), subjectMaxRunes)
 	}
-	label := toolLabel(tool)
-	if what == "" {
-		return html(label)
-	}
-	if label == "" {
-		return "<code>" + html(what) + "</code>"
-	}
-	return html(label) + ": <code>" + html(what) + "</code>"
+	return toolLabel(tool), what, false
 }
 
 // toolLabel names an MCP tool the way a person would: "create_issue via github".

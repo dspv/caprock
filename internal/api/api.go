@@ -208,6 +208,11 @@ type Settings struct {
 	// AlertReply puts the first line of the final reply in a finished alert;
 	// on unless turned off.
 	AlertReply bool `json:"alert_reply"`
+	// NotifyApproval and NotifyFinished are the desktop app's OS
+	// notifications, apart from Telegram's: approval on unless turned off,
+	// finished off unless turned on (WP-09).
+	NotifyApproval bool `json:"notify_approval"`
+	NotifyFinished bool `json:"notify_finished"`
 	// AlertLastError is why the last alert failed to send, empty when it did
 	// not; AlertLastSentMs is when one last arrived, 0 for never since the
 	// daemon started.
@@ -1060,6 +1065,8 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		AlertApproval  *bool   `json:"alert_approval"`
 		AlertFinished  *bool   `json:"alert_finished"`
 		AlertReply     *bool   `json:"alert_reply"`
+		NotifyApproval *bool   `json:"notify_approval"`
+		NotifyFinished *bool   `json:"notify_finished"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&patch); err != nil {
 		s.failCode(w, http.StatusBadRequest, fmt.Errorf("parse body: %w", err))
@@ -1126,6 +1133,12 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.AlertReply != nil {
 		in.AlertReply = *patch.AlertReply
+	}
+	if patch.NotifyApproval != nil {
+		in.NotifyApproval = *patch.NotifyApproval
+	}
+	if patch.NotifyFinished != nil {
+		in.NotifyFinished = *patch.NotifyFinished
 	}
 	if patch.LicenseKey != nil {
 		in.LicenseKey = *patch.LicenseKey

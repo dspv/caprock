@@ -11,6 +11,15 @@ Phase 3 (Delight) has no plan by design.
 
 ### Added
 
+- **The desktop app tells you when a session needs you.** An OS
+  notification names the project and session and what it wants — `Bash: go
+  test ./...`, the file an edit would change, the question asked — the moment
+  an agent is blocked on a permission prompt. Clicking it opens that session
+  with its Yes and No buttons; a prompt answered meanwhile is refused, never
+  typed into. Nothing for the session you are already looking at. On by
+  default in the app; "finished" notifications are there too, off by default;
+  both switch in Settings → Desktop notifications. Same limits as Telegram
+  alerts, which stay off unless you turn them on.
 - **The live feed replays what you missed.** Every `/v1/live` frame now
   carries a `seq`, and the daemon keeps the last 2,000 frames or 10 minutes.
   A dashboard that drops off — a phone locking, Wi-Fi changing — reconnects

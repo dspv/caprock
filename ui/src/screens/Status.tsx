@@ -26,6 +26,8 @@ import { PlanOptions, usePlan } from '@/components/PlanPicker'
 import { LicenseField } from '@/components/LicenseField'
 import { Pairing } from '@/components/Pairing'
 import { PhoneAlerts } from '@/components/PhoneAlerts'
+import { DesktopNotifications } from '@/components/DesktopNotifications'
+import { isTauri } from '@/lib/appmode'
 import { StoragePanel } from '@/components/Storage'
 import { Choice, Details, Section, Toggle } from '@/components/SettingsParts'
 import { GlobalHotkey } from '@/components/GlobalHotkey'
@@ -44,6 +46,7 @@ export function StatusScreen() {
         * cannot be started, and none of them is a preference. */}
       <Problems s={s} />
       {owner && <Pairing />}
+      {owner && isTauri() && <DesktopNotifications />}
       {owner && <PhoneAlerts />}
       {owner && <PlanSection />}
       <AppearanceSection />

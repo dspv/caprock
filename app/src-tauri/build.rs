@@ -12,6 +12,7 @@ fn main() {
             "set_badge",
             "hotkey_status",
             "register_hotkey",
+            "notify",
         ]),
     ))
     .expect("tauri build");

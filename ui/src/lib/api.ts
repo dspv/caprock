@@ -507,6 +507,10 @@ export interface Settings {
   alert_finished?: boolean
   /** The first line of the final reply in a finished alert; on unless turned off. */
   alert_reply?: boolean
+  /** The desktop app's OS notifications, apart from Telegram's (WP-09):
+   *  approval on unless turned off, finished off unless turned on. */
+  notify_approval?: boolean
+  notify_finished?: boolean
   /** Why the last alert failed, absent when it did not; when one last arrived. */
   alert_last_error?: string
   alert_last_sent_ms?: number

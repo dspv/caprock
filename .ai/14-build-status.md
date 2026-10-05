@@ -72,6 +72,22 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-06 — The notify frame and OS notifications (WP-09)
+
+`internal/alerts` gains a second sender: each decision is also a `notify`
+frame on `/v1/live` (plain text, `prompt_id` and `allow`/`deny` for an owned
+Claude Code prompt), under the same rules, cooldown and hourly cap as
+Telegram, with its own switches (approval on, finished off by default;
+Telegram unchanged, off). The desktop app shows it through the official
+`tauri-plugin-notification` (`notify` command, daemon origin only), quiet for
+the session in front of a focused window and for a prompt no longer waiting;
+the click opens the session with its prompt card. Smoke test on the real
+binary and the fake `claude`: the frame arrived 2 ms after the
+PermissionRequest hook; a stale prompt id 409, the waiting one 204, a second
+press 409. Notification buttons wait for a decision on a non-plugin crate
+([21-app.md § Notifications](21-app.md#notifications)). Not verified with a
+real OS notification on screen: the owner's machine was in use.
+
 ### 2026-10-06 — Menu bar / tray, badge, global hotkey (WP-10)
 
 The shell gained a menu bar item (tray on Windows and Linux), the Dock or

@@ -112,6 +112,12 @@ type Config struct {
 	// finished alert. On unless switched off, like the two above; Telegram
 	// reads it, which the Settings line says.
 	AlertReply *bool `json:"alert_reply,omitempty"`
+	// NotifyApproval and NotifyFinished switch the desktop app's OS
+	// notifications (WP-09), apart from Telegram's: a notification stays on
+	// the machine. Approval is on unless switched off — a blocked agent is
+	// what the app exists to report; finished is off unless switched on.
+	NotifyApproval *bool `json:"notify_approval,omitempty"`
+	NotifyFinished *bool `json:"notify_finished,omitempty"`
 	// GeminiAPIKey is the user's Google AI Studio key, entered in the dashboard.
 	// GEMINI_API_KEY in the environment takes precedence when both exist, so a
 	// machine already configured that way is untouched (ADR-025). Stored under
@@ -381,6 +387,18 @@ func (c Config) AlertApprovalOn() bool {
 // Off unless switched on, like AlertApprovalOn.
 func (c Config) AlertFinishedOn() bool {
 	return c.AlertFinished != nil && *c.AlertFinished
+}
+
+// NotifyApprovalOn reports whether a session waiting for approval raises an
+// OS notification in the desktop app. On unless switched off.
+func (c Config) NotifyApprovalOn() bool {
+	return c.NotifyApproval == nil || *c.NotifyApproval
+}
+
+// NotifyFinishedOn reports whether a finished session raises an OS
+// notification. Off unless switched on.
+func (c Config) NotifyFinishedOn() bool {
+	return c.NotifyFinished != nil && *c.NotifyFinished
 }
 
 // AlertReplyOn reports whether a finished alert carries the first line of the

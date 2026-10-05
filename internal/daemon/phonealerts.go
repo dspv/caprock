@@ -71,13 +71,28 @@ func (d *Daemon) alertEnabled(k alerts.Kind) bool {
 	return cfg.AlertFinishedOn()
 }
 
+// notifyEnabled is the desktop app's switch for one kind (WP-09), apart from
+// Telegram's and read per event like it.
+func (d *Daemon) notifyEnabled(k alerts.Kind) bool {
+	cfg := d.config()
+	if k == alerts.KindApproval {
+		return cfg.NotifyApprovalOn()
+	}
+	return cfg.NotifyFinishedOn()
+}
+
 // alertLoop watches every stored event, from every agent and source, and
 // sends what the rules decide. With no bot configured nothing is sent and
 // nothing leaves the machine; the rules still track state, so configuring one
 // mid-session starts from the truth.
+//
+// Telegram and the app's notify frame are two senders of one decision: the
+// rules run once, a kind is decided while either sender wants it, and the
+// cooldown and hourly cap count it once for both (.ai/21-app.md
+// § Notifications).
 func (d *Daemon) alertLoop(ctx context.Context, sub *bus.Subscriber) {
 	defer sub.Unsubscribe()
-	rules := alerts.New(d.alertEnabled)
+	rules := alerts.New(func(k alerts.Kind) bool { return d.alertEnabled(k) || d.notifyEnabled(k) })
 	t := time.NewTicker(alertTick)
 	defer t.Stop()
 	for {
@@ -93,14 +108,49 @@ func (d *Daemon) alertLoop(ctx context.Context, sub *bus.Subscriber) {
 				continue
 			}
 			for _, a := range rules.Observe(ev, d.rec.Now()) {
-				go d.sendAlert(ctx, a)
+				go d.deliverAlert(ctx, a)
 			}
 		case <-t.C:
 			for _, a := range rules.Due(d.rec.Now()) {
-				go d.sendAlert(ctx, a)
+				go d.deliverAlert(ctx, a)
 			}
 		}
 	}
+}
+
+// deliverAlert hands one decision to each sender switched on for its kind:
+// the notify frame first, since it stays on the machine and is quick.
+func (d *Daemon) deliverAlert(ctx context.Context, a alerts.Alert) {
+	if d.notifyEnabled(a.Kind) {
+		d.publishNotify(ctx, a)
+	}
+	if d.alertEnabled(a.Kind) {
+		d.sendAlert(ctx, a)
+	}
+}
+
+// publishNotify puts the alert on /v1/live as a notify frame, numbered and
+// replayed like any frame. An approval in an owned session carries the
+// waiting prompt's id, so an answer from the notification is refused once
+// that prompt is gone (ADR-035).
+func (d *Daemon) publishNotify(ctx context.Context, a alerts.Alert) {
+	det := d.alertDetails(ctx, a)
+	n := alerts.Notify(a, det, d.waitingPrompt(a))
+	d.bus.Publish(bus.Frame{Type: bus.FrameNotify, Data: n})
+	d.log.Info("notify frame published", "component", "alerts", "kind", n.Kind, "session_id", a.SessionID, "prompt", n.PromptID != "")
+}
+
+// waitingPrompt is the id of the prompt an owned session waits on, for an
+// approval alert; "" otherwise. The hook sets the prompt before the event is
+// stored, so it is there when the alert is decided.
+func (d *Daemon) waitingPrompt(a alerts.Alert) string {
+	if a.Kind != alerts.KindApproval || d.mgr == nil {
+		return ""
+	}
+	if p, ok := d.mgr.PendingPermission(a.SessionID); ok {
+		return p.ID
+	}
+	return ""
 }
 
 // sendAlert renders one alert and delivers it. Failures are logged and kept
@@ -133,6 +183,7 @@ func (d *Daemon) alertDetails(ctx context.Context, a alerts.Alert) alerts.Detail
 	s, err := store.GetSession(ctx, q, a.SessionID)
 	if err == nil {
 		det.Title, det.Cwd, det.Branch, det.Agent = api.Describe(ctx, q, s), s.Cwd, s.GitBranch, relay.AgentName(s.Agent)
+		det.Project = s.Project
 	}
 	if a.Kind != alerts.KindFinished {
 		return det
