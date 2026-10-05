@@ -9,6 +9,26 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **Projects in the daemon.** Caprock keeps a list of the projects you work
+  in — seeded from the repositories your sessions ran in, plus any you add,
+  create (`git init` optional) or clone — with each one's branch, changed
+  files, ahead/behind, worktrees, live and waiting sessions and today's cost
+  (`GET /v1/projects`). Git state follows a commit or checkout made anywhere
+  within about a third of a second, by watching `.git`; idle projects run no
+  git at all. A clone shows git's progress and carries on if the phone that
+  started it drops. Unlisting a project never touches its files. The desktop
+  app's sidebar will show it; there is no screen for it yet.
+- **Worktrees on any branch.** A worktree for an existing branch, a new one,
+  or a branch only the remote has (created tracking it), under
+  `.caprock-worktrees`; one with any change is never removed.
+- **Shell tabs, engine side.** `POST /v1/shells` starts your login shell in a
+  project, held like an agent session so it survives a Caprock restart. A
+  shell is in no total, card or count.
+- **From the phone**, a controller can add, create and clone a project under
+  home and make or remove a worktree. Shells stay on the machine for now.
+
 ### Changed
 
 - **Phone alerts are off until you switch them on.** A Telegram bot saved for
