@@ -48,6 +48,7 @@ func TestADeviceOnTheNetworkSeesNothingUntilItPairs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := httptest.NewRequest(http.MethodGet, tc.path, nil)
 			r.RemoteAddr = tc.from
+			r.Host = "127.0.0.1:22776" // what a client on the machine sends
 			if tc.token != "" {
 				r.Header.Set(deviceTokenHeader, tc.token)
 			}
@@ -97,6 +98,7 @@ func TestWithLanOffTheGateIsInert(t *testing.T) {
 	for _, from := range []string{"127.0.0.1:51000", "192.0.2.1:1234", "192.168.1.50:51000"} {
 		r := httptest.NewRequest(http.MethodGet, "/v1/sessions", nil)
 		r.RemoteAddr = from
+		r.Host = "127.0.0.1:22776" // what a client on the machine sends
 		if ok, reason := s.allowRequest(r); !ok {
 			t.Errorf("refused %s on a loopback-only daemon: %s", from, reason)
 		}
@@ -189,6 +191,7 @@ func TestAPairedDeviceReadsButDoesNotControl(t *testing.T) {
 			// business.
 			local := httptest.NewRequest(tc.method, tc.path, nil)
 			local.RemoteAddr = "127.0.0.1:51000"
+			local.Host = "127.0.0.1:22776"
 			if got, reason := s.gate(local); got != 0 {
 				t.Fatalf("loopback: status = %d (%s)", got, reason)
 			}
@@ -226,6 +229,7 @@ func TestAPairedDeviceDoesNotSeeTheLicenceKey(t *testing.T) {
 		t.Helper()
 		r := httptest.NewRequest(http.MethodGet, "/v1/settings", nil)
 		r.RemoteAddr = from
+		r.Host = "127.0.0.1:22776" // what a client on the machine sends
 		if token != "" {
 			r.Header.Set(deviceTokenHeader, token)
 		}
