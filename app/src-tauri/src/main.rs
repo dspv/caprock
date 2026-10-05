@@ -35,7 +35,8 @@ macro_rules! handler {
             commands::set_badge,
             commands::hotkey_status,
             commands::register_hotkey,
-            notify::notify
+            notify::notify,
+            notify::withdraw_notifications
         ]
     };
 }
@@ -246,6 +247,16 @@ mod tests {
         assert!(err.to_string().contains("needs a title"), "{err}");
         for url in ["https://example.com/", "http://localhost:4391/"] {
             let err = invoke(url, "notify", blank.clone()).expect_err(url);
+            assert!(err.to_string().contains("not allowed"), "{url}: {err}");
+        }
+    }
+
+    #[test]
+    fn only_the_daemon_page_may_withdraw_notifications() {
+        let none = serde_json::json!({"ids": []});
+        invoke(DAEMON, "withdraw_notifications", none.clone()).expect("allowed");
+        for url in ["https://example.com/", "http://localhost:4391/"] {
+            let err = invoke(url, "withdraw_notifications", none.clone()).expect_err(url);
             assert!(err.to_string().contains("not allowed"), "{url}: {err}");
         }
     }

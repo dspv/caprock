@@ -589,9 +589,12 @@ there, and worktrees as first-class places to work.
     what the user's rules do not allow, and a list would be incomplete and
     read as a safety promise. "Always" is never offered from a notification:
     it writes a rule. Approve carries the authentication-required option.
-  - **Not built.** Withdrawing a delivered notification when its prompt is
-    answered elsewhere (its buttons then get "Already answered"); Windows
-    toast buttons (needs a registered AppUserModelID and a COM activator)
+  - **Withdrawn when answered elsewhere.** A `permission` frame saying the
+    session no longer waits makes the page withdraw the approval
+    notifications it showed for it, by notify id, so Notification Center
+    keeps no stale Approve. One delivered before an app restart is not
+    withdrawn; its buttons get "Already answered".
+  - **Not built.** Windows toast buttons (needs a registered AppUserModelID and a COM activator)
     and Linux D-Bus actions (servers differ; a click does not raise the
     app). Both stay follow-ups.
 

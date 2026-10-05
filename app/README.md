@@ -56,18 +56,19 @@ daemon and every session running.
 
 Commands are granted per origin (`src-tauri/capabilities/`):
 
-| Command           | Daemon page | Bundled page |
-| ----------------- | ----------- | ------------ |
-| `daemon_status`   | yes         | yes          |
-| `open_external`   | yes         | yes          |
-| `notify`          | yes         | no           |
-| `start_daemon`    | no          | yes          |
-| `update_daemon`   | no          | yes          |
-| `set_background`  | no          | yes          |
-| `set_tray`        | yes         | no           |
-| `set_badge`       | yes         | no           |
-| `hotkey_status`   | yes         | no           |
-| `register_hotkey` | yes         | no           |
+| Command                  | Daemon page | Bundled page |
+| ------------------------ | ----------- | ------------ |
+| `daemon_status`          | yes         | yes          |
+| `open_external`          | yes         | yes          |
+| `notify`                 | yes         | no           |
+| `withdraw_notifications` | yes         | no           |
+| `start_daemon`           | no          | yes          |
+| `update_daemon`          | no          | yes          |
+| `set_background`         | no          | yes          |
+| `set_tray`               | yes         | no           |
+| `set_badge`              | yes         | no           |
+| `hotkey_status`          | yes         | no           |
+| `register_hotkey`        | yes         | no           |
 
 A page on any other origin gets nothing; `cargo test` checks each refusal.
 `open_external` opens `http` and `https` only.
@@ -81,7 +82,10 @@ WP-09). On macOS, inside the `.app`, it goes through UNUserNotificationCenter
 loopback daemon it is connected to, so the window stays where it is; a 409
 is followed by an "Already answered" notification. A click on the body opens
 the session as the tray does. macOS asks for permission on the first
-notification. Everywhere else, and from `cargo run` (no bundle), the official
+notification. `withdraw_notifications` (`{ids}`) removes delivered ones by
+their notify id: the page calls it when a session's prompt goes away, so a
+prompt answered in the terminal or on the card leaves no Approve button behind
+(macOS; a no-op elsewhere). Everywhere else, and from `cargo run` (no bundle), the official
 `tauri-plugin-notification` shows a title and body only. The window turns WKWebView's background throttling off (macOS 14+),
 or a hidden or covered page would not hear the frame until brought forward.
 Every show from the menu bar, tray or hotkey first dispatches `caprock:shown`

@@ -201,6 +201,17 @@ fn add(note: &Note) {
         .addNotificationRequest_withCompletionHandler(&request, Some(&done));
 }
 
+/// Removes delivered notifications by id; ids it never showed are ignored.
+pub fn withdraw(ids: &[String]) {
+    if HOOKS.get().is_none() || ids.is_empty() {
+        return;
+    }
+    let ids: Vec<_> = ids.iter().map(|id| NSString::from_str(id)).collect();
+    let ids: Vec<&NSString> = ids.iter().map(|id| &**id).collect();
+    UNUserNotificationCenter::currentNotificationCenter()
+        .removeDeliveredNotificationsWithIdentifiers(&NSArray::from_slice(&ids));
+}
+
 fn received(response: &UNNotificationResponse) {
     let Some(hooks) = HOOKS.get() else {
         return;

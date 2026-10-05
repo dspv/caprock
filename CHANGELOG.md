@@ -37,9 +37,10 @@ Phase 3 (Delight) has no plan by design.
   opens the session. Approve is offered only when the notification shows the
   whole request; a longer command offers Open in Caprock and Deny, so you read
   it on the prompt card first. A prompt answered in the meantime is never
-  typed into: you get "Already answered" instead. macOS asks once whether
-  Caprock may send notifications. Windows and Linux keep the click that opens
-  the prompt.
+  typed into: you get "Already answered" instead, and a prompt answered in
+  the terminal or on the card takes its notification away. macOS asks once
+  whether Caprock may send notifications. Windows and Linux keep the click
+  that opens the prompt.
 - **The desktop app tells you when a session needs you.** An OS
   notification names the project and session and what it wants — `Bash: go
   test ./...`, the file an edit would change, the question asked — the moment

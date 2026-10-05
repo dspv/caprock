@@ -145,6 +145,42 @@ pub fn notify<R: Runtime>(
     )
 }
 
+/// At most this many ids per call; a page withdraws one session's at a time.
+const WITHDRAW_MAX: usize = 64;
+
+/// Withdraw delivered notifications by their notify ids: the page calls it
+/// when a prompt it notified about is answered elsewhere (the terminal, the
+/// prompt card, a phone), so Notification Center holds no stale Approve
+/// button. macOS only; elsewhere the plugin cannot withdraw and this does
+/// nothing.
+#[tauri::command]
+pub fn withdraw_notifications(ids: Vec<String>) -> Result<(), String> {
+    let ids = withdrawable(ids)?;
+    if let Some(path) = std::env::var_os("CAPROCK_APP_NOTIFY_LOG") {
+        let line = serde_json::json!({ "withdraw": ids }).to_string();
+        return std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .and_then(|mut f| writeln!(f, "{line}"))
+            .map_err(|e| e.to_string());
+    }
+    #[cfg(target_os = "macos")]
+    crate::notify_macos::withdraw(&ids);
+    Ok(())
+}
+
+/// The ids a withdraw may name: non-empty, short, and not too many.
+fn withdrawable(ids: Vec<String>) -> Result<Vec<String>, String> {
+    if ids.len() > WITHDRAW_MAX {
+        return Err(format!("at most {WITHDRAW_MAX} notifications at once"));
+    }
+    Ok(ids
+        .into_iter()
+        .filter(|id| !id.is_empty() && id.len() <= 256)
+        .collect())
+}
+
 fn show<R: Runtime>(app: &AppHandle<R>, note: Note) -> Result<(), String> {
     if let Some(path) = std::env::var_os("CAPROCK_APP_NOTIFY_LOG") {
         let line = serde_json::json!({
@@ -285,6 +321,13 @@ mod tests {
         assert_eq!(t.chars().count(), TITLE_MAX);
         assert!(t.ends_with('…'));
         assert_eq!(b.chars().count(), BODY_MAX);
+    }
+
+    #[test]
+    fn a_withdraw_names_a_bounded_set_of_ids() {
+        let ids = vec!["approval-s-1".to_string(), String::new(), "x".repeat(300)];
+        assert_eq!(withdrawable(ids).unwrap(), vec!["approval-s-1".to_string()]);
+        assert!(withdrawable(vec!["a".into(); WITHDRAW_MAX + 1]).is_err());
     }
 
     #[test]
