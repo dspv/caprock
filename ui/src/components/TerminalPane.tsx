@@ -223,7 +223,7 @@ export function TerminalPane({
     const refit = () => {
       fitRaf = 0
       if (!visible || el.clientWidth === 0) return
-      const geom = `${el.clientWidth}x${el.clientHeight}`
+      const geom = `${el.clientWidth}x${el.clientHeight}:${grid?.clientHeight ?? 0}`
       if (geom === lastGeom) return
       lastGeom = geom
       try { fit.fit() } catch { /* not laid out */ }
@@ -232,6 +232,11 @@ export function TerminalPane({
       if (!fitRaf) fitRaf = requestAnimationFrame(refit)
     })
     ro.observe(el)
+    // The grid too: the late WebGL swap changes the cell height but keeps the
+    // row count, so the grid outgrows an unchanged box and its last rows are
+    // cut off. Its new size is a reason to fit (as in Terminal.tsx).
+    const grid = term.element?.querySelector('.xterm-screen')
+    if (grid) ro.observe(grid)
 
     const onWake = () => {
       // A suspended background tab stays let go until it is shown.

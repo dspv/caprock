@@ -51,6 +51,8 @@ Phase 3 (Delight) has no plan by design.
 
 ### Fixed
 
+- **The desktop app's terminal no longer cuts off its last rows** a few
+  seconds after opening, when it switches to the faster renderer.
 - **The terminal no longer covers its own text field on a phone.** Once
   the faster renderer took over, the terminal grew past its box and over
   the field under it; it now fits itself again.
