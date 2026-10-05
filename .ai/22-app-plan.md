@@ -249,7 +249,13 @@ its lane.
 - **Depends on.** WP-11.
 - **Parallel with.** WP-13, WP-15.
 - **Acceptance.** A 2,000-message session opens in under 500 ms on a mid-range
-  phone; WP-11's acceptance holds in it.
+  phone; WP-11's acceptance holds in it. Order comes from the server (event
+  sequence), never from arrival time on the client: a message delivered late
+  or replayed after a reconnect lands in its place, never after newer ones,
+  and never twice (messages carry stable ids; the client dedupes). Test:
+  deliver 50 messages out of order and 10 duplicates → rendered order equals
+  server order, no duplicates. (Owner, 2026-10-05: Orca shows an old message
+  as just sent and appends it after newer ones.)
 
 ### WP-15 — Start work from the phone; Tailscale by QR
 
