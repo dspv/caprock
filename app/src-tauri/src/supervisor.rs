@@ -7,8 +7,8 @@
 //!   port's bind is the lock that stops a second one.
 //! - Never stop a daemon it did not start. Quitting the app leaves the daemon
 //!   and every session running.
-//! - Only the bundled `caprock` runs, from `<data_dir>/bin`, with fixed
-//!   arguments: `service install`, `service uninstall`, `up`.
+//! - Only a Homebrew `caprock` or the bundled one (from `<data_dir>/bin`)
+//!   runs, with fixed arguments: `service install`, `service uninstall`, `up`.
 
 use crate::discovery::{self, Found, Runtime, MIN_API_LEVEL};
 use serde::{Deserialize, Serialize};
@@ -27,6 +27,13 @@ const EXE: &str = if cfg!(windows) {
 } else {
     "caprock"
 };
+
+/// Where Homebrew links the `caprock` formula's binary, by prefix.
+const BREW_BINS: &[&str] = &[
+    "/opt/homebrew/bin/caprock",
+    "/usr/local/bin/caprock",
+    "/home/linuxbrew/.linuxbrew/bin/caprock",
+];
 
 /// What the shell knows about the daemon; the fallback page renders it.
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -278,16 +285,22 @@ impl Supervisor {
         if matches!(discovery::find(&self.data_dir), Found::Running { .. }) {
             return Ok(()); // someone else started one meanwhile: use it
         }
-        self.set(State::Starting {
-            step: "Installing the Caprock daemon".into(),
-        });
-        install_bin(&self.bundled, &self.bin())?;
+        let exe = match brew_daemon(BREW_BINS) {
+            Some(exe) => exe,
+            None => {
+                self.set(State::Starting {
+                    step: "Installing the Caprock daemon".into(),
+                });
+                install_bin(&self.bundled, &self.bin())?;
+                self.bin()
+            }
+        };
         let mut service_err = String::new();
         if background {
             self.set(State::Starting {
                 step: "Registering the background service".into(),
             });
-            if let Err(e) = self.run(&self.bin(), &["service", "install"]) {
+            if let Err(e) = self.run(&exe, &["service", "install"]) {
                 service_err = e;
             }
             if self.wait_up(Duration::from_secs(6)) {
@@ -299,7 +312,7 @@ impl Supervisor {
         });
         // `up` itself waits up to 10 s for the daemon and says why it failed
         // (most often: the port is taken), so a failure needs no second wait.
-        let up = self.run(&self.bin(), &["up", "--no-open", "--no-hooks"]);
+        let up = self.run(&exe, &["up", "--no-open", "--no-hooks"]);
         let wait = if up.is_ok() {
             Duration::from_secs(10)
         } else {
@@ -409,6 +422,18 @@ fn upgrade_command(rt: &Runtime) -> String {
         rt.exe.clone()
     };
     discovery::command_for_path(&exe).to_string()
+}
+
+/// The `caprock` formula's binary when Homebrew installed one: the first of
+/// `candidates` that resolves into a Cellar. Starting it rather than the
+/// bundled copy keeps one daemon on the machine, upgraded by `brew upgrade`.
+/// A file there that Homebrew does not own is not used.
+pub fn brew_daemon(candidates: &[&str]) -> Option<PathBuf> {
+    candidates.iter().map(Path::new).find_map(|p| {
+        let real = std::fs::canonicalize(p).ok()?;
+        let owned = real.to_string_lossy().contains("/Cellar/");
+        (owned && real.is_file()).then(|| p.to_path_buf())
+    })
 }
 
 /// Copies the bundled daemon to `dst` when it differs, atomically (write a
@@ -548,6 +573,22 @@ mod tests {
             );
         }
         assert!(install_bin(&s.data_dir.join("missing"), &s.bin()).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn brew_daemon_takes_only_a_binary_in_a_cellar() {
+        let s = sup("brew");
+        let cellar = s.data_dir.join("Cellar/caprock/1.0.0/bin");
+        std::fs::create_dir_all(&cellar).unwrap();
+        std::fs::write(cellar.join("caprock"), b"x").unwrap();
+        let loose = s.data_dir.join("loose");
+        std::fs::write(&loose, b"x").unwrap();
+        let link = s.data_dir.join("caprock");
+        std::os::unix::fs::symlink(cellar.join("caprock"), &link).unwrap();
+        let (loose, link) = (loose.to_str().unwrap(), link.to_str().unwrap());
+        assert_eq!(brew_daemon(&[loose, "/nonexistent/caprock"]), None);
+        assert_eq!(brew_daemon(&[loose, link]), Some(PathBuf::from(link)));
     }
 
     #[test]
