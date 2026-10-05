@@ -151,7 +151,7 @@ func TestHolderFromBeforeV2StillWorks(t *testing.T) {
 	data := t.TempDir()
 	m := newManager(t, data)
 	m.Env = append(m.Env, envPreV2+"=1")
-	before := uint64(time.Now().UnixNano()) //nolint:gosec // after 1970
+	before := uint64(time.Now().UnixMicro()) //nolint:gosec // after 1970
 	s, err := m.Spawn(context.Background(), childSpec(t, "s-old"))
 	if err != nil {
 		t.Fatal(err)
@@ -162,8 +162,8 @@ func TestHolderFromBeforeV2StillWorks(t *testing.T) {
 	if _, err := s.(ptyman.SeqWriter).WriteSeq("tab", 1, []byte("x\r")); !errors.Is(err, ptyman.ErrNotSupported) {
 		t.Fatalf("WriteSeq on an old holder = %v; want ErrNotSupported so the daemon dedupes", err)
 	}
-	if ringOf(t, s).Total() < before {
-		t.Fatal("an old holder's offsets must start past any an earlier daemon handed out")
+	if total := ringOf(t, s).Total(); total < before || total > 1<<53 {
+		t.Fatalf("an old holder's offsets start at %d: they must pass any an earlier daemon handed out and stay exact in JavaScript", total)
 	}
 	if _, err := s.Write([]byte("plain\r")); err != nil {
 		t.Fatal(err)

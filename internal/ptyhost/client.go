@@ -334,11 +334,12 @@ func attach(dir string, rec Record, resume bool) (*remote, error) {
 		r.restore(w, snap)
 	} else {
 		// A holder from before offsets counts nothing. Start this run's
-		// count at the clock, in nanoseconds: past any offset an earlier
-		// daemon handed out for this session (no terminal prints a byte a
-		// nanosecond), so a browser holding one is sent a fresh screen rather
-		// than the wrong bytes.
-		base := uint64(time.Now().UnixNano()) //nolint:gosec // the clock is after 1970
+		// count at the clock, in microseconds: past any offset an earlier
+		// daemon handed out for this session unless the session printed more
+		// than a byte a microsecond on average, so a browser holding one is
+		// sent a fresh screen rather than the wrong bytes. Microseconds, not
+		// nanoseconds, so the offset stays exact in a JavaScript number.
+		base := uint64(time.Now().UnixMicro()) //nolint:gosec // the clock is after 1970
 		r.ring.Restore(nil, snap, base+uint64(len(snap)))
 	}
 	go r.read()
