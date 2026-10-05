@@ -215,7 +215,7 @@ func (s *Service) runClone(ctx context.Context, opID, rawURL, dest string) {
 		return
 	}
 	var tail []string
-	last := time.Time{}
+	last, lastPhase, lastPct := time.Time{}, "", -1
 	sc := bufio.NewScanner(stderr)
 	sc.Split(splitCRLF)
 	for sc.Scan() {
@@ -224,10 +224,10 @@ func (s *Service) runClone(ctx context.Context, opID, rawURL, dest string) {
 			continue
 		}
 		if phase, pct, ok := parseProgress(line); ok {
-			if time.Since(last) < 250*time.Millisecond && pct < 100 {
+			if (phase == lastPhase && pct == lastPct) || (time.Since(last) < 250*time.Millisecond && pct < 100) {
 				continue
 			}
-			last = time.Now()
+			last, lastPhase, lastPct = time.Now(), phase, pct
 			s.updateOp(opID, phase, pct)
 			continue
 		}
