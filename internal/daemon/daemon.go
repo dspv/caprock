@@ -49,6 +49,7 @@ import (
 	"github.com/dspv/caprock/internal/rollup"
 	"github.com/dspv/caprock/internal/sessionlink"
 	"github.com/dspv/caprock/internal/store"
+	"github.com/dspv/caprock/internal/termbuf"
 	"github.com/dspv/caprock/internal/update"
 	"github.com/dspv/caprock/internal/userenv"
 )
@@ -1514,6 +1515,28 @@ func (a *agentAdapter) Term(id string) ([]byte, <-chan []byte, func(), bool) {
 	}
 	sub, cancel := ag.Subscribe()
 	return ag.Snapshot(), sub, cancel, true
+}
+
+// TermV2 is the session's terminal for protocol v2: its ring with offsets and
+// sequenced input.
+func (a *agentAdapter) TermV2(id string) (api.TermStream, bool) {
+	ag, ok := a.m.Get(id)
+	if !ok {
+		return nil, false
+	}
+	return termStream{m: a.m, a: ag}, true
+}
+
+type termStream struct {
+	m *agents.Manager
+	a *agents.Agent
+}
+
+func (t termStream) Ring() *termbuf.Ring   { return t.a.Ring() }
+func (t termStream) Done() <-chan struct{} { return t.a.Done() }
+func (t termStream) Exited() (int, bool)   { return t.a.Exited() }
+func (t termStream) InputSeq(client string, seq uint64, data []byte) (uint64, error) {
+	return t.m.InputSeq(t.a.SessionID, client, seq, data)
 }
 
 // boardAdapter bridges the board to api.TaskController. It holds the daemon

@@ -44,6 +44,12 @@ type ready struct {
 // ringSize matches the daemon's own ring: what a reattached terminal repaints.
 const ringSize = 256 << 10
 
+// preV2 makes this holder answer as one from before terminal protocol v2: no
+// offsets in its welcome, no catch-up on resume, J frames ignored. Only the
+// compatibility tests set it, to stand in for a holder an older release
+// started.
+var preV2 bool
+
 // clientQueue is how many frames may wait for a slow client before it is
 // dropped. The daemon reads continuously, so a full queue means it is gone or
 // wedged, and the child must not stall on it.
@@ -79,7 +85,7 @@ func Main(stdin io.Reader, stdout io.WriteCloser) int {
 		return fail(stdout, err)
 	}
 	h := &host{
-		spec: spec, sess: sess, ln: ln, ring: termbuf.NewRing(ringSize),
+		spec: spec, sess: sess, ln: ln, ring: termbuf.NewRing(ringSize), inputs: termbuf.NewInputs(termbuf.InputTTL),
 		pumpDone: make(chan struct{}),
 		rec: Record{
 			Proto: Proto, SessionID: spec.SessionID, HostPID: os.Getpid(), ChildPID: sess.PID(),
@@ -118,6 +124,7 @@ type host struct {
 	sess     ptyman.Session
 	ln       net.Listener
 	ring     *termbuf.Ring
+	inputs   *termbuf.Inputs // sequenced input applied so far, per client (J frames)
 	rec      Record
 	pumpDone chan struct{}
 
@@ -317,10 +324,32 @@ func (h *host) handle(conn net.Conn) {
 	if h.client != nil {
 		h.client.drop()
 	}
-	w, _ := json.Marshal(welcome{Proto: Proto, ChildPID: h.rec.ChildPID, Paused: h.sess.Paused(), Version: h.spec.Version})
+	// Under h.mu the ring cannot move, so the offsets in the welcome are the
+	// ones the snapshot or the catch-up that follows it starts from.
+	snap, offset := h.ring.SnapshotAt()
+	start := h.ring.Start()
+	wel := welcome{
+		Proto: Proto, ChildPID: h.rec.ChildPID, Paused: h.sess.Paused(), Version: h.spec.Version,
+		Offset: &offset, RingStart: &start, SeqInput: true,
+	}
+	if preV2 {
+		wel.Offset, wel.RingStart, wel.SeqInput, hi.Since = nil, nil, false, nil
+	}
+	w, _ := json.Marshal(wel)
 	c.send(encodeFrame(frameWelcome, w))
-	if !hi.Resume {
-		c.send(encodeFrame(frameSnapshot, h.ring.Snapshot()))
+	switch {
+	case !hi.Resume:
+		c.send(encodeFrame(frameSnapshot, snap))
+	case hi.Since != nil:
+		// A daemon coming back after a dropped connection: what it missed,
+		// or the whole screen when the ring has moved past it.
+		if missed, ok := h.ring.Since(*hi.Since); ok {
+			if len(missed) > 0 {
+				c.send(encodeFrame(frameOutput, missed))
+			}
+		} else {
+			c.send(encodeFrame(frameSnapshot, snap))
+		}
 	}
 	h.client = c
 	h.mu.Unlock()
@@ -350,11 +379,34 @@ func (h *host) handle(conn net.Conn) {
 			if json.Unmarshal(payload, &m) == nil {
 				_ = h.sess.Signal(ptyman.Signal(m.Signal))
 			}
+		case frameSeqInput:
+			if !preV2 {
+				h.seqInput(c, payload)
+			}
 		default:
 			// A newer daemon's frame this holder does not know: ignored, so
 			// the two keep talking (see the package comment).
 		}
 	}
+}
+
+// seqInput types a J frame's bytes unless this client's sequence says they
+// were typed already, and answers with the client's last applied sequence.
+func (h *host) seqInput(c *client, payload []byte) {
+	id, seq, data, err := decodeSeqInput(payload)
+	if err != nil {
+		return
+	}
+	last, werr := h.inputs.Apply(id, seq, func() error {
+		_, err := h.sess.Write(data)
+		return err
+	})
+	ack := seqAck{Client: id, Req: seq, Seq: last}
+	if werr != nil {
+		ack.Error = werr.Error()
+	}
+	b, _ := json.Marshal(ack)
+	c.send(encodeFrame(frameSeqAck, b))
 }
 
 // exitCoder lets a session report an exit code without an *exec.ExitError.

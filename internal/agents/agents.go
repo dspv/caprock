@@ -22,6 +22,7 @@ import (
 	"github.com/dspv/caprock/internal/ptyhost"
 	"github.com/dspv/caprock/internal/ptyman"
 	"github.com/dspv/caprock/internal/store"
+	"github.com/dspv/caprock/internal/termbuf"
 	"github.com/dspv/caprock/internal/userenv"
 )
 
@@ -94,6 +95,7 @@ type Agent struct {
 
 	sess   ptyman.Session
 	ring   *ring
+	inputs *termbuf.Inputs // sequenced input, when the session cannot keep it itself
 	log    *slog.Logger
 	mu     sync.Mutex
 	subs   map[chan []byte]struct{}
@@ -481,7 +483,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 	}
 	a := &Agent{
 		SessionID: sessionID, Cwd: cwd, Worktree: worktree, Command: command + " " + join(args), StartedAt: time.Now(), Kind: agent, Port: port,
-		sess: sess, ring: newRing(256 << 10), log: m.log, subs: map[chan []byte]struct{}{}, done: make(chan struct{}), onExit: m.OnExit,
+		sess: sess, ring: ringFor(sess, 256<<10), inputs: termbuf.NewInputs(termbuf.InputTTL), log: m.log, subs: map[chan []byte]struct{}{}, done: make(chan struct{}), onExit: m.OnExit,
 	}
 	m.mu.Lock()
 	m.agents[sessionID] = a
@@ -585,6 +587,30 @@ func (m *Manager) Input(sessionID string, data []byte) error {
 	}
 	_, err := a.sess.Write(data)
 	return err
+}
+
+// InputSeq types sequenced input (terminal protocol v2) exactly once per
+// client, and returns the client's last applied sequence. Sequence 0 types
+// nothing and only asks for it. A pty-host keeps the numbering itself, so it
+// survives this daemon; a session without one is numbered here.
+func (m *Manager) InputSeq(sessionID, client string, seq uint64, data []byte) (uint64, error) {
+	a, ok := m.Get(sessionID)
+	if !ok {
+		return 0, errNotOwned(sessionID)
+	}
+	if seq > 0 && answersAMenu(data) {
+		m.clearPermission(sessionID)
+	}
+	if sw, ok := a.sess.(ptyman.SeqWriter); ok {
+		last, err := sw.WriteSeq(client, seq, data)
+		if !errors.Is(err, ptyman.ErrNotSupported) {
+			return last, err
+		}
+	}
+	return a.inputs.Apply(client, seq, func() error {
+		_, err := a.sess.Write(data)
+		return err
+	})
 }
 
 // Signal pauses/resumes/kills an owned session.
@@ -779,6 +805,9 @@ func (a *Agent) Subscribe() (<-chan []byte, func()) {
 		a.mu.Unlock()
 	}
 }
+
+// Ring is the session's output with offsets (terminal protocol v2).
+func (a *Agent) Ring() *termbuf.Ring { return a.ring.r }
 
 // Write types into the session.
 func (a *Agent) Write(b []byte) error { _, err := a.sess.Write(b); return err }

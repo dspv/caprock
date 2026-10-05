@@ -30,11 +30,14 @@ import (
 const (
 	envHolder = "CAPROCK_PTYHOST_TEST_HOLDER"
 	envChild  = "CAPROCK_PTYHOST_TEST_CHILD"
+	// envPreV2 makes the holder one from before terminal protocol v2.
+	envPreV2 = "CAPROCK_PTYHOST_TEST_PREV2"
 )
 
 func TestMain(m *testing.M) {
 	switch {
 	case os.Getenv(envHolder) == "1":
+		preV2 = os.Getenv(envPreV2) == "1"
 		os.Exit(Main(os.Stdin, os.Stdout))
 	case os.Getenv(envChild) == "1":
 		fmt.Print("child ready\r\n")
@@ -57,7 +60,7 @@ func TestMain(m *testing.M) {
 func childEnv() []string {
 	var env []string
 	for _, kv := range os.Environ() {
-		if strings.HasPrefix(kv, envHolder+"=") {
+		if strings.HasPrefix(kv, envHolder+"=") || strings.HasPrefix(kv, envPreV2+"=") {
 			continue
 		}
 		env = append(env, kv)

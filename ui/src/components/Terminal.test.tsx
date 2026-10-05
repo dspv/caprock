@@ -350,22 +350,33 @@ describe('a Caprock restart under an open terminal', () => {
   })
   afterEach(() => { vi.useRealTimers() })
 
-  it('reconnects when the connection drops, and repaints rather than duplicating', () => {
+  it('reconnects when the connection drops, says so over the terminal, and never gives up', async () => {
     // ADR-033: the session lives in its pty-host and outlives the daemon, so
     // a dropped socket is Caprock restarting, not the session ending. It used
-    // to print "[session ended]" over a session that was still running.
+    // to print "[session ended]" over a session that was still running, then
+    // "[Caprock is restarting — reconnecting…]" into the scrollback, and gave
+    // up after 60 attempts.
+    const { act } = await import('@testing-library/react')
     render(<TerminalView sessionId="s-re" owned />)
     expect(socks).toHaveLength(1)
-    socks[0]?.onclose?.({ code: 1006 })
-    expect(written.join('')).toMatch(/reconnecting/)
-    expect(written.join('')).not.toMatch(/session ended/)
-    vi.advanceTimersByTime(1000)
+    act(() => { socks[0]?.onmessage?.({ data: 'screen' }) })
+    act(() => { socks[0]?.onclose?.({ code: 1006 }) })
+    expect(screen.getByText('Reconnecting — your keys will be sent')).toBeTruthy()
+    expect(written.join('')).not.toMatch(/reconnecting|session ended/i)
+    act(() => { vi.advanceTimersByTime(250) })
     expect(socks).toHaveLength(2)
-    // The next daemon sends the scrollback; the screen is cleared first.
-    socks[1]?.onmessage?.({ data: 'screen' })
+    // An older daemon (version 1) replays the screen; it is cleared first.
+    act(() => { socks[1]?.onmessage?.({ data: 'screen' }) })
     expect(resets.n).toBe(1)
-    socks[1]?.onmessage?.({ data: 'more' })
+    act(() => { socks[1]?.onmessage?.({ data: 'more' }) })
     expect(resets.n).toBe(1)
+    // A hundred failures later it is still trying, five seconds apart at most.
+    for (let i = 0; i < 100; i++) {
+      act(() => { socks[socks.length - 1]?.onclose?.({ code: 1006 }) })
+      act(() => { vi.advanceTimersByTime(5000) })
+    }
+    expect(socks).toHaveLength(102)
+    expect(written.join('')).not.toMatch(/reload/)
   })
 
   it('says the session ended when the daemon says so, and stops', () => {

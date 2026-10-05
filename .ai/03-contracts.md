@@ -293,11 +293,26 @@ Every request under `/v1` passes `checkOrigin` (`internal/api/csrf.go`) before r
 
 Every error is JSON `{error, detail}`. Returns 501 when the daemon has no data directory.
 
-**`WS /v1/agents/{id}/term` carries two things, told apart by frame type.** A **binary** frame is what the user typed, written to the PTY byte for byte. A **text** frame is a control message — today only `{"resize":{"cols":N,"rows":N}}`, which resizes the PTY; a non-zero pair is required and anything else is ignored.
+**`WS /v1/agents/{id}/term` speaks two versions.** A client that offers the subprotocol `caprock.term.v2` gets [protocol v2](#terminal-socket-protocol-v2); any other client gets version 1, described in the rest of this paragraph and unchanged for dashboards that predate v2. In version 1, the socket **carries two things, told apart by frame type.** A **binary** frame is what the user typed, written to the PTY byte for byte. A **text** frame is a control message — today only `{"resize":{"cols":N,"rows":N}}`, which resizes the PTY; a non-zero pair is required and anything else is ignored.
 
 Everything on this socket used to be treated as keystrokes, so there was no way to tell the daemon the window had changed size: `Resize` was declared on the interface and called by nothing, and a PTY kept the size it was born with — 120×40 by default — for its whole life. Claude Code lays its menus out to the terminal size, so on any other window it drew an interface for a screen that was not there. Arrow keys moved a selection nobody could see, which is what the first user reported as "only Enter works".
 
 A text frame that is not valid control JSON is still written through as input, so a dashboard that predates this against a newer daemon keeps typing rather than going mute.
+
+### Terminal socket, protocol v2
+
+Every output byte has an offset and every input frame a sequence number, so a reconnect resumes from the last byte the client has, without repainting, and a keystroke resent after a drop is typed once ([21-app.md § Terminal protocol v2](21-app.md#terminal-protocol-v2)). Code: `internal/api/termv2.go`, `internal/termbuf`, `ui/src/lib/termv2.ts`.
+
+- **Negotiation.** The client offers `caprock.term.v2` (beside `caprock.device.<token>` on a paired device; the gate reads the token from the request, and only `caprock.term.v2` is echoed). Query: `?client=<id>` (`[A-Za-z0-9_-]{1,64}`, one per tab, numbers its input) and `?since=<offset>` (decimal, the offset one past the last byte the client has; omitted on a first connect). A malformed `client` or `since` is **400**.
+- **Offsets.** Byte `n` of everything the session ever printed has offset `n`. The count lives in the pty-host and survives a daemon restart. A session in a pty-host from before v2 is counted from the daemon's clock in microseconds at reattach, so no offset an earlier daemon handed out falls inside the new range; offsets stay below 2^53 (exact in JavaScript).
+- **Hello.** The first frame is text: `{"hello":{"v":2,"offset":N,"reset":bool,"ack":S}}`. `reset:false`: the ring still holds `since`, `offset` equals it, and the bytes after it follow. `reset:true` (a first connect, or a `since` the ring no longer holds or never had): the next binary frame is a **snapshot** — the mode prefix plus the ring — which the client draws on a cleared terminal, after which its position is `offset`. `ack` is the last input sequence applied for this `client` (0 when unknown).
+- **Output.** Binary frames: an 8-byte big-endian offset of the frame's first byte, then the bytes. The client keeps `offset + length` and drops any byte it already has. The daemon keeps no per-client queue: it reads from the session's ring at the client's position, so the output never waits for a client. A client that falls behind the ring gets `{"reset":{"offset":N}}` and a snapshot; a single write that blocks for 10 s closes the socket, and the client resumes with `since`.
+- **Input.** Binary frames: a 4-byte big-endian sequence number, then the bytes. Without `client` they are typed as they come. With it, a sequence at or below the last applied for that client is dropped; the table lives in the pty-host (frame `J`, below) and survives a daemon restart, and a client unheard from for **120 s** is forgotten. A frame that could not be confirmed as typed closes the socket with **1011**; the client resends it on reconnect.
+- **Acks.** `{"ack":S}`, the last applied sequence, at most 100 ms after it was applied. The client resends everything above the newest ack (or hello `ack`) after every reconnect.
+- **Control from the client** (text): `{"resize":{"cols":N,"rows":N}}`; `{"ping":t}`, answered `{"pong":t}`. Any other text is ignored — v2 never types a text frame.
+- **Liveness.** Each side sends `{"ping":t}` every 10 s and answers the other's with `{"pong":t}`; 25 s with nothing received closes the socket.
+- **End.** When the process exits: the last output, `{"exit":{"code":N}}`, then close **1000**. Close **1008**: the device lost the controller role, do not reconnect. Any other close is the connection, and the client reconnects (forever, backing off from 250 ms to 5 s with jitter, at once on `visibilitychange`, `online` and `pageshow`).
+- **Client backpressure.** The dashboard closes the socket while more than 1 MiB it has received waits for xterm.js to parse, and reconnects with `since` once that drops to 256 KiB.
 
 `GET`/`HEAD`/`OPTIONS` are otherwise permissive because every `GET` route on the router is a query. The two that reach a live process — `WS /v1/live` and `WS /v1/agents/{id}/term` — are WebSocket upgrades guarded by coder/websocket's `OriginPatterns`, which already refuses a missing or foreign `Origin`. **A new `GET` with a side effect belongs behind a `POST`**, not on the safe-method list.
 
@@ -716,7 +731,7 @@ POST   /v1/agents/{id}/input         {data}            → 204   (owned PTYs onl
 POST   /v1/agents/{id}/signal        {action: pause|resume|kill} → 204 (owned PTYs only)
 GET    /v1/agents/{id}/permission    → {permission: {id, tool, detail, always?, since} | null}; the prompt an owned session waits on
 POST   /v1/agents/{id}/permission    {id, choice: allow|always|deny} → 204; 409 when that prompt is no longer waiting
-WS     /v1/agents/{id}/term          bidirectional stream (xterm.js): binary = keystrokes, text = control; snapshot on connect, closes on exit
+WS     /v1/agents/{id}/term          bidirectional stream (xterm.js): binary = keystrokes, text = control; snapshot on connect, closes on exit; subprotocol caprock.term.v2 [?since=&client=] = protocol v2
 POST   /v1/paste                     {name, type, data:base64} → {path}; writes a pasted or dropped file so Claude Code can read it
 GET    /v1/terminals                 → {terminals: [{id, name}], preferred}; terminal apps installed here, most preferred first
 POST   /v1/sessions/{id}/open-terminal {terminal?, mode?: resume|move|fork} → {terminal: {id, name}, mode, command}
@@ -1733,8 +1748,8 @@ The holder starts the child, listens on `127.0.0.1:0`, writes its registry entry
 
 | Frame | Direction       | Payload                                                                  |
 | ----- | --------------- | ------------------------------------------------------------------------ |
-| `H`   | daemon → holder | `{"proto":1,"token":"…","resume":false}`                                 |
-| `W`   | holder → daemon | `{"proto":1,"child_pid":N,"paused":false,"version":"…"}`                 |
+| `H`   | daemon → holder | `{"proto":1,"token":"…","resume":false,"since":N}`                       |
+| `W`   | holder → daemon | `{"proto":1,"child_pid":N,"paused":false,"version":"…","offset":N,…}`    |
 | `S`   | holder → daemon | the scrollback ring (256 KiB + mode prefix), once; skipped when `resume` |
 | `O`   | holder → daemon | terminal bytes                                                           |
 | `X`   | holder → daemon | `{"code":N}`, then the holder closes and exits                           |
@@ -1742,6 +1757,10 @@ The holder starts the child, listens on `127.0.0.1:0`, writes its registry entry
 | `I`   | daemon → holder | typed bytes                                                              |
 | `R`   | daemon → holder | `{"cols":N,"rows":N}`                                                    |
 | `G`   | daemon → holder | `{"signal":"pause"\                                                      |
+| `J`   | daemon → holder | client id length (1 byte), client id, 8-byte big-endian sequence, bytes  |
+| `K`   | holder → daemon | `{"client":"…","req":N,"seq":N,"error":"…"}`, the answer to one `J`      |
+
+**Terminal protocol v2 additions** (additive, still `proto` 1). `W` carries `offset` (one past the newest byte the holder has output), `ring_start` (offset of the oldest byte its ring holds; the `S` that follows is the mode prefix plus bytes `[ring_start, offset)`) and `seq_input: true`. A resuming `H` may carry `since`: the holder sends the bytes from there as one `O`, or an `S` when its ring no longer holds them. `J` types its bytes unless the sequence is at or below the last applied for that client (kept 120 s after the client was last heard from), and is always answered by a `K` with the client's last applied sequence (`req` echoes the `J`'s sequence; `J` with sequence 0 types nothing and only asks). A daemon facing a holder without `seq_input` writes `I` frames and deduplicates itself, and counts that holder's offsets from its own clock (see [Terminal socket, protocol v2](#terminal-socket-protocol-v2)); an older daemon never sends `since` or `J` and ignores the new `W` fields.
 
 **Compatibility rule.** A holder started by one release must work with the daemon of the next. Frame types are never renumbered or repurposed; a side ignores a frame type it does not know. A change that cannot be made additively raises `proto`, and the daemon keeps speaking every older version while a holder of it can still be running. A registry entry with a newer `proto` than the daemon's is left alone (a downgrade).
 

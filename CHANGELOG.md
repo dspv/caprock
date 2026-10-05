@@ -34,6 +34,15 @@ Phase 3 (Delight) has no plan by design.
 - **Phone alerts are off until you switch them on.** A Telegram bot saved for
   the weekly report started sending alerts by itself; now *Settings → Phone
   alerts* turns each kind on.
+- **A terminal comes back from a dropped connection exactly where it was.**
+  When Caprock restarts, the network drops or a phone wakes, the terminal now
+  picks up from the last byte it had instead of clearing and repainting, so
+  what you scrolled back to stays put, and whatever you typed meanwhile is
+  sent once it reconnects — never lost, never typed twice, even across a
+  Caprock restart. It keeps trying for as long as it takes (it used to give
+  up after a minute and ask for a reload), and a pill over the terminal says
+  *Reconnecting — your keys will be sent* instead of a line written into it.
+  Up to 4 KB of typing is kept while offline.
 
 ## [0.74.0] - 2026-10-05
 

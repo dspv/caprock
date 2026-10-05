@@ -6,6 +6,7 @@ import { TerminalKeys } from './TerminalKeys'
 import { takeDraft } from '@/lib/draft'
 import { PermissionPrompt } from './PermissionPrompt'
 import { downscalePhoto } from '@/lib/downscale'
+import { TermClient, type TermState } from '@/lib/termv2'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
@@ -116,6 +117,11 @@ export function TerminalView({
   // say which. `start` says which: waiting (with the seconds), or failed.
   const [start, setStart] = useState<{ phase: 'waiting' | 'ready' | 'silent' | 'closed'; since: number }>({ phase: 'waiting', since: Date.now() })
   const [attempt, setAttempt] = useState(0)
+  // The connection, for the pill over the terminal: while it is down, what is
+  // typed waits and is sent on reconnect (protocol v2), so the pill says so.
+  const [conn, setConn] = useState<TermState>('connecting')
+  // Typed while offline past the queue's limit: those keys were not kept.
+  const [refused, setRefused] = useState(false)
   // The keys bar types through the same socket as the keyboard. Set while a
   // socket exists; a no-op otherwise.
   const sendRef = useRef<(d: string) => void>(() => {})
@@ -182,8 +188,6 @@ export function TerminalView({
     document.fonts?.ready.then(() => { try { fit.fit() } catch { /* gone */ } })
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
     const url = `${proto}://${location.host}/v1/agents/${encodeURIComponent(sessionId)}/term`
-    // Reassigned on every reconnect; everything below reads the current one.
-    let ws!: WebSocket
     // Nothing in 30 s is not a slow start any more: say so, and offer a retry.
     const silentTimer = window.setTimeout(() => {
       if (!gotOutput) setStart((st) => (st.phase === 'waiting' ? { ...st, phase: 'silent' } : st))
@@ -231,16 +235,63 @@ export function TerminalView({
       }
     }
     webglTimer = window.setTimeout(loadWebgl, WEBGL_QUIET_MS)
-    // Input goes as binary, control as text.
+    // Terminal protocol v2 (lib/termv2): output arrives with its offsets and
+    // input goes numbered, so a reconnect — Caprock restarting, a dropped
+    // network, a phone waking — picks up from the last byte this terminal
+    // has, without clearing it, and every key is typed exactly once.
     //
-    // Everything used to go as text and the daemon treated all of it as
-    // keystrokes, which left no way to tell it the window had changed size —
-    // so the PTY kept the size it was born with, 120x40, forever. Claude Code
-    // lays its menus out to that size, so on any other window the interface
-    // was drawn for a screen that was not there: arrows moved a selection
-    // nobody could see, which is what "only Enter works" looks like.
-    const enc = new TextEncoder()
-    const send = (d: string) => { if (ws.readyState === WebSocket.OPEN) ws.send(enc.encode(d)) }
+    // The session outlives the daemon (ADR-033), so a closed socket is not
+    // the session ending: the client reconnects forever, with backoff. It
+    // used to give up after 60 attempts and ask for a reload, and to write
+    // "reconnecting" into the terminal itself, which then sat in the
+    // scrollback; the pill over the terminal says it now.
+    //
+    // Input is binary and control is text. Everything used to go as text and
+    // the daemon treated all of it as keystrokes, which left no way to tell
+    // it the window had changed size — so the PTY kept the size it was born
+    // with, 120x40, forever, and arrows moved a selection nobody could see.
+    setConn('connecting')
+    setRefused(false)
+    const client = new TermClient({
+      url,
+      // A paired controller's token rides as a subprotocol, as on /v1/live:
+      // a browser's WebSocket cannot set a header (ADR-034).
+      deviceToken: deviceToken(),
+      callbacks: {
+        // Never a scroll to the bottom here: someone scrolled back to read
+        // stays where they are while output arrives (the scrolling rule).
+        write: (data, done) => {
+          term.write(data, done)
+          if (!gotOutput && data.length > 0) {
+            gotOutput = true
+            setStart((st) => ({ ...st, phase: 'ready' }))
+            // One size after the first output: a TUI that drew before the
+            // socket's first resize arrived redraws at the window's real size.
+            try { fit.fit() } catch { /* not laid out yet */ }
+            sendSize(term.cols, term.rows)
+          }
+        },
+        reset: () => term.reset(),
+        open: () => {
+          // The PTY was created before this socket existed, so the first
+          // thing it hears has to be the size the window actually is.
+          try { fit.fit() } catch { /* not laid out yet */ }
+          sendSize(term.cols, term.rows)
+        },
+        state: (st) => {
+          setConn(st)
+          if (st === 'live') setRefused(false)
+          if (st === 'ended') {
+            term.write('\r\n\x1b[2m[session ended]\x1b[0m\r\n')
+            if (!gotOutput) setStart((s0) => ({ ...s0, phase: 'closed' }))
+          }
+          // The owner took control away from this phone. Reconnecting would
+          // only be refused again.
+          if (st === 'revoked') term.write('\r\n\x1b[33m[this device can no longer control sessions — ask on the machine Caprock runs on]\x1b[0m\r\n')
+        },
+      },
+    })
+    const send = (d: string) => { if (!client.send(d)) setRefused(true) }
     const dataSub = term.onData(send)
     sendRef.current = send
 
@@ -251,71 +302,16 @@ export function TerminalView({
     // ResizeObserver directly, because that is the point at which xterm has
     // settled on a column count — the observer fires mid-layout, sometimes
     // with a width of zero.
-    const sendSize = (cols: number, rows: number) => {
-      if (ws.readyState !== WebSocket.OPEN || cols <= 0 || rows <= 0) return
-      ws.send(JSON.stringify({ resize: { cols, rows } }))
-    }
+    const sendSize = (cols: number, rows: number) => client.resize(cols, rows)
     const sizeSub = term.onResize(({ cols, rows }) => sendSize(cols, rows))
+    client.start()
 
-    // The session outlives the daemon (ADR-033), so the socket going away is
-    // not the session ending. The daemon closes with 1000 when the process
-    // exits; anything else is the connection — Caprock restarting, an
-    // upgrade — and the terminal reconnects to the next daemon, which repaints
-    // it from the session's scrollback. Clearing first, so the repaint does
-    // not land under a copy of itself.
-    let retries = 0
-    let retryTimer = 0
-    let repaint = false
-    const connect = () => {
-      // A paired controller's token rides as a subprotocol, as on /v1/live:
-      // a browser's WebSocket cannot set a header (ADR-034).
-      const tok = deviceToken()
-      ws = tok ? new WebSocket(url, [`caprock.device.${tok}`]) : new WebSocket(url)
-      ws.binaryType = 'arraybuffer'
-      ws.onmessage = (e) => {
-        if (repaint) { term.reset(); repaint = false }
-        const chunk = typeof e.data === 'string' ? e.data : new Uint8Array(e.data)
-        term.write(chunk)
-        if (!gotOutput && chunk.length > 0) {
-          gotOutput = true
-          setStart((st) => ({ ...st, phase: 'ready' }))
-          // One size after the first output: a TUI that drew before the
-          // socket's first resize arrived redraws at the window's real size.
-          try { fit.fit() } catch { /* not laid out yet */ }
-          sendSize(term.cols, term.rows)
-        }
-      }
-      ws.onopen = () => {
-        retries = 0
-        // The PTY was created before this socket existed, so the first thing it
-        // hears has to be the size the window actually is.
-        try { fit.fit() } catch { /* not laid out yet */ }
-        sendSize(term.cols, term.rows)
-      }
-      ws.onclose = (e: CloseEvent) => {
-        if (disposed) return
-        if (e?.code === 1000) {
-          term.write('\r\n\x1b[2m[session ended]\x1b[0m\r\n')
-          if (!gotOutput) setStart((st) => ({ ...st, phase: 'closed' }))
-          return
-        }
-        // 1008: the owner took control away from this phone. Reconnecting
-        // would only be refused again.
-        if (e?.code === 1008) {
-          term.write('\r\n\x1b[33m[this device can no longer control sessions — ask on the machine Caprock runs on]\x1b[0m\r\n')
-          return
-        }
-        if (retries === 0) term.write('\r\n\x1b[2m[Caprock is restarting — reconnecting…]\x1b[0m\r\n')
-        if (retries >= 60) {
-          term.write('\r\n\x1b[2m[could not reconnect — reload the page]\x1b[0m\r\n')
-          return
-        }
-        retries++
-        repaint = true
-        retryTimer = window.setTimeout(connect, 1000)
-      }
-    }
-    connect()
+    // Back from sleep, the network, or the back/forward cache: reconnect now
+    // rather than at the end of a backoff.
+    const wake = () => { if (document.visibilityState !== 'hidden') client.wake() }
+    document.addEventListener('visibilitychange', wake)
+    window.addEventListener('online', wake)
+    window.addEventListener('pageshow', wake)
 
     // A newline in the prompt, however the user asks for one.
     //
@@ -555,10 +551,12 @@ export function TerminalView({
       window.clearTimeout(silentTimer)
       window.clearTimeout(webglTimer)
       inputSub.dispose()
-      window.clearTimeout(retryTimer)
+      document.removeEventListener('visibilitychange', wake)
+      window.removeEventListener('online', wake)
+      window.removeEventListener('pageshow', wake)
       sendRef.current = () => {}
       attachRef.current = async () => {}
-      ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); ws.close(); term.dispose()
+      ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); client.dispose(); term.dispose()
     }
   }, [sessionId, owned, attempt, phone])
   if (!owned && detached) {
@@ -652,6 +650,17 @@ export function TerminalView({
         <div ref={host} data-term-host className="h-[52vh] sm:h-[70vh]" />
         {start.phase !== 'ready' && (
           <TerminalStart phase={start.phase} since={start.since} onRetry={() => setAttempt((n) => n + 1)} />
+        )}
+        {(conn === 'reconnecting' || refused) && (
+          <div
+            aria-live="polite"
+            className="pointer-events-none absolute right-3 top-3 rounded-full border px-2.5 py-1 text-[11px]"
+            style={{ background: TERMINAL_THEME.background, borderColor: TERMINAL_THEME.cursor, color: TERMINAL_THEME.cursor }}
+          >
+            {refused
+              ? 'Offline — keys past the first 4 KB were not kept'
+              : 'Reconnecting — your keys will be sent'}
+          </div>
         )}
       </div>
       <PermissionPrompt sessionId={sessionId} />
