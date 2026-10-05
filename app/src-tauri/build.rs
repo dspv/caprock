@@ -8,6 +8,10 @@ fn main() {
             "update_daemon",
             "set_background",
             "open_external",
+            "set_tray",
+            "set_badge",
+            "hotkey_status",
+            "register_hotkey",
         ]),
     ))
     .expect("tauri build");

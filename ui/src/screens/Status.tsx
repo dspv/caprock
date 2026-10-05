@@ -28,6 +28,8 @@ import { Pairing } from '@/components/Pairing'
 import { PhoneAlerts } from '@/components/PhoneAlerts'
 import { StoragePanel } from '@/components/Storage'
 import { Choice, Details, Section, Toggle } from '@/components/SettingsParts'
+import { GlobalHotkey } from '@/components/GlobalHotkey'
+import { isTauri } from '@/lib/appmode'
 
 export function StatusScreen() {
   const st = useApi(() => api.status(), [], { live: false, intervalMs: 5000 })
@@ -45,6 +47,7 @@ export function StatusScreen() {
       {owner && <PhoneAlerts />}
       {owner && <PlanSection />}
       <AppearanceSection />
+      {owner && isTauri() && <GlobalHotkey />}
       {owner && <PrivacySection />}
       {owner && <MemorySection />}
       <StoragePanel />

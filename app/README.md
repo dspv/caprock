@@ -56,13 +56,17 @@ daemon and every session running.
 
 Commands are granted per origin (`src-tauri/capabilities/`):
 
-| Command          | Daemon page | Bundled page |
-| ---------------- | ----------- | ------------ |
-| `daemon_status`  | yes         | yes          |
-| `open_external`  | yes         | yes          |
-| `start_daemon`   | no          | yes          |
-| `update_daemon`  | no          | yes          |
-| `set_background` | no          | yes          |
+| Command           | Daemon page | Bundled page |
+| ----------------- | ----------- | ------------ |
+| `daemon_status`   | yes         | yes          |
+| `open_external`   | yes         | yes          |
+| `start_daemon`    | no          | yes          |
+| `update_daemon`   | no          | yes          |
+| `set_background`  | no          | yes          |
+| `set_tray`        | yes         | no           |
+| `set_badge`       | yes         | no           |
+| `hotkey_status`   | yes         | no           |
+| `register_hotkey` | yes         | no           |
 
 A page on any other origin gets nothing; `cargo test` checks each refusal.
 `open_external` opens `http` and `https` only.
@@ -83,9 +87,46 @@ A page on any other origin gets nothing; `cargo test` checks each refusal.
 - **Daemon gone.** A page that calls `daemon_status` at least every 2 s owns
   the "daemon stopped" state (its own banner, no reload); otherwise the shell
   switches to its bundled page and back.
+- **Tray and badge.** The page computes what the menu bar or tray shows
+  (`set_tray`: title, tooltip, read-only lines, waiting sessions) with the
+  dashboard's own formatting, and the badge count (`set_badge`); the shell
+  only draws them (`ui/src/lib/tray.ts`). A waiting session clicked in the
+  tray brings the window up and dispatches
+  `CustomEvent('caprock:open-session', {detail: <session id>})` on `window`.
 - **Links and files.** `target="_blank"`, `window.open` and any navigation off
   the daemon's origin open in the system browser; a download asks where to
   save.
+
+## Menu bar, badge and global hotkey
+
+- **Menu bar / tray** (`src-tauri/src/tray.rs`): Claude's and Codex's 5-hour
+  and 7-day windows with their reset clocks, today's spend, and the sessions
+  waiting for your approval, each opening its session. macOS shows the 5-hour
+  figure and the waiting count beside the icon. When the daemon stops, the
+  menu says so and the badge clears. After a live `reset` (frames lost),
+  the summary is asked again and every live owned session's prompt is
+  re-read, so a missed `permission` frame cannot leave the badge stale. Linux needs
+  `libayatana-appindicator3-1` (a `.deb` dependency); clicks on the icon
+  itself are not delivered there, the menu is.
+- **Badge** (`src-tauri/src/badge.rs`): the number of sessions waiting for
+  approval on the Dock icon; a dot overlay on the Windows taskbar; the count
+  on Linux docks that implement the Unity launcher API. Gone when none wait.
+- **Global hotkey** (`src-tauri/src/hotkey.rs`): ⌃⌥⌘C on macOS, Win+Alt+C on
+  Windows and Linux by default, changed or turned off in Settings → Global
+  shortcut and kept in `<data_dir>/app-hotkey.json`. Pressed with the window
+  in front it hides it; otherwise it brings it up. ⌥⌘C was not taken: it is
+  Finder's Copy as Pathname and the browsers' inspector. Ctrl+Alt+C was not
+  taken: Ctrl+Alt is AltGr on Windows, which types a letter with C on
+  Polish, Czech and Hungarian layouts. A shortcut the system refuses is
+  shown in Settings with its reason and the previous one stays.
+- **Wayland.** Compositors do not give an app a global key: the shortcut is
+  registered through X11 and works only under XWayland while an X11 window
+  has focus, if at all. Settings says so in a Wayland session; the tray's
+  **Show Caprock** still works.
+- **Closing the window.** On macOS it hides the window and the app stays in
+  the menu bar (Cmd+Q or **Quit Caprock** quits; the Dock icon reopens it).
+  On Windows and Linux closing still quits, because a tray may not be shown
+  at all and a second launch would start a second app.
 
 ## Checking it on a machine someone is using
 

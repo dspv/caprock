@@ -10,6 +10,14 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
+/// Writes what the tray and badge last showed to `<dir>/<name>`, so a check
+/// can read them without opening the menu.
+pub fn record(name: &str, body: String) {
+    if let Some(dir) = std::env::var_os("CAPROCK_APP_SNAPSHOT_DIR") {
+        let _ = std::fs::write(Path::new(&dir).join(name), body);
+    }
+}
+
 pub fn watch(app: AppHandle) {
     let Some(dir) = std::env::var_os("CAPROCK_APP_SNAPSHOT_DIR").map(PathBuf::from) else {
         return;

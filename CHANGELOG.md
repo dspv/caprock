@@ -19,6 +19,14 @@ Phase 3 (Delight) has no plan by design.
   than that, a `reset` frame makes every screen refetch instead. A socket
   silent for 25 seconds is taken for dead and reconnected, as the terminal
   already does. Clients that predate this keep working unchanged.
+- **Menu bar, badge and a global hotkey in the desktop app.** The menu bar
+  (a tray on Windows and Linux) shows the 5-hour and 7-day plan usage for
+  Claude and Codex, today's spend and the sessions waiting for your
+  approval; click one to open it. The Dock badge counts them and clears
+  when none wait. ⌃⌥⌘C (Win+Alt+C on Windows and Linux) brings the window
+  up from any app, changed or turned off in Settings → Global shortcut;
+  Wayland does not allow global shortcuts. On macOS closing the window now
+  keeps Caprock in the menu bar.
 
 ## [0.75.0] - 2026-10-05
 

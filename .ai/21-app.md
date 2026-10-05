@@ -388,7 +388,8 @@ one lean terminal; they stay below Orca (420–541 MB idle) and a Chrome tab.
   (`window.__TAURI_INTERNALS__`) and turns on the app-only surfaces: tabs
   layout, native notifications instead of in-page ones, the badge.
 - **The shell talks to the page through Tauri commands**, allowlisted for the
-  daemon's origin only: `notify`, `set_badge`, `set_tray`, `register_hotkey`,
+  daemon's origin only: `notify`, `set_badge`, `set_tray`, `register_hotkey`
+  (with `hotkey_status`; built in WP-10, app/README.md),
   `open_external` (https and the editors' schemes only), `daemon_status`. No
   shell, filesystem or HTTP plugin is exposed to the page. The bundled
   fallback page, on the app's own origin, alone gets `start_daemon`,

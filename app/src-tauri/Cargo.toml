@@ -16,10 +16,11 @@ tauri-build = { version = "2.7", features = [] }
 
 [dependencies]
 # >= 2.11.1: GHSA-7gmj-67g7-phm9 let remote origins call local-only commands.
-tauri = { version = "2.12", features = ["macos-private-api"] }
+tauri = { version = "2.12", features = ["macos-private-api", "tray-icon", "image-png"] }
 tauri-plugin-window-state = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "6"
@@ -39,7 +40,7 @@ objc2-foundation = { version = "0.3", optional = true, features = ["NSData", "NS
 objc2-core-foundation = { version = "0.3", optional = true, features = ["CFCGTypes"] }
 
 [dev-dependencies]
-tauri = { version = "2.12", features = ["macos-private-api", "test"] }
+tauri = { version = "2.12", features = ["macos-private-api", "tray-icon", "image-png", "test"] }
 
 [profile.release]
 codegen-units = 1

@@ -34,6 +34,24 @@ const PROJECTS_MS = 60_000
 /** Shells write no session row, so their list is the only word on one ending. */
 const SHELLS_MS = 10_000
 
+/** A session's prompt as asked again after a gap: pending, none, or not known. */
+export type PromptAnswer = 'pending' | 'none' | 'unknown'
+
+/**
+ * The pending-prompt set after asking every live owned session again. A
+ * session no longer live drops out; one whose answer failed keeps what was
+ * known. Used after a live `reset` (or a reconnect with no replay), when a
+ * `permission` frame may have been missed and the badge would otherwise
+ * stay wrong.
+ */
+export function resyncPermissions(cur: ReadonlySet<string>, answers: ReadonlyMap<string, PromptAnswer>): Set<string> {
+  const next = new Set<string>()
+  for (const [id, a] of answers) {
+    if (a === 'pending' || (a === 'unknown' && cur.has(id))) next.add(id)
+  }
+  return next
+}
+
 export interface WorkspaceData {
   projects: Project[]
   source: ProjectSource
@@ -76,6 +94,8 @@ export function useWorkspaceData(): WorkspaceData {
   const [nonce, setNonce] = useState(0)
   const refresh = useCallback(() => setNonce((n) => n + 1), [])
   const asked = useRef(new Set<string>())
+  const sessionsRef = useRef(sessions)
+  sessionsRef.current = sessions
 
   // The full list, for projects nobody is working in right now.
   useEffect(() => {
@@ -124,8 +144,26 @@ export function useWorkspaceData(): WorkspaceData {
   }, [nonce])
 
   // Git state, clones and permission prompts, as they happen.
-  useEffect(() => live.onFrame((frame) => {
-    if (frame.type === 'project') {
+  useEffect(() => {
+    let hellos = 0
+    // Frames were lost (a `reset`, or a reconnect the daemon could not
+    // replay): a missed `permission` frame would leave a prompt or the badge
+    // stale, so every live owned session is asked again.
+    const resync = () => {
+      const owned = sessionsRef.current.filter((s) => s.owned && s.status !== 'ended' && s.kind !== 'shell')
+      void Promise.all(owned.map((s) => api.permission(s.session_id)
+        .then((r): [string, PromptAnswer] => [s.session_id, r.permission ? 'pending' : 'none'])
+        .catch((): [string, PromptAnswer] => [s.session_id, 'unknown'])))
+        .then((pairs) => setPermissions((cur) => resyncPermissions(cur, new Map(pairs))))
+    }
+    return live.onFrame((frame) => {
+    if (frame.type === 'reset') {
+      resync()
+    } else if (frame.type === 'hello') {
+      // The first hello is the page opening (asked below); a later one
+      // without replay (`reset`, or a daemon that predates it) left a gap.
+      if (hellos++ > 0 && frame.data.reset !== false) resync()
+    } else if (frame.type === 'project') {
       const id = String(frame.data.id)
       if (frame.data.removed) {
         setApiProjects((cur) => cur && cur.filter((x) => x.id !== id))
@@ -164,7 +202,8 @@ export function useWorkspaceData(): WorkspaceData {
         return next
       })
     }
-  }), [])
+    })
+  }, [])
 
   // A prompt already pending when the app opened is not announced again:
   // ask once for each live session Caprock owns.
