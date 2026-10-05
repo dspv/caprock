@@ -4,8 +4,9 @@
  * resent until acknowledged, liveness, backpressure and reconnecting forever.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { CONNECT_TIMEOUT_MS, PROBE_MS } from './reconnect'
 import {
-  BACKOFF_MAX_MS, DEAD_MS, HIGH_WATER, OFFLINE_QUEUE_BYTES, TERM_V2_PROTOCOL,
+  BACKOFF_MAX_MS, BACKOFF_MIN_MS, DEAD_MS, HIGH_WATER, OFFLINE_QUEUE_BYTES, TERM_V2_PROTOCOL,
   TermClient, backoff, type TermState,
 } from './termv2'
 
@@ -20,7 +21,7 @@ class FakeSocket {
   sent: (string | Uint8Array)[] = []
   onopen: (() => void) | null = null
   onmessage: ((e: { data: unknown }) => void) | null = null
-  onclose: ((e: { code: number }) => void) | null = null
+  onclose: ((e: { code: number; reason?: string }) => void) | null = null
   readonly query: URLSearchParams
   constructor(readonly url: string, readonly protocols: string[]) {
     this.query = new URL(url).searchParams
@@ -38,7 +39,7 @@ class FakeSocket {
     b.set(body, 8)
     this.onmessage?.({ data: b.buffer })
   }
-  drop(code = 1006) { this.readyState = FakeSocket.CLOSED; this.onclose?.({ code }) }
+  drop(code = 1006, reason = '') { this.readyState = FakeSocket.CLOSED; this.onclose?.({ code, reason } as { code: number }) }
   inputs(): { seq: number; text: string }[] {
     return this.sent.filter((d): d is Uint8Array => typeof d !== 'string').map((d) => ({
       seq: new DataView(d.buffer, d.byteOffset).getUint32(0),
@@ -65,6 +66,7 @@ function mount(over: { write?: (d: Uint8Array | string, done: () => void) => voi
     },
   })
   c.start()
+  wakeLast = () => c.wake()
   return { c, out, states, resets: () => resets, exit: () => exit }
 }
 
@@ -91,7 +93,7 @@ describe('TermClient (protocol v2)', () => {
 
     s1.drop()
     expect(t.states.at(-1)).toBe('reconnecting')
-    vi.advanceTimersByTime(250)
+    vi.advanceTimersByTime(BACKOFF_MIN_MS)
     const s2 = last()
     expect(s2.query.get('since')).toBe('11')
     expect(s2.query.get('client')).toBe(s1.query.get('client'))
@@ -150,7 +152,7 @@ describe('TermClient (protocol v2)', () => {
     s1.text({ ack: 1 })
     s1.drop()
     t.c.send('d') // typed while down: queued
-    vi.advanceTimersByTime(250)
+    vi.advanceTimersByTime(BACKOFF_MIN_MS)
     const s2 = last()
     s2.accept()
     expect(s2.inputs()).toEqual([]) // nothing before the hello
@@ -194,18 +196,21 @@ describe('TermClient (protocol v2)', () => {
     expect(FakeSocket.all).toHaveLength(1)
   })
 
-  it('reconnects forever, backing off to 5 s, and at once when the page wakes', () => {
+  it('reconnects forever, backing off to 15 s, and at once when the page wakes', () => {
     const t = mount()
     for (let i = 0; i < 200; i++) {
       last().drop()
       vi.advanceTimersByTime(BACKOFF_MAX_MS)
     }
-    expect(FakeSocket.all).toHaveLength(201)
+    // At least one attempt per drop; more where an attempt hung opening
+    // past CONNECT_TIMEOUT_MS and was replaced.
+    expect(FakeSocket.all.length).toBeGreaterThanOrEqual(201)
     last().drop()
+    const before = FakeSocket.all.length
     t.c.wake()
-    expect(FakeSocket.all).toHaveLength(202)
+    expect(FakeSocket.all).toHaveLength(before + 1)
     for (let n = 0; n < 30; n++) {
-      expect(backoff(n, () => 0)).toBeGreaterThanOrEqual(125)
+      expect(backoff(n, () => 0)).toBeGreaterThanOrEqual(BACKOFF_MIN_MS)
       expect(backoff(n, () => 1)).toBeLessThanOrEqual(BACKOFF_MAX_MS)
     }
   })
@@ -292,3 +297,191 @@ describe('TermClient (protocol v2)', () => {
     expect(t.resets()).toBe(0)
   })
 })
+
+describe('TermClient — WP-13 resilience', () => {
+  beforeEach(() => {
+    FakeSocket.all = []
+    vi.useFakeTimers()
+    vi.stubGlobal('WebSocket', FakeSocket)
+  })
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
+
+  const live = () => {
+    const t = mount()
+    last().accept()
+    last().text({ hello: { v: 2, offset: 0, reset: true, ack: 0 } })
+    return t
+  }
+
+  it('resends an input the daemon closed 1011 on, once, after the reconnect', () => {
+    const t = live()
+    t.c.send('x')
+    last().drop(1011)
+    expect(t.states.at(-1)).toBe('reconnecting')
+    vi.advanceTimersByTime(BACKOFF_MIN_MS)
+    last().accept()
+    last().text({ hello: { v: 2, offset: 0, reset: false, ack: 0 } })
+    expect(last().inputs()).toEqual([{ seq: 1, text: 'x' }])
+  })
+
+  it('stops on 1008 and says why, with no further attempt', () => {
+    const t = live()
+    last().drop(1008, '')
+    vi.advanceTimersByTime(60_000)
+    expect(FakeSocket.all).toHaveLength(1)
+    expect(t.c.link.phase).toBe('revoked')
+    expect(t.c.link.reason).toMatch(/ask on the machine/)
+    t.c.wake()
+    expect(FakeSocket.all).toHaveLength(1)
+  })
+
+  it('reports the attempt, the next try and since when, and resets them once live', () => {
+    const t = live()
+    const lost = Date.now()
+    last().drop()
+    expect(t.c.link).toMatchObject({ phase: 'reconnecting', attempt: 0, downSince: lost, nextAt: lost + BACKOFF_MIN_MS })
+    vi.advanceTimersByTime(BACKOFF_MIN_MS)
+    expect(t.c.link).toMatchObject({ attempt: 1, nextAt: null })
+    last().drop()
+    expect(t.c.link.attempt).toBe(1)
+    expect(t.c.link.nextAt).not.toBeNull()
+    vi.advanceTimersByTime(BACKOFF_MAX_MS)
+    last().accept()
+    expect(t.c.link.phase).toBe('catching-up') // open, the hello not yet in
+    last().text({ hello: { v: 2, offset: 0, reset: false, ack: 0 } })
+    expect(t.c.link).toEqual({ phase: 'live', attempt: 0, nextAt: null, downSince: null, reason: undefined })
+  })
+
+  it('makes a woken socket answer within 2 s, and replaces it at once when it does not', () => {
+    live()
+    const s1 = last()
+    // The network changed under an open socket: the wake pings it.
+    const t2 = FakeSocket.all.length
+    s1.sent.length = 0
+    mountWake()
+    expect(s1.sent.some((d) => typeof d === 'string' && d.startsWith('{"ping"'))).toBe(true)
+    vi.advanceTimersByTime(PROBE_MS + 1_000)
+    // No answer: a new socket now, not after the backoff.
+    expect(FakeSocket.all.length).toBe(t2 + 1)
+  })
+
+  it('keeps a woken socket that answers', () => {
+    live()
+    const s1 = last()
+    mountWake()
+    vi.advanceTimersByTime(500)
+    s1.text({ pong: 1 })
+    vi.advanceTimersByTime(PROBE_MS + 1_000)
+    expect(FakeSocket.all).toHaveLength(1)
+  })
+
+  it('takes a laptop that slept for a dead socket and reconnects at once on wake', () => {
+    const t = live()
+    last().bytes(0, '') // the (empty) snapshot
+    last().bytes(0, 'abc')
+    vi.setSystemTime(Date.now() + 10 * 60_000)
+    t.c.wake()
+    expect(FakeSocket.all).toHaveLength(2)
+    expect(last().query.get('since')).toBe('3')
+  })
+
+  it('abandons an attempt that hangs opening', () => {
+    const t = live()
+    last().drop()
+    vi.advanceTimersByTime(BACKOFF_MIN_MS)
+    const hanging = FakeSocket.all.length
+    vi.advanceTimersByTime(CONNECT_TIMEOUT_MS + 1_000)
+    expect(t.c.state).toBe('reconnecting')
+    vi.advanceTimersByTime(BACKOFF_MAX_MS)
+    expect(FakeSocket.all.length).toBeGreaterThan(hanging)
+  })
+
+  it('is not live while the socket is let go for a terminal 1 MB behind', () => {
+    const pendingDone: (() => void)[] = []
+    const t = mount({ write: (_d, done) => { pendingDone.push(done) } })
+    last().accept()
+    last().text({ hello: { v: 2, offset: 0, reset: true, ack: 0 } })
+    const chunk = 'x'.repeat(64 * 1024)
+    let off = 0
+    last().bytes(0, '') // the (empty) snapshot
+    while (off <= HIGH_WATER) { last().bytes(off, chunk); off += chunk.length }
+    expect(t.c.state).toBe('catching-up')
+    pendingDone.forEach((d) => d())
+    last().accept()
+    last().text({ hello: { v: 2, offset: off, reset: false, ack: 0 } })
+    expect(t.c.state).toBe('live')
+  })
+})
+
+describe('TermClient — exactly once (Phone v2 item 3)', () => {
+  beforeEach(() => {
+    FakeSocket.all = []
+    vi.useFakeTimers()
+    vi.stubGlobal('WebSocket', FakeSocket)
+  })
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
+
+  it('types 10,000 sequenced inputs across 50 forced disconnects exactly once', () => {
+    // The fake pty-host's echo log is the proof: each key echoed once, in order.
+    const t = mount()
+    let output = ''
+    const echo: string[] = []
+    let lastSeq = 0
+    let rnd = 7
+    const rand = () => { rnd = (rnd * 1103515245 + 12345) % 2 ** 31; return rnd / 2 ** 31 }
+    const serve = (s: FakeSocket) => {
+      s.accept()
+      const since = Number(s.query.get('since') ?? output.length)
+      s.text({ hello: { v: 2, offset: since, reset: false, ack: lastSeq } })
+      s.bytes(since, output.slice(since))
+    }
+    const pump = (s: FakeSocket, from: number) => {
+      for (const { seq, text } of s.inputs().slice(from)) {
+        if (seq <= lastSeq) continue
+        lastSeq = seq
+        echo.push(text)
+        const off = output.length
+        output += text
+        if (rand() < 0.7) s.bytes(off, text)
+        if (rand() < 0.2) s.text({ ack: lastSeq })
+      }
+      return s.inputs().length
+    }
+    const reconnect = () => {
+      const before = FakeSocket.all.length
+      for (let i = 0; FakeSocket.all.length === before && i < 200; i++) vi.advanceTimersByTime(100)
+      serve(last())
+      return pump(last(), 0)
+    }
+    serve(last())
+    let seen = 0
+    let disconnects = 0
+    let typed = 0
+    while (typed < 10_000) {
+      t.c.send(`<${++typed}>`)
+      seen = pump(last(), seen)
+      if (typed % 200 === 0) {
+        disconnects++
+        // Three ways a connection goes: dropped, closed 1011 (an input not
+        // confirmed as typed), and half-open (nothing arrives, nothing closes).
+        const how = disconnects % 3
+        if (how === 0) last().drop(1006)
+        else if (how === 1) last().drop(1011)
+        else vi.advanceTimersByTime(DEAD_MS)
+        for (let k = 0; k < 3; k++) t.c.send(`<${++typed}>`) // typed while down
+        seen = reconnect()
+      }
+    }
+    // A last reconnect delivers anything still unacknowledged.
+    last().drop()
+    seen = reconnect()
+    expect(disconnects).toBe(50)
+    expect(echo.length).toBe(typed)
+    expect(echo.every((k, i) => k === `<${i + 1}>`)).toBe(true)
+    expect(t.c.unacked).toBe(0)
+  })
+})
+
+/** The last mounted client's wake, as the page's listeners would call it. */
+let wakeLast: (() => void) | null = null
+function mountWake() { wakeLast?.() }

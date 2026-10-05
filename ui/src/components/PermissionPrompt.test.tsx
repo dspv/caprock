@@ -75,4 +75,15 @@ describe('a permission prompt', () => {
     await screen.findByText('python3 -c "print(1)"')
     expect(screen.queryAllByRole('button')).toHaveLength(0)
   })
+  it('never queues an answer: offline, it fails where it was pressed and is not sent later', async () => {
+    // WP-13: a Yes held while offline and sent a minute later could answer a
+    // different prompt. It fails on the spot, says so, and nothing retries it.
+    h.answer.mockRejectedValue(new TypeError('Failed to fetch'))
+    render(<PermissionPrompt sessionId="s1" />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes' }))
+    await waitFor(() => expect(h.answer).toHaveBeenCalledTimes(1))
+    expect(await screen.findByRole('alertdialog')).toBeTruthy()
+    await new Promise((r) => setTimeout(r, 300))
+    expect(h.answer).toHaveBeenCalledTimes(1)
+  })
 })

@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Terminal as Xterm } from '@xterm/xterm'
-import { deviceToken, isPairedDevice } from '@/lib/api'
+import { api, deviceToken, isPairedDevice } from '@/lib/api'
 import { SpawnDialog } from './SpawnDialog'
 import { TerminalKeys } from './TerminalKeys'
 import { takeDraft } from '@/lib/draft'
 import { PermissionPrompt } from './PermissionPrompt'
 import { downscalePhoto } from '@/lib/downscale'
 import { TermClient, type TermState } from '@/lib/termv2'
+import { onNetworkWake, type LinkStatus } from '@/lib/reconnect'
+import { ConnectionState } from './ConnectionState'
 import { attachTerminalInput } from '@/lib/xtermInput'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
@@ -121,6 +123,9 @@ export function TerminalView({
   // The connection, for the pill over the terminal: while it is down, what is
   // typed waits and is sent on reconnect (protocol v2), so the pill says so.
   const [conn, setConn] = useState<TermState>('connecting')
+  // The same, with the attempt and the next try, for the state indicator.
+  const [link, setLink] = useState<LinkStatus>({ phase: 'connecting', attempt: 0, nextAt: null, downSince: null })
+  const heardRef = useRef<() => number>(() => 0)
   // Typed while offline past the queue's limit: those keys were not kept.
   const [refused, setRefused] = useState(false)
   // The keys bar types through the same socket as the keyboard. Set while a
@@ -290,8 +295,10 @@ export function TerminalView({
           // only be refused again.
           if (st === 'revoked') term.write('\r\n\x1b[33m[this device can no longer control sessions — ask on the machine Caprock runs on]\x1b[0m\r\n')
         },
+        status: setLink,
       },
     })
+    heardRef.current = () => client.heardAt
     const send = (d: string) => { if (!client.send(d)) setRefused(true) }
     const dataSub = term.onData(send)
     sendRef.current = send
@@ -307,12 +314,9 @@ export function TerminalView({
     const sizeSub = term.onResize(({ cols, rows }) => sendSize(cols, rows))
     client.start()
 
-    // Back from sleep, the network, or the back/forward cache: reconnect now
-    // rather than at the end of a backoff.
-    const wake = () => { if (document.visibilityState !== 'hidden') client.wake() }
-    document.addEventListener('visibilitychange', wake)
-    window.addEventListener('online', wake)
-    window.addEventListener('pageshow', wake)
+    // Back from sleep, the network, the back/forward cache or a network
+    // change: reconnect now rather than at the end of a backoff.
+    const unwake = onNetworkWake(() => client.wake())
 
     // Keys, copy, paste and dropped files: lib/xtermInput.ts, shared with the
     // app's terminal tabs so the two can never type differently.
@@ -353,9 +357,7 @@ export function TerminalView({
       window.clearTimeout(silentTimer)
       window.clearTimeout(webglTimer)
       inputSub.dispose()
-      document.removeEventListener('visibilitychange', wake)
-      window.removeEventListener('online', wake)
-      window.removeEventListener('pageshow', wake)
+      unwake()
       sendRef.current = () => {}
       attachRef.current = async () => {}
       ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); client.dispose(); term.dispose()
@@ -453,15 +455,16 @@ export function TerminalView({
         {start.phase !== 'ready' && (
           <TerminalStart phase={start.phase} since={start.since} onRetry={() => setAttempt((n) => n + 1)} />
         )}
-        {(conn === 'reconnecting' || refused) && (
+        {(conn === 'reconnecting' || conn === 'catching-up' || conn === 'revoked' || refused) && (
           <div
-            aria-live="polite"
-            className="pointer-events-none absolute right-3 top-3 rounded-full border px-2.5 py-1 text-[11px]"
+            className="pointer-events-none absolute left-3 right-3 top-3 ml-auto grid w-fit max-w-full gap-0.5 rounded-lg border px-2.5 py-1 text-[11px]"
             style={{ background: TERMINAL_THEME.background, borderColor: TERMINAL_THEME.cursor, color: TERMINAL_THEME.cursor }}
           >
+            {/* Not the phase alone: how many tries, and when the next one is. */}
+            <ConnectionState link={link} heardAt={() => heardRef.current()} />
             {refused
-              ? 'Offline — keys past the first 4 KB were not kept'
-              : 'Reconnecting — your keys will be sent'}
+              ? <span>Offline — keys past the first 4 KB were not kept</span>
+              : conn === 'reconnecting' && <span>Typed keys will be sent</span>}
           </div>
         )}
       </div>
@@ -479,7 +482,14 @@ export function TerminalView({
       {/* A keyboard without Esc, Tab, arrows or Ctrl: on a phone always, and
         * on any narrow window. */}
       <div className={phone ? '' : 'sm:hidden'}>
-        <TerminalKeys send={(d) => sendRef.current(d)} attach={(files) => attachRef.current(files)} initial={draft} />
+        <TerminalKeys
+          send={(d) => sendRef.current(d)}
+          attach={(files) => attachRef.current(files)}
+          initial={draft}
+          state={conn}
+          sessionId={sessionId}
+          isPromptWaiting={() => api.permission(sessionId).then((r) => r.permission !== null)}
+        />
       </div>
       <div className="hidden border-t border-border px-3 py-1.5 text-[11px] text-fg-faint sm:block">
         <span className="mono text-fg-muted">Shift</span>+

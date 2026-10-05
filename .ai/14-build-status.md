@@ -72,6 +72,32 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-06 — Phone resilience client (WP-13)
+
+One reconnect policy for `/v1/live` and every terminal
+(`ui/src/lib/reconnect.ts`, [03-contracts.md § Client reconnect policy](03-contracts.md#client-reconnect-policy)),
+the honest state indicator (`ConnectionState`) in the header, the app's
+status strip and over the terminal, and the keys bar's offline queue
+([21-app.md § Phase A](21-app.md#phase-a--resilience-and-starting-work-p0)).
+Tests: fake timers and a fake network playing the MVP list's 20 events
+(Wi-Fi off and on, Wi-Fi to cellular over Tailscale, 60 s of airplane mode,
+5% loss at 300 ms, plus 30–40 s stalls and a 10–30 minute sleep) against both
+clients, as an Android and an iOS profile: every event recovers with no call
+from outside, the announced ones within 1 s, median 100 ms in the simulation;
+every key typed exactly once; 10,000 inputs across 50 forced disconnects
+(1006, 1011, half-open) echoed once each. Each was seen to fail against a
+broken build (no wake binding, no resend, a trusted stale socket, a late
+deadline, no prompt check, raw keys queued). Verified in headless Chrome at
+390 and 320 px against a throwaway daemon with the fake `claude`, through a
+TCP proxy that resets, refuses and black-holes connections (2026-10-06, one
+run): Wi-Fi off and on with a held message, live and delivered 107 ms after
+the network returned; half-open detected after 23.8 s of silence; a 40 s
+stall live 103 ms after it ended; 300 ms each way with every connection reset,
+live in 1.7 s; five more Wi-Fi cycles 102–206 ms; a 30 s frozen page live
+1.5 s after it woke; every message echoed once. Not yet run on a real iPhone
+or Android phone over LAN and Tailscale, which the Phone v2 definition of
+done requires.
+
 ### 2026-10-06 — The chat view (WP-14)
 
 A session as a conversation, on the session page (Chat tab, the default at

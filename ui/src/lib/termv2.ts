@@ -14,15 +14,18 @@
  * reached through the callbacks.
  */
 
+import {
+  DEAD_MS, LIVENESS_CHECK_MS, PING_MS, PROBE_MS, RECONNECT_MAX_MS, RECONNECT_MIN_MS, Reconnector,
+  isConnectStuck, isProbeLost, isSilent, reconnectDelay, type LinkPhase, type LinkStatus,
+} from './reconnect'
+
+export { DEAD_MS, PING_MS }
+
 export const TERM_V2_PROTOCOL = 'caprock.term.v2'
-/** How often the client says it is alive. */
-export const PING_MS = 10_000
-/** Silence after which the socket is taken for dead. */
-export const DEAD_MS = 25_000
-/** Reconnect backoff: from this… */
-export const BACKOFF_MIN_MS = 250
-/** …doubling up to this, with jitter, forever. */
-export const BACKOFF_MAX_MS = 5_000
+/** Reconnect backoff (lib/reconnect.ts, shared with /v1/live): from this… */
+export const BACKOFF_MIN_MS = RECONNECT_MIN_MS
+/** …doubling up to this, with full jitter, forever. */
+export const BACKOFF_MAX_MS = RECONNECT_MAX_MS
 /** Typed input kept while there is no connection; past it, keys are refused. */
 export const OFFLINE_QUEUE_BYTES = 4 * 1024
 /** Bytes waiting for xterm to parse past which the socket is let go… */
@@ -30,7 +33,10 @@ export const HIGH_WATER = 1024 * 1024
 /** …and the level it must drain to before it is picked up again. */
 export const LOW_WATER = 256 * 1024
 
-export type TermState = 'connecting' | 'live' | 'reconnecting' | 'ended' | 'revoked'
+export type TermState = LinkPhase
+
+/** Said when the daemon closes with 1008 and gives no reason of its own. */
+export const REVOKED_REASON = 'ask on the machine Caprock runs on'
 
 export interface TermCallbacks {
   /** Write output to the terminal; call done once it is parsed. */
@@ -38,6 +44,8 @@ export interface TermCallbacks {
   /** Clear the terminal before a full repaint. */
   reset(): void
   state(s: TermState): void
+  /** The retry status changed (attempt, next try, down since): for the state indicator. */
+  status?(link: LinkStatus): void
   /** The session's program exited with this code. */
   exit?(code: number): void
   /** The socket opened (v1 or v2): the place to tell the daemon the size. */
@@ -65,10 +73,9 @@ export function newClientId(random: () => number = Math.random): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-/** The delay before reconnect attempt `n` (0-based): doubling, capped, jittered. */
+/** The delay before reconnect attempt `n` (0-based): lib/reconnect's full jitter. */
 export function backoff(n: number, random: () => number = Math.random): number {
-  const ceil = Math.min(BACKOFF_MAX_MS, BACKOFF_MIN_MS * 2 ** Math.min(n, 16))
-  return Math.round(ceil / 2 + random() * (ceil / 2))
+  return reconnectDelay(n, random)
 }
 
 export class TermClient {
@@ -89,8 +96,10 @@ export class TermClient {
   private lastPing = 0
   private seq = 0
   private pending: Pending[] = []
-  private attempt = 0
-  private retryTimer: ReturnType<typeof setTimeout> | undefined
+  private readonly retry: Reconnector
+  /** When a woken page pinged an open socket to check it; 0 when no check waits. */
+  private probeAt = 0
+  private revokedReason: string | undefined
   private pingTimer: ReturnType<typeof setInterval> | undefined
   private heard = 0
   /** Bytes handed to the terminal and not yet parsed. */
@@ -105,9 +114,19 @@ export class TermClient {
     this.random = opts.random ?? Math.random
     this.now = opts.now ?? Date.now
     this.clientId = newClientId(this.random)
+    this.retry = new Reconnector({
+      connect: () => this.connect(),
+      onChange: () => this.opts.callbacks.status?.(this.link),
+      random: this.random,
+      now: this.now,
+    })
   }
 
   get state(): TermState { return this.stateNow }
+  /** The state with its retry status, for the state indicator. */
+  get link(): LinkStatus { return { phase: this.stateNow, ...this.retry.status, reason: this.revokedReason } }
+  /** When anything last arrived from the daemon: "live" means a round trip within DEAD_MS. */
+  get heardAt(): number { return this.heard }
   /** The protocol of the open socket, if one is open. */
   get protocol(): 'v1' | 'v2' | undefined {
     const ws = this.ws
@@ -155,14 +174,20 @@ export class TermClient {
     this.suspended = false
     if (this.ended || this.disposed || !this.drained) return
     const ws = this.ws
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      if (this.now() - this.heard > PING_MS + 2_000) this.drop()
-      else ws.send(JSON.stringify({ ping: this.now() }))
+    const now = this.now()
+    if (ws && ws.readyState === WebSocket.OPEN && now - this.heard <= PING_MS + 2_000) {
+      // It looks open, but after a network change it may be bound to a
+      // route that is gone: it has PROBE_MS to answer, or it is replaced.
+      this.probeAt = now
+      ws.send(JSON.stringify({ ping: now }))
       return
     }
-    if (ws && ws.readyState === WebSocket.CONNECTING) return
-    clearTimeout(this.retryTimer)
-    this.connect()
+    // An attempt that has only just started is given its chance.
+    if (ws && ws.readyState === WebSocket.CONNECTING && now - this.heard < PROBE_MS) { this.retry.expedite(); return }
+    // Silent too long to trust, hung opening over a route that is gone, or
+    // no socket at all: a new one now, not at the end of the backoff.
+    this.drop()
+    this.retry.retryNow()
   }
 
   /**
@@ -172,7 +197,7 @@ export class TermClient {
   suspend(): void {
     if (this.ended || this.disposed) return
     this.suspended = true
-    clearTimeout(this.retryTimer)
+    this.retry.cancel()
     clearInterval(this.pingTimer)
     const ws = this.ws
     this.ws = null
@@ -181,7 +206,7 @@ export class TermClient {
 
   dispose(): void {
     this.disposed = true
-    clearTimeout(this.retryTimer)
+    this.retry.cancel()
     clearInterval(this.pingTimer)
     const ws = this.ws
     this.ws = null
@@ -194,6 +219,7 @@ export class TermClient {
     if (s === this.stateNow) return
     this.stateNow = s
     this.opts.callbacks.state(s)
+    this.opts.callbacks.status?.(this.link)
   }
 
   private connect(): void {
@@ -206,18 +232,22 @@ export class TermClient {
     ws.binaryType = 'arraybuffer'
     this.ws = ws
     this.heard = this.now()
+    this.probeAt = 0
     this.v1Repaint = this.wroteAny
     ws.onopen = () => {
       if (this.ws !== ws) return
       this.heard = this.now()
-      this.attempt = 0
       if (!this.isV2(ws)) {
         // An older daemon answers with version 1: it replays the screen (so
         // the terminal is cleared before it lands, see output) and takes
         // input as plain bytes, unnumbered.
         for (const p of this.pending) ws.send(p.frame.subarray(4))
         this.pending = []
+        this.retry.succeed()
         this.setState('live')
+      } else if (this.stateNow !== 'connecting') {
+        // Open, and the hello with what was missed is on its way.
+        this.setState('catching-up')
       }
       this.opts.callbacks.open?.()
     }
@@ -240,24 +270,32 @@ export class TermClient {
       if (e?.code === 1008) {
         // The owner took control away from this device; asking again is refused.
         this.ended = true
+        this.revokedReason = e.reason || REVOKED_REASON
+        this.retry.cancel()
         this.setState('revoked')
         return
       }
       if (!this.drained) return // let go on purpose; picked up when xterm catches up
+      // Any other close — 1011 (an input not confirmed as typed, resent from
+      // `pending` after the hello), a dead network, a daemon restart — is
+      // retried forever.
       this.setState('reconnecting')
-      clearTimeout(this.retryTimer)
-      this.retryTimer = setTimeout(() => this.connect(), backoff(this.attempt++, this.random))
+      this.retry.fail()
     }
     clearInterval(this.pingTimer)
-    this.pingTimer = setInterval(() => this.tick(), PING_MS / 2)
+    this.pingTimer = setInterval(() => this.tick(), LIVENESS_CHECK_MS)
   }
 
   private tick(): void {
     const ws = this.ws
     if (!ws) return
     // A socket that has said nothing for DEAD_MS — or never finished
-    // opening — is dead, whatever the browser thinks.
-    if (this.now() - this.heard > DEAD_MS) { this.drop(); return }
+    // opening — is dead, whatever the browser thinks; so is one that did not
+    // answer the ping a wake sent.
+    const now = this.now()
+    if (isSilent(this.heard, now) || isConnectStuck(ws.readyState, this.heard, now)) { this.drop(); return }
+    if (isProbeLost(this.probeAt, this.heard, now)) { this.drop(); this.retry.retryNow(); return }
+    if (this.heard > this.probeAt) this.probeAt = 0
     if (ws.readyState === WebSocket.OPEN && this.isV2(ws) && this.now() - this.lastPing >= PING_MS) {
       this.lastPing = this.now()
       ws.send(JSON.stringify({ ping: this.lastPing }))
@@ -290,6 +328,7 @@ export class TermClient {
       // Whatever is still unacknowledged was not typed: send it again. The
       // daemon drops anything it already applied.
       for (const p of this.pending) ws.send(p.frame)
+      this.retry.succeed()
       this.setState('live')
       return
     }
@@ -360,6 +399,9 @@ export class TermClient {
       ws.onmessage = null
       ws.close()
       clearInterval(this.pingTimer)
+      // Not live while the socket is let go: what was printed meanwhile is
+      // fetched once the terminal has caught up.
+      this.setState('catching-up')
     }
   }
 }

@@ -100,6 +100,7 @@ Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true
 Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get() { return hostSize.height } })
 
 import { START_TIMEOUT_MS, TERMINAL_THEME, TerminalView, WEBGL_QUIET_MS } from './Terminal'
+import { BACKOFF_MAX_MS, BACKOFF_MIN_MS } from '@/lib/termv2'
 
 describe('TerminalView', () => {
   beforeEach(() => {
@@ -185,11 +186,13 @@ describe('TerminalView', () => {
       // A second terminal that never prints: after the timeout, a retry that reconnects.
       render(<TerminalView sessionId="mute" owned />)
       act(() => { vi.advanceTimersByTime(START_TIMEOUT_MS + 1000) })
-      expect(screen.getByRole('status').textContent).toContain('Nothing from the session')
+      // The terminal that never printed is also silent past the dead socket
+      // deadline, so a connection status is up beside this one.
+      expect(screen.getByText(/Nothing from the session/)).toBeTruthy()
       const before = sockets.length
       act(() => { screen.getByRole('button', { name: 'Retry' }).click() })
       expect(sockets.length).toBe(before + 1)
-      expect(screen.getByRole('status').textContent).toContain('Starting the session')
+      expect(screen.getByText(/Starting the session/)).toBeTruthy()
     } finally {
       vi.useRealTimers()
     }
@@ -361,19 +364,21 @@ describe('a Caprock restart under an open terminal', () => {
     expect(socks).toHaveLength(1)
     act(() => { socks[0]?.onmessage?.({ data: 'screen' }) })
     act(() => { socks[0]?.onclose?.({ code: 1006 }) })
-    expect(screen.getByText('Reconnecting — your keys will be sent')).toBeTruthy()
+    // Which try, and when: never just "reconnecting".
+    expect(screen.getByText(/^Reconnecting \(1\) · next try in \d+ s$/)).toBeTruthy()
+    expect(screen.getByText('Typed keys will be sent')).toBeTruthy()
     expect(written.join('')).not.toMatch(/reconnecting|session ended/i)
-    act(() => { vi.advanceTimersByTime(250) })
+    act(() => { vi.advanceTimersByTime(BACKOFF_MIN_MS) })
     expect(socks).toHaveLength(2)
     // An older daemon (version 1) replays the screen; it is cleared first.
     act(() => { socks[1]?.onmessage?.({ data: 'screen' }) })
     expect(resets.n).toBe(1)
     act(() => { socks[1]?.onmessage?.({ data: 'more' }) })
     expect(resets.n).toBe(1)
-    // A hundred failures later it is still trying, five seconds apart at most.
+    // A hundred failures later it is still trying, fifteen seconds apart at most.
     for (let i = 0; i < 100; i++) {
       act(() => { socks[socks.length - 1]?.onclose?.({ code: 1006 }) })
-      act(() => { vi.advanceTimersByTime(5000) })
+      act(() => { vi.advanceTimersByTime(BACKOFF_MAX_MS) })
     }
     expect(socks).toHaveLength(102)
     expect(written.join('')).not.toMatch(/reload/)
