@@ -396,6 +396,9 @@ The terminal socket today replays a snapshot on every connect and carries no
 positions, so a reconnect repaints the screen and a keystroke sent into a dying
 socket is either lost or, on retry, typed twice. Version 2 makes every byte and
 every keystroke addressable. Version 1 stays served for older clients.
+Built in WP-03 (2026-10-05); the wire contract is in
+[03-contracts.md § Terminal socket, protocol v2](03-contracts.md#terminal-socket-protocol-v2),
+and the points below say where the build settled what this plan left open.
 
 - **Negotiation.** `WS /v1/agents/{id}/term` with subprotocol `caprock.term.v2`
   (alongside the device-token subprotocol where one is sent). Without it, v1.
@@ -403,31 +406,37 @@ every keystroke addressable. Version 1 stays served for older clients.
   output (a `uint64`), and the ring knows the offset of its oldest byte. The
   pty-host reports the current offset in its `W` (welcome) frame and the ring's
   start offset with `S`, as new JSON fields (additive, ADR-033's rule).
-- **Resume.** The client connects with `?since=<offset>`. If the ring still
-  holds that byte, the server sends exactly the bytes after it. If not, it
-  sends a text frame `{"reset":{"offset":N}}`, then the snapshot (mode prefix
-  plus ring), and the client clears and repaints. A fresh client sends no
-  `since` and gets the snapshot.
+- **Resume.** The client connects with `?since=<offset>`. The first frame is
+  `{"hello":{"v":2,"offset":N,"reset":bool,"ack":S}}`. If the ring still
+  holds that byte, `reset` is false and the server sends exactly the bytes
+  after it. If not, `reset` is true and the snapshot (mode prefix plus ring)
+  follows, and the client clears and repaints; a client that falls behind
+  the ring mid-stream gets `{"reset":{"offset":N}}` and a snapshot. A fresh
+  client sends no `since` and gets the snapshot.
 - **Output frames.** Server-to-client binary frames start with the 8-byte
   big-endian offset of their first byte. The client keeps `offset + length` as
   its position and ignores any byte it already has.
-- **Input, exactly once.** Client-to-server binary frames start with an 8-byte
-  big-endian sequence number from a per-tab `client_id` (sent once in a
-  `{"hello":{"client_id":…,"last_seq":N}}` text frame). The pty-host keeps the
-  highest sequence applied per client id (a new frame type, `J`, carrying
-  client id, sequence and bytes; additive) and drops anything at or below it,
-  so a retry after a reconnect, or after a daemon restart, is never typed
-  twice. The server acknowledges with `{"ack":N}`; the client resends
-  everything unacknowledged after a reconnect.
+- **Input, exactly once.** Client-to-server binary frames start with a 4-byte
+  big-endian sequence number from a per-tab client id, which travels as
+  `?client=` (the server's hello answers with the last sequence it applied
+  for it). The pty-host keeps the highest sequence applied per client id for
+  120 s after the client was last heard from (a new frame type, `J`,
+  carrying client id, sequence and bytes, answered by `K`; additive) and
+  drops anything at or below it, so a retry after a reconnect, or after a
+  daemon restart, is never typed twice. The server acknowledges with
+  `{"ack":N}` within 100 ms; the client resends everything unacknowledged
+  after a reconnect, and keeps at most 4 KiB typed while offline.
 - **Liveness.** Both sides send `{"ping":t}` every 10 seconds and answer
   `{"pong":t}`. Nothing received for 25 seconds means the socket is dead: the
   client closes it and reconnects, and shows "reconnecting" meanwhile.
 - **Backpressure.** The pty-host never stops reading its PTY; the ring
-  overwrites. The daemon keeps at most 1 MiB queued per client socket; past
-  that it drops the queue and sends a `reset` at the current offset, so a slow
-  client costs itself a repaint and costs no other client anything. The
-  client stops reading the socket while more than 1 MiB is waiting for
-  xterm.js to parse, and resumes below 256 KiB (xterm.js's write callbacks).
+  overwrites. The daemon keeps no queue per client socket: each socket reads
+  the session's ring from its own position, so the output never waits for a
+  client, and one that falls behind the ring gets a `reset` at the current
+  offset — a slow client costs itself a repaint and costs no other client
+  anything. A browser cannot stop reading a WebSocket, so the client closes
+  it while more than 1 MiB is waiting for xterm.js to parse, and reconnects
+  with `since` below 256 KiB (xterm.js's write callbacks).
 - **Hidden tabs.** A tab not visible for 30 seconds closes its socket; showing
   it reconnects with `since`. Waiting and permission state come from
   `/v1/live`, never from the terminal socket, so a hidden tab still badges.

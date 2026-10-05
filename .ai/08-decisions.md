@@ -1227,6 +1227,17 @@ sessions held by pty-hosts; restarting or resuming a session on the user's
 behalf after a restart (the process simply never stopped); signalling a
 leftover process the store does not mark as Caprock's.
 
+**Amendment (2026-10-05, terminal protocol v2, WP-03).** The holder counts the
+offset of every byte its child printed and reports it in `W` with its ring's
+start; a resuming `H` may ask `since` an offset and gets the missed bytes; and
+two new frames, `J` (sequenced input from a named client) and `K` (its
+answer), let the holder apply each client's input once, keeping the table
+120 s, so the guarantee survives a daemon restart. All of it is additive under
+this ADR's rule — still `proto` 1: an older daemon ignores the new fields and
+never sends `J`, and a holder from before it is met by a daemon that
+deduplicates itself and counts that holder's offsets from its own clock.
+[03-contracts.md § Terminal holders](03-contracts.md#terminal-holders-caprock-pty-host).
+
 **Revisit if** a holder is ever seen orphaned without a registry entry (a leak
 the cleanup cannot see), if a service manager is found that kills detached
 processes by some other grouping (a launchd coalition, a Windows job without

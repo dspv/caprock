@@ -72,6 +72,24 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-05 — Terminal protocol v2 (WP-03)
+
+The terminal socket gained version 2 beside version 1
+([contract](03-contracts.md#terminal-socket-protocol-v2)): byte offsets
+counted in the pty-host and carried across a daemon restart, resume from
+`since` without a repaint, numbered input applied once per tab (the table in
+the pty-host, frames `J`/`K`), acks, ping/pong with a 25 s deadline, the exit
+code before the close, and a ring the daemon reads per client instead of a
+queue. The dashboard's terminal speaks it (`ui/src/lib/termv2.ts`): it
+reconnects forever with backoff, resends unacknowledged keys, and shows a
+pill instead of writing into the terminal. Tests: 10,000 inputs across 50
+forced drops and a daemon restart against a real pty-host arrive exactly once
+and the client's output is byte-identical to the terminal's; resume inside
+and past the ring; a stalled client never slows the output or another
+client; holders and daemons from before v2 against new ones. Checked in a
+headless Chromium on a preview daemon: `kill -9` of the daemon mid-word and
+25 s of network loss mid-word, and the program received each word once. Left
+for WP-04: the hidden-tab close after 30 s and the mode reset on exit.
 ### 2026-10-05 — Projects, shell tabs and worktrees in the daemon (WP-05, WP-07, WP-08 engine)
 
 Migration 0041 (`projects`), `internal/projects` (list, seeding, fsnotify git
