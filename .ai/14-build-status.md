@@ -72,6 +72,22 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-05 — The app workspace (WP-04, WP-06, WP-11 interface)
+
+`#/app` is a terminal-first workspace: sidebar (inbox, projects, worktrees,
+sessions), per-project tabs on a v2 terminal client with v1 fallback, an
+inspector, a status strip and the keyboard map ([04-ui.md § The app
+workspace](04-ui.md#the-app-workspace)). Projects and shells use the proposed
+contracts of [21-app.md](21-app.md) and fall back to sessions-derived projects
+while WP-05/WP-07 are unmerged; nothing moved into 03-contracts.md, because the
+engine that serves them has not landed. Measured in headless Chrome against a
+preview daemon with the fake `claude` (2 runs × 100 keys each, 2026-10-05):
+echo p50 5.7–11.2 ms on the app route against 16.1–16.4 ms on the dashboard's
+terminal at load 0, and 19.0–19.1 against 19.2–19.4 ms at 1,000 lines/s.
+Headless numbers are not comparable with the spike's headed or WKWebView
+figures; the WKWebView run waits for the Tauri shell.
+
+
 ### 2026-10-05 — The desktop app: shell, supervisor and CI (WP-01, WP-02)
 
 `app/` is the Tauri v2 shell: one window, native chrome on macOS (overlay

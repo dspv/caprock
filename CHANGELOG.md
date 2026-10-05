@@ -11,6 +11,15 @@ Phase 3 (Delight) has no plan by design.
 
 ### Added
 
+- **A terminal-first workspace for the desktop app,** at `#/app` (or `?app=1`).
+  A sidebar with what is waiting on you, then every project with its
+  worktrees, sessions and shells, today's cost and status dots; terminal tabs
+  per project that survive a relaunch; an inspector with cost, context,
+  tokens, the permission prompt and the uncommitted changes; a status strip
+  with the plan limits and today's spend. ⌘T a shell, ⇧⌘N an agent, ⌘O a
+  project, ⌘1–9 tabs, ⌘W closes a tab without stopping its session, ⌘K a
+  command palette. The dashboard opens inside it. The browser dashboard and
+  the phone are unchanged.
 - **Projects in the daemon.** Caprock keeps a list of the projects you work
   in — seeded from the repositories your sessions ran in, plus any you add,
   create (`git init` optional) or clone — with each one's branch, changed
@@ -19,7 +28,7 @@ Phase 3 (Delight) has no plan by design.
   within about a third of a second, by watching `.git`; idle projects run no
   git at all. A clone shows git's progress and carries on if the phone that
   started it drops. Unlisting a project never touches its files. The desktop
-  app's sidebar will show it; there is no screen for it yet.
+  app's sidebar shows it.
 - **Worktrees on any branch.** A worktree for an existing branch, a new one,
   or a branch only the remote has (created tracking it), under
   `.caprock-worktrees`; one with any change is never removed.
@@ -53,6 +62,10 @@ Phase 3 (Delight) has no plan by design.
   up after a minute and ask for a reload), and a pill over the terminal says
   *Reconnecting — your keys will be sent* instead of a line written into it.
   Up to 4 KB of typing is kept while offline.
+
+- **Lists no longer jump while you read them.** Scrolled down the session
+  timeline or the live activity feed, new rows arriving above keep your place,
+  in Safari as in Chrome, and a pill says how many arrived.
 
 ### Fixed
 
