@@ -134,7 +134,7 @@ Plain files over cleverness: mailboxes and task state are markdown/JSON on disk,
 
 ## ADR-011 — One server, one port (default 22776), per-run bearer token; loopback only
 
-**Date:** 2026-08-18 · **Status:** accepted · **Amended:** 2026-09-11 (default port)
+**Date:** 2026-08-18 · **Status:** accepted · **Amended:** 2026-09-11 (default port), 2026-10-05 (relayed loopback)
 
 `/v1/hook`, the REST API, the WebSocket, and the UI share one listener on `127.0.0.1:22776`; `runtime.json` carries `{port, token}` for the shim. Unix sockets are not portable to Windows; a single loopback listener with a random per-run token is the same code on all OS and keeps everything local.
 
@@ -149,7 +149,26 @@ silently moving it would strand bookmarks and LAN-pairing tokens held in
 localStorage. The one-server-one-port shape is unchanged; only the default
 number moved.
 
-**Rules out:** Unix-domain-socket hook transport; binding non-loopback interfaces; a separate hook port.
+**2026-10-05 amendment — loopback is the machine only when nothing relayed it.**
+"Loopback only" was read as "a loopback peer is the owner", and the kernel
+names only the last hop. A tunnel or reverse proxy on the Mac — cloudflared,
+ngrok, Caddy, `tailscale serve`, `ssh -R` — connects from 127.0.0.1 for a
+visitor from anywhere, so that visitor got every right the owner has with no
+token: a `curl` through the tunnel with `Content-Type: application/json` passed
+the CSRF layers and could `POST /v1/agents`. ADR-036 had already named this for
+`tailscale serve`. A loopback request now counts as from the machine only when
+it carries no proxy header and its `Host` names loopback; otherwise it is a
+device under ADR-029/ADR-034 — a paired token and its role, or `401`, and with
+network access off simply `401`. Headers are read for presence only, which is
+safe in this direction: a caller can add one to lose rights, never to gain
+them. `Host` is compared by hostname, not port, so `ssh -L` on another local
+port (the owner's own forward) and Vite's dev proxy keep working, and a TCP
+relay that adds no header is still caught by the name the visitor typed. Not
+covered: a relay configured to strip every marker and rewrite `Host` to
+localhost — only the owner can set that up, and it is indistinguishable from a
+local client. Contract: `.ai/03-contracts.md`, *Who may connect*.
+
+**Rules out:** Unix-domain-socket hook transport; binding non-loopback interfaces; a separate hook port; trusting a loopback peer that a proxy or tunnel relayed.
 
 The choice was checked against the boundary cases that prompted the report.
 `4173` is Vite Preview's default and is registered by IANA (TCP Reserved; UDP
@@ -904,6 +923,10 @@ it is a `GET`, because every frame it receives is typed into the session.
 reading stays the default, and the owner can make one paired device a
 controller, on the machine, revocably.
 
+*Amended 2026-10-05 by [ADR-011](#adr-011--one-server-one-port-default-22776-per-run-bearer-token-loopback-only):*
+"loopback is unaffected" means this machine's own clients; a request a proxy
+or tunnel relays onto loopback is a device here, token and role included.
+
 **Rules out:** a relay of ours (sessions would pass through a machine we run,
 which contradicts rule 4 and three sentences on the site); binding the wildcard
 address; a stored "LAN on" setting; pairing from a device that is already
@@ -1414,8 +1437,10 @@ from every source, so an agent that starts reporting either gets alerts with
 no change here.
 
 **Rules out:** a relay of ours; a self-signed or local-CA certificate;
-`tailscale serve` in front of the daemon (it would make every phone look
-local and bypass pairing); sending anything beyond project, status, agent and
+`tailscale serve` in front of the daemon (it made every phone look
+local and bypass pairing; since the ADR-011 amendment of 2026-10-05 a relayed
+request needs a device token instead, but the dashboard's origin checks still
+refuse a browser on the `ts.net` name); sending anything beyond project, status, agent and
 link.
 
 **Revisit if** Caprock serves HTTPS on Tailscale for another reason, or an

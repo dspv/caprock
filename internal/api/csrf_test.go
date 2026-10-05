@@ -409,8 +409,10 @@ func TestCSRFRebindingHostRefused(t *testing.T) {
 			t.Errorf("a rebound Host was accepted with %v; DNS-rebinding layer is not working", hdr)
 		}
 	}
-	// A non-browser client addressing the daemon by another name is fine: no
-	// Origin, no fetch metadata, nothing to rebind.
+	// A non-browser client addressing the daemon by another name is fine here:
+	// no Origin, no fetch metadata, nothing to rebind. Over loopback the gate
+	// has already treated it as relayed and asked for a device token
+	// (TestALoopbackRequestForAnotherHostIsRelayed).
 	req := httptest.NewRequest(http.MethodPost, "http://caprock.internal:4173/v1/agents", strings.NewReader("{}"))
 	req.Host = "caprock.internal:4173"
 	req.Header.Set("Content-Type", "application/json")

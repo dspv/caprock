@@ -88,9 +88,10 @@ func checkOrigin(r *http.Request, lanHost string) string {
 	// Sec-Fetch-Site both say "fine" — but the Host header still carries the
 	// attacker's name. Checked only for requests that came from a browser
 	// (Origin or Sec-Fetch-Site present), because that is the only way such an
-	// attack can reach a loopback listener, and because non-browser clients
-	// legitimately address the daemon by other names (a test harness, a proxy,
-	// an SSH tunnel) with no rebinding risk.
+	// attack can reach a loopback listener. A non-browser request over loopback
+	// under another name never gets this far as the owner: the gate treats it
+	// as relayed by a proxy or tunnel and wants a device token (isLocal); from
+	// a paired device the name is the LAN address, admitted below.
 	if (sfs != "" || r.Header.Get("Origin") != "") && !isLoopbackHost(r.Host) && !isTheLANHost(r.Host, lanHost) {
 		return "forbidden host"
 	}
