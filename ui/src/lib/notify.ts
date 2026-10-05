@@ -16,16 +16,25 @@
  *   the app forward, and the app coming forward soon after a notification it
  *   showed while in the background opens that session, its prompt card in
  *   view. The card answers with the prompt's id (ADR-035), so a stale one is
- *   refused.
+ *   refused. A show from the menu bar, tray or hotkey is the user's own
+ *   (`caprock:shown`, sent before the window comes up) and opens nothing:
+ *   the open waits a moment for that word and drops the notification.
+ * - **Waiting is asked of the daemon, by prompt id.** The workspace's set of
+ *   waiting sessions (WP-10) is per session, and during a replay it still
+ *   holds a prompt whose answer is a few frames later; the GET is not.
  */
 import { useEffect, useRef } from 'react'
 import { api } from './api'
 import { isTauri } from './appmode'
 import { live, type NotifyFrame } from './live'
 import { href } from './router'
+import { SHOWN_EVENT } from './shell'
 
 /** How long after a notification the app coming forward counts as its click. */
 export const CLICK_WINDOW_MS = 2 * 60_000
+
+/** How long a focus waits for the shell to say the show was the user's own. */
+export const SHOWN_GRACE_MS = 300
 
 /** What this window shows right now. */
 export interface Viewing {
@@ -44,6 +53,8 @@ interface NotifierDeps {
   stillWaiting: (n: NotifyFrame) => Promise<boolean>
   open: (n: NotifyFrame) => void
   now?: () => number
+  /** Runs fn after ms; a test runs it at once. */
+  later?: (fn: () => void, ms: number) => void
 }
 
 /** Whether a notification would interrupt someone already looking at its session. */
@@ -83,13 +94,28 @@ export class Notifier {
     }
   }
 
-  /** The window came forward: open what the newest notification was about. */
+  /**
+   * The window came forward: open what the newest notification was about,
+   * unless the shell says in the next moment that the user brought it up.
+   */
   focused(): void {
     const p = this.pending
+    if (!p || this.now() - p.at > CLICK_WINDOW_MS) {
+      this.pending = null
+      return
+    }
+    const later = this.deps.later ?? ((fn, ms) => { window.setTimeout(fn, ms) })
+    later(() => {
+      if (this.pending !== p) return
+      this.pending = null
+      if (this.deps.viewing().sessionId === p.n.session_id) return
+      this.deps.open(p.n)
+    }, SHOWN_GRACE_MS)
+  }
+
+  /** The menu bar, tray or hotkey brought the window up: not a notification's click. */
+  shown(): void {
     this.pending = null
-    if (!p || this.now() - p.at > CLICK_WINDOW_MS) return
-    if (this.deps.viewing().sessionId === p.n.session_id) return
-    this.deps.open(p.n)
   }
 
   /** A session's prompt went away: coming forward no longer opens it for that. */
@@ -134,10 +160,13 @@ export function useOsNotifications(sessionId: string | undefined): void {
       else if (f.type === 'permission' && !f.data.permission) notifier.answered(f.data.session_id)
     })
     const onFocus = () => notifier.focused()
+    const onShown = () => notifier.shown()
     window.addEventListener('focus', onFocus)
+    window.addEventListener(SHOWN_EVENT, onShown)
     return () => {
       off()
       window.removeEventListener('focus', onFocus)
+      window.removeEventListener(SHOWN_EVENT, onShown)
     }
   }, [])
 }

@@ -25,12 +25,9 @@ import {
   type TabTarget,
 } from '@/lib/tabs'
 import { useWorkspaceData } from '@/lib/useWorkspaceData'
-<<<<<<< HEAD
 import { useShellTray } from '@/lib/tray'
 import { OPEN_SESSION_EVENT } from '@/lib/shell'
-=======
 import { useOsNotifications } from '@/lib/notify'
->>>>>>> 2a21082 (feat(notify): notify frame beside Telegram and OS notifications in the app (WP-09))
 import { useTheme } from '@/lib/theme'
 import { Sidebar } from '@/components/Sidebar'
 import { TabStrip, TerminalStack } from '@/components/TerminalTabs'

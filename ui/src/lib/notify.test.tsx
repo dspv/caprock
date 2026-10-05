@@ -22,7 +22,7 @@ function setup(viewing: Viewing, waiting = true) {
   const invoke = vi.fn(async () => undefined)
   const open = vi.fn()
   const stillWaiting = vi.fn(async () => waiting)
-  const n = new Notifier({ invoke, open, stillWaiting, viewing: () => v, now: () => t })
+  const n = new Notifier({ invoke, open, stillWaiting, viewing: () => v, now: () => t, later: (fn) => fn() })
   return { n, v, invoke, open, stillWaiting, advance: (ms: number) => { t += ms } }
 }
 
@@ -76,6 +76,28 @@ describe('Notifier', () => {
     await inFront.n.receive(approval())
     inFront.n.focused()
     expect(inFront.open).not.toHaveBeenCalled()
+  })
+
+  it('opens nothing when the menu bar, tray or hotkey brought the window up', async () => {
+    // The shell says so before the window comes up, or a moment after the
+    // focus; either way the notification is dropped.
+    const before = setup({ focused: false })
+    await before.n.receive(approval())
+    before.n.shown()
+    before.n.focused()
+    expect(before.open).not.toHaveBeenCalled()
+
+    let deferred: () => void = () => {}
+    const open = vi.fn()
+    const after = new Notifier({
+      invoke: vi.fn(async () => undefined), open, stillWaiting: async () => true,
+      viewing: () => ({ focused: false }), later: (fn) => { deferred = fn },
+    })
+    await after.receive(approval())
+    after.focused()
+    after.shown()
+    deferred()
+    expect(open).not.toHaveBeenCalled()
   })
 
   it('opens the session with its prompt card in view', () => {

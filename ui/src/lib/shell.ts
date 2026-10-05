@@ -36,6 +36,9 @@ export interface HotkeyStatus {
 /** The event the shell dispatches when a waiting session is clicked in the tray. */
 export const OPEN_SESSION_EVENT = 'caprock:open-session'
 
+/** The event the shell dispatches before it brings the window up from the tray or the hotkey. */
+export const SHOWN_EVENT = 'caprock:shown'
+
 function shellInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const internals = (window as unknown as { __TAURI_INTERNALS__?: TauriInternals }).__TAURI_INTERNALS__
   if (!isTauri() || !internals) return Promise.reject(new Error('not in the desktop app'))

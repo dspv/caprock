@@ -75,6 +75,8 @@ A page on any other origin gets nothing; `cargo test` checks each refusal.
 `tauri-plugin-notification`; the page decides when (`ui/src/lib/notify.ts`,
 WP-09). The window turns WKWebView's background throttling off (macOS 14+),
 or a hidden or covered page would not hear the frame until brought forward.
+Every show from the menu bar, tray or hotkey first dispatches `caprock:shown`
+in the page, so it is not taken for a click on a notification.
 
 ## Contract with the UI (`ui/`)
 
