@@ -11,6 +11,19 @@ Phase 3 (Delight) has no plan by design.
 
 ### Added
 
+- **The phone never needs a manual reconnect, and says honestly where it
+  stands.** The live feed and every terminal share one reconnect policy:
+  forever, with full jitter from 0.5 s to a 15 s cap, and at once when the
+  page comes back, the browser goes online, or the network changes; a socket
+  that looks open after a wake must answer within 2 s or it is replaced, and
+  a half-open one is caught within 25 s. The header (and the app's status
+  strip, and a pill over the terminal) says *Live* only while the daemon
+  answered in the last 25 seconds; otherwise *Catching up…*, *Reconnecting
+  (n) · next try in s*, *Offline since hh:mm*, or *Control revoked* with the
+  reason. A message sent from the phone's keys bar while offline is held as
+  *Will send when connected* and sent on reconnect if no permission prompt
+  waits — otherwise it stays as a draft with **Send now**; Esc, arrows,
+  Ctrl+C and prompt answers are never queued.
 - **Read a session as a chat.** A new Chat tab shows the conversation — your
   prompts, what the agent wrote, each tool call on one line that opens — with
   a field and keys that type into the session. On a phone a session opens on
