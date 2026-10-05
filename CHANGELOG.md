@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.73.1] - 2026-10-05
+
 ### Security
 
 - **A tunnel on the Mac no longer hands out the owner's rights.** Caprock
