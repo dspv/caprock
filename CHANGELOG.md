@@ -68,6 +68,10 @@ Phase 3 (Delight) has no plan by design.
   works out the all-time and 30-day Weeks when it starts, and reads the tool
   calls behind them in parallel slices: all time went from 5.0 s to 1.9 s on a
   copy of a 1.2 GB database, with the same figures.
+- **A long command no longer pushes a session page sideways on a phone.**
+  *waiting for approval — running `…`* (or *running `…`*) with a long
+  unbroken path or file name was wider than a 320–360 px screen, so the whole
+  page scrolled sideways. It now wraps.
 
 ## [0.71.0] - 2026-10-04
 

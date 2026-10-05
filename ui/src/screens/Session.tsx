@@ -178,7 +178,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
       </div>
       <RelayChain from={s.relayed_from} to={s.relayed_to} />
       {(!detail.stale || (s.prs?.length ?? 0) > 0) && <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[13px]">
-        {!detail.stale && <span>
+        {!detail.stale && <span className="min-w-0 wrap-anywhere">
           <span className="text-fg">{s.activity.phrase}</span>
           <span className="text-fg-faint num text-[11px] ml-2">{fmtAgo(activityAt, now)}</span>
           {s.loop && <span className="ml-3 text-danger text-[12px]">loop: {s.loop.sample} ×{s.loop.count} in {s.loop.window_min}m</span>}
