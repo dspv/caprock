@@ -7,6 +7,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+Phase 3 (Delight) has no plan by design.
+
+## [0.73.0] - 2026-10-05
+
 ### Added
 
 - **Remove a session from Caprock.** *Remove from Caprock* on a session's page
@@ -16,19 +20,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   `--cwd-prefix <dir>` does the same in bulk; it only lists what it would
   remove until you add `--yes`. A removed session is never read back in from
   its transcript. A session still running is skipped. It cannot be undone.
-
-### Fixed
-
-- **A permission prompt's buttons survive a Caprock restart.** A session
-  Caprock started keeps running through an upgrade, and so does the dialog on
-  its screen; its **Yes** / **No** buttons now come back with it instead of
-  waiting for the next prompt. A prompt that was answered meanwhile does not
-  come back.
-
-Phase 3 (Delight) has no plan by design.
-
-### Added
-
 - **Review a session's changes on the phone.** The session page's *Changes*
   tab has 44px file rows, an open file's name stays pinned at the top while its
   diff scrolls, *next* moves to the following file, and lines wrap on a phone
@@ -42,6 +33,14 @@ Phase 3 (Delight) has no plan by design.
   full width and grows with what you type (up to five lines, then scrolls),
   with Photo and Send beneath it; the Esc/Tab/arrow/Ctrl+C keys sit in two
   rows of three so their labels fit at 320px.
+
+### Fixed
+
+- **A permission prompt's buttons survive a Caprock restart.** A session
+  Caprock started keeps running through an upgrade, and so does the dialog on
+  its screen; its **Yes** / **No** buttons now come back with it instead of
+  waiting for the next prompt. A prompt that was answered meanwhile does not
+  come back.
 
 ## [0.72.0] - 2026-10-05
 
