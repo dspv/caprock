@@ -193,15 +193,15 @@ func TestTheHandoffIsThisRepositorysMostRecent(t *testing.T) {
 }
 
 // Clipping must never cut a rune in half. Handoffs carry whatever the agent
-// wrote — Russian, Japanese, emoji — and invalid UTF-8 in a JSON reply is a
+// wrote — Greek, Japanese, emoji — and invalid UTF-8 in a JSON reply is a
 // reply Claude Code drops, which would make the feature fail silently on
 // exactly the sessions that had the most to say.
 func TestClippingNeverBreaksARune(t *testing.T) {
-	for _, name := range []string{"cyrillic", "japanese", "emoji"} {
+	for _, name := range []string{"greek", "japanese", "emoji"} {
 		var src string
 		switch name {
-		case "cyrillic":
-			src = strings.Repeat("привет мир ", 400)
+		case "greek":
+			src = strings.Repeat("γεια σου κόσμε ", 400)
 		case "japanese":
 			src = strings.Repeat("日本語のテキスト ", 400)
 		case "emoji":

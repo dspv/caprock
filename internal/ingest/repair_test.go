@@ -21,9 +21,9 @@ func TestRepairAssistantText(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 
-	// A realistic Russian summary: 1400 runes is 2800 bytes, so v1 would have
+	// A realistic Greek summary: 1400 runes is 2800 bytes, so v1 would have
 	// cut it at ~1000 runes and left a broken rune behind.
-	full := strings.TrimSpace(strings.Repeat("Готово, вот что изменилось в проекте. ", 40))
+	full := strings.TrimSpace(strings.Repeat("Έτοιμο, αυτό άλλαξε στο έργο σήμερα. ", 40))
 	if utf8.RuneCountInString(full) < 1200 {
 		t.Fatalf("fixture too short: %d runes", utf8.RuneCountInString(full))
 	}
@@ -137,9 +137,9 @@ func TestRepairEmptyAssistantText(t *testing.T) {
 		return string(b) + "\n"
 	}
 	body := line("msg_a", map[string]any{"type": "thinking", "thinking": ""}) +
-		line("msg_a", map[string]any{"type": "text", "text": "Прочитал спеку целиком."}) +
+		line("msg_a", map[string]any{"type": "text", "text": "Read the whole spec."}) +
 		line("msg_a", map[string]any{"type": "tool_use", "id": "t1", "name": "Bash", "input": map[string]any{}}) +
-		line("msg_a", map[string]any{"type": "text", "text": "Собираю корпус."}) +
+		line("msg_a", map[string]any{"type": "text", "text": "Building the corpus."}) +
 		line("msg_b", map[string]any{"type": "thinking", "thinking": ""}) +
 		line("msg_b", map[string]any{"type": "tool_use", "id": "t2", "name": "Read", "input": map[string]any{}})
 	if err := os.WriteFile(transcript, []byte(body), 0o600); err != nil {
@@ -168,7 +168,7 @@ func TestRepairEmptyAssistantText(t *testing.T) {
 		t.Fatalf("repaired %d rows, want 1 (the tool-only turn has no prose to fill)", n)
 	}
 	notes, _ := store.SessionNotes(ctx, st.DB(), "s1", 10)
-	if len(notes) != 1 || notes[0].Text != "Прочитал спеку целиком.\nСобираю корпус." {
+	if len(notes) != 1 || notes[0].Text != "Read the whole spec.\nBuilding the corpus." {
 		t.Fatalf("notes = %+v", notes)
 	}
 	// Once is enough: a second run finds nothing more to do.
@@ -233,7 +233,7 @@ func TestRepairSkipsLinesWithoutAMessage(t *testing.T) {
 	dir := t.TempDir()
 	transcript := filepath.Join(dir, "s.jsonl")
 
-	full := strings.TrimSpace(strings.Repeat("Вот итог работы. ", 60))
+	full := strings.TrimSpace(strings.Repeat("Αυτό είναι το αποτέλεσμα. ", 60))
 	lines := []map[string]any{
 		// A system line: parses fine, but carries no message at all.
 		{"type": "system", "sessionId": "s1", "uuid": "u0", "timestamp": "2026-08-20T09:00:00Z"},

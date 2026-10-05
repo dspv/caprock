@@ -47,7 +47,7 @@ func TestLineSurvivesARealShell(t *testing.T) {
 		t.Skip("POSIX shell quoting")
 	}
 	base := t.TempDir()
-	for _, name := range []string{"my dir", `quote " and ' both`, "$HOME and `date` and $(id)", "semi; colon & amp | pipe", "back\\slash", "ünïcödé пробел"} {
+	for _, name := range []string{"my dir", `quote " and ' both`, "$HOME and `date` and $(id)", "semi; colon & amp | pipe", "back\\slash", "ünïcödé κενό"} {
 		dir := filepath.Join(base, name)
 		if err := os.Mkdir(dir, 0o755); err != nil {
 			t.Fatal(err)

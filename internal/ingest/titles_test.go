@@ -25,7 +25,7 @@ func TestTailerStoresTheSessionTitle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _ = f.WriteString(titleLine("Первое имя") + titleLine("Fix the paste bug"))
+	_, _ = f.WriteString(titleLine("The first name") + titleLine("Fix the paste bug"))
 	_ = f.Close()
 	if err := tl.discover(nil); err != nil {
 		t.Fatal(err)

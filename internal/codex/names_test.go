@@ -41,7 +41,7 @@ func TestIngestNamesSessionsFromTheThreadIndex(t *testing.T) {
 	// An older schema generation must not be the one read.
 	writeState(t, filepath.Join(home, "state_3.sqlite"), map[string][2]string{fixtureID: {"stale name", ""}})
 	state := filepath.Join(home, "state_5.sqlite")
-	writeState(t, state, map[string][2]string{fixtureID: {"", "проверь даты без двух статей"}})
+	writeState(t, state, map[string][2]string{fixtureID: {"", "check the dates without two articles"}})
 	if got := StateDB(h.dir); got != state {
 		t.Fatalf("StateDB = %q, want %q", got, state)
 	}
@@ -51,16 +51,16 @@ func TestIngestNamesSessionsFromTheThreadIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Title != "" || s.Prompt != "проверь даты без двух статей" {
+	if s.Title != "" || s.Prompt != "check the dates without two articles" {
 		t.Fatalf("unnamed thread: title=%q prompt=%q", s.Title, s.Prompt)
 	}
 
 	// Codex names the thread later; the next poll picks it up.
-	writeState(t, state, map[string][2]string{fixtureID: {"Проверь даты без двух статей", "проверь даты без двух статей"}})
+	writeState(t, state, map[string][2]string{fixtureID: {"Check the dates without two articles", "check the dates without two articles"}})
 	future := time.Now().Add(time.Minute)
 	_ = os.Chtimes(state, future, future)
 	h.poll()
-	if s, _ = store.GetSession(context.Background(), h.out, fixtureID); s.Title != "Проверь даты без двух статей" {
+	if s, _ = store.GetSession(context.Background(), h.out, fixtureID); s.Title != "Check the dates without two articles" {
 		t.Fatalf("title = %q", s.Title)
 	}
 }
