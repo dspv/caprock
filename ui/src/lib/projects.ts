@@ -1,20 +1,20 @@
 /**
- * Projects and shells: the typed client for the contract in
- * .ai/21-app.md § Projects and § Shell tabs, and the fallback for a daemon
- * that does not serve it yet.
+ * Projects and shells: the typed client for .ai/03-contracts.md § Projects
+ * and shells, and the fallback for a daemon that does not serve it.
  *
- * The engine side (WP-05, WP-07) is built separately. Until a daemon answers
- * `GET /v1/projects`, the sidebar derives projects from the sessions it
- * already knows (grouped by repository, as the cost roll-up groups them) plus
- * folders added in this app, kept in localStorage. Everything that needs the
- * engine — clone, a new worktree, a shell — says so plainly instead of failing
- * quietly.
+ * The wire shapes (`ApiProject`, `ApiWorktree`, `ApiShell`) are turned into the
+ * flat `Project` the sidebar reads by `fromApiProject`. An older daemon
+ * answers `GET /v1/projects` with 404: the sidebar then derives projects from
+ * the sessions it already knows (grouped by repository, as the cost roll-up
+ * groups them) plus folders added in this app, kept in localStorage.
+ * Everything that needs the engine — clone, a new worktree, a shell — says so
+ * plainly instead of failing quietly.
  */
 import { ApiError, deviceToken, type SessionSummary } from './api'
 import { branchLabel, uniqueSuffixes } from './sessionLabels'
 
 export interface Worktree {
-  /** The worktree's name: its directory name, or `main` for the primary checkout. */
+  /** The worktree's name: git's name for it, or `main` for the primary checkout. */
   name: string
   path: string
   branch: string
@@ -23,6 +23,68 @@ export interface Worktree {
   changed?: number
   /** Caprock created it, so it may remove it while clean. */
   caprock?: boolean
+}
+
+/** `Project.git` on the wire: `null` for a folder that is not a repository. */
+export interface ApiGitStatus {
+  branch: string
+  detached?: boolean
+  dirty: boolean
+  changed: number
+  ahead: number
+  behind: number
+  upstream?: string
+  default_branch?: string
+  remote_url?: string
+  error?: string
+  at: number
+}
+
+/** A linked worktree on the wire (`<git common dir>/worktrees/*`). */
+export interface ApiWorktree {
+  name: string
+  path: string
+  branch?: string
+  /** The commit, when detached. */
+  head?: string
+  caprock: boolean
+  locked?: boolean
+  missing?: boolean
+  dirty: boolean
+  changed: number
+  error?: string
+}
+
+/** `Project` as `GET /v1/projects` and the `project` live frame carry it. */
+export interface ApiProject {
+  id: number | string
+  name: string
+  root: string
+  kind: 'repo' | 'folder'
+  source?: string
+  pinned?: boolean
+  sort?: number
+  added_at?: number
+  archived?: boolean
+  exists?: boolean
+  git?: ApiGitStatus | null
+  sessions?: { live: number; waiting: number; total: number }
+  cost_today?: number
+  last_activity?: number
+  worktrees?: ApiWorktree[]
+  /** Sent alone with `id` when the project is unlisted. */
+  removed?: boolean
+}
+
+/** A shell tab (`POST`/`GET /v1/shells`). It has no session row. */
+export interface ApiShell {
+  id: string
+  cwd: string
+  command?: string
+  started_at: number
+  survives_restart?: boolean
+  project_id?: number
+  kind: 'shell'
 }
 
 export interface Project {
@@ -43,38 +105,90 @@ export interface Project {
   changed?: number
   worktrees?: Worktree[]
   waiting?: number
+  /** Today's spend, as the daemon counts it for this root. */
+  cost_today?: number
+  last_activity?: number
 }
 
-/** A `project` frame on /v1/live: a project's git state changed. */
-export interface ProjectFrame {
-  id: string
-  branch?: string
-  ahead?: number
-  behind?: number
-  changed?: number
-  worktrees?: Worktree[]
-  waiting?: number
-}
+/** A `project` frame on /v1/live: the whole project, or `{id, removed: true}`. */
+export type ProjectFrame = ApiProject
 
-/** An `op` frame on /v1/live: progress of a clone or a worktree. */
+/** An `op` frame on /v1/live: progress of a clone. */
 export interface OpFrame {
   op_id: string
-  state: 'running' | 'done' | 'error'
+  kind?: 'clone'
+  state: 'running' | 'done' | 'failed'
+  phase?: string
   progress?: number
+  url?: string
+  dest?: string
   error?: string
-  project_id?: string
+  project_id?: number
 }
 
 export type AddProjectRequest =
-  | { source: 'folder'; path: string; name?: string; op_id: string }
-  | { source: 'new'; path: string; name?: string; op_id: string }
-  | { source: 'clone'; url: string; path?: string; name?: string; op_id: string }
+  | { path: string }
+  | { create: { parent: string; name: string; git_init?: boolean } }
+  | { clone: { url: string; parent: string; name?: string }; op_id: string }
+
+export type AddProjectResult =
+  | { project: Project; created: boolean }
+  | { op: OpFrame; existing: boolean }
 
 export interface ShellRequest {
-  project_id?: string
+  project_id?: number
   cwd?: string
   cols: number
   rows: number
+}
+
+/** What a branch row says for a checkout: the branch, or `detached @ <sha7>` when git names a commit. */
+function checkoutLabel(branch: string | undefined, head: string | undefined): string {
+  if (branch && branch !== 'HEAD') return branch
+  return head ? `detached @ ${head.slice(0, 7)}` : ''
+}
+
+/** The wire project, flattened for the sidebar. */
+export function fromApiProject(p: ApiProject): Project {
+  const git = p.git ?? undefined
+  return {
+    id: String(p.id),
+    root: p.root,
+    name: p.name,
+    kind: p.kind,
+    remote_url: git?.remote_url,
+    default_branch: git?.default_branch,
+    added_at: p.added_at,
+    pinned: p.pinned,
+    sort: p.sort,
+    archived_at: p.archived ? 1 : null,
+    branch: git ? branchLabel(git.branch) || undefined : undefined,
+    ahead: git?.ahead,
+    behind: git?.behind,
+    changed: git?.changed,
+    waiting: p.sessions?.waiting,
+    cost_today: p.cost_today,
+    last_activity: p.last_activity,
+    worktrees: (p.worktrees ?? [])
+      .filter((w) => !w.missing)
+      .map((w) => ({ name: w.name, path: w.path, branch: checkoutLabel(w.branch, w.head), changed: w.changed, caprock: w.caprock })),
+  }
+}
+
+/**
+ * A shell as a sidebar row. A shell writes no session row (03-contracts.md
+ * § Projects and shells), so the app lists it from `GET /v1/shells` and
+ * shows it like a live session of kind `shell`, held by Caprock.
+ */
+export function shellAsSession(sh: ApiShell): SessionSummary {
+  const started = sh.started_at
+  return {
+    session_id: sh.id, cwd: sh.cwd, project: folderName(sh.cwd), model: '', started_at: started, last_event_at: started,
+    status: 'active', transcript_path: '', has_hooks: false, has_transcript: false, git_branch: '', version: '', owned: true, kind: 'shell',
+    stats: { session_id: sh.id, turns: 0, tool_calls: 0, files_touched: 0, tokens_in: 0, tokens_out: 0, cache_read: 0, cache_write: 0, cost_usd: 0 },
+    activity: { phrase: '', at: '', health: 'idle' },
+    savings: { billed_with: 0, billed_without: 0, saved: 0, hit_rate: 0, cut_pct: 0 },
+  } as SessionSummary
 }
 
 /** Where the project list came from: the daemon's own, or derived here. */
@@ -123,26 +237,43 @@ export function newOpId(): string {
 }
 
 export const projectsApi = {
-  /** GET /v1/projects. Accepts a bare array or `{projects: [...]}`. */
+  /** GET /v1/projects → `{projects}`, flattened; a bare array is read too. */
   list: async (): Promise<Project[]> => {
-    const v = await call<Project[] | { projects: Project[] }>('Projects', '/v1/projects')
+    const v = await call<ApiProject[] | { projects: ApiProject[] }>('Projects', '/v1/projects')
     const list = Array.isArray(v) ? v : v?.projects
-    return Array.isArray(list) ? list.filter((p) => p && typeof p.id === 'string' && typeof p.root === 'string') : []
+    return Array.isArray(list)
+      ? list.filter((p) => p && (typeof p.id === 'number' || typeof p.id === 'string') && typeof p.root === 'string').map(fromApiProject)
+      : []
   },
-  add: (req: AddProjectRequest) => call<Project>('Adding a project', '/v1/projects', { method: 'POST', body: req }),
-  patch: (id: string, patch: Partial<Pick<Project, 'name' | 'pinned' | 'sort'>> & { archived?: boolean }) =>
-    call<Project>('Editing a project', `/v1/projects/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch }),
-  branches: (id: string) => call<{ branches: string[]; current?: string }>('Branches', `/v1/projects/${encodeURIComponent(id)}/branches`),
-  createWorktree: (id: string, req: { branch: string; create?: boolean; base?: string; op_id: string }) =>
-    call<Worktree>('A new worktree', `/v1/projects/${encodeURIComponent(id)}/worktrees`, { method: 'POST', body: req }),
+  /** POST /v1/projects: a folder or a new one answer with the project; a clone with its operation (202). */
+  add: async (req: AddProjectRequest): Promise<AddProjectResult> => {
+    const v = await call<{ project?: ApiProject; created?: boolean; op?: OpFrame; existing?: boolean }>('Adding a project', '/v1/projects', { method: 'POST', body: req })
+    if (v?.op) return { op: v.op, existing: !!v.existing }
+    if (v?.project) return { project: fromApiProject(v.project), created: !!v.created }
+    throw new Error('The daemon answered without a project.')
+  },
+  patch: async (id: string, patch: Partial<Pick<Project, 'name' | 'pinned' | 'sort'>>): Promise<Project> => {
+    const v = await call<{ project: ApiProject }>('Editing a project', `/v1/projects/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch })
+    return fromApiProject(v.project)
+  },
+  /** DELETE /v1/projects/{id}: unlists it; nothing on disk is touched. */
+  unlist: (id: string) => call<void>('Removing a project', `/v1/projects/${encodeURIComponent(id)}`, { method: 'DELETE', body: {} }),
+  createWorktree: async (id: string, req: { branch: string; create?: boolean; base?: string }): Promise<{ path: string; branch: string; tracks?: string }> => {
+    const v = await call<{ worktree: { path: string; branch: string; tracks?: string } }>('A new worktree', `/v1/projects/${encodeURIComponent(id)}/worktrees`, { method: 'POST', body: req })
+    return v.worktree
+  },
   removeWorktree: (id: string, name: string) =>
-    call<void>('Removing a worktree', `/v1/projects/${encodeURIComponent(id)}/worktrees/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+    call<void>('Removing a worktree', `/v1/projects/${encodeURIComponent(id)}/worktrees/${encodeURIComponent(name)}`, { method: 'DELETE', body: {} }),
   /** POST /v1/shells: a login shell under a pty-host, attached like a session. */
-  startShell: async (req: ShellRequest): Promise<{ session_id: string; cwd?: string }> => {
-    const v = await call<{ session_id?: string; id?: string; cwd?: string }>('Shell tabs', '/v1/shells', { method: 'POST', body: req })
-    const id = v?.session_id ?? v?.id
-    if (!id) throw new Error('The daemon started a shell but did not say which.')
-    return { session_id: id, cwd: v.cwd }
+  startShell: async (req: ShellRequest): Promise<ApiShell> => {
+    const v = await call<{ shell?: ApiShell }>('Shell tabs', '/v1/shells', { method: 'POST', body: req })
+    if (!v?.shell?.id) throw new Error('The daemon started a shell but did not say which.')
+    return v.shell
+  },
+  /** GET /v1/shells: every running shell. */
+  shells: async (): Promise<ApiShell[]> => {
+    const v = await call<{ shells?: ApiShell[] }>('Shell tabs', '/v1/shells')
+    return Array.isArray(v?.shells) ? v.shells.filter((sh) => sh && typeof sh.id === 'string') : []
   },
 }
 

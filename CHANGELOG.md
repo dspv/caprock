@@ -18,8 +18,9 @@ Phase 3 (Delight) has no plan by design.
   tokens, the permission prompt and the uncommitted changes; a status strip
   with the plan limits and today's spend. ⌘T a shell, ⇧⌘N an agent, ⌘O a
   project, ⌘1–9 tabs, ⌘W closes a tab without stopping its session, ⌘K a
-  command palette. The dashboard opens inside it. The browser dashboard and
-  the phone are unchanged.
+  command palette. The dashboard opens inside it. Sessions in folders that are
+  not a listed repository sit under *Other folders*; ⌘O clones with git's
+  progress shown. The browser dashboard and the phone are unchanged.
 - **Projects in the daemon.** Caprock keeps a list of the projects you work
   in — seeded from the repositories your sessions ran in, plus any you add,
   create (`git init` optional) or clone — with each one's branch, changed

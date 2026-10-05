@@ -6,7 +6,15 @@
  */
 import type { SessionSummary } from './api'
 import { branchLabel, sessionHealth } from './sessionLabels'
-import { inProject, worktreeKeyOf, type Project } from './projects'
+import { folderName, inProject, sessionRoot, worktreeKeyOf, type Project } from './projects'
+import { uniqueSuffixes } from './sessionLabels'
+
+/**
+ * The group for sessions in folders no listed project holds. The daemon lists
+ * only repositories (03-contracts.md § Projects and shells, seeding), so a
+ * session in, say, ~/Downloads would otherwise have no row at all.
+ */
+export const OTHER_FOLDERS_ID = 'other-folders'
 
 export type Dot = 'working' | 'waiting' | 'looping' | 'idle' | 'ended'
 
@@ -94,17 +102,23 @@ function ms(v: string | number | undefined): number {
 export function buildSidebar({ projects, sessions, permissions, costs, openSessions }: SidebarInput): SidebarModel {
   const nodes: ProjectNode[] = projects
     .filter((p) => !p.archived_at)
-    .map((p) => ({ project: p, costToday: costs.get(p.root) ?? 0, waiting: 0, looping: 0, live: 0, lastActive: p.added_at ?? 0, worktrees: [] }))
+    .map((p) => ({ project: p, costToday: p.cost_today ?? costs.get(p.root) ?? 0, waiting: 0, looping: 0, live: 0, lastActive: Math.max(p.last_activity ?? 0, p.added_at ?? 0), worktrees: [] }))
   // Longest root first, so a project nested in another (a monorepo package
   // added on its own) claims its sessions before the outer one does.
   const byDepth = [...nodes].sort((a, b) => b.project.root.length - a.project.root.length)
   const inbox: InboxItem[] = []
+  const other: ProjectNode = {
+    project: { id: OTHER_FOLDERS_ID, root: '', name: 'Other folders', kind: 'folder' },
+    costToday: 0, waiting: 0, looping: 0, live: 0, lastActive: 0, worktrees: [],
+  }
 
   for (const s of sessions) {
     if (!s) continue
     const shown = s.status !== 'ended' || openSessions.has(s.session_id)
-    const node = byDepth.find((n) => inProject(s, n.project))
-    if (!node) continue
+    const listed = byDepth.find((n) => inProject(s, n.project))
+    // Only what is live or open goes to Other folders: it is not a history.
+    if (!listed && !shown) continue
+    const node = listed ?? other
     node.lastActive = Math.max(node.lastActive, s.last_event_at ?? 0)
     if (!shown) continue
     const hasPermission = permissions.has(s.session_id)
@@ -123,6 +137,17 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
       })
     }
     if (dot === 'looping') node.looping += 1
+    if (node === other) {
+      // One group per folder, named by the folder.
+      const root = sessionRoot(s)
+      let wt = other.worktrees.find((w) => w.key === root)
+      if (!wt) {
+        wt = { key: root, branch: folderName(root), path: root, isMain: false, sessions: [] }
+        other.worktrees.push(wt)
+      }
+      wt.sessions.push({ session: s, dot, title: sessionTitle(s), isShell, open: openSessions.has(s.session_id) })
+      continue
+    }
     const key = worktreeKeyOf(s, node.project)
     let wt = node.worktrees.find((w) => w.key === key)
     if (!wt) {
@@ -165,6 +190,18 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
   )
   // Permission prompts first: they block the agent outright. Then oldest first —
   // the one that has waited longest has cost the most time.
+  if (other.worktrees.length > 0) {
+    // Same-named folders read by the shortest path that tells them apart,
+    // from each other and from the listed projects (~/Downloads/caprock
+    // beside the caprock repository).
+    const labels = uniqueSuffixes([...other.worktrees.map((w) => w.path), ...nodes.map((n) => n.project.root)])
+    for (const w of other.worktrees) {
+      w.branch = labels.get(w.path) ?? w.branch
+      w.sessions.sort((a, b) => Number(a.isShell) - Number(b.isShell) || (b.session.last_event_at ?? 0) - (a.session.last_event_at ?? 0))
+    }
+    other.worktrees.sort((a, b) => a.branch.localeCompare(b.branch))
+    nodes.push(other)
+  }
   inbox.sort((a, b) => Number(b.reason === 'permission') - Number(a.reason === 'permission') || a.since - b.since)
   return { projects: nodes, inbox }
 }

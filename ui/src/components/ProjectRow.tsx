@@ -4,9 +4,9 @@
  */
 import { memo } from 'react'
 import { branchLabel } from '@/lib/sessionLabels'
-import type { Dot, ProjectNode, SessionNode, WorktreeNode } from '@/lib/sidebar'
+import { OTHER_FOLDERS_ID, type Dot, type ProjectNode, type SessionNode, type WorktreeNode } from '@/lib/sidebar'
 import { fmtUSD } from '@/lib/format'
-import { AgentGlyph, BranchIcon, ChevronIcon, PlusIcon, TerminalIcon } from './AppIcons'
+import { AgentGlyph, BranchIcon, ChevronIcon, FolderIcon, PlusIcon, TerminalIcon } from './AppIcons'
 
 const DOT_CLASS: Record<Dot, string> = {
   working: 'bg-ok',
@@ -63,7 +63,9 @@ export const ProjectRow = memo(function ProjectRow({
   const id = p.id
   // One checkout: the worktree level says nothing, so its sessions sit
   // directly under the project and its branch rides in the project's row.
-  const flat = node.worktrees.length <= 1
+  // Other folders has no folder of its own: always one row per folder.
+  const isGroup = p.root === ''
+  const flat = node.worktrees.length <= 1 && !isGroup
   const branch = flat ? node.worktrees[0]?.branch || p.branch : p.branch
   // A detached checkout, or a folder that is no repository, says HEAD.
   const mainBranch = branchLabel(branch)
@@ -107,10 +109,12 @@ export const ProjectRow = memo(function ProjectRow({
           ) : null}
         </button>
         {/* Actions on hover or focus, where the badges sit: the row stays one line. */}
-        <span className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 group-hover:flex group-focus-within:flex">
-          <RowAction label={`New agent in ${p.name}`} onClick={() => onNewAgent(id)}><PlusIcon size={13} /></RowAction>
-          <RowAction label={`New shell in ${p.name}`} onClick={() => onNewShell(id)}><TerminalIcon size={13} /></RowAction>
-        </span>
+        {!isGroup && (
+          <span className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 group-hover:flex group-focus-within:flex">
+            <RowAction label={`New agent in ${p.name}`} onClick={() => onNewAgent(id)}><PlusIcon size={13} /></RowAction>
+            <RowAction label={`New shell in ${p.name}`} onClick={() => onNewShell(id)}><TerminalIcon size={13} /></RowAction>
+          </span>
+        )}
       </div>
       {expanded && (
         <ul className="grid grid-cols-1 pb-1" role="group">
@@ -153,8 +157,8 @@ function WorktreeRows({
   return (
     <li className="grid grid-cols-1">
       <div className="group relative flex h-[26px] items-center gap-1.5 pl-[26px] pr-2 text-[12px] text-fg-muted" title={w.path}>
-        <BranchIcon size={12} className="text-fg-faint" />
-        <span className="mono min-w-0 flex-1 truncate">{w.branch}</span>
+        {projectId === OTHER_FOLDERS_ID ? <FolderIcon size={12} className="text-fg-faint" /> : <BranchIcon size={12} className="text-fg-faint" />}
+        <span className={`min-w-0 flex-1 truncate ${projectId === OTHER_FOLDERS_ID ? '' : 'mono'}`}>{w.branch}</span>
         <span className="num flex items-center gap-1.5 text-[10.5px] text-fg-faint group-hover:invisible">
           {!!w.ahead && <span title="commits ahead">↑{w.ahead}</span>}
           {!!w.behind && <span title="commits behind">↓{w.behind}</span>}

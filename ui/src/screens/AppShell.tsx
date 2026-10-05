@@ -32,7 +32,7 @@ import { Inspector } from '@/components/Inspector'
 import { StatusStrip } from '@/components/StatusStrip'
 import { PermissionPrompt } from '@/components/PermissionPrompt'
 import { NewAgentSheet } from '@/components/NewAgentSheet'
-import { AddProjectSheet } from '@/components/AddProjectSheet'
+import { AddProjectSheet, splitPath } from '@/components/AddProjectSheet'
 import { CommandPalette, type PaletteItem } from '@/components/CommandPalette'
 import { DashboardIcon, FolderIcon, FolderPlusIcon, InspectorIcon, PlusIcon, SparkIcon, TerminalIcon } from '@/components/AppIcons'
 import type { PaneStatus } from '@/components/TerminalPane'
@@ -128,7 +128,8 @@ export function AppShell() {
     [data.projects, data.sessions, data.permissions, data.costs, openSessions],
   )
   const sessionsById = useMemo(() => new Map(data.sessions.map((s) => [s.session_id, s])), [data.sessions])
-  const projectsById = useMemo(() => new Map(data.projects.map((p) => [p.id, p])), [data.projects])
+  // From the model, so Other folders resolves like a project.
+  const projectsById = useMemo(() => new Map(model.projects.map((n) => [n.project.id, n.project])), [model.projects])
 
   const activeProjectId = ws.activeProject && (projectsById.has(ws.activeProject) || ws.tabs.some((t) => t.projectId === ws.activeProject))
     ? ws.activeProject
@@ -175,15 +176,18 @@ export function AppShell() {
   }, [showWorkspace])
 
   const { source, refresh } = data
+  const closeSheet = useCallback(() => setSheet(null), [])
+  const onProjectAdded = useCallback((projectId: string) => { refresh(); dispatch({ type: 'project', projectId }) }, [refresh])
   const newShell = useCallback(async (projectId?: string, cwd?: string) => {
     const p: Project | undefined = projectsById.get(projectId ?? activeProjectId)
-    if (!p) { setSheet({ kind: 'project' }); return }
+    if (!p || (!p.root && !cwd)) { setSheet({ kind: 'project' }); return }
     try {
-      const req = source === 'api' && !cwd
-        ? { project_id: p.id, cols: 120, rows: 32 }
+      const projectNumber = Number(p.id)
+      const req = source === 'api' && !cwd && Number.isInteger(projectNumber)
+        ? { project_id: projectNumber, cols: 120, rows: 32 }
         : { cwd: cwd ?? p.root, cols: 120, rows: 32 }
-      const { session_id } = await projectsApi.startShell(req)
-      openTab({ kind: 'shell', sessionId: session_id }, p.id, 'shell')
+      const shell = await projectsApi.startShell(req)
+      openTab({ kind: 'shell', sessionId: shell.id }, p.id, 'shell')
       refresh()
     } catch (e) {
       setToast(e instanceof NotSupportedError ? `${e.message} Start an agent with ⇧⌘N meanwhile.` : `Could not start a shell: ${errText(e)}`)
@@ -360,7 +364,7 @@ export function AppShell() {
       )}
       {sheet?.kind === 'agent' && (
         <NewAgentSheet
-          projects={model.projects.map((n) => n.project)}
+          projects={model.projects.map((n) => n.project).filter((p) => p.root || p.id === sheet.projectId)}
           projectId={sheet.projectId}
           cwd={sheet.cwd}
           onClose={() => setSheet(null)}
@@ -370,8 +374,10 @@ export function AppShell() {
       {sheet?.kind === 'project' && (
         <AddProjectSheet
           source={data.source}
-          onClose={() => setSheet(null)}
-          onAdded={(p) => { data.refresh(); dispatch({ type: 'project', projectId: p.id }) }}
+          defaultParent={activeProject?.root ? splitPath(activeProject.root).parent : ''}
+          ops={data.ops}
+          onClose={closeSheet}
+          onAdded={onProjectAdded}
           onAddLocal={(p) => { data.addLocal(p); dispatch({ type: 'project', projectId: `dir:${p.root}` }) }}
         />
       )}
