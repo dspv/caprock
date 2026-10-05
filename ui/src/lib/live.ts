@@ -5,11 +5,15 @@
 // for what came after the last one with ?since=, and a "reset" frame (the
 // daemon no longer holds them) makes screens refetch. Liveness is protocol v2's:
 // a ping every 10 s, and 25 s of silence means the socket is dead.
+// Retries follow lib/reconnect.ts, the policy every socket shares (WP-13).
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { Event, LoopAlert, Permission, Session, Stats, TaskFrame } from './api'
 import { deviceToken } from './api'
 import type { OpFrame, ProjectFrame } from './projects'
-import { DEAD_MS, PING_MS } from './termv2'
+import {
+  LIVENESS_CHECK_MS, PING_MS, PROBE_MS, Reconnector, isConnectStuck, isProbeLost, isSilent, onNetworkWake,
+  type LinkStatus,
+} from './reconnect'
 
 /**
  * A notification (.ai/21-app.md § Notifications), sent by WP-09. It travels in
@@ -50,6 +54,8 @@ export type ConnState = 'connecting' | 'open' | 'closed'
 
 interface LiveState {
   conn: ConnState
+  /** The connection as the state indicator says it (components/ConnectionState.tsx). */
+  link: LinkStatus
   lastFrameAt: number
   /** Monotonic counter bumped on every session/event frame — screens refetch on change. */
   tick: number
@@ -62,21 +68,31 @@ interface LiveState {
 type Listener = () => void
 
 class LiveStore {
-  private state: LiveState = { conn: 'connecting', lastFrameAt: 0, tick: 0, alerts: [], notifications: [] }
+  private state: LiveState = {
+    conn: 'connecting',
+    link: { phase: 'connecting', attempt: 0, nextAt: null, downSince: null },
+    lastFrameAt: 0, tick: 0, alerts: [], notifications: [],
+  }
   private listeners = new Set<Listener>()
-  private backoff = 500
-  private timer: number | null = null
+  private readonly retry = new Reconnector({
+    connect: () => this.connect(),
+    onChange: (st) => this.set({ link: { ...this.state.link, ...st } }),
+  })
   private started = false
   /** The seq of the last frame applied; null until the first hello. */
   private lastSeq: number | null = null
   private ws: WebSocket | null = null
   private heard = 0
   private lastPing = 0
+  /** When a woken page pinged an open socket to check it; 0 when no check waits. */
+  private probeAt = 0
   private pingTimer: ReturnType<typeof setInterval> | null = null
   /** Per-frame subscribers (session detail wants raw events without re-rendering everything). */
   private frameSubs = new Set<(f: Frame) => void>()
 
   getState = () => this.state
+  /** When anything last arrived from the daemon: "live" means a round trip within DEAD_MS. */
+  heardAt = () => this.heard
   subscribe = (l: Listener) => {
     this.listeners.add(l)
     this.start()
@@ -95,7 +111,32 @@ class LiveStore {
   start() {
     if (this.started || typeof WebSocket === 'undefined') return
     this.started = true
+    onNetworkWake(() => this.wake())
     this.connect()
+  }
+
+  /**
+   * The page or the network came back: retry now rather than at the end of
+   * the backoff, and make an open socket prove it still reaches the daemon.
+   */
+  wake() {
+    const ws = this.ws
+    const now = Date.now()
+    if (ws && ws.readyState === WebSocket.OPEN && now - this.heard <= PING_MS + 2_000) {
+      // It looks open, but after a network change it may be bound to a
+      // route that is gone: it has PROBE_MS to answer, or it is replaced.
+      this.probeAt = now
+      ws.send(JSON.stringify({ ping: now }))
+      return
+    }
+    // An attempt that has only just started is given its chance.
+    if (ws && ws.readyState === 0 && now - this.heard < PROBE_MS) { this.retry.expedite(); return }
+    this.drop()
+    this.retry.retryNow()
+  }
+
+  private setPhase(phase: LinkStatus['phase']) {
+    if (this.state.link.phase !== phase) this.set({ link: { ...this.state.link, phase } })
   }
 
   private connect() {
@@ -110,6 +151,7 @@ class LiveStore {
     const since = this.lastSeq === null ? '' : `?since=${this.lastSeq}`
     const url = `${proto}://${location.host}/v1/live${since}`
     this.set({ conn: 'connecting' })
+    this.probeAt = 0
     let ws: WebSocket
     try {
       // A paired device sends its token as a subprotocol. The WebSocket
@@ -120,12 +162,16 @@ class LiveStore {
       const t = deviceToken()
       ws = t ? new WebSocket(url, [`caprock.device.${t}`]) : new WebSocket(url)
     } catch {
-      this.scheduleReconnect()
+      this.retry.fail()
       return
     }
     this.ws = ws
     this.heard = Date.now()
-    ws.onopen = () => { this.backoff = 500; this.heard = Date.now(); this.set({ conn: 'open' }) }
+    // Open is not live yet: the hello, and the frames missed meanwhile, follow.
+    ws.onopen = () => {
+      this.heard = Date.now()
+      this.set({ conn: 'open', link: { ...this.state.link, phase: this.state.link.phase === 'connecting' ? 'connecting' : 'catching-up' } })
+    }
     ws.onmessage = (m) => {
       this.heard = Date.now()
       let f: Frame | ControlFrame
@@ -137,12 +183,13 @@ class LiveStore {
       this.handle(f as Frame)
     }
     ws.onclose = () => {
-      if (this.ws === ws) this.ws = null
-      this.set({ conn: 'closed' })
-      this.scheduleReconnect()
+      if (this.ws !== ws) return
+      this.ws = null
+      this.set({ conn: 'closed', link: { ...this.state.link, phase: 'reconnecting' } })
+      this.retry.fail()
     }
     ws.onerror = () => { ws.close() }
-    if (this.pingTimer === null) this.pingTimer = setInterval(() => this.tickLiveness(), PING_MS / 2)
+    if (this.pingTimer === null) this.pingTimer = setInterval(() => this.tickLiveness(), LIVENESS_CHECK_MS)
   }
 
   /** A socket silent for DEAD_MS is dead, whatever the browser thinks. */
@@ -150,11 +197,28 @@ class LiveStore {
     const ws = this.ws
     if (!ws) return
     const now = Date.now()
-    if (now - this.heard > DEAD_MS) { ws.close(); return }
+    if (isSilent(this.heard, now) || isConnectStuck(ws.readyState, this.heard, now)) { this.drop(); return }
+    if (isProbeLost(this.probeAt, this.heard, now)) { this.drop(); this.retry.retryNow(); return }
+    if (this.heard > this.probeAt) this.probeAt = 0
     if (ws.readyState === WebSocket.OPEN && now - this.lastPing >= PING_MS) {
       this.lastPing = now
       ws.send(JSON.stringify({ ping: now }))
     }
+  }
+
+  /**
+   * Close the socket and reconnect now, without waiting for the browser's
+   * close event: on a half-open socket the closing handshake never completes,
+   * and the event can come late.
+   */
+  private drop() {
+    const ws = this.ws
+    if (!ws) return
+    const onclose = ws.onclose
+    ws.onclose = null
+    ws.onmessage = null
+    ws.close()
+    onclose?.call(ws, {} as CloseEvent)
   }
 
   /**
@@ -167,12 +231,6 @@ class LiveStore {
     if (f.type !== 'hello' && f.type !== 'reset' && this.lastSeq !== null && f.seq <= this.lastSeq) return false
     this.lastSeq = f.seq
     return true
-  }
-
-  private scheduleReconnect() {
-    if (this.timer !== null) return
-    this.timer = window.setTimeout(() => { this.timer = null; this.connect() }, this.backoff)
-    this.backoff = Math.min(this.backoff * 2, 10_000)
   }
 
   handle(f: Frame) {
@@ -190,6 +248,12 @@ class LiveStore {
       }
     }
     switch (f.type) {
+      case 'hello':
+        // A round trip: live, and the next loss starts from the shortest delay.
+        this.retry.succeed()
+        this.setPhase('live')
+        this.set({ lastFrameAt: now })
+        break
       case 'alert':
         // One banner per session. A session that loops twice used to produce
         // two identical rows — same tool, same count, same cost — which reads
@@ -268,5 +332,11 @@ function useDebouncedValue<T>(initial: T, ms: number): [T, (v: T) => void] {
 /** The connection state alone: re-renders only when it changes, not on every frame. */
 export function useLiveConn(): ConnState {
   const get = () => live.getState().conn
+  return useSyncExternalStore(live.subscribe, get, get)
+}
+
+/** The connection for the state indicator: re-renders only when it changes. */
+export function useLiveLink(): LinkStatus {
+  const get = () => live.getState().link
   return useSyncExternalStore(live.subscribe, get, get)
 }

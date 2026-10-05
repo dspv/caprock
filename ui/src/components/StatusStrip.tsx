@@ -4,20 +4,18 @@
  * front. Read-only; each figure is the dashboard's own.
  */
 import type { Summary } from '@/lib/api'
-import { useLiveConn } from '@/lib/live'
+import { live, useLiveLink } from '@/lib/live'
 import { fmtUSD } from '@/lib/format'
 import type { PaneStatus } from './TerminalPane'
+import { ConnectionState } from './ConnectionState'
 
 export function StatusStrip({ summary, pane, version }: { summary?: Summary; pane?: PaneStatus; version?: string }) {
-  const conn = useLiveConn()
+  const link = useLiveLink()
   const five = summary?.rate_limits?.five_hour
   const seven = summary?.rate_limits?.seven_day
   return (
     <footer className="flex h-[26px] shrink-0 items-center gap-4 border-t border-[var(--app-hairline)] bg-[var(--app-chrome-bg)] px-3 text-[11.5px] text-fg-muted">
-      <span className="inline-flex items-center gap-1.5" title="The daemon's live socket">
-        <span className={`h-[6px] w-[6px] rounded-full ${conn === 'open' ? 'bg-ok' : conn === 'connecting' ? 'bg-warn' : 'bg-danger'}`} />
-        {conn === 'open' ? 'Connected' : conn === 'connecting' ? 'Connecting…' : 'Daemon unreachable — reconnecting'}
-      </span>
+      <ConnectionState link={link} heardAt={live.heardAt} />
       {five && <Limit label="5h" pct={five.used_percentage} />}
       {seven && <Limit label="7d" pct={seven.used_percentage} />}
       {summary && (

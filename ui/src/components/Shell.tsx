@@ -1,9 +1,7 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { useLive } from '@/lib/live'
+import { live as liveStore, useLive } from '@/lib/live'
 import { href, type Route } from '@/lib/router'
-import { fmtAgo } from '@/lib/format'
-import { useNow } from '@/lib/useNow'
 import { useTheme } from '@/lib/theme'
 import { api, isPairedDevice, type UpdateStatus } from '@/lib/api'
 import {
@@ -24,6 +22,7 @@ import { ShareButton } from '@/components/Share'
 import { PremiumChip } from '@/components/PremiumChip'
 import { SiteFooter } from '@/components/SiteFooter'
 import { Prose } from './Prose'
+import { ConnectionState } from './ConnectionState'
 
 const NAV: { route: Route; label: string; phase?: string }[] = [
   { route: { name: 'now' }, label: 'Now' },
@@ -116,7 +115,9 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
             * button beside it, which moved here for the same complaint. */}
           <PremiumChip />
           <FeedbackButton screen={screenName(route)} />
-          <ConnDot state={live.conn} lastFrameAt={live.lastFrameAt} />
+          {/* Live only with a round trip in the last 25 s; otherwise what is
+            * being done about it (components/ConnectionState.tsx). */}
+          <ConnectionState link={live.link} heardAt={liveStore.heardAt} />
           {/* Setting the plan is a settings change: on the machine only (ADR-029). */}
           {!isPairedDevice() && <PlanChip plan={plan} onSave={savePlan} />}
           <ThemeToggle />
@@ -154,29 +155,6 @@ function ThemeToggle() {
         </svg>
       )}
     </button>
-  )
-}
-
-/**
- * The one place that says whether this page is still receiving anything — a
- * quiet dashboard and a dead one look identical, because nothing moves in
- * either, and the Attention strip deliberately stays silent when all is well.
- *
- * The age of the last frame has to be recomputed on a timer, not only when a
- * frame arrives: on an idle machine no frame arrives *by definition*, so a
- * label rendered once froze at "live · now" and kept saying it for hours.
- * That is the exact reading someone glancing from across the room relies on,
- * and it was the one case where it was wrong.
- */
-function ConnDot({ state, lastFrameAt }: { state: 'connecting' | 'open' | 'closed'; lastFrameAt: number }) {
-  const now = useNow(1000)
-  const cls = state === 'open' ? 'bg-ok' : state === 'connecting' ? 'bg-warn' : 'bg-danger'
-  const label = state === 'open' ? `live · ${lastFrameAt ? fmtAgo(lastFrameAt, now) : 'connected'}` : state === 'connecting' ? 'connecting…' : 'disconnected — reconnecting'
-  return (
-    <span className="inline-flex items-center gap-1.5" title={state === 'open' ? 'Connected. Time since the daemon last sent anything.' : 'WebSocket /v1/live'}>
-      <span className={`inline-block w-1.5 h-1.5 rounded-full ${cls}`} />
-      <span className="num">{label}</span>
-    </span>
   )
 }
 

@@ -311,7 +311,7 @@ Every output byte has an offset and every input frame a sequence number, so a re
 - **Acks.** `{"ack":S}`, the last applied sequence, at most 100 ms after it was applied. The client resends everything above the newest ack (or hello `ack`) after every reconnect.
 - **Control from the client** (text): `{"resize":{"cols":N,"rows":N}}`; `{"ping":t}`, answered `{"pong":t}`. Any other text is ignored — v2 never types a text frame.
 - **Liveness.** Each side sends `{"ping":t}` every 10 s and answers the other's with `{"pong":t}`; 25 s with nothing received closes the socket.
-- **End.** When the process exits: the last output, `{"exit":{"code":N}}`, then close **1000**. Close **1008**: the device lost the controller role, do not reconnect. Any other close is the connection, and the client reconnects (forever, backing off from 250 ms to 5 s with jitter, at once on `visibilitychange`, `online` and `pageshow`).
+- **End.** When the process exits: the last output, `{"exit":{"code":N}}`, then close **1000**. Close **1008**: the device lost the controller role, do not reconnect. Any other close is the connection, and the client reconnects by the policy `/v1/live` shares (§ Client reconnect policy, below).
 - **Client backpressure.** The dashboard closes the socket while more than 1 MiB it has received waits for xterm.js to parse, and reconnects with `since` once that drops to 256 KiB.
 
 ### Live socket, replay
@@ -325,6 +325,15 @@ Every `/v1/live` frame carries a `seq`, so a client that reconnects gets exactly
 - **Falling behind.** A socket whose per-client buffer (1,024 frames) overflowed is caught up from the ring at once, or sent a `reset` when the ring no longer reaches back far enough; it never stalls the publisher or another client.
 - **Liveness.** The daemon sends `{type:"ping", seq, data:t}` every 10 s, and answers a client's `{"ping":t}` with `{type:"pong", seq, data:t}`; the client answers the daemon's ping with `{"pong":t}`. A ping or pong's `seq` is the client's position, not a new frame. Either side takes 25 s with nothing received for a dead socket and closes it (the daemon also counts a WebSocket protocol pong, which every browser sends by itself, so a client that predates the ping frame is not cut off); the client reconnects with `since`.
 - **Client.** `ui/src/lib/live.ts` drops a frame whose seq is not above the last applied (a hello or reset sets the position outright), bumps the refetch tick on `reset`, and keeps the `notify` frames it received, newest first and one per `id`, for WP-09 to show.
+
+### Client reconnect policy
+
+One policy for both sockets, `ui/src/lib/reconnect.ts` (WP-13, [21-app.md § Phase A](21-app.md#phase-a--resilience-and-starting-work-p0)). Client-side only: no frame or endpoint changed.
+
+- **Forever, with full jitter.** Retry `n` (from 0) waits a uniform delay between 0.5 s and `min(15 s, 0.5 s × 2^n)`; there is no last attempt. The count and the delay reset when the link is live again: the `hello` on either socket (on a version 1 terminal socket, the open).
+- **At once** on `visibilitychange` to visible, `online`, `pageshow` and `navigator.connection`'s `change` (where the browser has it). An open socket heard from in the last 12 s is pinged and must answer within **2 s**, or it is replaced at once; one silent longer is replaced without asking. If the page wakes while an attempt is still opening, that attempt is given its chance and, should it fail, the next starts with no delay.
+- **Dead.** Nothing received for 24 s (checked every second, so a half-open socket is caught within the 25 s deadline), or an attempt not open after **10 s**, closes the socket and counts as a failure.
+- **Not retried.** Terminal close 1000 (the process exited) and 1008 (the device lost the controller role; the close reason, or "ask on the machine Caprock runs on", is shown). Close 1011 is retried, and the input it names is resent after the `hello`.
 
 ### Notify frame
 

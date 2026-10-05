@@ -588,8 +588,20 @@ connection and the work survive a bad network.
   15 s cap, never giving up; an immediate attempt on `visibilitychange`,
   `online` and network type change; the ping and 25-second dead deadline of
   protocol v2 on `/v1/live` as well.
+  Built in WP-13 (2026-10-06): `ui/src/lib/reconnect.ts`, shared by
+  `/v1/live` and every terminal; the rules, including the 2-second probe of a
+  socket that looks open after a wake and the 10-second limit on an attempt
+  that never opens, are in
+  [03-contracts.md § Client reconnect policy](03-contracts.md#client-reconnect-policy).
 - **Honest state.** "Live", "catching up", "reconnecting (n)", "offline since
   …" — never "connected" without a round trip in the last 25 seconds.
+  Built in WP-13 as `ui/src/components/ConnectionState.tsx`, in the header,
+  the app's status strip and over the terminal: *Live* (something heard in the
+  last 24 s, re-read every second), *Catching up…* (open, the `hello` and the
+  missed frames not in yet; or a terminal letting xterm.js catch up),
+  *Reconnecting (n) · next try in s* (n is the try under way or next),
+  *Offline since hh:mm* (when the browser reports no network) and *Control
+  revoked — reason*. *Session ended* is the terminal's own.
 - **Live replay.** Every `/v1/live` frame carries a `seq`. The daemon keeps a
   ring of the last 2,000 frames or 10 minutes; a client reconnects with
   `?since=<seq>` and gets the gap, or a `reset` frame and refetches its views.
@@ -601,6 +613,15 @@ connection and the work survive a bad network.
   shown as "will send", and sent on reconnect — only if the session is still
   live and no permission prompt is pending; otherwise it stays as a draft with
   **Send now**. Raw keys and permission answers are never queued.
+  Built in WP-13 in `TerminalKeys`: "pending" is asked of
+  `GET /v1/agents/{id}/permission` at the moment of sending, and a failed
+  answer counts as pending (a draft, never a guess); "still live" is the
+  terminal socket's `hello` with no exit since. Held messages and drafts are
+  kept in the tab's `sessionStorage`, so a phone that discards the page in the
+  background still has them; each has **Edit**, which puts it back in the
+  field. A raw key pressed while not live is not sent and says so for four
+  seconds. Typing into the terminal itself (a desktop) keeps protocol v2's
+  4 KiB queue.
 - **Chat view.** The conversation as messages (what the agent wrote, tool
   calls collapsed to one line, prompts), built from the events Caprock already
   stores, with the scrolling rule; the input box types into the session.
