@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "daemon",
-  "description": "The dashboard served by the daemon on loopback. It may read the daemon's state, open web links, drag the window, fill the menu bar and badge, and set the global hotkey; nothing that starts processes or touches files other than the hotkey choice.",
+  "description": "The dashboard served by the daemon on loopback. It may read the daemon's state, open web links, drag the window, fill the menu bar and badge, set the global hotkey and show OS notifications; nothing that starts processes or touches files other than the hotkey choice.",
   "windows": ["main"],
   "remote": { "urls": ["http://127.0.0.1:*"] },
   "permissions": [
@@ -12,6 +12,7 @@
     "allow-set-tray",
     "allow-set-badge",
     "allow-hotkey-status",
-    "allow-register-hotkey"
+    "allow-register-hotkey",
+    "allow-notify"
   ]
 }

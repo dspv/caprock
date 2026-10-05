@@ -539,6 +539,20 @@ there, and worktrees as first-class places to work.
   session with the prompt card in view.
 - **Quiet when watched.** No OS notification for the session in the focused
   tab of a focused window.
+- **As built (WP-09, 2026-10-06).** The frame and its contract are in
+  [03-contracts.md § Notify frame](03-contracts.md#notify-frame). The app's
+  switches are apart from Telegram's: approval on by default, finished off
+  (owner to confirm); Telegram stays off unless switched on. The official
+  `tauri-plugin-notification` shows only a title and body on desktop and
+  reports no click or action, so every OS gets the floor: the click brings
+  the app forward and the app opens the session with its prompt card, whose
+  buttons answer with the `prompt_id`. Buttons inside the notification need a
+  crate beyond the official plugins (UNUserNotificationCenter on macOS, toast
+  activation on Windows, D-Bus actions on Linux) and wait for that decision.
+  On Linux, where a click does not raise the app, the notification informs
+  only. The window's background throttling is off (macOS 14+): WKWebView
+  suspends a hidden or covered page, and a test with the window behind
+  others got no notification in 30 s with it on, against 0.03–0.12 s off.
 
 ## The scrolling rule
 

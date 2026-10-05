@@ -1000,3 +1000,22 @@ func TestAlertSwitchesRoundTrip(t *testing.T) {
 		t.Errorf("reply=%v approval=%v, want false/true", got.AlertReply, got.AlertApproval)
 	}
 }
+
+// The desktop app's two switches round-trip apart from Telegram's (WP-09).
+func TestNotifySwitchesRoundTrip(t *testing.T) {
+	e := newEnv(t)
+	e.settings.cur.NotifyApproval, e.settings.cur.AlertApproval = true, false
+	if code := e.putSettings(t, map[string]any{"notify_finished": true}); code != 200 {
+		t.Fatalf("PUT: %d", code)
+	}
+	var got Settings
+	if code := e.get(t, "/v1/settings", &got); code != 200 || !got.NotifyApproval || !got.NotifyFinished || got.AlertApproval {
+		t.Errorf("notify approval=%v finished=%v, alert approval=%v; want true/true/false", got.NotifyApproval, got.NotifyFinished, got.AlertApproval)
+	}
+	if code := e.putSettings(t, map[string]any{"notify_approval": false}); code != 200 {
+		t.Fatalf("PUT: %d", code)
+	}
+	if code := e.get(t, "/v1/settings", &got); code != 200 || got.NotifyApproval || !got.NotifyFinished {
+		t.Errorf("notify approval=%v finished=%v, want false/true", got.NotifyApproval, got.NotifyFinished)
+	}
+}

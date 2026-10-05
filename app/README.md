@@ -60,6 +60,7 @@ Commands are granted per origin (`src-tauri/capabilities/`):
 | ----------------- | ----------- | ------------ |
 | `daemon_status`   | yes         | yes          |
 | `open_external`   | yes         | yes          |
+| `notify`          | yes         | no           |
 | `start_daemon`    | no          | yes          |
 | `update_daemon`   | no          | yes          |
 | `set_background`  | no          | yes          |
@@ -70,6 +71,12 @@ Commands are granted per origin (`src-tauri/capabilities/`):
 
 A page on any other origin gets nothing; `cargo test` checks each refusal.
 `open_external` opens `http` and `https` only.
+`notify` shows one OS notification (`{title, body}`) through the official
+`tauri-plugin-notification`; the page decides when (`ui/src/lib/notify.ts`,
+WP-09). The window turns WKWebView's background throttling off (macOS 14+),
+or a hidden or covered page would not hear the frame until brought forward.
+Every show from the menu bar, tray or hotkey first dispatches `caprock:shown`
+in the page, so it is not taken for a click on a notification.
 
 ## Contract with the UI (`ui/`)
 
@@ -141,7 +148,8 @@ CAPROCK_APP_BACKGROUND=1 src-tauri/target/release/bundle/macos/Caprock.app/Conte
 ```
 
 `CAPROCK_SERVICE_LABEL` keeps `caprock service install` away from the real
-`dev.caprock.daemon` login agent. A build with `--features snapshot` (never
+`dev.caprock.daemon` login agent. `CAPROCK_APP_NOTIFY_LOG=<file>` appends each
+notification to that file as a JSON line instead of showing it. A build with `--features snapshot` (never
 shipped) also reads `CAPROCK_APP_SNAPSHOT_DIR`: a name written to
 `<dir>/request` captures the window to `<dir>/<name>.png`, a script written to
 `<dir>/eval` runs in the page, and page loads are logged to `<dir>/loads.txt`.

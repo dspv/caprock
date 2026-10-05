@@ -401,6 +401,14 @@ func killHolders(t *testing.T, data string) {
 // permission dialog, the way the shim would.
 func hookPermissionRequest(t *testing.T, base, data, id string) {
 	t.Helper()
+	postHook(t, base, data, `{"session_id":"`+id+`","hook_event_name":"PermissionRequest","tool_name":"Bash",`+
+		`"tool_input":{"command":"date > out.txt"},`+
+		`"permission_suggestions":[{"type":"addDirectories","directories":["/x"],"destination":"session"}]}`)
+}
+
+// postHook sends one hook payload the way the shim would.
+func postHook(t *testing.T, base, data, body string) {
+	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(data, "runtime.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -411,9 +419,6 @@ func hookPermissionRequest(t *testing.T, base, data, id string) {
 	if err := json.Unmarshal(raw, &rt); err != nil || rt.Token == "" {
 		t.Fatalf("runtime.json: %v", err)
 	}
-	body := `{"session_id":"` + id + `","hook_event_name":"PermissionRequest","tool_name":"Bash",` +
-		`"tool_input":{"command":"date > out.txt"},` +
-		`"permission_suggestions":[{"type":"addDirectories","directories":["/x"],"destination":"session"}]}`
 	req, _ := http.NewRequest(http.MethodPost, base+"/v1/hook", strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+rt.Token)
 	req.Header.Set("Content-Type", "application/json")

@@ -173,8 +173,13 @@ pub fn toggle<R: Runtime>(app: &AppHandle<R>) {
     show(app);
 }
 
-/// Brings the window up and gives it focus.
+/// Brings the window up and gives it focus. The page hears it first
+/// (`caprock:shown`), so a show the user asked for is not taken for a click
+/// on a notification (ui/src/lib/notify.ts).
 pub fn show<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(w) = app.get_webview_window(MAIN) {
+        let _ = w.eval("window.dispatchEvent(new Event('caprock:shown'))");
+    }
     #[cfg(target_os = "macos")]
     let _ = app.show();
     if let Some(w) = app.get_webview_window(MAIN) {

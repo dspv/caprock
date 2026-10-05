@@ -27,6 +27,7 @@ import {
 import { useWorkspaceData } from '@/lib/useWorkspaceData'
 import { useShellTray } from '@/lib/tray'
 import { OPEN_SESSION_EVENT } from '@/lib/shell'
+import { useOsNotifications } from '@/lib/notify'
 import { useTheme } from '@/lib/theme'
 import { Sidebar } from '@/components/Sidebar'
 import { TabStrip, TerminalStack } from '@/components/TerminalTabs'
@@ -150,6 +151,9 @@ export function AppShell() {
   const focused = current ? focusedLeaf(current).target : undefined
   const focusedSession = focused ? sessionsById.get(focused.sessionId) : undefined
   const activeProject = projectsById.get(activeProjectId)
+  const shownRoute = parseHash(hash)
+  // OS notifications in the Tauri shell (WP-09), quiet for the session in front.
+  useOsNotifications(workspaceShown ? focused?.sessionId : shownRoute.name === 'session' ? shownRoute.id : undefined)
 
   // Keep tab titles current, so a restored tab is named before the list answers.
   useEffect(() => {

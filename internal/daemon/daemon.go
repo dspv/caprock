@@ -1310,6 +1310,8 @@ func (a *settingsAdapter) Get() api.Settings {
 		AlertApproval:    c.AlertApprovalOn(),
 		AlertFinished:    c.AlertFinishedOn(),
 		AlertReply:       c.AlertReplyOn(),
+		NotifyApproval:   c.NotifyApprovalOn(),
+		NotifyFinished:   c.NotifyFinishedOn(),
 		AlertLastError:   alertErr,
 		AlertLastSentMs:  alertSent,
 	}
@@ -1344,6 +1346,9 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	a.d.opt.Config.AlertApproval = &approval
 	a.d.opt.Config.AlertFinished = &finished
 	a.d.opt.Config.AlertReply = &reply
+	notifyApproval, notifyFinished := in.NotifyApproval, in.NotifyFinished
+	a.d.opt.Config.NotifyApproval = &notifyApproval
+	a.d.opt.Config.NotifyFinished = &notifyFinished
 	cfg := a.d.opt.Config
 	a.d.cfgMu.Unlock()
 	if capChanged && a.d.cap != nil {

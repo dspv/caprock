@@ -8,6 +8,7 @@ mod badge;
 mod commands;
 mod discovery;
 mod hotkey;
+mod notify;
 mod shell;
 #[cfg(all(feature = "snapshot", target_os = "macos"))]
 mod snapshot;
@@ -31,7 +32,8 @@ macro_rules! handler {
             commands::set_tray,
             commands::set_badge,
             commands::hotkey_status,
-            commands::register_hotkey
+            commands::register_hotkey,
+            notify::notify
         ]
     };
 }
@@ -40,6 +42,7 @@ fn configure<R: tauri::Runtime>(b: tauri::Builder<R>, sup: commands::Sup) -> tau
     b.plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(hotkey::Hotkey::new(&sup.data_dir))
+        .plugin(tauri_plugin_notification::init())
         .manage(sup)
         .manage(shell::Downloads::default())
         .manage(tray::Tray::default())
@@ -228,6 +231,18 @@ mod tests {
                     "{url} {cmd}: {err}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn the_daemon_page_may_notify_and_another_origin_may_not() {
+        // A blank title is refused by the command itself, so nothing is shown.
+        let blank = serde_json::json!({"title": " ", "body": ""});
+        let err = invoke(DAEMON, "notify", blank.clone()).expect_err("blank title");
+        assert!(err.to_string().contains("needs a title"), "{err}");
+        for url in ["https://example.com/", "http://localhost:4391/"] {
+            let err = invoke(url, "notify", blank.clone()).expect_err(url);
+            assert!(err.to_string().contains("not allowed"), "{url}: {err}");
         }
     }
 

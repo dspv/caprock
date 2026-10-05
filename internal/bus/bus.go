@@ -34,6 +34,10 @@ const (
 	// permission prompt: {session_id, permission}, permission null when it
 	// stopped.
 	FramePermission FrameType = "permission"
+	// FrameNotify is a notification for the app (alerts.Notification): what
+	// Telegram would say, as plain text, with the prompt's answers when there
+	// is one Caprock can give.
+	FrameNotify FrameType = "notify"
 )
 
 // Frame is what goes over /v1/live. Seq is set by Publish: one more than the
