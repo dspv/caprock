@@ -246,16 +246,35 @@ func TestIdleProjectsRunNoGit(t *testing.T) {
 		session(t, st, "s"+string(rune('a'+i)), repo)
 	}
 	start(t, s)
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(15 * time.Second)
 	for s.GitRuns() < n && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
-	if s.GitRuns() != n {
+	if s.GitRuns() < n {
 		t.Fatalf("priming ran git %d times; want once per project (%d)", s.GitRuns(), n)
 	}
+	// Settle first. Windows reports the last-write times of the files the
+	// test's own commits wrote some time after the commits, through the
+	// watcher, which costs one more status per project once. A refresh that
+	// woke its own watcher would never settle: it would ask again every
+	// debounce, forever.
+	settled := s.GitRuns()
+	quietSince := time.Now()
+	for time.Since(quietSince) < 1500*time.Millisecond {
+		if time.Now().After(deadline) {
+			t.Fatalf("git never went quiet: %d runs for %d idle projects", s.GitRuns(), n)
+		}
+		time.Sleep(50 * time.Millisecond)
+		if got := s.GitRuns(); got != settled {
+			settled, quietSince = got, time.Now()
+		}
+	}
+	if settled > 2*n {
+		t.Fatalf("settling ran git %d times for %d projects", settled, n)
+	}
 	time.Sleep(3 * time.Second)
-	if got := s.GitRuns(); got != n {
-		t.Fatalf("idle projects ran git %d more times; nothing changed", got-n)
+	if got := s.GitRuns(); got != settled {
+		t.Fatalf("idle projects ran git %d more times; nothing changed", got-settled)
 	}
 }
 
