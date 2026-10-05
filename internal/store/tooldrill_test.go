@@ -169,4 +169,20 @@ func TestToolDrillGroupsTheWebByDomainAndCodexByItsCommand(t *testing.T) {
 	if !found || !empty {
 		t.Fatalf("codex drill %+v", c.Rows)
 	}
+
+	// Codex's ingest stores the script under tool_input.command; it is still
+	// a script, not a command line whose head is "const".
+	f.call("c", "exec", at, map[string]any{"command": `const r = await tools.exec_command({"cmd":"git status"})`}, nil)
+	f.call("c", "exec", at, map[string]any{"command": `const patch = "*** Begin Patch"; await tools.apply_patch(patch)`}, nil)
+	c, err = ToolDrillStats(ctx, f.s.DB(), DrillOptions{Tool: "exec"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := map[string]bool{}
+	for _, r := range c.Rows {
+		keys[r.Key] = true
+	}
+	if !keys["git status"] || !keys["apply_patch"] || keys["const"] {
+		t.Fatalf("codex script drill %+v", c.Rows)
+	}
 }

@@ -165,13 +165,19 @@ func InsertEvent(ctx context.Context, q Querier, ev *event.Event) (int64, error)
 	// every aggregate filters one flag rather than re-deriving it from model
 	// names (internal/modelclass is the single allow-list).
 	internal := b2i(modelclass.IsInternal(ev.Model))
+	// The tool a Codex `exec` script really ran, for the work-kind breakdown
+	// (migration 0038).
+	inner := ""
+	if ev.Kind == event.KindToolPre {
+		inner = innerTool(ev.Tool, ev.Payload)
+	}
 
 	res, err := q.ExecContext(ctx, `
-		INSERT INTO events(ts, session_id, source, kind, tool, payload, tokens_in, tokens_out, cache_read, cache_write, cost_usd, key, model, cache_write_1h, agent_id, msg_id, touch_dir, tool_bytes, internal)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO events(ts, session_id, source, kind, tool, payload, tokens_in, tokens_out, cache_read, cache_write, cost_usd, key, model, cache_write_1h, agent_id, msg_id, touch_dir, tool_bytes, internal, inner_tool)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(session_id, key) WHERE key IS NOT NULL DO NOTHING`,
 		ev.Ts.UnixMilli(), ev.SessionID, string(ev.Source), string(ev.Kind), nullStr(ev.Tool), string(ev.Payload),
-		tin, tout, cr, cw, cost, key, nullStr(ev.Model), cw1h, nullStr(ev.AgentID), nullStr(ev.MsgID), touch, toolBytes, internal)
+		tin, tout, cr, cw, cost, key, nullStr(ev.Model), cw1h, nullStr(ev.AgentID), nullStr(ev.MsgID), touch, toolBytes, internal, nullStr(inner))
 	if err != nil {
 		return 0, fmt.Errorf("insert event: %w", err)
 	}

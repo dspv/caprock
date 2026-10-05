@@ -1,6 +1,9 @@
 package store
 
-import "sort"
+import (
+	"encoding/json"
+	"sort"
+)
 
 // Work-kind attribution — charging a turn's cost to the KIND of work it did,
 // so the Cost screen can answer "what was the money spent ON?" beside the
@@ -125,7 +128,7 @@ const WorkKindRule = "Each turn counts toward one kind of work, decided by the t
 // Claude Code's spelling. Codex's `exec` runs JavaScript that calls its real
 // tools (exec_command, write_stdin, apply_patch); measured on 13,086 calls,
 // 63% wrap exec_command and 14% a patch. The name alone cannot tell them
-// apart, so `exec` counts as a command and its patches understate editing.
+// apart, so a bare `exec` counts as a command; innerTool names what it ran.
 // Codex's `js` runs code in a Node REPL (mostly browser automation) and is a
 // command for the same reason Bash is: the model ran code.
 func workKindOf(tool string) WorkKind {
@@ -135,19 +138,59 @@ func workKindOf(tool string) WorkKind {
 		"edit", "write": // DSH
 		return WorkEdit
 	case "Bash", "BashOutput", "KillShell",
-		"exec", "shell", "js", "js_reset", // Codex
+		"exec", "shell", "js", "js_reset", "exec_command", "write_stdin", // Codex
 		"bash", "job_output": // DSH
 		return WorkCommand
 	case "Read", "Grep", "Glob", "NotebookRead", "ToolSearch",
+		"view_image",           // Codex
 		"read", "grep", "glob": // DSH
 		return WorkRead
-	case "WebFetch", "WebSearch":
+	case "WebFetch", "WebSearch",
+		"web__run": // Codex
 		return WorkWeb
 	}
 	if len(tool) >= 5 && tool[:5] == "mcp__" {
 		return WorkMCP
 	}
 	return WorkOther
+}
+
+// innerTool is the tool a Codex `exec` call actually ran, read from its input:
+// a JavaScript script that calls the real tools as tools.<name>(…). When a
+// script calls several, the one whose kind of work wins the turn precedence is
+// kept — a script that runs a command and then applies a patch is an edit — and
+// the first of equals. A script that names no tool is "exec", which counts as
+// a command as before; "" means the call is not an `exec` call at all.
+//
+// Measured on 13,086 calls (2026-10-05): exec_command 63%, write_stdin 19%,
+// apply_patch 14%, web__run 3%, view_image 1%.
+//
+// Derived once at write time and stored in events.inner_tool (migration 0038)
+// because reading the script in the work-kind scan breaks its covering index.
+func innerTool(tool string, payload []byte) string {
+	if tool != "exec" {
+		return ""
+	}
+	var p struct {
+		ToolInput json.RawMessage `json:"tool_input"`
+	}
+	_ = json.Unmarshal(payload, &p)
+	var script string
+	var in struct {
+		Command string `json:"command"`
+	}
+	if json.Unmarshal(p.ToolInput, &in) == nil {
+		script = in.Command
+	} else {
+		_ = json.Unmarshal(p.ToolInput, &script)
+	}
+	best, bestRank := "exec", workKindRank(WorkOther)+1
+	for _, m := range codexTool.FindAllStringSubmatch(script, -1) {
+		if r := workKindRank(workKindOf(m[1])); r < bestRank {
+			best, bestRank = m[1], r
+		}
+	}
+	return best
 }
 
 // workKindRank orders the categories for the precedence rule. A LOWER rank

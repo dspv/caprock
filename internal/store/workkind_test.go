@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"testing"
 )
@@ -406,4 +407,75 @@ func TestWorkRowsAreRankedByCost(t *testing.T) {
 				sum.Work[i-1].Kind, sum.Work[i-1].CostUSD, sum.Work[i].Kind, sum.Work[i].CostUSD)
 		}
 	}
+}
+
+// TestInnerToolReadsTheExecScript: Codex's `exec` hides the tool it ran inside
+// a script, and the script is the only place the kind of work is said.
+func TestInnerToolReadsTheExecScript(t *testing.T) {
+	payload := func(script string) []byte {
+		b, _ := json.Marshal(map[string]any{"tool_input": map[string]any{"command": script}})
+		return b
+	}
+	for _, tc := range []struct {
+		name, tool string
+		payload    []byte
+		want       string
+	}{
+		{"command", "exec", payload(`const r = await tools.exec_command({cmd:"go test ./..."})`), "exec_command"},
+		{"patch", "exec", payload(`const patch = "*** Begin Patch"; await tools.apply_patch(patch)`), "apply_patch"},
+		{"patch wins over the command before it", "exec", payload(`await tools.exec_command({cmd:"ls"}); await tools.apply_patch(p)`), "apply_patch"},
+		{"poll", "exec", payload(`await tools.write_stdin({session_id:1, chars:""})`), "write_stdin"},
+		{"web", "exec", payload(`await tools.web__run({search_query:[{q:"x"}]})`), "web__run"},
+		{"no tool named", "exec", payload(`text("hi")`), "exec"},
+		{"script as a bare string", "exec", []byte(`{"tool_input":"await tools.apply_patch(p)"}`), "apply_patch"},
+		{"not exec", "Bash", payload(`tools.apply_patch(p)`), ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := innerTool(tc.tool, tc.payload); got != tc.want {
+				t.Errorf("innerTool = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestCodexExecPatchCountsAsAnEdit: the turn that paid for a patch applied
+// through `exec` is an edit, and one that ran a command through it stays a
+// command — on stored rows too, which the backfill reaches.
+func TestCodexExecPatchCountsAsAnEdit(t *testing.T) {
+	clearRepoCache()
+	ctx := context.Background()
+	s := openTest(t)
+	root := newRepo(t, filepath.Join(t.TempDir(), "mono"))
+	if err := UpsertSession(ctx, s.db, "cx", SessionPatch{Cwd: root}); err != nil {
+		t.Fatal(err)
+	}
+	addTurn(t, s, "cx", "m1", 1, 1.00)
+	addTouchTool(t, s, "cx", "m1", 2, "exec", map[string]any{"command": `await tools.apply_patch("*** Begin Patch")`})
+	addTurn(t, s, "cx", "m2", 3, 2.00)
+	addTouchTool(t, s, "cx", "m2", 4, "exec", map[string]any{"command": `await tools.exec_command({cmd:"ls"})`})
+
+	check := func(when string) {
+		t.Helper()
+		sum, err := Summarize(ctx, s.db, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		w := workOf(sum)
+		if w[WorkEdit].CostUSD != 1.00 || w[WorkCommand].CostUSD != 2.00 {
+			t.Errorf("%s: edit $%v command $%v, want $1 and $2", when, w[WorkEdit].CostUSD, w[WorkCommand].CostUSD)
+		}
+	}
+	check("at ingest")
+
+	// Rows written before migration 0038 have no inner_tool.
+	if _, err := s.db.ExecContext(ctx, `UPDATE events SET inner_tool = NULL`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetMeta(ctx, metaInnerToolBackfilled, "0"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.backfillInnerTool(ctx); err != nil {
+		t.Fatal(err)
+	}
+	check("after backfill")
 }

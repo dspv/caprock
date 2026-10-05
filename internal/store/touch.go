@@ -285,8 +285,10 @@ func turnSpendBySession(ctx context.Context, q Querier, fromMs int64) (map[strin
 	// here rather than running a second aggregate is what keeps it free: the
 	// index covers every column below, so the plan stays a covering scan in
 	// index order with no sort and no table access.
+	// inner_tool, when set, is the tool a Codex `exec` script really ran
+	// (migration 0038) and classifies the call in place of `exec`.
 	rows, err := q.QueryContext(ctx, `
-		SELECT session_id, kind, COALESCE(touch_dir, ''), COALESCE(msg_id,''), COALESCE(tool,''),
+		SELECT session_id, kind, COALESCE(touch_dir, ''), COALESCE(msg_id,''), COALESCE(inner_tool, tool, ''),
 		       COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0),
 		       COALESCE(cost_usd,0)
 		FROM events INDEXED BY idx_events_attr_work

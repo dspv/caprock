@@ -41,6 +41,13 @@ Phase 3 (Delight) has no plan by design.
 
 ### Fixed
 
+- **Codex edits count as edits in *What it went on*.** Codex runs its tools
+  through one `exec` wrapper, so every patch it applied counted as a command.
+  Each call is now placed by the tool it actually ran — a patch is an edit, a
+  web search is web — including calls already stored. On one machine 30-day
+  editing went from 0.4% to 4.8% of spend. The Tools drill-down for `exec`
+  groups by the command or tool inside the script instead of showing almost
+  every call as `const`.
 - **`caprock service install` no longer leaves the daemon stopped on macOS.**
   It booted the old service out and bootstrapped the new one at once; launchd
   was still tearing the old one down, the bootstrap failed with "5:
