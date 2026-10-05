@@ -68,6 +68,10 @@ for arch in arm64 amd64; do
     -ldflags "-s -w -X github.com/dspv/caprock/internal/version.Version=$VERSION" \
     -o "$OUT/caprock-$arch" ./cmd/caprock
 done
+# tauri-build checks for each architecture's sidecar while compiling it; the
+# bundler then takes the universal one.
+cp "$OUT/caprock-arm64" app/src-tauri/binaries/caprock-aarch64-apple-darwin
+cp "$OUT/caprock-amd64" app/src-tauri/binaries/caprock-x86_64-apple-darwin
 lipo -create -output app/src-tauri/binaries/caprock-universal-apple-darwin "$OUT/caprock-arm64" "$OUT/caprock-amd64"
 
 echo "→ Caprock.app and .dmg"
