@@ -135,7 +135,7 @@ if [[ ${#UPDATER[@]} -gt 0 ]]; then
   UPD="$OUT/$UPD_NAME"
   # The signature records the version it was signed for; the app refuses
   # one that does not match (requireSignedVersion).
-  base64 -d <"$UPD.sig" 2>/dev/null | grep -q "$VERSION" ||
+  base64 -d <"$UPD.sig" 2>/dev/null | grep -q "version:$VERSION\$" ||
     die "$UPD_NAME.sig does not name $VERSION"
   tar -tzf "$UPD" | grep -q '^Caprock.app/Contents/MacOS/caprock$' ||
     die "$UPD_NAME does not carry the daemon"

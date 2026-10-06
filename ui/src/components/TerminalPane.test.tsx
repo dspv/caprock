@@ -8,7 +8,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  terms: [] as { options: Record<string, unknown>; focused: number }[],
+  terms: [] as { options: Record<string, unknown>; focused: number; buffer: { active: { viewportY: number; baseY: number } }; scrolledTo: number | null }[],
   calls: [] as [string, string, Record<string, unknown>?][],
   results: [] as ((r: { resultIndex: number; resultCount: number }) => void)[],
   clears: 0,

@@ -9,9 +9,13 @@ import { fmtUSD } from '@/lib/format'
 import type { PaneStatus } from './TerminalPane'
 import { ConnectionState } from './ConnectionState'
 import { AppUpdateNotice } from './AppUpdateNotice'
+import { useAppUpdate } from '@/lib/appupdate'
 
 export function StatusStrip({ summary, pane, version }: { summary?: Summary; pane?: PaneStatus; version?: string }) {
   const link = useLiveLink()
+  // In the app, its own version: the one an update changes at once. The
+  // daemon's follows within a minute of the move (AppShell asks again).
+  const app = useAppUpdate()
   const five = summary?.rate_limits?.five_hour
   const seven = summary?.rate_limits?.seven_day
   return (
@@ -32,7 +36,11 @@ export function StatusStrip({ summary, pane, version }: { summary?: Summary; pan
           </span>
         )}
         <AppUpdateNotice />
-        {version && <span className="mono text-fg-faint">{version}</span>}
+        {(app?.version || version) && (
+          <span className="mono text-fg-faint" title={app?.version && version && version !== app.version ? `The app ${app.version} · the daemon ${version}` : undefined}>
+            {app?.version || version}
+          </span>
+        )}
       </span>
     </footer>
   )
