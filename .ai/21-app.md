@@ -211,7 +211,11 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
   macOS, an installer plus Scoop (and winget once accepted) on Windows, an
   AppImage plus `.deb` and `.rpm` on Linux. When a newer release exists and
   the release check is on, the app says so and links the download; it does not
-  replace itself before F20.
+  replace itself before F20. The notice was built on 2026-10-06: the status
+  strip names the release and the command for each part Homebrew installed
+  (the `caprock-app` cask, the `caprock` formula), dismissed per version; the
+  check runs at most every 6 hours, conditionally
+  ([04-ui.md § Update notice](04-ui.md#update-notice)).
 - **F13 — Phone v2 Phase A.** The phone (the existing web dashboard on the
   home screen) never needs a manual reconnect, resumes a terminal from the
   byte it last saw, queues a message typed while offline, replays the live
@@ -230,17 +234,26 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
 - **F15 — Split panes.** Two or more terminals side by side or stacked.
   Built ahead of P1 on 2026-10-06, up to four per tab
   ([04-ui.md](04-ui.md#the-app-workspace)).
-- **F16 — Search in scrollback** of the focused terminal.
+- **F16 — Search in scrollback** of the focused terminal. Built ahead of P1
+  on 2026-10-06 on `@xterm/addon-search`: ⌘F, next/previous, count, case and
+  regex ([04-ui.md](04-ui.md#the-app-workspace)).
 - **F17 — Command palette** over projects, sessions, tabs and actions.
   Built with the workspace; ranking, the waiting group and "new agent on
   this text" added 2026-10-06.
 - **F18 — Open in editor.** The project or worktree in VS Code, Cursor, Zed or
-  the system default.
+  the system default. Built ahead of P1 on 2026-10-06, daemon-side
+  (`internal/editor`, local requests only): VS Code, Cursor, Zed and the
+  JetBrains IDEs on macOS and Linux, a file at a line from the inspector; no
+  "system default" (a folder's default app is Finder) and no Windows yet
+  ([03-contracts.md](03-contracts.md)).
 - **F19 — Phone v2 Phase B.** Reaching the machine when the phone is off its
   network, by the route the owner chooses ([§ Phone v2](#phone-v2)).
 - **F20 — Opt-in auto-update** with signed update bundles, per OS.
 - **F21 — Themes and fonts** for the terminal; the palette work references
-  Otty's colours (owner, 2026-10-04) without copying its branding.
+  Otty's colours (owner, 2026-10-04) without copying its branding. Built
+  ahead of P1 on 2026-10-06: five palettes (two ours, three MIT-licensed),
+  installed monospace faces, size, line height, cursor, live in every pane
+  ([04-ui.md § Settings](04-ui.md#settings)).
 
 ### P2 — later, each with its own go
 

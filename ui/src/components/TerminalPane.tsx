@@ -16,48 +16,33 @@
  *   sleep and wake — when the tab is next shown.
  * - **The scrolling rule.** xterm.js already keeps the viewport still while
  *   the reader is scrolled up; this adds the "↓ N new lines" pill.
+ * - **Find** (F16): ⌘F in the focused pane of the tab in front opens the bar
+ *   (TerminalFind) over the official search addon.
+ * - **Appearance** (F21): palette, font, size, line height and cursor come
+ *   from lib/termprefs and change in place, in every pane, when Settings does.
  */
 import { useEffect, useRef, useState } from 'react'
 import { Terminal as Xterm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
+import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
 import { deviceToken } from '@/lib/api'
 import { TermClient, type TermState } from '@/lib/termv2'
 import { attachTerminalInput } from '@/lib/xtermInput'
-import { matchAppShortcut } from '@/lib/appkeys'
+import { FIND_EVENT, matchAppShortcut } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
-import { TERMINAL_THEME, WEBGL_QUIET_MS } from './Terminal'
+import { WEBGL_QUIET_MS } from './Terminal'
 import { NewPill } from './NewPill'
+import { TerminalFind, type TermSearch } from './TerminalFind'
+import { getTerminalPrefs, subscribeTerminalPrefs, xtermOptions, type TerminalPrefs } from '@/lib/termprefs'
+import { searchColors, terminalTheme } from '@/lib/termthemes'
+
+export { APP_TERMINAL_THEME } from '@/lib/termthemes'
+
 
 /** A tab out of sight this long drops its socket. */
 export const HIDDEN_DISCONNECT_MS = 30_000
-
-/**
- * The app terminal's palette: the dashboard terminal's graphite ground and
- * ink, with a warm 16-colour set tuned against it — soft, low-glare hues in
- * the spirit of the palette the owner pointed at (Otty), not a copy of it.
- */
-export const APP_TERMINAL_THEME = {
-  ...TERMINAL_THEME,
-  selectionBackground: '#4a4640',
-  black: '#2b2926',
-  red: '#e8786d',
-  green: '#a3c77e',
-  yellow: '#e7bb63',
-  blue: '#82a9d9',
-  magenta: '#c99ad0',
-  cyan: '#7fc4b9',
-  white: '#d8d3ca',
-  brightBlack: '#6b665e',
-  brightRed: '#f3958b',
-  brightGreen: '#bad99a',
-  brightYellow: '#f2cf86',
-  brightBlue: '#a0c0e8',
-  brightMagenta: '#dcb5e2',
-  brightCyan: '#9dd8ce',
-  brightWhite: '#f4f0e8',
-} as const
 
 export interface PaneStatus {
   status: TermState
@@ -86,6 +71,13 @@ export function TerminalPane({
   const [phase, setPhase] = useState<'waiting' | 'ready'>('waiting')
   const [status, setStatus] = useState<TermState>('connecting')
   const [newLines, setNewLines] = useState(0)
+  const [foreground, setForeground] = useState(() => terminalTheme(getTerminalPrefs().theme).colors.foreground)
+  // The find bar: open or not, the token that refocuses it, the addon's count.
+  const [find, setFind] = useState<{ open: boolean; token: number }>({ open: false, token: 0 })
+  const [results, setResults] = useState<{ index: number; count: number } | null>(null)
+  const searchRef = useRef<TermSearch | null>(null)
+  const activeRef = useRef(active)
+  activeRef.current = active
   const onStatusRef = useRef(onStatus)
   onStatusRef.current = onStatus
 
@@ -94,24 +86,35 @@ export function TerminalPane({
     if (!el) return
     const isMac = isMacPlatform()
     const css = getComputedStyle(document.documentElement)
+    // The resolved stack, never var(): xterm hands this to a canvas, which
+    // does not resolve custom properties (see Terminal.tsx).
+    const monoStack = css.getPropertyValue('--font-mono').trim() || 'monospace'
+    let prefs: TerminalPrefs = getTerminalPrefs()
     const term = new Xterm({
-      // The resolved stack, never var(): xterm hands this to a canvas, which
-      // does not resolve custom properties (see Terminal.tsx).
-      fontFamily: css.getPropertyValue('--font-mono').trim() || 'monospace',
-      fontSize: 13,
-      lineHeight: 1.15,
+      ...xtermOptions(prefs, monoStack),
       cursorBlink: true,
-      cursorStyle: 'bar',
       cursorWidth: 2,
-      theme: { ...APP_TERMINAL_THEME },
       scrollback: 10000,
       macOptionIsMeta: true,
-      allowProposedApi: false,
-      minimumContrastRatio: 1,
+      // The search addon highlights matches with decorations, which xterm 6
+      // still files under its proposed API.
+      allowProposedApi: true,
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
+    const search = new SearchAddon({ highlightLimit: 1000 })
+    term.loadAddon(search)
     term.open(el)
+    const resultsSub = search.onDidChangeResults((r) => setResults({ index: r.resultIndex, count: r.resultCount }))
+    const decorations = () => ({ decorations: searchColors(terminalTheme(prefs.theme)) })
+    searchRef.current = {
+      next: (q, o) => search.findNext(q, { ...o, ...decorations() }),
+      prev: (q, o) => search.findPrevious(q, { ...o, ...decorations() }),
+      clear: () => {
+        search.clearDecorations()
+        setResults(null)
+      },
+    }
     // The same faces the dashboard's terminal asks for (see Terminal.tsx).
     document.fonts?.ready.then(() => { try { fit.fit() } catch { /* gone */ } })
 
@@ -250,6 +253,15 @@ export function TerminalPane({
     document.addEventListener('visibilitychange', onWake)
     window.addEventListener('online', onWake)
 
+    const unprefs = subscribeTerminalPrefs((next) => {
+      prefs = next
+      Object.assign(term.options, xtermOptions(next, monoStack))
+      setForeground(terminalTheme(next.theme).colors.foreground)
+      // A new face or size is a new cell: fit again so the columns are right.
+      lastGeom = ''
+      if (visible) refit()
+    })
+
     api.current = {
       show: () => {
         visible = true
@@ -275,10 +287,20 @@ export function TerminalPane({
       },
       focus: () => term.focus(),
     }
+    // ⌘F: only the pane the keyboard is in, in the tab in front.
+    const onFind = () => {
+      if (!activeRef.current || !focusedRef.current) return
+      setFind((f) => ({ open: true, token: f.token + 1 }))
+    }
+    window.addEventListener(FIND_EVENT, onFind)
     conn.start()
     return () => {
       disposed = true
       api.current = null
+      searchRef.current = null
+      window.removeEventListener(FIND_EVENT, onFind)
+      unprefs()
+      resultsSub.dispose()
       if (hideTimer) window.clearTimeout(hideTimer)
       if (raf) cancelAnimationFrame(raf)
       if (fitRaf) cancelAnimationFrame(fitRaf)
@@ -313,7 +335,7 @@ export function TerminalPane({
       </div>
       {phase === 'waiting' && status !== 'ended' && (
         <div role="status" className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <p className="mono text-[12px]" style={{ color: TERMINAL_THEME.foreground, opacity: 0.6 }}>
+          <p className="mono text-[12px]" style={{ color: foreground, opacity: 0.6 }}>
             {status === 'reconnecting' ? 'Connecting to the session…' : 'Starting…'}
           </p>
         </div>
@@ -324,6 +346,18 @@ export function TerminalPane({
             {status === 'revoked' ? 'This device can no longer type here' : 'Reconnecting…'}
           </span>
         </div>
+      )}
+      {find.open && searchRef.current && (
+        <TerminalFind
+          search={searchRef.current}
+          results={results}
+          focusToken={find.token}
+          onClose={() => {
+            searchRef.current?.clear()
+            setFind((f) => ({ ...f, open: false }))
+            api.current?.focus()
+          }}
+        />
       )}
       <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
         <NewPill count={newLines} unit={newLines === 1 ? 'new line' : 'new lines'} onJump={() => api.current?.scrollToBottom()} />

@@ -72,6 +72,35 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-06 — Find, open in editor, terminal look, update notice (F16, F18, F21, F12)
+
+Four app features from WP-20, WP-23 and F12, each with its tests and each
+decided without the owner (the decisions are listed in the PR).
+
+- **Find in scrollback (F16).** ⌘F opens a bar over the focused pane, on the
+  official `@xterm/addon-search` (0.16.0, the release paired with xterm
+  6.0.0 — the one new dependency); its highlights are decorations, so the
+  app terminal now sets `allowProposedApi`.
+- **Open in editor (F18).** Daemon-side, mirroring open-in-terminal:
+  `internal/editor` finds VS Code, Cursor, Zed and nine JetBrains IDEs once
+  per run and opens a path with an argv (`open -a`, or the bundle's CLI for a
+  line); `GET /v1/editors` and `POST /v1/editors/open` refuse anything not
+  local in the handler as well as at the device gate. Settings → Editor is
+  the daemon's `editor`. Windows has none yet. No editor was launched on a
+  real screen in testing: the argv and the refusals are unit-tested, the
+  launch itself is a manual check.
+- **Terminal themes and fonts (F21).** Caprock, Paper, Catppuccin Mocha,
+  Tokyo Night and Solarized Dark (licences checked: all MIT); faces measured
+  on a canvas; size, line height, cursor; per browser; every pane re-themed
+  in place. A light palette lifts dim text to 4.5:1, which is the fix for
+  the 2026-10-04 "grey on cream" report applied where it can be.
+- **Update notice (F12).** The status strip's *vX.Y.Z is out*, with
+  `app_command` (the cask) beside `command` (the formula). The checker now
+  runs at most every 6 hours on an hourly tick, with an ETag.
+
+The dashboard's own terminal (`Terminal.tsx`) keeps its fixed graphite
+palette: the settings are the app workspace's.
+
 ### 2026-10-06 — Docs for the desktop app (WP-18, repo side)
 
 The README now leads with the app: what it is, the cask and the daemon's

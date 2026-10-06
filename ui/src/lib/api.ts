@@ -171,6 +171,18 @@ export interface TerminalList {
   preferred: string
 }
 
+/** An editor installed on this machine (F18). */
+export interface Editor {
+  id: string
+  name: string
+}
+
+export interface EditorList {
+  editors: Editor[]
+  /** The one used when none is named: the Settings choice, else the first found. */
+  preferred: string
+}
+
 /** Whether a session can be carried on from here, and if not, why. */
 export interface ResumeInfo {
   ok: boolean
@@ -489,6 +501,8 @@ export interface Settings {
   browse_root?: string
   /** The terminal app sessions open in ("ghostty", "iterm2", ...). Empty: the first installed. */
   terminal?: string
+  /** The editor "Open in editor" uses ("vscode", "zed", ...). Empty: the first installed. */
+  editor?: string
   /** The daily spend ceiling in USD; 0 is off. See internal/cap. */
   cap_usd_per_day?: number
   /** Where the weekly report goes. Not a credential, so it round-trips. */
@@ -534,6 +548,8 @@ export interface UpdateStatus {
   latest?: string
   update_available: boolean
   command?: string
+  /** The desktop app's upgrade command, when Homebrew's cask installed it. */
+  app_command?: string
   url?: string
   checked_at?: number
   error?: string
@@ -1038,6 +1054,10 @@ export const api = {
   /** Open a session in the user's own terminal app. */
   openTerminal: (id: string, req: { terminal?: string; mode?: OpenTerminalMode }) =>
     post<{ terminal: NativeTerminal; mode: OpenTerminalMode; command: string }>(`/v1/sessions/${encodeURIComponent(id)}/open-terminal`, req),
+  /** Editors installed here (F18). Refused off this machine. */
+  editors: () => get<EditorList>('/v1/editors'),
+  /** Open a folder, or a file at a line, in an editor. Refused off this machine. */
+  openInEditor: (req: { path: string; line?: number; editor?: string }) => post<{ editor: Editor }>('/v1/editors/open', req),
   /** Remove sessions from Caprock for good — the machine only (ADR-037). */
   removeSessions: (req: { ids?: string[]; cwd_prefix?: string; dry_run?: boolean }) => post<RemoveResult>('/v1/sessions/remove', req),
   spawn: (req: SpawnRequest) => post<{ session_id: string; cwd: string }>('/v1/agents', req),

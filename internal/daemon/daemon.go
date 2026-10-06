@@ -30,6 +30,7 @@ import (
 	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/deepseek"
 	"github.com/dspv/caprock/internal/desktop"
+	"github.com/dspv/caprock/internal/editor"
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/gemini"
 	"github.com/dspv/caprock/internal/gitremote"
@@ -498,6 +499,10 @@ func (d *Daemon) run(ctx context.Context) error {
 			Env:       func() []string { return userenv.Environ(d.log) },
 			Preferred: func() string { return d.config().Terminal },
 		},
+		Editors: &editor.Opener{
+			Env:       func() []string { return userenv.Environ(d.log) },
+			Preferred: func() string { return d.config().Editor },
+		},
 		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d,
 		Projects: d.projs, Shells: &shellAdapter{m: d.mgr},
 	})
@@ -603,6 +608,7 @@ func (d *Daemon) run(ctx context.Context) error {
 			}
 		}()
 	}
+	go d.updateLoop(ctx)
 	// Telemetry from spawned Gemini sessions. Started unconditionally: the
 	// directory appears when the first Gemini session is spawned, and a sweep
 	// over a directory that does not exist is a no-op rather than an error.
@@ -1284,6 +1290,34 @@ func (d *Daemon) config() config.Config {
 	return d.opt.Config
 }
 
+// updateTick is how often a long-running daemon asks whether a release check
+// is due. The checker's own MinInterval (6 h) decides whether one is.
+const updateTick = time.Hour
+
+// updateLoop keeps the release status fresh in a daemon that runs for weeks:
+// without it the only checks were at startup and when the switch was turned
+// on. It reads the setting on every tick, so turning checks off stops the
+// next call — nothing reaches the network while they are off (rule 4).
+func (d *Daemon) updateLoop(ctx context.Context) {
+	t := time.NewTicker(updateTick)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		if !d.config().UpdateChecks {
+			continue
+		}
+		cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		if err := d.upd.Check(cctx, false); err != nil {
+			d.log.Debug("release check failed", "component", "update", "err", err)
+		}
+		cancel()
+	}
+}
+
 // settingsAdapter persists the user-stated settings to the config file, so a
 // value survives a restart. The daemon keeps an in-memory copy because the API
 // reads it on every summary render.
@@ -1305,6 +1339,7 @@ func (a *settingsAdapter) Get() api.Settings {
 		CapUSDPerDay:     c.CapUSDPerDay,
 		BrowseRoot:       c.BrowseRoot,
 		Terminal:         c.Terminal,
+		Editor:           c.Editor,
 		ReportChatID:     c.ReportChatID,
 		// The token itself never crosses this boundary — only whether one
 		// exists, which is what a screen needs to render a state.
@@ -1347,6 +1382,7 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	a.d.opt.Config.CapUSDPerDay = in.CapUSDPerDay
 	a.d.opt.Config.BrowseRoot = strings.TrimSpace(in.BrowseRoot)
 	a.d.opt.Config.Terminal = in.Terminal
+	a.d.opt.Config.Editor = in.Editor
 	a.d.opt.Config.ReportBotToken = strings.TrimSpace(in.ReportBotToken)
 	a.d.opt.Config.ReportChatID = strings.TrimSpace(in.ReportChatID)
 	a.d.opt.Config.GeminiAPIKey = strings.TrimSpace(in.GeminiAPIKey)

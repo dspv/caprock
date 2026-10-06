@@ -10,7 +10,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useState } from 'react'
 import { api, ApiError, errText, type SessionSummary } from '@/lib/api'
 import { APP_ROUTE, isMacPlatform, isTauri, isWorkspaceHash } from '@/lib/appmode'
-import { matchAppShortcut, type AppCommand } from '@/lib/appkeys'
+import { FIND_EVENT, matchAppShortcut, type AppCommand } from '@/lib/appkeys'
 import { parseHash } from '@/lib/router'
 import { NotSupportedError, projectsApi, type Project } from '@/lib/projects'
 import { buildSidebar, sessionTitle, type InboxItem, type SessionNode } from '@/lib/sidebar'
@@ -38,8 +38,11 @@ import { ChatView } from '@/components/ChatView'
 import { NewAgentSheet } from '@/components/NewAgentSheet'
 import { AddProjectSheet, splitPath } from '@/components/AddProjectSheet'
 import { CommandPalette, type PaletteItem } from '@/components/CommandPalette'
-import { DashboardIcon, FolderIcon, FolderPlusIcon, InspectorIcon, PlusIcon, SparkIcon, TerminalIcon } from '@/components/AppIcons'
+import { DashboardIcon, ExternalIcon, FolderIcon, FolderPlusIcon, InspectorIcon, PlusIcon, SearchIcon, SparkIcon, TerminalIcon } from '@/components/AppIcons'
 import type { PaneStatus } from '@/components/TerminalPane'
+import { EditorMenu, type EditorMenuAt } from '@/components/EditorMenu'
+import { preferredName, useEditors } from '@/lib/editors'
+import { applyTerminalChrome, getTerminalPrefs, subscribeTerminalPrefs } from '@/lib/termprefs'
 import { StatusDot } from '@/components/ProjectRow'
 
 const Dashboard = lazy(() => import('@/App').then((m) => ({ default: m.Dashboard })))
@@ -128,8 +131,15 @@ export function AppShell() {
   const [chatOpen, setChatOpen] = useState<ReadonlySet<string>>(() => new Set())
   const [version, setVersion] = useState<string | undefined>(undefined)
   const [, toggleTheme] = useTheme()
+  const editors = useEditors()
+  const [folderMenu, setFolderMenu] = useState<EditorMenuAt | null>(null)
 
   useEffect(() => { saveWorkspace(ws) }, [ws])
+  // The slab around the terminals follows their palette (Settings → Terminal).
+  useEffect(() => {
+    applyTerminalChrome(getTerminalPrefs())
+    return subscribeTerminalPrefs((p) => applyTerminalChrome(p))
+  }, [])
   // The sidebar and tab strip lay out around the macOS traffic lights and
   // carry their own drag regions, so the shell's padding and strip go
   // (app/README.md § Title bar).
@@ -292,6 +302,7 @@ export function AppShell() {
       case 'next-pane': dispatch({ type: 'cycle-pane', delta: 1 }); break
       case 'prev-pane': dispatch({ type: 'cycle-pane', delta: -1 }); break
       case 'next-waiting': jumpToWaiting(); break
+      case 'find': if (workspaceShown) window.dispatchEvent(new Event(FIND_EVENT)); break
     }
   }, [onNewShell, onNewAgent, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting])
 
@@ -322,6 +333,16 @@ export function AppShell() {
     openTab({ kind: s.kind === 'shell' ? 'shell' : 'session', sessionId: s.session_id }, node?.project.id ?? activeProjectId, sessionTitle(s))
   }, [hash, sessionsById, model.projects, activeProjectId, openTab])
 
+  const openInEditor = useCallback((path: string, label: string, editor?: string, line?: number) => {
+    api.openInEditor({ path, editor, line: line || undefined }).catch((e: unknown) => setToast(`Could not open ${label}: ${errText(e)}`))
+  }, [])
+  const onFolderMenu = useCallback((e: React.MouseEvent, path: string, label: string) => {
+    if (!editors) return
+    e.preventDefault()
+    setFolderMenu({ x: e.clientX, y: e.clientY, path, label })
+  }, [editors])
+  const closeFolderMenu = useCallback(() => setFolderMenu(null), [])
+
   const paletteItems = useMemo<PaletteItem[]>(() => {
     const items: PaletteItem[] = model.inbox.map((i) => ({
       id: `w-${i.session.session_id}`,
@@ -343,6 +364,7 @@ export function AppShell() {
     )
     if (current) {
       items.push(
+        { id: 'a-find', group: 'Actions', label: 'Find in the terminal', hint: '⌘F', icon: <SearchIcon size={14} />, run: () => window.dispatchEvent(new Event(FIND_EVENT)) },
         { id: 'a-split-right', group: 'Actions', label: 'Split right: a new shell beside', hint: '⌘E', icon: <TerminalIcon size={14} />, run: () => splitShell('row') },
         { id: 'a-split-down', group: 'Actions', label: 'Split down: a new shell below', hint: '⇧⌘E', icon: <TerminalIcon size={14} />, run: () => splitShell('column') },
       )
@@ -352,6 +374,11 @@ export function AppShell() {
         { id: 'a-pane-next', group: 'Actions', label: 'Focus the next pane', hint: '⌘]', icon: <TerminalIcon size={14} />, run: () => dispatch({ type: 'cycle-pane', delta: 1 }) },
         { id: 'a-pane-close', group: 'Actions', label: 'Close the pane', hint: '⌘W', icon: <TerminalIcon size={14} />, run: detach },
       )
+    }
+    if (editors) {
+      const name = preferredName(editors)
+      const folder = focusedSession?.cwd
+      if (folder) items.push({ id: 'a-editor-cwd', group: 'Actions', label: `Open this folder in ${name}`, detail: folder, icon: <ExternalIcon size={14} />, run: () => openInEditor(folder, 'the folder') })
     }
     for (const t of ws.tabs) {
       const s = sessionsById.get(focusedLeaf(t).target.sessionId)
@@ -372,10 +399,14 @@ export function AppShell() {
       items.push({ id: `p-${n.project.id}`, group: 'Projects', label: n.project.name, detail: n.project.root, icon: <FolderIcon size={14} />, run: () => onSelectProject(n.project.id) })
       if (n.project.root) {
         items.push({ id: `pa-${n.project.id}`, group: 'Projects', label: `New agent in ${n.project.name}`, detail: n.project.branch, icon: <PlusIcon size={14} />, run: () => onNewAgent(n.project.id) })
+        if (editors) {
+          const root = n.project.root
+          items.push({ id: `pe-${n.project.id}`, group: 'Projects', label: `Open ${n.project.name} in ${preferredName(editors)}`, detail: root, icon: <ExternalIcon size={14} />, run: () => openInEditor(root, n.project.name) })
+        }
       }
     }
     return items
-  }, [ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, current, onNewAgent, onNewShell, onAddProject, onDashboard, toggleTheme, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach])
+  }, [ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, current, onNewAgent, onNewShell, onAddProject, onDashboard, toggleTheme, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor])
 
   // Orca's "new task": text that matches nothing starts an agent on it, in a worktree named after it.
   const paletteFallback = useCallback((q: string): PaletteItem | undefined => {
@@ -418,6 +449,7 @@ export function AppShell() {
               onOpenInbox={onOpenInbox}
               onNewAgent={onNewAgent}
               onNewShell={onNewShell}
+              onFolderMenu={editors ? onFolderMenu : undefined}
               onAddProject={onAddProject}
               onDashboard={onDashboard}
               onPalette={onPalette}
@@ -499,6 +531,8 @@ export function AppShell() {
                   hasPermission={!!focused && data.permissions.has(focused.sessionId)}
                   onClose={() => setPrefs((p) => ({ ...p, inspector: false }))}
                   onDetach={detach}
+                  editors={editors}
+                  onOpenInEditor={openInEditor}
                 />
               </div>
             )}
@@ -533,6 +567,7 @@ export function AppShell() {
           onAddLocal={(p) => { data.addLocal(p); dispatch({ type: 'project', projectId: `dir:${p.root}` }) }}
         />
       )}
+      {folderMenu && <EditorMenu at={folderMenu} editors={editors} onClose={closeFolderMenu} onError={setToast} />}
       {sheet?.kind === 'palette' && <CommandPalette items={paletteItems} fallback={paletteFallback} onClose={closeSheet} />}
     </div>
   )

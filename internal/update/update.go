@@ -48,6 +48,10 @@ type Status struct {
 	UpdateAvailable bool `json:"update_available"`
 	// Command is how to install it, given how this copy was installed.
 	Command string `json:"command,omitempty"`
+	// AppCommand is how to upgrade the desktop app, when Homebrew's cask
+	// installed it on this machine (F12). Set beside Command, not instead of
+	// it: the cask and the caprock formula are upgraded separately.
+	AppCommand string `json:"app_command,omitempty"`
 	// URL is the release page, always safe to offer.
 	URL string `json:"url,omitempty"`
 	// CheckedAt is the last successful check (unix ms), 0 if never.
@@ -71,24 +75,59 @@ type Checker struct {
 	Now func() time.Time
 	// HTTPClient is injectable for tests.
 	HTTPClient *http.Client
-	// MinInterval throttles checks (default 24h). GitHub's tag does not change
-	// often enough to justify asking more, and asking more is more exposure.
+	// MinInterval throttles checks (default 6h). A release is announced on
+	// the day it ships rather than up to a day later, and the request is a
+	// conditional one (ETag): an unchanged answer is a 304 with no body,
+	// which GitHub does not count against the rate limit.
 	MinInterval time.Duration
+	// CaskRoots are where Homebrew keeps installed casks; the app was
+	// installed by the cask when one of them holds caprock-app.
+	CaskRoots []string
+	// IsDir is os.Stat's view of a directory; injectable for tests.
+	IsDir func(string) bool
 
 	mu        sync.Mutex
 	latest    string
 	notes     string
+	etag      string
 	checkedAt time.Time
 	lastErr   string
 }
+
+// AppCask is the Homebrew cask that installs the desktop app.
+const AppCask = "caprock-app"
+
+// appCaskCommand upgrades the desktop app. `brew update` first, for the
+// reason commandForPath gives: the cask lives in a tap, refreshed only by
+// auto-update at most once a day.
+const appCaskCommand = "brew update && brew upgrade --cask " + AppCask
 
 // New returns a Checker with sane defaults.
 func New() *Checker {
 	return &Checker{
 		Now:         time.Now,
 		HTTPClient:  &http.Client{Timeout: 5 * time.Second},
-		MinInterval: 24 * time.Hour,
+		MinInterval: 6 * time.Hour,
+		CaskRoots:   []string{"/opt/homebrew/Caskroom", "/usr/local/Caskroom"},
+		IsDir: func(p string) bool {
+			st, err := os.Stat(p)
+			return err == nil && st.IsDir()
+		},
 	}
+}
+
+// appCommand is the cask's upgrade command when the cask is installed here,
+// else "". A stat or two, no network.
+func (c *Checker) appCommand() string {
+	if c.IsDir == nil {
+		return ""
+	}
+	for _, root := range c.CaskRoots {
+		if c.IsDir(filepath.Join(root, AppCask)) {
+			return appCaskCommand
+		}
+	}
+	return ""
 }
 
 // Status returns the cached view. It performs no I/O, so the settings endpoint
@@ -108,6 +147,7 @@ func (c *Checker) Status(enabled bool, current string) Status {
 	if c.latest != "" && Newer(current, c.latest) {
 		st.UpdateAvailable = true
 		st.Command = InstallCommand()
+		st.AppCommand = c.appCommand()
 	}
 	// Offered whether or not an update is pending: someone who just upgraded
 	// wants to read what they got, and that is the moment the question is
@@ -125,49 +165,70 @@ func (c *Checker) Check(ctx context.Context, force bool) error {
 		c.mu.Unlock()
 		return nil
 	}
+	etag := c.etag
+	if c.latest == "" {
+		// Nothing cached to fall back on, so a 304 would leave no answer.
+		etag = ""
+	}
 	c.mu.Unlock()
 
-	tag, notes, err := fetchLatestRelease(ctx, c.HTTPClient, LatestURL)
+	rel, err := fetchLatestRelease(ctx, c.HTTPClient, LatestURL, etag)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if err != nil {
 		c.lastErr = err.Error()
 		return err
 	}
-	c.latest, c.notes, c.lastErr, c.checkedAt = tag, notes, "", c.Now()
+	if !rel.unchanged {
+		c.latest, c.notes, c.etag = rel.tag, rel.notes, rel.etag
+	}
+	c.lastErr, c.checkedAt = "", c.Now()
 	return nil
+}
+
+// release is one answer from GitHub: the tag and notes, or unchanged (a 304
+// to a conditional request) when what is cached is still current.
+type release struct {
+	tag, notes, etag string
+	unchanged        bool
 }
 
 // fetchLatestRelease returns the newest published tag and the notes that came
 // with it. Both live in one response, so reading the notes costs nothing.
-func fetchLatestRelease(ctx context.Context, hc *http.Client, url string) (tag, notes string, err error) {
+func fetchLatestRelease(ctx context.Context, hc *http.Client, url, etag string) (release, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return "", "", err
+		return release{}, err
 	}
 	// No auth, no cookies, no body — nothing that identifies this machine
 	// beyond the IP any HTTP request necessarily carries.
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "caprock")
+	if etag != "" {
+		req.Header.Set("If-None-Match", etag)
+	}
 	resp, err := hc.Do(req)
 	if err != nil {
-		return "", "", err
+		return release{}, err
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusNotModified && etag != "" {
+		return release{unchanged: true}, nil
+	}
 	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("release check: HTTP %d", resp.StatusCode)
+		return release{}, fmt.Errorf("release check: HTTP %d", resp.StatusCode)
 	}
 	var body struct {
 		TagName string `json:"tag_name"`
 		Body    string `json:"body"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(nil, resp.Body, 1<<20)).Decode(&body); err != nil {
-		return "", "", fmt.Errorf("release check: %w", err)
+		return release{}, fmt.Errorf("release check: %w", err)
 	}
 	if body.TagName == "" {
-		return "", "", errors.New("release check: no tag in response")
+		return release{}, errors.New("release check: no tag in response")
 	}
-	return body.TagName, trimNotes(body.Body), nil
+	return release{tag: body.TagName, notes: trimNotes(body.Body), etag: resp.Header.Get("ETag")}, nil
 }
 
 // notesLimit keeps a release description to something a dialog can hold. Ours

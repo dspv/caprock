@@ -26,6 +26,7 @@ import (
 	"github.com/dspv/caprock/internal/codex"
 	"github.com/dspv/caprock/internal/contexttax"
 	"github.com/dspv/caprock/internal/cost"
+	"github.com/dspv/caprock/internal/editor"
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/gitdiff"
 	"github.com/dspv/caprock/internal/gitremote"
@@ -111,6 +112,9 @@ type Deps struct {
 	// Terminals opens a session in the user's own terminal application. nil ⇒
 	// the open-terminal endpoints return 501 and no session offers it.
 	Terminals TerminalController
+	// Editors opens a folder or a file in the user's own editor (F18). nil ⇒
+	// the editor endpoints return 501.
+	Editors EditorController
 	// Projects is the projects list, its git state and clones (nil ⇒ the
 	// /v1/projects endpoints return 501).
 	Projects *projects.Service
@@ -230,6 +234,9 @@ type Settings struct {
 	// asks for their own terminal: an id from GET /v1/terminals, or empty for
 	// the first one installed.
 	Terminal string `json:"terminal"`
+	// Editor is the editor "Open in editor" uses: an id from GET
+	// /v1/editors, or empty for the first one installed.
+	Editor string `json:"editor"`
 }
 
 // ReportSender sends one weekly report immediately.
@@ -354,6 +361,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/sessions/{id}/open-terminal", s.handleOpenTerminal)
 	m.HandleFunc("POST /v1/sessions/remove", s.handleRemoveSessions)
 	m.HandleFunc("GET /v1/terminals", s.handleTerminals)
+	m.HandleFunc("GET /v1/editors", s.handleEditors)
+	m.HandleFunc("POST /v1/editors/open", s.handleOpenEditor)
 	m.HandleFunc("GET /v1/stats/summary", s.handleSummary)
 	m.HandleFunc("GET /v1/update", s.handleUpdate)
 	// Pairing. Only the redeem endpoint is reachable from the network; the
@@ -1061,6 +1070,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		CapUSDPerDay    *float64 `json:"cap_usd_per_day"`
 		BrowseRoot      *string  `json:"browse_root"`
 		Terminal        *string  `json:"terminal"`
+		Editor          *string  `json:"editor"`
 		// The bot token goes in and never comes back out. An empty string is a
 		// deliberate clear, which is why it is a pointer like everything else.
 		ReportBotToken *string `json:"report_bot_token"`
@@ -1116,6 +1126,14 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		in.Terminal = v
+	}
+	if patch.Editor != nil {
+		v := strings.TrimSpace(*patch.Editor)
+		if v != "" && !contains(editor.IDs(), v) {
+			s.failCode(w, http.StatusBadRequest, fmt.Errorf("editor must be empty or one of %s", strings.Join(editor.IDs(), ", ")))
+			return
+		}
+		in.Editor = v
 	}
 	// Only touched when the caller named it. GET never returns the token, so a
 	// UI that reads settings and writes them back always omits it — treating

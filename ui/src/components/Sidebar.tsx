@@ -36,6 +36,8 @@ export interface SidebarProps {
   onOpenInbox: (item: InboxItem) => void
   onNewAgent: (projectId: string, cwd?: string) => void
   onNewShell: (projectId: string, cwd?: string) => void
+  /** Right-click on a project or worktree row (F18's editor menu). */
+  onFolderMenu?: (e: React.MouseEvent, path: string, label: string) => void
   onAddProject: () => void
   onDashboard: () => void
   onPalette: () => void
@@ -113,6 +115,7 @@ export function Sidebar(props: SidebarProps) {
                 onOpenSession={props.onOpenSession}
                 onNewAgent={props.onNewAgent}
                 onNewShell={props.onNewShell}
+                onFolderMenu={props.onFolderMenu}
               />
             ))}
           </ul>

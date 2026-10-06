@@ -194,7 +194,7 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
         onFocusCapture={() => { if (!focused) ctx.onFocusPane?.(node.id) }}
         onMouseDown={() => { if (!focused) ctx.onFocusPane?.(node.id) }}
       >
-        <div className={`flex h-[24px] shrink-0 items-center gap-1.5 bg-term-bg pl-3 pr-1 text-[11.5px] ${focused ? 'text-[#e8e4dc]' : 'text-[#8f8a82]'}`}>
+        <div className={`flex h-[24px] shrink-0 items-center gap-1.5 bg-term-bg pl-3 pr-1 text-[11.5px] ${focused ? 'text-fg' : 'text-fg-faint'}`}>
           <StatusDot dot={s ? dotOf(s, !!ctx.permissions?.has(s.session_id)) : 'idle'} />
           <AgentGlyph agent={s?.agent} shell={isShell} />
           <span className="min-w-0 flex-1 truncate">{title}</span>
@@ -203,7 +203,7 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
             aria-label={`Close pane ${title} — the session keeps running`}
             title="Close pane (⌘W) — the session keeps running"
             onClick={(e) => { e.stopPropagation(); ctx.onClosePane?.(node.id) }}
-            className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[4px] text-[#8f8a82] hover:bg-white/10 hover:text-[#e8e4dc]"
+            className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[4px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg"
           >
             <CloseIcon size={11} />
           </button>

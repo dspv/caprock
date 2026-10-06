@@ -130,6 +130,9 @@ type Config struct {
 	// ("ghostty", "iterm2", ...; internal/nativeterm). Empty means the first
 	// one installed.
 	Terminal string `json:"terminal,omitempty"`
+	// Editor is the editor "Open in editor" uses ("vscode", "zed", ...;
+	// internal/editor). Empty means the first one installed.
+	Editor string `json:"editor,omitempty"`
 }
 
 // Defaults returns the built-in configuration for a fresh install.

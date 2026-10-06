@@ -16,7 +16,7 @@ These rules are binding. `CLAUDE.md` links here; an agent reads this file before
 - **Every task ends green:** `go vet ./...`, `go test ./...`, `golangci-lint`, `ui` typecheck + tests, and the docs gates — `make check` runs all of it — locally before push, and in CI on all three OS. A push that reddens CI is fixed or reverted in the next commit, never left for later; a red main branch hides the next regression.
 - **Pure Go only** — no CGO anywhere. `modernc.org/sqlite`, no `mattn/go-sqlite3`. The reason is cross-compiling one static binary per OS from one runner; a single CGO dependency reintroduces the ABI-class install failures Munder Difflin suffers.
 - **No outbound network calls the user did not ask for.** The only sockets are `127.0.0.1` listeners and loopback POSTs from the shim; nothing about the user is ever sent anywhere. Three calls leave the machine, each off until someone turns it on, each to a destination that person chose:
-  - the **release check** (`internal/update`) asks `api.github.com` for a version tag — off by default, offered once, revocable, once a day, no body, credentials or usage data;
+  - the **release check** (`internal/update`) asks `api.github.com` for a version tag — off by default, offered once, revocable, at most every 6 hours and conditional (an unchanged release is a 304), no body, credentials or usage data;
   - **Gemini** (`internal/gemini`) POSTs the user's own prompt to `generativelanguage.googleapis.com` on the user's own key, and only when they ask a question ([ADR-023](08-decisions.md), [ADR-025](08-decisions.md));
   - the **weekly report** (`internal/weekly`) sends figures to `api.telegram.org` through a bot the user created, to a chat they named ([ADR-024](08-decisions.md)).
 

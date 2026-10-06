@@ -56,9 +56,28 @@ others. Installing it: [install-app.md](install-app.md).
   session.
 - **Inspector** (⌘I). The session's agent, model and folder, its cost,
   turns, tokens and context, the permission prompt with its buttons, and the
-  uncommitted changes in its checkout.
+  uncommitted changes in its checkout. Click a changed file to open it in
+  your editor at its first change.
+- **Find** (⌘F). A find bar over the terminal you are in: matches light up
+  as you type, Enter and ⇧Enter step through them, **Aa** matches case and
+  **.\*** takes a regular expression. Esc closes it and you are back in the
+  terminal.
+- **Open in your editor.** Right-click a project or a worktree in the
+  sidebar to open it in VS Code, Cursor, Zed or a JetBrains IDE — whichever
+  are installed; the palette and the inspector have *Open in …* too.
+  Settings → *Editor* picks the default. Only this computer can do this; a
+  paired phone cannot open an editor here.
+- **Terminal look.** Settings → *Terminal*: the colours (Caprock, Paper,
+  Catppuccin Mocha, Tokyo Night, Solarized Dark), the font (JetBrains Mono,
+  or SF Mono, Menlo, Fira Code and other monospace fonts you have), size,
+  line height and cursor, with a preview. Every open terminal changes as you
+  choose.
 - **Status strip.** Whether the daemon is live, the 5-hour and 7-day plan
-  windows, today's spend, and the front terminal's size.
+  windows, today's spend, and the front terminal's size. With release checks
+  on (Settings → *Privacy*), *v… is out* appears there when a newer Caprock
+  is published; click it for the command that upgrades your install — `brew
+  update && brew upgrade --cask caprock-app` for the app from Homebrew — or
+  *Not now* to hide that version. Caprock never updates itself.
 
 ### Keyboard
 
@@ -75,6 +94,7 @@ On macOS:
 | ⌘E, ⇧⌘E     | Split: a new shell beside, below        |
 | ⌘[ ]        | Previous and next pane                  |
 | ⌘J          | Next session waiting on you             |
+| ⌘F          | Find in the terminal                    |
 | ⌘K          | Command palette                         |
 | ⌘I          | Inspector                               |
 | ⌘\          | Hide or show the sidebar                |
