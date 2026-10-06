@@ -19,6 +19,7 @@ Phase 3 (Delight) has no plan by design.
   than a copy. In a browser a drop still uploads, as before. Tabs in the
   app's tab strip reorder by dragging again (they could not while the native
   handler was on).
+<<<<<<< HEAD
 - **macOS: one "caprock" in Privacy & Security, not one per release.** The
   Homebrew daemon runs from a new Cellar path every release, and macOS
   lists every path as another program; agent sessions ask for folder access
@@ -36,6 +37,8 @@ Phase 3 (Delight) has no plan by design.
   runs `git` in those folders of the real account, even with a copy of the
   real database, so it never raises a privacy prompt; the bench stand
   refuses to live there.
+=======
+>>>>>>> origin/master
 
 ## [0.78.0] - 2026-10-06
 
