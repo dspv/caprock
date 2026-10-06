@@ -168,9 +168,10 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
 - **F01 — Window, daemon discovery, api_level.** The app reads
   `<data_dir>/runtime.json`, checks `GET /v1/status` for `api_level`, and loads
   the dashboard from the daemon's loopback URL. A daemon already running (a
-  Homebrew or Scoop install, or the service) is used as is. If none runs, the
-  app starts the `caprock` binary it bundles, detached, so sessions keep
-  running when the window closes. If the daemon's `api_level` is below the
+  Homebrew or Scoop install, or the service) is used as is — except on
+  macOS, where a Homebrew formula's daemon is moved onto the app's own once
+  (ADR-040). If none runs, the app starts the `caprock` binary it bundles,
+  detached, so sessions keep running when the window closes. If the daemon's `api_level` is below the
   app's minimum, the window says which command upgrades it (Caprock never
   updates itself). If the daemon stops, the window shows a banner within 2
   seconds, keeps the open terminals' last screen, and reconnects by itself.
@@ -493,7 +494,9 @@ one lean terminal; they stay below Orca (420–541 MB idle) and a Chrome tab.
   `update_daemon` and `set_background` (built in WP-02; the others arrive
   with their work packages).
 - **The daemon supervisor** reads `runtime.json`, starts the bundled binary
-  when no daemon answers, and never stops a daemon it did not start. Quitting
+  when no daemon answers, and never stops a daemon it did not start — save
+  one case on macOS: a Homebrew formula's daemon, moved onto the app's own
+  once when that is not older (ADR-040). Quitting
   the app leaves the daemon and every session running. It runs its copy from
   `<data_dir>/bin/caprock`, never from inside the app bundle: an unsigned app
   can run translocated from a read-only path, and a login service must
@@ -931,6 +934,30 @@ guide [docs/app.md § GitHub](../docs/app.md#github).
   binaries, Tauri's bundler for the app) and carry the daemon they were built
   with.
 
+## Privacy prompts on macOS
+
+macOS asks before a program reads Desktop, Documents, Downloads and a few
+other places, and remembers the answer per program and per code signature
+(ADR-040). What follows from Caprock being ad-hoc signed:
+
+- **The daemon is the program that asks**, for itself and for every session
+  it runs: a pty-host and the agent under it are attributed to the daemon
+  that launchd started. An agent reading `~/Downloads` asks as "caprock".
+- **Every release asks again.** An ad-hoc signature's designated
+  requirement is its cdhash, so each build is new code to TCC.
+- **One path, one entry.** The app runs its daemon from
+  `<data_dir>/bin/caprock` and moves a Homebrew daemon (a new Cellar path per
+  release) onto it, so a new release replaces the entry instead of adding
+  one. Sessions that were already running keep the old binary until they end.
+- **Isolated daemons stay out.** Tests, stands and previews run with a
+  temporary HOME; such a daemon refuses the account's Desktop, Documents and
+  Downloads (`internal/tcc`), and `bench/stand.sh` refuses to live there.
+- **With a Developer ID** (the Apple account): one entry that survives
+  updates, and, with the daemon as an `SMAppService` helper of the app, the
+  app's name and icon — to verify on the first signed build.
+
+The user-facing note is in [docs/app.md](../docs/app.md#macos-privacy-prompts).
+
 ## Telemetry
 
 None. No analytics, no crash upload, no usage pings. A crash or a stall the
@@ -958,8 +985,8 @@ user turns it on.
 - **Notification actions differ per OS.** *Mitigation:* the fallback is a
   click that opens the prompt; the feature is defined by that floor.
 - **Two daemons, or version skew** between the bundled binary and a Homebrew
-  one. *Mitigation:* the running daemon wins; api_level gates features; one
-  data directory.
+  one. *Mitigation:* the running daemon wins (on macOS the app's own, unless
+  it is older: ADR-040); api_level gates features; one data directory.
 - **Rust creep.** *Mitigation:* the line budget and principle 1; review
   rejects logic that belongs in Go.
 - **Unsigned installs deter people.** *Mitigation:* the decisions on the

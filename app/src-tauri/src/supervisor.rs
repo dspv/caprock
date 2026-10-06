@@ -9,6 +9,11 @@
 //!   and every session running.
 //! - Only a Homebrew `caprock` or the bundled one (from `<data_dir>/bin`)
 //!   runs, with fixed arguments: `service install`, `service uninstall`, `up`.
+//! - macOS only (ADR-040): the app's own daemon is the one that runs. It
+//!   starts its bundled copy, never the formula's, and moves a running
+//!   Homebrew daemon onto that copy once when its own is not older — a
+//!   formula's binary lives at a new Cellar path every release, and every
+//!   new path is one more "caprock" in Privacy & Security.
 
 use crate::discovery::{self, Found, Runtime, MIN_API_LEVEL};
 use serde::{Deserialize, Serialize};
@@ -74,6 +79,27 @@ pub enum State {
 pub struct Settings {
     /// Run the daemon as a login service (on) or only while started (off).
     pub background: bool,
+    /// macOS: run the app's own daemon, moving a Homebrew one onto it
+    /// (ADR-040). `"own_daemon": false` in app.json keeps whichever runs.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub own_daemon: bool,
+}
+
+impl Settings {
+    pub fn new(background: bool) -> Self {
+        Self {
+            background,
+            own_daemon: true,
+        }
+    }
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn is_yes(v: &bool) -> bool {
+    *v
 }
 
 pub struct Supervisor {
@@ -91,6 +117,9 @@ struct Inner {
     /// before: the monitor starts it again the same way, with no question.
     autostart: bool,
     last_poll: Option<Instant>,
+    /// The move of a Homebrew daemon onto the app's own has been tried in
+    /// this run; it is tried once, whatever the outcome.
+    adopt_tried: bool,
 }
 
 impl Supervisor {
@@ -108,6 +137,7 @@ impl Supervisor {
                 busy: false,
                 autostart: false,
                 last_poll: None,
+                adopt_tried: false,
             }),
         })
     }
@@ -260,6 +290,89 @@ impl Supervisor {
         });
     }
 
+    /// macOS (ADR-040): whether the running daemon should be moved onto the
+    /// app's own — a Homebrew formula's daemon, not already tried in this run,
+    /// not refused in app.json, and not newer than the bundled one (`bundled`
+    /// is the bundled daemon's version, asked only when the rest holds).
+    pub fn should_adopt(&self, bundled: impl FnOnce() -> Option<String>) -> bool {
+        if !cfg!(target_os = "macos") || self.settings().is_some_and(|s| !s.own_daemon) {
+            return false;
+        }
+        let (rt, running) = {
+            let g = self.lock();
+            if g.adopt_tried || g.busy {
+                return false;
+            }
+            let running = match &g.state {
+                State::Connected {
+                    version,
+                    ours: false,
+                    ..
+                }
+                | State::TooOld {
+                    version,
+                    ours: false,
+                    ..
+                } => version.clone(),
+                _ => return false,
+            };
+            match &g.rt {
+                Some(rt) => (rt.clone(), running),
+                None => return false,
+            }
+        };
+        if !is_formula(&rt.exe) {
+            return false;
+        }
+        self.lock().adopt_tried = true;
+        match (bundled().as_deref().and_then(semver), semver(&running)) {
+            (Some(ours), Some(theirs)) => ours >= theirs,
+            _ => false,
+        }
+    }
+
+    /// Moves a running Homebrew daemon onto the app's own copy, on a
+    /// background thread: the copy in place, a clean shutdown through the
+    /// daemon's API (sessions live on in their pty-hosts, ADR-033), then a
+    /// start as a login service when one was registered or chosen.
+    pub fn spawn_adopt(self: &Arc<Self>) {
+        let Some(rt) = self.runtime() else { return };
+        if !self.claim("Moving the daemon into the app") {
+            return;
+        }
+        let sup = self.clone();
+        thread::spawn(move || {
+            let background =
+                sup.settings().is_none_or(|s| s.background) || launch_agent_registered();
+            let stopped = install_bin(&sup.bundled, &sup.bin()).and_then(|()| {
+                let _ = discovery::request(rt.port, "POST", "/v1/shutdown", Some(&rt.token));
+                let deadline = Instant::now() + Duration::from_secs(10);
+                while Instant::now() < deadline && discovery::status(rt.port).is_some() {
+                    thread::sleep(Duration::from_millis(200));
+                }
+                if discovery::status(rt.port).is_some() {
+                    return Err("The Homebrew daemon did not stop; it keeps running.".into());
+                }
+                Ok(())
+            });
+            match stopped {
+                Ok(()) => sup.start(background),
+                Err(error) => sup.finish(Err(error)),
+            }
+        });
+    }
+
+    /// The bundled daemon's version, from `caprock version`.
+    pub fn bundled_version(&self) -> Option<String> {
+        let mut cmd = Command::new(&self.bundled);
+        cmd.arg("version");
+        no_console(&mut cmd);
+        let out = cmd.output().ok()?;
+        out.status
+            .success()
+            .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+    }
+
     /// The start itself; the caller has claimed the supervisor.
     fn start(&self, background: bool) {
         let result = self.start_inner(background);
@@ -280,12 +393,21 @@ impl Supervisor {
     }
 
     fn start_inner(&self, background: bool) -> Result<(), String> {
-        self.save_settings(Settings { background })
-            .map_err(|e| format!("save app.json: {e}"))?;
+        self.save_settings(Settings {
+            background,
+            ..self.settings().unwrap_or(Settings::new(background))
+        })
+        .map_err(|e| format!("save app.json: {e}"))?;
         if matches!(discovery::find(&self.data_dir), Found::Running { .. }) {
             return Ok(()); // someone else started one meanwhile: use it
         }
-        let exe = match brew_daemon(BREW_BINS) {
+        // macOS starts its own copy, at one path that never changes (ADR-040).
+        let brew = if cfg!(target_os = "macos") {
+            None
+        } else {
+            brew_daemon(BREW_BINS)
+        };
+        let exe = match brew {
             Some(exe) => exe,
             None => {
                 self.set(State::Starting {
@@ -353,8 +475,11 @@ impl Supervisor {
     /// (the running one's own `exe`, else ours), so a Homebrew daemon is
     /// registered as itself rather than swapped for the bundled copy.
     pub fn set_background(&self, on: bool) -> Result<(), String> {
-        self.save_settings(Settings { background: on })
-            .map_err(|e| e.to_string())?;
+        self.save_settings(Settings {
+            background: on,
+            ..self.settings().unwrap_or(Settings::new(on))
+        })
+        .map_err(|e| e.to_string())?;
         let exe = self
             .runtime()
             .map(|rt| PathBuf::from(rt.exe))
@@ -433,6 +558,42 @@ pub fn brew_daemon(candidates: &[&str]) -> Option<PathBuf> {
         let real = std::fs::canonicalize(p).ok()?;
         let owned = real.to_string_lossy().contains("/Cellar/");
         (owned && real.is_file()).then(|| p.to_path_buf())
+    })
+}
+
+/// Whether `exe` resolves into a Homebrew Cellar: the formula's daemon.
+pub fn is_formula(exe: &str) -> bool {
+    !exe.is_empty()
+        && std::fs::canonicalize(exe)
+            .unwrap_or_else(|_| PathBuf::from(exe))
+            .to_string_lossy()
+            .contains("/Cellar/")
+}
+
+/// The first `X.Y.Z` in `s` ("caprock 0.78.0 (darwin/arm64)", "v0.78.0"),
+/// for comparing; `None` for a dev build.
+pub fn semver(s: &str) -> Option<(u64, u64, u64)> {
+    s.split(|c: char| !(c.is_ascii_digit() || c == '.'))
+        .find_map(|tok| {
+            let mut it = tok.split('.').map(|n| n.parse::<u64>().ok());
+            match (it.next(), it.next(), it.next()) {
+                (Some(Some(a)), Some(Some(b)), Some(Some(c))) => Some((a, b, c)),
+                _ => None,
+            }
+        })
+}
+
+/// macOS: whether a login service for this label is registered (its plist
+/// exists), so a moved daemon comes back the same way.
+fn launch_agent_registered() -> bool {
+    let label = std::env::var("CAPROCK_SERVICE_LABEL")
+        .ok()
+        .filter(|l| !l.is_empty())
+        .unwrap_or_else(|| "dev.caprock.daemon".into());
+    dirs::home_dir().is_some_and(|h| {
+        h.join("Library/LaunchAgents")
+            .join(format!("{label}.plist"))
+            .is_file()
     })
 }
 
@@ -594,7 +755,119 @@ mod tests {
     #[test]
     fn settings_round_trip_and_mark_the_first_run_done() {
         let s = sup("settings");
-        s.save_settings(Settings { background: false }).unwrap();
-        assert_eq!(s.settings(), Some(Settings { background: false }));
+        s.save_settings(Settings::new(false)).unwrap();
+        assert_eq!(s.settings(), Some(Settings::new(false)));
+    }
+}
+
+#[cfg(test)]
+mod adopt_tests {
+    use super::*;
+    use crate::discovery::Status;
+
+    fn sup(name: &str) -> Arc<Supervisor> {
+        let d = std::env::temp_dir().join(format!("caprock-adopt-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        Supervisor::new(d)
+    }
+
+    /// A fake formula daemon: a file in `<tmp>/Cellar/caprock/<v>/bin`.
+    fn formula(s: &Supervisor) -> String {
+        let dir = s.data_dir.join("Cellar/caprock/0.78.0/bin");
+        std::fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join("caprock");
+        std::fs::write(&exe, b"x").unwrap();
+        exe.to_string_lossy().into_owned()
+    }
+
+    fn connect(s: &Supervisor, exe: &str, version: &str) {
+        s.observe(
+            Found::Running {
+                rt: Runtime {
+                    port: 1,
+                    token: "t".into(),
+                    pid: 1,
+                    version: version.into(),
+                    api_level: MIN_API_LEVEL,
+                    exe: exe.into(),
+                },
+                status: Status {
+                    version: version.into(),
+                    api_level: MIN_API_LEVEL,
+                },
+            },
+            Duration::ZERO,
+        );
+    }
+
+    #[test]
+    fn versions_are_read_from_what_the_binaries_say() {
+        assert_eq!(semver("caprock 0.78.0 (darwin/arm64)"), Some((0, 78, 0)));
+        assert_eq!(semver("v0.79.1"), Some((0, 79, 1)));
+        assert_eq!(semver("dev"), None);
+        assert!(semver("0.79.0") > semver("0.78.9"));
+    }
+
+    #[test]
+    fn a_formula_path_is_one_in_a_cellar() {
+        let s = sup("formula");
+        assert!(is_formula(&formula(&s)));
+        assert!(!is_formula(&s.bin().to_string_lossy()));
+        assert!(!is_formula(""));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_moves_a_homebrew_daemon_once_when_its_own_is_not_older() {
+        let s = sup("once");
+        let exe = formula(&s);
+        connect(&s, &exe, "0.78.0");
+        assert!(s.should_adopt(|| Some("caprock 0.78.0 (darwin/arm64)".into())));
+        // Tried once per run, whatever came of it.
+        assert!(!s.should_adopt(|| Some("caprock 0.78.0".into())));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_leaves_a_newer_homebrew_daemon_and_any_other_daemon_alone() {
+        let s = sup("newer");
+        let exe = formula(&s);
+        connect(&s, &exe, "0.79.0");
+        assert!(!s.should_adopt(|| Some("caprock 0.78.0".into())));
+
+        let s = sup("dev");
+        connect(&s, "/Users/me/dev/wt/caprock/caprock", "dev");
+        assert!(!s.should_adopt(|| panic!("not asked for a daemon that is not a formula's")));
+
+        let s = sup("unknown");
+        let exe = formula(&s);
+        connect(&s, &exe, "0.78.0");
+        assert!(!s.should_adopt(|| None));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_keeps_the_homebrew_daemon_when_app_json_says_so() {
+        let s = sup("refused");
+        s.save_settings(Settings {
+            background: true,
+            own_daemon: false,
+        })
+        .unwrap();
+        // A later choice of background keeps the refusal.
+        s.set_background(false).unwrap();
+        assert_eq!(s.settings().map(|x| x.own_daemon), Some(false));
+        let exe = formula(&s);
+        connect(&s, &exe, "0.78.0");
+        assert!(!s.should_adopt(|| Some("caprock 0.79.0".into())));
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn elsewhere_a_homebrew_daemon_is_never_moved() {
+        let s = sup("other");
+        let exe = formula(&s);
+        connect(&s, &exe, "0.78.0");
+        assert!(!s.should_adopt(|| Some("caprock 0.79.0".into())));
     }
 }

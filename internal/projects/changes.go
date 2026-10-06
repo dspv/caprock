@@ -20,6 +20,7 @@ import (
 
 	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/store"
+	"github.com/dspv/caprock/internal/tcc"
 )
 
 // Changes: review a worktree's uncommitted work and commit, push or pull it
@@ -193,6 +194,12 @@ type gitOpts struct {
 // login shell's (hooks find node, a credential helper its keychain), no
 // terminal prompts, git's messages in English so they can be classified.
 func (s *Service) gitCmd(ctx context.Context, o gitOpts, dir string, args ...string) (gitRun, error) {
+	if err := tcc.Check(dir); err != nil {
+		return gitRun{}, err
+	}
+	if err := tcc.Check(dir); err != nil {
+		return gitRun{}, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, o.timeout)
 	defer cancel()
 	full := []string{"--no-optional-locks"}

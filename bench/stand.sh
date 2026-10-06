@@ -18,6 +18,13 @@ if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
 fi
 mkdir -p "$D/home" "$D/data" "$D/bin"
 D=$(cd "$D" && pwd)
+# Never in a folder macOS guards with a privacy prompt: a daemon built for a
+# test that sits or works there is one more "caprock" in Privacy & Security
+# (ADR-040). $TMPDIR, the default, is not one.
+case "$D/" in
+  "$HOME"/Desktop/*|"$HOME"/Documents/*|"$HOME"/Downloads/*)
+    echo "refusing $D: under Desktop, Documents or Downloads (macOS asks about those); use \$TMPDIR" >&2; exit 1 ;;
+esac
 BIN=$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN")
 echo "$BIN" > "$D/daemon.bin"
 echo "$PORT" > "$D/port"

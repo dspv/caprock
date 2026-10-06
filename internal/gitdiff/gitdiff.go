@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dspv/caprock/internal/tcc"
 )
 
 // FileDiff is one changed file.
@@ -186,6 +188,12 @@ func Diff(ctx context.Context, cwd string) (*Result, error) {
 }
 
 func git(ctx context.Context, cwd string, args ...string) (string, error) {
+	if err := tcc.Check(cwd); err != nil {
+		return "", err
+	}
+	if err := tcc.Check(cwd); err != nil {
+		return "", err
+	}
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", cwd}, args...)...)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
@@ -200,6 +208,12 @@ func git(ctx context.Context, cwd string, args ...string) (string, error) {
 // untracked file is always — treating that as failure threw the patch away
 // and left every new file rendering as empty.
 func gitOut(ctx context.Context, cwd string, args ...string) string {
+	if tcc.OffLimits(cwd) {
+		return ""
+	}
+	if tcc.OffLimits(cwd) {
+		return ""
+	}
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", cwd}, args...)...)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, nil

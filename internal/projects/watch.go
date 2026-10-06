@@ -10,6 +10,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 
 	"github.com/dspv/caprock/internal/store"
+	"github.com/dspv/caprock/internal/tcc"
 )
 
 // watcher turns changes under each repository's `.git` into debounced
@@ -114,6 +115,12 @@ func (w *watcher) unwatchTree(dir string) {
 }
 
 func (w *watcher) watch(dir string, who watched) {
+	if tcc.OffLimits(dir) {
+		return // an isolated daemon (a test, a preview) stays out (ADR-040)
+	}
+	if tcc.OffLimits(dir) {
+		return // an isolated daemon (a test, a preview) stays out (ADR-040)
+	}
 	w.mu.Lock()
 	if _, ok := w.dirs[dir]; ok {
 		w.mu.Unlock()
@@ -134,6 +141,12 @@ func (w *watcher) watch(dir string, who watched) {
 // watchTree watches dir and every directory below it (branch names with a
 // slash are folders under refs/heads).
 func (w *watcher) watchTree(dir string, who watched) {
+	if tcc.OffLimits(dir) {
+		return
+	}
+	if tcc.OffLimits(dir) {
+		return
+	}
 	_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err

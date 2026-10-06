@@ -11,6 +11,7 @@
 //! Caprock forward, on purpose.
 
 use crate::hotkey;
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::{
@@ -38,6 +39,9 @@ pub fn url(port: u16) -> Url {
         .expect("valid popover URL")
 }
 
+/// The daemon port the popover was last pointed at.
+static PORT: AtomicU16 = AtomicU16::new(0);
+
 /// The popover's height for its content, within bounds whatever the page asks.
 pub fn fit_height(h: f64) -> f64 {
     if h.is_finite() {
@@ -50,12 +54,17 @@ pub fn fit_height(h: f64) -> f64 {
 /// Creates the hidden popover for the daemon on `port`, or points it there
 /// when the daemon moved. Called from the monitor while connected.
 pub fn ensure<R: Runtime>(app: &AppHandle<R>, port: u16) {
+    // The port is remembered rather than read back with `url()`: a popover
+    // whose first load never committed (the daemon stopped while it loaded,
+    // as when the app moves a Homebrew daemon onto its own, ADR-040) has no
+    // URL, and wry unwraps it on the main thread — the app aborted.
     if let Some(w) = app.get_webview_window(POPOVER) {
-        if w.url().is_ok_and(|u| u.port() != Some(port)) {
+        if PORT.swap(port, Ordering::Relaxed) != port {
             let _ = w.navigate(url(port));
         }
         return;
     }
+    PORT.store(port, Ordering::Relaxed);
     let b = WebviewWindowBuilder::new(app, POPOVER, WebviewUrl::External(url(port)))
         .title("Caprock")
         .inner_size(WIDTH, 420.0)
@@ -289,13 +298,24 @@ pub mod panel {
         fn the_panel_class_is_a_key_capable_panel_laid_out_like_taos_window() {
             let c = class();
             assert_eq!(c.superclass(), Some(NSPanel::class()));
-            // Tao's window class: NSWindow plus one BOOL ivar, word-aligned.
-            assert_eq!(c.instance_size(), NSWindow::class().instance_size() + 8);
+            // Laid out like Tao's window class, NSWindow plus one BOOL ivar,
+            // asked of the runtime rather than written down: on macOS 26 the
+            // BOOL fits in NSWindow's tail padding (520 bytes either way),
+            // on 27 it adds a word.
+            let tao = {
+                let mut b = ClassBuilder::new(c"CaprockTaoLikeWindow", NSWindow::class())
+                    .expect("declared once");
+                b.add_ivar::<Bool>(c"focusable");
+                b.register()
+            };
             assert_eq!(
                 NSPanel::class().instance_size(),
                 NSWindow::class().instance_size()
             );
-            assert!(c.instance_variable(c"focusable").is_some());
+            assert_eq!(c.instance_size(), tao.instance_size());
+            let ivar = c.instance_variable(c"focusable").expect("focusable");
+            let want = tao.instance_variable(c"focusable").expect("focusable");
+            assert_eq!(ivar.offset(), want.offset());
             assert!(c.instance_method(sel!(canBecomeKeyWindow)).is_some());
         }
     }

@@ -1774,3 +1774,96 @@ can raise a system dialog.
 it can be on by default), if Windows or Linux users ask for their OS
 keychain (a pure-Go backend behind the same `TokenStore`), or if `security`
 ever prompts for an explicit, unlocked login keychain.
+
+---
+
+## ADR-040 — On macOS the app's own daemon runs, from one path, and nothing isolated touches the guarded folders
+
+**Date:** 2026-10-06 · **Status:** accepted (decided without the owner; he
+may overrule it)
+
+**Context.** macOS asked the owner for "Files and Folders" access, and
+System Settings → Privacy & Security → Files and Folders listed many
+"caprock" entries, none with an icon. TCC (the privacy database) remembers
+an answer per program and checks it against the program's *designated
+requirement* (DR): "macOS solves this problem by recording your app's DR in
+its database … Each time your app tries to access the microphone, macOS
+checks that this version of the app satisfies the original DR", and "Ad hoc
+signed code … has a DR but it's tied to that specific version of the code"
+([TN3127](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements),
+read 2026-10-06). Every Caprock binary is ad-hoc signed (no Apple account):
+`codesign -d -r-` on the 0.78.0 formula binary prints `designated => cdhash
+H"…"`, so every release is new code to TCC and asks again.
+
+The *number* of entries is the other half. A command-line binary with no
+bundle is listed under its file name, which is why each reads "caprock" with
+no icon; the entries are separate because they are separate programs to TCC
+— inferred from what the list shows, since TCC.db is not readable without
+Full Disk Access. What the machine runs, measured 2026-10-06:
+
+- The Homebrew daemon is launched as `/opt/homebrew/bin/caprock`, but that
+  is a symlink and the process's executable is
+  `/opt/homebrew/Cellar/caprock/0.78.0/bin/caprock` (`lsof` `txt`): **a new
+  path every release.**
+- The daemon is a launchd agent, so it is its own responsible process, and
+  every `caprock pty-host` it starts — and every `claude` or `codex` under
+  one — is attributed to it. An agent working in `~/Documents` asks in
+  Caprock's name.
+- The app's bundled daemon, when it runs, runs from
+  `<data_dir>/bin/caprock`: one path, copied there by the app.
+- Agents' test and preview daemons run from their own builds (worktrees,
+  scratchpads): one more path each. One that copies the real database knows
+  the real projects, and watches them and runs `git` in them.
+
+**The decision.**
+
+- **macOS: the app's own daemon is the one that runs.** The app starts its
+  bundled copy at `<data_dir>/bin/caprock`, never the formula's, and when it
+  finds the formula's daemon running (its executable resolves into a Cellar)
+  it moves it onto its own once per launch — the copy in place, a clean
+  `/v1/shutdown` (sessions live on in their pty-hosts, ADR-033), then a
+  start as a login service when one was registered or chosen. It does not
+  when the bundled daemon is older than the running one, or when app.json
+  says `"own_daemon": false`. This amends ADR-038's "a running daemon always
+  wins" and the supervisor's "never stop a daemon it did not start", for
+  this one case: the result is one daemon path that never changes, so one
+  entry instead of one per release. The `caprock` CLI from Homebrew keeps
+  working as a client. Linux and Windows keep the old rule; they have no
+  TCC.
+- **An isolated daemon stays out of the guarded folders.** A daemon whose
+  HOME is not the account's own (every test, stand and preview sets a
+  temporary HOME) refuses the account's Desktop, Documents and Downloads in
+  the projects watcher and every `git` it runs (`internal/tcc`), whatever its
+  database says. `bench/stand.sh` refuses to put a stand there.
+- **No stable identifier on ad-hoc builds.** `codesign -s - -i
+  dev.caprock.daemon` sets the identifier and leaves the DR a cdhash, so it
+  changes nothing TCC checks. An explicit DR of `identifier
+  "dev.caprock.daemon"` on ad-hoc code would be satisfied by anything
+  signed with that string, so a binary swapped in at that path would
+  inherit the user's grant silently; TN3127 also says not to write DRs by
+  hand. Not done.
+- **Spawned agents keep Caprock's responsibility.** Disclaiming it (the
+  private `responsibility_spawnattrs_setdisclaim`) would make each `claude`
+  its own TCC client: an entry per agent binary and version (Claude Code
+  installs each version at its own path), prompts naming a program the user
+  did not knowingly start, and a private API the pure-Go daemon (no CGO)
+  cannot call through `os/exec` anyway. Attributed to Caprock, the prompt
+  names the program that started the session, as Terminal's does for what
+  runs in it. The cost: access granted for one agent's work extends to
+  every session Caprock runs.
+
+**What needs the Apple account.** A Developer ID signature gives a DR of
+the form `anchor apple generic and identifier "…" and certificate
+leaf[subject.OU] = "<team>"` (TN3127), which every later release satisfies:
+one entry, no re-asks after updates. With it, the daemon should ship inside
+the app as a helper registered with `SMAppService`, so it carries the app's
+name and icon; that attribution is to verify on a signed build, not
+claimed here.
+
+**Rules out:** a CLI identifier or hand-written DR to fake continuity;
+disclaiming responsibility for spawned agents; a test daemon with the
+user's real HOME.
+
+**Revisit if** the Apple account exists (sign, bundle the helper, measure
+the list again), or if moving a Homebrew daemon onto the app's surprises a
+user who runs both.
