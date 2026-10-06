@@ -9,6 +9,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **`make app-local`: try a change to the Mac app without a release.** It
+  builds this checkout's app for the Mac's own architecture, installs it over
+  `/Applications/Caprock.app` and relaunches it; the app then moves the daemon
+  onto the build it carries, and running sessions carry on. Stamped
+  `<last tag>-dev+<commit>`, which About Caprock shows and the update notice
+  does not mistake for an old release. About half a minute once the build
+  cache is warm. `make app-local-revert` goes back to the released app.
+
+### Fixed
+
+- **Upgrading the Mac app now upgrades its daemon too.** An app started on a
+  new release kept the daemon of its own from the old one running until that
+  was too old to talk to. It now puts the daemon it carries in place once per
+  launch when the two differ; sessions keep running.
+- **Quitting the app with SIGTERM** (`kill`, a script) now quits it the way
+  Cmd+Q does, keeping the window's size and place.
+
 ## [0.78.1] - 2026-10-06
 
 ### Added

@@ -496,7 +496,10 @@ one lean terminal; they stay below Orca (420–541 MB idle) and a Chrome tab.
 - **The daemon supervisor** reads `runtime.json`, starts the bundled binary
   when no daemon answers, and never stops a daemon it did not start — save
   one case on macOS: a Homebrew formula's daemon, moved onto the app's own
-  once when that is not older (ADR-040). Quitting
+  once when that is not older (ADR-040). On macOS it also replaces its own
+  daemon once per launch when the bundle carries a different one (ADR-040,
+  amended), so the daemon follows the app up, down and to a local build.
+  Quitting
   the app leaves the daemon and every session running. It runs its copy from
   `<data_dir>/bin/caprock`, never from inside the app bundle: an unsigned app
   can run translocated from a read-only path, and a login service must
