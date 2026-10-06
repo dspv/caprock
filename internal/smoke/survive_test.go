@@ -83,7 +83,7 @@ func TestOwnedSessionSurvivesDaemonRestart(t *testing.T) {
 
 	// The upgrade path: launchd and systemd stop the daemon with SIGTERM.
 	// Windows has no SIGTERM, so it gets the harder stop.
-	d1.stop(t, runtime.GOOS != "windows")
+	d1.stop(t, true)
 	if _, err := os.Stat(filepath.Join(data, "ptyhost", id+".json")); err != nil {
 		t.Fatalf("the session's pty-host is gone after the daemon stopped: %v\ndaemon log:\n%s", err, d1.log())
 	}
@@ -123,12 +123,32 @@ func TestOwnedSessionSurvivesDaemonRestart(t *testing.T) {
 	term.waitFor(t, "you-said:again")
 	term.close()
 
+	// A crash the moment the hook that drew a dialog has been answered, on
+	// every OS: nothing waits for the prompt to be seen first, and no
+	// shutdown gets to flush it. The dialog is still on the session's screen,
+	// so its buttons must come back.
+	hookPermissionRequest(t, base, data, id)
+	d3.stop(t, false)
+	d4 := startBinary(t, caprock, env, port, data, "fourth")
+	crashed := waitPermission(t, base, id, true)
+	if crashed == "" || crashed == promptID {
+		t.Fatalf("after a crash the prompt is %q; want a new one, not %q\ndaemon log:\n%s", crashed, promptID, d4.log())
+	}
+	if code := answerPermission(t, base, id, crashed); code != http.StatusNoContent {
+		t.Fatalf("answering the prompt restored after a crash: %d\ndaemon log:\n%s", code, d4.log())
+	}
+	waitPermission(t, base, id, false)
+	term = attachTerm(t, base, id)
+	term.send(t, "more\r")
+	term.waitFor(t, "you-said:1more")
+	term.close()
+
 	// Kill from the dashboard still reaches the process, through its holder.
 	post(t, base+"/v1/agents/"+id+"/signal", `{"action":"kill"}`)
 	deadline := time.Now().Add(20 * time.Second)
 	for getSession(t, base, id).Status != "ended" {
 		if time.Now().After(deadline) {
-			t.Fatalf("the session did not end after a kill\ndaemon log:\n%s", d3.log())
+			t.Fatalf("the session did not end after a kill\ndaemon log:\n%s", d4.log())
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
@@ -142,7 +162,7 @@ func TestOwnedSessionSurvivesDaemonRestart(t *testing.T) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	d3.stop(t, runtime.GOOS != "windows")
+	d4.stop(t, true)
 }
 
 func goBuild(t *testing.T, out, pkg string) {
@@ -243,10 +263,11 @@ func startBinary(t *testing.T, caprock string, env []string, port int, data, nam
 }
 
 // stop ends the daemon: gracefully (SIGTERM, what a service manager sends)
-// or not at all gracefully (a kill).
+// or not at all gracefully (a kill). Windows has no SIGTERM, so there even a
+// graceful stop is a kill.
 func (p *proc) stop(t *testing.T, graceful bool) {
 	t.Helper()
-	if graceful {
+	if graceful && runtime.GOOS != "windows" {
 		_ = p.cmd.Process.Signal(syscall.SIGTERM)
 	} else {
 		_ = p.cmd.Process.Kill()

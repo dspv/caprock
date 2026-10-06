@@ -21,6 +21,12 @@ Phase 3 (Delight) has no plan by design.
   instead of measuring whatever had loaded, and measures and redraws itself
   when a face finishes loading. Ligatures are off in every terminal, so `=>`
   and `!==` show the characters that were typed.
+- **A permission prompt survives a daemon crash, not only a restart.** The
+  prompt an owned session was waiting on was stored in the background after
+  the hook that drew it had been answered, so a daemon killed in that moment
+  — a crash, or any stop on Windows, which has no graceful one — came back
+  with the dialog still on the session's screen and no buttons to answer it.
+  The prompt is now stored before the hook is answered.
 
 ### Changed
 
