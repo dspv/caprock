@@ -160,6 +160,13 @@ goreleaser:
   missing the script fails and the previous release stays Latest, so no button
   404s. A prerelease is never marked Latest.
 
+**Before a release**, try the change as the owner will run it: `make
+app-local` installs this checkout's app over `/Applications/Caprock.app`
+(host architecture, stamped `<last tag>-dev+<commit>`), and the app moves the
+daemon onto the build it carries; `make app-local-revert` goes back to the
+released cask ([app/README.md](../app/README.md#trying-a-change-on-your-own-mac)).
+Nothing is tagged or uploaded.
+
 **Without Actions**, on a Mac, after the daemon release exists:
 
 ```bash
