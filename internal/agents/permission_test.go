@@ -329,3 +329,27 @@ func TestAnAnsweredPromptDoesNotComeBack(t *testing.T) {
 		})
 	}
 }
+
+// A crash, not a stop: the daemon is killed the moment the hook that drew the
+// dialog has been answered, with no Shutdown to flush anything. The prompt is
+// already in the store, because it was written before the hook returned —
+// nothing here waits on the manager's background writes.
+func TestAPromptIsStoredBeforeTheHookReturns(t *testing.T) {
+	m1, st, _ := newMgr(t)
+	t.Cleanup(m1.Shutdown)
+	if _, err := m1.Spawn(context.Background(), SpawnRequest{Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	m1.ObserveHook(signalFrom(t, "fixed-session-id", bashRule))
+	before, _ := m1.PendingPermission("fixed-session-id")
+
+	sp, ok, err := store.GetPendingPermission(context.Background(), st.DB(), "fixed-session-id")
+	if err != nil || !ok || sp.PromptID != before.ID {
+		t.Fatalf("stored when the hook returned: %+v, %v, %v; want prompt %s", sp, ok, err, before.ID)
+	}
+	m2, _ := restartedMgr(t, st)
+	m2.restorePermission(context.Background(), "fixed-session-id")
+	if after, ok := m2.PendingPermission("fixed-session-id"); !ok || after.ID != before.ID {
+		t.Fatalf("after a crash: %+v, %v; want prompt %s", after, ok, before.ID)
+	}
+}

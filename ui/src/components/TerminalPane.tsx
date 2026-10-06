@@ -20,6 +20,9 @@
  *   (TerminalFind) over the official search addon.
  * - **Appearance** (F21): palette, font, size, line height and cursor come
  *   from lib/termprefs and change in place, in every pane, when Settings does.
+ * - **The face** (lib/termfont): every subset of JetBrains Mono is asked for
+ *   before the terminal opens, and a face finishing its load re-measures the
+ *   cell and rebuilds the WebGL atlas.
  */
 import { useEffect, useRef, useState } from 'react'
 import { Terminal as Xterm } from '@xterm/xterm'
@@ -39,6 +42,7 @@ import { NewPill } from './NewPill'
 import { TerminalFind, type TermSearch } from './TerminalFind'
 import { getTerminalPrefs, subscribeTerminalPrefs, xtermOptions, type TerminalPrefs } from '@/lib/termprefs'
 import { searchColors, terminalTheme } from '@/lib/termthemes'
+import { loadTerminalFont, watchTerminalFont } from '@/lib/termfont'
 
 export { APP_TERMINAL_THEME } from '@/lib/termthemes'
 
@@ -92,6 +96,12 @@ export function TerminalPane({
     // does not resolve custom properties (see Terminal.tsx).
     const monoStack = css.getPropertyValue('--font-mono').trim() || 'monospace'
     let prefs: TerminalPrefs = getTerminalPrefs()
+    // Every subset of the face, asked for before the terminal opens and
+    // measures its cell (lib/termfont). It used to wait on document.fonts.ready
+    // alone, which resolves at once when nothing was asked for: the cell was
+    // measured on the fallback and glyphs rasterised mid-load stayed in the
+    // WebGL atlas in the wrong weight.
+    loadTerminalFont()
     const term = new Xterm({
       ...xtermOptions(prefs, monoStack),
       cursorBlink: true,
@@ -118,8 +128,6 @@ export function TerminalPane({
         setResults(null)
       },
     }
-    // The same faces the dashboard's terminal asks for (see Terminal.tsx).
-    document.fonts?.ready.then(() => { try { fit.fit() } catch { /* gone */ } })
 
     let disposed = false
     let visible = false
@@ -256,6 +264,13 @@ export function TerminalPane({
     document.addEventListener('visibilitychange', onWake)
     window.addEventListener('online', onWake)
 
+    // A face finishing its load: measure the cell again, drop the atlas,
+    // repaint, and fit to the new cell.
+    const unfont = watchTerminalFont(term, () => {
+      lastGeom = ''
+      if (visible) refit()
+    })
+
     const unprefs = subscribeTerminalPrefs((next) => {
       prefs = next
       Object.assign(term.options, xtermOptions(next, monoStack))
@@ -303,6 +318,7 @@ export function TerminalPane({
       searchRef.current = null
       window.removeEventListener(FIND_EVENT, onFind)
       unprefs()
+      unfont()
       resultsSub.dispose()
       if (hideTimer) window.clearTimeout(hideTimer)
       if (raf) cancelAnimationFrame(raf)

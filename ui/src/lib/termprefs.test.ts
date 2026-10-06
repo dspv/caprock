@@ -10,13 +10,13 @@ const load = () => import('./termprefs')
 describe('terminal preferences', () => {
   it('start at what the app terminal looked like before the setting existed', async () => {
     const m = await load()
-    expect(m.getTerminalPrefs()).toEqual({ theme: 'caprock', font: 'jetbrains', fontSize: 13, lineHeight: 1.15, cursor: 'bar' })
+    expect(m.getTerminalPrefs()).toEqual({ theme: 'caprock', font: 'jetbrains', fontSize: 13, lineHeight: 1.2, cursor: 'bar' })
   })
 
   it('repair stored values one by one instead of dropping them all', async () => {
     const m = await load()
     expect(m.normalizePrefs({ theme: 'tokyo-night', font: 'comic', fontSize: 99, lineHeight: 'x', cursor: 'block' }))
-      .toEqual({ theme: 'tokyo-night', font: 'jetbrains', fontSize: 20, lineHeight: 1.15, cursor: 'block' })
+      .toEqual({ theme: 'tokyo-night', font: 'jetbrains', fontSize: 20, lineHeight: 1.2, cursor: 'block' })
     expect(m.normalizePrefs(null)).toEqual(m.DEFAULT_PREFS)
     expect(m.normalizePrefs({ fontSize: 3, lineHeight: 0.2 })).toMatchObject({ fontSize: 10, lineHeight: 1 })
   })

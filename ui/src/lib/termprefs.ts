@@ -19,8 +19,12 @@ export interface TerminalPrefs {
 
 const KEY = 'caprock.app.terminal'
 
-/** What the app terminal looked like before this setting existed. */
-export const DEFAULT_PREFS: TerminalPrefs = { theme: DEFAULT_TERMINAL_THEME, font: 'jetbrains', fontSize: 13, lineHeight: 1.15, cursor: 'bar' }
+/**
+ * The defaults are the JetBrains IDE terminal's: JetBrains Mono at 13 px,
+ * line height 1.2, Regular and Bold (set in xtermOptions), no ligatures (xterm
+ * draws one cell at a time and has no ligature addon loaded).
+ */
+export const DEFAULT_PREFS: TerminalPrefs = { theme: DEFAULT_TERMINAL_THEME, font: 'jetbrains', fontSize: 13, lineHeight: 1.2, cursor: 'bar' }
 
 export const FONT_SIZE_RANGE = { min: 10, max: 20 } as const
 export const LINE_HEIGHT_RANGE = { min: 1, max: 1.6 } as const
@@ -120,6 +124,11 @@ export function xtermOptions(p: TerminalPrefs, fallback: string) {
     fontFamily: fontStack(p.font, fallback),
     fontSize: p.fontSize,
     lineHeight: p.lineHeight,
+    // Regular and Bold by number: the bundled face is variable (wght 100-800),
+    // and these are the two instances JetBrains' own terminal uses.
+    fontWeight: 400 as const,
+    fontWeightBold: 700 as const,
+    letterSpacing: 0,
     cursorStyle: p.cursor,
     // On a light ground, Claude Code's dim text and status line — drawn for a
     // dark one — were grey on cream (Terminal.tsx, 2026-10-04). xterm lifts any

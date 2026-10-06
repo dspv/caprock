@@ -195,16 +195,30 @@ func answersAMenu(data []byte) bool {
 	return c == '\r' || c == '\n' || c == 0x1b || c == 0x03 || (c >= '0' && c <= '9')
 }
 
+// setPermission stores a new prompt and then shows it, on the hook's own
+// goroutine: the row is committed before the hook is answered and before any
+// button can be drawn for it. Written later, a daemon killed in the moment
+// after the hook returned — a crash, a Windows stop, which has no SIGTERM and
+// so no Shutdown to wait for the write — came back without the dialog that
+// was still on the session's screen. The hook's own event is written on this
+// goroutine too, so this adds one small write to a request that already
+// waits on the database (hookd.RecordTimeout), not a new kind of wait.
+//
+// Clearing stays off the caller's goroutine (persistLater): a keystroke must
+// not wait on the database, and a clear lost to a crash is caught on restore
+// by the events that say the session moved on.
 func (m *Manager) setPermission(sessionID string, p *Permission) {
+	m.persistMu.Lock()
+	m.writePermission(sessionID, p)
 	m.permMu.Lock()
 	if m.perms == nil {
 		m.perms = map[string]*Permission{}
 	}
 	m.perms[sessionID] = p
 	m.permMu.Unlock()
+	m.persistMu.Unlock()
 	cp := *p
 	m.notifyPermission(sessionID, &cp)
-	m.persistLater(sessionID)
 }
 
 func (m *Manager) clearPermission(sessionID string) {
@@ -219,8 +233,9 @@ func (m *Manager) clearPermission(sessionID string) {
 }
 
 // persistLater writes a session's prompt — or its absence — to the store off
-// the caller's goroutine: a hook must not block, and a keystroke that answers
-// a menu must not wait on a busy database.
+// the caller's goroutine: a keystroke that answers a menu must not wait on a
+// busy database. Used for clears; a new prompt is written in setPermission,
+// before the hook that drew it is answered.
 func (m *Manager) persistLater(sessionID string) {
 	if m.store == nil {
 		return
@@ -250,15 +265,24 @@ func (m *Manager) persistPermission(sessionID string) {
 		cp = &c
 	}
 	m.permMu.Unlock()
+	m.writePermission(sessionID, cp)
+}
+
+// writePermission makes the stored row say p, or that there is no prompt when
+// p is nil. The caller holds persistMu.
+func (m *Manager) writePermission(sessionID string, p *Permission) {
+	if m.store == nil {
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	err := m.store.WithTx(ctx, func(q store.Querier) error {
-		if cp == nil {
+		if p == nil {
 			return store.ClearPendingPermission(ctx, q, sessionID)
 		}
 		return store.SavePendingPermission(ctx, q, store.PendingPermission{
-			SessionID: sessionID, PromptID: cp.ID, Tool: cp.Tool, Detail: cp.Detail,
-			Always: cp.Always, SinceMs: cp.Since.UnixMilli(), Input: cp.input,
+			SessionID: sessionID, PromptID: p.ID, Tool: p.Tool, Detail: p.Detail,
+			Always: p.Always, SinceMs: p.Since.UnixMilli(), Input: p.input,
 		})
 	})
 	if err != nil {

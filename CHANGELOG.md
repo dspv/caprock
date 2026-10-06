@@ -20,6 +20,31 @@ Phase 3 (Delight) has no plan by design.
   `checksums.txt` lists both. A release is marked Latest only once all of
   them are attached, so a link never points at a release still being built.
 
+### Fixed
+
+- **The terminal's font looks like JetBrains Mono again, in every glyph.** In
+  the macOS app, digits, capitals and punctuation came out heavier and
+  brighter than the letters beside them, at random, for as long as the
+  terminal was open: the WebGL renderer drew some glyphs outside the page and
+  some inside it, and WebKit rendered the two differently. Every glyph is now
+  drawn the same way. The app terminal also asks for every part of the face
+  (Latin, Cyrillic, Greek, Vietnamese; regular and bold) before it opens,
+  instead of measuring whatever had loaded, and measures and redraws itself
+  when a face finishes loading. Ligatures are off in every terminal, so `=>`
+  and `!==` show the characters that were typed.
+- **A permission prompt survives a daemon crash, not only a restart.** The
+  prompt an owned session was waiting on was stored in the background after
+  the hook that drew it had been answered, so a daemon killed in that moment
+  — a crash, or any stop on Windows, which has no graceful one — came back
+  with the dialog still on the session's screen and no buttons to answer it.
+  The prompt is now stored before the hook is answered.
+
+### Changed
+
+- **Terminal defaults follow the JetBrains IDE terminal:** JetBrains Mono at
+  13 px, line height 1.2 (was 1.15), Regular and Bold weights. Terminal settings
+  you already saved are kept as they are.
+
 ## [0.78.1] - 2026-10-06
 
 ### Fixed

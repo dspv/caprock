@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
   calls: [] as [string, string, Record<string, unknown>?][],
   results: [] as ((r: { resultIndex: number; resultCount: number }) => void)[],
   clears: 0,
+  steps: [] as string[],
 }))
 
 vi.mock('@xterm/xterm', () => ({
@@ -24,10 +25,12 @@ vi.mock('@xterm/xterm', () => ({
     buffer = { active: { viewportY: 0, baseY: 0 } }
     constructor(opts: Record<string, unknown>) { this.options = { ...opts }; h.terms.push(this) }
     loadAddon() {}
-    open(parent: HTMLElement) { this.element = document.createElement('div'); parent.appendChild(this.element) }
+    open(parent: HTMLElement) { h.steps.push('open'); this.element = document.createElement('div'); parent.appendChild(this.element) }
     focus() { this.focused++ }
     write() {}
     reset() {}
+    clearTextureAtlas() { h.steps.push('atlas') }
+    refresh() {}
     scrollToBottom() {}
     onData() { return { dispose() {} } }
     onResize() { return { dispose() {} } }
@@ -37,7 +40,7 @@ vi.mock('@xterm/xterm', () => ({
     dispose() {}
   },
 }))
-vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit() {} } }))
+vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit() { h.steps.push('fit') } } }))
 vi.mock('@xterm/addon-webgl', () => ({ WebglAddon: class { onContextLoss() {} dispose() {} } }))
 vi.mock('@xterm/addon-search', () => ({
   SearchAddon: class {
@@ -74,6 +77,7 @@ beforeEach(() => {
   h.calls.length = 0
   h.results.length = 0
   h.clears = 0
+  h.steps.length = 0
   setTerminalPrefs(DEFAULT_PREFS)
 })
 afterEach(() => setTerminalPrefs(DEFAULT_PREFS))
@@ -157,6 +161,47 @@ describe('TerminalPane appearance (F21)', () => {
       expect(t.options.lineHeight).toBe(1.3)
       expect(String(t.options.fontFamily)).toMatch(/^Menlo, /)
       expect(t.options.minimumContrastRatio).toBe(4.5)
+    }
+  })
+})
+
+describe('TerminalPane font', () => {
+  it('asks for every subset of the face before it opens and first fits, and redraws when it lands', async () => {
+    // xterm measures the cell when it opens, and the WebGL atlas keeps every
+    // glyph it rasterised. Waiting on document.fonts.ready alone asked for
+    // nothing, so the app terminal measured and drew in whatever face had
+    // happened to load (lib/termfont).
+    let land!: () => void
+    const landed = new Promise<void>((r) => { land = r })
+    const load = vi.fn((font: string, text: string) => {
+      h.steps.push(`font:${font}:${text}`)
+      return landed.then(() => [])
+    })
+    const fonts = { load, check: () => false, addEventListener() {}, removeEventListener() {}, ready: Promise.resolve() }
+    const real = Object.getOwnPropertyDescriptor(document, 'fonts')
+    Object.defineProperty(document, 'fonts', { configurable: true, value: fonts })
+    const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800)
+    try {
+      render(<TerminalPane sessionId="a" active focused />)
+      const first = (p: string) => h.steps.findIndex((s) => s.startsWith(p))
+      expect(first('font:')).toBeGreaterThanOrEqual(0)
+      expect(first('font:')).toBeLessThan(first('open'))
+      expect(first('open')).toBeLessThan(first('fit'))
+      // Regular and bold, in the bundled face, for Latin, Greek and the rest.
+      const asked = load.mock.calls
+      expect(asked.every(([f]) => f.includes('"JetBrains Mono Variable"'))).toBe(true)
+      expect(asked.some(([f]) => f.startsWith('700 '))).toBe(true)
+      expect(asked.map(([, t]) => t).join('')).toMatch(/Ω/)
+      expect(h.steps).not.toContain('atlas')
+      // The face lands: the cell is measured again, the atlas rebuilt, the pane fitted.
+      const fitsBefore = h.steps.filter((s) => s === 'fit').length
+      await act(async () => { land() })
+      await vi.waitFor(() => expect(h.steps).toContain('atlas'))
+      expect(h.steps.filter((s) => s === 'fit').length).toBeGreaterThan(fitsBefore)
+    } finally {
+      width.mockRestore()
+      if (real) Object.defineProperty(document, 'fonts', real)
+      else delete (document as { fonts?: unknown }).fonts
     }
   })
 })
