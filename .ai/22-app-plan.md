@@ -7,8 +7,16 @@ stack is [ADR-038](08-decisions.md#adr-038--the-desktop-app-is-a-thin-tauri-v2-s
 Progress is logged in [14-build-status.md](14-build-status.md); this file says
 what "done" means.
 
-**Status (2026-10-05): planned, nothing built.** Durations are estimates,
-unmeasured (rule 6); actuals go in the build-status log.
+**Status (2026-10-06):** every P0 package is merged — WP-01 to WP-18 — and
+the app ships with each release from 0.77.0 (cask `caprock-app`; `.dmg`,
+NSIS, AppImage, `.deb`, `.rpm` from 0.78.0). P1 started early: WP-19 GitHub
+(auth order changed by ADR-039) and the F15–F18 and F21 parts of WP-20/WP-23.
+Not done: the MVP definition of done's real-device checks (phone over LAN and
+Tailscale, notification buttons, menu bar popover click), the reference-app
+(Orca) benchmark run, two budget rows still over (hidden-window CPU,
+first-tab stall — [21-app.md § Budgets](21-app.md#budgets)), WP-21 and
+WP-22. Durations are estimates, unmeasured (rule 6); actuals go in the
+build-status log.
 
 ## Milestones
 

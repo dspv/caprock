@@ -32,6 +32,12 @@ Also 2026-10-06: a worktree's Changes view — review, stage, discard,
 commit, push and pull without a terminal, in the app and on the phone — the
 git half of F14 that WP-19's pull requests build on
 ([03-contracts.md § Changes](03-contracts.md#changes-a-worktrees-status-diff-commit-and-push)).
+Then (2026-10-06): GitHub connect, clone picker, create repository, pull
+requests from a worktree with checks and reviews (WP-19, ADR-039); split
+panes, ⌘J, the palette's new-task entry and the macOS menu bar popover;
+find in scrollback, open in editor, terminal themes and fonts and the update
+notice (F16, F18, F21, F12); and the benchmark harness with its first results
+and two perf fixes (WP-16, § Budgets). Released as 0.78.0.
 
 ## Goal
 

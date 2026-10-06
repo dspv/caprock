@@ -2,7 +2,7 @@
 
 The running log: what is done, what is not, what is next. **Update this file and § Current State in [00-index.md](00-index.md) whenever the state of the world changes.** Dates in absolute form, never "last week". What "done" means per task is defined in [09-execution-plan.md](09-execution-plan.md).
 
-**Last updated: 2026-09-30** · Phase **2 — Orchestrate, complete** · every phase is tagged and published (`brew install dspv/tap/caprock`, or Scoop on Windows via `dspv/scoop-bucket`). The live unattended orchestrator run — the Phase 2 tag gate — is done: a real `claude` orchestrator assigned a task, spawned a worker, and drove it to green verification with nobody watching.
+**Last updated: 2026-10-06** · Phase **2 — Orchestrate, complete** · every phase is tagged and published (`brew install dspv/tap/caprock`, or Scoop on Windows via `dspv/scoop-bucket`). The live unattended orchestrator run — the Phase 2 tag gate — is done: a real `claude` orchestrator assigned a task, spawned a worker, and drove it to green verification with nobody watching.
 
 **What shipped in which release is answered by `CHANGELOG.md`, `git describe` and the releases page, and is deliberately not restated here.** This paragraph used to carry a hand-written list of them; it stopped at v0.10.0 and stayed there for eighty-four releases, which is [rule 9](../CLAUDE.md) demonstrating itself. What belongs here is the state of the world, not its version history.
 
@@ -19,6 +19,7 @@ Percentages are deliberately coarse — they answer "is this track started, half
 | Phase 1 — Control (T11–T16)     | 100%     | v0.2.0 tagged + published; green on the 3-OS CI matrix                |
 | Phase 2 — Orchestrate (T17–T25) | 100%     | v0.3.0 tagged + published; live unattended run with hooks passed      |
 | Phase 3 — Delight               | 0%       | No plan by design                                                     |
+| Desktop app (ADR-038)           | 80%      | P0 merged, shipped from 0.77.0; real-device checks open               |
 
 ## Milestone status
 
