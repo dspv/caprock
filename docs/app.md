@@ -85,7 +85,8 @@ others. Installing it: [install-app.md](install-app.md).
   Catppuccin Mocha, Tokyo Night, Solarized Dark), the font (JetBrains Mono,
   or SF Mono, Menlo, Fira Code and other monospace fonts you have), size,
   line height and cursor, with a preview. Every open terminal changes as you
-  choose.
+  choose. The defaults match the JetBrains IDE terminal: JetBrains Mono,
+  13 px, line height 1.2, no ligatures.
 - **Status strip.** Whether the daemon is live, the 5-hour and 7-day plan
   windows, today's spend, and the front terminal's size. With release checks
   on (Settings → *Privacy*), *v… is out* appears there when a newer Caprock

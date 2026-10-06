@@ -295,3 +295,25 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
   --app-hairline-strong: rgba(36, 33, 28, 0.18);
   --app-row-hover: rgba(36, 33, 28, 0.06);
 }
+
+/* Every terminal (xterm.js): one rasterisation for every glyph, no ligatures.
+ *
+ * The WebGL renderer draws each glyph once onto a scratch canvas and keeps it.
+ * Some glyphs are drawn while that canvas is outside the document (xterm warms
+ * ASCII up in idle time before it attaches it), the rest once it sits inside
+ * the terminal and inherits :root's `antialiased`. WebKit — the macOS app, and
+ * Safari — rasterises the two differently, so digits, capitals and punctuation
+ * came out heavier and brighter than the letters beside them, at random, for
+ * the life of the terminal (2026-10-06). `auto` here is what a detached canvas
+ * gets anyway, so both draw alike.
+ *
+ * JetBrains Mono's `calt` turns `=>`, `!==` and `<=` into arrows and symbols.
+ * The DOM renderer, which draws until WebGL is swapped in, used them; the
+ * scratch canvas inherits font-feature-settings from here. A terminal shows
+ * the characters that were written, as JetBrains' own terminal does.
+ */
+.xterm {
+  -webkit-font-smoothing: auto;
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
+}
