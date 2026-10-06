@@ -21,6 +21,7 @@ mod shell;
 mod snapshot;
 mod supervisor;
 mod tray;
+mod updater;
 
 use std::path::PathBuf;
 use supervisor::{State, Supervisor};
@@ -44,7 +45,11 @@ macro_rules! handler {
             notify::withdraw_notifications,
             popover::tray_open,
             popover::tray_hide,
-            popover::tray_fit
+            popover::tray_fit,
+            commands::app_update_status,
+            commands::app_update_check,
+            commands::app_update_install,
+            commands::app_update_asked
         ]
     };
 }
@@ -53,6 +58,10 @@ fn configure<R: tauri::Runtime>(b: tauri::Builder<R>, sup: commands::Sup) -> tau
     b.plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(hotkey::Hotkey::new(&sup.data_dir))
+        // Its JavaScript commands are granted to no page: the page calls
+        // ours (commands::app_update_*), which keep the rules in one place.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updater::Updates::new(&sup.data_dir))
         .plugin(tauri_plugin_notification::init())
         .manage(sup)
         .manage(shell::Downloads::default())
@@ -125,9 +134,10 @@ fn main() {
 #[cfg(target_os = "macos")]
 mod menu {
     use super::*;
-    use tauri::menu::{CheckMenuItem, Menu, MenuItemKind, PredefinedMenuItem};
+    use tauri::menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem};
 
     const BACKGROUND: &str = "background";
+    const CHECK_UPDATES: &str = "check-updates";
 
     pub fn install(app: &tauri::AppHandle, sup: &commands::Sup) -> tauri::Result<()> {
         let menu = Menu::default(app)?;
@@ -140,13 +150,21 @@ mod menu {
             on,
             None::<&str>,
         )?;
+        // "Check for Updates…" under About, as macOS apps put it (F20).
+        let check =
+            MenuItem::with_id(app, CHECK_UPDATES, "Check for Updates…", true, None::<&str>)?;
         if let Some(MenuItemKind::Submenu(first)) = menu.items()?.first() {
-            first.insert(&PredefinedMenuItem::separator(app)?, 1)?;
-            first.insert(&item, 2)?;
+            first.insert(&check, 1)?;
+            first.insert(&PredefinedMenuItem::separator(app)?, 2)?;
+            first.insert(&item, 3)?;
         }
         app.set_menu(menu)?;
         let sup = sup.clone();
-        app.on_menu_event(move |_, event| {
+        app.on_menu_event(move |app, event| {
+            if event.id() == CHECK_UPDATES {
+                crate::updater::check_from_menu(app);
+                return;
+            }
             if event.id() != BACKGROUND {
                 return;
             }
@@ -276,6 +294,48 @@ mod tests {
         for url in ["https://example.com/", "http://localhost:4391/"] {
             let err = invoke(url, "withdraw_notifications", none.clone()).expect_err(url);
             assert!(err.to_string().contains("not allowed"), "{url}: {err}");
+        }
+    }
+
+    #[test]
+    fn the_daemon_page_may_read_the_updater_and_no_other_page_may() {
+        let st = invoke(DAEMON, "app_update_status", serde_json::json!({})).expect("allowed");
+        assert_eq!(st["phase"], "idle");
+        // `cargo test` is a development build: it says so and never updates.
+        assert_eq!(st["supported"], false);
+        assert!(st["blocked"].as_str().unwrap().contains("development"));
+        // Refused for a development build without touching the network.
+        let st = invoke(DAEMON, "app_update_install", serde_json::json!({})).expect("allowed");
+        assert_eq!(st["phase"], "idle");
+        for url in ["https://example.com/", "http://localhost:4391/"] {
+            for cmd in [
+                "app_update_status",
+                "app_update_check",
+                "app_update_install",
+                "app_update_asked",
+            ] {
+                let err = invoke(url, cmd, serde_json::json!({})).expect_err(cmd);
+                assert!(
+                    err.to_string().contains("not allowed"),
+                    "{url} {cmd}: {err}"
+                );
+            }
+        }
+        let err = invoke_in("tray", POPOVER, "app_update_install", serde_json::json!({}))
+            .expect_err("popover");
+        assert!(err.to_string().contains("not allowed"), "{err}");
+    }
+
+    #[test]
+    fn no_page_may_drive_the_updater_plugin_directly() {
+        // Only our commands, which refuse unsupported installs and say why;
+        // the plugin's own JavaScript commands are granted to nobody.
+        for cmd in [
+            "plugin:updater|check",
+            "plugin:updater|download_and_install",
+        ] {
+            let err = invoke(DAEMON, cmd, serde_json::json!({})).expect_err(cmd);
+            assert!(err.to_string().contains("not allowed"), "{cmd}: {err}");
         }
     }
 

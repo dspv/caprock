@@ -328,6 +328,15 @@ pub fn monitor(app: AppHandle, sup: Arc<Supervisor>) {
             {
                 sup.spawn_adopt();
             }
+            // After an app update (F20) or a cask upgrade the app's own
+            // daemon is older than the one in the new bundle: move it over,
+            // the same clean way (sessions live on in their pty-hosts).
+            if matches!(state, State::Connected { ours: true, .. })
+                && MAIN_LOADED.load(Ordering::Relaxed)
+                && sup.should_refresh(|| sup.bundled_version())
+            {
+                sup.spawn_update();
+            }
             let connected = matches!(state, State::Connected { .. });
             if was_connected && !connected {
                 crate::tray::daemon_gone(&app);

@@ -120,6 +120,9 @@ struct Inner {
     /// The move of a Homebrew daemon onto the app's own has been tried in
     /// this run; it is tried once, whatever the outcome.
     adopt_tried: bool,
+    /// The move of the app's own daemon onto a newer bundled copy has been
+    /// tried in this run (after an app update); once, like the adoption.
+    refresh_tried: bool,
 }
 
 impl Supervisor {
@@ -138,6 +141,7 @@ impl Supervisor {
                 autostart: false,
                 last_poll: None,
                 adopt_tried: false,
+                refresh_tried: false,
             }),
         })
     }
@@ -329,6 +333,31 @@ impl Supervisor {
             (Some(ours), Some(theirs)) => ours >= theirs,
             _ => false,
         }
+    }
+
+    /// Whether the app's own daemon should move onto the bundled copy: it
+    /// runs from `<data_dir>/bin` (this app installed it) and is older than
+    /// the daemon this bundle carries — what an app update (F20) or a cask
+    /// upgrade leaves behind. Tried once per run; `bundled` is the bundled
+    /// daemon's version, asked only when the rest holds. A daemon a package
+    /// manager owns is never touched.
+    pub fn should_refresh(&self, bundled: impl FnOnce() -> Option<String>) -> bool {
+        let running = {
+            let g = self.lock();
+            if g.refresh_tried || g.busy {
+                return false;
+            }
+            match &g.state {
+                State::Connected {
+                    version,
+                    ours: true,
+                    ..
+                } => version.clone(),
+                _ => return false,
+            }
+        };
+        self.lock().refresh_tried = true;
+        newer(bundled().as_deref(), &running)
     }
 
     /// Moves a running Homebrew daemon onto the app's own copy, on a
@@ -583,6 +612,15 @@ pub fn semver(s: &str) -> Option<(u64, u64, u64)> {
         })
 }
 
+/// Whether `bundled` names a strictly newer version than `running`; false
+/// when either is not a version (a development build says `dev`).
+pub fn newer(bundled: Option<&str>, running: &str) -> bool {
+    match (bundled.and_then(semver), semver(running)) {
+        (Some(b), Some(r)) => b > r,
+        _ => false,
+    }
+}
+
 /// macOS: whether a login service for this label is registered (its plist
 /// exists), so a moved daemon comes back the same way.
 fn launch_agent_registered() -> bool {
@@ -660,6 +698,16 @@ mod tests {
                 version: "v".into(),
                 api_level: level,
             },
+        }
+    }
+
+    fn running_v(level: u32, exe: &str, version: &str) -> Found {
+        match running(level, exe) {
+            Found::Running { rt, mut status } => {
+                status.version = version.into();
+                Found::Running { rt, status }
+            }
+            other => other,
         }
     }
 
@@ -750,6 +798,47 @@ mod tests {
         let (loose, link) = (loose.to_str().unwrap(), link.to_str().unwrap());
         assert_eq!(brew_daemon(&[loose, "/nonexistent/caprock"]), None);
         assert_eq!(brew_daemon(&[loose, link]), Some(PathBuf::from(link)));
+    }
+
+    #[test]
+    fn the_apps_own_daemon_moves_onto_a_newer_bundled_copy_once() {
+        let s = sup("refresh");
+        // Not ours (a package manager's): never.
+        s.observe(
+            running_v(MIN_API_LEVEL, "/opt/homebrew/bin/caprock", "0.78.0"),
+            Duration::ZERO,
+        );
+        assert!(!s.should_refresh(|| Some("caprock 0.79.0 (abc)".into())));
+        // Ours and older than the bundle: once.
+        let bin = s.bin();
+        std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+        std::fs::write(&bin, b"x").unwrap();
+        s.observe(
+            running_v(MIN_API_LEVEL, bin.to_str().unwrap(), "0.78.0"),
+            Duration::ZERO,
+        );
+        assert!(s.should_refresh(|| Some("caprock 0.79.0 (abc)".into())));
+        assert!(
+            !s.should_refresh(|| Some("caprock 0.79.0 (abc)".into())),
+            "once per run"
+        );
+    }
+
+    #[test]
+    fn the_apps_own_daemon_stays_when_not_older() {
+        let s = sup("refresh-same");
+        let bin = s.bin();
+        std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+        std::fs::write(&bin, b"x").unwrap();
+        s.observe(
+            running_v(MIN_API_LEVEL, bin.to_str().unwrap(), "0.79.0"),
+            Duration::ZERO,
+        );
+        assert!(!s.should_refresh(|| Some("caprock 0.79.0 (abc)".into())));
+        assert!(newer(Some("caprock 0.79.1"), "0.79.0"));
+        assert!(!newer(Some("caprock dev"), "0.79.0"));
+        assert!(!newer(Some("caprock 0.79.0"), "dev"));
+        assert!(!newer(None, "0.79.0"));
     }
 
     #[test]

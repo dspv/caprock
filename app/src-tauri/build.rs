@@ -17,6 +17,10 @@ fn main() {
             "tray_open",
             "tray_hide",
             "tray_fit",
+            "app_update_status",
+            "app_update_check",
+            "app_update_install",
+            "app_update_asked",
         ]),
     ))
     .expect("tauri build");
