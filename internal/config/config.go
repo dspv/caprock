@@ -133,6 +133,11 @@ type Config struct {
 	// Editor is the editor "Open in editor" uses ("vscode", "zed", ...;
 	// internal/editor). Empty means the first one installed.
 	Editor string `json:"editor,omitempty"`
+	// SpawnPermissionMode is the mode new sessions start in when nothing more
+	// specific says one: the new-session dialogs open on it, and a start
+	// request with no mode (and no session to carry one from) gets it. In
+	// Claude Code's words (agents.PermissionModes); empty means not set.
+	SpawnPermissionMode string `json:"spawn_permission_mode,omitempty"`
 	// GitHubSource is where the GitHub token comes from (internal/github,
 	// ADR-039): "gh" (the GitHub CLI's login), "token" (pasted), "oauth"
 	// (device flow), or empty — not connected, and nothing goes to GitHub.

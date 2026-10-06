@@ -189,6 +189,10 @@ export interface ResumeInfo {
   reason?: string
   /** Resumes it from the user's own terminal; offered even when Caprock cannot. */
   command?: string
+  /** The permission mode continuing it here starts in when none is picked:
+   *  the one it was last running in, else the spawn preference. Absent when
+   *  neither says one (the agent's own default). */
+  permission_mode?: string
 }
 
 export interface TokenDelta { in: number; out: number; cache_read: number; cache_write: number; cache_write_1h?: number }
@@ -503,6 +507,8 @@ export interface Settings {
   terminal?: string
   /** The editor "Open in editor" uses ("vscode", "zed", ...). Empty: the first installed. */
   editor?: string
+  /** The permission mode new sessions start in, in Claude Code's words. Empty: not set. */
+  spawn_permission_mode?: string
   /** The daily spend ceiling in USD; 0 is off. See internal/cap. */
   cap_usd_per_day?: number
   /** Where the weekly report goes. Not a credential, so it round-trips. */

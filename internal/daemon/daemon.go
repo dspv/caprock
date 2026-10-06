@@ -1344,6 +1344,7 @@ func (a *settingsAdapter) Get() api.Settings {
 		BrowseRoot:       c.BrowseRoot,
 		Terminal:         c.Terminal,
 		Editor:           c.Editor,
+		SpawnMode:        c.SpawnPermissionMode,
 		ReportChatID:     c.ReportChatID,
 		// The token itself never crosses this boundary — only whether one
 		// exists, which is what a screen needs to render a state.
@@ -1387,6 +1388,7 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	a.d.opt.Config.BrowseRoot = strings.TrimSpace(in.BrowseRoot)
 	a.d.opt.Config.Terminal = in.Terminal
 	a.d.opt.Config.Editor = in.Editor
+	a.d.opt.Config.SpawnPermissionMode = in.SpawnMode
 	a.d.opt.Config.ReportBotToken = strings.TrimSpace(in.ReportBotToken)
 	a.d.opt.Config.ReportChatID = strings.TrimSpace(in.ReportChatID)
 	a.d.opt.Config.GeminiAPIKey = strings.TrimSpace(in.GeminiAPIKey)

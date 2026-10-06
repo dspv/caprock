@@ -3,6 +3,7 @@ import { api, ApiError, type SessionSummary } from '@/lib/api'
 import { useCanControl } from '@/lib/useCanControl'
 import { navigate } from '@/lib/router'
 import { fmtAgo, shortId } from '@/lib/format'
+import { modeWords } from '@/lib/permissionMode'
 import { OpenInTerminal } from './OpenInTerminal'
 
 /**
@@ -268,7 +269,12 @@ export function ProjectTerminal({ dir, label, sessions = [] }: { dir: string; la
                   {verb}
                 </span>
                 <span className="truncate text-[12px] text-fg text-left">{describe(s)}</span>
-                <span className="num text-[11px] text-fg-faint">{fmtAgo(s.worked_at || s.last_event_at)}</span>
+                <span className="num text-[11px] text-fg-faint">
+                  {/* The mode a continue or branch starts in: the one the
+                    * session was last running in (the daemon carries it). */}
+                  {!mine && s.resume?.permission_mode && <span className="mr-2">{modeWords(s.resume.permission_mode)}</span>}
+                  {fmtAgo(s.worked_at || s.last_event_at)}
+                </span>
               </button>
               {/* The same session in the user's own terminal app. */}
               <span className="pr-2">

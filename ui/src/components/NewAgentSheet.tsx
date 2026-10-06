@@ -8,7 +8,8 @@ import { useMemo, useState } from 'react'
 import { api, errText } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { AgentPicker, spawnableAgents, useAgentChoice } from './AgentPicker'
-import { DEFAULT_MODE, DEFAULT_MODELS, GEMINI_MAPPED, MODE_NOTE, MODES, ModelField } from './SpawnDialog'
+import { DEFAULT_MODE, DEFAULT_MODELS, GEMINI_MAPPED, MODE_NOTE, ModelField, modeOptions } from './SpawnDialog'
+import { useInitialMode } from '@/lib/permissionMode'
 import type { SpawnAgent } from './AgentPicker'
 import type { Project } from '@/lib/projects'
 import { Sheet, SheetButton, SheetField } from './Sheet'
@@ -45,7 +46,7 @@ export function NewAgentSheet({
   const [where, setWhere] = useState(initialWorktree ? NEW_WORKTREE : initialCwd && initialCwd !== project?.root ? initialCwd : '')
   const [newBranch, setNewBranch] = useState(initialWorktree ?? '')
   const [models, setModels] = useState<Record<SpawnAgent, string>>(DEFAULT_MODELS)
-  const [mode, setMode] = useState(DEFAULT_MODE)
+  const [mode, setMode] = useInitialMode(DEFAULT_MODE)
   const [prompt, setPrompt] = useState(initialPrompt)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -122,7 +123,7 @@ export function NewAgentSheet({
           </div>
           <SheetField label="Permissions">
             <select className="input" value={mode} onChange={(e) => setMode(e.target.value)}>
-              {MODES.map(([v, label]) => (
+              {modeOptions(mode).map(([v, label]) => (
                 <option key={v} value={v}>
                   {agent === 'gemini' && !GEMINI_MAPPED.has(v) ? `${label} · Gemini asks instead` : MODE_NOTE[agent]?.[v] ?? label}
                 </option>

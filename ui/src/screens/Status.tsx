@@ -33,6 +33,7 @@ import { GlobalHotkey } from '@/components/GlobalHotkey'
 import { isAppMode, isTauri } from '@/lib/appmode'
 import { TerminalSettings } from '@/components/TerminalSettings'
 import { EditorSetting } from '@/components/EditorSetting'
+import { SpawnModeSetting } from '@/components/SpawnModeSetting'
 import { GitHubSettings } from '@/components/GitHubSettings'
 
 export function StatusScreen() {
@@ -53,6 +54,7 @@ export function StatusScreen() {
       {owner && <PlanSection />}
       <AppearanceSection />
       {isAppMode() && <TerminalSettings />}
+      {owner && <SpawnModeSetting />}
       {owner && <EditorSetting />}
       <GitHubSettings />
       {owner && isTauri() && <GlobalHotkey />}

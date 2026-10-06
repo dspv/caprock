@@ -817,7 +817,23 @@ per-agent flags are in [19-codex.md](19-codex.md) and
 [16-opencode.md](16-opencode.md)). With `resume`, the agent is the stored
 session's, whatever the request says, and a Codex or OpenCode resume is given
 the session's `native_id` when it has one. `fork` with Codex or OpenCode is a
-400: their forks copy history with its cost. The endpoints answer 501 only when
+400: their forks copy history with its cost.
+
+**A request with no `permission_mode` gets one from the daemon**
+(`defaultSpawnMode`, `internal/api/resume.go`), so every caller — the
+dashboard's buttons, the project terminal, the phone, a script posting to the
+API — behaves the same. With `resume` or `relay_from`, it is the mode that session was last
+running in: the newest stored hook payload's `permission_mode`
+(`store.LastPermissionMode`, the newest 50 hook events, PostToolUse skipped
+for size), passed on only when `--permission-mode` accepts it
+(`agents.CarriedMode` — Claude Code reports its ordinary mode as `default`,
+which the flag does not take, so that one starts with no flag). Otherwise, and
+when nothing was recorded, it is the `spawn_permission_mode` setting; with
+neither, no mode is sent and the agent starts in its own default. A request
+that names a mode, or carries `command`, is left as it is. No column stores the
+mode: every hook payload is kept verbatim, and the mode changes mid-session.
+
+The endpoints answer 501 only when
 **no** agent can be started (`claude_available`, `codex_available`,
 `opencode_available` and `gemini_available` all false on `/v1/status`).
 
@@ -870,7 +886,10 @@ is actually typed. `limit` defaults to 200 and is capped at 2000;
 `X-Total-Count` counts what matches, so the Now screen can offer "show N more"
 instead of leaving everything past the first page unreachable.
 
-**`resume`** — `{ok, reason?, command?}`. On the list it is filled for ended
+**`resume`** — `{ok, reason?, command?, permission_mode?}`. `permission_mode`
+is present only with `ok`: the mode `POST /v1/agents` will fill in for a
+continue that names none (above), so the button can say it before the click;
+absent when that is no mode at all. On the list it is filled for ended
 sessions only, so a card can offer continue; on `GET /v1/sessions/{id}` for any
 session except a live one Caprock started (that one is typed into) — unless
 this daemon does not hold its terminal. Since
@@ -978,6 +997,13 @@ relayed), in the handler, whatever a device's role — an editor opens on this
 screen, not the phone's — and neither is on a device allowlist.
 `GET`/`PUT /v1/settings` carry **`editor`**: an id from `editor.IDs()` or
 `""` (the first installed), else 400; stored as `editor` in `config.json`.
+
+`GET`/`PUT /v1/settings` carry **`spawn_permission_mode`**: the permission mode
+new sessions start in, one of `agents.PermissionModes` (`acceptEdits`, `auto`,
+`bypassPermissions`, `dontAsk`, `manual`, `plan`) or `""` for not set, else
+400; stored as `spawn_permission_mode` in `config.json`. The new-session
+dialogs open on it, and `POST /v1/agents` uses it for a request with no mode
+and nothing to carry one from.
 
 **`SessionSummary.description` / `description_source`** — what tells a session
 from the others on the screen (FB-035): the stored `sessions.title`

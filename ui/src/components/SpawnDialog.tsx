@@ -4,6 +4,7 @@ import { AgentPicker, useAgentChoice, useSpawnableAgents, type SpawnAgent } from
 import { api, errText, isPairedDevice } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { navigate } from '@/lib/router'
+import { modeWords, useInitialMode } from '@/lib/permissionMode'
 
 // What the two selects start on, rather than an empty "default" that says
 // nothing about what you are about to run. Opus is what the machine's own
@@ -72,6 +73,15 @@ export const MODES: [value: string, label: string][] = [
   ['bypassPermissions', 'Bypass · never asks'],
 ]
 
+/** MODES, plus `current` when it is a mode they do not list — a session
+ *  carried on in auto mode, or a preference set through the API — so a select
+ *  never shows one mode while holding another. */
+export function modeOptions(current: string): [value: string, label: string][] {
+  if (!current || MODES.some(([v]) => v === current)) return MODES
+  const w = modeWords(current)
+  return [[current, w.charAt(0).toUpperCase() + w.slice(1)], ...MODES]
+}
+
 // What each mode becomes in an agent that spells it differently, read from
 // that CLI's --help (codex-cli 0.160.0, opencode 1.15.10) and said in the
 // label, so the choice names the consequence rather than Claude's word for it.
@@ -130,7 +140,8 @@ export function SpawnDialog({
   const [models, setModels] = useState<Record<SpawnAgent, string>>(DEFAULT_MODELS)
   const model = models[agent]
   const setModel = (v: string) => setModels((m) => ({ ...m, [agent]: v }))
-  const [mode, setMode] = useState(DEFAULT_MODE)
+  // Opens on the Settings preference when one is set (New sessions).
+  const [mode, setMode] = useInitialMode(DEFAULT_MODE)
   // Codex keeps its own model catalog on disk; the daemon reads it so the
   // list is the one Codex itself offers this account, not one written here.
   const codexModels = useApi(() => (agent === 'codex' ? api.agentModels('codex') : Promise.resolve(undefined)), [agent], { live: false })
@@ -214,7 +225,7 @@ export function SpawnDialog({
                 * all of them, labelled with what it becomes in this one. */}
               <Field label="Permissions">
                 <select className="input" value={mode} onChange={(e) => { setMode(e.target.value); setConfirming(false) }}>
-                  {MODES.map(([v, label]) => (
+                  {modeOptions(mode).map(([v, label]) => (
                     <option key={v} value={v}>
                       {agent === 'gemini' && !GEMINI_MAPPED.has(v) ? `${label} · Gemini asks instead` : MODE_NOTE[agent]?.[v] ?? label}
                     </option>

@@ -73,6 +73,22 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-06 — A continue keeps the session's permission mode
+
+The owner runs Claude Code with permissions skipped; continuing a session from
+Caprock started it in the default mode, which then asked before every command,
+because `POST /v1/agents` with `resume` carried no mode. The daemon now fills
+an absent `permission_mode` on a resume or relay with the mode the session's
+own hooks last reported (`store.LastPermissionMode` over the stored payloads;
+no migration — every hook payload already carries `permission_mode`), and
+otherwise with a new setting, `spawn_permission_mode` (Settings → New
+sessions), which the two new-session dialogs also open on; they did not
+remember a mode before. `resume.permission_mode` says the mode in advance, and
+the continue controls show it and let it be changed. The trust prompt is
+independent of the mode and was already pre-accepted for every Claude Code
+launch. Contracts in [03-contracts.md](03-contracts.md), screens in
+[04-ui.md § Continue, and why not](04-ui.md#continue-and-why-not).
+
 ### 2026-10-06 — Benchmarks (WP-16)
 
 `bench/` measures every row of [21-app.md § Budgets](21-app.md#budgets) with
