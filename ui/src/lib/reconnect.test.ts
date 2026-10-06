@@ -4,7 +4,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  CONNECT_TIMEOUT_MS, DEAD_MS, PROBE_MS, RECONNECT_MAX_MS, RECONNECT_MIN_MS, Reconnector,
+  CONNECT_TIMEOUT_MS, DEAD_MS, PROBE_MS, SUSPECT_MS, isSuspect, RECONNECT_MAX_MS, RECONNECT_MIN_MS, Reconnector,
   isConnectStuck, isProbeLost, isSilent, onNetworkWake, reconnectDelay,
 } from './reconnect'
 
@@ -37,6 +37,13 @@ describe('reconnectDelay', () => {
 })
 
 describe('liveness', () => {
+  it('asks a socket silent for SUSPECT_MS for a round trip, once', () => {
+    expect(isSuspect(0, 0, SUSPECT_MS - 1)).toBe(false)
+    expect(isSuspect(0, 0, SUSPECT_MS)).toBe(true)
+    expect(isSuspect(0, SUSPECT_MS, SUSPECT_MS + 500)).toBe(false)
+    expect(SUSPECT_MS + PROBE_MS).toBeLessThan(DEAD_MS)
+  })
+
   it('takes a socket for dead within DEAD_MS of the last thing it said', () => {
     expect(isSilent(0, DEAD_MS - 2_000)).toBe(false)
     expect(isSilent(0, DEAD_MS)).toBe(true)

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLiveTick } from './live'
 import { readCache, writeCache } from './swr'
+import { everyWhileVisible } from './visible'
 
 export interface Loaded<T> {
   data: T | undefined
@@ -20,6 +21,8 @@ export interface Loaded<T> {
 export interface ApiOptions {
   live?: boolean
   intervalMs?: number
+  /** While the page is hidden the interval rests (lib/visible.ts); this keeps it at a slower pace instead. */
+  hiddenIntervalMs?: number
   /**
    * Keep the last successful answer under this key (lib/swr.ts) and show it,
    * marked stale, while a new question is first being answered. The key must
@@ -34,7 +37,7 @@ export interface ApiOptions {
 }
 
 export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = [], opts: ApiOptions = {}): Loaded<T> {
-  const { live = true, intervalMs = 0, cache } = opts
+  const { live = true, intervalMs = 0, hiddenIntervalMs, cache } = opts
   const tick = useLiveTick(400)
   const [state, setState] = useState<Loaded<T>>(() => {
     const c = cache ? readCache<T>(cache) : undefined
@@ -113,9 +116,8 @@ export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = [], opts: ApiO
     if (!intervalMs) return
     // Wrapped, not passed: setInterval hands its callback nothing, but a bare
     // `run` here would take whatever a future caller passes as `fresh`.
-    const id = window.setInterval(() => run(), intervalMs)
-    return () => window.clearInterval(id)
-  }, [intervalMs, run])
+    return everyWhileVisible(() => run(), intervalMs, hiddenIntervalMs)
+  }, [intervalMs, hiddenIntervalMs, run])
 
   // `refresh` is the manual one — a person pressing a button expects the
   // figures to stay put while it reloads, not to blink out.

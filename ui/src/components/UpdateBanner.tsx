@@ -15,6 +15,7 @@ import { useEffect, useState } from 'react'
 import { api, isPairedDevice, type Settings, type UpdateStatus } from '@/lib/api'
 import { fmtAgo } from '@/lib/format'
 import { Copyable } from '@/components/ui'
+import { everyWhileVisible } from '@/lib/visible'
 
 const DISMISS_KEY = 'caprock.update.dismissed'
 
@@ -35,8 +36,8 @@ export function UpdateBanner({ plan, onSave, now, owned = 0 }: {
     let alive = true
     const load = () => { void api.update().then((s) => { if (alive) setSt(s) }).catch(() => {}) }
     load()
-    const id = window.setInterval(load, 60_000)
-    return () => { alive = false; window.clearInterval(id) }
+    const stop = everyWhileVisible(load, 60_000)
+    return () => { alive = false; stop() }
   }, [plan?.update_checks])
 
   // The offer to switch checking on, shown once until dismissed.

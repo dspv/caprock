@@ -1,0 +1,304 @@
+{
+  "harness": "phone",
+  "machine": {
+    "date": "2026-10-06T04:58:24.760Z",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": 10,
+    "cpu_model": "Apple M1 Pro",
+    "mem_gb": 16,
+    "os": "macOS 27.0.1 (26A434)",
+    "model": "MacBookPro18,3",
+    "chip": "Apple M1 Pro",
+    "displays": "1920x1080@1x 100Hz",
+    "power": "Now drawing from 'AC Power'"
+  },
+  "viewport": "390x844@3",
+  "profiles": {
+    "wifi": {
+      "rtt": 10
+    },
+    "cellular": {
+      "rtt": 120
+    }
+  },
+  "phases": {
+    "chat_open": {
+      "wifi": {
+        "runs": [
+          69,
+          45,
+          45,
+          47,
+          46,
+          44,
+          47,
+          47
+        ],
+        "p50": 47,
+        "p95": 69
+      },
+      "cellular": {
+        "runs": [
+          162,
+          163,
+          145,
+          162,
+          147,
+          146,
+          146,
+          145
+        ],
+        "p50": 147,
+        "p95": 163
+      },
+      "load_before": {
+        "at": "2026-10-06T04:58:24.993Z",
+        "load": [
+          4.96,
+          4.03,
+          4.23
+        ],
+        "cpus": 10,
+        "top": [
+          "101.4 Google Chrome Helper (Renderer)",
+          "38.9 Google Chrome",
+          "29.4 ctkd",
+          "11.5 coreaudiod",
+          "11.0 Codex (Renderer)",
+          "9.1 secd"
+        ]
+      }
+    },
+    "reconnect": {
+      "runs": [
+        {
+          "kind": "wifi_off",
+          "down_ms": 5000,
+          "back_to_live_ms": 71,
+          "load": [
+            4.46,
+            3.98,
+            4.21
+          ]
+        },
+        {
+          "kind": "wifi_off",
+          "down_ms": 5000,
+          "back_to_live_ms": 62,
+          "load": [
+            4.55,
+            4.02,
+            4.22
+          ]
+        },
+        {
+          "kind": "wifi_off",
+          "down_ms": 5000,
+          "back_to_live_ms": 64,
+          "load": [
+            4.27,
+            3.97,
+            4.2
+          ]
+        },
+        {
+          "kind": "wifi_off",
+          "down_ms": 5000,
+          "back_to_live_ms": 73,
+          "load": [
+            4.15,
+            3.95,
+            4.19
+          ]
+        },
+        {
+          "kind": "wifi_off",
+          "down_ms": 5000,
+          "back_to_live_ms": 59,
+          "load": [
+            4.14,
+            3.95,
+            4.19
+          ]
+        },
+        {
+          "kind": "airplane",
+          "down_ms": 60000,
+          "back_to_live_ms": 74,
+          "load": [
+            3.96,
+            3.92,
+            4.17
+          ]
+        },
+        {
+          "kind": "wifi_to_cellular",
+          "down_ms": 0,
+          "back_to_live_ms": 412,
+          "load": [
+            3.65,
+            3.83,
+            4.12
+          ]
+        },
+        {
+          "kind": "wifi_to_cellular",
+          "down_ms": 0,
+          "back_to_live_ms": 406,
+          "load": [
+            3.65,
+            3.83,
+            4.12
+          ]
+        },
+        {
+          "kind": "wifi_to_cellular",
+          "down_ms": 0,
+          "back_to_live_ms": 391,
+          "load": [
+            3.92,
+            3.88,
+            4.14
+          ]
+        },
+        {
+          "kind": "wifi_to_cellular",
+          "down_ms": 0,
+          "back_to_live_ms": 763,
+          "load": [
+            3.92,
+            3.88,
+            4.14
+          ]
+        },
+        {
+          "kind": "wifi_to_cellular",
+          "down_ms": 0,
+          "back_to_live_ms": 775,
+          "load": [
+            3.84,
+            3.86,
+            4.13
+          ]
+        },
+        {
+          "kind": "stall",
+          "down_ms": 10000,
+          "back_to_live_ms": 27,
+          "load": [
+            3.94,
+            3.88,
+            4.13
+          ]
+        },
+        {
+          "kind": "stall",
+          "down_ms": 10000,
+          "back_to_live_ms": 14,
+          "load": [
+            3.64,
+            3.82,
+            4.11
+          ]
+        },
+        {
+          "kind": "stall",
+          "down_ms": 10000,
+          "back_to_live_ms": 29,
+          "load": [
+            3.77,
+            3.84,
+            4.11
+          ]
+        },
+        {
+          "kind": "stall",
+          "down_ms": 10000,
+          "back_to_live_ms": 27,
+          "load": [
+            3.74,
+            3.83,
+            4.1
+          ]
+        },
+        {
+          "kind": "stall",
+          "down_ms": 10000,
+          "back_to_live_ms": 21,
+          "load": [
+            4.01,
+            3.89,
+            4.12
+          ]
+        },
+        {
+          "kind": "half_open",
+          "down_ms": 40000,
+          "back_to_live_ms": 53,
+          "half_open_detected_ms": 22177,
+          "half_open_redial_ms": 22178,
+          "load": [
+            4.08,
+            3.91,
+            4.12
+          ]
+        },
+        {
+          "kind": "half_open",
+          "down_ms": 40000,
+          "back_to_live_ms": 43,
+          "half_open_detected_ms": 21889,
+          "half_open_redial_ms": 21889,
+          "load": [
+            4.91,
+            4.16,
+            4.21
+          ]
+        }
+      ],
+      "back_to_live_p50": 64,
+      "back_to_live_p95": 763,
+      "back_to_live_max": 775,
+      "failed": 0,
+      "half_open_detected_ms": [
+        22177,
+        21889
+      ],
+      "load_before": {
+        "at": "2026-10-06T04:58:51.270Z",
+        "load": [
+          4.46,
+          3.98,
+          4.21
+        ],
+        "cpus": 10,
+        "top": [
+          "113.2 Google Chrome Helper (Renderer)",
+          "44.1 WindowServer",
+          "26.7 com.apple.Virtualization.VirtualMachine",
+          "18.2 mds_stores",
+          "13.4 corebrightnessd",
+          "10.5 Codex (Renderer)"
+        ]
+      }
+    }
+  },
+  "load_after": {
+    "at": "2026-10-06T05:03:08.067Z",
+    "load": [
+      5.36,
+      4.35,
+      4.27
+    ],
+    "cpus": 10,
+    "top": [
+      "109.9 Google Chrome Helper (Renderer)",
+      "69.1 replayd",
+      "58.8 mediaanalysisd",
+      "10.3 Codex (Renderer)",
+      "8.5 coreaudiod",
+      "5.3 WindowServer"
+    ]
+  }
+}

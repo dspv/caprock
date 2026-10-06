@@ -12,6 +12,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, isPairedDevice, type UpdateStatus } from '@/lib/api'
 import { Copyable } from './ui'
+import { everyWhileVisible } from '@/lib/visible'
 
 /** UpdateBanner's key: "not now" in either place hides that version in both. */
 export const DISMISS_KEY = 'caprock.update.dismissed'
@@ -40,8 +41,8 @@ export function AppUpdateNotice() {
     let alive = true
     const load = () => { api.update().then((s) => { if (alive) setSt(s) }).catch(() => { /* an older daemon: nothing to say */ }) }
     load()
-    const id = window.setInterval(load, POLL_MS)
-    return () => { alive = false; window.clearInterval(id) }
+    const stop = everyWhileVisible(load, POLL_MS)
+    return () => { alive = false; stop() }
   }, [])
   useEffect(() => {
     if (!open) return

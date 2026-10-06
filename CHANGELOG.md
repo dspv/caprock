@@ -94,6 +94,16 @@ Phase 3 (Delight) has no plan by design.
   a day, so a daemon left running for a week never heard of a release.
   Repeats are conditional (`If-None-Match`), so an unchanged release costs
   GitHub a 304 and no body. Still off until you turn it on.
+- **The app uses less CPU when idle, and stalls less on the first tab.**
+  With its window hidden the app checks the daemon every 5 s and the page
+  stops polling (the live connection stays); the visible, silent window
+  polls less and redraws its clocks only when they change. A terminal
+  warms up once after start, and replays are written in slices. Hidden, the
+  app now takes about 0.3% of a core (was 1%); the first tab of a launch
+  still holds the window for up to 70–130 ms (was 70–150 ms).
+- **A half-open connection is caught sooner.** After 20 s without a word
+  from the daemon the page pings it and redials if no answer comes within
+  2 s (about 22 s, was 25 s).
 
 ### Fixed
 

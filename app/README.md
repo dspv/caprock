@@ -49,7 +49,9 @@ daemon uses (`$CAPROCK_DATA_DIR`, else `<user config dir>/caprock`):
    `caprock up`. The choice
    is stored in `<data_dir>/app.json`; later launches start the same way
    without asking. The macOS app menu keeps the switch afterwards.
-4. It polls twice a second. A daemon gone for 1.2 s is shown as stopped (the
+4. It polls twice a second: `/healthz`, with `/v1/status` every 10 s while
+   `runtime.json` names the same daemon; every 5 s while the window is hidden,
+   and at once when it is shown again. A daemon gone for 1.2 s is shown as stopped (the
    bundled page, with **Start it now**); when one answers again, on any port,
    the window returns to the dashboard at the route it was on.
 
@@ -200,5 +202,9 @@ registers one, `-u` forgets it). A build with `--features snapshot` (never
 shipped) also reads `CAPROCK_APP_SNAPSHOT_DIR`: a name written to
 `<dir>/request` captures the window to `<dir>/<name>.png`, a script written to
 `<dir>/eval` runs in the page, and page loads are logged to `<dir>/loads.txt`.
+For the benchmarks ([bench/README.md](../bench/README.md)): `<dir>/init.js`,
+when present at launch, runs before every page's scripts and keeps the window
+painting while covered or off screen (WebKit's occlusion detection and App
+Nap off); an empty `<dir>/hide` hides the window and turns both back on.
 Afterwards: `caprock service uninstall` and `caprock down` with the same
 environment.

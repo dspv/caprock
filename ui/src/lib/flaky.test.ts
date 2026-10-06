@@ -11,7 +11,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TERM_V2_PROTOCOL, TermClient } from './termv2'
-import { DEAD_MS, onNetworkWake } from './reconnect'
+import { DEAD_MS, LIVENESS_CHECK_MS, PROBE_MS, SUSPECT_MS, onNetworkWake } from './reconnect'
 import { live } from './live'
 
 // ---------------------------------------------------------------------------
@@ -319,7 +319,7 @@ describe.each(['android', 'ios'] as const)('the terminal on a bad network (%s)',
     expect(resets).toBe(0)
   })
 
-  it('detects a half-open socket within 25 s and never stays "live" on it', async () => {
+  it('detects a half-open socket within about 23 s, with room under 25 s, and never stays "live" on it', async () => {
     const { server } = termServer()
     net.server = server
     const c = new TermClient({ url: 'ws://phone.test/v1/agents/s1/term', random: net.rand, callbacks: { write: (_d, done) => done(), reset: () => {}, state: () => {} } })
@@ -330,7 +330,9 @@ describe.each(['android', 'ios'] as const)('the terminal on a bad network (%s)',
     const lastHeard = c.heardAt
     while (c.state === 'live') await vi.advanceTimersByTimeAsync(100)
     expect(c.state).toBe('reconnecting')
-    expect(Date.now() - lastHeard).toBeLessThanOrEqual(DEAD_MS)
+    // Asked for a round trip at 20 s of silence, dropped when it does not come.
+    expect(Date.now() - lastHeard).toBeLessThanOrEqual(SUSPECT_MS + PROBE_MS + LIVENESS_CHECK_MS)
+    expect(Date.now() - lastHeard).toBeLessThan(DEAD_MS)
     // Live again over a new socket, with no call from outside.
     await vi.advanceTimersByTimeAsync(2_000)
     expect(c.state).toBe('live')

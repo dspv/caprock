@@ -18,6 +18,7 @@ import { branchLabel } from '@/lib/sessionLabels'
 import { dotOf, sessionTitle } from '@/lib/sidebar'
 import { href } from '@/lib/router'
 import { CloseIcon, ExternalIcon, StopIcon } from './AppIcons'
+import { everyWhileVisible } from '@/lib/visible'
 
 const DIFF_REFRESH_MS = 20_000
 const DIFF_FILES_SHOWN = 8
@@ -159,8 +160,8 @@ function Changes({ sessionId, editor, onReview }: { sessionId: string; editor?: 
       .then((d) => { if (alive) { setDiff(d); setError('') } })
       .catch((e: unknown) => { if (alive) setError(errText(e)) })
     void load()
-    const id = window.setInterval(load, DIFF_REFRESH_MS)
-    return () => { alive = false; window.clearInterval(id) }
+    const stop = everyWhileVisible(() => { void load() }, DIFF_REFRESH_MS)
+    return () => { alive = false; stop() }
   }, [sessionId])
   const files = diff?.files ?? []
   const add = files.reduce((n, f) => n + (f.additions ?? 0), 0)
