@@ -50,6 +50,9 @@ func TestAnOwnedPromptNotifiesWithinASecond(t *testing.T) {
 	term := attachTerm(t, base, id)
 	term.waitFor(t, "fake-claude ready")
 	defer term.close()
+	// The dialog the answer will read off the screen.
+	term.send(t, "ask\r")
+	term.waitFor(t, "asked")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()

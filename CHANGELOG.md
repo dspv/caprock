@@ -32,8 +32,24 @@ Phase 3 (Delight) has no plan by design.
   covers the terminal, and now says *↵ Enter in the terminal = Yes*; other
   tabs' prompts still reach you through the Inbox, the menu bar, the
   notification and the phone.
+- **Keys on the permission card.** `Y` or Enter is Yes, `A` the "don't ask
+  again" option when there is one, `N` or Esc is No, shown on the buttons.
+  They never fire while you are typing in the terminal or a field.
 
 ### Fixed
+
+- **"Yes, for the rest of this session" no longer rejects the call.** The
+  button typed `2`, assuming Claude Code's usual menu; in auto mode the
+  dialog is "1. Yes 2. No", so it answered No and the tool call was lost.
+  Every permission button now reads the menu on the session's screen and
+  presses the option whose text matches; when that option is not there, it
+  types nothing and the card says *that option is not on the prompt — answer
+  in the terminal*.
+- **A permission card answers the dialog it shows.** Each new permission
+  request (a subagent's too) replaced the last, so a card could name one
+  request while its key landed in another's dialog. Requests now queue the
+  way Claude Code queues them: the card shows the oldest, says how many more
+  wait, and a later request never overwrites an earlier one.
 
 - **Upgrading the Mac app now upgrades its daemon too.** An app started on a
   new release kept the daemon of its own from the old one running until that

@@ -1102,9 +1102,12 @@ export interface Permission {
   tool: string
   /** What it would do: the command, the file, the URL. */
   detail: string
-  /** The second option's label, when Claude Code offers one. */
+  /** The "don't ask again" option's label, when the hook suggests one. The
+   * daemon still checks the menu on the screen has it before typing (422). */
   always?: string
   since: string
+  /** How many more prompts wait behind this one (Claude Code shows the oldest). */
+  queued?: number
 }
 
 export type PermissionChoice = 'allow' | 'always' | 'deny'

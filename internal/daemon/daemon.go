@@ -1530,7 +1530,7 @@ func (a *agentAdapter) AnswerPermission(id, promptID, choice string) error {
 func (d *Daemon) observeHook(p hookd.Payload) {
 	d.mgr.ObserveHook(agents.HookSignal{
 		SessionID: p.SessionID, Event: p.HookEventName, AgentID: p.AgentID,
-		Tool: p.ToolName, Input: p.ToolInput, Suggestions: p.PermissionSuggestions,
+		Tool: p.ToolName, Input: p.ToolInput, ToolUseID: p.ToolUseID, Suggestions: p.PermissionSuggestions,
 	})
 }
 

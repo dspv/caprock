@@ -29,6 +29,9 @@ func (p *permAgents) AnswerPermission(_, id, choice string) error {
 	if p.pending == nil || p.pending.ID != id {
 		return agents.ErrNoPermission
 	}
+	if choice == "always" {
+		return agents.ErrNotOnPrompt // a two-option menu on the screen
+	}
 	p.answered = append(p.answered, choice)
 	p.pending = nil
 	return nil
@@ -57,6 +60,12 @@ func TestPermissionEndpoints(t *testing.T) {
 	}
 	if rr := do("POST", `{"choice":"allow"}`); rr.Code != http.StatusBadRequest {
 		t.Fatalf("no id: %d", rr.Code)
+	}
+	// The option is not on the menu the screen shows: 422 with the reason the
+	// card prints, and the prompt still waits.
+	if rr := do("POST", `{"id":"p1","choice":"always"}`); rr.Code != http.StatusUnprocessableEntity ||
+		!bytes.Contains(rr.Body.Bytes(), []byte("not on the prompt")) || fa.pending == nil {
+		t.Fatalf("not on the prompt: %d %s", rr.Code, rr.Body)
 	}
 	if rr := do("POST", `{"id":"p1","choice":"deny"}`); rr.Code != http.StatusNoContent || len(fa.answered) != 1 || fa.answered[0] != "deny" {
 		t.Fatalf("answer: %d %v", rr.Code, fa.answered)

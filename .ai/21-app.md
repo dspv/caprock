@@ -126,7 +126,11 @@ One window, three regions:
   ([ADR-035](08-decisions.md#adr-035--a-permission-prompt-is-answered-with-a-button-found-by-its-hook))
   is for a prompt you cannot see: it shows when the chat or a Changes view
   covers that terminal, says *↵ Enter in the terminal = Yes*, and never takes
-  the keyboard from the terminal. Sessions in other tabs or behind the
+  the keyboard from the terminal. With focus off the terminal, `Y`/Enter,
+  `A` and `N`/Esc press its buttons ([04-ui.md](04-ui.md), permission prompt
+  buttons). Whichever surface answers — card, notification, phone — the
+  daemon reads the menu on the session's screen first and types nothing when
+  the option is not on it. Sessions in other tabs or behind the
   window are reached through their badge, the Inbox, the menu bar popover,
   the notification and the phone, which keep their buttons.
 - **Status strip (bottom).** Connection state, plan limits (5-hour and 7-day),
