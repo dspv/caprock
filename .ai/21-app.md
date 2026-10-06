@@ -298,9 +298,9 @@ with WebKitGTK 4.1 (Tauri v2's floor on Linux).
 
 ## Performance budgets
 
-Budgets are targets the release must meet on all three OS, measured with the
-benchmark the macOS spike introduced (`bench/` on branch `spike/macos-app`,
-PR #180): an isolated daemon, the fake `claude` streaming at 0, 200 and 1000
+Budgets are targets the release must meet on all three OS, measured with
+`bench/` (WP-16), which grew from the benchmark the macOS spike introduced
+(`bench/` on branch `spike/macos-app`, PR #180): an isolated daemon, the fake `claude` streaming at 0, 200 and 1000
 lines a second, 200 samples per cell, the timing stopped when the frame is
 handed to the compositor. "Load" means that stream. Numbers without a source
 are budgets, not measurements (rule 6).
@@ -364,26 +364,77 @@ What it says:
 
 ### Budgets
 
-| Metric                                     | Budget             |
-| ------------------------------------------ | ------------------ |
-| Echo p50, any load to 1000 lines/s         | ≤ 12 ms            |
-| Echo p95, any load to 1000 lines/s         | ≤ 25 ms            |
-| Echo p95 in tab A while tab B floods       | ≤ 25 ms            |
-| Open a session, click to first echo, p50   | ≤ 200 ms           |
-| Switch to an open tab, to first paint      | ≤ 50 ms            |
-| Cold start to interactive window           | ≤ 1.5 s            |
-| Cold start to first echo in a restored tab | ≤ 2.5 s            |
-| Memory, all app processes, 1 tab           | ≤ 250 MB           |
-| Memory, all app processes, 10 tabs         | ≤ 450 MB           |
-| CPU, window visible, no output             | ≤ 1% of one core   |
-| CPU, window hidden                         | ≤ 0.2% of one core |
-| CPU, one visible tab at 1000 lines/s       | ≤ 25% of one core  |
-| UI long task during the benchmark          | none over 100 ms   |
-| Daemon restart to live terminal            | ≤ 2 s              |
-| Network back to live terminal (phone)      | ≤ 3 s median       |
-| Half-open connection detected              | ≤ 25 s             |
-| Disk written by the app, per day           | ≤ 10 MB            |
-| Download size, per OS                      | ≤ 60 MB            |
+Measured with `bench/` (WP-16, [bench/README.md](../bench/README.md)) on
+2026-10-06: Apple M1 Pro, 16 GB, macOS 27.0.1, one 1920×1080 display at
+100 Hz, three runs of `bench/run-macos.sh` at master `21c5633` plus this
+harness; raw JSON and the per-run table in `bench/results-2026-10-06/`. Other
+agents were building on the machine: the 1-minute load average was 3–6 in
+run 2 and up to 38–47 during runs 1 and 3's echo and open phases (10 cores).
+A result is "pass" only when every run met the budget. Windows and Linux are
+scripted (`run-windows.ps1`, `run-linux.sh`) and not yet run.
+
+| Metric                                     | Budget             | macOS, 3 runs              | Result            |
+| ------------------------------------------ | ------------------ | -------------------------- | ----------------- |
+| Echo p50, any load to 1000 lines/s         | ≤ 12 ms            | 13 / 11 / 15 ms            | mixed (see below) |
+| Echo p95, any load to 1000 lines/s         | ≤ 25 ms            | 25 / 19 / 27 ms            | mixed (see below) |
+| Echo p95 in tab A while tab B floods       | ≤ 25 ms            | 17 / 18 / 17 ms            | pass              |
+| Open a session, click to first echo, p50   | ≤ 200 ms           | 114 / 113 / 115 ms         | pass              |
+| Switch to an open tab, to first paint      | ≤ 50 ms            | 39 / 38 / 40 ms (p50)      | pass              |
+| Cold start to interactive window           | ≤ 1.5 s            | 1.09 / 1.07 / 1.12 s (p50) | pass              |
+| Cold start to first echo in a restored tab | ≤ 2.5 s            | 1.41 / 1.43 / 1.43 s (p50) | pass              |
+| Memory, all app processes, 1 tab           | ≤ 250 MB           | 319 / 288 / 347 MB RSS     | **fail**          |
+| Memory, all app processes, 10 tabs         | ≤ 450 MB           | 409 / 402 / 255 MB RSS     | pass              |
+| CPU, window visible, no output             | ≤ 1% of one core   | 1.1 / 0.93 / 0.95 %        | mixed             |
+| CPU, window hidden                         | ≤ 0.2% of one core | 1.0 / 0.96 / 1.3 %         | **fail**          |
+| CPU, one visible tab at 1000 lines/s       | ≤ 25% of one core  | 17.7 / 17.5 / 18.4 %       | pass              |
+| UI long task during the benchmark          | none over 100 ms   | 154 / 71 / 146 ms longest  | **fail** (2 of 3) |
+| Daemon restart to live terminal            | ≤ 2 s              | 476 / 413 / 452 ms         | pass              |
+| Network back to live terminal (phone)      | ≤ 3 s median       | 60 / 59 / 58 ms            | pass              |
+| Half-open connection detected              | ≤ 25 s             | 24.5 / 25.0 / 24.4 s       | pass, no margin   |
+| Disk written by the app, per day           | ≤ 10 MB            | 0 MB idle; 1.3 MB at start | pass              |
+| Download size, per OS                      | ≤ 60 MB            | 17.4 MB (universal .dmg)   | pass (macOS)      |
+
+What the failures are, and the fixes proposed (none applied here; each
+needs its own package and a re-run):
+
+- **Echo** passes on the quiet run (p50 11 ms, p95 17–19 ms at every load)
+  and misses by 1–3 ms on the runs whose echo phase had a load average of
+  38–47. The socket leg is 2 ms throughout; the rest is the page's frame.
+  No fix proposed until a quiet re-run misses; if one does, the first thing
+  to try is keeping the WebGL renderer loaded while typing (today it waits
+  for 1.5 s without input).
+- **Memory, 1 tab:** 288–347 MB as resident memory summed over the app's
+  processes, the spike's measure; the physical footprint (Activity Monitor's
+  "Memory") is 197–199 MB in every run. RSS counts the WebKit and AppKit
+  pages the app shares with every other process once per process; the app
+  binary alone is 93–99 MB RSS against 30 MB footprint. Proposal (owner to
+  confirm): state the memory rows in physical footprint, under which 1 tab
+  (198 MB) and 10 tabs (303–315 MB) pass with room. If the budget stays in
+  RSS: load only what the workspace needs at start (the largest chunks
+  are `editors`, 553 KB, and the dashboard's `App`, 321 KB; which of them the
+  workspace loads at start was not measured) and lower the terminal's 10,000-line
+  scrollback for tabs not in front.
+- **CPU, hidden:** about 1% where the budget is 0.2%, in every run, split
+  between the shell (0.43%: its supervisor asks the daemon twice a second,
+  and in this snapshot build a 200 ms file watch), the page (0.2–0.5%) and
+  WebKit's network process (0.23%: the live socket, its pings and the
+  dashboard's polling). Proposal: while the window is hidden, the
+  supervisor polls every 5 s (a page that calls `daemon_status` already
+  owns the stopped state), and the page stops its API polling and keeps only
+  `/v1/live` for notifications (terminals already let go after 30 s). The
+  visible-and-silent row (0.93–1.1%) has the same causes.
+- **Long task:** the only stalls over 100 ms (71–154 ms) are in the second
+  after the first tab of a launch opens: xterm and its 4000-line replay on a
+  cold page. Proposal: warm xterm (fonts, a hidden instance) while the
+  workspace is idle after start, and write the replay in chunks.
+- **Half-open** detection is 24–25 s against 25 s: it is `DEAD_MS` (25 s)
+  minus one check interval, so it passes by construction with no margin.
+
+The phone's chat view opens in 46–47 ms p50 at a 10 ms round trip and
+147–162 ms at 120 ms (no budget row). The reference-app runs against Orca
+1.4.220 (its Info.plist) are scripted (`bench/reference-orca.mjs`) and not
+run: Orca held the owner's live sessions; the script refuses unless he allows
+it and Orca is quit.
 
 The echo budget is the web figure's p50 with headroom, not the native one: the
 app renders with xterm.js like the web, and the spike showed echo latency is

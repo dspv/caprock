@@ -200,5 +200,9 @@ registers one, `-u` forgets it). A build with `--features snapshot` (never
 shipped) also reads `CAPROCK_APP_SNAPSHOT_DIR`: a name written to
 `<dir>/request` captures the window to `<dir>/<name>.png`, a script written to
 `<dir>/eval` runs in the page, and page loads are logged to `<dir>/loads.txt`.
+For the benchmarks ([bench/README.md](../bench/README.md)): `<dir>/init.js`,
+when present at launch, runs before every page's scripts and keeps the window
+painting while covered or off screen (WebKit's occlusion detection and App
+Nap off); an empty `<dir>/hide` hides the window and turns both back on.
 Afterwards: `caprock service uninstall` and `caprock down` with the same
 environment.

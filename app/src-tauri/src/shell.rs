@@ -116,6 +116,15 @@ pub fn build(
                 let _ = w.show();
             }
         });
+    // `--features snapshot` only: bench/ (WP-16) runs its page hook before
+    // the page's own scripts, from `$CAPROCK_APP_SNAPSHOT_DIR/init.js`.
+    #[cfg(feature = "snapshot")]
+    let b = match std::env::var_os("CAPROCK_APP_SNAPSHOT_DIR")
+        .and_then(|d| std::fs::read_to_string(PathBuf::from(d).join("init.js")).ok())
+    {
+        Some(js) => b.initialization_script(js),
+        None => b,
+    };
     #[cfg(target_os = "macos")]
     let b = {
         use tauri::utils::config::WindowEffectsConfig;

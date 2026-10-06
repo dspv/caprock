@@ -192,11 +192,17 @@ tests that pass by skipping the interesting case.
 
 ## What runs, and when
 
-| Suite                      | Command                        | Where                      |
-| -------------------------- | ------------------------------ | -------------------------- |
-| Unit                       | `go test ./...`                | `make test`, CI on 3 OSes  |
-| Race detector              | `go test -race ./...`          | CI                         |
-| Smoke (real daemon)        | `go test -tags smoke ./...`    | `make smoke`, `make check` |
-| PTY spike (real processes) | `go test -tags ptyspike ./...` | CI, informational job      |
-| UI                         | `npm test` in `ui/`            | `make test`, CI            |
-| Everything (the gate)      | `make check`                   | Locally before every push  |
+| Suite                      | Command                        | Where                              |
+| -------------------------- | ------------------------------ | ---------------------------------- |
+| Unit                       | `go test ./...`                | `make test`, CI on 3 OSes          |
+| Race detector              | `go test -race ./...`          | CI                                 |
+| Smoke (real daemon)        | `go test -tags smoke ./...`    | `make smoke`, `make check`         |
+| PTY spike (real processes) | `go test -tags ptyspike ./...` | CI, informational job              |
+| UI                         | `npm test` in `ui/`            | `make test`, CI                    |
+| Everything (the gate)      | `make check`                   | Locally before every push          |
+| Performance budgets        | `bench/run-macos.sh` (per OS)  | By hand, on a quiet machine; WP-16 |
+
+The budgets of [21-app.md § Budgets](21-app.md#budgets) are measured by
+`bench/` ([bench/README.md](../bench/README.md)), not by CI: CI runners are
+too noisy for latency. A package that touches the terminal, live or render
+path runs it and stays within every budget (definition of done, item 7).

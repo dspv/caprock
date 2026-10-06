@@ -12,6 +12,7 @@
 //! starts from an inactive app whose windows are behind the one in front.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
@@ -27,6 +28,9 @@ pub fn watch(app: AppHandle) {
     let Some(dir) = std::env::var_os("CAPROCK_APP_SNAPSHOT_DIR").map(PathBuf::from) else {
         return;
     };
+    if dir.join("init.js").exists() {
+        keep_painting(&app);
+    }
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_millis(200));
         if let Ok(js) = std::fs::read_to_string(dir.join("eval")) {
@@ -54,6 +58,15 @@ pub fn watch(app: AppHandle) {
                 });
             } else {
                 popover(&app, what.trim() == "show", dir.join("popover.json"));
+            }
+        }
+        // bench/ (WP-16): the window hidden, for the hidden-window CPU row,
+        // with WebKit's occlusion detection back on as in a shipped build.
+        if std::fs::remove_file(dir.join("hide")).is_ok() {
+            if let Some(w) = app.get_webview_window(crate::shell::MAIN) {
+                occlusion_detection(&w, true);
+                end_activity();
+                let _ = w.hide();
             }
         }
         let req = dir.join("request");
@@ -112,6 +125,65 @@ fn popover(app: &AppHandle, show: bool, out: PathBuf) {
             });
             let _ = std::fs::write(&out, body.to_string());
         });
+    });
+}
+
+/// bench/ (WP-16): a window that is off screen or covered keeps painting on
+/// time, as Chrome's `--disable-backgrounding-occluded-windows` does, and App
+/// Nap stays off. WebKit SPI, as in the Tauri spike's bench.
+fn keep_painting(app: &AppHandle) {
+    use objc2::runtime::AnyObject;
+    use objc2::{class, msg_send};
+    if let Some(w) = app.get_webview_window(crate::shell::MAIN) {
+        occlusion_detection(&w, false);
+    }
+    // NSActivityUserInitiatedAllowingIdleSystemSleep | NSActivityLatencyCritical
+    const OPTIONS: u64 = 0x00EF_FFFF | 0xFF_0000_0000;
+    let reason = objc2_foundation::NSString::from_str("Caprock benchmark");
+    // SAFETY: NSProcessInfo's documented API; the token is retained for the
+    // life of the process, which keeps the activity open.
+    unsafe {
+        let info: *mut AnyObject = msg_send![class!(NSProcessInfo), processInfo];
+        let token: *mut AnyObject =
+            msg_send![info, beginActivityWithOptions: OPTIONS, reason: &*reason];
+        let _: *mut AnyObject = msg_send![token, retain];
+        ACTIVITY.store(token as usize, Ordering::Relaxed);
+    }
+}
+
+/// The activity `keep_painting` began; ended before the hidden-window row,
+/// so App Nap treats the app as a shipped build.
+static ACTIVITY: AtomicUsize = AtomicUsize::new(0);
+
+fn end_activity() {
+    use objc2::runtime::AnyObject;
+    use objc2::{class, msg_send};
+    let token = ACTIVITY.swap(0, Ordering::Relaxed) as *mut AnyObject;
+    if token.is_null() {
+        return;
+    }
+    // SAFETY: the token began in keep_painting and is still retained.
+    unsafe {
+        let info: *mut AnyObject = msg_send![class!(NSProcessInfo), processInfo];
+        let _: () = msg_send![info, endActivity: token];
+    }
+}
+
+/// WebKit SPI `_setWindowOcclusionDetectionEnabled:`, when this WebKit has it.
+fn occlusion_detection(w: &tauri::WebviewWindow, enabled: bool) {
+    use objc2::runtime::AnyObject;
+    use objc2::{msg_send, sel};
+    let _ = w.with_webview(move |pw| {
+        let v = pw.inner() as *mut AnyObject;
+        // SAFETY: Tauri hands out its live WKWebView on the main thread; the
+        // selector is checked before it is sent.
+        unsafe {
+            let ok: bool =
+                msg_send![v, respondsToSelector: sel!(_setWindowOcclusionDetectionEnabled:)];
+            if ok {
+                let _: () = msg_send![v, _setWindowOcclusionDetectionEnabled: enabled];
+            }
+        }
     });
 }
 

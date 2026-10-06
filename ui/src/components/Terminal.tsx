@@ -10,6 +10,7 @@ import { TermClient, type TermState } from '@/lib/termv2'
 import { onNetworkWake, type LinkStatus } from '@/lib/reconnect'
 import { ConnectionState } from './ConnectionState'
 import { attachTerminalInput } from '@/lib/xtermInput'
+import { registerBenchTerminal } from '@/lib/benchhook'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
@@ -163,6 +164,7 @@ export function TerminalView({
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(host.current)
+    const unbench = registerBenchTerminal(sessionId, term)
 
     try { fit.fit() } catch { /* not yet laid out */ }
     // Input first: the keyboard goes to the terminal the moment it exists.
@@ -366,7 +368,7 @@ export function TerminalView({
       unwake()
       sendRef.current = () => {}
       attachRef.current = async () => {}
-      ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); client.dispose(); term.dispose()
+      ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); client.dispose(); unbench(); term.dispose()
     }
   }, [sessionId, owned, attempt, phone])
   if (!owned && detached) {

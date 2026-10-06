@@ -32,6 +32,7 @@ import { TermClient, type TermState } from '@/lib/termv2'
 import { attachTerminalInput } from '@/lib/xtermInput'
 import { FIND_EVENT, matchAppShortcut } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
+import { registerBenchTerminal } from '@/lib/benchhook'
 import { WEBGL_QUIET_MS } from './Terminal'
 import { NewPill } from './NewPill'
 import { TerminalFind, type TermSearch } from './TerminalFind'
@@ -105,6 +106,7 @@ export function TerminalPane({
     const search = new SearchAddon({ highlightLimit: 1000 })
     term.loadAddon(search)
     term.open(el)
+    const unbench = registerBenchTerminal(sessionId, term)
     const resultsSub = search.onDidChangeResults((r) => setResults({ index: r.resultIndex, count: r.resultCount }))
     const decorations = () => ({ decorations: searchColors(terminalTheme(prefs.theme)) })
     searchRef.current = {
@@ -314,6 +316,7 @@ export function TerminalPane({
       parsedSub.dispose()
       scrollSub.dispose()
       conn.dispose()
+      unbench()
       term.dispose()
     }
   }, [sessionId])

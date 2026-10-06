@@ -72,6 +72,25 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-06 — Benchmarks (WP-16)
+
+`bench/` measures every row of [21-app.md § Budgets](21-app.md#budgets) with
+one command per OS (`bench/run-macos.sh`; `run-linux.sh` and
+`run-windows.ps1` written, not yet run), against a throwaway daemon with the
+fake `claude`. The app is a `--features snapshot` copy under its own bundle id,
+launched in the background and placed off screen; a page hook run before the
+page's scripts types through the page and times paints, and the terminals
+register with it only when it is present (`ui/src/lib/benchhook.ts`). The
+phone harness drives headless Chrome at 390 px through a TCP proxy that drops,
+stalls and slows the network. Ported from the Tauri spike's `bench/`.
+Three runs on the M1 Pro (2026-10-06, `bench/results-2026-10-06/`): 12 rows
+pass, echo p50/p95 pass on the quiet run and miss by 1–3 ms under a load
+average of 38–47, CPU with the window visible and silent sits at the limit
+(0.93–1.1%), and three fail — memory with one tab in RSS (288–347 MB;
+the footprint is 198 MB), CPU with the window hidden (about 1% against
+0.2%), and one stall of 71–154 ms when the first tab of a launch opens. Fixes
+are proposed in 21-app.md, none applied. Orca (1.4.220) runs are scripted
+and not run.
 ### 2026-10-06 — GitHub: connect, clone, pull requests, checks and reviews (WP-19, F14)
 
 Built overnight without the owner; the product decisions are listed in the
