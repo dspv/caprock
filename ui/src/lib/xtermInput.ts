@@ -45,6 +45,37 @@ import { api, errText } from '@/lib/api'
 // Code reads as submit.
 export const NEWLINE = '\x1b\r'
 
+/**
+ * Files dropped on the desktop app's window (app/src-tauri/src/shell.rs).
+ *
+ * In the app a file dragged from Finder, Explorer or a file manager never
+ * reaches the page as an HTML5 drop: the shell's native handler takes it, so
+ * it has the file's real path, and hands the page that path and the point it
+ * landed on as this event. The terminal under that point types the path
+ * quoted, as a terminal does — nothing is uploaded, any file or folder goes,
+ * and what Claude reads or edits is the original rather than a copy. In a
+ * browser this event never fires and a drop uploads, as below.
+ * .ai/21-app.md § Dropping a file.
+ */
+export const DROP_PATHS_EVENT = 'caprock:drop-paths'
+
+export interface DroppedPaths {
+  paths: string[]
+  /** Where it landed, in CSS pixels from the viewport's top left. */
+  x: number
+  y: number
+}
+
+/**
+ * A path as it is typed into a session: quoted, as the paste path is, so a
+ * space is not two arguments. Not with JSON.stringify, which doubles every
+ * backslash in a Windows path; a double quote — legal in a macOS or Linux
+ * file name, never in a Windows one — is escaped.
+ */
+export function quotePath(p: string): string {
+  return `"${p.replace(/"/g, '\\"')}"`
+}
+
 export interface TerminalInputOptions {
   /** Keys the app owns (its shortcuts): xterm ignores them and they bubble to the window. */
   isAppKey?: (e: KeyboardEvent) => boolean
@@ -183,7 +214,7 @@ export function attachTerminalInput(
       const { path } = await api.paste({ name: file.name, type: file.type, data: btoa(bin) })
       // Typed, not pasted: the user is about to talk about this file, and a
       // path in the prompt is what Claude Code reads.
-      send(`"${path}" `)
+      send(`${quotePath(path)} `)
     } catch (err) {
       // The daemon's refusal says what it accepts; errText keeps that part.
       const what = file.name ? `${file.name}: ` : ''
@@ -220,17 +251,34 @@ export function attachTerminalInput(
   }
   // preventDefault on dragover, or the browser navigates away to the file.
   const onDragOver = (e: DragEvent) => { e.preventDefault() }
+  // The app's native drop: paths, not bytes. Every terminal hears it; the
+  // one the point is inside types it. A hidden tab has no box and so never
+  // matches. Queued with the uploads, so the order holds across both.
+  const onDroppedPaths = (e: Event) => {
+    const d = (e as CustomEvent<DroppedPaths | undefined>).detail
+    if (!d || !Array.isArray(d.paths) || d.paths.length === 0) return
+    const r = el.getBoundingClientRect()
+    if (r.width === 0 || r.height === 0) return
+    if (d.x < r.left || d.x >= r.right || d.y < r.top || d.y >= r.bottom) return
+    const paths = d.paths.filter((p): p is string => typeof p === 'string' && p !== '')
+    queue = queue.then(() => {
+      for (const p of paths) send(`${quotePath(p)} `)
+    })
+    term.focus()
+  }
   // Capture phase: xterm's textarea handler stops the paste from bubbling,
   // so a listener on the way up never saw a keyboard paste at all.
   el.addEventListener('paste', onPaste, true)
   el.addEventListener('drop', onDrop)
   el.addEventListener('dragover', onDragOver)
+  window.addEventListener(DROP_PATHS_EVENT, onDroppedPaths)
   return {
     sendFiles,
     dispose: () => {
       el.removeEventListener('paste', onPaste, true)
       el.removeEventListener('drop', onDrop)
       el.removeEventListener('dragover', onDragOver)
+      window.removeEventListener(DROP_PATHS_EVENT, onDroppedPaths)
     },
   }
 }

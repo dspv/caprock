@@ -18,6 +18,9 @@ use tauri_plugin_opener::OpenerExt;
 
 pub const MAIN: &str = "main";
 
+/// The main window has finished loading a page at least once.
+static MAIN_LOADED: AtomicBool = AtomicBool::new(false);
+
 /// The dashboard's app entry point: the UI turns its app layout on for the
 /// `?app=1` flag and opens the workspace at `#/app` (`ui/src/lib/appmode.ts`).
 pub const APP_ROUTE: &str = "/?app=1#/app";
@@ -110,6 +113,7 @@ pub fn build(
             }
             #[cfg(all(feature = "snapshot", target_os = "macos"))]
             crate::snapshot::loaded(p.url());
+            MAIN_LOADED.store(true, Ordering::Relaxed);
             // Shown once, when the first page is ready (no white flash); a
             // later reload must not pull the window forward.
             if !shown.swap(true, Ordering::Relaxed) {
@@ -138,7 +142,23 @@ pub fn build(
                 ..Default::default()
             })
     };
+    // The native drag-and-drop handler stays on (Tauri's default): a file
+    // dropped from Finder, Explorer or a file manager arrives here with its
+    // real path, which the terminal under the pointer types quoted — as a
+    // terminal does — instead of the page uploading a copy of the bytes.
+    // The cost is that the page sees no HTML5 drag events at all, so nothing
+    // in it may rely on them (the tab strip reorders by pointer events).
+    // .ai/21-app.md § Dropping a file.
     let w = b.build()?;
+    let dropped = w.clone();
+    w.on_window_event(move |e| {
+        if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, position }) = e {
+            let scale = dropped.scale_factor().unwrap_or(1.0);
+            if let Some(js) = drop_script(paths, (position.x, position.y), scale) {
+                let _ = dropped.eval(js);
+            }
+        }
+    });
     // macOS: closing the window hides it; the app stays in the menu bar
     // with its hotkey and badge (Cmd+Q quits). Elsewhere closing quits, as
     // a tray may not be shown at all (GNOME without an indicator extension).
@@ -161,6 +181,30 @@ pub fn build(
         }
     });
     Ok(w)
+}
+
+/// The event the page's terminals listen for (`ui/src/lib/xtermInput.ts`).
+pub const DROP_EVENT: &str = "caprock:drop-paths";
+
+/// The script that hands dropped files to the page: their paths and where
+/// they landed, in CSS pixels. Wry reports the point in the webview's own
+/// coordinates, which are points on macOS and Linux but device pixels on
+/// Windows, so only Windows is divided by the scale factor. A path that is
+/// not UTF-8 cannot be typed and is left out; `None` when nothing is left.
+pub fn drop_script(paths: &[PathBuf], (x, y): (f64, f64), scale: f64) -> Option<String> {
+    let paths: Vec<&str> = paths.iter().filter_map(|p| p.to_str()).collect();
+    if paths.is_empty() {
+        return None;
+    }
+    let scale = if cfg!(windows) && scale > 0.0 {
+        scale
+    } else {
+        1.0
+    };
+    let detail = serde_json::json!({ "paths": paths, "x": x / scale, "y": y / scale });
+    Some(format!(
+        "window.dispatchEvent(new CustomEvent('{DROP_EVENT}', {{ detail: {detail} }}))"
+    ))
 }
 
 fn open_external(app: &AppHandle, url: &Url) {
@@ -272,6 +316,18 @@ pub fn monitor(app: AppHandle, sup: Arc<Supervisor>) {
                 }
             };
             let state = sup.observe(found, absent_for);
+            // macOS: a Homebrew daemon moves onto the app's own (ADR-040).
+            // Not before the window's first page has committed: a WebView
+            // whose first load is cut off by the switch has no URL, and wry
+            // unwraps it on the main thread when asked.
+            if matches!(
+                state,
+                State::Connected { ours: false, .. } | State::TooOld { ours: false, .. }
+            ) && MAIN_LOADED.load(Ordering::Relaxed)
+                && sup.should_adopt(|| sup.bundled_version())
+            {
+                sup.spawn_adopt();
+            }
             let connected = matches!(state, State::Connected { .. });
             if was_connected && !connected {
                 crate::tray::daemon_gone(&app);
@@ -349,4 +405,62 @@ pub fn fallback_url() -> Url {
     format!("{base}index.html")
         .parse()
         .expect("valid fallback URL")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn detail(js: &str) -> serde_json::Value {
+        let start = js.find("detail: ").expect("detail") + "detail: ".len();
+        let end = js.rfind(" }))").expect("end");
+        serde_json::from_str(&js[start..end]).expect("json")
+    }
+
+    #[test]
+    fn a_drop_carries_every_path_in_order_and_where_it_landed() {
+        let js = drop_script(
+            &[
+                PathBuf::from("/Users/me/My Notes.md"),
+                PathBuf::from("/tmp/a\"b.png"),
+            ],
+            (120.0, 48.0),
+            1.0,
+        )
+        .expect("script");
+        assert!(js.starts_with("window.dispatchEvent(new CustomEvent('caprock:drop-paths'"));
+        let d = detail(&js);
+        assert_eq!(
+            d["paths"],
+            serde_json::json!(["/Users/me/My Notes.md", "/tmp/a\"b.png"])
+        );
+        assert_eq!(d["x"], 120.0);
+        assert_eq!(d["y"], 48.0);
+    }
+
+    #[test]
+    fn a_drop_with_nothing_typeable_sends_nothing() {
+        assert!(drop_script(&[], (1.0, 1.0), 1.0).is_none());
+    }
+
+    #[test]
+    fn only_windows_reports_the_point_in_device_pixels() {
+        let d = detail(&drop_script(&[PathBuf::from("/x")], (200.0, 100.0), 2.0).unwrap());
+        let want = if cfg!(windows) {
+            (100.0, 50.0)
+        } else {
+            (200.0, 100.0)
+        };
+        assert_eq!((d["x"].as_f64().unwrap(), d["y"].as_f64().unwrap()), want);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_path_that_is_not_utf8_is_left_out() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+        let bad = PathBuf::from(OsStr::from_bytes(b"/tmp/\xff"));
+        let d = detail(&drop_script(&[bad, PathBuf::from("/ok")], (0.0, 0.0), 1.0).unwrap());
+        assert_eq!(d["paths"], serde_json::json!(["/ok"]));
+    }
 }

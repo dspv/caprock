@@ -168,9 +168,10 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
 - **F01 — Window, daemon discovery, api_level.** The app reads
   `<data_dir>/runtime.json`, checks `GET /v1/status` for `api_level`, and loads
   the dashboard from the daemon's loopback URL. A daemon already running (a
-  Homebrew or Scoop install, or the service) is used as is. If none runs, the
-  app starts the `caprock` binary it bundles, detached, so sessions keep
-  running when the window closes. If the daemon's `api_level` is below the
+  Homebrew or Scoop install, or the service) is used as is — except on
+  macOS, where a Homebrew formula's daemon is moved onto the app's own once
+  (ADR-040). If none runs, the app starts the `caprock` binary it bundles,
+  detached, so sessions keep running when the window closes. If the daemon's `api_level` is below the
   app's minimum, the window says which command upgrades it (Caprock never
   updates itself). If the daemon stops, the window shows a banner within 2
   seconds, keeps the open terminals' last screen, and reconnects by itself.
@@ -493,7 +494,9 @@ one lean terminal; they stay below Orca (420–541 MB idle) and a Chrome tab.
   `update_daemon` and `set_background` (built in WP-02; the others arrive
   with their work packages).
 - **The daemon supervisor** reads `runtime.json`, starts the bundled binary
-  when no daemon answers, and never stops a daemon it did not start. Quitting
+  when no daemon answers, and never stops a daemon it did not start — save
+  one case on macOS: a Homebrew formula's daemon, moved onto the app's own
+  once when that is not older (ADR-040). Quitting
   the app leaves the daemon and every session running. It runs its copy from
   `<data_dir>/bin/caprock`, never from inside the app bundle: an unsigned app
   can run translocated from a read-only path, and a login service must
@@ -616,6 +619,42 @@ there, and worktrees as first-class places to work.
   restart.
 - Rule 7 holds: Caprock started the shell. A shell from a controller phone is
   P1 and needs its own ADR-034 amendment.
+
+## Dropping a file
+
+A file dragged from Finder, Explorer or a file manager onto a terminal in the
+app types the file's **real path**, quoted, at the prompt — what a terminal
+does. In a browser tab the same drop still uploads the bytes to
+`POST /v1/paste` and types the path of the copy, because a browser never
+tells a page where a file lives.
+
+- **How.** Tauri's native drag-and-drop handler stays on (its default) in
+  the main window. `shell.rs` hears `WindowEvent::DragDrop(Drop)` with the
+  paths and the point, and dispatches `caprock:drop-paths` into the page
+  (`{paths, x, y}` in CSS pixels; wry reports device pixels on Windows only,
+  so only Windows is divided by the scale factor; a non-UTF-8 path is left
+  out). Every terminal listens (`ui/src/lib/xtermInput.ts`); the one whose
+  box holds the point types each path with `quotePath` (double quotes, an
+  inner `"` escaped, Windows backslashes kept), queued behind any upload so
+  the order holds.
+- **Why not turn the handler off.** With it off the page gets an HTML5 drop
+  and the upload path works unchanged, which is the smaller fix. It was the
+  worse behaviour: the upload copies the bytes into the data directory, so
+  Claude reads and edits a copy rather than the file the user meant; the
+  daemon refuses types outside its allowlist (an `.exe`, a `.zip`) and every
+  folder; large files travel through base64. A terminal types the path, and
+  the app is terminal-first.
+- **The cost.** With the native handler on, the page sees no HTML5 drag
+  events on any OS — the macOS handler answers every drag without calling
+  WebKit, and on Windows the handler replaces WebView2's own drop target.
+  Nothing in the app may rely on `draggable`/`dragover`/`drop`: the tab
+  strip reorders by pointer events (`TerminalTabs.tsx`). A drop outside a
+  terminal does nothing, and the window never navigates to a dropped file.
+- **The popover** shows no terminal and keeps the default handler, so a
+  drop there does nothing.
+- **Verified** by unit tests on both halves (`shell.rs` script, the
+  terminal's routing and quoting). A real Finder drag needs a person: OS
+  automation is not used from tests.
 
 ## Notifications
 
@@ -895,6 +934,30 @@ guide [docs/app.md § GitHub](../docs/app.md#github).
   binaries, Tauri's bundler for the app) and carry the daemon they were built
   with.
 
+## Privacy prompts on macOS
+
+macOS asks before a program reads Desktop, Documents, Downloads and a few
+other places, and remembers the answer per program and per code signature
+(ADR-040). What follows from Caprock being ad-hoc signed:
+
+- **The daemon is the program that asks**, for itself and for every session
+  it runs: a pty-host and the agent under it are attributed to the daemon
+  that launchd started. An agent reading `~/Downloads` asks as "caprock".
+- **Every release asks again.** An ad-hoc signature's designated
+  requirement is its cdhash, so each build is new code to TCC.
+- **One path, one entry.** The app runs its daemon from
+  `<data_dir>/bin/caprock` and moves a Homebrew daemon (a new Cellar path per
+  release) onto it, so a new release replaces the entry instead of adding
+  one. Sessions that were already running keep the old binary until they end.
+- **Isolated daemons stay out.** Tests, stands and previews run with a
+  temporary HOME; such a daemon refuses the account's Desktop, Documents and
+  Downloads (`internal/tcc`), and `bench/stand.sh` refuses to live there.
+- **With a Developer ID** (the Apple account): one entry that survives
+  updates, and, with the daemon as an `SMAppService` helper of the app, the
+  app's name and icon — to verify on the first signed build.
+
+The user-facing note is in [docs/app.md](../docs/app.md#macos-privacy-prompts).
+
 ## Telemetry
 
 None. No analytics, no crash upload, no usage pings. A crash or a stall the
@@ -922,8 +985,8 @@ user turns it on.
 - **Notification actions differ per OS.** *Mitigation:* the fallback is a
   click that opens the prompt; the feature is defined by that floor.
 - **Two daemons, or version skew** between the bundled binary and a Homebrew
-  one. *Mitigation:* the running daemon wins; api_level gates features; one
-  data directory.
+  one. *Mitigation:* the running daemon wins (on macOS the app's own, unless
+  it is older: ADR-040); api_level gates features; one data directory.
 - **Rust creep.** *Mitigation:* the line budget and principle 1; review
   rejects logic that belongs in Go.
 - **Unsigned installs deter people.** *Mitigation:* the decisions on the

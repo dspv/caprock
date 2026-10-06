@@ -49,7 +49,10 @@ others. Installing it: [install-app.md](install-app.md).
 - **Terminal.** A real terminal for every session Caprock started and every
   shell, and it keeps running when the app or the daemon restarts. Scrolled
   up, new output never moves what you are reading; a "↓ N new lines" pill
-  takes you back down.
+  takes you back down. Drop a file or folder on it from Finder, Explorer or
+  your file manager and its path is typed at the prompt, quoted, as in any
+  terminal; the agent works on that file, not a copy. Drag a tab along the
+  strip to reorder it.
 - **Chat.** An agent tab switches between its terminal and its chat with the
   chat button in the tab strip: your prompts, what the agent wrote, and each
   tool call on one line that opens. The field under it types into the
@@ -245,6 +248,32 @@ and there is no secret on anyone's machine.
 Settings → GitHub then shows **Sign in with GitHub**. The app asks for
 `repo` and `read:org`. An organization with OAuth app restrictions must
 approve the app before its private repositories show up.
+
+## macOS privacy prompts
+
+macOS asks before a program reads your Desktop, Documents or Downloads
+folder (System Settings → Privacy & Security → Files and Folders). Caprock
+asks when a session it runs — Claude Code, Codex, a shell — touches one of
+them: macOS counts what runs inside Caprock as Caprock, the way it counts
+what runs in Terminal as Terminal.
+
+- **What to allow.** Allow the folders your projects live in, or the ones
+  you ask an agent to read. Saying no does not break Caprock; that session
+  just cannot read that folder.
+- **Why it asks again after an update.** Caprock is not yet signed with an
+  Apple Developer ID, so to macOS each release is a new program. It asks
+  once per release, per folder.
+- **Why there are several "caprock" entries without an icon.** Each entry
+  is a `caprock` binary at a different place: older Homebrew releases
+  (Homebrew keeps each version at its own path), the app's daemon, and
+  development builds. The app now runs one daemon from one place
+  ([details](install-app.md#the-first-launch)), so a new release replaces
+  its entry instead of adding one. Old entries do no harm; to tidy them,
+  select one and press **−** under the list. If a session asks again, allow
+  it.
+- **With a signed release** (Developer ID, once Caprock has an Apple
+  developer account): one entry, with Caprock's icon, and no new question
+  after an update.
 
 ## Your phone
 

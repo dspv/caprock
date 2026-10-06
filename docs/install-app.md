@@ -90,9 +90,18 @@ The app looks for a Caprock daemon before it starts one, so it never runs two:
 - **A daemon is already running** (Homebrew, Scoop, `go install`, an earlier
   app): the app uses it and opens on your terminals.
 - **None is running:** the app asks once, with **Keep Caprock running in the
-  background** on. It starts the `caprock` formula's daemon if Homebrew
-  installed one (so `brew upgrade caprock` keeps it current), and otherwise
-  installs its bundled daemon into the data directory and starts that.
+  background** on. On macOS it installs its bundled daemon into the data
+  directory and starts that. On Linux it starts the `caprock` formula's
+  daemon if Homebrew installed one (so `brew upgrade caprock` keeps it
+  current), and otherwise its bundled one.
+- **macOS, a Homebrew daemon is running:** the app moves it onto its own
+  bundled daemon once, unless the bundled one is older. Sessions keep
+  running through the switch, and the `caprock` command keeps working. The
+  reason is macOS's privacy list: Homebrew puts every release at a new path,
+  and macOS lists every path as another "caprock"
+  ([macOS privacy prompts](app.md#macos-privacy-prompts)). To keep the
+  Homebrew daemon instead, add `"own_daemon": false` to `app.json` in the
+  data directory.
 
 Quitting the app leaves the daemon and every session running. Uninstalling the
 app leaves the data directory (your sessions and history) and any Homebrew or
