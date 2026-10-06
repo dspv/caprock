@@ -37,7 +37,8 @@ requests from a worktree with checks and reviews (WP-19, ADR-039); split
 panes, ⌘J, the palette's new-task entry and the macOS menu bar popover;
 find in scrollback, open in editor, terminal themes and fonts and the update
 notice (F16, F18, F21, F12); and the benchmark harness with its first results
-and two perf fixes (WP-16, § Budgets). Released as 0.78.0.
+and two perf fixes (WP-16, § Budgets). Released as 0.78.0. Then (2026-10-06):
+WP-21, one-click signed app updates (F20, ADR-041, § Updates).
 
 ## Goal
 
@@ -172,8 +173,8 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
   macOS, where a Homebrew formula's daemon is moved onto the app's own once
   (ADR-040). If none runs, the app starts the `caprock` binary it bundles,
   detached, so sessions keep running when the window closes. If the daemon's `api_level` is below the
-  app's minimum, the window says which command upgrades it (Caprock never
-  updates itself). If the daemon stops, the window shows a banner within 2
+  app's minimum, the window says which command upgrades it (the app updates
+  itself and its own daemon, F20, but never a daemon a package manager owns). If the daemon stops, the window shows a banner within 2
   seconds, keeps the open terminals' last screen, and reconnects by itself.
 - **F02 — Projects sidebar.** Every project the user added, cloned or ran a
   session in, with the current branch, ahead/behind, the number of changed
@@ -221,8 +222,9 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
 - **F12 — Install paths and update notice.** A `.dmg` and a Homebrew cask on
   macOS, an installer plus Scoop (and winget once accepted) on Windows, an
   AppImage plus `.deb` and `.rpm` on Linux. When a newer release exists and
-  the release check is on, the app says so and links the download; it does not
-  replace itself before F20. The notice was built on 2026-10-06: the status
+  the release check is on, the app says so and links the download; since F20
+  an install that can replace itself offers the update as one click instead.
+  The notice was built on 2026-10-06: the status
   strip names the release and the command for each part Homebrew installed
   (the `caprock-app` cask, the `caprock` formula), dismissed per version; the
   check runs at most every 6 hours, conditionally
@@ -259,7 +261,9 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
   ([03-contracts.md](03-contracts.md)).
 - **F19 — Phone v2 Phase B.** Reaching the machine when the phone is off its
   network, by the route the owner chooses ([§ Phone v2](#phone-v2)).
-- **F20 — Opt-in auto-update** with signed update bundles, per OS.
+- **F20 — Opt-in auto-update** with signed update bundles, per OS. Built
+  2026-10-06 (WP-21, [ADR-041](08-decisions.md#adr-041--the-app-updates-itself-in-one-click-a-minisign-signed-bundle-one-channel-checked-only-when-the-release-check-is-on-or-the-user-asks)):
+  **Update to vX.Y.Z — Restart** in the status strip, [§ Updates](#updates).
 - **F21 — Themes and fonts** for the terminal; the palette work references
   Otty's colours (owner, 2026-10-04) without copying its branding. Built
   ahead of P1 on 2026-10-06: five palettes (two ours, three MIT-licensed),
@@ -488,7 +492,9 @@ one lean terminal; they stay below Orca (420–541 MB idle) and a Chrome tab.
 - **The shell talks to the page through Tauri commands**, allowlisted for the
   daemon's origin only: `notify`, `set_badge`, `set_tray`, `register_hotkey`
   (with `hotkey_status`; built in WP-10, app/README.md),
-  `open_external` (https and the editors' schemes only), `daemon_status`. No
+  `open_external` (https and the editors' schemes only), `daemon_status`, and
+  the updater's `app_update_status`, `app_update_check`,
+  `app_update_install` and `app_update_asked` (F20). No
   shell, filesystem or HTTP plugin is exposed to the page. The bundled
   fallback page, on the app's own origin, alone gets `start_daemon`,
   `update_daemon` and `set_background` (built in WP-02; the others arrive
@@ -915,7 +921,9 @@ guide [docs/app.md § GitHub](../docs/app.md#github).
 - **Phones** keep the viewer/controller roles and allowlist (ADR-034); new
   phone capabilities are added to the allowlist by name.
 - **Updates** (F20) are verified against the app's update signing key before
-  install, independent of OS code signing.
+  install, independent of OS code signing: a minisign signature over the
+  bundle and the version it was signed for (ADR-041). The plugin's own
+  JavaScript commands are granted to no page; the page calls ours.
 - **A relay, if ever,** carries ciphertext only.
 
 ## Distribution and signing
@@ -963,13 +971,53 @@ other places, and remembers the answer per program and per code signature
 
 The user-facing note is in [docs/app.md](../docs/app.md#macos-privacy-prompts).
 
+## Updates
+
+Built 2026-10-06 (WP-21, F20). The decision and its reasons are
+[ADR-041](08-decisions.md#adr-041--the-app-updates-itself-in-one-click-a-minisign-signed-bundle-one-channel-checked-only-when-the-release-check-is-on-or-the-user-asks);
+the release side is [RELEASING.md § The desktop app](../docs/RELEASING.md#the-desktop-app);
+the user guide [docs/app.md § Updates](../docs/app.md#updates).
+
+- **The offer.** When the daemon's release check (`/v1/update`) knows a
+  release newer than *the app's* version and this install can replace
+  itself, the status strip says **Update to vX.Y.Z — Restart**
+  (`ui/src/components/AppUpdateNotice.tsx`). One click: the shell fetches
+  `latest.json`, downloads the platform's bundle with progress
+  (`Downloading vX.Y.Z` and a bar, 5 events a second at most), verifies it,
+  installs it (`Installing … — restarting…`) and restarts. A failure opens a
+  panel with the reason, **Try again** and the release page. The ▾ beside the
+  button shows what is new and **Not now**, which hides that version (the
+  same key as the dashboard banner).
+- **Checking by hand.** **Check for Updates…** in the macOS app menu and the
+  tray menu, and *Check for updates* in the palette, fetch `latest.json`
+  once, with or without the release check on: *Checking for updates…*, then
+  the offer, *Caprock is up to date* for 6 seconds, or the failure. A check by
+  hand answers even for a version the user dismissed.
+- **The first launch** asks once, in the app (never an OS dialog): *Check for
+  updates automatically?*, **Yes** focused and highlighted. Yes turns on
+  `update_checks`, which makes the daemon check at once; No changes nothing.
+  The answer is `<data_dir>/app-update.json` (`{"asked": true}`), kept apart
+  from `app.json`, whose absence means the app never started a daemon. With
+  checks already on it is not asked. The dashboard banner's own offer is not
+  shown in the app.
+- **Who can update itself** (`updater::blocked`): the macOS `.app` (not from
+  the disk image or a translocated path), the NSIS install and the AppImage.
+  A `.deb` or `.rpm` install, a development build or an unknown bundle keep
+  F12's notice, with the reason in its panel.
+- **The daemon after an update.** The relaunched app finds its own daemon
+  (`<data_dir>/bin`) older than the bundled one and moves it over once per
+  run (`Supervisor::should_refresh`, then the same copy-shutdown-start as
+  `update_daemon`); pty-hosts keep the sessions. A cask upgrade gets the same.
+- **What it sends** is in ADR-041: the plugin's `User-Agent`, an `Accept`
+  header, no identifier and no version in the URL.
+
 ## Telemetry
 
 None. No analytics, no crash upload, no usage pings. A crash or a stall the
 app detects (a UI long task over 1 second, a WebView reload) is written to a
 local log, and Settings has **Copy diagnostics**, which the user may send
 themselves. The update check is the release check that exists, off until the
-user turns it on.
+user turns it on; the app asks once on its first launch (§ Updates).
 
 ## Risks and mitigations
 

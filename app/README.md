@@ -86,8 +86,17 @@ Commands are granted per origin (`src-tauri/capabilities/`):
 | `tray_open`              | no          | no           | yes     |
 | `tray_hide`              | no          | no           | yes     |
 | `tray_fit`               | no          | no           | yes     |
+| `app_update_status`      | yes         | no           | no      |
+| `app_update_check`       | yes         | no           | no      |
+| `app_update_install`     | yes         | no           | no      |
+| `app_update_asked`       | yes         | no           | no      |
 
 A page on any other origin gets nothing; `cargo test` checks each refusal.
+The `app_update_*` commands are the app's updater (F20, `src-tauri/src/updater.rs`,
+ADR-041): the state (`{version, supported, blocked?, asked, phase, …}`), a
+check of `latest.json`, the signed install and restart, and the first-launch
+question; every change also arrives as `caprock:app-update` in the page. The
+updater plugin's own commands are granted to no page.
 `open_external` opens `http` and `https` only.
 `notify` shows one OS notification (`{title, body, id?, sessionId?,
 promptId?, actions?}`); the page decides when (`ui/src/lib/notify.ts`,

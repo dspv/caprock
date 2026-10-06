@@ -43,6 +43,19 @@ that cannot run everywhere is a gate people learn to skip.
   caprock` fails. Add the repo to the PAT's resource list, or issue a new
   fine-grained PAT covering both `homebrew-tap` and `scoop-bucket`.
 
+- ⚠️ **The app updater's signing key** (F20,
+  [ADR-041](../.ai/08-decisions.md#adr-041--the-app-updates-itself-in-one-click-a-minisign-signed-bundle-one-channel-checked-only-when-the-release-check-is-on-or-the-user-asks)):
+  two secrets on `dspv/caprock`, **`TAURI_SIGNING_PRIVATE_KEY`** (the whole
+  contents of the private key file) and **`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`**.
+  The public half is `plugins.updater.pubkey` in `app/src-tauri/tauri.conf.json`;
+  the private key was generated on the maintainer's Mac with `npx tauri signer
+  generate` (2026-10-06) and is kept there, `0600`, under
+  `~/.config/caprock-release/`. Without the secrets a release still ships, with
+  a warning and no `latest.json`, and the app's Update button points at the
+  release page. **Never replace the key casually:** every installed app trusts
+  only this public key, so a new key means everyone installs the next app by
+  hand once.
+
 ## winget needs a fork and a token (2026-08-30)
 
 `winget install dspv.caprock` is the third packaging channel, after the
@@ -150,6 +163,13 @@ goreleaser:
 - **`app-other`** builds `Caprock_<version>_x64-setup.exe` (NSIS) on Windows
   and the AppImage, `.deb` and `.rpm` on Ubuntu 22.04. Each OS is its own job;
   a failure there never holds up the `.dmg`.
+- **Signed update bundles** (F20): with the updater secrets set, `app-macos`
+  also attaches `Caprock_<version>_universal.app.tar.gz` and its `.sig`
+  (checked: the signature names the version, the tarball carries the
+  daemon), and `app-other` attaches the `.sig` of the NSIS installer and of
+  the AppImage, which are their own update bundles. `make app-bundle` builds
+  them whenever `TAURI_SIGNING_PRIVATE_KEY` is in the environment
+  (`app/src-tauri/tauri.updater.conf.json`).
 - **`app-latest`** runs `scripts/app-latest.sh` after both: it attaches a copy
   of each app file under a name without the version (`Caprock-macOS.dmg`,
   `Caprock-Windows-setup.exe`, `Caprock-Linux.AppImage`, `Caprock-Linux.deb`,
@@ -158,7 +178,14 @@ goreleaser:
   `releases/latest/download/<name>`, so goreleaser publishes with
   `make_latest: false` and the Latest mark waits for the app files; with one
   missing the script fails and the previous release stays Latest, so no button
-  404s. A prerelease is never marked Latest.
+  404s. A prerelease is never marked Latest. Before the mark it writes
+  **`latest.json`**, the app updater's manifest, from the attached `.sig`
+  files (`scripts/app-update-manifest.py`): one entry per platform
+  (`darwin-aarch64` and `darwin-x86_64` share the universal bundle,
+  `windows-x86_64`, `linux-x86_64-appimage`), so
+  `releases/latest/download/latest.json` only ever names files that are
+  there. A platform without a signature is left out; no signature at all
+  means no `latest.json`, with a warning, never a failure.
 
 **Without Actions**, on a Mac, after the daemon release exists:
 
@@ -167,7 +194,15 @@ git fetch --tags && git checkout vX.Y.Z
 make app-release TAG=vX.Y.Z ARGS=--no-upload   # build and check only
 make app-release TAG=vX.Y.Z                    # build, check, attach the .dmg
 make app-release TAG=vX.Y.Z ARGS=--cask-pr     # …and open a cask PR on the tap
-make app-latest TAG=vX.Y.Z                     # version-less copies, checksums, mark Latest
+make app-latest TAG=vX.Y.Z                     # version-less copies, checksums, latest.json, mark Latest
+```
+
+For the signed update bundle by hand, put the key in the environment first
+(it never goes in a file in the repository):
+
+```bash
+export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.config/caprock-release/tauri-updater.key)"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(cat ~/.config/caprock-release/tauri-updater.password)"
 ```
 
 Until `make app-latest` runs, the release is published but not Latest: the
@@ -195,7 +230,9 @@ certificate (`APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`) and an App
 Store Connect API key in the release secrets, set `APPLE_SIGNING_IDENTITY` and
 `APPLE_API_KEY`/`APPLE_API_ISSUER`/`APPLE_API_KEY_PATH` for `tauri build` (Tauri signs and notarizes when they are present), change
 the script's `Signature=adhoc` check to `Authority=Developer ID Application`,
-and delete the cask's `postflight_steps`. Windows stays unsigned until a certificate
+and delete the cask's `postflight_steps`. The update tarball is made from the
+same signed `.app`, so it is notarized with it; the minisign signature stays as
+the updater's own check. Windows stays unsigned until a certificate
 is chosen (decision 3).
 
 ## Never move a tag that has already run (2026-08-27)

@@ -91,11 +91,8 @@ others. Installing it: [install-app.md](install-app.md).
   choose. The defaults match the JetBrains IDE terminal: JetBrains Mono,
   13 px, line height 1.2, no ligatures.
 - **Status strip.** Whether the daemon is live, the 5-hour and 7-day plan
-  windows, today's spend, and the front terminal's size. With release checks
-  on (Settings → *Privacy*), *v… is out* appears there when a newer Caprock
-  is published; click it for the command that upgrades your install — `brew
-  update && brew upgrade --cask caprock-app` for the app from Homebrew — or
-  *Not now* to hide that version. Caprock never updates itself.
+  windows, today's spend, the front terminal's size, and a newer Caprock
+  when one is out ([Updates](#updates)).
 
 ### Keyboard
 
@@ -248,6 +245,44 @@ and there is no secret on anyone's machine.
 Settings → GitHub then shows **Sign in with GitHub**. The app asks for
 `repo` and `read:org`. An organization with OAuth app restrictions must
 approve the app before its private repositories show up.
+
+## Updates
+
+When a newer Caprock is out, the status strip says **Update to vX.Y.Z —
+Restart**. One click downloads it (with progress, while you keep working),
+checks its signature, installs it and restarts the app. Your sessions keep
+running: their terminals live outside the app, and the app moves its daemon
+onto the new version after the restart without ending them. The ▾ beside it
+shows what is new, or **Not now** to hide that version.
+
+- **Checking.** On its first launch the app asks once: *Check for updates
+  automatically?* With **Yes**, Caprock asks GitHub for the newest version
+  number at most every 6 hours; Settings → *Privacy* turns it off again.
+  With **No**, nothing is checked until you ask: **Caprock → Check for
+  Updates…** on macOS, **Check for Updates…** in the tray menu, or *Check for
+  updates* in the command palette (⌘K).
+- **What is sent.** The automatic check asks GitHub which release is the
+  latest. *Update* and *Check for Updates…* also fetch the release's
+  `latest.json` and, when you update, the new app from GitHub's release
+  downloads. None of these carries anything about you or your work: no
+  account, no identifier, not even your version.
+- **What is checked.** Every update is signed with Caprock's release key,
+  and the app installs nothing whose signature or version does not match.
+  If something fails, the strip says *Update failed* and why, with **Try
+  again** and the release page; the running version is left as it was.
+- **Where the app updates itself.** The macOS app (from the `.dmg` or
+  Homebrew), the Windows installer and the Linux AppImage. On macOS, move
+  Caprock to Applications first: run from the disk image it cannot replace
+  itself and says so. A Homebrew cask install updates itself too, and `brew
+  upgrade` leaves it alone.
+- **Where it does not.** The `.deb` and `.rpm` packages belong to your
+  package manager: download the new `Caprock-Linux.deb` or
+  `Caprock-Linux.rpm` from the
+  [release page](https://github.com/dspv/caprock/releases/latest) and
+  install it the way you installed the first. The app tells you which.
+- **The daemon from Homebrew or Scoop** keeps its own upgrade command
+  (`brew upgrade caprock`, `scoop update caprock`); the app never replaces a
+  daemon it did not install.
 
 ## macOS privacy prompts
 

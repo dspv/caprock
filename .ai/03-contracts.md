@@ -2028,7 +2028,25 @@ The service runs the daemon with `--foreground` (the supervisor owns the process
 
 **`api_level`** (also in `GET /v1/status`) is an integer raised by every change a client must know about and never lowered: `1` is the first level, added for the desktop app ([ADR-038](08-decisions.md#adr-038--the-desktop-app-is-a-thin-tauri-v2-shell-around-the-existing-react-ui-and-xtermjs-on-the-go-daemon)). A client declares the minimum it needs; a daemon below it, or one with no `api_level` (read as `0`), is shown as needing an upgrade. **`exe`** is how the desktop app tells a daemon it installed (`<data_dir>/bin/caprock`, which it may replace) from one a package manager owns (which it must not touch); omitted when the OS cannot say.
 
-**The desktop app's files in `<data_dir>`.** `bin/caprock` (`caprock.exe` on Windows) is the daemon the app installed, copied from its bundle by write-then-rename; the login service it registers runs that copy. `app.json` = `{"background": true}` records the first-run choice (run as a login service or not); its absence means the app has never started a daemon here, and the first-run screen is shown. Both are written by the app, never by the daemon. What `<data_dir>` resolves to per OS is owned by [ADR-013](08-decisions.md#adr-013--data-dir-and-config-conventions).
+**The desktop app's files in `<data_dir>`.** `bin/caprock` (`caprock.exe` on Windows) is the daemon the app installed, copied from its bundle by write-then-rename; the login service it registers runs that copy. `app.json` = `{"background": true}` records the first-run choice (run as a login service or not); its absence means the app has never started a daemon here, and the first-run screen is shown. `app-update.json` = `{"asked": true}` records that the app's first-launch question about update checks was answered (F20); the choice itself is the daemon's `update_checks`. All three are written by the app, never by the daemon. What `<data_dir>` resolves to per OS is owned by [ADR-013](08-decisions.md#adr-013--data-dir-and-config-conventions).
+
+**The app's update manifest** (F20, [ADR-041](08-decisions.md#adr-041--the-app-updates-itself-in-one-click-a-minisign-signed-bundle-one-channel-checked-only-when-the-release-check-is-on-or-the-user-asks)) is `latest.json` on each release, read at `https://github.com/dspv/caprock/releases/latest/download/latest.json`, in tauri-plugin-updater's static format, written by `scripts/app-update-manifest.py`:
+
+```json
+{
+  "version": "0.79.0",
+  "notes": "https://github.com/dspv/caprock/releases/tag/v0.79.0",
+  "pub_date": "2026-10-06T12:00:00Z",
+  "platforms": {
+    "darwin-aarch64": { "url": ".../download/v0.79.0/Caprock_0.79.0_universal.app.tar.gz", "signature": "<the .sig file's contents>" },
+    "darwin-x86_64": { "url": "(the same universal bundle)", "signature": "…" },
+    "linux-x86_64-appimage": { "url": ".../Caprock_0.79.0_amd64.AppImage", "signature": "…" },
+    "windows-x86_64": { "url": ".../Caprock_0.79.0_x64-setup.exe", "signature": "…" }
+  }
+}
+```
+
+A platform without a signed bundle is absent. The signature is minisign over the bundle, with the version in its trusted comment; the app refuses a mismatch.
 
 ### File permissions
 
