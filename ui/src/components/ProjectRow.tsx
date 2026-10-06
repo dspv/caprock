@@ -48,12 +48,29 @@ export interface ProjectRowProps {
   onNewShell: (projectId: string, cwd?: string) => void
   /** Right-click on a project or worktree: the folder, for the editor menu (F18). */
   onFolderMenu?: (e: React.MouseEvent, path: string, label: string) => void
+  onOpenChanges?: (projectId: string, w?: WorktreeNode) => void
 }
 
 /** A right-click handler for a folder row, or none when there is no menu or no folder. */
 function folderMenu(onFolderMenu: ProjectRowProps['onFolderMenu'], path: string, label: string) {
   if (!onFolderMenu || !path) return undefined
   return (e: React.MouseEvent) => onFolderMenu(e, path, label)
+}
+
+/** A worktree's changed-file count; a button into its Changes view when there is one. */
+function ChangedBadge({ count, label, onOpen }: { count: number; label: string; onOpen?: () => void }) {
+  if (!onOpen) return <span title="changed files">±{count}</span>
+  return (
+    <button
+      type="button"
+      title={`Review and commit the changes ${label}`}
+      aria-label={`${count} changed files ${label}: review and commit`}
+      onClick={(e) => { e.stopPropagation(); onOpen() }}
+      className="rounded-[4px] px-0.5 text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
+    >
+      ±{count}
+    </button>
+  )
 }
 
 export const ProjectRow = memo(function ProjectRow({
@@ -67,6 +84,7 @@ export const ProjectRow = memo(function ProjectRow({
   onNewAgent,
   onNewShell,
   onFolderMenu,
+  onOpenChanges,
 }: ProjectRowProps) {
   const p = node.project
   const id = p.id
@@ -79,6 +97,8 @@ export const ProjectRow = memo(function ProjectRow({
   // A detached checkout, or a folder that is no repository, says HEAD.
   const mainBranch = branchLabel(branch)
   const cost = fmtCostShort(node.costToday)
+  // One checkout: its changed count rides in the project's row.
+  const flatChanged = flat && p.kind === 'repo' ? (node.worktrees[0]?.changed ?? p.changed ?? 0) : 0
   return (
     <li className="grid grid-cols-1" data-project={id}>
       <div className="group relative">
@@ -105,6 +125,11 @@ export const ProjectRow = memo(function ProjectRow({
           {mainBranch && (
             <span className="mono max-w-[84px] truncate text-[11px] text-fg-faint group-hover:invisible">{mainBranch}</span>
           )}
+          {flatChanged > 0 && (
+            <span className="num text-[10.5px] text-fg-faint group-hover:invisible">
+              <ChangedBadge count={flatChanged} label={`in ${p.name}`} onOpen={onOpenChanges ? () => onOpenChanges(id, node.worktrees[0]) : undefined} />
+            </span>
+          )}
           {node.waiting > 0 ? (
             <span
               className="num ml-0.5 inline-flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-accent px-1 text-[10.5px] font-semibold text-panel group-hover:invisible"
@@ -121,6 +146,9 @@ export const ProjectRow = memo(function ProjectRow({
         {/* Actions on hover or focus, where the badges sit: the row stays one line. */}
         {!isGroup && (
           <span className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 group-hover:flex group-focus-within:flex">
+            {flatChanged > 0 && onOpenChanges && (
+              <RowAction label={`Review and commit ${flatChanged} changed files in ${p.name}`} onClick={() => onOpenChanges(id, node.worktrees[0])}><span className="num text-[10.5px]">±{flatChanged}</span></RowAction>
+            )}
             <RowAction label={`New agent in ${p.name}`} onClick={() => onNewAgent(id)}><PlusIcon size={13} /></RowAction>
             <RowAction label={`New shell in ${p.name}`} onClick={() => onNewShell(id)}><TerminalIcon size={13} /></RowAction>
           </span>
@@ -140,7 +168,7 @@ export const ProjectRow = memo(function ProjectRow({
                 <SessionRow key={s.session.session_id} s={s} depth={1} active={s.session.session_id === activeSessionId} onOpen={() => onOpenSession(s, id)} />
               ))
             ) : (
-              <WorktreeRows key={w.key} w={w} projectId={id} activeSessionId={activeSessionId} onOpenSession={onOpenSession} onNewAgent={onNewAgent} onNewShell={onNewShell} onFolderMenu={onFolderMenu} />
+              <WorktreeRows key={w.key} w={w} projectId={id} activeSessionId={activeSessionId} onOpenSession={onOpenSession} onNewAgent={onNewAgent} onNewShell={onNewShell} onFolderMenu={onFolderMenu} onOpenChanges={isGroup ? undefined : onOpenChanges} />
             ),
           )}
         </ul>
@@ -157,6 +185,7 @@ function WorktreeRows({
   onNewAgent,
   onNewShell,
   onFolderMenu,
+  onOpenChanges,
 }: {
   w: WorktreeNode
   projectId: string
@@ -165,6 +194,7 @@ function WorktreeRows({
   onNewAgent: (projectId: string, cwd?: string) => void
   onNewShell: (projectId: string, cwd?: string) => void
   onFolderMenu?: ProjectRowProps['onFolderMenu']
+  onOpenChanges?: (projectId: string, w?: WorktreeNode) => void
 }) {
   return (
     <li className="grid grid-cols-1">
@@ -174,9 +204,12 @@ function WorktreeRows({
         <span className="num flex items-center gap-1.5 text-[10.5px] text-fg-faint group-hover:invisible">
           {!!w.ahead && <span title="commits ahead">↑{w.ahead}</span>}
           {!!w.behind && <span title="commits behind">↓{w.behind}</span>}
-          {!!w.changed && <span title="changed files">±{w.changed}</span>}
+          {!!w.changed && <ChangedBadge count={w.changed} label={`on ${w.branch}`} onOpen={onOpenChanges ? () => onOpenChanges(projectId, w) : undefined} />}
         </span>
         <span className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 group-hover:flex group-focus-within:flex">
+          {!!w.changed && onOpenChanges && (
+            <RowAction label={`Review and commit ${w.changed} changed files on ${w.branch}`} onClick={() => onOpenChanges(projectId, w)}><span className="num text-[10.5px]">±{w.changed}</span></RowAction>
+          )}
           <RowAction label={`New agent on ${w.branch}`} onClick={() => onNewAgent(projectId, w.path)}><PlusIcon size={12} /></RowAction>
           <RowAction label={`New shell on ${w.branch}`} onClick={() => onNewShell(projectId, w.path)}><TerminalIcon size={12} /></RowAction>
         </span>
@@ -221,7 +254,7 @@ function RowAction({ label, onClick, children }: { label: string; onClick: () =>
       title={label}
       aria-label={label}
       onClick={(e) => { e.stopPropagation(); onClick() }}
-      className="flex h-[22px] w-[22px] items-center justify-center rounded-[5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
+      className="flex h-[22px] min-w-[22px] items-center justify-center rounded-[5px] px-0.5 text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
     >
       {children}
     </button>

@@ -1349,6 +1349,18 @@ and the Tailscale address's MagicDNS name, read once from `tailscale status
 Tailscale nothing changes: a phone off the Wi-Fi cannot reach the daemon, and
 nothing is relayed.
 
+*Amended 2026-10-06 (Changes: commit and push without a terminal):* a
+controller may also finish the work — stage and unstage files or hunks,
+discard unstaged changes (two calls, the second quoting the first's token),
+commit, push, pull and fetch (`POST /v1/projects/{id}/changes/…`) — in a
+worktree that resolves under home. A viewer may read the status and the
+diffs, as it reads a session's diff, and is refused every write with `403`.
+The narrower choices: a push is never forced and goes only to the branch of
+the same name; a pull only fast-forwards; discard never touches staged work
+or follows a link out of the worktree; hooks always run. A controller could
+already run `git push --force` by typing it into a session, so this grants
+nothing a controller lacked — it removes the reason to.
+
 
 ---
 

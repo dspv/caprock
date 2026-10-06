@@ -18,6 +18,7 @@ import { RecentPRs, RepoButtons } from '@/components/RepoLinks'
 import { RelayChain, RelayMenu } from '@/components/RelayDialog'
 import { OpenInTerminal } from '@/components/OpenInTerminal'
 import { DiffFiles } from '@/components/DiffFiles'
+import { SessionCommit } from '@/components/SessionCommit'
 import { NewPill } from '@/components/NewPill'
 import { useStickToBottom } from '@/lib/useStickToBottom'
 import { setDraft } from '@/lib/draft'
@@ -586,6 +587,8 @@ function ChangesTab({ id, s }: { id: string; s: SessionDetail }) {
 
   return (
     <div className="grid gap-3">
+      {/* Commit and push what is uncommitted, without a terminal. */}
+      <SessionCommit session={s} />
       {/* The base is named because the same file count means different things
         * against a branch than against HEAD: on a branch whose work is
         * committed, "vs HEAD" is zero files while the branch changed twenty. */}

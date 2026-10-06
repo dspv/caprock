@@ -115,6 +115,10 @@ type Service struct {
 	sessRoot map[string]string // session id -> its directory key, from session frames
 	pending  map[string]string // session id -> what its last event asks for ("git", "frame")
 
+	// changeLocks holds one mutex per worktree folder: writes to one index
+	// never race (changes.go).
+	changeLocks sync.Map
+
 	// gitRuns counts git processes started for status; tests read it.
 	gitRuns atomic.Int64
 	// closed stops refreshes once Close has run; each refresh holds life

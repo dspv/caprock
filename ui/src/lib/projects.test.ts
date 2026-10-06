@@ -169,4 +169,13 @@ describe('the sidebar model', () => {
     expect(performance.now() - t0).toBeLessThan(50)
     expect(m.projects.reduce((n, p) => n + p.live, 0)).toBe(30)
   })
+
+  it('keeps the main checkout as a row beside a linked worktree, with nothing running in either', () => {
+    const p: Project = {
+      id: 'r', root: '/r', name: 'r', kind: 'repo', branch: 'feat/x', changed: 6,
+      worktrees: [{ name: 'fix', path: '/r/.caprock-worktrees/fix', branch: 'fix', changed: 1 }],
+    }
+    const m = buildSidebar({ projects: [p], sessions: [], permissions: new Set(), costs: new Map(), openSessions: new Set() })
+    expect(m.projects[0]!.worktrees.map((w) => [w.key, w.branch, w.changed])).toEqual([['main', 'feat/x', 6], ['fix', 'fix', 1]])
+  })
 })

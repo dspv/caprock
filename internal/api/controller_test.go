@@ -41,6 +41,7 @@ var viewerMay = map[string]bool{
 	"GET /v1/agents/{id}/permission": true,
 	"GET /v1/glance":                 true, "GET /v1/week": true, "GET /v1/tools/drill": true,
 	"GET /v1/projects": true, "GET /v1/projects/ops": true, "GET /v1/projects/{id}/worktrees": true,
+	"GET /v1/projects/{id}/changes": true, "GET /v1/projects/{id}/changes/diff": true,
 }
 
 // What a controller may do on top (ADR-034): work on a session, nothing about
@@ -55,6 +56,12 @@ var controllerMayAlso = map[string]bool{
 	// here: from the phone they are P1, so POST and GET /v1/shells are 403.
 	"POST /v1/projects": true, "PATCH /v1/projects/{id}": true, "DELETE /v1/projects/{id}": true,
 	"POST /v1/projects/{id}/worktrees": true, "DELETE /v1/projects/{id}/worktrees/{name}": true,
+	// Finish the work: stage, discard, commit, push, pull, fetch (ADR-034
+	// amended 2026-10-06).
+	"POST /v1/projects/{id}/changes/stage": true, "POST /v1/projects/{id}/changes/unstage": true,
+	"POST /v1/projects/{id}/changes/discard": true, "POST /v1/projects/{id}/changes/commit": true,
+	"POST /v1/projects/{id}/changes/push": true, "POST /v1/projects/{id}/changes/pull": true,
+	"POST /v1/projects/{id}/changes/fetch": true,
 }
 
 // registeredRoutes reads every route New registers out of api.go, so a route

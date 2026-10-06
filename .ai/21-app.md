@@ -28,6 +28,10 @@ reconnect and offline queue (WP-13), the chat view (WP-14), start work and
 Tailscale pairing (WP-15), and the repo side of the docs (WP-18: README,
 [docs/app.md](../docs/app.md)); the site's download page is in the private
 site repo.
+Also 2026-10-06: a worktree's Changes view — review, stage, discard,
+commit, push and pull without a terminal, in the app and on the phone — the
+git half of F14 that WP-19's pull requests build on
+([03-contracts.md § Changes](03-contracts.md#changes-a-worktrees-status-diff-commit-and-push)).
 
 ## Goal
 

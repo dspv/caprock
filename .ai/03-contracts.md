@@ -128,7 +128,8 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `/v1/status`, `/v1/storage`, `/v1/update`, `/v1/settings`, `/v1/premium`, `/v1/gemini`,
   `/v1/pricing`, `/v1/live`, `/v1/tasks`, `/v1/tasks/{id}`, `/v1/approvals`,
   `/v1/statusline/{id}`, `/v1/agents/{id}/permission`, `/v1/projects`,
-  `/v1/projects/ops` and `/v1/projects/{id}/worktrees`. Everything else is `403` — every `POST`, `PUT` and
+  `/v1/projects/ops`, `/v1/projects/{id}/worktrees`, `/v1/projects/{id}/changes`
+  and `/v1/projects/{id}/changes/diff`. Everything else is `403` — every `POST`, `PUT` and
   `DELETE` (spawn, input, signal, paste, settings, tasks, approvals,
   orchestrator, hive, licence, pairing, shutdown), and three `GET`s that are
   not reads: `/v1/agents/{id}/term` (its socket types into the session), and
@@ -153,7 +154,9 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   start work from the phone (2026-10-05, [21-app.md](21-app.md) decision 8) —
   `POST /v1/projects`, `PATCH` and `DELETE /v1/projects/{id}`, and `POST` and
   `DELETE /v1/projects/{id}/worktrees…` (see § Projects and shells for the
-  folder rules). From a device a clone URL must also begin `https://` or
+  folder rules), and — to finish the work (2026-10-06) — `POST
+  /v1/projects/{id}/changes/stage`, `unstage`, `discard`, `commit`, `push`,
+  `pull` and `fetch`, in a worktree that resolves under home (§ Changes). From a device a clone URL must also begin `https://` or
   `git@` (`400` otherwise, before git runs). Everything
   else stays `403` for every device: settings, pairing, hive, tasks creation
   and verify, orchestrator, hooks install, shutdown, update check, report
@@ -1086,6 +1089,117 @@ GET    /v1/shells?project=<id>             → {shells: [Shell]}; every running 
   are read from files. An agent's `tool.post` of an edit or shell tool asks
   git again after 2 s; a session starting, stopping, asking or ending sends a
   `project` frame after 1 s. Nothing runs on a timer: idle projects run no git.
+
+### Changes: a worktree's status, diff, commit and push
+
+Review a worktree's uncommitted work and commit, push or pull it without a
+terminal ([04-ui.md § The app workspace](04-ui.md#the-app-workspace),
+Changes view). Code: `internal/projects/changes.go`,
+`internal/api/changes.go`. A worktree is named by `?worktree=<name>` — git's
+name, as in `Worktree.name` — on every route; absent or empty is the
+project's main checkout. An unknown project or worktree is `404`.
+
+```
+GET  /v1/projects/{id}/changes[?worktree=]                          → Changes
+GET  /v1/projects/{id}/changes/diff?path=<p>[&staged=1][&worktree=] → FilePatch
+POST /v1/projects/{id}/changes/stage[?worktree=]    {paths} | {all: true} | {hunk: Hunk} → {changes}
+POST /v1/projects/{id}/changes/unstage[?worktree=]  {paths} | {all: true} | {hunk: Hunk} → {changes}
+POST /v1/projects/{id}/changes/discard[?worktree=]  {paths} → {preview}; {paths, confirm} → {changes}
+POST /v1/projects/{id}/changes/commit[?worktree=]   {message, all?} → {commit: CommitResult, changes}
+POST /v1/projects/{id}/changes/push[?worktree=]     → {result: RemoteResult, changes}
+POST /v1/projects/{id}/changes/pull[?worktree=]     → {result: RemoteResult, changes}
+POST /v1/projects/{id}/changes/fetch[?worktree=]    → {result: RemoteResult, changes}
+```
+
+- **`Changes`** — `{project_id, worktree, path, branch, detached?, head?,
+  upstream?, ahead, behind, remote?, remote_url?, default_branch?, published,
+  state?, staged: [ChangeFile], unstaged: [ChangeFile], conflicted:
+  [ChangeFile], truncated?, token, at}`. From one `git status
+  --porcelain=v2 -z --branch --untracked-files=all` plus `git diff
+  --numstat` of each side and one `git config --get-regexp` for remotes and
+  tracking. `remote` is where a push goes: the branch's tracked remote, else
+  `origin`, else the only remote. `published` is true when the branch tracks
+  the same-named branch on `remote` — what a pull request is opened from.
+  `default_branch` is `refs/remotes/origin/HEAD`, else `main` or `master`.
+  `state` is `merging`, `rebasing`, `cherry-picking` or `reverting`.
+  `token` changes whenever the status does. At most 3,000 files
+  (`truncated`).
+- **`ChangeFile`** — `{path, orig_path?, status, additions, deletions,
+  binary?}`; `status` is `added`, `modified`, `deleted`, `renamed`,
+  `copied`, `typechange`, `untracked` or `conflicted`. A file can be in
+  `staged` and `unstaged` at once. A rename carries `orig_path` (staged
+  side). An untracked file's `additions` are its lines (files up to 1 MB,
+  the first 300 files).
+- **`FilePatch`** — `{path, orig_path?, staged, status, patch, binary?,
+  truncated?, too_large?, bytes, token}`: `git diff` of the index against
+  HEAD (`staged=1`, `-M`, a rename names both paths) or of the working tree
+  against the index; a new file against nothing (`--no-index`, its header
+  written as `a/<path>`); `--no-color --no-ext-diff`. Cut at 1 MB on a line
+  boundary (`truncated`, `bytes` the whole); a new file over 16 MB is not
+  diffed (`too_large`). `token` names this exact patch.
+- **Paths.** Every `path`/`paths` entry must be relative, clean (no `.`,
+  `..`, doubled or trailing separator, NUL), and listed in the worktree's
+  status in the area the call acts on; otherwise `400` (malformed) or `409`
+  (`stale`: not a change there now). Git runs with `--literal-pathspecs`, so
+  `*` or `:(top)` is a file name. Nothing outside the worktree is read or
+  written.
+- **Stage and unstage.** Files: `git add -A -- <paths>` / `git restore
+  --staged -- <paths>` (`git rm --cached` before the first commit; a staged
+  rename unstages both paths); `all`: `git add -A` / every staged change.
+  `Hunk` is `{path, index, token}`: hunk `index` (0-based) of the
+  `FilePatch` whose `token` the caller saw, applied with `git apply
+  --cached` (`--reverse` to unstage); a different token is `409 stale`.
+  Only a `modified` text file's hunks; anything else is staged as a file
+  (`400`).
+- **Discard** acts on unstaged changes only: a tracked file is restored
+  from the index (`git restore --worktree`), an untracked file is deleted
+  (the link itself for a symlink; empty folders it leaves are removed; a
+  path through a symlinked folder out of the worktree is refused). Staged
+  changes and conflicts are never touched. Two calls: without `confirm` it
+  changes nothing and answers `{preview: {confirm, files}}`; `confirm` is a
+  hash of the files' status records and their size and modification time,
+  so with it, and nothing changed since, the second call discards. A file
+  changed in between is `409` `{kind: "stale", preview}` with the fresh
+  token.
+- **Commit.** `message` is required (trimmed; empty is `400`, over 64 KB or
+  with NUL is `400`); `all` stages everything first; nothing staged is
+  `409`, a conflict is `409`. `git commit -F -` with the message on stdin,
+  so the author and committer are what the user's git config says, and
+  hooks run (`pre-commit`, `commit-msg`, …; never `--no-verify`) under a
+  3-minute timeout with the login shell's environment. `CommitResult` is
+  `{sha, short, subject, output}`, `output` being git's and the hooks' lines.
+  A hook that refuses is `422 {kind: "hook", output}`, and what was staged
+  stays staged.
+- **Push** sends the checked-out branch to the same-named branch on
+  `remote`: `git push [--set-upstream] -- <remote>
+  refs/heads/<b>:refs/heads/<b>`, with `--set-upstream` when it is not
+  `published` (a first push, or a worktree created to track the trunk), and
+  never `--force`. Detached, no commit yet, or no remote is `409`.
+  `RemoteResult` is `{remote, branch, upstream_set?, output}`. **Pull** is
+  `git pull --ff-only --no-rebase` from the upstream (none: `409`). **Fetch**
+  is `git fetch --prune -- <remote>`. Remote commands run under 2 minutes
+  with `GIT_TERMINAL_PROMPT=0` and the login shell's environment (ssh agent,
+  credential helpers), never prompting.
+- **Failures** are `{error, kind, output?}`: `400 invalid`, `409 state` or
+  `stale`, and `422` for `auth` (the remote refused the credentials),
+  `network`, `rejected` (the remote has commits the branch lacks — pull
+  first), `diverged` (a pull cannot fast-forward), `hook`, `timeout` and
+  `git` (anything else, with git's last lines). `output` is the last 32 KB
+  of what the command printed.
+- **Concurrency and liveness.** Writes to one worktree are serialised.
+  Every write answers with the status after it and asks the project's git
+  watcher to refresh, so a `project` frame follows; the UI reads the status
+  again on that frame. Nothing here runs on a timer.
+- **Who.** The two `GET`s are open to every paired device; the writes are a
+  controller's (ADR-034 amended 2026-10-06) and, from a device, only in a
+  project under home whose worktree folder resolves under home (`403`
+  otherwise). A device's discard, commit, push, pull and fetch are logged
+  with its id.
+- **For a pull request (WP-19).** `branch`, `published`, `remote`,
+  `remote_url`, `default_branch`, `ahead` and `head` say whether a worktree
+  can open one and against what; `POST …/changes/push` publishes the branch
+  first. In Go, `projects.Service.Push(ctx, id, worktree)` and `Changes`
+  are the calls a PR endpoint can make before talking to GitHub.
 
 ### Projects DDL (migration 0041)
 

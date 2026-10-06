@@ -13,7 +13,7 @@ import { APP_ROUTE, isMacPlatform, isTauri, isWorkspaceHash } from '@/lib/appmod
 import { FIND_EVENT, matchAppShortcut, type AppCommand } from '@/lib/appkeys'
 import { parseHash } from '@/lib/router'
 import { NotSupportedError, projectsApi, type Project } from '@/lib/projects'
-import { buildSidebar, sessionTitle, type InboxItem, type SessionNode } from '@/lib/sidebar'
+import { buildSidebar, sessionTitle, type InboxItem, type ProjectNode, type SessionNode, type WorktreeNode } from '@/lib/sidebar'
 import {
   activeTab,
   focusedLeaf,
@@ -35,10 +35,11 @@ import { Inspector } from '@/components/Inspector'
 import { StatusStrip } from '@/components/StatusStrip'
 import { PermissionPrompt } from '@/components/PermissionPrompt'
 import { ChatView } from '@/components/ChatView'
+import { ChangesView } from '@/components/ChangesView'
 import { NewAgentSheet } from '@/components/NewAgentSheet'
 import { AddProjectSheet, splitPath } from '@/components/AddProjectSheet'
 import { CommandPalette, type PaletteItem } from '@/components/CommandPalette'
-import { DashboardIcon, ExternalIcon, FolderIcon, FolderPlusIcon, InspectorIcon, PlusIcon, SearchIcon, SparkIcon, TerminalIcon } from '@/components/AppIcons'
+import { BranchIcon, DashboardIcon, ExternalIcon, FolderIcon, FolderPlusIcon, InspectorIcon, PlusIcon, SearchIcon, SparkIcon, TerminalIcon } from '@/components/AppIcons'
 import type { PaneStatus } from '@/components/TerminalPane'
 import { EditorMenu, type EditorMenuAt } from '@/components/EditorMenu'
 import { preferredName, useEditors } from '@/lib/editors'
@@ -61,6 +62,29 @@ function loadPrefs(): UiPrefs {
     return { sidebar: v.sidebar !== false, inspector: v.inspector === true }
   } catch {
     return { sidebar: true, inspector: false }
+  }
+}
+
+/** The worktree whose Changes view covers the terminals. */
+interface ChangesTarget {
+  projectId: string
+  /** git's name for a linked worktree; '' for the main checkout. */
+  worktree: string
+  title: string
+  /** Its latest agent session, for "Use the agent's summary". */
+  sessionId?: string
+}
+
+/** The Changes target for a worktree of a project in the sidebar: the main checkout when none is named. */
+export function changesTargetOf(node: ProjectNode, w?: WorktreeNode): ChangesTarget {
+  const wt = w ?? node.worktrees.find((x) => x.isMain)
+  const latest = wt?.sessions.find((x) => !x.isShell)
+  const branch = wt?.branch || node.project.branch || ''
+  return {
+    projectId: node.project.id,
+    worktree: wt && !wt.isMain ? wt.key : '',
+    title: branch ? `${node.project.name} · ${branch}` : node.project.name,
+    sessionId: latest?.session.session_id,
   }
 }
 
@@ -129,6 +153,7 @@ export function AppShell() {
   // Sessions whose tab shows the chat over the terminal; the terminal stays
   // mounted behind it.
   const [chatOpen, setChatOpen] = useState<ReadonlySet<string>>(() => new Set())
+  const [changesView, setChangesView] = useState<ChangesTarget | null>(null)
   const [version, setVersion] = useState<string | undefined>(undefined)
   const [, toggleTheme] = useTheme()
   const editors = useEditors()
@@ -195,12 +220,14 @@ export function AppShell() {
   }, [])
 
   const openTab = useCallback((target: TabTarget, projectId: string, title: string) => {
+    setChangesView(null)
     dispatch({ type: 'open', target, projectId, title })
     showWorkspace()
   }, [showWorkspace])
 
   /** Beside the focused pane of the tab in front (F15); a new tab when there is none. */
   const openSplit = useCallback((target: TabTarget, projectId: string, title: string, direction: 'row' | 'column' = 'row') => {
+    setChangesView(null)
     dispatch({ type: 'split', target, projectId, title, direction })
     showWorkspace()
   }, [showWorkspace])
@@ -238,11 +265,20 @@ export function AppShell() {
     return () => window.removeEventListener(OPEN_SESSION_EVENT, onOpen)
   }, [model.inbox, onOpenInbox])
   const onSelectProject = useCallback((id: string) => {
+    setChangesView((cur) => (cur && cur.projectId !== id ? null : cur))
     dispatch({ type: 'project', projectId: id })
     showWorkspace()
   }, [showWorkspace])
 
   const { source, refresh } = data
+  /** The Changes view of a worktree (the main checkout when none is named); needs the projects API. */
+  const onOpenChanges = useCallback((projectId: string, w?: WorktreeNode) => {
+    const node = model.projects.find((n) => n.project.id === projectId)
+    if (!node || source !== 'api') return
+    setChangesView(changesTargetOf(node, w))
+    dispatch({ type: 'project', projectId })
+    showWorkspace()
+  }, [model.projects, source, showWorkspace])
   const closeSheet = useCallback(() => setSheet(null), [])
   const onProjectAdded = useCallback((projectId: string) => { refresh(); dispatch({ type: 'project', projectId }) }, [refresh])
   const newShell = useCallback(async (projectId?: string, cwd?: string, split?: 'row' | 'column') => {
@@ -397,6 +433,14 @@ export function AppShell() {
         }
       }
       items.push({ id: `p-${n.project.id}`, group: 'Projects', label: n.project.name, detail: n.project.root, icon: <FolderIcon size={14} />, run: () => onSelectProject(n.project.id) })
+      if (source === 'api' && n.project.kind === 'repo') {
+        const wts = n.worktrees.length > 0 ? n.worktrees : [undefined]
+        for (const w of wts) {
+          const t = changesTargetOf(n, w)
+          const changed = w?.changed ?? n.project.changed ?? 0
+          items.push({ id: `pc-${n.project.id}-${t.worktree}`, group: 'Projects', label: `Review changes: ${t.title}`, detail: changed ? `±${changed}` : 'clean', icon: <BranchIcon size={14} />, run: () => onOpenChanges(n.project.id, w) })
+        }
+      }
       if (n.project.root) {
         items.push({ id: `pa-${n.project.id}`, group: 'Projects', label: `New agent in ${n.project.name}`, detail: n.project.branch, icon: <PlusIcon size={14} />, run: () => onNewAgent(n.project.id) })
         if (editors) {
@@ -406,7 +450,7 @@ export function AppShell() {
       }
     }
     return items
-  }, [ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, current, onNewAgent, onNewShell, onAddProject, onDashboard, toggleTheme, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor])
+  }, [ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, current, onNewAgent, onNewShell, onAddProject, onDashboard, toggleTheme, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges])
 
   // Orca's "new task": text that matches nothing starts an agent on it, in a worktree named after it.
   const paletteFallback = useCallback((q: string): PaletteItem | undefined => {
@@ -420,6 +464,17 @@ export function AppShell() {
       run: () => setSheet({ kind: 'agent', projectId: project.id, prompt: q, worktree: worktree || undefined }),
     }
   }, [projectsById, activeProjectId])
+
+  // The worktree the focused session runs in, for the inspector's "Review and commit".
+  const focusedWorktree = useMemo(() => {
+    if (!focused || source !== 'api') return undefined
+    for (const n of model.projects) {
+      for (const w of n.worktrees) {
+        if (w.sessions.some((x) => x.session.session_id === focused.sessionId)) return { projectId: n.project.id, w, repo: n.project.kind === 'repo' }
+      }
+    }
+    return undefined
+  }, [focused, model.projects, source])
 
   const focusedIsAgent = !!focused && focused.kind === 'session' && focusedSession?.kind !== 'shell'
   const showChat = focusedIsAgent && !!focused && chatOpen.has(focused.sessionId)
@@ -453,6 +508,7 @@ export function AppShell() {
               onAddProject={onAddProject}
               onDashboard={onDashboard}
               onPalette={onPalette}
+              onOpenChanges={data.source === 'api' ? onOpenChanges : undefined}
             />
           </div>
         )}
@@ -465,7 +521,7 @@ export function AppShell() {
               permissions={data.permissions}
               inspectorOpen={prefs.inspector}
               sidebarOpen={prefs.sidebar}
-              onActivate={(id) => dispatch({ type: 'activate', tabId: id })}
+              onActivate={(id) => { setChangesView(null); dispatch({ type: 'activate', tabId: id }) }}
               onDetach={(id) => dispatch({ type: 'close', tabId: id })}
               onMove={(id, to) => dispatch({ type: 'move', tabId: id, toIndex: to })}
               onNewAgent={() => onNewAgent()}
@@ -495,6 +551,16 @@ export function AppShell() {
                       sessionId={focused.sessionId}
                       canType={!!focusedSession && focusedSession.owned && focusedSession.status !== 'ended' && !focusedSession.detached}
                       className="app-slab absolute inset-0 z-10"
+                    />
+                  )}
+                  {changesView && (
+                    <ChangesView
+                      key={`${changesView.projectId}:${changesView.worktree}`}
+                      target={changesView}
+                      title={changesView.title}
+                      sessionId={changesView.sessionId}
+                      onClose={() => setChangesView(null)}
+                      className="absolute inset-0 z-20"
                     />
                   )}
                   {!current && (
@@ -533,6 +599,7 @@ export function AppShell() {
                   onDetach={detach}
                   editors={editors}
                   onOpenInEditor={openInEditor}
+                  onReviewChanges={focusedWorktree?.repo ? () => onOpenChanges(focusedWorktree.projectId, focusedWorktree.w) : undefined}
                 />
               </div>
             )}

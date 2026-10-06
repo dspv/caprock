@@ -30,6 +30,7 @@ export function Inspector({
   onDetach,
   editors = null,
   onOpenInEditor,
+  onReviewChanges,
 }: {
   session?: SessionSummary
   sessionId?: string
@@ -39,6 +40,8 @@ export function Inspector({
   /** The editors found on this machine (F18); null hides the actions. */
   editors?: EditorList | null
   onOpenInEditor?: OpenInEditor
+  /** Opens the Changes view of the worktree the session runs in. */
+  onReviewChanges?: () => void
 }) {
   return (
     <aside aria-label="Inspector" className="app-scroll flex h-full min-h-0 flex-col overflow-y-auto border-l border-[var(--app-hairline)] bg-[var(--app-chrome-bg)]">
@@ -51,7 +54,7 @@ export function Inspector({
       {!sessionId ? (
         <p className="px-4 py-5 text-[12.5px] leading-relaxed text-fg-muted">Open a session to see what it costs, how full its context is, and what it changed.</p>
       ) : (
-        <Body key={sessionId} session={session} sessionId={sessionId} hasPermission={hasPermission} onDetach={onDetach} editor={editors && onOpenInEditor ? { name: preferredName(editors), open: onOpenInEditor } : undefined} />
+        <Body key={sessionId} session={session} sessionId={sessionId} hasPermission={hasPermission} onDetach={onDetach} editor={editors && onOpenInEditor ? { name: preferredName(editors), open: onOpenInEditor } : undefined} onReviewChanges={onReviewChanges} />
       )}
     </aside>
   )
@@ -60,7 +63,7 @@ export function Inspector({
 type OpenInEditor = (path: string, label: string, editor?: string, line?: number) => void
 interface EditorAction { name: string; open: OpenInEditor }
 
-function Body({ session: s, sessionId, hasPermission, onDetach, editor }: { session?: SessionSummary; sessionId: string; hasPermission: boolean; onDetach: () => void; editor?: EditorAction }) {
+function Body({ session: s, sessionId, hasPermission, onDetach, editor, onReviewChanges }: { session?: SessionSummary; sessionId: string; hasPermission: boolean; onDetach: () => void; editor?: EditorAction; onReviewChanges?: () => void }) {
   const isShell = s?.kind === 'shell'
   const ended = s?.status === 'ended'
   return (
@@ -83,7 +86,7 @@ function Body({ session: s, sessionId, hasPermission, onDetach, editor }: { sess
       {!isShell && <PermissionPrompt sessionId={sessionId} />}
 
       {s && !isShell && <Figures s={s} />}
-      {s && <Changes sessionId={sessionId} editor={editor} />}
+      {s && <Changes sessionId={sessionId} editor={editor} onReview={onReviewChanges} />}
 
       <div className="grid gap-1.5 border-t border-[var(--app-hairline)] pt-4">
         {!isShell && (
@@ -147,7 +150,7 @@ function Figure({ label, value, sub }: { label: string; value: string; sub?: str
   )
 }
 
-function Changes({ sessionId, editor }: { sessionId: string; editor?: EditorAction }) {
+function Changes({ sessionId, editor, onReview }: { sessionId: string; editor?: EditorAction; onReview?: () => void }) {
   const [diff, setDiff] = useState<DiffResult | undefined>(undefined)
   const [error, setError] = useState('')
   useEffect(() => {
@@ -166,6 +169,9 @@ function Changes({ sessionId, editor }: { sessionId: string; editor?: EditorActi
     <section aria-label="Changes" className="grid gap-2">
       <div className="flex items-baseline gap-2">
         <h4 className="text-[11.5px] text-fg-muted">Changes</h4>
+        {onReview && (
+          <button type="button" onClick={onReview} className="text-[11.5px] text-accent underline-offset-2 hover:underline">Review and commit</button>
+        )}
         {diff && files.length > 0 && (
           <span className="num ml-auto text-[11.5px]">
             <span className="text-fg">{files.length} {files.length === 1 ? 'file' : 'files'}</span>{' '}

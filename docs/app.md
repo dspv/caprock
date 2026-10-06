@@ -58,6 +58,20 @@ others. Installing it: [install-app.md](install-app.md).
   turns, tokens and context, the permission prompt with its buttons, and the
   uncommitted changes in its checkout. Click a changed file to open it in
   your editor at its first change.
+- **Changes.** Click a worktree's ±N in the sidebar (hover the row for the
+  same button), *Review and commit* in the inspector, or "Review changes" in
+  the palette. The files are listed as *Staged*, *Changes* and *Conflicts*;
+  the one selected shows its diff, unified or side by side (**v**). Hover a
+  file to stage, unstage or discard it, or press **s**, **u**, **d**;
+  **j**/**k** move between files. A diff's *Stage hunk* takes one hunk.
+  Discarding throws away a file's unstaged edits, or deletes a new file,
+  and asks first; staged work is kept. Write a message (*Use the agent's
+  summary* starts one from what the agent said last), then *Commit* (⌘↵) —
+  the staged files, or every change when nothing is staged — or *Commit &
+  Push* (⇧⌘↵). *Push* publishes a new branch and tracks it, and never
+  forces; *Pull* only fast-forwards; *Fetch* refreshes ahead and behind.
+  Your git hooks run, and when one refuses, what it printed is shown. The
+  commit is made as the author your git config names.
 - **Find** (⌘F). A find bar over the terminal you are in: matches light up
   as you type, Enter and ⇧Enter step through them, **Aa** matches case and
   **.\*** takes a regular expression. Esc closes it and you are back in the
@@ -194,6 +208,12 @@ A phone you let control sessions can:
   message. The keys bar has Esc, Tab, the arrows, Enter and Ctrl+C for the
   agent's menus.
 - **Answer a permission prompt** with the buttons on the prompt card.
+- **Commit and push.** A session's *Changes* tab starts with what is
+  uncommitted in its worktree. Tap files to commit only those (nothing
+  ticked commits everything), write a message or take the agent's summary,
+  then **Commit** or **Commit & Push**; **Pull** and **Fetch** sit under
+  them. Only in a project under your home folder. A phone that can only
+  look sees the list and no buttons.
 
 It reconnects by itself. The header says where it stands — *Live*,
 *Catching up…*, *Reconnecting*, *Offline since* — and says *Live* only when

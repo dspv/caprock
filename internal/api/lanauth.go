@@ -273,6 +273,11 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/projects":                true,
 	"GET /v1/projects/ops":            true,
 	"GET /v1/projects/{id}/worktrees": true,
+
+	// A worktree's status and one file's diff (the Changes view), as a
+	// session's diff is a read.
+	"GET /v1/projects/{id}/changes":      true,
+	"GET /v1/projects/{id}/changes/diff": true,
 }
 
 // What a controller may do on top of reading (ADR-034), named one route at a
@@ -321,6 +326,17 @@ var controllerRoutes = map[string]bool{
 	"DELETE /v1/projects/{id}":                  true,
 	"POST /v1/projects/{id}/worktrees":          true,
 	"DELETE /v1/projects/{id}/worktrees/{name}": true,
+
+	// Finish the work from the phone (ADR-034 amended 2026-10-06): stage,
+	// unstage, discard (two-step), commit, push (never forced), pull
+	// (fast-forward only) and fetch, in a worktree under home (changes.go).
+	"POST /v1/projects/{id}/changes/stage":   true,
+	"POST /v1/projects/{id}/changes/unstage": true,
+	"POST /v1/projects/{id}/changes/discard": true,
+	"POST /v1/projects/{id}/changes/commit":  true,
+	"POST /v1/projects/{id}/changes/push":    true,
+	"POST /v1/projects/{id}/changes/pull":    true,
+	"POST /v1/projects/{id}/changes/fetch":   true,
 }
 
 // deviceVerdict is what a role may do with one request.

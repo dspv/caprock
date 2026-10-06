@@ -6,7 +6,7 @@
  * project and ← closes it, Enter opens what the row names.
  */
 import { useCallback, useState, type KeyboardEvent, type ReactNode } from 'react'
-import type { InboxItem, SessionNode, SidebarModel } from '@/lib/sidebar'
+import type { InboxItem, SessionNode, SidebarModel, WorktreeNode } from '@/lib/sidebar'
 import type { ProjectSource } from '@/lib/projects'
 import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
@@ -41,6 +41,8 @@ export interface SidebarProps {
   onAddProject: () => void
   onDashboard: () => void
   onPalette: () => void
+  /** Opens a worktree's Changes view from its ±N; absent without the projects API. */
+  onOpenChanges?: (projectId: string, w?: WorktreeNode) => void
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -115,6 +117,7 @@ export function Sidebar(props: SidebarProps) {
                 onOpenSession={props.onOpenSession}
                 onNewAgent={props.onNewAgent}
                 onNewShell={props.onNewShell}
+                onOpenChanges={props.onOpenChanges}
                 onFolderMenu={props.onFolderMenu}
               />
             ))}
