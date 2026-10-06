@@ -316,14 +316,13 @@ pub fn monitor(app: AppHandle, sup: Arc<Supervisor>) {
                 }
             };
             let state = sup.observe(found, absent_for);
-            // macOS: a Homebrew daemon moves onto the app's own (ADR-040).
+            // macOS: a Homebrew daemon moves onto the app's own, and the
+            // app's own is replaced when the bundle carries another (ADR-040).
             // Not before the window's first page has committed: a WebView
             // whose first load is cut off by the switch has no URL, and wry
             // unwraps it on the main thread when asked.
-            if matches!(
-                state,
-                State::Connected { ours: false, .. } | State::TooOld { ours: false, .. }
-            ) && MAIN_LOADED.load(Ordering::Relaxed)
+            if matches!(state, State::Connected { .. } | State::TooOld { .. })
+                && MAIN_LOADED.load(Ordering::Relaxed)
                 && sup.should_adopt(|| sup.bundled_version())
             {
                 sup.spawn_adopt();

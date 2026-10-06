@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom/vitest'
+import { beforeEach } from 'vitest'
 
 // jsdom implements neither ResizeObserver nor a canvas 2D context, and the
 // dashboard's canvas components (Pulse, the Projects sparkline) construct a
@@ -16,3 +17,17 @@ if (!('ResizeObserver' in globalThis)) {
   }
   globalThis.ResizeObserver = NoopResizeObserver
 }
+
+// jsdom is shared by every test in a file, and so is its storage. What one
+// test left there — a kept copy of a session (lib/swr.ts), a workspace, a
+// device token — was what the next test's first render showed, so a test's
+// outcome depended on the one before it. Every test starts from empty storage;
+// one that needs something there puts it there.
+beforeEach(() => {
+  try {
+    localStorage.clear()
+    sessionStorage.clear()
+  } catch {
+    /* no storage in this environment */
+  }
+})

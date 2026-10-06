@@ -27,6 +27,66 @@ Each target first builds the daemon from this checkout into
 sidecar. Bundle id `dev.caprock.app`, minimum macOS 13. Builds are unsigned
 (ad-hoc on macOS) until the owner's signing decisions say otherwise.
 
+## Trying a change on your own Mac
+
+`make app-local` builds this checkout's app and puts it in place of the one
+in `/Applications`, without a release (`scripts/app-local.sh`):
+
+```bash
+make app-local          # build, install over /Applications/Caprock.app, relaunch
+make app-local-revert   # back to the release: brew reinstall --cask dspv/tap/caprock-app
+```
+
+1. **Build.** The dashboard is rebuilt only when `ui/` changed since the last
+   run; then the daemon, stamped `<last tag>-dev+<commit>` (with
+   `.dirty.<time>` for uncommitted changes); then a release `.app` for this
+   Mac's architecture only — no universal binary, no `.dmg`. Cargo keeps its
+   own cache in `src-tauri/target/app-local` with fat LTO off and incremental
+   compilation on, and runs 4 jobs (`CARGO_BUILD_JOBS`) so the build does not
+   push a 16 GB machine into swap.
+2. **Check.** Bundle id, version, the bundled daemon's `caprock version`, the
+   ad-hoc signature, and no quarantine flag (a bundle built here has none).
+3. **Install.** The new bundle is copied beside the old one, the running app
+   is sent SIGTERM (it quits as with Cmd+Q, saving its window), and two
+   renames swap the bundles. Only the app running from that folder is
+   stopped.
+4. **Relaunch** with `open -a`, then wait for the daemon: the app finds its
+   own daemon at another version than the one it carries and puts its copy
+   in place through `/v1/shutdown` and a start (ADR-040). Sessions keep
+   running in their pty-hosts (ADR-033).
+
+It prints how long each step took and the daemon's version before and after.
+About Caprock and the status strip show the dev version; the update notice
+offers only a release newer than the one the build was made after.
+`make app-local-revert` quits the local build, reinstalls the released cask
+and starts it, and the released app puts its daemon back the same way. A
+daemon that applied a new migration leaves the database at that schema; the
+older daemon runs on it, skipping the migrations it does not know.
+
+Measured on an M1 Pro with 16 GB, 2026-10-06: the first run 6 min 50 s
+(the cargo cache is empty); after that 33 s with nothing changed, 40 s for a
+dashboard change, 32 s for a change to the shell's Rust. Each new daemon is
+new ad-hoc-signed code, so macOS may ask for folder access again, as it does
+after a release.
+
+`APP_DIR` installs somewhere else; `APP_LAUNCH=exec` starts the executable
+with `APP_LOCAL_ENV` (KEY=VALUE words) added to its environment instead of
+going through LaunchServices, and `APP_LAUNCH=none` does not start it. Run
+against a throw-away data directory the way the next section describes:
+
+```bash
+T=$PWD/.t; mkdir -p $T/home $T/data $T/bin
+echo '{"port": 4517}' > $T/data/config.json
+echo '{"background": false}' > $T/data/app.json
+echo '{"accelerator": null}' > $T/data/app-hotkey.json
+go build -o $T/bin/claude ./testdata/fakeclaude      # never the real claude
+APP_DIR=$PWD/.apps APP_LAUNCH=exec CAPROCK_DATA_DIR=$T/data \
+APP_LOCAL_ENV="HOME=$T/home CAPROCK_DATA_DIR=$T/data CAPROCK_SERVICE_LABEL=dev.caprock.apptest \
+CAPROCK_APP_BACKGROUND=1 PATH=$T/bin:/usr/bin:/bin" make app-local
+```
+
+On Linux and Windows the target says it is macOS-only and does nothing.
+
 ## Finding the daemon
 
 The supervisor (`src-tauri/src/supervisor.rs`) works on the data directory the
@@ -64,7 +124,15 @@ older, the app installs its copy, shuts the formula's daemon down through
 `/v1/shutdown` and starts its own (as a login service when one was
 registered), once per launch; `"own_daemon": false` in `app.json` turns this
 off. A formula's binary lives at a new Cellar path every release, and macOS
-lists each path as another "caprock" under Privacy & Security.
+lists each path as another "caprock" under Privacy & Security. The same
+move replaces the app's own daemon when the bundle carries a different one
+— another version, or the same version built differently — so a new
+release, a local build and a step back to a release each leave the daemon
+matching the app. Only a bundled app does it: `make app` (`cargo run`)
+leaves the running daemon alone.
+
+SIGTERM quits the app as Cmd+Q does (`src-tauri/src/sigterm.rs`): the window's
+size and place are saved and the daemon keeps running.
 
 ## What a page may call
 
