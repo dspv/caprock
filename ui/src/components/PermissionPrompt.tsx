@@ -31,6 +31,12 @@ export function usePermission(sessionId: string): [Permission | null, (p: Permis
  * desk, a guessing game on a phone. Here it is the command or file being asked
  * about, in full, and one button per answer. A viewer sees what is being asked
  * and no buttons.
+ *
+ * In the desktop app the card is not drawn for the session whose terminal is
+ * in front: the terminal's own menu is the answer surface there, and Enter
+ * answers it (.ai/21-app.md § What the user sees). Where the card does show,
+ * it says so, so the two never read as two questions. It never takes focus:
+ * a keystroke meant for the terminal must reach the terminal.
  */
 export function PermissionPrompt({ sessionId }: { sessionId: string }) {
   const [prompt, setPrompt] = usePermission(sessionId)
@@ -87,6 +93,10 @@ export function PermissionPrompt({ sessionId }: { sessionId: string }) {
           <button type="button" disabled={busy} onClick={() => void answer('deny')} aria-keyshortcuts="N Escape" className={`${button} border border-border-strong text-fg hover:border-danger hover:text-danger`}>
             No <Key>Esc</Key>
           </button>
+          {/* The same question as the terminal's menu, not a second one. */}
+          <p className="self-center text-[11.5px] text-fg-muted sm:ml-auto">
+            <span className="mono" aria-hidden>↵</span> Enter in the terminal = Yes
+          </p>
         </div>
       ) : (
         <p className="text-[12px] text-fg-muted">Waiting for an answer on a device that controls sessions.</p>

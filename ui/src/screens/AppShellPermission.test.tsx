@@ -1,0 +1,103 @@
+/**
+ * The permission card in the app (.ai/21-app.md § What the user sees): the
+ * terminal in front answers its own prompt, so the card is drawn only when
+ * something covers that terminal — and never twice.
+ */
+import { fireEvent, render, screen, within } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { SessionSummary } from '@/lib/api'
+
+vi.mock('@/components/TerminalPane', () => ({
+  TerminalPane: ({ sessionId, active }: { sessionId: string; active: boolean }) => (
+    <div data-testid={`pane-${sessionId}`} data-active={String(active)} />
+  ),
+}))
+vi.mock('@/components/PermissionPrompt', async (orig) => ({
+  ...(await orig<typeof import('@/components/PermissionPrompt')>()),
+  PermissionPrompt: ({ sessionId }: { sessionId: string }) => <div data-testid="permission-card" data-session={sessionId} />,
+}))
+
+function sess(p: Partial<SessionSummary>): SessionSummary {
+  return {
+    session_id: 's', cwd: '/w/app', repo_root: '/w/app', project: 'app', model: 'claude-opus-5', started_at: 0, last_event_at: 1, status: 'active',
+    transcript_path: '', has_hooks: true, has_transcript: true, git_branch: 'main', version: '', owned: true,
+    stats: { session_id: 's', turns: 3, tool_calls: 5, files_touched: 1, tokens_in: 10, tokens_out: 20, cache_read: 0, cache_write: 0, cost_usd: 0.42 },
+    activity: { phrase: '', at: '', health: 'working' },
+    savings: { billed_with: 0, billed_without: 0, saved: 0, hit_rate: 0, cut_pct: 0 },
+    ...p,
+  } as SessionSummary
+}
+
+const sessions = [
+  sess({ session_id: 'agent-1', title: 'Fix the login bug' }),
+  sess({ session_id: 'agent-2', title: 'Waiting one', activity: { phrase: '', at: '2026-10-05T10:00:00Z', health: 'waiting-on-you' } }),
+]
+
+vi.mock('@/lib/api', async (orig) => {
+  const actual = await orig<typeof import('@/lib/api')>()
+  return {
+    ...actual,
+    api: {
+      ...actual.api,
+      status: async () => ({ version: 'v0.0.0', claude_available: true }),
+      sessions: async () => sessions,
+      summary: async () => ({ cost_usd: 0, projects: [] }),
+      permission: async () => ({ permission: null }),
+      diff: async () => ({ root: '/w/app', branch: 'main', files: [], stat: '' }),
+      editors: async () => ({ editors: [], preferred: '' }),
+      recentEvents: async () => [],
+    },
+  }
+})
+
+beforeEach(() => {
+  localStorage.clear()
+  sessionStorage.clear()
+  vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })))
+  location.hash = '#/app'
+  vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel')
+})
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
+
+async function openAgent() {
+  const { AppShell } = await import('./AppShell')
+  render(<AppShell />)
+  fireEvent.click(await screen.findByText('Fix the login bug'))
+  await screen.findByRole('tab', { name: /Fix the login bug/ })
+}
+
+const cards = () => screen.queryAllByTestId('permission-card')
+
+describe('the permission card in the app', () => {
+  it('is not drawn while the session’s terminal is in front: the terminal answers it', async () => {
+    await openAgent()
+    expect(screen.getByTestId('pane-agent-1')).toHaveAttribute('data-active', 'true')
+    expect(cards()).toHaveLength(0)
+  })
+
+  it('is drawn, once, when the chat covers the terminal, and goes when the terminal is back', async () => {
+    await openAgent()
+    fireEvent.click(screen.getByRole('button', { name: 'Show the chat' }))
+    expect(cards()).toHaveLength(1)
+    expect(cards()[0]).toHaveAttribute('data-session', 'agent-1')
+    fireEvent.click(screen.getByRole('button', { name: 'Show the terminal' }))
+    expect(cards()).toHaveLength(0)
+  })
+
+  it('in the inspector too: only when the terminal is covered, and never beside a second card', async () => {
+    await openAgent()
+    fireEvent.click(screen.getByRole('button', { name: /Inspector/ }))
+    expect(screen.getByRole('complementary', { name: 'Inspector' })).toBeInTheDocument()
+    expect(cards()).toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: 'Show the chat' }))
+    expect(cards()).toHaveLength(1)
+  })
+
+  it('switching to a waiting session’s tab shows its terminal, not a card', async () => {
+    await openAgent()
+    fireEvent.click(within(screen.getByRole('region', { name: 'Waiting on you' })).getByText('Waiting one'))
+    await screen.findByRole('tab', { name: /Waiting one/ })
+    expect(screen.getByTestId('pane-agent-2')).toHaveAttribute('data-active', 'true')
+    expect(cards()).toHaveLength(0)
+  })
+})

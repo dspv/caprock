@@ -118,11 +118,21 @@ One window, three regions:
   then to the sessions and shells in it. Badges: *waiting on you*, *looping*,
   cost today. A **Dashboard** entry opens the existing screens.
 - **Tabs (main).** Terminal tabs — an agent session or a shell — with the
-  project and branch in the title. The permission prompt card
+  project and branch in the title. For the session whose terminal is in
+  front, the terminal's own "Do you want to proceed?" menu is the answer
+  surface: Enter answers it, and no Caprock card is drawn beside it — two
+  surfaces for one prompt read as the question asked twice (owner,
+  2026-10-06). The permission prompt card
   ([ADR-035](08-decisions.md#adr-035--a-permission-prompt-is-answered-with-a-button-found-by-its-hook))
-  sits under the terminal it belongs to.
+  is for a prompt you cannot see: it shows when the chat or a Changes view
+  covers that terminal, says *↵ Enter in the terminal = Yes*, and never takes
+  the keyboard from the terminal. Sessions in other tabs or behind the
+  window are reached through their badge, the Inbox, the menu bar popover,
+  the notification and the phone, which keep their buttons.
 - **Status strip (bottom).** Connection state, plan limits (5-hour and 7-day),
-  today's spend, the daemon's state.
+  today's spend, the daemon's state and version — read again on every
+  reconnect of the live link and on window focus, since the app can swap its
+  daemon under a page that stays loaded.
 
 Outside the window: the menu bar (macOS) or tray (Windows, Linux) with limits
 and the number of sessions waiting; OS notifications with **Approve** and
@@ -684,8 +694,9 @@ tells a page where a file lives.
   (owner to confirm); Telegram stays off unless switched on. The official
   `tauri-plugin-notification` shows only a title and body on desktop and
   reports no click or action, so every OS gets the floor: the click brings
-  the app forward and the app opens the session with its prompt card, whose
-  buttons answer with the `prompt_id`. Buttons inside the notification need a
+  the app forward and the app opens the session, whose terminal shows the
+  prompt to answer with Enter (the card's buttons, with the `prompt_id`,
+  where the chat covers it). Buttons inside the notification need a
   crate beyond the official plugins (UNUserNotificationCenter on macOS, toast
   activation on Windows, D-Bus actions on Linux); macOS has them now (below).
   On Linux, where a click does not raise the app, the notification informs

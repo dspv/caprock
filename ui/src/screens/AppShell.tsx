@@ -7,7 +7,7 @@
  * terminals stay mounted behind them, so switching back never repaints from
  * nothing and never drops a socket that was in use.
  */
-import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useState } from 'react'
 import { api, ApiError, errText, type SessionSummary } from '@/lib/api'
 import { APP_ROUTE, isMacPlatform, isTauri, isWorkspaceHash } from '@/lib/appmode'
 import { FIND_EVENT, matchAppShortcut, type AppCommand } from '@/lib/appkeys'
@@ -29,6 +29,7 @@ import { useShellTray } from '@/lib/tray'
 import { OPEN_SESSION_EVENT } from '@/lib/shell'
 import { useOsNotifications } from '@/lib/notify'
 import { useTheme } from '@/lib/theme'
+import { useDaemonVersion } from '@/lib/useDaemonVersion'
 import { Sidebar } from '@/components/Sidebar'
 import { TabStrip, TerminalStack } from '@/components/TerminalTabs'
 import { Inspector } from '@/components/Inspector'
@@ -157,7 +158,7 @@ export function AppShell() {
   // mounted behind it.
   const [chatOpen, setChatOpen] = useState<ReadonlySet<string>>(() => new Set())
   const [changesView, setChangesView] = useState<ChangesTarget | null>(null)
-  const [version, setVersion] = useState<string | undefined>(undefined)
+  const version = useDaemonVersion()
   const [, toggleTheme] = useTheme()
   const editors = useEditors()
   const [folderMenu, setFolderMenu] = useState<EditorMenuAt | null>(null)
@@ -179,9 +180,6 @@ export function AppShell() {
   useEffect(() => {
     try { localStorage.setItem(UI_KEY, JSON.stringify(prefs)) } catch { /* not kept */ }
   }, [prefs])
-  useEffect(() => {
-    api.status().then((s) => setVersion(s.version)).catch(() => { /* the strip shows none */ })
-  }, [])
   useEffect(() => {
     if (!toast) return
     const id = window.setTimeout(() => setToast(''), 6000)
@@ -347,7 +345,14 @@ export function AppShell() {
 
   // The app's keys, before anything else on the page sees them. The terminal
   // already lets them through (xtermInput), and they are never its keys.
-  useEffect(() => {
+  //
+  // A layout effect, so the listener is swapped in the same commit that paints
+  // new state. As a passive effect it ran a beat after the paint, and a key
+  // pressed in that beat acted on the state before it: ⌘J with the waiting
+  // session already in the sidebar said "Nothing is waiting on you", and ⌘T
+  // with a project on screen asked to add one. A busy main thread (a terminal
+  // streaming) widens the beat.
+  useLayoutEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.type !== 'keydown' || e.repeat && !/^[1-9]$/.test(e.key)) return
       const c = matchAppShortcut(e, isMac)
@@ -481,6 +486,14 @@ export function AppShell() {
 
   const focusedIsAgent = !!focused && focused.kind === 'session' && focusedSession?.kind !== 'shell'
   const showChat = focusedIsAgent && !!focused && chatOpen.has(focused.sessionId)
+  // The permission card is for a prompt you cannot see. With the session's
+  // terminal in front, its own "Do you want to proceed?" menu is the answer
+  // surface — Enter answers it — and a card above the strip read as the same
+  // question asked twice (owner, 2026-10-06). The card comes back when the
+  // chat or a Changes view covers the terminal; other tabs are reached through
+  // their badge, the Inbox, the menu bar and the notification.
+  const terminalInFront = workspaceShown && !showChat && !changesView
+  const promptCard = focusedIsAgent && !!focused && !terminalInFront
   const toggleChat = useCallback(() => {
     if (!focused) return
     const id = focused.sessionId
@@ -576,7 +589,7 @@ export function AppShell() {
                     />
                   )}
                 </div>
-                {focusedIsAgent && !prefs.inspector && focused && (
+                {promptCard && !prefs.inspector && focused && (
                   <div className="shrink-0 border-t border-[var(--app-hairline)] px-3 empty:hidden [&>*]:mb-2">
                     <PermissionPrompt sessionId={focused.sessionId} />
                   </div>
@@ -598,6 +611,7 @@ export function AppShell() {
                   session={focusedSession}
                   sessionId={focused?.sessionId}
                   hasPermission={!!focused && data.permissions.has(focused.sessionId)}
+                  showPrompt={promptCard}
                   onClose={() => setPrefs((p) => ({ ...p, inspector: false }))}
                   onDetach={detach}
                   editors={editors}
