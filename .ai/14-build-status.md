@@ -91,7 +91,9 @@ through LaunchServices (`open`) with no Gatekeeper prompt, `syspolicyd`
 logging an allowed scan. `bench/update.mjs` then checks the owner's bar end
 to end: tabs, order, front tab, split and sizes, sidebar, window, scroll
 position, a half-typed line and every session process are the same after
-the update (E2E_RESULT).
+the update — 12 of 12 checks passed on 2026-10-06 with 3 fake agents and a
+split shell, and the scroll check failed as it should with the saved place
+removed.
 
 ### 2026-10-06 — Benchmarks (WP-16)
 
