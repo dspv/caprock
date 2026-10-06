@@ -42,6 +42,9 @@ var viewerMay = map[string]bool{
 	"GET /v1/glance":                 true, "GET /v1/week": true, "GET /v1/tools/drill": true,
 	"GET /v1/projects": true, "GET /v1/projects/ops": true, "GET /v1/projects/{id}/worktrees": true,
 	"GET /v1/projects/{id}/changes": true, "GET /v1/projects/{id}/changes/diff": true,
+	// GitHub (WP-19): the connection, the clone picker, pull requests.
+	"GET /v1/github": true, "GET /v1/github/owners": true, "GET /v1/github/repos": true,
+	"GET /v1/github/prs": true, "GET /v1/projects/{id}/github": true,
 }
 
 // What a controller may do on top (ADR-034): work on a session, nothing about
@@ -62,6 +65,8 @@ var controllerMayAlso = map[string]bool{
 	"POST /v1/projects/{id}/changes/discard": true, "POST /v1/projects/{id}/changes/commit": true,
 	"POST /v1/projects/{id}/changes/push": true, "POST /v1/projects/{id}/changes/pull": true,
 	"POST /v1/projects/{id}/changes/fetch": true,
+	// Open a pull request, and read its state again now (WP-19).
+	"POST /v1/projects/{id}/github/pr": true, "POST /v1/projects/{id}/github/refresh": true,
 }
 
 // registeredRoutes reads every route New registers out of api.go, so a route

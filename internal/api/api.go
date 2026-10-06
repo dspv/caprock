@@ -29,6 +29,7 @@ import (
 	"github.com/dspv/caprock/internal/editor"
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/gitdiff"
+	"github.com/dspv/caprock/internal/github"
 	"github.com/dspv/caprock/internal/gitremote"
 	"github.com/dspv/caprock/internal/license"
 	"github.com/dspv/caprock/internal/loop"
@@ -118,6 +119,9 @@ type Deps struct {
 	// Projects is the projects list, its git state and clones (nil ⇒ the
 	// /v1/projects endpoints return 501).
 	Projects *projects.Service
+	// GitHub is the GitHub integration (nil ⇒ the /v1/github endpoints
+	// return 501).
+	GitHub *github.Service
 	// Shells starts and lists shell tabs (nil ⇒ /v1/shells returns 501).
 	Shells ShellController
 	// DataDir is where Caprock keeps its own state. Needed so a file pasted
@@ -443,6 +447,20 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/projects/{id}/changes/push", s.handleRemote("push"))
 	m.HandleFunc("POST /v1/projects/{id}/changes/pull", s.handleRemote("pull"))
 	m.HandleFunc("POST /v1/projects/{id}/changes/fetch", s.handleRemote("fetch"))
+	m.HandleFunc("GET /v1/github", s.handleGitHubStatus)
+	m.HandleFunc("PATCH /v1/github", s.handleGitHubPatch)
+	m.HandleFunc("DELETE /v1/github", s.handleGitHubDisconnect)
+	m.HandleFunc("POST /v1/github/connect", s.handleGitHubConnect)
+	m.HandleFunc("POST /v1/github/device", s.handleGitHubDeviceStart)
+	m.HandleFunc("GET /v1/github/device", s.handleGitHubDeviceState)
+	m.HandleFunc("DELETE /v1/github/device", s.handleGitHubDeviceCancel)
+	m.HandleFunc("GET /v1/github/owners", s.handleGitHubOwners)
+	m.HandleFunc("GET /v1/github/repos", s.handleGitHubRepos)
+	m.HandleFunc("GET /v1/github/prs", s.handleGitHubPRs)
+	m.HandleFunc("GET /v1/projects/{id}/github", s.handleWorktreeGitHub)
+	m.HandleFunc("POST /v1/projects/{id}/github/refresh", s.handleWorktreeGitHubRefresh)
+	m.HandleFunc("POST /v1/projects/{id}/github/pr", s.handleCreatePR)
+	m.HandleFunc("POST /v1/projects/{id}/github/repo", s.handleCreateRepo)
 	m.HandleFunc("POST /v1/shells", s.handleStartShell)
 	m.HandleFunc("GET /v1/shells", s.handleShells)
 	m.HandleFunc("POST /v1/shutdown", s.handleShutdown)

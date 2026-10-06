@@ -33,6 +33,7 @@ import (
 	"github.com/dspv/caprock/internal/editor"
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/gemini"
+	"github.com/dspv/caprock/internal/github"
 	"github.com/dspv/caprock/internal/gitremote"
 	"github.com/dspv/caprock/internal/hive"
 	"github.com/dspv/caprock/internal/hookd"
@@ -154,6 +155,8 @@ type Daemon struct {
 	mgr   *agents.Manager
 	// projs is the projects list and its git watcher (WP-05).
 	projs *projects.Service
+	// gh is the GitHub integration (WP-19); idle until the user connects.
+	gh    *github.Service
 	board *board.Board
 	orch  *orchestrator.Orchestrator
 	api   *api.Server
@@ -421,6 +424,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		d.log.Warn("projects list unavailable", "component", "daemon", "err", err)
 		d.projs = nil
 	}
+	d.startGitHub(ctx)
 
 	// The daily spend cap. Built here because it needs the manager: it may only
 	// ever pause sessions Caprock started, and the manager is what knows which
@@ -504,7 +508,7 @@ func (d *Daemon) run(ctx context.Context) error {
 			Preferred: func() string { return d.config().Editor },
 		},
 		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d,
-		Projects: d.projs, Shells: &shellAdapter{m: d.mgr},
+		Projects: d.projs, Shells: &shellAdapter{m: d.mgr}, GitHub: d.gh,
 	})
 	srv := &http.Server{Handler: d.api, ReadHeaderTimeout: 10 * time.Second}
 	// Held so LAN access can be switched on later without a restart. The

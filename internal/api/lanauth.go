@@ -278,6 +278,15 @@ var pairedDeviceRoutes = map[string]bool{
 	// session's diff is a read.
 	"GET /v1/projects/{id}/changes":      true,
 	"GET /v1/projects/{id}/changes/diff": true,
+
+	// GitHub (WP-19): the connection's state (never the token), the clone
+	// picker's lists, and each worktree's pull request with its checks and
+	// reviews. The daemon makes the calls; the token never leaves it.
+	"GET /v1/github":               true,
+	"GET /v1/github/owners":        true,
+	"GET /v1/github/repos":         true,
+	"GET /v1/github/prs":           true,
+	"GET /v1/projects/{id}/github": true,
 }
 
 // What a controller may do on top of reading (ADR-034), named one route at a
@@ -337,6 +346,12 @@ var controllerRoutes = map[string]bool{
 	"POST /v1/projects/{id}/changes/push":    true,
 	"POST /v1/projects/{id}/changes/pull":    true,
 	"POST /v1/projects/{id}/changes/fetch":   true,
+
+	// Open a pull request from a worktree under home (pushing it first,
+	// as the push above would), and read its state again now (WP-19).
+	// Connecting GitHub and creating a repository stay on the machine.
+	"POST /v1/projects/{id}/github/pr":      true,
+	"POST /v1/projects/{id}/github/refresh": true,
 }
 
 // deviceVerdict is what a role may do with one request.
