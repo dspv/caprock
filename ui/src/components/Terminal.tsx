@@ -15,6 +15,7 @@ import { writeSliced } from '@/lib/termwrite'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
+import { loadTerminalFont, watchTerminalFont } from '@/lib/termfont'
 
 /**
  * The terminal's palette: graphite, in BOTH app themes, fixed at build time.
@@ -147,6 +148,8 @@ export function TerminalView({
     let gotOutput = false
     const css = getComputedStyle(document.documentElement)
     const v = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback
+    // Before the terminal opens and measures its cell (lib/termfont).
+    loadTerminalFont()
     const term = new Xterm({
       // The resolved stack, not `var(--font-mono)`. xterm renders glyphs onto a
       // canvas and hands this string to the 2D context, which does not resolve
@@ -170,31 +173,15 @@ export function TerminalView({
     try { fit.fit() } catch { /* not yet laid out */ }
     // Input first: the keyboard goes to the terminal the moment it exists.
     if (!phone) term.focus()
-    // Ask for every subset the face ships, by name.
+    // Every subset the face ships, asked for by name, and a re-measure with a
+    // fresh glyph atlas whenever a face finishes loading (lib/termfont).
     //
     // Subsets load lazily, triggered by a matching character appearing in the
     // DOM — but the terminal paints to a canvas, so its text never enters the
-    // DOM and the request is never made. The dashboard's own chrome is
-    // English, so the first non-Latin line would render in the fallback face
-    // forever. One character per range is enough to make the browser fetch it.
-    //
-    // These six are everything JetBrains Mono covers. CJK, Arabic, Hebrew and
-    // Thai are NOT in the face at all and cannot be turned on here — they fall
-    // through to the stack in --font-mono, which is why that stack has to keep
-    // a real system monospace at the end rather than ending at the webfont.
-    // The two Cyrillic samples (U+042B, U+0462) are built at run time, through
-    // map so the minifier cannot fold them back: the repository and its
-    // bundle hold no Cyrillic.
-    const cyrillic = [0x42b, 0x462].map((code) => String.fromCharCode(code))
-    for (const sample of ['A', 'ā', ...cyrillic, 'Ω', 'ế']) {
-      document.fonts?.load('12px "JetBrains Mono Variable"', sample)
-        .catch(() => { /* face unavailable; the fallback still renders */ })
-    }
-    // xterm measures the cell from the font that is loaded WHEN IT OPENS. The
-    // webfont usually is not yet, so it measures the fallback and keeps that
-    // cell size after the real face arrives — every column lands slightly off.
-    // Re-fitting once the faces are ready re-measures against them.
-    document.fonts?.ready.then(() => { try { fit.fit() } catch { /* gone */ } })
+    // DOM and the request is never made. And xterm measures the cell from the
+    // font that is loaded WHEN IT OPENS, keeping that cell after the real face
+    // arrives; a refit alone does not measure again.
+    const unfont = watchTerminalFont(term, () => { try { fit.fit() } catch { /* gone */ } })
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
     const url = `${proto}://${location.host}/v1/agents/${encodeURIComponent(sessionId)}/term`
     // Nothing in 30 s is not a slow start any more: say so, and offer a retry.
@@ -369,7 +356,7 @@ export function TerminalView({
       unwake()
       sendRef.current = () => {}
       attachRef.current = async () => {}
-      ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); client.dispose(); unbench(); term.dispose()
+      ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); client.dispose(); unbench(); unfont(); term.dispose()
     }
   }, [sessionId, owned, attempt, phone])
   if (!owned && detached) {
