@@ -170,6 +170,7 @@ pub fn request(
 
 /// A POST with a JSON body: the daemon requires `application/json` on a
 /// state-changing request from a client that is not a browser.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn post_json(port: u16, path: &str, json: &str) -> std::io::Result<(u16, String)> {
     send(port, "POST", path, None, json)
 }

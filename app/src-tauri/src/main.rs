@@ -8,9 +8,13 @@ mod badge;
 mod commands;
 mod discovery;
 mod hotkey;
+// Actionable notifications and the popover are macOS's (notify_macos, the
+// menu bar); elsewhere most of both modules is unused, not dead.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod notify;
 #[cfg(target_os = "macos")]
 mod notify_macos;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod popover;
 mod shell;
 #[cfg(all(feature = "snapshot", target_os = "macos"))]

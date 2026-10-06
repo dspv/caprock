@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	posix "path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -110,8 +111,8 @@ func Detect(p nativeterm.Probe) []Editor {
 				continue
 			}
 			e := Editor{ID: k.id, Name: k.name, app: app}
-			if k.cli != "" && p.IsExec(filepath.Join(app, k.cli)) {
-				e.cli = filepath.Join(app, k.cli)
+			if k.cli != "" && p.IsExec(posix.Join(app, k.cli)) {
+				e.cli = posix.Join(app, k.cli)
 			}
 			out = append(out, e)
 		case "linux":
@@ -225,11 +226,11 @@ func lineArgs(style lineStyle, path string, line int) []string {
 func findBundle(p nativeterm.Probe, names []string) string {
 	dirs := []string{"/Applications"}
 	if p.Home != "" {
-		dirs = append(dirs, filepath.Join(p.Home, "Applications"), filepath.Join(p.Home, "Applications", "JetBrains Toolbox"))
+		dirs = append(dirs, posix.Join(p.Home, "Applications"), posix.Join(p.Home, "Applications", "JetBrains Toolbox"))
 	}
 	for _, d := range dirs {
 		for _, n := range names {
-			if path := filepath.Join(d, n); p.IsDir(path) {
+			if path := posix.Join(d, n); p.IsDir(path) {
 				return path
 			}
 		}
@@ -241,10 +242,10 @@ func findBundle(p nativeterm.Probe, names []string) string {
 // shell's — rather than the daemon's own, which under a service is minimal.
 func lookPath(p nativeterm.Probe, name string) string {
 	for _, dir := range strings.Split(getenv(p.Env, "PATH"), ":") {
-		if dir == "" || !filepath.IsAbs(dir) {
+		if dir == "" || !posix.IsAbs(dir) {
 			continue
 		}
-		if full := filepath.Join(dir, name); p.IsExec(full) {
+		if full := posix.Join(dir, name); p.IsExec(full) {
 			return full
 		}
 	}

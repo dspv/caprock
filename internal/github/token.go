@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	posix "path"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -278,7 +279,8 @@ func UserHome(ctx context.Context) string {
 func homeFromDSCache(out string) string {
 	for _, l := range strings.Split(out, "\n") {
 		if v, ok := strings.CutPrefix(strings.TrimSpace(l), "dir:"); ok {
-			if d := strings.TrimSpace(v); filepath.IsAbs(d) {
+			// dscacheutil is macOS's: its paths are POSIX on any OS a test runs.
+			if d := strings.TrimSpace(v); posix.IsAbs(d) {
 				return d
 			}
 		}
