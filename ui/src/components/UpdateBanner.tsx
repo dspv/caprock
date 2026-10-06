@@ -16,6 +16,7 @@ import { api, isPairedDevice, type Settings, type UpdateStatus } from '@/lib/api
 import { fmtAgo } from '@/lib/format'
 import { Copyable } from '@/components/ui'
 import { everyWhileVisible } from '@/lib/visible'
+import { isTauri } from '@/lib/appmode'
 
 const DISMISS_KEY = 'caprock.update.dismissed'
 
@@ -45,6 +46,9 @@ export function UpdateBanner({ plan, onSave, now, owned = 0 }: {
     // Switching the check on is a settings change, which a paired device may
     // not make (ADR-029).
     if (dismissed === 'offer' || isPairedDevice()) return null
+    // The desktop app asks its own question once, on its first launch
+    // (AppUpdateAsk); a second offer here would be asking twice.
+    if (isTauri()) return null
     return (
       <Frame tone="muted">
         <span className="text-fg-muted">

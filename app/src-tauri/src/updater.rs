@@ -34,7 +34,8 @@ const PROGRESS_EVERY: Duration = Duration::from_millis(200);
 /// How long a check or a download may take before it is called failed.
 const TIMEOUT: Duration = Duration::from_secs(120);
 
-/// Where the updater stands.
+/// Where the updater stands. `next` is the version on offer (`version` in
+/// [`Info`] is this app's own; the two sit side by side in one object).
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(tag = "phase", rename_all = "snake_case")]
 pub enum Phase {
@@ -45,16 +46,16 @@ pub enum Phase {
     UpToDate,
     /// A signed update for this platform is published.
     Available {
-        version: String,
+        next: String,
     },
     Downloading {
-        version: String,
+        next: String,
         downloaded: u64,
         total: Option<u64>,
     },
     /// Verified; being put in place. The app restarts right after.
     Installing {
-        version: String,
+        next: String,
     },
     /// `error` is what went wrong, in words a user can act on.
     Failed {
@@ -254,7 +255,7 @@ pub async fn check<R: Runtime>(app: AppHandle<R>) -> Info {
         Ok(Some(u)) => {
             let version = u.version.clone();
             *st.pending.lock().unwrap_or_else(|e| e.into_inner()) = Some(u);
-            Phase::Available { version }
+            Phase::Available { next: version }
         }
         Ok(None) => Phase::UpToDate,
         Err(e) => Phase::Failed { error: e },
@@ -307,7 +308,7 @@ pub async fn install<R: Runtime>(app: AppHandle<R>) -> Info {
     };
     let version = update.version.clone();
     st.set_phase(Phase::Downloading {
-        version: version.clone(),
+        next: version.clone(),
         downloaded: 0,
         total: None,
     });
@@ -323,7 +324,7 @@ pub async fn install<R: Runtime>(app: AppHandle<R>) -> Info {
                 progress_app
                     .state::<Updates>()
                     .set_phase(Phase::Downloading {
-                        version: progress_version.clone(),
+                        next: progress_version.clone(),
                         downloaded,
                         total,
                     });
@@ -345,7 +346,7 @@ pub async fn install<R: Runtime>(app: AppHandle<R>) -> Info {
         }
     };
     st.set_phase(Phase::Installing {
-        version: version.clone(),
+        next: version.clone(),
     });
     announce(&app);
     if let Err(e) = update.install(bytes) {
@@ -451,13 +452,15 @@ mod tests {
     fn phases_serialise_flat_for_the_page() {
         let u = Updates::new(&dir("phase"));
         u.set_phase(Phase::Downloading {
-            version: "0.79.0".into(),
+            next: "0.79.0".into(),
             downloaded: 10,
             total: Some(40),
         });
         let v = serde_json::to_value(u.info("0.78.1", None)).unwrap();
         assert_eq!(v["phase"], "downloading");
         assert_eq!(v["downloaded"], 10);
+        assert_eq!(v["next"], "0.79.0");
+        assert_eq!(v["version"], "0.78.1");
         assert_eq!(v["total"], 40);
     }
 

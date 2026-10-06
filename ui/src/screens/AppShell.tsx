@@ -33,6 +33,8 @@ import { Sidebar } from '@/components/Sidebar'
 import { TabStrip, TerminalStack } from '@/components/TerminalTabs'
 import { Inspector } from '@/components/Inspector'
 import { StatusStrip } from '@/components/StatusStrip'
+import { AppUpdateAsk } from '@/components/AppUpdateAsk'
+import { appUpdate } from '@/lib/appupdate'
 import { PermissionPrompt } from '@/components/PermissionPrompt'
 import { ChatView } from '@/components/ChatView'
 import { ChangesView } from '@/components/ChangesView'
@@ -401,6 +403,8 @@ export function AppShell() {
       { id: 'a-theme', group: 'Actions', label: 'Switch theme', icon: <SparkIcon size={14} />, run: toggleTheme },
       { id: 'a-waiting', group: 'Actions', label: 'Next session waiting on you', hint: '⌘J', icon: <SparkIcon size={14} />, run: jumpToWaiting },
     )
+    // F20: the app's own updater; the answer shows in the status strip.
+    if (isTauri()) items.push({ id: 'a-update', group: 'Actions', label: 'Check for updates', icon: <SparkIcon size={14} />, run: () => { void appUpdate.check() } })
     if (current) {
       items.push(
         { id: 'a-find', group: 'Actions', label: 'Find in the terminal', hint: '⌘F', icon: <SearchIcon size={14} />, run: () => window.dispatchEvent(new Event(FIND_EVENT)) },
@@ -610,6 +614,7 @@ export function AppShell() {
         </main>
       </div>
       <StatusStrip summary={data.summary} pane={focused ? paneStatus[focused.sessionId] : undefined} version={version} />
+      {isTauri() && <AppUpdateAsk />}
 
       {toast && (
         <div role="status" className="app-fade-in pointer-events-none fixed inset-x-0 bottom-10 z-50 flex justify-center px-4">
