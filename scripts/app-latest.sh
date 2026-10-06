@@ -30,7 +30,11 @@
 #   make app-latest TAG=vX.Y.Z
 #   make app-latest TAG=vX.Y.Z ARGS=--allow-missing   # Latest even with gaps
 #
-# Safe to re-run: the copies and checksums.txt are replaced each time.
+# It also writes latest.json, the desktop app's update manifest, from the
+# signed updater bundles' .sig files (scripts/app-update-manifest.py).
+#
+# Safe to re-run: the copies, checksums.txt and latest.json are replaced each
+# time.
 #
 set -euo pipefail
 
@@ -103,6 +107,29 @@ if [[ ${#COPIES[@]} -gt 0 ]]; then
   } | LC_ALL=C sort -k2 >"$WORK/checksums.txt"
   gh release upload "$TAG" "$WORK/checksums.txt" --clobber
 fi
+
+# latest.json for the app's updater (F20, ADR-041), from the .sig files the
+# app jobs attached beside each signed bundle. Attached before the Latest
+# mark, so releases/latest/download/latest.json always names files that are
+# there. A release without signatures (the key not configured) gets none,
+# and the app's Update button says so; that never blocks Latest.
+echo "→ latest.json"
+mkdir -p "$WORK/sig"
+SIGS="$(grep -E "^Caprock_${VERSION//./\\.}_.*\.sig\$" <<<"$ASSETS" || true)"
+if [[ -n "$SIGS" ]]; then
+  while IFS= read -r sig; do
+    gh release download "$TAG" --pattern "$sig" --dir "$WORK/sig"
+  done <<<"$SIGS"
+fi
+set +e
+python3 "$(dirname "${BASH_SOURCE[0]}")/app-update-manifest.py" "$TAG" "$WORK/sig" --out "$WORK/latest.json"
+rc=$?
+set -e
+case "$rc" in
+  0) gh release upload "$TAG" "$WORK/latest.json" --clobber ;;
+  3) echo "  warning: no signed app update in $TAG: the app's Update button offers the release page instead" ;;
+  *) die "latest.json: app-update-manifest.py failed" ;;
+esac
 
 if [[ "$TAG" == *-* ]]; then
   echo "  $TAG is a prerelease: not marked Latest"

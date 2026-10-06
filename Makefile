@@ -84,11 +84,15 @@ dev: ## Run daemon (go run) + vite dev server; UI on :5173 proxies API to :22776
 
 # --- test / lint ----------------------------------------------------------
 .PHONY: test
-test: test-go test-ui ## All tests
+test: test-go test-ui test-scripts ## All tests
 
 .PHONY: test-go
 test-go: ## Go tests
 	go test ./...
+
+.PHONY: test-scripts
+test-scripts: ## Release script tests (latest.json for the app updater)
+	python3 -m unittest discover -s scripts -p 'test_*.py'
 
 .PHONY: test-ui
 test-ui: ## Dashboard tests
@@ -123,6 +127,10 @@ APP_BUNDLES ?=
 # The app's version for app-bundle (release jobs pass the tag without the v);
 # empty keeps tauri.conf.json's.
 APP_VERSION ?=
+# With TAURI_SIGNING_PRIVATE_KEY (and _PASSWORD) in the environment,
+# app-bundle also writes the signed updater bundles (F20, ADR-041):
+# tauri.updater.conf.json turns createUpdaterArtifacts on. Without the key
+# it builds exactly as before.
 
 .PHONY: app-sidecar
 app-sidecar: ## Build the daemon the app bundles (app/src-tauri/binaries/caprock-<triple>)
@@ -143,7 +151,7 @@ app-test: app-sidecar ## Desktop app: cargo fmt --check, clippy -D warnings, car
 .PHONY: app-bundle
 app-bundle: app-sidecar ## Build the release app bundle(s) under app/src-tauri/target/release/bundle
 	cd app && { [ -d node_modules ] || npm ci; }
-	cd app && npx tauri build $(if $(APP_BUNDLES),--bundles $(APP_BUNDLES),) $(if $(APP_VERSION),--config '{"version":"$(APP_VERSION)"}',)
+	cd app && npx tauri build $(if $(APP_BUNDLES),--bundles $(APP_BUNDLES),) $(if $(APP_VERSION),--config '{"version":"$(APP_VERSION)"}',) $(if $(TAURI_SIGNING_PRIVATE_KEY),--config src-tauri/tauri.updater.conf.json,)
 
 .PHONY: app-release
 app-release: ## macOS: build the universal .dmg for TAG=vX.Y.Z, check it, attach it to the release, render the cask
