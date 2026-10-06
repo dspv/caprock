@@ -114,8 +114,8 @@ describe('Settings → GitHub', () => {
     render(<GitHubSettings />)
     fireEvent.click(await screen.findByText('Sign in with GitHub'))
     expect(await screen.findByLabelText('Your code')).toHaveTextContent('ABCD-1234')
-    await act(async () => { vi.advanceTimersByTime(4100) })
-    expect(await screen.findByText('@ada')).toBeTruthy()
+    for (let i = 0; i < 3 && polls < 2; i++) await act(async () => { vi.advanceTimersByTime(2100) })
+    expect(await screen.findByText('@ada', {}, { timeout: 3000 })).toBeTruthy()
     expect(screen.getByText(/through Sign in with GitHub/)).toBeTruthy()
   })
 
@@ -224,7 +224,7 @@ describe('a worktree’s pull request', () => {
   })
 
   it('shows 422 already-open with a link, a missing scope, and a failed push', async () => {
-    let answer = fail(409, 'exists', 'Opening the pull request', 'a pull request from feat/x is already open: #7 Old', { pr: pr({ number: 7 }) })
+    let answer: { status: number; body: Record<string, unknown> } = fail(409, 'exists', 'Opening the pull request', 'a pull request from feat/x is already open: #7 Old', { pr: pr({ number: 7 }) })
     handler = (c) => c.url.endsWith('/github/pr?worktree=feat-x') ? answer : { body: wt() }
     render(<GitHubStrip target={target} title="caprock · feat/x" />)
     fireEvent.click(await screen.findByText('Open pull request…'))

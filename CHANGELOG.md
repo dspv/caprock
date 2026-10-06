@@ -11,6 +11,22 @@ Phase 3 (Delight) has no plan by design.
 
 ### Added
 
+- **GitHub in the app (F14).** Settings → GitHub connects your account with
+  your GitHub CLI login (read when needed, never stored), a pasted token
+  (kept in the macOS login keychain, else a file only you can read) or, once
+  a Caprock OAuth app is configured, *Sign in with GitHub*. It shows the
+  account, scopes and a health line (last success, requests left, the last
+  error word for word). ⌘O and the phone's *Start work* list and search
+  your repositories to clone. A project with no remote can be put on GitHub
+  (private by default). A worktree's Changes view opens a pull request —
+  title and description from the commits or the agent's summary, base the
+  default branch, draft switch, pushed first when needed — and then shows
+  its checks, reviews and mergeability; the sidebar marks worktrees with a
+  pull request, green, amber or red. Updates arrive live; GitHub is read at
+  most once a minute per repository with conditional requests, and the app
+  can notify you when CI fails or a review lands. Phones read all of it; a
+  controller phone can open a pull request. Every GitHub error is shown
+  with what Caprock was doing. See [docs/app.md § GitHub](docs/app.md#github).
 - **A guide to the desktop app.** [docs/app.md](docs/app.md) walks through
   the window — projects, tabs, terminal, chat, inspector, the keys — the
   menu bar, badge and ⌃⌥⌘C, notifications with Approve and Deny (and when

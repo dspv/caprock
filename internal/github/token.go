@@ -195,7 +195,7 @@ func (f *Fallback) Set(ctx context.Context, token string) error {
 		return nil
 	}
 	if ferr := f.File.Set(ctx, token); ferr != nil {
-		return fmt.Errorf("the Keychain refused (%v) and the file could not be written: %w", err, ferr)
+		return fmt.Errorf("the Keychain refused (%s) and the file could not be written: %w", firstLine(err.Error()), ferr)
 	}
 	f.setUsed("file", "The Keychain refused it ("+firstLine(err.Error())+"), so the token is in a file in the data directory, readable by you only.")
 	return nil

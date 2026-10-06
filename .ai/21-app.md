@@ -773,21 +773,27 @@ leases expiring in waves, and a LAN probe serialised before the fallback.
 ## GitHub
 
 The reference app shells out to `gh` and hides its errors; its issue tracker
-records integrations that show green while listing nothing. Caprock's
-proposal, pending the owner's choice of auth method:
+records integrations that show green while listing nothing. Built in WP-19;
+the auth decision is [ADR-039](08-decisions.md#adr-039--github-the-daemon-talks-to-the-api-with-the-gh-login-a-pasted-token-or-a-device-flow-token-that-never-leaves-it),
+the endpoints [03-contracts.md § GitHub](03-contracts.md#github), the user
+guide [docs/app.md § GitHub](../docs/app.md#github).
 
-- **The daemon calls the GitHub API directly**, with the user's token from an
-  OAuth device flow (a Caprock OAuth app: no client secret on the machine, the
-  user approves on github.com) or a pasted fine-grained token. Importing an
-  existing `gh auth token` once is offered as a shortcut, not depended on.
-- **The token is stored write-only** in the data directory, `0600`, like the
-  Telegram bot token ([ADR-025](08-decisions.md#adr-025--keys-go-in-the-interface-stored-write-only-because-a-key-nobody-can-enter-is-a-feature-nobody-uses));
-  the OS keychain is a P2 option (pure Go on all three OS, no CGO).
+- **The daemon calls the GitHub API directly** (`internal/github`, no new
+  library). Three sources, the easiest first: the GitHub CLI's login (`gh
+  auth token`, read when needed, never written down), a pasted fine-grained
+  or classic token, or the OAuth device flow when a Caprock OAuth app's
+  `github_client_id` is configured.
+- **A token Caprock keeps** goes to the macOS login keychain, named by path
+  so no system dialog can appear, else a `0600` file in the data directory
+  with a note in Settings saying why. Never in SQLite, `config.json` or
+  logs, and never sent to a client.
 - **Opt-in and revocable** — an outbound call the user switched on (rule 4).
+  Disconnect removes only what Caprock stored.
 - **Conditional requests** (`ETag`, `If-None-Match`) and the rate-limit headers
-  respected; polling backs off when nothing changes.
+  respected; a followed repository is read at most once a minute, backing off
+  to 8 minutes when nothing changes.
 - **Every error shown** with what was attempted; a health line (last success,
-  last error, scopes) in Settings.
+  last error, scopes, rate limit) in Settings.
 
 ## Security model
 
@@ -879,7 +885,9 @@ The owner said to go ahead with the proposals ("build it to the end"). Taken:
    account exists.
 3. **Windows code signing:** not yet; unsigned with a SmartScreen note.
 4. **GitHub auth:** OAuth device flow with a Caprock OAuth app. Errors are
-   always shown, never swallowed.
+   always shown, never swallowed. *Amended by WP-19 (ADR-039):* the GitHub
+   CLI's login and a pasted token come first; the device flow is offered once
+   the app's client id is configured.
 5. **Minimum OS versions:** macOS 13, Windows 10 22H2, WebKitGTK 4.1
    distributions.
 6. **Name and bundle id:** "Caprock", `dev.caprock.app`.

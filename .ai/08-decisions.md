@@ -1361,6 +1361,16 @@ or follows a link out of the worktree; hooks always run. A controller could
 already run `git push --force` by typing it into a session, so this grants
 nothing a controller lacked — it removes the reason to.
 
+*Amended 2026-10-06 (WP-19, GitHub; [ADR-039](#adr-039--github-the-daemon-talks-to-the-api-with-the-gh-login-a-pasted-token-or-a-device-flow-token-that-never-leaves-it)):*
+a viewer may read GitHub's state — `GET /v1/github` (the account, never
+the token), `/v1/github/owners`, `/v1/github/repos`, `/v1/github/prs` and
+`/v1/projects/{id}/github` — so the phone shows checks, reviews and the clone
+picker. A controller may also open a pull request from a worktree
+(`POST /v1/projects/{id}/github/pr`, which pushes first like the Changes
+push) and ask for a re-read (`…/github/refresh`). Connecting, the device
+flow, disconnecting, the notification switch and creating a repository stay
+the machine's: they change where Caprock talks to and what it holds.
+
 
 ---
 
@@ -1695,3 +1705,72 @@ is the next step, not a new shell; if WebKitGTK cannot meet the budgets on
 Linux with any xterm.js renderer; if Tauri's mobile targets cannot host the
 phone UI acceptably when F22 starts; or if the Rust shell passes its line
 budget because something belongs in it that the daemon cannot do.
+
+---
+
+## ADR-039 — GitHub: the daemon talks to the API with the gh login, a pasted token or a device-flow token that never leaves it
+
+**Date:** 2026-10-06 · **Status:** accepted (WP-19, decided without the owner;
+he may overrule it)
+
+F14 needs a GitHub token. The reference app shells out to `gh` and hides what
+fails. Decision 4 in [21-app.md](21-app.md#decisions-owner-2026-10-05) named the OAuth device
+flow; WP-19's brief put three sources in order of how little the user has to
+do, and this records that order and where each token lives.
+
+**The decision.**
+
+- **The daemon calls `api.github.com` itself** (`internal/github`), over
+  `net/http`, with no new library. The token is sent only there (and the
+  device flow's two calls to `github.com`); the client refuses any other
+  host, and no endpoint, frame, log line or config field carries it. The UI
+  sees the account, the scopes and the token's kind (by prefix), never the
+  value.
+- **Three sources, one at a time, the easiest first:**
+  1. **The GitHub CLI's login.** `gh auth token --hostname github.com`, run
+     with the login shell's environment when a call needs it, cached in
+     memory for 10 minutes and re-read once on a 401. Caprock never writes
+     it down; disconnecting stops using it and leaves `gh` alone.
+  2. **A pasted token** (fine-grained or classic), checked with `GET /user`
+     before it is kept. On macOS it goes to the user's **login keychain**
+     through `/usr/bin/security` with argv (no shell), naming the keychain
+     file explicitly — `<home>/Library/Keychains/login.keychain-db`, the home
+     read from Directory Services for the process's uid, not `$HOME`. When
+     that file is missing or `security` fails, the token goes to a `0600`
+     file in the data directory and Settings says why. On other OS it is the
+     `0600` file. Never in SQLite, `config.json` or a log.
+  3. **The OAuth device flow**, offered only when `github_client_id` is set
+     in `config.json` (a Caprock OAuth app's public client id; no secret on
+     the machine). The user approves on github.com; the token is kept like
+     a pasted one. Scopes asked: `repo read:org`.
+- **Disconnect removes only what Caprock stored** (the keychain item or the
+  file); a `gh` login is untouched.
+- **No dialog, ever.** A keychain call without an explicit keychain file
+  falls back to the user's default-keychain search, and when that is missing
+  macOS shows "Keychain Not Found" with a **Reset To Defaults** button. That
+  happened during WP-19 under a test daemon with a throwaway `$HOME`. So the
+  Keychain backend refuses to run without a file path, the path comes from
+  the OS user record, the store is read at startup only when a stored token
+  is the chosen source, `CAPROCK_SECRET_STORE=file` forces the file (tests
+  and throwaway daemons set it), and no test runs the real `security` — the
+  backend is tested by the argv it builds.
+- **Polling is polite.** A repository with a followed pull request is read
+  at most once a minute, doubling to 8 minutes while nothing changes; every
+  read is conditional (`If-None-Match`, a `304` costs no rate limit), a rate
+  limit pauses that resource until `Retry-After` or the reset, and a push
+  through Caprock asks for a re-read (at most every 10 s). Changes reach the
+  UI as `github` live frames; CI failing or a review landing is a `notify`
+  frame (kinds `ci`, `review`), switchable in Settings.
+- **Rule 4.** Nothing is sent to GitHub until the user connects; the
+  connection is the switch, and Settings → Privacy names it.
+
+**Rules out:** depending on `gh` (it is one source, not a requirement);
+shelling out to `gh api` (its errors are what the reference app hides);
+a client secret on the machine; keeping the token in the database; a
+keychain library or CGO; polling faster than a minute; a keychain call that
+can raise a system dialog.
+
+**Revisit if** GitHub ships a device flow that needs no registered app (then
+it can be on by default), if Windows or Linux users ask for their OS
+keychain (a pure-Go backend behind the same `TokenStore`), or if `security`
+ever prompts for an explicit, unlocked login keychain.
