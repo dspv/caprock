@@ -190,3 +190,10 @@ release:
   # skips the formula push.
   draft: false
   prerelease: auto
+  # Published, but not marked Latest: the desktop app's files arrive from
+  # release.yml's app jobs minutes later, and the site links
+  # releases/latest/download/Caprock-macOS.dmg and friends. Until they are
+  # attached, those links would 404. release.yml's app-latest job runs
+  # scripts/app-latest.sh, which marks the release Latest once every app file
+  # is there (and leaves the previous release Latest when one is missing).
+  make_latest: false

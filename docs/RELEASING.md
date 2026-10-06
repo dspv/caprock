@@ -150,6 +150,15 @@ goreleaser:
 - **`app-other`** builds `Caprock_<version>_x64-setup.exe` (NSIS) on Windows
   and the AppImage, `.deb` and `.rpm` on Ubuntu 22.04. Each OS is its own job;
   a failure there never holds up the `.dmg`.
+- **`app-latest`** runs `scripts/app-latest.sh` after both: it attaches a copy
+  of each app file under a name without the version (`Caprock-macOS.dmg`,
+  `Caprock-Windows-setup.exe`, `Caprock-Linux.AppImage`, `Caprock-Linux.deb`,
+  `Caprock-Linux.rpm`), adds both names' sha256 to `checksums.txt`, and marks
+  the release **Latest**. The site's download buttons link
+  `releases/latest/download/<name>`, so goreleaser publishes with
+  `make_latest: false` and the Latest mark waits for the app files; with one
+  missing the script fails and the previous release stays Latest, so no button
+  404s. A prerelease is never marked Latest.
 
 **Without Actions**, on a Mac, after the daemon release exists:
 
@@ -158,7 +167,16 @@ git fetch --tags && git checkout vX.Y.Z
 make app-release TAG=vX.Y.Z ARGS=--no-upload   # build and check only
 make app-release TAG=vX.Y.Z                    # build, check, attach the .dmg
 make app-release TAG=vX.Y.Z ARGS=--cask-pr     # …and open a cask PR on the tap
+make app-latest TAG=vX.Y.Z                     # version-less copies, checksums, mark Latest
 ```
+
+Until `make app-latest` runs, the release is published but not Latest: the
+previous one is, and the update check (`GET /v1/update`, which reads
+`releases/latest`) keeps offering it. Homebrew is not affected; its formula
+names the version.
+Run it once the Windows and Linux files are attached too, or with
+`ARGS=--allow-missing` to mark Latest without them — their download links then
+404 until they are attached and it runs again.
 
 It needs Go, Node 22, Rust via rustup (it adds the two macOS targets itself)
 and `gh` logged in. It refuses a checkout that is not exactly the tag or has

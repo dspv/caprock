@@ -9,6 +9,17 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **Download links for the desktop app that never change.** Every release now
+  also carries the app under names without the version — `Caprock-macOS.dmg`,
+  `Caprock-Windows-setup.exe`, `Caprock-Linux.AppImage`, `Caprock-Linux.deb`
+  and `Caprock-Linux.rpm` — so
+  `https://github.com/dspv/caprock/releases/latest/download/Caprock-macOS.dmg`
+  always fetches the newest build. The versioned files stay, and
+  `checksums.txt` lists both. A release is marked Latest only once all of
+  them are attached, so a link never points at a release still being built.
+
 ### Fixed
 
 - **Dropping a file on a terminal in the desktop app works.** The app's

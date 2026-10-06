@@ -929,7 +929,12 @@ guide [docs/app.md § GitHub](../docs/app.md#github).
   dependency of the `.deb` and `.rpm`.
 - **Releases** come from the same tag as the daemon (goreleaser for the
   binaries, Tauri's bundler for the app) and carry the daemon they were built
-  with.
+  with. Each release also carries the app files under names without the
+  version (`Caprock-macOS.dmg`, `Caprock-Windows-setup.exe`,
+  `Caprock-Linux.AppImage`, `.deb`, `.rpm`), so
+  `releases/latest/download/<name>` is a permanent link for the site's
+  download buttons; the release is marked Latest only once they are all
+  attached (`scripts/app-latest.sh`).
 
 ## Telemetry
 

@@ -7,11 +7,14 @@ Windows and Linux on the same
 each build bundles the daemon from the same tag. You do not need to install the
 daemon separately.
 
-| OS      | One step                                                  |
-| ------- | --------------------------------------------------------- |
-| macOS   | `brew install --cask dspv/tap/caprock-app`, or the `.dmg` |
-| Windows | run `Caprock_<version>_x64-setup.exe`                     |
-| Linux   | the `.AppImage`, `.deb` or `.rpm` ([below](#linux))       |
+- **macOS:** `brew install --cask dspv/tap/caprock-app`, or
+  [Caprock-macOS.dmg](https://github.com/dspv/caprock/releases/latest/download/Caprock-macOS.dmg).
+- **Windows:** run [Caprock-Windows-setup.exe](https://github.com/dspv/caprock/releases/latest/download/Caprock-Windows-setup.exe).
+- **Linux:** the `.AppImage`, `.deb` or `.rpm` ([below](#linux)).
+
+Each link above always fetches the newest release. Every release also carries
+the same files with the version in the name (`Caprock_<version>_universal.dmg`,
+`Caprock_<version>_x64-setup.exe`, …) and lists both in `checksums.txt`.
 
 Minimum versions: macOS 13, Windows 10 22H2, and a Linux with WebKitGTK 4.1
 (Ubuntu 22.04, Debian 12, Fedora 38 or newer). The Mac build is universal
@@ -30,8 +33,9 @@ with an Apple Developer account). The cask clears the download's quarantine
 flag after Homebrew has checked its sha256, so it opens like any other app. If
 macOS still says it cannot verify Caprock, use the steps below.
 
-**From the `.dmg`.** Download `Caprock_<version>_universal.dmg` from
-[Releases](https://github.com/dspv/caprock/releases), open it and drag
+**From the `.dmg`.** Download [Caprock-macOS.dmg](https://github.com/dspv/caprock/releases/latest/download/Caprock-macOS.dmg)
+(the newest release; `Caprock_<version>_universal.dmg` on
+[Releases](https://github.com/dspv/caprock/releases) is the same file), open it and drag
 Caprock to Applications. The first time you open it, macOS refuses an app from
 an unidentified developer:
 
@@ -52,8 +56,9 @@ Trash.
 
 ## Windows
 
-Download `Caprock_<version>_x64-setup.exe` from
-[Releases](https://github.com/dspv/caprock/releases) and run it. It installs
+Download [Caprock-Windows-setup.exe](https://github.com/dspv/caprock/releases/latest/download/Caprock-Windows-setup.exe)
+(or `Caprock_<version>_x64-setup.exe` from
+[Releases](https://github.com/dspv/caprock/releases)) and run it. It installs
 for your user only, with no administrator prompt, and fetches Microsoft's
 WebView2 runtime if Windows does not have it yet.
 
@@ -65,17 +70,20 @@ Apps → Caprock.
 
 ## Linux
 
-Pick one:
+Pick one — [Caprock-Linux.AppImage](https://github.com/dspv/caprock/releases/latest/download/Caprock-Linux.AppImage),
+[Caprock-Linux.deb](https://github.com/dspv/caprock/releases/latest/download/Caprock-Linux.deb) or
+[Caprock-Linux.rpm](https://github.com/dspv/caprock/releases/latest/download/Caprock-Linux.rpm) (the newest release; the versioned
+names are on [Releases](https://github.com/dspv/caprock/releases)):
 
 ```bash
 # AppImage: any distribution with WebKitGTK 4.1
-chmod +x Caprock_<version>_amd64.AppImage && ./Caprock_<version>_amd64.AppImage
+chmod +x Caprock-Linux.AppImage && ./Caprock-Linux.AppImage
 
 # Debian, Ubuntu
-sudo apt install ./Caprock_<version>_amd64.deb
+sudo apt install ./Caprock-Linux.deb
 
 # Fedora, RHEL
-sudo dnf install ./Caprock-<version>-1.x86_64.rpm
+sudo dnf install ./Caprock-Linux.rpm
 ```
 
 The `.deb` and `.rpm` pull in WebKitGTK 4.1 and the tray library themselves.
