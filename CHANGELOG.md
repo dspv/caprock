@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.78.2] - 2026-10-06
+
 ### Added
 
 - **Settings → New sessions: the permission mode new agents start in.** The
