@@ -1457,6 +1457,45 @@ restart smoke test, intermittently — and the dialog came back without its
 buttons. A crash must not lose an open dialog on any OS. Clearing a prompt
 stays in the background: a lost clear is caught by the events on restore.
 
+*Amended 2026-10-06 (the owner lost work to it all day):* **a button reads the
+menu off the screen before it types, and prompts queue.** The fixed keys were
+wrong on a real menu: in auto mode the classifier's dialog ("This command
+requires approval") is `1. Yes  2. No`, while the hook still carries the
+suggestion that used to mean `2` = *don't ask again*, so **Yes, for the rest of
+this session** typed `2` and rejected the call. And one prompt per session,
+overwritten by every `PermissionRequest` (a subagent's included), let a card
+name one request while its key landed in another's dialog. Now:
+
+- **The key comes from the screen.** When a button is pressed, the session's
+  recent output (the ring the pty-host keeps, so it holds across a daemon
+  restart) is replayed onto a screen by a small emulator (`termbuf.Screen`:
+  printing, cursor moves, erases, both buffers; colours and modes ignored),
+  and the menu at its bottom is read: numbered options, one marked `❯`, an
+  option starting *No*, and at most a footer under it. Yes is the option
+  whose text is just *Yes*; the always button is an option starting *Yes,* (or
+  *Yes and*) that says *session*, *don't ask* or *allow*; No is Esc. No menu,
+  or no such option, and nothing is typed: `422`, *that option is not on the
+  prompt — answer in the terminal*, shown on the card. Esc too needs a menu:
+  with none it interrupts the turn. This undoes the first paragraph's "not by
+  reading the screen" for answering only; finding the prompt is still the
+  hook's job.
+- **Prompts queue per call.** Claude Code queues dialogs and shows the oldest;
+  so does Caprock (`tool_use_id` when the hook sends one, `agent_id` for a
+  subagent's). The card shows the oldest and how many wait behind it, a later
+  hook never overwrites an earlier one, and a button for a queued prompt is a
+  `409`. Each is cleared by what answers it: Enter or a digit in the terminal
+  answers the oldest, Esc or Ctrl+C clears them all (it rejects and
+  interrupts), a `PostToolUse` its own call, a `SubagentStop` that subagent's,
+  `Stop`, the next prompt or the session ending all of them. Stored one row
+  per prompt (migration 0042), still committed before the hook is answered.
+- **Keys on the card.** With a card in view and focus outside a text field or
+  the terminal, `Y` or Enter is Yes, `A` the always option (when offered), `N`
+  or Esc is No; the buttons say so. A focused terminal keeps every key.
+
+**Revisit if** Claude Code renames its options (the menus in
+`internal/agents/permmenu_test.go` would stop matching), or its dialog stops
+being the last thing on the screen.
+
 ---
 
 ## ADR-036 — A phone hears that a session needs it through the owner's own Telegram bot

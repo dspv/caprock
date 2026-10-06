@@ -34,8 +34,10 @@ Claude Code sends one JSON object per event on the shim's stdin. Fields common t
 ([ADR-035](08-decisions.md), [ADR-036](08-decisions.md)). Claude Code fires it
 as it draws a permission dialog; the shim forwards it fire-and-forget and never
 answers it, so the dialog appears exactly as without Caprock. For a session
-Caprock started, the daemon also remembers it as the prompt that session waits
-on (`GET /v1/agents/{id}/permission`) until something answers it. For every
+Caprock started, the daemon also queues it as a prompt that session waits on
+(`GET /v1/agents/{id}/permission` returns the oldest, which is the dialog
+Claude Code shows) until something answers it; a later hook never replaces an
+earlier unanswered prompt. For every
 session the stored event makes Now and the session page say *waiting for
 approval* (naming the call; *waiting for your answer* for `AskUserQuestion`)
 with the *waiting on you* badge, until the session's next event, and is what a
@@ -776,8 +778,8 @@ POST   /v1/agents                    {cwd?, chat?, create?, worktree?, agent?, m
 GET    /v1/agents/models?agent=      {agent, default?, models:[{id,label}]}
 POST   /v1/agents/{id}/input         {data}            → 204   (owned PTYs only)
 POST   /v1/agents/{id}/signal        {action: pause|resume|kill} → 204 (owned PTYs only)
-GET    /v1/agents/{id}/permission    → {permission: {id, tool, detail, always?, since} | null}; the prompt an owned session waits on
-POST   /v1/agents/{id}/permission    {id, choice: allow|always|deny} → 204; 409 when that prompt is no longer waiting
+GET    /v1/agents/{id}/permission    → {permission: {id, tool, detail, always?, since, queued?} | null}; the oldest prompt an owned session waits on (the dialog on its screen), queued = how many wait behind it
+POST   /v1/agents/{id}/permission    {id, choice: allow|always|deny} → 204; 409 when that prompt is not the one on screen; 422 {error} when the menu on screen has no such option (nothing typed)
 WS     /v1/agents/{id}/term          bidirectional stream (xterm.js): binary = keystrokes, text = control; snapshot on connect, closes on exit; subprotocol caprock.term.v2 [?since=&client=] = protocol v2
 POST   /v1/paste                     {name, type, data:base64} → {path}; writes a pasted or dropped file so Claude Code can read it
 GET    /v1/terminals                 → {terminals: [{id, name}], preferred}; terminal apps installed here, most preferred first
@@ -1672,32 +1674,42 @@ than its conversation ([ADR-032](08-decisions.md)); written by the daemon when
 fork), and the two must not be read as one. `SessionSummary` carries it as
 `relay_from`, omitted when empty.
 
-### Pending permission DDL (migration 0039)
+### Pending permission DDL (migrations 0039, 0042)
 
 ```sql
-CREATE TABLE IF NOT EXISTS pending_permissions (
-  session_id TEXT    NOT NULL PRIMARY KEY,
-  prompt_id  TEXT    NOT NULL,
-  tool       TEXT    NOT NULL,
-  detail     TEXT    NOT NULL DEFAULT '',
-  always     TEXT    NOT NULL DEFAULT '',
-  since      INTEGER NOT NULL,              -- unix ms the dialog was drawn
-  input      TEXT    NOT NULL DEFAULT ''
+-- 0042 rebuilt 0039's one-row-per-session table as a queue, rows carried over.
+CREATE TABLE pending_permissions (
+  session_id  TEXT    NOT NULL,
+  prompt_id   TEXT    NOT NULL,
+  tool        TEXT    NOT NULL,
+  detail      TEXT    NOT NULL DEFAULT '',
+  always      TEXT    NOT NULL DEFAULT '',
+  since       INTEGER NOT NULL,              -- unix ms the dialog was drawn
+  input       TEXT    NOT NULL DEFAULT '',
+  tool_use_id TEXT    NOT NULL DEFAULT '',
+  agent_id    TEXT    NOT NULL DEFAULT '',
+  PRIMARY KEY (session_id, prompt_id)
 );
 ```
 
-The permission prompt an owned session waits on ([ADR-035](08-decisions.md)),
-kept across a daemon restart. A new prompt's row is committed on the
-`PermissionRequest` hook's own request, before the hook is answered and before
-the prompt is served, so a daemon killed the moment after (a crash, or a
-Windows stop, which has no SIGTERM) still finds it. A cleared prompt's row is
-deleted off the caller's goroutine, so a keystroke never waits on the
-database; the writes are serialised and each writes the state current when it
-runs. On reattach a Claude Code session gets its prompt back under the same
-`prompt_id`, so the `409` check holds, unless the session recorded a
-`tool.post`, `turn.user`, `turn.assistant`, `agent.stop`, `session.end` or
-another `permission.prompt` after `since`; rows of sessions not reattached are
-deleted.
+The permission prompts an owned session waits on ([ADR-035](08-decisions.md)),
+kept across a daemon restart: one row per prompt, read back oldest first
+(`since`, then insertion order). Claude Code queues its dialogs and shows the
+oldest, so a later `PermissionRequest` adds a row behind the others and never
+replaces one. `tool_use_id` is the hook's id for the call when it sends one;
+`agent_id` is set when a subagent asked, so its `SubagentStop` clears its rows.
+
+A new prompt's row is committed on the `PermissionRequest` hook's own request,
+before the hook is answered and before the prompt is served, so a daemon killed
+the moment after (a crash, or a Windows stop, which has no SIGTERM) still finds
+it. A cleared prompt's row is deleted off the caller's goroutine, so a
+keystroke never waits on the database; the writes are serialised and each
+rewrites the session's queue as it stands when it runs. On reattach a Claude
+Code session gets each prompt back under the same `prompt_id`, so the `409`
+check holds, unless the session recorded a `tool.post`, `turn.user`,
+`turn.assistant`, `agent.stop` or `session.end` after that prompt's `since` (a
+later `permission.prompt` no longer counts: it queues behind); rows of
+sessions not reattached are deleted.
 
 ### Removed sessions DDL (migration 0040)
 
