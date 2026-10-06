@@ -479,7 +479,10 @@ describe('TermClient — exactly once (Phone v2 item 3)', () => {
     expect(echo.length).toBe(typed)
     expect(echo.every((k, i) => k === `<${i + 1}>`)).toBe(true)
     expect(t.c.unacked).toBe(0)
-  })
+    // Synchronous on fake timers, so nothing in it waits on anything: its
+    // time is CPU alone — 1.4–3.4 s measured on a busy laptop, 7.2 s on a very
+    // busy one, where the default 5 s failed it with nothing wrong.
+  }, 30_000)
 })
 
 /** The last mounted client's wake, as the page's listeners would call it. */

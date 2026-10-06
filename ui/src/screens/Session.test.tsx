@@ -2,6 +2,7 @@ import { describe as d, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { describe, SessionScreen } from './Session'
 import { SessionCard } from './Now'
+import { writeCache } from '@/lib/swr'
 import type { DiffResult, Event, SessionDetail, SessionSummary } from '@/lib/api'
 
 const detail = vi.hoisted(() => ({ value: {} as SessionDetail }))
@@ -9,6 +10,11 @@ const diffResult = vi.hoisted(() => ({ value: {} as DiffResult }))
 const earlier = vi.hoisted(() => ({ value: [] as Event[] }))
 const earlierCalls = vi.hoisted(() => ({ value: [] as { before: number; limit: number }[] }))
 const termsMade = vi.hoisted(() => ({ n: 0 }))
+const diffCalls = vi.hoisted(() => ({ n: 0 }))
+/** When set, the session answers only once it resolves: a busy daemon. */
+const sessionGate = vi.hoisted(() => ({ wait: undefined as Promise<void> | undefined }))
+/** The same for the diff. */
+const diffGate = vi.hoisted(() => ({ wait: undefined as Promise<void> | undefined }))
 
 // SessionScreen mounts the Terminal tab, and xterm asks jsdom for a canvas
 // context it does not have. The failure is noise rather than a defect — the
@@ -38,8 +44,8 @@ vi.mock('@/lib/api', async (orig) => {
     ...actual,
     api: {
       ...actual.api,
-      session: async () => detail.value,
-      diff: async () => diffResult.value,
+      session: async () => { await sessionGate.wait; return detail.value },
+      diff: async () => { diffCalls.n++; await diffGate.wait; return diffResult.value },
       notes: async () => [],
       eventsBefore: async (_id: string, before: number, limit: number) => {
         earlierCalls.value.push({ before, limit })
@@ -198,6 +204,38 @@ d('Changes tab', () => {
     unmount()
     render(<SessionScreen id="s" tab="files" />)
     expect(await screen.findByText('a.ts')).toBeInTheDocument()
+  })
+
+  // A new event asks for the diff again, and the list stays on screen while it
+  // does. It used to blank to "loading…" and come back as new rows, so a click
+  // on a row or on "expand all" in that moment landed on a row already gone.
+  // Opening the tab over the kept copy of the session (lib/swr.ts) is the
+  // same change, once: the fresh copy has a newer last event.
+  it('keeps the same rows on screen when a new event asks for the diff again', async () => {
+    setup(['a.ts'])
+    writeCache('session:s', { ...detail.value, last_event_at: detail.value.last_event_at - 60_000, events: [], files: [] })
+    diffCalls.n = 0
+    let answer = () => {}
+    sessionGate.wait = new Promise<void>((r) => { answer = r })
+    try {
+      render(<SessionScreen id="s" tab="changes" />)
+      // The kept copy is on screen, and so is its diff…
+      const row = await screen.findByText('a.ts')
+      // …when the fresh copy, with a newer last event, lands, and the diff
+      // is asked again and takes its time.
+      let diffAnswer = () => {}
+      diffGate.wait = new Promise<void>((r) => { diffAnswer = r })
+      answer()
+      await waitFor(() => expect(diffCalls.n).toBe(2))
+      expect(screen.queryByText('loading…')).not.toBeInTheDocument()
+      expect(row).toBeInTheDocument()
+      diffAnswer()
+      await waitFor(() => expect(screen.getByText('1 files')).toBeInTheDocument())
+      expect(row).toBeInTheDocument()
+    } finally {
+      sessionGate.wait = undefined
+      diffGate.wait = undefined
+    }
   })
 })
 

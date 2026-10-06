@@ -15,16 +15,52 @@ Phase 3 (Delight) has no plan by design.
   New session dialog and the New agent sheet open on it, and a session started
   without choosing one (the project terminal's "New session here", a quick
   chat) starts in it. Unset, nothing changes.
+- **`make app-local`: try a change to the Mac app without a release.** It
+  builds this checkout's app for the Mac's own architecture, installs it over
+  `/Applications/Caprock.app` and relaunches it; the app then moves the daemon
+  onto the build it carries, and running sessions carry on. Stamped
+  `<last tag>-dev+<commit>`, which About Caprock shows and the update notice
+  does not mistake for an old release. About half a minute once the build
+  cache is warm. `make app-local-revert` goes back to the released app.
+
+### Changed
+
+- **One permission question in the app, not two.** When a session's terminal
+  is in front, its own "Do you want to proceed?" menu is where you answer —
+  press Enter — and Caprock no longer draws its approval card above the
+  status strip for it. The card still shows when the chat or a Changes view
+  covers the terminal, and now says *↵ Enter in the terminal = Yes*; other
+  tabs' prompts still reach you through the Inbox, the menu bar, the
+  notification and the phone.
 
 ### Fixed
 
+- **Upgrading the Mac app now upgrades its daemon too.** An app started on a
+  new release kept the daemon of its own from the old one running until that
+  was too old to talk to. It now puts the daemon it carries in place once per
+  launch when the two differ; sessions keep running.
+- **Quitting the app with SIGTERM** (`kill`, a script) now quits it the way
+  Cmd+Q does, keeping the window's size and place.
+- **A live session's Changes tab no longer flashes "loading…" on every
+  event.** Each new event re-read the diff as if it were a new question,
+  blanking the list and drawing new rows, so a click on a file or on "expand
+  all" in that moment was lost. The list now stays on screen while it is
+  read again.
+- **App shortcuts act on what is on screen.** A key pressed in the instant
+  after the sidebar updated could act on the state before it: ⌘J said nothing
+  was waiting with a waiting session in the list, and ⌘T asked to add a
+  project with one already there.
+- **The app's status strip shows the daemon's real version.** It was read
+  once when the page loaded, so after the app swapped its daemon it kept the
+  old number. It is now read again whenever the live link reconnects and when
+  the window regains focus.
 - **Continuing a session keeps the permission mode it was running in.** A
   session run with permissions skipped (`--dangerously-skip-permissions`)
   came back from "continue here" or "branch here" in the default mode, asking
   before every command. Caprock now continues it in the mode its hooks last
   reported — bypass, accept edits, plan — and says which beside the button,
   where it can be changed before continuing. A session with no recorded mode
-  uses the setting above.
+  uses the setting under Added above.
 
 ## [0.78.1] - 2026-10-06
 

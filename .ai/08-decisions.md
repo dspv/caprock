@@ -1457,6 +1457,15 @@ restart smoke test, intermittently — and the dialog came back without its
 buttons. A crash must not lose an open dialog on any OS. Clearing a prompt
 stays in the background: a lost clear is caught by the events on restore.
 
+*Amended 2026-10-06 (owner):* in the desktop app the card is not drawn for the
+session whose terminal is in front. The terminal's own menu is the answer
+surface there — Enter answers it — and a card beside it read as the question
+asked twice, sometimes for a different request (a subagent's) than the one on
+screen. The card shows when the chat or a Changes view covers the terminal,
+says *↵ Enter in the terminal = Yes*, and never takes focus; the Inbox, the
+menu bar, the notification and the phone keep their buttons. See
+[21-app.md § What the user sees](21-app.md#what-the-user-sees).
+
 ---
 
 ## ADR-036 — A phone hears that a session needs it through the owner's own Telegram bot
@@ -1874,3 +1883,15 @@ user's real HOME.
 **Revisit if** the Apple account exists (sign, bundle the helper, measure
 the list again), or if moving a Homebrew daemon onto the app's surprises a
 user who runs both.
+
+**Amended 2026-10-06 (`make app-local`).** The move above covered only a
+formula's daemon, so an app upgraded to a new release kept running its own
+daemon at the old version until that fell below `MIN_API_LEVEL`. The same
+move now also replaces the app's *own* daemon, once per launch, when the
+bundle carries a different one: another `caprock version`, or the same
+version with other bytes (`<data_dir>/bin/caprock` against the sidecar).
+The bundle wins in both directions, because the app's daemon is a copy of
+it: a new release, a local build (`<last tag>-dev+<commit>`) and a step
+back to a release each leave the daemon matching the app. Only an app
+running from a `.app` does it; `make app` (`cargo run`) leaves the running
+daemon alone. `"own_daemon": false` still turns all of it off.

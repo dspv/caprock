@@ -47,6 +47,7 @@ make app         # the desktop app, debug build (app/README.md)
 make app-test    # cargo fmt --check, clippy -D warnings, cargo test
 make app-bundle  # release bundles; APP_BUNDLES=app,dmg|nsis|deb|rpm|appimage to choose
 make app-release TAG=vX.Y.Z  # macOS: universal .dmg for the tag, checked, attached, cask rendered
+make app-local   # macOS: this checkout's app (host arch) over /Applications/Caprock.app; app-local-revert undoes it
 ```
 
 ## CI (GitHub Actions)
