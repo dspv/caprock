@@ -157,9 +157,12 @@ On macOS the notification carries buttons:
 - **Approve** answers *yes* to that prompt, without bringing Caprock forward.
   It is offered only when the notification shows the whole request, on one
   line and uncut. A longer command offers **Open in Caprock** instead, so you
-  read it on the prompt card before answering.
+  read it in the session's terminal before answering.
 - **Deny** answers *no*.
-- A click on the notification opens the session with its prompt card.
+- A click on the notification opens the session. Its terminal shows Claude
+  Code's own prompt; press Enter for *yes*. Caprock draws no second card
+  over a terminal that is in front — it shows its approval card only while
+  the chat or a Changes view covers the terminal.
 
 A notification never offers "always allow", because that would write a rule
 to your settings. If the prompt was answered in the meantime — in the
