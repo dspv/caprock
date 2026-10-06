@@ -30,6 +30,12 @@ func TestNewer(t *testing.T) {
 		{"", "v9.9.9", false},
 		{"v0.8.0-2-g46fd6bc", "v9.9.9", false},
 		{"v0.8.0-dirty", "v9.9.9", false},
+		// A local app build (make app-local) is stamped <last tag>-dev+<sha>:
+		// the release it was built after is not news, a later one is.
+		{"0.78.1-dev+abc1234", "v0.78.1", false},
+		{"0.78.1-dev+abc1234.dirty.20261006T153000", "v0.78.1", false},
+		{"0.78.1-dev+abc1234", "v0.78.0", false},
+		{"0.78.1-dev+abc1234", "v0.78.2", true},
 		// Garbage in, silence out.
 		{"v0.8.0", "not-a-version", false},
 		{"v0.8", "v0.9.0", false},

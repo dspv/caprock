@@ -114,7 +114,7 @@ smoke: build-go ## Phase 0 DoD scenario + the Phase 2 e2e (what CI's smoke step 
 # The app bundles the daemon as a Tauri sidecar, which Tauri looks for as
 # app/src-tauri/binaries/caprock-<rust host triple>[.exe]; app-sidecar builds
 # it from this checkout so the app always carries the daemon it was built with.
-APP_DIR    := app/src-tauri
+APP_SRC    := app/src-tauri
 APP_TRIPLE  = $(shell rustc -vV 2>/dev/null | sed -n 's/^host: //p')
 # Bundle formats for app-bundle; empty means every format tauri.conf.json lists
 # for this OS. `make app-bundle APP_BUNDLES=app` skips the macOS .dmg, whose
@@ -127,23 +127,31 @@ APP_VERSION ?=
 .PHONY: app-sidecar
 app-sidecar: ## Build the daemon the app bundles (app/src-tauri/binaries/caprock-<triple>)
 	@[ -n "$(APP_TRIPLE)" ] || { echo "rustc not found: install Rust with rustup (see app/README.md)"; exit 1; }
-	@mkdir -p $(APP_DIR)/binaries
-	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(APP_DIR)/binaries/caprock-$(APP_TRIPLE)$(EXE) ./cmd/caprock
+	@mkdir -p $(APP_SRC)/binaries
+	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(APP_SRC)/binaries/caprock-$(APP_TRIPLE)$(EXE) ./cmd/caprock
 
 .PHONY: app
 app: app-sidecar ## Run the desktop app in development (debug build; finds or starts a daemon)
-	cargo run --manifest-path $(APP_DIR)/Cargo.toml
+	cargo run --manifest-path $(APP_SRC)/Cargo.toml
 
 .PHONY: app-test
 app-test: app-sidecar ## Desktop app: cargo fmt --check, clippy -D warnings, cargo test
-	cargo fmt --manifest-path $(APP_DIR)/Cargo.toml --check
-	cargo clippy --manifest-path $(APP_DIR)/Cargo.toml --all-targets -- -D warnings
-	cargo test --manifest-path $(APP_DIR)/Cargo.toml
+	cargo fmt --manifest-path $(APP_SRC)/Cargo.toml --check
+	cargo clippy --manifest-path $(APP_SRC)/Cargo.toml --all-targets -- -D warnings
+	cargo test --manifest-path $(APP_SRC)/Cargo.toml
 
 .PHONY: app-bundle
 app-bundle: app-sidecar ## Build the release app bundle(s) under app/src-tauri/target/release/bundle
 	cd app && { [ -d node_modules ] || npm ci; }
 	cd app && npx tauri build $(if $(APP_BUNDLES),--bundles $(APP_BUNDLES),) $(if $(APP_VERSION),--config '{"version":"$(APP_VERSION)"}',)
+
+.PHONY: app-local
+app-local: ## macOS: build this checkout's app (host arch, release) and install it over /Applications/Caprock.app
+	@bash scripts/app-local.sh
+
+.PHONY: app-local-revert
+app-local-revert: ## macOS: back from a local build to the released app (brew reinstall --cask dspv/tap/caprock-app)
+	@bash scripts/app-local.sh --revert
 
 .PHONY: app-release
 app-release: ## macOS: build the universal .dmg for TAG=vX.Y.Z, check it, attach it to the release, render the cask
