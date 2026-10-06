@@ -56,6 +56,20 @@ Phase 3 (Delight) has no plan by design.
   update && brew upgrade --cask caprock-app` for the app from Homebrew, and
   the daemon's own command when the formula installed it. "Not now" hides
   that version. Nothing installs itself.
+- **Review and commit without a terminal.** Click a worktree's ±N in the
+  app's sidebar (or *Review and commit* in the inspector, or "Review
+  changes" in the palette) for its Changes view: staged, unstaged, new and
+  conflicted files; each file's diff unified or side by side, with large
+  diffs collapsed until asked and a 5,000-line diff scrolling smoothly;
+  stage, unstage and discard files (discarding asks first), stage or
+  unstage single hunks; a commit message box that can start from what the
+  agent said last; Commit, Commit & Push, Push (a new branch is published
+  and tracked; never forced), Pull (fast-forward only) and Fetch. Keys: j/k,
+  s, u, d, v, c, r, Esc; ⌘↵ commits, ⇧⌘↵ commits and pushes. Hooks run, and
+  a hook that refuses shows what it printed; a remote that refuses your
+  credentials says so. On the phone, a session's *Changes* tab gains the
+  same commit and push for its worktree (tap files to choose them); a
+  view-only phone sees the counts.
 
 ### Changed
 
@@ -67,6 +81,9 @@ Phase 3 (Delight) has no plan by design.
 
 ### Fixed
 
+- **A project's main checkout keeps its own sidebar row beside a linked
+  worktree.** With nothing running in either, the project read as one
+  checkout named after the linked worktree's branch.
 - **The app's status strip rounds plan usage as Now does.** It floored, so
   the same window read 41% there and 42% on Now.
 

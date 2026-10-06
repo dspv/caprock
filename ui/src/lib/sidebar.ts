@@ -175,6 +175,14 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
       if (n.worktrees.some((x) => x.key === key)) continue
       n.worktrees.push({ key, branch: w.branch, path: w.path, isMain: key === 'main', ahead: w.ahead, behind: w.behind, changed: w.changed, sessions: [] })
     }
+    // Beside a linked worktree the main checkout is a row of its own, even
+    // with nothing running in it: otherwise the project reads as flat, its
+    // row names the linked worktree's branch, and the main checkout's
+    // changes have nowhere to be opened from.
+    if (n.project.root && n.worktrees.length > 0 && !n.worktrees.some((w) => w.isMain)) {
+      const p = n.project
+      n.worktrees.push({ key: 'main', branch: p.branch ?? '', path: p.root, isMain: true, ahead: p.ahead, behind: p.behind, changed: p.changed, sessions: [] })
+    }
     n.worktrees.sort((a, b) => Number(b.isMain) - Number(a.isMain) || a.branch.localeCompare(b.branch))
     for (const w of n.worktrees) {
       // Agents before shells, then the most recently active first.

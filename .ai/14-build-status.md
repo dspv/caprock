@@ -72,6 +72,46 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-06 — Changes: review, commit and push without a terminal (F14 groundwork)
+
+The worktree's Changes view in the app and a commit panel on the phone's
+Changes tab, decided without the owner (the decisions are in the PR). It is
+the git half WP-19 builds the pull request on.
+
+- **Daemon.** `internal/projects/changes.go`: status (porcelain v2 `-z`,
+  numstat per side, remotes from one `git config` call), one file's diff
+  (1 MB cap, binary and rename aware), stage and unstage of files or one
+  hunk (`git apply --cached`, guarded by the patch's token), a two-step
+  discard (a token over the files' status, size and mtime), commit (hooks
+  run, their output returned; a refusal keeps the index), push (same-named
+  branch, upstream set when not yet tracking it, never forced), pull
+  (`--ff-only`), fetch. Fixed argv, `--literal-pathspecs` for path
+  commands, timeouts per kind, writes serialised per worktree, failures
+  classified (`auth`, `network`, `rejected`, `diverged`, `hook`, …). Routes
+  in `internal/api/changes.go`; reads on the viewer list, writes on the
+  controller list (ADR-034 amended), under home from a device.
+- **Tests.** Go against temp repositories and a local bare remote: status,
+  diffs, path escapes (absolute, `..`, patterns, a link out of the
+  worktree), hunk staging with a stale token, discard's two steps and a
+  stale confirm, a refusing pre-commit hook, first push setting the
+  upstream on a branch made to track the trunk, a rejected push left
+  unforced, fetch and a diverged pull, an HTTP remote answering 401 named
+  as `auth`, a linked worktree, viewer 403 and controller-only-under-home
+  through the API. The discard and hunk tokens, the upstream on first push
+  and the hook classification were each seen to fail with the check removed.
+  vitest for the view, the diff layouts, the commit flows and the phone
+  panel.
+- **Verified in use** on a throwaway daemon (temp HOME and data directory,
+  a demo repository with a bare remote) in headless Chrome at 1440×900 and
+  390 px: open from the sidebar's ±N, stage with **s**, stage a hunk,
+  discard with confirmation, Commit & Push publishing the branch; on the
+  phone, tap to stage and Commit & Push. A 6,000-line rewrite scrolled at
+  16.7 ms a frame in both layouts. No horizontal page scroll at either
+  width.
+- **Fixed on the way:** a project with one linked worktree and nothing
+  running read as a single checkout named after the linked branch; the main
+  checkout now keeps its row.
+
 ### 2026-10-06 — Find, open in editor, terminal look, update notice (F16, F18, F21, F12)
 
 Four app features from WP-20, WP-23 and F12, each with its tests and each
