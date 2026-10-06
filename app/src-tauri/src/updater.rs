@@ -31,6 +31,19 @@ pub const EVENT: &str = "caprock:app-update";
 /// Progress is sent at most this often while downloading.
 const PROGRESS_EVERY: Duration = Duration::from_millis(200);
 
+/// How long the page gets to save its state before the app restarts.
+const SETTLE: Duration = Duration::from_millis(1000);
+
+async fn tokio_sleep(d: Duration) {
+    let (tx, rx) = tauri::async_runtime::channel::<()>(1);
+    std::thread::spawn(move || {
+        std::thread::sleep(d);
+        let _ = tx.blocking_send(());
+    });
+    let mut rx = rx;
+    let _ = rx.recv().await;
+}
+
 /// How long a check or a download may take before it is called failed.
 const TIMEOUT: Duration = Duration::from_secs(120);
 
@@ -349,6 +362,17 @@ pub async fn install<R: Runtime>(app: AppHandle<R>) -> Info {
         next: version.clone(),
     });
     announce(&app);
+    // Everything comes back where it was. The page keeps tabs, splits, the
+    // front tab and the sidebar in its storage and, hearing "installing",
+    // writes where each terminal is scrolled; give WebKit a moment to put
+    // that on disk before this process goes (on Windows the installer ends
+    // it from inside install()). The window's size and place are saved
+    // now rather than trusted to the exit path.
+    tokio_sleep(SETTLE).await;
+    {
+        use tauri_plugin_window_state::{AppHandleExt, StateFlags};
+        let _ = app.save_window_state(StateFlags::all() & !StateFlags::VISIBLE);
+    }
     if let Err(e) = update.install(bytes) {
         st.set_phase(Phase::Failed { error: explain(&e) });
         st.release();

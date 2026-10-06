@@ -29,6 +29,7 @@ import { useShellTray } from '@/lib/tray'
 import { OPEN_SESSION_EVENT } from '@/lib/shell'
 import { useOsNotifications } from '@/lib/notify'
 import { useTheme } from '@/lib/theme'
+import { everyWhileVisible } from '@/lib/visible'
 import { Sidebar } from '@/components/Sidebar'
 import { TabStrip, TerminalStack } from '@/components/TerminalTabs'
 import { Inspector } from '@/components/Inspector'
@@ -181,8 +182,13 @@ export function AppShell() {
   useEffect(() => {
     try { localStorage.setItem(UI_KEY, JSON.stringify(prefs)) } catch { /* not kept */ }
   }, [prefs])
+  // Asked again every minute while visible: after an app update (F20) the
+  // daemon is replaced under an open page, and the strip must not keep
+  // naming the version that was just updated away.
   useEffect(() => {
-    api.status().then((s) => setVersion(s.version)).catch(() => { /* the strip shows none */ })
+    const load = () => { api.status().then((s) => setVersion(s.version)).catch(() => { /* the strip shows none */ }) }
+    load()
+    return everyWhileVisible(load, 60_000)
   }, [])
   useEffect(() => {
     if (!toast) return
