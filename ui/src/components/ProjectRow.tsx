@@ -7,6 +7,7 @@ import { branchLabel } from '@/lib/sessionLabels'
 import { OTHER_FOLDERS_ID, type Dot, type ProjectNode, type SessionNode, type WorktreeNode } from '@/lib/sidebar'
 import { fmtUSD } from '@/lib/format'
 import { AgentGlyph, BranchIcon, ChevronIcon, FolderIcon, PlusIcon, TerminalIcon } from './AppIcons'
+import { PRDot } from './PullRequest'
 
 const DOT_CLASS: Record<Dot, string> = {
   working: 'bg-ok',
@@ -125,6 +126,9 @@ export const ProjectRow = memo(function ProjectRow({
           {mainBranch && (
             <span className="mono max-w-[84px] truncate text-[11px] text-fg-faint group-hover:invisible">{mainBranch}</span>
           )}
+          {flat && !isGroup && p.kind === 'repo' && (
+            <span className="group-hover:invisible"><PRDot projectId={id} worktree={node.worktrees[0] && !node.worktrees[0].isMain ? node.worktrees[0].key : ''} /></span>
+          )}
           {flatChanged > 0 && (
             <span className="num text-[10.5px] text-fg-faint group-hover:invisible">
               <ChangedBadge count={flatChanged} label={`in ${p.name}`} onOpen={onOpenChanges ? () => onOpenChanges(id, node.worktrees[0]) : undefined} />
@@ -202,6 +206,7 @@ function WorktreeRows({
         {projectId === OTHER_FOLDERS_ID ? <FolderIcon size={12} className="text-fg-faint" /> : <BranchIcon size={12} className="text-fg-faint" />}
         <span className={`min-w-0 flex-1 truncate ${projectId === OTHER_FOLDERS_ID ? '' : 'mono'}`}>{w.branch}</span>
         <span className="num flex items-center gap-1.5 text-[10.5px] text-fg-faint group-hover:invisible">
+          {projectId !== OTHER_FOLDERS_ID && <PRDot projectId={projectId} worktree={w.isMain ? '' : w.key} />}
           {!!w.ahead && <span title="commits ahead">↑{w.ahead}</span>}
           {!!w.behind && <span title="commits behind">↓{w.behind}</span>}
           {!!w.changed && <ChangedBadge count={w.changed} label={`on ${w.branch}`} onOpen={onOpenChanges ? () => onOpenChanges(projectId, w) : undefined} />}

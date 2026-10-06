@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react'
 import { errText } from '@/lib/api'
 import { DirPicker } from './DirPicker'
+import { RepoPicker } from './RepoPicker'
 import { folderName, newOpId, NotSupportedError, projectsApi, type AddProjectRequest, type LocalProject, type OpFrame, type ProjectSource } from '@/lib/projects'
 import { Sheet, SheetButton, SheetField } from './Sheet'
 
@@ -149,6 +150,7 @@ export function AddProjectSheet({
             </button>
           ))}
         </div>
+        {mode === 'clone' && <RepoPicker picked={url} onPick={(u) => { setUrl(u); setError('') }} />}
         {mode === 'clone' && (
           <SheetField label="Repository URL">
             <input className="input" autoFocus placeholder="https://github.com/you/repo or git@github.com:you/repo.git" value={url} onChange={(e) => setUrl(e.target.value)} />

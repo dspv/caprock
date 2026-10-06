@@ -33,6 +33,7 @@ import { GlobalHotkey } from '@/components/GlobalHotkey'
 import { isAppMode, isTauri } from '@/lib/appmode'
 import { TerminalSettings } from '@/components/TerminalSettings'
 import { EditorSetting } from '@/components/EditorSetting'
+import { GitHubSettings } from '@/components/GitHubSettings'
 
 export function StatusScreen() {
   const st = useApi(() => api.status(), [], { live: false, intervalMs: 5000 })
@@ -53,6 +54,7 @@ export function StatusScreen() {
       <AppearanceSection />
       {isAppMode() && <TerminalSettings />}
       {owner && <EditorSetting />}
+      <GitHubSettings />
       {owner && isTauri() && <GlobalHotkey />}
       {owner && <PrivacySection />}
       {owner && <MemorySection />}
@@ -137,8 +139,8 @@ function PrivacySection() {
         hint="At most every 6 hours, asks GitHub for the latest version number. Nothing about you is sent, and nothing goes to us."
       />
       <p className="text-[12px] leading-relaxed text-fg-muted">
-        Apart from the Telegram messages you set up yourself, that is the only thing Caprock ever sends over the
-        internet. Everything else stays on this computer.
+        Apart from the Telegram messages you set up yourself and GitHub once you connect it, that is the only thing
+        Caprock ever sends over the internet. Everything else stays on this computer.
       </p>
     </Section>
   )

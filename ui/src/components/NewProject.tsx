@@ -27,6 +27,7 @@ import {
 } from '@/lib/startwork'
 import { ConnectionState } from './ConnectionState'
 import { DirPicker } from './DirPicker'
+import { RepoPicker } from './RepoPicker'
 import { SpawnDialog } from './SpawnDialog'
 import { spawnableAgents } from './AgentPicker'
 
@@ -218,6 +219,7 @@ function CloneForm({
   const failed = view?.phase === 'failed' ? view.error : ''
   return (
     <form className="grid min-w-0 gap-4" onSubmit={(e) => { e.preventDefault(); if (failed) { onPending(null); setView(null) } submit() }}>
+      <RepoPicker compact picked={url} onPick={(u) => { setUrl(u); setError('') }} />
       <Field label="Repository" hint="https:// or git@">
         <input
           className={FIELD}
