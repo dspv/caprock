@@ -1,7 +1,7 @@
 {
   "harness": "phone",
   "machine": {
-    "date": "2026-10-06T03:33:35.253Z",
+    "date": "2026-10-06T04:44:23.254Z",
     "platform": "darwin",
     "arch": "arm64",
     "cpus": 10,
@@ -26,47 +26,47 @@
     "chat_open": {
       "wifi": {
         "runs": [
-          69,
-          48,
+          52,
+          45,
           47,
+          45,
+          46,
           46,
           47,
-          47,
-          46,
-          47
+          45
         ],
-        "p50": 47,
-        "p95": 69
+        "p50": 46,
+        "p95": 52
       },
       "cellular": {
         "runs": [
-          146,
-          147,
-          146,
+          163,
+          161,
+          163,
+          162,
+          145,
           146,
           148,
-          147,
-          146,
-          162
+          163
         ],
-        "p50": 147,
-        "p95": 162
+        "p50": 162,
+        "p95": 163
       },
       "load_before": {
-        "at": "2026-10-06T03:33:35.557Z",
+        "at": "2026-10-06T04:44:23.533Z",
         "load": [
-          8.33,
-          7.11,
-          7.52
+          4.36,
+          4.2,
+          4.79
         ],
         "cpus": 10,
         "top": [
-          "100.6 Google Chrome Helper (Renderer)",
-          "36.0 Google Chrome",
-          "25.6 ctkd",
-          "17.1 (ps)",
-          "13.3 Orca Helper (Renderer)",
-          "12.9 Codex (Renderer)"
+          "102.0 Google Chrome Helper (Renderer)",
+          "31.9 Google Chrome",
+          "26.6 secd",
+          "21.7 ctkd",
+          "16.2 Codex (Renderer)",
+          "11.1 mdworker_shared"
         ]
       }
     },
@@ -75,51 +75,51 @@
         {
           "kind": "wifi_off",
           "down_ms": 5000,
+          "back_to_live_ms": 58,
+          "load": [
+            3.53,
+            4.02,
+            4.71
+          ]
+        },
+        {
+          "kind": "wifi_off",
+          "down_ms": 5000,
+          "back_to_live_ms": 56,
+          "load": [
+            3.29,
+            3.95,
+            4.68
+          ]
+        },
+        {
+          "kind": "wifi_off",
+          "down_ms": 5000,
+          "back_to_live_ms": 62,
+          "load": [
+            3.27,
+            3.94,
+            4.67
+          ]
+        },
+        {
+          "kind": "wifi_off",
+          "down_ms": 5000,
+          "back_to_live_ms": 59,
+          "load": [
+            3,
+            3.85,
+            4.63
+          ]
+        },
+        {
+          "kind": "wifi_off",
+          "down_ms": 5000,
           "back_to_live_ms": 60,
           "load": [
-            7.02,
-            6.92,
-            7.44
-          ]
-        },
-        {
-          "kind": "wifi_off",
-          "down_ms": 5000,
-          "back_to_live_ms": 57,
-          "load": [
-            6.72,
-            6.85,
-            7.41
-          ]
-        },
-        {
-          "kind": "wifi_off",
-          "down_ms": 5000,
-          "back_to_live_ms": 53,
-          "load": [
-            6.34,
-            6.77,
-            7.37
-          ]
-        },
-        {
-          "kind": "wifi_off",
-          "down_ms": 5000,
-          "back_to_live_ms": 61,
-          "load": [
-            6.2,
-            6.73,
-            7.35
-          ]
-        },
-        {
-          "kind": "wifi_off",
-          "down_ms": 5000,
-          "back_to_live_ms": 63,
-          "load": [
-            6.42,
-            6.77,
-            7.36
+            3.32,
+            3.91,
+            4.64
           ]
         },
         {
@@ -127,79 +127,59 @@
           "down_ms": 60000,
           "back_to_live_ms": 62,
           "load": [
-            6.47,
-            6.77,
-            7.36
+            3.13,
+            3.86,
+            4.62
           ]
         },
         {
           "kind": "wifi_to_cellular",
           "down_ms": 0,
-          "back_to_live_ms": 390,
+          "back_to_live_ms": 394,
           "load": [
-            5.26,
-            6.35,
-            7.15
+            4.34,
+            4.08,
+            4.65
           ]
         },
         {
           "kind": "wifi_to_cellular",
           "down_ms": 0,
-          "back_to_live_ms": 386,
+          "back_to_live_ms": 392,
           "load": [
-            5.26,
-            6.35,
-            7.15
+            4.34,
+            4.08,
+            4.65
           ]
         },
         {
           "kind": "wifi_to_cellular",
           "down_ms": 0,
-          "back_to_live_ms": 760,
+          "back_to_live_ms": 395,
           "load": [
-            5,
-            6.27,
-            7.12
+            4.31,
+            4.07,
+            4.64
           ]
         },
         {
           "kind": "wifi_to_cellular",
           "down_ms": 0,
-          "back_to_live_ms": 758,
+          "back_to_live_ms": 394,
           "load": [
-            5,
-            6.27,
-            7.12
+            4.31,
+            4.07,
+            4.64
           ]
         },
         {
           "kind": "wifi_to_cellular",
           "down_ms": 0,
-          "back_to_live_ms": 393,
+          "back_to_live_ms": 395,
           "load": [
-            5,
-            6.25,
-            7.11
-          ]
-        },
-        {
-          "kind": "stall",
-          "down_ms": 10000,
-          "back_to_live_ms": 21,
-          "load": [
-            4.76,
-            6.18,
-            7.08
-          ]
-        },
-        {
-          "kind": "stall",
-          "down_ms": 10000,
-          "back_to_live_ms": 19,
-          "load": [
-            4.41,
-            6.06,
-            7.03
+            4.05,
+            4.02,
+            4.62
           ]
         },
         {
@@ -207,9 +187,19 @@
           "down_ms": 10000,
           "back_to_live_ms": 27,
           "load": [
-            5.09,
-            6.16,
-            7.05
+            3.8,
+            3.97,
+            4.6
+          ]
+        },
+        {
+          "kind": "stall",
+          "down_ms": 10000,
+          "back_to_live_ms": 26,
+          "load": [
+            3.53,
+            3.91,
+            4.57
           ]
         },
         {
@@ -217,88 +207,98 @@
           "down_ms": 10000,
           "back_to_live_ms": 22,
           "load": [
-            4.85,
-            6.05,
-            6.99
+            4.31,
+            4.06,
+            4.62
           ]
         },
         {
           "kind": "stall",
           "down_ms": 10000,
-          "back_to_live_ms": 14,
+          "back_to_live_ms": 12,
           "load": [
-            4.79,
-            6,
-            6.97
+            3.95,
+            3.99,
+            4.58
+          ]
+        },
+        {
+          "kind": "stall",
+          "down_ms": 10000,
+          "back_to_live_ms": 31,
+          "load": [
+            3.94,
+            3.99,
+            4.57
           ]
         },
         {
           "kind": "half_open",
           "down_ms": 40000,
-          "back_to_live_ms": 56,
-          "half_open_detected_ms": 22055,
-          "half_open_redial_ms": 22055,
+          "back_to_live_ms": 46,
+          "half_open_detected_ms": 23058,
+          "half_open_redial_ms": 23059,
           "load": [
-            4.6,
-            5.9,
-            6.91
+            3.73,
+            3.94,
+            4.55
           ]
         },
         {
           "kind": "half_open",
           "down_ms": 40000,
-          "back_to_live_ms": 58,
-          "half_open_detected_ms": 22875,
-          "half_open_redial_ms": 22875,
+          "back_to_live_ms": 46,
+          "half_open_detected_ms": 22641,
+          "half_open_redial_ms": 22641,
           "load": [
-            4.96,
-            5.84,
-            6.85
+            3.39,
+            3.83,
+            4.48
           ]
         }
       ],
-      "back_to_live_p50": 60,
-      "back_to_live_p95": 758,
-      "back_to_live_max": 760,
+      "back_to_live_p50": 59,
+      "back_to_live_p95": 395,
+      "back_to_live_max": 395,
       "failed": 0,
       "half_open_detected_ms": [
-        22055,
-        22875
+        23058,
+        22641
       ],
       "load_before": {
-        "at": "2026-10-06T03:34:01.818Z",
+        "at": "2026-10-06T04:44:49.826Z",
         "load": [
-          7.02,
-          6.92,
-          7.44
+          3.53,
+          4.02,
+          4.71
         ],
         "cpus": 10,
         "top": [
-          "102.7 Google Chrome Helper (Renderer)",
-          "66.0 appleaccountd",
-          "40.9 Telegram Lite",
-          "32.4 WindowServer",
-          "29.9 coreduetd",
-          "29.1 icloudmailagent"
+          "100.8 Google Chrome Helper (Renderer)",
+          "11.9 coreaudiod",
+          "11.4 mds_stores",
+          "11.3 Codex (Renderer)",
+          "10.1 Google Chrome Helper (Renderer)",
+          "5.5 WindowServer"
         ]
       }
     }
   },
   "load_after": {
-    "at": "2026-10-06T03:38:18.644Z",
+    "at": "2026-10-06T04:49:05.768Z",
     "load": [
-      4.85,
-      5.67,
-      6.73
+      2.8,
+      3.61,
+      4.36
     ],
     "cpus": 10,
     "top": [
-      "107.1 Google Chrome Helper (Renderer)",
-      "38.0 mediaanalysisd",
-      "30.6 WindowServer",
-      "18.8 Orca Helper (Renderer)",
-      "13.2 BiomeAgent",
-      "13.2 Orca"
+      "550.7 rg",
+      "102.5 Google Chrome Helper (Renderer)",
+      "35.7 claude",
+      "31.4 managedappdistributiond",
+      "31.2 managedappdistributiond",
+      "31.2 managedappdistributiond"
     ]
   }
 }

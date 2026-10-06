@@ -83,14 +83,19 @@ page's scripts types through the page and times paints, and the terminals
 register with it only when it is present (`ui/src/lib/benchhook.ts`). The
 phone harness drives headless Chrome at 390 px through a TCP proxy that drops,
 stalls and slows the network. Ported from the Tauri spike's `bench/`.
-Three runs on the M1 Pro (2026-10-06, `bench/results-2026-10-06/`): 12 rows
-pass, echo p50/p95 pass on the quiet run and miss by 1–3 ms under a load
-average of 38–47, CPU with the window visible and silent sits at the limit
-(0.93–1.1%), and three fail — memory with one tab in RSS (288–347 MB;
-the footprint is 198 MB), CPU with the window hidden (about 1% against
-0.2%), and one stall of 71–154 ms when the first tab of a launch opens. Fixes
-are proposed in 21-app.md, none applied. Orca (1.4.220) runs are scripted
-and not run.
+Three runs on the M1 Pro before any fix (`bench/results-2026-10-06/`) failed
+memory with one tab in RSS (the footprint was 198 MB), CPU with the window
+hidden (about 1% against 0.2%) and a 71–154 ms stall when the first tab of a
+launch opens. Memory budgets are now stated in physical footprint (owner's
+decision, RSS kept as a column). Fixed in the same package: the shell checks
+the daemon every 5 s while hidden, the page stops polling while hidden (the
+live socket stays), slower tray polling while visible, a terminal warmed up
+after start, replays written in 16 KB slices, and a ping after 20 s of
+silence for half-open connections. Three runs after the fixes
+(`bench/results-2026-10-06-fixes/`, load 2.3–6.8): 15 rows pass; CPU hidden
+still fails (0.30–0.34%), the first-tab stall is 69–134 ms (2 of 3 runs over
+100 ms), echo p50 is 12–13 ms against 12. Next steps are in 21-app.md.
+Orca (1.4.220) runs are scripted and not run.
 ### 2026-10-06 — GitHub: connect, clone, pull requests, checks and reviews (WP-19, F14)
 
 Built overnight without the owner; the product decisions are listed in the

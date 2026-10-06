@@ -59,10 +59,12 @@ load average and busiest processes before it starts: re-run when it is high.
   to the first frame of its terminal.
 - **Memory and CPU** are all the app's processes: the app and every process
   macOS charges to it (WebKit's WebContent, GPU and Networking helpers), the
-  daemon and the sessions excluded. RSS is the spike's figure; the physical
-  footprint (Activity Monitor's "Memory") is in the JSON beside it. "No output"
-  is every session silent (no spinner); "spinner only" is the fake's 12 fps
-  spinner, which a real Claude Code also draws.
+  daemon and the sessions excluded. The budget rows use the physical
+  footprint (Activity Monitor's "Memory"); summed RSS, the spike's figure, is
+  listed beside it. "No output" is every session silent (no spinner);
+  "spinner only" is the fake's 12 fps spinner, which a real Claude Code also
+  draws. During each CPU window the harness's page loop stays quiet
+  (`B.quiet`), so its own polling is not counted.
 - **Flood isolation:** tab B is brought forward, set to 1000 lines/s, then tab
   A is brought back and 120 keys are typed in A within the 30 s a hidden tab
   keeps its socket.
