@@ -73,6 +73,30 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-06 — One permission question, answered by what is on screen
+
+The owner saw every approval twice: Claude Code's own menu in the terminal
+and Caprock's card over it, sometimes for a different request. Its "Yes, for
+the rest of this session" button typed `2`, which in auto mode's two-option
+menu is *No*, so his approvals came back as rejections. The card is no longer
+drawn over a terminal in front (#251). An answer now reads the menu from the
+pty-host's screen and presses that option's number, or refuses with 422 when
+the option is not there (#253). Prompts queue per tool call and subagent
+(migration 0042) instead of one per session, and the card takes Y/A/N keys.
+The status strip re-reads the daemon version on reconnect. ADR-035
+amendments in [08-decisions.md](08-decisions.md); DDL in
+[03-contracts.md](03-contracts.md).
+
+### 2026-10-06 — `make app-local`: try a change in the installed app
+
+The owner wanted to iterate on the Mac app without a release per change.
+`make app-local` builds this Mac's architecture only and swaps it into
+/Applications. The app quits as on Cmd+Q and its daemon is replaced. Sessions
+survive through the pty-host. A rebuild after a change takes about 30–40 s on
+the M1 Pro, measured 2026-10-06. The app now also replaces its own daemon
+when the bundled one differs (ADR-040 amendment). See
+[21-app.md](21-app.md) and `app/README.md`.
+
 ### 2026-10-06 — A continue keeps the session's permission mode
 
 The owner runs Claude Code with permissions skipped; continuing a session from
