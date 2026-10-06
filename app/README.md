@@ -49,7 +49,9 @@ daemon uses (`$CAPROCK_DATA_DIR`, else `<user config dir>/caprock`):
    `caprock up`. The choice
    is stored in `<data_dir>/app.json`; later launches start the same way
    without asking. The macOS app menu keeps the switch afterwards.
-4. It polls twice a second. A daemon gone for 1.2 s is shown as stopped (the
+4. It polls twice a second: `/healthz`, with `/v1/status` every 10 s while
+   `runtime.json` names the same daemon; every 5 s while the window is hidden,
+   and at once when it is shown again. A daemon gone for 1.2 s is shown as stopped (the
    bundled page, with **Start it now**); when one answers again, on any port,
    the window returns to the dashboard at the route it was on.
 

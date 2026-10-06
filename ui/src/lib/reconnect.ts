@@ -17,6 +17,12 @@
 export const PING_MS = 10_000
 /** Silence after which a socket is taken for dead. */
 export const DEAD_MS = 25_000
+/**
+ * Silence after which a client asks for a round trip (a ping it must answer
+ * within PROBE_MS), so a half-open socket is caught at about 22 s, with room
+ * under the 25 s budget, rather than at DEAD_MS itself.
+ */
+export const SUSPECT_MS = 20_000
 /** How often a client checks its socket's silence. */
 export const LIVENESS_CHECK_MS = 1_000
 /** After a wake, how long an open socket has to answer a ping before it is dropped. */
@@ -64,6 +70,11 @@ export function isSilent(heardAt: number, now: number): boolean {
   // One check interval early, so a dead socket is caught within DEAD_MS of
   // the last thing it said, not DEAD_MS plus however late the check ran.
   return now - heardAt > DEAD_MS - LIVENESS_CHECK_MS
+}
+
+/** True when a socket silent since `heardAt` should be asked for a round trip now. */
+export function isSuspect(heardAt: number, probeAt: number, now: number): boolean {
+  return probeAt === 0 && now - heardAt >= SUSPECT_MS
 }
 
 /** True when an attempt started at `startedAt` has hung in CONNECTING too long. */

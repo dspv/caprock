@@ -1,0 +1,304 @@
+{
+  "harness": "phone",
+  "machine": {
+    "date": "2026-10-06T03:33:35.253Z",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": 10,
+    "cpu_model": "Apple M1 Pro",
+    "mem_gb": 16,
+    "os": "macOS 27.0.1 (26A434)",
+    "model": "MacBookPro18,3",
+    "chip": "Apple M1 Pro",
+    "displays": "1920x1080@1x 100Hz",
+    "power": "Now drawing from 'AC Power'"
+  },
+  "viewport": "390x844@3",
+  "profiles": {
+    "wifi": {
+      "rtt": 10
+    },
+    "cellular": {
+      "rtt": 120
+    }
+  },
+  "phases": {
+    "chat_open": {
+      "wifi": {
+        "runs": [
+          69,
+          48,
+          47,
+          46,
+          47,
+          47,
+          46,
+          47
+        ],
+        "p50": 47,
+        "p95": 69
+      },
+      "cellular": {
+        "runs": [
+          146,
+          147,
+          146,
+          146,
+          148,
+          147,
+          146,
+          162
+        ],
+        "p50": 147,
+        "p95": 162
+      },
+      "load_before": {
+        "at": "2026-10-06T03:33:35.557Z",
+        "load": [
+          8.33,
+          7.11,
+          7.52
+        ],
+        "cpus": 10,
+        "top": [
+          "100.6 Google Chrome Helper (Renderer)",
+          "36.0 Google Chrome",
+          "25.6 ctkd",
+          "17.1 (ps)",
+          "13.3 Orca Helper (Renderer)",
+          "12.9 Codex (Renderer)"
+        ]
+      }
+    },
+    "reconnect": {
+      "runs": [
+        {
+          "kind": "wifi_off",
+          "down_ms": 5000,
+          "back_to_live_ms": 60,
+          "load": [
+            7.02,
+            6.92,
+            7.44
+          ]
+        },
+        {
+          "kind": "wifi_off",
+          "down_ms": 5000,
+          "back_to_live_ms": 57,
+          "load": [
+            6.72,
+            6.85,
+            7.41
+          ]
+        },
+        {
+          "kind": "wifi_off",
+          "down_ms": 5000,
+          "back_to_live_ms": 53,
+          "load": [
+            6.34,
+            6.77,
+            7.37
+          ]
+        },
+        {
+          "kind": "wifi_off",
+          "down_ms": 5000,
+          "back_to_live_ms": 61,
+          "load": [
+            6.2,
+            6.73,
+            7.35
+          ]
+        },
+        {
+          "kind": "wifi_off",
+          "down_ms": 5000,
+          "back_to_live_ms": 63,
+          "load": [
+            6.42,
+            6.77,
+            7.36
+          ]
+        },
+        {
+          "kind": "airplane",
+          "down_ms": 60000,
+          "back_to_live_ms": 62,
+          "load": [
+            6.47,
+            6.77,
+            7.36
+          ]
+        },
+        {
+          "kind": "wifi_to_cellular",
+          "down_ms": 0,
+          "back_to_live_ms": 390,
+          "load": [
+            5.26,
+            6.35,
+            7.15
+          ]
+        },
+        {
+          "kind": "wifi_to_cellular",
+          "down_ms": 0,
+          "back_to_live_ms": 386,
+          "load": [
+            5.26,
+            6.35,
+            7.15
+          ]
+        },
+        {
+          "kind": "wifi_to_cellular",
+          "down_ms": 0,
+          "back_to_live_ms": 760,
+          "load": [
+            5,
+            6.27,
+            7.12
+          ]
+        },
+        {
+          "kind": "wifi_to_cellular",
+          "down_ms": 0,
+          "back_to_live_ms": 758,
+          "load": [
+            5,
+            6.27,
+            7.12
+          ]
+        },
+        {
+          "kind": "wifi_to_cellular",
+          "down_ms": 0,
+          "back_to_live_ms": 393,
+          "load": [
+            5,
+            6.25,
+            7.11
+          ]
+        },
+        {
+          "kind": "stall",
+          "down_ms": 10000,
+          "back_to_live_ms": 21,
+          "load": [
+            4.76,
+            6.18,
+            7.08
+          ]
+        },
+        {
+          "kind": "stall",
+          "down_ms": 10000,
+          "back_to_live_ms": 19,
+          "load": [
+            4.41,
+            6.06,
+            7.03
+          ]
+        },
+        {
+          "kind": "stall",
+          "down_ms": 10000,
+          "back_to_live_ms": 27,
+          "load": [
+            5.09,
+            6.16,
+            7.05
+          ]
+        },
+        {
+          "kind": "stall",
+          "down_ms": 10000,
+          "back_to_live_ms": 22,
+          "load": [
+            4.85,
+            6.05,
+            6.99
+          ]
+        },
+        {
+          "kind": "stall",
+          "down_ms": 10000,
+          "back_to_live_ms": 14,
+          "load": [
+            4.79,
+            6,
+            6.97
+          ]
+        },
+        {
+          "kind": "half_open",
+          "down_ms": 40000,
+          "back_to_live_ms": 56,
+          "half_open_detected_ms": 22055,
+          "half_open_redial_ms": 22055,
+          "load": [
+            4.6,
+            5.9,
+            6.91
+          ]
+        },
+        {
+          "kind": "half_open",
+          "down_ms": 40000,
+          "back_to_live_ms": 58,
+          "half_open_detected_ms": 22875,
+          "half_open_redial_ms": 22875,
+          "load": [
+            4.96,
+            5.84,
+            6.85
+          ]
+        }
+      ],
+      "back_to_live_p50": 60,
+      "back_to_live_p95": 758,
+      "back_to_live_max": 760,
+      "failed": 0,
+      "half_open_detected_ms": [
+        22055,
+        22875
+      ],
+      "load_before": {
+        "at": "2026-10-06T03:34:01.818Z",
+        "load": [
+          7.02,
+          6.92,
+          7.44
+        ],
+        "cpus": 10,
+        "top": [
+          "102.7 Google Chrome Helper (Renderer)",
+          "66.0 appleaccountd",
+          "40.9 Telegram Lite",
+          "32.4 WindowServer",
+          "29.9 coreduetd",
+          "29.1 icloudmailagent"
+        ]
+      }
+    }
+  },
+  "load_after": {
+    "at": "2026-10-06T03:38:18.644Z",
+    "load": [
+      4.85,
+      5.67,
+      6.73
+    ],
+    "cpus": 10,
+    "top": [
+      "107.1 Google Chrome Helper (Renderer)",
+      "38.0 mediaanalysisd",
+      "30.6 WindowServer",
+      "18.8 Orca Helper (Renderer)",
+      "13.2 BiomeAgent",
+      "13.2 Orca"
+    ]
+  }
+}

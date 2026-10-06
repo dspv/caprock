@@ -16,7 +16,7 @@
 
 import {
   DEAD_MS, LIVENESS_CHECK_MS, PING_MS, PROBE_MS, RECONNECT_MAX_MS, RECONNECT_MIN_MS, Reconnector,
-  isConnectStuck, isProbeLost, isSilent, reconnectDelay, type LinkPhase, type LinkStatus,
+  isConnectStuck, isProbeLost, isSilent, isSuspect, reconnectDelay, type LinkPhase, type LinkStatus,
 } from './reconnect'
 
 export { DEAD_MS, PING_MS }
@@ -296,8 +296,12 @@ export class TermClient {
     if (isSilent(this.heard, now) || isConnectStuck(ws.readyState, this.heard, now)) { this.drop(); return }
     if (isProbeLost(this.probeAt, this.heard, now)) { this.drop(); this.retry.retryNow(); return }
     if (this.heard > this.probeAt) this.probeAt = 0
-    if (ws.readyState === WebSocket.OPEN && this.isV2(ws) && this.now() - this.lastPing >= PING_MS) {
+    if (ws.readyState !== WebSocket.OPEN || !this.isV2(ws)) return
+    // Long silent: this ping must be answered within PROBE_MS (half-open).
+    const suspect = isSuspect(this.heard, this.probeAt, now)
+    if (suspect || this.now() - this.lastPing >= PING_MS) {
       this.lastPing = this.now()
+      if (suspect) this.probeAt = this.lastPing
       ws.send(JSON.stringify({ ping: this.lastPing }))
     }
   }

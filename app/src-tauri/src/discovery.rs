@@ -76,6 +76,26 @@ pub fn find(dir: &Path) -> Found {
     }
 }
 
+/// `find` for a daemon already found (`last`): while `runtime.json` names the
+/// same daemon, `/healthz` alone says it is still there and the last
+/// `/v1/status` is kept. One request instead of two, twice a second, is most
+/// of what an idle window costs the shell (WP-16). Anything else is `find`.
+pub fn recheck(dir: &Path, last: &Found) -> Found {
+    let Found::Running { rt: was, status } = last else {
+        return find(dir);
+    };
+    match read_runtime(dir) {
+        Some(rt) if rt == *was => match request(rt.port, "GET", "/healthz", None) {
+            Ok((200, _)) => Found::Running {
+                rt,
+                status: status.clone(),
+            },
+            _ => Found::Absent,
+        },
+        _ => find(dir),
+    }
+}
+
 /// `/healthz` then `/v1/status`; `None` when either fails.
 pub fn status(port: u16) -> Option<Status> {
     let (code, _) = request(port, "GET", "/healthz", None).ok()?;
@@ -291,6 +311,28 @@ mod tests {
         write_runtime(&dir, port, "");
         assert_eq!(find(&dir), Found::Absent);
         assert_eq!(find(&temp_dir("none")), Found::Absent);
+    }
+
+    #[test]
+    fn a_recheck_asks_only_healthz_and_keeps_the_last_status() {
+        // No /v1/status here: a recheck that asked for it would read absent.
+        let port = serve(vec![("/healthz", r#"{"status":"ok"}"#)]);
+        let dir = temp_dir("recheck");
+        write_runtime(&dir, port, r#","api_level":3"#);
+        let rt = read_runtime(&dir).unwrap();
+        let status = Status {
+            version: "v1".into(),
+            api_level: 3,
+        };
+        let last = Found::Running { rt, status };
+        assert_eq!(recheck(&dir, &last), last);
+        // A different daemon in runtime.json: a full find (here, absent).
+        write_runtime(&dir, port, r#","api_level":4"#);
+        assert_eq!(recheck(&dir, &last), Found::Absent);
+        assert_eq!(
+            recheck(&temp_dir("recheck-none"), &Found::Absent),
+            Found::Absent
+        );
     }
 
     #[test]

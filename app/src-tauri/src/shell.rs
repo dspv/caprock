@@ -253,8 +253,17 @@ pub fn monitor(app: AppHandle, sup: Arc<Supervisor>) {
         let mut absent_since: Option<Instant> = None;
         let mut resume: Option<Url> = None;
         let mut was_connected = false;
+        let mut last = discovery::Found::Absent;
+        let mut full_at = Instant::now();
         loop {
-            let found = discovery::find(&sup.data_dir);
+            // `/v1/status` every FULL_CHECK; `/healthz` alone in between.
+            let found = if full_at.elapsed() < FULL_CHECK {
+                discovery::recheck(&sup.data_dir, &last)
+            } else {
+                full_at = Instant::now();
+                discovery::find(&sup.data_dir)
+            };
+            last = found.clone();
             let absent_for = match found {
                 discovery::Found::Absent => absent_since.get_or_insert_with(Instant::now).elapsed(),
                 _ => {
@@ -272,14 +281,38 @@ pub fn monitor(app: AppHandle, sup: Arc<Supervisor>) {
                 crate::popover::ensure(&app, *port);
             }
             was_connected = connected;
-            if let Some(w) = app.get_webview_window(MAIN) {
-                follow(&w, &sup, &state, &mut resume);
+            let main = app.get_webview_window(MAIN);
+            if let Some(w) = &main {
+                follow(w, &sup, &state, &mut resume);
             }
             let fast = matches!(state, State::Searching | State::Starting { .. });
-            thread::sleep(Duration::from_millis(if fast { 250 } else { 500 }));
+            let visible = || main.as_ref().is_none_or(|w| w.is_visible().unwrap_or(true));
+            // A hidden window with a daemon in hand asks every 5 s, and at
+            // once when it is shown again (WP-16: hidden CPU).
+            let wait = if fast {
+                Duration::from_millis(250)
+            } else if connected && !visible() {
+                HIDDEN_CHECK
+            } else {
+                Duration::from_millis(500)
+            };
+            if wait != HIDDEN_CHECK {
+                thread::sleep(wait);
+                continue;
+            }
+            // Hidden: look once a second whether it has been shown.
+            let start = Instant::now();
+            while start.elapsed() < wait && !visible() {
+                thread::sleep(Duration::from_secs(1));
+            }
         }
     });
 }
+
+/// How often the monitor asks `/v1/status` as well as `/healthz`.
+const FULL_CHECK: Duration = Duration::from_secs(10);
+/// How often the monitor asks while the window is hidden.
+const HIDDEN_CHECK: Duration = Duration::from_secs(5);
 
 fn follow(w: &WebviewWindow, sup: &Arc<Supervisor>, state: &State, resume: &mut Option<Url>) {
     let Ok(current) = w.url() else { return };

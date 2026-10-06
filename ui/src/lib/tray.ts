@@ -73,8 +73,11 @@ export function buildTrayView({ summary, inbox, conn, now }: TrayInput): TrayVie
 export function useShellTray(inbox: InboxItem[]): void {
   const inApp = isTauri()
   const conn = useLiveConn()
-  // The same question Now asks, on the same live tick and interval.
-  const summary = useApi(() => (inApp ? api.summary('today') : Promise.resolve(undefined)), [inApp], { intervalMs: 5000 })
+  // The same question Now asks, on the same live tick: spend and limits move
+  // with events, which the tick follows. The interval is only a backstop, so
+  // a slow one (WP-16: every poll re-renders the workspace), and slower still
+  // with the window hidden, where the menu bar must stay current.
+  const summary = useApi(() => (inApp ? api.summary('today') : Promise.resolve(undefined)), [inApp], { intervalMs: 30_000, hiddenIntervalMs: 60_000 })
   const view = buildTrayView({ summary: summary.data, inbox, conn, now: Date.now() })
   const key = JSON.stringify(view)
   const count = view.waiting.length

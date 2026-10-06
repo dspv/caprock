@@ -12,7 +12,7 @@ import { deviceToken } from './api'
 import type { OpFrame, ProjectFrame } from './projects'
 import type { GitHubFrame } from './github'
 import {
-  LIVENESS_CHECK_MS, PING_MS, PROBE_MS, Reconnector, isConnectStuck, isProbeLost, isSilent, onNetworkWake,
+  LIVENESS_CHECK_MS, PING_MS, PROBE_MS, Reconnector, isConnectStuck, isProbeLost, isSuspect, isSilent, onNetworkWake,
   type LinkStatus,
 } from './reconnect'
 
@@ -204,8 +204,12 @@ class LiveStore {
     if (isSilent(this.heard, now) || isConnectStuck(ws.readyState, this.heard, now)) { this.drop(); return }
     if (isProbeLost(this.probeAt, this.heard, now)) { this.drop(); this.retry.retryNow(); return }
     if (this.heard > this.probeAt) this.probeAt = 0
-    if (ws.readyState === WebSocket.OPEN && now - this.lastPing >= PING_MS) {
+    if (ws.readyState !== WebSocket.OPEN) return
+    // Long silent: this ping must be answered within PROBE_MS (half-open).
+    const suspect = isSuspect(this.heard, this.probeAt, now)
+    if (suspect || now - this.lastPing >= PING_MS) {
       this.lastPing = now
+      if (suspect) this.probeAt = now
       ws.send(JSON.stringify({ ping: now }))
     }
   }

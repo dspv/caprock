@@ -52,8 +52,9 @@ def max_lag(d):
     return max(v) if v else None
 
 
-def mem(d, n, key="rss_mb_peak"):
-    """RSS, the spike's figure, at its peak over the 10 s window."""
+def mem(d, n, key="footprint_mb_end"):
+    """Physical footprint (Activity Monitor's "Memory"), the budget's measure
+    since 2026-10-06; key="rss_mb_peak" for summed RSS, the spike's figure."""
     return get(d, "phases", "open_tabs", "memory", n, key)
 
 
@@ -73,8 +74,8 @@ ROWS = [
     ("Switch to an open tab, to first paint", "≤ 50 ms", 50, "ms", lambda d: get(d, "phases", "switch_tabs", "p50"), apps),
     ("Cold start to interactive window", "≤ 1.5 s", 1500, "ms", lambda d: get(d, "phases", "cold_start", "interactive_p50"), apps),
     ("Cold start to first echo in a restored tab", "≤ 2.5 s", 2500, "ms", lambda d: get(d, "phases", "cold_start", "restored_echo_p50"), apps),
-    ("Memory, all app processes, 1 tab", "≤ 250 MB", 250, "MB", lambda d: mem(d, "1"), apps),
-    ("Memory, all app processes, 10 tabs", "≤ 450 MB", 450, "MB", lambda d: mem(d, "10"), apps),
+    ("Memory, all app processes, 1 tab (footprint)", "≤ 250 MB", 250, "MB", lambda d: mem(d, "1"), apps),
+    ("Memory, all app processes, 10 tabs (footprint)", "≤ 450 MB", 450, "MB", lambda d: mem(d, "10"), apps),
     ("CPU, window visible, no output", "≤ 1% of one core", 1, "%", lambda d: get(d, "phases", "cpu_visible", "no_output", "cpu_pct"), apps),
     ("CPU, window hidden", "≤ 0.2% of one core", 0.2, "%", lambda d: get(d, "phases", "cpu_hidden", "no_output", "cpu_pct"), apps),
     ("CPU, one visible tab at 1000 lines/s", "≤ 25% of one core", 25, "%", lambda d: get(d, "phases", "cpu_visible", "one_tab_1000_lps", "cpu_pct"), apps),
@@ -130,8 +131,8 @@ print()
 print("Also measured (no budget row):")
 print()
 for name, d in apps:
-    print(f"- {name}: memory (RSS peak) 5 tabs {fmt(mem(d, '5'), 'MB')}, 10 tabs after 40 s {fmt(mem(d, '10_settled'), 'MB')};"
-          f" physical footprint 1/5/10 tabs {fmt(mem(d, '1', 'footprint_mb_end'), 'MB')} / {fmt(mem(d, '5', 'footprint_mb_end'), 'MB')} / {fmt(mem(d, '10', 'footprint_mb_end'), 'MB')};"
+    print(f"- {name}: memory (footprint) 5 tabs {fmt(mem(d, '5'), 'MB')}, 10 tabs after 40 s {fmt(mem(d, '10_settled'), 'MB')};"
+          f" summed RSS (peak) 1/5/10 tabs {fmt(mem(d, '1', 'rss_mb_peak'), 'MB')} / {fmt(mem(d, '5', 'rss_mb_peak'), 'MB')} / {fmt(mem(d, '10', 'rss_mb_peak'), 'MB')};"
           f" open p95 {fmt(get(d, 'phases', 'open_tabs', 'p95'), 'ms')}; switch p95 {fmt(get(d, 'phases', 'switch_tabs', 'p95'), 'ms')};"
           f" CPU spinner only (visible) {fmt(get(d, 'phases', 'cpu_visible', 'spinner_only', 'cpu_pct'), '%')},"
           f" hidden with spinners {fmt(get(d, 'phases', 'cpu_hidden', 'spinners_running', 'cpu_pct'), '%')};"

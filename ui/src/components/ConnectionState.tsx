@@ -71,7 +71,9 @@ function readLink(link: LinkStatus, heardAt: number, now: number): Reading {
  * change with time when nothing arrives.
  */
 export function ConnectionState({ link, heardAt, className = '' }: { link: LinkStatus; heardAt: () => number; className?: string }) {
-  const now = useNow(1000)
+  // Live, only the tooltip's "heard N s ago" moves: a slower clock (WP-16,
+  // CPU of an idle window); every other phase counts down by the second.
+  const now = useNow(link.phase === 'live' ? 5000 : 1000)
   const reading = readLink(link, heardAt(), now)
   return (
     <span role="status" aria-live="polite" title={reading.title} data-link={link.phase} className={`inline-flex items-center gap-1.5 ${className}`}>

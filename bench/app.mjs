@@ -1,7 +1,7 @@
 // The desktop app harness (WP-16, bench/README.md): every budget row of
 // .ai/21-app.md § Budgets that the app owns, against a stand (stand.sh).
 //
-// usage: node app.mjs --stand <dir> --app <Caprock.app copy> --out <file.json> [--restarts 5]
+// usage: node app.mjs --stand <dir> --app <Caprock.app copy> --out <file.json> [--restarts 5] [--phases open_tabs,cpu_hidden,...]
 //
 // The app must be a `--features snapshot` build (app/README.md): its init
 // script runs page-hook.js before the page's own scripts, and the page
@@ -26,6 +26,8 @@ const APP = opt('app')
 const OUT = opt('out')
 const RESTARTS = Number(opt('restarts', 5))
 const KEYS = Number(opt('keys', 200))
+// --phases a,b: run only these (the launch always runs), to re-measure some rows.
+const ONLY = opt('phases') ? opt('phases').split(',') : null
 if (!STAND || !APP || !OUT) { console.error('usage: node app.mjs --stand <dir> --app <.app> --out <file.json>'); process.exit(2) }
 
 const PORT = Number(readFileSync(join(STAND, 'port'), 'utf8'))
@@ -148,6 +150,7 @@ async function quit(pid) {
 
 const R = { harness: 'app', machine: machineInfo(), app: { path: APP, bundle_id: BUNDLE_ID, version: MAC ? plist('CFBundleShortVersionString') : null }, port: PORT, phases: {} }
 const phase = async (name, fn) => {
+  if (ONLY && name !== 'cold_start_first' && !ONLY.includes(name)) return
   const before = machineLoad()
   log('phase', name, 'load', before.load.join(' '))
   const started = Date.now()
@@ -156,6 +159,12 @@ const phase = async (name, fn) => {
   writeFileSync(OUT, JSON.stringify(R, null, 2))
 }
 const settle = (ms) => sleep(ms)
+/** procs() with the page's harness loop quiet for the window (page-hook.js B.quiet). */
+const quietProcs = async (seconds) => {
+  await page(`B.quiet(${(seconds + 3) * 1000}); return 1`)
+  await sleep(1500) // the long-poll in flight answers 204 within the collector's 20 s, or now
+  return procs(A.pid, seconds)
+}
 // A click on the session's row in the sidebar: opens its tab, or brings an open one to the front.
 const openTab = (sid) => `document.querySelector('[data-session-row=${JSON.stringify(sid)}]').click()`
 
@@ -173,11 +182,15 @@ await settle(3000)
 
 await phase('open_tabs', async () => {
   const opens = []
+  const clicks = []
   const memory = {}
   await page(`await B.when(() => document.querySelectorAll('[data-session-row]').length >= ${SIDS.length + 1}, 30000)`)
   await page('B.lagStart()')
   for (let i = 0; i < SIDS.length; i++) {
-    const t = await page(`const t0 = B.epoch(); ${openTab(SIDS[i])}; const at = await B.firstEcho(${JSON.stringify(SIDS[i])}, 15000); return at && at - t0`)
+    // click_ms: how long the click's own task ran (React's render and the new terminal).
+    const r = await page(`const t0 = B.epoch(); ${openTab(SIDS[i])}; const c = B.epoch() - t0; const at = await B.firstEcho(${JSON.stringify(SIDS[i])}, 15000); return { t: at && at - t0, c }`)
+    const t = r.t
+    clicks.push(Math.round(r.c))
     opens.push(t === null ? null : Math.round(t))
     log('open', i + 1, t && Math.round(t))
     if ([1, 5, 10].includes(i + 1)) {
@@ -191,7 +204,7 @@ await phase('open_tabs', async () => {
   const lag = await page('return B.lagStop()')
   await settle(40000) // past HIDDEN_DISCONNECT_MS: hidden tabs let go of their sockets and WebGL
   memory['10_settled'] = await procs(A.pid, 10)
-  return { open_to_first_echo_ms: opens, p50: median(opens), p95: pct(opens, 0.95), memory, lag }
+  return { open_to_first_echo_ms: opens, click_task_ms: clicks, p50: median(opens), p95: pct(opens, 0.95), memory, lag }
 })
 
 await phase('switch_tabs', async () => {
@@ -213,6 +226,8 @@ await phase('switch_tabs', async () => {
 })
 
 const S1 = SIDS[0]
+// --probe <file.js>: an async function body run in the page (with B, SIDS), for investigating a row.
+if (opt('probe')) await phase('probe', async () => ({ value: await page(`const SIDS = ${JSON.stringify(SIDS)};\n` + readFileSync(opt('probe'), 'utf8')) }))
 await phase('echo', async () => {
   await page(`${openTab(S1)}; await B.when(() => B.terms.get(${JSON.stringify(S1)})?.element?.offsetParent, 5000)`)
   await settle(3000)
@@ -232,15 +247,16 @@ await phase('cpu_visible', async () => {
   // Frames drawn in a second: a check that the window really paints (0 means
   // it was occluded or the display slept, and the row is not valid).
   const fps = () => page('let n = 0; let on = true; const f = () => { n++; if (on) requestAnimationFrame(f) }; requestAnimationFrame(f); await B.sleep(1000); on = false; return n')
+  await page(`${openTab(S1)}; await B.when(() => B.terms.get(${JSON.stringify(S1)})?.element?.offsetParent, 5000)`)
   allLps(-1)
   await settle(8000)
-  const idle = await procs(A.pid, 60)
+  const idle = await quietProcs(60)
   lps(0, 0)
   await settle(3000)
-  const spinner = await procs(A.pid, 30)
+  const spinner = await quietProcs(30)
   lps(0, 1000)
   await settle(3000)
-  const flood = await procs(A.pid, 30)
+  const flood = await quietProcs(30)
   flood.frames_per_second = await fps()
   lps(0, -1)
   return { no_output: idle, spinner_only: spinner, one_tab_1000_lps: flood }
@@ -297,10 +313,10 @@ await phase('cpu_hidden', async () => {
   allLps(0)
   writeFileSync(join(SNAP, 'hide'), '')
   await settle(8000)
-  const spinner = await procs(A.pid, 30)
+  const spinner = await quietProcs(30)
   allLps(-1)
   await settle(5000)
-  const silent = await procs(A.pid, 30)
+  const silent = await quietProcs(30)
   return { no_output: silent, spinners_running: spinner }
 })
 

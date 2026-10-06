@@ -1,5 +1,5 @@
 #!/bin/sh
-# run-macos.sh [--no-build] [--runs N] [--port P] [--work DIR] [--out DIR]
+# run-macos.sh [--no-build] [--runs N] [--port P] [--work DIR] [--out DIR] [--phases a,b] [--no-phone]
 # Every budget row of .ai/21-app.md § Budgets on this Mac, in one command
 # (bench/README.md):
 #   1. builds the daemon and a `--features snapshot` app bundle from this checkout,
@@ -13,7 +13,7 @@
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/.." && pwd)
-RUNS=2; PORT=4393; BUILD=1
+RUNS=2; PORT=4393; BUILD=1; PHASES=""; PHONE=1
 WORK=${TMPDIR:-/tmp}/caprock-bench
 OUT=$here/results-$(date +%F)
 while [ $# -gt 0 ]; do
@@ -23,6 +23,8 @@ while [ $# -gt 0 ]; do
     --port) PORT=$2; shift ;;
     --work) WORK=$2; shift ;;
     --out) OUT=$2; shift ;;
+    --phases) PHASES=$2; shift ;;
+    --no-phone) PHONE=0 ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
   shift
@@ -73,8 +75,8 @@ while [ "$r" -le "$RUNS" ]; do
   D="$WORK/stand-r$r"
   rm -rf "$D"
   "$here/stand.sh" "$D" "$PORT" "$WORK/caprock" 10 > /dev/null
-  node "$here/app.mjs" --stand "$D" --app "$COPY" --out "$OUT/app-r$r.json" || echo "app harness run $r failed" >&2
-  node "$here/phone.mjs" --stand "$D" --out "$OUT/phone-r$r.json" || echo "phone harness run $r failed" >&2
+  node "$here/app.mjs" --stand "$D" --app "$COPY" --out "$OUT/app-r$r.json" ${PHASES:+--phases "$PHASES"} || echo "app harness run $r failed" >&2
+  [ "$PHONE" = 0 ] || node "$here/phone.mjs" --stand "$D" --out "$OUT/phone-r$r.json" || echo "phone harness run $r failed" >&2
   kill "$(cat "$D/daemon.pid")" 2>/dev/null || true
   sleep 1
   pkill -f "$D/" 2>/dev/null || true   # the stand's sessions and their terminal holders

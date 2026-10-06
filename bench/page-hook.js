@@ -192,9 +192,14 @@
   if (CFG.autoEcho) {
     B.firstEcho(CFG.autoEcho, 60000).then((at) => post('/event', { kind: 'restored-echo', page: pageId, at, sid: CFG.autoEcho }))
   }
+  B.quietUntil = 0
+  B.quiet = (ms) => { B.quietUntil = Date.now() + ms }
   const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor
   ;(async () => {
     for (;;) {
+      // B.quiet(ms): no request to the harness for a while, so a CPU window
+      // measures the app and not this loop.
+      if (B.quietUntil > Date.now()) { await sleep(B.quietUntil - Date.now()); continue }
       try {
         const r = await fetch(`${CFG.collector}/next?page=${pageId}`)
         if (r.status !== 200) { await sleep(r.status === 204 ? 0 : 500); continue }

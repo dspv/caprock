@@ -11,6 +11,7 @@ import { onNetworkWake, type LinkStatus } from '@/lib/reconnect'
 import { ConnectionState } from './ConnectionState'
 import { attachTerminalInput } from '@/lib/xtermInput'
 import { registerBenchTerminal } from '@/lib/benchhook'
+import { writeSliced } from '@/lib/termwrite'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
@@ -269,7 +270,7 @@ export function TerminalView({
         // Never a scroll to the bottom here: someone scrolled back to read
         // stays where they are while output arrives (the scrolling rule).
         write: (data, done) => {
-          term.write(data, done)
+          writeSliced(term, data, done)
           if (!gotOutput && data.length > 0) {
             gotOutput = true
             setStart((st) => ({ ...st, phase: 'ready' }))

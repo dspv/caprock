@@ -33,6 +33,7 @@ import { attachTerminalInput } from '@/lib/xtermInput'
 import { FIND_EVENT, matchAppShortcut } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
 import { registerBenchTerminal } from '@/lib/benchhook'
+import { writeSliced } from '@/lib/termwrite'
 import { WEBGL_QUIET_MS } from './Terminal'
 import { NewPill } from './NewPill'
 import { TerminalFind, type TermSearch } from './TerminalFind'
@@ -145,7 +146,7 @@ export function TerminalPane({
             try { if (visible) fit.fit() } catch { /* not laid out */ }
             conn.resize(term.cols, term.rows)
           }
-          term.write(d, done)
+          writeSliced(term, d, done)
         },
         // Clears the screen and every mode a dead TUI left on (mouse tracking,
         // bracketed paste, the alternate screen) before a repaint.

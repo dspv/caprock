@@ -28,11 +28,15 @@ pub fn watch(app: AppHandle) {
     let Some(dir) = std::env::var_os("CAPROCK_APP_SNAPSHOT_DIR").map(PathBuf::from) else {
         return;
     };
-    if dir.join("init.js").exists() {
+    // Under bench/ (an init script), a slower watch: its own wakeups would
+    // otherwise be part of the idle CPU rows it measures.
+    let bench = dir.join("init.js").exists();
+    if bench {
         keep_painting(&app);
     }
+    let every = Duration::from_millis(if bench { 1000 } else { 200 });
     std::thread::spawn(move || loop {
-        std::thread::sleep(Duration::from_millis(200));
+        std::thread::sleep(every);
         if let Ok(js) = std::fs::read_to_string(dir.join("eval")) {
             let _ = std::fs::remove_file(dir.join("eval"));
             if let Some(w) = app.get_webview_window(crate::shell::MAIN) {

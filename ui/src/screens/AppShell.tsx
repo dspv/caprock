@@ -44,6 +44,7 @@ import type { PaneStatus } from '@/components/TerminalPane'
 import { EditorMenu, type EditorMenuAt } from '@/components/EditorMenu'
 import { preferredName, useEditors } from '@/lib/editors'
 import { applyTerminalChrome, getTerminalPrefs, subscribeTerminalPrefs } from '@/lib/termprefs'
+import { warmTerminal } from '@/lib/termwarm'
 import { StatusDot } from '@/components/ProjectRow'
 
 const Dashboard = lazy(() => import('@/App').then((m) => ({ default: m.Dashboard })))
@@ -126,6 +127,8 @@ export default function AppRoot() {
       .catch((e: unknown) => alive && setAccess(e instanceof ApiError && e.status === 401 ? 'needs-pairing' : 'ok'))
     return () => { alive = false }
   }, [])
+  // The first tab of a launch opens on a warm terminal (lib/termwarm.ts).
+  useEffect(() => warmTerminal(), [])
   useEffect(() => {
     const root = document.documentElement
     root.setAttribute('data-app', '')

@@ -27,6 +27,7 @@ import {
   type Project,
   type ProjectSource,
 } from './projects'
+import { everyWhileVisible } from './visible'
 
 const FULL_LIST_MS = 60_000
 const SUMMARY_MS = 60_000
@@ -104,8 +105,8 @@ export function useWorkspaceData(): WorkspaceData {
       .then((list) => { if (alive) { setSessions((cur) => mergeSessions(cur, list)); setLoaded(true); setError(undefined) } })
       .catch((e: unknown) => { if (alive) { setLoaded(true); setError(e instanceof Error ? e.message : String(e)) } })
     void load()
-    const id = window.setInterval(load, FULL_LIST_MS)
-    return () => { alive = false; window.clearInterval(id) }
+    const stop = everyWhileVisible(load, FULL_LIST_MS)
+    return () => { alive = false; stop() }
   }, [nonce])
 
   // The live ones, on the debounced tick.
@@ -128,19 +129,22 @@ export function useWorkspaceData(): WorkspaceData {
         if (e instanceof NotSupportedError) { setApiProjects(null); setSource('derived') }
       })
     void load()
-    const id = window.setInterval(load, PROJECTS_MS)
-    return () => { alive = false; window.clearInterval(id) }
+    const stop = everyWhileVisible(load, PROJECTS_MS)
+    return () => { alive = false; stop() }
   }, [nonce])
 
   // Shells: no session row, no live frame, so their own list.
   useEffect(() => {
     let alive = true
     const load = () => projectsApi.shells()
-      .then((list) => { if (alive) setShells(list) })
+      .then((list) => {
+        // The same list again re-renders nothing (WP-16: an idle window's CPU).
+        if (alive) setShells((cur) => (JSON.stringify(cur) === JSON.stringify(list) ? cur : list))
+      })
       .catch(() => { if (alive) setShells([]) })
     void load()
-    const id = window.setInterval(load, SHELLS_MS)
-    return () => { alive = false; window.clearInterval(id) }
+    const stop = everyWhileVisible(load, SHELLS_MS)
+    return () => { alive = false; stop() }
   }, [nonce])
 
   // Git state, clones and permission prompts, as they happen.
@@ -226,8 +230,8 @@ export function useWorkspaceData(): WorkspaceData {
       .then((s) => { if (alive) setSummary(s) })
       .catch(() => { /* the strip shows what it last knew */ })
     void load()
-    const id = window.setInterval(load, SUMMARY_MS)
-    return () => { alive = false; window.clearInterval(id) }
+    const stop = everyWhileVisible(load, SUMMARY_MS)
+    return () => { alive = false; stop() }
   }, [nonce])
 
   const costs = useMemo(() => {
