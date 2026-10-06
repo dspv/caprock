@@ -7,7 +7,7 @@
  * terminals stay mounted behind them, so switching back never repaints from
  * nothing and never drops a socket that was in use.
  */
-import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useState } from 'react'
 import { api, ApiError, errText, type SessionSummary } from '@/lib/api'
 import { APP_ROUTE, isMacPlatform, isTauri, isWorkspaceHash } from '@/lib/appmode'
 import { FIND_EVENT, matchAppShortcut, type AppCommand } from '@/lib/appkeys'
@@ -347,7 +347,14 @@ export function AppShell() {
 
   // The app's keys, before anything else on the page sees them. The terminal
   // already lets them through (xtermInput), and they are never its keys.
-  useEffect(() => {
+  //
+  // A layout effect, so the listener is swapped in the same commit that paints
+  // new state. As a passive effect it ran a beat after the paint, and a key
+  // pressed in that beat acted on the state before it: ⌘J with the waiting
+  // session already in the sidebar said "Nothing is waiting on you", and ⌘T
+  // with a project on screen asked to add one. A busy main thread (a terminal
+  // streaming) widens the beat.
+  useLayoutEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.type !== 'keydown' || e.repeat && !/^[1-9]$/.test(e.key)) return
       const c = matchAppShortcut(e, isMac)
