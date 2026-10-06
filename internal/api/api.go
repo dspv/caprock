@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/codex"
 	"github.com/dspv/caprock/internal/contexttax"
@@ -241,6 +242,11 @@ type Settings struct {
 	// Editor is the editor "Open in editor" uses: an id from GET
 	// /v1/editors, or empty for the first one installed.
 	Editor string `json:"editor"`
+	// SpawnMode is the permission mode new sessions start in: what the
+	// new-session dialogs open on, and what POST /v1/agents uses when the
+	// request names no mode and has no session to carry one from. One of
+	// agents.PermissionModes, or empty for not set.
+	SpawnMode string `json:"spawn_permission_mode"`
 }
 
 // ReportSender sends one weekly report immediately.
@@ -645,7 +651,7 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 		}
 	}
 	if sess.Status == store.StatusEnded || sum.Detached {
-		sum.Resume = s.resumeInfo(sess)
+		sum.Resume = s.resumeInfo(ctx, sess)
 		sum.OpenTerminal = s.openTerminalInfo(sess)
 	}
 	sum.ModelDisplay = s.modelDisplay(sess.Model)
@@ -764,7 +770,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 			}
 			// Every row carries whether it can be picked up: the caller is
 			// about to offer exactly that, for live sessions as well as ended.
-			sum.Resume = s.resumeInfo(sess)
+			sum.Resume = s.resumeInfo(ctx, sess)
 			sum.OpenTerminal = s.openTerminalInfo(sess)
 			out = append(out, sum)
 		}
@@ -819,7 +825,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	if last == nil {
 		last = []event.Event{}
 	}
-	sum.Resume = s.resumeInfo(sess)
+	sum.Resume = s.resumeInfo(ctx, sess)
 	sum.OpenTerminal = s.openTerminalInfo(sess)
 	from, to, err := store.RelayLinks(ctx, s.d.Store.DB(), sess)
 	if err != nil {
@@ -1099,6 +1105,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		BrowseRoot      *string  `json:"browse_root"`
 		Terminal        *string  `json:"terminal"`
 		Editor          *string  `json:"editor"`
+		SpawnMode       *string  `json:"spawn_permission_mode"`
 		// The bot token goes in and never comes back out. An empty string is a
 		// deliberate clear, which is why it is a pointer like everything else.
 		ReportBotToken *string `json:"report_bot_token"`
@@ -1162,6 +1169,16 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		in.Editor = v
+	}
+	if patch.SpawnMode != nil {
+		// Validated, not passed through: a word Claude Code does not accept
+		// would stop every new session from starting.
+		v := strings.TrimSpace(*patch.SpawnMode)
+		if v != "" && !agents.IsPermissionMode(v) {
+			s.failCode(w, http.StatusBadRequest, fmt.Errorf("spawn_permission_mode must be empty or one of %s", strings.Join(agents.PermissionModes, ", ")))
+			return
+		}
+		in.SpawnMode = v
 	}
 	// Only touched when the caller named it. GET never returns the token, so a
 	// UI that reads settings and writes them back always omits it — treating
@@ -1918,7 +1935,7 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 	// through — the store not knowing a session is not evidence it is gone.
 	if resume, _ := req["resume"].(string); resume != "" {
 		if sess, err := store.GetSession(r.Context(), s.d.Store.DB(), resume); err == nil {
-			if info := s.resumeInfo(sess); info != nil && !info.OK {
+			if info := s.resumeState(sess); info != nil && !info.OK {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": info.Reason})
 				return
 			}
@@ -1935,6 +1952,9 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// A continue picks up in the mode the session was last in; a new session
+	// starts in the stated preference.
+	s.defaultSpawnMode(r.Context(), req)
 	// Spawn with a background context: the process must outlive this HTTP request.
 	id, cwd, err := s.d.Agents.Spawn(context.WithoutCancel(r.Context()), req)
 	if err != nil {

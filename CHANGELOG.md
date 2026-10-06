@@ -9,6 +9,23 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **Settings → New sessions: the permission mode new agents start in.** The
+  New session dialog and the New agent sheet open on it, and a session started
+  without choosing one (the project terminal's "New session here", a quick
+  chat) starts in it. Unset, nothing changes.
+
+### Fixed
+
+- **Continuing a session keeps the permission mode it was running in.** A
+  session run with permissions skipped (`--dangerously-skip-permissions`)
+  came back from "continue here" or "branch here" in the default mode, asking
+  before every command. Caprock now continues it in the mode its hooks last
+  reported — bypass, accept edits, plan — and says which beside the button,
+  where it can be changed before continuing. A session with no recorded mode
+  uses the setting above.
+
 ## [0.78.1] - 2026-10-06
 
 ### Added

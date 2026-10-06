@@ -1,11 +1,13 @@
 package api
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/ingest"
 	"github.com/dspv/caprock/internal/store"
 )
@@ -26,11 +28,76 @@ type ResumeInfo struct {
 	// Command resumes the session from the user's own terminal, when the
 	// agent has such a command. Offered even when Caprock cannot run it.
 	Command string `json:"command,omitempty"`
+	// PermissionMode is the mode continuing it here starts in, when the
+	// request names none (continueMode): the one the session was last running
+	// in, else the spawn preference. Absent when neither says one, and when it
+	// cannot be continued here. Shown beside the button, so a session that
+	// never asks is never continued by surprise — and one that always asked
+	// does not come back asking for nothing.
+	PermissionMode string `json:"permission_mode,omitempty"`
 }
 
 // resumeInfo is nil when there is nothing to resume: a live session Caprock
 // started is typed into, not resumed.
-func (s *Server) resumeInfo(sess store.Session) *ResumeInfo {
+func (s *Server) resumeInfo(ctx context.Context, sess store.Session) *ResumeInfo {
+	info := s.resumeState(sess)
+	if info != nil && info.OK {
+		info.PermissionMode = s.continueMode(ctx, sess.SessionID)
+	}
+	return info
+}
+
+// continueMode is the permission mode a session is carried on in when the
+// request does not name one: the mode its own hooks last reported — so a
+// session run with permissions skipped is continued with them skipped, and
+// one in plan mode stays in plan mode — else the spawn preference, else ""
+// (the agent's own default). Used for a resume and for a relay alike.
+func (s *Server) continueMode(ctx context.Context, sessionID string) string {
+	if sessionID != "" {
+		reported, err := store.LastPermissionMode(ctx, s.d.Store.DB(), sessionID)
+		if err != nil {
+			s.d.Log.Warn("could not read the session's permission mode", "component", "api", "session", sessionID, "err", err)
+		}
+		if m := agents.CarriedMode(reported); m != "" {
+			return m
+		}
+	}
+	return s.spawnMode()
+}
+
+// spawnMode is the stated preference for new sessions, or "".
+func (s *Server) spawnMode() string {
+	if s.d.Settings == nil {
+		return ""
+	}
+	return s.d.Settings.Get().SpawnMode
+}
+
+// defaultSpawnMode fills permission_mode on a start request that names none:
+// a resume or a relay carries the source session's mode (continueMode), and
+// anything else gets the spawn preference. A request with its own command is
+// left alone — Caprock does not guess flags for a binary it did not build the
+// argv of. Every caller gets this, not only the dashboard's buttons: the
+// phone and the project terminal post the same request.
+func (s *Server) defaultSpawnMode(ctx context.Context, req map[string]any) {
+	if m, _ := req["permission_mode"].(string); m != "" {
+		return
+	}
+	if c, _ := req["command"].(string); c != "" {
+		return
+	}
+	source, _ := req["resume"].(string)
+	if source == "" {
+		source, _ = req["relay_from"].(string)
+	}
+	if m := s.continueMode(ctx, source); m != "" {
+		req["permission_mode"] = m
+	}
+}
+
+// resumeState is resumeInfo without the mode: whether, and how, the session
+// can be continued.
+func (s *Server) resumeState(sess store.Session) *ResumeInfo {
 	// Caprock's own live session has its terminal; there is nothing to
 	// continue. Unless this daemon no longer holds that terminal (FB-040).
 	if sess.Owned && sess.Status != store.StatusEnded && (s.d.Agents == nil || s.d.Agents.Holds(sess.SessionID)) {

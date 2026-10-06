@@ -24,10 +24,11 @@ type fakeAgents struct {
 	avail    bool
 	inputs   []string
 	sigs     []string
-	writes   []string    // /term: bytes written to the PTY
-	sizes    [][2]int    // /term: {cols, rows} each resize asked for
-	snapshot []byte      // /term: snapshot returned on connect (nil ⇒ Term reports not-found)
-	termCh   chan []byte // /term: output stream (nil ⇒ Term reports not-found)
+	writes   []string         // /term: bytes written to the PTY
+	sizes    [][2]int         // /term: {cols, rows} each resize asked for
+	snapshot []byte           // /term: snapshot returned on connect (nil ⇒ Term reports not-found)
+	termCh   chan []byte      // /term: output stream (nil ⇒ Term reports not-found)
+	spawns   []map[string]any // every request Spawn was handed
 }
 
 // wrote and sized read the recorded calls under the lock: the socket handler
@@ -48,7 +49,11 @@ func (f *fakeAgents) Available() bool { return f.avail }
 func (f *fakeAgents) Has(string) bool { return f.avail }
 func (f *fakeAgents) Spawn(_ context.Context, req any) (string, string, error) {
 	m := req.(map[string]any)
-	return "new-session", m["cwd"].(string), nil
+	f.mu.Lock()
+	f.spawns = append(f.spawns, m)
+	f.mu.Unlock()
+	cwd, _ := m["cwd"].(string)
+	return "new-session", cwd, nil
 }
 func (f *fakeAgents) Input(_ string, d []byte) error {
 	f.inputs = append(f.inputs, string(d))

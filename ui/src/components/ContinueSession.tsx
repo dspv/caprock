@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { api, ApiError, type ResumeInfo } from '@/lib/api'
 import { useCanControl } from '@/lib/useCanControl'
 import { navigate } from '@/lib/router'
+import { modeWords } from '@/lib/permissionMode'
+import { modeOptions } from './SpawnDialog'
 
 /**
  * Pick up a conversation that is not Caprock's to type into.
@@ -34,6 +36,13 @@ import { navigate } from '@/lib/router'
  * own id is the useful thing: the daemon stops that process first, which it
  * may, because Caprock started it. A copy alongside is offered second, for
  * someone who wants the old process left alone.
+ *
+ * Every shape says the permission mode the new process starts in, because
+ * it is the one thing about it that is not the conversation: the daemon
+ * carries on in the mode the session was last running in (`resume.
+ * permission_mode`), so a session run with permissions skipped does not come
+ * back asking before every command, and one that asked does not come back
+ * never asking. The full shapes let it be changed before the click.
  */
 export function ContinueSession({
   sessionID,
@@ -57,6 +66,11 @@ export function ContinueSession({
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState('')
+  // '' is the agent's own default, offered only when nothing else was
+  // recorded: picking it while a mode is recorded would be overruled by the
+  // daemon, which fills an empty mode with that one.
+  const carried = resume.permission_mode ?? ''
+  const [mode, setMode] = useState(carried)
 
   // Continuing starts a process, which only a controller among paired devices
   // may do (ADR-034).
@@ -69,7 +83,9 @@ export function ContinueSession({
     setBusy(true)
     setError('')
     try {
-      const res = await api.spawn({ cwd, resume: sessionID, fork })
+      const req: Parameters<typeof api.spawn>[0] = { cwd, resume: sessionID, fork }
+      if (mode) req.permission_mode = mode
+      const res = await api.spawn(req)
       navigate({ name: 'session', id: res.session_id, tab: 'terminal' })
       // Continuing under the same id lands on the page already open, so
       // nothing navigates; the screen swaps to the live terminal on its next
@@ -99,22 +115,43 @@ export function ContinueSession({
     </button>
   )
 
+  // The mode, said and changeable beside the button: "continue here ·
+  // Bypass · never asks".
+  const modePicker = (
+    <select
+      aria-label="Permission mode"
+      value={mode}
+      disabled={busy}
+      onChange={(e) => setMode(e.target.value)}
+      title="What the continued session may do without asking"
+      className="max-w-[16rem] cursor-pointer rounded-sm border border-border bg-transparent px-1 text-[11px] text-fg-muted hover:text-fg disabled:opacity-50"
+    >
+      {!carried && <option value="">default mode</option>}
+      {modeOptions(carried).map(([v, label]) => (
+        <option key={v} value={v}>{label}</option>
+      ))}
+    </select>
+  )
+
   // Not a disabled button: a greyed-out "continue" says only that something
   // is wrong. The reason is the useful part, so it is what is shown.
   if (compact) {
     if (!resume.ok) {
       return <span className="text-[11px] text-fg-faint truncate" title={resume.reason}>can’t continue</span>
     }
+    // A card has no room for a picker; the mode is said, and the session's
+    // own page is where it can be changed.
     return (
-      <span className="inline-flex items-center gap-2">
+      <span className="inline-flex min-w-0 items-center gap-2">
         <button
           onClick={() => open()}
           disabled={busy}
-          title="Carry this conversation on, here"
+          title={carried ? `Carry this conversation on, here, in ${modeWords(carried)}` : 'Carry this conversation on, here'}
           className="text-[11px] border border-accent text-accent px-1.5 rounded-sm hover:bg-accent/10 disabled:opacity-50"
         >
           {busy ? 'opening…' : 'continue'}
         </button>
+        {carried && <span className="truncate text-[11px] text-fg-faint">{modeWords(carried)}</span>}
         {error && <span className="text-[11px] text-danger truncate" title={error}>failed</span>}
       </span>
     )
@@ -143,6 +180,7 @@ export function ContinueSession({
         >
           {busy ? 'Opening…' : 'Continue it here'}
         </button>
+        {modePicker}
         <p className="max-w-[52ch] text-[12px] leading-relaxed text-fg-faint">
           Or{' '}
           <button onClick={() => open(true)} disabled={busy} className="underline hover:text-fg disabled:opacity-50">
@@ -170,6 +208,7 @@ export function ContinueSession({
       >
         {busy ? 'opening…' : live ? 'branch here' : 'continue here'}
       </button>
+      {modePicker}
       {copyButton}
       {error && <span className="text-[11px] text-danger">{error}</span>}
     </span>
