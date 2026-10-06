@@ -1008,6 +1008,18 @@ the user guide [docs/app.md § Updates](../docs/app.md#updates).
   (`<data_dir>/bin`) older than the bundled one and moves it over once per
   run (`Supervisor::should_refresh`, then the same copy-shutdown-start as
   `update_daemon`); pty-hosts keep the sessions. A cask upgrade gets the same.
+- **Everything comes back as it was** (the owner's bar, 2026-10-06:
+  "update like Orca does — without losing sessions, everything stays in its
+  place", translated). Sessions live in pty-hosts and survive both the app's
+  restart and the daemon's move; tabs, their order, the front tab, splits
+  and sizes (`caprock.app.workspace.v1`) and the sidebar
+  (`caprock.app.expanded`) are in the page's storage; on *installing* each
+  terminal saves where it is scrolled (`caprock.app.resume.v1`,
+  `ui/src/lib/termresume.ts`) and goes back there after the replay; the
+  shell waits a second for WebKit to write that, and saves the window state
+  before it installs. A half-typed line lives in the agent's process and is
+  repainted with the rest. Checked end to end by `bench/update.mjs`
+  (two signed builds, a loopback update server, the fake `claude`).
 - **What it sends** is in ADR-041: the plugin's `User-Agent`, an `Accept`
   header, no identifier and no version in the URL.
 

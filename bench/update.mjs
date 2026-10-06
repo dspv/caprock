@@ -22,7 +22,8 @@
 //
 // Writes <work>/result.json and before.png / after.png (the window, from the
 // app itself); exits 1 when anything differs. Input goes in through the
-// page (page-hook.js), the window opens in the background and off screen,
+// page (page-hook.js), the window opens in the background and off screen
+// with no menu bar or Dock icon (CAPROCK_APP_UNSEEN, snapshot builds only),
 // no OS dialog is involved, nothing is left running.
 import http from 'node:http'
 import { spawn, execFileSync } from 'node:child_process'
@@ -178,7 +179,7 @@ try {
   writeFileSync(join(SNAP, 'init.js'), pageHook({ daemonPort: PORT, collector: COLLECTOR }))
   const t0 = Date.now()
   const args = ['-g', '-n', '-F']
-  for (const [k, v] of Object.entries({ ...env, CAPROCK_APP_BACKGROUND: '1', CAPROCK_APP_SNAPSHOT_DIR: SNAP, CAPROCK_APP_NOTIFY_LOG: join(S, 'notify.log') })) args.push('--env', `${k}=${v}`)
+  for (const [k, v] of Object.entries({ ...env, CAPROCK_APP_BACKGROUND: '1', CAPROCK_APP_UNSEEN: '1', CAPROCK_APP_SNAPSHOT_DIR: SNAP, CAPROCK_APP_NOTIFY_LOG: join(S, 'notify.log') })) args.push('--env', `${k}=${v}`)
   spawn('open', [...args, APP], { stdio: 'ignore' })
   if (!(await event('interactive', t0))) throw new Error('0.0.1-e2e did not come up')
   const pid1 = appPid()

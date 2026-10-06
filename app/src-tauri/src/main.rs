@@ -106,7 +106,17 @@ fn main() {
     )
     .setup(move |app| {
         shell::build(app.handle(), monitored.clone(), start, !quiet)?;
-        tray::install(app.handle())?;
+        // `--features snapshot` only: an automated check on a machine
+        // someone is using (bench/update.mjs) puts no icon in the menu bar or
+        // the Dock; its window is placed off screen.
+        let unseen = cfg!(feature = "snapshot") && std::env::var_os("CAPROCK_APP_UNSEEN").is_some();
+        #[cfg(target_os = "macos")]
+        if unseen {
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+        }
+        if !unseen {
+            tray::install(app.handle())?;
+        }
         hotkey::load(app.handle());
         #[cfg(target_os = "macos")]
         menu::install(app.handle(), &monitored)?;

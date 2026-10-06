@@ -250,9 +250,12 @@ approve the app before its private repositories show up.
 
 When a newer Caprock is out, the status strip says **Update to vX.Y.Z —
 Restart**. One click downloads it (with progress, while you keep working),
-checks its signature, installs it and restarts the app. Your sessions keep
-running: their terminals live outside the app, and the app moves its daemon
-onto the new version after the restart without ending them. The ▾ beside it
+checks its signature, installs it and restarts the app. Everything comes
+back as it was: every session keeps running (their terminals live outside
+the app, and the app moves its daemon onto the new version without ending
+them), the same tabs in the same order with the same one in front, splits
+and their sizes, the sidebar, the window's size and place, each terminal
+scrolled where you left it, and anything you had half typed into an agent. The ▾ beside it
 shows what is new, or **Not now** to hide that version.
 
 - **Checking.** On its first launch the app asks once: *Check for updates
