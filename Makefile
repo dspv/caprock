@@ -150,6 +150,11 @@ app-release: ## macOS: build the universal .dmg for TAG=vX.Y.Z, check it, attach
 	@[ -n "$(TAG)" ] || { echo "usage: make app-release TAG=vX.Y.Z [ARGS='--no-upload --clobber --cask-pr']"; exit 1; }
 	@bash scripts/app-release.sh $(TAG) $(ARGS)
 
+.PHONY: app-latest
+app-latest: ## Attach version-less copies of TAG=vX.Y.Z's app files, add them to checksums.txt, mark it Latest
+	@[ -n "$(TAG)" ] || { echo "usage: make app-latest TAG=vX.Y.Z [ARGS=--allow-missing]"; exit 1; }
+	@bash scripts/app-latest.sh $(TAG) $(ARGS)
+
 # --- docs -----------------------------------------------------------------
 .PHONY: docs-fmt
 docs-fmt: ## Tight-align all markdown tables (run after editing any table)

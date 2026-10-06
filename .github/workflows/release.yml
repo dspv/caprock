@@ -206,3 +206,21 @@ jobs:
         run: gh release upload "${GITHUB_REF_NAME}" ${{ matrix.files }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Version-less copies of the app files (Caprock-macOS.dmg,
+  # Caprock-Windows-setup.exe, Caprock-Linux.AppImage/.deb/.rpm) so
+  # releases/latest/download/<name> is a link that never changes, their lines in
+  # checksums.txt, and only then the Latest mark goreleaser left off
+  # (.goreleaser.yaml, make_latest: false). Runs when an app job failed too:
+  # whatever was attached gets its copy, and the script refuses to mark Latest
+  # with a file missing, so the previous release's links keep working.
+  app-latest:
+    needs: [goreleaser, app-macos, app-other]
+    if: ${{ !cancelled() && needs.goreleaser.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: version-less app files, checksums, Latest
+        run: scripts/app-latest.sh "${GITHUB_REF_NAME}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

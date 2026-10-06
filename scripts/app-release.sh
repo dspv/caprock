@@ -23,6 +23,10 @@
 #
 # Output: app/src-tauri/target/app-release/ (the .dmg and caprock-app.rb).
 #
+# The version-less Caprock-macOS.dmg the site links, and marking the release
+# Latest, are scripts/app-latest.sh's job, run once every OS's files are on
+# the release.
+#
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -132,3 +136,9 @@ fi
 
 echo ""
 echo "Cask: $OUT/caprock-app.rb"
+if [[ "$UPLOAD" == 1 && -z "${GITHUB_ACTIONS:-}" ]]; then
+  # In CI, release.yml's app-latest job does this once every OS is attached.
+  echo "Next, once the Windows and Linux files are attached (or without them):"
+  echo "  make app-latest TAG=$TAG            # version-less copies, checksums, mark Latest"
+  echo "  make app-latest TAG=$TAG ARGS=--allow-missing"
+fi
