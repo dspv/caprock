@@ -227,6 +227,9 @@ func (s *Server) handleRemote(what string) http.HandlerFunc {
 			return
 		}
 		s.logDevice(r, what, id, wt)
+		if what == "push" && s.d.GitHub != nil {
+			s.d.GitHub.Kick(id) // the pull request's checks start over
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"result": res, "changes": c})
 	}
 }

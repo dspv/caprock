@@ -34,6 +34,7 @@ export const SparkIcon = (p: P) => <Icon {...p}><path d="M12 3v4M12 17v4M3 12h4M
 export const FolderIcon = (p: P) => <Icon {...p}><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6H9l2 2h8.5A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z" /></Icon>
 export const FolderPlusIcon = (p: P) => <Icon {...p}><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6H9l2 2h8.5A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5zM12 11v5M9.5 13.5h5" /></Icon>
 export const BranchIcon = (p: P) => <Icon {...p}><circle cx="6" cy="5" r="2" /><circle cx="6" cy="19" r="2" /><circle cx="18" cy="7" r="2" /><path d="M6 7v10M18 9c0 5-6 4-11.2 8.6" /></Icon>
+export const PullRequestIcon = (p: P) => <Icon {...p}><circle cx="6" cy="6" r="2.25" /><circle cx="6" cy="18" r="2.25" /><circle cx="18" cy="18" r="2.25" /><path d="M6 8.25v7.5M18 15.75V9.5a3 3 0 0 0-3-3h-3.5M13.5 4l-2.5 2.5 2.5 2.5" /></Icon>
 export const InspectorIcon = (p: P) => <Icon {...p}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M15 4v16" /></Icon>
 export const SidebarIcon = (p: P) => <Icon {...p}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></Icon>
 export const SearchIcon = (p: P) => <Icon {...p}><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.2-4.2" /></Icon>

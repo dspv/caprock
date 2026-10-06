@@ -133,6 +133,22 @@ type Config struct {
 	// Editor is the editor "Open in editor" uses ("vscode", "zed", ...;
 	// internal/editor). Empty means the first one installed.
 	Editor string `json:"editor,omitempty"`
+	// GitHubSource is where the GitHub token comes from (internal/github,
+	// ADR-039): "gh" (the GitHub CLI's login), "token" (pasted), "oauth"
+	// (device flow), or empty — not connected, and nothing goes to GitHub.
+	// The token itself is never in this file.
+	GitHubSource string `json:"github_source,omitempty"`
+	// GitHubClientID is a GitHub OAuth app's client id; with one, Settings
+	// offers "Sign in with GitHub" (the device flow). Public, not a secret.
+	GitHubClientID string `json:"github_client_id,omitempty"`
+	// GitHubNotify raises an OS notification when a followed pull request's
+	// CI starts failing or a review lands. On unless switched off.
+	GitHubNotify *bool `json:"github_notify,omitempty"`
+}
+
+// GitHubNotifyOn reports whether CI and review notifications are on.
+func (c Config) GitHubNotifyOn() bool {
+	return c.GitHubNotify == nil || *c.GitHubNotify
 }
 
 // Defaults returns the built-in configuration for a fresh install.

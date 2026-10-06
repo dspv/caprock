@@ -121,6 +121,9 @@ export class Notifier {
     later(() => {
       if (this.pending !== p) return
       this.pending = null
+      // A GitHub notification is about a pull request, not a session: the
+      // app coming forward is all its click does.
+      if (!p.n.session_id) return
       if (this.deps.viewing().sessionId === p.n.session_id) return
       this.deps.open(p.n)
     }, SHOWN_GRACE_MS)

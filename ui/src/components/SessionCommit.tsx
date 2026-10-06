@@ -12,6 +12,7 @@ import { inProject, NotSupportedError, projectsApi, worktreeKeyOf, type Project 
 import { useCanControl } from '@/lib/useCanControl'
 import { useChanges } from '@/lib/useChanges'
 import { CommitBox, OutcomeLine, RemoteActions, type Outcome } from './CommitBox'
+import { PullRequestCard } from './PullRequest'
 
 /** Files listed before "show all". */
 const SHOWN = 8
@@ -179,6 +180,7 @@ function Panel({ target, canControl, sessionId }: { target: WorktreeRef; canCont
       ) : (
         <p className="text-[12px] text-fg-muted">This device can read, not commit. Commit on the machine, or make this device a controller there.</p>
       )}
+      <PullRequestCard target={ref} canControl={canControl} sessionId={sessionId} />
     </section>
   )
 }

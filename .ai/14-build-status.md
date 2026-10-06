@@ -72,6 +72,53 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-06 — GitHub: connect, clone, pull requests, checks and reviews (WP-19, F14)
+
+Built overnight without the owner; the product decisions are listed in the
+PR. Auth is [ADR-039](08-decisions.md#adr-039--github-the-daemon-talks-to-the-api-with-the-gh-login-a-pasted-token-or-a-device-flow-token-that-never-leaves-it),
+the contract [03-contracts.md § GitHub](03-contracts.md#github).
+
+- **Daemon.** `internal/github`: a `net/http` client that refuses any host
+  but the API's, with an ETag cache (a `304` costs no rate limit), rate
+  limits read from the headers and a pause per resource until
+  `Retry-After` or the reset, and every failure classified (`auth`,
+  `scope` naming the missing scope or permission, `not_found`,
+  `rate_limit`, `exists`, `network`, …) with what was being done. Token
+  sources: `gh auth token` on demand, a pasted token, the device flow when
+  `github_client_id` is set. Repositories (yours, an owner's, search),
+  owners, create a repository (remote added, pushed through the Changes
+  push), open a pull request (pushed first), and a tracker that follows
+  each worktree's pull request: at most once a minute per repository,
+  doubling to 8 minutes, live `github` frames, `ci`/`review` notify frames
+  on transitions. Routes in `internal/api/github.go`; reads on the viewer
+  list, PR and refresh on the controller list, the rest machine-only.
+- **UI.** Settings → GitHub, the clone picker in ⌘O and the phone's Start
+  work, *Create a GitHub repository…*, the Changes view's GitHub strip and
+  pull request sheet, the sidebar's pull-request icon, the phone's pull
+  request card.
+- **Incident and fix.** A live run of a throwaway daemon with a scratch
+  `$HOME` stored a pasted token through `security add-generic-password`
+  without naming a keychain; macOS found no default keychain under that
+  `$HOME` and showed the owner "Keychain Not Found" with *Reset To
+  Defaults* (cancelled; nothing was written). Since then the Keychain
+  backend refuses to run without the login keychain's path, read from the
+  OS user record rather than `$HOME`; a missing keychain or a failing
+  `security` falls back to the `0600` file with a note in Settings; the
+  store is read at startup only when a stored token is in use;
+  `CAPROCK_SECRET_STORE=file` forces the file and every test and throwaway
+  daemon sets it; the backend is tested by its argv only.
+- **Tests.** Go against an `httptest` fake GitHub: connect, 401 (and the
+  `gh` login re-read once), 403 missing scope for classic and fine-grained
+  tokens, 404, 422 pull request exists (linked), a secondary rate limit
+  with `Retry-After`, a spent primary limit, the network down, `304`s,
+  search, the device flow (disabled, approved, denied), push before a pull
+  request and a failed push, following and notifications, worktrees found
+  after startup, create repository, the token never sent to another host,
+  the keychain argv and its fallbacks, roles through the API. vitest for
+  the settings, picker, pull request form, status and phone card.
+  Headless Chrome at 1440×900 and 390 px against a throwaway daemon and a
+  fake GitHub.
+
 ### 2026-10-06 — Changes: review, commit and push without a terminal (F14 groundwork)
 
 The worktree's Changes view in the app and a commit panel on the phone's

@@ -24,6 +24,7 @@ import { useChanges } from '@/lib/useChanges'
 import { BranchIcon, CloseIcon } from './AppIcons'
 import { CommitBox, OutcomeLine, RemoteActions, type CommitBoxHandle, type Outcome } from './CommitBox'
 import { DiffView, type DiffLayout } from './DiffView'
+import { GitHubStrip } from './PullRequest'
 
 const LAYOUT_KEY = 'caprock.changes.layout'
 
@@ -169,6 +170,7 @@ export function ChangesView({ target: given, title, sessionId, onClose, classNam
           </button>
         </div>
       </header>
+      <GitHubStrip target={target} title={title} sessionId={sessionId} />
       {notice && <div className="shrink-0 border-b border-[var(--app-hairline)] px-4 py-2"><OutcomeLine outcome={notice} onDismiss={() => setNotice(null)} /></div>}
       {changes?.state && (
         <p className="shrink-0 border-b border-[var(--app-hairline)] bg-warn/[0.07] px-4 py-1.5 text-[12px] text-fg">

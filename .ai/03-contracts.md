@@ -351,7 +351,7 @@ One policy for both sockets, `ui/src/lib/reconnect.ts` (WP-13, [21-app.md § Pha
 
 ### Notify frame
 
-`{type:"notify", seq, data:{id, kind, session_id, project?, title, body, prompt_id?, actions?}}` — an alert for the desktop app (WP-09, [21-app.md § Notifications](21-app.md#notifications)). Code: `internal/alerts` (`Notify`), `internal/daemon/phonealerts.go`, `ui/src/lib/notify.ts`, `app/src-tauri/src/notify.rs`, `app/src-tauri/src/notify_macos.rs`.
+`{type:"notify", seq, data:{id, kind, session_id, project?, title, body, prompt_id?, actions?}}` — an alert for the desktop app (kinds `ci` and `review`, with an empty `session_id`, come from GitHub, § GitHub) (WP-09, [21-app.md § Notifications](21-app.md#notifications)). Code: `internal/alerts` (`Notify`), `internal/daemon/phonealerts.go`, `ui/src/lib/notify.ts`, `app/src-tauri/src/notify.rs`, `app/src-tauri/src/notify_macos.rs`.
 
 - **One decision, two senders.** The alert rules (below, § Phone alerts) run once over the stored events; a kind is decided while Telegram's switch or the app's is on, and the 3-minute per-session cooldown and the 20-an-hour cap count each decision once for both. Each sender then delivers it only if its own switch is on. `PUT /v1/settings` takes `notify_approval` (on unless turned off) and `notify_finished` (off unless turned on), stored as pointers in `config.json`; `GET` returns both. Telegram's `alert_*` switches are untouched and stay off unless turned on.
 - **Fields.** `id` is `<alert kind>-<session_id>-<trigger ms>`, unique per alert and the same on a replay. `kind`: `approval`, `finished`, or `error` for a turn that ended on a StopFailure. `project` is the session's project, else its folder's name. `title` is plain text, `Needs approval · <project>` (`Needs your answer`, `Finished`, `Stopped: <error>`); `body` is lines of plain text: the session's name, branch and a non-Claude agent (left out when it would only repeat the project), then for a dialog the tool and its command, file, URL or question (100 characters), for a finished run its duration, cost, tool calls, changed files and — while `alert_reply` is on — the reply's first line; the twentieth of an hour adds that the rest wait. Nothing is HTML-escaped; the frame never leaves the machine except to a paired dashboard, which already sees the same tool inputs on `event` frames.
@@ -1200,6 +1200,131 @@ POST /v1/projects/{id}/changes/fetch[?worktree=]    → {result: RemoteResult, c
   can open one and against what; `POST …/changes/push` publishes the branch
   first. In Go, `projects.Service.Push(ctx, id, worktree)` and `Changes`
   are the calls a PR endpoint can make before talking to GitHub.
+
+### GitHub
+
+Connect GitHub, pick a repository to clone, put a local project on GitHub,
+open a pull request from a worktree and follow its checks and reviews (WP-19,
+F14; [ADR-039](08-decisions.md#adr-039--github-the-daemon-talks-to-the-api-with-the-gh-login-a-pasted-token-or-a-device-flow-token-that-never-leaves-it)).
+Code: `internal/github`, `internal/api/github.go`,
+`internal/daemon/github.go`, `ui/src/lib/github.ts`. The daemon is the only
+thing that talks to GitHub; **no response, frame or log line carries the
+token**.
+
+```
+GET    /v1/github                          → Status
+PATCH  /v1/github          {notify}        → Status
+DELETE /v1/github                          → Status (disconnected)
+POST   /v1/github/connect  {source: "gh"} | {source: "token", token} → Status
+POST   /v1/github/device                   → {device: Device}
+GET    /v1/github/device                   → {device: Device | null}
+DELETE /v1/github/device                   → {device: null}
+GET    /v1/github/owners                   → {owners: [{login, avatar_url?, org}]}
+GET    /v1/github/repos?owner=&q=&page=    → RepoPage
+GET    /v1/github/prs                      → {prs: [PR]}
+GET    /v1/projects/{id}/github[?worktree=]          → WorktreeInfo
+POST   /v1/projects/{id}/github/refresh[?worktree=]  → WorktreeInfo (read now)
+POST   /v1/projects/{id}/github/pr[?worktree=]  {title, body, base?, draft} → {pr: PR, pushed, push?}
+POST   /v1/projects/{id}/github/repo  {name, owner?, private?, description?, protocol?, push?} → CreateRepoResult
+```
+
+- **`Status`** — `{connected, source?, user?: {login, name?, avatar_url?,
+  html_url?}, scopes, scopes_known, token_kind?, checked_at?, sources: {gh,
+  stored, store, store_note?, oauth, client?}, health: {last_ok_at?, error?:
+  Error, rate?: {resource, limit, remaining, reset_at, used}, paused_until?},
+  device?, notify, tracked}`. `source` is `gh`, `token` or `oauth` (stored
+  in `config.json` as `github_source`). `scopes` come from `X-OAuth-Scopes`;
+  a fine-grained token has none (`scopes_known` false, `token_kind`
+  `fine-grained`). `token_kind` is read from the token's prefix, never its
+  value. `sources.gh` says the GitHub CLI is installed; `store` is
+  `keychain` or `file`, and `store_note` says why a token is in the file on
+  macOS. `sources.oauth` is true when `github_client_id` is set. The
+  account is re-read every 10 minutes while connected.
+- **Connect** validates with `GET /user` before anything is kept: `gh` runs
+  `gh auth token --hostname github.com` (never stored; a stored token is
+  removed), `token` stores the pasted value (one line, ≤ 255 characters).
+  A refused token is the error and nothing changes. **Disconnect** removes
+  only what Caprock stored and clears `github_source`.
+- **Device flow** (only with `github_client_id`; otherwise `409 disabled`):
+  `POST` asks `github.com/login/device/code` for scopes `repo read:org` and
+  answers `{state: "pending", user_code, verification_uri, expires_at,
+  interval}`; the daemon polls `…/login/oauth/access_token` itself
+  (honouring `slow_down`) and the state becomes `done` (stored as source
+  `oauth`, an `account` frame follows), `denied`, `expired` or `error`.
+- **`RepoPage`** — `{repos: [RepoInfo], page, next, search?}`; `RepoInfo` is
+  `{full_name, name, owner, private, fork, archived, description?,
+  clone_url, ssh_url, html_url, default_branch?, pushed_at?}`. No `owner`
+  and no `q`: `/user/repos` (owner, collaborator, organization member),
+  recently pushed first; an `owner`: that account's or organization's;
+  `q`: the search API, limited to `user:` and `org:` of your owners
+  (`in:name fork:true`). 30 a page.
+- **`PR`** — `{project_id, worktree, branch, repo, number, url, title,
+  state: open|closed|merged, draft, base, head_sha, mergeable: bool|null,
+  mergeable_state?, review: approved|changes_requested|review_required|
+  commented|"", reviews: [{user, state, at?}], checks: {state:
+  pass|fail|pending|"", passed, failed, pending, items: [{name, state, url?}]},
+  at, error?}`. Checks merge check runs and commit statuses on the head;
+  `mergeable` null is GitHub still computing it. Only pull requests whose
+  head is in the same repository as `origin` are followed.
+- **`WorktreeInfo`** — `{connected, repo: {owner, name, full_name, html_url}
+  | null, reason?, branch, base, remote?, published, ahead, pr: PR | null,
+  draft?: {title, body, commits}, primed}`. `repo` is null when `origin` is
+  not on github.com (`reason` says so). `draft` prefills a new pull request:
+  the title from the only commit's subject, else the branch name
+  (`feat/github-auth` → `feat: github auth`); with more than one commit the
+  body lists their subjects since `base`, oldest first (at most 50).
+- **Open a pull request** pushes first when the branch is not `published`
+  or is `ahead` (the Changes push: `projects.Service.Push`, the user's git
+  credentials; a failed push answers as the push does and nothing is sent
+  to GitHub), then `POST /repos/{o}/{r}/pulls` with head = the branch, base
+  = `base` or the default branch. One already open is `409 exists` with
+  `pr`.
+- **Create a repository** refuses a project that already has a remote
+  (`409 state`), creates it (`private` unless `private: false`) under the
+  account or `owner` (an organization), adds `origin` (`https`, or `ssh`
+  with `protocol: "ssh"`) and pushes the current branch unless `push:
+  false`. A failed push still answers 200 with `push_error: {error, kind,
+  output?}`; a failed `git remote add` is `422` with the created `repo`.
+- **Failures** are `{error, kind, doing, message, github_status?, retry_at?,
+  needs?, pr?}`, `error` the whole sentence the interface shows. Kinds and
+  status: `not_connected`, `state`, `disabled`, `exists` → `409`;
+  `rate_limit` → `429` with `Retry-After`; `invalid` → `400` when Caprock
+  refused before asking GitHub; `auth` (401), `scope` (403 or 404 naming
+  the missing scope or fine-grained permission in `needs`), `forbidden`,
+  `not_found`, `invalid` (422), `network`, `github` (5xx) → `502` with
+  GitHub's status. The last one is also `health.error`.
+- **Polling.** The followed set is every worktree (and main checkout) of a
+  listed repository project whose `origin` is on github.com and whose branch
+  is not the default; it is re-read from the projects list every 15 s. A
+  repository is polled (open pulls, then each followed one's pull, check
+  runs, status and reviews) at most every **60 s**, doubling to **8
+  minutes** while nothing changes; every `GET` is conditional on its last
+  `ETag` (a `304` costs no rate limit); a rate limit pauses that resource
+  until `Retry-After` or `X-RateLimit-Reset` (a minute when neither). A push
+  through Changes or a refresh asks for a read (at most every 10 s).
+  Nothing is sent while not connected.
+- **Live.** `{type: "github", data: {kind: "pr", pr}}` when a followed pull
+  request changes, `{kind: "pr_gone", project_id, worktree}` when it closes
+  out of the set, `{kind: "account", account: Status}` when the account or
+  its health changes. While `github_notify` (on unless turned off) holds,
+  a check turning to `fail` or a new `approved` / `changes_requested` review
+  is a `notify` frame of kind `ci` or `review` (§ Notify frame) with an
+  empty `session_id`; never on the first read of a pull request.
+- **Who.** The `GET`s are every paired device's; `…/github/pr` and
+  `…/github/refresh` a controller's (ADR-034 amended); connect, device,
+  disconnect, `PATCH` and `…/github/repo` the machine's only.
+- **Where the token lives.** The GitHub CLI's: nowhere in Caprock. A pasted
+  or device-flow token: on macOS the login keychain (service
+  `dev.caprock.github`, account `caprock`) through `/usr/bin/security`,
+  always with the keychain file named (`<home>/Library/Keychains/login.keychain-db`,
+  home from Directory Services); a missing keychain file or a failing
+  `security` puts it in `<data_dir>/github-token` (`0600`) with
+  `store_note`. Elsewhere that file. `CAPROCK_SECRET_STORE=file` forces the
+  file.
+- **Test-only environment.** `CAPROCK_TEST_GITHUB_API` and
+  `CAPROCK_TEST_GITHUB_WEB` replace `https://api.github.com` and
+  `https://github.com`, honoured only for a loopback `http(s)` address;
+  `CAPROCK_TEST_GH` names the `gh` binary while the API override is set.
 
 ### Projects DDL (migration 0041)
 

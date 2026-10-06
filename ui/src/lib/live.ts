@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import type { Event, LoopAlert, Permission, Session, Stats, TaskFrame } from './api'
 import { deviceToken } from './api'
 import type { OpFrame, ProjectFrame } from './projects'
+import type { GitHubFrame } from './github'
 import {
   LIVENESS_CHECK_MS, PING_MS, PROBE_MS, Reconnector, isConnectStuck, isProbeLost, isSilent, onNetworkWake,
   type LinkStatus,
@@ -22,7 +23,8 @@ import {
  */
 export interface NotifyFrame {
   id: string
-  kind: 'approval' | 'finished' | 'loop' | 'limit' | 'error'
+  kind: 'approval' | 'finished' | 'loop' | 'limit' | 'error' | 'ci' | 'review'
+  /** Empty for a GitHub notification (`ci`, `review`), which is about a pull request. */
   session_id: string
   project?: string
   title: string
@@ -45,6 +47,8 @@ export type Frame = (
   // Live replay: the frames after this client's since are gone; refetch.
   | { type: 'reset'; data: { seq: number } }
   | { type: 'notify'; data: NotifyFrame }
+  // A followed pull request changed, or the GitHub connection did (WP-19).
+  | { type: 'github'; data: GitHubFrame }
 ) & { seq?: number }
 
 /** Control frames: liveness, never part of the stream a screen reads. */

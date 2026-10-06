@@ -171,6 +171,80 @@ Settings → *Desktop notifications* has two switches: *waiting for approval*
 [Phone alerts](../README.md#hear-about-it-on-your-phone), which stay off until
 you turn them on.
 
+## GitHub
+
+Settings → **GitHub** connects your account. Caprock then talks to
+`api.github.com` from the daemon; the token never reaches the page or your
+phone. Nothing is sent to GitHub until you connect.
+
+**Connecting**, easiest first:
+
+- **Use my GitHub CLI login.** If `gh` is installed and logged in, Caprock
+  asks `gh auth token` whenever it needs the token and never writes it down.
+  Disconnecting leaves your `gh` login alone. Missing a scope? Run
+  `gh auth refresh -s repo,read:org`.
+- **Paste a token.** A fine-grained token with *Contents* and *Pull
+  requests* read and write, and *Commit statuses*, *Checks* and *Metadata*
+  read, on the repositories you want; or a classic token with `repo` and
+  `read:org`. Caprock checks it with GitHub before keeping it — in your
+  macOS login keychain, or a file in the data directory only you can read
+  (on Windows and Linux, or when the keychain is unavailable; Settings says
+  so).
+- **Sign in with GitHub**, once a Caprock OAuth app is configured (below):
+  Caprock shows a code, you enter it on github.com and approve.
+
+Connected, the section shows the account, the scopes, a health line (when
+GitHub last answered, requests left this hour, a rate-limit pause, the last
+error word for word), *Tell me when CI fails or a review arrives*, and
+**Disconnect**, which removes only the token Caprock kept.
+
+**What it does:**
+
+- **Clone from your repositories.** ⌘O → *Clone*, and *Start work → Clone*
+  on the phone, list your repositories and your organizations'; search by
+  name, pick an owner, *More…* for the next page. Picking one fills the
+  address; you can still paste any other.
+- **Put a project on GitHub.** In a project with no remote, the Changes view
+  offers **Create a GitHub repository…**: private unless you untick it,
+  under you or an organization, set as `origin`, and pushed.
+- **Open a pull request.** In a worktree's Changes view, **New pull
+  request…** fills the title and description from the branch and its
+  commits (or the agent's summary), against the default branch, with a
+  *Draft* switch. A branch not on GitHub yet is pushed first, with your own
+  git credentials. Then the link.
+- **Follow it.** The Changes view shows the pull request's checks (the
+  failing ones by name), reviews and whether it can be merged; the sidebar
+  shows a pull-request icon on the worktree, green, amber or red. Caprock
+  reads each repository at most once a minute, less often while nothing
+  changes, and right after you push. With the switch on, the app notifies
+  you when a check fails or a review arrives.
+- **From the phone** you can read all of it; a phone you let control
+  sessions can also open a pull request. Connecting, disconnecting and
+  creating repositories happen on the computer.
+
+### Turning on "Sign in with GitHub" (for the maintainer, about 5 minutes)
+
+The device flow needs an OAuth app registered once; its client id is public
+and there is no secret on anyone's machine.
+
+1. On github.com: **Settings → Developer settings → OAuth Apps → New OAuth
+   App** (or the organization's *Developer settings*, to own it there).
+2. *Application name* `Caprock`, *Homepage URL* `https://caprock.dev`,
+   *Authorization callback URL* `https://caprock.dev` (the device flow does
+   not use it, but the form requires one). **Register application**.
+3. On the app's page tick **Enable Device Flow** and **Update application**.
+   Do not generate a client secret; Caprock does not use one.
+4. Copy the **Client ID** (`Ov23…` or `Iv1.…`).
+5. Put it in the data directory's `config.json` (`~/Library/Application
+   Support/caprock` on macOS unless you moved it) as
+   `"github_client_id": "<client id>"`, then restart the daemon
+   (`caprock down && caprock up`, or quit and reopen the app). To ship it to
+   everyone, make it the default in `internal/config` instead.
+
+Settings → GitHub then shows **Sign in with GitHub**. The app asks for
+`repo` and `read:org`. An organization with OAuth app restrictions must
+approve the app before its private repositories show up.
+
 ## Your phone
 
 The phone opens the same Caprock in its browser, over your Wi-Fi or over
