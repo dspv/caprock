@@ -41,7 +41,9 @@ daemon uses (`$CAPROCK_DATA_DIR`, else `<user config dir>/caprock`):
    **Update** when the app installed it, which replaces the binary and restarts
    it through its own `/v1/shutdown`.
 3. With no daemon on the first run, the app asks once, with the **Keep Caprock
-   running in the background** switch on by default (decision 7). It uses
+   running in the background** switch on by default (decision 7). On macOS
+   it always copies the bundled daemon to `<data_dir>/bin/caprock`
+   (ADR-040). Elsewhere it uses
    the `caprock` formula's binary when Homebrew installed one (a
    `/opt/homebrew`, `/usr/local` or Linuxbrew `bin/caprock` that resolves into
    a Cellar), else copies the bundled daemon to `<data_dir>/bin/caprock`; then
@@ -56,7 +58,13 @@ daemon uses (`$CAPROCK_DATA_DIR`, else `<user config dir>/caprock`):
    the window returns to the dashboard at the route it was on.
 
 The app never stops a daemon it did not install, and quitting it leaves the
-daemon and every session running.
+daemon and every session running. One exception, on macOS only (ADR-040):
+when the running daemon is a Homebrew formula's and the bundled one is not
+older, the app installs its copy, shuts the formula's daemon down through
+`/v1/shutdown` and starts its own (as a login service when one was
+registered), once per launch; `"own_daemon": false` in `app.json` turns this
+off. A formula's binary lives at a new Cellar path every release, and macOS
+lists each path as another "caprock" under Privacy & Security.
 
 ## What a page may call
 

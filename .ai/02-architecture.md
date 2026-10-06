@@ -261,6 +261,7 @@ internal/statusline/  # `caprock statusline`: Claude Code status JSON → one-li
 internal/codex/       # OpenAI Codex: rollout-transcript parser + poller (read-only, priced by our own table)
 internal/service/     # `caprock service`: autostart via launchd / systemd user unit / Startup folder
 internal/userenv/     # the user's login-shell environment for processes Caprock starts (not launchd's bare one)
+internal/tcc/         # macOS: a daemon with a temporary HOME stays out of the account's Desktop/Documents/Downloads (ADR-040)
 internal/logcap/      # rotates the daemon's log (caprock.log or service.log) at 64MB; trims the one no longer written
 internal/version/     # the version string (stamped via -ldflags at build)
 internal/export/      # `caprock export`: the record out as TSV/CSV/jsonl, read-only, fixed columns (docs/schema.md)
