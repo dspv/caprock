@@ -814,6 +814,46 @@ describe('Shift+Enter', () => {
     ])
   })
 
+  /**
+   * The desktop app's native drop (app/src-tauri/src/shell.rs): the shell has
+   * the real paths and the point; the terminal under the point types them
+   * quoted, and nothing is uploaded.
+   */
+  const nativeDrop = (paths: string[], x: number, y: number) => {
+    window.dispatchEvent(new CustomEvent('caprock:drop-paths', { detail: { paths, x, y } }))
+  }
+  const boxHost = () => {
+    const host = document.querySelector<HTMLDivElement>('[data-term-host]')!
+    host.getBoundingClientRect = () => ({ left: 100, top: 50, right: 500, bottom: 350, width: 400, height: 300, x: 100, y: 50, toJSON: () => ({}) })
+    return host
+  }
+
+  it('types the real path of every file the app drops on it, quoted and in order, without uploading', async () => {
+    pasteCalls.length = 0
+    mount()
+    boxHost()
+    nativeDrop(['/Users/me/My Notes.md', 'C:\\Users\\me\\scan.pdf', '/tmp/say "hi".txt'], 200, 100)
+    await vi.waitFor(() => expect(sent).toContain('"/tmp/say \\"hi\\".txt" '))
+    const typed = sent.filter((x) => x.endsWith('" '))
+    expect(typed.slice(-3)).toEqual([
+      '"/Users/me/My Notes.md" ',
+      // A Windows path keeps single backslashes.
+      '"C:\\Users\\me\\scan.pdf" ',
+      '"/tmp/say \\"hi\\".txt" ',
+    ])
+    expect(pasteCalls.length).toBe(0)
+  })
+
+  it('leaves a native drop that landed outside it to the terminal it landed on', async () => {
+    mount()
+    boxHost()
+    const before = sent.length
+    nativeDrop(['/Users/me/elsewhere.md'], 50, 100)
+    nativeDrop(['/Users/me/elsewhere.md'], 200, 350)
+    await new Promise((r) => setTimeout(r, 10))
+    expect(sent.slice(before).some((x) => x.includes('elsewhere.md'))).toBe(false)
+  })
+
   it('says which file was refused and what is accepted, and still sends the rest', async () => {
     pasteCalls.length = 0
     written.length = 0

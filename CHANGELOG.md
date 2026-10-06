@@ -9,6 +9,17 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **Dropping a file on a terminal in the desktop app works.** The app's
+  native drag-and-drop handler took every drop, so a file dragged from
+  Finder onto a session did nothing. The app now types the file's real path,
+  quoted, into the terminal under the pointer, as a terminal does: nothing is
+  uploaded, any file or folder goes, and Claude works on the original rather
+  than a copy. In a browser a drop still uploads, as before. Tabs in the
+  app's tab strip reorder by dragging again (they could not while the native
+  handler was on).
+
 ## [0.78.0] - 2026-10-06
 
 ### Added
