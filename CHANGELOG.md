@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.78.1] - 2026-10-06
+
 ### Added
 
 - **Download links for the desktop app that never change.** Every release now
@@ -19,6 +21,12 @@ Phase 3 (Delight) has no plan by design.
   always fetches the newest build. The versioned files stay, and
   `checksums.txt` lists both. A release is marked Latest only once all of
   them are attached, so a link never points at a release still being built.
+
+### Changed
+
+- **Terminal defaults follow the JetBrains IDE terminal:** JetBrains Mono at
+  13 px, line height 1.2 (was 1.15), Regular and Bold weights. Terminal settings
+  you already saved are kept as they are.
 
 ### Fixed
 
@@ -38,16 +46,6 @@ Phase 3 (Delight) has no plan by design.
   — a crash, or any stop on Windows, which has no graceful one — came back
   with the dialog still on the session's screen and no buttons to answer it.
   The prompt is now stored before the hook is answered.
-
-### Changed
-
-- **Terminal defaults follow the JetBrains IDE terminal:** JetBrains Mono at
-  13 px, line height 1.2 (was 1.15), Regular and Bold weights. Terminal settings
-  you already saved are kept as they are.
-
-## [0.78.1] - 2026-10-06
-
-### Fixed
 
 - **Dropping a file on a terminal in the desktop app works.** The app's
   native drag-and-drop handler took every drop, so a file dragged from
