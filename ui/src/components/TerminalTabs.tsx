@@ -5,7 +5,7 @@
  * through one recursive view: a split tab (F15) shows its panes side by side
  * or stacked, each with a header, behind dividers that drag or take arrows.
  */
-import { Fragment, memo, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { Fragment, memo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { SessionSummary } from '@/lib/api'
 import { focusedLeaf, type PaneNode, type PaneSplit, type Tab } from '@/lib/tabs'
 import { dotOf, sessionTitle } from '@/lib/sidebar'
@@ -34,11 +34,36 @@ export interface TabStripProps {
 
 export function TabStrip(props: TabStripProps) {
   const { tabs, activeTabId, sessions, permissions } = props
+  // Reordered by pointer events, not HTML5 drag and drop: in the desktop app
+  // the shell's native drop handler takes every drag over the window (so a
+  // dropped file arrives with its real path), and the page never sees a
+  // dragover or a drop (.ai/21-app.md § Dropping a file). A press that moves
+  // past a few pixels is a drag; released over another tab, the tab moves
+  // there, and the click that follows the release is not an activation.
   const [dragging, setDragging] = useState<string | null>(null)
-  const drop = (e: DragEvent, index: number) => {
-    e.preventDefault()
-    if (dragging) props.onMove(dragging, index)
-    setDragging(null)
+  const dragged = useRef(false)
+  const press = (id: string) => (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || (e.target as Element).closest('button')) return
+    const x0 = e.clientX
+    const y0 = e.clientY
+    dragged.current = false
+    const onMove = (m: PointerEvent) => {
+      if (!dragged.current && Math.hypot(m.clientX - x0, m.clientY - y0) > 4) {
+        dragged.current = true
+        setDragging(id)
+      }
+    }
+    const onUp = (u: PointerEvent) => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      setDragging(null)
+      if (!dragged.current) return
+      const over = document.elementFromPoint(u.clientX, u.clientY)?.closest<HTMLElement>('[data-tab-index]')
+      const to = over ? Number(over.dataset.tabIndex) : NaN
+      if (Number.isInteger(to)) props.onMove(id, to)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
   }
   return (
     <div
@@ -60,17 +85,19 @@ export function TabStrip(props: TabStripProps) {
               role="tab"
               tabIndex={active ? 0 : -1}
               aria-selected={active}
-              draggable
-              onDragStart={() => setDragging(t.id)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => drop(e, i)}
-              onClick={() => props.onActivate(t.id)}
+              data-tab-index={i}
+              data-dragging={dragging === t.id || undefined}
+              onPointerDown={press(t.id)}
+              onClick={() => {
+                if (dragged.current) { dragged.current = false; return }
+                props.onActivate(t.id)
+              }}
               onAuxClick={(e) => { if (e.button === 1) props.onDetach(t.id) }}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') props.onActivate(t.id) }}
               title={`${title}${i < 9 ? ` — ⌘${i + 1}` : ''}`}
               className={`group relative flex h-[32px] min-w-[112px] max-w-[232px] flex-1 basis-[180px] cursor-default select-none items-center gap-2 rounded-t-[9px] pl-3 pr-1.5 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
                 active ? 'app-slab text-fg' : 'text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'
-              }`}
+              } ${dragging === t.id ? 'opacity-60' : ''}`}
             >
               <StatusDot dot={s ? dotOf(s, permissions.has(s.session_id)) : 'idle'} />
               <AgentGlyph agent={s?.agent} shell={isShell} />

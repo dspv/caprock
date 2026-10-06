@@ -617,6 +617,42 @@ there, and worktrees as first-class places to work.
 - Rule 7 holds: Caprock started the shell. A shell from a controller phone is
   P1 and needs its own ADR-034 amendment.
 
+## Dropping a file
+
+A file dragged from Finder, Explorer or a file manager onto a terminal in the
+app types the file's **real path**, quoted, at the prompt — what a terminal
+does. In a browser tab the same drop still uploads the bytes to
+`POST /v1/paste` and types the path of the copy, because a browser never
+tells a page where a file lives.
+
+- **How.** Tauri's native drag-and-drop handler stays on (its default) in
+  the main window. `shell.rs` hears `WindowEvent::DragDrop(Drop)` with the
+  paths and the point, and dispatches `caprock:drop-paths` into the page
+  (`{paths, x, y}` in CSS pixels; wry reports device pixels on Windows only,
+  so only Windows is divided by the scale factor; a non-UTF-8 path is left
+  out). Every terminal listens (`ui/src/lib/xtermInput.ts`); the one whose
+  box holds the point types each path with `quotePath` (double quotes, an
+  inner `"` escaped, Windows backslashes kept), queued behind any upload so
+  the order holds.
+- **Why not turn the handler off.** With it off the page gets an HTML5 drop
+  and the upload path works unchanged, which is the smaller fix. It was the
+  worse behaviour: the upload copies the bytes into the data directory, so
+  Claude reads and edits a copy rather than the file the user meant; the
+  daemon refuses types outside its allowlist (an `.exe`, a `.zip`) and every
+  folder; large files travel through base64. A terminal types the path, and
+  the app is terminal-first.
+- **The cost.** With the native handler on, the page sees no HTML5 drag
+  events on any OS — the macOS handler answers every drag without calling
+  WebKit, and on Windows the handler replaces WebView2's own drop target.
+  Nothing in the app may rely on `draggable`/`dragover`/`drop`: the tab
+  strip reorders by pointer events (`TerminalTabs.tsx`). A drop outside a
+  terminal does nothing, and the window never navigates to a dropped file.
+- **The popover** shows no terminal and keeps the default handler, so a
+  drop there does nothing.
+- **Verified** by unit tests on both halves (`shell.rs` script, the
+  terminal's routing and quoting). A real Finder drag needs a person: OS
+  automation is not used from tests.
+
 ## Notifications
 
 - **One source.** `internal/alerts` already decides when the phone hears about
