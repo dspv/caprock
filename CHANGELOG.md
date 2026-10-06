@@ -16,9 +16,11 @@ Phase 3 (Delight) has no plan by design.
 - **The desktop app updates itself in one click.** When a newer Caprock is
   out, the status strip says **Update to vX.Y.Z — Restart**: it downloads
   the new app with a progress bar while you work, checks its signature,
-  installs it and restarts, and your sessions keep running — the app moves
-  its own daemon onto the new version after the restart without ending
-  them. Nothing installs unless it is signed with Caprock's release key for
+  installs it and restarts, and everything comes back as it was: every
+  session still running (the app moves its own daemon onto the new version
+  without ending them), the same tabs in the same order, splits and their
+  sizes, the sidebar, the window, each terminal scrolled where you left it
+  and anything half typed into an agent. Nothing installs unless it is signed with Caprock's release key for
   that exact version. On its first launch the app asks once whether to check
   for updates automatically (the same release check as Settings → Privacy,
   off unless you say yes); **Check for Updates…** in the app and tray menus
