@@ -84,4 +84,5 @@ while [ "$r" -le "$RUNS" ]; do
 done
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$COPY" 2>/dev/null || true
 python3 "$here/report.py" "$OUT" > "$OUT/summary.md"
+python3 "$here/../scripts/align-tables.py" "$OUT/summary.md" >/dev/null
 cat "$OUT/summary.md"

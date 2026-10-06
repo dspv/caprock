@@ -63,4 +63,5 @@ while [ "$r" -le "$RUNS" ]; do
   r=$((r + 1))
 done
 python3 "$here/report.py" "$OUT" > "$OUT/summary.md"
+python3 "$here/../scripts/align-tables.py" "$OUT/summary.md" >/dev/null
 cat "$OUT/summary.md"

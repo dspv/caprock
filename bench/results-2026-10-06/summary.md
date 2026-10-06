@@ -2,26 +2,26 @@
 
 MacBookPro18,3 (Apple M1 Pro, 10 cores, 16 GB), macOS 27.0.1 (26A434), display 1920x1080@1x 100Hz, Now drawing from 'AC Power'. Runs started 2026-10-06 01:45 UTC, 2026-10-06 01:58 UTC, 2026-10-06 02:37 UTC.
 
-| Metric | Budget | run 1 | run 2 | run 3 | Verdict |
-|---|---|---|---|---|---|
-| Echo p50, any load to 1000 lines/s | ≤ 12 ms | 13 ms | 11 ms | 15 ms | mixed |
-| Echo p95, any load to 1000 lines/s | ≤ 25 ms | 25 ms | 19 ms | 27 ms | mixed |
-| Echo p95 in tab A while tab B floods | ≤ 25 ms | 17 ms | 18 ms | 17 ms | pass |
-| Open a session, click to first echo, p50 | ≤ 200 ms | 114 ms | 113 ms | 115 ms | pass |
-| Switch to an open tab, to first paint | ≤ 50 ms | 39 ms | 38 ms | 40 ms | pass |
-| Cold start to interactive window | ≤ 1.5 s | 1.09 s | 1.07 s | 1.12 s | pass |
-| Cold start to first echo in a restored tab | ≤ 2.5 s | 1.41 s | 1.43 s | 1.43 s | pass |
-| Memory, all app processes, 1 tab (footprint) | ≤ 250 MB | 197.4 MB | 198.9 MB | 198.4 MB | pass |
-| Memory, all app processes, 10 tabs (footprint) | ≤ 450 MB | 315 MB | 307.4 MB | 303.4 MB | pass |
-| CPU, window visible, no output | ≤ 1% of one core | 1.1 % | 0.93 % | 0.95 % | mixed |
-| CPU, window hidden | ≤ 0.2% of one core | 1 % | 0.96 % | 1.3 % | fail |
-| CPU, one visible tab at 1000 lines/s | ≤ 25% of one core | 17.7 % | 17.5 % | 18.4 % | pass |
-| UI long task during the benchmark | none over 100 ms | 154 ms | 71 ms | 146 ms | mixed |
-| Daemon restart to live terminal | ≤ 2 s | 476 ms | 413 ms | 452 ms | pass |
-| Network back to live terminal (phone) | ≤ 3 s median | 60 ms | 59 ms | 58 ms | pass |
-| Half-open connection detected | ≤ 25 s | 24.53 s | 24.95 s | 24.36 s | pass |
-| Disk written by the app, per day | ≤ 10 MB | 0.0 MB | 0.0 MB | 0.0 MB | pass |
-| Download size, per OS (macOS, Caprock_0.77.0_universal.dmg) | ≤ 60 MB | 17.4 MB | – | – | pass |
+| Metric                                                      | Budget             | run 1    | run 2    | run 3    | Verdict |
+| ----------------------------------------------------------- | ------------------ | -------- | -------- | -------- | ------- |
+| Echo p50, any load to 1000 lines/s                          | ≤ 12 ms            | 13 ms    | 11 ms    | 15 ms    | mixed   |
+| Echo p95, any load to 1000 lines/s                          | ≤ 25 ms            | 25 ms    | 19 ms    | 27 ms    | mixed   |
+| Echo p95 in tab A while tab B floods                        | ≤ 25 ms            | 17 ms    | 18 ms    | 17 ms    | pass    |
+| Open a session, click to first echo, p50                    | ≤ 200 ms           | 114 ms   | 113 ms   | 115 ms   | pass    |
+| Switch to an open tab, to first paint                       | ≤ 50 ms            | 39 ms    | 38 ms    | 40 ms    | pass    |
+| Cold start to interactive window                            | ≤ 1.5 s            | 1.09 s   | 1.07 s   | 1.12 s   | pass    |
+| Cold start to first echo in a restored tab                  | ≤ 2.5 s            | 1.41 s   | 1.43 s   | 1.43 s   | pass    |
+| Memory, all app processes, 1 tab (footprint)                | ≤ 250 MB           | 197.4 MB | 198.9 MB | 198.4 MB | pass    |
+| Memory, all app processes, 10 tabs (footprint)              | ≤ 450 MB           | 315 MB   | 307.4 MB | 303.4 MB | pass    |
+| CPU, window visible, no output                              | ≤ 1% of one core   | 1.1 %    | 0.93 %   | 0.95 %   | mixed   |
+| CPU, window hidden                                          | ≤ 0.2% of one core | 1 %      | 0.96 %   | 1.3 %    | fail    |
+| CPU, one visible tab at 1000 lines/s                        | ≤ 25% of one core  | 17.7 %   | 17.5 %   | 18.4 %   | pass    |
+| UI long task during the benchmark                           | none over 100 ms   | 154 ms   | 71 ms    | 146 ms   | mixed   |
+| Daemon restart to live terminal                             | ≤ 2 s              | 476 ms   | 413 ms   | 452 ms   | pass    |
+| Network back to live terminal (phone)                       | ≤ 3 s median       | 60 ms    | 59 ms    | 58 ms    | pass    |
+| Half-open connection detected                               | ≤ 25 s             | 24.53 s  | 24.95 s  | 24.36 s  | pass    |
+| Disk written by the app, per day                            | ≤ 10 MB            | 0.0 MB   | 0.0 MB   | 0.0 MB   | pass    |
+| Download size, per OS (macOS, Caprock_0.77.0_universal.dmg) | ≤ 60 MB            | 17.4 MB  | –        | –        | pass    |
 
 Also measured (no budget row):
 

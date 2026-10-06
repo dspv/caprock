@@ -65,4 +65,5 @@ for ($r = 1; $r -le $Runs; $r++) {
   Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*$D*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -ErrorAction SilentlyContinue }
 }
 python "$here\report.py" $Out | Set-Content "$Out\summary.md"
+python "$here\..\scripts\align-tables.py" "$Out\summary.md" | Out-Null
 Get-Content "$Out\summary.md"

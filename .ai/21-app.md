@@ -380,27 +380,27 @@ the WebKit and AppKit pages every process shares once per process (the app
 binary alone is 93–99 MB RSS against 30 MB footprint). RSS is kept in its own
 column for transparency.
 
-| Metric                                     | Budget             | macOS, 3 runs              | Before fixes         | Result            |
-| ------------------------------------------ | ------------------ | -------------------------- | -------------------- | ----------------- |
-| Echo p50, any load to 1000 lines/s         | ≤ 12 ms            | 12 / 12 / 13 ms            | 13 / 11 / 15 ms      | mixed (see below) |
-| Echo p95, any load to 1000 lines/s         | ≤ 25 ms            | 19 / 19 / 19 ms            | 25 / 19 / 27 ms      | pass              |
-| Echo p95 in tab A while tab B floods       | ≤ 25 ms            | 16 / 17 / 19 ms            | 17 / 18 / 17 ms      | pass              |
-| Open a session, click to first echo, p50   | ≤ 200 ms           | 113 / 112 / 114 ms         | 114 / 113 / 115 ms   | pass              |
-| Switch to an open tab, to first paint      | ≤ 50 ms            | 38 / 38 / 38 ms (p50)      | 39 / 38 / 40 ms      | pass              |
-| Cold start to interactive window           | ≤ 1.5 s            | 1.07 / 1.09 / 1.38 s (p50) | 1.09 / 1.07 / 1.12 s | pass              |
-| Cold start to first echo in a restored tab | ≤ 2.5 s            | 1.46 / 1.50 / 1.48 s (p50) | 1.41 / 1.43 / 1.43 s | pass              |
-| Memory, 1 tab, footprint                   | ≤ 250 MB           | 179 / 180 / 184 MB         | 197–199 MB           | pass              |
-| Memory, 10 tabs, footprint                 | ≤ 450 MB           | 290 / 289 / 284 MB         | 303–315 MB           | pass              |
-| Memory, 1 / 10 tabs, RSS (no budget)       | –                  | 308–333 / 348–382 MB       | 288–347 / 255–409 MB | –                 |
-| CPU, window visible, no output             | ≤ 1% of one core   | 0.85 / 0.79 / 0.70 %       | 1.1 / 0.93 / 0.95 %  | pass              |
-| CPU, window hidden                         | ≤ 0.2% of one core | 0.30 / 0.34 / 0.31 %       | 1.0 / 0.96 / 1.3 %   | **fail**          |
-| CPU, one visible tab at 1000 lines/s       | ≤ 25% of one core  | 17.7 / 18.2 / 18.3 %       | 17.7 / 17.5 / 18.4 % | pass              |
-| UI long task during the benchmark          | none over 100 ms   | 134 / 122 / 69 ms longest  | 154 / 71 / 146 ms    | **fail** (2 of 3) |
-| Daemon restart to live terminal            | ≤ 2 s              | 429 / 455 / 431 ms         | 476 / 413 / 452 ms   | pass              |
-| Network back to live terminal (phone)      | ≤ 3 s median       | 59 / 64 / 64 ms            | 60 / 59 / 58 ms      | pass              |
-| Half-open connection detected              | ≤ 25 s             | 21.9–23.1 s                | 24.4–25.0 s          | pass              |
-| Disk written by the app, per day           | ≤ 10 MB            | 0 MB idle; 1.3–1.7 MB at start | 0 MB; 1.3 MB     | pass              |
-| Download size, per OS                      | ≤ 60 MB            | 17.4 MB (universal .dmg)   | same                 | pass (macOS)      |
+| Metric                                     | Budget             | macOS, 3 runs                  | Before fixes         | Result            |
+| ------------------------------------------ | ------------------ | ------------------------------ | -------------------- | ----------------- |
+| Echo p50, any load to 1000 lines/s         | ≤ 12 ms            | 12 / 12 / 13 ms                | 13 / 11 / 15 ms      | mixed (see below) |
+| Echo p95, any load to 1000 lines/s         | ≤ 25 ms            | 19 / 19 / 19 ms                | 25 / 19 / 27 ms      | pass              |
+| Echo p95 in tab A while tab B floods       | ≤ 25 ms            | 16 / 17 / 19 ms                | 17 / 18 / 17 ms      | pass              |
+| Open a session, click to first echo, p50   | ≤ 200 ms           | 113 / 112 / 114 ms             | 114 / 113 / 115 ms   | pass              |
+| Switch to an open tab, to first paint      | ≤ 50 ms            | 38 / 38 / 38 ms (p50)          | 39 / 38 / 40 ms      | pass              |
+| Cold start to interactive window           | ≤ 1.5 s            | 1.07 / 1.09 / 1.38 s (p50)     | 1.09 / 1.07 / 1.12 s | pass              |
+| Cold start to first echo in a restored tab | ≤ 2.5 s            | 1.46 / 1.50 / 1.48 s (p50)     | 1.41 / 1.43 / 1.43 s | pass              |
+| Memory, 1 tab, footprint                   | ≤ 250 MB           | 179 / 180 / 184 MB             | 197–199 MB           | pass              |
+| Memory, 10 tabs, footprint                 | ≤ 450 MB           | 290 / 289 / 284 MB             | 303–315 MB           | pass              |
+| Memory, 1 / 10 tabs, RSS (no budget)       | –                  | 308–333 / 348–382 MB           | 288–347 / 255–409 MB | –                 |
+| CPU, window visible, no output             | ≤ 1% of one core   | 0.85 / 0.79 / 0.70 %           | 1.1 / 0.93 / 0.95 %  | pass              |
+| CPU, window hidden                         | ≤ 0.2% of one core | 0.30 / 0.34 / 0.31 %           | 1.0 / 0.96 / 1.3 %   | **fail**          |
+| CPU, one visible tab at 1000 lines/s       | ≤ 25% of one core  | 17.7 / 18.2 / 18.3 %           | 17.7 / 17.5 / 18.4 % | pass              |
+| UI long task during the benchmark          | none over 100 ms   | 134 / 122 / 69 ms longest      | 154 / 71 / 146 ms    | **fail** (2 of 3) |
+| Daemon restart to live terminal            | ≤ 2 s              | 429 / 455 / 431 ms             | 476 / 413 / 452 ms   | pass              |
+| Network back to live terminal (phone)      | ≤ 3 s median       | 59 / 64 / 64 ms                | 60 / 59 / 58 ms      | pass              |
+| Half-open connection detected              | ≤ 25 s             | 21.9–23.1 s                    | 24.4–25.0 s          | pass              |
+| Disk written by the app, per day           | ≤ 10 MB            | 0 MB idle; 1.3–1.7 MB at start | 0 MB; 1.3 MB         | pass              |
+| Download size, per OS                      | ≤ 60 MB            | 17.4 MB (universal .dmg)       | same                 | pass (macOS)      |
 
 Fixed in this package:
 
