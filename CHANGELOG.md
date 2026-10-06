@@ -9,6 +9,23 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Changed
+
+- **One permission question in the app, not two.** When a session's terminal
+  is in front, its own "Do you want to proceed?" menu is where you answer —
+  press Enter — and Caprock no longer draws its approval card above the
+  status strip for it. The card still shows when the chat or a Changes view
+  covers the terminal, and now says *↵ Enter in the terminal = Yes*; other
+  tabs' prompts still reach you through the Inbox, the menu bar, the
+  notification and the phone.
+
+### Fixed
+
+- **The app's status strip shows the daemon's real version.** It was read
+  once when the page loaded, so after the app swapped its daemon it kept the
+  old number. It is now read again whenever the live link reconnects and when
+  the window regains focus.
+
 ## [0.78.1] - 2026-10-06
 
 ### Added

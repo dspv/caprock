@@ -27,6 +27,7 @@ export function Inspector({
   session,
   sessionId,
   hasPermission,
+  showPrompt = true,
   onClose,
   onDetach,
   editors = null,
@@ -36,6 +37,8 @@ export function Inspector({
   session?: SessionSummary
   sessionId?: string
   hasPermission: boolean
+  /** Draw the permission card: false while the session's terminal is in front and answers it. */
+  showPrompt?: boolean
   onClose: () => void
   onDetach: () => void
   /** The editors found on this machine (F18); null hides the actions. */
@@ -55,7 +58,7 @@ export function Inspector({
       {!sessionId ? (
         <p className="px-4 py-5 text-[12.5px] leading-relaxed text-fg-muted">Open a session to see what it costs, how full its context is, and what it changed.</p>
       ) : (
-        <Body key={sessionId} session={session} sessionId={sessionId} hasPermission={hasPermission} onDetach={onDetach} editor={editors && onOpenInEditor ? { name: preferredName(editors), open: onOpenInEditor } : undefined} onReviewChanges={onReviewChanges} />
+        <Body key={sessionId} session={session} sessionId={sessionId} hasPermission={hasPermission} showPrompt={showPrompt} onDetach={onDetach} editor={editors && onOpenInEditor ? { name: preferredName(editors), open: onOpenInEditor } : undefined} onReviewChanges={onReviewChanges} />
       )}
     </aside>
   )
@@ -64,7 +67,7 @@ export function Inspector({
 type OpenInEditor = (path: string, label: string, editor?: string, line?: number) => void
 interface EditorAction { name: string; open: OpenInEditor }
 
-function Body({ session: s, sessionId, hasPermission, onDetach, editor, onReviewChanges }: { session?: SessionSummary; sessionId: string; hasPermission: boolean; onDetach: () => void; editor?: EditorAction; onReviewChanges?: () => void }) {
+function Body({ session: s, sessionId, hasPermission, showPrompt, onDetach, editor, onReviewChanges }: { session?: SessionSummary; sessionId: string; hasPermission: boolean; showPrompt: boolean; onDetach: () => void; editor?: EditorAction; onReviewChanges?: () => void }) {
   const isShell = s?.kind === 'shell'
   const ended = s?.status === 'ended'
   return (
@@ -84,7 +87,7 @@ function Body({ session: s, sessionId, hasPermission, onDetach, editor, onReview
         {s?.cwd && <p className="mono truncate text-[11px] text-fg-faint" title={s.cwd}>{s.cwd}</p>}
       </header>
 
-      {!isShell && <PermissionPrompt sessionId={sessionId} />}
+      {!isShell && showPrompt && <PermissionPrompt sessionId={sessionId} />}
 
       {s && !isShell && <Figures s={s} />}
       {s && <Changes sessionId={sessionId} editor={editor} onReview={onReviewChanges} />}

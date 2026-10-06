@@ -29,6 +29,7 @@ import { useShellTray } from '@/lib/tray'
 import { OPEN_SESSION_EVENT } from '@/lib/shell'
 import { useOsNotifications } from '@/lib/notify'
 import { useTheme } from '@/lib/theme'
+import { useDaemonVersion } from '@/lib/useDaemonVersion'
 import { Sidebar } from '@/components/Sidebar'
 import { TabStrip, TerminalStack } from '@/components/TerminalTabs'
 import { Inspector } from '@/components/Inspector'
@@ -157,7 +158,7 @@ export function AppShell() {
   // mounted behind it.
   const [chatOpen, setChatOpen] = useState<ReadonlySet<string>>(() => new Set())
   const [changesView, setChangesView] = useState<ChangesTarget | null>(null)
-  const [version, setVersion] = useState<string | undefined>(undefined)
+  const version = useDaemonVersion()
   const [, toggleTheme] = useTheme()
   const editors = useEditors()
   const [folderMenu, setFolderMenu] = useState<EditorMenuAt | null>(null)
@@ -179,9 +180,6 @@ export function AppShell() {
   useEffect(() => {
     try { localStorage.setItem(UI_KEY, JSON.stringify(prefs)) } catch { /* not kept */ }
   }, [prefs])
-  useEffect(() => {
-    api.status().then((s) => setVersion(s.version)).catch(() => { /* the strip shows none */ })
-  }, [])
   useEffect(() => {
     if (!toast) return
     const id = window.setTimeout(() => setToast(''), 6000)
@@ -481,6 +479,14 @@ export function AppShell() {
 
   const focusedIsAgent = !!focused && focused.kind === 'session' && focusedSession?.kind !== 'shell'
   const showChat = focusedIsAgent && !!focused && chatOpen.has(focused.sessionId)
+  // The permission card is for a prompt you cannot see. With the session's
+  // terminal in front, its own "Do you want to proceed?" menu is the answer
+  // surface — Enter answers it — and a card above the strip read as the same
+  // question asked twice (owner, 2026-10-06). The card comes back when the
+  // chat or a Changes view covers the terminal; other tabs are reached through
+  // their badge, the Inbox, the menu bar and the notification.
+  const terminalInFront = workspaceShown && !showChat && !changesView
+  const promptCard = focusedIsAgent && !!focused && !terminalInFront
   const toggleChat = useCallback(() => {
     if (!focused) return
     const id = focused.sessionId
@@ -576,7 +582,7 @@ export function AppShell() {
                     />
                   )}
                 </div>
-                {focusedIsAgent && !prefs.inspector && focused && (
+                {promptCard && !prefs.inspector && focused && (
                   <div className="shrink-0 border-t border-[var(--app-hairline)] px-3 empty:hidden [&>*]:mb-2">
                     <PermissionPrompt sessionId={focused.sessionId} />
                   </div>
@@ -598,6 +604,7 @@ export function AppShell() {
                   session={focusedSession}
                   sessionId={focused?.sessionId}
                   hasPermission={!!focused && data.permissions.has(focused.sessionId)}
+                  showPrompt={promptCard}
                   onClose={() => setPrefs((p) => ({ ...p, inspector: false }))}
                   onDetach={detach}
                   editors={editors}

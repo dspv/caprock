@@ -1457,6 +1457,15 @@ restart smoke test, intermittently — and the dialog came back without its
 buttons. A crash must not lose an open dialog on any OS. Clearing a prompt
 stays in the background: a lost clear is caught by the events on restore.
 
+*Amended 2026-10-06 (owner):* in the desktop app the card is not drawn for the
+session whose terminal is in front. The terminal's own menu is the answer
+surface there — Enter answers it — and a card beside it read as the question
+asked twice, sometimes for a different request (a subagent's) than the one on
+screen. The card shows when the chat or a Changes view covers the terminal,
+says *↵ Enter in the terminal = Yes*, and never takes focus; the Inbox, the
+menu bar, the notification and the phone keep their buttons. See
+[21-app.md § What the user sees](21-app.md#what-the-user-sees).
+
 ---
 
 ## ADR-036 — A phone hears that a session needs it through the owner's own Telegram bot

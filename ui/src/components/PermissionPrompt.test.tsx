@@ -49,6 +49,24 @@ describe('a permission prompt', () => {
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
   })
 
+  it('says Enter in the terminal answers it, and never takes the keyboard from the terminal', async () => {
+    const term = document.createElement('textarea')
+    document.body.appendChild(term)
+    term.focus()
+    render(<PermissionPrompt sessionId="s1" />)
+    expect(await screen.findByText(/Enter in the terminal = Yes/)).toBeTruthy()
+    expect(document.activeElement).toBe(term)
+    term.remove()
+  })
+
+  it('is one card per prompt: a replacing frame swaps it, never adds a second', async () => {
+    render(<PermissionPrompt sessionId="s1" />)
+    await screen.findByRole('alertdialog')
+    act(() => h.subs.forEach((s) => s(frame({ ...bash, id: 'p2', detail: 'ls' }))))
+    expect(screen.getAllByRole('alertdialog')).toHaveLength(1)
+    expect(screen.getByText('ls')).toBeTruthy()
+  })
+
   it('offers no second option when Claude Code has none', async () => {
     h.permission.mockResolvedValue({ permission: { ...bash, always: undefined } })
     render(<PermissionPrompt sessionId="s1" />)
