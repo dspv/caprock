@@ -273,12 +273,12 @@ func (s *screen) csi(b []byte, j int) int {
 	case 'F':
 		s.y, s.x = max(s.y-arg(0, 1), 0), 0
 	case 'G', '`':
-		s.x = clamp(arg(0, 1)-1, 0, s.cols-1)
+		s.x = within(arg(0, 1)-1, s.cols)
 	case 'd':
-		s.y = clamp(arg(0, 1)-1, 0, s.rows-1)
+		s.y = within(arg(0, 1)-1, s.rows)
 	case 'H', 'f':
-		s.y = clamp(arg(0, 1)-1, 0, s.rows-1)
-		s.x = clamp(arg(1, 1)-1, 0, s.cols-1)
+		s.y = within(arg(0, 1)-1, s.rows)
+		s.x = within(arg(1, 1)-1, s.cols)
 	case 'J':
 		s.eraseDisplay(arg(0, 0))
 	case 'K':
@@ -404,7 +404,8 @@ func parseParams(s string) []int {
 	return out
 }
 
-func clamp(v, lo, hi int) int { return max(lo, min(v, hi)) }
+// within is v kept to 0…n-1.
+func within(v, n int) int { return max(0, min(v, n-1)) }
 
 // isWide reports a character a terminal gives two cells: CJK, Hangul,
 // full-width forms and most emoji. Close enough for reading text by row; a
