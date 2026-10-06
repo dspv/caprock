@@ -543,7 +543,21 @@ export function describe(e: Event, p: Record<string, unknown>): string {
 }
 
 function ChangesTab({ id, s }: { id: string; s: SessionDetail }) {
-  const diff = useApi(() => api.diff(id), [id, s.last_event_at], { live: false, intervalMs: 8000 })
+  const diff = useApi(() => api.diff(id), [id], { live: false, intervalMs: 8000 })
+  // A new event in the session asks the same question again: a refresh, which
+  // keeps the list on screen. It used to be a dependency of useApi, which
+  // treats a change as a new question and blanks to "loading…" — so every
+  // event of a live session flashed the list away and back, and a click on
+  // "expand all" or a file landing in that moment went to a row no longer on
+  // the page. Opening the tab over a kept (stale) copy of the session did the
+  // same once, when the fresh copy arrived.
+  const { refresh: refreshDiff } = diff
+  const seenEventAt = useRef(s.last_event_at)
+  useEffect(() => {
+    if (seenEventAt.current === s.last_event_at) return
+    seenEventAt.current = s.last_event_at
+    refreshDiff()
+  }, [s.last_event_at, refreshDiff])
   // Which files are expanded. A set rather than a single path: comparing two
   // changes means seeing both at once, and the old one-at-a-time accordion
   // made that impossible — opening the second closed the first.

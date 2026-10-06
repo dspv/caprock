@@ -27,6 +27,15 @@ Phase 3 (Delight) has no plan by design.
   launch when the two differ; sessions keep running.
 - **Quitting the app with SIGTERM** (`kill`, a script) now quits it the way
   Cmd+Q does, keeping the window's size and place.
+- **A live session's Changes tab no longer flashes "loading…" on every
+  event.** Each new event re-read the diff as if it were a new question,
+  blanking the list and drawing new rows, so a click on a file or on "expand
+  all" in that moment was lost. The list now stays on screen while it is
+  read again.
+- **App shortcuts act on what is on screen.** A key pressed in the instant
+  after the sidebar updated could act on the state before it: ⌘J said nothing
+  was waiting with a waiting session in the list, and ⌘T asked to add a
+  project with one already there.
 
 ## [0.78.1] - 2026-10-06
 
