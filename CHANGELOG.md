@@ -11,6 +11,10 @@ Phase 3 (Delight) has no plan by design.
 
 ### Added
 
+- **Settings → New sessions: the permission mode new agents start in.** The
+  New session dialog and the New agent sheet open on it, and a session started
+  without choosing one (the project terminal's "New session here", a quick
+  chat) starts in it. Unset, nothing changes.
 - **`make app-local`: try a change to the Mac app without a release.** It
   builds this checkout's app for the Mac's own architecture, installs it over
   `/Applications/Caprock.app` and relaunches it; the app then moves the daemon
@@ -50,6 +54,13 @@ Phase 3 (Delight) has no plan by design.
   once when the page loaded, so after the app swapped its daemon it kept the
   old number. It is now read again whenever the live link reconnects and when
   the window regains focus.
+- **Continuing a session keeps the permission mode it was running in.** A
+  session run with permissions skipped (`--dangerously-skip-permissions`)
+  came back from "continue here" or "branch here" in the default mode, asking
+  before every command. Caprock now continues it in the mode its hooks last
+  reported — bypass, accept edits, plan — and says which beside the button,
+  where it can be changed before continuing. A session with no recorded mode
+  uses the setting under Added above.
 
 ## [0.78.1] - 2026-10-06
 

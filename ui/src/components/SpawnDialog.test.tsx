@@ -13,6 +13,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SpawnDialog } from './SpawnDialog'
 
 const spawn = vi.hoisted(() => vi.fn(async () => ({ session_id: 's1', cwd: '/x' })))
+// The Settings preference for new sessions; '' is not set.
+const pref = vi.hoisted(() => ({ mode: '' }))
 
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
@@ -26,6 +28,7 @@ vi.mock('@/lib/api', async (orig) => {
       // race it.
       status: () => new Promise(() => {}),
       spawn,
+      settings: async () => ({ spawn_permission_mode: pref.mode }),
       // The shape GET /v1/agents/models answers for Codex, from a real
       // models_cache.json (codex-cli 0.160.0): the configured default first.
       agentModels: async () => ({
@@ -66,6 +69,18 @@ describe('SpawnDialog', () => {
   // Worktree and "create the directory" matter to a handful of runs and to
   // nobody else; every field on screen is a decision asked of someone who
   // wanted to press one button.
+  // Settings → New sessions: someone who always runs with permissions
+  // skipped should not have to pick it in every dialog.
+  it('opens on the mode Settings names for new sessions', async () => {
+    pref.mode = 'bypassPermissions'
+    try {
+      open()
+      await waitFor(() => expect(screen.getByLabelText<HTMLSelectElement>(/Permissions/).value).toBe('bypassPermissions'))
+    } finally {
+      pref.mode = ''
+    }
+  })
+
   it('keeps the rare settings folded away', () => {
     open()
     expect(screen.getByText('Advanced')).toBeInTheDocument()
