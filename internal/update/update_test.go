@@ -207,3 +207,75 @@ func TestStatusPairsNotesWithTheirVersion(t *testing.T) {
 		t.Errorf("NotesFor = %q, want the version the notes describe", st.NotesFor)
 	}
 }
+
+// A check that finds nothing new asks with the ETag it was given, so an
+// unchanged release costs a 304 and no body, and keeps what was known.
+func TestConditionalCheckKeepsTheCachedRelease(t *testing.T) {
+	var seen []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Header.Get("If-None-Match"))
+		if r.Header.Get("If-None-Match") == `"v1"` {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("ETag", `"v1"`)
+		_, _ = w.Write([]byte(`{"tag_name":"v0.9.0","body":"notes"}`))
+	}))
+	defer srv.Close()
+	old := LatestURL
+	LatestURL = srv.URL
+	defer func() { LatestURL = old }()
+
+	now := time.Unix(1_800_000_000, 0)
+	c := New()
+	c.Now = func() time.Time { return now }
+	c.IsDir = func(string) bool { return false }
+	if err := c.Check(context.Background(), false); err != nil {
+		t.Fatal(err)
+	}
+	// Within the interval: no request at all.
+	now = now.Add(5 * time.Hour)
+	if err := c.Check(context.Background(), false); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 1 {
+		t.Fatalf("checked %d times within 6 h, want once", len(seen))
+	}
+	// Past it: a conditional request, answered 304.
+	now = now.Add(2 * time.Hour)
+	if err := c.Check(context.Background(), false); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 2 || seen[0] != "" || seen[1] != `"v1"` {
+		t.Fatalf("If-None-Match sent: %q", seen)
+	}
+	st := c.Status(true, "v0.8.0")
+	if st.Latest != "v0.9.0" || st.Notes != "notes" || !st.UpdateAvailable || st.Error != "" {
+		t.Fatalf("a 304 lost the cached release: %+v", st)
+	}
+	if st.CheckedAt != now.UnixMilli() {
+		t.Fatalf("a 304 is a successful check: checked_at %d, want %d", st.CheckedAt, now.UnixMilli())
+	}
+}
+
+// The desktop app's own command is offered only when the cask installed it,
+// beside the daemon's, and never while checks are off.
+func TestAppCommandFromTheCask(t *testing.T) {
+	c := New()
+	c.latest = "v9.0.0"
+	c.checkedAt = time.Now()
+	c.IsDir = func(p string) bool { return p == "/opt/homebrew/Caskroom/caprock-app" }
+	if st := c.Status(true, "v0.8.0"); st.AppCommand != "brew update && brew upgrade --cask caprock-app" {
+		t.Fatalf("cask installed: app_command %q", st.AppCommand)
+	}
+	if st := c.Status(false, "v0.8.0"); st.AppCommand != "" {
+		t.Fatalf("checks off: app_command %q", st.AppCommand)
+	}
+	if st := c.Status(true, "v9.0.0"); st.AppCommand != "" {
+		t.Fatalf("up to date: app_command %q", st.AppCommand)
+	}
+	c.IsDir = func(string) bool { return false }
+	if st := c.Status(true, "v0.8.0"); st.AppCommand != "" {
+		t.Fatalf("no cask: app_command %q", st.AppCommand)
+	}
+}

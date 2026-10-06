@@ -157,7 +157,7 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `git@` (`400` otherwise, before git runs). Everything
   else stays `403` for every device: settings, pairing, hive, tasks creation
   and verify, orchestrator, hooks install, shutdown, update check, report
-  test, Gemini ask, `open-terminal`, `POST /v1/sessions/remove`, and every
+  test, Gemini ask, `open-terminal`, the editor routes, `POST /v1/sessions/remove`, and every
   shell route — `POST`/`GET /v1/shells`, and a shell's terminal, input and
   signal through the agent routes a controller otherwise has (a shell from the
   phone is P1).
@@ -684,7 +684,7 @@ The same decisions reach the desktop app as `notify` frames, under the same rule
 
 `POST /v1/hooks/install` runs the same install as `caprock hooks install` (`hooks.InstallFor`: copy the shim into the data dir, merge Caprock's entries into the settings file this daemon reports in `/v1/status.hooks.settings_path`, backing it up first) and answers with what is registered afterwards (`{hooks: {settings_path, shim_path, installed, missing, shim_exists}, backup?}`); an error is an error status, never a quiet 200, and a daemon without an installer answers 501. It is a mutating route, so the CSRF guard refuses a cross-site request and a paired device cannot make it. Nothing else in settings.json is touched. `/v1/status.hooks`, `caprock status` and this answer all check against the command an install writes (`hooks.StatusFor`): the shim in the data dir, or the fallback `"<exe>" hook` when none sits beside the binary. Checking against the shim path alone recognised that fallback only for an executable named `caprock`, so on a renamed or preview build the button said installed and the next status said all nine were missing.
 
-`GET /v1/update` returns `{enabled, current, latest, update_available, command, url, checked_at, error, notes, notes_for}` from cache and **performs no network I/O** — a page load must never cause an outbound call. `POST /v1/update/check` performs one, and returns **403 while `update_checks` is false**: the opt-in is enforced by the server, not merely hidden in the UI, so no page or local script can make Caprock reach the network uninvited. Checks are throttled to once a day unless forced, the request carries no body or credentials, and a failure is reported in `error` rather than as an error status — not knowing about a release must not read as a broken dashboard. `command` is the upgrade command inferred from the running binary's path (Homebrew, Scoop, `go install`); when no package manager owns the binary it is empty and the UI offers `url` instead. `notes` is the published release's own description, taken from the same GitHub response as the tag — reading it costs no second request and no further exposure. It is trimmed to a dialog-sized excerpt (long bodies cut at a line boundary) and paired with `notes_for`, the version it describes, so a cached note can never be shown beside a different version after a failed check. `update_available` is never true for a `dev` or `git describe` build. Caprock does not install the update: replacing the running binary would mean the daemon killing the process executing the command, and running a package manager on the user's behalf from a web page is a surface a local tool should not open.
+`GET /v1/update` returns `{enabled, current, latest, update_available, command, app_command, url, checked_at, error, notes, notes_for}` from cache and **performs no network I/O** — a page load must never cause an outbound call. `POST /v1/update/check` performs one, and returns **403 while `update_checks` is false**: the opt-in is enforced by the server, not merely hidden in the UI, so no page or local script can make Caprock reach the network uninvited. Checks are throttled to once every 6 hours unless forced — at startup, when the switch is turned on, and on an hourly tick that asks whether one is due (so a daemon that runs for weeks still hears of a release) — and each repeat is conditional: the request sends the last `ETag` as `If-None-Match`, and a `304` keeps the cached answer and counts as a successful check. The request carries no body or credentials, and a failure is reported in `error` rather than as an error status — not knowing about a release must not read as a broken dashboard. `command` is the upgrade command inferred from the running binary's path (Homebrew, Scoop, `go install`); when no package manager owns the binary it is empty and the UI offers `url` instead. `app_command` is `brew update && brew upgrade --cask caprock-app` when Homebrew's cask installed the desktop app on this machine (`<prefix>/Caskroom/caprock-app` exists, `/opt/homebrew` or `/usr/local`), set only beside `update_available`; the app shows it first and `command` second when both exist, because the cask and the formula are upgraded separately. `notes` is the published release's own description, taken from the same GitHub response as the tag — reading it costs no second request and no further exposure. It is trimmed to a dialog-sized excerpt (long bodies cut at a line boundary) and paired with `notes_for`, the version it describes, so a cached note can never be shown beside a different version after a failed check. `update_available` is never true for a `dev` or `git describe` build. Caprock does not install the update: replacing the running binary would mean the daemon killing the process executing the command, and running a package manager on the user's behalf from a web page is a surface a local tool should not open.
 
 **`PUT /v1/settings` is a patch, not a replace.** Fields are decoded as pointers, so a body changes only the keys it names and leaves the rest as they were; `PUT {}` is a no-op. An explicit `false` is still honoured, so nothing here is write-only. This is not a convenience: decoding into a plain struct made an absent field indistinguishable from a cleared one, so a short body — or a retry that dropped fields — answered 200 while resetting the stated plan *and* switching the release-check opt-in off. The plan decides what every cost figure on the dashboard claims to be, and `update_checks` gates rule 4's single outbound call; neither may be toggled by omission.
 
@@ -778,6 +778,8 @@ POST   /v1/agents/{id}/permission    {id, choice: allow|always|deny} → 204; 40
 WS     /v1/agents/{id}/term          bidirectional stream (xterm.js): binary = keystrokes, text = control; snapshot on connect, closes on exit; subprotocol caprock.term.v2 [?since=&client=] = protocol v2
 POST   /v1/paste                     {name, type, data:base64} → {path}; writes a pasted or dropped file so Claude Code can read it
 GET    /v1/terminals                 → {terminals: [{id, name}], preferred}; terminal apps installed here, most preferred first
+GET    /v1/editors                   → {editors: [{id, name}], preferred}; editors installed here (F18), this machine only
+POST   /v1/editors/open              {path, line?, editor?} → {editor: {id, name}}; this machine only
 POST   /v1/sessions/{id}/open-terminal {terminal?, mode?: resume|move|fork} → {terminal: {id, name}, mode, command}
 POST   /v1/sessions/remove           {ids?: [id], cwd_prefix?, dry_run?} → {dry_run, sessions: [RemovalCandidate], skipped: [RemovalCandidate + reason], cost_usd, unmatched_usd}
 GET    /v1/history?range=…           lifetime totals + tool distribution + model mix + daily
@@ -949,6 +951,28 @@ use for (ADR-029).
 open in; empty means the first installed. `PUT` accepts only an id this build
 knows for its OS (`nativeterm.IDs`) or `""`, else 400. Stored as `terminal` in
 `config.json`.
+
+**Open in editor** (F18, `internal/editor`, `internal/api/editor.go`).
+`GET /v1/editors` lists the editors installed here, in the order they are
+offered — VS Code, Cursor, Zed, then the JetBrains IDEs (IntelliJ IDEA,
+GoLand, WebStorm, PyCharm, RustRover, PhpStorm, CLion, Rider, RubyMine) —
+found once per daemon run: app bundles in `/Applications`, `~/Applications`
+and `~/Applications/JetBrains Toolbox` on macOS, executables on the login
+shell's `PATH` on Linux, none yet on Windows (its launchers are batch files).
+`preferred` is the `editor` setting when that one is installed, else the
+first. `POST /v1/editors/open` `{path, line?, editor?}` opens an absolute,
+clean, existing `path` (no control characters; a `line` only for a file,
+1–10,000,000) and answers `{editor}`; a bad path or a missing editor is
+`400`, a launch that fails `502`. Each launch is an argv, never a shell
+string, and the path is its own word: macOS `open -a <bundle> <path>`, or
+with a line the bundle's CLI (`code -g <path>:<line>`, Zed's `cli
+<path>:<line>`) and for JetBrains `open -na <bundle> --args --line N <path>`;
+Linux the executable with the same arguments. Both endpoints answer `403` to
+anything but a request from this machine (`isLocal`: loopback and not
+relayed), in the handler, whatever a device's role — an editor opens on this
+screen, not the phone's — and neither is on a device allowlist.
+`GET`/`PUT /v1/settings` carry **`editor`**: an id from `editor.IDs()` or
+`""` (the first installed), else 400; stored as `editor` in `config.json`.
 
 **`SessionSummary.description` / `description_source`** — what tells a session
 from the others on the screen (FB-035): the stored `sessions.title`

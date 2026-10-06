@@ -10,6 +10,9 @@
  * listener ask the same question and can never disagree about whose key it is.
  */
 
+/** Dispatched on window by ⌘F; the focused pane of the tab in front opens its find bar (F16). */
+export const FIND_EVENT = 'caprock:terminal-find'
+
 export type AppCommand =
   | { kind: 'new-shell' }
   | { kind: 'new-agent' }
@@ -26,6 +29,7 @@ export type AppCommand =
   | { kind: 'next-pane' }
   | { kind: 'prev-pane' }
   | { kind: 'next-waiting' }
+  | { kind: 'find' }
 
 /** The subset of a KeyboardEvent the map reads. */
 export interface KeyLike {
@@ -97,6 +101,7 @@ function plain(k: string): AppCommand | null {
     case '\\': return { kind: 'sidebar' }
     case 'e': return { kind: 'split', direction: 'row' }
     case 'j': return { kind: 'next-waiting' }
+    case 'f': return { kind: 'find' }
     default:
       if (/^[1-9]$/.test(k)) return { kind: 'tab', index: Number(k) - 1 }
       return null

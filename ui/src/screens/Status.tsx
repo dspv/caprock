@@ -30,7 +30,9 @@ import { DesktopNotifications } from '@/components/DesktopNotifications'
 import { StoragePanel } from '@/components/Storage'
 import { Choice, Details, Section, Toggle } from '@/components/SettingsParts'
 import { GlobalHotkey } from '@/components/GlobalHotkey'
-import { isTauri } from '@/lib/appmode'
+import { isAppMode, isTauri } from '@/lib/appmode'
+import { TerminalSettings } from '@/components/TerminalSettings'
+import { EditorSetting } from '@/components/EditorSetting'
 
 export function StatusScreen() {
   const st = useApi(() => api.status(), [], { live: false, intervalMs: 5000 })
@@ -49,6 +51,8 @@ export function StatusScreen() {
       {owner && <PhoneAlerts />}
       {owner && <PlanSection />}
       <AppearanceSection />
+      {isAppMode() && <TerminalSettings />}
+      {owner && <EditorSetting />}
       {owner && isTauri() && <GlobalHotkey />}
       {owner && <PrivacySection />}
       {owner && <MemorySection />}
@@ -130,7 +134,7 @@ function PrivacySection() {
         checked={plan.update_checks}
         onChange={(on) => savePlan({ update_checks: on })}
         label="Tell me when a new version is out"
-        hint="Once a day, asks GitHub for the latest version number. Nothing about you is sent, and nothing goes to us."
+        hint="At most every 6 hours, asks GitHub for the latest version number. Nothing about you is sent, and nothing goes to us."
       />
       <p className="text-[12px] leading-relaxed text-fg-muted">
         Apart from the Telegram messages you set up yourself, that is the only thing Caprock ever sends over the

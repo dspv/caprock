@@ -35,6 +35,35 @@ Phase 3 (Delight) has no plan by design.
   what is running with its cost, today's spend and the Claude and Codex plan
   windows with when they reset. It opens over the app you are in without
   switching to Caprock or raising its window. A right click keeps the menu.
+- **Find in the terminal.** ⌘F (Ctrl+Shift+F off macOS) opens a find bar
+  over the focused pane: matches highlighted as you type, "3 of 12", match
+  case, regular expressions, Enter and ⇧Enter for next and previous. Esc
+  closes it and puts you back in the terminal. Works in every pane of a
+  split, in agent and shell tabs alike.
+- **Open in your editor.** VS Code, Cursor, Zed or a JetBrains IDE, when
+  installed: right-click a project or worktree in the sidebar, use the
+  palette ("Open <project> in Zed"), or the inspector — the session's
+  folder, or a changed file at its first changed line. Settings → Editor
+  picks the default. Only from this computer: a paired phone can never open
+  an editor on its screen.
+- **Terminal colours and fonts.** Settings → Terminal: five palettes
+  (Caprock, a light Paper, Catppuccin Mocha, Tokyo Night, Solarized Dark),
+  JetBrains Mono or any of SF Mono, Menlo, Fira Code and other monospace
+  faces found on the machine, size, line height and cursor shape, with a
+  live preview. Every open terminal changes at once; kept per browser.
+- **Update notice in the app.** With release checks on, the status strip
+  says when a newer Caprock is out and opens to the exact command — `brew
+  update && brew upgrade --cask caprock-app` for the app from Homebrew, and
+  the daemon's own command when the formula installed it. "Not now" hides
+  that version. Nothing installs itself.
+
+### Changed
+
+- **Release checks run at most every 6 hours, and a running daemon keeps
+  checking.** They used to run at startup and when switched on, throttled to
+  a day, so a daemon left running for a week never heard of a release.
+  Repeats are conditional (`If-None-Match`), so an unchanged release costs
+  GitHub a 304 and no body. Still off until you turn it on.
 
 ### Fixed
 

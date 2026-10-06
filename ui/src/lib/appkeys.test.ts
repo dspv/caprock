@@ -63,4 +63,12 @@ describe('the app keyboard map', () => {
     expect(matchAppShortcut(k('e', { ctrlKey: true }), false)).toBeNull()
     expect(matchAppShortcut(k('j', { ctrlKey: true }), false)).toBeNull()
   })
+
+  it('finds in the terminal with Cmd+F, Ctrl+Shift+F off macOS, and leaves Ctrl+F to the terminal', () => {
+    expect(matchAppShortcut(k('f', { metaKey: true }), true)).toEqual({ kind: 'find' })
+    expect(matchAppShortcut(k('F', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'find' })
+    // Ctrl+F is a shell's forward-char and less's page-down.
+    expect(matchAppShortcut(k('f', { ctrlKey: true }), false)).toBeNull()
+    expect(matchAppShortcut(k('f', { ctrlKey: true }), true)).toBeNull()
+  })
 })

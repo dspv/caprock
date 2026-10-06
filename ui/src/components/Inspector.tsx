@@ -8,7 +8,8 @@
  * open, and refreshed every 20 s while it stays open.
  */
 import { useEffect, useState, type ReactNode } from 'react'
-import { api, errText, type DiffResult, type SessionSummary } from '@/lib/api'
+import { api, errText, type DiffResult, type EditorList, type SessionSummary } from '@/lib/api'
+import { firstChangedLine, joinPath, preferredName } from '@/lib/editors'
 import { fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
 import { agentName } from './Projects'
 import { PermissionPrompt } from './PermissionPrompt'
@@ -27,12 +28,17 @@ export function Inspector({
   hasPermission,
   onClose,
   onDetach,
+  editors = null,
+  onOpenInEditor,
 }: {
   session?: SessionSummary
   sessionId?: string
   hasPermission: boolean
   onClose: () => void
   onDetach: () => void
+  /** The editors found on this machine (F18); null hides the actions. */
+  editors?: EditorList | null
+  onOpenInEditor?: OpenInEditor
 }) {
   return (
     <aside aria-label="Inspector" className="app-scroll flex h-full min-h-0 flex-col overflow-y-auto border-l border-[var(--app-hairline)] bg-[var(--app-chrome-bg)]">
@@ -45,13 +51,16 @@ export function Inspector({
       {!sessionId ? (
         <p className="px-4 py-5 text-[12.5px] leading-relaxed text-fg-muted">Open a session to see what it costs, how full its context is, and what it changed.</p>
       ) : (
-        <Body key={sessionId} session={session} sessionId={sessionId} hasPermission={hasPermission} onDetach={onDetach} />
+        <Body key={sessionId} session={session} sessionId={sessionId} hasPermission={hasPermission} onDetach={onDetach} editor={editors && onOpenInEditor ? { name: preferredName(editors), open: onOpenInEditor } : undefined} />
       )}
     </aside>
   )
 }
 
-function Body({ session: s, sessionId, hasPermission, onDetach }: { session?: SessionSummary; sessionId: string; hasPermission: boolean; onDetach: () => void }) {
+type OpenInEditor = (path: string, label: string, editor?: string, line?: number) => void
+interface EditorAction { name: string; open: OpenInEditor }
+
+function Body({ session: s, sessionId, hasPermission, onDetach, editor }: { session?: SessionSummary; sessionId: string; hasPermission: boolean; onDetach: () => void; editor?: EditorAction }) {
   const isShell = s?.kind === 'shell'
   const ended = s?.status === 'ended'
   return (
@@ -74,13 +83,18 @@ function Body({ session: s, sessionId, hasPermission, onDetach }: { session?: Se
       {!isShell && <PermissionPrompt sessionId={sessionId} />}
 
       {s && !isShell && <Figures s={s} />}
-      {s && <Changes sessionId={sessionId} />}
+      {s && <Changes sessionId={sessionId} editor={editor} />}
 
       <div className="grid gap-1.5 border-t border-[var(--app-hairline)] pt-4">
         {!isShell && (
           <a href={href({ name: 'session', id: sessionId })} className="app-row flex h-[30px] items-center gap-2 rounded-[7px] px-2 text-[12.5px] text-fg no-underline">
             <ExternalIcon size={14} className="text-fg-muted" /> Open in the dashboard
           </a>
+        )}
+        {editor && s?.cwd && (
+          <button type="button" onClick={() => editor.open(s.cwd!, 'the folder')} className="app-row flex h-[30px] items-center gap-2 rounded-[7px] px-2 text-left text-[12.5px] text-fg" title={s.cwd}>
+            <ExternalIcon size={14} className="text-fg-muted" /> Open in {editor.name}
+          </button>
         )}
         <button type="button" onClick={onDetach} className="app-row flex h-[30px] items-center gap-2 rounded-[7px] px-2 text-left text-[12.5px] text-fg">
           <CloseIcon size={14} className="text-fg-muted" />
@@ -133,7 +147,7 @@ function Figure({ label, value, sub }: { label: string; value: string; sub?: str
   )
 }
 
-function Changes({ sessionId }: { sessionId: string }) {
+function Changes({ sessionId, editor }: { sessionId: string; editor?: EditorAction }) {
   const [diff, setDiff] = useState<DiffResult | undefined>(undefined)
   const [error, setError] = useState('')
   useEffect(() => {
@@ -170,7 +184,18 @@ function Changes({ sessionId }: { sessionId: string }) {
           {files.slice(0, DIFF_FILES_SHOWN).map((f) => (
             <li key={f.path} className="flex items-center gap-2 text-[11.5px]" title={f.path}>
               <span className="mono w-3 text-center text-fg-faint">{STATUS[f.status] ?? '·'}</span>
-              <span className="mono min-w-0 flex-1 truncate text-fg">{tail(f.path)}</span>
+              {editor && diff.root && f.status !== 'deleted' ? (
+                <button
+                  type="button"
+                  onClick={() => editor.open(joinPath(diff.root, f.path), f.path, undefined, firstChangedLine(f.patch))}
+                  className="mono min-w-0 flex-1 truncate text-left text-fg hover:text-accent hover:underline"
+                  title={`Open ${f.path} in ${editor.name}`}
+                >
+                  {tail(f.path)}
+                </button>
+              ) : (
+                <span className="mono min-w-0 flex-1 truncate text-fg">{tail(f.path)}</span>
+              )}
               {!f.binary && <span className="num text-ok">+{f.additions}</span>}
               {!f.binary && <span className="num text-danger">−{f.deletions}</span>}
             </li>

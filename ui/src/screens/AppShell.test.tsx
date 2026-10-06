@@ -32,6 +32,8 @@ const sessions = [
   sess({ session_id: 'theirs', title: 'Started elsewhere', owned: false, cwd: '/w/other', repo_root: '/w/other', project: 'other' }),
 ]
 
+const editorCalls = vi.hoisted(() => [] as { path: string; line?: number; editor?: string }[])
+
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
   return {
@@ -43,6 +45,8 @@ vi.mock('@/lib/api', async (orig) => {
       summary: async () => ({ cost_usd: 1.25, projects: [{ project: 'app', dir: '/w/app', cost_usd: 1.25, tokens: 0, sessions: 2 }], rate_limits: { five_hour: { used_percentage: 40, resets_at: 0 } } }),
       permission: async () => ({ permission: null }),
       diff: async () => ({ root: '/w/app', branch: 'main', files: [], stat: '' }),
+      editors: async () => ({ editors: [{ id: 'zed', name: 'Zed' }, { id: 'vscode', name: 'VS Code' }], preferred: 'zed' }),
+      openInEditor: async (req: { path: string; line?: number; editor?: string }) => { editorCalls.push(req); return { editor: { id: 'zed', name: 'Zed' } } },
       recentEvents: async () => [{ id: 1, ts: '2026-10-05T10:00:00Z', session_id: 'agent-1', source: 'hook', kind: 'turn.user', payload: { prompt: 'Fix it, please' } }],
     },
   }
@@ -207,5 +211,42 @@ describe('workspace helpers', () => {
     expect(nextWaiting(inbox, 'x')?.title).toBe('a')
     expect(nextWaiting(inbox, 'a')?.title).toBe('b')
     expect(nextWaiting(inbox, 'c')?.title).toBe('a')
+  })
+
+  it('⌘F asks the focused pane to open its find bar, and the palette offers it', async () => {
+    const { FIND_EVENT } = await import('@/lib/appkeys')
+    let heard = 0
+    const on = () => { heard++ }
+    window.addEventListener(FIND_EVENT, on)
+    await renderApp()
+    fireEvent.click(screen.getByText('Fix the login bug'))
+    await screen.findByRole('tab')
+    await cmd('f')
+    expect(heard).toBe(1)
+    await cmd('k')
+    fireEvent.click(await screen.findByText('Find in the terminal'))
+    await waitFor(() => expect(heard).toBe(2))
+    window.removeEventListener(FIND_EVENT, on)
+  })
+
+  it('opens a project in the default editor from its right-click menu and the palette', async () => {
+    editorCalls.length = 0
+    await renderApp()
+    const row = document.querySelector('[data-project-row="dir:/w/app"], [data-project-row]') as HTMLElement
+    await waitFor(() => {
+      fireEvent.contextMenu(row)
+      expect(screen.getByRole('menu')).toBeInTheDocument()
+    })
+    const items = within(screen.getByRole('menu')).getAllByRole('menuitem')
+    expect(items.map((b) => b.textContent)).toEqual(['Open in Zeddefault', 'Open in VS Code'])
+    fireEvent.click(items[1]!)
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    await waitFor(() => expect(editorCalls).toHaveLength(1))
+    expect(editorCalls[0]).toMatchObject({ editor: 'vscode' })
+    expect(editorCalls[0]!.path).toMatch(/^\/w\//)
+    await cmd('k')
+    fireEvent.click(await screen.findByText('Open app in Zed'))
+    await waitFor(() => expect(editorCalls).toHaveLength(2))
+    expect(editorCalls[1]).toMatchObject({ path: '/w/app' })
   })
 })

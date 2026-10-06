@@ -46,6 +46,14 @@ export interface ProjectRowProps {
   onOpenSession: (s: SessionNode, projectId: string) => void
   onNewAgent: (projectId: string, cwd?: string) => void
   onNewShell: (projectId: string, cwd?: string) => void
+  /** Right-click on a project or worktree: the folder, for the editor menu (F18). */
+  onFolderMenu?: (e: React.MouseEvent, path: string, label: string) => void
+}
+
+/** A right-click handler for a folder row, or none when there is no menu or no folder. */
+function folderMenu(onFolderMenu: ProjectRowProps['onFolderMenu'], path: string, label: string) {
+  if (!onFolderMenu || !path) return undefined
+  return (e: React.MouseEvent) => onFolderMenu(e, path, label)
 }
 
 export const ProjectRow = memo(function ProjectRow({
@@ -58,6 +66,7 @@ export const ProjectRow = memo(function ProjectRow({
   onOpenSession,
   onNewAgent,
   onNewShell,
+  onFolderMenu,
 }: ProjectRowProps) {
   const p = node.project
   const id = p.id
@@ -81,6 +90,7 @@ export const ProjectRow = memo(function ProjectRow({
           aria-current={active ? 'true' : undefined}
           onClick={() => { onSelect(id); if (!expanded) onToggle(id) }}
           onDoubleClick={() => onToggle(id)}
+          onContextMenu={folderMenu(onFolderMenu, p.root, p.name)}
           className="app-row flex h-[30px] w-full min-w-0 items-center gap-1.5 rounded-[7px] pl-1.5 pr-2 text-left"
           title={p.root}
         >
@@ -130,7 +140,7 @@ export const ProjectRow = memo(function ProjectRow({
                 <SessionRow key={s.session.session_id} s={s} depth={1} active={s.session.session_id === activeSessionId} onOpen={() => onOpenSession(s, id)} />
               ))
             ) : (
-              <WorktreeRows key={w.key} w={w} projectId={id} activeSessionId={activeSessionId} onOpenSession={onOpenSession} onNewAgent={onNewAgent} onNewShell={onNewShell} />
+              <WorktreeRows key={w.key} w={w} projectId={id} activeSessionId={activeSessionId} onOpenSession={onOpenSession} onNewAgent={onNewAgent} onNewShell={onNewShell} onFolderMenu={onFolderMenu} />
             ),
           )}
         </ul>
@@ -146,6 +156,7 @@ function WorktreeRows({
   onOpenSession,
   onNewAgent,
   onNewShell,
+  onFolderMenu,
 }: {
   w: WorktreeNode
   projectId: string
@@ -153,10 +164,11 @@ function WorktreeRows({
   onOpenSession: (s: SessionNode, projectId: string) => void
   onNewAgent: (projectId: string, cwd?: string) => void
   onNewShell: (projectId: string, cwd?: string) => void
+  onFolderMenu?: ProjectRowProps['onFolderMenu']
 }) {
   return (
     <li className="grid grid-cols-1">
-      <div className="group relative flex h-[26px] items-center gap-1.5 pl-[26px] pr-2 text-[12px] text-fg-muted" title={w.path}>
+      <div className="group relative flex h-[26px] items-center gap-1.5 pl-[26px] pr-2 text-[12px] text-fg-muted" title={w.path} onContextMenu={folderMenu(onFolderMenu, w.path, w.branch)}>
         {projectId === OTHER_FOLDERS_ID ? <FolderIcon size={12} className="text-fg-faint" /> : <BranchIcon size={12} className="text-fg-faint" />}
         <span className={`min-w-0 flex-1 truncate ${projectId === OTHER_FOLDERS_ID ? '' : 'mono'}`}>{w.branch}</span>
         <span className="num flex items-center gap-1.5 text-[10.5px] text-fg-faint group-hover:invisible">
