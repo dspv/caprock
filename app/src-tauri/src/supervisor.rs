@@ -808,6 +808,8 @@ mod adopt_tests {
         assert!(semver("0.79.0") > semver("0.78.9"));
     }
 
+    // Homebrew paths are POSIX; there is no Cellar on Windows.
+    #[cfg(unix)]
     #[test]
     fn a_formula_path_is_one_in_a_cellar() {
         let s = sup("formula");
