@@ -9,7 +9,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dspv/caprock/internal/config"
@@ -44,28 +46,30 @@ const KeychainService = "dev.caprock.github"
 // keychainAccount names the item within the service.
 const keychainAccount = "caprock"
 
+// Runner runs the `security` tool with args and returns its stdout and exit
+// status. Tests replace it: no test ever runs the real tool.
+type Runner func(ctx context.Context, args ...string) (stdout string, code int, err error)
+
 // Keychain stores the token as a generic password through the `security`
-// tool, with the token as an argument (no shell, no file). The tool, not
-// Caprock, is on the item's access list, so reading it back asks nothing.
+// tool, with the token as an argument (no shell, no file). Every call names
+// the keychain file explicitly (Path, the user's login keychain): without
+// one, `security` falls back to the default keychain and, when it cannot
+// find that, macOS shows a "Keychain Not Found" dialog — which a daemon must
+// never cause. DefaultStore only builds one for a Path that exists.
 type Keychain struct {
 	Service string
-	Bin     string // "/usr/bin/security" unless a test says otherwise
+	Path    string // the keychain file, e.g. ~/Library/Keychains/login.keychain-db
+	Run     Runner // nil runs /usr/bin/security
 }
 
-func (k Keychain) bin() string {
-	if k.Bin != "" {
-		return k.Bin
-	}
-	return "/usr/bin/security"
-}
-
-// errNotFound is `security`'s exit status for a missing item.
+// securityNotFound is `security`'s exit status for a missing item.
 const securityNotFound = 44
 
-func (k Keychain) run(ctx context.Context, args ...string) (string, int, error) {
+// runSecurity runs /usr/bin/security with fixed arguments and a timeout.
+func runSecurity(ctx context.Context, args ...string) (string, int, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, k.bin(), args...) //nolint:gosec // fixed subcommands of /usr/bin/security
+	cmd := exec.CommandContext(ctx, "/usr/bin/security", args...) //nolint:gosec // fixed subcommands, an explicit keychain path
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	err := cmd.Run()
@@ -74,6 +78,19 @@ func (k Keychain) run(ctx context.Context, args ...string) (string, int, error) 
 		return out.String(), ee.ExitCode(), fmt.Errorf("security %s: %s", args[0], strings.TrimSpace(errb.String()))
 	}
 	return out.String(), 0, err
+}
+
+// run refuses to run without an explicit keychain path, so a missing path
+// can never become a dialog.
+func (k Keychain) run(ctx context.Context, args ...string) (string, int, error) {
+	if k.Path == "" {
+		return "", 0, errors.New("no keychain file named; the Keychain is not used")
+	}
+	run := k.Run
+	if run == nil {
+		run = runSecurity
+	}
+	return run(ctx, append(args, k.Path)...)
 }
 
 func (k Keychain) Get(ctx context.Context) (string, error) {
@@ -133,15 +150,140 @@ func (f File) Delete(context.Context) error {
 
 func (File) Kind() string { return "file" }
 
-// DefaultStore is the Keychain on macOS when `security` is there, else the
-// file in dataDir.
-func DefaultStore(dataDir, service string) TokenStore {
-	if runtime.GOOS == "darwin" {
-		if _, err := os.Stat("/usr/bin/security"); err == nil {
-			return Keychain{Service: service}
+// EnvSecretStore forces the token store: "file" uses the 0600 file even on
+// macOS. Tests and throwaway daemons set it, so nothing touches a keychain.
+const EnvSecretStore = "CAPROCK_SECRET_STORE"
+
+// Fallback is the Keychain with the 0600 file behind it: when the Keychain
+// refuses (locked, missing, an error), the token goes to the file instead
+// and Note says so — never a dialog.
+type Fallback struct {
+	Keychain Keychain
+	File     File
+
+	mu   sync.Mutex
+	used string // where the token is: "keychain" or "file"
+	note string
+}
+
+func (f *Fallback) setUsed(kind, note string) {
+	f.mu.Lock()
+	f.used, f.note = kind, note
+	f.mu.Unlock()
+}
+
+func (f *Fallback) Get(ctx context.Context) (string, error) {
+	if t, err := f.File.Get(ctx); err == nil && t != "" {
+		f.setUsed("file", f.Note())
+		return t, nil
+	}
+	t, err := f.Keychain.Get(ctx)
+	if err != nil {
+		return "", err
+	}
+	if t != "" {
+		f.setUsed("keychain", "")
+	}
+	return t, nil
+}
+
+func (f *Fallback) Set(ctx context.Context, token string) error {
+	err := f.Keychain.Set(ctx, token)
+	if err == nil {
+		_ = f.File.Delete(ctx)
+		f.setUsed("keychain", "")
+		return nil
+	}
+	if ferr := f.File.Set(ctx, token); ferr != nil {
+		return fmt.Errorf("the Keychain refused (%v) and the file could not be written: %w", err, ferr)
+	}
+	f.setUsed("file", "The Keychain refused it ("+firstLine(err.Error())+"), so the token is in a file in the data directory, readable by you only.")
+	return nil
+}
+
+func (f *Fallback) Delete(ctx context.Context) error {
+	ferr := f.File.Delete(ctx)
+	kerr := f.Keychain.Delete(ctx)
+	f.setUsed("", "")
+	if ferr != nil {
+		return ferr
+	}
+	return kerr
+}
+
+func (f *Fallback) Kind() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.used == "file" {
+		return "file"
+	}
+	return "keychain"
+}
+
+// Note says why the token is not where it would usually be, "" otherwise.
+func (f *Fallback) Note() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.note
+}
+
+// noted is a store with something to say about where it keeps the token.
+type noted interface{ Note() string }
+
+// FileWithNote is the file store with the reason the Keychain is not used.
+type FileWithNote struct {
+	File
+	Why string
+}
+
+func (f FileWithNote) Note() string { return f.Why }
+
+// DefaultStore picks where Caprock keeps its token: the user's login
+// keychain on macOS when that file exists (with the 0600 file behind it),
+// else the 0600 file in dataDir. home is the user's real home directory
+// (UserHome), not $HOME.
+func DefaultStore(dataDir, service, home string) TokenStore {
+	file := File{Path: filepath.Join(dataDir, TokenFile)}
+	if os.Getenv(EnvSecretStore) == "file" || runtime.GOOS != "darwin" {
+		return file
+	}
+	if home == "" {
+		return FileWithNote{File: file, Why: "Your home directory could not be read, so the token is in a file in the data directory, readable by you only."}
+	}
+	kc := filepath.Join(home, "Library", "Keychains", "login.keychain-db")
+	if st, err := os.Stat(kc); err != nil || st.IsDir() {
+		return FileWithNote{File: file, Why: "No login keychain at " + kc + ", so the token is in a file in the data directory, readable by you only."}
+	}
+	return &Fallback{Keychain: Keychain{Service: service, Path: kc}, File: file}
+}
+
+// UserHome is the current user's home directory as the system records it
+// (Directory Services on macOS), not $HOME, which a caller may have changed.
+// "" when it cannot be read.
+func UserHome(ctx context.Context) string {
+	if runtime.GOOS != "darwin" {
+		h, _ := os.UserHomeDir()
+		return h
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "/usr/bin/dscacheutil", "-q", "user", "-a", "uid", strconv.Itoa(os.Getuid())).Output() //nolint:gosec // fixed arguments
+	if err != nil {
+		return ""
+	}
+	return homeFromDSCache(string(out))
+}
+
+// homeFromDSCache reads "dir: /Users/name" from dscacheutil's answer.
+func homeFromDSCache(out string) string {
+	for _, l := range strings.Split(out, "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(l), "dir:"); ok {
+			if d := strings.TrimSpace(v); filepath.IsAbs(d) {
+				return d
+			}
 		}
 	}
-	return File{Path: filepath.Join(dataDir, TokenFile)}
+	return ""
 }
 
 // GHCLI reads the GitHub CLI's token for github.com. Env is the login

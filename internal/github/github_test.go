@@ -461,6 +461,31 @@ func TestFollowingAPullRequest(t *testing.T) {
 	}
 }
 
+// A worktree that shows up after the daemon started (git not read yet at
+// startup) is found on the next rediscovery, without a push or a kick.
+func TestWorktreesFoundAfterStartupAreFollowed(t *testing.T) {
+	x := newFixture(t)
+	x.connect(t)
+	x.f.pulls["ada/caprock"] = []map[string]any{pull("ada/caprock", 3, "feat/x", "sha1")}
+	x.wt.mu.Lock()
+	views := x.wt.views
+	x.wt.views = nil
+	x.wt.mu.Unlock()
+	ctx := context.Background()
+	x.s.step(ctx)
+	if len(x.s.PRs()) != 0 {
+		t.Fatal("followed a pull request with no worktree")
+	}
+	x.wt.mu.Lock()
+	x.wt.views = views
+	x.wt.mu.Unlock()
+	x.advance(discoverEvery)
+	x.s.step(ctx)
+	if prs := x.s.PRs(); len(prs) != 1 || prs[0].Number != 3 {
+		t.Fatalf("after rediscovery: %+v", prs)
+	}
+}
+
 // Notifications are off when switched off; the state still updates.
 func TestNotificationsCanBeSwitchedOff(t *testing.T) {
 	x := newFixture(t)

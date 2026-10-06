@@ -41,7 +41,7 @@ export interface GitHubStatus {
   scopes_known: boolean
   token_kind?: string
   checked_at?: number
-  sources: { gh: boolean; stored: boolean; store: 'keychain' | 'file' | ''; oauth: boolean; client?: string }
+  sources: { gh: boolean; stored: boolean; store: 'keychain' | 'file' | ''; store_note?: string; oauth: boolean; client?: string }
   health: { last_ok_at?: number; error?: GitHubError; rate?: GitHubRate; paused_until?: number }
   device?: GitHubDevice
   notify: boolean

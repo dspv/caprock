@@ -28,6 +28,10 @@ const (
 	MinPoll = 60 * time.Second
 	MaxPoll = 8 * time.Minute
 	kickGap = 10 * time.Second
+	// discoverEvery is how often the projects list is read for worktrees
+	// that may have a pull request: local, no request to GitHub, and soon
+	// after a start, when git has not answered for every project yet.
+	discoverEvery = 15 * time.Second
 	// ghTokenTTL is how long the GitHub CLI's token is kept in memory before
 	// gh is asked again; a 401 asks again at once.
 	ghTokenTTL = 10 * time.Minute
@@ -81,11 +85,13 @@ type Health struct {
 
 // Sources says which sources exist here, without reading a token.
 type Sources struct {
-	GH     bool   `json:"gh"`               // the GitHub CLI is installed
-	Stored bool   `json:"stored"`           // Caprock holds a token
-	Store  string `json:"store"`            // keychain | file
-	OAuth  bool   `json:"oauth"`            // a client id is configured
-	Client string `json:"client,omitempty"` // that client id (public)
+	GH     bool   `json:"gh"`     // the GitHub CLI is installed
+	Stored bool   `json:"stored"` // Caprock holds a token
+	Store  string `json:"store"`  // keychain | file
+	// StoreNote says why the token is in the file rather than the Keychain.
+	StoreNote string `json:"store_note,omitempty"`
+	OAuth     bool   `json:"oauth"`            // a client id is configured
+	Client    string `json:"client,omitempty"` // that client id (public)
 }
 
 // Status is GET /v1/github.
@@ -179,7 +185,9 @@ func (s *Service) init() {
 func (s *Service) Start(ctx context.Context) {
 	s.ctx = ctx
 	s.init()
-	if s.Store != nil {
+	// The store is read only when a stored token is the chosen source, so a
+	// daemon that never stored one never asks the Keychain.
+	if src := s.source(); s.Store != nil && (src == SourceToken || src == SourceOAuth) {
 		if t, err := s.Store.Get(ctx); err == nil && t != "" {
 			s.mu.Lock()
 			s.stored = true
@@ -360,6 +368,9 @@ func (s *Service) Status() Status {
 	st.Sources.Stored = s.stored
 	if s.Store != nil {
 		st.Sources.Store = s.Store.Kind()
+		if n, ok := s.Store.(noted); ok {
+			st.Sources.StoreNote = n.Note()
+		}
 	}
 	if s.GH != nil {
 		st.Sources.GH = s.GH.Found()

@@ -213,6 +213,7 @@ function Connected({ s, owner, onStatus }: { s: GitHubStatus; owner: boolean; on
         </p>
       </div>
       <HealthLine s={s} />
+      {s.source !== 'gh' && s.sources.store_note && <p className="text-[12px] leading-relaxed text-warn">{s.sources.store_note}</p>}
       {h.error && (
         <p role="alert" className="rounded-[8px] border border-danger/40 bg-danger/[0.06] px-2.5 py-2 text-[12.5px] leading-snug text-fg [overflow-wrap:anywhere]">
           <span className="text-danger">{clockText(h.error.at)} · </span>{h.error.doing}: {h.error.message}

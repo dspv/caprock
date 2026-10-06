@@ -15,13 +15,12 @@ import (
 // Test-only overrides for the GitHub integration, read from the environment
 // so a throwaway daemon can be pointed at a fake GitHub. Each is honoured
 // only for a loopback address, so no setting can send the token to another
-// host; the keychain service only under its test prefix.
+// host. A throwaway daemon also sets CAPROCK_SECRET_STORE=file
+// (github.EnvSecretStore) so it never touches a keychain.
 const (
-	envTestGitHubAPI      = "CAPROCK_TEST_GITHUB_API"
-	envTestGitHubWeb      = "CAPROCK_TEST_GITHUB_WEB"
-	envTestGitHubKeychain = "CAPROCK_TEST_GITHUB_KEYCHAIN"
-	envTestGH             = "CAPROCK_TEST_GH"
-	testKeychainPrefix    = github.KeychainService + ".test"
+	envTestGitHubAPI = "CAPROCK_TEST_GITHUB_API"
+	envTestGitHubWeb = "CAPROCK_TEST_GITHUB_WEB"
+	envTestGH        = "CAPROCK_TEST_GH"
 )
 
 // loopbackURL reports whether u is http(s) on a loopback address.
@@ -41,7 +40,6 @@ func loopbackURL(u string) bool {
 // newGitHub builds the GitHub integration (ADR-039). It sends nothing until
 // the user connects a source.
 func (d *Daemon) newGitHub() *github.Service {
-	svc := github.KeychainService
 	gh := github.GHCLI{Env: func() []string { return userenv.Environ(d.log) }}
 	s := &github.Service{Config: &githubConfig{d: d}, Bus: d.bus, Log: d.log}
 	if v := os.Getenv(envTestGitHubAPI); v != "" && loopbackURL(v) {
@@ -54,11 +52,8 @@ func (d *Daemon) newGitHub() *github.Service {
 			gh.Bin = b
 		}
 	}
-	if v := os.Getenv(envTestGitHubKeychain); strings.HasPrefix(v, testKeychainPrefix) {
-		svc = v
-	}
 	s.GH = gh
-	s.Store = github.DefaultStore(d.opt.DataDir, svc)
+	s.Store = github.DefaultStore(d.opt.DataDir, github.KeychainService, github.UserHome(context.Background()))
 	if d.projs != nil {
 		s.Projects = d.projs
 	}

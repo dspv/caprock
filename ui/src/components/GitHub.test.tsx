@@ -128,6 +128,14 @@ describe('Settings → GitHub', () => {
     expect(screen.getByText('last call failed')).toBeTruthy()
   })
 
+  it('says when the token is in a file because the Keychain refused it', async () => {
+    const note = 'No login keychain at /Users/ada/Library/Keychains/login.keychain-db, so the token is in a file in the data directory, readable by you only.'
+    handler = () => ({ body: connected({ source: 'token', sources: { ...NOT_CONNECTED.sources, stored: true, store: 'file', store_note: note } }) })
+    render(<GitHubSettings />)
+    expect(await screen.findByText(note)).toBeTruthy()
+    expect(screen.getByText(/Removes the token from the data directory/)).toBeTruthy()
+  })
+
   it('disconnects', async () => {
     handler = (c) => c.method === 'DELETE' ? { body: NOT_CONNECTED } : { body: connected({ source: 'token' }) }
     render(<GitHubSettings />)

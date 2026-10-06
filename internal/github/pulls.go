@@ -214,13 +214,13 @@ func (s *Service) step(ctx context.Context) {
 	s.track.mu.Lock()
 	discover := !now.Before(s.track.discover)
 	if discover {
-		s.track.discover = now.Add(MinPoll)
+		s.track.discover = now.Add(discoverEvery)
 	}
 	s.track.mu.Unlock()
 	if discover {
 		s.reconcile(ctx)
 	}
-	for _, repo := range s.dueRepos(now) {
+	for _, repo := range s.dueRepos(s.Now()) {
 		s.pollRepo(ctx, repo)
 	}
 }
