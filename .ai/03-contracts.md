@@ -1687,10 +1687,13 @@ CREATE TABLE IF NOT EXISTS pending_permissions (
 ```
 
 The permission prompt an owned session waits on ([ADR-035](08-decisions.md)),
-kept across a daemon restart. The agent manager writes the row whenever the
-prompt in memory changes — off the caller's goroutine, serialised, always
-writing the state current when it runs — and deletes it when the prompt is
-cleared. On reattach a Claude Code session gets its prompt back under the same
+kept across a daemon restart. A new prompt's row is committed on the
+`PermissionRequest` hook's own request, before the hook is answered and before
+the prompt is served, so a daemon killed the moment after (a crash, or a
+Windows stop, which has no SIGTERM) still finds it. A cleared prompt's row is
+deleted off the caller's goroutine, so a keystroke never waits on the
+database; the writes are serialised and each writes the state current when it
+runs. On reattach a Claude Code session gets its prompt back under the same
 `prompt_id`, so the `409` check holds, unless the session recorded a
 `tool.post`, `turn.user`, `turn.assistant`, `agent.stop`, `session.end` or
 another `permission.prompt` after `since`; rows of sessions not reattached are

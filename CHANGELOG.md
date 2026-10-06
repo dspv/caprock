@@ -9,6 +9,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **A permission prompt survives a daemon crash, not only a restart.** The
+  prompt an owned session was waiting on was stored in the background after
+  the hook that drew it had been answered, so a daemon killed in that moment
+  — a crash, or any stop on Windows, which has no graceful one — came back
+  with the dialog still on the session's screen and no buttons to answer it.
+  The prompt is now stored before the hook is answered.
+
 ## [0.78.1] - 2026-10-06
 
 ### Fixed

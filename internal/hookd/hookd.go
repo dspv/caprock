@@ -205,7 +205,9 @@ type Handler struct {
 	// the session starts exactly as it does today.
 	Handoff func(ctx context.Context, p Payload) []byte
 	// Observe sees every payload that names a session, PermissionRequest
-	// included, before it is recorded. It must not block.
+	// included, before it is recorded. It may write to the database — a new
+	// permission prompt is stored before the hook is answered, so a crash
+	// cannot lose it (ADR-035) — and must not otherwise block.
 	Observe func(p Payload)
 }
 

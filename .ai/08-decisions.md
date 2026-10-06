@@ -1450,6 +1450,13 @@ whole request; a clipped or multi-line command, or a tool whose input it does
 not show, gets Deny and a link to the card. Never "always" from a
 notification. See [21-app.md § Notifications](21-app.md#notifications).
 
+*Amended 2026-10-06:* a new prompt is stored before its hook is answered, not
+after. Written in the background, it was lost when the daemon was killed in
+the moment after the hook returned — what Windows CI's hard stop did to the
+restart smoke test, intermittently — and the dialog came back without its
+buttons. A crash must not lose an open dialog on any OS. Clearing a prompt
+stays in the background: a lost clear is caught by the events on restore.
+
 ---
 
 ## ADR-036 — A phone hears that a session needs it through the owner's own Telegram bot
