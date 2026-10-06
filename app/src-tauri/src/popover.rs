@@ -289,13 +289,24 @@ pub mod panel {
         fn the_panel_class_is_a_key_capable_panel_laid_out_like_taos_window() {
             let c = class();
             assert_eq!(c.superclass(), Some(NSPanel::class()));
-            // Tao's window class: NSWindow plus one BOOL ivar, word-aligned.
-            assert_eq!(c.instance_size(), NSWindow::class().instance_size() + 8);
+            // Laid out like Tao's window class, NSWindow plus one BOOL ivar,
+            // asked of the runtime rather than written down: on macOS 26 the
+            // BOOL fits in NSWindow's tail padding (520 bytes either way),
+            // on 27 it adds a word.
+            let tao = {
+                let mut b = ClassBuilder::new(c"CaprockTaoLikeWindow", NSWindow::class())
+                    .expect("declared once");
+                b.add_ivar::<Bool>(c"focusable");
+                b.register()
+            };
             assert_eq!(
                 NSPanel::class().instance_size(),
                 NSWindow::class().instance_size()
             );
-            assert!(c.instance_variable(c"focusable").is_some());
+            assert_eq!(c.instance_size(), tao.instance_size());
+            let ivar = c.instance_variable(c"focusable").expect("focusable");
+            let want = tao.instance_variable(c"focusable").expect("focusable");
+            assert_eq!(ivar.offset(), want.offset());
             assert!(c.instance_method(sel!(canBecomeKeyWindow)).is_some());
         }
     }

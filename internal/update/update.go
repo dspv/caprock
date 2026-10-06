@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	posix "path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -123,7 +124,8 @@ func (c *Checker) appCommand() string {
 		return ""
 	}
 	for _, root := range c.CaskRoots {
-		if c.IsDir(filepath.Join(root, AppCask)) {
+		// Caskrooms are macOS paths; joined as POSIX on any OS a test runs.
+		if c.IsDir(posix.Join(root, AppCask)) {
 			return appCaskCommand
 		}
 	}
