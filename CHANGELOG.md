@@ -20,6 +20,8 @@ Phase 3 (Delight) has no plan by design.
   `checksums.txt` lists both. A release is marked Latest only once all of
   them are attached, so a link never points at a release still being built.
 
+## [0.78.1] - 2026-10-06
+
 ### Fixed
 
 - **Dropping a file on a terminal in the desktop app works.** The app's
@@ -30,6 +32,23 @@ Phase 3 (Delight) has no plan by design.
   than a copy. In a browser a drop still uploads, as before. Tabs in the
   app's tab strip reorder by dragging again (they could not while the native
   handler was on).
+- **macOS: one "caprock" in Privacy & Security, not one per release.** The
+  Homebrew daemon runs from a new Cellar path every release, and macOS
+  lists every path as another program; agent sessions ask for folder access
+  in the daemon's name. The app now runs its own daemon from one path in the
+  data directory and moves a running Homebrew daemon onto it once (unless
+  the Homebrew one is newer; `"own_daemon": false` in `app.json` keeps it).
+  Sessions keep running through the move. Each release still asks once
+  until Caprock is signed with a Developer ID. [ADR-040](.ai/08-decisions.md)
+- **The app no longer aborts when the daemon stops while the menu bar
+  popover is still loading its first page.** It asked the WebView for its
+  URL, which a page that never committed does not have, and wry unwraps it
+  on the main thread.
+- **Test, bench and preview daemons stay out of Desktop, Documents and
+  Downloads.** A daemon running with a temporary HOME no longer watches or
+  runs `git` in those folders of the real account, even with a copy of the
+  real database, so it never raises a privacy prompt; the bench stand
+  refuses to live there.
 
 ## [0.78.0] - 2026-10-06
 

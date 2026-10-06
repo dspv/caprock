@@ -18,6 +18,9 @@ use tauri_plugin_opener::OpenerExt;
 
 pub const MAIN: &str = "main";
 
+/// The main window has finished loading a page at least once.
+static MAIN_LOADED: AtomicBool = AtomicBool::new(false);
+
 /// The dashboard's app entry point: the UI turns its app layout on for the
 /// `?app=1` flag and opens the workspace at `#/app` (`ui/src/lib/appmode.ts`).
 pub const APP_ROUTE: &str = "/?app=1#/app";
@@ -110,6 +113,7 @@ pub fn build(
             }
             #[cfg(all(feature = "snapshot", target_os = "macos"))]
             crate::snapshot::loaded(p.url());
+            MAIN_LOADED.store(true, Ordering::Relaxed);
             // Shown once, when the first page is ready (no white flash); a
             // later reload must not pull the window forward.
             if !shown.swap(true, Ordering::Relaxed) {
@@ -312,6 +316,18 @@ pub fn monitor(app: AppHandle, sup: Arc<Supervisor>) {
                 }
             };
             let state = sup.observe(found, absent_for);
+            // macOS: a Homebrew daemon moves onto the app's own (ADR-040).
+            // Not before the window's first page has committed: a WebView
+            // whose first load is cut off by the switch has no URL, and wry
+            // unwraps it on the main thread when asked.
+            if matches!(
+                state,
+                State::Connected { ours: false, .. } | State::TooOld { ours: false, .. }
+            ) && MAIN_LOADED.load(Ordering::Relaxed)
+                && sup.should_adopt(|| sup.bundled_version())
+            {
+                sup.spawn_adopt();
+            }
             let connected = matches!(state, State::Connected { .. });
             if was_connected && !connected {
                 crate::tray::daemon_gone(&app);

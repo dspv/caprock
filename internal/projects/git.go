@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dspv/caprock/internal/tcc"
 )
 
 // GitStatus is what git says about a project's working tree, as the sidebar
@@ -236,6 +238,12 @@ var errGitTimeout = errors.New("git did not answer in time and was stopped")
 // runGit runs one git command in dir under timeout and returns its stdout;
 // on failure the error carries git's own stderr.
 func runGit(ctx context.Context, timeout time.Duration, dir string, args ...string) ([]byte, error) {
+	if err := tcc.Check(dir); err != nil {
+		return nil, err
+	}
+	if err := tcc.Check(dir); err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, gitBin, append([]string{"--no-optional-locks", "-C", dir}, args...)...) //nolint:gosec // fixed git subcommands
