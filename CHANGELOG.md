@@ -25,6 +25,19 @@ Phase 3 (Delight) has no plan by design.
   keeps the corner thumbnail in a folder only the app it is dropped on may
   read, so Claude answered "operation not permitted". The app now copies
   such a file into Caprock's paste folder and types that path.
+- **The permission card on a phone names no keys.** On the session screen,
+  where there is no terminal, it said *Keys work from the terminal* and drew
+  Y and N on its buttons. It now shows the buttons alone there.
+- **A permission card whose question is gone can be closed.** When Claude
+  Code's request timed out or a check denied it, the card stayed until the
+  turn ended and its buttons said *that option is not on the prompt*. A
+  button now takes such a card away, and **×** hides any card without
+  typing anything.
+- **The Dock badge counts everything waiting on you.** It counted
+  permission prompts only, so an agent that finished and waited for your
+  answer left the Dock bare. It now shows the popover's *Needs you*. The
+  menu bar shows the same number beside the icon, instead of an unlabelled
+  5-hour percentage; a plan window appears there, named, once it is 80% full.
 
 ## [0.80.0] - 2026-10-07
 

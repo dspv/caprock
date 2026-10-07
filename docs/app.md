@@ -162,11 +162,13 @@ cancels. The footer names these keys.
   spend, and the Claude and Codex 5-hour and 7-day windows with when they
   reset. Click a session to open it in the window; Escape or a click
   elsewhere closes the panel. A right click shows the menu: the same figures,
-  the sessions waiting for approval, *Show Caprock* and *Quit*. On Windows
-  and Linux the menu is the whole tray. On macOS the 5-hour figure and the
-  waiting count sit beside the icon.
+  the sessions waiting on you, *Show Caprock* and *Quit*. On Windows and
+  Linux the menu is the whole tray. On macOS the number of sessions waiting
+  on you sits beside the icon, and a plan window joins it, named, once it is
+  80% full (*2 · 5h 86%*).
 - **Badge.** The Dock icon (a dot on the Windows taskbar) counts the sessions
-  waiting for approval, and clears when none do.
+  waiting on you — a permission prompt, or an agent that finished and waits
+  for your answer: the popover's *Needs you* — and clears when none do.
 - **Global shortcut.** ⌃⌥⌘C on macOS, Win+Alt+C on Windows and Linux, brings
   the window up from any app, and hides it when it is already in front.
   Change it or turn it off in Settings → *Global shortcut*. Wayland does not

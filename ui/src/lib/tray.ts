@@ -38,13 +38,21 @@ function limitLines(agent: string, limits: RateLimits | undefined, now: number):
   return out
 }
 
-/** The sessions the badge counts: a permission prompt pending, as in the sidebar's inbox. */
-export function waitingOnApproval(inbox: InboxItem[]): InboxItem[] {
-  return inbox.filter((i) => i.reason === 'permission')
+/** A plan window this full is named in the menu bar; below it the bar stays quiet. */
+export const LIMIT_WARN_PCT = 80
+
+/**
+ * The sessions the badge and the menu bar count: everything in the sidebar's
+ * inbox — a permission prompt pending, or the agent finished and it is your
+ * turn — the same "Needs you" the popover lists. Only prompts used to count,
+ * so a session done and waiting left the dock bare (owner, 2026-10-07).
+ */
+export function waitingOnYou(inbox: InboxItem[]): InboxItem[] {
+  return inbox
 }
 
 export function buildTrayView({ summary, inbox, conn, now }: TrayInput): TrayView {
-  const waiting = waitingOnApproval(inbox)
+  const waiting = waitingOnYou(inbox)
   const lines = [
     ...limitLines('Claude', summary?.rate_limits, now),
     ...limitLines('Codex', summary?.codex_rate_limits, now),
@@ -53,19 +61,31 @@ export function buildTrayView({ summary, inbox, conn, now }: TrayInput): TrayVie
   else lines.push('Loading…')
   if (conn !== 'open') lines.push('Daemon unreachable — reconnecting')
 
-  const five = summary?.rate_limits?.five_hour
+  // Beside the icon: how many need you, and a plan window only when it is
+  // close to full, named — a bare "10%" read as nothing (owner, 2026-10-07).
+  const near = [
+    ['5h', summary?.rate_limits?.five_hour],
+    ['7d', summary?.rate_limits?.seven_day],
+  ] as const
+  const warn = near
+    .map(([label, w]) => (w ? { label, pct: readWindow(w, now).pct } : null))
+    .filter((x): x is { label: '5h' | '7d'; pct: number } => !!x && x.pct >= LIMIT_WARN_PCT)
+    .sort((a, b) => b.pct - a.pct)[0]
   const title = [
-    five ? `${readWindow(five, now).pct}%` : '',
-    waiting.length ? `${waiting.length} waiting` : '',
+    waiting.length ? String(waiting.length) : '',
+    warn ? `${warn.label} ${warn.pct}%` : '',
   ].filter(Boolean).join(' · ')
-  const tooltip = ['Caprock', waiting.length ? `${waiting.length} waiting` : '', summary ? `today ${fmtUSD(summary.cost_usd)}` : '']
+  const tooltip = ['Caprock', waiting.length ? `${waiting.length} need you` : '', summary ? `today ${fmtUSD(summary.cost_usd)}` : '']
     .filter(Boolean)
     .join(' · ')
   return {
     title,
     tooltip,
     lines,
-    waiting: waiting.map((i) => ({ id: i.session.session_id, label: i.projectName ? `${i.projectName} · ${i.title}` : i.title })),
+    waiting: waiting.map((i) => {
+      const label = i.projectName ? `${i.projectName} · ${i.title}` : i.title
+      return { id: i.session.session_id, label: i.reason === 'permission' ? `${label} · approve` : label }
+    }),
   }
 }
 

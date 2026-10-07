@@ -34,12 +34,14 @@ func (s *Server) handlePermission(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleAnswerPermission is POST /v1/agents/{id}/permission
-// {"id": "<prompt id>", "choice": "allow"|"always"|"deny"}: it presses the key
-// that answers the prompt, picked from the menu on the session's screen. 409
+// {"id": "<prompt id>", "choice": "allow"|"always"|"deny"|"dismiss"}: it
+// presses the key that answers the prompt, picked from the menu on the
+// session's screen; "dismiss" types nothing and only takes the card away. 409
 // when the session is no longer showing that prompt — it was answered in the
-// terminal, or it is queued behind another — so a button drawn a moment ago
-// cannot answer a question it did not show. 422 when it is, but the menu on
-// the screen has no such option or no menu shows; nothing is typed.
+// terminal, it is queued behind another, or no permission menu is on the
+// screen at all (the prompt is then dropped) — so a button drawn a moment ago
+// cannot answer a question it did not show. 422 when the menu on the screen
+// has no such option; nothing is typed.
 func (s *Server) handleAnswerPermission(w http.ResponseWriter, r *http.Request) {
 	if !s.requireAgents(w) {
 		return
@@ -54,19 +56,19 @@ func (s *Server) handleAnswerPermission(w http.ResponseWriter, r *http.Request) 
 		Choice string `json:"choice"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&body); err != nil || body.ID == "" {
-		http.Error(w, `body must be {"id": "<prompt id>", "choice": "allow"|"always"|"deny"}`, http.StatusBadRequest)
+		http.Error(w, `body must be {"id": "<prompt id>", "choice": "allow"|"always"|"deny"|"dismiss"}`, http.StatusBadRequest)
 		return
 	}
 	switch agents.PermissionChoice(body.Choice) {
-	case agents.PermissionAllow, agents.PermissionAlways, agents.PermissionDeny:
+	case agents.PermissionAllow, agents.PermissionAlways, agents.PermissionDeny, agents.PermissionDismiss:
 	default:
-		http.Error(w, `choice must be "allow", "always" or "deny"`, http.StatusBadRequest)
+		http.Error(w, `choice must be "allow", "always", "deny" or "dismiss"`, http.StatusBadRequest)
 		return
 	}
 	if err := pm.AnswerPermission(r.PathValue("id"), body.ID, body.Choice); err != nil {
 		if errors.Is(err, agents.ErrNotOnPrompt) {
 			// The prompt still waits, but the menu on the screen has no
-			// such option (or no menu is showing): nothing was typed.
+			// such option: nothing was typed.
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 			return
 		}

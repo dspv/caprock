@@ -782,7 +782,7 @@ GET    /v1/agents/models?agent=      {agent, default?, models:[{id,label}]}
 POST   /v1/agents/{id}/input         {data}            → 204   (owned PTYs only)
 POST   /v1/agents/{id}/signal        {action: pause|resume|kill} → 204 (owned PTYs only)
 GET    /v1/agents/{id}/permission    → {permission: {id, tool, detail, always?, since, queued?} | null}; the oldest prompt an owned session waits on (the dialog on its screen), queued = how many wait behind it
-POST   /v1/agents/{id}/permission    {id, choice: allow|always|deny} → 204; 409 when that prompt is not the one on screen; 422 {error} when the menu on screen has no such option (nothing typed)
+POST   /v1/agents/{id}/permission    {id, choice: allow|always|deny|dismiss} → 204; 409 when that prompt is not the one on screen, or no permission menu is on screen at all (the prompt is dropped); 422 {error} when the menu on screen has no such option (nothing typed); dismiss types nothing and drops the card
 WS     /v1/agents/{id}/term          bidirectional stream (xterm.js): binary = keystrokes, text = control; snapshot on connect, closes on exit; subprotocol caprock.term.v2 [?since=&client=] = protocol v2
 POST   /v1/paste                     {name, type, data:base64} → {path}; writes a pasted or dropped file so Claude Code can read it
 GET    /v1/terminals                 → {terminals: [{id, name}], preferred}; terminal apps installed here, most preferred first
