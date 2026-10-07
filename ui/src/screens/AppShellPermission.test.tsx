@@ -1,7 +1,7 @@
 /**
- * The permission card in the app (.ai/21-app.md § What the user sees): the
- * terminal in front answers its own prompt, so the card is drawn only when
- * something covers that terminal — and never twice.
+ * The permission card in the app (.ai/21-app.md § What the user sees): drawn
+ * for the focused agent whether or not its terminal is in front, its keys work
+ * from that terminal — and never twice.
  */
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -69,35 +69,34 @@ async function openAgent() {
 const cards = () => screen.queryAllByTestId('permission-card')
 
 describe('the permission card in the app', () => {
-  it('is not drawn while the session’s terminal is in front: the terminal answers it', async () => {
+  it('is drawn, once, under the session’s own terminal', async () => {
     await openAgent()
     expect(screen.getByTestId('pane-agent-1')).toHaveAttribute('data-active', 'true')
-    expect(cards()).toHaveLength(0)
+    expect(cards()).toHaveLength(1)
+    expect(cards()[0]).toHaveAttribute('data-session', 'agent-1')
   })
 
-  it('is drawn, once, when the chat covers the terminal, and goes when the terminal is back', async () => {
+  it('stays, once, when the chat covers the terminal and when it is back', async () => {
     await openAgent()
     fireEvent.click(screen.getByRole('button', { name: 'Show the chat' }))
     expect(cards()).toHaveLength(1)
-    expect(cards()[0]).toHaveAttribute('data-session', 'agent-1')
     fireEvent.click(screen.getByRole('button', { name: 'Show the terminal' }))
-    expect(cards()).toHaveLength(0)
+    expect(cards()).toHaveLength(1)
   })
 
-  it('in the inspector too: only when the terminal is covered, and never beside a second card', async () => {
+  it('moves into the inspector when it is open, never beside a second card', async () => {
     await openAgent()
     fireEvent.click(screen.getByRole('button', { name: /Inspector/ }))
     expect(screen.getByRole('complementary', { name: 'Inspector' })).toBeInTheDocument()
-    expect(cards()).toHaveLength(0)
-    fireEvent.click(screen.getByRole('button', { name: 'Show the chat' }))
     expect(cards()).toHaveLength(1)
   })
 
-  it('switching to a waiting session’s tab shows its terminal, not a card', async () => {
+  it('follows the tab: switching to a waiting session shows its card', async () => {
     await openAgent()
     fireEvent.click(within(screen.getByRole('region', { name: 'Waiting on you' })).getByText('Waiting one'))
     await screen.findByRole('tab', { name: /Waiting one/ })
     expect(screen.getByTestId('pane-agent-2')).toHaveAttribute('data-active', 'true')
-    expect(cards()).toHaveLength(0)
+    expect(cards()).toHaveLength(1)
+    expect(cards()[0]).toHaveAttribute('data-session', 'agent-2')
   })
 })

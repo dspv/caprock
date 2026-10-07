@@ -9,6 +9,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **The permission card is back under the terminal, and answers from it.**
+  0.78.2 hid it while the session's terminal was in front. It shows again,
+  and with focus in that terminal **Y**, **A** ("don't ask again") and **N**
+  answer it without reaching the terminal; Enter and Esc stay with Claude
+  Code's own menu. Each button names its key.
+
 - **New sessions start on bypass.** With no saved preference, the New session
   dialog and the New agent sheet open on *Bypass · never asks* instead of
   *Accept edits*. Settings → New sessions still overrides it, and a bypass

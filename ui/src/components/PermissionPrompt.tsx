@@ -32,11 +32,11 @@ export function usePermission(sessionId: string): [Permission | null, (p: Permis
  * about, in full, and one button per answer. A viewer sees what is being asked
  * and no buttons.
  *
- * In the desktop app the card is not drawn for the session whose terminal is
- * in front: the terminal's own menu is the answer surface there, and Enter
- * answers it (.ai/21-app.md § What the user sees). Where the card does show,
- * it says so, so the two never read as two questions. It never takes focus:
- * a keystroke meant for the terminal must reach the terminal.
+ * In the desktop app the card shows under the session's terminal too (owner,
+ * 2026-10-07: it was hidden in 0.78.2 and he wanted it back). It is worded
+ * better than the terminal's menu, and its keys work from that terminal while
+ * the question waits — the owner lives in the terminal, and the mouse is the
+ * wrong instrument there. It never takes focus.
  */
 export function PermissionPrompt({ sessionId }: { sessionId: string }) {
   const [prompt, setPrompt] = usePermission(sessionId)
@@ -65,7 +65,7 @@ export function PermissionPrompt({ sessionId }: { sessionId: string }) {
     }
   }, [prompt, sessionId, setPrompt])
 
-  usePromptKeys(card, !!prompt && canControl && !busy, !!prompt?.always, answer)
+  usePromptKeys(card, sessionId, !!prompt && canControl && !busy, !!prompt?.always, answer)
   if (!prompt) return null
 
   const button = 'min-h-[48px] rounded-sm px-4 py-2 text-[15px] font-medium disabled:opacity-50'
@@ -83,7 +83,7 @@ export function PermissionPrompt({ sessionId }: { sessionId: string }) {
       {canControl ? (
         <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
           <button type="button" disabled={busy} onClick={() => void answer('allow')} aria-keyshortcuts="Y Enter" className={`${button} bg-accent text-bg hover:brightness-110`}>
-            Yes <Key>↵</Key>
+            Yes <Key>Y</Key>
           </button>
           {prompt.always && (
             <button type="button" disabled={busy} onClick={() => void answer('always')} aria-keyshortcuts="A" className={`${button} border border-accent text-fg hover:bg-accent/15`}>
@@ -91,11 +91,12 @@ export function PermissionPrompt({ sessionId }: { sessionId: string }) {
             </button>
           )}
           <button type="button" disabled={busy} onClick={() => void answer('deny')} aria-keyshortcuts="N Escape" className={`${button} border border-border-strong text-fg hover:border-danger hover:text-danger`}>
-            No <Key>Esc</Key>
+            No <Key>N</Key>
           </button>
-          {/* The same question as the terminal's menu, not a second one. */}
+          {/* One question: the terminal's menu and the card answer the same
+              dialog, so Enter and Esc there mean Yes and No here. */}
           <p className="self-center text-[11.5px] text-fg-muted sm:ml-auto">
-            <span className="mono" aria-hidden>↵</span> Enter in the terminal = Yes
+            Keys work from the terminal · <span className="mono" aria-hidden>↵</span> Yes · <span className="mono" aria-hidden>Esc</span> No
           </p>
         </div>
       ) : (
@@ -134,16 +135,23 @@ function typingInto(el: Element | null): boolean {
  * Keys for the card (owner, 2026-10-06): Y or Enter is Yes, A the always
  * option when there is one, N or Esc is No.
  *
- * Never from a focused terminal, field or editor — a key meant for the
- * terminal must reach the terminal, and the web Session page draws the card
- * under one. Enter and Esc only when focus is on nothing in particular (the
- * page) or inside the card: on another button Enter presses that button, and
- * Esc closes whatever else is open. Not while a dialog of the page's own is
- * open, nor from a card that is hidden (a background tab), and only the
- * newest card on the page listens.
+ * From the terminal of the session asking (owner, 2026-10-07), Y, A and N
+ * answer the card and never reach the terminal. That is safe only while the
+ * question waits: Claude Code's prompt is replaced by its permission menu, so
+ * no keystroke there is typing. Enter and Esc are left to that menu, which
+ * already means Yes and No by them. Any other terminal, field or editor keeps
+ * every key — a key meant for it must reach it. Enter and Esc from elsewhere
+ * only when focus is on nothing in particular (the page) or inside the card:
+ * on another button Enter presses that button, and Esc closes whatever else
+ * is open. Not while a dialog of the page's own is open, nor from a card that
+ * is hidden (a background tab), and only the newest card on the page listens.
+ *
+ * The listener is on the capture phase so a key taken from the terminal is
+ * stopped before xterm sees it.
  */
 function usePromptKeys(
   card: RefObject<HTMLDivElement | null>,
+  sessionId: string,
   enabled: boolean,
   hasAlways: boolean,
   answer: (c: PermissionChoice) => void,
@@ -161,12 +169,13 @@ function usePromptKeys(
       const el = card.current
       if (!el || el.closest('[hidden], [inert], [aria-hidden="true"]')) return
       const active = document.activeElement
-      if (typingInto(active)) return
+      const inOwnTerminal = active instanceof HTMLElement && active.closest('[data-term-session]')?.getAttribute('data-term-session') === sessionId
+      if (typingInto(active) && !inOwnTerminal) return
       const modal = [...document.querySelectorAll('[role="dialog"], [aria-modal="true"]')].some((d) => !d.closest('[hidden]'))
       if (modal) return
       const onPage = !active || active === document.body || el.contains(active)
       let choice: PermissionChoice | null = null
-      switch (e.key) {
+      switch (inOwnTerminal && (e.key === 'Enter' || e.key === 'Escape') ? '' : e.key) {
         case 'y': case 'Y': choice = 'allow'; break
         case 'a': case 'A': choice = hasAlways ? 'always' : null; break
         case 'n': case 'N': choice = 'deny'; break
@@ -178,13 +187,14 @@ function usePromptKeys(
       }
       if (!choice) return
       e.preventDefault()
+      e.stopPropagation()
       answer(choice)
     }
-    document.addEventListener('keydown', onKey)
+    document.addEventListener('keydown', onKey, true)
     return () => {
-      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('keydown', onKey, true)
       const i = keyed.indexOf(me)
       if (i >= 0) keyed.splice(i, 1)
     }
-  }, [card, enabled, hasAlways, answer])
+  }, [card, sessionId, enabled, hasAlways, answer])
 }
