@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	gopty "github.com/aymanbagabas/go-pty"
 )
@@ -38,6 +39,10 @@ type session struct {
 }
 
 // closePTY closes the PTY exactly once, whichever goroutine gets there first.
+// drainGrace bounds how long a finished process's PTY stays open for its
+// last output to be read.
+const drainGrace = 2 * time.Second
+
 func (s *session) closePTY() error {
 	s.ptyOnce.Do(func() { s.ptyErr = s.pty.Close() })
 	return s.ptyErr
@@ -84,9 +89,11 @@ func (GoPTY) Spawn(ctx context.Context, spec Spec) (Session, error) {
 	}
 	pr, pw := io.Pipe()
 	s := &session{pty: p, cmd: cmd, pr: pr, pw: pw, done: make(chan struct{})}
+	pumped := make(chan struct{})
 	// Pump PTY output into the pipe so readers see a plain io.Reader that ends
 	// when the process exits and the PTY closes.
 	go func() {
+		defer close(pumped)
 		buf := make([]byte, 32<<10)
 		for {
 			n, err := p.Read(buf)
@@ -107,7 +114,17 @@ func (GoPTY) Spawn(ctx context.Context, spec Spec) (Session, error) {
 		s.waited = true
 		s.waitMu.Unlock()
 		close(s.done)
-		// Give the reader a moment to drain, then close the PTY to end the pump.
+		// Let the pump read what the process wrote before it exited, then
+		// close the PTY. Closing at once lost a short command's whole output
+		// on Linux — the bytes were still in the PTY when its handle went
+		// (TestOutputStreamsAndEndsAtExit, intermittently on CI). The pump
+		// ends on its own at EOF/EIO once the slave side is gone; the bound
+		// is for a grandchild still holding the slave, or a reader that
+		// stopped reading the pipe.
+		select {
+		case <-pumped:
+		case <-time.After(drainGrace):
+		}
 		_ = s.closePTY()
 	}()
 	return s, nil
