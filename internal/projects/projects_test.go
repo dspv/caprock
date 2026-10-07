@@ -549,6 +549,35 @@ func TestPatch(t *testing.T) {
 	}
 }
 
+// A project's instructions are stored trimmed, read back for any folder
+// inside it — a worktree too — and for no folder outside it.
+func TestProjectSystemPrompt(t *testing.T) {
+	needGit(t)
+	repo := newRepo(t, filepath.Join(t.TempDir(), "p"))
+	s, _, _ := newService(t)
+	start(t, s)
+	v, _, _ := s.Add(context.Background(), repo)
+	if got := s.SystemPrompt(repo); got != "" {
+		t.Fatalf("a new project has instructions: %q", got)
+	}
+	d := jsonRaw(`{"model":"claude-opus-5-5","system_prompt":"  Use the Makefile; never npm.\n"}`)
+	if _, err := s.Update(context.Background(), v.ID, Patch{Defaults: &d}); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{repo, filepath.Join(repo, "internal", "api")} {
+		if got := s.SystemPrompt(dir); got != "Use the Makefile; never npm." {
+			t.Errorf("%s: %q", dir, got)
+		}
+	}
+	if got := s.SystemPrompt(t.TempDir()); got != "" {
+		t.Errorf("a folder outside every project got %q", got)
+	}
+	long := jsonRaw(`{"system_prompt":"` + strings.Repeat("x", SystemPromptMax+1) + `"}`)
+	if _, err := s.Update(context.Background(), v.ID, Patch{Defaults: &long}); err == nil {
+		t.Fatal("instructions over the limit were accepted")
+	}
+}
+
 func TestParseStatus(t *testing.T) {
 	g := parseStatus([]byte("# branch.oid abc\n# branch.head feat/x\n# branch.upstream origin/feat/x\n# branch.ab +2 -3\n1 .M N... 100644 100644 100644 a b f\n? new\n"))
 	if g.Branch != "feat/x" || g.Ahead != 2 || g.Behind != 3 || g.Changed != 2 || !g.Dirty || g.Upstream != "origin/feat/x" {

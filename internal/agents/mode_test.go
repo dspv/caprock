@@ -82,3 +82,37 @@ func TestOwnDirectoriesAreAllowedToBeRead(t *testing.T) {
 		t.Errorf("argv %v, want --add-dir for each of /data/paste and /data/chats", l.args)
 	}
 }
+
+// A project's instructions are appended to Claude Code's own system prompt,
+// on a start and on a resume; none, no flag.
+func TestProjectPromptIsAppended(t *testing.T) {
+	for _, in := range []launchInput{
+		{SessionID: "s", SystemPrompt: "Answer in British English."},
+		{SessionID: "s", Resume: "old", SystemPrompt: "Answer in British English."},
+	} {
+		l, err := claudeLaunch(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		at := -1
+		for i, a := range l.args {
+			if a == "--append-system-prompt" {
+				at = i
+			}
+		}
+		if at < 0 || at+1 >= len(l.args) || l.args[at+1] != "Answer in British English." {
+			t.Errorf("resume=%q: argv %v, want --append-system-prompt with the text", in.Resume, l.args)
+		}
+		for _, a := range l.args {
+			if a == "--system-prompt" {
+				t.Errorf("argv %v replaces Claude Code's own system prompt", l.args)
+			}
+		}
+	}
+	l, _ := claudeLaunch(launchInput{SessionID: "s"})
+	for _, a := range l.args {
+		if a == "--append-system-prompt" {
+			t.Errorf("argv %v has a prompt flag with no prompt", l.args)
+		}
+	}
+}

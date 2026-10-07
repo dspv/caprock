@@ -436,3 +436,13 @@ identity, which the ad-hoc signature cannot give (each release is a new
 cdhash; old rows stay in System Settings until removed there) and Developer
 ID signing will; voice input in Caprock (engine only, no UI or spec —
 Claude Code's own hold-space voice already works in its terminal).
+
+**Owner asks, 2026-10-07 (evening).** Voice input: each agent's own (Claude
+Code's hold-space works in Caprock's terminal, which passes every key);
+Caprock's own engine stays parked, not built. Project instructions (Orca asks
+for them when a project is opened; Vova asked for a fixed master prompt):
+`defaults.system_prompt`, appended to every Claude Code session started in
+the project — first version only, other agents and integrations later. The
+Dock badge and the menu bar count everything waiting on you, not approvals
+only, and the menu bar names a plan window only when it is nearly full. A
+permission card whose question is gone can be closed.

@@ -1054,7 +1054,7 @@ GET    /v1/projects                        → {projects: [Project]}; pinned fir
 POST   /v1/projects                        {path} | {create: {parent, name, git_init?}} | {clone: {url, parent, name?}, op_id?}
                                            path, create → 200 {project, created}; clone → 202 {op, existing}
 GET    /v1/projects/ops                    → {ops: [Op]}; clones running or ended in the last hour, newest first
-PATCH  /v1/projects/{id}                   {name?, pinned?, sort?, defaults?: {agent?, model?, permission_mode?}} → {project}
+PATCH  /v1/projects/{id}                   {name?, pinned?, sort?, defaults?: {agent?, model?, permission_mode?, system_prompt?}} → {project}
 DELETE /v1/projects/{id}                   → 204; unlists it: nothing on disk is touched, no session or cost changes
 GET    /v1/projects/{id}/worktrees         → {worktrees: [Worktree]}
 POST   /v1/projects/{id}/worktrees         {branch, create?, base?} → {worktree: {path, branch, tracks?}}
@@ -1115,6 +1115,12 @@ GET    /v1/shells?project=<id>             → {shells: [Shell]}; every running 
   must be absolute and resolve under home (`403` otherwise), and the worktree
   routes refuse a project whose root is outside home. The `GET` routes are
   open to every paired device; the shell routes to none.
+- **`defaults.system_prompt`** is a project's instructions for its agents,
+  trimmed, at most 16 KiB, no NUL. A Claude Code session Caprock starts in a
+  folder inside the project (`projects.ProjectFor`, the longest root) gets
+  `--append-system-prompt <text>`, on a start and a resume; other agents
+  ignore it. `defaults` is replaced whole by a PATCH, so a client sends the
+  other keys back with it (`instructionsPatch`).
 - **`replaces`** on `POST /v1/shells` names the session whose program exited
   and whose tab the shell takes over. Every window showing that tab asks; the
   first starts the shell and the rest get the same one while it runs. The map

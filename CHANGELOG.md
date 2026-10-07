@@ -9,6 +9,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **Project instructions.** A project can carry instructions for its
+  agents — set them as you add it, or from the New agent sheet — and every
+  Claude Code session started in it gets them appended to its system prompt.
+
 ### Fixed
 
 - **`/exit` leaves one shell, however many windows show it.** When a

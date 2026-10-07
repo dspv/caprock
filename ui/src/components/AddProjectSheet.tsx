@@ -7,10 +7,11 @@
  * app — and the other two say what they need rather than failing quietly.
  */
 import { useEffect, useState } from 'react'
+import { INSTRUCTIONS_HINT } from './ProjectInstructions'
 import { errText } from '@/lib/api'
 import { DirPicker } from './DirPicker'
 import { RepoPicker } from './RepoPicker'
-import { folderName, newOpId, NotSupportedError, projectsApi, type AddProjectRequest, type LocalProject, type OpFrame, type ProjectSource } from '@/lib/projects'
+import { folderName, instructionsPatch, newOpId, NotSupportedError, projectsApi, type AddProjectRequest, type LocalProject, type OpFrame, type ProjectSource } from '@/lib/projects'
 import { Sheet, SheetButton, SheetField } from './Sheet'
 
 type Mode = 'folder' | 'new' | 'clone'
@@ -69,13 +70,17 @@ export function AddProjectSheet({
   // the same operation, and the daemon returns the first instead of cloning twice.
   const [opId, setOpId] = useState(newOpId)
   const [cloning, setCloning] = useState<OpFrame | null>(null)
+  // The project's instructions for its agents, set as it is added (as Orca
+  // asks when a project is opened); optional, and editable later where an
+  // agent is started.
+  const [instructions, setInstructions] = useState('')
   const op = cloning ? ops.find((o) => o.op_id === cloning.op_id) ?? cloning : null
 
   useEffect(() => {
     if (!op || op.state === 'running') return
     if (op.state === 'done' && op.project_id) {
-      onAdded(String(op.project_id))
-      onClose()
+      const id = String(op.project_id)
+      void keepInstructions(id).finally(() => { onAdded(id); onClose() })
       return
     }
     setBusy(false)
@@ -83,6 +88,13 @@ export function AddProjectSheet({
     setOpId(newOpId())
     setError(op.error ? `Clone failed: ${op.error}` : 'Clone failed.')
   }, [op, onAdded, onClose])
+
+  // Best effort: the project is added either way, and the instructions can
+  // be set again from the New agent sheet.
+  const keepInstructions = async (id: string) => {
+    if (!instructions.trim()) return
+    try { await projectsApi.patch(id, instructionsPatch(undefined, instructions)) } catch { /* set later */ }
+  }
 
   const submit = async () => {
     setError('')
@@ -101,6 +113,7 @@ export function AddProjectSheet({
         setCloning(added.op)
         return
       }
+      await keepInstructions(added.project.id)
       onAdded(added.project.id)
       onClose()
     } catch (e) {
@@ -165,6 +178,16 @@ export function AddProjectSheet({
             <DirPicker value={path} onPick={setPath} />
           </div>
         </SheetField>
+        {source !== 'derived' && (
+          <SheetField label="Instructions for its agents" hint={`optional · ${INSTRUCTIONS_HINT}`}>
+            <textarea
+              className="input min-h-[72px] resize-y font-[family-name:var(--font-sans)] text-[13px] leading-relaxed"
+              placeholder="Use the Makefile, never npm. Commit with Conventional Commits."
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+            />
+          </SheetField>
+        )}
         {source === 'derived' && mode !== 'folder' && (
           <p className="text-[12px] leading-relaxed text-fg-faint">This daemon has no projects API yet; creating and cloning arrive with it.</p>
         )}
