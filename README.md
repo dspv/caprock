@@ -1,21 +1,42 @@
 # Caprock
 
-### Run your coding agents in one window, and see what they are doing.
+### Run Claude Code, Codex and OpenCode side by side — and know what every agent is doing, what it costs, and when it needs you.
 
-![The Caprock app: projects with their worktrees and sessions on the left, a terminal tab on the right, plan limits and today's spend along the bottom](docs/shot-app.png)
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/hero-light.png">
+  <img alt="The Caprock app with a Claude Code session fixing a failing test, the projects and their worktrees on the left, cost and context on the right, and a paired phone asking to approve a Bash command" src="docs/hero.png">
+</picture>
 
-*The desktop app, with demo projects and sessions made up for this picture.*
+*The desktop app and a paired phone, with demo projects and a demo session.*
 
 [![release](https://img.shields.io/github/v/release/dspv/caprock?color=feb157)](https://github.com/dspv/caprock/releases)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![CI](https://github.com/dspv/caprock/actions/workflows/ci.yml/badge.svg)](https://github.com/dspv/caprock/actions/workflows/ci.yml)
 ![platform](https://img.shields.io/badge/macOS%20·%20Linux%20·%20Windows-informational)
 
-Caprock is a desktop app for working with Claude Code, Codex and OpenCode
-across many projects: a terminal for every project, the sessions waiting on
-you, what each repository costs and how much of your plan is left — and a
-phone that can pick the work up. Under it runs a local daemon that also serves
-a browser dashboard; the app bundles it. No account, no cloud, no telemetry.
+- **Every agent in a real terminal tab.** Claude Code, Codex, OpenCode and
+  Gemini CLI in tabs and split panes, per project and per git worktree. The
+  sessions you start in your own terminal show up beside them.
+- **Nothing waits on you unseen.** Sessions stuck on a permission prompt come
+  first; for the ones Caprock started, answer *Yes* or *No* from the card, a
+  notification, the menu bar or your phone.
+- **What each repository costs.** Every turn priced at API list prices, per
+  repository and per service in a monorepo, with your Claude and Codex plan
+  windows live and a warning before you hit the limit.
+- **Your history, kept.** Every session stays searchable after Claude Code's
+  30-day cleanup deletes the transcript — including what the agent wrote.
+- **Runaway agents caught.** Loop alerts on repeated tool calls, and an
+  opt-in task runner for Claude Code that calls a task done only when your
+  own test commands pass.
+- **Local.** One SQLite file on your disk, loopback only. No account, no
+  cloud, no telemetry.
+
+In August the author ran [$5,898 of Claude Code on a $200 Max plan — 29× at
+API list prices](https://caprock.dev/blog/claude-code-cost-per-month/), and
+found out only because Caprock counted it.
+
+Caprock is a desktop app; under it runs a local daemon that also serves a
+browser dashboard, and the app bundles it.
 
 **The desktop app** — macOS first, with Windows and Linux builds:
 
