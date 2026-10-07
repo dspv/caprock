@@ -405,6 +405,7 @@ dependencies = [
  "block2",
  "dirs 6.0.0",
  "libc",
+ "notify-rust",
  "objc2",
  "objc2-app-kit",
  "objc2-core-foundation",

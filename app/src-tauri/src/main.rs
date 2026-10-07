@@ -12,6 +12,9 @@ mod hotkey;
 // menu bar); elsewhere most of both modules is unused, not dead.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod notify;
+// The mapping is tested on every OS; only Linux shows through it.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+mod notify_linux;
 #[cfg(target_os = "macos")]
 mod notify_macos;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]

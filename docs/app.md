@@ -212,8 +212,10 @@ terminal, on the card, from the phone — the button does nothing and says
 *Already answered*, and the notification is taken away when the prompt goes.
 macOS asks once whether Caprock may send notifications.
 
-On Windows and Linux a notification has no buttons; a click opens the
-session with its Yes and No buttons.
+On Linux the notification has Approve and Deny too where the desktop's
+notification server draws actions, and a click opens the
+session. On Windows a notification has no buttons; a click opens the session
+with its Yes and No buttons.
 
 Settings → *Desktop notifications* has two switches: *waiting for approval*
 (on) and *has finished* (off). They are separate from the Telegram alerts in
