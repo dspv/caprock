@@ -164,13 +164,14 @@ On macOS the notification carries buttons:
   read it in the session's terminal before answering.
 - **Deny** answers *no*.
 - A click on the notification opens the session. Its terminal shows Claude
-  Code's own prompt; press Enter for *yes*. Caprock draws no second card
-  over a terminal that is in front — it shows its approval card only while
-  the chat or a Changes view covers the terminal.
+  Code's own prompt, and Caprock's approval card sits under it, naming the
+  tool and the full command.
 
-Where the card shows, it answers from the keyboard too: **Y** or Enter for
-*yes*, **A** for the "don't ask again" option when the prompt has one, **N**
-or Esc for *no*. Before pressing anything, Caprock reads the menu on the
+The card answers from the keyboard, with focus in that session's terminal
+too: **Y** for *yes*, **A** for the "don't ask again" option when the prompt
+has one, **N** for *no*. In the terminal, Enter and Esc answer Claude Code's
+own menu, which means the same *yes* and *no*; with focus off the terminal
+they press the card's buttons. Before pressing anything, Caprock reads the menu on the
 session's screen and picks that option's own number. If the option is not on
 the prompt, it types nothing and asks you to answer in the terminal. When
 several prompts wait — a subagent's among them — the card shows the one on

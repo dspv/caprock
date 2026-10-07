@@ -1466,6 +1466,16 @@ says *↵ Enter in the terminal = Yes*, and never takes focus; the Inbox, the
 menu bar, the notification and the phone keep their buttons. See
 [21-app.md § What the user sees](21-app.md#what-the-user-sees).
 
+*Amended 2026-10-07 (owner), reversing the above:* the card is drawn under the
+session's terminal again. He lives in the terminal and wanted the card's
+wording and its "don't ask again" by key; the mouse is the wrong instrument
+there. What made two surfaces read as two questions is answered by keys, not
+by hiding: `Y`, `A` and `N` answer the card from that session's own terminal
+and are kept from it, which is safe because Claude Code shows a menu, not an
+input, while a permission question waits; Enter and Esc stay with that menu,
+where they already mean Yes and No. The subagent mix-up was the queue, fixed
+since (below).
+
 *Amended 2026-10-06 (the owner lost work to it all day):* **a button reads the
 menu off the screen before it types, and prompts queue.** The fixed keys were
 wrong on a real menu: in auto mode the classifier's dialog ("This command

@@ -361,7 +361,7 @@ export function TerminalPane({
     <div className="relative h-full w-full bg-term-bg">
       {/* The padding is on a wrapper: FitAddon measures the host's parent box. */}
       <div className="absolute inset-0 pl-3 pt-2 pr-1 pb-1">
-        <div ref={host} data-term-host className="h-full w-full" />
+        <div ref={host} data-term-host data-term-session={sessionId} className="h-full w-full" />
       </div>
       {phase === 'waiting' && status !== 'ended' && (
         <div role="status" className="pointer-events-none absolute inset-0 flex items-center justify-center">

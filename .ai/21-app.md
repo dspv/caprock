@@ -118,17 +118,16 @@ One window, three regions:
   then to the sessions and shells in it. Badges: *waiting on you*, *looping*,
   cost today. A **Dashboard** entry opens the existing screens.
 - **Tabs (main).** Terminal tabs — an agent session or a shell — with the
-  project and branch in the title. For the session whose terminal is in
-  front, the terminal's own "Do you want to proceed?" menu is the answer
-  surface: Enter answers it, and no Caprock card is drawn beside it — two
-  surfaces for one prompt read as the question asked twice (owner,
-  2026-10-06). The permission prompt card
+  project and branch in the title. The permission prompt card
   ([ADR-035](08-decisions.md#adr-035--a-permission-prompt-is-answered-with-a-button-found-by-its-hook))
-  is for a prompt you cannot see: it shows when the chat or a Changes view
-  covers that terminal, says *↵ Enter in the terminal = Yes*, and never takes
-  the keyboard from the terminal. With focus off the terminal, `Y`/Enter,
-  `A` and `N`/Esc press its buttons ([04-ui.md](04-ui.md), permission prompt
-  buttons). Whichever surface answers — card, notification, phone — the
+  is drawn for the focused agent whether or not its terminal is in front
+  (owner, 2026-10-07, reversing 2026-10-06): it names the call in full, and
+  its keys work from that terminal — `Y`, `A` (the "don't ask again" option)
+  and `N` answer the card and never reach the terminal, which shows a menu,
+  not a prompt, while the question waits. Enter and Esc there stay with
+  Claude Code's own menu, where they mean the same Yes and No; with focus
+  off the terminal they press the card's buttons ([04-ui.md](04-ui.md),
+  permission prompt buttons). It never takes focus. Whichever surface answers — card, notification, phone — the
   daemon reads the menu on the session's screen first and types nothing when
   the option is not on it. Sessions in other tabs or behind the
   window are reached through their badge, the Inbox, the menu bar popover,

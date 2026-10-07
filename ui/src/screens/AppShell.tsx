@@ -507,14 +507,13 @@ export function AppShell() {
 
   const focusedIsAgent = !!focused && focused.kind === 'session' && focusedSession?.kind !== 'shell'
   const showChat = focusedIsAgent && !!focused && chatOpen.has(focused.sessionId)
-  // The permission card is for a prompt you cannot see. With the session's
-  // terminal in front, its own "Do you want to proceed?" menu is the answer
-  // surface — Enter answers it — and a card above the strip read as the same
-  // question asked twice (owner, 2026-10-06). The card comes back when the
-  // chat or a Changes view covers the terminal; other tabs are reached through
-  // their badge, the Inbox, the menu bar and the notification.
-  const terminalInFront = workspaceShown && !showChat && !changesView
-  const promptCard = focusedIsAgent && !!focused && !terminalInFront
+  // The permission card shows for the focused agent whether or not its
+  // terminal is in front. 0.78.2 hid it behind the terminal as a duplicate
+  // (owner, 2026-10-06); the next day he wanted it back — it names the call
+  // in full, its keys (Y, A, N) work from the terminal, and it is the only
+  // surface with a working "don't ask again" by key. Other tabs are reached
+  // through their badge, the Inbox, the menu bar and the notification.
+  const promptCard = focusedIsAgent && !!focused
   const toggleChat = useCallback(() => {
     if (!focused) return
     const id = focused.sessionId
