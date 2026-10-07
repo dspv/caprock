@@ -73,6 +73,14 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-08 — 0.83.0: notifications that answer on Linux
+
+A notification on Linux now goes through the desktop's notification server
+over D-Bus: a click opens the session, and a permission request carries
+Approve and Deny where the server draws actions (#281). The dashboard header
+drops the *mission control* tagline (#282). Dependencies: modernc.org/sqlite
+1.60.1, Vite 8.3.2 (#283).
+
 ### 2026-10-07 — 0.82.0: instructions for Codex, no privacy prompts on open, a readable menu bar
 
 A project's instructions now reach Codex as `-c developer_instructions=…`,

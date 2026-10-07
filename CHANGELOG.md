@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.83.0] - 2026-10-08
+
 ### Added
 
 - **Notifications on Linux open the session and answer prompts.** A click
