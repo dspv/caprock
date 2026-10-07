@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -42,12 +43,20 @@ func TestPricingMatchesTheSite(t *testing.T) {
 	}
 
 	p := Current()
+	// Only the personal plans. The file grew a second export for the team
+	// price (`export const team`), which this check does not cover and must
+	// not read as a fourth personal plan, so the search stops where that
+	// export begins.
+	personal := src
+	if i := strings.Index(personal, "export const team"); i >= 0 {
+		personal = personal[:i]
+	}
 	// In file order: monthly, yearly, lifetime. Positional rather than named
 	// because the file is TypeScript, not data — parsing it properly would be
 	// a parser, and this check exists to notice a mismatch, not to be one.
-	all := regexp.MustCompile(`usd:\s*([0-9.]+)`).FindAllStringSubmatch(src, -1)
+	all := regexp.MustCompile(`usd:\s*([0-9.]+)`).FindAllStringSubmatch(personal, -1)
 	if len(all) != 3 {
-		t.Fatalf("expected three `usd:` prices in %s, found %d — the file's shape changed, so this check is no longer checking what it says", path, len(all))
+		t.Fatalf("expected three `usd:` personal prices in %s, found %d — the file's shape changed, so this check is no longer checking what it says", path, len(all))
 	}
 	for i, want := range []struct {
 		name string
