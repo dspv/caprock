@@ -7,6 +7,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+Phase 3 (Delight) has no plan by design.
+
+## [0.79.0] - 2026-10-07
+
 ### Added
 
 - **One consent for bypass, in Caprock.** The first bypass session on a
@@ -60,8 +64,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   last screen.
 - The pricing check against the site no longer breaks when the site's pricing
   file grows a team price: it reads the personal plans only.
-
-Phase 3 (Delight) has no plan by design.
 
 ## [0.78.2] - 2026-10-06
 
