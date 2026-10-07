@@ -14,8 +14,7 @@ NSIS, AppImage, `.deb`, `.rpm` from 0.78.0). P1 started early: WP-19 GitHub
 Not done: the MVP definition of done's real-device checks (phone over LAN and
 Tailscale, notification buttons, menu bar popover click), the reference-app
 (Orca) benchmark run, two budget rows still over (hidden-window CPU,
-first-tab stall — [21-app.md § Budgets](21-app.md#budgets)), WP-21 and
-WP-22. Durations are estimates, unmeasured (rule 6); actuals go in the
+first-tab stall — [21-app.md § Budgets](21-app.md#budgets)) and WP-22. Durations are estimates, unmeasured (rule 6); actuals go in the
 build-status log.
 
 ## Milestones
@@ -327,7 +326,9 @@ Each gets the same fields as P0 when it starts; the scope is fixed here.
 - **WP-20 — Split panes, search, palette, open in editor (F15–F18).**
 - **WP-21 — Opt-in auto-update (F20).** Tauri updater with our signing key;
   off until switched on; never updates a daemon it did not install. **Done
-  2026-10-06** ([21-app.md § Updates](21-app.md#updates), ADR-042).
+  2026-10-06, landed 2026-10-07 (#249) with the signing secrets set**
+  ([21-app.md § Updates](21-app.md#updates), ADR-042). An app from before it
+  is updated by hand once; from then on, in one click.
 - **WP-22 — Phone Phase B (F19).** After M5; its definition of done is
   written with the decision, at least: paths raced in parallel, the first
   winner kept, ≤ 3 s median reconnect, and for a relay, end to end encryption,
