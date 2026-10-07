@@ -9,6 +9,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **One consent for bypass, in Caprock.** The first bypass session on a
+  computer used to open on Claude Code's own warning, where Enter means
+  *No, exit* and drops you into a shell. The New agent sheet and the New
+  session dialog now show what bypass means and start with *Accept and
+  start*, which answers that warning for good. A bypass start without it is
+  refused by the daemon rather than left on that screen.
+
 - **Start an agent without the mouse.** In the New agent sheet ↑ and ↓
   change a choice in place instead of opening its list, ⌘↩ starts from
   anywhere in the sheet (a list or a button too, not only the message), and
