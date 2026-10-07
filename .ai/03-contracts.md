@@ -836,12 +836,13 @@ neither, no mode is sent and the agent starts in its own default. A request
 that names a mode, or carries `command`, is left as it is. No column stores the
 mode: every hook payload is kept verbatim, and the mode changes mid-session.
 
-**`bypassPermissions` is spawned as `--dangerously-skip-permissions`**, not as
-`--permission-mode bypassPermissions`, which leaves the session interactive and
-keeps asking — the owner picked *Bypass · never asks* for an autonomous run and
-was still asked on nearly every call (2026-10-07). It is the flag the
-orchestrator has always used for its own unattended workers; the two are never
-combined, since Claude Code takes one or the other. Every other mode is still
+**`bypassPermissions` is spawned as `--dangerously-skip-permissions`**, the
+flag the orchestrator has always used for its own unattended workers. Claude
+Code maps it to the same mode as `--permission-mode bypassPermissions` (read
+in 2.1.292); one spelling keeps the first-run warning and Caprock's consent
+for it (ADR-041) on one path. The owner's prompt flood of 2026-10-07 under
+bypass was `permissions.blockReadsOutsideWorkingDirectories`, which asks in
+every mode, not the flag. The two are never combined. Every other mode is still
 `--permission-mode <mode>`.
 
 **Claude Code sessions are started with `--add-dir` for Caprock's own

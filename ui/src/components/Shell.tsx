@@ -23,6 +23,8 @@ import { PremiumChip } from '@/components/PremiumChip'
 import { SiteFooter } from '@/components/SiteFooter'
 import { Prose } from './Prose'
 import { ConnectionState } from './ConnectionState'
+import { StaleUiPill } from './StaleUiPill'
+import { isAppMode } from '@/lib/appmode'
 
 const NAV: { route: Route; label: string; phase?: string }[] = [
   { route: { name: 'now' }, label: 'Now' },
@@ -119,6 +121,8 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           {/* Live only with a round trip in the last 25 s; otherwise what is
             * being done about it (components/ConnectionState.tsx). */}
           <ConnectionState link={live.link} heardAt={liveStore.heardAt} />
+          {/* Inside the app the status strip carries it (StatusStrip). */}
+          {!isAppMode() && <StaleUiPill />}
           {/* Setting the plan is a settings change: on the machine only (ADR-029). */}
           {!isPairedDevice() && <PlanChip plan={plan} onSave={savePlan} />}
           <ThemeToggle />

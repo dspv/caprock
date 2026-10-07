@@ -79,9 +79,18 @@ fn main() {
     // The first look is synchronous so a running daemon's dashboard is the
     // first page the window loads: no fallback flash on the common path.
     let first = sup.observe(discovery::find(&sup.data_dir), std::time::Duration::ZERO);
-    let start = match first {
-        State::Connected { port, .. } => WebviewUrl::External(shell::dashboard_url(port)),
-        _ => WebviewUrl::App("index.html".into()),
+    // macOS (ADR-040): whether that daemon is replaced by the app's own is
+    // decided here, before any page loads. Decided after, the window loaded
+    // the old daemon's UI and kept it once the new daemon came up (0.78.2:
+    // the strip read 0.78.1 for the rest of the run).
+    let replacing = matches!(first, State::Connected { .. } | State::TooOld { .. })
+        && sup.should_adopt(|| sup.bundled_version());
+    if replacing {
+        sup.spawn_adopt();
+    }
+    let start = match shell::first_page(&first, replacing) {
+        Some(url) => WebviewUrl::External(url),
+        None => WebviewUrl::App("index.html".into()),
     };
     let monitored = sup.clone();
     // For automated checks on a machine someone is using: launch without
@@ -151,10 +160,21 @@ mod menu {
     use tauri::menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem};
 
     const BACKGROUND: &str = "background";
+    const RELOAD: &str = "reload";
     const CHECK_UPDATES: &str = "check-updates";
 
     pub fn install(app: &tauri::AppHandle, sup: &commands::Sup) -> tauri::Result<()> {
         let menu = Menu::default(app)?;
+        // View -> Reload: the page again from the daemon, as a browser's Cmd+R.
+        let reload = MenuItem::with_id(app, RELOAD, "Reload", true, Some("CmdOrCtrl+R"))?;
+        for kind in menu.items()? {
+            if let MenuItemKind::Submenu(sub) = kind {
+                if sub.text()? == "View" {
+                    sub.insert(&reload, 0)?;
+                    sub.insert(&PredefinedMenuItem::separator(app)?, 1)?;
+                }
+            }
+        }
         let on = sup.settings().is_none_or(|s| s.background);
         let item = CheckMenuItem::with_id(
             app,
@@ -175,6 +195,10 @@ mod menu {
         app.set_menu(menu)?;
         let sup = sup.clone();
         app.on_menu_event(move |app, event| {
+            if event.id() == RELOAD {
+                shell::reload_main(app);
+                return;
+            }
             if event.id() == CHECK_UPDATES {
                 crate::updater::check_from_menu(app);
                 return;
