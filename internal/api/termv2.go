@@ -235,6 +235,32 @@ type termConn struct {
 	// one told to the client (main loop only).
 	acked   atomic.Uint64
 	sentAck uint64
+	// sized is set once the connection's first size has reached the PTY
+	// (read loop only).
+	sized bool
+}
+
+// repaintGap separates the two sizes of an attach's repaint, so a TUI that
+// reads its size on each SIGWINCH sees the change rather than one coalesced
+// signal and the size it already had.
+const repaintGap = 40 * time.Millisecond
+
+// resizeAttached gives the PTY a terminal's first size, and makes whatever is
+// running draw its whole screen again.
+//
+// A terminal that attaches to a running session is replayed the ring, which
+// holds only the last bytes written. A TUI that redraws by difference —
+// Claude Code — wrote its status rows' labels once and only their numbers
+// since, so a replay that starts after the labels shows a row of bare numbers
+// that never heals (owner, 2026-10-08, after an app restart). Resizing to the
+// size the PTY already has sends no SIGWINCH, so nothing redrew. One row less
+// and back is two real size changes, and a TUI repaints on each.
+func (s *Server) resizeAttached(id string, cols, rows int) {
+	if rows > 2 {
+		_ = s.d.Agents.Resize(id, cols, rows-1)
+		time.Sleep(repaintGap)
+	}
+	_ = s.d.Agents.Resize(id, cols, rows)
 }
 
 func (t *termConn) text(v any) error {
@@ -298,7 +324,12 @@ func (t *termConn) read(s *Server, id, client string, ts TermStream, devTok stri
 				continue
 			}
 			if m.Resize != nil && m.Resize.Cols > 0 && m.Resize.Rows > 0 {
-				_ = s.d.Agents.Resize(id, m.Resize.Cols, m.Resize.Rows)
+				if !t.sized {
+					t.sized = true
+					s.resizeAttached(id, m.Resize.Cols, m.Resize.Rows)
+				} else {
+					_ = s.d.Agents.Resize(id, m.Resize.Cols, m.Resize.Rows)
+				}
 			}
 			if m.Ping != nil {
 				_ = t.text(map[string]int64{"pong": *m.Ping})

@@ -297,7 +297,18 @@ func TestTermV2PingPongAndResize(t *testing.T) {
 		t.Fatalf("answer to a ping = %+v", f)
 	}
 	_ = c.Write(ctx, websocket.MessageText, []byte(`{"resize":{"cols":90,"rows":30}}`))
-	waitFor(t, func() bool { return len(ag.sized()) == 1 })
+	// The first size of an attach is given as one row less and back, so a TUI
+	// redraws its whole screen rather than only what changed since the ring's
+	// oldest byte; later sizes go through as they are.
+	waitFor(t, func() bool { return len(ag.sized()) == 2 })
+	if got := ag.sized(); got[0] != [2]int{90, 29} || got[1] != [2]int{90, 30} {
+		t.Fatalf("first sizes = %v, want [{90 29} {90 30}]", got)
+	}
+	_ = c.Write(ctx, websocket.MessageText, []byte(`{"resize":{"cols":100,"rows":30}}`))
+	waitFor(t, func() bool { return len(ag.sized()) == 3 })
+	if got := ag.sized()[2]; got != [2]int{100, 30} {
+		t.Fatalf("a later size = %v, want {100 30}", got)
+	}
 	// v2 never types a text frame: control that is not understood is dropped.
 	_ = c.Write(ctx, websocket.MessageText, []byte(`ls`))
 	time.Sleep(50 * time.Millisecond)
