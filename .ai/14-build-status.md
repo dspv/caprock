@@ -73,6 +73,20 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-07 — Owner blockers: bypass that never asks, keys, consent
+
+A day of real use gave five blockers (`09-execution-plan.md § Owner
+blockers`). Bypass spawned `--permission-mode bypassPermissions`, which keeps
+asking; it is now `--dangerously-skip-permissions`, the default for a new
+session, with `--add-dir` for Caprock's own folders (#257). The model list
+names exact versions (Opus 5.5, not "Opus 5") with a test against
+`pricing.json`; `/exit` turns the tab into a shell (#257). The permission
+card is back under the terminal and Y/A/N answer it from there (#258). The
+New agent sheet needs no mouse (#259). The first bypass session asks for
+consent in Caprock instead of Claude Code's warning whose default is
+*No, exit* (#260, ADR-041). Open: `/exit` seen in the built app with the real
+`claude`, signing for one TCC identity, voice input and WP-21 auto-update.
+
 ### 2026-10-06 — One permission question, answered by what is on screen
 
 The owner saw every approval twice: Claude Code's own menu in the terminal
