@@ -9,6 +9,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **A terminal reopened after a restart draws its whole screen.** Reattaching
+  to a running Claude Code session could leave its status rows as bare
+  numbers, their labels lost from the replay. The first size a terminal
+  sends now makes the session redraw everything.
+
 ## [0.84.0] - 2026-10-08
 
 ### Changed
