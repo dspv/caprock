@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { api, ApiError, errText, type Permission, type PermissionChoice } from '@/lib/api'
 import { live, useLive } from '@/lib/live'
 import { useCanControl } from '@/lib/useCanControl'
@@ -148,7 +148,10 @@ function usePromptKeys(
   hasAlways: boolean,
   answer: (c: PermissionChoice) => void,
 ) {
-  useEffect(() => {
+  // A layout effect: the keys listen from the commit that paints the card, so
+  // a key pressed the moment it appears is not lost (the race #250 fixed in
+  // AppShell).
+  useLayoutEffect(() => {
     if (!enabled) return
     const me = Symbol('permission-card')
     keyed.push(me)

@@ -90,6 +90,10 @@ others. Installing it: [install-app.md](install-app.md).
   line height and cursor, with a preview. Every open terminal changes as you
   choose. The defaults match the JetBrains IDE terminal: JetBrains Mono,
   13 px, line height 1.2, no ligatures.
+- **Permission mode.** Settings → *New sessions* → *Start in* picks the mode
+  a new session starts in. Continuing a session keeps the mode it was last
+  running in — a session you ran with permissions skipped carries on that
+  way. The mode shows next to the continue button, where you can change it.
 - **Status strip.** Whether the daemon is live, the 5-hour and 7-day plan
   windows, today's spend, and the front terminal's size. With release checks
   on (Settings → *Privacy*), *v… is out* appears there when a newer Caprock
@@ -163,6 +167,14 @@ On macOS the notification carries buttons:
   Code's own prompt; press Enter for *yes*. Caprock draws no second card
   over a terminal that is in front — it shows its approval card only while
   the chat or a Changes view covers the terminal.
+
+Where the card shows, it answers from the keyboard too: **Y** or Enter for
+*yes*, **A** for the "don't ask again" option when the prompt has one, **N**
+or Esc for *no*. Before pressing anything, Caprock reads the menu on the
+session's screen and picks that option's own number. If the option is not on
+the prompt, it types nothing and asks you to answer in the terminal. When
+several prompts wait — a subagent's among them — the card shows the one on
+screen and how many more are waiting.
 
 A notification never offers "always allow", because that would write a rule
 to your settings. If the prompt was answered in the meantime — in the
