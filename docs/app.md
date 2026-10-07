@@ -213,7 +213,7 @@ terminal, on the card, from the phone — the button does nothing and says
 macOS asks once whether Caprock may send notifications.
 
 On Linux the notification has Approve and Deny too where the desktop's
-notification server draws actions (GNOME and KDE do), and a click opens the
+notification server draws actions, and a click opens the
 session. On Windows a notification has no buttons; a click opens the session
 with its Yes and No buttons.
 
