@@ -73,6 +73,15 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-07 — 0.82.0: instructions for Codex, no privacy prompts on open, a readable menu bar
+
+A project's instructions now reach Codex as `-c developer_instructions=…`,
+checked against the real codex-cli 0.161.0 (#278). Opening the dashboard
+no longer runs git in folders macOS guards (Desktop, Documents, Downloads,
+iCloud Drive, `/Volumes`); the per-repository panel had made macOS ask for
+Documents and Downloads after each ad-hoc signed update (#277). The menu bar
+says *2 waiting*, not a bare *2* (#276).
+
 ### 2026-10-07 — 0.81.0: project instructions, the badge, the stuck card
 
 A project carries instructions for its agents (`defaults.system_prompt`),
