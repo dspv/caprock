@@ -707,6 +707,14 @@ tells a page where a file lives.
   box holds the point types each path with `quotePath` (double quotes, an
   inner `"` escaped, Windows backslashes kept), queued behind any upload so
   the order holds.
+- **A file from a temporary place is copied first.** The screenshot
+  thumbnail (`…/TemporaryItems/NSIRD_screencaptureui_…/`) and an image
+  dragged out of another app live in a folder only the app the drop landed on
+  may read, and only until they move; the session under the daemon got
+  "operation not permitted". `keep_transient` copies any file with a
+  `TemporaryItems` component into the paste directory (which sessions get
+  through `--add-dir`) and types the copy's path; a folder, any other path,
+  or a failed copy is typed as it is.
 - **Why not turn the handler off.** With it off the page gets an HTML5 drop
   and the upload path works unchanged, which is the smaller fix. It was the
   worse behaviour: the upload copies the bytes into the data directory, so
