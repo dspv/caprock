@@ -5,14 +5,18 @@ import { api, errText, isPairedDevice } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { navigate } from '@/lib/router'
 import { modeWords, useInitialMode } from '@/lib/permissionMode'
+import { stepSelect } from '@/lib/selectKeys'
+import { BypassConsentNote, useBypassConsent } from './BypassConsent'
 
 // What the two selects start on, rather than an empty "default" that says
 // nothing about what you are about to run. Opus is what the machine's own
-// sessions use, and asking before editing is the setting you can leave a
-// session alone with — a dialog whose defaults you would not choose is a
-// dialog you have to read every time.
-const DEFAULT_MODEL = 'claude-opus-5'
-export const DEFAULT_MODE = 'acceptEdits'
+// sessions use — the newest Opus, since an older one under a familiar name is
+// the model nobody meant to pick. Bypass is the owner's decision (2026-10-07):
+// Caprock is where sessions are left to run, and a session that stops to ask
+// on every call is not one you can leave. A saved preference still wins, and
+// a bypass session started from a paired phone is still confirmed.
+const DEFAULT_MODEL = 'claude-opus-5-5'
+export const DEFAULT_MODE = 'bypassPermissions'
 
 // Labelled, because `bypassPermissions` is not a phrase anyone thinks in and
 // the consequence is the part that matters.
@@ -35,8 +39,15 @@ const GEMINI_MODELS: [value: string, label: string][] = [
 
 // Ordered most capable first, and labelled with the axis someone actually
 // picks on: price relative to the others. The ranking is pricing.json's, per
-// million output tokens (Fable 50, Opus 25, Sonnet 15, Haiku 5) — the figures
+// million output tokens (Fable 5.1 50, Opus 5.5 20, Sonnet 5.5 10, Haiku 4.5 5) — the figures
 // the Cost screen bills these sessions with, not a remembered ordering.
+//
+// Each label carries the exact version. "Opus 5" read as "the current Opus"
+// to the owner, who picked it on 2026-10-07 and got the older model while
+// Opus 5.5 was out and missing from this list. A family name without its
+// version is a promise about recency the list cannot keep; the test against
+// pricing.json fails the build when a newer model of a family is priced but
+// not offered here.
 //
 // Fable 5 was missing entirely, which is the same failure the Gemini list
 // above already made once: a list written from what came to mind rather than
@@ -49,9 +60,9 @@ const GEMINI_MODELS: [value: string, label: string][] = [
 // account can call it — the only proof that belongs in this list is a live
 // answer from the real `claude`.
 const MODELS: [value: string, label: string][] = [
-  ['claude-fable-5', 'Fable 5 · most capable, priciest'],
-  ['claude-opus-5', 'Opus 5 · strong all-rounder'],
-  ['claude-sonnet-5', 'Sonnet 5 · faster, cheaper'],
+  ['claude-fable-5-1', 'Fable 5.1 · most capable, priciest'],
+  ['claude-opus-5-5', 'Opus 5.5 · strong all-rounder'],
+  ['claude-sonnet-5-5', 'Sonnet 5.5 · faster, cheaper'],
   ['claude-haiku-4-5', 'Haiku 4.5 · cheapest'],
 ]
 
@@ -155,12 +166,14 @@ export function SpawnDialog({
   // machine to notice what it does.
   const remote = isPairedDevice()
   const [confirming, setConfirming] = useState(false)
+  const consent = useBypassConsent(agent, mode)
   const submit = async () => {
     if (!cwd.trim()) { setError('Working directory is required.'); return }
     if (remote && mode === 'bypassPermissions' && !confirming) { setConfirming(true); return }
     setConfirming(false)
     setBusy(true); setError('')
     try {
+      if (consent.needed) await consent.accept()
       const req: Parameters<typeof api.spawn>[0] = { cwd: cwd.trim() }
       if (agent !== 'claude') req.agent = agent
       if (model.trim()) req.model = model.trim()
@@ -174,7 +187,7 @@ export function SpawnDialog({
       navigate({ name: 'session', id: session_id, tab: landOn })
     } catch (e) {
       // errText also surfaces `detail`, the half that says what to do about it.
-      setError(errText(e))
+      if (!consent.noteRefusal(e)) setError(errText(e))
     } finally { setBusy(false) }
   }
   return (
@@ -195,7 +208,8 @@ export function SpawnDialog({
           // running past its border. Clipping inside the picker cannot fix
           // that; the container has to be allowed to be narrower than what it
           // holds.
-          <div className="px-4 py-3 grid min-w-0 gap-3 text-[13px]">
+          // ↑ and ↓ change a select in place, as in the app's New agent sheet.
+          <div className="px-4 py-3 grid min-w-0 gap-3 text-[13px]" onKeyDown={(e) => { stepSelect(e) }}>
             <Field label="Working directory" hint={remote ? 'a folder under your home' : 'pick one, or type a path'}>
               {/* No autofocus on a phone: it would open the keyboard over the
                 * picker the phone is meant to use. 16px there, or iOS zooms;
@@ -256,6 +270,7 @@ export function SpawnDialog({
                 </Field>
               </div>
             </details>
+            {consent.needed && <BypassConsentNote />}
             {error && <div className="text-danger text-[12px]">{error}</div>}
           </div>
         )}
@@ -273,7 +288,7 @@ export function SpawnDialog({
         {(available || agents.length > 0) && !confirming && (
           <footer className="px-4 py-2 border-t border-border flex gap-2 justify-end">
             <button onClick={onClose} className="border border-border px-3 py-1 rounded-sm max-sm:min-h-11 max-sm:px-4 text-fg-muted hover:text-fg">Cancel</button>
-            <button onClick={submit} disabled={busy} className="border border-accent bg-accent/15 text-accent px-3 py-1 rounded-sm max-sm:min-h-11 max-sm:px-4 hover:bg-accent/25 disabled:opacity-50">{busy ? 'starting…' : 'Start session'}</button>
+            <button onClick={submit} disabled={busy} className="border border-accent bg-accent/15 text-accent px-3 py-1 rounded-sm max-sm:min-h-11 max-sm:px-4 hover:bg-accent/25 disabled:opacity-50">{busy ? 'starting…' : consent.needed ? 'Accept and start' : 'Start session'}</button>
           </footer>
         )}
       </div>

@@ -90,12 +90,18 @@ others. Installing it: [install-app.md](install-app.md).
   line height and cursor, with a preview. Every open terminal changes as you
   choose. The defaults match the JetBrains IDE terminal: JetBrains Mono,
   13 px, line height 1.2, no ligatures.
+- **Permission mode.** New sessions start in *Bypass · never asks*: the agent
+  does not stop to ask before running commands or editing files. The first
+  time on a computer, the New agent sheet shows what bypass means and its
+  button reads *Accept and start*; that answers Claude Code's own one-time
+  warning for good. A paired phone cannot give that consent — accept it once
+  at the computer. Settings → *New sessions* → *Start in* picks the mode
+  a new session starts in. Continuing a session keeps the mode it was last
+  running in — a session you ran with permissions skipped carries on that
+  way. The mode shows next to the continue button, where you can change it.
 - **Status strip.** Whether the daemon is live, the 5-hour and 7-day plan
-  windows, today's spend, and the front terminal's size. With release checks
-  on (Settings → *Privacy*), *v… is out* appears there when a newer Caprock
-  is published; click it for the command that upgrades your install — `brew
-  update && brew upgrade --cask caprock-app` for the app from Homebrew — or
-  *Not now* to hide that version. Caprock never updates itself.
+  windows, today's spend, the front terminal's size, and a newer Caprock
+  when one is out ([Updates](#updates)).
 
 ### Keyboard
 
@@ -135,6 +141,12 @@ the session, not in the page. If a sheet is open with text in it, the page
 does not reload under you; *Reload — Caprock was updated* appears in the
 status strip (in a browser, in the header) instead, for when you are done.
 
+The *New agent* sheet needs no mouse. It opens on the first message; Tab and
+⇧Tab walk Project, Where, Agent, Model, Permissions, First message, Cancel
+and Start; ↑ and ↓ change a choice in place (Space still opens the list);
+⌘↩ (Ctrl+Enter off macOS) starts from anywhere in the sheet, and Esc
+cancels. The footer names these keys.
+
 ## Outside the window
 
 - **Menu bar** (a tray icon on Windows and Linux). On macOS a click on the
@@ -173,9 +185,18 @@ On macOS the notification carries buttons:
   read it in the session's terminal before answering.
 - **Deny** answers *no*.
 - A click on the notification opens the session. Its terminal shows Claude
-  Code's own prompt; press Enter for *yes*. Caprock draws no second card
-  over a terminal that is in front — it shows its approval card only while
-  the chat or a Changes view covers the terminal.
+  Code's own prompt, and Caprock's approval card sits under it, naming the
+  tool and the full command.
+
+The card answers from the keyboard, with focus in that session's terminal
+too: **Y** for *yes*, **A** for the "don't ask again" option when the prompt
+has one, **N** for *no*. In the terminal, Enter and Esc answer Claude Code's
+own menu, which means the same *yes* and *no*; with focus off the terminal
+they press the card's buttons. Before pressing anything, Caprock reads the menu on the
+session's screen and picks that option's own number. If the option is not on
+the prompt, it types nothing and asks you to answer in the terminal. When
+several prompts wait — a subagent's among them — the card shows the one on
+screen and how many more are waiting.
 
 A notification never offers "always allow", because that would write a rule
 to your settings. If the prompt was answered in the meantime — in the
@@ -264,6 +285,47 @@ and there is no secret on anyone's machine.
 Settings → GitHub then shows **Sign in with GitHub**. The app asks for
 `repo` and `read:org`. An organization with OAuth app restrictions must
 approve the app before its private repositories show up.
+
+## Updates
+
+When a newer Caprock is out, the status strip says **Update to vX.Y.Z —
+Restart**. One click downloads it (with progress, while you keep working),
+checks its signature, installs it and restarts the app. Everything comes
+back as it was: every session keeps running (their terminals live outside
+the app, and the app moves its daemon onto the new version without ending
+them), the same tabs in the same order with the same one in front, splits
+and their sizes, the sidebar, the window's size and place, each terminal
+scrolled where you left it, and anything you had half typed into an agent. The ▾ beside it
+shows what is new, or **Not now** to hide that version.
+
+- **Checking.** On its first launch the app asks once: *Check for updates
+  automatically?* With **Yes**, Caprock asks GitHub for the newest version
+  number at most every 6 hours; Settings → *Privacy* turns it off again.
+  With **No**, nothing is checked until you ask: **Caprock → Check for
+  Updates…** on macOS, **Check for Updates…** in the tray menu, or *Check for
+  updates* in the command palette (⌘K).
+- **What is sent.** The automatic check asks GitHub which release is the
+  latest. *Update* and *Check for Updates…* also fetch the release's
+  `latest.json` and, when you update, the new app from GitHub's release
+  downloads. None of these carries anything about you or your work: no
+  account, no identifier, not even your version.
+- **What is checked.** Every update is signed with Caprock's release key,
+  and the app installs nothing whose signature or version does not match.
+  If something fails, the strip says *Update failed* and why, with **Try
+  again** and the release page; the running version is left as it was.
+- **Where the app updates itself.** The macOS app (from the `.dmg` or
+  Homebrew), the Windows installer and the Linux AppImage. On macOS, move
+  Caprock to Applications first: run from the disk image it cannot replace
+  itself and says so. A Homebrew cask install updates itself too, and `brew
+  upgrade` leaves it alone.
+- **Where it does not.** The `.deb` and `.rpm` packages belong to your
+  package manager: download the new `Caprock-Linux.deb` or
+  `Caprock-Linux.rpm` from the
+  [release page](https://github.com/dspv/caprock/releases/latest) and
+  install it the way you installed the first. The app tells you which.
+- **The daemon from Homebrew or Scoop** keeps its own upgrade command
+  (`brew upgrade caprock`, `scoop update caprock`); the app never replaces a
+  daemon it did not install.
 
 ## macOS privacy prompts
 

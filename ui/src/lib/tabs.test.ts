@@ -140,6 +140,27 @@ describe('split panes', () => {
     expect(workspaceReducer(ws, { type: 'resize', tabId: tab.id, splitId: id, sizes: [1] })).toBe(ws)
   })
 
+  // What a session's `/exit` leaves behind: the tab stays where it is, with a
+  // shell in the dead agent's place, in the split position it held.
+  it('replaces a dead session in place, keeping the tab and the split', () => {
+    let ws = run(open('a'))
+    ws = workspaceReducer(ws, { type: 'replace-session', sessionId: 'a', target: { kind: 'shell', sessionId: 'sh' }, title: 'shell' })
+    expect(ids(ws)).toEqual(['sh'])
+    expect(activeTab(ws)!.title).toBe('shell')
+    expect(ws.tabs).toHaveLength(1)
+
+    ws = run(open('a'), split('b'))
+    const before = activeTab(ws)!.id
+    ws = workspaceReducer(ws, { type: 'replace-session', sessionId: 'a', target: { kind: 'shell', sessionId: 'sh' }, title: 'shell' })
+    expect(ids(ws)).toEqual(['sh', 'b'])
+    expect(activeTab(ws)!.id).toBe(before)
+  })
+
+  it('a replace for a session nobody shows changes nothing', () => {
+    const ws = run(open('a'))
+    expect(workspaceReducer(ws, { type: 'replace-session', sessionId: 'gone', target: { kind: 'shell', sessionId: 'sh' }, title: 'shell' })).toBe(ws)
+  })
+
   it('a split tab survives storage', () => {
     const ws = run(open('a'), split('b'))
     expect(parseWorkspace(JSON.stringify(ws))).toEqual(ws)

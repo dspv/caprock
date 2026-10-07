@@ -11,6 +11,21 @@ Phase 3 (Delight) has no plan by design.
 
 ### Added
 
+- **The desktop app updates itself in one click.** When a newer Caprock is
+  out, the status strip says **Update to vX.Y.Z — Restart**: it downloads
+  the new app with a progress bar while you work, checks its signature,
+  installs it and restarts, and everything comes back as it was: every
+  session still running (the app moves its own daemon onto the new version
+  without ending them), the same tabs in the same order, splits and their
+  sizes, the sidebar, the window, each terminal scrolled where you left it
+  and anything half typed into an agent. Nothing installs unless it is signed with Caprock's release key for
+  that exact version. On its first launch the app asks once whether to check
+  for updates automatically (the same release check as Settings → Privacy,
+  off unless you say yes); **Check for Updates…** in the app and tray menus
+  and in the command palette works either way. The macOS app, the Windows
+  installer and the Linux AppImage update themselves; `.deb` and `.rpm`
+  installs are told to use their package manager. Each release now carries
+  `latest.json` and the signed update files.
 - **View → Reload (⌘R) in the Mac app; F5 on Windows and Linux.** Ctrl+R is
   left to the shell's history search, and F5 in a focused terminal still
   reaches the program in it.
@@ -30,6 +45,62 @@ Phase 3 (Delight) has no plan by design.
   browser tab or a paired phone. Typed terminal input is kept (it lives in
   the session). With text typed into an open sheet it offers *Reload —
   Caprock was updated* instead, and it never reloads twice for one version.
+
+## [0.79.0] - 2026-10-07
+
+### Added
+
+- **One consent for bypass, in Caprock.** The first bypass session on a
+  computer used to open on Claude Code's own warning, where Enter means
+  *No, exit* and drops you into a shell. The New agent sheet and the New
+  session dialog now show what bypass means and start with *Accept and
+  start*, which answers that warning for good. A bypass start without it is
+  refused by the daemon rather than left on that screen.
+
+- **Start an agent without the mouse.** In the New agent sheet ↑ and ↓
+  change a choice in place instead of opening its list, ⌘↩ starts from
+  anywhere in the sheet (a list or a button too, not only the message), and
+  the footer names the keys: Tab moves, ↑↓ change, ⌘↩ starts, Esc cancels.
+  The dashboard's New session dialog takes the same arrows.
+
+### Changed
+
+- **The permission card is back under the terminal, and answers from it.**
+  0.78.2 hid it while the session's terminal was in front. It shows again,
+  and with focus in that terminal **Y**, **A** ("don't ask again") and **N**
+  answer it without reaching the terminal; Enter and Esc stay with Claude
+  Code's own menu. Each button names its key.
+
+- **New sessions start on bypass.** With no saved preference, the New session
+  dialog and the New agent sheet open on *Bypass · never asks* instead of
+  *Accept edits*. Settings → New sessions still overrides it, and a bypass
+  start from a paired phone is still confirmed.
+
+### Fixed
+
+- **The model list names the model you get.** It offered "Opus 5" while
+  Opus 5.5 was out, and picking it started the older model. The list is now
+  Fable 5.1, Opus 5.5, Sonnet 5.5 and Haiku 4.5, each label with its exact
+  version, opening on Opus 5.5; a newer model in the pricing table that the
+  list does not offer fails the build.
+
+- **"Bypass · never asks" now never asks.** A session started on bypass is
+  spawned with `--dangerously-skip-permissions` — the flag Caprock's own
+  unattended workers have always used — instead of
+  `--permission-mode bypassPermissions`, which leaves the session interactive
+  and keeps asking on nearly every call.
+- **Caprock's own files are not a question.** Claude Code sessions start with
+  `--add-dir` for the directories Caprock writes to (pasted screenshots and
+  quick chats), so a user with
+  `permissions.blockReadsOutsideWorkingDirectories` on is no longer asked
+  about files Caprock put there itself. That setting is a perimeter no
+  permission mode lifts; a run meant to be unattended needs it off.
+- **A session that exits leaves a shell, not a dead tab.** After `/exit`, the
+  tab becomes a shell in the same folder, keeping its place in the tab strip
+  and in a split. Before, the process was gone and the tab kept showing its
+  last screen.
+- The pricing check against the site no longer breaks when the site's pricing
+  file grows a team price: it reads the personal plans only.
 
 ## [0.78.2] - 2026-10-06
 

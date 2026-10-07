@@ -73,6 +73,44 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-07 — Owner blockers: bypass that never asks, keys, consent
+
+A day of real use gave five blockers (`09-execution-plan.md § Owner
+blockers`). Bypass spawned `--permission-mode bypassPermissions`, which keeps
+asking; it is now `--dangerously-skip-permissions`, the default for a new
+session, with `--add-dir` for Caprock's own folders (#257). The model list
+names exact versions (Opus 5.5, not "Opus 5") with a test against
+`pricing.json`; `/exit` turns the tab into a shell (#257). The permission
+card is back under the terminal and Y/A/N answer it from there (#258). The
+New agent sheet needs no mouse (#259). The first bypass session asks for
+consent in Caprock instead of Claude Code's warning whose default is
+*No, exit* (#260, ADR-041). Open: `/exit` seen in the built app with the real
+`claude`, signing for one TCC identity, voice input and WP-21 auto-update.
+
+### 2026-10-06 — One permission question, answered by what is on screen
+
+The owner saw every approval twice: Claude Code's own menu in the terminal
+and Caprock's card over it, sometimes for a different request. Its "Yes, for
+the rest of this session" button typed `2`, which in auto mode's two-option
+menu is *No*, so his approvals came back as rejections. The card is no longer
+drawn over a terminal in front (#251). An answer now reads the menu from the
+pty-host's screen and presses that option's number, or refuses with 422 when
+the option is not there (#253). Prompts queue per tool call and subagent
+(migration 0042) instead of one per session, and the card takes Y/A/N keys.
+The status strip re-reads the daemon version on reconnect. ADR-035
+amendments in [08-decisions.md](08-decisions.md); DDL in
+[03-contracts.md](03-contracts.md).
+
+### 2026-10-06 — `make app-local`: try a change in the installed app
+
+The owner wanted to iterate on the Mac app without a release per change.
+`make app-local` builds this Mac's architecture only and swaps it into
+/Applications. The app quits as on Cmd+Q and its daemon is replaced. Sessions
+survive through the pty-host. A rebuild after a change takes about 30–40 s on
+the M1 Pro, measured 2026-10-06. The app now also replaces its own daemon
+when the bundled one differs (ADR-040 amendment). See
+[21-app.md](21-app.md) and `app/README.md`.
+
 ### 2026-10-06 — A continue keeps the session's permission mode
 
 The owner runs Claude Code with permissions skipped; continuing a session from
@@ -88,6 +126,28 @@ the continue controls show it and let it be changed. The trust prompt is
 independent of the mode and was already pre-accepted for every Claude Code
 launch. Contracts in [03-contracts.md](03-contracts.md), screens in
 [04-ui.md § Continue, and why not](04-ui.md#continue-and-why-not).
+
+### 2026-10-06 — One-click signed app updates (WP-21, F20)
+
+The app updates itself: **Update to vX.Y.Z — Restart** in the status strip
+downloads with progress, verifies a minisign signature and the version it
+was signed for, installs and restarts; the relaunched app moves its own
+daemon onto the new bundled one ([ADR-042](08-decisions.md#adr-042--the-app-updates-itself-in-one-click-a-minisign-signed-bundle-one-channel-checked-only-when-the-release-check-is-on-or-the-user-asks),
+[21-app.md § Updates](21-app.md#updates)). Releases carry the signed bundles
+and `latest.json` once the two signing secrets are set. Verified for real on
+macOS 27 (M1 Pro), 0.0.1-test → 0.0.2-test from a loopback server, isolated
+HOME and data dir: a manifest with the wrong signature was refused ("did not
+verify", the bundle untouched); the right one installed and restarted the
+app in about a second; the daemon moved from 0.0.1-test to 0.0.2-test while
+a shell's pty-host and process stayed alive; the new `Caprock.app` had no
+`com.apple.quarantine` attribute (only `com.apple.provenance`), and opened
+through LaunchServices (`open`) with no Gatekeeper prompt, `syspolicyd`
+logging an allowed scan. `bench/update.mjs` then checks the owner's bar end
+to end: tabs, order, front tab, split and sizes, sidebar, window, scroll
+position, a half-typed line and every session process are the same after
+the update — 12 of 12 checks passed on 2026-10-06 with 3 fake agents and a
+split shell, and the scroll check failed as it should with the saved place
+removed.
 
 ### 2026-10-06 — Benchmarks (WP-16)
 

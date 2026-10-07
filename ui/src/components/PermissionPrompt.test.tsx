@@ -62,9 +62,48 @@ describe('a permission prompt', () => {
     it('shows each key on its button, outside the button name', async () => {
       render(<PermissionPrompt sessionId="s1" />)
       const yes = await screen.findByRole('button', { name: 'Yes' })
-      expect(yes.textContent).toContain('↵')
+      expect(yes.textContent).toContain('Y')
       expect(screen.getByRole('button', { name: 'Yes, and don’t ask again' }).textContent).toContain('A')
-      expect(screen.getByRole('button', { name: 'No' }).textContent).toContain('Esc')
+      expect(screen.getByRole('button', { name: 'No' }).textContent).toContain('N')
+    })
+
+    // The owner lives in the terminal (2026-10-07): the card's letters answer
+    // from the asking session's own terminal, and never reach it.
+    it.each([['y', 'allow'], ['a', 'always'], ['n', 'deny']])('%s from the asking session’s terminal answers %s and never reaches it', async (key, choice) => {
+      render(<PermissionPrompt sessionId="s1" />)
+      await screen.findByRole('alertdialog')
+      const host = document.createElement('div')
+      host.className = 'xterm'
+      host.setAttribute('data-term-session', 's1')
+      const term = document.createElement('textarea')
+      host.appendChild(term)
+      document.body.append(host)
+      const typed = vi.fn()
+      term.addEventListener('keydown', typed)
+      term.focus()
+      press(key, term)
+      await waitFor(() => expect(h.answer).toHaveBeenCalledWith('s1', 'p1', choice))
+      expect(typed).not.toHaveBeenCalled()
+      host.remove()
+    })
+
+    it('leaves Enter and Esc in its terminal to Claude Code’s own menu', async () => {
+      render(<PermissionPrompt sessionId="s1" />)
+      await screen.findByRole('alertdialog')
+      const host = document.createElement('div')
+      host.setAttribute('data-term-session', 's1')
+      const term = document.createElement('textarea')
+      host.appendChild(term)
+      document.body.append(host)
+      const typed = vi.fn()
+      term.addEventListener('keydown', typed)
+      term.focus()
+      press('Enter', term)
+      press('Escape', term)
+      await new Promise((r) => setTimeout(r, 20))
+      expect(h.answer).not.toHaveBeenCalled()
+      expect(typed).toHaveBeenCalledTimes(2)
+      host.remove()
     })
 
     it('A does nothing when there is no always option', async () => {
@@ -76,12 +115,13 @@ describe('a permission prompt', () => {
       expect(h.answer).not.toHaveBeenCalled()
     })
 
-    it('never takes a key from a focused terminal or field', async () => {
+    it('never takes a key from another terminal or a field', async () => {
       render(<PermissionPrompt sessionId="s1" />)
       await screen.findByRole('alertdialog')
       // xterm types through a textarea inside its host.
       const host = document.createElement('div')
       host.className = 'xterm'
+      host.setAttribute('data-term-session', 'someone-else')
       const term = document.createElement('textarea')
       host.appendChild(term)
       const field = document.createElement('input')
@@ -161,12 +201,12 @@ describe('a permission prompt', () => {
     expect(await screen.findByText(/2 more waiting/)).toBeTruthy()
   })
 
-  it('says Enter in the terminal answers it, and never takes the keyboard from the terminal', async () => {
+  it('says its keys work from the terminal, and never takes the keyboard from it', async () => {
     const term = document.createElement('textarea')
     document.body.appendChild(term)
     term.focus()
     render(<PermissionPrompt sessionId="s1" />)
-    expect(await screen.findByText(/Enter in the terminal = Yes/)).toBeTruthy()
+    expect(await screen.findByText(/Keys work from the terminal/)).toBeTruthy()
     expect(document.activeElement).toBe(term)
     term.remove()
   })

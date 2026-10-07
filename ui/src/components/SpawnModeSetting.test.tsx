@@ -32,7 +32,7 @@ describe('SpawnModeSetting', () => {
   it('shows what the dialogs open on when nothing is set', async () => {
     state.mode = ''
     render(<SpawnModeSetting />)
-    expect((await screen.findByRole('radio', { name: /Accept edits/ })).getAttribute('aria-checked')).toBe('true')
+    expect((await screen.findByRole('radio', { name: /Bypass/ })).getAttribute('aria-checked')).toBe('true')
   })
 
   it('saves only the mode, and shows the choice at once', async () => {

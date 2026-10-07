@@ -447,7 +447,7 @@ export function TerminalView({
         * rather than a canvas floating on paper. */}
       <div className="relative bg-term-bg border border-term-border rounded-sm p-1.5">
         {/* Shorter on a narrow screen, so the keys bar under it stays in view. */}
-        <div ref={host} data-term-host className="h-[52vh] sm:h-[70vh]" />
+        <div ref={host} data-term-host data-term-session={sessionId} className="h-[52vh] sm:h-[70vh]" />
         {start.phase !== 'ready' && (
           <TerminalStart phase={start.phase} since={start.since} onRetry={() => setAttempt((n) => n + 1)} />
         )}

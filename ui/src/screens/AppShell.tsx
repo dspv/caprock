@@ -34,6 +34,8 @@ import { Sidebar } from '@/components/Sidebar'
 import { TabStrip, TerminalStack } from '@/components/TerminalTabs'
 import { Inspector } from '@/components/Inspector'
 import { StatusStrip } from '@/components/StatusStrip'
+import { AppUpdateAsk } from '@/components/AppUpdateAsk'
+import { appUpdate } from '@/lib/appupdate'
 import { PermissionPrompt } from '@/components/PermissionPrompt'
 import { ChatView } from '@/components/ChatView'
 import { ChangesView } from '@/components/ChangesView'
@@ -299,6 +301,27 @@ export function AppShell() {
     }
   }, [projectsById, activeProjectId, source, refresh, openTab, openSplit])
 
+  /**
+   * A session's program exited — `/exit`, `exit`, a crash. The tab is the
+   * user's place to work, so it becomes a shell in the same folder instead of
+   * a terminal showing a process that is gone. The tab keeps its position,
+   * and a shell that was already a shell is simply left closed.
+   */
+  const onPaneExit = useCallback(async (sessionId: string) => {
+    const s = sessionsById.get(sessionId)
+    const cwd = s?.cwd
+    if (!cwd || s?.kind === 'shell') { dispatch({ type: 'drop-session', sessionId }); return }
+    try {
+      const shell = await projectsApi.startShell({ cwd, cols: 120, rows: 32 })
+      dispatch({ type: 'replace-session', sessionId, target: { kind: 'shell', sessionId: shell.id }, title: 'shell' })
+      refresh()
+    } catch {
+      // Nothing to put in its place; closing beats a tab that cannot talk to
+      // anything, and the session's record is on the dashboard either way.
+      dispatch({ type: 'drop-session', sessionId })
+    }
+  }, [sessionsById, refresh])
+
   const onNewAgent = useCallback((projectId?: string, cwd?: string) => setSheet({ kind: 'agent', projectId: projectId ?? activeProjectId, cwd }), [activeProjectId])
   const onNewShell = useCallback((projectId?: string, cwd?: string) => { void newShell(projectId, cwd) }, [newShell])
   const onAddProject = useCallback(() => setSheet({ kind: 'project' }), [])
@@ -406,6 +429,8 @@ export function AppShell() {
       { id: 'a-theme', group: 'Actions', label: 'Switch theme', icon: <SparkIcon size={14} />, run: toggleTheme },
       { id: 'a-waiting', group: 'Actions', label: 'Next session waiting on you', hint: '⌘J', icon: <SparkIcon size={14} />, run: jumpToWaiting },
     )
+    // F20: the app's own updater; the answer shows in the status strip.
+    if (isTauri()) items.push({ id: 'a-update', group: 'Actions', label: 'Check for updates', icon: <SparkIcon size={14} />, run: () => { void appUpdate.check() } })
     if (current) {
       items.push(
         { id: 'a-find', group: 'Actions', label: 'Find in the terminal', hint: '⌘F', icon: <SearchIcon size={14} />, run: () => window.dispatchEvent(new Event(FIND_EVENT)) },
@@ -486,14 +511,13 @@ export function AppShell() {
 
   const focusedIsAgent = !!focused && focused.kind === 'session' && focusedSession?.kind !== 'shell'
   const showChat = focusedIsAgent && !!focused && chatOpen.has(focused.sessionId)
-  // The permission card is for a prompt you cannot see. With the session's
-  // terminal in front, its own "Do you want to proceed?" menu is the answer
-  // surface — Enter answers it — and a card above the strip read as the same
-  // question asked twice (owner, 2026-10-06). The card comes back when the
-  // chat or a Changes view covers the terminal; other tabs are reached through
-  // their badge, the Inbox, the menu bar and the notification.
-  const terminalInFront = workspaceShown && !showChat && !changesView
-  const promptCard = focusedIsAgent && !!focused && !terminalInFront
+  // The permission card shows for the focused agent whether or not its
+  // terminal is in front. 0.78.2 hid it behind the terminal as a duplicate
+  // (owner, 2026-10-06); the next day he wanted it back — it names the call
+  // in full, its keys (Y, A, N) work from the terminal, and it is the only
+  // surface with a working "don't ask again" by key. Other tabs are reached
+  // through their badge, the Inbox, the menu bar and the notification.
+  const promptCard = focusedIsAgent && !!focused
   const toggleChat = useCallback(() => {
     if (!focused) return
     const id = focused.sessionId
@@ -555,6 +579,7 @@ export function AppShell() {
                     tabs={ws.tabs}
                     visibleTabId={workspaceShown ? current?.id : undefined}
                     onPaneStatus={onPaneStatus}
+                    onPaneExit={onPaneExit}
                     sessions={sessionsById}
                     permissions={data.permissions}
                     onFocusPane={onFocusPane}
@@ -624,6 +649,7 @@ export function AppShell() {
         </main>
       </div>
       <StatusStrip summary={data.summary} pane={focused ? paneStatus[focused.sessionId] : undefined} version={version} />
+      {isTauri() && <AppUpdateAsk />}
 
       {toast && (
         <div role="status" className="app-fade-in pointer-events-none fixed inset-x-0 bottom-10 z-50 flex justify-center px-4">

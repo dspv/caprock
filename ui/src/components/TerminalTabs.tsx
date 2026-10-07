@@ -151,6 +151,7 @@ export const TerminalStack = memo(function TerminalStack({
   tabs,
   visibleTabId,
   onPaneStatus,
+  onPaneExit,
   sessions,
   permissions,
   onFocusPane,
@@ -161,6 +162,8 @@ export const TerminalStack = memo(function TerminalStack({
   /** The tab shown, or undefined when the workspace itself is hidden. */
   visibleTabId?: string
   onPaneStatus?: (sessionId: string, s: PaneStatus) => void
+  /** The session's program exited; the workspace replaces it with a shell. */
+  onPaneExit?: (sessionId: string) => void
   /** For the header a pane gets once its tab is split (F15). */
   sessions?: ReadonlyMap<string, SessionSummary>
   permissions?: ReadonlySet<string>
@@ -179,6 +182,7 @@ export const TerminalStack = memo(function TerminalStack({
               tab: t,
               split: t.root.type === 'split',
               onPaneStatus,
+              onPaneExit,
               sessions,
               permissions,
               onFocusPane: onFocusPane && ((paneId: string) => onFocusPane(t.id, paneId)),
@@ -199,6 +203,8 @@ interface PaneCtx {
   onPaneStatus?: (sessionId: string, s: PaneStatus) => void
   sessions?: ReadonlyMap<string, SessionSummary>
   permissions?: ReadonlySet<string>
+  /** The session's program exited; the workspace replaces it with a shell. */
+  onPaneExit?: (sessionId: string) => void
   onFocusPane?: (paneId: string) => void
   onClosePane?: (paneId: string) => void
   onResize?: (splitId: string, sizes: number[]) => void
@@ -208,7 +214,7 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
   if (node.type === 'pane') {
     const id = node.target.sessionId
     const focused = ctx.tab.focusedPaneId === node.id || (!ctx.split)
-    const term = <TerminalPane sessionId={id} active={visible} focused={focused} onStatus={ctx.onPaneStatus ? (s) => ctx.onPaneStatus!(id, s) : undefined} />
+    const term = <TerminalPane sessionId={id} active={visible} focused={focused} onStatus={ctx.onPaneStatus ? (s) => ctx.onPaneStatus!(id, s) : undefined} onExit={ctx.onPaneExit ? () => ctx.onPaneExit!(id) : undefined} />
     if (!ctx.split) return term
     const s = ctx.sessions?.get(id)
     const isShell = node.target.kind === 'shell' || s?.kind === 'shell'

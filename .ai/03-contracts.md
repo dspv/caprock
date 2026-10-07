@@ -381,6 +381,7 @@ PUT  /v1/settings                      → store them
 GET  /v1/update                        → cached release status (no network I/O)
 POST /v1/update/check                  → check now (403 unless enabled)
 POST /v1/hooks/install                 → {hooks: HooksStatus, backup?} — `caprock hooks install`, from the dashboard
+POST /v1/claude/bypass-consent         → {accepted: true} — the user accepted Caprock's copy of Claude Code's bypass warning (ADR-041)
 GET  /v1/stats/daily?days=30           → DailyStat[]
 POST /v1/hook                          → 204 (shim only, bearer-token gated; the event is written even after the shim hangs up)
 WS   /v1/live                          → server-push frames: {type:"event"|"session"|"alert", data:…}
@@ -687,6 +688,8 @@ The same decisions reach the desktop app as `notify` frames, under the same rule
 
 `GET /v1/gemini` reports whether asking Gemini is possible here: `{available, env_var, licensed, model}`. It performs **no network I/O** and **never returns the key** — `available` says only that one is present. `POST /v1/gemini/ask` takes `{prompt, model?}` and answers `{text, model, usage}`, where `usage` carries the response's own `promptTokenCount` / `candidatesTokenCount` / `cachedContentTokenCount` / `thoughtsTokenCount`. It is the one endpoint in the product that checks the licence **server-side** (402 without an active key) rather than leaving the paywall to the UI, because the call spends the user's Gemini quota and opens an outbound connection — the reasoning and its limits are in [ADR-023](08-decisions.md). With no key set it answers 412 with the variable to set, which is a different problem from 402 and is reported separately so the screen can say which. The key is read from `GEMINI_API_KEY` in the daemon's environment at call time; it is never stored, never accepted by `PUT /v1/settings`, and never present in `GET /v1/settings`.
 
+`POST /v1/claude/bypass-consent` writes `skipDangerousModePermissionPrompt: true` into the settings file `/v1/status.hooks.settings_path` names — the key Claude Code itself writes when its one-time bypass warning is answered *Yes, I accept* — backing the file up once and keeping every other key in place and order; an unparsable file is refused, never overwritten. A mutating route: cross-site requests and paired devices are refused, so the consent is given at the machine. `/v1/status.claude_bypass_accepted` reports the key. `POST /v1/agents` for a Claude Code session in `bypassPermissions` (asked for, or filled in from the preference or a continued session's mode) on a machine where it is false answers **409** `{error, code: "bypass_consent"}` and starts nothing: the session would open on Claude Code's warning, whose default answer is *No, exit*. Another agent, another mode and a terminal `command` are never refused; an unreadable settings file is not a refusal (ADR-041).
+
 `POST /v1/hooks/install` runs the same install as `caprock hooks install` (`hooks.InstallFor`: copy the shim into the data dir, merge Caprock's entries into the settings file this daemon reports in `/v1/status.hooks.settings_path`, backing it up first) and answers with what is registered afterwards (`{hooks: {settings_path, shim_path, installed, missing, shim_exists}, backup?}`); an error is an error status, never a quiet 200, and a daemon without an installer answers 501. It is a mutating route, so the CSRF guard refuses a cross-site request and a paired device cannot make it. Nothing else in settings.json is touched. `/v1/status.hooks`, `caprock status` and this answer all check against the command an install writes (`hooks.StatusFor`): the shim in the data dir, or the fallback `"<exe>" hook` when none sits beside the binary. Checking against the shim path alone recognised that fallback only for an executable named `caprock`, so on a renamed or preview build the button said installed and the next status said all nine were missing.
 
 `GET /v1/update` returns `{enabled, current, latest, update_available, command, app_command, url, checked_at, error, notes, notes_for}` from cache and **performs no network I/O** — a page load must never cause an outbound call. `POST /v1/update/check` performs one, and returns **403 while `update_checks` is false**: the opt-in is enforced by the server, not merely hidden in the UI, so no page or local script can make Caprock reach the network uninvited. Checks are throttled to once every 6 hours unless forced — at startup, when the switch is turned on, and on an hourly tick that asks whether one is due (so a daemon that runs for weeks still hears of a release) — and each repeat is conditional: the request sends the last `ETag` as `If-None-Match`, and a `304` keeps the cached answer and counts as a successful check. The request carries no body or credentials, and a failure is reported in `error` rather than as an error status — not knowing about a release must not read as a broken dashboard. `command` is the upgrade command inferred from the running binary's path (Homebrew, Scoop, `go install`); when no package manager owns the binary it is empty and the UI offers `url` instead. `app_command` is `brew update && brew upgrade --cask caprock-app` when Homebrew's cask installed the desktop app on this machine (`<prefix>/Caskroom/caprock-app` exists, `/opt/homebrew` or `/usr/local`), set only beside `update_available`; the app shows it first and `command` second when both exist, because the cask and the formula are upgraded separately. `notes` is the published release's own description, taken from the same GitHub response as the tag — reading it costs no second request and no further exposure. It is trimmed to a dialog-sized excerpt (long bodies cut at a line boundary) and paired with `notes_for`, the version it describes, so a cached note can never be shown beside a different version after a failed check. `update_available` is never true for a `dev` or `git describe` build. Caprock does not install the update: replacing the running binary would mean the daemon killing the process executing the command, and running a package manager on the user's behalf from a web page is a surface a local tool should not open.
@@ -832,6 +835,29 @@ when nothing was recorded, it is the `spawn_permission_mode` setting; with
 neither, no mode is sent and the agent starts in its own default. A request
 that names a mode, or carries `command`, is left as it is. No column stores the
 mode: every hook payload is kept verbatim, and the mode changes mid-session.
+
+**`bypassPermissions` is spawned as `--dangerously-skip-permissions`**, not as
+`--permission-mode bypassPermissions`, which leaves the session interactive and
+keeps asking — the owner picked *Bypass · never asks* for an autonomous run and
+was still asked on nearly every call (2026-10-07). It is the flag the
+orchestrator has always used for its own unattended workers; the two are never
+combined, since Claude Code takes one or the other. Every other mode is still
+`--permission-mode <mode>`.
+
+**Claude Code sessions are started with `--add-dir` for Caprock's own
+directories** (`PasteDir`, `ChatsDir`; `agents.ownDirs`, created if absent
+because the flag refuses a directory that does not exist). Caprock writes files
+the user then refers to by path — a screenshot pasted into the terminal — and
+those paths lie outside every working directory, so a user with Claude Code's
+`permissions.blockReadsOutsideWorkingDirectories` on was asked about Caprock's
+own files. That setting is a perimeter which applies in **every** mode: neither
+`--permission-mode bypassPermissions` nor `--dangerously-skip-permissions`
+lifts it, and only a working directory (the flag, `/add-dir`, or
+`permissions.additionalDirectories` in *user* settings — a project's
+`.claude/settings.json` does not count) satisfies it. Commands whose paths are
+computed at run time (`gh`, a `cat` of a variable) cannot be checked against it
+and ask regardless; nothing in Claude Code's rules suppresses that, so a user
+who wants an unattended run turns the setting off.
 
 The endpoints answer 501 only when
 **no** agent can be started (`claude_available`, `codex_available`,
@@ -2066,7 +2092,25 @@ The service runs the daemon with `--foreground` (the supervisor owns the process
 
 **`api_level`** (also in `GET /v1/status`) is an integer raised by every change a client must know about and never lowered: `1` is the first level, added for the desktop app ([ADR-038](08-decisions.md#adr-038--the-desktop-app-is-a-thin-tauri-v2-shell-around-the-existing-react-ui-and-xtermjs-on-the-go-daemon)). A client declares the minimum it needs; a daemon below it, or one with no `api_level` (read as `0`), is shown as needing an upgrade. **`exe`** is how the desktop app tells a daemon it installed (`<data_dir>/bin/caprock`, which it may replace) from one a package manager owns (which it must not touch); omitted when the OS cannot say.
 
-**The desktop app's files in `<data_dir>`.** `bin/caprock` (`caprock.exe` on Windows) is the daemon the app installed, copied from its bundle by write-then-rename; the login service it registers runs that copy. `app.json` = `{"background": true}` records the first-run choice (run as a login service or not); its absence means the app has never started a daemon here, and the first-run screen is shown. Both are written by the app, never by the daemon. What `<data_dir>` resolves to per OS is owned by [ADR-013](08-decisions.md#adr-013--data-dir-and-config-conventions).
+**The desktop app's files in `<data_dir>`.** `bin/caprock` (`caprock.exe` on Windows) is the daemon the app installed, copied from its bundle by write-then-rename; the login service it registers runs that copy. `app.json` = `{"background": true}` records the first-run choice (run as a login service or not); its absence means the app has never started a daemon here, and the first-run screen is shown. `app-update.json` = `{"asked": true}` records that the app's first-launch question about update checks was answered (F20); the choice itself is the daemon's `update_checks`. All three are written by the app, never by the daemon. What `<data_dir>` resolves to per OS is owned by [ADR-013](08-decisions.md#adr-013--data-dir-and-config-conventions).
+
+**The app's update manifest** (F20, [ADR-042](08-decisions.md#adr-042--the-app-updates-itself-in-one-click-a-minisign-signed-bundle-one-channel-checked-only-when-the-release-check-is-on-or-the-user-asks)) is `latest.json` on each release, read at `https://github.com/dspv/caprock/releases/latest/download/latest.json`, in tauri-plugin-updater's static format, written by `scripts/app-update-manifest.py`:
+
+```json
+{
+  "version": "0.79.0",
+  "notes": "https://github.com/dspv/caprock/releases/tag/v0.79.0",
+  "pub_date": "2026-10-06T12:00:00Z",
+  "platforms": {
+    "darwin-aarch64": { "url": ".../download/v0.79.0/Caprock_0.79.0_universal.app.tar.gz", "signature": "<the .sig file's contents>" },
+    "darwin-x86_64": { "url": "(the same universal bundle)", "signature": "…" },
+    "linux-x86_64-appimage": { "url": ".../Caprock_0.79.0_amd64.AppImage", "signature": "…" },
+    "windows-x86_64": { "url": ".../Caprock_0.79.0_x64-setup.exe", "signature": "…" }
+  }
+}
+```
+
+A platform without a signed bundle is absent. The signature is minisign over the bundle, with the version in its trusted comment; the app refuses a mismatch.
 
 ### File permissions
 

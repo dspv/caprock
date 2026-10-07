@@ -31,7 +31,14 @@ type launchInput struct {
 	// Prompt is the first message, sent as the session starts — a relay's
 	// brief, which the user has read and approved. Only for a new session.
 	Prompt string
-	Extra  []string
+	// AddDirs are directories outside the working directory that the session
+	// is allowed to read without being asked: the places Caprock itself
+	// writes files the user then refers to (a pasted screenshot, a quick
+	// chat's own folder). Without them a user who has
+	// `permissions.blockReadsOutsideWorkingDirectories` on is asked about
+	// Caprock's own files.
+	AddDirs []string
+	Extra   []string
 }
 
 // launch is one agent's start: its arguments, the environment it adds, and
@@ -73,8 +80,25 @@ func claudeLaunch(in launchInput) (launch, error) {
 	if in.Model != "" {
 		l.args = append(l.args, "--model", in.Model)
 	}
-	if in.Mode != "" {
+	// "Bypass · never asks" is the owner's autonomous mode, and it has to mean
+	// what it says. `--permission-mode bypassPermissions` leaves the session
+	// interactive and keeps asking; `--dangerously-skip-permissions` is the
+	// flag the orchestrator has always used for its own unattended workers,
+	// and it is the one that actually stops the questions. The two are not
+	// combined — Claude Code takes one or the other.
+	//
+	// Neither lifts `permissions.blockReadsOutsideWorkingDirectories`, which
+	// is a perimeter that applies in every mode; AddDirs below is what answers
+	// that for the directories Caprock itself writes.
+	switch in.Mode {
+	case "":
+	case "bypassPermissions":
+		l.args = append(l.args, "--dangerously-skip-permissions")
+	default:
 		l.args = append(l.args, "--permission-mode", in.Mode)
+	}
+	for _, d := range in.AddDirs {
+		l.args = append(l.args, "--add-dir", d)
 	}
 	l.args = append(l.args, in.Extra...)
 	// `claude [options] [prompt]`: a positional prompt starts the interactive

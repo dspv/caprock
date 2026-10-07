@@ -87,3 +87,28 @@ pub fn register_hotkey<R: Runtime>(
 ) -> Result<crate::hotkey::Status, String> {
     crate::hotkey::change(&app, accelerator)
 }
+
+/// The app's updater: its version, whether this install can update itself,
+/// the first-launch question, and where a check or install stands (F20).
+#[tauri::command]
+pub fn app_update_status<R: Runtime>(app: AppHandle<R>) -> crate::updater::Info {
+    crate::updater::info(&app)
+}
+
+/// Fetch `latest.json` once: the "Check for Updates" action.
+#[tauri::command]
+pub async fn app_update_check<R: Runtime>(app: AppHandle<R>) -> Result<crate::updater::Info, ()> {
+    Ok(crate::updater::check(app).await)
+}
+
+/// Download, verify, install and restart. Returns only when it did not.
+#[tauri::command]
+pub async fn app_update_install<R: Runtime>(app: AppHandle<R>) -> Result<crate::updater::Info, ()> {
+    Ok(crate::updater::install(app).await)
+}
+
+/// The first-launch question was answered (either way).
+#[tauri::command]
+pub fn app_update_asked(updates: tauri::State<'_, crate::updater::Updates>) -> Result<(), String> {
+    updates.mark_asked().map_err(|e| e.to_string())
+}
