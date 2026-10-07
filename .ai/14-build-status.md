@@ -73,6 +73,14 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-08 — 0.84.0: a new install asks before running commands
+
+With no saved preference, new sessions start in *Accept edits · asks first*
+rather than bypass, and the mode picked in the New agent sheet or the spawn
+dialog is kept for the next agent (ADR-043, #285). The owner's preference
+was saved as bypass before the change, so his sessions keep running as they
+did.
+
 ### 2026-10-08 — 0.83.0: notifications that answer on Linux
 
 A notification on Linux now goes through the desktop's notification server
