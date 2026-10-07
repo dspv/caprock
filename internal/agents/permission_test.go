@@ -180,19 +180,49 @@ func TestAlwaysIsNotTypedIntoATwoOptionMenu(t *testing.T) {
 // With no dialog on the screen nothing is typed — not even Esc, which would
 // interrupt the turn instead of answering anything.
 func TestNothingIsTypedWithoutAMenuOnScreen(t *testing.T) {
+	// With no permission menu on the screen the prompt was settled where no
+	// hook saw it (it timed out, a check denied it): nothing is typed and the
+	// card goes, as if answered.
 	for _, choice := range []PermissionChoice{PermissionAllow, PermissionAlways, PermissionDeny} {
 		t.Run(string(choice), func(t *testing.T) {
 			m, f, _ := spawnOwned(t)
 			m.ObserveHook(signalFrom(t, "fixed-session-id", bashRule))
 			show(t, m, "✻ Thinking… (3s · esc to interrupt)\r\n")
 			p, _ := m.PendingPermission("fixed-session-id")
-			if err := m.AnswerPermission("fixed-session-id", p.ID, choice); !errors.Is(err, ErrNotOnPrompt) {
+			if err := m.AnswerPermission("fixed-session-id", p.ID, choice); !errors.Is(err, ErrNoPermission) {
 				t.Fatalf("got %v", err)
 			}
 			if f.session.typed() != "" {
 				t.Fatalf("typed %q", f.session.typed())
 			}
+			if _, ok := m.PendingPermission("fixed-session-id"); ok {
+				t.Fatal("the stale prompt is still pending")
+			}
 		})
+	}
+}
+
+// Dismiss takes the card away and types nothing, menu or not; it answers only
+// the prompt it was drawn for.
+func TestDismissTypesNothing(t *testing.T) {
+	m, f, seen := spawnOwned(t)
+	m.ObserveHook(signalFrom(t, "fixed-session-id", bashRule))
+	show(t, m, bashRuleMenu)
+	p, _ := m.PendingPermission("fixed-session-id")
+	if err := m.AnswerPermission("fixed-session-id", "not-"+p.ID, PermissionDismiss); !errors.Is(err, ErrNoPermission) {
+		t.Fatalf("a stale id: %v", err)
+	}
+	if err := m.AnswerPermission("fixed-session-id", p.ID, PermissionDismiss); err != nil {
+		t.Fatal(err)
+	}
+	if f.session.typed() != "" {
+		t.Fatalf("typed %q", f.session.typed())
+	}
+	if _, ok := m.PendingPermission("fixed-session-id"); ok {
+		t.Fatal("still pending after dismiss")
+	}
+	if last := (*seen)[len(*seen)-1]; last != nil {
+		t.Fatalf("the live frame still carries %+v", last)
 	}
 }
 

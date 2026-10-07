@@ -22,6 +22,11 @@ Phase 3 (Delight) has no plan by design.
 - **The permission card on a phone names no keys.** On the session screen,
   where there is no terminal, it said *Keys work from the terminal* and drew
   Y and N on its buttons. It now shows the buttons alone there.
+- **A permission card whose question is gone can be closed.** When Claude
+  Code's request timed out or a check denied it, the card stayed until the
+  turn ended and its buttons said *that option is not on the prompt*. A
+  button now takes such a card away, and **×** hides any card without
+  typing anything.
 
 ## [0.80.0] - 2026-10-07
 

@@ -81,6 +81,10 @@ const (
 	PermissionAllow  PermissionChoice = "allow"
 	PermissionAlways PermissionChoice = "always"
 	PermissionDeny   PermissionChoice = "deny"
+	// PermissionDismiss types nothing: it takes the card away, for a prompt
+	// that was settled where no hook saw it (a request that timed out, a
+	// check that denied it without a menu).
+	PermissionDismiss PermissionChoice = "dismiss"
 )
 
 // ErrNoPermission means the session is not showing the prompt named: it was
@@ -195,7 +199,7 @@ func (m *Manager) AnswerPermission(sessionID, id string, choice PermissionChoice
 		return errNotOwned(sessionID)
 	}
 	switch choice {
-	case PermissionAllow, PermissionAlways, PermissionDeny:
+	case PermissionAllow, PermissionAlways, PermissionDeny, PermissionDismiss:
 	default:
 		return fmt.Errorf("unknown choice %q", choice)
 	}
@@ -205,6 +209,14 @@ func (m *Manager) AnswerPermission(sessionID, id string, choice PermissionChoice
 		m.permMu.Unlock()
 		return ErrNoPermission
 	}
+	if choice == PermissionDismiss {
+		m.popLocked(sessionID)
+		head, _ := m.headLocked(sessionID)
+		m.permMu.Unlock()
+		m.notifyPermission(sessionID, head)
+		m.persistLater(sessionID)
+		return nil
+	}
 	if choice == PermissionAlways && q[0].Always == "" {
 		m.permMu.Unlock()
 		return ErrNoAlways
@@ -213,6 +225,21 @@ func (m *Manager) AnswerPermission(sessionID, id string, choice PermissionChoice
 
 	cols, rows := a.size()
 	key, err := menuKey(termbuf.Screen(a.ring.snapshot(), cols, rows), choice)
+	if errors.Is(err, errNoMenu) {
+		// No permission menu on the screen at all: the prompt was settled
+		// where no hook reported it — it timed out, or a check denied it —
+		// and the card is all that is left of it. It goes, as if answered.
+		m.log.Info("a permission answer found no menu on the screen; dropping the prompt", "component", "agents", "session_id", sessionID)
+		m.permMu.Lock()
+		if q := m.perms[sessionID]; len(q) > 0 && q[0].ID == id {
+			m.popLocked(sessionID)
+		}
+		head, _ := m.headLocked(sessionID)
+		m.permMu.Unlock()
+		m.notifyPermission(sessionID, head)
+		m.persistLater(sessionID)
+		return ErrNoPermission
+	}
 	if err != nil {
 		m.log.Info("a permission answer found no matching option on the screen", "component", "agents", "session_id", sessionID, "choice", choice)
 		return err

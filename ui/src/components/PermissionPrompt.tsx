@@ -76,10 +76,21 @@ export function PermissionPrompt({ sessionId, keys = true }: { sessionId: string
   const button = 'min-h-[48px] rounded-sm px-4 py-2 text-[15px] font-medium disabled:opacity-50'
   return (
     <div ref={card} role="alertdialog" aria-label="Permission prompt" className="grid gap-2 border border-accent/60 bg-accent/10 rounded-sm px-3 py-3 mt-2">
-      <p className="text-[13px] text-fg">
-        Claude wants to use <span className="mono font-medium">{prompt.tool}</span>
-        {!!prompt.queued && <span className="text-fg-muted"> · {prompt.queued} more waiting</span>}
-      </p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[13px] text-fg">
+          Claude wants to use <span className="mono font-medium">{prompt.tool}</span>
+          {!!prompt.queued && <span className="text-fg-muted"> · {prompt.queued} more waiting</span>}
+        </p>
+        {/* For a prompt settled where no hook saw it — it timed out, or a
+            check denied it — the card would otherwise stay until the turn
+            ends. Hiding it types nothing. */}
+        {canControl && (
+          <button type="button" disabled={busy} onClick={() => void answer('dismiss')} aria-label="Hide this prompt" title="Hide — types nothing"
+            className="-mr-1 -mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-sm text-fg-muted hover:bg-panel-2 hover:text-fg">
+            ×
+          </button>
+        )}
+      </div>
       {prompt.detail && (
         <pre className="mono max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-sm border border-border bg-panel-2 px-2 py-1.5 text-[12px] text-fg">
           {prompt.detail}

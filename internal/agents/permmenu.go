@@ -2,6 +2,7 @@ package agents
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -24,6 +25,10 @@ import (
 // terminal shows now — or no permission menu is showing at all. Nothing was
 // typed.
 var ErrNotOnPrompt = errors.New("that option is not on the prompt — answer in the terminal")
+
+// errNoMenu means the screen shows no permission menu at all. It wraps
+// ErrNotOnPrompt; AnswerPermission takes it to mean the prompt is gone.
+var errNoMenu = fmt.Errorf("no permission menu on the screen: %w", ErrNotOnPrompt)
 
 // menuOption is one numbered line of a dialog's menu.
 type menuOption struct {
@@ -202,7 +207,7 @@ func isAlwaysYes(text string) bool {
 func menuKey(screen []string, choice PermissionChoice) (string, error) {
 	opts, ok := readMenu(screen)
 	if !ok {
-		return "", ErrNotOnPrompt
+		return "", errNoMenu
 	}
 	for _, o := range opts {
 		switch {
