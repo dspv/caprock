@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildTrayView, waitingOnApproval } from './tray'
+import { buildTrayView, waitingOnYou } from './tray'
 import type { InboxItem } from './sidebar'
 import type { SessionSummary, Summary } from './api'
 import { fmtUSD } from './format'
@@ -24,15 +24,26 @@ describe('buildTrayView', () => {
     expect(v.lines[1]).toMatch(/^Claude 7d {2}18% · resets /)
     expect(v.lines[2]).toMatch(/^Codex 5h {2}7%/)
     expect(v.lines).toContain(`Today  ${fmtUSD(12.345)}`)
-    expect(v.title).toBe('42%')
+    // Nothing needs you and the plan is far from full: the icon alone.
+    expect(v.title).toBe('')
     expect(v.waiting).toEqual([])
   })
 
-  it('lists only sessions waiting for approval, each with its id for the click', () => {
+  it('counts every session that needs you — a prompt or your turn — each with its id for the click', () => {
     const v = buildTrayView({ summary, inbox: [item('a', 'permission'), item('b', 'waiting'), item('c', 'permission', 'deploy')], conn: 'open', now })
-    expect(v.waiting).toEqual([{ id: 'a', label: 'api · fix login' }, { id: 'c', label: 'api · deploy' }])
-    expect(v.title).toBe('42% · 2 waiting')
-    expect(v.tooltip).toContain('2 waiting')
+    expect(v.waiting).toEqual([
+      { id: 'a', label: 'api · fix login · approve' },
+      { id: 'b', label: 'api · fix login' },
+      { id: 'c', label: 'api · deploy · approve' },
+    ])
+    expect(v.title).toBe('3')
+    expect(v.tooltip).toContain('3 need you')
+  })
+
+  it('names a plan window beside the count only when it is nearly full', () => {
+    const full = { ...summary, rate_limits: { five_hour: { used_percentage: 86, resets_at: inSec(1) }, seven_day: { used_percentage: 91, resets_at: inSec(50) } } } as unknown as Summary
+    expect(buildTrayView({ summary: full, inbox: [item('a', 'waiting')], conn: 'open', now }).title).toBe('1 · 7d 91%')
+    expect(buildTrayView({ summary: full, inbox: [], conn: 'open', now }).title).toBe('7d 91%')
   })
 
   it('says when the numbers may be stale, and drops a stale reset clock', () => {
@@ -47,8 +58,9 @@ describe('buildTrayView', () => {
   })
 })
 
-describe('waitingOnApproval', () => {
+describe('waitingOnYou', () => {
   it('is empty when nothing waits, so the badge clears', () => {
-    expect(waitingOnApproval([item('b', 'waiting')])).toHaveLength(0)
+    expect(waitingOnYou([])).toHaveLength(0)
+    expect(waitingOnYou([item('b', 'waiting')])).toHaveLength(1)
   })
 })

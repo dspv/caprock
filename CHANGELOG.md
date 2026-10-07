@@ -27,6 +27,11 @@ Phase 3 (Delight) has no plan by design.
   turn ended and its buttons said *that option is not on the prompt*. A
   button now takes such a card away, and **×** hides any card without
   typing anything.
+- **The Dock badge counts everything waiting on you.** It counted
+  permission prompts only, so an agent that finished and waited for your
+  answer left the Dock bare. It now shows the popover's *Needs you*. The
+  menu bar shows the same number beside the icon, instead of an unlabelled
+  5-hour percentage; a plan window appears there, named, once it is 80% full.
 
 ## [0.80.0] - 2026-10-07
 
