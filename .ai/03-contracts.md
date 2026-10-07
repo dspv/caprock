@@ -775,6 +775,10 @@ machine, never from a forge's API (rule 4):
 - **`projects[].repo_url`, `projects[].last_pr`** on `/v1/stats/summary` — the
   web address of the row's `dir`, and the newest pull request any session in
   that directory recorded (a `SessionPR`). Both are omitted when unknown.
+  On macOS `repo_url` is never looked up for a directory under Desktop,
+  Documents, Downloads, iCloud Drive or `/Volumes` (`protectedDir`): running
+  git there makes macOS ask for the folder on opening the dashboard. The
+  session's own page still looks it up — the user opened it.
 
 ```
 POST   /v1/agents                    {cwd?, chat?, create?, worktree?, agent?, model?, permission_mode?, resume?, fork?, command?, args?} → {session_id, cwd}
