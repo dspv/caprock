@@ -7,6 +7,39 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **New sessions start on bypass.** With no saved preference, the New session
+  dialog and the New agent sheet open on *Bypass · never asks* instead of
+  *Accept edits*. Settings → New sessions still overrides it, and a bypass
+  start from a paired phone is still confirmed.
+
+### Fixed
+
+- **The model list names the model you get.** It offered "Opus 5" while
+  Opus 5.5 was out, and picking it started the older model. The list is now
+  Fable 5.1, Opus 5.5, Sonnet 5.5 and Haiku 4.5, each label with its exact
+  version, opening on Opus 5.5; a newer model in the pricing table that the
+  list does not offer fails the build.
+
+- **"Bypass · never asks" now never asks.** A session started on bypass is
+  spawned with `--dangerously-skip-permissions` — the flag Caprock's own
+  unattended workers have always used — instead of
+  `--permission-mode bypassPermissions`, which leaves the session interactive
+  and keeps asking on nearly every call.
+- **Caprock's own files are not a question.** Claude Code sessions start with
+  `--add-dir` for the directories Caprock writes to (pasted screenshots and
+  quick chats), so a user with
+  `permissions.blockReadsOutsideWorkingDirectories` on is no longer asked
+  about files Caprock put there itself. That setting is a perimeter no
+  permission mode lifts; a run meant to be unattended needs it off.
+- **A session that exits leaves a shell, not a dead tab.** After `/exit`, the
+  tab becomes a shell in the same folder, keeping its place in the tab strip
+  and in a split. Before, the process was gone and the tab kept showing its
+  last screen.
+- The pricing check against the site no longer breaks when the site's pricing
+  file grows a team price: it reads the personal plans only.
+
 Phase 3 (Delight) has no plan by design.
 
 ## [0.78.2] - 2026-10-06

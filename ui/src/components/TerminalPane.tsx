@@ -62,6 +62,7 @@ export function TerminalPane({
   active,
   focused = true,
   onStatus,
+  onExit,
 }: {
   sessionId: string
   /** The tab is in front and the workspace is showing. */
@@ -69,6 +70,12 @@ export function TerminalPane({
   /** The pane the keyboard goes to, in a tab split into several (F15). */
   focused?: boolean
   onStatus?: (s: PaneStatus) => void
+  /**
+   * The session's program exited (`/exit`, a crash, `exit` in a shell). The
+   * tab is the user's place to work, not a record of a dead process, so the
+   * workspace puts a shell in the same folder here.
+   */
+  onExit?: (code: number) => void
 }) {
   const host = useRef<HTMLDivElement>(null)
   const api = useRef<{ show: () => void; hide: () => void; scrollToBottom: () => void; focus: () => void } | null>(null)
@@ -86,6 +93,8 @@ export function TerminalPane({
   activeRef.current = active
   const onStatusRef = useRef(onStatus)
   onStatusRef.current = onStatus
+  const onExitRef = useRef(onExit)
+  onExitRef.current = onExit
 
   useEffect(() => {
     const el = host.current
@@ -165,6 +174,7 @@ export function TerminalPane({
           conn.resize(term.cols, term.rows)
           report(conn.state)
         },
+        exit: (code) => onExitRef.current?.(code),
       },
     })
 

@@ -347,3 +347,81 @@ owned by the file linked, which is the home for the details.
 - **X, LinkedIn, YouTube; the first video; the six-week content plan.** Owned by
   `.gtm/04-status.md` (private site repo) § Next actions — cross-linked here
   so the build plan and the distribution plan share one entry point. No code.
+
+### Owner blockers, 2026-10-07
+
+Found by the owner in a day of real use, in his priority order. The first is
+the one that stops him moving to Caprock at all.
+
+- **A bypass session still asks (blocker).** He starts a session on
+  *Bypass · never asks* and is still asked on nearly every tool call.
+  `--permission-mode bypassPermissions` does not lift
+  `permissions.blockReadsOutsideWorkingDirectories`, which the orchestrator's
+  own `--dangerously-skip-permissions` does; and Caprock never passes
+  `--add-dir` for the directories it writes to itself (pasted screenshots
+  under the app-support `paste/`, the session's memory folder), so reads of
+  Caprock's own files are outside every working directory. Any command whose
+  paths are computed at run time — `gh`, a `cat` with a variable — cannot be
+  checked against the block and becomes a question. **DoD:** a session started
+  on bypass runs a `gh pr view`, a `cat` of a path outside the project and a
+  read of a pasted screenshot without one prompt, on a machine with that
+  setting on; what the mode does is stated in the dialog; new users get the
+  same without editing `settings.json`.
+- **`/exit` leaves a dead tab.** The pty's exit frame reaches `termv2.ts` and
+  nothing listens: no component passes the `exit` callback. **DoD:** when the
+  agent's process exits, the tab becomes a shell (`KindShell`) in the session's
+  own cwd, and says so in one line.
+- **Bring back the terminal's own question card.** The duplicate was removed in
+  0.78.2 and the better-worded one went with it. **DoD:** the card is back with
+  a working *Allow and never ask again*, and every action names its key; the
+  keys work from the terminal without the mouse.
+- **Seven `caprock` rows in Files & Folders.** Every unsigned dev build takes
+  its own TCC identity, so the owner cannot tell which one is asking for what.
+  **DoD:** one identity per installed app; the dev build is recognisably
+  separate and named; a prompt says which binary asked.
+- **Start a session without the mouse.** The New agent sheet is filled by
+  pointing: the owner works in a terminal and wants the whole dialog on the
+  keyboard. **DoD:** Tab and ⇧Tab move through every control in a stated
+  order, each select changes with the arrow keys, ⌘↩ starts (already true for
+  the first message) from anywhere in the sheet, Esc cancels, and the focused
+  control is visibly focused; the keys are named in the sheet itself, not only
+  in the docs.
+- **The model list lies about which model you get.** The New agent sheet
+  offers a hand-written list (`MODELS` in `ui/src/components/SpawnDialog.tsx`)
+  that stopped at Fable 5, Opus 5, Sonnet 5 and Haiku 4.5. Opus 5.5, Sonnet 5.5
+  and Fable 5.1 are released and priced in `pricing.json`, and are missing; the
+  owner picked "Opus 5" believing it was the latest Opus and got the older
+  model. A list typed from memory goes stale on every release. **DoD:** every
+  option names the exact model it runs, version included; the newest model of
+  each family is offered and Opus's is the default; a newer model of a family
+  in `pricing.json` that the sheet does not offer fails the build (the id must
+  still answer the real `claude` before it is added — a priced id is not a
+  callable one, as Mythos shows); a session card shows the model the session
+  actually ran, so a mismatch is visible.
+- **Bypass is the default for a new session.** The owner's decision,
+  2026-10-07: the sheet starts on *Bypass · never asks*, not *Accept edits*.
+  The confirmation for a bypass session started from a paired phone stays.
+  **DoD:** a fresh sheet, with no saved preference, starts on bypass; a saved
+  preference still wins; the docs say what the default is.
+- **`/exit` must land in a working shell, verified in the app.** On
+  2026-10-07 the owner typed `/exit` and was left on Claude's "Resume this
+  session with: claude --resume …" line with no prompt. That was the installed
+  0.78.2, which predates the working-tree fix — but the fix has never been
+  seen working. **DoD:** in the built app, `/exit` in a Claude tab leaves a
+  shell prompt in the same folder within a second, the tab says so, and typing
+  a command runs it; the same for Ctrl-D and for a crashed agent.
+- **Finish what is on disk.** The site's home branch belongs in
+  `~/dev/caprock-web`, never in `~/dev/wt`; WP-21 auto-update (PR #249,
+  conflicting), voice input, the drop/TCC fix are all unlanded worktrees.
+
+**Fixed on 2026-10-07, in the working tree:** bypass is spawned as
+`--dangerously-skip-permissions`; Claude Code sessions get `--add-dir` for
+Caprock's own directories; an exited session's tab becomes a shell in the same
+folder. The owner's `permissions.blockReadsOutsideWorkingDirectories` was
+turned off with his decision (backup at `~/.claude/settings.json.bak-20261007`)
+— it is a perimeter no permission mode lifts, so it had to go for an
+unattended run. Also fixed the same day: the model list names exact versions
+and offers Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 4.5 (each answered the real
+`claude` 2.1.292), with a test against `pricing.json`; new sessions open on
+bypass. Still open from the list above: `/exit` seen working in the built app, the question card, the TCC
+identities, the keyboard-only sheet, and the unlanded worktrees.

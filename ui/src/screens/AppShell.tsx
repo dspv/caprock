@@ -299,6 +299,27 @@ export function AppShell() {
     }
   }, [projectsById, activeProjectId, source, refresh, openTab, openSplit])
 
+  /**
+   * A session's program exited — `/exit`, `exit`, a crash. The tab is the
+   * user's place to work, so it becomes a shell in the same folder instead of
+   * a terminal showing a process that is gone. The tab keeps its position,
+   * and a shell that was already a shell is simply left closed.
+   */
+  const onPaneExit = useCallback(async (sessionId: string) => {
+    const s = sessionsById.get(sessionId)
+    const cwd = s?.cwd
+    if (!cwd || s?.kind === 'shell') { dispatch({ type: 'drop-session', sessionId }); return }
+    try {
+      const shell = await projectsApi.startShell({ cwd, cols: 120, rows: 32 })
+      dispatch({ type: 'replace-session', sessionId, target: { kind: 'shell', sessionId: shell.id }, title: 'shell' })
+      refresh()
+    } catch {
+      // Nothing to put in its place; closing beats a tab that cannot talk to
+      // anything, and the session's record is on the dashboard either way.
+      dispatch({ type: 'drop-session', sessionId })
+    }
+  }, [sessionsById, refresh])
+
   const onNewAgent = useCallback((projectId?: string, cwd?: string) => setSheet({ kind: 'agent', projectId: projectId ?? activeProjectId, cwd }), [activeProjectId])
   const onNewShell = useCallback((projectId?: string, cwd?: string) => { void newShell(projectId, cwd) }, [newShell])
   const onAddProject = useCallback(() => setSheet({ kind: 'project' }), [])
@@ -555,6 +576,7 @@ export function AppShell() {
                     tabs={ws.tabs}
                     visibleTabId={workspaceShown ? current?.id : undefined}
                     onPaneStatus={onPaneStatus}
+                    onPaneExit={onPaneExit}
                     sessions={sessionsById}
                     permissions={data.permissions}
                     onFocusPane={onFocusPane}
