@@ -9,6 +9,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Changed
+
+- **A new install asks before running commands.** With no saved preference,
+  new sessions start in *Accept edits · asks first* rather than bypass. Bypass
+  is one pick away in the New agent sheet, and the mode you pick there is
+  kept for the next agent. If you relied on the old default, pick bypass once.
+
 ## [0.83.0] - 2026-10-08
 
 ### Added

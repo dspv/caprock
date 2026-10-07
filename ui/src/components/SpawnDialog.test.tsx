@@ -58,8 +58,8 @@ describe('SpawnDialog', () => {
   it('starts on a real model and permission mode, not an empty default', () => {
     open()
     expect(screen.getByLabelText<HTMLSelectElement>(/Model/).value).toBe('claude-opus-5-5')
-    // The owner's decision, 2026-10-07: a new session never stops to ask.
-    expect(screen.getByLabelText<HTMLSelectElement>(/Permissions/).value).toBe('bypassPermissions')
+    // ADR-043 (owner, 2026-10-08): a new install asks before running commands.
+    expect(screen.getByLabelText<HTMLSelectElement>(/Permissions/).value).toBe('acceptEdits')
   })
 
   it('only offers permission modes the claude binary accepts', () => {
@@ -262,7 +262,7 @@ describe('Codex and OpenCode', () => {
     fireEvent.change(screen.getByLabelText<HTMLSelectElement>('Agent'), { target: { value: 'codex' } })
     fireEvent.click(screen.getByText('Start session'))
     await waitFor(() => expect(spawn).toHaveBeenCalled())
-    expect(spawn.mock.calls[0]).toEqual([{ cwd: '/x', agent: 'codex', permission_mode: 'bypassPermissions' }])
+    expect(spawn.mock.calls[0]).toEqual([{ cwd: '/x', agent: 'codex', permission_mode: 'acceptEdits' }])
   })
 })
 
@@ -288,8 +288,8 @@ describe('on a paired phone', () => {
 
   it('asks once before starting in bypass, inline', async () => {
     open()
-    // Bypass is the default since 2026-10-07; the phone still confirms it.
-    expect(screen.getByLabelText<HTMLSelectElement>(/Permissions/).value).toBe('bypassPermissions')
+    // Picked on the phone, bypass is still confirmed there.
+    fireEvent.change(screen.getByLabelText<HTMLSelectElement>(/Permissions/), { target: { value: 'bypassPermissions' } })
     fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
     expect(screen.getByText("The agent won't ask before running commands or editing files. Start?")).toBeTruthy()
     expect(spawn).not.toHaveBeenCalled()

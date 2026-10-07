@@ -1987,6 +1987,31 @@ on every start: with bypass the default, users would run without asking
 having agreed to nothing. Leaving Claude Code's screen with a hint: the
 Enter trap and the stuck phone session remain.
 
+## ADR-043 — A new install asks before running commands; the mode picked is kept
+
+**Date:** 2026-10-08 · **Status:** accepted (owner, 2026-10-08; amends the
+bypass default of 2026-10-07 that ADR-041 starts from)
+
+**Context.** From 2026-10-07 a new session started in bypass unless Settings
+named another mode, so a first session on a stranger's work laptop never
+asked before running a command. Anthropic's permission docs keep bypass for
+isolated environments. A visitor audit of the site (2026-10-08) put this
+first: a reader expects a session to ask, as Claude Code does.
+
+**Decision.** With no saved preference the New agent sheet and the spawn
+dialog open on *Accept edits · asks first*. A mode the user picks in either
+is saved as `spawn_permission_mode` once the session has started, so picking
+bypass once is picking it until something else is picked. A paired device
+never changes the machine's preference. The ADR-041 consent and the phone's
+bypass confirmation are unchanged. Installs that relied on the old default
+now get Accept edits until they pick bypass once; the owner's preference was
+saved as bypass before the change.
+
+**Rejected.** Keeping bypass as the default with a louder note: the reader
+the audit worried about never opens the sheet's fine print. Asking on every
+start: the owner's point that a session you leave must not keep stopping is
+kept by the remembered pick.
+
 ## ADR-042 — The app updates itself in one click: a minisign-signed bundle, one channel, checked only when the release check is on or the user asks
 
 **Date:** 2026-10-06 · **Status:** accepted (owner asked for it: "no

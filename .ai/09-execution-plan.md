@@ -398,7 +398,9 @@ the one that stops him moving to Caprock at all.
   still answer the real `claude` before it is added — a priced id is not a
   callable one, as Mythos shows); a session card shows the model the session
   actually ran, so a mismatch is visible.
-- **Bypass is the default for a new session.** The owner's decision,
+- **Bypass is the default for a new session.** *Superseded 2026-10-08 by
+  ADR-043: a new install starts on Accept edits, and a picked mode is kept.*
+  The owner's decision,
   2026-10-07: the sheet starts on *Bypass · never asks*, not *Accept edits*.
   The confirmation for a bypass session started from a paired phone stays.
   **DoD:** a fresh sheet, with no saved preference, starts on bypass; a saved

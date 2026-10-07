@@ -10,6 +10,7 @@ import type { Project } from '@/lib/projects'
 const spawn = vi.fn(async (_req: unknown) => ({ session_id: 'new-1', cwd: '/w/app' }))
 const acceptBypass = vi.fn(async () => ({ accepted: true }))
 const status = { accepted: undefined as boolean | undefined }
+const saved: unknown[] = []
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
   return {
@@ -18,6 +19,7 @@ vi.mock('@/lib/api', async (orig) => {
       ...actual.api,
       status: async () => ({ version: 'v0.0.0', claude_available: true, claude_bypass_accepted: status.accepted }),
       settings: async () => ({}),
+      saveSettings: async (s: unknown) => { saved.push(s); return s },
       spawn: (req: unknown) => spawn(req),
       acceptBypass: () => acceptBypass(),
     },
@@ -37,7 +39,12 @@ function open(onClose = vi.fn()) {
   return { onClose, onStarted }
 }
 
-beforeEach(() => { spawn.mockReset().mockResolvedValue({ session_id: 'new-1', cwd: '/w/app' }); acceptBypass.mockClear(); status.accepted = undefined; localStorage.clear() })
+beforeEach(() => { spawn.mockReset().mockResolvedValue({ session_id: 'new-1', cwd: '/w/app' }); acceptBypass.mockClear(); status.accepted = undefined; saved.length = 0; localStorage.clear() })
+
+/** Picks a permission mode the way a reader does, in the select. */
+async function pick(mode: string) {
+  fireEvent.change(await screen.findByLabelText<HTMLSelectElement>(/^Permissions/), { target: { value: mode } })
+}
 
 describe('the New agent sheet on the keyboard', () => {
   it('names its keys in the sheet', async () => {
@@ -68,7 +75,7 @@ describe('the New agent sheet on the keyboard', () => {
     fireEvent.keyDown(model, { key: 'ArrowDown' })
     fireEvent.keyDown(model, { key: 'Enter', metaKey: true })
     await waitFor(() => expect(spawn).toHaveBeenCalledOnce())
-    expect(spawn.mock.calls[0]![0]).toMatchObject({ cwd: '/w/app', model: 'claude-sonnet-5-5', permission_mode: 'bypassPermissions' })
+    expect(spawn.mock.calls[0]![0]).toMatchObject({ cwd: '/w/app', model: 'claude-sonnet-5-5', permission_mode: 'acceptEdits' })
   })
 
   it('starts with ⌘↩ while a footer button has focus', async () => {
@@ -104,6 +111,7 @@ describe('the one-time bypass consent', () => {
   it('shows the warning and asks for it in the button, and records it before starting', async () => {
     status.accepted = false
     open()
+    await pick('bypassPermissions')
     expect(await screen.findByRole('note', { name: 'Bypass consent' })).toBeTruthy()
     const start = screen.getByRole('button', { name: 'Accept and start' })
     fireEvent.click(start)
@@ -122,8 +130,9 @@ describe('the one-time bypass consent', () => {
   it('goes away when the mode is not bypass', async () => {
     status.accepted = false
     open()
+    await pick('bypassPermissions')
     await screen.findByRole('note', { name: 'Bypass consent' })
-    fireEvent.change(screen.getByLabelText<HTMLSelectElement>('Permissions'), { target: { value: 'acceptEdits' } })
+    await pick('acceptEdits')
     expect(screen.queryByRole('note', { name: 'Bypass consent' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Start' })).toBeTruthy()
   })
@@ -132,9 +141,41 @@ describe('the one-time bypass consent', () => {
     const { ApiError } = await import('@/lib/api')
     spawn.mockRejectedValueOnce(new ApiError(409, 'Conflict', { error: 'Bypass needs a one-time consent first', code: 'bypass_consent' }))
     open()
+    await pick('bypassPermissions')
     fireEvent.click(await screen.findByRole('button', { name: 'Start' }))
     expect(await screen.findByRole('note', { name: 'Bypass consent' })).toBeTruthy()
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.getByRole('button', { name: 'Accept and start' })).toBeTruthy()
+  })
+})
+
+/** ADR-043 (owner, 2026-10-08): a new install asks before running commands;
+ *  bypass is one pick away, and a picked mode is kept for the next agent. */
+describe('the permission mode a new agent starts in', () => {
+  it('asks first on a fresh install, and keeps nothing it was not told', async () => {
+    open()
+    expect((await screen.findByLabelText<HTMLSelectElement>(/^Permissions/)).value).toBe('acceptEdits')
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
+    await waitFor(() => expect(spawn).toHaveBeenCalledOnce())
+    expect(saved).toEqual([])
+  })
+
+  it('keeps a picked mode for the next agent, once the session has started', async () => {
+    status.accepted = true
+    open()
+    await pick('bypassPermissions')
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
+    await waitFor(() => expect(saved).toEqual([{ spawn_permission_mode: 'bypassPermissions' }]))
+    expect(spawn.mock.calls[0]![0]).toMatchObject({ permission_mode: 'bypassPermissions' })
+  })
+
+  it('keeps nothing when the start fails', async () => {
+    status.accepted = true
+    spawn.mockRejectedValueOnce(new Error('no claude'))
+    open()
+    await pick('plan')
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
+    await screen.findByRole('alert')
+    expect(saved).toEqual([])
   })
 })

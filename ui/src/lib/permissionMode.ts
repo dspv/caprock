@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api } from './api'
+import { api, isPairedDevice, type Settings } from './api'
 import { useApi } from './useApi'
 
 /**
@@ -39,8 +39,14 @@ export function useSpawnModePreference(): string | undefined {
  * The mode a new-session dialog starts on: `fallback` until the preference
  * arrives, then the preference if one is set — unless the viewer has already
  * picked one, which is never overwritten under them.
+ *
+ * The third value keeps a mode picked here as the preference for the next
+ * session, called once the session has started: picking Bypass once is
+ * picking it until something else is picked (owner, 2026-10-08). Only a
+ * mode the viewer chose is kept, a paired device leaves the machine's
+ * preference alone, and a failed save never fails the start.
  */
-export function useInitialMode(fallback: string): [string, (m: string) => void] {
+export function useInitialMode(fallback: string): [string, (m: string) => void, () => void] {
   const pref = useSpawnModePreference()
   const [mode, setMode] = useState(fallback)
   const [touched, setTouched] = useState(false)
@@ -51,5 +57,9 @@ export function useInitialMode(fallback: string): [string, (m: string) => void] 
     setTouched(true)
     setMode(m)
   }
-  return [mode, choose]
+  const remember = () => {
+    if (!touched || !mode || mode === pref || isPairedDevice()) return
+    void api.saveSettings({ spawn_permission_mode: mode } as Partial<Settings> as Settings).catch(() => {})
+  }
+  return [mode, choose, remember]
 }

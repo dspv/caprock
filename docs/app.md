@@ -96,9 +96,11 @@ others. Installing it: [install-app.md](install-app.md).
   line height and cursor, with a preview. Every open terminal changes as you
   choose. The defaults match the JetBrains IDE terminal: JetBrains Mono,
   13 px, line height 1.2, no ligatures.
-- **Permission mode.** New sessions start in *Bypass · never asks*: the agent
-  does not stop to ask before running commands or editing files. The first
-  time on a computer, the New agent sheet shows what bypass means and its
+- **Permission mode.** A new install starts sessions in *Accept edits · asks
+  first*: the agent edits files on its own and asks before running a command.
+  *Bypass · never asks* is one pick away in the New agent sheet, and the mode
+  you pick there is kept for the next agent. The first time bypass is picked
+  on a computer, the New agent sheet shows what bypass means and its
   button reads *Accept and start*; that answers Claude Code's own one-time
   warning for good. A paired phone cannot give that consent — accept it once
   at the computer. Settings → *New sessions* → *Start in* picks the mode
