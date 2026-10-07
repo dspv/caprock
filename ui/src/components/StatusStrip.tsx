@@ -9,6 +9,7 @@ import { fmtUSD } from '@/lib/format'
 import type { PaneStatus } from './TerminalPane'
 import { ConnectionState } from './ConnectionState'
 import { AppUpdateNotice } from './AppUpdateNotice'
+import { StaleUiPill } from './StaleUiPill'
 import { useAppUpdate } from '@/lib/appupdate'
 
 export function StatusStrip({ summary, pane, version }: { summary?: Summary; pane?: PaneStatus; version?: string }) {
@@ -35,6 +36,7 @@ export function StatusStrip({ summary, pane, version }: { summary?: Summary; pan
             {pane.protocol ? `${pane.protocol} · ` : ''}{pane.cols}×{pane.rows}
           </span>
         )}
+        <StaleUiPill />
         <AppUpdateNotice />
         {(app?.version || version) && (
           <span className="mono text-fg-faint" title={app?.version && version && version !== app.version ? `The app ${app.version} · the daemon ${version}` : undefined}>

@@ -26,6 +26,25 @@ Phase 3 (Delight) has no plan by design.
   installer and the Linux AppImage update themselves; `.deb` and `.rpm`
   installs are told to use their package manager. Each release now carries
   `latest.json` and the signed update files.
+- **View → Reload (⌘R) in the Mac app; F5 on Windows and Linux.** Ctrl+R is
+  left to the shell's history search, and F5 in a focused terminal still
+  reaches the program in it.
+
+### Fixed
+
+- **The app no longer keeps the old UI after an upgrade.** After `brew
+  upgrade --cask`, the app loaded its window from the previous daemon, then
+  replaced that daemon with the new one and never reloaded: the window ran
+  the old version's code, and the status strip named it, until the app was
+  quit. The app now decides to replace its daemon before loading any page,
+  and reloads the window and the menu bar popover if a replacement still
+  happens under them.
+- **A page reloads itself when its daemon is updated.** The daemon names its
+  version in the page it serves; when the live link comes back to a
+  different one, the page reloads on the same screen — in the app, a
+  browser tab or a paired phone. Typed terminal input is kept (it lives in
+  the session). With text typed into an open sheet it offers *Reload —
+  Caprock was updated* instead, and it never reloads twice for one version.
 
 ## [0.79.0] - 2026-10-07
 
