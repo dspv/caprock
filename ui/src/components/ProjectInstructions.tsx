@@ -1,14 +1,15 @@
 /**
  * A project's instructions for its agents: what every Claude Code session
  * started in the project gets appended to its system prompt
- * (`defaults.system_prompt`, `--append-system-prompt`). Shown where an agent
+ * (`defaults.system_prompt`, `--append-system-prompt`), and every Codex
+ * session as its developer instructions. Shown where an agent
  * is started, so what goes into the session is in sight, and editable there.
  */
 import { useState } from 'react'
 import { errText } from '@/lib/api'
 import { instructionsPatch, projectsApi, type Project } from '@/lib/projects'
 
-export const INSTRUCTIONS_HINT = 'added to the system prompt of every Claude Code session in this project'
+export const INSTRUCTIONS_HINT = 'given to every Claude Code and Codex session in this project'
 
 export function ProjectInstructions({ project, onSaved }: { project: Project; onSaved?: (p: Project) => void }) {
   const saved = project.defaults?.system_prompt ?? ''
@@ -36,7 +37,7 @@ export function ProjectInstructions({ project, onSaved }: { project: Project; on
       <div className="grid min-w-0 gap-1.5">
         <span className="flex items-baseline gap-2 text-[12px] font-medium text-fg-muted">
           Project instructions
-          <span className="font-normal text-fg-faint">Claude Code</span>
+          <span className="font-normal text-fg-faint">Claude Code · Codex</span>
           <button type="button" onClick={() => { setText(saved); setEditing(true) }} className="ml-auto text-[12px] font-normal text-accent hover:underline">
             {saved ? 'Edit' : 'Add'}
           </button>

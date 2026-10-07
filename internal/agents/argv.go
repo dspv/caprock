@@ -38,8 +38,9 @@ type launchInput struct {
 	// `permissions.blockReadsOutsideWorkingDirectories` on is asked about
 	// Caprock's own files.
 	AddDirs []string
-	// SystemPrompt is the project's instructions for every agent in it,
-	// appended to Claude Code's own system prompt; "" for none.
+	// SystemPrompt is the project's instructions for every agent in it:
+	// appended to Claude Code's own system prompt, and Codex's
+	// developer_instructions; "" for none.
 	SystemPrompt string
 	Extra        []string
 }
@@ -171,6 +172,12 @@ func codexLaunch(in launchInput) (launch, error) {
 		l.sessionID = in.Resume
 	}
 	l.args = append(l.args, "--no-daemon", "-c", codexTrust(in.Cwd))
+	// Codex's own key for instructions added to its system ones (codex-cli
+	// 0.161.0: a rule set this way was followed, multi-line and quoted text
+	// included). AGENTS.md in the repository still applies beside it.
+	if in.SystemPrompt != "" {
+		l.args = append(l.args, "-c", "developer_instructions="+tomlString(in.SystemPrompt))
+	}
 	if in.Model != "" {
 		l.args = append(l.args, "-m", in.Model)
 	}

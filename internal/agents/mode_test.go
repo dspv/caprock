@@ -1,6 +1,9 @@
 package agents
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestCarriedModePassesOnlyWhatTheFlagAccepts(t *testing.T) {
 	for in, want := range map[string]string{
@@ -113,6 +116,37 @@ func TestProjectPromptIsAppended(t *testing.T) {
 	for _, a := range l.args {
 		if a == "--append-system-prompt" {
 			t.Errorf("argv %v has a prompt flag with no prompt", l.args)
+		}
+	}
+}
+
+// Codex takes the project's instructions as a config override, quoted as TOML
+// so quotes and newlines survive; codex-cli 0.161.0 followed such a rule.
+func TestProjectPromptReachesCodex(t *testing.T) {
+	text := "Rules:\n- Say \"hi\" first."
+	want := `developer_instructions="Rules:\u000A- Say \"hi\" first."`
+	for _, in := range []launchInput{
+		{SessionID: "s", Cwd: t.TempDir(), SystemPrompt: text},
+		{SessionID: "s", Cwd: t.TempDir(), Resume: "old", SystemPrompt: text},
+	} {
+		l, err := codexLaunch(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for i, a := range l.args {
+			if a == want && i > 0 && l.args[i-1] == "-c" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("resume=%q: argv %q, want -c %s", in.Resume, l.args, want)
+		}
+	}
+	l, _ := codexLaunch(launchInput{SessionID: "s", Cwd: t.TempDir()})
+	for _, a := range l.args {
+		if strings.HasPrefix(a, "developer_instructions=") {
+			t.Errorf("argv %v has instructions with none set", l.args)
 		}
 	}
 }

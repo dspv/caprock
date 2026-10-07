@@ -164,7 +164,7 @@ export function NewAgentSheet({
             </select>
           </SheetField>
           {consent.needed && <BypassConsentNote />}
-          {project && agent === 'claude' && <ProjectInstructions key={project.id} project={project} />}
+          {project && (agent === 'claude' || agent === 'codex') && <ProjectInstructions key={project.id} project={project} />}
           <SheetField label="First message" hint="optional">
             <textarea
               className="input min-h-[84px] resize-y font-[family-name:var(--font-sans)] text-[13px] leading-relaxed"

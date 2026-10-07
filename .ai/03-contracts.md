@@ -1118,8 +1118,9 @@ GET    /v1/shells?project=<id>             → {shells: [Shell]}; every running 
 - **`defaults.system_prompt`** is a project's instructions for its agents,
   trimmed, at most 16 KiB, no NUL. A Claude Code session Caprock starts in a
   folder inside the project (`projects.ProjectFor`, the longest root) gets
-  `--append-system-prompt <text>`, on a start and a resume; other agents
-  ignore it. `defaults` is replaced whole by a PATCH, so a client sends the
+  `--append-system-prompt <text>`, a Codex one
+  `-c developer_instructions="<text>"` (quoted as TOML), on a start and a
+  resume; OpenCode and Gemini ignore it. `defaults` is replaced whole by a PATCH, so a client sends the
   other keys back with it (`instructionsPatch`).
 - **`replaces`** on `POST /v1/shells` names the session whose program exited
   and whose tab the shell takes over. Every window showing that tab asks; the
