@@ -210,3 +210,61 @@ func TestWorktreeAndProjectErrors(t *testing.T) {
 }
 
 func itoa(n int64) string { b, _ := json.Marshal(n); return string(b) }
+
+// liveShells is a ShellController whose shells run until ended.
+type liveShells struct {
+	n    int
+	live []ShellInfo
+}
+
+func (f *liveShells) StartShell(_ context.Context, cwd string, _, _ int) (ShellInfo, error) {
+	f.n++
+	sh := ShellInfo{ID: "sh-" + itoa(int64(f.n)), Cwd: cwd}
+	f.live = append(f.live, sh)
+	return sh, nil
+}
+func (f *liveShells) Shells() []ShellInfo { return f.live }
+func (f *liveShells) IsShell(id string) bool {
+	for _, sh := range f.live {
+		if sh.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// Every client showing a tab whose program exited asks for a shell in its
+// place; they must all get the same one, not one shell each.
+func TestOneShellReplacesAnExitedSession(t *testing.T) {
+	home := fakeHome(t)
+	f := &liveShells{}
+	s, _, _, _ := pairedPhones(t, Deps{Shells: f})
+	start := func(body string) string {
+		t.Helper()
+		w := call(t, s, machine, "", "POST", "/v1/shells", body)
+		var out struct {
+			Shell ShellInfo `json:"shell"`
+		}
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &out) != nil {
+			t.Fatalf("start: %d %s", w.Code, w.Body.String())
+		}
+		return out.Shell.ID
+	}
+	cwd := `"cwd":"` + filepath.ToSlash(home) + `"`
+	a := start(`{` + cwd + `,"replaces":"sess-1"}`)
+	b := start(`{` + cwd + `,"replaces":"sess-1"}`)
+	if a != b || f.n != 1 {
+		t.Fatalf("two clients got %s and %s, %d shells started; want one", a, b, f.n)
+	}
+	if c := start(`{` + cwd + `,"replaces":"sess-2"}`); c == a {
+		t.Fatal("another session's tab got the same shell")
+	}
+	if start(`{`+cwd+`}`) == a {
+		t.Fatal("a plain new shell reused a replacement")
+	}
+	// Once that shell has ended, the replacement is forgotten.
+	f.live = f.live[1:]
+	if d := start(`{` + cwd + `,"replaces":"sess-1"}`); d == a {
+		t.Fatal("an ended shell was handed out again")
+	}
+}

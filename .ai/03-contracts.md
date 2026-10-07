@@ -1059,7 +1059,7 @@ DELETE /v1/projects/{id}                   → 204; unlists it: nothing on disk 
 GET    /v1/projects/{id}/worktrees         → {worktrees: [Worktree]}
 POST   /v1/projects/{id}/worktrees         {branch, create?, base?} → {worktree: {path, branch, tracks?}}
 DELETE /v1/projects/{id}/worktrees/{name}  → 204; 409 {error} when it has any change
-POST   /v1/shells                          {cwd | project_id, cols?, rows?} → {shell: Shell}
+POST   /v1/shells                          {cwd | project_id, cols?, rows?, replaces?} → {shell: Shell}
 GET    /v1/shells?project=<id>             → {shells: [Shell]}; every running shell without project
 ```
 
@@ -1115,6 +1115,10 @@ GET    /v1/shells?project=<id>             → {shells: [Shell]}; every running 
   must be absolute and resolve under home (`403` otherwise), and the worktree
   routes refuse a project whose root is outside home. The `GET` routes are
   open to every paired device; the shell routes to none.
+- **`replaces`** on `POST /v1/shells` names the session whose program exited
+  and whose tab the shell takes over. Every window showing that tab asks; the
+  first starts the shell and the rest get the same one while it runs. The map
+  is the daemon's memory only and forgets a shell once it has ended.
 - **`Shell`** — `{id, cwd, command, started_at, survives_restart, project_id?,
   internal: true, kind: "shell"}`. The user's login shell — `$SHELL -l` from
   the login environment on POSIX; `pwsh.exe -NoLogo`, else `powershell.exe

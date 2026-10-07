@@ -140,6 +140,8 @@ export interface ShellRequest {
   cwd?: string
   cols: number
   rows: number
+  /** The session whose exited program this shell replaces: every client asking gets the same shell. */
+  replaces?: string
 }
 
 /** What a branch row says for a checkout: the branch, or `detached @ <sha7>` when git names a commit. */
