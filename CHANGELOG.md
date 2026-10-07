@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.84.0] - 2026-10-08
+
 ### Changed
 
 - **A new install asks before running commands.** With no saved preference,
