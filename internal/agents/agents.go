@@ -283,7 +283,7 @@ func resolveClaude() string {
 // working directory. A user with Claude Code's
 // `permissions.blockReadsOutsideWorkingDirectories` on was therefore asked
 // about Caprock's own files, in every permission mode: that setting is a
-// separate guard and `--permission-mode bypassPermissions` does not lift it.
+// separate guard and no permission mode, bypass included, lifts it.
 // Naming the directories is the narrow fix — it allows the two places Caprock
 // writes to and nothing else.
 func (m *Manager) ownDirs() []string {

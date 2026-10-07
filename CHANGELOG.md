@@ -65,11 +65,11 @@ Phase 3 (Delight) has no plan by design.
   version, opening on Opus 5.5; a newer model in the pricing table that the
   list does not offer fails the build.
 
-- **"Bypass · never asks" now never asks.** A session started on bypass is
-  spawned with `--dangerously-skip-permissions` — the flag Caprock's own
-  unattended workers have always used — instead of
-  `--permission-mode bypassPermissions`, which leaves the session interactive
-  and keeps asking on nearly every call.
+- **"Bypass · never asks" is spawned the way Caprock's own unattended
+  workers are,** with `--dangerously-skip-permissions`. (Claude Code treats
+  it as the same mode as `--permission-mode bypassPermissions`; an earlier
+  version of this entry said the latter keeps asking. The questions came
+  from `permissions.blockReadsOutsideWorkingDirectories`, below.)
 - **Caprock's own files are not a question.** Claude Code sessions start with
   `--add-dir` for the directories Caprock writes to (pasted screenshots and
   quick chats), so a user with
