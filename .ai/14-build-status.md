@@ -73,6 +73,19 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-07 — 0.81.0: project instructions, the badge, the stuck card
+
+A project carries instructions for its agents (`defaults.system_prompt`),
+set as it is added or from the New agent sheet; every Claude Code session
+Caprock starts or resumes in it gets them through `--append-system-prompt`,
+other agents not yet (#274). The Dock badge and the menu bar count
+everything waiting on you, and the menu bar names a plan window only at 80%
+or more (#273). A permission card whose question is gone can be closed, and
+a button pressed with no menu on screen drops it (#272). The card on the
+session screen names no keys (#271). A screenshot dragged from its corner
+thumbnail is copied where the session can read it (#270). `/exit` leaves one
+shell however many windows show the session (#268).
+
 ### 2026-10-07 — 0.80.0: the update card, reload on upgrade, PTY drain
 
 A newer version now announces itself in a card at the bottom right of the
