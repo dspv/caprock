@@ -5,6 +5,7 @@ import { api, errText, isPairedDevice } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { navigate } from '@/lib/router'
 import { modeWords, useInitialMode } from '@/lib/permissionMode'
+import { stepSelect } from '@/lib/selectKeys'
 
 // What the two selects start on, rather than an empty "default" that says
 // nothing about what you are about to run. Opus is what the machine's own
@@ -204,7 +205,8 @@ export function SpawnDialog({
           // running past its border. Clipping inside the picker cannot fix
           // that; the container has to be allowed to be narrower than what it
           // holds.
-          <div className="px-4 py-3 grid min-w-0 gap-3 text-[13px]">
+          // ↑ and ↓ change a select in place, as in the app's New agent sheet.
+          <div className="px-4 py-3 grid min-w-0 gap-3 text-[13px]" onKeyDown={(e) => { stepSelect(e) }}>
             <Field label="Working directory" hint={remote ? 'a folder under your home' : 'pick one, or type a path'}>
               {/* No autofocus on a phone: it would open the keyboard over the
                 * picker the phone is meant to use. 16px there, or iOS zooms;

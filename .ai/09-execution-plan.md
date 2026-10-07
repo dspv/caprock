@@ -424,5 +424,6 @@ unattended run. Also fixed the same day: the model list names exact versions
 and offers Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 4.5 (each answered the real
 `claude` 2.1.292), with a test against `pricing.json`; new sessions open on
 bypass. The question card is back under the terminal with Y, A and N working
-from it. Still open from the list above: `/exit` seen working in the built app, the TCC
-identities, the keyboard-only sheet, and the unlanded worktrees.
+from it. The New agent sheet is filled from the keyboard alone. Still open
+from the list above: `/exit` seen working in the built app, the TCC
+identities, and the unlanded worktrees.
