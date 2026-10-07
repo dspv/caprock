@@ -355,9 +355,9 @@ the one that stops him moving to Caprock at all.
 
 - **A bypass session still asks (blocker).** He starts a session on
   *Bypass · never asks* and is still asked on nearly every tool call.
-  `--permission-mode bypassPermissions` does not lift
-  `permissions.blockReadsOutsideWorkingDirectories`, which the orchestrator's
-  own `--dangerously-skip-permissions` does; and Caprock never passes
+  The cause was `permissions.blockReadsOutsideWorkingDirectories`, an opt-in
+  perimeter that asks in every mode, bypass included (the two bypass flags
+  are one mode — read in Claude Code 2.1.292 later the same day); and Caprock never passes
   `--add-dir` for the directories it writes to itself (pasted screenshots
   under the app-support `paste/`, the session's memory folder), so reads of
   Caprock's own files are outside every working directory. Any command whose
