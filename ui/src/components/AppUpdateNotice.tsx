@@ -38,16 +38,11 @@ function readDismissed(): string {
   try { return localStorage.getItem(DISMISS_KEY) ?? '' } catch { return '' }
 }
 
-export function AppUpdateNotice() {
+/** The daemon's release check as this page sees it: `/v1/update`, read on
+ *  mount and every ten minutes while visible (no network I/O there). Not on a
+ *  paired device, which cannot update the computer. */
+export function useUpdateStatus(): UpdateStatus | undefined {
   const [st, setSt] = useState<UpdateStatus>()
-  const info = useAppUpdate()
-  const [dismissed, setDismissed] = useState(readDismissed)
-  const [open, setOpen] = useState(false)
-  // "Up to date" and a failure the user waved away stay hidden until the
-  // updater moves again.
-  const [settled, setSettled] = useState(false)
-  const box = useRef<HTMLSpanElement>(null)
-
   useEffect(() => {
     if (isPairedDevice()) return
     let alive = true
@@ -56,6 +51,19 @@ export function AppUpdateNotice() {
     const stop = everyWhileVisible(load, POLL_MS)
     return () => { alive = false; stop() }
   }, [])
+  return st
+}
+
+export function AppUpdateNotice() {
+  const st = useUpdateStatus()
+  const info = useAppUpdate()
+  const [dismissed, setDismissed] = useState(readDismissed)
+  const [open, setOpen] = useState(false)
+  // "Up to date" and a failure the user waved away stay hidden until the
+  // updater moves again.
+  const [settled, setSettled] = useState(false)
+  const box = useRef<HTMLSpanElement>(null)
+
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false) }

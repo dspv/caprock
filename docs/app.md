@@ -288,8 +288,9 @@ approve the app before its private repositories show up.
 
 ## Updates
 
-When a newer Caprock is out, the status strip says **Update to vX.Y.Z —
-Restart**. One click downloads it (with progress, while you keep working),
+When a newer Caprock is out, a card in the bottom-right corner says so,
+once per version: **Update and restart**, *What's new*, or **Later**. The
+status strip keeps **Update to vX.Y.Z — Restart** for when you are ready. One click downloads it (with progress, while you keep working),
 checks its signature, installs it and restarts the app. Everything comes
 back as it was: every session keeps running (their terminals live outside
 the app, and the app moves its daemon onto the new version without ending
