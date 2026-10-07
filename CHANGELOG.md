@@ -16,6 +16,11 @@ Phase 3 (Delight) has no plan by design.
   a permission request carries Approve and Deny where the desktop's
   notification server shows actions.
 
+### Changed
+
+- **The dashboard header says only *caprock*.** The *mission control*
+  tagline from before the desktop app is gone.
+
 ## [0.82.0] - 2026-10-07
 
 ### Added
