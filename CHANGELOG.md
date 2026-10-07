@@ -20,6 +20,8 @@ Phase 3 (Delight) has no plan by design.
 
 - **The dashboard header says only *caprock*.** The *mission control*
   tagline from before the desktop app is gone.
+- Built with the modernc.org/sqlite 1.60 driver, and the dashboard with
+  Vite 8.3.2. No change in behaviour.
 
 ## [0.82.0] - 2026-10-07
 
