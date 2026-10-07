@@ -9,6 +9,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **The menu bar says what its number counts.** It showed a bare *2*; it
+  now reads *2 waiting*. The Dock badge stays a number.
+
 ## [0.81.0] - 2026-10-07
 
 ### Added

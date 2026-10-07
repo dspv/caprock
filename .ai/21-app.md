@@ -232,8 +232,9 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
   your turn (`waitingOnYou`, `ui/src/lib/tray.ts`); Linux shows it where the
   desktop supports it. Until 2026-10-07 it counted prompts only, so a
   session done and waiting left the dock bare. The macOS menu bar title is
-  the same count, plus a plan window named once it is 80% full; a bare
-  5-hour percentage read as nothing.
+  the same count in words (*2 waiting*), plus a plan window named once it
+  is 80% full; a bare 5-hour percentage read as nothing, and a bare count
+  no better.
 - **F11 — The scrolling rule** in every scrolling surface: terminal
   scrollback, the timeline, the chat view, Now
   ([§ The scrolling rule](#the-scrolling-rule)).

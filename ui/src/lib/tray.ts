@@ -61,8 +61,10 @@ export function buildTrayView({ summary, inbox, conn, now }: TrayInput): TrayVie
   else lines.push('Loading…')
   if (conn !== 'open') lines.push('Daemon unreachable — reconnecting')
 
-  // Beside the icon: how many need you, and a plan window only when it is
-  // close to full, named — a bare "10%" read as nothing (owner, 2026-10-07).
+  // Beside the icon: how many need you, in words, and a plan window only
+  // when it is close to full, named — a bare "10%" read as nothing and a bare
+  // "2" no better (owner, 2026-10-07). The Dock badge stays a bare number:
+  // that is what a badge is.
   const near = [
     ['5h', summary?.rate_limits?.five_hour],
     ['7d', summary?.rate_limits?.seven_day],
@@ -72,7 +74,7 @@ export function buildTrayView({ summary, inbox, conn, now }: TrayInput): TrayVie
     .filter((x): x is { label: '5h' | '7d'; pct: number } => !!x && x.pct >= LIMIT_WARN_PCT)
     .sort((a, b) => b.pct - a.pct)[0]
   const title = [
-    waiting.length ? String(waiting.length) : '',
+    waiting.length ? `${waiting.length} waiting` : '',
     warn ? `${warn.label} ${warn.pct}%` : '',
   ].filter(Boolean).join(' · ')
   const tooltip = ['Caprock', waiting.length ? `${waiting.length} need you` : '', summary ? `today ${fmtUSD(summary.cost_usd)}` : '']

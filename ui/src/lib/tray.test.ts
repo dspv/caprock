@@ -36,13 +36,13 @@ describe('buildTrayView', () => {
       { id: 'b', label: 'api · fix login' },
       { id: 'c', label: 'api · deploy · approve' },
     ])
-    expect(v.title).toBe('3')
+    expect(v.title).toBe('3 waiting')
     expect(v.tooltip).toContain('3 need you')
   })
 
   it('names a plan window beside the count only when it is nearly full', () => {
     const full = { ...summary, rate_limits: { five_hour: { used_percentage: 86, resets_at: inSec(1) }, seven_day: { used_percentage: 91, resets_at: inSec(50) } } } as unknown as Summary
-    expect(buildTrayView({ summary: full, inbox: [item('a', 'waiting')], conn: 'open', now }).title).toBe('1 · 7d 91%')
+    expect(buildTrayView({ summary: full, inbox: [item('a', 'waiting')], conn: 'open', now }).title).toBe('1 waiting · 7d 91%')
     expect(buildTrayView({ summary: full, inbox: [], conn: 'open', now }).title).toBe('7d 91%')
   })
 
