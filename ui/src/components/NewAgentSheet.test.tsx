@@ -94,7 +94,7 @@ describe('the New agent sheet on the keyboard', () => {
     const order = Array.from(document.querySelectorAll<HTMLElement>('select, textarea, input, button'))
       .filter((el) => !el.hasAttribute('disabled'))
       .map((el) => el.getAttribute('aria-label') || (el.closest('label')?.querySelector('span')?.firstChild?.textContent ?? el.textContent ?? '').trim())
-    expect(order).toEqual(['Project', 'Where', 'Model', 'Permissions', 'First message', 'Cancel', 'Start'])
+    expect(order).toEqual(['Project', 'Where', 'Model', 'Permissions', 'Add', 'First message', 'Cancel', 'Start'])
   })
 })
 

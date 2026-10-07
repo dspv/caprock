@@ -33,6 +33,11 @@ others. Installing it: [install-app.md](install-app.md).
   git's progress shown. Branch, changed files and ahead/behind follow commits
   and checkouts made anywhere, the terminal included. Removing a project from
   the list never touches its files.
+- **Project instructions.** Give a project instructions for its agents as you
+  add it, or later from the New agent sheet: every Claude Code session
+  started in it gets them appended to its system prompt
+  (`--append-system-prompt`), a resumed one too. Codex, OpenCode and Gemini
+  do not get them yet.
 - **Tabs.** One strip of terminal tabs per project, an agent session or a
   shell each. Tabs come back when you reopen the app. Closing a tab (⌘W)
   never stops its session; *Stop the session…* in the inspector does, after

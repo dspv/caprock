@@ -761,6 +761,22 @@ func (s *Service) ProjectFor(dir string) (store.Project, bool) {
 	return best, found
 }
 
+// SystemPrompt is the instructions set for the project dir is in — its
+// defaults.system_prompt — or "" when there are none or dir is in no project.
+func (s *Service) SystemPrompt(dir string) string {
+	p, ok := s.ProjectFor(dir)
+	if !ok || p.Defaults == "" {
+		return ""
+	}
+	var d struct {
+		SystemPrompt string `json:"system_prompt"`
+	}
+	if json.Unmarshal([]byte(p.Defaults), &d) != nil {
+		return ""
+	}
+	return d.SystemPrompt
+}
+
 // Project returns a listed project's row.
 func (s *Service) Project(id int64) (store.Project, bool) {
 	s.mu.Lock()
@@ -808,18 +824,32 @@ func checkFolderName(name string) error {
 	return nil
 }
 
-// checkDefaults accepts {agent?, model?, permission_mode?} with string
-// values, and returns it compacted.
+// SystemPromptMax caps a project's instructions: a page or two of text, and
+// well under any argv limit, since it is passed on the command line.
+const SystemPromptMax = 16 << 10
+
+// checkDefaults accepts {agent?, model?, permission_mode?, system_prompt?}
+// with string values, and returns it compacted.
 func checkDefaults(raw json.RawMessage) (string, error) {
 	var d struct {
 		Agent          string `json:"agent,omitempty"`
 		Model          string `json:"model,omitempty"`
 		PermissionMode string `json:"permission_mode,omitempty"`
+		// SystemPrompt is appended to the system prompt of every Claude Code
+		// session started in the project (--append-system-prompt).
+		SystemPrompt string `json:"system_prompt,omitempty"`
 	}
 	dec := json.NewDecoder(strings.NewReader(string(raw)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&d); err != nil {
-		return "", errors.New("defaults is {agent?, model?, permission_mode?}, each a string")
+		return "", errors.New("defaults is {agent?, model?, permission_mode?, system_prompt?}, each a string")
+	}
+	d.SystemPrompt = strings.TrimSpace(d.SystemPrompt)
+	if len(d.SystemPrompt) > SystemPromptMax {
+		return "", fmt.Errorf("system_prompt is longer than %d bytes", SystemPromptMax)
+	}
+	if strings.ContainsRune(d.SystemPrompt, 0) {
+		return "", errors.New("system_prompt has a NUL byte")
 	}
 	if d.Agent != "" && !agents.IsSpawnable(d.Agent) {
 		return "", fmt.Errorf("caprock cannot start %q sessions", d.Agent)

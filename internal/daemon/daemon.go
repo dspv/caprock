@@ -420,6 +420,8 @@ func (d *Daemon) run(ctx context.Context) error {
 	// then each repository's .git watched for changes (never polled).
 	d.projs = projects.New(d.store, d.bus, d.log)
 	d.projs.Env = func() []string { return userenv.Environ(d.log) }
+	// A project's instructions reach every Claude Code session started in it.
+	d.mgr.ProjectPrompt = d.projs.SystemPrompt
 	if err := d.projs.Start(ctx); err != nil {
 		d.log.Warn("projects list unavailable", "component", "daemon", "err", err)
 		d.projs = nil

@@ -133,7 +133,12 @@ type Manager struct {
 	// permission prompt (p is nil when it stops), or the one it shows
 	// changes. See permission.go.
 	OnPermission func(sessionID string, p *Permission)
-	permMu       sync.Mutex
+	// ProjectPrompt returns the instructions the user set for the project a
+	// directory is in (projects' defaults.system_prompt), or "". A Claude Code
+	// session started there gets them through --append-system-prompt. Set by
+	// the daemon; nil means none.
+	ProjectPrompt func(dir string) string
+	permMu        sync.Mutex
 	// perms is each session's queue of prompts, oldest — the one on its
 	// screen — first.
 	perms map[string][]*Permission
@@ -433,6 +438,9 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 			SessionID: sessionID, Cwd: cwd, Model: req.Model, Mode: req.PermissionMode,
 			Resume: req.Resume, NativeResume: req.NativeResume, Fork: req.Fork, Extra: req.Args,
 			Prompt: req.Prompt, AddDirs: m.ownDirs(),
+		}
+		if agent == AgentClaude && m.ProjectPrompt != nil {
+			in.SystemPrompt = m.ProjectPrompt(cwd)
 		}
 		if in.Prompt != "" && isBatch(m.binary(agent)) {
 			in.Prompt = flattenForBatch(in.Prompt)

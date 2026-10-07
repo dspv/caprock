@@ -38,7 +38,10 @@ type launchInput struct {
 	// `permissions.blockReadsOutsideWorkingDirectories` on is asked about
 	// Caprock's own files.
 	AddDirs []string
-	Extra   []string
+	// SystemPrompt is the project's instructions for every agent in it,
+	// appended to Claude Code's own system prompt; "" for none.
+	SystemPrompt string
+	Extra        []string
 }
 
 // launch is one agent's start: its arguments, the environment it adds, and
@@ -101,6 +104,11 @@ func claudeLaunch(in launchInput) (launch, error) {
 	}
 	for _, d := range in.AddDirs {
 		l.args = append(l.args, "--add-dir", d)
+	}
+	// Appended, not --system-prompt: Claude Code keeps its own and the
+	// project's instructions come after it, on a resume as well as a start.
+	if in.SystemPrompt != "" {
+		l.args = append(l.args, "--append-system-prompt", in.SystemPrompt)
 	}
 	l.args = append(l.args, in.Extra...)
 	// `claude [options] [prompt]`: a positional prompt starts the interactive

@@ -18,6 +18,7 @@ import { DEFAULT_MODE, DEFAULT_MODELS, GEMINI_MAPPED, MODE_NOTE, ModelField, mod
 import { useInitialMode } from '@/lib/permissionMode'
 import type { SpawnAgent } from './AgentPicker'
 import type { Project } from '@/lib/projects'
+import { ProjectInstructions } from './ProjectInstructions'
 import { Sheet, SheetButton, SheetField } from './Sheet'
 import { stepSelect } from '@/lib/selectKeys'
 import { BypassConsentNote, useBypassConsent } from './BypassConsent'
@@ -163,6 +164,7 @@ export function NewAgentSheet({
             </select>
           </SheetField>
           {consent.needed && <BypassConsentNote />}
+          {project && agent === 'claude' && <ProjectInstructions key={project.id} project={project} />}
           <SheetField label="First message" hint="optional">
             <textarea
               className="input min-h-[84px] resize-y font-[family-name:var(--font-sans)] text-[13px] leading-relaxed"

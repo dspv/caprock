@@ -74,6 +74,19 @@ export interface ApiProject {
   worktrees?: ApiWorktree[]
   /** Sent alone with `id` when the project is unlisted. */
   removed?: boolean
+  defaults?: ProjectDefaults
+}
+
+/**
+ * A project's defaults (`PATCH /v1/projects/{id}` replaces them whole).
+ * `system_prompt` is the project's instructions, appended to the system prompt
+ * of every Claude Code session started in it.
+ */
+export interface ProjectDefaults {
+  agent?: string
+  model?: string
+  permission_mode?: string
+  system_prompt?: string
 }
 
 /** A shell tab (`POST`/`GET /v1/shells`). It has no session row. */
@@ -108,6 +121,7 @@ export interface Project {
   /** Today's spend, as the daemon counts it for this root. */
   cost_today?: number
   last_activity?: number
+  defaults?: ProjectDefaults
 }
 
 /** A `project` frame on /v1/live: the whole project, or `{id, removed: true}`. */
@@ -171,6 +185,7 @@ export function fromApiProject(p: ApiProject): Project {
     waiting: p.sessions?.waiting,
     cost_today: p.cost_today,
     last_activity: p.last_activity,
+    defaults: p.defaults,
     worktrees: (p.worktrees ?? [])
       .filter((w) => !w.missing)
       .map((w) => ({ name: w.name, path: w.path, branch: checkoutLabel(w.branch, w.head), changed: w.changed, caprock: w.caprock })),
@@ -238,6 +253,13 @@ export function newOpId(): string {
   return `op-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
+/** The PATCH that sets a project's instructions, keeping its other defaults; "" clears them. */
+export function instructionsPatch(defaults: ProjectDefaults | undefined, text: string): { defaults: ProjectDefaults } {
+  const { system_prompt: _old, ...rest } = defaults ?? {}
+  const t = text.trim()
+  return { defaults: t ? { ...rest, system_prompt: t } : rest }
+}
+
 export const projectsApi = {
   /** GET /v1/projects → `{projects}`, flattened; a bare array is read too. */
   list: async (): Promise<Project[]> => {
@@ -259,7 +281,7 @@ export const projectsApi = {
     const v = await call<{ ops?: OpFrame[] }>('Clone progress', '/v1/projects/ops')
     return Array.isArray(v?.ops) ? v.ops.filter((o) => o && typeof o.op_id === 'string') : []
   },
-  patch: async (id: string, patch: Partial<Pick<Project, 'name' | 'pinned' | 'sort'>>): Promise<Project> => {
+  patch: async (id: string, patch: Partial<Pick<Project, 'name' | 'pinned' | 'sort' | 'defaults'>>): Promise<Project> => {
     const v = await call<{ project: ApiProject }>('Editing a project', `/v1/projects/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch })
     return fromApiProject(v.project)
   },
