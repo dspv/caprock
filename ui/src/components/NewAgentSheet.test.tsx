@@ -8,15 +8,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Project } from '@/lib/projects'
 
 const spawn = vi.fn(async (_req: unknown) => ({ session_id: 'new-1', cwd: '/w/app' }))
+const acceptBypass = vi.fn(async () => ({ accepted: true }))
+const status = { accepted: undefined as boolean | undefined }
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
   return {
     ...actual,
     api: {
       ...actual.api,
-      status: async () => ({ version: 'v0.0.0', claude_available: true }),
+      status: async () => ({ version: 'v0.0.0', claude_available: true, claude_bypass_accepted: status.accepted }),
       settings: async () => ({}),
       spawn: (req: unknown) => spawn(req),
+      acceptBypass: () => acceptBypass(),
     },
   }
 })
@@ -34,7 +37,7 @@ function open(onClose = vi.fn()) {
   return { onClose, onStarted }
 }
 
-beforeEach(() => { spawn.mockClear(); localStorage.clear() })
+beforeEach(() => { spawn.mockReset().mockResolvedValue({ session_id: 'new-1', cwd: '/w/app' }); acceptBypass.mockClear(); status.accepted = undefined; localStorage.clear() })
 
 describe('the New agent sheet on the keyboard', () => {
   it('names its keys in the sheet', async () => {
@@ -92,5 +95,46 @@ describe('the New agent sheet on the keyboard', () => {
       .filter((el) => !el.hasAttribute('disabled'))
       .map((el) => el.getAttribute('aria-label') || (el.closest('label')?.querySelector('span')?.firstChild?.textContent ?? el.textContent ?? '').trim())
     expect(order).toEqual(['Project', 'Where', 'Model', 'Permissions', 'First message', 'Cancel', 'Start'])
+  })
+})
+
+/** ADR-041: the first bypass session on a machine shows Claude Code's warning
+ *  here, where "Accept and start" is the explicit answer. */
+describe('the one-time bypass consent', () => {
+  it('shows the warning and asks for it in the button, and records it before starting', async () => {
+    status.accepted = false
+    open()
+    expect(await screen.findByRole('note', { name: 'Bypass consent' })).toBeTruthy()
+    const start = screen.getByRole('button', { name: 'Accept and start' })
+    fireEvent.click(start)
+    await waitFor(() => expect(spawn).toHaveBeenCalledOnce())
+    expect(acceptBypass).toHaveBeenCalledOnce()
+    expect(acceptBypass.mock.invocationCallOrder[0]!).toBeLessThan(spawn.mock.invocationCallOrder[0]!)
+  })
+
+  it('is not asked for a mode that asks, nor once accepted', async () => {
+    status.accepted = true
+    open()
+    await screen.findByRole('button', { name: 'Start' })
+    expect(screen.queryByRole('note', { name: 'Bypass consent' })).toBeNull()
+  })
+
+  it('goes away when the mode is not bypass', async () => {
+    status.accepted = false
+    open()
+    await screen.findByRole('note', { name: 'Bypass consent' })
+    fireEvent.change(screen.getByLabelText<HTMLSelectElement>('Permissions'), { target: { value: 'acceptEdits' } })
+    expect(screen.queryByRole('note', { name: 'Bypass consent' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Start' })).toBeTruthy()
+  })
+
+  it('turns the daemon’s refusal into the warning, not an error line', async () => {
+    const { ApiError } = await import('@/lib/api')
+    spawn.mockRejectedValueOnce(new ApiError(409, 'Conflict', { error: 'Bypass needs a one-time consent first', code: 'bypass_consent' }))
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: 'Start' }))
+    expect(await screen.findByRole('note', { name: 'Bypass consent' })).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Accept and start' })).toBeTruthy()
   })
 })

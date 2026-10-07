@@ -20,6 +20,7 @@ import type { SpawnAgent } from './AgentPicker'
 import type { Project } from '@/lib/projects'
 import { Sheet, SheetButton, SheetField } from './Sheet'
 import { stepSelect } from '@/lib/selectKeys'
+import { BypassConsentNote, useBypassConsent } from './BypassConsent'
 
 const NEW_WORKTREE = '__new__'
 
@@ -57,6 +58,7 @@ export function NewAgentSheet({
   const [prompt, setPrompt] = useState(initialPrompt)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const consent = useBypassConsent(agent, mode)
   const codexModels = useApi(() => (agent === 'codex' ? api.agentModels('codex') : Promise.resolve(undefined)), [agent], { live: false })
 
   // ⌘↩ from anywhere in the sheet — a select, the footer's buttons — not only
@@ -79,6 +81,7 @@ export function NewAgentSheet({
     setBusy(true)
     setError('')
     try {
+      if (consent.needed) await consent.accept()
       const req: Parameters<typeof api.spawn>[0] = { cwd: where && where !== NEW_WORKTREE ? where : project.root }
       if (agent !== 'claude') req.agent = agent
       if (models[agent]?.trim()) req.model = models[agent].trim()
@@ -89,7 +92,7 @@ export function NewAgentSheet({
       onStarted(session_id, project.id, prompt.trim().slice(0, 60) || 'new session')
       onClose()
     } catch (e) {
-      setError(errText(e))
+      if (!consent.noteRefusal(e)) setError(errText(e))
     } finally {
       setBusy(false)
     }
@@ -112,7 +115,7 @@ export function NewAgentSheet({
               </p>
             )}
           <SheetButton onClick={onClose}>Cancel</SheetButton>
-          <SheetButton primary disabled={busy || agents.length === 0} onClick={() => void start()}>{busy ? 'Starting…' : 'Start'}</SheetButton>
+          <SheetButton primary disabled={busy || agents.length === 0} onClick={() => void start()}>{busy ? 'Starting…' : consent.needed ? 'Accept and start' : 'Start'}</SheetButton>
         </>
       }
     >
@@ -159,6 +162,7 @@ export function NewAgentSheet({
               ))}
             </select>
           </SheetField>
+          {consent.needed && <BypassConsentNote />}
           <SheetField label="First message" hint="optional">
             <textarea
               className="input min-h-[84px] resize-y font-[family-name:var(--font-sans)] text-[13px] leading-relaxed"

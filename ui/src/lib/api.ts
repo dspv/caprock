@@ -719,6 +719,9 @@ export interface Status {
   interrupted?: { stopped_at: number; ids: string[] }
   ui_built: boolean
   claude_available: boolean
+  /** The user accepted Claude Code's one-time bypass warning, so a bypass
+   *  session starts without it (ADR-041). Absent on older daemons. */
+  claude_bypass_accepted?: boolean
   /** The Gemini CLI is on PATH, so the new-session dialog can offer it as an
    *  agent. Absent on daemons older than this feature. */
   gemini_available?: boolean
@@ -1008,6 +1011,8 @@ export const api = {
   testAlert: () => post<{ sent: string }>('/v1/alerts/test', {}),
   /** Runs `caprock hooks install` in the daemon; answers with what is registered after. */
   installHooks: () => post<{ hooks: HooksStatus; backup?: string }>('/v1/hooks/install', {}),
+  /** The user accepted Caprock's copy of Claude Code's bypass warning (ADR-041). */
+  acceptBypass: () => post<{ accepted: boolean }>('/v1/claude/bypass-consent', {}),
   pairState: () => get<PairState>('/v1/pair/state'),
   /** Exchange a code for a token. The one call a device makes before it is trusted. */
   pairRedeem: (code: string, name: string) =>

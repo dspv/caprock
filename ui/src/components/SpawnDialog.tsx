@@ -6,6 +6,7 @@ import { useApi } from '@/lib/useApi'
 import { navigate } from '@/lib/router'
 import { modeWords, useInitialMode } from '@/lib/permissionMode'
 import { stepSelect } from '@/lib/selectKeys'
+import { BypassConsentNote, useBypassConsent } from './BypassConsent'
 
 // What the two selects start on, rather than an empty "default" that says
 // nothing about what you are about to run. Opus is what the machine's own
@@ -165,12 +166,14 @@ export function SpawnDialog({
   // machine to notice what it does.
   const remote = isPairedDevice()
   const [confirming, setConfirming] = useState(false)
+  const consent = useBypassConsent(agent, mode)
   const submit = async () => {
     if (!cwd.trim()) { setError('Working directory is required.'); return }
     if (remote && mode === 'bypassPermissions' && !confirming) { setConfirming(true); return }
     setConfirming(false)
     setBusy(true); setError('')
     try {
+      if (consent.needed) await consent.accept()
       const req: Parameters<typeof api.spawn>[0] = { cwd: cwd.trim() }
       if (agent !== 'claude') req.agent = agent
       if (model.trim()) req.model = model.trim()
@@ -184,7 +187,7 @@ export function SpawnDialog({
       navigate({ name: 'session', id: session_id, tab: landOn })
     } catch (e) {
       // errText also surfaces `detail`, the half that says what to do about it.
-      setError(errText(e))
+      if (!consent.noteRefusal(e)) setError(errText(e))
     } finally { setBusy(false) }
   }
   return (
@@ -267,6 +270,7 @@ export function SpawnDialog({
                 </Field>
               </div>
             </details>
+            {consent.needed && <BypassConsentNote />}
             {error && <div className="text-danger text-[12px]">{error}</div>}
           </div>
         )}
@@ -284,7 +288,7 @@ export function SpawnDialog({
         {(available || agents.length > 0) && !confirming && (
           <footer className="px-4 py-2 border-t border-border flex gap-2 justify-end">
             <button onClick={onClose} className="border border-border px-3 py-1 rounded-sm max-sm:min-h-11 max-sm:px-4 text-fg-muted hover:text-fg">Cancel</button>
-            <button onClick={submit} disabled={busy} className="border border-accent bg-accent/15 text-accent px-3 py-1 rounded-sm max-sm:min-h-11 max-sm:px-4 hover:bg-accent/25 disabled:opacity-50">{busy ? 'starting…' : 'Start session'}</button>
+            <button onClick={submit} disabled={busy} className="border border-accent bg-accent/15 text-accent px-3 py-1 rounded-sm max-sm:min-h-11 max-sm:px-4 hover:bg-accent/25 disabled:opacity-50">{busy ? 'starting…' : consent.needed ? 'Accept and start' : 'Start session'}</button>
           </footer>
         )}
       </div>

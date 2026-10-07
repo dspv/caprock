@@ -72,6 +72,12 @@ type Deps struct {
 	// `caprock hooks install` does, and returns what is registered after.
 	// nil ⇒ 501.
 	InstallHooks func(ctx context.Context) (any, error)
+	// BypassAccepted reports whether the user accepted Claude Code's one-time
+	// bypass warning (hooks.BypassKey in user settings); AcceptBypass records
+	// that they accepted Caprock's copy of it (ADR-041). nil ⇒ not checked,
+	// and the route answers 501.
+	BypassAccepted func() (bool, error)
+	AcceptBypass   func() error
 	// Storage returns what the data directory holds for /v1/storage. nil ⇒ 501.
 	Storage func(ctx context.Context) any
 	// Started is when this daemon came up. The burn tile needs it: in the
@@ -388,6 +394,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/pair/lan", s.handleSetLAN)
 	m.HandleFunc("POST /v1/update/check", s.handleUpdateCheck)
 	m.HandleFunc("POST /v1/hooks/install", s.handleInstallHooks)
+	m.HandleFunc("POST /v1/claude/bypass-consent", s.handleBypassConsent)
 	m.HandleFunc("GET /v1/settings", s.handleGetSettings)
 	m.HandleFunc("PUT /v1/settings", s.handlePutSettings)
 	m.HandleFunc("POST /v1/report/test", s.handleTestReport)
@@ -1955,6 +1962,10 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 	// A continue picks up in the mode the session was last in; a new session
 	// starts in the stated preference.
 	s.defaultSpawnMode(r.Context(), req)
+	if s.needsBypassConsent(req) {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": bypassConsentMsg, "code": "bypass_consent"})
+		return
+	}
 	// Spawn with a background context: the process must outlive this HTTP request.
 	id, cwd, err := s.d.Agents.Spawn(context.WithoutCancel(r.Context()), req)
 	if err != nil {

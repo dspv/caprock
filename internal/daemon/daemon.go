@@ -492,7 +492,7 @@ func (d *Daemon) run(ctx context.Context) error {
 
 	d.api = api.New(api.Deps{
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d, Alerts: d,
-		Status: d.status, InstallHooks: d.installHooks, Storage: d.storageReport, ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
+		Status: d.status, InstallHooks: d.installHooks, BypassAccepted: bypassAccepted, AcceptBypass: acceptBypass, Storage: d.storageReport, ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
 		LoopK: d.det.K, LoopWindow: d.det.Window,
 		Token: rt.Token, Shutdown: cancel, Agents: &agentAdapter{m: d.mgr, d: d},
 		Tasks: &boardAdapter{d: d}, Settings: &settingsAdapter{d: d}, Update: d.upd,
@@ -1104,10 +1104,13 @@ type Status struct {
 	// while ingest is running. Without it the daemon looked healthy while
 	// capturing nothing, and the dashboard told the user to start `claude` and
 	// wait for sessions that could never arrive.
-	IngestError     string        `json:"ingest_error,omitempty"`
-	Hooks           *hooks.Status `json:"hooks,omitempty"`
-	UIBuilt         bool          `json:"ui_built"`
-	ClaudeAvailable bool          `json:"claude_available"`
+	IngestError string        `json:"ingest_error,omitempty"`
+	Hooks       *hooks.Status `json:"hooks,omitempty"`
+	// ClaudeBypassAccepted says the user accepted Claude Code's one-time
+	// bypass warning, so a bypass session starts without it (ADR-041).
+	ClaudeBypassAccepted bool `json:"claude_bypass_accepted"`
+	UIBuilt              bool `json:"ui_built"`
+	ClaudeAvailable      bool `json:"claude_available"`
 	// ShellEnv says whether sessions Caprock starts get the user's login-shell
 	// environment or, because it could not be read, the daemon's own — the
 	// difference between a spawned session finding gcloud and not (FB-033).
@@ -1238,6 +1241,7 @@ func (d *Daemon) status(_ context.Context) any {
 		if hs, err := hooks.StatusFor(d.opt.DataDir, p); err == nil {
 			st.Hooks = &hs
 		}
+		st.ClaudeBypassAccepted, _ = hooks.BypassAccepted(p)
 	}
 	d.mu.Lock()
 	st.ActiveLoops = len(d.alerts)
@@ -2124,6 +2128,25 @@ func (d *Daemon) DisableLAN() error {
 	d.lanLn2, d.lanIP2 = nil, nil
 	d.api.SetLAN(nil, "")
 	d.log.Info("stopped listening on the local network", "component", "daemon")
+	return err
+}
+
+// bypassAccepted and acceptBypass read and write Claude Code's bypass
+// consent in the settings file this daemon reports on (ADR-041).
+func bypassAccepted() (bool, error) {
+	sp, err := hooks.DefaultSettingsPath()
+	if err != nil {
+		return false, err
+	}
+	return hooks.BypassAccepted(sp)
+}
+
+func acceptBypass() error {
+	sp, err := hooks.DefaultSettingsPath()
+	if err != nil {
+		return err
+	}
+	_, err = hooks.AcceptBypass(sp)
 	return err
 }
 

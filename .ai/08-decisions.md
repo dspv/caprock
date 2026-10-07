@@ -1944,3 +1944,29 @@ it: a new release, a local build (`<last tag>-dev+<commit>`) and a step
 back to a release each leave the daemon matching the app. Only an app
 running from a `.app` does it; `make app` (`cargo run`) leaves the running
 daemon alone. `"own_daemon": false` still turns all of it off.
+
+## ADR-041 — The first bypass session asks for consent in Caprock, never in a screen whose default is "No, exit"
+
+**Context.** Bypass became the default for a new session on 2026-10-07 and
+is spawned as `--dangerously-skip-permissions`. Claude Code shows a one-time
+warning the first time it runs that way ("WARNING: Claude Code running in
+Bypass Permissions mode", *Yes, I accept* / *No, exit*), with focus on
+*No, exit*, unless `skipDangerousModePermissionPrompt` is true in the user's
+settings. The owner had it set, so he never saw it; a new user pressing Enter
+was dropped from the session into a shell, and a session started from a
+phone sat on a screen no card shows (it is not a hook).
+
+**Decision (owner, 2026-10-07).** Caprock shows the warning itself, once per
+machine, in the dialog the user is already in: a note above the start
+button, which reads *Accept and start*. Pressing it writes the key Claude
+Code writes on *Yes, I accept* (`POST /v1/claude/bypass-consent`), then
+starts. The daemon refuses a bypass start without it (409 `bypass_consent`),
+which the dialogs turn into the same note, so a stale page or a script
+cannot reach the warning screen. A paired device cannot give the consent:
+it is given at the machine.
+
+**Rejected.** Passing `--settings '{"skipDangerousModePermissionPrompt":true}'`
+on every start: with bypass the default, users would run without asking
+having agreed to nothing. Leaving Claude Code's screen with a hint: the
+Enter trap and the stuck phone session remain.
+
