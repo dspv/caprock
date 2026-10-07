@@ -43,14 +43,15 @@ that cannot run everywhere is a gate people learn to skip.
   caprock` fails. Add the repo to the PAT's resource list, or issue a new
   fine-grained PAT covering both `homebrew-tap` and `scoop-bucket`.
 
-- ⚠️ **The app updater's signing key** (F20,
+- ✅ **The app updater's signing key** (F20, secrets set 2026-10-07;
   [ADR-042](../.ai/08-decisions.md#adr-042--the-app-updates-itself-in-one-click-a-minisign-signed-bundle-one-channel-checked-only-when-the-release-check-is-on-or-the-user-asks)):
   two secrets on `dspv/caprock`, **`TAURI_SIGNING_PRIVATE_KEY`** (the whole
   contents of the private key file) and **`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`**.
   The public half is `plugins.updater.pubkey` in `app/src-tauri/tauri.conf.json`;
   the private key was generated on the maintainer's Mac with `npx tauri signer
   generate` (2026-10-06) and is kept there, `0600`, under
-  `~/.config/caprock-release/`. Without the secrets a release still ships, with
+  `~/.config/caprock-release/`; its public half was checked against
+  `tauri.conf.json` when the secrets were set. Without the secrets a release still ships, with
   a warning and no `latest.json`, and the app's Update button points at the
   release page. **Never replace the key casually:** every installed app trusts
   only this public key, so a new key means everyone installs the next app by

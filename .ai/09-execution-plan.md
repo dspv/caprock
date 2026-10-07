@@ -414,16 +414,20 @@ the one that stops him moving to Caprock at all.
   `~/dev/caprock-web`, never in `~/dev/wt`; WP-21 auto-update (PR #249,
   conflicting), voice input, the drop/TCC fix are all unlanded worktrees.
 
-**Fixed on 2026-10-07, in the working tree:** bypass is spawned as
-`--dangerously-skip-permissions`; Claude Code sessions get `--add-dir` for
-Caprock's own directories; an exited session's tab becomes a shell in the same
-folder. The owner's `permissions.blockReadsOutsideWorkingDirectories` was
-turned off with his decision (backup at `~/.claude/settings.json.bak-20261007`)
-— it is a perimeter no permission mode lifts, so it had to go for an
-unattended run. Also fixed the same day: the model list names exact versions
-and offers Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 4.5 (each answered the real
-`claude` 2.1.292), with a test against `pricing.json`; new sessions open on
-bypass. The question card is back under the terminal with Y, A and N working
-from it. The New agent sheet is filled from the keyboard alone. Still open
-from the list above: `/exit` seen working in the built app, the TCC
-identities, and the unlanded worktrees.
+**State at the end of 2026-10-07.** Landed and released: bypass spawned as
+`--dangerously-skip-permissions` and the default, `--add-dir` for Caprock's
+own folders, exact model versions (each id answered the real `claude`
+2.1.292, with a test against `pricing.json`), `/exit` leaving a shell
+(#257); the question card back under the terminal with Y/A/N (#258); the New
+agent sheet on the keyboard alone (#259); the one-time bypass consent in
+Caprock (#260, ADR-041). WP-21 app updates landed after the release (#249,
+ADR-042). The owner's `permissions.blockReadsOutsideWorkingDirectories` was
+turned off with his decision (backup at
+`~/.claude/settings.json.bak-20261007`); it is opt-in in Claude Code, so new
+users do not have it. Worktrees: everything merged or superseded was
+removed; `~/dev/wt` holds only `feat/voice-input`. Still open: `/exit` seen
+in the built app with the real `claude`; one TCC identity, which the ad-hoc
+signature cannot give (each release is a new cdhash; old rows stay in System
+Settings until removed there) and Developer ID signing will; voice input
+(engine only, no UI or spec); the stale-UI pill left uncommitted in
+`.claude/worktrees/agent-a9b589993b7fbe75d`.

@@ -538,6 +538,11 @@ brew upgrade --cask caprock-app                         # the desktop app (macOS
 go install github.com/dspv/caprock/cmd/caprock@latest   # go install
 ```
 
+The desktop app updates itself: when a newer release is out, its status strip
+offers **Update to vX.Y.Z — Restart**, and sessions, tabs and splits come back
+as they were ([docs/app.md § Updates](docs/app.md#updates)). An app from before
+that button existed needs the command above, or the new `.dmg`, once.
+
 `brew update` first is not decoration: a tap is read from a local git clone
 that `brew upgrade` refreshes only through auto-update, which runs at most once
 a day. Without it, Homebrew can report `already installed` for a release that
@@ -625,7 +630,8 @@ loopback-only:
   sessions, costs, answers, changes and the task board. Beside each device in
   settings, *Let it control sessions* lets that phone also start a session in
   any folder under your home directory with Claude Code, Codex or OpenCode, in
-  any permission mode (Bypass asks once first), type into it (a big input
+  any permission mode (Bypass asks once first, and the computer's one-time
+  bypass consent has to have been given at the computer), type into it (a big input
   field plus Esc, Tab, arrows, Enter and Ctrl+C buttons), answer approvals and
   stop it. *Start work* on Now also lets it clone a repository, make a new
   project or a worktree, and start an agent there, opening on the session's

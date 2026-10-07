@@ -49,8 +49,10 @@ macOS remembers the choice; later launches open directly. The terminal
 equivalent of either is
 `xattr -dr com.apple.quarantine /Applications/Caprock.app`.
 
-**Upgrade:** `brew upgrade --cask caprock-app`, or drag the new `.dmg`'s
-Caprock over the old one.
+**Upgrade:** the app updates itself from its status strip
+([app.md § Updates](app.md#updates)). An app from before that existed:
+`brew upgrade --cask caprock-app`, or drag the new `.dmg`'s Caprock over the
+old one, once.
 **Uninstall:** `brew uninstall --cask caprock-app`, or move Caprock to the
 Trash.
 
