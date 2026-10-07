@@ -34,6 +34,7 @@ import { Sidebar } from '@/components/Sidebar'
 import { TabStrip, TerminalStack } from '@/components/TerminalTabs'
 import { Inspector } from '@/components/Inspector'
 import { StatusStrip } from '@/components/StatusStrip'
+import { AppUpdateToast } from '@/components/AppUpdateToast'
 import { AppUpdateAsk } from '@/components/AppUpdateAsk'
 import { appUpdate } from '@/lib/appupdate'
 import { PermissionPrompt } from '@/components/PermissionPrompt'
@@ -649,6 +650,7 @@ export function AppShell() {
         </main>
       </div>
       <StatusStrip summary={data.summary} pane={focused ? paneStatus[focused.sessionId] : undefined} version={version} />
+      <AppUpdateToast />
       {isTauri() && <AppUpdateAsk />}
 
       {toast && (

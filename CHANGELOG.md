@@ -26,6 +26,10 @@ Phase 3 (Delight) has no plan by design.
   installer and the Linux AppImage update themselves; `.deb` and `.rpm`
   installs are told to use their package manager. Each release now carries
   `latest.json` and the signed update files.
+- **A newer version announces itself in the corner.** A card at the bottom
+  right of the app says *Caprock vX.Y.Z is available* once per version, with
+  **Update and restart**, *What's new* and **Later**, and shows the
+  download's progress; the status strip keeps its line.
 
 ## [0.79.0] - 2026-10-07
 
