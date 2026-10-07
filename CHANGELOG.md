@@ -9,6 +9,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **Project instructions reach Codex too.** A Codex session started in a
+  project gets its instructions as Codex's developer instructions, beside
+  the repository's own `AGENTS.md`.
+
 ### Fixed
 
 - **Opening the dashboard no longer asks for Documents or Downloads.** The
