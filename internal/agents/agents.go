@@ -103,6 +103,11 @@ type Agent struct {
 	exit   int
 	exited bool
 	onExit func(sessionID string, code int)
+
+	// cols and rows are the terminal's size as last set, read when a
+	// permission answer reads the screen.
+	sizeMu     sync.Mutex
+	cols, rows int
 }
 
 // Manager owns the set of running agents.
@@ -125,10 +130,13 @@ type Manager struct {
 	OnExit   func(sessionID string, code int)
 	OnOutput func(sessionID string) // called (throttled by caller) when new bytes arrive
 	// OnPermission is told when an owned session starts or stops waiting on a
-	// permission prompt (p is nil when it stops). See permission.go.
+	// permission prompt (p is nil when it stops), or the one it shows
+	// changes. See permission.go.
 	OnPermission func(sessionID string, p *Permission)
 	permMu       sync.Mutex
-	perms        map[string]*Permission
+	// perms is each session's queue of prompts, oldest — the one on its
+	// screen — first.
+	perms map[string][]*Permission
 	// persistMu serialises writing perms to the store, and persisting tracks
 	// the writes in flight (see persistPermission).
 	persistMu  sync.Mutex
@@ -267,6 +275,35 @@ func resolveClaude() string {
 	return "claude"
 }
 
+// ownDirs are Caprock's own directories a session is allowed to read without
+// being asked, passed as --add-dir.
+//
+// Caprock writes files the user then refers to by path — a screenshot pasted
+// into the terminal lands in PasteDir — and those paths are outside every
+// working directory. A user with Claude Code's
+// `permissions.blockReadsOutsideWorkingDirectories` on was therefore asked
+// about Caprock's own files, in every permission mode: that setting is a
+// separate guard and `--permission-mode bypassPermissions` does not lift it.
+// Naming the directories is the narrow fix — it allows the two places Caprock
+// writes to and nothing else.
+func (m *Manager) ownDirs() []string {
+	if m.dataDir == "" {
+		return nil
+	}
+	var dirs []string
+	for _, d := range []string{config.PasteDir(m.dataDir), config.ChatsDir(m.dataDir)} {
+		// Claude Code refuses to start on an --add-dir that does not exist,
+		// and a fresh install has neither until the first paste or chat.
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			m.log.Warn("cannot prepare a directory for --add-dir; reads there may be asked about",
+				"component", "agents", "dir", d, "err", err)
+			continue
+		}
+		dirs = append(dirs, d)
+	}
+	return dirs
+}
+
 // newChatDir makes a home for one quick chat.
 //
 // Vova uses Claude to ask things — look something up, talk a problem through —
@@ -395,7 +432,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		in := launchInput{
 			SessionID: sessionID, Cwd: cwd, Model: req.Model, Mode: req.PermissionMode,
 			Resume: req.Resume, NativeResume: req.NativeResume, Fork: req.Fork, Extra: req.Args,
-			Prompt: req.Prompt,
+			Prompt: req.Prompt, AddDirs: m.ownDirs(),
 		}
 		if in.Prompt != "" && isBatch(m.binary(agent)) {
 			in.Prompt = flattenForBatch(in.Prompt)
@@ -485,6 +522,14 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		SessionID: sessionID, Cwd: cwd, Worktree: worktree, Command: command + " " + join(args), StartedAt: time.Now(), Kind: agent, Port: port,
 		sess: sess, ring: ringFor(sess, 256<<10), inputs: termbuf.NewInputs(termbuf.InputTTL), log: m.log, subs: map[chan []byte]struct{}{}, done: make(chan struct{}), onExit: m.OnExit,
 	}
+	cols, rows := req.Cols, req.Rows
+	if cols <= 0 {
+		cols = 120 // ptyman's defaults
+	}
+	if rows <= 0 {
+		rows = 40
+	}
+	a.setSize(cols, rows)
 	m.mu.Lock()
 	m.agents[sessionID] = a
 	m.mu.Unlock()
@@ -581,10 +626,8 @@ func (m *Manager) Input(sessionID string, data []byte) error {
 	if !ok {
 		return errNotOwned(sessionID)
 	}
-	if answersAMenu(data) {
-		// Answered in the terminal: the buttons are out of date.
-		m.clearPermission(sessionID)
-	}
+	// Answered in the terminal: the buttons are out of date.
+	m.typedIntoMenu(sessionID, data)
 	_, err := a.sess.Write(data)
 	return err
 }
@@ -598,8 +641,8 @@ func (m *Manager) InputSeq(sessionID, client string, seq uint64, data []byte) (u
 	if !ok {
 		return 0, errNotOwned(sessionID)
 	}
-	if seq > 0 && answersAMenu(data) {
-		m.clearPermission(sessionID)
+	if seq > 0 {
+		m.typedIntoMenu(sessionID, data)
 	}
 	if sw, ok := a.sess.(ptyman.SeqWriter); ok {
 		last, err := sw.WriteSeq(client, seq, data)
@@ -628,7 +671,7 @@ func (m *Manager) Resize(sessionID string, cols, rows int) error {
 	if !ok {
 		return errNotOwned(sessionID)
 	}
-	return a.sess.Resize(cols, rows)
+	return a.Resize(cols, rows)
 }
 
 // ShutdownGrace is how long a session gets to finish on its own before it is
@@ -813,7 +856,29 @@ func (a *Agent) Ring() *termbuf.Ring { return a.ring.r }
 func (a *Agent) Write(b []byte) error { _, err := a.sess.Write(b); return err }
 
 // Resize the terminal.
-func (a *Agent) Resize(cols, rows int) error { return a.sess.Resize(cols, rows) }
+func (a *Agent) Resize(cols, rows int) error {
+	err := a.sess.Resize(cols, rows)
+	if err == nil {
+		a.setSize(cols, rows)
+	}
+	return err
+}
+
+// setSize records the terminal's size, for reading its screen.
+func (a *Agent) setSize(cols, rows int) {
+	a.sizeMu.Lock()
+	a.cols, a.rows = cols, rows
+	a.sizeMu.Unlock()
+}
+
+// size is the terminal's last known size; 0 when this daemon has not seen it
+// (a session reattached from the last one), which termbuf.Screen reads as
+// "wide".
+func (a *Agent) size() (cols, rows int) {
+	a.sizeMu.Lock()
+	defer a.sizeMu.Unlock()
+	return a.cols, a.rows
+}
 
 // Signal the process.
 func (a *Agent) Signal(sig ptyman.Signal) error { return a.sess.Signal(sig) }

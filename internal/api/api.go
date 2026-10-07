@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/codex"
 	"github.com/dspv/caprock/internal/contexttax"
@@ -71,6 +72,12 @@ type Deps struct {
 	// `caprock hooks install` does, and returns what is registered after.
 	// nil ⇒ 501.
 	InstallHooks func(ctx context.Context) (any, error)
+	// BypassAccepted reports whether the user accepted Claude Code's one-time
+	// bypass warning (hooks.BypassKey in user settings); AcceptBypass records
+	// that they accepted Caprock's copy of it (ADR-041). nil ⇒ not checked,
+	// and the route answers 501.
+	BypassAccepted func() (bool, error)
+	AcceptBypass   func() error
 	// Storage returns what the data directory holds for /v1/storage. nil ⇒ 501.
 	Storage func(ctx context.Context) any
 	// Started is when this daemon came up. The burn tile needs it: in the
@@ -241,6 +248,11 @@ type Settings struct {
 	// Editor is the editor "Open in editor" uses: an id from GET
 	// /v1/editors, or empty for the first one installed.
 	Editor string `json:"editor"`
+	// SpawnMode is the permission mode new sessions start in: what the
+	// new-session dialogs open on, and what POST /v1/agents uses when the
+	// request names no mode and has no session to carry one from. One of
+	// agents.PermissionModes, or empty for not set.
+	SpawnMode string `json:"spawn_permission_mode"`
 }
 
 // ReportSender sends one weekly report immediately.
@@ -382,6 +394,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/pair/lan", s.handleSetLAN)
 	m.HandleFunc("POST /v1/update/check", s.handleUpdateCheck)
 	m.HandleFunc("POST /v1/hooks/install", s.handleInstallHooks)
+	m.HandleFunc("POST /v1/claude/bypass-consent", s.handleBypassConsent)
 	m.HandleFunc("GET /v1/settings", s.handleGetSettings)
 	m.HandleFunc("PUT /v1/settings", s.handlePutSettings)
 	m.HandleFunc("POST /v1/report/test", s.handleTestReport)
@@ -645,7 +658,7 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 		}
 	}
 	if sess.Status == store.StatusEnded || sum.Detached {
-		sum.Resume = s.resumeInfo(sess)
+		sum.Resume = s.resumeInfo(ctx, sess)
 		sum.OpenTerminal = s.openTerminalInfo(sess)
 	}
 	sum.ModelDisplay = s.modelDisplay(sess.Model)
@@ -764,7 +777,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 			}
 			// Every row carries whether it can be picked up: the caller is
 			// about to offer exactly that, for live sessions as well as ended.
-			sum.Resume = s.resumeInfo(sess)
+			sum.Resume = s.resumeInfo(ctx, sess)
 			sum.OpenTerminal = s.openTerminalInfo(sess)
 			out = append(out, sum)
 		}
@@ -819,7 +832,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	if last == nil {
 		last = []event.Event{}
 	}
-	sum.Resume = s.resumeInfo(sess)
+	sum.Resume = s.resumeInfo(ctx, sess)
 	sum.OpenTerminal = s.openTerminalInfo(sess)
 	from, to, err := store.RelayLinks(ctx, s.d.Store.DB(), sess)
 	if err != nil {
@@ -1099,6 +1112,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		BrowseRoot      *string  `json:"browse_root"`
 		Terminal        *string  `json:"terminal"`
 		Editor          *string  `json:"editor"`
+		SpawnMode       *string  `json:"spawn_permission_mode"`
 		// The bot token goes in and never comes back out. An empty string is a
 		// deliberate clear, which is why it is a pointer like everything else.
 		ReportBotToken *string `json:"report_bot_token"`
@@ -1162,6 +1176,16 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		in.Editor = v
+	}
+	if patch.SpawnMode != nil {
+		// Validated, not passed through: a word Claude Code does not accept
+		// would stop every new session from starting.
+		v := strings.TrimSpace(*patch.SpawnMode)
+		if v != "" && !agents.IsPermissionMode(v) {
+			s.failCode(w, http.StatusBadRequest, fmt.Errorf("spawn_permission_mode must be empty or one of %s", strings.Join(agents.PermissionModes, ", ")))
+			return
+		}
+		in.SpawnMode = v
 	}
 	// Only touched when the caller named it. GET never returns the token, so a
 	// UI that reads settings and writes them back always omits it — treating
@@ -1918,7 +1942,7 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 	// through — the store not knowing a session is not evidence it is gone.
 	if resume, _ := req["resume"].(string); resume != "" {
 		if sess, err := store.GetSession(r.Context(), s.d.Store.DB(), resume); err == nil {
-			if info := s.resumeInfo(sess); info != nil && !info.OK {
+			if info := s.resumeState(sess); info != nil && !info.OK {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": info.Reason})
 				return
 			}
@@ -1934,6 +1958,13 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": msg})
 			return
 		}
+	}
+	// A continue picks up in the mode the session was last in; a new session
+	// starts in the stated preference.
+	s.defaultSpawnMode(r.Context(), req)
+	if s.needsBypassConsent(req) {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": bypassConsentMsg, "code": "bypass_consent"})
+		return
 	}
 	// Spawn with a background context: the process must outlive this HTTP request.
 	id, cwd, err := s.d.Agents.Spawn(context.WithoutCancel(r.Context()), req)

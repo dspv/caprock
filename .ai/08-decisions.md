@@ -1457,6 +1457,64 @@ restart smoke test, intermittently — and the dialog came back without its
 buttons. A crash must not lose an open dialog on any OS. Clearing a prompt
 stays in the background: a lost clear is caught by the events on restore.
 
+*Amended 2026-10-06 (owner):* in the desktop app the card is not drawn for the
+session whose terminal is in front. The terminal's own menu is the answer
+surface there — Enter answers it — and a card beside it read as the question
+asked twice, sometimes for a different request (a subagent's) than the one on
+screen. The card shows when the chat or a Changes view covers the terminal,
+says *↵ Enter in the terminal = Yes*, and never takes focus; the Inbox, the
+menu bar, the notification and the phone keep their buttons. See
+[21-app.md § What the user sees](21-app.md#what-the-user-sees).
+
+*Amended 2026-10-07 (owner), reversing the above:* the card is drawn under the
+session's terminal again. He lives in the terminal and wanted the card's
+wording and its "don't ask again" by key; the mouse is the wrong instrument
+there. What made two surfaces read as two questions is answered by keys, not
+by hiding: `Y`, `A` and `N` answer the card from that session's own terminal
+and are kept from it, which is safe because Claude Code shows a menu, not an
+input, while a permission question waits; Enter and Esc stay with that menu,
+where they already mean Yes and No. The subagent mix-up was the queue, fixed
+since (below).
+
+*Amended 2026-10-06 (the owner lost work to it all day):* **a button reads the
+menu off the screen before it types, and prompts queue.** The fixed keys were
+wrong on a real menu: in auto mode the classifier's dialog ("This command
+requires approval") is `1. Yes  2. No`, while the hook still carries the
+suggestion that used to mean `2` = *don't ask again*, so **Yes, for the rest of
+this session** typed `2` and rejected the call. And one prompt per session,
+overwritten by every `PermissionRequest` (a subagent's included), let a card
+name one request while its key landed in another's dialog. Now:
+
+- **The key comes from the screen.** When a button is pressed, the session's
+  recent output (the ring the pty-host keeps, so it holds across a daemon
+  restart) is replayed onto a screen by a small emulator (`termbuf.Screen`:
+  printing, cursor moves, erases, both buffers; colours and modes ignored),
+  and the menu at its bottom is read: numbered options, one marked `❯`, an
+  option starting *No*, and at most a footer under it. Yes is the option
+  whose text is just *Yes*; the always button is an option starting *Yes,* (or
+  *Yes and*) that says *session*, *don't ask* or *allow*; No is Esc. No menu,
+  or no such option, and nothing is typed: `422`, *that option is not on the
+  prompt — answer in the terminal*, shown on the card. Esc too needs a menu:
+  with none it interrupts the turn. This undoes the first paragraph's "not by
+  reading the screen" for answering only; finding the prompt is still the
+  hook's job.
+- **Prompts queue per call.** Claude Code queues dialogs and shows the oldest;
+  so does Caprock (`tool_use_id` when the hook sends one, `agent_id` for a
+  subagent's). The card shows the oldest and how many wait behind it, a later
+  hook never overwrites an earlier one, and a button for a queued prompt is a
+  `409`. Each is cleared by what answers it: Enter or a digit in the terminal
+  answers the oldest, Esc or Ctrl+C clears them all (it rejects and
+  interrupts), a `PostToolUse` its own call, a `SubagentStop` that subagent's,
+  `Stop`, the next prompt or the session ending all of them. Stored one row
+  per prompt (migration 0042), still committed before the hook is answered.
+- **Keys on the card.** With a card in view and focus outside a text field or
+  the terminal, `Y` or Enter is Yes, `A` the always option (when offered), `N`
+  or Esc is No; the buttons say so. A focused terminal keeps every key.
+
+**Revisit if** Claude Code renames its options (the menus in
+`internal/agents/permmenu_test.go` would stop matching), or its dialog stops
+being the last thing on the screen.
+
 ---
 
 ## ADR-036 — A phone hears that a session needs it through the owner's own Telegram bot
@@ -1875,7 +1933,44 @@ user's real HOME.
 the list again), or if moving a Homebrew daemon onto the app's surprises a
 user who runs both.
 
-## ADR-041 — The app updates itself in one click: a minisign-signed bundle, one channel, checked only when the release check is on or the user asks
+**Amended 2026-10-06 (`make app-local`).** The move above covered only a
+formula's daemon, so an app upgraded to a new release kept running its own
+daemon at the old version until that fell below `MIN_API_LEVEL`. The same
+move now also replaces the app's *own* daemon, once per launch, when the
+bundle carries a different one: another `caprock version`, or the same
+version with other bytes (`<data_dir>/bin/caprock` against the sidecar).
+The bundle wins in both directions, because the app's daemon is a copy of
+it: a new release, a local build (`<last tag>-dev+<commit>`) and a step
+back to a release each leave the daemon matching the app. Only an app
+running from a `.app` does it; `make app` (`cargo run`) leaves the running
+daemon alone. `"own_daemon": false` still turns all of it off.
+
+## ADR-041 — The first bypass session asks for consent in Caprock, never in a screen whose default is "No, exit"
+
+**Context.** Bypass became the default for a new session on 2026-10-07 and
+is spawned as `--dangerously-skip-permissions`. Claude Code shows a one-time
+warning the first time it runs that way ("WARNING: Claude Code running in
+Bypass Permissions mode", *Yes, I accept* / *No, exit*), with focus on
+*No, exit*, unless `skipDangerousModePermissionPrompt` is true in the user's
+settings. The owner had it set, so he never saw it; a new user pressing Enter
+was dropped from the session into a shell, and a session started from a
+phone sat on a screen no card shows (it is not a hook).
+
+**Decision (owner, 2026-10-07).** Caprock shows the warning itself, once per
+machine, in the dialog the user is already in: a note above the start
+button, which reads *Accept and start*. Pressing it writes the key Claude
+Code writes on *Yes, I accept* (`POST /v1/claude/bypass-consent`), then
+starts. The daemon refuses a bypass start without it (409 `bypass_consent`),
+which the dialogs turn into the same note, so a stale page or a script
+cannot reach the warning screen. A paired device cannot give the consent:
+it is given at the machine.
+
+**Rejected.** Passing `--settings '{"skipDangerousModePermissionPrompt":true}'`
+on every start: with bypass the default, users would run without asking
+having agreed to nothing. Leaving Claude Code's screen with a hint: the
+Enter trap and the stuck phone session remain.
+
+## ADR-042 — The app updates itself in one click: a minisign-signed bundle, one channel, checked only when the release check is on or the user asks
 
 **Date:** 2026-10-06 · **Status:** accepted (owner asked for it: "no
 convenient seamless app update" was what bothered him most, translated)

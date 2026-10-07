@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { api, ApiError, errText, type Permission, type PermissionChoice } from '@/lib/api'
 import { live, useLive } from '@/lib/live'
 import { useCanControl } from '@/lib/useCanControl'
@@ -31,36 +31,49 @@ export function usePermission(sessionId: string): [Permission | null, (p: Permis
  * desk, a guessing game on a phone. Here it is the command or file being asked
  * about, in full, and one button per answer. A viewer sees what is being asked
  * and no buttons.
+ *
+ * In the desktop app the card shows under the session's terminal too (owner,
+ * 2026-10-07: it was hidden in 0.78.2 and he wanted it back). It is worded
+ * better than the terminal's menu, and its keys work from that terminal while
+ * the question waits — the owner lives in the terminal, and the mouse is the
+ * wrong instrument there. It never takes focus.
  */
 export function PermissionPrompt({ sessionId }: { sessionId: string }) {
   const [prompt, setPrompt] = usePermission(sessionId)
   const canControl = useCanControl()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const card = useRef<HTMLDivElement>(null)
   useEffect(() => { setError('') }, [prompt?.id])
-  if (!prompt) return null
 
-  const answer = async (choice: PermissionChoice) => {
+  const answer = useCallback(async (choice: PermissionChoice) => {
+    if (!prompt) return
     setBusy(true)
     setError('')
     try {
       await api.answerPermission(sessionId, prompt.id, choice)
       setPrompt(null)
     } catch (err) {
-      // 409: answered in the terminal, or a newer prompt replaced it. The live
-      // frame brings the newer one; this one is gone either way.
+      // 409: answered in the terminal, or it is not the dialog on screen. The
+      // live frame brings the one that is; this one is gone either way. 422:
+      // the menu on the screen has no such option — the daemon typed nothing,
+      // the prompt still waits, and the reason is shown.
       if (err instanceof ApiError && err.status === 409) setPrompt(null)
       else setError(errText(err))
     } finally {
       setBusy(false)
     }
-  }
+  }, [prompt, sessionId, setPrompt])
+
+  usePromptKeys(card, sessionId, !!prompt && canControl && !busy, !!prompt?.always, answer)
+  if (!prompt) return null
 
   const button = 'min-h-[48px] rounded-sm px-4 py-2 text-[15px] font-medium disabled:opacity-50'
   return (
-    <div role="alertdialog" aria-label="Permission prompt" className="grid gap-2 border border-accent/60 bg-accent/10 rounded-sm px-3 py-3 mt-2">
+    <div ref={card} role="alertdialog" aria-label="Permission prompt" className="grid gap-2 border border-accent/60 bg-accent/10 rounded-sm px-3 py-3 mt-2">
       <p className="text-[13px] text-fg">
         Claude wants to use <span className="mono font-medium">{prompt.tool}</span>
+        {!!prompt.queued && <span className="text-fg-muted"> · {prompt.queued} more waiting</span>}
       </p>
       {prompt.detail && (
         <pre className="mono max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-sm border border-border bg-panel-2 px-2 py-1.5 text-[12px] text-fg">
@@ -69,22 +82,119 @@ export function PermissionPrompt({ sessionId }: { sessionId: string }) {
       )}
       {canControl ? (
         <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
-          <button type="button" disabled={busy} onClick={() => void answer('allow')} className={`${button} bg-accent text-bg hover:brightness-110`}>
-            Yes
+          <button type="button" disabled={busy} onClick={() => void answer('allow')} aria-keyshortcuts="Y Enter" className={`${button} bg-accent text-bg hover:brightness-110`}>
+            Yes <Key>Y</Key>
           </button>
           {prompt.always && (
-            <button type="button" disabled={busy} onClick={() => void answer('always')} className={`${button} border border-accent text-fg hover:bg-accent/15`}>
-              {prompt.always}
+            <button type="button" disabled={busy} onClick={() => void answer('always')} aria-keyshortcuts="A" className={`${button} border border-accent text-fg hover:bg-accent/15`}>
+              {prompt.always} <Key>A</Key>
             </button>
           )}
-          <button type="button" disabled={busy} onClick={() => void answer('deny')} className={`${button} border border-border-strong text-fg hover:border-danger hover:text-danger`}>
-            No
+          <button type="button" disabled={busy} onClick={() => void answer('deny')} aria-keyshortcuts="N Escape" className={`${button} border border-border-strong text-fg hover:border-danger hover:text-danger`}>
+            No <Key>N</Key>
           </button>
+          {/* One question: the terminal's menu and the card answer the same
+              dialog, so Enter and Esc there mean Yes and No here. */}
+          <p className="self-center text-[11.5px] text-fg-muted sm:ml-auto">
+            Keys work from the terminal · <span className="mono" aria-hidden>↵</span> Yes · <span className="mono" aria-hidden>Esc</span> No
+          </p>
         </div>
       ) : (
         <p className="text-[12px] text-fg-muted">Waiting for an answer on a device that controls sessions.</p>
       )}
-      {error && <p className="text-[12px] text-danger">{error}</p>}
+      {error && <p role="alert" className="text-[12px] text-danger">{error}</p>}
     </div>
   )
+}
+
+/** The key that presses a button, drawn on it; not part of its name. */
+function Key({ children }: { children: string }) {
+  return (
+    <kbd aria-hidden className="ml-1.5 rounded-[3px] border border-current/40 px-1 font-sans text-[11px] font-normal opacity-70">
+      {children}
+    </kbd>
+  )
+}
+
+/**
+ * The cards that want the keyboard, newest last: only the newest answers a
+ * key, so two cards on one page never both take the same Y.
+ */
+const keyed: symbol[] = []
+
+/** Focus is somewhere a key means typing: a field, an editor, a terminal. */
+function typingInto(el: Element | null): boolean {
+  if (!el || !(el instanceof HTMLElement)) return false
+  if (el.isContentEditable) return true
+  if (el.closest('.xterm, [data-term-host]')) return true
+  const tag = el.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+}
+
+/**
+ * Keys for the card (owner, 2026-10-06): Y or Enter is Yes, A the always
+ * option when there is one, N or Esc is No.
+ *
+ * From the terminal of the session asking (owner, 2026-10-07), Y, A and N
+ * answer the card and never reach the terminal. That is safe only while the
+ * question waits: Claude Code's prompt is replaced by its permission menu, so
+ * no keystroke there is typing. Enter and Esc are left to that menu, which
+ * already means Yes and No by them. Any other terminal, field or editor keeps
+ * every key — a key meant for it must reach it. Enter and Esc from elsewhere
+ * only when focus is on nothing in particular (the page) or inside the card:
+ * on another button Enter presses that button, and Esc closes whatever else
+ * is open. Not while a dialog of the page's own is open, nor from a card that
+ * is hidden (a background tab), and only the newest card on the page listens.
+ *
+ * The listener is on the capture phase so a key taken from the terminal is
+ * stopped before xterm sees it.
+ */
+function usePromptKeys(
+  card: RefObject<HTMLDivElement | null>,
+  sessionId: string,
+  enabled: boolean,
+  hasAlways: boolean,
+  answer: (c: PermissionChoice) => void,
+) {
+  // A layout effect: the keys listen from the commit that paints the card, so
+  // a key pressed the moment it appears is not lost (the race #250 fixed in
+  // AppShell).
+  useLayoutEffect(() => {
+    if (!enabled) return
+    const me = Symbol('permission-card')
+    keyed.push(me)
+    const onKey = (e: KeyboardEvent) => {
+      if (keyed[keyed.length - 1] !== me) return
+      if (e.defaultPrevented || e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return
+      const el = card.current
+      if (!el || el.closest('[hidden], [inert], [aria-hidden="true"]')) return
+      const active = document.activeElement
+      const inOwnTerminal = active instanceof HTMLElement && active.closest('[data-term-session]')?.getAttribute('data-term-session') === sessionId
+      if (typingInto(active) && !inOwnTerminal) return
+      const modal = [...document.querySelectorAll('[role="dialog"], [aria-modal="true"]')].some((d) => !d.closest('[hidden]'))
+      if (modal) return
+      const onPage = !active || active === document.body || el.contains(active)
+      let choice: PermissionChoice | null = null
+      switch (inOwnTerminal && (e.key === 'Enter' || e.key === 'Escape') ? '' : e.key) {
+        case 'y': case 'Y': choice = 'allow'; break
+        case 'a': case 'A': choice = hasAlways ? 'always' : null; break
+        case 'n': case 'N': choice = 'deny'; break
+        case 'Enter':
+          // A button of the card that has focus presses itself.
+          if (onPage && !(active instanceof HTMLButtonElement)) choice = 'allow'
+          break
+        case 'Escape': if (onPage) choice = 'deny'; break
+      }
+      if (!choice) return
+      e.preventDefault()
+      e.stopPropagation()
+      answer(choice)
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => {
+      document.removeEventListener('keydown', onKey, true)
+      const i = keyed.indexOf(me)
+      if (i >= 0) keyed.splice(i, 1)
+    }
+  }, [card, sessionId, enabled, hasAlways, answer])
 }

@@ -90,6 +90,15 @@ others. Installing it: [install-app.md](install-app.md).
   line height and cursor, with a preview. Every open terminal changes as you
   choose. The defaults match the JetBrains IDE terminal: JetBrains Mono,
   13 px, line height 1.2, no ligatures.
+- **Permission mode.** New sessions start in *Bypass · never asks*: the agent
+  does not stop to ask before running commands or editing files. The first
+  time on a computer, the New agent sheet shows what bypass means and its
+  button reads *Accept and start*; that answers Claude Code's own one-time
+  warning for good. A paired phone cannot give that consent — accept it once
+  at the computer. Settings → *New sessions* → *Start in* picks the mode
+  a new session starts in. Continuing a session keeps the mode it was last
+  running in — a session you ran with permissions skipped carries on that
+  way. The mode shows next to the continue button, where you can change it.
 - **Status strip.** Whether the daemon is live, the 5-hour and 7-day plan
   windows, today's spend, the front terminal's size, and a newer Caprock
   when one is out ([Updates](#updates)).
@@ -118,6 +127,12 @@ On macOS:
 On Windows and Linux each is Ctrl+Shift with the same letter; Ctrl+Shift+C
 and Ctrl+Shift+V stay the terminal's copy and paste. The terminal's own keys
 (Ctrl+C, Ctrl+W, Option as Meta) always reach the terminal.
+
+The *New agent* sheet needs no mouse. It opens on the first message; Tab and
+⇧Tab walk Project, Where, Agent, Model, Permissions, First message, Cancel
+and Start; ↑ and ↓ change a choice in place (Space still opens the list);
+⌘↩ (Ctrl+Enter off macOS) starts from anywhere in the sheet, and Esc
+cancels. The footer names these keys.
 
 ## Outside the window
 
@@ -154,9 +169,21 @@ On macOS the notification carries buttons:
 - **Approve** answers *yes* to that prompt, without bringing Caprock forward.
   It is offered only when the notification shows the whole request, on one
   line and uncut. A longer command offers **Open in Caprock** instead, so you
-  read it on the prompt card before answering.
+  read it in the session's terminal before answering.
 - **Deny** answers *no*.
-- A click on the notification opens the session with its prompt card.
+- A click on the notification opens the session. Its terminal shows Claude
+  Code's own prompt, and Caprock's approval card sits under it, naming the
+  tool and the full command.
+
+The card answers from the keyboard, with focus in that session's terminal
+too: **Y** for *yes*, **A** for the "don't ask again" option when the prompt
+has one, **N** for *no*. In the terminal, Enter and Esc answer Claude Code's
+own menu, which means the same *yes* and *no*; with focus off the terminal
+they press the card's buttons. Before pressing anything, Caprock reads the menu on the
+session's screen and picks that option's own number. If the option is not on
+the prompt, it types nothing and asks you to answer in the terminal. When
+several prompts wait — a subagent's among them — the card shows the one on
+screen and how many more are waiting.
 
 A notification never offers "always allow", because that would write a rule
 to your settings. If the prompt was answered in the meantime — in the

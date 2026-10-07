@@ -44,7 +44,7 @@ that cannot run everywhere is a gate people learn to skip.
   fine-grained PAT covering both `homebrew-tap` and `scoop-bucket`.
 
 - ⚠️ **The app updater's signing key** (F20,
-  [ADR-041](../.ai/08-decisions.md#adr-041--the-app-updates-itself-in-one-click-a-minisign-signed-bundle-one-channel-checked-only-when-the-release-check-is-on-or-the-user-asks)):
+  [ADR-042](../.ai/08-decisions.md#adr-042--the-app-updates-itself-in-one-click-a-minisign-signed-bundle-one-channel-checked-only-when-the-release-check-is-on-or-the-user-asks)):
   two secrets on `dspv/caprock`, **`TAURI_SIGNING_PRIVATE_KEY`** (the whole
   contents of the private key file) and **`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`**.
   The public half is `plugins.updater.pubkey` in `app/src-tauri/tauri.conf.json`;
@@ -186,6 +186,13 @@ goreleaser:
   `releases/latest/download/latest.json` only ever names files that are
   there. A platform without a signature is left out; no signature at all
   means no `latest.json`, with a warning, never a failure.
+
+**Before a release**, try the change as the owner will run it: `make
+app-local` installs this checkout's app over `/Applications/Caprock.app`
+(host architecture, stamped `<last tag>-dev+<commit>`), and the app moves the
+daemon onto the build it carries; `make app-local-revert` goes back to the
+released cask ([app/README.md](../app/README.md#trying-a-change-on-your-own-mac)).
+Nothing is tagged or uploaded.
 
 **Without Actions**, on a Mac, after the daemon release exists:
 

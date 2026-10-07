@@ -7,7 +7,7 @@
  * terminals stay mounted behind them, so switching back never repaints from
  * nothing and never drops a socket that was in use.
  */
-import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useState } from 'react'
 import { api, ApiError, errText, type SessionSummary } from '@/lib/api'
 import { APP_ROUTE, isMacPlatform, isTauri, isWorkspaceHash } from '@/lib/appmode'
 import { FIND_EVENT, matchAppShortcut, type AppCommand } from '@/lib/appkeys'
@@ -29,7 +29,7 @@ import { useShellTray } from '@/lib/tray'
 import { OPEN_SESSION_EVENT } from '@/lib/shell'
 import { useOsNotifications } from '@/lib/notify'
 import { useTheme } from '@/lib/theme'
-import { everyWhileVisible } from '@/lib/visible'
+import { useDaemonVersion } from '@/lib/useDaemonVersion'
 import { Sidebar } from '@/components/Sidebar'
 import { TabStrip, TerminalStack } from '@/components/TerminalTabs'
 import { Inspector } from '@/components/Inspector'
@@ -160,7 +160,7 @@ export function AppShell() {
   // mounted behind it.
   const [chatOpen, setChatOpen] = useState<ReadonlySet<string>>(() => new Set())
   const [changesView, setChangesView] = useState<ChangesTarget | null>(null)
-  const [version, setVersion] = useState<string | undefined>(undefined)
+  const version = useDaemonVersion()
   const [, toggleTheme] = useTheme()
   const editors = useEditors()
   const [folderMenu, setFolderMenu] = useState<EditorMenuAt | null>(null)
@@ -182,14 +182,6 @@ export function AppShell() {
   useEffect(() => {
     try { localStorage.setItem(UI_KEY, JSON.stringify(prefs)) } catch { /* not kept */ }
   }, [prefs])
-  // Asked again every minute while visible: after an app update (F20) the
-  // daemon is replaced under an open page, and the strip must not keep
-  // naming the version that was just updated away.
-  useEffect(() => {
-    const load = () => { api.status().then((s) => setVersion(s.version)).catch(() => { /* the strip shows none */ }) }
-    load()
-    return everyWhileVisible(load, 60_000)
-  }, [])
   useEffect(() => {
     if (!toast) return
     const id = window.setTimeout(() => setToast(''), 6000)
@@ -309,6 +301,27 @@ export function AppShell() {
     }
   }, [projectsById, activeProjectId, source, refresh, openTab, openSplit])
 
+  /**
+   * A session's program exited — `/exit`, `exit`, a crash. The tab is the
+   * user's place to work, so it becomes a shell in the same folder instead of
+   * a terminal showing a process that is gone. The tab keeps its position,
+   * and a shell that was already a shell is simply left closed.
+   */
+  const onPaneExit = useCallback(async (sessionId: string) => {
+    const s = sessionsById.get(sessionId)
+    const cwd = s?.cwd
+    if (!cwd || s?.kind === 'shell') { dispatch({ type: 'drop-session', sessionId }); return }
+    try {
+      const shell = await projectsApi.startShell({ cwd, cols: 120, rows: 32 })
+      dispatch({ type: 'replace-session', sessionId, target: { kind: 'shell', sessionId: shell.id }, title: 'shell' })
+      refresh()
+    } catch {
+      // Nothing to put in its place; closing beats a tab that cannot talk to
+      // anything, and the session's record is on the dashboard either way.
+      dispatch({ type: 'drop-session', sessionId })
+    }
+  }, [sessionsById, refresh])
+
   const onNewAgent = useCallback((projectId?: string, cwd?: string) => setSheet({ kind: 'agent', projectId: projectId ?? activeProjectId, cwd }), [activeProjectId])
   const onNewShell = useCallback((projectId?: string, cwd?: string) => { void newShell(projectId, cwd) }, [newShell])
   const onAddProject = useCallback(() => setSheet({ kind: 'project' }), [])
@@ -355,7 +368,14 @@ export function AppShell() {
 
   // The app's keys, before anything else on the page sees them. The terminal
   // already lets them through (xtermInput), and they are never its keys.
-  useEffect(() => {
+  //
+  // A layout effect, so the listener is swapped in the same commit that paints
+  // new state. As a passive effect it ran a beat after the paint, and a key
+  // pressed in that beat acted on the state before it: ⌘J with the waiting
+  // session already in the sidebar said "Nothing is waiting on you", and ⌘T
+  // with a project on screen asked to add one. A busy main thread (a terminal
+  // streaming) widens the beat.
+  useLayoutEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.type !== 'keydown' || e.repeat && !/^[1-9]$/.test(e.key)) return
       const c = matchAppShortcut(e, isMac)
@@ -491,6 +511,13 @@ export function AppShell() {
 
   const focusedIsAgent = !!focused && focused.kind === 'session' && focusedSession?.kind !== 'shell'
   const showChat = focusedIsAgent && !!focused && chatOpen.has(focused.sessionId)
+  // The permission card shows for the focused agent whether or not its
+  // terminal is in front. 0.78.2 hid it behind the terminal as a duplicate
+  // (owner, 2026-10-06); the next day he wanted it back — it names the call
+  // in full, its keys (Y, A, N) work from the terminal, and it is the only
+  // surface with a working "don't ask again" by key. Other tabs are reached
+  // through their badge, the Inbox, the menu bar and the notification.
+  const promptCard = focusedIsAgent && !!focused
   const toggleChat = useCallback(() => {
     if (!focused) return
     const id = focused.sessionId
@@ -552,6 +579,7 @@ export function AppShell() {
                     tabs={ws.tabs}
                     visibleTabId={workspaceShown ? current?.id : undefined}
                     onPaneStatus={onPaneStatus}
+                    onPaneExit={onPaneExit}
                     sessions={sessionsById}
                     permissions={data.permissions}
                     onFocusPane={onFocusPane}
@@ -586,7 +614,7 @@ export function AppShell() {
                     />
                   )}
                 </div>
-                {focusedIsAgent && !prefs.inspector && focused && (
+                {promptCard && !prefs.inspector && focused && (
                   <div className="shrink-0 border-t border-[var(--app-hairline)] px-3 empty:hidden [&>*]:mb-2">
                     <PermissionPrompt sessionId={focused.sessionId} />
                   </div>
@@ -608,6 +636,7 @@ export function AppShell() {
                   session={focusedSession}
                   sessionId={focused?.sessionId}
                   hasPermission={!!focused && data.permissions.has(focused.sessionId)}
+                  showPrompt={promptCard}
                   onClose={() => setPrefs((p) => ({ ...p, inspector: false }))}
                   onDetach={detach}
                   editors={editors}

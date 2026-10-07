@@ -9,8 +9,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
-## [0.78.1] - 2026-10-06
-
 ### Added
 
 - **The desktop app updates itself in one click.** When a newer Caprock is
@@ -28,6 +26,138 @@ Phase 3 (Delight) has no plan by design.
   installer and the Linux AppImage update themselves; `.deb` and `.rpm`
   installs are told to use their package manager. Each release now carries
   `latest.json` and the signed update files.
+
+## [0.79.0] - 2026-10-07
+
+### Added
+
+- **One consent for bypass, in Caprock.** The first bypass session on a
+  computer used to open on Claude Code's own warning, where Enter means
+  *No, exit* and drops you into a shell. The New agent sheet and the New
+  session dialog now show what bypass means and start with *Accept and
+  start*, which answers that warning for good. A bypass start without it is
+  refused by the daemon rather than left on that screen.
+
+- **Start an agent without the mouse.** In the New agent sheet ↑ and ↓
+  change a choice in place instead of opening its list, ⌘↩ starts from
+  anywhere in the sheet (a list or a button too, not only the message), and
+  the footer names the keys: Tab moves, ↑↓ change, ⌘↩ starts, Esc cancels.
+  The dashboard's New session dialog takes the same arrows.
+
+### Changed
+
+- **The permission card is back under the terminal, and answers from it.**
+  0.78.2 hid it while the session's terminal was in front. It shows again,
+  and with focus in that terminal **Y**, **A** ("don't ask again") and **N**
+  answer it without reaching the terminal; Enter and Esc stay with Claude
+  Code's own menu. Each button names its key.
+
+- **New sessions start on bypass.** With no saved preference, the New session
+  dialog and the New agent sheet open on *Bypass · never asks* instead of
+  *Accept edits*. Settings → New sessions still overrides it, and a bypass
+  start from a paired phone is still confirmed.
+
+### Fixed
+
+- **The model list names the model you get.** It offered "Opus 5" while
+  Opus 5.5 was out, and picking it started the older model. The list is now
+  Fable 5.1, Opus 5.5, Sonnet 5.5 and Haiku 4.5, each label with its exact
+  version, opening on Opus 5.5; a newer model in the pricing table that the
+  list does not offer fails the build.
+
+- **"Bypass · never asks" now never asks.** A session started on bypass is
+  spawned with `--dangerously-skip-permissions` — the flag Caprock's own
+  unattended workers have always used — instead of
+  `--permission-mode bypassPermissions`, which leaves the session interactive
+  and keeps asking on nearly every call.
+- **Caprock's own files are not a question.** Claude Code sessions start with
+  `--add-dir` for the directories Caprock writes to (pasted screenshots and
+  quick chats), so a user with
+  `permissions.blockReadsOutsideWorkingDirectories` on is no longer asked
+  about files Caprock put there itself. That setting is a perimeter no
+  permission mode lifts; a run meant to be unattended needs it off.
+- **A session that exits leaves a shell, not a dead tab.** After `/exit`, the
+  tab becomes a shell in the same folder, keeping its place in the tab strip
+  and in a split. Before, the process was gone and the tab kept showing its
+  last screen.
+- The pricing check against the site no longer breaks when the site's pricing
+  file grows a team price: it reads the personal plans only.
+
+## [0.78.2] - 2026-10-06
+
+### Added
+
+- **Settings → New sessions: the permission mode new agents start in.** The
+  New session dialog and the New agent sheet open on it, and a session started
+  without choosing one (the project terminal's "New session here", a quick
+  chat) starts in it. Unset, nothing changes.
+- **`make app-local`: try a change to the Mac app without a release.** It
+  builds this checkout's app for the Mac's own architecture, installs it over
+  `/Applications/Caprock.app` and relaunches it; the app then moves the daemon
+  onto the build it carries, and running sessions carry on. Stamped
+  `<last tag>-dev+<commit>`, which About Caprock shows and the update notice
+  does not mistake for an old release. About half a minute once the build
+  cache is warm. `make app-local-revert` goes back to the released app.
+
+### Changed
+
+- **One permission question in the app, not two.** When a session's terminal
+  is in front, its own "Do you want to proceed?" menu is where you answer —
+  press Enter — and Caprock no longer draws its approval card above the
+  status strip for it. The card still shows when the chat or a Changes view
+  covers the terminal, and now says *↵ Enter in the terminal = Yes*; other
+  tabs' prompts still reach you through the Inbox, the menu bar, the
+  notification and the phone.
+- **Keys on the permission card.** `Y` or Enter is Yes, `A` the "don't ask
+  again" option when there is one, `N` or Esc is No, shown on the buttons.
+  They never fire while you are typing in the terminal or a field.
+
+### Fixed
+
+- **"Yes, for the rest of this session" no longer rejects the call.** The
+  button typed `2`, assuming Claude Code's usual menu; in auto mode the
+  dialog is "1. Yes 2. No", so it answered No and the tool call was lost.
+  Every permission button now reads the menu on the session's screen and
+  presses the option whose text matches; when that option is not there, it
+  types nothing and the card says *that option is not on the prompt — answer
+  in the terminal*.
+- **A permission card answers the dialog it shows.** Each new permission
+  request (a subagent's too) replaced the last, so a card could name one
+  request while its key landed in another's dialog. Requests now queue the
+  way Claude Code queues them: the card shows the oldest, says how many more
+  wait, and a later request never overwrites an earlier one.
+
+- **Upgrading the Mac app now upgrades its daemon too.** An app started on a
+  new release kept the daemon of its own from the old one running until that
+  was too old to talk to. It now puts the daemon it carries in place once per
+  launch when the two differ; sessions keep running.
+- **Quitting the app with SIGTERM** (`kill`, a script) now quits it the way
+  Cmd+Q does, keeping the window's size and place.
+- **A live session's Changes tab no longer flashes "loading…" on every
+  event.** Each new event re-read the diff as if it were a new question,
+  blanking the list and drawing new rows, so a click on a file or on "expand
+  all" in that moment was lost. The list now stays on screen while it is
+  read again.
+- **App shortcuts act on what is on screen.** A key pressed in the instant
+  after the sidebar updated could act on the state before it: ⌘J said nothing
+  was waiting with a waiting session in the list, and ⌘T asked to add a
+  project with one already there.
+- **The app's status strip shows the daemon's real version.** It was read
+  once when the page loaded, so after the app swapped its daemon it kept the
+  old number. It is now read again whenever the live link reconnects and when
+  the window regains focus.
+- **Continuing a session keeps the permission mode it was running in.** A
+  session run with permissions skipped (`--dangerously-skip-permissions`)
+  came back from "continue here" or "branch here" in the default mode, asking
+  before every command. Caprock now continues it in the mode its hooks last
+  reported — bypass, accept edits, plan — and says which beside the button,
+  where it can be changed before continuing. A session with no recorded mode
+  uses the setting under Added above.
+
+## [0.78.1] - 2026-10-06
+
+### Added
+
 - **Download links for the desktop app that never change.** Every release now
   also carries the app under names without the version — `Caprock-macOS.dmg`,
   `Caprock-Windows-setup.exe`, `Caprock-Linux.AppImage`, `Caprock-Linux.deb`

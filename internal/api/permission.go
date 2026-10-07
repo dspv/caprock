@@ -35,9 +35,11 @@ func (s *Server) handlePermission(w http.ResponseWriter, r *http.Request) {
 
 // handleAnswerPermission is POST /v1/agents/{id}/permission
 // {"id": "<prompt id>", "choice": "allow"|"always"|"deny"}: it presses the key
-// that answers the prompt. 409 when the session is no longer waiting on that
-// prompt — it was answered in the terminal, or a newer one replaced it — so a
-// button drawn a moment ago cannot answer a question it did not show.
+// that answers the prompt, picked from the menu on the session's screen. 409
+// when the session is no longer showing that prompt — it was answered in the
+// terminal, or it is queued behind another — so a button drawn a moment ago
+// cannot answer a question it did not show. 422 when it is, but the menu on
+// the screen has no such option or no menu shows; nothing is typed.
 func (s *Server) handleAnswerPermission(w http.ResponseWriter, r *http.Request) {
 	if !s.requireAgents(w) {
 		return
@@ -62,6 +64,12 @@ func (s *Server) handleAnswerPermission(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := pm.AnswerPermission(r.PathValue("id"), body.ID, body.Choice); err != nil {
+		if errors.Is(err, agents.ErrNotOnPrompt) {
+			// The prompt still waits, but the menu on the screen has no
+			// such option (or no menu is showing): nothing was typed.
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+			return
+		}
 		s.agentErr(w, err)
 		return
 	}

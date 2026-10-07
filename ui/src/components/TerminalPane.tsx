@@ -64,6 +64,7 @@ export function TerminalPane({
   active,
   focused = true,
   onStatus,
+  onExit,
 }: {
   sessionId: string
   /** The tab is in front and the workspace is showing. */
@@ -71,6 +72,12 @@ export function TerminalPane({
   /** The pane the keyboard goes to, in a tab split into several (F15). */
   focused?: boolean
   onStatus?: (s: PaneStatus) => void
+  /**
+   * The session's program exited (`/exit`, a crash, `exit` in a shell). The
+   * tab is the user's place to work, not a record of a dead process, so the
+   * workspace puts a shell in the same folder here.
+   */
+  onExit?: (code: number) => void
 }) {
   const host = useRef<HTMLDivElement>(null)
   const api = useRef<{ show: () => void; hide: () => void; scrollToBottom: () => void; focus: () => void } | null>(null)
@@ -88,6 +95,8 @@ export function TerminalPane({
   activeRef.current = active
   const onStatusRef = useRef(onStatus)
   onStatusRef.current = onStatus
+  const onExitRef = useRef(onExit)
+  onExitRef.current = onExit
 
   useEffect(() => {
     const el = host.current
@@ -199,6 +208,7 @@ export function TerminalPane({
           conn.resize(term.cols, term.rows)
           report(conn.state)
         },
+        exit: (code) => onExitRef.current?.(code),
       },
     })
 
@@ -387,7 +397,7 @@ export function TerminalPane({
     <div className="relative h-full w-full bg-term-bg">
       {/* The padding is on a wrapper: FitAddon measures the host's parent box. */}
       <div className="absolute inset-0 pl-3 pt-2 pr-1 pb-1">
-        <div ref={host} data-term-host className="h-full w-full" />
+        <div ref={host} data-term-host data-term-session={sessionId} className="h-full w-full" />
       </div>
       {phase === 'waiting' && status !== 'ended' && (
         <div role="status" className="pointer-events-none absolute inset-0 flex items-center justify-center">

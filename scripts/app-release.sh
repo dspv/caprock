@@ -80,7 +80,7 @@ cp "$OUT/caprock-arm64" app/src-tauri/binaries/caprock-aarch64-apple-darwin
 cp "$OUT/caprock-amd64" app/src-tauri/binaries/caprock-x86_64-apple-darwin
 lipo -create -output app/src-tauri/binaries/caprock-universal-apple-darwin "$OUT/caprock-arm64" "$OUT/caprock-amd64"
 
-# The signed updater bundle (F20, ADR-041): Caprock.app.tar.gz and its
+# The signed updater bundle (F20, ADR-042): Caprock.app.tar.gz and its
 # minisign .sig, made when the signing key is in the environment
 # (TAURI_SIGNING_PRIVATE_KEY and _PASSWORD; GitHub secrets in release.yml,
 # ~/.config/caprock-release/ by hand). Without it the release still ships,

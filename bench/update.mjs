@@ -1,4 +1,4 @@
-// The app update, end to end (F20, ADR-041): the owner's bar is "update like
+// The app update, end to end (F20, ADR-042): the owner's bar is "update like
 // Orca does — without losing sessions, everything stays in its place".
 //
 // usage: bench/update-build.sh <work>   (once; two release builds)

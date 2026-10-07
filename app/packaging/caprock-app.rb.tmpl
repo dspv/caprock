@@ -14,7 +14,7 @@ cask "caprock-app" do
     strategy :github_latest
   end
 
-  # The app updates itself in one click (F20, ADR-041): a signed bundle
+  # The app updates itself in one click (F20, ADR-042): a signed bundle
   # verified against the key built into it. `brew upgrade` leaves a cask
   # that says so alone unless asked with --greedy, so the two never fight.
   auto_updates true

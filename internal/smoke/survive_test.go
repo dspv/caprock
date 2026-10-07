@@ -74,10 +74,12 @@ func TestOwnedSessionSurvivesDaemonRestart(t *testing.T) {
 	term.waitFor(t, "fake-claude ready")
 	term.send(t, "before\r")
 	term.waitFor(t, "you-said:before")
-	term.close()
-
 	// A permission dialog is open when the daemon goes (ADR-035): its buttons
-	// must come back with the session, under the same prompt id.
+	// must come back with the session, under the same prompt id, and the
+	// answer must find the menu on the screen the pty-host kept.
+	term.send(t, "ask1\r")
+	term.waitFor(t, "asked1")
+	term.close()
 	hookPermissionRequest(t, base, data, id)
 	promptID := waitPermission(t, base, id, true)
 
@@ -121,6 +123,8 @@ func TestOwnedSessionSurvivesDaemonRestart(t *testing.T) {
 	term = attachTerm(t, base, id)
 	term.send(t, "again\r")
 	term.waitFor(t, "you-said:again")
+	term.send(t, "ask2\r")
+	term.waitFor(t, "asked2")
 	term.close()
 
 	// A crash the moment the hook that drew a dialog has been answered, on

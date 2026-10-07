@@ -189,6 +189,10 @@ export interface ResumeInfo {
   reason?: string
   /** Resumes it from the user's own terminal; offered even when Caprock cannot. */
   command?: string
+  /** The permission mode continuing it here starts in when none is picked:
+   *  the one it was last running in, else the spawn preference. Absent when
+   *  neither says one (the agent's own default). */
+  permission_mode?: string
 }
 
 export interface TokenDelta { in: number; out: number; cache_read: number; cache_write: number; cache_write_1h?: number }
@@ -503,6 +507,8 @@ export interface Settings {
   terminal?: string
   /** The editor "Open in editor" uses ("vscode", "zed", ...). Empty: the first installed. */
   editor?: string
+  /** The permission mode new sessions start in, in Claude Code's words. Empty: not set. */
+  spawn_permission_mode?: string
   /** The daily spend ceiling in USD; 0 is off. See internal/cap. */
   cap_usd_per_day?: number
   /** Where the weekly report goes. Not a credential, so it round-trips. */
@@ -713,6 +719,9 @@ export interface Status {
   interrupted?: { stopped_at: number; ids: string[] }
   ui_built: boolean
   claude_available: boolean
+  /** The user accepted Claude Code's one-time bypass warning, so a bypass
+   *  session starts without it (ADR-041). Absent on older daemons. */
+  claude_bypass_accepted?: boolean
   /** The Gemini CLI is on PATH, so the new-session dialog can offer it as an
    *  agent. Absent on daemons older than this feature. */
   gemini_available?: boolean
@@ -1002,6 +1011,8 @@ export const api = {
   testAlert: () => post<{ sent: string }>('/v1/alerts/test', {}),
   /** Runs `caprock hooks install` in the daemon; answers with what is registered after. */
   installHooks: () => post<{ hooks: HooksStatus; backup?: string }>('/v1/hooks/install', {}),
+  /** The user accepted Caprock's copy of Claude Code's bypass warning (ADR-041). */
+  acceptBypass: () => post<{ accepted: boolean }>('/v1/claude/bypass-consent', {}),
   pairState: () => get<PairState>('/v1/pair/state'),
   /** Exchange a code for a token. The one call a device makes before it is trusted. */
   pairRedeem: (code: string, name: string) =>
@@ -1096,9 +1107,12 @@ export interface Permission {
   tool: string
   /** What it would do: the command, the file, the URL. */
   detail: string
-  /** The second option's label, when Claude Code offers one. */
+  /** The "don't ask again" option's label, when the hook suggests one. The
+   * daemon still checks the menu on the screen has it before typing (422). */
   always?: string
   since: string
+  /** How many more prompts wait behind this one (Claude Code shows the oldest). */
+  queued?: number
 }
 
 export type PermissionChoice = 'allow' | 'always' | 'deny'

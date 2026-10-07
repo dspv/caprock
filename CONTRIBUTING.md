@@ -20,6 +20,14 @@ make build         # builds the UI (installs its deps on first run) + the binari
 make check         # docs + lint + tests + smoke — the full CI gate, minus the OS matrix
 ```
 
+The desktop app (`app/`) also needs Rust via [rustup](https://rustup.rs). To
+try a change to it on your Mac without a release, `make app-local` builds this
+checkout's app (release, this Mac's architecture, in about half a minute once
+its cache is warm) and installs it over `/Applications/Caprock.app`; the app
+then moves its daemon onto the new build, and running sessions carry on.
+`make app-local-revert` goes back to the release. Details, and how to run it
+against a throw-away data directory: [app/README.md](app/README.md#trying-a-change-on-your-own-mac).
+
 `make check` is what CI runs (minus the 3-OS matrix). If it's green locally, CI
 is almost always green — the exception is a platform-specific bug on Windows or
 Linux, which only the CI matrix can catch. Run a single package's tests with

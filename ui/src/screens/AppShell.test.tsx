@@ -8,6 +8,11 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionSummary } from '@/lib/api'
 import { WORKSPACE_KEY } from '@/lib/tabs'
+import { FIND_EVENT } from '@/lib/appkeys'
+// Imported here rather than inside each test: the first dynamic import
+// transformed the whole app inside the first test's 5 s budget, and on a busy
+// machine that alone timed it out. vi.mock is hoisted above this.
+import { AppShell, nextWaiting, worktreeSlug } from './AppShell'
 
 vi.mock('@/components/TerminalPane', () => ({
   TerminalPane: ({ sessionId, active }: { sessionId: string; active: boolean }) => (
@@ -64,7 +69,6 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 async function renderApp() {
-  const { AppShell } = await import('./AppShell')
   const view = render(<AppShell />)
   await screen.findByText('Fix the login bug')
   return view
@@ -197,14 +201,12 @@ describe('the app workspace', () => {
 
 describe('workspace helpers', () => {
   it('names a worktree after a task', async () => {
-    const { worktreeSlug } = await import('./AppShell')
     expect(worktreeSlug('Fix the login bug!')).toBe('fix-the-login-bug')
     expect(worktreeSlug('  ***  ')).toBe('')
     expect(worktreeSlug('one two three four five six seven eight').split('-')).toHaveLength(6)
   })
 
   it('cycles through what waits, from the one in front', async () => {
-    const { nextWaiting } = await import('./AppShell')
     const item = (id: string) => ({ session: sess({ session_id: id }), projectId: 'p', projectName: 'p', reason: 'waiting' as const, title: id, since: 0 })
     const inbox = [item('a'), item('b'), item('c')]
     expect(nextWaiting([], 'a')).toBeUndefined()
@@ -214,7 +216,6 @@ describe('workspace helpers', () => {
   })
 
   it('⌘F asks the focused pane to open its find bar, and the palette offers it', async () => {
-    const { FIND_EVENT } = await import('@/lib/appkeys')
     let heard = 0
     const on = () => { heard++ }
     window.addEventListener(FIND_EVENT, on)

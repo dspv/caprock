@@ -38,7 +38,7 @@ panes, ⌘J, the palette's new-task entry and the macOS menu bar popover;
 find in scrollback, open in editor, terminal themes and fonts and the update
 notice (F16, F18, F21, F12); and the benchmark harness with its first results
 and two perf fixes (WP-16, § Budgets). Released as 0.78.0. Then (2026-10-06):
-WP-21, one-click signed app updates (F20, ADR-041, § Updates).
+WP-21, one-click signed app updates (F20, ADR-042, § Updates).
 
 ## Goal
 
@@ -121,9 +121,22 @@ One window, three regions:
 - **Tabs (main).** Terminal tabs — an agent session or a shell — with the
   project and branch in the title. The permission prompt card
   ([ADR-035](08-decisions.md#adr-035--a-permission-prompt-is-answered-with-a-button-found-by-its-hook))
-  sits under the terminal it belongs to.
+  is drawn for the focused agent whether or not its terminal is in front
+  (owner, 2026-10-07, reversing 2026-10-06): it names the call in full, and
+  its keys work from that terminal — `Y`, `A` (the "don't ask again" option)
+  and `N` answer the card and never reach the terminal, which shows a menu,
+  not a prompt, while the question waits. Enter and Esc there stay with
+  Claude Code's own menu, where they mean the same Yes and No; with focus
+  off the terminal they press the card's buttons ([04-ui.md](04-ui.md),
+  permission prompt buttons). It never takes focus. Whichever surface answers — card, notification, phone — the
+  daemon reads the menu on the session's screen first and types nothing when
+  the option is not on it. Sessions in other tabs or behind the
+  window are reached through their badge, the Inbox, the menu bar popover,
+  the notification and the phone, which keep their buttons.
 - **Status strip (bottom).** Connection state, plan limits (5-hour and 7-day),
-  today's spend, the daemon's state.
+  today's spend, the daemon's state and version — read again on every
+  reconnect of the live link and on window focus, since the app can swap its
+  daemon under a page that stays loaded.
 
 Outside the window: the menu bar (macOS) or tray (Windows, Linux) with limits
 and the number of sessions waiting; OS notifications with **Approve** and
@@ -262,7 +275,7 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
 - **F19 — Phone v2 Phase B.** Reaching the machine when the phone is off its
   network, by the route the owner chooses ([§ Phone v2](#phone-v2)).
 - **F20 — Opt-in auto-update** with signed update bundles, per OS. Built
-  2026-10-06 (WP-21, [ADR-041](08-decisions.md#adr-041--the-app-updates-itself-in-one-click-a-minisign-signed-bundle-one-channel-checked-only-when-the-release-check-is-on-or-the-user-asks)):
+  2026-10-06 (WP-21, [ADR-042](08-decisions.md#adr-042--the-app-updates-itself-in-one-click-a-minisign-signed-bundle-one-channel-checked-only-when-the-release-check-is-on-or-the-user-asks)):
   **Update to vX.Y.Z — Restart** in the status strip, [§ Updates](#updates).
 - **F21 — Themes and fonts** for the terminal; the palette work references
   Otty's colours (owner, 2026-10-04) without copying its branding. Built
@@ -502,7 +515,10 @@ one lean terminal; they stay below Orca (420–541 MB idle) and a Chrome tab.
 - **The daemon supervisor** reads `runtime.json`, starts the bundled binary
   when no daemon answers, and never stops a daemon it did not start — save
   one case on macOS: a Homebrew formula's daemon, moved onto the app's own
-  once when that is not older (ADR-040). Quitting
+  once when that is not older (ADR-040). On macOS it also replaces its own
+  daemon once per launch when the bundle carries a different one (ADR-040,
+  amended), so the daemon follows the app up, down and to a local build.
+  Quitting
   the app leaves the daemon and every session running. It runs its copy from
   `<data_dir>/bin/caprock`, never from inside the app bundle: an unsigned app
   can run translocated from a read-only path, and a login service must
@@ -687,8 +703,9 @@ tells a page where a file lives.
   (owner to confirm); Telegram stays off unless switched on. The official
   `tauri-plugin-notification` shows only a title and body on desktop and
   reports no click or action, so every OS gets the floor: the click brings
-  the app forward and the app opens the session with its prompt card, whose
-  buttons answer with the `prompt_id`. Buttons inside the notification need a
+  the app forward and the app opens the session, whose terminal shows the
+  prompt to answer with Enter (the card's buttons, with the `prompt_id`,
+  where the chat covers it). Buttons inside the notification need a
   crate beyond the official plugins (UNUserNotificationCenter on macOS, toast
   activation on Windows, D-Bus actions on Linux); macOS has them now (below).
   On Linux, where a click does not raise the app, the notification informs
@@ -922,7 +939,7 @@ guide [docs/app.md § GitHub](../docs/app.md#github).
   phone capabilities are added to the allowlist by name.
 - **Updates** (F20) are verified against the app's update signing key before
   install, independent of OS code signing: a minisign signature over the
-  bundle and the version it was signed for (ADR-041). The plugin's own
+  bundle and the version it was signed for (ADR-042). The plugin's own
   JavaScript commands are granted to no page; the page calls ours.
 - **A relay, if ever,** carries ciphertext only.
 
@@ -974,7 +991,7 @@ The user-facing note is in [docs/app.md](../docs/app.md#macos-privacy-prompts).
 ## Updates
 
 Built 2026-10-06 (WP-21, F20). The decision and its reasons are
-[ADR-041](08-decisions.md#adr-041--the-app-updates-itself-in-one-click-a-minisign-signed-bundle-one-channel-checked-only-when-the-release-check-is-on-or-the-user-asks);
+[ADR-042](08-decisions.md#adr-042--the-app-updates-itself-in-one-click-a-minisign-signed-bundle-one-channel-checked-only-when-the-release-check-is-on-or-the-user-asks);
 the release side is [RELEASING.md § The desktop app](../docs/RELEASING.md#the-desktop-app);
 the user guide [docs/app.md § Updates](../docs/app.md#updates).
 
@@ -1005,9 +1022,10 @@ the user guide [docs/app.md § Updates](../docs/app.md#updates).
   A `.deb` or `.rpm` install, a development build or an unknown bundle keep
   F12's notice, with the reason in its panel.
 - **The daemon after an update.** The relaunched app finds its own daemon
-  (`<data_dir>/bin`) older than the bundled one and moves it over once per
-  run (`Supervisor::should_refresh`, then the same copy-shutdown-start as
-  `update_daemon`); pty-hosts keep the sessions. A cask upgrade gets the same.
+  (`<data_dir>/bin`) different from the bundled one and moves it over once
+  per launch (`Supervisor::should_adopt`, ADR-040's amendment: the
+  copy-shutdown-start); pty-hosts keep the sessions. A cask upgrade gets the
+  same.
 - **Everything comes back as it was** (the owner's bar, 2026-10-06:
   "update like Orca does — without losing sessions, everything stays in its
   place", translated). Sessions live in pty-hosts and survive both the app's
@@ -1020,7 +1038,7 @@ the user guide [docs/app.md § Updates](../docs/app.md#updates).
   before it installs. A half-typed line lives in the agent's process and is
   repainted with the rest. Checked end to end by `bench/update.mjs`
   (two signed builds, a loopback update server, the fake `claude`).
-- **What it sends** is in ADR-041: the plugin's `User-Agent`, an `Accept`
+- **What it sends** is in ADR-042: the plugin's `User-Agent`, an `Accept`
   header, no identifier and no version in the URL.
 
 ## Telemetry

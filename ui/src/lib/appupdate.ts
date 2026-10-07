@@ -1,5 +1,5 @@
 /**
- * The desktop app's own updater (F20, ADR-041), as the page sees it: the
+ * The desktop app's own updater (F20, ADR-042), as the page sees it: the
  * app's version, whether this install can replace itself, the first-launch
  * question, and where a check or an install stands. The shell holds the
  * state (app/src-tauri/src/updater.rs) and dispatches `caprock:app-update`

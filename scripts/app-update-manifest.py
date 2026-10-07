@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write latest.json, the desktop app's update manifest (F20, ADR-041).
+"""Write latest.json, the desktop app's update manifest (F20, ADR-042).
 
 The app's updater (tauri-plugin-updater) reads
 

@@ -49,6 +49,176 @@ describe('a permission prompt', () => {
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
   })
 
+  describe('keys', () => {
+    const press = (key: string, target: Element = document.body) => fireEvent.keyDown(target, { key })
+
+    it.each([['y', 'allow'], ['Y', 'allow'], ['Enter', 'allow'], ['a', 'always'], ['n', 'deny'], ['Escape', 'deny']])('%s answers %s', async (key, choice) => {
+      render(<PermissionPrompt sessionId="s1" />)
+      await screen.findByRole('alertdialog')
+      press(key)
+      await waitFor(() => expect(h.answer).toHaveBeenCalledWith('s1', 'p1', choice))
+    })
+
+    it('shows each key on its button, outside the button name', async () => {
+      render(<PermissionPrompt sessionId="s1" />)
+      const yes = await screen.findByRole('button', { name: 'Yes' })
+      expect(yes.textContent).toContain('Y')
+      expect(screen.getByRole('button', { name: 'Yes, and don’t ask again' }).textContent).toContain('A')
+      expect(screen.getByRole('button', { name: 'No' }).textContent).toContain('N')
+    })
+
+    // The owner lives in the terminal (2026-10-07): the card's letters answer
+    // from the asking session's own terminal, and never reach it.
+    it.each([['y', 'allow'], ['a', 'always'], ['n', 'deny']])('%s from the asking session’s terminal answers %s and never reaches it', async (key, choice) => {
+      render(<PermissionPrompt sessionId="s1" />)
+      await screen.findByRole('alertdialog')
+      const host = document.createElement('div')
+      host.className = 'xterm'
+      host.setAttribute('data-term-session', 's1')
+      const term = document.createElement('textarea')
+      host.appendChild(term)
+      document.body.append(host)
+      const typed = vi.fn()
+      term.addEventListener('keydown', typed)
+      term.focus()
+      press(key, term)
+      await waitFor(() => expect(h.answer).toHaveBeenCalledWith('s1', 'p1', choice))
+      expect(typed).not.toHaveBeenCalled()
+      host.remove()
+    })
+
+    it('leaves Enter and Esc in its terminal to Claude Code’s own menu', async () => {
+      render(<PermissionPrompt sessionId="s1" />)
+      await screen.findByRole('alertdialog')
+      const host = document.createElement('div')
+      host.setAttribute('data-term-session', 's1')
+      const term = document.createElement('textarea')
+      host.appendChild(term)
+      document.body.append(host)
+      const typed = vi.fn()
+      term.addEventListener('keydown', typed)
+      term.focus()
+      press('Enter', term)
+      press('Escape', term)
+      await new Promise((r) => setTimeout(r, 20))
+      expect(h.answer).not.toHaveBeenCalled()
+      expect(typed).toHaveBeenCalledTimes(2)
+      host.remove()
+    })
+
+    it('A does nothing when there is no always option', async () => {
+      h.permission.mockResolvedValue({ permission: { ...bash, always: undefined } })
+      render(<PermissionPrompt sessionId="s1" />)
+      await screen.findByRole('alertdialog')
+      press('a')
+      await new Promise((r) => setTimeout(r, 20))
+      expect(h.answer).not.toHaveBeenCalled()
+    })
+
+    it('never takes a key from another terminal or a field', async () => {
+      render(<PermissionPrompt sessionId="s1" />)
+      await screen.findByRole('alertdialog')
+      // xterm types through a textarea inside its host.
+      const host = document.createElement('div')
+      host.className = 'xterm'
+      host.setAttribute('data-term-session', 'someone-else')
+      const term = document.createElement('textarea')
+      host.appendChild(term)
+      const field = document.createElement('input')
+      document.body.append(host, field)
+      for (const el of [term, field]) {
+        el.focus()
+        for (const key of ['y', 'Enter', 'a', 'n', 'Escape']) press(key, el)
+      }
+      await new Promise((r) => setTimeout(r, 20))
+      expect(h.answer).not.toHaveBeenCalled()
+      host.remove()
+      field.remove()
+    })
+
+    it('leaves Enter and Esc to another focused control, and to an open dialog', async () => {
+      render(<PermissionPrompt sessionId="s1" />)
+      await screen.findByRole('alertdialog')
+      const other = document.createElement('button')
+      document.body.appendChild(other)
+      other.focus()
+      press('Enter', other)
+      press('Escape', other)
+      other.remove()
+      const dialog = document.createElement('div')
+      dialog.setAttribute('role', 'dialog')
+      document.body.appendChild(dialog)
+      press('y')
+      dialog.remove()
+      await new Promise((r) => setTimeout(r, 20))
+      expect(h.answer).not.toHaveBeenCalled()
+    })
+
+    it('ignores keys with a modifier, and a viewer gets none', async () => {
+      const { unmount } = render(<PermissionPrompt sessionId="s1" />)
+      await screen.findByRole('alertdialog')
+      fireEvent.keyDown(document.body, { key: 'a', metaKey: true })
+      fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true })
+      unmount()
+      h.canControl = false
+      render(<PermissionPrompt sessionId="s1" />)
+      await screen.findByRole('alertdialog')
+      press('y')
+      await new Promise((r) => setTimeout(r, 20))
+      expect(h.answer).not.toHaveBeenCalled()
+    })
+
+    it('a hidden card (a background tab) does not answer', async () => {
+      render(<div hidden><PermissionPrompt sessionId="s1" /></div>)
+      await waitFor(() => expect(document.querySelector('[role="alertdialog"]')).toBeTruthy())
+      press('y')
+      await new Promise((r) => setTimeout(r, 20))
+      expect(h.answer).not.toHaveBeenCalled()
+    })
+
+    it('two cards on a page: only the newest takes the key', async () => {
+      h.permission.mockImplementation(async (id: string) => ({ permission: { ...bash, id: `p-${id}` } }))
+      render(<><PermissionPrompt sessionId="s1" /><PermissionPrompt sessionId="s2" /></>)
+      await waitFor(() => expect(screen.getAllByRole('alertdialog')).toHaveLength(2))
+      press('y')
+      await waitFor(() => expect(h.answer).toHaveBeenCalledTimes(1))
+      expect(h.answer).toHaveBeenCalledWith('s2', 'p-s2', 'allow')
+    })
+  })
+
+  it('shows why when the option is not on the screen, and keeps the prompt', async () => {
+    const { ApiError } = await import('@/lib/api')
+    h.answer.mockRejectedValue(new ApiError(422, 'Unprocessable', { error: 'that option is not on the prompt — answer in the terminal' }))
+    render(<PermissionPrompt sessionId="s1" />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, and don’t ask again' }))
+    expect((await screen.findByRole('alert')).textContent).toBe('that option is not on the prompt — answer in the terminal')
+    expect(screen.getByRole('alertdialog')).toBeTruthy()
+  })
+
+  it('says how many more prompts wait behind this one', async () => {
+    h.permission.mockResolvedValue({ permission: { ...bash, queued: 2 } })
+    render(<PermissionPrompt sessionId="s1" />)
+    expect(await screen.findByText(/2 more waiting/)).toBeTruthy()
+  })
+
+  it('says its keys work from the terminal, and never takes the keyboard from it', async () => {
+    const term = document.createElement('textarea')
+    document.body.appendChild(term)
+    term.focus()
+    render(<PermissionPrompt sessionId="s1" />)
+    expect(await screen.findByText(/Keys work from the terminal/)).toBeTruthy()
+    expect(document.activeElement).toBe(term)
+    term.remove()
+  })
+
+  it('is one card per prompt: a replacing frame swaps it, never adds a second', async () => {
+    render(<PermissionPrompt sessionId="s1" />)
+    await screen.findByRole('alertdialog')
+    act(() => h.subs.forEach((s) => s(frame({ ...bash, id: 'p2', detail: 'ls' }))))
+    expect(screen.getAllByRole('alertdialog')).toHaveLength(1)
+    expect(screen.getByText('ls')).toBeTruthy()
+  })
+
   it('offers no second option when Claude Code has none', async () => {
     h.permission.mockResolvedValue({ permission: { ...bash, always: undefined } })
     render(<PermissionPrompt sessionId="s1" />)

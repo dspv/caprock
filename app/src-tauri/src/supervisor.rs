@@ -13,7 +13,10 @@
 //!   starts its bundled copy, never the formula's, and moves a running
 //!   Homebrew daemon onto that copy once when its own is not older — a
 //!   formula's binary lives at a new Cellar path every release, and every
-//!   new path is one more "caprock" in Privacy & Security.
+//!   new path is one more "caprock" in Privacy & Security. A bundled app
+//!   whose daemon differs from the one of its own that runs (a new release,
+//!   a local build, or a step back to a release) puts its copy in place and
+//!   restarts it the same way, once per launch.
 
 use crate::discovery::{self, Found, Runtime, MIN_API_LEVEL};
 use serde::{Deserialize, Serialize};
@@ -106,6 +109,10 @@ pub struct Supervisor {
     pub data_dir: PathBuf,
     /// The sidecar shipped next to the app's executable.
     bundled: PathBuf,
+    /// The app runs from a `.app` bundle, not from `cargo run`: only then is
+    /// its sidecar the daemon it was shipped with, and only then does it
+    /// replace a running daemon of its own (`make app` leaves it alone).
+    in_bundle: bool,
     inner: Mutex<Inner>,
 }
 
@@ -122,7 +129,6 @@ struct Inner {
     adopt_tried: bool,
     /// The move of the app's own daemon onto a newer bundled copy has been
     /// tried in this run (after an app update); once, like the adoption.
-    refresh_tried: bool,
 }
 
 impl Supervisor {
@@ -131,9 +137,19 @@ impl Supervisor {
             .ok()
             .and_then(|p| p.parent().map(|d| d.join(EXE)))
             .unwrap_or_else(|| PathBuf::from(EXE));
+        Self::with_bundled(data_dir, bundled)
+    }
+
+    /// A supervisor whose sidecar is `bundled`.
+    pub fn with_bundled(data_dir: PathBuf, bundled: PathBuf) -> Arc<Self> {
+        let in_bundle = bundled
+            .to_string_lossy()
+            .replace('\\', "/")
+            .contains(".app/Contents/MacOS/");
         Arc::new(Self {
             data_dir,
             bundled,
+            in_bundle,
             inner: Mutex::new(Inner {
                 state: State::Searching,
                 rt: None,
@@ -141,7 +157,6 @@ impl Supervisor {
                 autostart: false,
                 last_poll: None,
                 adopt_tried: false,
-                refresh_tried: false,
             }),
         })
     }
@@ -294,37 +309,52 @@ impl Supervisor {
         });
     }
 
-    /// macOS (ADR-040): whether the running daemon should be moved onto the
-    /// app's own — a Homebrew formula's daemon, not already tried in this run,
-    /// not refused in app.json, and not newer than the bundled one (`bundled`
-    /// is the bundled daemon's version, asked only when the rest holds).
+    /// macOS (ADR-040): whether the running daemon should be replaced by the
+    /// app's own copy, once per run and never when app.json says
+    /// `"own_daemon": false`. Two cases:
+    ///
+    /// - a Homebrew formula's daemon, when the bundled one is not older
+    ///   (moved onto the app's own);
+    /// - the app's own daemon, when this bundle carries a different one —
+    ///   another version, or the same version built differently. The bundle
+    ///   is what that daemon was copied from, so it wins either way: a new
+    ///   release, a local build (`make app-local`) and a step back to a
+    ///   release all leave the daemon matching the app.
+    ///
+    /// `bundled` is the bundled daemon's `caprock version`, asked only when the
+    /// rest holds.
     pub fn should_adopt(&self, bundled: impl FnOnce() -> Option<String>) -> bool {
         if !cfg!(target_os = "macos") || self.settings().is_some_and(|s| !s.own_daemon) {
             return false;
         }
-        let (rt, running) = {
+        let (rt, running, ours) = {
             let g = self.lock();
             if g.adopt_tried || g.busy {
                 return false;
             }
-            let running = match &g.state {
-                State::Connected {
-                    version,
-                    ours: false,
-                    ..
+            let (running, ours) = match &g.state {
+                State::Connected { version, ours, .. } | State::TooOld { version, ours, .. } => {
+                    (version.clone(), *ours)
                 }
-                | State::TooOld {
-                    version,
-                    ours: false,
-                    ..
-                } => version.clone(),
                 _ => return false,
             };
             match &g.rt {
-                Some(rt) => (rt.clone(), running),
+                Some(rt) => (rt.clone(), running, ours),
                 None => return false,
             }
         };
+        if ours {
+            if !self.in_bundle {
+                return false;
+            }
+            self.lock().adopt_tried = true;
+            return match bundled() {
+                Some(b) => {
+                    version_of(&b) != version_of(&running) || !same_file(&self.bundled, &self.bin())
+                }
+                None => false,
+            };
+        }
         if !is_formula(&rt.exe) {
             return false;
         }
@@ -335,38 +365,19 @@ impl Supervisor {
         }
     }
 
-    /// Whether the app's own daemon should move onto the bundled copy: it
-    /// runs from `<data_dir>/bin` (this app installed it) and is older than
-    /// the daemon this bundle carries — what an app update (F20) or a cask
-    /// upgrade leaves behind. Tried once per run; `bundled` is the bundled
-    /// daemon's version, asked only when the rest holds. A daemon a package
-    /// manager owns is never touched.
-    pub fn should_refresh(&self, bundled: impl FnOnce() -> Option<String>) -> bool {
-        let running = {
-            let g = self.lock();
-            if g.refresh_tried || g.busy {
-                return false;
-            }
-            match &g.state {
-                State::Connected {
-                    version,
-                    ours: true,
-                    ..
-                } => version.clone(),
-                _ => return false,
-            }
-        };
-        self.lock().refresh_tried = true;
-        newer(bundled().as_deref(), &running)
-    }
-
-    /// Moves a running Homebrew daemon onto the app's own copy, on a
-    /// background thread: the copy in place, a clean shutdown through the
-    /// daemon's API (sessions live on in their pty-hosts, ADR-033), then a
-    /// start as a login service when one was registered or chosen.
+    /// Puts the app's own daemon in place of the running one, on a background
+    /// thread: the copy installed, a clean shutdown through the daemon's API
+    /// (sessions live on in their pty-hosts, ADR-033), then a start as a login
+    /// service when one was registered or chosen. Moves a Homebrew daemon
+    /// onto the app's own, and replaces the app's own with the bundle's.
     pub fn spawn_adopt(self: &Arc<Self>) {
         let Some(rt) = self.runtime() else { return };
-        if !self.claim("Moving the daemon into the app") {
+        let step = if discovery::is_ours(&rt, &self.bin()) {
+            "Updating the daemon"
+        } else {
+            "Moving the daemon into the app"
+        };
+        if !self.claim(step) {
             return;
         }
         let sup = self.clone();
@@ -380,7 +391,7 @@ impl Supervisor {
                     thread::sleep(Duration::from_millis(200));
                 }
                 if discovery::status(rt.port).is_some() {
-                    return Err("The Homebrew daemon did not stop; it keeps running.".into());
+                    return Err("The running daemon did not stop; it keeps running.".into());
                 }
                 Ok(())
             });
@@ -612,11 +623,20 @@ pub fn semver(s: &str) -> Option<(u64, u64, u64)> {
         })
 }
 
-/// Whether `bundled` names a strictly newer version than `running`; false
-/// when either is not a version (a development build says `dev`).
-pub fn newer(bundled: Option<&str>, running: &str) -> bool {
-    match (bundled.and_then(semver), semver(running)) {
-        (Some(b), Some(r)) => b > r,
+/// The version in what a daemon says about itself: "caprock 0.78.2 (darwin/arm64)"
+/// from `caprock version`, or "0.78.2" from `/v1/status`; a leading "v" is
+/// not part of it.
+pub fn version_of(s: &str) -> &str {
+    let s = s.trim();
+    let s = s.strip_prefix("caprock ").unwrap_or(s);
+    let s = s.split_whitespace().next().unwrap_or("");
+    s.strip_prefix('v').unwrap_or(s)
+}
+
+/// Whether two files have the same bytes; false when either cannot be read.
+fn same_file(a: &Path, b: &Path) -> bool {
+    match (std::fs::read(a), std::fs::read(b)) {
+        (Ok(x), Ok(y)) => x == y,
         _ => false,
     }
 }
@@ -801,47 +821,6 @@ mod tests {
     }
 
     #[test]
-    fn the_apps_own_daemon_moves_onto_a_newer_bundled_copy_once() {
-        let s = sup("refresh");
-        // Not ours (a package manager's): never.
-        s.observe(
-            running_v(MIN_API_LEVEL, "/opt/homebrew/bin/caprock", "0.78.0"),
-            Duration::ZERO,
-        );
-        assert!(!s.should_refresh(|| Some("caprock 0.79.0 (abc)".into())));
-        // Ours and older than the bundle: once.
-        let bin = s.bin();
-        std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
-        std::fs::write(&bin, b"x").unwrap();
-        s.observe(
-            running_v(MIN_API_LEVEL, bin.to_str().unwrap(), "0.78.0"),
-            Duration::ZERO,
-        );
-        assert!(s.should_refresh(|| Some("caprock 0.79.0 (abc)".into())));
-        assert!(
-            !s.should_refresh(|| Some("caprock 0.79.0 (abc)".into())),
-            "once per run"
-        );
-    }
-
-    #[test]
-    fn the_apps_own_daemon_stays_when_not_older() {
-        let s = sup("refresh-same");
-        let bin = s.bin();
-        std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
-        std::fs::write(&bin, b"x").unwrap();
-        s.observe(
-            running_v(MIN_API_LEVEL, bin.to_str().unwrap(), "0.79.0"),
-            Duration::ZERO,
-        );
-        assert!(!s.should_refresh(|| Some("caprock 0.79.0 (abc)".into())));
-        assert!(newer(Some("caprock 0.79.1"), "0.79.0"));
-        assert!(!newer(Some("caprock dev"), "0.79.0"));
-        assert!(!newer(Some("caprock 0.79.0"), "dev"));
-        assert!(!newer(None, "0.79.0"));
-    }
-
-    #[test]
     fn settings_round_trip_and_mark_the_first_run_done() {
         let s = sup("settings");
         s.save_settings(Settings::new(false)).unwrap();
@@ -951,6 +930,67 @@ mod adopt_tests {
         let exe = formula(&s);
         connect(&s, &exe, "0.78.0");
         assert!(!s.should_adopt(|| Some("caprock 0.79.0".into())));
+    }
+
+    #[test]
+    fn version_of_reads_both_ways_a_daemon_says_it() {
+        assert_eq!(
+            version_of("caprock 0.78.2-dev+abc1234 (darwin/arm64)\n"),
+            "0.78.2-dev+abc1234"
+        );
+        assert_eq!(version_of("v0.78.1"), "0.78.1");
+        assert_eq!(version_of("0.78.1"), "0.78.1");
+        assert_eq!(version_of(""), "");
+    }
+
+    /// A supervisor running from a `.app` whose sidecar holds `sidecar`, with
+    /// its own daemon installed as `installed` and connected at `running`.
+    #[cfg(target_os = "macos")]
+    fn own(name: &str, sidecar: &[u8], installed: &[u8], running: &str) -> Arc<Supervisor> {
+        let d = std::env::temp_dir().join(format!("caprock-own-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        let macos = d.join("Caprock.app/Contents/MacOS");
+        std::fs::create_dir_all(&macos).unwrap();
+        std::fs::write(macos.join("caprock"), sidecar).unwrap();
+        let s = Supervisor::with_bundled(d.join("data"), macos.join("caprock"));
+        std::fs::create_dir_all(s.bin().parent().unwrap()).unwrap();
+        std::fs::write(s.bin(), installed).unwrap();
+        connect(&s, &s.bin().to_string_lossy(), running);
+        assert!(matches!(s.state(), State::Connected { ours: true, .. }));
+        s
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_replaces_its_own_daemon_when_the_bundle_carries_another() {
+        // A local build over a release, and a release back over a local build.
+        let s = own("newer", b"new", b"old", "0.78.1");
+        assert!(s.should_adopt(|| Some("caprock 0.78.2-dev+abc1234 (darwin/arm64)".into())));
+        assert!(
+            !s.should_adopt(|| Some("caprock 0.78.3".into())),
+            "once per run"
+        );
+        let s = own("back", b"rel", b"dev", "0.78.2-dev+abc1234");
+        assert!(s.should_adopt(|| Some("caprock 0.78.1 (darwin/arm64)".into())));
+        // Same version, other bytes: a rebuild of the same commit.
+        let s = own("rebuilt", b"two", b"one", "0.78.2-dev+abc1234");
+        assert!(s.should_adopt(|| Some("caprock 0.78.2-dev+abc1234 (darwin/arm64)".into())));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_keeps_its_own_daemon_when_it_matches_the_bundle() {
+        let s = own("same", b"same", b"same", "0.78.1");
+        assert!(!s.should_adopt(|| Some("caprock 0.78.1 (darwin/arm64)".into())));
+        // A sidecar that does not run is no reason to stop a daemon that does.
+        let s = own("broken", b"x", b"y", "0.78.1");
+        assert!(!s.should_adopt(|| None));
+        // `cargo run` is not a bundle: `make app` leaves the daemon alone.
+        let s = sup("cargo");
+        std::fs::create_dir_all(s.bin().parent().unwrap()).unwrap();
+        std::fs::write(s.bin(), b"x").unwrap();
+        connect(&s, &s.bin().to_string_lossy(), "0.78.1");
+        assert!(!s.should_adopt(|| panic!("not asked outside a bundle")));
     }
 
     #[cfg(not(target_os = "macos"))]

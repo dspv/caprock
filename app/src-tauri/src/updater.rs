@@ -1,4 +1,4 @@
-//! App updates (F20, WP-21, ADR-041): one click from "a newer Caprock is
+//! App updates (F20, WP-21, ADR-042): one click from "a newer Caprock is
 //! out" to the new app running, through `tauri-plugin-updater`.
 //!
 //! - **What tells us an update exists** is the daemon's release check
@@ -10,7 +10,7 @@
 //!   it was signed for, before a byte of it is written.
 //! - **Sessions survive.** The new bundle carries the new daemon; the
 //!   relaunched app moves its own daemon onto it with a clean shutdown
-//!   (`Supervisor::should_refresh`), and sessions live on in their
+//!   (`Supervisor::should_adopt`, ADR-040), and sessions live on in their
 //!   pty-hosts (ADR-033).
 //! - **Where it cannot update itself** (a development build, a .deb or .rpm
 //!   install, a macOS app run from the disk image or a translocated copy)

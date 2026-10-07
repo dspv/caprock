@@ -132,7 +132,7 @@ jobs:
       # signature, both architectures, bundle id, the daemon's version),
       # uploads it and renders the cask.
       # With the updater key, also the signed Caprock_<v>_universal.app.tar.gz
-      # and its .sig (F20, ADR-041). The `|| ''` keeps a missing secret a
+      # and its .sig (F20, ADR-042). The `|| ''` keeps a missing secret a
       # warning in the script, not a failed release.
       - name: universal .dmg
         run: scripts/app-release.sh "${GITHUB_REF_NAME}"
@@ -204,7 +204,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libxdo-dev libssl-dev libayatana-appindicator3-dev patchelf file
       # With the updater key the NSIS installer and the AppImage get a .sig
-      # beside them: they are the update bundles themselves (F20, ADR-041).
+      # beside them: they are the update bundles themselves (F20, ADR-042).
       - name: bundle
         run: |
           V="${GITHUB_REF_NAME#v}"

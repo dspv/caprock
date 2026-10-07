@@ -4,7 +4,7 @@
  * In the desktop app, when this install can replace itself, a newer release
  * is one click — **Update to vX.Y.Z — Restart** downloads it with progress,
  * verifies its signature, installs it and relaunches; sessions carry on in
- * their pty-hosts while the app and its daemon restart (ADR-041). Where it
+ * their pty-hosts while the app and its daemon restart (ADR-042). Where it
  * cannot (a browser, a .deb or .rpm install, a development build) the line
  * opens to the exact command for how Caprock was installed, as before.
  * Either way **Not now** hides that version, with the same key as the

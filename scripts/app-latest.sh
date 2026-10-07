@@ -108,7 +108,7 @@ if [[ ${#COPIES[@]} -gt 0 ]]; then
   gh release upload "$TAG" "$WORK/checksums.txt" --clobber
 fi
 
-# latest.json for the app's updater (F20, ADR-041), from the .sig files the
+# latest.json for the app's updater (F20, ADR-042), from the .sig files the
 # app jobs attached beside each signed bundle. Attached before the Latest
 # mark, so releases/latest/download/latest.json always names files that are
 # there. A release without signatures (the key not configured) gets none,

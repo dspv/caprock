@@ -17,6 +17,8 @@ mod notify_macos;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod popover;
 mod shell;
+#[cfg(unix)]
+mod sigterm;
 #[cfg(all(feature = "snapshot", target_os = "macos"))]
 mod snapshot;
 mod supervisor;
@@ -123,6 +125,8 @@ fn main() {
         #[cfg(target_os = "macos")]
         notify_macos::install(app.handle());
         shell::monitor(app.handle().clone(), monitored);
+        #[cfg(unix)]
+        sigterm::install(app.handle().clone());
         #[cfg(all(feature = "snapshot", target_os = "macos"))]
         snapshot::watch(app.handle().clone());
         Ok(())

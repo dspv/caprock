@@ -34,8 +34,10 @@ Claude Code sends one JSON object per event on the shim's stdin. Fields common t
 ([ADR-035](08-decisions.md), [ADR-036](08-decisions.md)). Claude Code fires it
 as it draws a permission dialog; the shim forwards it fire-and-forget and never
 answers it, so the dialog appears exactly as without Caprock. For a session
-Caprock started, the daemon also remembers it as the prompt that session waits
-on (`GET /v1/agents/{id}/permission`) until something answers it. For every
+Caprock started, the daemon also queues it as a prompt that session waits on
+(`GET /v1/agents/{id}/permission` returns the oldest, which is the dialog
+Claude Code shows) until something answers it; a later hook never replaces an
+earlier unanswered prompt. For every
 session the stored event makes Now and the session page say *waiting for
 approval* (naming the call; *waiting for your answer* for `AskUserQuestion`)
 with the *waiting on you* badge, until the session's next event, and is what a
@@ -379,6 +381,7 @@ PUT  /v1/settings                      → store them
 GET  /v1/update                        → cached release status (no network I/O)
 POST /v1/update/check                  → check now (403 unless enabled)
 POST /v1/hooks/install                 → {hooks: HooksStatus, backup?} — `caprock hooks install`, from the dashboard
+POST /v1/claude/bypass-consent         → {accepted: true} — the user accepted Caprock's copy of Claude Code's bypass warning (ADR-041)
 GET  /v1/stats/daily?days=30           → DailyStat[]
 POST /v1/hook                          → 204 (shim only, bearer-token gated; the event is written even after the shim hangs up)
 WS   /v1/live                          → server-push frames: {type:"event"|"session"|"alert", data:…}
@@ -685,6 +688,8 @@ The same decisions reach the desktop app as `notify` frames, under the same rule
 
 `GET /v1/gemini` reports whether asking Gemini is possible here: `{available, env_var, licensed, model}`. It performs **no network I/O** and **never returns the key** — `available` says only that one is present. `POST /v1/gemini/ask` takes `{prompt, model?}` and answers `{text, model, usage}`, where `usage` carries the response's own `promptTokenCount` / `candidatesTokenCount` / `cachedContentTokenCount` / `thoughtsTokenCount`. It is the one endpoint in the product that checks the licence **server-side** (402 without an active key) rather than leaving the paywall to the UI, because the call spends the user's Gemini quota and opens an outbound connection — the reasoning and its limits are in [ADR-023](08-decisions.md). With no key set it answers 412 with the variable to set, which is a different problem from 402 and is reported separately so the screen can say which. The key is read from `GEMINI_API_KEY` in the daemon's environment at call time; it is never stored, never accepted by `PUT /v1/settings`, and never present in `GET /v1/settings`.
 
+`POST /v1/claude/bypass-consent` writes `skipDangerousModePermissionPrompt: true` into the settings file `/v1/status.hooks.settings_path` names — the key Claude Code itself writes when its one-time bypass warning is answered *Yes, I accept* — backing the file up once and keeping every other key in place and order; an unparsable file is refused, never overwritten. A mutating route: cross-site requests and paired devices are refused, so the consent is given at the machine. `/v1/status.claude_bypass_accepted` reports the key. `POST /v1/agents` for a Claude Code session in `bypassPermissions` (asked for, or filled in from the preference or a continued session's mode) on a machine where it is false answers **409** `{error, code: "bypass_consent"}` and starts nothing: the session would open on Claude Code's warning, whose default answer is *No, exit*. Another agent, another mode and a terminal `command` are never refused; an unreadable settings file is not a refusal (ADR-041).
+
 `POST /v1/hooks/install` runs the same install as `caprock hooks install` (`hooks.InstallFor`: copy the shim into the data dir, merge Caprock's entries into the settings file this daemon reports in `/v1/status.hooks.settings_path`, backing it up first) and answers with what is registered afterwards (`{hooks: {settings_path, shim_path, installed, missing, shim_exists}, backup?}`); an error is an error status, never a quiet 200, and a daemon without an installer answers 501. It is a mutating route, so the CSRF guard refuses a cross-site request and a paired device cannot make it. Nothing else in settings.json is touched. `/v1/status.hooks`, `caprock status` and this answer all check against the command an install writes (`hooks.StatusFor`): the shim in the data dir, or the fallback `"<exe>" hook` when none sits beside the binary. Checking against the shim path alone recognised that fallback only for an executable named `caprock`, so on a renamed or preview build the button said installed and the next status said all nine were missing.
 
 `GET /v1/update` returns `{enabled, current, latest, update_available, command, app_command, url, checked_at, error, notes, notes_for}` from cache and **performs no network I/O** — a page load must never cause an outbound call. `POST /v1/update/check` performs one, and returns **403 while `update_checks` is false**: the opt-in is enforced by the server, not merely hidden in the UI, so no page or local script can make Caprock reach the network uninvited. Checks are throttled to once every 6 hours unless forced — at startup, when the switch is turned on, and on an hourly tick that asks whether one is due (so a daemon that runs for weeks still hears of a release) — and each repeat is conditional: the request sends the last `ETag` as `If-None-Match`, and a `304` keeps the cached answer and counts as a successful check. The request carries no body or credentials, and a failure is reported in `error` rather than as an error status — not knowing about a release must not read as a broken dashboard. `command` is the upgrade command inferred from the running binary's path (Homebrew, Scoop, `go install`); when no package manager owns the binary it is empty and the UI offers `url` instead. `app_command` is `brew update && brew upgrade --cask caprock-app` when Homebrew's cask installed the desktop app on this machine (`<prefix>/Caskroom/caprock-app` exists, `/opt/homebrew` or `/usr/local`), set only beside `update_available`; the app shows it first and `command` second when both exist, because the cask and the formula are upgraded separately. `notes` is the published release's own description, taken from the same GitHub response as the tag — reading it costs no second request and no further exposure. It is trimmed to a dialog-sized excerpt (long bodies cut at a line boundary) and paired with `notes_for`, the version it describes, so a cached note can never be shown beside a different version after a failed check. `update_available` is never true for a `dev` or `git describe` build. Caprock does not install the update: replacing the running binary would mean the daemon killing the process executing the command, and running a package manager on the user's behalf from a web page is a surface a local tool should not open.
@@ -776,8 +781,8 @@ POST   /v1/agents                    {cwd?, chat?, create?, worktree?, agent?, m
 GET    /v1/agents/models?agent=      {agent, default?, models:[{id,label}]}
 POST   /v1/agents/{id}/input         {data}            → 204   (owned PTYs only)
 POST   /v1/agents/{id}/signal        {action: pause|resume|kill} → 204 (owned PTYs only)
-GET    /v1/agents/{id}/permission    → {permission: {id, tool, detail, always?, since} | null}; the prompt an owned session waits on
-POST   /v1/agents/{id}/permission    {id, choice: allow|always|deny} → 204; 409 when that prompt is no longer waiting
+GET    /v1/agents/{id}/permission    → {permission: {id, tool, detail, always?, since, queued?} | null}; the oldest prompt an owned session waits on (the dialog on its screen), queued = how many wait behind it
+POST   /v1/agents/{id}/permission    {id, choice: allow|always|deny} → 204; 409 when that prompt is not the one on screen; 422 {error} when the menu on screen has no such option (nothing typed)
 WS     /v1/agents/{id}/term          bidirectional stream (xterm.js): binary = keystrokes, text = control; snapshot on connect, closes on exit; subprotocol caprock.term.v2 [?since=&client=] = protocol v2
 POST   /v1/paste                     {name, type, data:base64} → {path}; writes a pasted or dropped file so Claude Code can read it
 GET    /v1/terminals                 → {terminals: [{id, name}], preferred}; terminal apps installed here, most preferred first
@@ -815,7 +820,46 @@ per-agent flags are in [19-codex.md](19-codex.md) and
 [16-opencode.md](16-opencode.md)). With `resume`, the agent is the stored
 session's, whatever the request says, and a Codex or OpenCode resume is given
 the session's `native_id` when it has one. `fork` with Codex or OpenCode is a
-400: their forks copy history with its cost. The endpoints answer 501 only when
+400: their forks copy history with its cost.
+
+**A request with no `permission_mode` gets one from the daemon**
+(`defaultSpawnMode`, `internal/api/resume.go`), so every caller — the
+dashboard's buttons, the project terminal, the phone, a script posting to the
+API — behaves the same. With `resume` or `relay_from`, it is the mode that session was last
+running in: the newest stored hook payload's `permission_mode`
+(`store.LastPermissionMode`, the newest 50 hook events, PostToolUse skipped
+for size), passed on only when `--permission-mode` accepts it
+(`agents.CarriedMode` — Claude Code reports its ordinary mode as `default`,
+which the flag does not take, so that one starts with no flag). Otherwise, and
+when nothing was recorded, it is the `spawn_permission_mode` setting; with
+neither, no mode is sent and the agent starts in its own default. A request
+that names a mode, or carries `command`, is left as it is. No column stores the
+mode: every hook payload is kept verbatim, and the mode changes mid-session.
+
+**`bypassPermissions` is spawned as `--dangerously-skip-permissions`**, not as
+`--permission-mode bypassPermissions`, which leaves the session interactive and
+keeps asking — the owner picked *Bypass · never asks* for an autonomous run and
+was still asked on nearly every call (2026-10-07). It is the flag the
+orchestrator has always used for its own unattended workers; the two are never
+combined, since Claude Code takes one or the other. Every other mode is still
+`--permission-mode <mode>`.
+
+**Claude Code sessions are started with `--add-dir` for Caprock's own
+directories** (`PasteDir`, `ChatsDir`; `agents.ownDirs`, created if absent
+because the flag refuses a directory that does not exist). Caprock writes files
+the user then refers to by path — a screenshot pasted into the terminal — and
+those paths lie outside every working directory, so a user with Claude Code's
+`permissions.blockReadsOutsideWorkingDirectories` on was asked about Caprock's
+own files. That setting is a perimeter which applies in **every** mode: neither
+`--permission-mode bypassPermissions` nor `--dangerously-skip-permissions`
+lifts it, and only a working directory (the flag, `/add-dir`, or
+`permissions.additionalDirectories` in *user* settings — a project's
+`.claude/settings.json` does not count) satisfies it. Commands whose paths are
+computed at run time (`gh`, a `cat` of a variable) cannot be checked against it
+and ask regardless; nothing in Claude Code's rules suppresses that, so a user
+who wants an unattended run turns the setting off.
+
+The endpoints answer 501 only when
 **no** agent can be started (`claude_available`, `codex_available`,
 `opencode_available` and `gemini_available` all false on `/v1/status`).
 
@@ -868,7 +912,10 @@ is actually typed. `limit` defaults to 200 and is capped at 2000;
 `X-Total-Count` counts what matches, so the Now screen can offer "show N more"
 instead of leaving everything past the first page unreachable.
 
-**`resume`** — `{ok, reason?, command?}`. On the list it is filled for ended
+**`resume`** — `{ok, reason?, command?, permission_mode?}`. `permission_mode`
+is present only with `ok`: the mode `POST /v1/agents` will fill in for a
+continue that names none (above), so the button can say it before the click;
+absent when that is no mode at all. On the list it is filled for ended
 sessions only, so a card can offer continue; on `GET /v1/sessions/{id}` for any
 session except a live one Caprock started (that one is typed into) — unless
 this daemon does not hold its terminal. Since
@@ -976,6 +1023,13 @@ relayed), in the handler, whatever a device's role — an editor opens on this
 screen, not the phone's — and neither is on a device allowlist.
 `GET`/`PUT /v1/settings` carry **`editor`**: an id from `editor.IDs()` or
 `""` (the first installed), else 400; stored as `editor` in `config.json`.
+
+`GET`/`PUT /v1/settings` carry **`spawn_permission_mode`**: the permission mode
+new sessions start in, one of `agents.PermissionModes` (`acceptEdits`, `auto`,
+`bypassPermissions`, `dontAsk`, `manual`, `plan`) or `""` for not set, else
+400; stored as `spawn_permission_mode` in `config.json`. The new-session
+dialogs open on it, and `POST /v1/agents` uses it for a request with no mode
+and nothing to carry one from.
 
 **`SessionSummary.description` / `description_source`** — what tells a session
 from the others on the screen (FB-035): the stored `sessions.title`
@@ -1672,32 +1726,42 @@ than its conversation ([ADR-032](08-decisions.md)); written by the daemon when
 fork), and the two must not be read as one. `SessionSummary` carries it as
 `relay_from`, omitted when empty.
 
-### Pending permission DDL (migration 0039)
+### Pending permission DDL (migrations 0039, 0042)
 
 ```sql
-CREATE TABLE IF NOT EXISTS pending_permissions (
-  session_id TEXT    NOT NULL PRIMARY KEY,
-  prompt_id  TEXT    NOT NULL,
-  tool       TEXT    NOT NULL,
-  detail     TEXT    NOT NULL DEFAULT '',
-  always     TEXT    NOT NULL DEFAULT '',
-  since      INTEGER NOT NULL,              -- unix ms the dialog was drawn
-  input      TEXT    NOT NULL DEFAULT ''
+-- 0042 rebuilt 0039's one-row-per-session table as a queue, rows carried over.
+CREATE TABLE pending_permissions (
+  session_id  TEXT    NOT NULL,
+  prompt_id   TEXT    NOT NULL,
+  tool        TEXT    NOT NULL,
+  detail      TEXT    NOT NULL DEFAULT '',
+  always      TEXT    NOT NULL DEFAULT '',
+  since       INTEGER NOT NULL,              -- unix ms the dialog was drawn
+  input       TEXT    NOT NULL DEFAULT '',
+  tool_use_id TEXT    NOT NULL DEFAULT '',
+  agent_id    TEXT    NOT NULL DEFAULT '',
+  PRIMARY KEY (session_id, prompt_id)
 );
 ```
 
-The permission prompt an owned session waits on ([ADR-035](08-decisions.md)),
-kept across a daemon restart. A new prompt's row is committed on the
-`PermissionRequest` hook's own request, before the hook is answered and before
-the prompt is served, so a daemon killed the moment after (a crash, or a
-Windows stop, which has no SIGTERM) still finds it. A cleared prompt's row is
-deleted off the caller's goroutine, so a keystroke never waits on the
-database; the writes are serialised and each writes the state current when it
-runs. On reattach a Claude Code session gets its prompt back under the same
-`prompt_id`, so the `409` check holds, unless the session recorded a
-`tool.post`, `turn.user`, `turn.assistant`, `agent.stop`, `session.end` or
-another `permission.prompt` after `since`; rows of sessions not reattached are
-deleted.
+The permission prompts an owned session waits on ([ADR-035](08-decisions.md)),
+kept across a daemon restart: one row per prompt, read back oldest first
+(`since`, then insertion order). Claude Code queues its dialogs and shows the
+oldest, so a later `PermissionRequest` adds a row behind the others and never
+replaces one. `tool_use_id` is the hook's id for the call when it sends one;
+`agent_id` is set when a subagent asked, so its `SubagentStop` clears its rows.
+
+A new prompt's row is committed on the `PermissionRequest` hook's own request,
+before the hook is answered and before the prompt is served, so a daemon killed
+the moment after (a crash, or a Windows stop, which has no SIGTERM) still finds
+it. A cleared prompt's row is deleted off the caller's goroutine, so a
+keystroke never waits on the database; the writes are serialised and each
+rewrites the session's queue as it stands when it runs. On reattach a Claude
+Code session gets each prompt back under the same `prompt_id`, so the `409`
+check holds, unless the session recorded a `tool.post`, `turn.user`,
+`turn.assistant`, `agent.stop` or `session.end` after that prompt's `since` (a
+later `permission.prompt` no longer counts: it queues behind); rows of
+sessions not reattached are deleted.
 
 ### Removed sessions DDL (migration 0040)
 
@@ -2030,7 +2094,7 @@ The service runs the daemon with `--foreground` (the supervisor owns the process
 
 **The desktop app's files in `<data_dir>`.** `bin/caprock` (`caprock.exe` on Windows) is the daemon the app installed, copied from its bundle by write-then-rename; the login service it registers runs that copy. `app.json` = `{"background": true}` records the first-run choice (run as a login service or not); its absence means the app has never started a daemon here, and the first-run screen is shown. `app-update.json` = `{"asked": true}` records that the app's first-launch question about update checks was answered (F20); the choice itself is the daemon's `update_checks`. All three are written by the app, never by the daemon. What `<data_dir>` resolves to per OS is owned by [ADR-013](08-decisions.md#adr-013--data-dir-and-config-conventions).
 
-**The app's update manifest** (F20, [ADR-041](08-decisions.md#adr-041--the-app-updates-itself-in-one-click-a-minisign-signed-bundle-one-channel-checked-only-when-the-release-check-is-on-or-the-user-asks)) is `latest.json` on each release, read at `https://github.com/dspv/caprock/releases/latest/download/latest.json`, in tauri-plugin-updater's static format, written by `scripts/app-update-manifest.py`:
+**The app's update manifest** (F20, [ADR-042](08-decisions.md#adr-042--the-app-updates-itself-in-one-click-a-minisign-signed-bundle-one-channel-checked-only-when-the-release-check-is-on-or-the-user-asks)) is `latest.json` on each release, read at `https://github.com/dspv/caprock/releases/latest/download/latest.json`, in tauri-plugin-updater's static format, written by `scripts/app-update-manifest.py`:
 
 ```json
 {
