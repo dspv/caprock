@@ -80,16 +80,18 @@ func claudeLaunch(in launchInput) (launch, error) {
 	if in.Model != "" {
 		l.args = append(l.args, "--model", in.Model)
 	}
-	// "Bypass · never asks" is the owner's autonomous mode, and it has to mean
-	// what it says. `--permission-mode bypassPermissions` leaves the session
-	// interactive and keeps asking; `--dangerously-skip-permissions` is the
-	// flag the orchestrator has always used for its own unattended workers,
-	// and it is the one that actually stops the questions. The two are not
-	// combined — Claude Code takes one or the other.
+	// "Bypass · never asks" is spawned as `--dangerously-skip-permissions`,
+	// the flag the orchestrator has always used for its own unattended
+	// workers. Claude Code maps it to the same mode as `--permission-mode
+	// bypassPermissions` (read in 2.1.292: `dangerouslySkipPermissions ?
+	// "bypassPermissions" : permissionMode`); one spelling for both paths
+	// keeps the first-run warning and its consent (ADR-041) on one flag. The
+	// two are not combined.
 	//
-	// Neither lifts `permissions.blockReadsOutsideWorkingDirectories`, which
-	// is a perimeter that applies in every mode; AddDirs below is what answers
-	// that for the directories Caprock itself writes.
+	// Neither lifts `permissions.blockReadsOutsideWorkingDirectories`, an
+	// opt-in perimeter that asks in every mode — the owner's prompt flood of
+	// 2026-10-07 was that setting, not the mode. AddDirs below answers it for
+	// the directories Caprock itself writes.
 	switch in.Mode {
 	case "":
 	case "bypassPermissions":

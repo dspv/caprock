@@ -123,10 +123,23 @@ On macOS:
 | ⌘I          | Inspector                               |
 | ⌘\          | Hide or show the sidebar                |
 | ⇧⌘D         | Dashboard                               |
+| ⌘R          | Reload the window (View → Reload)       |
 
 On Windows and Linux each is Ctrl+Shift with the same letter; Ctrl+Shift+C
-and Ctrl+Shift+V stay the terminal's copy and paste. The terminal's own keys
-(Ctrl+C, Ctrl+W, Option as Meta) always reach the terminal.
+and Ctrl+Shift+V stay the terminal's copy and paste. Reload is F5 there:
+Ctrl+R stays the shell's history search, and F5 in a focused terminal goes
+to the program running in it. The terminal's own keys (Ctrl+C, Ctrl+W,
+Option as Meta) always reach the terminal.
+
+### After an update
+
+When the daemon is updated while a window is open — the app replaces its
+daemon after an upgrade, or `brew upgrade` restarts it under a browser tab —
+the page reloads itself onto the new version as soon as it reconnects, on
+the screen it was showing. What you typed in a terminal is kept: it lives in
+the session, not in the page. If a sheet is open with text in it, the page
+does not reload under you; *Reload — Caprock was updated* appears in the
+status strip (in a browser, in the header) instead, for when you are done.
 
 The *New agent* sheet needs no mouse. It opens on the first message; Tab and
 ⇧Tab walk Project, Where, Agent, Model, Permissions, First message, Cancel

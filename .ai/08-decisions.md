@@ -1945,6 +1945,23 @@ back to a release each leave the daemon matching the app. Only an app
 running from a `.app` does it; `make app` (`cargo run`) leaves the running
 daemon alone. `"own_daemon": false` still turns all of it off.
 
+**Amended 2026-10-07 (the page follows the swap).** After `brew upgrade
+--cask` to 0.78.2 the app loaded its window from the 0.78.1 daemon still
+running, replaced that daemon two seconds later, and never reloaded: the
+owner ran 0.78.1's UI for the rest of the run, with no reload command to
+recover. The replacement is now decided at launch, before the window loads
+anything; when the app replaces the daemon, the window waits on the fallback
+page and goes to the dashboard once the new daemon answers. A swap that
+still happens under a loaded page (a daemon that came up after launch)
+reloads the main window and the popover once the new daemon answers,
+keeping the route. Independently of the shell, the daemon writes its version
+into the page it serves and the page reloads itself when the live link comes
+back to a different version — once, never in a loop, and not under an open
+sheet with typed text, where it offers a one-click reload in the status strip
+instead (a terminal's input lives in its pty-host, so a reload is safe
+there). The app gains View → Reload (⌘R); F5 elsewhere. Details in
+[21-app.md § Updating the daemon](21-app.md#updating-the-daemon).
+
 ## ADR-041 — The first bypass session asks for consent in Caprock, never in a screen whose default is "No, exit"
 
 **Context.** Bypass became the default for a new session on 2026-10-07 and
