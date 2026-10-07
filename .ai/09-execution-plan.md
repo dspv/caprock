@@ -425,9 +425,14 @@ ADR-042). The owner's `permissions.blockReadsOutsideWorkingDirectories` was
 turned off with his decision (backup at
 `~/.claude/settings.json.bak-20261007`); it is opt-in in Claude Code, so new
 users do not have it. Worktrees: everything merged or superseded was
-removed; `~/dev/wt` holds only `feat/voice-input`. Still open: `/exit` seen
-in the built app with the real `claude`; one TCC identity, which the ad-hoc
-signature cannot give (each release is a new cdhash; old rows stay in System
-Settings until removed there) and Developer ID signing will; voice input
-(engine only, no UI or spec); the stale-UI pill left uncommitted in
-`.claude/worktrees/agent-a9b589993b7fbe75d`.
+removed. 0.80.0 shipped the update card (#265), the reload on upgrade
+(#263; it was the stale-UI pill the abandoned worktree held) and the PTY
+drain (#266). `/exit` was then seen with the real `claude` on 0.80.0: the
+tab becomes a shell in the same folder; the same check found each window
+starting its own shell, fixed by `replaces` (#268). `~/dev/wt` is empty:
+the voice engine is parked on `feat/voice-input`, an unfinished cost-first
+home page on caprock-web `feat/home-cost-first`. Still open: one TCC
+identity, which the ad-hoc signature cannot give (each release is a new
+cdhash; old rows stay in System Settings until removed there) and Developer
+ID signing will; voice input in Caprock (engine only, no UI or spec —
+Claude Code's own hold-space voice already works in its terminal).
