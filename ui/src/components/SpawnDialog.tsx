@@ -11,12 +11,14 @@ import { BypassConsentNote, useBypassConsent } from './BypassConsent'
 // What the two selects start on, rather than an empty "default" that says
 // nothing about what you are about to run. Opus is what the machine's own
 // sessions use — the newest Opus, since an older one under a familiar name is
-// the model nobody meant to pick. Bypass is the owner's decision (2026-10-07):
-// Caprock is where sessions are left to run, and a session that stops to ask
-// on every call is not one you can leave. A saved preference still wins, and
-// a bypass session started from a paired phone is still confirmed.
+// the model nobody meant to pick. A new install starts on Accept edits, which
+// asks before running a command (owner, 2026-10-08, ADR-043): Anthropic keeps
+// bypass for isolated machines, and a first session on a work laptop should
+// not be one that never asks. Bypass is one pick away, and the pick is kept
+// (useInitialMode). A saved preference wins, and a bypass session started
+// from a paired phone is still confirmed.
 const DEFAULT_MODEL = 'claude-opus-5-5'
-export const DEFAULT_MODE = 'bypassPermissions'
+export const DEFAULT_MODE = 'acceptEdits'
 
 // Labelled, because `bypassPermissions` is not a phrase anyone thinks in and
 // the consequence is the part that matters.
@@ -152,7 +154,7 @@ export function SpawnDialog({
   const model = models[agent]
   const setModel = (v: string) => setModels((m) => ({ ...m, [agent]: v }))
   // Opens on the Settings preference when one is set (New sessions).
-  const [mode, setMode] = useInitialMode(DEFAULT_MODE)
+  const [mode, setMode, rememberMode] = useInitialMode(DEFAULT_MODE)
   // Codex keeps its own model catalog on disk; the daemon reads it so the
   // list is the one Codex itself offers this account, not one written here.
   const codexModels = useApi(() => (agent === 'codex' ? api.agentModels('codex') : Promise.resolve(undefined)), [agent], { live: false })
@@ -183,6 +185,7 @@ export function SpawnDialog({
       if (worktree.trim()) req.worktree = worktree.trim()
       if (create) req.create = true
       const { session_id } = await api.spawn(req)
+      rememberMode()
       onClose()
       navigate({ name: 'session', id: session_id, tab: landOn })
     } catch (e) {
@@ -237,7 +240,7 @@ export function SpawnDialog({
               {/* Every agent covers the same ground with its own words, and
                 * the daemon maps onto them — so the control stays live for
                 * all of them, labelled with what it becomes in this one. */}
-              <Field label="Permissions">
+              <Field label="Permissions" hint={remote ? undefined : 'kept for the next agent'}>
                 <select className="input" value={mode} onChange={(e) => { setMode(e.target.value); setConfirming(false) }}>
                   {modeOptions(mode).map(([v, label]) => (
                     <option key={v} value={v}>

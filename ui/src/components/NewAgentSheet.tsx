@@ -55,7 +55,7 @@ export function NewAgentSheet({
   const [where, setWhere] = useState(initialWorktree ? NEW_WORKTREE : initialCwd && initialCwd !== project?.root ? initialCwd : '')
   const [newBranch, setNewBranch] = useState(initialWorktree ?? '')
   const [models, setModels] = useState<Record<SpawnAgent, string>>(DEFAULT_MODELS)
-  const [mode, setMode] = useInitialMode(DEFAULT_MODE)
+  const [mode, setMode, rememberMode] = useInitialMode(DEFAULT_MODE)
   const [prompt, setPrompt] = useState(initialPrompt)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -90,6 +90,7 @@ export function NewAgentSheet({
       if (where === NEW_WORKTREE) req.worktree = newBranch.trim()
       if (prompt.trim()) req.prompt = prompt.trim()
       const { session_id } = await api.spawn(req)
+      rememberMode()
       onStarted(session_id, project.id, prompt.trim().slice(0, 60) || 'new session')
       onClose()
     } catch (e) {
@@ -154,7 +155,7 @@ export function NewAgentSheet({
               <ModelField agent={agent} value={models[agent]} onChange={(v) => setModels((m) => ({ ...m, [agent]: v }))} codex={codexModels.data} />
             </SheetField>
           </div>
-          <SheetField label="Permissions">
+          <SheetField label="Permissions" hint="kept for the next agent">
             <select className="input" value={mode} onChange={(e) => setMode(e.target.value)}>
               {modeOptions(mode).map(([v, label]) => (
                 <option key={v} value={v}>

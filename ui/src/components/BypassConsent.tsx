@@ -4,8 +4,8 @@
  * Claude Code shows a warning the first time a session runs with
  * --dangerously-skip-permissions, and its default answer is "No, exit": a
  * new user who presses Enter is dropped from the session into a shell, and a
- * session started from a phone sits on a screen nobody sees. Bypass is
- * Caprock's default, so the warning is shown here instead, in the dialog the
+ * session started from a phone sits on a screen nobody sees. So the warning
+ * is shown here instead, in the dialog the
  * user is already in, and the start button says what pressing it means. On
  * "Accept and start" the daemon writes the key Claude Code itself writes on
  * "Yes, I accept". Nothing is skipped silently.

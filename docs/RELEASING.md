@@ -305,7 +305,7 @@ formula also installs on Linux Homebrew), so `.goreleaser.yaml` now uses a
 - Users who installed the cask (`brew install --cask dspv/tap/caprock`) keep a
   working install; to switch they run `brew uninstall --cask caprock` then
   `brew install dspv/tap/caprock`. No data is touched — Caprock's SQLite lives
-  in `~/.caprock`, outside Homebrew.
+  in its data directory (`caprock status` prints it), outside Homebrew.
 
 ## Version scheme
 
