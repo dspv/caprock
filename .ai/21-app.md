@@ -228,7 +228,12 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
   hides the window from anywhere. New tab, close tab, next/previous tab, tab
   1–9, new session, new shell, dashboard, find.
 - **F10 — Badge.** The dock (macOS) or taskbar (Windows) badge is the number
-  of sessions waiting on you; Linux shows it where the desktop supports it.
+  of sessions waiting on you — the sidebar's inbox: a permission prompt or
+  your turn (`waitingOnYou`, `ui/src/lib/tray.ts`); Linux shows it where the
+  desktop supports it. Until 2026-10-07 it counted prompts only, so a
+  session done and waiting left the dock bare. The macOS menu bar title is
+  the same count, plus a plan window named once it is 80% full; a bare
+  5-hour percentage read as nothing.
 - **F11 — The scrolling rule** in every scrolling surface: terminal
   scrollback, the timeline, the chat view, Now
   ([§ The scrolling rule](#the-scrolling-rule)).

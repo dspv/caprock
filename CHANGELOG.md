@@ -15,6 +15,11 @@ Phase 3 (Delight) has no plan by design.
   session's tab was open in the app and in a browser (or on a phone), each
   window started its own shell in its place, and the project listed two.
   They now share one.
+- **The Dock badge counts everything waiting on you.** It counted
+  permission prompts only, so an agent that finished and waited for your
+  answer left the Dock bare. It now shows the popover's *Needs you*. The
+  menu bar shows the same number beside the icon, instead of an unlabelled
+  5-hour percentage; a plan window appears there, named, once it is 80% full.
 
 ## [0.80.0] - 2026-10-07
 
