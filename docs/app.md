@@ -126,6 +126,12 @@ On Windows and Linux each is Ctrl+Shift with the same letter; Ctrl+Shift+C
 and Ctrl+Shift+V stay the terminal's copy and paste. The terminal's own keys
 (Ctrl+C, Ctrl+W, Option as Meta) always reach the terminal.
 
+The *New agent* sheet needs no mouse. It opens on the first message; Tab and
+⇧Tab walk Project, Where, Agent, Model, Permissions, First message, Cancel
+and Start; ↑ and ↓ change a choice in place (Space still opens the list);
+⌘↩ (Ctrl+Enter off macOS) starts from anywhere in the sheet, and Esc
+cancels. The footer names these keys.
+
 ## Outside the window
 
 - **Menu bar** (a tray icon on Windows and Linux). On macOS a click on the

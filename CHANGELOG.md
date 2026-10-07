@@ -7,6 +7,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **Start an agent without the mouse.** In the New agent sheet ↑ and ↓
+  change a choice in place instead of opening its list, ⌘↩ starts from
+  anywhere in the sheet (a list or a button too, not only the message), and
+  the footer names the keys: Tab moves, ↑↓ change, ⌘↩ starts, Esc cancels.
+  The dashboard's New session dialog takes the same arrows.
+
 ### Changed
 
 - **The permission card is back under the terminal, and answers from it.**

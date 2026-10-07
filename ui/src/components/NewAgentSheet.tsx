@@ -3,8 +3,14 @@
  * where — the project's checkout, one of its worktrees, or a new worktree —
  * and, optionally, what to say first. The same `POST /v1/agents` the
  * dashboard's dialog and the phone use; the tab opens on success.
+ *
+ * Filled entirely from the keyboard (owner, 2026-10-07): focus opens on the
+ * first message; Tab and ⇧Tab walk Project, Where, Agent, Model, Permissions,
+ * First message, Cancel, Start in that order; ↑ and ↓ change a select in
+ * place; ⌘↩ starts from anywhere in the sheet, the buttons included; Esc
+ * cancels. The keys are named in the footer, not only in the docs.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, errText } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { AgentPicker, spawnableAgents, useAgentChoice } from './AgentPicker'
@@ -13,6 +19,7 @@ import { useInitialMode } from '@/lib/permissionMode'
 import type { SpawnAgent } from './AgentPicker'
 import type { Project } from '@/lib/projects'
 import { Sheet, SheetButton, SheetField } from './Sheet'
+import { stepSelect } from '@/lib/selectKeys'
 
 const NEW_WORKTREE = '__new__'
 
@@ -52,6 +59,20 @@ export function NewAgentSheet({
   const [error, setError] = useState('')
   const codexModels = useApi(() => (agent === 'codex' ? api.agentModels('codex') : Promise.resolve(undefined)), [agent], { live: false })
 
+  // ⌘↩ from anywhere in the sheet — a select, the footer's buttons — not only
+  // from the fields' grid. A ref keeps the listener on the latest state.
+  const startRef = useRef<() => void>(() => {})
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || !(e.metaKey || e.ctrlKey) || e.isComposing) return
+      e.preventDefault()
+      e.stopPropagation()
+      startRef.current()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [])
+
   const start = async () => {
     if (!project) { setError('Pick a project first.'); return }
     if (where === NEW_WORKTREE && !/^[\w./-]+$/.test(newBranch.trim())) { setError('Name the new worktree: letters, digits, dot, dash, slash.'); return }
@@ -74,6 +95,8 @@ export function NewAgentSheet({
     }
   }
 
+  startRef.current = () => { if (!busy && agents.length > 0) void start() }
+
   return (
     <Sheet
       label="New agent"
@@ -81,7 +104,13 @@ export function NewAgentSheet({
       onClose={onClose}
       footer={
         <>
-          {error && <p role="alert" className="mr-auto min-w-0 truncate text-[12px] text-danger" title={error}>{error}</p>}
+          {error
+            ? <p role="alert" className="mr-auto min-w-0 truncate text-[12px] text-danger" title={error}>{error}</p>
+            : (
+              <p className="mr-auto min-w-0 truncate text-[11.5px] text-fg-faint" aria-label="Keys: Tab moves, arrows change a choice, Command Enter starts, Escape cancels">
+                <span className="mono">Tab</span> moves · <span className="mono">↑↓</span> change · <span className="mono">⌘↩</span> starts · <span className="mono">Esc</span> cancels
+              </p>
+            )}
           <SheetButton onClick={onClose}>Cancel</SheetButton>
           <SheetButton primary disabled={busy || agents.length === 0} onClick={() => void start()}>{busy ? 'Starting…' : 'Start'}</SheetButton>
         </>
@@ -94,7 +123,7 @@ export function NewAgentSheet({
           No agent Caprock can start was found on this machine — not <span className="mono">claude</span>, <span className="mono">codex</span>, <span className="mono">opencode</span> or <span className="mono">gemini</span>.
         </p>
       ) : (
-        <div className="grid gap-4 px-5 py-4" onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void start() }}>
+        <div className="grid gap-4 px-5 py-4" onKeyDown={(e) => { stepSelect(e) }}>
           <div className="grid grid-cols-2 gap-3">
             <SheetField label="Project">
               <select className="input" value={pid} onChange={(e) => { setPid(e.target.value); setWhere('') }}>
@@ -130,7 +159,7 @@ export function NewAgentSheet({
               ))}
             </select>
           </SheetField>
-          <SheetField label="First message" hint="optional · ⌘↩ starts">
+          <SheetField label="First message" hint="optional">
             <textarea
               className="input min-h-[84px] resize-y font-[family-name:var(--font-sans)] text-[13px] leading-relaxed"
               autoFocus={where !== NEW_WORKTREE || !!initialPrompt}
