@@ -199,7 +199,15 @@ pub fn build(
     w.on_window_event(move |e| {
         if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, position }) = e {
             let scale = dropped.scale_factor().unwrap_or(1.0);
-            if let Some(js) = drop_script(paths, (position.x, position.y), scale) {
+            let paste = discovery::data_dir().map(|d| d.join("paste"));
+            let paths: Vec<PathBuf> = paths
+                .iter()
+                .map(|p| match &paste {
+                    Some(dir) => keep_transient(p, dir),
+                    None => p.clone(),
+                })
+                .collect();
+            if let Some(js) = drop_script(&paths, (position.x, position.y), scale) {
                 let _ = dropped.eval(js);
             }
         }
@@ -226,6 +234,33 @@ pub fn build(
         }
     });
     Ok(w)
+}
+
+/// A file macOS hands over from a temporary place — the screenshot
+/// thumbnail's `…/TemporaryItems/NSIRD_screencaptureui_…/`, an image dragged
+/// out of another app — is readable only by the app it was dropped on, and
+/// only until it moves. Claude, under the daemon, gets "operation not
+/// permitted". Such a file is copied into Caprock's paste directory, where
+/// the session may read (`--add-dir`), and the copy's path is typed; any
+/// other path, or a copy that fails, is typed as it is.
+pub fn keep_transient(p: &std::path::Path, paste_dir: &std::path::Path) -> PathBuf {
+    let transient = p.components().any(|c| c.as_os_str() == "TemporaryItems");
+    if !transient || !p.is_file() {
+        return p.to_path_buf();
+    }
+    let Some(name) = p.file_name() else {
+        return p.to_path_buf();
+    };
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let dir = paste_dir.join(format!("drop-{stamp}"));
+    let copy = dir.join(name);
+    match std::fs::create_dir_all(&dir).and_then(|_| std::fs::copy(p, &copy)) {
+        Ok(_) => copy,
+        Err(_) => p.to_path_buf(),
+    }
 }
 
 /// The event the page's terminals listen for (`ui/src/lib/xtermInput.ts`).
@@ -625,5 +660,46 @@ mod tests {
         let bad = PathBuf::from(OsStr::from_bytes(b"/tmp/\xff"));
         let d = detail(&drop_script(&[bad, PathBuf::from("/ok")], (0.0, 0.0), 1.0).unwrap());
         assert_eq!(d["paths"], serde_json::json!(["/ok"]));
+    }
+
+    fn scratch(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!(
+            "caprock-drop-{tag}-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn a_screenshot_thumbnail_is_copied_where_the_session_can_read_it() {
+        let root = scratch("thumb");
+        let tmp = root.join("TemporaryItems").join("NSIRD_screencaptureui_x");
+        std::fs::create_dir_all(&tmp).unwrap();
+        let shot = tmp.join("Screenshot 1.png");
+        std::fs::write(&shot, b"png").unwrap();
+        let paste = root.join("paste");
+        let got = keep_transient(&shot, &paste);
+        assert!(got.starts_with(&paste), "{got:?}");
+        assert_eq!(got.file_name(), shot.file_name());
+        assert_eq!(std::fs::read(&got).unwrap(), b"png");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_ordinary_file_or_folder_is_typed_where_it_is() {
+        let root = scratch("plain");
+        let f = root.join("notes.md");
+        std::fs::write(&f, b"x").unwrap();
+        let paste = root.join("paste");
+        assert_eq!(keep_transient(&f, &paste), f);
+        let folder = root.join("TemporaryItems");
+        std::fs::create_dir_all(&folder).unwrap();
+        assert_eq!(keep_transient(&folder, &paste), folder);
+        assert!(!paste.exists());
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
