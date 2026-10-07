@@ -1,7 +1,9 @@
 package api
 
 import (
+	"bytes"
 	"embed"
+	"html"
 	"io/fs"
 	"net/http"
 	"path"
@@ -68,19 +70,45 @@ func (s *Server) uiHandler() http.Handler {
 		}
 		if f, err := ui.Open(p); err == nil {
 			_ = f.Close()
+		} else {
+			p = "index.html" // a client-side route
+		}
+		if p != "index.html" {
 			if strings.HasPrefix(p, "assets/") {
 				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 			}
 			fileServer.ServeHTTP(w, r)
 			return
 		}
-		// SPA fallback.
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		// The page itself, for "/" and as the SPA fallback.
 		b, err := fs.ReadFile(ui, "index.html")
 		if err != nil {
 			http.Error(w, "ui not built", http.StatusNotFound)
 			return
 		}
-		_, _ = w.Write(b)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		// Never kept: the page names the daemon that served it.
+		w.Header().Set("Cache-Control", "no-cache")
+		_, _ = w.Write(withVersion(b, s.d.Version))
 	})
+}
+
+// withVersion writes the daemon's version into the page as
+// <meta name="caprock-version">, so the page knows exactly which daemon
+// served it and reloads when the live link comes back to a different one
+// (ui/src/lib/staleui.ts; .ai/21-app.md § Updating the daemon). A page with
+// no </head>, or a daemon with no version, is served as it is.
+func withVersion(page []byte, version string) []byte {
+	if version == "" {
+		return page
+	}
+	i := bytes.Index(page, []byte("</head>"))
+	if i < 0 {
+		return page
+	}
+	meta := `<meta name="caprock-version" content="` + html.EscapeString(version) + `" />`
+	out := make([]byte, 0, len(page)+len(meta))
+	out = append(out, page[:i]...)
+	out = append(out, meta...)
+	return append(out, page[i:]...)
 }

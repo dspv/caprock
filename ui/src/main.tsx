@@ -7,10 +7,14 @@ import '@fontsource-variable/jetbrains-mono'
 import '@/design/tokens.css'
 import { isAppMode, isTrayRoute } from '@/lib/appmode'
 import { loadTerminalFont } from '@/lib/termfont'
+import { watchUiVersion } from '@/lib/staleui'
 
 // The app opens on terminals: start fetching every subset of their face now,
 // while the workspace chunk is still loading (lib/termfont).
 if (isAppMode() && !isTrayRoute()) loadTerminalFont()
+
+// A daemon updated under this page: reload onto its UI (lib/staleui).
+watchUiVersion()
 
 // Two entry points from one bundle: the dashboard, or the app's terminal-first
 // workspace (WP-04). Each is its own chunk, so the app's terminal route never

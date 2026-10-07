@@ -513,6 +513,9 @@ one lean terminal; they stay below Orca (420–541 MB idle) and a Chrome tab.
   once when that is not older (ADR-040). On macOS it also replaces its own
   daemon once per launch when the bundle carries a different one (ADR-040,
   amended), so the daemon follows the app up, down and to a local build.
+  A launch decides that replacement before the window loads anything, and
+  the window waits on the fallback page ("Updating the daemon") until the
+  new daemon answers (§ Updating the daemon).
   Quitting
   the app leaves the daemon and every session running. It runs its copy from
   `<data_dir>/bin/caprock`, never from inside the app bundle: an unsigned app
@@ -524,6 +527,46 @@ one lean terminal; they stay below Orca (420–541 MB idle) and a Chrome tab.
   the minimum it needs. A daemon below it is shown as "needs an upgrade" with
   the command. The phone reads the same field. This matters once the UI is
   bundled anywhere (F22).
+
+## Updating the daemon
+
+The UI is served by the daemon, so a page is exactly as new as the daemon
+that served it. When the daemon changes under a page that stays loaded, the
+page must follow it: a page never runs a UI older (or newer) than the daemon
+it talks to. The 0.78.2 bug that set this rule (owner's `service.log`,
+2026-10-07): after `brew upgrade --cask`, the app launched while its 0.78.1
+daemon still listened, loaded the window from it, then replaced the daemon
+with the bundled 0.78.2 two seconds later and never reloaded. The owner ran
+0.78.1's UI, and the status strip said 0.78.1, until he quit the app; the
+app had no reload command.
+
+- **The shell decides first, then loads.** On macOS the launch's first look
+  at the daemon also decides whether the app replaces it (ADR-040); when it
+  does, the window starts on the fallback page ("Updating the daemon") and
+  the monitor takes it to the dashboard once the new daemon answers. No page
+  is ever loaded from the daemon that is about to stop.
+- **A late swap reloads.** A daemon that came up after launch is replaced
+  when the window may already show its page: the monitor follows the swap's
+  state rather than the old daemon, and once the new one answers on the same
+  port it reloads the main window and the popover (the URL, hash route
+  included, is kept). On another port the page moves there on the same
+  route.
+- **Every page checks for itself.** The daemon writes its version into the
+  page it serves (`<meta name="caprock-version">`, `internal/api/ui.go`), and
+  every time the live link opens again the page asks `/v1/status` which
+  daemon answers (`ui/src/lib/staleui.ts`). This covers what the shell does
+  not see: a browser tab or a phone across `brew upgrade`, a login service
+  restarted on Linux or Windows. A different version reloads the page, once.
+- **Reload, or offer.** A reload loses nothing typed into a terminal — that
+  lives in the pty-host — so it is the default. It would lose text typed into
+  an open modal sheet (`[role=dialog]` holding a non-empty field), and then
+  the page shows *Reload — Caprock was updated* in the status strip (the
+  dashboard's header in a browser) instead. A page reloaded once for a
+  version that still reads stale offers rather than reloading again: it
+  never loops.
+- **Reload by hand.** View → Reload (⌘R) in the macOS menu. Windows and Linux
+  have no menu; F5 reloads there, unless a focused terminal took the key for
+  its program. Ctrl+R is not used: it is the shell's history search.
 
 ## Terminal protocol v2
 

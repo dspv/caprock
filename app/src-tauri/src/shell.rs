@@ -34,6 +34,14 @@ const INIT_SCRIPT: &str = r#"(() => {
   const mac = navigator.platform.startsWith('Mac');
   window.__CAPROCK_SHELL__ = Object.freeze({ app: true, platform: mac ? 'macos' : 'other',
     titlebarInset: mac ? 28 : 0, trafficLightsInset: mac ? 78 : 0 });
+  // Reload: Cmd+R is the macOS menu's View -> Reload. Elsewhere there is no
+  // menu, and Ctrl+R belongs to the shell in a terminal, so it is F5 — unless
+  // a focused terminal took the key for its program (xterm cancels it).
+  if (!mac) addEventListener('keydown', (e) => {
+    if (e.key !== 'F5' || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+    e.preventDefault();
+    location.reload();
+  });
   if (!mac || location.protocol !== 'http:') return;
   const de = document.documentElement;
   de.dataset.caprockShell = 'tauri';
@@ -52,6 +60,43 @@ const INIT_SCRIPT: &str = r#"(() => {
     document.body.append(strip);
   });
 })();"#;
+
+/// The first page the main window loads, from the launch's first look at the
+/// daemon: its dashboard when a compatible one answers and stays, else the
+/// bundled fallback page (`None`). `replacing` is the launch's decision to put
+/// the app's own daemon in place of the one that answers (ADR-040): that
+/// daemon is about to stop, so its page would be the old UI for the rest of
+/// the run. The window waits on the fallback page ("Updating the daemon")
+/// and the monitor moves it to the dashboard once the new daemon answers.
+pub fn first_page(state: &State, replacing: bool) -> Option<Url> {
+    match state {
+        State::Connected { port, .. } if !replacing => Some(dashboard_url(*port)),
+        _ => None,
+    }
+}
+
+/// Where the main window goes when a compatible daemon on `port` answers and
+/// the window is not on its origin: the page it left for the fallback page,
+/// else the same route on a daemon that moved to another port, else the
+/// workspace. `None` when it is already there.
+pub fn page_for(current: &Url, resume: Option<Url>, port: u16) -> Option<Url> {
+    if is_daemon(current, Some(port)) {
+        return None;
+    }
+    let mut url = resume
+        .or_else(|| is_daemon(current, None).then(|| current.clone()))
+        .unwrap_or_else(|| dashboard_url(port));
+    let _ = url.set_port(Some(port));
+    Some(url)
+}
+
+/// Whether the main window reloads once a daemon the shell replaced under its
+/// page answers on `port`: only a page from that daemon's origin. A page on
+/// another port is moved by `page_for`, and the fallback page has nothing
+/// stale to reload.
+pub fn reloads_after_swap(current: &Url, port: u16) -> bool {
+    is_daemon(current, Some(port))
+}
 
 pub fn dashboard_url(port: u16) -> Url {
     format!("http://127.0.0.1:{port}{APP_ROUTE}")
@@ -299,6 +344,8 @@ pub fn monitor(app: AppHandle, sup: Arc<Supervisor>) {
         let mut was_connected = false;
         let mut last = discovery::Found::Absent;
         let mut full_at = Instant::now();
+        // The shell replaced the daemon under a page it had served.
+        let mut swapped_under_page = false;
         loop {
             // `/v1/status` every FULL_CHECK; `/healthz` alone in between.
             let found = if full_at.elapsed() < FULL_CHECK {
@@ -315,17 +362,35 @@ pub fn monitor(app: AppHandle, sup: Arc<Supervisor>) {
                     Duration::ZERO
                 }
             };
-            let state = sup.observe(found, absent_for);
+            let mut state = sup.observe(found, absent_for);
             // macOS: a Homebrew daemon moves onto the app's own, and the
             // app's own is replaced when the bundle carries another (ADR-040).
-            // Not before the window's first page has committed: a WebView
-            // whose first load is cut off by the switch has no URL, and wry
-            // unwraps it on the main thread when asked.
+            // A launch decides this before the first page loads (main.rs), so
+            // this is the late case: a daemon that came up after launch. Not
+            // before the window's first page has committed: a WebView whose
+            // first load is cut off by the switch has no URL, and wry unwraps
+            // it on the main thread when asked.
             if matches!(state, State::Connected { .. } | State::TooOld { .. })
                 && MAIN_LOADED.load(Ordering::Relaxed)
                 && sup.should_adopt(|| sup.bundled_version())
             {
                 sup.spawn_adopt();
+                // The swap has claimed the supervisor ("Updating the daemon"):
+                // follow that, not the daemon that is about to stop, or the
+                // window would load the old UI from it now.
+                state = sup.state();
+                // A page already loaded from that daemon is its UI; it is
+                // reloaded once the new daemon answers.
+                swapped_under_page = app
+                    .get_webview_window(MAIN)
+                    .and_then(|w| w.url().ok())
+                    .is_some_and(|u| is_daemon(&u, None));
+            }
+            if swapped_under_page {
+                if let State::Connected { port, .. } = &state {
+                    swapped_under_page = false;
+                    reload_after_swap(&app, *port);
+                }
             }
             let connected = matches!(state, State::Connected { .. });
             if was_connected && !connected {
@@ -369,13 +434,33 @@ const FULL_CHECK: Duration = Duration::from_secs(10);
 /// How often the monitor asks while the window is hidden.
 const HIDDEN_CHECK: Duration = Duration::from_secs(5);
 
+/// The new daemon answers after a swap under a loaded page: the main window
+/// and the popover reload from it, keeping their routes (a reload keeps the
+/// URL, hash included). A terminal's half-typed line lives in its pty-host,
+/// not in the page, so nothing typed is lost.
+fn reload_after_swap(app: &AppHandle, port: u16) {
+    if let Some(w) = app.get_webview_window(MAIN) {
+        if w.url().is_ok_and(|u| reloads_after_swap(&u, port)) {
+            let _ = w.reload();
+        }
+    }
+    #[cfg(target_os = "macos")]
+    crate::popover::reload(app, port);
+}
+
+/// View → Reload (Cmd+R): the main window loads its page again. On the
+/// fallback page with a daemon connected, the monitor moves it on as usual.
+pub fn reload_main(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(MAIN) {
+        let _ = w.reload();
+    }
+}
+
 fn follow(w: &WebviewWindow, sup: &Arc<Supervisor>, state: &State, resume: &mut Option<Url>) {
     let Ok(current) = w.url() else { return };
     match state {
         State::Connected { port, .. } => {
-            if !is_daemon(&current, Some(*port)) {
-                let mut url = resume.take().unwrap_or_else(|| dashboard_url(*port));
-                let _ = url.set_port(Some(*port));
+            if let Some(url) = page_for(&current, resume.take(), *port) {
                 let _ = w.navigate(url);
             }
         }
@@ -451,6 +536,83 @@ mod tests {
             (200.0, 100.0)
         };
         assert_eq!((d["x"].as_f64().unwrap(), d["y"].as_f64().unwrap()), want);
+    }
+
+    fn connected(port: u16) -> State {
+        State::Connected {
+            port,
+            version: "0.78.1".into(),
+            api_level: 1,
+            ours: true,
+        }
+    }
+
+    #[test]
+    fn a_launch_that_replaces_the_daemon_loads_no_page_from_it() {
+        // 0.78.2's bug: the window loaded 0.78.1's UI two seconds before the
+        // app replaced that daemon, and kept it.
+        assert_eq!(first_page(&connected(4173), true), None);
+        assert_eq!(
+            first_page(&connected(4173), false),
+            Some(dashboard_url(4173))
+        );
+        assert_eq!(first_page(&State::Searching, false), None);
+        assert_eq!(
+            first_page(
+                &State::Starting {
+                    step: "Updating the daemon".into()
+                },
+                false
+            ),
+            None
+        );
+    }
+
+    fn url(s: &str) -> Url {
+        s.parse().unwrap()
+    }
+
+    #[test]
+    fn a_connected_daemon_takes_the_window_back_to_where_it_was() {
+        let fallback = fallback_url();
+        // From the fallback page: the page it left, on the daemon's port now.
+        let left = url("http://127.0.0.1:4173/?app=1#/session/abc");
+        assert_eq!(
+            page_for(&fallback, Some(left), 4180),
+            Some(url("http://127.0.0.1:4180/?app=1#/session/abc"))
+        );
+        // Nothing to go back to: the workspace.
+        assert_eq!(page_for(&fallback, None, 4173), Some(dashboard_url(4173)));
+        // A daemon that moved port keeps the route.
+        assert_eq!(
+            page_for(&url("http://127.0.0.1:4173/?app=1#/cost"), None, 4174),
+            Some(url("http://127.0.0.1:4174/?app=1#/cost"))
+        );
+        // Already there: nothing to do.
+        assert_eq!(
+            page_for(&url("http://127.0.0.1:4173/?app=1#/cost"), None, 4173),
+            None
+        );
+    }
+
+    #[test]
+    fn only_a_page_from_the_replaced_daemon_reloads_after_a_swap() {
+        assert!(reloads_after_swap(
+            &url("http://127.0.0.1:4173/?app=1#/app"),
+            4173
+        ));
+        assert!(!reloads_after_swap(
+            &url("http://127.0.0.1:4173/?app=1#/app"),
+            4174
+        ));
+        assert!(!reloads_after_swap(&fallback_url(), 4173));
+    }
+
+    #[test]
+    fn f5_reloads_outside_macos_unless_a_terminal_took_it() {
+        // Ctrl+R is the shell's reverse search in a terminal: never taken.
+        assert!(INIT_SCRIPT.contains("e.key !== 'F5' || e.defaultPrevented"));
+        assert!(!INIT_SCRIPT.contains("'r'"));
     }
 
     #[cfg(unix)]

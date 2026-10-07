@@ -114,6 +114,18 @@ pub fn ensure<R: Runtime>(app: &AppHandle<R>, port: u16) {
     });
 }
 
+/// Reloads the popover after the shell replaced the daemon on `port` under it,
+/// so it never shows an older UI than the daemon serves. A popover pointed at
+/// another port is left to `ensure`, which navigates it.
+pub fn reload<R: Runtime>(app: &AppHandle<R>, port: u16) {
+    if PORT.load(Ordering::Relaxed) != port {
+        return;
+    }
+    if let Some(w) = app.get_webview_window(POPOVER) {
+        let _ = w.reload();
+    }
+}
+
 /// A left click on the menu bar icon: show the popover under it, or hide it.
 /// With no popover yet (no daemon has answered), the main window comes up.
 pub fn toggle<R: Runtime>(app: &AppHandle<R>, rect: Rect) {

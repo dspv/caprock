@@ -102,6 +102,13 @@ class LiveStore {
     this.start()
     return () => { this.listeners.delete(l) }
   }
+  /** Like subscribe, without opening the link: for a watcher that follows
+   *  the link the screens open (lib/staleui), and must not open one on a page
+   *  that has none, such as an unpaired device's pairing form. */
+  observe = (l: Listener) => {
+    this.listeners.add(l)
+    return () => { this.listeners.delete(l) }
+  }
   onFrame = (fn: (f: Frame) => void) => {
     this.frameSubs.add(fn)
     return () => { this.frameSubs.delete(fn) }
