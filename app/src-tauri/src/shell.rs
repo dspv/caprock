@@ -450,6 +450,8 @@ fn reload_after_swap(app: &AppHandle, port: u16) {
 
 /// View → Reload (Cmd+R): the main window loads its page again. On the
 /// fallback page with a daemon connected, the monitor moves it on as usual.
+/// Only the macOS menu has it; F5 elsewhere is the page's own.
+#[cfg(target_os = "macos")]
 pub fn reload_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(MAIN) {
         let _ = w.reload();
