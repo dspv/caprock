@@ -9,6 +9,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **`/exit` leaves one shell, however many windows show it.** When a
+  session's tab was open in the app and in a browser (or on a phone), each
+  window started its own shell in its place, and the project listed two.
+  They now share one.
+
 ## [0.80.0] - 2026-10-07
 
 ### Added

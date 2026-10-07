@@ -320,9 +320,14 @@ type Server struct {
 	ws  *wsHub
 	// LAN access can be switched on while the daemon runs, and every request
 	// reads it, so it lives behind a lock rather than in Deps.
-	lanMu   sync.RWMutex
-	pairing *pairing.Store
-	lanURL  string
+	lanMu sync.RWMutex
+	// replaced maps a session whose program exited to the shell started in
+	// its tab, so a second client asking for the same tab gets the same
+	// shell (POST /v1/shells with replaces).
+	replMu   sync.Mutex
+	replaced map[string]string
+	pairing  *pairing.Store
+	lanURL   string
 	// altURLs are the other addresses network access answers on, beside
 	// lanURL: the Tailscale one when lanURL is the LAN one, or the reverse,
 	// and the MagicDNS name (WP-15). Empty when off.
@@ -361,7 +366,7 @@ func New(d Deps) *Server {
 			lanHost = u.Hostname()
 		}
 	}
-	s := &Server{d: d, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now),
+	s := &Server{d: d, replaced: map[string]string{}, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now),
 		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
 		drill: newAnswerCache(drillTTL, answerMaxStale, time.Now), repos: newRepoCache()}
 	// Seeded from Deps so `caprock up --lan` behaves exactly as before; the

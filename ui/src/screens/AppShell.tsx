@@ -306,14 +306,16 @@ export function AppShell() {
    * A session's program exited — `/exit`, `exit`, a crash. The tab is the
    * user's place to work, so it becomes a shell in the same folder instead of
    * a terminal showing a process that is gone. The tab keeps its position,
-   * and a shell that was already a shell is simply left closed.
+   * and a shell that was already a shell is simply left closed. Every
+   * window showing the tab asks (the app, a browser, a phone); `replaces`
+   * makes the daemon start one shell for them all.
    */
   const onPaneExit = useCallback(async (sessionId: string) => {
     const s = sessionsById.get(sessionId)
     const cwd = s?.cwd
     if (!cwd || s?.kind === 'shell') { dispatch({ type: 'drop-session', sessionId }); return }
     try {
-      const shell = await projectsApi.startShell({ cwd, cols: 120, rows: 32 })
+      const shell = await projectsApi.startShell({ cwd, cols: 120, rows: 32, replaces: sessionId })
       dispatch({ type: 'replace-session', sessionId, target: { kind: 'shell', sessionId: shell.id }, title: 'shell' })
       refresh()
     } catch {

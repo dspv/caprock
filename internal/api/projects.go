@@ -307,9 +307,13 @@ func (s *Server) handleStartShell(w http.ResponseWriter, r *http.Request) {
 		ProjectID int64  `json:"project_id,omitempty"`
 		Cols      int    `json:"cols,omitempty"`
 		Rows      int    `json:"rows,omitempty"`
+		// Replaces is the session whose program exited and whose tab this
+		// shell takes over. Every client showing that tab asks; one shell
+		// answers them all.
+		Replaces string `json:"replaces,omitempty"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "body is {cwd | project_id, cols?, rows?}"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "body is {cwd | project_id, cols?, rows?, replaces?}"})
 		return
 	}
 	cwd := body.Cwd
@@ -325,12 +329,39 @@ func (s *Server) handleStartShell(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name a folder (cwd) or a project (project_id)"})
 		return
 	}
+	if body.Replaces != "" {
+		s.replMu.Lock()
+		defer s.replMu.Unlock()
+		if sh, ok := s.replacement(body.Replaces); ok {
+			writeJSON(w, http.StatusOK, map[string]any{"shell": s.withProject(sh)})
+			return
+		}
+	}
 	sh, err := s.d.Shells.StartShell(context.WithoutCancel(r.Context()), filepath.Clean(cwd), body.Cols, body.Rows)
+	if err == nil && body.Replaces != "" {
+		s.replaced[body.Replaces] = sh.ID
+	}
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"shell": s.withProject(sh)})
+}
+
+// replacement is the running shell already started in place of session id,
+// forgetting the ones that have ended. The caller holds replMu.
+func (s *Server) replacement(id string) (ShellInfo, bool) {
+	live := map[string]ShellInfo{}
+	for _, sh := range s.d.Shells.Shells() {
+		live[sh.ID] = sh
+	}
+	for k, v := range s.replaced {
+		if _, ok := live[v]; !ok {
+			delete(s.replaced, k)
+		}
+	}
+	sh, ok := live[s.replaced[id]]
+	return sh, ok
 }
 
 // handleShells lists the running shells, of one project with ?project=<id>.
