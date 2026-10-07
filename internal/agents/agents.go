@@ -275,6 +275,35 @@ func resolveClaude() string {
 	return "claude"
 }
 
+// ownDirs are Caprock's own directories a session is allowed to read without
+// being asked, passed as --add-dir.
+//
+// Caprock writes files the user then refers to by path — a screenshot pasted
+// into the terminal lands in PasteDir — and those paths are outside every
+// working directory. A user with Claude Code's
+// `permissions.blockReadsOutsideWorkingDirectories` on was therefore asked
+// about Caprock's own files, in every permission mode: that setting is a
+// separate guard and `--permission-mode bypassPermissions` does not lift it.
+// Naming the directories is the narrow fix — it allows the two places Caprock
+// writes to and nothing else.
+func (m *Manager) ownDirs() []string {
+	if m.dataDir == "" {
+		return nil
+	}
+	var dirs []string
+	for _, d := range []string{config.PasteDir(m.dataDir), config.ChatsDir(m.dataDir)} {
+		// Claude Code refuses to start on an --add-dir that does not exist,
+		// and a fresh install has neither until the first paste or chat.
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			m.log.Warn("cannot prepare a directory for --add-dir; reads there may be asked about",
+				"component", "agents", "dir", d, "err", err)
+			continue
+		}
+		dirs = append(dirs, d)
+	}
+	return dirs
+}
+
 // newChatDir makes a home for one quick chat.
 //
 // Vova uses Claude to ask things — look something up, talk a problem through —
@@ -403,7 +432,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		in := launchInput{
 			SessionID: sessionID, Cwd: cwd, Model: req.Model, Mode: req.PermissionMode,
 			Resume: req.Resume, NativeResume: req.NativeResume, Fork: req.Fork, Extra: req.Args,
-			Prompt: req.Prompt,
+			Prompt: req.Prompt, AddDirs: m.ownDirs(),
 		}
 		if in.Prompt != "" && isBatch(m.binary(agent)) {
 			in.Prompt = flattenForBatch(in.Prompt)

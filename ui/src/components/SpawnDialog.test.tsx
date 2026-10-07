@@ -10,6 +10,9 @@
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { SpawnDialog } from './SpawnDialog'
 
 const spawn = vi.hoisted(() => vi.fn(async () => ({ session_id: 's1', cwd: '/x' })))
@@ -54,8 +57,9 @@ describe('SpawnDialog', () => {
 
   it('starts on a real model and permission mode, not an empty default', () => {
     open()
-    expect(screen.getByLabelText<HTMLSelectElement>(/Model/).value).toBe('claude-opus-5')
-    expect(screen.getByLabelText<HTMLSelectElement>(/Permissions/).value).toBe('acceptEdits')
+    expect(screen.getByLabelText<HTMLSelectElement>(/Model/).value).toBe('claude-opus-5-5')
+    // The owner's decision, 2026-10-07: a new session never stops to ask.
+    expect(screen.getByLabelText<HTMLSelectElement>(/Permissions/).value).toBe('bypassPermissions')
   })
 
   it('only offers permission modes the claude binary accepts', () => {
@@ -147,7 +151,7 @@ describe('choosing an agent', () => {
    *  not exist or you may not have access to it". Being priceable says we can
    *  cost a model, never that the account can call it. */
   const REAL_CLAUDE_MODELS = [
-    'claude-fable-5', 'claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5',
+    'claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5',
   ]
 
   it('offers every Claude model the CLI can actually run', () => {
@@ -161,11 +165,35 @@ describe('choosing an agent', () => {
     for (const id of REAL_CLAUDE_MODELS) expect(offered).toContain(id)
   })
 
+  // The list stopped at Opus 5 while Opus 5.5 was out, and the owner picked
+  // "Opus 5" believing it was the newest. A release lands in pricing.json
+  // first (rule 8), so a family whose newest priced model is not offered here
+  // fails the build until it is — after the id has answered the real CLI.
+  it('offers the newest priced model of every Claude family', () => {
+    const root = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))))
+    const table = JSON.parse(readFileSync(join(root, 'pricing', 'pricing.json'), 'utf8')) as { models: { id: string }[] }
+    const version = (id: string) => id.split('-').slice(2).map(Number)
+    const newer = (a: number[], b: number[]) => (a[0]! - b[0]!) || ((a[1] ?? 0) - (b[1] ?? 0))
+    // Mythos is priced and deliberately not offered: the real binary refuses it.
+    for (const family of ['fable', 'opus', 'sonnet', 'haiku']) {
+      const ids = table.models.map((m) => m.id).filter((id) => new RegExp(`^claude-${family}-\\d+(-\\d)?$`).test(id))
+      const newest = ids.sort((a, b) => newer(version(b), version(a)))[0]
+      expect(newest, family).toBeDefined()
+      expect(REAL_CLAUDE_MODELS, family).toContain(newest)
+    }
+  })
+
+  it('names the exact version in every Claude label', () => {
+    render(<SpawnDialog available onClose={() => {}} initialCwd="/x" />)
+    const labels = Array.from(screen.getByLabelText<HTMLSelectElement>(/Model/).options).map((o) => o.text)
+    expect(labels.map((l) => l.split(' · ')[0])).toEqual(['Fable 5.1', 'Opus 5.5', 'Sonnet 5.5', 'Haiku 4.5'])
+  })
+
   it('orders the Claude models by capability, priciest first', () => {
     render(<SpawnDialog available onClose={() => {}} initialCwd="/x" />)
     const offered = Array.from(screen.getByLabelText<HTMLSelectElement>(/Model/).options).map((o) => o.value)
-    // pricing.json, per million output tokens: Fable 50, Opus 25, Sonnet 15,
-    // Haiku 5. The list is a ranking, so it has to match the money.
+    // pricing.json, per million output tokens: Fable 5.1 50, Opus 5.5 20,
+    // Sonnet 5.5 10, Haiku 4.5 5. The list is a ranking, so it has to match the money.
     expect(offered).toEqual(REAL_CLAUDE_MODELS)
   })
 })
@@ -234,7 +262,7 @@ describe('Codex and OpenCode', () => {
     fireEvent.change(screen.getByLabelText<HTMLSelectElement>('Agent'), { target: { value: 'codex' } })
     fireEvent.click(screen.getByText('Start session'))
     await waitFor(() => expect(spawn).toHaveBeenCalled())
-    expect(spawn.mock.calls[0]).toEqual([{ cwd: '/x', agent: 'codex', permission_mode: 'acceptEdits' }])
+    expect(spawn.mock.calls[0]).toEqual([{ cwd: '/x', agent: 'codex', permission_mode: 'bypassPermissions' }])
   })
 })
 
@@ -260,7 +288,8 @@ describe('on a paired phone', () => {
 
   it('asks once before starting in bypass, inline', async () => {
     open()
-    fireEvent.change(screen.getByLabelText<HTMLSelectElement>(/Permissions/), { target: { value: 'bypassPermissions' } })
+    // Bypass is the default since 2026-10-07; the phone still confirms it.
+    expect(screen.getByLabelText<HTMLSelectElement>(/Permissions/).value).toBe('bypassPermissions')
     fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
     expect(screen.getByText("The agent won't ask before running commands or editing files. Start?")).toBeTruthy()
     expect(spawn).not.toHaveBeenCalled()
@@ -270,6 +299,7 @@ describe('on a paired phone', () => {
 
   it('starts a mode that asks without a confirm', async () => {
     open()
+    fireEvent.change(screen.getByLabelText<HTMLSelectElement>(/Permissions/), { target: { value: 'acceptEdits' } })
     fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
     await waitFor(() => expect(spawn).toHaveBeenCalledOnce())
     expect(screen.queryByText(/won't ask/)).toBeNull()

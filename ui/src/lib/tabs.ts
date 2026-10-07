@@ -62,6 +62,13 @@ export type WorkspaceAction =
   | { type: 'project'; projectId: string }
   | { type: 'retitle'; sessionId: string; title: string }
   | { type: 'drop-session'; sessionId: string }
+  /**
+   * Put another session in the place this one holds, keeping the tab, its
+   * position in the strip and its place in a split. What a dead agent's tab
+   * becomes: a shell in the same folder, rather than a tab showing a process
+   * that has exited.
+   */
+  | { type: 'replace-session'; sessionId: string; target: TabTarget; title: string }
   /** Show a session beside the focused pane of the tab in front. */
   | { type: 'split'; target: TabTarget; direction: 'row' | 'column'; projectId: string; title: string }
   | { type: 'focus-pane'; tabId: string; paneId: string }
@@ -239,6 +246,16 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
       const tab = findTabBySession(ws, a.sessionId)
       const leaf = tab && leaves(tab.root).find((l) => l.target.sessionId === a.sessionId)
       return tab && leaf ? workspaceReducer(ws, { type: 'close-pane', tabId: tab.id, paneId: leaf.id }) : ws
+    }
+    case 'replace-session': {
+      const tab = findTabBySession(ws, a.sessionId)
+      if (!tab) return ws
+      const swap = (n: PaneNode): PaneNode =>
+        n.type === 'pane'
+          ? (n.target.sessionId === a.sessionId ? { ...n, target: a.target } : n)
+          : { ...n, children: n.children.map(swap) }
+      const titled = tab.root.type === 'pane' ? a.title : tab.title
+      return { ...ws, tabs: ws.tabs.map((t) => (t.id === tab.id ? { ...t, root: swap(t.root), title: titled } : t)) }
     }
     case 'split': {
       const tab = activeTab(ws)

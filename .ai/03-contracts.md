@@ -833,6 +833,29 @@ neither, no mode is sent and the agent starts in its own default. A request
 that names a mode, or carries `command`, is left as it is. No column stores the
 mode: every hook payload is kept verbatim, and the mode changes mid-session.
 
+**`bypassPermissions` is spawned as `--dangerously-skip-permissions`**, not as
+`--permission-mode bypassPermissions`, which leaves the session interactive and
+keeps asking — the owner picked *Bypass · never asks* for an autonomous run and
+was still asked on nearly every call (2026-10-07). It is the flag the
+orchestrator has always used for its own unattended workers; the two are never
+combined, since Claude Code takes one or the other. Every other mode is still
+`--permission-mode <mode>`.
+
+**Claude Code sessions are started with `--add-dir` for Caprock's own
+directories** (`PasteDir`, `ChatsDir`; `agents.ownDirs`, created if absent
+because the flag refuses a directory that does not exist). Caprock writes files
+the user then refers to by path — a screenshot pasted into the terminal — and
+those paths lie outside every working directory, so a user with Claude Code's
+`permissions.blockReadsOutsideWorkingDirectories` on was asked about Caprock's
+own files. That setting is a perimeter which applies in **every** mode: neither
+`--permission-mode bypassPermissions` nor `--dangerously-skip-permissions`
+lifts it, and only a working directory (the flag, `/add-dir`, or
+`permissions.additionalDirectories` in *user* settings — a project's
+`.claude/settings.json` does not count) satisfies it. Commands whose paths are
+computed at run time (`gh`, a `cat` of a variable) cannot be checked against it
+and ask regardless; nothing in Claude Code's rules suppresses that, so a user
+who wants an unattended run turns the setting off.
+
 The endpoints answer 501 only when
 **no** agent can be started (`claude_available`, `codex_available`,
 `opencode_available` and `gemini_available` all false on `/v1/status`).
