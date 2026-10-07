@@ -2,7 +2,7 @@ package api
 
 import (
 	"os"
-	"path/filepath"
+	"path"
 	"runtime"
 	"strings"
 )
@@ -28,9 +28,10 @@ func protectedUnder(goos, home, dir string) bool {
 	if goos != "darwin" || dir == "" {
 		return false
 	}
-	dir = filepath.Clean(dir)
+	// macOS paths only, so POSIX path rules wherever the test runs.
+	dir = path.Clean(dir)
 	within := func(root string) bool {
-		return dir == root || strings.HasPrefix(dir, root+string(filepath.Separator))
+		return dir == root || strings.HasPrefix(dir, root+"/")
 	}
 	if within("/Volumes") {
 		return true
@@ -38,8 +39,8 @@ func protectedUnder(goos, home, dir string) bool {
 	if home == "" {
 		return false
 	}
-	for _, p := range []string{"Desktop", "Documents", "Downloads", filepath.Join("Library", "Mobile Documents")} {
-		if within(filepath.Join(home, p)) {
+	for _, p := range []string{"Desktop", "Documents", "Downloads", "Library/Mobile Documents"} {
+		if within(path.Join(home, p)) {
 			return true
 		}
 	}
