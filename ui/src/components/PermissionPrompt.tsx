@@ -38,7 +38,12 @@ export function usePermission(sessionId: string): [Permission | null, (p: Permis
  * the question waits — the owner lives in the terminal, and the mouse is the
  * wrong instrument there. It never takes focus.
  */
-export function PermissionPrompt({ sessionId }: { sessionId: string }) {
+/**
+ * `keys` is false where no terminal of this session is on the page — the
+ * session screen a phone answers from — so the card names no keys it could
+ * not take.
+ */
+export function PermissionPrompt({ sessionId, keys = true }: { sessionId: string; keys?: boolean }) {
   const [prompt, setPrompt] = usePermission(sessionId)
   const canControl = useCanControl()
   const [busy, setBusy] = useState(false)
@@ -93,22 +98,24 @@ export function PermissionPrompt({ sessionId }: { sessionId: string }) {
       )}
       {canControl ? (
         <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
-          <button type="button" disabled={busy} onClick={() => void answer('allow')} aria-keyshortcuts="Y Enter" className={`${button} bg-accent text-bg hover:brightness-110`}>
-            Yes <Key>Y</Key>
+          <button type="button" disabled={busy} onClick={() => void answer('allow')} aria-keyshortcuts={keys ? "Y Enter" : undefined} className={`${button} bg-accent text-bg hover:brightness-110`}>
+            Yes {keys && <Key>Y</Key>}
           </button>
           {prompt.always && (
-            <button type="button" disabled={busy} onClick={() => void answer('always')} aria-keyshortcuts="A" className={`${button} border border-accent text-fg hover:bg-accent/15`}>
-              {prompt.always} <Key>A</Key>
+            <button type="button" disabled={busy} onClick={() => void answer('always')} aria-keyshortcuts={keys ? "A" : undefined} className={`${button} border border-accent text-fg hover:bg-accent/15`}>
+              {prompt.always} {keys && <Key>A</Key>}
             </button>
           )}
-          <button type="button" disabled={busy} onClick={() => void answer('deny')} aria-keyshortcuts="N Escape" className={`${button} border border-border-strong text-fg hover:border-danger hover:text-danger`}>
-            No <Key>N</Key>
+          <button type="button" disabled={busy} onClick={() => void answer('deny')} aria-keyshortcuts={keys ? "N Escape" : undefined} className={`${button} border border-border-strong text-fg hover:border-danger hover:text-danger`}>
+            No {keys && <Key>N</Key>}
           </button>
           {/* One question: the terminal's menu and the card answer the same
               dialog, so Enter and Esc there mean Yes and No here. */}
-          <p className="self-center text-[11.5px] text-fg-muted sm:ml-auto">
-            Keys work from the terminal · <span className="mono" aria-hidden>↵</span> Yes · <span className="mono" aria-hidden>Esc</span> No
-          </p>
+          {keys && (
+            <p className="self-center text-[11.5px] text-fg-muted sm:ml-auto">
+              Keys work from the terminal · <span className="mono" aria-hidden>↵</span> Yes · <span className="mono" aria-hidden>Esc</span> No
+            </p>
+          )}
         </div>
       ) : (
         <p className="text-[12px] text-fg-muted">Waiting for an answer on a device that controls sessions.</p>

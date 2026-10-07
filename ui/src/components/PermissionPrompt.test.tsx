@@ -49,6 +49,16 @@ describe('a permission prompt', () => {
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
   })
 
+  it('names its keys beside a terminal, and none on the session screen a phone answers from', async () => {
+    const { unmount } = render(<PermissionPrompt sessionId="s1" />)
+    expect(await screen.findByText(/Keys work from the terminal/)).toBeTruthy()
+    unmount()
+    render(<PermissionPrompt sessionId="s1" keys={false} />)
+    expect(await screen.findByRole('button', { name: 'Yes' })).toBeTruthy()
+    expect(screen.queryByText(/Keys work from the terminal/)).toBeNull()
+    expect(screen.getByRole('button', { name: 'Yes' }).getAttribute('aria-keyshortcuts')).toBeNull()
+  })
+
   it.each([['Yes', 'allow'], ['Yes, and don’t ask again', 'always'], ['No', 'deny']])('%s answers %s for this prompt and goes away', async (name, choice) => {
     render(<PermissionPrompt sessionId="s1" />)
     fireEvent.click(await screen.findByRole('button', { name }))

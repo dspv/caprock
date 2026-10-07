@@ -15,6 +15,13 @@ Phase 3 (Delight) has no plan by design.
   session's tab was open in the app and in a browser (or on a phone), each
   window started its own shell in its place, and the project listed two.
   They now share one.
+- **A screenshot dragged from its thumbnail reaches the session.** macOS
+  keeps the corner thumbnail in a folder only the app it is dropped on may
+  read, so Claude answered "operation not permitted". The app now copies
+  such a file into Caprock's paste folder and types that path.
+- **The permission card on a phone names no keys.** On the session screen,
+  where there is no terminal, it said *Keys work from the terminal* and drew
+  Y and N on its buttons. It now shows the buttons alone there.
 - **A permission card whose question is gone can be closed.** When Claude
   Code's request timed out or a check denied it, the card stayed until the
   turn ended and its buttons said *that option is not on the prompt*. A
