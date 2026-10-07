@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.80.0] - 2026-10-07
+
 ### Added
 
 - **The desktop app updates itself in one click.** When a newer Caprock is
@@ -49,6 +51,10 @@ Phase 3 (Delight) has no plan by design.
   browser tab or a paired phone. Typed terminal input is kept (it lives in
   the session). With text typed into an open sheet it offers *Reload —
   Caprock was updated* instead, and it never reloads twice for one version.
+- **A command that finishes fast keeps its last lines.** Caprock closed a
+  terminal the moment its process exited, so the final output of a short
+  command could be lost (seen on Linux). It now reads the terminal to the
+  end first, waiting at most two seconds.
 
 ## [0.79.0] - 2026-10-07
 

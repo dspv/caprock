@@ -73,12 +73,26 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-07 — 0.80.0: the update card, reload on upgrade, PTY drain
+
+A newer version now announces itself in a card at the bottom right of the
+app, once per version, with *Update and restart* (the WP-21 updater) (#265).
+After an upgrade the app no longer runs the old UI: it picks its daemon
+before loading a page, and a page reloads itself when its daemon's version
+changes, unless text is typed into an open sheet (#263). ptyman waits for
+the output pump to reach EOF, at most 2 s, before closing a finished
+process's PTY; a short command's last output was being lost on Linux (#266).
+Parked, not deleted: the voice engine (`feat/voice-input`) and an unfinished
+cost-first home page in the site repo (`feat/home-cost-first`); `~/dev/wt`
+is empty.
+
 ### 2026-10-07 — Owner blockers: bypass that never asks, keys, consent
 
 A day of real use gave five blockers (`09-execution-plan.md § Owner
-blockers`). Bypass spawned `--permission-mode bypassPermissions`, which keeps
-asking; it is now `--dangerously-skip-permissions`, the default for a new
-session, with `--add-dir` for Caprock's own folders (#257). The model list
+blockers`). The prompt flood in bypass was the opt-in read perimeter
+(`blockReadsOutsideWorkingDirectories`), not the flag — the two bypass
+spellings are one mode (#264). Bypass spawns `--dangerously-skip-permissions`
+and is the default for a new session, with `--add-dir` for Caprock's own folders (#257). The model list
 names exact versions (Opus 5.5, not "Opus 5") with a test against
 `pricing.json`; `/exit` turns the tab into a shell (#257). The permission
 card is back under the terminal and Y/A/N answer it from there (#258). The
