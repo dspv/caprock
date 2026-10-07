@@ -82,6 +82,9 @@ before loading a page, and a page reloads itself when its daemon's version
 changes, unless text is typed into an open sheet (#263). ptyman waits for
 the output pump to reach EOF, at most 2 s, before closing a finished
 process's PTY; a short command's last output was being lost on Linux (#266).
+`/exit` was then seen with the real `claude` on 0.80.0 (the tab becomes a
+shell); the same check found every window showing the tab starting its own
+shell, now one via `replaces` on `POST /v1/shells` (#268).
 Parked, not deleted: the voice engine (`feat/voice-input`) and an unfinished
 cost-first home page in the site repo (`feat/home-cost-first`); `~/dev/wt`
 is empty.
