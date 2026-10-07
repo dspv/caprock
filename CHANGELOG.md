@@ -11,6 +11,12 @@ Phase 3 (Delight) has no plan by design.
 
 ### Fixed
 
+- **Permission card buttons work after a restart and with agents in the
+  background.** The card read the dialog off a replay of the session's
+  recent output, which after a restart could start mid-screen and hide it;
+  every button then said *not on the prompt*. It now also reads the dialog
+  from what was drawn after the prompt arrived, and allows the extra rows a
+  status line and background agents add under it.
 - **A terminal reopened after a restart draws its whole screen.** Reattaching
   to a running Claude Code session could leave its status rows as bare
   numbers, their labels lost from the replay. The first size a terminal

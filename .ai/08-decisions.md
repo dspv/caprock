@@ -1498,6 +1498,13 @@ name one request while its key landed in another's dialog. Now:
   with none it interrupts the turn. This undoes the first paragraph's "not by
   reading the screen" for answering only; finding the prompt is still the
   hook's job.
+- *Amended 2026-10-08:* **when the whole ring shows no menu, the bytes since
+  the prompt's hook are read alone.** After an app restart the ring began
+  mid-frame, and the renderer's relative cursor moves laid the dialog over
+  stale rows; every button on the owner's card answered *not on the prompt*.
+  The dialog is drawn after its hook as new rows, so on a blank screen those
+  bytes show it whole. Up to six rows may sit under a waiting menu (footer,
+  status line, a background-task line), not four.
 - **Prompts queue per call.** Claude Code queues dialogs and shows the oldest;
   so does Caprock (`tool_use_id` when the hook sends one, `agent_id` for a
   subagent's). The card shows the oldest and how many wait behind it, a later

@@ -147,8 +147,17 @@ var menus = map[string]struct {
 		screen: diffed(0, " Do you want to proceed?", " ❯ 1. Yes", "   2. No") + diffed(3, "⏺ Bash(ls)", "  ⎿  a.txt"),
 	},
 	// A menu left in the scrollback with output under it is not waiting.
+	// A waiting dialog has its footer, the status line and a task line under
+	// it, never seven rows of output.
 	"a menu scrolled up by output": {
-		screen: diffed(0, " Do you want to proceed?", " ❯ 1. Yes", "   2. No") + "a\r\nb\r\nc\r\nd\r\ne\r\n",
+		screen: diffed(0, " Do you want to proceed?", " ❯ 1. Yes", "   2. No") + "a\r\nb\r\nc\r\nd\r\ne\r\nf\r\ng\r\n",
+	},
+	// The footer, a status line, a task line and the plan windows under a
+	// dialog: still waiting.
+	"a dialog over a busy footer": {
+		screen: diffed(0, " Do you want to proceed?", " ❯ 1. Yes", "   2. No") +
+			"\r\n Esc to cancel · Tab to amend\r\n────\r\n ctx 66%\r\n 1 shell · ← for agents\r\n",
+		allow: "1", always: "", deny: "\x1b",
 	},
 	// Two dialogs in turn: the second one is on the screen now.
 	"the next dialog replaced the first": {
@@ -198,5 +207,30 @@ func TestAlwaysWording(t *testing.T) {
 		if got := isAlwaysYes(text); got != want {
 			t.Errorf("%q: %v, want %v", text, got, want)
 		}
+	}
+}
+
+// After a restart the ring starts mid-frame, and a dialog drawn with cursor
+// moves relative to a screen the replay never saw lands on top of stale rows
+// (owner, 2026-10-08). The bytes since the prompt's hook alone still show it.
+func TestDialogKeyFallsBackToTheBytesSinceTheHook(t *testing.T) {
+	var stale strings.Builder
+	for i := range 30 {
+		fmt.Fprintf(&stale, "stale output row %d\r\n", i)
+	}
+	dialog := diffed(0, " Do you want to proceed?", " ❯ 1. Yes", "   2. No")
+	// An absolute move from a context the ring lost puts the dialog mid-screen.
+	ring := []byte(stale.String() + "\x1b[5;1H" + dialog)
+	if _, err := menuKey(termbuf.Screen(ring, 80, 24), PermissionAllow); !errors.Is(err, errNoMenu) {
+		t.Fatalf("the replay of the whole ring should hide the dialog, got err=%v", err)
+	}
+	key, err := dialogKey(ring, []byte(dialog), 80, 24, PermissionAllow)
+	if err != nil || key != "1" {
+		t.Fatalf("dialogKey = %q, %v; want \"1\" from the bytes since the hook", key, err)
+	}
+	// Without those bytes (a prompt restored after a restart) it stays an
+	// honest "no menu".
+	if _, err := dialogKey(ring, nil, 80, 24, PermissionAllow); !errors.Is(err, errNoMenu) {
+		t.Fatalf("with no bytes since the hook, err = %v, want errNoMenu", err)
 	}
 }
