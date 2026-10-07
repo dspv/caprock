@@ -42,6 +42,13 @@ describe('a permission prompt', () => {
     for (const name of ['Yes', 'Yes, and don’t ask again', 'No']) expect(screen.getByRole('button', { name })).toBeTruthy()
   })
 
+  it('hides a prompt that no longer waits, typing nothing', async () => {
+    render(<PermissionPrompt sessionId="s1" />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Hide this prompt' }))
+    await waitFor(() => expect(h.answer).toHaveBeenCalledWith('s1', 'p1', 'dismiss'))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+  })
+
   it.each([['Yes', 'allow'], ['Yes, and don’t ask again', 'always'], ['No', 'deny']])('%s answers %s for this prompt and goes away', async (name, choice) => {
     render(<PermissionPrompt sessionId="s1" />)
     fireEvent.click(await screen.findByRole('button', { name }))
@@ -223,7 +230,9 @@ describe('a permission prompt', () => {
     h.permission.mockResolvedValue({ permission: { ...bash, always: undefined } })
     render(<PermissionPrompt sessionId="s1" />)
     await screen.findByRole('button', { name: 'Yes' })
-    expect(screen.getAllByRole('button')).toHaveLength(2)
+    // Hide, Yes and No: no second option.
+    expect(screen.getAllByRole('button')).toHaveLength(3)
+    expect(screen.queryByRole('button', { name: /don’t ask again/ })).toBeNull()
   })
 
   it('comes and goes with the live frames, and ignores other sessions', async () => {

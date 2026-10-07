@@ -15,6 +15,11 @@ Phase 3 (Delight) has no plan by design.
   session's tab was open in the app and in a browser (or on a phone), each
   window started its own shell in its place, and the project listed two.
   They now share one.
+- **A permission card whose question is gone can be closed.** When Claude
+  Code's request timed out or a check denied it, the card stayed until the
+  turn ended and its buttons said *that option is not on the prompt*. A
+  button now takes such a card away, and **×** hides any card without
+  typing anything.
 
 ## [0.80.0] - 2026-10-07
 

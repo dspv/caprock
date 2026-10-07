@@ -1115,4 +1115,5 @@ export interface Permission {
   queued?: number
 }
 
-export type PermissionChoice = 'allow' | 'always' | 'deny'
+/** `dismiss` types nothing: it takes away the card of a prompt settled where no hook saw it. */
+export type PermissionChoice = 'allow' | 'always' | 'deny' | 'dismiss'
