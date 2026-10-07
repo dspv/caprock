@@ -15,6 +15,10 @@ Phase 3 (Delight) has no plan by design.
   session's tab was open in the app and in a browser (or on a phone), each
   window started its own shell in its place, and the project listed two.
   They now share one.
+- **A screenshot dragged from its thumbnail reaches the session.** macOS
+  keeps the corner thumbnail in a folder only the app it is dropped on may
+  read, so Claude answered "operation not permitted". The app now copies
+  such a file into Caprock's paste folder and types that path.
 
 ## [0.80.0] - 2026-10-07
 
