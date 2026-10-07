@@ -5,6 +5,7 @@
  * (app/README.md § What a page may call).
  */
 import { isTauri } from './appmode'
+import type { AppUpdateInfo } from './appupdate'
 
 interface TauriInternals {
   invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>
@@ -57,4 +58,12 @@ export const shell = {
   trayFit: (height: number) => shellInvoke<void>('tray_fit', { height }),
   /** From the menu bar popover: hide it. */
   trayHide: () => shellInvoke<void>('tray_hide'),
+  /** The app's updater (F20): its version, whether it can update itself, where it stands. */
+  updateStatus: () => shellInvoke<AppUpdateInfo>('app_update_status'),
+  /** Fetch latest.json once. */
+  updateCheck: () => shellInvoke<AppUpdateInfo>('app_update_check'),
+  /** Download, verify, install and restart; resolves only when it did not. */
+  updateInstall: () => shellInvoke<AppUpdateInfo>('app_update_install'),
+  /** The first-launch question about update checks was answered. */
+  updateAsked: () => shellInvoke<void>('app_update_asked'),
 }

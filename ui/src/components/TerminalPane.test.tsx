@@ -8,11 +8,12 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  terms: [] as { options: Record<string, unknown>; focused: number }[],
+  terms: [] as { options: Record<string, unknown>; focused: number; buffer: { active: { viewportY: number; baseY: number } }; scrolledTo: number | null }[],
   calls: [] as [string, string, Record<string, unknown>?][],
   results: [] as ((r: { resultIndex: number; resultCount: number }) => void)[],
   clears: 0,
   steps: [] as string[],
+  clients: [] as { callbacks: { write: (d: Uint8Array, done: () => void) => void } }[],
 }))
 
 vi.mock('@xterm/xterm', () => ({
@@ -23,11 +24,13 @@ vi.mock('@xterm/xterm', () => ({
     rows = 24
     element: HTMLElement | undefined
     buffer = { active: { viewportY: 0, baseY: 0 } }
+    scrolledTo: number | null = null
     constructor(opts: Record<string, unknown>) { this.options = { ...opts }; h.terms.push(this) }
     loadAddon() {}
     open(parent: HTMLElement) { h.steps.push('open'); this.element = document.createElement('div'); parent.appendChild(this.element) }
     focus() { this.focused++ }
-    write() {}
+    write(_d: unknown, cb?: () => void) { cb?.() }
+    scrollToLine(n: number) { this.scrolledTo = n }
     reset() {}
     clearTextureAtlas() { h.steps.push('atlas') }
     refresh() {}
@@ -58,6 +61,7 @@ vi.mock('@/lib/termv2', () => ({
   TermClient: class {
     state = 'connecting'
     protocol = 'v2'
+    constructor(opts: { callbacks: { write: (d: Uint8Array, done: () => void) => void } }) { h.clients.push(opts) }
     start() {}
     wake() {}
     suspend() {}
@@ -71,6 +75,8 @@ vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
 import { TerminalPane } from './TerminalPane'
 import { FIND_EVENT } from '@/lib/appkeys'
 import { setTerminalPrefs, DEFAULT_PREFS } from '@/lib/termprefs'
+import { APP_UPDATE_EVENT } from '@/lib/appupdate'
+import { RESUME_KEY } from '@/lib/termresume'
 
 beforeEach(() => {
   h.terms.length = 0
@@ -78,6 +84,8 @@ beforeEach(() => {
   h.results.length = 0
   h.clears = 0
   h.steps.length = 0
+  h.clients.length = 0
+  localStorage.clear()
   setTerminalPrefs(DEFAULT_PREFS)
 })
 afterEach(() => setTerminalPrefs(DEFAULT_PREFS))
@@ -202,6 +210,48 @@ describe('TerminalPane font', () => {
       width.mockRestore()
       if (real) Object.defineProperty(document, 'fonts', real)
       else delete (document as { fonts?: unknown }).fonts
+    }
+  })
+})
+
+describe('TerminalPane across an app update (F20)', () => {
+  it('saves where it was scrolled as the update installs and goes back there after the relaunch', () => {
+    vi.useFakeTimers()
+    try {
+      const first = render(<TerminalPane sessionId="a" active focused />)
+      h.terms[0]!.buffer.active = { viewportY: 100, baseY: 500 }
+      act(() => { window.dispatchEvent(new CustomEvent(APP_UPDATE_EVENT, { detail: { phase: 'installing', next: '0.79.0' } })) })
+      expect(JSON.parse(localStorage.getItem(RESUME_KEY)!).panes.a).toEqual({ top: 100, total: 524, fromBottom: 400 })
+      first.unmount()
+
+      // The relaunched page: the replay lands at the bottom, then pauses.
+      render(<TerminalPane sessionId="a" active focused />)
+      const t = h.terms[1]!
+      t.buffer.active = { viewportY: 500, baseY: 500 }
+      act(() => h.clients[1]!.callbacks.write(new TextEncoder().encode('scrollback'), () => {}))
+      expect(t.scrolledTo).toBeNull()
+      act(() => { vi.advanceTimersByTime(500) })
+      expect(t.scrolledTo).toBe(100)
+      // Once: a later launch starts at the bottom.
+      expect(JSON.parse(localStorage.getItem(RESUME_KEY)!).panes.a).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a terminal at the bottom saves nothing and stays at the bottom', () => {
+    vi.useFakeTimers()
+    try {
+      const first = render(<TerminalPane sessionId="b" active focused />)
+      h.terms[0]!.buffer.active = { viewportY: 500, baseY: 500 }
+      act(() => { window.dispatchEvent(new CustomEvent(APP_UPDATE_EVENT, { detail: { phase: 'installing' } })) })
+      first.unmount()
+      render(<TerminalPane sessionId="b" active focused />)
+      act(() => h.clients[1]!.callbacks.write(new TextEncoder().encode('x'), () => {}))
+      act(() => { vi.advanceTimersByTime(4000) })
+      expect(h.terms[1]!.scrolledTo).toBeNull()
+    } finally {
+      vi.useRealTimers()
     }
   })
 })

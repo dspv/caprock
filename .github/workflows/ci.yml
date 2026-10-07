@@ -29,6 +29,8 @@ jobs:
         working-directory: ui
       - run: npm test -- --run
         working-directory: ui
+      - name: release script tests (latest.json)
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - run: npm run build
         working-directory: ui
       - name: dist is committed and in sync (so `go install` embeds a real UI)

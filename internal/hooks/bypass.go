@@ -9,7 +9,7 @@ import (
 // "Yes, I accept" to its one-time bypass warning ("WARNING: Claude Code
 // running in Bypass Permissions mode"). Until it is true, the first session
 // started with --dangerously-skip-permissions opens on that warning, with
-// "No, exit" selected — so Enter ends the session (ADR-041).
+// "No, exit" selected — so Enter ends the session (ADR-042).
 const BypassKey = "skipDangerousModePermissionPrompt"
 
 // BypassAccepted reports whether the user has accepted Claude Code's bypass

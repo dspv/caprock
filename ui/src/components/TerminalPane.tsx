@@ -37,6 +37,8 @@ import { FIND_EVENT, matchAppShortcut } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
 import { registerBenchTerminal } from '@/lib/benchhook'
 import { writeSliced } from '@/lib/termwrite'
+import { lineFor, markOf, saveScroll, takeScroll } from '@/lib/termresume'
+import { APP_UPDATE_EVENT } from '@/lib/appupdate'
 import { WEBGL_QUIET_MS } from './Terminal'
 import { NewPill } from './NewPill'
 import { TerminalFind, type TermSearch } from './TerminalFind'
@@ -151,6 +153,37 @@ export function TerminalPane({
       setStatus(s)
       onStatusRef.current?.({ status: s, protocol: conn.protocol, cols: term.cols, rows: term.rows })
     }
+    // F20: where this terminal was scrolled when the app restarted into an
+    // update, given back once its scrollback has been replayed — when the
+    // output pauses, or 3 s after it began, whichever is first.
+    let resume = takeScroll(sessionId)
+    let resumeTimer = 0
+    let resumeBy = 0
+    const applyResume = () => {
+      resumeTimer = 0
+      const mark = resume
+      resume = undefined
+      if (!mark || disposed) return
+      term.write('', () => {
+        const b = term.buffer.active
+        if (b.viewportY < b.baseY) return // scrolled by hand meanwhile
+        term.scrollToLine(lineFor(mark, b.baseY, term.rows))
+      })
+    }
+    const scheduleResume = () => {
+      if (!resume) return
+      const now = Date.now()
+      if (!resumeBy) resumeBy = now + 3000
+      if (resumeTimer) window.clearTimeout(resumeTimer)
+      resumeTimer = window.setTimeout(applyResume, Math.max(0, Math.min(400, resumeBy - now)))
+    }
+    const onAppUpdate = (e: Event) => {
+      if ((e as CustomEvent<{ phase?: string }>).detail?.phase !== 'installing') return
+      const b = term.buffer.active
+      saveScroll(sessionId, markOf(b.viewportY, b.baseY, term.rows))
+    }
+    window.addEventListener(APP_UPDATE_EVENT, onAppUpdate)
+
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
     const conn = new TermClient({
       url: `${proto}://${location.host}/v1/agents/${encodeURIComponent(sessionId)}/term`,
@@ -164,6 +197,7 @@ export function TerminalPane({
             conn.resize(term.cols, term.rows)
           }
           writeSliced(term, d, done)
+          scheduleResume()
         },
         // Clears the screen and every mode a dead TUI left on (mouse tracking,
         // bracketed paste, the alternate screen) before a repaint.
@@ -327,6 +361,8 @@ export function TerminalPane({
       api.current = null
       searchRef.current = null
       window.removeEventListener(FIND_EVENT, onFind)
+      window.removeEventListener(APP_UPDATE_EVENT, onAppUpdate)
+      if (resumeTimer) window.clearTimeout(resumeTimer)
       unprefs()
       unfont()
       resultsSub.dispose()

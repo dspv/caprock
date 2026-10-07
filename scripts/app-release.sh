@@ -21,10 +21,12 @@
 #   --clobber    replace a .dmg already attached to the release
 #   --cask-pr    open a pull request on dspv/homebrew-tap with the cask
 #
-# Output: app/src-tauri/target/app-release/ (the .dmg and caprock-app.rb).
+# Output: app/src-tauri/target/app-release/ (the .dmg and caprock-app.rb, and
+# with the updater key in the environment the signed
+# Caprock_<v>_universal.app.tar.gz and its .sig, attached beside the .dmg).
 #
-# The version-less Caprock-macOS.dmg the site links, and marking the release
-# Latest, are scripts/app-latest.sh's job, run once every OS's files are on
+# The version-less Caprock-macOS.dmg the site links, latest.json for the
+# app's updater, and marking the release Latest, are scripts/app-latest.sh's job, run once every OS's files are on
 # the release.
 #
 set -euo pipefail
@@ -78,10 +80,22 @@ cp "$OUT/caprock-arm64" app/src-tauri/binaries/caprock-aarch64-apple-darwin
 cp "$OUT/caprock-amd64" app/src-tauri/binaries/caprock-x86_64-apple-darwin
 lipo -create -output app/src-tauri/binaries/caprock-universal-apple-darwin "$OUT/caprock-arm64" "$OUT/caprock-amd64"
 
+# The signed updater bundle (F20, ADR-042): Caprock.app.tar.gz and its
+# minisign .sig, made when the signing key is in the environment
+# (TAURI_SIGNING_PRIVATE_KEY and _PASSWORD; GitHub secrets in release.yml,
+# ~/.config/caprock-release/ by hand). Without it the release still ships,
+# and the app's Update button says no signed update is published.
+UPDATER=()
+if [[ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+  UPDATER=(--config src-tauri/tauri.updater.conf.json)
+else
+  echo "  warning: TAURI_SIGNING_PRIVATE_KEY unset: no signed app update for $TAG"
+fi
+
 echo "→ Caprock.app and .dmg"
 (cd app && { [[ -d node_modules ]] || npm ci; } && npx tauri build \
   --target universal-apple-darwin --bundles app,dmg \
-  --config "{\"version\":\"$VERSION\"}")
+  --config "{\"version\":\"$VERSION\"}" ${UPDATER[@]+"${UPDATER[@]}"})
 
 DMG_NAME="Caprock_${VERSION}_universal.dmg"
 BUILT="app/src-tauri/target/universal-apple-darwin/release/bundle/dmg/$DMG_NAME"
@@ -110,6 +124,24 @@ daemon="$("$APP/Contents/MacOS/caprock" version)"
 [[ "$daemon" == "caprock $VERSION "* ]] || die "the bundled daemon says: $daemon"
 hdiutil detach "$MNT" -quiet && trap - EXIT
 
+UPD_NAME="Caprock_${VERSION}_universal.app.tar.gz"
+UPD=""
+if [[ ${#UPDATER[@]} -gt 0 ]]; then
+  BUNDLE_DIR="app/src-tauri/target/universal-apple-darwin/release/bundle/macos"
+  [[ -f "$BUNDLE_DIR/Caprock.app.tar.gz" && -s "$BUNDLE_DIR/Caprock.app.tar.gz.sig" ]] ||
+    die "no signed updater bundle in $BUNDLE_DIR"
+  cp "$BUNDLE_DIR/Caprock.app.tar.gz" "$OUT/$UPD_NAME"
+  cp "$BUNDLE_DIR/Caprock.app.tar.gz.sig" "$OUT/$UPD_NAME.sig"
+  UPD="$OUT/$UPD_NAME"
+  # The signature records the version it was signed for; the app refuses
+  # one that does not match (requireSignedVersion).
+  base64 -d <"$UPD.sig" 2>/dev/null | grep -q "version:$VERSION\$" ||
+    die "$UPD_NAME.sig does not name $VERSION"
+  tar -tzf "$UPD" | grep -q '^Caprock.app/Contents/MacOS/caprock$' ||
+    die "$UPD_NAME does not carry the daemon"
+  echo "  ok: signed updater bundle $UPD_NAME"
+fi
+
 SHA="$(shasum -a 256 "$DMG" | cut -d' ' -f1)"
 sed -e "s/@VERSION@/$VERSION/" -e "s/@SHA256@/$SHA/" app/packaging/caprock-app.rb.tmpl > "$OUT/caprock-app.rb"
 echo "  ok: ad-hoc signed, universal, dev.caprock.app $VERSION, bundles $daemon"
@@ -117,7 +149,7 @@ echo "  $(du -h "$DMG" | cut -f1)  sha256 $SHA"
 
 if [[ "$UPLOAD" == 1 ]]; then
   echo "→ attaching to the $TAG release"
-  gh release upload "$TAG" "$DMG" $CLOBBER
+  gh release upload "$TAG" "$DMG" ${UPD:+"$UPD" "$UPD.sig"} $CLOBBER
 fi
 
 if [[ "$CASK_PR" == 1 ]]; then

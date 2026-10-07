@@ -127,6 +127,28 @@ independent of the mode and was already pre-accepted for every Claude Code
 launch. Contracts in [03-contracts.md](03-contracts.md), screens in
 [04-ui.md § Continue, and why not](04-ui.md#continue-and-why-not).
 
+### 2026-10-06 — One-click signed app updates (WP-21, F20)
+
+The app updates itself: **Update to vX.Y.Z — Restart** in the status strip
+downloads with progress, verifies a minisign signature and the version it
+was signed for, installs and restarts; the relaunched app moves its own
+daemon onto the new bundled one ([ADR-042](08-decisions.md#adr-042--the-app-updates-itself-in-one-click-a-minisign-signed-bundle-one-channel-checked-only-when-the-release-check-is-on-or-the-user-asks),
+[21-app.md § Updates](21-app.md#updates)). Releases carry the signed bundles
+and `latest.json` once the two signing secrets are set. Verified for real on
+macOS 27 (M1 Pro), 0.0.1-test → 0.0.2-test from a loopback server, isolated
+HOME and data dir: a manifest with the wrong signature was refused ("did not
+verify", the bundle untouched); the right one installed and restarted the
+app in about a second; the daemon moved from 0.0.1-test to 0.0.2-test while
+a shell's pty-host and process stayed alive; the new `Caprock.app` had no
+`com.apple.quarantine` attribute (only `com.apple.provenance`), and opened
+through LaunchServices (`open`) with no Gatekeeper prompt, `syspolicyd`
+logging an allowed scan. `bench/update.mjs` then checks the owner's bar end
+to end: tabs, order, front tab, split and sizes, sidebar, window, scroll
+position, a half-typed line and every session process are the same after
+the update — 12 of 12 checks passed on 2026-10-06 with 3 fake agents and a
+split shell, and the scroll check failed as it should with the saved place
+removed.
+
 ### 2026-10-06 — Benchmarks (WP-16)
 
 `bench/` measures every row of [21-app.md § Budgets](21-app.md#budgets) with

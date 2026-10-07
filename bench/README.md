@@ -20,18 +20,30 @@ load average and busiest processes before it starts: re-run when it is high.
 
 ## What runs
 
-| File                                              | What it does                                                                                                                                                                       |
-| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `stand.sh`                                        | The throwaway daemon: own HOME, data dir, port and service label, the fake `claude`, 10 sessions, one chat transcript, notifications and hotkey off                                |
-| `fake-claude`                                     | A busy Claude Code TUI without a model: 4000 lines at start, N lines/s from `<cwd>/.fake_lps`, a 12 fps spinner, `> <typed>` echoed per key; a negative rate is silent             |
-| `chat-transcript.py`                              | 150 synthetic turns for the phone's chat view                                                                                                                                      |
-| `page-hook.js`                                    | Runs before the page's scripts: watches each terminal socket for the echo, types through the page, times paints and main-thread stalls                                             |
-| `app.mjs`                                         | The desktop harness: cold start, open, switch, memory at 1/5/10 tabs, echo at 0/200/1000 lines/s, CPU, flood isolation, daemon restart, disk, hidden CPU, restored-tab cold starts |
-| `phone.mjs`                                       | The phone harness: headless Chrome at 390 px through a TCP proxy that drops, stalls and slows the network; chat open, back to live, half-open detection                            |
-| `procs.py`, `procs-linux.py`, `procs-windows.ps1` | CPU, memory (RSS and footprint) and disk writes of the app's processes                                                                                                             |
-| `report.py`                                       | The budget table from the JSON, one column per run, pass/fail/mixed                                                                                                                |
-| `reference-orca.mjs`                              | The reference app on the same Mac. Not run: refuses unless `ORCA_BENCH_OK=1` and Orca is quit                                                                                      |
-| `run-macos.sh`, `run-linux.sh`, `run-windows.ps1` | The one command per OS                                                                                                                                                             |
+| File                                              | What it does                                                                                                                                                                                                |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stand.sh`                                        | The throwaway daemon: own HOME, data dir, port and service label, the fake `claude`, 10 sessions, one chat transcript, notifications and hotkey off                                                         |
+| `fake-claude`                                     | A busy Claude Code TUI without a model: 4000 lines at start, N lines/s from `<cwd>/.fake_lps`, a 12 fps spinner, `> <typed>` echoed per key; a negative rate is silent                                      |
+| `chat-transcript.py`                              | 150 synthetic turns for the phone's chat view                                                                                                                                                               |
+| `page-hook.js`                                    | Runs before the page's scripts: watches each terminal socket for the echo, types through the page, times paints and main-thread stalls                                                                      |
+| `app.mjs`                                         | The desktop harness: cold start, open, switch, memory at 1/5/10 tabs, echo at 0/200/1000 lines/s, CPU, flood isolation, daemon restart, disk, hidden CPU, restored-tab cold starts                          |
+| `phone.mjs`                                       | The phone harness: headless Chrome at 390 px through a TCP proxy that drops, stalls and slows the network; chat open, back to live, half-open detection                                                     |
+| `procs.py`, `procs-linux.py`, `procs-windows.ps1` | CPU, memory (RSS and footprint) and disk writes of the app's processes                                                                                                                                      |
+| `report.py`                                       | The budget table from the JSON, one column per run, pass/fail/mixed                                                                                                                                         |
+| `update-build.sh`, `update.mjs`                   | The app update end to end (F20): two signed builds under their own bundle id, a loopback update server, then sessions, tabs, split, sidebar, window, scroll and a half-typed line compared before and after |
+| `reference-orca.mjs`                              | The reference app on the same Mac. Not run: refuses unless `ORCA_BENCH_OK=1` and Orca is quit                                                                                                               |
+| `run-macos.sh`, `run-linux.sh`, `run-windows.ps1` | The one command per OS                                                                                                                                                                                      |
+
+## The update, end to end
+
+```bash
+bench/update-build.sh "$TMPDIR/caprock-update"        # two release builds, CARGO_BUILD_JOBS=2
+node bench/update.mjs --work "$TMPDIR/caprock-update"  # about two minutes; exit 1 on any difference
+```
+
+`update.mjs` writes `result.json` (each check, the state before and after)
+and `before.png` / `after.png`, taken by the app itself. Not part of CI: it
+needs two release builds and a logged-in macOS session.
 
 ## Method
 

@@ -9,6 +9,24 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **The desktop app updates itself in one click.** When a newer Caprock is
+  out, the status strip says **Update to vX.Y.Z — Restart**: it downloads
+  the new app with a progress bar while you work, checks its signature,
+  installs it and restarts, and everything comes back as it was: every
+  session still running (the app moves its own daemon onto the new version
+  without ending them), the same tabs in the same order, splits and their
+  sizes, the sidebar, the window, each terminal scrolled where you left it
+  and anything half typed into an agent. Nothing installs unless it is signed with Caprock's release key for
+  that exact version. On its first launch the app asks once whether to check
+  for updates automatically (the same release check as Settings → Privacy,
+  off unless you say yes); **Check for Updates…** in the app and tray menus
+  and in the command palette works either way. The macOS app, the Windows
+  installer and the Linux AppImage update themselves; `.deb` and `.rpm`
+  installs are told to use their package manager. Each release now carries
+  `latest.json` and the signed update files.
+
 ## [0.79.0] - 2026-10-07
 
 ### Added

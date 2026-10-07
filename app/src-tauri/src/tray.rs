@@ -17,6 +17,7 @@ use tauri::{AppHandle, Manager, Runtime};
 const ID: &str = "caprock";
 const SHOW: &str = "show";
 const QUIT: &str = "quit";
+const CHECK_UPDATES: &str = "check-updates";
 const OPEN: &str = "open:";
 const MAX_LINES: usize = 8;
 const MAX_WAITING: usize = 10;
@@ -168,6 +169,11 @@ fn entries(view: &View) -> Vec<Option<(String, String, bool)>> {
     }
     out.push(None);
     out.push(Some((SHOW.into(), "Show Caprock".into(), true)));
+    out.push(Some((
+        CHECK_UPDATES.into(),
+        "Check for Updates…".into(),
+        true,
+    )));
     out.push(Some((QUIT.into(), "Quit Caprock".into(), true)));
     out
 }
@@ -190,6 +196,7 @@ fn on_menu<R: Runtime>(app: &AppHandle<R>, id: &str) {
     match id {
         SHOW => hotkey::show(app),
         QUIT => app.exit(0),
+        CHECK_UPDATES => crate::updater::check_from_menu(app),
         _ => {
             if let Some(session) = id.strip_prefix(OPEN) {
                 open_session(app, session);

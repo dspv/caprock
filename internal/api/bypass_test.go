@@ -9,7 +9,7 @@ import (
 )
 
 // A bypass start on a machine that never accepted Claude Code's bypass
-// warning would open on that warning, with "No, exit" selected (ADR-041):
+// warning would open on that warning, with "No, exit" selected (ADR-042):
 // the daemon refuses it with a code the dialogs turn into the consent screen.
 func TestBypassStartNeedsConsent(t *testing.T) {
 	e := newEnv(t)

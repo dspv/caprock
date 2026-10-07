@@ -1970,3 +1970,90 @@ on every start: with bypass the default, users would run without asking
 having agreed to nothing. Leaving Claude Code's screen with a hint: the
 Enter trap and the stuck phone session remain.
 
+## ADR-042 — The app updates itself in one click: a minisign-signed bundle, one channel, checked only when the release check is on or the user asks
+
+**Date:** 2026-10-06 · **Status:** accepted (owner asked for it: "no
+convenient seamless app update" was what bothered him most, translated)
+
+**Context.** Until now the app named the command for how it was installed
+(F12) and never replaced itself: a Homebrew user ran `brew upgrade --cask`,
+everyone else downloaded the release again. WP-21 (F20) is opt-in
+auto-update. There is no Apple Developer ID yet (expected within days), so
+the macOS build is ad-hoc signed and not notarized; whatever is built now
+must keep working when notarization is added.
+
+**The decision.**
+
+- **tauri-plugin-updater, with our own minisign key.** Every release
+  attaches, beside the installers, a signed update bundle per platform:
+  `Caprock_<v>_universal.app.tar.gz` (macOS), the NSIS installer (Windows)
+  and the AppImage (Linux), each with a `.sig`. The app verifies the
+  signature against the public key in `tauri.conf.json`, and the version
+  the signature was made for (`requireSignedVersion`), before anything is
+  written; a manifest pairing a new version with an old bundle is refused.
+  The private key and its password live only in GitHub secrets
+  (`TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`) and the
+  maintainer's machine; losing the key means the next app must be
+  installed by hand once, with a new public key.
+- **One channel: the Latest release.** The app reads
+  `https://github.com/dspv/caprock/releases/latest/download/latest.json`.
+  `scripts/app-latest.sh` writes it from the attached `.sig` files and
+  attaches it before it marks the release Latest, so the manifest never
+  names a file that is not there, and a prerelease (never Latest) never
+  reaches it. No server of ours, no per-user URL.
+- **When the app asks the network.** Finding out that a release exists is
+  still the daemon's release check (`/v1/update`, at most every 6 hours, off
+  until the user turns it on; on its first launch the app asks once, in the
+  app, Yes highlighted). The app itself fetches `latest.json` and the
+  bundle only when the user clicks **Update to vX.Y.Z — Restart**, **Check
+  for Updates…** (macOS app menu, the tray menu) or *Check for updates* in
+  the palette. Those requests carry the plugin's `User-Agent`
+  (`tauri-plugin-updater/<version>`) and an `Accept` header: no cookie, no
+  identifier, no version in the URL. GitHub learns an address asked for the
+  latest Caprock app, as with the release check (rule 4).
+- **Where it cannot update itself, it says so and never tries.** A
+  development build, a `.deb` or `.rpm` install (told to install the new
+  package with its package manager; `latest.json` has no `linux-x86_64` or
+  `-deb`/`-rpm` key, only `linux-x86_64-appimage`), and a macOS app run from
+  the disk image or a translocated copy (told to move it to Applications).
+  Those keep F12's command.
+- **The daemon follows the app.** The new bundle carries the new daemon. The
+  relaunched app finds its own daemon (`<data_dir>/bin`, ADR-040) older than
+  the bundled one and moves it over once, the way it adopts a Homebrew one:
+  the copy in place, a clean `/v1/shutdown`, a start. Sessions live on in
+  their pty-hosts (ADR-033). A daemon a package manager owns is never
+  touched.
+- **macOS without notarization.** The updater downloads with its own HTTP
+  client and unpacks the bundle itself, so the new `Caprock.app` carries no
+  `com.apple.quarantine` attribute and Gatekeeper does not stop it on the
+  next launch — verified on a real update between two local builds
+  ([14-build-status.md](14-build-status.md), 2026-10-06). TCC still treats
+  each ad-hoc release as a new program (ADR-040).
+- **The cask says `auto_updates true`**, so `brew upgrade` leaves an app
+  that updates itself alone unless asked with `--greedy`, and the two do not
+  fight.
+
+**What changes with the Developer ID.** Signing and notarization slot into
+the same bundle step (the Apple variables for `tauri build` that
+[RELEASING.md § The desktop app](../docs/RELEASING.md#the-desktop-app)
+lists): the `.app` inside the
+update tarball is then Developer ID signed and notarized like the `.dmg`,
+the minisign layer stays as the update's own check, and the cask's
+quarantine step goes. Nothing in the app changes.
+
+**Rejected.**
+
+- *Sparkle* (macOS only, and a second signing scheme beside Tauri's).
+- *A server of ours answering per version* (`{{current_version}}` in the
+  URL): a request that says which version a user runs, and a service to
+  keep up, for nothing a static file does not do.
+- *Downloading in the background before the click*: an outbound transfer
+  the user did not ask for. The download starts on the click and shows its
+  progress.
+- *Installing deb/rpm through the plugin* (pkexec): a privilege prompt from
+  an app, for a file the package manager should own.
+
+**Revisit if** the Apple account exists (sign and notarize the bundle,
+measure that an update still opens without a prompt), a second channel
+(beta) is wanted, or GitHub's `releases/latest/download` redirect stops
+serving release assets.

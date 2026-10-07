@@ -326,7 +326,8 @@ Each gets the same fields as P0 when it starts; the scope is fixed here.
   that asserts a visible message.
 - **WP-20 — Split panes, search, palette, open in editor (F15–F18).**
 - **WP-21 — Opt-in auto-update (F20).** Tauri updater with our signing key;
-  off until switched on; never updates a daemon it did not install.
+  off until switched on; never updates a daemon it did not install. **Done
+  2026-10-06** ([21-app.md § Updates](21-app.md#updates), ADR-042).
 - **WP-22 — Phone Phase B (F19).** After M5; its definition of done is
   written with the decision, at least: paths raced in parallel, the first
   winner kept, ≤ 3 s median reconnect, and for a relay, end to end encryption,
