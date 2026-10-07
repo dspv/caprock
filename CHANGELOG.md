@@ -15,6 +15,9 @@ Phase 3 (Delight) has no plan by design.
   session's tab was open in the app and in a browser (or on a phone), each
   window started its own shell in its place, and the project listed two.
   They now share one.
+- **The permission card on a phone names no keys.** On the session screen,
+  where there is no terminal, it said *Keys work from the terminal* and drew
+  Y and N on its buttons. It now shows the buttons alone there.
 
 ## [0.80.0] - 2026-10-07
 
