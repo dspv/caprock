@@ -13,7 +13,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/dspv/caprock/internal/store"
-	"github.com/dspv/caprock/internal/termbuf"
 )
 
 // The permission prompts an owned Claude Code session is waiting on, and the
@@ -71,6 +70,9 @@ type Permission struct {
 	toolUseID string
 	// agentID is set when a subagent asked.
 	agentID string
+	// ringAt is the session's output offset when the hook arrived: the
+	// dialog is drawn after it. Zero for a prompt restored after a restart.
+	ringAt uint64
 }
 
 // PermissionChoice is one of the answers a button gives.
@@ -221,10 +223,15 @@ func (m *Manager) AnswerPermission(sessionID, id string, choice PermissionChoice
 		m.permMu.Unlock()
 		return ErrNoAlways
 	}
+	at := q[0].ringAt
 	m.permMu.Unlock()
 
 	cols, rows := a.size()
-	key, err := menuKey(termbuf.Screen(a.ring.snapshot(), cols, rows), choice)
+	var since []byte
+	if at > 0 {
+		since, _ = a.ring.r.Since(at)
+	}
+	key, err := dialogKey(a.ring.snapshot(), since, cols, rows, choice)
 	if errors.Is(err, errNoMenu) {
 		// No permission menu on the screen at all: the prompt was settled
 		// where no hook reported it — it timed out, or a check denied it —
@@ -318,6 +325,9 @@ func (m *Manager) typedIntoMenu(sessionID string, data []byte) {
 // not wait on the database, and a clear lost to a crash is caught on restore
 // by the events that say the session moved on.
 func (m *Manager) addPermission(sessionID string, p *Permission) {
+	if a, ok := m.Get(sessionID); ok && p.ringAt == 0 {
+		p.ringAt = a.ring.r.Total()
+	}
 	m.persistMu.Lock()
 	m.permMu.Lock()
 	for _, old := range m.perms[sessionID] {

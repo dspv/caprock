@@ -8,6 +8,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/dspv/caprock/internal/termbuf"
 )
 
 // The menu a permission dialog shows, read off the session's screen at the
@@ -66,8 +68,10 @@ func indentOf(line string) int {
 }
 
 // maxBelowMenu is how many rows may sit under a waiting dialog's menu: its
-// footer, a hint, a status line.
-const maxBelowMenu = 4
+// footer, a hint, the status line, a background-task line. Claude Code with a
+// status line and agents running in the background draws five (owner,
+// 2026-10-08), and four read that waiting dialog as answered.
+const maxBelowMenu = 6
 
 // readMenu finds the permission menu at the bottom of a screen: the lowest
 // run of numbered options with a selection marker on one of them, numbered
@@ -222,4 +226,22 @@ func menuKey(screen []string, choice PermissionChoice) (string, error) {
 		return "\x1b", nil
 	}
 	return "", ErrNotOnPrompt
+}
+
+// dialogKey is menuKey for a session's output: first the screen the whole
+// ring replays to, then — when that shows no menu — the screen drawn by the
+// bytes since the prompt's hook alone.
+//
+// The ring starts wherever its oldest byte is, usually mid-frame, and a
+// renderer that moves the cursor relative to a screen the replay never saw
+// leaves an overlay of old and new rows that hides the dialog (owner,
+// 2026-10-08: every button on a card failed after an app restart). The dialog
+// itself is drawn after its hook, as new rows, so on a blank screen those
+// bytes alone show it whole.
+func dialogKey(ring, sinceHook []byte, cols, rows int, choice PermissionChoice) (string, error) {
+	key, err := menuKey(termbuf.Screen(ring, cols, rows), choice)
+	if errors.Is(err, errNoMenu) && len(sinceHook) > 0 {
+		return menuKey(termbuf.Screen(sinceHook, cols, rows), choice)
+	}
+	return key, err
 }
