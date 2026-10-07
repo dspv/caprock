@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.84.1] - 2026-10-08
+
 ### Fixed
 
 - **A terminal reopened after a restart draws its whole screen.** Reattaching

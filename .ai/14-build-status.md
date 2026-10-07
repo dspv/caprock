@@ -73,6 +73,13 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-08 — 0.84.1: a reattached terminal redraws in full
+
+After the owner's app restart a Claude Code tab showed its status rows as
+bare numbers: the ring replay began after the labels, Claude Code redraws by
+difference, and the unchanged size sent no SIGWINCH. A v2 connection's first
+resize is now applied as one row less and back (#287).
+
 ### 2026-10-08 — 0.84.0: a new install asks before running commands
 
 With no saved preference, new sessions start in *Accept edits · asks first*
