@@ -73,6 +73,15 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-08 — 0.84.1: card buttons and terminals after a restart
+
+After the owner's app restart every button on a permission card answered
+*not on the prompt*, and a Claude Code tab showed its status rows as bare
+numbers. Both came from replaying a ring that starts mid-frame. A card now
+also reads the dialog from the bytes drawn since its hook, with room for six
+rows under the menu (#289); a terminal's first size is applied as one row
+less and back, so the session repaints in full (#287).
+
 ### 2026-10-08 — 0.84.0: a new install asks before running commands
 
 With no saved preference, new sessions start in *Accept edits · asks first*
