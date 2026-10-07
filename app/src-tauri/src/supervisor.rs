@@ -127,8 +127,6 @@ struct Inner {
     /// The move of a Homebrew daemon onto the app's own has been tried in
     /// this run; it is tried once, whatever the outcome.
     adopt_tried: bool,
-    /// The move of the app's own daemon onto a newer bundled copy has been
-    /// tried in this run (after an app update); once, like the adoption.
 }
 
 impl Supervisor {
@@ -718,16 +716,6 @@ mod tests {
                 version: "v".into(),
                 api_level: level,
             },
-        }
-    }
-
-    fn running_v(level: u32, exe: &str, version: &str) -> Found {
-        match running(level, exe) {
-            Found::Running { rt, mut status } => {
-                status.version = version.into();
-                Found::Running { rt, status }
-            }
-            other => other,
         }
     }
 
