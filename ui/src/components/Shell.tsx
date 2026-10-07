@@ -77,7 +77,6 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
         <a href="#/" className="flex items-center gap-2 text-fg no-underline hover:no-underline">
           <svg width="16" height="16" viewBox="0 0 32 32" aria-hidden><path d="M6 22 L16 8 L26 22 Z" fill="none" stroke="var(--color-accent)" strokeWidth="3" strokeLinejoin="round" /><rect x="6" y="22" width="20" height="3" fill="var(--color-accent)" /></svg>
           <span className="font-medium tracking-wide text-[13px]">caprock</span>
-          <span className="text-fg-faint text-[11px] hidden sm:inline">mission control</span>
         </a>
         {/* A filled pill for the current screen — the same control the agent
           * filter on Now uses, and it works for the same reason: a solid

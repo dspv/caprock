@@ -9,6 +9,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Changed
+
+- **The dashboard header says only *caprock*.** The *mission control*
+  tagline from before the desktop app is gone.
+
 ### Added
 
 - **Notifications on Linux open the session and answer prompts.** A click
