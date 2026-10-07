@@ -1408,6 +1408,11 @@ func (s *Server) linkProjects(ctx context.Context, rows []store.ProjectShare) {
 		if pr, ok := latest[rows[i].Dir]; ok {
 			rows[i].LastPR = &pr
 		}
+		// No git in a folder macOS guards: opening the dashboard must not ask
+		// for Documents or Downloads. The row keeps its cost, without a link.
+		if protectedDir(rows[i].Dir) {
+			continue
+		}
 		wg.Add(1)
 		go func(row *store.ProjectShare) {
 			defer wg.Done()

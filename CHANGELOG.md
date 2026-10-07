@@ -11,6 +11,11 @@ Phase 3 (Delight) has no plan by design.
 
 ### Fixed
 
+- **Opening the dashboard no longer asks for Documents or Downloads.** The
+  per-repository cost panel ran `git` in the folder of every session with
+  spend, so a session once run in `~/Documents` or `~/Downloads` made macOS
+  ask for that folder after each update. Folders macOS guards are left alone
+  until you open the session itself.
 - **The menu bar says what its number counts.** It showed a bare *2*; it
   now reads *2 waiting*. The Dock badge stays a number.
 
