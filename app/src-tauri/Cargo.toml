@@ -27,6 +27,11 @@ serde_json = "1"
 dirs = "6"
 tauri-plugin-updater = "2"
 
+# Linux notifications with a click and Approve/Deny over D-Bus
+# (src/notify_linux.rs); the notification plugin already pulls it in.
+[target.'cfg(target_os = "linux")'.dependencies]
+notify-rust = "4.11"
+
 # SIGTERM quits through Tauri's exit (src/sigterm.rs); already in the tree.
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

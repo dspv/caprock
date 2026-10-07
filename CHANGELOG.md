@@ -9,6 +9,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **Notifications on Linux open the session and answer prompts.** A click
+  on a notification used to do nothing there. It now opens the session, and
+  a permission request carries Approve and Deny where the desktop's
+  notification server shows actions.
+
 ## [0.82.0] - 2026-10-07
 
 ### Added

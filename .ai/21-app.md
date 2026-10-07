@@ -765,8 +765,9 @@ tells a page where a file lives.
   where the chat covers it). Buttons inside the notification need a
   crate beyond the official plugins (UNUserNotificationCenter on macOS, toast
   activation on Windows, D-Bus actions on Linux); macOS has them now (below).
-  On Linux, where a click does not raise the app, the notification informs
-  only. The window's background throttling is off (macOS 14+): WKWebView
+  On Linux a click and Approve/Deny go through the notification server's
+  D-Bus actions (`notify_linux.rs`, 2026-10-07); a server without actions
+  still shows the text. The window's background throttling is off (macOS 14+): WKWebView
   suspends a hidden or covered page, and a test with the window behind
   others got no notification in 30 s with it on, against 0.03–0.12 s off.
 - **Buttons on macOS (2026-10-06).** The owner left the design to us ("do
@@ -810,9 +811,14 @@ tells a page where a file lives.
     notifications it showed for it, by notify id, so Notification Center
     keeps no stale Approve. One delivered before an app restart is not
     withdrawn; its buttons get "Already answered".
-  - **Not built.** Windows toast buttons (needs a registered AppUserModelID and a COM activator)
-    and Linux D-Bus actions (servers differ; a click does not raise the
-    app). Both stay follow-ups.
+  - **Linux (2026-10-07).** D-Bus actions through `notify-rust`
+    (`app/src-tauri/src/notify_linux.rs`): the default action opens the
+    session, Approve and Deny answer as on macOS, each notification waits
+    for its answer on its own thread. The owner asked for the click to work
+    rather than be documented as missing. Not seen on a real desktop yet;
+    CI builds it.
+  - **Not built.** Windows toast buttons (needs a registered AppUserModelID
+    and a COM activator); a follow-up.
 
 ## The scrolling rule
 

@@ -6,10 +6,12 @@
 //! UNUserNotificationCenter (`notify_macos.rs`): an approval carries Approve
 //! and Deny, answered here, from Rust, with the frame's `prompt_id` (ADR-035),
 //! so neither the window nor the page has to wake up; a click on the body
-//! opens the session. Elsewhere the official notification plugin shows a title
-//! and a body and reports no clicks or actions, so Approve and Deny are
-//! answered in the app: a click on the notification brings the app forward,
-//! and the page opens the prompt (`ui/src/lib/notify.ts`).
+//! opens the session. On Linux the desktop's notification server does the
+//! same over D-Bus (`notify_linux.rs`). On Windows the official notification
+//! plugin shows a title and a body and reports no clicks or actions, so
+//! Approve and Deny are answered in the app: a click on the notification
+//! brings the app forward, and the page opens the prompt
+//! (`ui/src/lib/notify.ts`).
 
 use std::io::Write;
 use tauri::{AppHandle, Manager, Runtime};
@@ -202,6 +204,10 @@ fn show<R: Runtime>(app: &AppHandle<R>, note: Note) -> Result<(), String> {
     let Some(note) = crate::notify_macos::show(note) else {
         return Ok(());
     };
+    #[cfg(target_os = "linux")]
+    if crate::notify_linux::show(app, &note).is_ok() {
+        return Ok(());
+    }
     plain(app, &note.title, &note.body)
 }
 
