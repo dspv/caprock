@@ -163,9 +163,9 @@ cancels. The footer names these keys.
   reset. Click a session to open it in the window; Escape or a click
   elsewhere closes the panel. A right click shows the menu: the same figures,
   the sessions waiting on you, *Show Caprock* and *Quit*. On Windows and
-  Linux the menu is the whole tray. On macOS the number of sessions waiting
-  on you sits beside the icon, and a plan window joins it, named, once it is
-  80% full (*2 · 5h 86%*).
+  Linux the menu is the whole tray. On macOS the sessions waiting on you
+  are named beside the icon (*2 waiting*), and a plan window joins them,
+  named, once it is 80% full (*2 waiting · 5h 86%*).
 - **Badge.** The Dock icon (a dot on the Windows taskbar) counts the sessions
   waiting on you — a permission prompt, or an agent that finished and waits
   for your answer: the popover's *Needs you* — and clears when none do.
