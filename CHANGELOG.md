@@ -19,6 +19,9 @@ Phase 3 (Delight) has no plan by design.
   keeps the corner thumbnail in a folder only the app it is dropped on may
   read, so Claude answered "operation not permitted". The app now copies
   such a file into Caprock's paste folder and types that path.
+- **The permission card on a phone names no keys.** On the session screen,
+  where there is no terminal, it said *Keys work from the terminal* and drew
+  Y and N on its buttons. It now shows the buttons alone there.
 
 ## [0.80.0] - 2026-10-07
 

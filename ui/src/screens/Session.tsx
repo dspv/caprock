@@ -285,7 +285,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
       )}
       {/* A waiting permission prompt on every tab, not only beside the
         * terminal: a phone opens on Timeline. The Terminal tab draws its own. */}
-      {active !== 'terminal' && s.owned && s.status !== 'ended' && <PermissionPrompt sessionId={id} />}
+      {active !== 'terminal' && s.owned && s.status !== 'ended' && <PermissionPrompt sessionId={id} keys={false} />}
       <div className="flex items-center gap-1 border-b border-border">
         {tabs.map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`px-2 sm:px-3 py-1.5 text-[12px] border-b-2 -mb-px ${active === t ? 'border-accent text-fg' : 'border-transparent text-fg-muted hover:text-fg'}`}>
