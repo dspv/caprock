@@ -152,6 +152,12 @@ fn main() {
         if let tauri::RunEvent::Reopen { .. } = _event {
             hotkey::show(_app);
         }
+        // Linux: no one answers a notification's buttons once the app is
+        // gone, so none is left on screen to be pressed for nothing.
+        #[cfg(target_os = "linux")]
+        if let tauri::RunEvent::Exit = _event {
+            notify_linux::withdraw_all();
+        }
     });
 }
 

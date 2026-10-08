@@ -422,6 +422,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
+ "zbus",
 ]
 
 [[package]]

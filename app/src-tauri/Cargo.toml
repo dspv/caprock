@@ -31,6 +31,8 @@ tauri-plugin-updater = "2"
 # (src/notify_linux.rs); the notification plugin already pulls it in.
 [target.'cfg(target_os = "linux")'.dependencies]
 notify-rust = "4.11"
+# CloseNotification by id (src/notify_linux.rs); already in the tree through notify-rust.
+zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io"] }
 
 # SIGTERM quits through Tauri's exit (src/sigterm.rs); already in the tree.
 [target.'cfg(unix)'.dependencies]

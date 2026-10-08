@@ -153,8 +153,8 @@ const WITHDRAW_MAX: usize = 64;
 /// Withdraw delivered notifications by their notify ids: the page calls it
 /// when a prompt it notified about is answered elsewhere (the terminal, the
 /// prompt card, a phone), so Notification Center holds no stale Approve
-/// button. macOS only; elsewhere the plugin cannot withdraw and this does
-/// nothing.
+/// button. macOS and Linux; on Windows the plugin cannot withdraw and this
+/// does nothing.
 #[tauri::command]
 pub fn withdraw_notifications(ids: Vec<String>) -> Result<(), String> {
     let ids = withdrawable(ids)?;
@@ -169,6 +169,8 @@ pub fn withdraw_notifications(ids: Vec<String>) -> Result<(), String> {
     }
     #[cfg(target_os = "macos")]
     crate::notify_macos::withdraw(&ids);
+    #[cfg(target_os = "linux")]
+    crate::notify_linux::withdraw(&ids);
     Ok(())
 }
 
