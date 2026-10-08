@@ -1,7 +1,7 @@
 {
-  "version": "2026-10-03.1",
+  "version": "2026-10-08.1",
   "source": "https://platform.claude.com/docs/en/about-claude/pricing",
-  "fetched_at": "2026-10-03",
+  "fetched_at": "2026-10-08",
   "currency": "USD",
   "unit": "per_million_tokens",
   "notes": [
@@ -23,7 +23,8 @@
     "gpt-5.3-codex fast mode (2x list: $3.50/$28.00) is deliberately not a row. Codex rollouts from late September 2026 record `service_tier` in `thread_settings_applied`, but all 598 such records on the owner's machine on 2026-10-01 say `default`; until a fast-tier turn is seen, the value it would carry is not known, and a second row could only be guessed at (rule 6). Claude Code transcripts do not record the speed at all. A fast-mode turn is priced at the standard rate and understated.",
     "Claude Opus 5.5 and Claude Sonnet 5.5 were read from the API pricing page on 2026-10-01. Opus 5.5 is $4/$20 and reads cache at 0.05x ($0.20 per 1M), another deliberate break from the 0.1x rule. Before it had a row, `claude-opus-5-5` matched `claude-opus-5` by prefix and was priced at Opus 5's $5/$25 and $0.50 cache read. The page gives Claude 4.6 and later models a 1M context window at standard pricing.",
     "`corrections` name turns an earlier version of this table priced wrongly, as opposed to a price that changed. The daemon reprices those turns once per table version, at the row in force at each turn's own time, and moves the session and daily totals by the difference. 2026-10-01.1 corrects Opus 5.5 (every turn) and Sonnet 5 from 2026-08-31.",
-    "gpt-6-astra ($10.00/$50.00 per 1M, $1.00 cached, $12.50 cache write) and gpt-6.1-sol ($2.00/$10.00, $0.10 cached, $2.50 cache write), 1.05M context, are OpenAI's list prices read from https://developers.openai.com/api/docs/pricing and the per-model pages on 2026-09-30. The same over-272K long-context surcharge applies as to gpt-6-sol and is not modelled."
+    "gpt-6-astra ($10.00/$50.00 per 1M, $1.00 cached, $12.50 cache write) and gpt-6.1-sol ($2.00/$10.00, $0.10 cached, $2.50 cache write), 1.05M context, are OpenAI's list prices read from https://developers.openai.com/api/docs/pricing and the per-model pages on 2026-09-30. The same over-272K long-context surcharge applies as to gpt-6-sol and is not modelled.",
+    "claude-haiku-5-5 read from https://platform.claude.com/docs/en/about-claude/pricing on 2026-10-08. It is priced by prompt length: up to 100,000 tokens $0.10 input, $0.125 5m write, $0.20 1h write, $0.01 cache read, $0.50 output per 1M; over 100,000 tokens $0.50 / $0.625 / $1.00 / $0.05 / $2.50. The row carries the lower tier, so a prompt over 100,000 tokens is under-reported fivefold, as the Gemini rows are over 200k. 1M context (models overview, same date). No correction: no earlier row matched it by prefix, so its turns were unpriced, not mispriced."
   ],
   "corrections": [
     { "model": "claude-opus-5-5", "reason": "No row before 2026-10-01.1; priced as claude-opus-5 by prefix." },
@@ -199,6 +200,16 @@
       "cache_read": 0.3,
       "output": 15.0,
       "context_window": 200000
+    },
+    {
+      "id": "claude-haiku-5-5",
+      "display": "Claude Haiku 5.5",
+      "input": 0.1,
+      "cache_write_5m": 0.125,
+      "cache_write_1h": 0.2,
+      "cache_read": 0.01,
+      "output": 0.5,
+      "context_window": 1000000
     },
     {
       "id": "claude-haiku-4-5",

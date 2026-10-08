@@ -9,6 +9,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **Claude Haiku 5.5 is priced and can be picked.** The pricing table gains
+  it at Anthropic's list price (read 2026-10-08) — its turns were unpriced
+  until now — and New agent offers it in place of Haiku 4.5 after it answered
+  the real `claude`. Anthropic charges more for a prompt over 100,000 tokens;
+  the table carries the lower tier, so such prompts are under-reported, as
+  the note in the table says.
+
 ## [0.87.0] - 2026-10-08
 
 ### Added
