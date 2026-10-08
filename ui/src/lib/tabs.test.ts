@@ -6,6 +6,7 @@ import {
   focusedLeaf,
   leaves,
   MAX_PANES,
+  namingLeaf,
   parseWorkspace,
   tabsOf,
   workspaceReducer,
@@ -164,5 +165,14 @@ describe('split panes', () => {
   it('a split tab survives storage', () => {
     const ws = run(open('a'), split('b'))
     expect(parseWorkspace(JSON.stringify(ws))).toEqual(ws)
+  })
+})
+
+describe('a tab\'s name', () => {
+  it('comes from its agent, not from a shell split beside it', () => {
+    const ws = run(open('agent'), { type: 'split', target: { kind: 'shell', sessionId: 'sh' }, direction: 'row', projectId: 'p1', title: 'sh' })
+    const t = activeTab(ws)!
+    expect(focusedLeaf(t).target.sessionId).toBe('sh')
+    expect(namingLeaf(t).target.sessionId).toBe('agent')
   })
 })

@@ -22,6 +22,9 @@ func createWorktree(ctx context.Context, repoDir, name string) (string, error) {
 		return "", errors.New("agents: worktree requested but cwd is not a git repository")
 	}
 	repo := strings.TrimSpace(top)
+	// Without this the main checkout lists .caprock-worktrees/ as an untracked
+	// change, and "Commit all" in Changes would commit the worktree into it.
+	ensureExcluded(ctx, repo)
 	dir := filepath.Join(repo, ".caprock-worktrees", name)
 	branch := "caprock/" + name
 

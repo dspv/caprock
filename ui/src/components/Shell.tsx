@@ -68,6 +68,10 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
   const live = useLive()
   const [plan, savePlan] = usePlan()
   const active = (r: Route) => (r.name === route.name) || (r.name === 'now' && route.name === 'session')
+  // Inside the desktop app the window already carries the link state, the
+  // version and the theme (status strip, sidebar), and the website's footer
+  // is the website's: a second set in the dashboard read as another app.
+  const app = isAppMode()
   return (
     <div className="min-h-screen flex flex-col">
       {/* Wraps on a phone. One fixed-height row was 882px wide at 390, so
@@ -119,18 +123,18 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           <FeedbackButton screen={screenName(route)} />
           {/* Live only with a round trip in the last 25 s; otherwise what is
             * being done about it (components/ConnectionState.tsx). */}
-          <ConnectionState link={live.link} heardAt={liveStore.heardAt} />
+          {!app && <ConnectionState link={live.link} heardAt={liveStore.heardAt} />}
           {/* Inside the app the status strip carries it (StatusStrip). */}
-          {!isAppMode() && <StaleUiPill />}
+          {!app && <StaleUiPill />}
           {/* Setting the plan is a settings change: on the machine only (ADR-029). */}
           {!isPairedDevice() && <PlanChip plan={plan} onSave={savePlan} />}
-          <ThemeToggle />
-          <VersionChip />
+          {!app && <ThemeToggle />}
+          {!app && <VersionChip />}
           <a href="#/settings" className="text-fg-muted hover:text-fg no-underline">settings</a>
         </div>
       </header>
       <main className="flex-1 p-3 max-w-[1600px] w-full mx-auto">{children}</main>
-      <SiteFooter />
+      {!app && <SiteFooter />}
     </div>
   )
 }

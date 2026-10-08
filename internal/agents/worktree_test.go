@@ -130,3 +130,16 @@ func TestCreateWorktreeRejectsPathSeparators(t *testing.T) {
 		}
 	}
 }
+
+// TestCreateWorktreeLeavesMainCheckoutClean: a worktree started from New agent
+// must not show up as an untracked change in the main checkout, where Commit
+// all would commit it.
+func TestCreateWorktreeLeavesMainCheckoutClean(t *testing.T) {
+	dir, run := gitRepo(t)
+	if _, err := createWorktree(context.Background(), dir, "ux-try"); err != nil {
+		t.Fatal(err)
+	}
+	if got := run("status", "--porcelain"); got != "" {
+		t.Errorf("main checkout is not clean after a worktree was added:\n%s", got)
+	}
+}

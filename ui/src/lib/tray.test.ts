@@ -8,7 +8,7 @@ const now = Date.UTC(2026, 9, 5, 12, 0, 0)
 const inSec = (h: number) => Math.round((now + h * 3600_000) / 1000)
 
 function item(id: string, reason: InboxItem['reason'], title = 'fix login'): InboxItem {
-  return { session: { session_id: id } as SessionSummary, projectId: 'p', projectName: 'api', reason, title, since: now }
+  return { session: { session_id: id } as SessionSummary, projectId: 'p', projectName: 'api', reason, title, since: now, stale: false }
 }
 
 const summary = {

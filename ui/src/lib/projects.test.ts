@@ -126,6 +126,7 @@ describe('the sidebar model', () => {
       permissions: new Set(['p1']),
       costs: new Map([['/a', 1.5]]),
       openSessions: new Set(['e2']),
+      now: Date.parse('2026-10-05T12:00:00Z'),
     })
     expect(m.inbox.map((i) => [i.session.session_id, i.reason])).toEqual([['p1', 'permission'], ['w1', 'waiting']])
     expect(m.projects.map((n) => n.project.id)).toEqual(['b', 'a'])
@@ -135,6 +136,29 @@ describe('the sidebar model', () => {
     // An ended session shows only while a tab still points at it.
     expect(b.worktrees.flatMap((w) => w.sessions.map((s) => s.session.session_id))).toEqual(['l1', 'e2'])
     expect(b.looping).toBe(1)
+  })
+
+  it('folds a turn put down more than 12h ago under the fresh ones, and does not count it', () => {
+    const now = Date.parse('2026-10-08T12:00:00Z')
+    const waiting = (id: string, at: string) => sess({ session_id: id, cwd: '/a', activity: { phrase: '', at, health: 'waiting-on-you' } })
+    const m = buildSidebar({
+      projects,
+      sessions: [
+        waiting('days', '2026-10-05T10:00:00Z'),
+        waiting('day', '2026-10-07T10:00:00Z'),
+        waiting('hour', '2026-10-08T11:00:00Z'),
+        waiting('morning', '2026-10-08T08:00:00Z'),
+        sess({ session_id: 'asks', cwd: '/a', activity: { phrase: '', at: '2026-10-01T00:00:00Z', health: 'working' } }),
+      ],
+      permissions: new Set(['asks']),
+      costs: new Map(),
+      openSessions: new Set(),
+      now,
+    })
+    expect(m.inbox.map((i) => [i.session.session_id, i.stale])).toEqual([
+      ['asks', false], ['morning', false], ['hour', false], ['day', true], ['days', true],
+    ])
+    expect(m.projects.find((n) => n.project.id === 'a')!.waiting).toBe(3)
   })
 
   it('puts live sessions in folders no project holds under Other folders, one row per folder', () => {

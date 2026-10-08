@@ -16,9 +16,31 @@ Phase 3 (Delight) has no plan by design.
   click on *Continue* carries an ended one on in a new tab. Before, the
   sidebar showed only what was running and yesterday's session took the
   dashboard and a session page to reach.
+- **Settings from anywhere in the app.** ⌘, opens it, a button sits beside
+  *Dashboard*, and the palette finds it by what is in it (permission mode,
+  theme, terminal, notifications, phone), along with the dashboard's
+  screens by name. In the app, Settings leads with how new agents start,
+  appearance, terminal and editor; the phone and Telegram follow.
 
 ### Fixed
 
+- **A worktree started from New agent no longer shows up as a change in
+  the main checkout.** `.caprock-worktrees/` was listed as untracked there,
+  and *Commit all* would have committed it.
+- **A new worktree needs no name.** Left empty, it is named after the first
+  message; a name with characters the daemon refuses is said beside the
+  field, not in a clipped line in the footer.
+- **Waiting on you is about now.** A turn that ended more than 12 hours ago
+  folds under *Older* and stops counting in the badge, the project's count
+  and ⌘J, so the session that just finished is not behind one from last
+  week.
+- **⌘T opens the shell in the folder of the tab in front** — its worktree —
+  not the project's root.
+- **A tab is named after its agent**, with *+N* for its split panes; it read
+  "shell" as soon as a shell was split beside it.
+- **The dashboard in the app drops what the window already shows**: the
+  website footer, a second link state, theme switch and version.
+- **"1 changed file"**, not "1 changed files".
 - **A long branch no longer hides the project's name** in the sidebar: the
   branch gives way first.
 

@@ -33,7 +33,7 @@ function sess(p: Partial<SessionSummary>): SessionSummary {
 
 const sessions = [
   sess({ session_id: 'agent-1', title: 'Fix the login bug' }),
-  sess({ session_id: 'agent-2', title: 'Waiting one', activity: { phrase: '', at: '2026-10-05T10:00:00Z', health: 'waiting-on-you' } }),
+  sess({ session_id: 'agent-2', title: 'Waiting one', activity: { phrase: '', at: new Date(Date.now() - 60_000).toISOString(), health: 'waiting-on-you' } }),
   sess({ session_id: 'theirs', title: 'Started elsewhere', owned: false, cwd: '/w/other', repo_root: '/w/other', project: 'other' }),
 ]
 
@@ -207,12 +207,15 @@ describe('workspace helpers', () => {
   })
 
   it('cycles through what waits, from the one in front', async () => {
-    const item = (id: string) => ({ session: sess({ session_id: id }), projectId: 'p', projectName: 'p', reason: 'waiting' as const, title: id, since: 0 })
+    const item = (id: string) => ({ session: sess({ session_id: id }), projectId: 'p', projectName: 'p', reason: 'waiting' as const, title: id, since: 0, stale: false })
     const inbox = [item('a'), item('b'), item('c')]
     expect(nextWaiting([], 'a')).toBeUndefined()
     expect(nextWaiting(inbox, 'x')?.title).toBe('a')
     expect(nextWaiting(inbox, 'a')?.title).toBe('b')
     expect(nextWaiting(inbox, 'c')?.title).toBe('a')
+    // A turn put down long ago is not jumped to.
+    expect(nextWaiting([{ ...item('old'), stale: true }, item('b')], 'b')?.title).toBe('b')
+    expect(nextWaiting([{ ...item('old'), stale: true }])).toBeUndefined()
   })
 
   it('⌘F asks the focused pane to open its find bar, and the palette offers it', async () => {

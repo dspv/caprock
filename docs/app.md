@@ -20,14 +20,19 @@ others. Installing it: [install-app.md](install-app.md).
 ## The window
 
 - **Sidebar.** *Waiting on you* comes first: sessions blocked on a permission
-  prompt, then sessions whose turn has ended, oldest first. Below it, every
+  prompt, then sessions whose turn has ended, oldest first. A turn that ended
+  more than 12 hours ago folds under *Older* and is left out of the count,
+  the badge and ⌘J. Below it, every
   project with its branch and today's cost (or how many sessions wait), opening
   to its worktrees and the agent sessions and shells in each. The dot says
   what a session is doing: green working, amber waiting, red looping, grey
   idle, hollow ended. Hover a project for *New agent* and *New shell*.
   Sessions in a folder that is not a repository sit under *Other folders*.
   *Dashboard* at the bottom opens Now, Cost, Lifetime and the other screens
-  inside the window.
+  inside the window; the sliders beside it open Settings (⌘,), where the
+  app puts how new agents start, appearance, terminal and editor first.
+- **Tab names.** A tab is named after its agent, with *+N* for the panes
+  split beside it.
 - **Projects.** Caprock lists the repositories your sessions ran in. ⌘O adds
   a folder, makes a new one (`git init` optional) or clones a repository with
   git's progress shown. Branch, changed files and ahead/behind follow commits
@@ -57,6 +62,9 @@ others. Installing it: [install-app.md](install-app.md).
   tabs, sessions and projects, best match first. Type a task that matches
   nothing — "Add rate limiting to the API" — and Enter opens *New agent* with
   it as the first message, in a new worktree named after it.
+- **New worktree.** In the New agent sheet, *Where → New worktree…* names
+  the worktree after the first message unless you type a name, and keeps
+  `.caprock-worktrees/` out of the main checkout's changes.
 - **Terminal.** A real terminal for every session Caprock started and every
   shell, and it keeps running when the app or the daemon restarts. Scrolled
   up, new output never moves what you are reading; a "↓ N new lines" pill
@@ -122,7 +130,7 @@ On macOS:
 
 | Keys        | Does                                    |
 | ----------- | --------------------------------------- |
-| ⌘T          | New shell in the selected project       |
+| ⌘T          | New shell in the folder of the tab      |
 | ⇧⌘N         | New agent session                       |
 | ⌘O          | Add a project (folder, new, clone)      |
 | ⌘1–8, ⌘9    | A tab by position; the last tab         |
@@ -133,6 +141,7 @@ On macOS:
 | ⌘J          | Next session waiting on you             |
 | ⌘F          | Find in the terminal                    |
 | ⌘K          | Command palette                         |
+| ⌘,          | Settings                                |
 | ⌘I          | Inspector                               |
 | ⌘\          | Hide or show the sidebar                |
 | ⇧⌘D         | Dashboard                               |

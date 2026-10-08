@@ -48,16 +48,37 @@ export function StatusScreen() {
       {/* Problems first: each one means something is not being captured or
         * cannot be started, and none of them is a preference. */}
       <Problems s={s} />
-      {owner && <Pairing />}
-      {owner && isTauri() && <DesktopNotifications />}
-      {owner && <PhoneAlerts />}
-      {owner && <PlanSection />}
-      <AppearanceSection />
-      {isAppMode() && <TerminalSettings />}
-      {owner && <SpawnModeSetting />}
-      {owner && <EditorSetting />}
-      <GitHubSettings />
-      {owner && isTauri() && <GlobalHotkey />}
+      {/* In the desktop app, what you change while working comes first: how
+        * a new agent starts, how the window and terminal look, which editor
+        * opens. The phone and Telegram are set up once. On a phone or in a
+        * browser the phone comes first, as before. */}
+      {isAppMode() && (
+        <>
+          {owner && <SpawnModeSetting />}
+          <AppearanceSection />
+          <TerminalSettings />
+          {owner && <EditorSetting />}
+          {owner && isTauri() && <DesktopNotifications />}
+          {owner && isTauri() && <GlobalHotkey />}
+          <GitHubSettings />
+          {owner && <Pairing />}
+          {owner && <PhoneAlerts />}
+          {owner && <PlanSection />}
+        </>
+      )}
+      {!isAppMode() && (
+        <>
+          {owner && <Pairing />}
+          {owner && isTauri() && <DesktopNotifications />}
+          {owner && <PhoneAlerts />}
+          {owner && <PlanSection />}
+          <AppearanceSection />
+          {owner && <SpawnModeSetting />}
+          {owner && <EditorSetting />}
+          <GitHubSettings />
+          {owner && isTauri() && <GlobalHotkey />}
+        </>
+      )}
       {owner && <PrivacySection />}
       {owner && <MemorySection />}
       <StoragePanel />

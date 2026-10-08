@@ -25,6 +25,11 @@ const DOT_LABEL: Record<Dot, string> = {
   ended: 'ended',
 }
 
+/** "1 changed file", "3 changed files". */
+export function changedFiles(n: number): string {
+  return `${n} changed ${n === 1 ? 'file' : 'files'}`
+}
+
 export function StatusDot({ dot }: { dot: Dot }) {
   return <span role="img" aria-label={DOT_LABEL[dot]} className={`inline-block h-[7px] w-[7px] shrink-0 rounded-full ${DOT_CLASS[dot]}`} />
 }
@@ -65,7 +70,7 @@ function ChangedBadge({ count, label, onOpen }: { count: number; label: string; 
     <button
       type="button"
       title={`Review and commit the changes ${label}`}
-      aria-label={`${count} changed files ${label}: review and commit`}
+      aria-label={`${changedFiles(count)} ${label}: review and commit`}
       onClick={(e) => { e.stopPropagation(); onOpen() }}
       className="rounded-[4px] px-0.5 text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
     >
@@ -152,7 +157,7 @@ export const ProjectRow = memo(function ProjectRow({
         {!isGroup && (
           <span className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 group-hover:flex group-focus-within:flex">
             {flatChanged > 0 && onOpenChanges && (
-              <RowAction label={`Review and commit ${flatChanged} changed files in ${p.name}`} onClick={() => onOpenChanges(id, node.worktrees[0])}><span className="num text-[10.5px]">±{flatChanged}</span></RowAction>
+              <RowAction label={`Review and commit ${changedFiles(flatChanged)} in ${p.name}`} onClick={() => onOpenChanges(id, node.worktrees[0])}><span className="num text-[10.5px]">±{flatChanged}</span></RowAction>
             )}
             <RowAction label={`New agent in ${p.name}`} onClick={() => onNewAgent(id)}><PlusIcon size={13} /></RowAction>
             <RowAction label={`New shell in ${p.name}`} onClick={() => onNewShell(id)}><TerminalIcon size={13} /></RowAction>
@@ -214,7 +219,7 @@ function WorktreeRows({
         </span>
         <span className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 group-hover:flex group-focus-within:flex">
           {!!w.changed && onOpenChanges && (
-            <RowAction label={`Review and commit ${w.changed} changed files on ${w.branch}`} onClick={() => onOpenChanges(projectId, w)}><span className="num text-[10.5px]">±{w.changed}</span></RowAction>
+            <RowAction label={`Review and commit ${changedFiles(w.changed)} on ${w.branch}`} onClick={() => onOpenChanges(projectId, w)}><span className="num text-[10.5px]">±{w.changed}</span></RowAction>
           )}
           <RowAction label={`New agent on ${w.branch}`} onClick={() => onNewAgent(projectId, w.path)}><PlusIcon size={12} /></RowAction>
           <RowAction label={`New shell on ${w.branch}`} onClick={() => onNewShell(projectId, w.path)}><TerminalIcon size={12} /></RowAction>

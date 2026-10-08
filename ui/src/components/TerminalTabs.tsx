@@ -7,7 +7,7 @@
  */
 import { Fragment, memo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { SessionSummary } from '@/lib/api'
-import { focusedLeaf, type PaneNode, type PaneSplit, type Tab } from '@/lib/tabs'
+import { leaves, namingLeaf, type PaneNode, type PaneSplit, type Tab } from '@/lib/tabs'
 import { dotOf, sessionTitle } from '@/lib/sidebar'
 import { TerminalPane, type PaneStatus } from './TerminalPane'
 import { AgentGlyph, ChatIcon, CloseIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
@@ -74,10 +74,11 @@ export function TabStrip(props: TabStripProps) {
     >
       <div className="flex min-w-0 flex-1 items-end gap-0.5 overflow-hidden" data-tauri-drag-region>
         {tabs.map((t, i) => {
-          const leaf = focusedLeaf(t)
+          const leaf = namingLeaf(t)
           const s = sessions.get(leaf.target.sessionId)
           const isShell = leaf.target.kind === 'shell' || s?.kind === 'shell'
-          const title = s ? sessionTitle(s) : t.title || (isShell ? 'shell' : 'session')
+          const panes = leaves(t.root).length
+          const title = `${s ? sessionTitle(s) : t.title || (isShell ? 'shell' : 'session')}${panes > 1 ? ` +${panes - 1}` : ''}`
           const active = t.id === activeTabId
           return (
             <div

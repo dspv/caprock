@@ -43,7 +43,7 @@ import { ChangesView } from '@/components/ChangesView'
 import { NewAgentSheet } from '@/components/NewAgentSheet'
 import { AddProjectSheet, splitPath } from '@/components/AddProjectSheet'
 import { CommandPalette, type PaletteItem } from '@/components/CommandPalette'
-import { BranchIcon, DashboardIcon, ExternalIcon, FolderIcon, FolderPlusIcon, InspectorIcon, PlusIcon, SearchIcon, SparkIcon, TerminalIcon } from '@/components/AppIcons'
+import { BranchIcon, DashboardIcon, ExternalIcon, FolderIcon, FolderPlusIcon, InspectorIcon, PlusIcon, SearchIcon, SettingsIcon, SparkIcon, TerminalIcon } from '@/components/AppIcons'
 import type { PaneStatus } from '@/components/TerminalPane'
 import { EditorMenu, type EditorMenuAt } from '@/components/EditorMenu'
 import { preferredName, useEditors } from '@/lib/editors'
@@ -51,6 +51,9 @@ import { applyTerminalChrome, getTerminalPrefs, subscribeTerminalPrefs } from '@
 import { warmTerminal } from '@/lib/termwarm'
 import { StatusDot } from '@/components/ProjectRow'
 import { RecentInProject } from '@/components/RecentInProject'
+import { worktreeSlug } from '@/lib/slug'
+
+export { worktreeSlug }
 
 const Dashboard = lazy(() => import('@/App').then((m) => ({ default: m.Dashboard })))
 const PairScreen = lazy(() => import('@/screens/Pair').then((m) => ({ default: m.PairScreen })))
@@ -100,13 +103,20 @@ type SheetState =
   | { kind: 'palette' }
   | null
 
-/** A worktree name from a task's words: "Fix the login bug" → "fix-the-login-bug". */
-export function worktreeSlug(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').split('-').slice(0, 6).join('-').slice(0, 40).replace(/-+$/, '')
-}
 
-/** The next session waiting on you after the one in front, wrapping; the first when the one in front is not waiting. */
-export function nextWaiting(inbox: InboxItem[], currentSessionId?: string): InboxItem | undefined {
+/** The dashboard's screens, reachable from the palette by name: [route, label, what is on it]. */
+const SCREENS: [string, string, string][] = [
+  ['now', 'Now', 'every session on the machine, live'],
+  ['cost', 'Cost', 'spend by day, project and model'],
+  ['history', 'Lifetime', 'every session, every day, in totals'],
+  ['week', 'Week', 'one week, as a card'],
+  ['notes', 'Memory', 'what the agents said, searchable'],
+  ['tasks', 'Tasks', 'the board'],
+]
+
+/** The next session waiting on you after the one in front, wrapping; the first when the one in front is not waiting. Stale ones are skipped. */
+export function nextWaiting(all: InboxItem[], currentSessionId?: string): InboxItem | undefined {
+  const inbox = all.filter((i) => !i.stale)
   if (inbox.length === 0) return undefined
   const at = inbox.findIndex((i) => i.session.session_id === currentSessionId)
   return inbox[(at + 1) % inbox.length]
@@ -331,6 +341,7 @@ export function AppShell() {
   const onAddProject = useCallback(() => setSheet({ kind: 'project' }), [])
   const onPalette = useCallback(() => setSheet({ kind: 'palette' }), [])
   const onDashboard = useCallback(() => { location.hash = '#/' }, [])
+  const onSettings = useCallback(() => { location.hash = '#/settings' }, [])
   const onPaneStatus = useCallback((sessionId: string, s: PaneStatus) => setPaneStatus((cur) => ({ ...cur, [sessionId]: s })), [])
   const onFocusPane = useCallback((tabId: string, paneId: string) => dispatch({ type: 'focus-pane', tabId, paneId }), [])
   const onClosePane = useCallback((tabId: string, paneId: string) => dispatch({ type: 'close-pane', tabId, paneId }), [])
@@ -351,7 +362,8 @@ export function AppShell() {
 
   const run = useCallback((c: AppCommand) => {
     switch (c.kind) {
-      case 'new-shell': onNewShell(); break
+      // In the folder of the session in front — its worktree, not the project's root.
+      case 'new-shell': if (workspaceShown && current) onNewShell(current.projectId, focusedSession?.cwd || undefined); else onNewShell(); break
       case 'new-agent': onNewAgent(); break
       case 'add-project': onAddProject(); break
       case 'detach-tab': if (workspaceShown) detach(); break
@@ -367,8 +379,9 @@ export function AppShell() {
       case 'prev-pane': dispatch({ type: 'cycle-pane', delta: -1 }); break
       case 'next-waiting': jumpToWaiting(); break
       case 'find': if (workspaceShown) window.dispatchEvent(new Event(FIND_EVENT)); break
+      case 'settings': onSettings(); break
     }
-  }, [onNewShell, onNewAgent, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting])
+  }, [onNewShell, onNewAgent, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings])
 
   // The app's keys, before anything else on the page sees them. The terminal
   // already lets them through (xtermInput), and they are never its keys.
@@ -430,7 +443,9 @@ export function AppShell() {
       { id: 'a-project', group: 'Actions', label: 'Add a project', hint: '⌘O', icon: <FolderPlusIcon size={14} />, run: onAddProject },
       { id: 'a-inspector', group: 'Actions', label: prefs.inspector ? 'Hide the inspector' : 'Show the inspector', hint: '⌘I', icon: <InspectorIcon size={14} />, run: () => run({ kind: 'inspector' }) },
       { id: 'a-dashboard', group: 'Actions', label: 'Open the dashboard', hint: '⇧⌘D', icon: <DashboardIcon size={14} />, run: onDashboard },
+      { id: 'a-settings', group: 'Actions', label: 'Settings', detail: 'permission mode, theme, terminal, notifications, phone', hint: '⌘,', icon: <SettingsIcon size={14} />, run: onSettings },
       { id: 'a-theme', group: 'Actions', label: 'Switch theme', icon: <SparkIcon size={14} />, run: toggleTheme },
+      ...SCREENS.map(([route, label, detail]) => ({ id: `a-screen-${route}`, group: 'Actions' as const, label, detail, icon: <DashboardIcon size={14} />, run: () => { location.hash = `#/${route}` } })),
       { id: 'a-waiting', group: 'Actions', label: 'Next session waiting on you', hint: '⌘J', icon: <SparkIcon size={14} />, run: jumpToWaiting },
     )
     // F20: the app's own updater; the answer shows in the status strip.
@@ -487,7 +502,7 @@ export function AppShell() {
       }
     }
     return items
-  }, [ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, current, onNewAgent, onNewShell, onAddProject, onDashboard, toggleTheme, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges])
+  }, [ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, current, onNewAgent, onNewShell, onAddProject, onDashboard, toggleTheme, onSettings, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges])
 
   // Orca's "new task": text that matches nothing starts an agent on it, in a worktree named after it.
   const paletteFallback = useCallback((q: string): PaletteItem | undefined => {
@@ -551,6 +566,7 @@ export function AppShell() {
               onFolderMenu={editors ? onFolderMenu : undefined}
               onAddProject={onAddProject}
               onDashboard={onDashboard}
+              onSettings={onSettings}
               onPalette={onPalette}
               onOpenChanges={data.source === 'api' ? onOpenChanges : undefined}
             />

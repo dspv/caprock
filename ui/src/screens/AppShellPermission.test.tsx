@@ -30,7 +30,7 @@ function sess(p: Partial<SessionSummary>): SessionSummary {
 
 const sessions = [
   sess({ session_id: 'agent-1', title: 'Fix the login bug' }),
-  sess({ session_id: 'agent-2', title: 'Waiting one', activity: { phrase: '', at: '2026-10-05T10:00:00Z', health: 'waiting-on-you' } }),
+  sess({ session_id: 'agent-2', title: 'Waiting one', activity: { phrase: '', at: new Date(Date.now() - 60_000).toISOString(), health: 'waiting-on-you' } }),
 ]
 
 vi.mock('@/lib/api', async (orig) => {
