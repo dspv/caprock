@@ -74,6 +74,14 @@ describe('findAttention', () => {
     expect(items[0]!.severity).toBe('medium')
   })
 
+  it('stops calling a session put down days ago "waiting"', () => {
+    const putDown = session({
+      session_id: 'a',
+      activity: { health: 'waiting-on-you', phrase: 'asked you something', at: '2026-08-17T11:30:00Z' } as never,
+    })
+    expect(findAttention({ sessions: [putDown], alerts: [], now: NOW })).toEqual([])
+  })
+
   it('never flags a session merely for being expensive', () => {
     // Spending is the job. Only spending with nothing to show for it is news,
     // so this session has the work to match its bill.

@@ -9,8 +9,17 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **Keyboard shortcuts in the palette.** ⌘K → *Keyboard shortcuts* lists
+  every key the app answers to.
+
 ### Fixed
 
+- **A session put down days ago is no longer "Waiting for you" on Now.**
+  Past 12 hours the banner goes, as the sidebar already folds it.
+- **The inspector cuts a long folder path from the left**, keeping the end
+  that tells two worktrees apart.
 - **Linux notifications behave like the macOS ones.** Checked against the
   released app on dunst and XFCE: Approve, Deny and a click already worked;
   three things did not. An approval now stays until it is answered (it

@@ -52,6 +52,7 @@ import { warmTerminal } from '@/lib/termwarm'
 import { StatusDot, fmtCostShort } from '@/components/ProjectRow'
 import { fmtAgo } from '@/lib/format'
 import { RecentInProject } from '@/components/RecentInProject'
+import { ShortcutsSheet } from '@/components/ShortcutsSheet'
 import { worktreeSlug } from '@/lib/slug'
 
 export { worktreeSlug }
@@ -102,6 +103,7 @@ type SheetState =
   | { kind: 'agent'; projectId?: string; cwd?: string; prompt?: string; worktree?: string }
   | { kind: 'project' }
   | { kind: 'palette' }
+  | { kind: 'keys' }
   | null
 
 
@@ -445,6 +447,7 @@ export function AppShell() {
       { id: 'a-inspector', group: 'Actions', label: prefs.inspector ? 'Hide the inspector' : 'Show the inspector', hint: '⌘I', icon: <InspectorIcon size={14} />, run: () => run({ kind: 'inspector' }) },
       { id: 'a-dashboard', group: 'Actions', label: 'Open the dashboard', hint: '⇧⌘D', icon: <DashboardIcon size={14} />, run: onDashboard },
       { id: 'a-settings', group: 'Actions', label: 'Settings', detail: 'permission mode, theme, terminal, notifications, phone', hint: '⌘,', icon: <SettingsIcon size={14} />, run: onSettings },
+      { id: 'a-keys', group: 'Actions', label: 'Keyboard shortcuts', detail: 'every key the app answers to', icon: <SearchIcon size={14} />, run: () => setSheet({ kind: 'keys' }) },
       { id: 'a-theme', group: 'Actions', label: 'Switch theme', icon: <SparkIcon size={14} />, run: toggleTheme },
       ...SCREENS.map(([route, label, detail]) => ({ id: `a-screen-${route}`, group: 'Actions' as const, label, detail, icon: <DashboardIcon size={14} />, run: () => { location.hash = `#/${route}` } })),
       { id: 'a-waiting', group: 'Actions', label: 'Next session waiting on you', hint: '⌘J', icon: <SparkIcon size={14} />, run: jumpToWaiting },
@@ -730,6 +733,7 @@ export function AppShell() {
         />
       )}
       {folderMenu && <EditorMenu at={folderMenu} editors={editors} onClose={closeFolderMenu} onError={setToast} />}
+      {sheet?.kind === 'keys' && <ShortcutsSheet isMac={isMac} onClose={closeSheet} />}
       {sheet?.kind === 'palette' && <CommandPalette items={paletteItems} fallback={paletteFallback} search={paletteSearch} onClose={closeSheet} />}
     </div>
   )
