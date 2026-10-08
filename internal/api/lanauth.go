@@ -281,6 +281,11 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/projects/{id}/changes":      true,
 	"GET /v1/projects/{id}/changes/diff": true,
 
+	// One file of a project and the list of them (the app's file tab):
+	// what a session's diff already shows, read whole. Never a write.
+	"GET /v1/projects/{id}/file":  true,
+	"GET /v1/projects/{id}/files": true,
+
 	// GitHub (WP-19): the connection's state (never the token), the clone
 	// picker's lists, and each worktree's pull request with its checks and
 	// reviews. The daemon makes the calls; the token never leaves it.

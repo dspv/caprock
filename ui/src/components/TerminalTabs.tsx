@@ -7,10 +7,11 @@
  */
 import { Fragment, memo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { SessionSummary } from '@/lib/api'
-import { leaves, namingLeaf, type PaneNode, type PaneSplit, type Tab } from '@/lib/tabs'
+import { leaves, namingLeaf, type PaneLeaf, type PaneNode, type PaneSplit, type Tab } from '@/lib/tabs'
+import { baseName } from '@/lib/files'
 import { dotOf, sessionTitle } from '@/lib/sidebar'
 import { TerminalPane, type PaneStatus } from './TerminalPane'
-import { AgentGlyph, ChatIcon, CloseIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
+import { AgentGlyph, ChatIcon, CloseIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
 import { StatusDot } from './ProjectRow'
 
 export interface TabStripProps {
@@ -75,10 +76,14 @@ export function TabStrip(props: TabStripProps) {
       <div className="flex min-w-0 flex-1 items-end gap-0.5 overflow-hidden" data-tauri-drag-region>
         {tabs.map((t, i) => {
           const leaf = namingLeaf(t)
-          const s = sessions.get(leaf.target.sessionId)
+          // A file tab is named by the file; its tooltip is the whole path.
+          const file = leaf.target.kind === 'file' ? leaf.target.path ?? '' : undefined
+          const s = file === undefined ? sessions.get(leaf.target.sessionId) : undefined
           const isShell = leaf.target.kind === 'shell' || s?.kind === 'shell'
           const panes = leaves(t.root).length
-          const title = `${s ? sessionTitle(s) : t.title || (isShell ? 'shell' : 'session')}${panes > 1 ? ` +${panes - 1}` : ''}`
+          const title = file !== undefined
+            ? baseName(file)
+            : `${s ? sessionTitle(s) : t.title || (isShell ? 'shell' : 'session')}${panes > 1 ? ` +${panes - 1}` : ''}`
           const active = t.id === activeTabId
           return (
             <div
@@ -95,18 +100,24 @@ export function TabStrip(props: TabStripProps) {
               }}
               onAuxClick={(e) => { if (e.button === 1) props.onDetach(t.id) }}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') props.onActivate(t.id) }}
-              title={`${title}${i < 9 ? ` — ⌘${i + 1}` : ''}`}
+              title={`${file ?? title}${i < 9 ? ` — ⌘${i + 1}` : ''}`}
               className={`group relative flex h-[32px] min-w-[112px] max-w-[232px] flex-1 basis-[180px] cursor-default select-none items-center gap-2 rounded-t-[9px] pl-3 pr-1.5 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
-                active ? 'app-slab text-fg' : 'text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'
+                active ? (file !== undefined ? 'bg-bg text-fg' : 'app-slab text-fg') : 'text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'
               } ${dragging === t.id ? 'opacity-60' : ''}`}
             >
-              <StatusDot dot={s ? dotOf(s, permissions.has(s.session_id)) : 'idle'} />
-              <AgentGlyph agent={s?.agent} shell={isShell} />
+              {file !== undefined ? (
+                <FileIcon size={13} className="text-fg-faint" />
+              ) : (
+                <>
+                  <StatusDot dot={s ? dotOf(s, permissions.has(s.session_id)) : 'idle'} />
+                  <AgentGlyph agent={s?.agent} shell={isShell} />
+                </>
+              )}
               <span className="min-w-0 flex-1 truncate">{title}</span>
               <button
                 type="button"
-                aria-label={`Close tab ${title} — the session keeps running`}
-                title="Close tab (⌘W) — the session keeps running"
+                aria-label={file !== undefined ? `Close tab ${title}` : `Close tab ${title} — the session keeps running`}
+                title={file !== undefined ? 'Close tab (⌘W)' : 'Close tab (⌘W) — the session keeps running'}
                 onClick={(e) => { e.stopPropagation(); props.onDetach(t.id) }}
                 className={`flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${active ? '' : 'invisible group-hover:visible'}`}
               >
@@ -158,10 +169,13 @@ export const TerminalStack = memo(function TerminalStack({
   onFocusPane,
   onClosePane,
   onResize,
+  renderFile,
 }: {
   tabs: Tab[]
   /** The tab shown, or undefined when the workspace itself is hidden. */
   visibleTabId?: string
+  /** What a file tab shows (components/FileView.tsx); stable, as the stack is memoised. */
+  renderFile?: (tab: Tab, leaf: PaneLeaf, visible: boolean) => ReactNode
   onPaneStatus?: (sessionId: string, s: PaneStatus) => void
   /** The session's program exited; the workspace replaces it with a shell. */
   onPaneExit?: (sessionId: string) => void
@@ -173,10 +187,12 @@ export const TerminalStack = memo(function TerminalStack({
   onResize?: (tabId: string, splitId: string, sizes: number[]) => void
 }) {
   return (
-    <div className="app-slab relative h-full w-full">
+    // The terminal slab is each terminal tab's own ground; a file tab reads
+    // on the page's, in the app's theme.
+    <div className="relative h-full w-full">
       {tabs.map((t) => (
-        <div key={t.id} className="absolute inset-0" hidden={t.id !== visibleTabId} data-tab-panel={t.id}>
-          <PaneView
+        <div key={t.id} className={`absolute inset-0 ${t.root.type === 'pane' && t.root.target.kind === 'file' ? 'bg-bg' : 'app-slab'}`} hidden={t.id !== visibleTabId} data-tab-panel={t.id}>
+          {t.root.type === 'pane' && t.root.target.kind === 'file' ? renderFile?.(t, t.root, t.id === visibleTabId) : <PaneView
             node={t.root}
             visible={t.id === visibleTabId}
             ctx={{
@@ -190,7 +206,7 @@ export const TerminalStack = memo(function TerminalStack({
               onClosePane: onClosePane && ((paneId: string) => onClosePane(t.id, paneId)),
               onResize: onResize && ((splitId: string, sizes: number[]) => onResize(t.id, splitId, sizes)),
             }}
-          />
+          />}
         </div>
       ))}
     </div>

@@ -8,7 +8,23 @@
  */
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { Prose, parseNotes, inlines } from './Prose'
+import { Prose, parseDoc, parseNotes, inlines } from './Prose'
+
+describe('a document (the file tab)', () => {
+  it('keeps heading levels, numbered and nested items, and a fence verbatim', () => {
+    const blocks = parseDoc('## Install\n\n1. Clone it\n   - with **ssh**\n2. Run\n\n```go\nfunc main() {\n\n}\n```\n---\nend')
+    expect(blocks.map((b) => b.kind)).toEqual(['heading', 'item', 'item', 'item', 'code', 'rule', 'para'])
+    expect(blocks[0]).toMatchObject({ kind: 'heading', level: 2 })
+    expect(blocks[1]).toMatchObject({ marker: '1.', depth: 0 })
+    expect(blocks[2]).toMatchObject({ marker: '·', depth: 1 })
+    expect(blocks[4]).toEqual({ kind: 'code', lang: 'go', text: 'func main() {\n\n}' })
+  })
+
+  it('leaves the chat renderer as it was: a link stays text there', () => {
+    render(<Prose text={'See [the site](https://caprock.dev).'} />)
+    expect(document.querySelector('a')).toBeNull()
+  })
+})
 
 const real = `### Fixed
 

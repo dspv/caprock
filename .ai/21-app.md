@@ -782,6 +782,33 @@ there, and worktrees as first-class places to work.
 - Rule 7 holds: Caprock started the shell. A shell from a controller phone is
   P1 and needs its own ADR-034 amendment.
 
+## File tabs
+
+The owner asked (2026-10-09) to read a project's files inside the app —
+Markdown at least, code too — without adding weight to a window that is
+already at the edge of what it should carry. So a file is a **tab kind**,
+not a panel or a screen: it sits in the strip beside the terminals, closes
+with ⌘W and is restored on relaunch like them
+([04-ui.md § The app workspace](04-ui.md#the-app-workspace), File tabs).
+
+- **Read-only.** `GET /v1/projects/{id}/file` and `…/files`
+  ([03-contracts.md § Files](03-contracts.md#files-read-a-projects-file)):
+  a path resolved, symlinks included, inside the project's folder or the
+  worktree's; 1 MB at most; a binary says so and sends nothing. Editing
+  stays the editor's (*Open in …*).
+- **Light.** No syntax highlighter and no Markdown library: Markdown goes
+  through the chat's own renderer read as a document, code is plain
+  monospace with line numbers. The bundle gains a few kilobytes, not a
+  grammar set.
+- **Opened from** the Changes view, the cockpit's changed files, a relative
+  link in a Markdown file, and ⌘K → *Open file…* (git's file list, filtered
+  in the browser).
+- **Kept current without a timer**: read when the tab comes to the front,
+  on focus, and when a `project` frame or an agent's edit of that path
+  arrives on the live socket.
+- **A phone may read** what a paired viewer may already read in a diff; it
+  cannot write anything here.
+
 ## Dropping a file
 
 A file dragged from Finder, Explorer or a file manager onto a terminal in the

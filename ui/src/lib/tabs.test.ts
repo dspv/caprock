@@ -189,3 +189,31 @@ describe('a tab\'s name', () => {
     expect(namingLeaf(t).target.sessionId).toBe('agent')
   })
 })
+
+describe('file tabs', () => {
+  const file = (path: string, worktree = ''): WorkspaceAction => ({
+    type: 'open', target: { kind: 'file', sessionId: `file:p1:${worktree}:${path}`, path, worktree }, projectId: 'p1', title: path.split('/').pop()!,
+  })
+
+  it('opens a file once, named by the file', () => {
+    const ws = run(file('docs/app.md'), open('a'), file('docs/app.md'))
+    expect(ws.tabs).toHaveLength(2)
+    const t = activeTab(ws)!
+    expect(t.title).toBe('app.md')
+    expect(focusedLeaf(t).target).toMatchObject({ kind: 'file', path: 'docs/app.md' })
+  })
+
+  it('never splits a file tab: a shell asked beside it gets a tab of its own', () => {
+    const ws = run(file('README.md'), { type: 'split', target: { kind: 'shell', sessionId: 'sh' }, direction: 'row', projectId: 'p1', title: 'shell' })
+    expect(ws.tabs).toHaveLength(2)
+    expect(ws.tabs.every((t) => t.root.type === 'pane')).toBe(true)
+  })
+
+  it('is kept across a relaunch, and a file tab without a path is dropped', () => {
+    const ws = run(file('README.md', 'feat'))
+    expect(parseWorkspace(JSON.stringify(ws)).tabs[0]!.root).toMatchObject({ target: { kind: 'file', path: 'README.md', worktree: 'feat' } })
+    const broken = JSON.parse(JSON.stringify(ws)) as Workspace
+    delete (broken.tabs[0]!.root as { target: { path?: string } }).target.path
+    expect(parseWorkspace(JSON.stringify(broken)).tabs).toHaveLength(0)
+  })
+})

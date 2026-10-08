@@ -22,8 +22,11 @@ import {
   saveWorkspace,
   tabsOf,
   workspaceReducer,
+  type PaneLeaf,
+  type Tab,
   type TabTarget,
 } from '@/lib/tabs'
+import { baseName, fileKey } from '@/lib/files'
 import { useWorkspaceData } from '@/lib/useWorkspaceData'
 import { useShellTray } from '@/lib/tray'
 import { OPEN_SESSION_EVENT } from '@/lib/shell'
@@ -40,13 +43,15 @@ import { appUpdate } from '@/lib/appupdate'
 import { PermissionPrompt } from '@/components/PermissionPrompt'
 import { ChatView } from '@/components/ChatView'
 import { ChangesView } from '@/components/ChangesView'
+import { FileView } from '@/components/FileView'
+import { FilePicker } from '@/components/FilePicker'
 import { NewAgentSheet } from '@/components/NewAgentSheet'
 import { AddProjectSheet, splitPath } from '@/components/AddProjectSheet'
 import { CommandPalette, type PaletteItem } from '@/components/CommandPalette'
-import { BranchIcon, DashboardIcon, ExternalIcon, FolderIcon, FolderPlusIcon, InspectorIcon, PlusIcon, SearchIcon, SettingsIcon, SparkIcon, TerminalIcon } from '@/components/AppIcons'
+import { BranchIcon, DashboardIcon, ExternalIcon, FileIcon, FolderIcon, FolderPlusIcon, InspectorIcon, PlusIcon, SearchIcon, SettingsIcon, SparkIcon, TerminalIcon } from '@/components/AppIcons'
 import type { PaneStatus } from '@/components/TerminalPane'
 import { EditorMenu, type EditorMenuAt } from '@/components/EditorMenu'
-import { preferredName, useEditors } from '@/lib/editors'
+import { joinPath, preferredName, useEditors } from '@/lib/editors'
 import { applyTerminalChrome, getTerminalPrefs, subscribeTerminalPrefs } from '@/lib/termprefs'
 import { warmTerminal } from '@/lib/termwarm'
 import { StatusDot, fmtCostShort } from '@/components/ProjectRow'
@@ -109,6 +114,8 @@ type SheetState =
   | { kind: 'project' }
   | { kind: 'palette' }
   | { kind: 'keys' }
+  /** The palette's "Open file…": the files of one worktree. */
+  | { kind: 'files'; projectId: string; worktree: string; title: string }
   | null
 
 
@@ -255,6 +262,11 @@ export function AppShell() {
     dispatch({ type: 'split', target, projectId, title, direction })
     showWorkspace()
   }, [showWorkspace])
+
+  /** A project's file, read-only, in a tab of its own; the same file opens once. */
+  const openFile = useCallback((projectId: string, worktree: string, path: string) => {
+    openTab({ kind: 'file', sessionId: fileKey(projectId, worktree, path), path, worktree }, projectId, baseName(path))
+  }, [openTab])
 
   /** A session's terminal when Caprock holds one; its details otherwise (rule 7). */
   const openSession = useCallback((s: SessionSummary, projectId: string) => {
@@ -469,6 +481,29 @@ export function AppShell() {
   }, [projectsById, source, archiveLocal, onCloseProjectTabs, refresh])
   const onRoute = useCallback((h: string) => { location.hash = h }, [])
 
+  // The worktree "Open file…" lists: the file tab's in front, else the
+  // focused session's, else the shown project's main checkout.
+  const fileScope = useMemo(() => {
+    if (source !== 'api') return undefined
+    const scope = (n: ProjectNode, w?: WorktreeNode) => {
+      const t = changesTargetOf(n, w)
+      return { projectId: t.projectId, worktree: t.worktree, title: t.title }
+    }
+    if (focused?.kind === 'file' && current) {
+      const n = model.projects.find((x) => x.project.id === current.projectId)
+      const wt = focused.worktree ?? ''
+      if (n) return scope(n, wt ? n.worktrees.find((w) => !w.isMain && w.key === wt) : undefined)
+    }
+    if (focused) {
+      for (const n of model.projects) {
+        const w = n.worktrees.find((x) => x.sessions.some((y) => y.session.session_id === focused.sessionId))
+        if (w) return scope(n, w)
+      }
+    }
+    const n = model.projects.find((x) => x.project.id === activeProjectId)
+    return n?.project.root ? scope(n) : undefined
+  }, [source, focused, current, model.projects, activeProjectId])
+
   const paletteItems = useMemo<PaletteItem[]>(() => {
     const items: PaletteItem[] = model.inbox.map((i) => ({
       id: `w-${i.session.session_id}`,
@@ -484,6 +519,7 @@ export function AppShell() {
       { id: 'a-shell', group: 'Actions', label: 'New shell', hint: '⌘T', icon: <TerminalIcon size={14} />, run: () => onNewShell() },
       { id: 'a-project', group: 'Actions', label: 'Add a project', hint: '⌘O', icon: <FolderPlusIcon size={14} />, run: onAddProject },
       { id: 'a-inspector', group: 'Actions', label: prefs.inspector ? 'Hide the inspector' : 'Show the inspector', hint: '⌘I', icon: <InspectorIcon size={14} />, run: () => run({ kind: 'inspector' }) },
+      ...(fileScope ? [{ id: 'a-open-file', group: 'Actions' as const, label: 'Open file…', detail: fileScope.title, icon: <FileIcon size={14} />, run: () => setSheet({ kind: 'files', ...fileScope }) }] : []),
       { id: 'a-dashboard', group: 'Actions', label: 'Open the dashboard', hint: '⇧⌘D', icon: <DashboardIcon size={14} />, run: onDashboard },
       { id: 'a-settings', group: 'Actions', label: 'Settings', detail: 'permission mode, theme, terminal, notifications, phone', hint: '⌘,', icon: <SettingsIcon size={14} />, run: onSettings },
       { id: 'a-keys', group: 'Actions', label: 'Keyboard shortcuts', detail: 'every key the app answers to', icon: <SearchIcon size={14} />, run: () => setSheet({ kind: 'keys' }) },
@@ -495,7 +531,7 @@ export function AppShell() {
     if (isTauri()) items.push({ id: 'a-update', group: 'Actions', label: 'Check for updates', icon: <SparkIcon size={14} />, run: () => { void appUpdate.check() } })
     if (current) {
       items.push(
-        { id: 'a-find', group: 'Actions', label: 'Find in the terminal', hint: '⌘F', icon: <SearchIcon size={14} />, run: () => window.dispatchEvent(new Event(FIND_EVENT)) },
+        { id: 'a-find', group: 'Actions', label: focused?.kind === 'file' ? 'Find in the file' : 'Find in the terminal', hint: '⌘F', icon: <SearchIcon size={14} />, run: () => window.dispatchEvent(new Event(FIND_EVENT)) },
         { id: 'a-split-right', group: 'Actions', label: 'Split right: a new shell beside', hint: '⌘E', icon: <TerminalIcon size={14} />, run: () => splitShell('row') },
         { id: 'a-split-down', group: 'Actions', label: 'Split down: a new shell below', hint: '⇧⌘E', icon: <TerminalIcon size={14} />, run: () => splitShell('column') },
       )
@@ -512,8 +548,10 @@ export function AppShell() {
       if (folder) items.push({ id: 'a-editor-cwd', group: 'Actions', label: `Open this folder in ${name}`, detail: folder, icon: <ExternalIcon size={14} />, run: () => openInEditor(folder, 'the folder') })
     }
     for (const t of ws.tabs) {
-      const s = sessionsById.get(focusedLeaf(t).target.sessionId)
-      items.push({ id: `t-${t.id}`, group: 'Tabs', label: s ? sessionTitle(s) : t.title, detail: projectsById.get(t.projectId)?.name, icon: <TerminalIcon size={14} />, run: () => { dispatch({ type: 'activate', tabId: t.id }); showWorkspace() } })
+      const leaf = focusedLeaf(t)
+      const s = sessionsById.get(leaf.target.sessionId)
+      const file = leaf.target.kind === 'file' ? leaf.target.path : undefined
+      items.push({ id: `t-${t.id}`, group: 'Tabs', label: s ? sessionTitle(s) : t.title, detail: file ?? projectsById.get(t.projectId)?.name, icon: file ? <FileIcon size={14} /> : <TerminalIcon size={14} />, run: () => { dispatch({ type: 'activate', tabId: t.id }); showWorkspace() } })
     }
     for (const n of model.projects) {
       for (const w of n.worktrees) {
@@ -545,7 +583,7 @@ export function AppShell() {
       }
     }
     return items
-  }, [ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, current, onNewAgent, onNewShell, onAddProject, onDashboard, toggleTheme, onSettings, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges])
+  }, [ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, current, onNewAgent, onNewShell, onAddProject, onDashboard, toggleTheme, onSettings, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges, fileScope, focused?.kind])
 
   // Every session the daemon knows, by what it was about; one that is open or
   // live is already in the list above under its own id.
@@ -610,6 +648,30 @@ export function AppShell() {
       return next
     })
   }, [focused])
+
+  /** The folder a worktree's files live in, for "Open in editor". */
+  const folderOf = useCallback((projectId: string, worktree: string): string | undefined => {
+    const n = model.projects.find((x) => x.project.id === projectId)
+    if (!n) return undefined
+    const w = n.worktrees.find((x) => (worktree ? !x.isMain && x.key === worktree : x.isMain))
+    return w?.path || (worktree ? undefined : n.project.root || undefined)
+  }, [model.projects])
+  const renderFile = useCallback((tab: Tab, leaf: PaneLeaf, visible: boolean) => {
+    const wt = leaf.target.worktree ?? ''
+    const path = leaf.target.path ?? ''
+    const folder = folderOf(tab.projectId, wt)
+    return (
+      <FileView
+        projectId={tab.projectId}
+        worktree={wt}
+        path={path}
+        visible={visible}
+        onOpenFile={(p) => openFile(tab.projectId, wt, p)}
+        editor={editors && folder ? { name: preferredName(editors), open: () => openInEditor(joinPath(folder, path), path) } : undefined}
+      />
+    )
+  }, [folderOf, openFile, editors, openInEditor])
+  const focusedFile = focused?.kind === 'file'
 
   return (
     <div className="flex h-dvh flex-col text-fg">
@@ -677,6 +739,7 @@ export function AppShell() {
                     onFocusPane={onFocusPane}
                     onClosePane={onClosePane}
                     onResize={onResizePanes}
+                    renderFile={renderFile}
                   />
                   {showChat && focused && (
                     <ChatView
@@ -693,6 +756,7 @@ export function AppShell() {
                       title={changesView.title}
                       sessionId={changesView.sessionId}
                       onClose={() => setChangesView(null)}
+                      onOpenFile={(p) => openFile(changesView.projectId, changesView.worktree, p)}
                       className="absolute inset-0 z-20"
                     />
                   )}
@@ -735,7 +799,7 @@ export function AppShell() {
               <div className="h-full shrink-0" style={{ width: 'var(--app-inspector-w)' }}>
                 <Inspector
                   session={focusedSession}
-                  sessionId={focused?.sessionId}
+                  sessionId={focusedFile ? undefined : focused?.sessionId}
                   hasPermission={!!focused && data.permissions.has(focused.sessionId)}
                   showPrompt={promptCard}
                   onClose={() => setPrefs((p) => ({ ...p, inspector: false }))}
@@ -743,6 +807,7 @@ export function AppShell() {
                   editors={editors}
                   onOpenInEditor={openInEditor}
                   onReviewChanges={focusedWorktree?.repo ? () => onOpenChanges(focusedWorktree.projectId, focusedWorktree.w) : undefined}
+                  onOpenFile={focusedWorktree?.repo ? (p) => openFile(focusedWorktree.projectId, focusedWorktree.w.isMain ? '' : focusedWorktree.w.key, p) : undefined}
                   summary={data.summary}
                 />
               </div>
@@ -783,6 +848,14 @@ export function AppShell() {
       )}
       {folderMenu && <EditorMenu at={folderMenu} editors={editors} onClose={closeFolderMenu} onError={setToast} />}
       {sheet?.kind === 'keys' && <ShortcutsSheet isMac={isMac} onClose={closeSheet} />}
+      {sheet?.kind === 'files' && (
+        <FilePicker
+          target={sheet}
+          title={sheet.title}
+          onClose={closeSheet}
+          onOpen={(p) => openFile(sheet.projectId, sheet.worktree, p)}
+        />
+      )}
       {sheet?.kind === 'palette' && <CommandPalette items={paletteItems} fallback={paletteFallback} search={paletteSearch} onClose={closeSheet} />}
     </div>
   )

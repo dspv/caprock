@@ -130,8 +130,9 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `/v1/status`, `/v1/storage`, `/v1/update`, `/v1/settings`, `/v1/premium`, `/v1/gemini`,
   `/v1/pricing`, `/v1/live`, `/v1/tasks`, `/v1/tasks/{id}`, `/v1/approvals`,
   `/v1/statusline/{id}`, `/v1/agents/{id}/permission`, `/v1/projects`,
-  `/v1/projects/ops`, `/v1/projects/{id}/worktrees`, `/v1/projects/{id}/changes`
-  and `/v1/projects/{id}/changes/diff`. Everything else is `403` — every `POST`, `PUT` and
+  `/v1/projects/ops`, `/v1/projects/{id}/worktrees`, `/v1/projects/{id}/changes`,
+  `/v1/projects/{id}/changes/diff`, `/v1/projects/{id}/file` and
+  `/v1/projects/{id}/files`. Everything else is `403` — every `POST`, `PUT` and
   `DELETE` (spawn, input, signal, paste, settings, tasks, approvals,
   orchestrator, hive, licence, pairing, shutdown), and three `GET`s that are
   not reads: `/v1/agents/{id}/term` (its socket types into the session), and
@@ -1293,6 +1294,44 @@ POST /v1/projects/{id}/changes/fetch[?worktree=]    → {result: RemoteResult, c
   can open one and against what; `POST …/changes/push` publishes the branch
   first. In Go, `projects.Service.Push(ctx, id, worktree)` and `Changes`
   are the calls a PR endpoint can make before talking to GitHub.
+
+### Files: read a project's file
+
+One file of a project, read-only, and the list of its files, for the app's
+file tab and the palette's *Open file…* ([04-ui.md § The app
+workspace](04-ui.md#the-app-workspace), File tabs). Code:
+`internal/projects/files.go`, `internal/api/files.go`. `?worktree=` names a
+linked worktree as in Changes; absent or empty is the project's root —
+for a plain folder project too. An unknown project or worktree is `404`.
+
+```
+GET /v1/projects/{id}/file?path=<p>[&worktree=] → FileContent
+GET /v1/projects/{id}/files[?worktree=]         → {files: [string], truncated?}
+```
+
+- **`FileContent`** — `{path, size, text, truncated?, binary?, lang}`.
+  `size` is the whole file's; `text` is at most its first 1 MB
+  (`truncated`), cut on the last line break within the final 4 KB, else on
+  a whole UTF-8 character. `binary` — a NUL byte or invalid UTF-8 in what
+  was read — sends no `text`. `lang` is named from the extension
+  (`markdown` for `.md`, `.mdx`, `.markdown`; `go`, `typescript`, … ;
+  `text` when unknown) and only decides whether the tab renders Markdown.
+- **Paths.** `path` must be relative and clean — no `.`, `..`, doubled or
+  trailing separator, NUL, absolute path, or (on Windows) backslash —
+  else `400`. The folder and the path are then resolved with every symlink
+  followed; a real location outside the folder's own real location is
+  `403`, so neither `..` nor a symlink (to a file or through a folder) reads
+  anything outside the project. Only a regular file: a folder, socket,
+  device or FIFO is `400` (checked before opening, so a FIFO never blocks);
+  a missing file or a dangling link is `404`.
+- **`files`** is `git ls-files -z --cached --others --exclude-standard` in
+  a repository (tracked files and new ones git does not ignore), else a walk
+  that skips dot-folders, `node_modules` and symlinked folders; sorted, at
+  most 20,000 (`truncated`). The palette filters it in the browser.
+- **Who.** Both are reads, open to every paired device as a worktree's diff
+  is (`pairedDeviceRoutes`). Nothing here writes, and no route is added for
+  a controller. On macOS a folder behind a privacy prompt is refused as the
+  Changes routes refuse it (`tcc`).
 
 ### GitHub
 

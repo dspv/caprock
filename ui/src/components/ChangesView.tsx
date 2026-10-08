@@ -4,9 +4,9 @@
  * pushing and pulling it without a terminal (.ai/04-ui.md § Changes).
  *
  * Keys, while the view has focus and no text box does: j / k or ↓ / ↑ move
- * between files, s stages, u unstages, d discards (asks first), v switches
- * the diff layout, c writes the commit message, r reads git again, Esc
- * closes. In the message box, ⌘↵ commits and ⇧⌘↵ commits and pushes.
+ * between files, s stages, u unstages, d discards (asks first), o opens
+ * the file in a tab of its own (read-only), v switches the diff layout, c
+ * writes the commit message, r reads git again, Esc closes. In the message box, ⌘↵ commits and ⇧⌘↵ commits and pushes.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import {
@@ -48,10 +48,12 @@ export interface ChangesViewProps {
   /** The worktree's latest agent session, for "Use the agent's summary". */
   sessionId?: string
   onClose: () => void
+  /** Opens a file of this worktree in a file tab (FileView). */
+  onOpenFile?: (path: string) => void
   className?: string
 }
 
-export function ChangesView({ target: given, title, sessionId, onClose, className = '' }: ChangesViewProps) {
+export function ChangesView({ target: given, title, sessionId, onClose, onOpenFile, className = '' }: ChangesViewProps) {
   const target = useMemo<WorktreeRef>(() => ({ projectId: given.projectId, worktree: given.worktree }), [given.projectId, given.worktree])
   const { changes, error, loading, refresh, accept } = useChanges(target)
   const entries = useMemo(() => entriesOf(changes), [changes])
@@ -136,6 +138,7 @@ export function ChangesView({ target: given, title, sessionId, onClose, classNam
     else if (k === 's' && current && current.area !== 'staged') void stage(current)
     else if (k === 'u' && current?.area === 'staged') void unstage(current)
     else if (k === 'd' && current?.area === 'unstaged') void askDiscard([current.file.path])
+    else if (k === 'o' && current && onOpenFile && current.file.status !== 'deleted') onOpenFile(current.file.path)
     else if (k === 'v') setLayout((l) => (l === 'split' ? 'unified' : 'split'))
     else if (k === 'c') commitBox.current?.focus()
     else if (k === 'r') refresh()
@@ -188,14 +191,19 @@ export function ChangesView({ target: given, title, sessionId, onClose, classNam
                 Nothing to commit.{changes.ahead > 0 ? ` ${changes.ahead} commit${changes.ahead === 1 ? '' : 's'} not pushed yet.` : ''}
               </p>
             )}
-            <Section title="Conflicts" items={conflicted} current={current} onSelect={setSelected} />
+            <Section title="Conflicts" items={conflicted} current={current} onSelect={setSelected} row={(e) => <OpenButton e={e} onOpenFile={onOpenFile} />} />
             <Section
               title="Staged"
               items={staged}
               current={current}
               onSelect={setSelected}
               action={{ label: 'Unstage all', run: () => void unstageAll() }}
-              row={(e) => <RowButton label="Unstage (u)" glyph="−" onClick={() => void unstage(e)} />}
+              row={(e) => (
+                <>
+                  <OpenButton e={e} onOpenFile={onOpenFile} />
+                  <RowButton label="Unstage (u)" glyph="−" onClick={() => void unstage(e)} />
+                </>
+              )}
               busy={busy}
             />
             <Section
@@ -206,6 +214,7 @@ export function ChangesView({ target: given, title, sessionId, onClose, classNam
               action={{ label: 'Stage all', run: () => void stageAll() }}
               row={(e) => (
                 <>
+                  <OpenButton e={e} onOpenFile={onOpenFile} />
                   <RowButton label="Discard (d)" glyph="↺" onClick={() => void askDiscard([e.file.path])} />
                   <RowButton label="Stage (s)" glyph="+" onClick={() => void stage(e)} />
                 </>
@@ -224,7 +233,7 @@ export function ChangesView({ target: given, title, sessionId, onClose, classNam
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
           {current ? (
-            <FileDiff key={`${current.key}`} target={target} entry={current} token={changes?.token ?? ''} layout={layout} onLayout={setLayout} onChanges={accept} onError={(f) => setNotice({ ok: false, failure: f })} />
+            <FileDiff key={`${current.key}`} target={target} entry={current} token={changes?.token ?? ''} layout={layout} onLayout={setLayout} onChanges={accept} onError={(f) => setNotice({ ok: false, failure: f })} onOpenFile={current.file.status === 'deleted' ? undefined : onOpenFile} />
           ) : (
             <div className="flex flex-1 items-center justify-center px-8 text-[12.5px] text-fg-faint">
               {loading ? 'Reading…' : changes && entries.length === 0 ? 'The working tree is clean.' : 'Pick a file to see its diff.'}
@@ -312,6 +321,12 @@ function Section({ title, items, current, onSelect, action, row, busy }: {
   )
 }
 
+/** Opens the file itself, read-only, in a tab; not offered for a deleted file. */
+function OpenButton({ e, onOpenFile }: { e: ChangeEntry; onOpenFile?: (path: string) => void }) {
+  if (!onOpenFile || e.file.status === 'deleted') return null
+  return <RowButton label="Open the file (o)" glyph="↗" onClick={() => onOpenFile(e.file.path)} />
+}
+
 function RowButton({ label, glyph, onClick }: { label: string; glyph: string; onClick: () => void }) {
   return (
     <button
@@ -347,7 +362,7 @@ function DiscardConfirm({ d, busy, onKeep, onDiscard }: { d: { preview: DiscardP
 }
 
 /** The selected file's diff, read again whenever the worktree's status moves. */
-function FileDiff({ target, entry, token, layout, onLayout, onChanges, onError }: {
+function FileDiff({ target, entry, token, layout, onLayout, onChanges, onError, onOpenFile }: {
   target: WorktreeRef
   entry: ChangeEntry
   token: string
@@ -355,6 +370,7 @@ function FileDiff({ target, entry, token, layout, onLayout, onChanges, onError }
   onLayout: (l: DiffLayout) => void
   onChanges: (c: NonNullable<ReturnType<typeof useChanges>['changes']>) => void
   onError: (f: ReturnType<typeof failureOf>) => void
+  onOpenFile?: (path: string) => void
 }) {
   const [patch, setPatch] = useState<FilePatch | null>(null)
   const [err, setErr] = useState('')
@@ -387,9 +403,15 @@ function FileDiff({ target, entry, token, layout, onLayout, onChanges, onError }
   return (
     <>
       <div className="flex h-[36px] shrink-0 items-center gap-2 border-b border-[var(--app-hairline)] px-4">
-        <span className="mono min-w-0 truncate text-[12px] text-fg" title={path}>
-          {f.orig_path ? <><span className="text-fg-faint">{f.orig_path} → </span>{path}</> : path}
-        </span>
+        {onOpenFile ? (
+          <button type="button" onClick={() => onOpenFile(path)} className="mono min-w-0 truncate text-left text-[12px] text-fg hover:text-accent hover:underline" title={`Open ${path} (o)`}>
+            {f.orig_path ? <><span className="text-fg-faint">{f.orig_path} → </span>{path}</> : path}
+          </button>
+        ) : (
+          <span className="mono min-w-0 truncate text-[12px] text-fg" title={path}>
+            {f.orig_path ? <><span className="text-fg-faint">{f.orig_path} → </span>{path}</> : path}
+          </span>
+        )}
         <span className="shrink-0 text-[11px] text-fg-faint">{staged ? 'staged' : entry.area === 'conflicted' ? 'in conflict' : f.status === 'untracked' ? 'new file' : 'not staged'}</span>
         <div className="ml-auto flex shrink-0 items-center rounded-[7px] border border-[var(--app-hairline-strong)] p-0.5" role="group" aria-label="Diff layout (v)">
           {(['unified', 'split'] as const).map((l) => (

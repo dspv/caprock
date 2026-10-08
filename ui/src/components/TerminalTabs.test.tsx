@@ -5,7 +5,7 @@
  */
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { TabStrip } from './TerminalTabs'
+import { TabStrip, TerminalStack } from './TerminalTabs'
 import type { Tab } from '@/lib/tabs'
 
 const tab = (id: string): Tab => ({
@@ -66,5 +66,45 @@ describe('TabStrip', () => {
     fireEvent.click(tabs[1]!)
     expect(onMove).not.toHaveBeenCalled()
     expect(onActivate).toHaveBeenCalledWith('two')
+  })
+})
+
+describe('a file tab', () => {
+  const fileTab: Tab = {
+    id: 'f',
+    projectId: '7',
+    root: { type: 'pane', id: 'f-pane', target: { kind: 'file', sessionId: 'file:7::docs/app.md', path: 'docs/app.md', worktree: '' } },
+    focusedPaneId: 'f-pane',
+    title: 'app.md',
+  }
+
+  it('is named by the file, with the whole path as its tooltip', () => {
+    render(
+      <TabStrip
+        tabs={[fileTab]}
+        activeTabId="f"
+        sessions={new Map()}
+        permissions={new Set()}
+        inspectorOpen={false}
+        sidebarOpen
+        onActivate={() => {}}
+        onDetach={() => {}}
+        onMove={() => {}}
+        onNewAgent={() => {}}
+        onNewShell={() => {}}
+        onToggleInspector={() => {}}
+      />,
+    )
+    const t = screen.getByRole('tab')
+    expect(t.textContent).toContain('app.md')
+    expect(t.getAttribute('title')).toBe('docs/app.md — ⌘1')
+    expect(screen.getByRole('button', { name: 'Close tab app.md' })).toBeInTheDocument()
+  })
+
+  it('shows what the workspace draws for a file, not a terminal', () => {
+    const renderFile = vi.fn((_t: Tab, leaf: { target: { path?: string } }, visible: boolean) => <p>{`${leaf.target.path} ${visible ? 'in front' : 'behind'}`}</p>)
+    render(<TerminalStack tabs={[fileTab]} visibleTabId="f" renderFile={renderFile} />)
+    expect(screen.getByText('docs/app.md in front')).toBeInTheDocument()
+    expect(document.querySelector('[data-tab-panel="f"]')!.className).not.toContain('app-slab')
   })
 })
