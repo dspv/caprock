@@ -73,6 +73,12 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-08 — 0.88.1: the DeepSeek filter answers
+
+`?agent=deepseek` on the stats endpoints returned 400 though the dashboard
+offers the filter (#307). README no longer sells the $5/month price the site
+dropped, and links OpenCode at its new repo (#306).
+
 ### 2026-10-08 — 0.88.0: Claude Haiku 5.5
 
 Haiku 5.5 priced at list (table 2026-10-08.1, lower tier of its two) and

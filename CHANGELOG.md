@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.88.1] - 2026-10-08
+
 ### Fixed
 
 - **`?agent=deepseek` on the stats endpoints is no longer a 400.** The
