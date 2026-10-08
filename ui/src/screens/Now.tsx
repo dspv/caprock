@@ -661,7 +661,9 @@ export function SessionCard({ s, now, earlier, projectLabel }: { s: SessionSumma
         * figures to be read rather than referred to, and a session's own cost
         * is the number this screen exists to surface. Cost keeps the accent so
         * the money is still what the eye lands on first. */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-border border-t border-border">
+      {/* data-session-figures: one session's own figures, where $0.00 can be
+        * true (scripts/shots.py tells it from a screen still loading). */}
+      <div data-session-figures className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-border border-t border-border">
         <Stat label="Cost" value={fmtUSD(s.stats.cost_usd)} sub={s.model || '—'} tone="info" />
         <Stat label="Tokens" value={fmtTokens(s.stats.tokens_in + s.stats.tokens_out + s.stats.cache_read + s.stats.cache_write)} sub={`${fmtPct(s.savings.hit_rate * 100)} cache hit`} />
         {/* The caption carries the price of the NEXT call, not the window size

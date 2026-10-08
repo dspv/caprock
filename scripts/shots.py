@@ -525,7 +525,11 @@ def main():
                     time.sleep(0.5)
                     ready = evaluate(ws, """
                       ((wantMoney) => {
-                        const t = document.body.innerText;
+                        // One session's own figures can honestly read $0.00
+                        // (a session that has not answered yet); they are
+                        // not a total still loading, so they are left out.
+                        let t = document.body.innerText;
+                        for (const el of document.querySelectorAll('[data-session-figures]')) t = t.replace(el.innerText, '');
                         if (document.querySelector('.skeleton-pulse')) return false;
                         if (t.includes('reading your figures')) return false;
                         if (t.includes('nothing measured')) return false;
@@ -543,7 +547,8 @@ def main():
                     # loading" alone sent the v0.68.0 run into guesswork.
                     why = evaluate(ws, r"""
                       (() => {
-                        const t = document.body.innerText;
+                        let t = document.body.innerText;
+                        for (const el of document.querySelectorAll('[data-session-figures]')) t = t.replace(el.innerText, '');
                         const z = t.search(/^\$0\.00\s*$/m);
                         return JSON.stringify({
                           skeletons: document.querySelectorAll('.skeleton-pulse').length,
