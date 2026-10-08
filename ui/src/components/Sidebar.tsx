@@ -210,11 +210,11 @@ export function Sidebar(props: SidebarProps) {
           aria-label="New agent"
           aria-keyshortcuts="Shift+Meta+N"
           title="Start an agent in the project in front (⇧⌘N)"
-          className="flex h-[32px] w-full items-center gap-2 rounded-[8px] bg-accent pl-2.5 pr-2 text-left text-[13px] font-semibold text-panel shadow-[0_1px_0_rgba(0,0,0,0.08)] transition-[filter] hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
+          className="app-primary flex h-[32px] w-full items-center gap-2 rounded-[8px] border pl-2.5 pr-2 text-left text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
         >
           <PlusIcon size={15} />
           <span className="flex-1">New agent</span>
-          <kbd className="mono text-[10.5px] font-medium opacity-75">⇧⌘N</kbd>
+          <kbd className="app-kbd">⇧⌘N</kbd>
         </button>
         <button
           type="button"
@@ -226,7 +226,7 @@ export function Sidebar(props: SidebarProps) {
         >
           <FolderPlusIcon size={14} />
           <span className="flex-1">Add project</span>
-          <kbd className="mono text-[10.5px] text-fg-faint">⌘O</kbd>
+          <kbd className="app-kbd">⌘O</kbd>
         </button>
       </div>
 
@@ -275,7 +275,7 @@ export function Sidebar(props: SidebarProps) {
           >
             <DashboardIcon size={15} className="text-fg-muted" />
             <span className="flex-1">Dashboard</span>
-            <kbd className="mono text-[10.5px] text-fg-faint">⇧⌘D</kbd>
+            <kbd className="app-kbd">⇧⌘D</kbd>
           </button>
           {props.onSettings && <IconButton label="Settings (⌘,)" onClick={props.onSettings}><SettingsIcon size={15} /></IconButton>}
           <ThemeButton />

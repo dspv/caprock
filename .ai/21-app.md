@@ -118,7 +118,11 @@ One window, three regions:
 - **Sidebar (left).** A primary *New agent* button (accent, full width,
   ⇧⌘N) with *Add project* (⌘O) under it — the app's main action, not a
   hover icon (owner, 2026-10-08: "no big button to create something new",
-  translated). Then projects, each expandable to worktrees and branches,
+  translated). Since 2026-10-09 it is outlined, not filled: a 1px accent
+  border, accent label and icon on the panel, an accent-tinted hover
+  (`.app-primary`); the key hints beside it, *Add project* and *Dashboard*
+  are the label's size, muted (`.app-kbd`, 12.5px mono) — at 10.5px the
+  owner could not read them. Then projects, each expandable to worktrees and branches,
   then to the sessions and shells in it. A row's figures: agents running
   in it (live non-shell sessions; the dot green while one works), cost
   today, and *waiting on you* or *looping* — each only when non-zero, the

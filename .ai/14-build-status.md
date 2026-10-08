@@ -73,6 +73,15 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-08 — 0.91.0: a New agent button, a shorter project list
+
+The owner could not find how to start something new or how to hide the
+projects piling up in the sidebar. The sidebar now opens with an accent
+*New agent* button and *Add project* under it; projects idle for a week fold
+under *Quiet*, and any project can be hidden into *Hidden* and brought back
+(#312). Hidden ids live in the browser's storage: the daemon has no
+per-project hide flag, only unlisting.
+
 ### 2026-10-08 — 0.90.0: the agent cockpit
 
 A user found the terminal excellent and everything around it bare. Beside an

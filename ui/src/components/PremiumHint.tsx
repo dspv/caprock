@@ -32,19 +32,26 @@ export function PremiumHint({
   // changes is the claim. Undefined means unknown, which is treated as not
   // owned: a promise is the wrong thing to make on a guess.
   canAct = false,
-}: { reason: string; now: number; canAct?: boolean }) {
+  // Which feature it offers. The plan-window stop sits beside the plan-limit
+  // alert, where the cap must not: a plan limit is Anthropic's and no dollar
+  // ceiling moves it, but pausing Caprock's own sessions before it and
+  // resuming them after the reset is exactly what that row is about. Its
+  // claim does not depend on ownership — the alert is about the account.
+  feature = 'cap',
+}: { reason: string; now: number; canAct?: boolean; feature?: 'cap' | 'window' }) {
   const [shown] = useState(() => isDue(KIND, now))
   const [gone, setGone] = useState(false)
   const [open, setOpen] = useState(false)
   if (!shown || gone) return null
+  const window = feature === 'window'
   return (
     <span className="flex shrink-0 items-center gap-2 text-[11px]">
-      <span className="text-fg-faint">{canAct ? reason : 'a cap covers sessions Caprock starts'}</span>
+      <span className="text-fg-faint">{window || canAct ? reason : 'a cap covers sessions Caprock starts'}</span>
       <button
         onClick={() => setOpen(true)}
         className="rounded-sm border border-border px-1.5 py-0.5 text-fg-muted hover:border-border-strong hover:text-fg"
       >
-        {canAct ? 'a cap that stops this' : 'what a cap does'}
+        {window ? 'pause and resume for me' : canAct ? 'a cap that stops this' : 'what a cap does'}
       </button>
       <button
         title="hide this for a month"
@@ -57,7 +64,7 @@ export function PremiumHint({
       >
         ✕
       </button>
-      {open && <PremiumModal feature="cap" onClose={() => setOpen(false)} />}
+      {open && <PremiumModal feature={feature} onClose={() => setOpen(false)} />}
     </span>
   )
 }

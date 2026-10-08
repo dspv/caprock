@@ -526,6 +526,31 @@ func TestSettingsCapRoundTripsAndValidates(t *testing.T) {
 	}
 }
 
+// The plan-window share stops work too: off and a share in range save, and
+// anything else is refused rather than clamped.
+func TestSettingsWindowStopRoundTripsAndValidates(t *testing.T) {
+	e := newEnv(t)
+	for _, v := range []int{95, 0, 50, 99} {
+		if code := e.putSettings(t, map[string]any{"window_stop_pct": v}); code != 200 {
+			t.Fatalf("PUT %d: %d", v, code)
+		}
+		var got Settings
+		if code := e.get(t, "/v1/settings", &got); code != 200 || got.WindowStopPct != v {
+			t.Errorf("window_stop_pct came back as %d, want %d", got.WindowStopPct, v)
+		}
+	}
+	for _, v := range []int{-1, 10, 49, 100, 150} {
+		if code := e.putSettings(t, map[string]any{"window_stop_pct": v}); code != 400 {
+			t.Errorf("window_stop_pct %d: %d, want 400", v, code)
+		}
+	}
+	// No guard wired (an old build, a test): 501, not an empty answer that
+	// reads as "nothing paused".
+	if code := e.get(t, "/v1/window-stop", nil); code != 501 {
+		t.Errorf("GET /v1/window-stop without a guard: %d, want 501", code)
+	}
+}
+
 // The settings endpoint must validate rather than coerce: a wrong plan kind or
 // a nonsense price would otherwise drive a wrong headline number on the value
 // screen, which is exactly the class of invented figure rule 6 forbids.

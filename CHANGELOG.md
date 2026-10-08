@@ -11,6 +11,16 @@ Phase 3 (Delight) has no plan by design.
 
 ### Added
 
+- **A stop at the plan limit (Premium).** When Claude's 5-hour or weekly
+  window passes the share you pick in Settings → *Pause at the plan limit*
+  (90% until you change it, or off), Caprock pauses the Claude Code sessions
+  it started, names them on Now and in a desktop notification with the reset
+  time, and resumes them after the window resets. A session you resume by
+  hand is left alone until the next window; a session you started yourself
+  is never touched; figures more than ten minutes old pause nothing, and
+  Settings says when that is the case. Without Premium the 90% alert on Now
+  is unchanged and offers the stop. `GET /v1/window-stop`,
+  `settings.window_stop_pct`.
 - **Today, at the top of the sidebar.** Under *New agent*: what every
   agent has spent today, how many agents are running and how many wait on
   you, and the Claude plan's 5-hour and weekly windows as thin bars with
@@ -32,6 +42,15 @@ Phase 3 (Delight) has no plan by design.
   badge rather than in place of it; a project with neither shows neither.
   The branch takes only the room left over and steps aside, rather than
   showing as a sliver, when too little is left.
+- **New agent is outlined, and the sidebar's shortcuts are readable.** The
+  New agent button keeps the accent as a 1px border and label on the panel
+  instead of a solid fill, and the key hints beside New agent, Add project
+  and Dashboard are set at the size of the label next to them.
+
+## [0.91.0] - 2026-10-08
+
+### Changed
+
 - **A New agent button you cannot miss.** The app's sidebar opens with an
   accent *New agent* button (⇧⌘N) and *Add project* (⌘O) under it; the
   small *Add* beside *Projects* is gone.

@@ -24,6 +24,7 @@ import (
 
 	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/bus"
+	capguard "github.com/dspv/caprock/internal/cap"
 	"github.com/dspv/caprock/internal/codex"
 	"github.com/dspv/caprock/internal/contexttax"
 	"github.com/dspv/caprock/internal/cost"
@@ -80,6 +81,13 @@ type Deps struct {
 	AcceptBypass   func() error
 	// Storage returns what the data directory holds for /v1/storage. nil ⇒ 501.
 	Storage func(ctx context.Context) any
+	// WindowStop returns the plan-window stop's state for GET
+	// /v1/window-stop: the share, whether a licence is active, the figures it
+	// acts on and how fresh they are, and the sessions it has paused. nil ⇒ 501.
+	WindowStop func(ctx context.Context) any
+	// RateLimitsRecorded is called after POST /v1/statusline stores new plan
+	// figures, so the plan-window stop checks them the moment they arrive.
+	RateLimitsRecorded func(ctx context.Context)
 	// Started is when this daemon came up. The burn tile needs it: in the
 	// first minutes there is less history than the window it divides by.
 	Started time.Time
@@ -179,6 +187,11 @@ type Settings struct {
 	// too old to have the field, and the panel cannot tell "you turned this
 	// off" from "this build cannot do it".
 	CapUSDPerDay float64 `json:"cap_usd_per_day"`
+	// WindowStopPct is the share of a Claude plan window at which Premium
+	// pauses the Claude Code sessions Caprock started until the window resets;
+	// 0 is off. Like the cap it has no omitempty: 0 is a state the control
+	// must read. Without a licence it is stored and shown but pauses nothing.
+	WindowStopPct int `json:"window_stop_pct"`
 	// ReportChatID is where the weekly report goes. Not a credential — a chat
 	// id identifies a conversation and grants nothing — so it round-trips like
 	// any other setting.
@@ -401,6 +414,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/hooks/install", s.handleInstallHooks)
 	m.HandleFunc("POST /v1/claude/bypass-consent", s.handleBypassConsent)
 	m.HandleFunc("GET /v1/settings", s.handleGetSettings)
+	m.HandleFunc("GET /v1/window-stop", s.handleWindowStop)
 	m.HandleFunc("PUT /v1/settings", s.handlePutSettings)
 	m.HandleFunc("POST /v1/report/test", s.handleTestReport)
 	m.HandleFunc("POST /v1/alerts/test", s.handleTestAlert)
@@ -1114,6 +1128,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		PlanUSDPerMonth *float64 `json:"plan_usd_per_month"`
 		LicenseKey      *string  `json:"license_key"`
 		CapUSDPerDay    *float64 `json:"cap_usd_per_day"`
+		WindowStopPct   *int     `json:"window_stop_pct"`
 		BrowseRoot      *string  `json:"browse_root"`
 		Terminal        *string  `json:"terminal"`
 		Editor          *string  `json:"editor"`
@@ -1162,6 +1177,17 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		in.CapUSDPerDay = v
+	}
+	if patch.WindowStopPct != nil {
+		// Off, or a share between half and just under full: below half the
+		// stop fires on an ordinary morning, and at 100% Claude Code has
+		// already stopped by itself.
+		v := *patch.WindowStopPct
+		if v != 0 && (v < capguard.MinWindowPct || v > capguard.MaxWindowPct) {
+			s.failCode(w, http.StatusBadRequest, fmt.Errorf("window_stop_pct must be 0 (off) or between %d and %d", capguard.MinWindowPct, capguard.MaxWindowPct))
+			return
+		}
+		in.WindowStopPct = v
 	}
 	if patch.BrowseRoot != nil {
 		in.BrowseRoot = *patch.BrowseRoot
@@ -1701,6 +1727,11 @@ func (s *Server) handleStatusline(w http.ResponseWriter, r *http.Request) {
 	}
 	record("five_hour", body.FiveHour)
 	record("seven_day", body.SevenDay)
+	if s.d.RateLimitsRecorded != nil && (body.FiveHour != nil || body.SevenDay != nil) {
+		// Detached: pausing sessions must not be cancelled because the status
+		// line's 300 ms budget ran out first.
+		go s.d.RateLimitsRecorded(context.WithoutCancel(ctx))
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -2232,4 +2263,14 @@ func hostOf(raw string) string {
 		return ""
 	}
 	return u.Hostname()
+}
+
+// handleWindowStop is GET /v1/window-stop: what the plan-window stop would act
+// on and what it has done (internal/cap/window.go, .ai/03-contracts.md).
+func (s *Server) handleWindowStop(w http.ResponseWriter, r *http.Request) {
+	if s.d.WindowStop == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("the plan-window stop is not available"))
+		return
+	}
+	writeJSON(w, http.StatusOK, s.d.WindowStop(r.Context()))
 }

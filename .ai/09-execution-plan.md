@@ -296,14 +296,20 @@ open in the ledger, which owns the reasoning.
 Each definition of done is new here; the shape and boundary of each item are
 owned by the file linked, which is the home for the details.
 
-- **A plan-window stop for Premium (owner decision, 2026-10-08).** The daily
+- **A plan-window stop for Premium (owner decision, 2026-10-08) — SHIPPED,
+  except the site entry.** Built in `internal/cap/window.go`; the contract,
+  including the edge-case rules (once per window, manual resume respected,
+  never on figures older than ten minutes), is in
+  [03-contracts.md](03-contracts.md) under "The plan-window stop". The
+  caprock.dev/premium `#window` entry goes in with the release that ships it.
+  The daily
   cap is priced in list-price dollars, which a Pro or Max subscriber never
   pays, so it guards against a loss most users do not have. What they run out
   of is the plan window. Premium pauses the sessions Caprock started when the
   five-hour or weekly window crosses a share the user picks, and resumes them
   when the window resets. It reuses `internal/cap`'s pause path and the
   plan-limit figures the status line already reports. Done when:
-  - Settings has one control: off, or a share of the window (default 90%);
+  - Settings has one control: off (the default, like the daily cap), or a share of the window (80, 90, 95%);
   - at the threshold, every session Caprock started is paused and named in a
     notice with the reset time; a session the user started by hand is never
     signalled (rule 7);

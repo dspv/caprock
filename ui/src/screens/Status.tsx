@@ -35,6 +35,8 @@ import { TerminalSettings } from '@/components/TerminalSettings'
 import { EditorSetting } from '@/components/EditorSetting'
 import { SpawnModeSetting } from '@/components/SpawnModeSetting'
 import { GitHubSettings } from '@/components/GitHubSettings'
+import { WindowStopSetting } from '@/components/WindowStopSetting'
+import { Locked } from '@/components/Locked'
 
 export function StatusScreen() {
   const st = useApi(() => api.status(), [], { live: false, intervalMs: 5000 })
@@ -64,6 +66,7 @@ export function StatusScreen() {
           {owner && <Pairing />}
           {owner && <PhoneAlerts />}
           {owner && <PlanSection />}
+          {owner && <WindowStopSection />}
         </>
       )}
       {!isAppMode() && (
@@ -72,6 +75,7 @@ export function StatusScreen() {
           {owner && isTauri() && <DesktopNotifications />}
           {owner && <PhoneAlerts />}
           {owner && <PlanSection />}
+          {owner && <WindowStopSection />}
           <AppearanceSection />
           {owner && <SpawnModeSetting />}
           {owner && <EditorSetting />}
@@ -114,6 +118,16 @@ function PlanSection() {
         <LicenseField plan={plan} save={savePlan} />
       </div>
     </Section>
+  )
+}
+
+/** The plan-window stop (Premium): live with a licence, behind glass without
+ *  one — the control in the place it will be, with this machine's figures. */
+function WindowStopSection() {
+  return (
+    <Locked feature="window" title="Pause Caprock's sessions before the plan limit">
+      <WindowStopSetting />
+    </Locked>
   )
 }
 
