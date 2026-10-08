@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.89.0] - 2026-10-08
+
 ### Changed
 
 - **Adding a project is easier to find and to finish.** The sidebar says

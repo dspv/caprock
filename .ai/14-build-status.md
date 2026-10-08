@@ -73,6 +73,17 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-08 — 0.89.0: adding a project, and buying from the right page
+
+The owner could not find the add-project control, a pasted clone URL left
+the destination empty, a full destination was refused as "not a folder", and
+text typed into the instructions field never started an agent. The sidebar
+now says *Add*; the destination follows the URL as `git clone` names it;
+missing parents are made and `~` expands; a *First task* starts an agent
+(#310). The Premium dialog tags its checkout with the feature and opens that
+feature's entry on the site; README's example key is a placeholder; the
+plan-window stop is planned as Premium work (#309).
+
 ### 2026-10-08 — 0.88.1: the DeepSeek filter answers
 
 `?agent=deepseek` on the stats endpoints returned 400 though the dashboard
