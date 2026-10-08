@@ -444,6 +444,31 @@ export function AppShell() {
   }, [editors])
   const closeFolderMenu = useCallback(() => setFolderMenu(null), [])
 
+  // The project menu (components/ProjectMenu.tsx).
+  const tabCounts = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const t of ws.tabs) m.set(t.projectId, (m.get(t.projectId) ?? 0) + 1)
+    return m
+  }, [ws.tabs])
+  /** Closes the tabs only: every session and shell in them keeps running (rule 7). */
+  const onCloseProjectTabs = useCallback((projectId: string) => {
+    setChangesView((cur) => (cur?.projectId === projectId ? null : cur))
+    dispatch({ type: 'close-project', projectId })
+  }, [])
+  const onOpenProjectInEditor = useCallback((path: string, label: string, editorId: string) => openInEditor(path, label, editorId), [openInEditor])
+  const { archiveLocal } = data
+  /** Unlists a project — the daemon's list, or this page's when it keeps none. Its files are never touched. */
+  const onRemoveProject = useCallback(async (projectId: string) => {
+    const p = projectsById.get(projectId)
+    if (!p) return
+    if (source === 'api') await projectsApi.unlist(projectId)
+    else archiveLocal(p.root)
+    onCloseProjectTabs(projectId)
+    setToast(`${p.name} is off the list. Its files and sessions are untouched; Add project brings it back.`)
+    refresh()
+  }, [projectsById, source, archiveLocal, onCloseProjectTabs, refresh])
+  const onRoute = useCallback((h: string) => { location.hash = h }, [])
+
   const paletteItems = useMemo<PaletteItem[]>(() => {
     const items: PaletteItem[] = model.inbox.map((i) => ({
       id: `w-${i.session.session_id}`,
@@ -608,6 +633,14 @@ export function AppShell() {
               onSettings={onSettings}
               onPalette={onPalette}
               onOpenChanges={data.source === 'api' ? onOpenChanges : undefined}
+              summary={data.summary}
+              loaded={data.loaded}
+              onRoute={onRoute}
+              tabCounts={tabCounts}
+              onCloseProjectTabs={onCloseProjectTabs}
+              editors={editors}
+              onOpenInEditor={editors ? onOpenProjectInEditor : undefined}
+              onRemoveProject={onRemoveProject}
             />
           </div>
         )}
@@ -717,7 +750,8 @@ export function AppShell() {
           </div>
         </main>
       </div>
-      <StatusStrip summary={data.summary} pane={focused ? paneStatus[focused.sessionId] : undefined} version={version} />
+      {/* With the sidebar open its Today strip carries the plan windows and the day's spend, so the strip leaves them out. */}
+      <StatusStrip summary={data.summary} pane={focused ? paneStatus[focused.sessionId] : undefined} version={version} figures={!prefs.sidebar} />
       <AppUpdateToast />
       {isTauri() && <AppUpdateAsk />}
 

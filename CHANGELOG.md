@@ -9,8 +9,29 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **Today, at the top of the sidebar.** Under *New agent*: what every
+  agent has spent today, how many agents are running and how many wait on
+  you, and the Claude plan's 5-hour and weekly windows as thin bars with
+  the share used and when each resets. Click the spend for Cost, a window
+  for the plan limits, *Running* for Now, *Waiting* for the session that
+  has waited longest. While the sidebar is open the status strip leaves
+  the windows and the spend to it.
+- **A menu on every project.** The ⋯ on a project's row (on hover, and
+  always on the project in front), a right-click, or Shift+F10: hide it
+  from the sidebar or show it again, close all its tabs (the sessions and
+  shells in them keep running), open its folder in an editor, or remove it
+  from Caprock after a confirmation — its files and sessions stay as they
+  are.
+
 ### Changed
 
+- **Project rows say what runs in them.** Each row shows how many agents
+  are running there and what the project cost today, beside the waiting
+  badge rather than in place of it; a project with neither shows neither.
+  The branch takes only the room left over and steps aside, rather than
+  showing as a sliver, when too little is left.
 - **A New agent button you cannot miss.** The app's sidebar opens with an
   accent *New agent* button (⇧⌘N) and *Add project* (⌘O) under it; the
   small *Add* beside *Projects* is gone.

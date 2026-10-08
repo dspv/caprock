@@ -20,25 +20,41 @@ others. Installing it: [install-app.md](install-app.md).
 ## The window
 
 - **Sidebar.** *New agent* (⇧⌘N), the accent button at the top, starts an
-  agent in the project in front; *Add project* (⌘O) sits under it. Then
+  agent in the project in front; *Add project* (⌘O) sits under it. Under
+  them, *Today*: what every agent has spent today, how many agents are
+  running (the dot is green while one is working) and how many wait on
+  you, then your Claude plan's 5-hour and weekly windows — the share used
+  and when each resets. Click the spend for Cost, a window for the plan
+  limits, *Running* for Now, *Waiting* for the session that has waited
+  longest. On API billing there are no windows, so there are no bars. Then
   *Waiting on you*: sessions blocked on a permission
   prompt, then sessions whose turn has ended, oldest first. A turn that ended
   more than 12 hours ago folds under *Older* and is left out of the count,
   the badge and ⌘J. Below it, every
-  project with its branch and today's cost (or how many sessions wait), opening
+  project with its branch, how many agents run in it, what it cost today
+  and how many sessions wait — each only when there is some — opening
   to its worktrees and the agent sessions and shells in each. The dot says
   what a session is doing: green working, amber waiting, red looping, grey
   idle, hollow ended. Hover a project for *New agent* and *New shell*.
   Sessions in a folder that is not a repository sit under *Other folders*.
-  Projects with nothing running and no activity for 7 days fold under
-  *Quiet* at the bottom of the list; hover a project and click the crossed
-  eye to put it under *Hidden*, and the open eye there to bring it back.
+- **A project's menu.** Click the ⋯ on its row (it shows on hover, and
+  always on the project in front), right-click the row, or press Shift+F10
+  on it: *Hide from the sidebar* (or *Show in the sidebar again*), *Close
+  its tabs* — every tab and split of that project; the sessions and shells
+  in them keep running — *Open in* each editor found, and *Remove from
+  Caprock…*, which asks first and takes the project off the list without
+  touching its folder, its files or its sessions; *Add project* lists it
+  again. ↑ ↓ move through the menu, Esc closes it.
+- **Keeping the list short.** Projects with nothing running and no
+  activity for 7 days fold under *Quiet* at the bottom of the list; a
+  project you hide (from its menu, or the crossed eye on hover) goes under
+  *Hidden*, and the same menu or the open eye there brings it back.
   Both groups stay closed until you open them, and the app remembers which
   are open. A project shows in the list again while something runs or
   waits in it, or while it is the one in front, hidden or not; pinned
   projects never go quiet.
-  *Dashboard* at the bottom opens Now, Cost, Lifetime and the other screens
-  inside the window; the sliders beside it open Settings (⌘,), where the
+- **Dashboard.** At the bottom of the sidebar, *Dashboard* opens Now, Cost,
+  Lifetime and the other screens inside the window; the sliders beside it open Settings (⌘,), where the
   app puts how new agents start, appearance, terminal and editor first.
 - **A past session** opens on its chat, with one button: *Resume in a tab*
   (*Branch into a tab* while it still runs elsewhere) and the permission mode
@@ -123,8 +139,8 @@ others. Installing it: [install-app.md](install-app.md).
   as you type, Enter and ⇧Enter step through them, **Aa** matches case and
   **.\*** takes a regular expression. Esc closes it and you are back in the
   terminal.
-- **Open in your editor.** Right-click a project or a worktree in the
-  sidebar to open it in VS Code, Cursor, Zed or a JetBrains IDE — whichever
+- **Open in your editor.** A project's menu (its ⋯, or a right-click) and a
+  right-click on a worktree in the sidebar open it in VS Code, Cursor, Zed or a JetBrains IDE — whichever
   are installed; the palette and the inspector have *Open in …* too.
   Settings → *Editor* picks the default. Only this computer can do this; a
   paired phone cannot open an editor here.
@@ -145,9 +161,10 @@ others. Installing it: [install-app.md](install-app.md).
   a new session starts in. Continuing a session keeps the mode it was last
   running in — a session you ran with permissions skipped carries on that
   way. The mode shows next to the continue button, where you can change it.
-- **Status strip.** Whether the daemon is live, the 5-hour and 7-day plan
-  windows, today's spend, the front terminal's size, and a newer Caprock
-  when one is out ([Updates](#updates)).
+- **Status strip.** Whether the daemon is live, the front terminal's size,
+  and a newer Caprock when one is out ([Updates](#updates)). With the
+  sidebar hidden (`⌘\`) it also shows the 5-hour and 7-day plan windows and
+  today's spend, which the sidebar's *Today* carries while it is open.
 
 ### Keyboard
 
