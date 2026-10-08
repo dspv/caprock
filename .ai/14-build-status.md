@@ -73,6 +73,19 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-09 — 0.92.0: the sidebar's figures, the plan-limit stop, files in a tab
+
+Five changes from one night's owner feedback. The sidebar gains a Today strip
+(spend, running, waiting, plan windows) and a per-project menu (hide, close its
+tabs, open in an editor, remove), with an outlined New agent button and
+readable shortcut hints (#316). Premium's plan-window stop pauses the Claude
+Code sessions Caprock started at a chosen share of the 5-hour or weekly window
+and resumes them after the reset; off until chosen (#317). Codex chats show the
+user's prompts, readable commands and finished calls (#318). The cockpit names
+a subagent's permission prompt, offers Yes/No only when exactly one prompt is
+outstanding, lists running subagents, and keeps a busy parent's own recent
+tools (#319). Files open read-only in a tab, markdown rendered (#320).
+
 ### 2026-10-08 — 0.91.0: a New agent button, a shorter project list
 
 The owner could not find how to start something new or how to hide the
