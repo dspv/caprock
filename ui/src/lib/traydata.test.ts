@@ -26,6 +26,8 @@ describe('canApprove', () => {
     expect(canApprove({ detail: 'rm -rf build\nnpm run deploy' })).toBe(false)
     expect(canApprove({ detail: 'x'.repeat(APPROVE_MAX_CHARS) })).toBe(true)
     expect(canApprove({ detail: 'x'.repeat(APPROVE_MAX_CHARS + 1) })).toBe(false)
+    const p = { id: 'p', tool: 'Bash', detail: 'npm test', since: '' }
+    expect(canApprove({ detail: 'npm test', waiting: [p, { ...p, id: 'q' }] })).toBe(false)
   })
 })
 

@@ -999,6 +999,12 @@ export const api = {
     get<Event[]>(`/v1/sessions/${encodeURIComponent(id)}/events?before=${before}&limit=${limit}`),
   /** The newest events for a session, for anything showing recent activity. */
   recentEvents: (id: string, limit = 2000) => get<Event[]>(`/v1/sessions/${encodeURIComponent(id)}/events?newest=1&limit=${limit}`),
+  /** The main thread's newest events of these kinds, filtered before the
+   *  limit: a parent's own calls, however busy its subagents are. */
+  recentMainEvents: (id: string, kinds: readonly string[], limit = 400) =>
+    get<Event[]>(`/v1/sessions/${encodeURIComponent(id)}/events?newest=1&main=1&kind=${encodeURIComponent(kinds.join(','))}&limit=${limit}`),
+  /** The subagents working in a session now, and how many finished lately. */
+  subagents: (id: string) => get<SubagentsNow>(`/v1/sessions/${encodeURIComponent(id)}/subagents`),
   diff: (id: string) => get<DiffResult>(`/v1/sessions/${encodeURIComponent(id)}/diff`),
   notes: (id: string, limit = 200) => get<AssistantNote[]>(`/v1/sessions/${encodeURIComponent(id)}/notes?limit=${limit}`),
   /** `before` pages backwards: pass the lowest event_id already shown. */
@@ -1100,6 +1106,33 @@ export const api = {
     post<void>(`/v1/agents/${encodeURIComponent(id)}/permission`, { id: promptId, choice }),
 }
 
+/** One subagent working in a session (GET /v1/sessions/{id}/subagents). */
+export interface Subagent {
+  agent_id: string
+  /** "general-purpose", "Explore"…; absent when no hook named one. */
+  agent_type?: string
+  /** What the parent asked it to do, when its launch says. */
+  description?: string
+  tool_calls: number
+  /** Unix ms. */
+  started_at: number
+  last_at: number
+  /** Its newest call: the tool, its short line, when it started (unix ms). */
+  tool?: string
+  detail?: string
+  tool_at?: number
+  /** That call has no result yet. */
+  running: boolean
+  /** Its newest event is a permission prompt. */
+  asking: boolean
+}
+
+export interface SubagentsNow {
+  working: Subagent[]
+  /** How many stopped in the same window after making a tool call. */
+  finished: number
+}
+
 /** A permission prompt an owned Claude Code session is showing (ADR-035). */
 export interface Permission {
   id: string
@@ -1111,8 +1144,15 @@ export interface Permission {
    * daemon still checks the menu on the screen has it before typing (422). */
   always?: string
   since: string
-  /** How many more prompts wait behind this one (Claude Code shows the oldest). */
+  /** How many more prompts are outstanding besides this one. */
   queued?: number
+  /** Set when a subagent asked: Claude Code draws its dialog in the parent's terminal. */
+  agent_id?: string
+  /** The subagent's type ("general-purpose"), with agent_id. */
+  agent_type?: string
+  /** Every outstanding prompt, oldest first, when there is more than one.
+   * Which the terminal shows is unknown then, so no key answers any of them. */
+  waiting?: Permission[]
 }
 
 /** `dismiss` types nothing: it takes away the card of a prompt settled where no hook saw it. */

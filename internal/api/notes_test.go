@@ -381,6 +381,43 @@ func TestPartialSettingsUpdateKeepsTheRest(t *testing.T) {
 	}
 }
 
+// `main=1&kind=…` filters before the limit. A parent with subagents running
+// in parallel logged 635 of their tool calls in an hour while its own were
+// older than its newest 400 events, and the cockpit's tool list said "No tool
+// calls yet" on a session with thousands of them.
+func TestSessionEventsMainThreadFilterBeforeTheLimit(t *testing.T) {
+	e := newEnv(t)
+	base := e.now.Add(-2 * time.Hour)
+	add := func(i int, kind event.Kind, agent string, payload string) {
+		ev := &event.Event{
+			SessionID: "s-busy", Source: event.SourceHook, Kind: kind, Tool: "Bash", AgentID: agent,
+			Key: "k" + strconv.Itoa(i), Ts: base.Add(time.Duration(i) * time.Second), Payload: json.RawMessage(payload),
+		}
+		if _, err := store.InsertEvent(context.Background(), e.st.DB(), ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add(0, event.KindToolPre, "", `{}`)
+	add(1, event.KindToolPost, "", `{}`)
+	add(2, event.KindTurnUser, "", `{}`)
+	add(3, event.KindToolPre, "", `{"sidechain":true}`)
+	for i := 10; i < 40; i++ {
+		add(i, event.KindToolPre, "a827d9", `{}`)
+	}
+
+	var all, main []event.Event
+	e.get(t, "/v1/sessions/s-busy/events?newest=1&limit=10", &all)
+	for _, ev := range all {
+		if ev.AgentID == "" {
+			t.Fatalf("the unfiltered tail holds a main-thread event: %+v", ev)
+		}
+	}
+	e.get(t, "/v1/sessions/s-busy/events?newest=1&limit=10&main=1&kind=tool.pre,tool.post,turn.assistant", &main)
+	if len(main) != 2 || main[0].Kind != event.KindToolPre || main[1].Kind != event.KindToolPost {
+		t.Fatalf("main thread = %+v; want its tool.pre and tool.post", main)
+	}
+}
+
 // `newest=1` returns the tail of a session rather than the head.
 //
 // Paging from the start is right for a timeline read forwards and wrong for

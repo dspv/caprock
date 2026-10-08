@@ -139,9 +139,13 @@ type Manager struct {
 	// one as developer_instructions. Set by the daemon; nil means none.
 	ProjectPrompt func(dir string) string
 	permMu        sync.Mutex
-	// perms is each session's queue of prompts, oldest — the one on its
-	// screen — first.
+	// perms is each session's prompts still outstanding, oldest first. Which
+	// one its screen shows is not known when there are several (ADR-035,
+	// amended 2026-10-09).
 	perms map[string][]*Permission
+	// calls is each session's newest PreToolUse calls, so a PermissionRequest
+	// — which carries no tool_use_id — is tied to the call it asks about.
+	calls map[string][]preCall
 	// persistMu serialises writing perms to the store, and persisting tracks
 	// the writes in flight (see persistPermission).
 	persistMu  sync.Mutex

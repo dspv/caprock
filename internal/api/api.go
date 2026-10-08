@@ -376,6 +376,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/sessions", s.handleSessions)
 	m.HandleFunc("GET /v1/sessions/{id}", s.handleSession)
 	m.HandleFunc("GET /v1/sessions/{id}/events", s.handleSessionEvents)
+	m.HandleFunc("GET /v1/sessions/{id}/subagents", s.handleSessionSubagents)
 	m.HandleFunc("GET /v1/sessions/{id}/notes", s.handleSessionNotes)
 	m.HandleFunc("GET /v1/notes", s.handleSearchNotes)
 	m.HandleFunc("GET /v1/sessions/{id}/diff", s.handleSessionDiff)
@@ -904,7 +905,16 @@ func (s *Server) handleSessionEvents(w http.ResponseWriter, r *http.Request) {
 		// reader asks for more history.
 		evs, err = store.EventsBefore(r.Context(), s.d.Store.DB(), id, before, limit)
 	} else if r.URL.Query().Get("newest") == "1" {
-		evs, err = store.LastEvents(r.Context(), s.d.Store.DB(), id, limit)
+		// `main=1` and `kind=a,b` filter before the limit, so a parent whose
+		// subagents log hundreds of events an hour still gets its own newest
+		// calls rather than a page of theirs.
+		f := store.EventFilter{MainOnly: r.URL.Query().Get("main") == "1"}
+		for _, k := range strings.Split(r.URL.Query().Get("kind"), ",") {
+			if k = strings.TrimSpace(k); k != "" {
+				f.Kinds = append(f.Kinds, k)
+			}
+		}
+		evs, err = store.LastEventsFiltered(r.Context(), s.d.Store.DB(), id, limit, f)
 	} else {
 		evs, err = store.ListEvents(r.Context(), s.d.Store.DB(), id, after, limit)
 	}

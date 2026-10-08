@@ -7,11 +7,27 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/alerts"
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/rollup"
 )
+
+// A notification answers a prompt only when it is the only one outstanding:
+// with two, which the terminal shows is unknown, and an Approve would press a
+// key into whichever is in front (ADR-035, amended 2026-10-09).
+func TestANotificationAnswersOnlyALonePrompt(t *testing.T) {
+	if got := answerablePrompt(&agents.Permission{ID: "p1"}, true); got != "p1" {
+		t.Fatalf("one outstanding: %q", got)
+	}
+	if got := answerablePrompt(&agents.Permission{ID: "p1", Queued: 1}, true); got != "" {
+		t.Fatalf("two outstanding: %q", got)
+	}
+	if got := answerablePrompt(nil, false); got != "" {
+		t.Fatalf("none: %q", got)
+	}
+}
 
 // A permission dialog reaches the phone with no licence: alerts are free even
 // though the weekly report that shares the bot is not (ADR-036). The message
