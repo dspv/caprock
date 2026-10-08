@@ -539,7 +539,7 @@ $30/year or $100 once — [caprock.dev/premium](https://caprock.dev/premium/).
 A key arrives by email and goes in the dashboard's settings, or:
 
 ```bash
-caprock license set CR-2027-01-01-A1B2C3D4
+caprock license set YOUR-KEY      # the key from the email
 caprock license                 # what is in force
 ```
 
