@@ -17,7 +17,20 @@ figure and the eye cannot follow a scroll that never rests.
 """
 import base64, json, os, pathlib, shutil, subprocess, sys, time, urllib.request
 
-CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+def _find_chrome():
+    """$CAPROCK_SHOT_CHROME, else Playwright's headless shell, else the
+    installed Chrome — whose updater, started from a Caprock session, makes
+    macOS warn that "caprock was prevented from modifying apps" (see
+    scripts/shots.py)."""
+    import os, pathlib
+    if os.environ.get("CAPROCK_SHOT_CHROME"):
+        return os.environ["CAPROCK_SHOT_CHROME"]
+    cache = pathlib.Path.home() / "Library/Caches/ms-playwright"
+    for shell in sorted(cache.glob("chromium_headless_shell-*/chrome-headless-shell-*/chrome-headless-shell"), reverse=True):
+        return str(shell)
+    return "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+
+CHROME = _find_chrome()
 PORT = int(os.environ.get("CAPROCK_GIF_CDP_PORT", "9444"))
 BASE = os.environ.get("CAPROCK_GIF_BASE", "http://127.0.0.1:4291")
 OUT_DIR = pathlib.Path(os.environ.get("CAPROCK_GIF_OUT", "docs"))

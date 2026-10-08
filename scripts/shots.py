@@ -306,7 +306,22 @@ def scrub():
         print(f"  scrub FAILED: {e}")
         return False
 
-CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+def find_chrome():
+    """The browser that takes the shots: $CAPROCK_SHOT_CHROME, else Playwright's
+    headless shell, else the installed Chrome.
+
+    The installed Chrome is the last resort on purpose. Started from a
+    Caprock session it runs its updater, and macOS then tells the owner that
+    "caprock was prevented from modifying apps" (2026-10-07). The headless
+    shell has no updater and draws the same pages."""
+    if os.environ.get("CAPROCK_SHOT_CHROME"):
+        return os.environ["CAPROCK_SHOT_CHROME"]
+    cache = pathlib.Path.home() / "Library/Caches/ms-playwright"
+    for shell in sorted(cache.glob("chromium_headless_shell-*/chrome-headless-shell-*/chrome-headless-shell"), reverse=True):
+        return str(shell)
+    return "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+
+CHROME = find_chrome()
 PORT = 9222
 PROFILE = "/tmp/caprock-shots-profile"
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:4290"

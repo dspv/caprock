@@ -19,7 +19,20 @@ starts — a scrubbed copy — never against the one you are using.
 """
 import base64, json, shutil, subprocess, sys, time, urllib.request, pathlib
 
-CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+def _find_chrome():
+    """$CAPROCK_SHOT_CHROME, else Playwright's headless shell, else the
+    installed Chrome — whose updater, started from a Caprock session, makes
+    macOS warn that "caprock was prevented from modifying apps" (see
+    scripts/shots.py)."""
+    import os, pathlib
+    if os.environ.get("CAPROCK_SHOT_CHROME"):
+        return os.environ["CAPROCK_SHOT_CHROME"]
+    cache = pathlib.Path.home() / "Library/Caches/ms-playwright"
+    for shell in sorted(cache.glob("chromium_headless_shell-*/chrome-headless-shell-*/chrome-headless-shell"), reverse=True):
+        return str(shell)
+    return "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+
+CHROME = _find_chrome()
 PORT = 9223
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:4290"
 OUT = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else ".")
