@@ -230,3 +230,39 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
     (a.stale ? b.since - a.since : a.since - b.since))
   return { projects: nodes, inbox }
 }
+
+/** A project with nothing running for this long folds under Quiet. */
+export const QUIET_MS = 7 * 24 * 60 * 60 * 1000
+
+export interface ProjectGroups {
+  /** The list as it always was. */
+  shown: ProjectNode[]
+  /** Nothing running and no activity for QUIET_MS: folded at the bottom. */
+  quiet: ProjectNode[]
+  /** Hidden by hand. */
+  hidden: ProjectNode[]
+}
+
+/**
+ * Splits the sidebar's projects into what is listed, what has gone quiet and
+ * what was hidden by hand, keeping the model's order inside each group.
+ * Something running, waiting or open in a tab, and the project in front,
+ * always stay in the list: a hidden project that comes back to life shows
+ * normally until it is quiet again. Pinned projects never go quiet, and
+ * Other folders holds only what is live or open, so it is never folded.
+ */
+export function groupProjects(
+  nodes: ProjectNode[],
+  { hidden, activeProjectId, now = Date.now() }: { hidden: ReadonlySet<string>; activeProjectId?: string; now?: number },
+): ProjectGroups {
+  const out: ProjectGroups = { shown: [], quiet: [], hidden: [] }
+  for (const n of nodes) {
+    const id = n.project.id
+    const busy = n.live > 0 || n.waiting > 0 || n.worktrees.some((w) => w.sessions.some((s) => s.open))
+    if (busy || id === activeProjectId || id === OTHER_FOLDERS_ID) out.shown.push(n)
+    else if (hidden.has(id)) out.hidden.push(n)
+    else if (!n.project.pinned && now - n.lastActive > QUIET_MS) out.quiet.push(n)
+    else out.shown.push(n)
+  }
+  return out
+}

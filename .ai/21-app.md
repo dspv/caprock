@@ -115,9 +115,26 @@ is not where the money is taken.
 
 One window, three regions:
 
-- **Sidebar (left).** Projects, each expandable to worktrees and branches,
+- **Sidebar (left).** A primary *New agent* button (accent, full width,
+  ⇧⌘N) with *Add project* (⌘O) under it — the app's main action, not a
+  hover icon (owner, 2026-10-08: "no big button to create something new",
+  translated). Then projects, each expandable to worktrees and branches,
   then to the sessions and shells in it. Badges: *waiting on you*, *looping*,
   cost today. A **Dashboard** entry opens the existing screens.
+- **Keeping the project list short** (owner, 2026-10-08: "a ton of stuff
+  hanging in it and it's unclear how to hide things", translated). Projects
+  with no live session and no activity for 7 days (`QUIET_MS`, from the
+  model's `lastActive`: last session event, `last_activity`, `added_at`)
+  fold under *Quiet · N* at the bottom; a project hidden by hand from its
+  row's hover action goes under *Hidden · N*, where the same action shows it
+  again. `groupProjects` in `ui/src/lib/sidebar.ts` decides: a live or
+  waiting session, a session open in a tab, being the project in front, or
+  *Other folders* always keeps a row in the list; pinned never goes quiet.
+  Hidden ids live in the page's storage (`caprock.app.hidden-projects`),
+  not the daemon: the projects API has no hide flag, and unlisting
+  (`DELETE /v1/projects/{id}`) takes the project out of every list, phone
+  and palette included, which is not what hiding means. Which folds are open is
+  `caprock.app.project-folds`; both start closed.
 - **Tabs (main).** Terminal tabs — an agent session or a shell — with the
   project and branch in the title. The permission prompt card
   ([ADR-035](08-decisions.md#adr-035--a-permission-prompt-is-answered-with-a-button-found-by-its-hook))
@@ -1103,7 +1120,8 @@ the user guide [docs/app.md § Updates](../docs/app.md#updates).
   place", translated). Sessions live in pty-hosts and survive both the app's
   restart and the daemon's move; tabs, their order, the front tab, splits
   and sizes (`caprock.app.workspace.v1`) and the sidebar
-  (`caprock.app.expanded`) are in the page's storage; on *installing* each
+  (`caprock.app.expanded`, `caprock.app.hidden-projects`,
+  `caprock.app.project-folds`) are in the page's storage; on *installing* each
   terminal saves where it is scrolled (`caprock.app.resume.v1`,
   `ui/src/lib/termresume.ts`) and goes back there after the replay; the
   shell waits a second for WebKit to write that, and saves the window state
