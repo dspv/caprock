@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.88.0] - 2026-10-08
+
 ### Added
 
 - **Claude Haiku 5.5 is priced and can be picked.** The pricing table gains

@@ -73,6 +73,13 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-08 — 0.88.0: Claude Haiku 5.5
+
+Haiku 5.5 priced at list (table 2026-10-08.1, lower tier of its two) and
+offered in New agent after it answered the real `claude` (#304); its turns
+were unpriced before. README no longer says Caprock cannot start Codex or
+OpenCode sessions (#302).
+
 ### 2026-10-08 — 0.87.0: Linux notifications checked on a real server
 
 The 0.86.0 Linux app was run on dunst and XFCE in a container against a real
