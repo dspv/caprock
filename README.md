@@ -348,11 +348,11 @@ transcript, with the time it wrote them. Which windows appear depends on the
 plan — some ChatGPT plans have no 5-hour window. They are shown as measured and
 never forecast.
 
-**What is not there yet.** Observation only: the dashboard cannot start, steer
-or stop an OpenCode, Codex or DeepSeek Harness session, and the task runner does
-not work with them. Activity refreshes every few seconds rather than instantly, so the Now
-screen lags a little behind a running session — the Cost and Lifetime screens
-are unaffected. Verified on macOS; it builds and its tests pass on Linux and
+**What is not there yet.** Caprock starts, types into and stops the Codex and
+OpenCode sessions it started, in terminal tabs; DeepSeek Harness is read only,
+and the task runner works with Claude Code alone. A session started outside
+Caprock refreshes every few seconds rather than instantly, so the Now screen
+lags a little behind it — the Cost and Lifetime screens are unaffected. Verified on macOS; it builds and its tests pass on Linux and
 Windows, but it has not been run on either.
 
 ## Why
