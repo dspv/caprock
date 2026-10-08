@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.85.0] - 2026-10-08
+
 ### Added
 
 - **Recent sessions on a project's empty screen.** With no tab open, a

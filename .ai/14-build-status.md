@@ -73,6 +73,16 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-08 — 0.85.0: the app, walked as a user
+
+A pass over the desktop app's main scenarios (#293). A project with no tab
+open lists its recent agent sessions with *Continue*; Settings opens with
+⌘, from a sidebar button and from the palette, and leads with how agents
+start; a worktree from New agent no longer shows as a change in the main
+checkout; its name is optional; Waiting on you folds turns older than 12h;
+⌘T opens in the tab's folder; tabs are named after their agent; the
+dashboard in the app drops the website's chrome.
+
 ### 2026-10-08 — 0.84.1: card buttons and terminals after a restart
 
 After the owner's app restart every button on a permission card answered
