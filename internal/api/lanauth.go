@@ -245,6 +245,7 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/notes":                true,
 	"GET /v1/stats/summary":        true,
 	"GET /v1/stats/daily":          true,
+	"GET /v1/window-stop":          true,
 	"GET /v1/events":               true,
 	"GET /v1/history":              true,
 	"GET /v1/status":               true,

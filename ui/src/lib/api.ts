@@ -476,6 +476,52 @@ export interface LicenseState { active: boolean; in_grace: boolean; expires_at?:
 export interface PremiumCompare { plan: string; monthly_usd: number; source: string; read_on: string }
 export interface PremiumPricing { yearly: PremiumPlan; monthly: PremiumPlan; lifetime: PremiumPlan; info_url: string; license?: LicenseState; compare?: PremiumCompare }
 
+/** One plan window as the plan-window stop sees it (GET /v1/window-stop). */
+export interface WindowStopFigure {
+  window: 'five_hour' | 'seven_day'
+  used_percentage: number
+  /** Unix seconds. */
+  resets_at: number
+  /** Unix ms: when Claude Code's status line last reported it. */
+  observed_at: number
+  /** Whether the stop would act on it; `stale` says why not. */
+  fresh: boolean
+  stale?: string
+}
+
+/** A session the plan-window stop paused and will resume. */
+export interface WindowStopPaused {
+  session_id: string
+  project: string
+  title?: string
+  window: 'five_hour' | 'seven_day'
+  /** Unix seconds: the reset after which it resumes (a minute after). */
+  resume_at: number
+  paused_at: number
+}
+
+export interface WindowStopEvent {
+  kind: 'paused' | 'resumed'
+  at: number
+  window?: string
+  used_percentage?: number
+  threshold_pct?: number
+  resume_at?: number
+  sessions: string[]
+}
+
+/** GET /v1/window-stop: the Premium plan-window stop's state. */
+export interface WindowStop {
+  /** The share in percent; 0 is off. */
+  pct: number
+  licensed: boolean
+  /** How old a figure may be and still pause anything. */
+  fresh_for_s: number
+  windows: WindowStopFigure[]
+  paused: WindowStopPaused[]
+  last?: WindowStopEvent
+}
+
 export interface RateLimits {
   five_hour?: RateWindow
   seven_day?: RateWindow
@@ -511,6 +557,10 @@ export interface Settings {
   spawn_permission_mode?: string
   /** The daily spend ceiling in USD; 0 is off. See internal/cap. */
   cap_usd_per_day?: number
+  /** The share of a Claude plan window (50–99) at which Premium pauses the
+   *  Claude Code sessions Caprock started until the window resets; 0 is off.
+   *  90 until someone chooses. See internal/cap/window.go. */
+  window_stop_pct?: number
   /** Where the weekly report goes. Not a credential, so it round-trips. */
   report_chat_id?: string
   /** Whether a bot token is stored. The token itself is never returned — it is
@@ -1036,6 +1086,7 @@ export const api = {
     get<Summary>(`/v1/stats/summary?range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}`),
   daily: (days = 30) => get<DailyStat[]>(`/v1/stats/daily?days=${days}`),
   premium: () => get<PremiumPricing>('/v1/premium'),
+  windowStop: () => get<WindowStop>('/v1/window-stop'),
   gemini: () => get<GeminiStatus>('/v1/gemini'),
   askGemini: (prompt: string, model?: string) => post<GeminiReply>('/v1/gemini/ask', { prompt, model }),
   browse: (dir = '') => get<BrowseResponse>(`/v1/browse${dir ? `?dir=${encodeURIComponent(dir)}` : ''}`),

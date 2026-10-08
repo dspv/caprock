@@ -14,7 +14,7 @@
 import { fmtUSD } from '@/lib/format'
 import { STALE_MS } from '@/lib/sidebar'
 import { countdown, resetClock } from '@/lib/limitclock'
-import type { LoopAlert, RateLimits, SessionSummary } from '@/lib/api'
+import type { LoopAlert, RateLimits, SessionSummary, WindowStop } from '@/lib/api'
 
 export interface AttentionItem {
   id: string
@@ -48,6 +48,13 @@ export interface AttentionItem {
   /** Age of the condition, unix ms, when known. */
   since?: number
   /**
+   * A plan-window item on an install without Premium: the place to offer the
+   * plan-window stop, which would pause Caprock's own sessions here and resume
+   * them after the reset. Never set on a licensed install — nobody is sold
+   * what they already have.
+   */
+  offerWindowStop?: boolean
+  /**
    * The moment worth looking at, unix ms — where "open" should land.
    *
    * Without it the link opened a session at whatever the timeline happened to
@@ -63,6 +70,8 @@ export interface AttentionInput {
   now: number
   /** Plan-limit windows, when Claude Code's status line is feeding them. */
   limits?: RateLimits
+  /** The plan-window stop's state (GET /v1/window-stop), when known. */
+  windowStop?: WindowStop
   /** Sessions idle-but-waiting for this long are surfaced. Default 15 min. */
   waitingMs?: number
 }
@@ -93,7 +102,7 @@ function ms(v: string | number | undefined): number {
  * An empty result is the normal case and means the panel should not render —
  * "all clear" is not news, and showing it trains people to ignore the space.
  */
-export function findAttention({ sessions, alerts, now, limits, waitingMs = DEFAULT_WAITING_MS }: AttentionInput): AttentionItem[] {
+export function findAttention({ sessions, alerts, now, limits, windowStop, waitingMs = DEFAULT_WAITING_MS }: AttentionInput): AttentionItem[] {
   const out: AttentionItem[] = []
   // Defensive: the daemon always sends stats and activity, but this decides
   // whether to interrupt someone and runs at the top of Now — a version-skewed
@@ -243,6 +252,32 @@ export function findAttention({ sessions, alerts, now, limits, waitingMs = DEFAU
       severity: pct >= 95 ? 'high' : 'medium',
       title: `Claude's ${name} limit: ${pct}% used`,
       detail: `resets ${resetClock(resetMs, now)} — in ${countdown(resetMs - now)}; at 100% Claude Code pauses until then${w.forecast ? ` · ${w.forecast}` : ''}`,
+      // Only when the answer is known to be "no licence": an unknown state
+      // offers nothing rather than selling a stop to someone who owns it.
+      offerWindowStop: windowStop ? !windowStop.licensed : undefined,
+    })
+  }
+
+  // 5. The plan-window stop has paused Caprock's own sessions (Premium). The
+  // notice the feature promises: which sessions, and when they carry on. It
+  // stands in for the plain limit row rather than repeating it.
+  const paused = Array.isArray(windowStop?.paused) ? windowStop!.paused.filter(Boolean) : []
+  if (paused.length > 0) {
+    const resumeMs = Math.max(...paused.map((p) => (p.resume_at ?? 0) * 1000))
+    const last = windowStop?.last?.kind === 'paused' ? windowStop.last : undefined
+    const which = paused.some((p) => p.window === 'seven_day') ? 'weekly' : '5-hour'
+    const names = paused.map((p) => p.project || p.session_id.slice(0, 8))
+    const crossed = last?.threshold_pct ? ` passed ${last.threshold_pct}%` : ' is nearly spent'
+    const when = resumeMs > now ? `${resetClock(resumeMs, now)} — in ${countdown(resumeMs - now)}` : 'now'
+    out.splice(0, out.length, ...out.filter((it) => !it.id.startsWith('limit-')))
+    out.push({
+      id: 'window-stop',
+      sessionId: '',
+      project: '',
+      severity: 'medium',
+      title: `Paused ${paused.length === 1 ? '1 session' : `${paused.length} sessions`} Caprock started`,
+      detail: `Claude's ${which} limit${crossed}; they resume after it resets at ${when} · ${names.join(', ')}`,
+      since: Math.min(...paused.map((p) => p.paused_at || now)),
     })
   }
 

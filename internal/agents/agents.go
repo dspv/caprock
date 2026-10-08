@@ -628,6 +628,36 @@ func (m *Manager) PauseOwned(sessionID string) (bool, error) {
 	return true, nil
 }
 
+// ResumeOwned resumes a session Caprock started, reporting whether it did. Like
+// PauseOwned it refuses, quietly, any id this manager does not own: the
+// plan-window stop resumes what it paused hours earlier, and the session may
+// have ended — or never been ours — by then.
+func (m *Manager) ResumeOwned(sessionID string) (bool, error) {
+	a, ok := m.Get(sessionID)
+	if !ok {
+		return false, nil
+	}
+	if err := a.sess.Signal(ptyman.SignalResume); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// OwnedRunningKind lists the running sessions Caprock started with one coding
+// agent ("claude", "codex", …). The plan-window stop pauses only Claude Code:
+// Anthropic's window is not spent by a Codex or Gemini session.
+func (m *Manager) OwnedRunningKind(kind string) []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []string
+	for id, a := range m.agents {
+		if a.Kind == kind {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 // Input writes typed bytes to an owned session.
 func (m *Manager) Input(sessionID string, data []byte) error {
 	a, ok := m.Get(sessionID)

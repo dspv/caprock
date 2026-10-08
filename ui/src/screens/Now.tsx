@@ -92,6 +92,9 @@ export function NowScreen() {
   // enough to be worth a long interval and cheap enough to share with the
   // strip below, which asks for the same thing.
   const lifetime = useApi(() => api.history('all'), [], { intervalMs: 60000, cache: 'history:all' })
+  // The plan-window stop: what it has paused, and whether this install has
+  // it — the free plan-limit row offers it only when it does not.
+  const windowStop = useApi(() => api.windowStop(), [], { intervalMs: 15000 })
   const { alerts } = useLive()
   const now = useNow(1000)
   const everySession = sessions.data?.items ?? []
@@ -143,7 +146,7 @@ export function NowScreen() {
   const rest = shown.filter((s) => !working.includes(s) && s.status !== 'ended' && recentEnough(s, now))
   const ended = shown.filter((s) => s.status === 'ended')
   const [plan, savePlan] = usePlan()
-  const attention = findAttention({ sessions: list, alerts, now, limits: summary.data?.rate_limits })
+  const attention = findAttention({ sessions: list, alerts, now, limits: summary.data?.rate_limits, windowStop: windowStop.data })
   // Defect: before any session exists the API returns Go zero values, so a new
   // user's first screen was a $0.00 hero, three zeroes, and a *warn*-toned
   // "Cache hit 0%" — the only coloured thing on the page was a warning about a
