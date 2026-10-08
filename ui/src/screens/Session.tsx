@@ -25,6 +25,8 @@ import { setDraft } from '@/lib/draft'
 import { RemoveSession } from '@/components/RemoveSession'
 import { ChatView } from '@/components/ChatView'
 import { ChevronIcon } from '@/components/AppIcons'
+import { isAppMode } from '@/lib/appmode'
+import { MoreMenu } from '@/components/MoreMenu'
 
 type Tab = 'chat' | 'timeline' | 'notes' | 'changes' | 'terminal'
 
@@ -68,14 +70,16 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   // controller (ADR-034).
   const reader = !useCanControl()
   const tabs: Tab[] = reader ? ['chat', 'timeline', 'notes', 'changes'] : ['chat', 'timeline', 'notes', 'changes', 'terminal']
-  // A phone opens a session on its conversation (WP-14); a desktop on the
-  // timeline, as before.
+  // A phone opens a session on its conversation (WP-14), and so does the
+  // desktop app: someone who clicks a session there wants what was said, not
+  // the raw hook events. A browser dashboard opens on the timeline, as before.
+  const app = isAppMode()
   const active: Tab =
     tab === 'changes' || tab === 'diff' || tab === 'files'
       ? 'changes'
       : (tab === 'terminal' && !reader) || tab === 'notes' || tab === 'chat' || tab === 'timeline'
         ? tab
-        : narrowScreen() ? 'chat' : 'timeline'
+        : narrowScreen() || app ? 'chat' : 'timeline'
   const now = useNow(1000)
   const [plan] = usePlan()
   // The phone's Chat tab: a compact header, its details behind a toggle.
@@ -152,12 +156,24 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         * agent it was, which was right for 39 of 116 ended Claude Code sessions
         * (FB-036). Caprock never types into a process it did not start
         * (rule 7); a resume starts a second process on the conversation. */}
-      {s.resume && <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={s.status !== 'ended' && !s.detached} resume={s.resume} />}
+      {s.resume && <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={s.status !== 'ended' && !s.detached} resume={s.resume} prominent={app} />}
       {/* A relay: a new session, in any agent, started with a summary of
         * this one that the user reads first — offered next to "continue"
         * because it answers the same wish when continuing cannot (another
         * agent, a transcript gone) or is not wanted. */}
-      {s.cwd && !reader && <RelayMenu sessionID={s.session_id} />}
+      {/* In the app the page has one main action, Resume; the other ways to
+        * pick the work up are a click further, not five buttons in a row. */}
+      {app ? (
+        !reader && (
+          <MoreMenu>
+            {s.cwd && <RelayMenu sessionID={s.session_id} />}
+            <OpenInTerminal sessionID={s.session_id} info={s.open_terminal} />
+            {s.resume?.command && <CopyCommand command={s.resume.command} />}
+          </MoreMenu>
+        )
+      ) : (
+        s.cwd && !reader && <RelayMenu sessionID={s.session_id} />
+      )}
     </>
   )
   return (
@@ -218,7 +234,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
           * this session's work somewhere other than here, and the title row
           * is on every tab, the Terminal tab included. */}
         <span className="ml-auto flex min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-1.5">
-          {!reader && <OpenInTerminal sessionID={s.session_id} info={s.open_terminal} />}
+          {!reader && !app && <OpenInTerminal sessionID={s.session_id} info={s.open_terminal} />}
           <RepoButtons repo={s.repo} prs={s.prs} cwd={s.cwd} />
         </span>
       </div>
@@ -424,6 +440,26 @@ function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now:
 }
 
 /** A phone-width window, where a session opens on its chat. */
+/** The resume command, for a terminal of one's own. */
+function CopyCommand({ command }: { command: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      title={command}
+      onClick={() => {
+        void navigator.clipboard.writeText(command).then(() => {
+          setCopied(true)
+          window.setTimeout(() => setCopied(false), 2000)
+        }, () => {})
+      }}
+      className="text-left text-[12px] text-fg-muted hover:text-fg"
+    >
+      {copied ? 'Copied' : 'Copy the resume command'}
+    </button>
+  )
+}
+
 function narrowScreen(): boolean {
   return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 639px)').matches
 }
