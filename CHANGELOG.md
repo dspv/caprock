@@ -9,6 +9,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **`?agent=deepseek` on the stats endpoints is no longer a 400.** The
+  DeepSeek filter the dashboard offers was refused by the API, which accepted
+  only claude, opencode, gemini and codex.
+
 ## [0.88.0] - 2026-10-08
 
 ### Added
