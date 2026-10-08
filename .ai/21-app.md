@@ -150,6 +150,24 @@ One window, three regions:
   the option is not on it. Sessions in other tabs or behind the
   window are reached through their badge, the Inbox, the menu bar popover,
   the notification and the phone, which keep their buttons.
+- **Agent cockpit (right).** The inspector, open by default (⌘I closes it,
+  and closed is remembered per machine), becomes the agent cockpit beside an
+  agent's terminal: the agent's character in its state (working, waiting on
+  you, looping, idle, ended), what the session has cost with the cost of each
+  of its last model calls, the context bar and what the next call pays to
+  re-read it, what it is doing this second (the open tool call and how long
+  it has run, or *Thinking* since the last one finished), its last seven tool
+  calls with their durations, the uncommitted changes, the plan windows of
+  its agent, and a loop warning only while an alert is live. It is the screen
+  that shows what only Caprock knows, so it is built from figures Caprock
+  already holds and nothing else: the session row the sidebar polls, the
+  session's newest 400 events (fetched once, then followed on the live
+  socket), and the day's summary for the plan windows, which are
+  account-wide and labelled so. A figure an agent does not report is left
+  out, never drawn as zero — no context bar without `context` (its
+  `context_note` instead), no plan windows for an agent with none. A shell
+  tab keeps the plain inspector (folder, changes, actions). Code:
+  `components/Cockpit.tsx`, derivations in `lib/cockpit.ts`.
 - **Empty project (main, no tab open).** New agent, New shell, Add a
   project, then the project's six most recent agent sessions (ended ones
   nobody wrote in left out) with cost, age and one button: *Continue* resumes

@@ -21,6 +21,20 @@ Phase 3 (Delight) has no plan by design.
   opened. A project with something running or waiting, or the one in
   front, always shows.
 
+## [0.90.0] - 2026-10-08
+
+### Added
+
+- **The agent cockpit.** The panel beside an agent's terminal now shows
+  what only Caprock knows, live: the agent's character in its state, what
+  the session has cost and what each of its last model calls cost, the
+  context bar and what every call pays to re-read it, the tool call
+  running this second and for how long, the last seven calls with their
+  durations, the uncommitted changes, the plan windows and a loop warning
+  when there is one. It is open by default; ⌘I closes it, and closed is
+  remembered. An agent that does not report a figure (OpenCode's plan, a
+  context before the first answer) shows nothing there rather than a zero.
+
 ## [0.89.0] - 2026-10-08
 
 ### Changed

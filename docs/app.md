@@ -95,10 +95,16 @@ others. Installing it: [install-app.md](install-app.md).
   chat button in the tab strip: your prompts, what the agent wrote, and each
   tool call on one line that opens. The field under it types into the
   session.
-- **Inspector** (⌘I). The session's agent, model and folder, its cost,
-  turns, tokens and context, the permission prompt with its buttons, and the
-  uncommitted changes in its checkout. Click a changed file to open it in
-  your editor at its first change.
+- **Agent cockpit** (⌘I). Open beside an agent's terminal unless you close
+  it: the agent and its state, what the session has cost and what each of
+  its last model calls cost, how full its context is and what every call
+  now pays to re-read it, what it is doing this second and for how long,
+  its last tool calls with how long each took, the uncommitted changes in
+  its checkout, your plan's 5-hour and weekly windows, and a warning when
+  it is repeating the same call. The permission prompt and its buttons sit
+  at the top while one waits. Click a changed file to open it in your
+  editor at its first change. Beside a shell tab it shows the folder and
+  its changes.
 - **Changes.** Click a worktree's ±N in the sidebar (hover the row for the
   same button), *Review and commit* in the inspector, or "Review changes" in
   the palette. The files are listed as *Staged*, *Changes* and *Conflicts*;
@@ -161,7 +167,7 @@ On macOS:
 | ⌘F          | Find in the terminal                    |
 | ⌘K          | Command palette                         |
 | ⌘,          | Settings                                |
-| ⌘I          | Inspector                               |
+| ⌘I          | Agent cockpit (the inspector)           |
 | ⌘\          | Hide or show the sidebar                |
 | ⇧⌘D         | Dashboard                               |
 | ⌘R          | Reload the window (View → Reload)       |

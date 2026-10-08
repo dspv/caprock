@@ -73,6 +73,16 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-08 — 0.90.0: the agent cockpit
+
+A user found the terminal excellent and everything around it bare. Beside an
+agent's terminal the inspector is now a cockpit, open by default: the agent's
+character and state, the session's cost and per-call bars, the context bar
+and what each call re-reads, the tool running now, recent tools with
+durations, changes, plan windows and a live loop alert (#313). Every figure
+comes from data the app already loaded; nothing an agent does not report is
+shown as zero.
+
 ### 2026-10-08 — 0.89.0: adding a project, and buying from the right page
 
 The owner could not find the add-project control, a pasted clone URL left
