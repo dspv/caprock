@@ -40,17 +40,21 @@ fn shown() -> std::sync::MutexGuard<'static, Option<std::collections::HashMap<St
     SHOWN.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// Takes a notification down by the server's id: notify-rust closes only
-/// through a handle, so this replaces it with an empty one under the same id
-/// and closes that.
+/// Takes a notification down by the server's id, with CloseNotification
+/// itself. Replacing it with an empty one first (all notify-rust offers
+/// without a handle) left a blank "Caprock" in dunst's history, and on a
+/// server that had already closed it made a new blank one. An id the server
+/// has dropped is answered with an error, which is ignored.
 #[cfg(target_os = "linux")]
 fn close_server_id(server_id: u32) {
-    if let Ok(h) = notify_rust::Notification::new()
-        .appname("Caprock")
-        .id(server_id)
-        .show()
-    {
-        h.close();
+    if let Ok(c) = zbus::blocking::Connection::session() {
+        let _ = c.call_method(
+            Some("org.freedesktop.Notifications"),
+            "/org/freedesktop/Notifications",
+            Some("org.freedesktop.Notifications"),
+            "CloseNotification",
+            &(server_id,),
+        );
     }
 }
 

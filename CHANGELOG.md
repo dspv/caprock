@@ -16,8 +16,8 @@ Phase 3 (Delight) has no plan by design.
   three things did not. An approval now stays until it is answered (it
   vanished after about ten seconds, its buttons with it); one answered
   elsewhere, or by its own button, is taken down, and none is left up when
-  the app quits (a press there did nothing); and *Open* shows once (XFCE
-  drew it twice).
+  the app quits (a press there did nothing), without leaving a blank
+  notification in its place; and *Open* shows once (XFCE drew it twice).
 
 ## [0.86.1] - 2026-10-08
 
