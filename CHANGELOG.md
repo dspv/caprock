@@ -9,6 +9,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Changed
+
+- **The Premium dialog opens the right page.** "Read more" lands on the
+  feature you were reading about on caprock.dev/premium, and the buy
+  buttons tell the checkout which feature they came from — the feature's
+  name only, nothing about you.
+
 ## [0.88.1] - 2026-10-08
 
 ### Fixed
