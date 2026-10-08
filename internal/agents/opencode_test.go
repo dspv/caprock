@@ -164,7 +164,7 @@ func TestNewOpenCodeIDSortsLikeOpenCodes(t *testing.T) {
 	// OpenCode 2 names sessions so that a newer one sorts first.
 	a := newOpenCodeID(time.UnixMilli(1791500304124))
 	b := newOpenCodeID(time.UnixMilli(1791500304125))
-	if !(b[:16] < a[:16]) {
+	if b[:16] >= a[:16] {
 		t.Errorf("newer %q does not sort before older %q", b, a)
 	}
 	// The clock part matches a real 2.0.26 id made at a known moment:
