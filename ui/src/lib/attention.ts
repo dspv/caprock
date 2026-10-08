@@ -12,6 +12,7 @@
  *  - anything predictive ("this will probably fail")
  */
 import { fmtUSD } from '@/lib/format'
+import { STALE_MS } from '@/lib/sidebar'
 import { countdown, resetClock } from '@/lib/limitclock'
 import type { LoopAlert, RateLimits, SessionSummary } from '@/lib/api'
 
@@ -168,9 +169,12 @@ export function findAttention({ sessions, alerts, now, limits, waitingMs = DEFAU
     // 3. Waiting for you, and has been for a while. A session that asked a
     // question two minutes ago is not a problem; one that asked twenty minutes
     // ago is time you did not know you were losing.
+    // Past half a day it is work put down, not a question waiting: the
+    // sidebar folds it under Older (STALE_MS), and two banners about
+    // sessions left days ago sat above everything on Now.
     if (s.activity.health === 'waiting-on-you') {
       const at = ms(s.activity.at) || s.last_event_at
-      if (at > 0 && now - at >= waitingMs) {
+      if (at > 0 && now - at >= waitingMs && now - at <= STALE_MS) {
         out.push({
           id: `waiting-${s.session_id}`,
           sessionId: s.session_id,

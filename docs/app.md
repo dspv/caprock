@@ -64,7 +64,8 @@ others. Installing it: [install-app.md](install-app.md).
   its session keeps running.
 - **Command palette** (⌘K). Sessions waiting on you come first, then actions,
   tabs, sessions and projects, best match first; past sessions are searched
-  as you type and listed under *History*. Type a task that matches
+  as you type and listed under *History*. *Keyboard shortcuts* lists every
+  key. Type a task that matches
   nothing — "Add rate limiting to the API" — and Enter opens *New agent* with
   it as the first message, in a new worktree named after it.
 - **New worktree.** In the New agent sheet, *Where → New worktree…* names

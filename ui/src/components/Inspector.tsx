@@ -84,7 +84,9 @@ function Body({ session: s, sessionId, hasPermission, showPrompt, onDetach, edit
             {branchLabel(s.git_branch) ? <> · <span className="mono">{branchLabel(s.git_branch)}</span></> : null}
           </p>
         )}
-        {s?.cwd && <p className="mono truncate text-[11px] text-fg-faint" title={s.cwd}>{s.cwd}</p>}
+        {/* Cut from the left: the end of a path is the part that tells two
+          * worktrees apart, and it was the part cut off. */}
+        {s?.cwd && <p dir="rtl" className="mono truncate text-left text-[11px] text-fg-faint" title={s.cwd}><bdi dir="ltr">{s.cwd}</bdi></p>}
       </header>
 
       {!isShell && showPrompt && <PermissionPrompt sessionId={sessionId} />}

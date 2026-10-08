@@ -116,3 +116,24 @@ export function shortcutLabel(keys: string, opts: { shift?: boolean } = {}, isMa
   if (isMac) return `${opts.shift ? '⇧' : ''}⌘${keys}`
   return `Ctrl+Shift+${keys}`
 }
+
+/** The app's keys as the shortcuts sheet lists them, macOS spelling; off
+ *  macOS each is Ctrl+Shift with the same key (docs/app.md § Keyboard). */
+export const SHORTCUTS: [keys: string, does: string][] = [
+  ['⇧⌘N', 'New agent'],
+  ['⌘T', 'New shell in the folder of the tab'],
+  ['⌘O', 'Add a project'],
+  ['⌘K', 'Command palette'],
+  ['⌘J', 'Next session waiting on you'],
+  ['⌘1–8, ⌘9', 'A tab by position; the last tab'],
+  ['⌃Tab, ⇧⌘[ ]', 'Next and previous tab'],
+  ['⌘W', 'Close the tab or pane — the session keeps going'],
+  ['⌘E, ⇧⌘E', 'Split: a new shell beside, below'],
+  ['⌘[ ]', 'Previous and next pane'],
+  ['⌘F', 'Find in the terminal'],
+  ['⌘I', 'Inspector'],
+  ['⌘\\', 'Hide or show the sidebar'],
+  ['⇧⌘D', 'Dashboard'],
+  ['⌘,', 'Settings'],
+  ['⌘R', 'Reload the window'],
+]
