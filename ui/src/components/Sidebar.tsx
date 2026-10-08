@@ -1,20 +1,28 @@
 /**
- * The app's sidebar (WP-06): what is waiting on you, then every project with
- * its worktrees, sessions and shells, then the way into the dashboard.
+ * The app's sidebar (WP-06): New agent and Add project, the Today strip
+ * (spend, agents running and waiting, the plan windows), what is waiting on
+ * you, then every project with its worktrees, sessions and shells, then the
+ * way into the dashboard.
  *
  * Keyboard: Tab reaches every row; ↑ and ↓ move between rows, → opens a
  * project and ← closes it, Enter opens what the row names.
  *
  * The list stays short: projects with nothing running for a week fold under
  * Quiet, and the ones hidden by hand under Hidden, both closed by default.
+ * Each project's ⋯ menu (or a right-click, or Shift+F10 on its row) hides it,
+ * closes its tabs, opens it in an editor or removes it from Caprock.
  */
-import { useCallback, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { groupProjects, type InboxItem, type ProjectNode, type SessionNode, type SidebarModel, type WorktreeNode } from '@/lib/sidebar'
 import type { ProjectSource } from '@/lib/projects'
+import type { EditorList, Summary } from '@/lib/api'
+import { buildToday } from '@/lib/today'
 import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { useTheme } from '@/lib/theme'
 import { ProjectRow, StatusDot } from './ProjectRow'
+import { ProjectMenu, type ProjectMenuAt } from './ProjectMenu'
+import { TodayStrip } from './TodayStrip'
 import { AgentGlyph, CaprockMark, ChevronIcon, DashboardIcon, FolderPlusIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from './AppIcons'
 
 const EXPANDED_KEY = 'caprock.app.expanded'
@@ -66,6 +74,21 @@ export interface SidebarProps {
   onPalette: () => void
   /** Opens a worktree's Changes view from its ±N; absent without the projects API. */
   onOpenChanges?: (projectId: string, w?: WorktreeNode) => void
+  /** The day's summary, for the Today strip; absent until it answers. */
+  summary?: Summary
+  /** The session list has answered once. */
+  loaded?: boolean
+  /** Opens a dashboard screen by its hash route ("#/cost"). */
+  onRoute?: (hash: string) => void
+  /** Tabs open per project, for the menu's "Close its tabs". */
+  tabCounts?: ReadonlyMap<string, number>
+  /** Closes every tab of a project; the sessions keep running. */
+  onCloseProjectTabs?: (projectId: string) => void
+  /** The editors found on this machine, for the menu's "Open in …"; null when none can be asked. */
+  editors?: EditorList | null
+  onOpenInEditor?: (path: string, label: string, editorId: string) => void
+  /** Removes a project from Caprock's list; never touches its files. */
+  onRemoveProject?: (projectId: string) => Promise<void> | void
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -74,6 +97,26 @@ export function Sidebar(props: SidebarProps) {
   const [hidden, setHidden] = useState<Set<string>>(() => loadIds(HIDDEN_KEY))
   const [folds, setFolds] = useState<Set<string>>(() => loadIds(FOLDS_KEY))
   const groups = useMemo(() => groupProjects(model.projects, { hidden, activeProjectId }), [model.projects, hidden, activeProjectId])
+  const now = useNow(30_000)
+  const today = useMemo(() => buildToday(model, props.summary, now), [model, props.summary, now])
+  const [menuAt, setMenuAt] = useState<ProjectMenuAt | null>(null)
+  const menuFrom = useRef<HTMLElement | null>(null)
+  const onMenu = useCallback((projectId: string, at: { x: number; y: number }, from: HTMLElement | null) => {
+    menuFrom.current = from
+    setMenuAt({ projectId, ...at })
+  }, [])
+  const closeMenu = useCallback(() => {
+    setMenuAt(null)
+    // Focus goes back to what opened it, unless a choice moved it elsewhere.
+    const from = menuFrom.current
+    menuFrom.current = null
+    if (!from) return
+    requestAnimationFrame(() => {
+      const at = document.activeElement
+      if (from.isConnected && (!at || at === document.body)) from.focus()
+    })
+  }, [])
+  const menuNode = menuAt ? model.projects.find((n) => n.project.id === menuAt.projectId) : undefined
   const onHide = useCallback((id: string, hide: boolean) => {
     setHidden((cur) => {
       const next = new Set(cur)
@@ -121,8 +164,12 @@ export function Sidebar(props: SidebarProps) {
       onFolderMenu={props.onFolderMenu}
       hidden={hidden.has(n.project.id)}
       onHide={onHide}
+      onMenu={onMenu}
     />
   )
+
+  // The one that has waited longest: the Inbox's order (permission prompts first).
+  const firstWaiting = model.inbox.find((i) => !i.stale)
 
   const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
     const target = e.target as HTMLElement
@@ -163,11 +210,11 @@ export function Sidebar(props: SidebarProps) {
           aria-label="New agent"
           aria-keyshortcuts="Shift+Meta+N"
           title="Start an agent in the project in front (⇧⌘N)"
-          className="flex h-[32px] w-full items-center gap-2 rounded-[8px] bg-accent pl-2.5 pr-2 text-left text-[13px] font-semibold text-panel shadow-[0_1px_0_rgba(0,0,0,0.08)] transition-[filter] hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
+          className="app-primary flex h-[32px] w-full items-center gap-2 rounded-[8px] border pl-2.5 pr-2 text-left text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
         >
           <PlusIcon size={15} />
           <span className="flex-1">New agent</span>
-          <kbd className="mono text-[10.5px] font-medium opacity-75">⇧⌘N</kbd>
+          <kbd className="app-kbd">⇧⌘N</kbd>
         </button>
         <button
           type="button"
@@ -179,11 +226,21 @@ export function Sidebar(props: SidebarProps) {
         >
           <FolderPlusIcon size={14} />
           <span className="flex-1">Add project</span>
-          <kbd className="mono text-[10.5px] text-fg-faint">⌘O</kbd>
+          <kbd className="app-kbd">⌘O</kbd>
         </button>
       </div>
 
       <div className="app-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-3" onKeyDown={onKeyDown}>
+        {props.onRoute && (
+          <TodayStrip
+            today={today}
+            loaded={props.loaded ?? true}
+            onSpend={() => props.onRoute!('#/cost')}
+            onWindows={() => props.onRoute!('#/cost?section=limits')}
+            onRunning={() => props.onRoute!('#/now')}
+            onWaiting={firstWaiting ? () => props.onOpenInbox(firstWaiting) : undefined}
+          />
+        )}
         <Inbox items={model.inbox} activeSessionId={activeSessionId} onOpen={props.onOpenInbox} />
 
         <SectionHead label="Projects" />
@@ -218,12 +275,27 @@ export function Sidebar(props: SidebarProps) {
           >
             <DashboardIcon size={15} className="text-fg-muted" />
             <span className="flex-1">Dashboard</span>
-            <kbd className="mono text-[10.5px] text-fg-faint">⇧⌘D</kbd>
+            <kbd className="app-kbd">⇧⌘D</kbd>
           </button>
           {props.onSettings && <IconButton label="Settings (⌘,)" onClick={props.onSettings}><SettingsIcon size={15} /></IconButton>}
           <ThemeButton />
         </div>
       </div>
+      {menuAt && menuNode && (
+        <ProjectMenu
+          at={menuAt}
+          name={menuNode.project.name}
+          root={menuNode.project.root}
+          hidden={hidden.has(menuNode.project.id)}
+          tabs={props.tabCounts?.get(menuNode.project.id) ?? 0}
+          editors={props.editors ?? null}
+          onHide={(hide) => onHide(menuNode.project.id, hide)}
+          onCloseTabs={() => props.onCloseProjectTabs?.(menuNode.project.id)}
+          onOpenInEditor={props.onOpenInEditor ? (editorId) => props.onOpenInEditor!(menuNode.project.root, menuNode.project.name, editorId) : undefined}
+          onRemove={props.onRemoveProject ? () => props.onRemoveProject!(menuNode.project.id) : undefined}
+          onClose={closeMenu}
+        />
+      )}
     </aside>
   )
 }

@@ -84,8 +84,19 @@ describe('the app workspace', () => {
     expect(within(inbox).getByText('Waiting one')).toBeInTheDocument()
     const projects = [...document.querySelectorAll('[data-project-row]')].map((b) => b.querySelector('span.font-medium')?.textContent)
     expect(projects.sort()).toEqual(['app', 'other'])
-    expect(await screen.findByText('$1.25')).toBeInTheDocument() // today, in the status strip
+    // Today, in the sidebar's Today strip and on the project's row; the
+    // status strip leaves it out while the sidebar shows it.
+    const today = screen.getByRole('region', { name: 'Today' })
+    expect(await within(today).findByText('$1.25')).toBeInTheDocument()
+    expect(screen.getByLabelText('$1.25 today')).toBeInTheDocument()
+    expect(within(document.querySelector('footer')!).queryByText('$1.25')).toBeNull()
     expect(screen.getByLabelText('1 waiting on you')).toBeInTheDocument()
+    expect(screen.getByLabelText('2 agents running · 1 working')).toBeInTheDocument()
+    // With the sidebar closed the status strip carries them again.
+    await act(() => { fireEvent.keyDown(window, { key: '\\', code: 'Backslash', metaKey: true }) })
+    expect(screen.queryByRole('region', { name: 'Today' })).toBeNull()
+    expect(within(document.querySelector('footer')!).getByText('$1.25')).toBeInTheDocument()
+    expect(within(document.querySelector('footer')!).getByText('40%')).toBeInTheDocument()
   })
 
   it('tells the desktop shell it lays out around the title bar itself, and stops saying so when gone', async () => {
@@ -241,7 +252,8 @@ describe('workspace helpers', () => {
       fireEvent.contextMenu(row)
       expect(screen.getByRole('menu')).toBeInTheDocument()
     })
-    const items = within(screen.getByRole('menu')).getAllByRole('menuitem')
+    // The project menu: hide, close its tabs, the editors (the default first), remove.
+    const items = within(screen.getByRole('menu')).getAllByRole('menuitem').filter((b) => b.textContent?.startsWith('Open in'))
     expect(items.map((b) => b.textContent)).toEqual(['Open in Zeddefault', 'Open in VS Code'])
     fireEvent.click(items[1]!)
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()

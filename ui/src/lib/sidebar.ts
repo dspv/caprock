@@ -43,7 +43,12 @@ export interface ProjectNode {
   costToday: number
   waiting: number
   looping: number
+  /** Live sessions and shells: what keeps the project in the list. */
   live: number
+  /** Live agent sessions (shells left out): the row's running count. */
+  agents: number
+  /** Of those, the ones working this moment. */
+  working: number
   lastActive: number
   worktrees: WorktreeNode[]
 }
@@ -111,14 +116,14 @@ function ms(v: string | number | undefined): number {
 export function buildSidebar({ projects, sessions, permissions, costs, openSessions, now = Date.now() }: SidebarInput): SidebarModel {
   const nodes: ProjectNode[] = projects
     .filter((p) => !p.archived_at)
-    .map((p) => ({ project: p, costToday: p.cost_today ?? costs.get(p.root) ?? 0, waiting: 0, looping: 0, live: 0, lastActive: Math.max(p.last_activity ?? 0, p.added_at ?? 0), worktrees: [] }))
+    .map((p) => ({ project: p, costToday: p.cost_today ?? costs.get(p.root) ?? 0, waiting: 0, looping: 0, live: 0, agents: 0, working: 0, lastActive: Math.max(p.last_activity ?? 0, p.added_at ?? 0), worktrees: [] }))
   // Longest root first, so a project nested in another (a monorepo package
   // added on its own) claims its sessions before the outer one does.
   const byDepth = [...nodes].sort((a, b) => b.project.root.length - a.project.root.length)
   const inbox: InboxItem[] = []
   const other: ProjectNode = {
     project: { id: OTHER_FOLDERS_ID, root: '', name: 'Other folders', kind: 'folder' },
-    costToday: 0, waiting: 0, looping: 0, live: 0, lastActive: 0, worktrees: [],
+    costToday: 0, waiting: 0, looping: 0, live: 0, agents: 0, working: 0, lastActive: 0, worktrees: [],
   }
 
   for (const s of sessions) {
@@ -133,7 +138,11 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
     const hasPermission = permissions.has(s.session_id)
     const dot = dotOf(s, hasPermission)
     const isShell = s.kind === 'shell'
-    if (s.status !== 'ended') node.live += 1
+    if (s.status !== 'ended') {
+      node.live += 1
+      if (!isShell) node.agents += 1
+      if (!isShell && dot === 'working') node.working += 1
+    }
     if (dot === 'waiting' && !isShell) {
       const since = ms(s.activity?.at) || s.last_event_at
       const stale = !hasPermission && now - since > STALE_MS

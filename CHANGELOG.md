@@ -21,6 +21,31 @@ Phase 3 (Delight) has no plan by design.
   Settings says when that is the case. Without Premium the 90% alert on Now
   is unchanged and offers the stop. `GET /v1/window-stop`,
   `settings.window_stop_pct`.
+- **Today, at the top of the sidebar.** Under *New agent*: what every
+  agent has spent today, how many agents are running and how many wait on
+  you, and the Claude plan's 5-hour and weekly windows as thin bars with
+  the share used and when each resets. Click the spend for Cost, a window
+  for the plan limits, *Running* for Now, *Waiting* for the session that
+  has waited longest. While the sidebar is open the status strip leaves
+  the windows and the spend to it.
+- **A menu on every project.** The ⋯ on a project's row (on hover, and
+  always on the project in front), a right-click, or Shift+F10: hide it
+  from the sidebar or show it again, close all its tabs (the sessions and
+  shells in them keep running), open its folder in an editor, or remove it
+  from Caprock after a confirmation — its files and sessions stay as they
+  are.
+
+### Changed
+
+- **Project rows say what runs in them.** Each row shows how many agents
+  are running there and what the project cost today, beside the waiting
+  badge rather than in place of it; a project with neither shows neither.
+  The branch takes only the room left over and steps aside, rather than
+  showing as a sliver, when too little is left.
+- **New agent is outlined, and the sidebar's shortcuts are readable.** The
+  New agent button keeps the accent as a 1px border and label on the panel
+  instead of a solid fill, and the key hints beside New agent, Add project
+  and Dashboard are set at the size of the label next to them.
 
 ### Fixed
 

@@ -32,6 +32,19 @@ describe('workspace tabs', () => {
     expect(back.activeProject).toBe('p1')
   })
 
+  it("closes every tab of one project, splits included, and leaves the others' alone", () => {
+    let ws = run(open('a', 'p1'), open('b', 'p1'), open('c', 'p2'))
+    ws = workspaceReducer(ws, { type: 'activate', tabId: tabsOf(ws, 'p1')[0]!.id })
+    ws = workspaceReducer(ws, { type: 'split', target: { kind: 'shell', sessionId: 'sh' }, projectId: 'p1', title: 'shell', direction: 'row' })
+    const after = workspaceReducer(ws, { type: 'close-project', projectId: 'p1' })
+    expect(tabsOf(after, 'p1')).toEqual([])
+    expect(after.activeByProject.p1).toBeUndefined()
+    expect(tabsOf(after, 'p2').map((t) => t.title)).toEqual(['c'])
+    expect(findTabBySession(after, 'sh')).toBeUndefined()
+    // Nothing of the project open: the same workspace back, not a copy.
+    expect(workspaceReducer(after, { type: 'close-project', projectId: 'p1' })).toBe(after)
+  })
+
   it('closing the tab in front hands the front to its right neighbour, else its left', () => {
     let ws = run(open('a'), open('b'), open('c'))
     const [a, b] = tabsOf(ws, 'p1')
