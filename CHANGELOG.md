@@ -9,6 +9,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **Codex sessions read as a conversation in Chat.** Your own prompts now
+  appear beside Codex's replies; before, only the replies did. Each command
+  shows the command it ran, not its JSON or JavaScript wrapper. A finished
+  call no longer reads "running" forever: it shows its output, and a failed
+  one says so, with the exit code where Codex recorded one. Sessions already
+  imported get their prompts and outputs once, from the transcripts still on
+  disk.
+
 ## [0.91.0] - 2026-10-08
 
 ### Changed

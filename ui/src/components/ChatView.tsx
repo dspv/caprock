@@ -20,7 +20,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, errText, type Event } from '@/lib/api'
 import { downscalePhoto } from '@/lib/downscale'
-import { compareEvents, isMessageEvent, mergeEvents, toMessages, type ChatMessage } from '@/lib/chat'
+import { compareEvents, isMessageEvent, mergeEvents, toMessages, toolInputText, type ChatMessage } from '@/lib/chat'
 import { live, useLiveConn, useLiveLink } from '@/lib/live'
 import type { TermState } from '@/lib/termv2'
 import { useStickToBottom } from '@/lib/useStickToBottom'
@@ -349,7 +349,7 @@ const Message = memo(function Message({ m }: { m: ChatMessage }) {
   }
   if (m.kind === 'notice') return <NoticeLine m={m} />
   return <ToolLine m={m} />
-}, (a, b) => a.m.id === b.m.id && a.m.text === b.m.text && a.m.result === b.m.result && a.m.failed === b.m.failed)
+}, (a, b) => a.m.id === b.m.id && a.m.text === b.m.text && a.m.result === b.m.result && a.m.failed === b.m.failed && a.m.exitCode === b.m.exitCode)
 
 /** What Claude Code told itself (a background task done, a reminder): one quiet line, the text behind it. */
 function NoticeLine({ m }: { m: ChatMessage }) {
@@ -374,8 +374,7 @@ function NoticeLine({ m }: { m: ChatMessage }) {
 
 function ToolLine({ m }: { m: ChatMessage }) {
   const [open, setOpen] = useState(false)
-  const input = m.input as { command?: unknown } | undefined
-  const shownInput = typeof input?.command === 'string' ? input.command : JSON.stringify(m.input ?? {}, null, 2)
+  const shownInput = toolInputText(m.tool ?? '', m.input)
   const result = m.result ?? ''
   return (
     <div data-msg-id={m.id} className="py-0.5">
@@ -388,7 +387,7 @@ function ToolLine({ m }: { m: ChatMessage }) {
         <ChevronIcon size={12} className={`transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`} />
         <span className="mono min-w-0 flex-1 truncate">{m.text}</span>
         {m.result === undefined && <span className="shrink-0 text-[11px] text-fg-faint">running</span>}
-        {m.failed && <span className="shrink-0 text-[11px]">failed</span>}
+        {m.failed && <span className="shrink-0 text-[11px]">{m.exitCode ? `exit ${m.exitCode}` : 'failed'}</span>}
       </button>
       {open && (
         <div className="ml-5 grid gap-1.5 border-l border-border pl-2.5 pb-1">
