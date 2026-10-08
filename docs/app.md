@@ -39,6 +39,11 @@ others. Installing it: [install-app.md](install-app.md).
   (`--append-system-prompt`), and every Codex session as its developer
   instructions (`-c developer_instructions=…`), a resumed one too. OpenCode
   and Gemini do not get them yet.
+- **A project with no tab open** shows its recent agent sessions under
+  *New agent* and *New shell*: what they cost and when they were last worked
+  on. *Continue* carries an ended one on in a new tab, in the permission mode
+  it was last running in; *Open* goes to a running one. The sidebar lists only
+  what is running, so this is where yesterday's work is.
 - **Tabs.** One strip of terminal tabs per project, an agent session or a
   shell each. Tabs come back when you reopen the app. Closing a tab (⌘W)
   never stops its session; *Stop the session…* in the inspector does, after

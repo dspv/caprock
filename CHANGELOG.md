@@ -9,6 +9,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **Recent sessions on a project's empty screen.** With no tab open, a
+  project now lists its last six agent sessions with cost and age, and one
+  click on *Continue* carries an ended one on in a new tab. Before, the
+  sidebar showed only what was running and yesterday's session took the
+  dashboard and a session page to reach.
+
+### Fixed
+
+- **A long branch no longer hides the project's name** in the sidebar: the
+  branch gives way first.
+
 ## [0.84.1] - 2026-10-08
 
 ### Fixed

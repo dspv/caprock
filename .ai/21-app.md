@@ -133,6 +133,11 @@ One window, three regions:
   the option is not on it. Sessions in other tabs or behind the
   window are reached through their badge, the Inbox, the menu bar popover,
   the notification and the phone, which keep their buttons.
+- **Empty project (main, no tab open).** New agent, New shell, Add a
+  project, then the project's six most recent agent sessions (ended ones
+  nobody wrote in left out) with cost, age and one button: *Continue* resumes
+  an ended one in a new tab, *Open* a running one. The sidebar is for what
+  runs; this is the way back to what ended.
 - **Status strip (bottom).** Connection state, plan limits (5-hour and 7-day),
   today's spend, the daemon's state and version — read again on every
   reconnect of the live link and on window focus, since the app can swap its

@@ -50,6 +50,7 @@ import { preferredName, useEditors } from '@/lib/editors'
 import { applyTerminalChrome, getTerminalPrefs, subscribeTerminalPrefs } from '@/lib/termprefs'
 import { warmTerminal } from '@/lib/termwarm'
 import { StatusDot } from '@/components/ProjectRow'
+import { RecentInProject } from '@/components/RecentInProject'
 
 const Dashboard = lazy(() => import('@/App').then((m) => ({ default: m.Dashboard })))
 const PairScreen = lazy(() => import('@/screens/Pair').then((m) => ({ default: m.PairScreen })))
@@ -614,6 +615,15 @@ export function AppShell() {
                       onNewAgent={() => onNewAgent()}
                       onNewShell={() => onNewShell()}
                       onAddProject={onAddProject}
+                      recent={activeProject?.root ? (
+                        <RecentInProject
+                          key={`${activeProject.root}:${data.sessions.length}`}
+                          root={activeProject.root}
+                          permissions={data.permissions}
+                          onOpen={(s) => openSession(s, activeProject.id)}
+                          onContinued={(id, title) => { openTab({ kind: 'session', sessionId: id }, activeProject.id, title); data.refresh() }}
+                        />
+                      ) : undefined}
                     />
                   )}
                 </div>
@@ -693,16 +703,19 @@ function EmptyWorkspace({
   onNewAgent,
   onNewShell,
   onAddProject,
+  recent,
 }: {
   project?: Project
   hasProjects: boolean
   onNewAgent: () => void
   onNewShell: () => void
   onAddProject: () => void
+  /** The project's recent sessions, to carry one on from here. */
+  recent?: React.ReactNode
 }) {
   return (
-    <div className="app-slab absolute inset-0 flex items-center justify-center px-8">
-      <div className="grid w-full max-w-[440px] gap-6">
+    <div className="app-slab app-scroll absolute inset-0 flex items-center justify-center overflow-y-auto px-8 py-8">
+      <div className="grid w-full max-w-[520px] grid-cols-[minmax(0,1fr)] gap-6">
         <div className="grid gap-1.5">
           <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.02em] text-fg">
             {project ? project.name : hasProjects ? 'Pick a project' : 'Add a project to begin'}
@@ -716,6 +729,7 @@ function EmptyWorkspace({
           {project && <EmptyAction icon={<TerminalIcon size={15} />} label="New shell" hint="⌘T" onClick={onNewShell} />}
           <EmptyAction icon={<FolderPlusIcon size={15} />} label="Add a project" hint="⌘O" onClick={onAddProject} />
         </div>
+        {recent}
       </div>
     </div>
   )

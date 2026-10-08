@@ -122,9 +122,10 @@ export const ProjectRow = memo(function ProjectRow({
           >
             <ChevronIcon size={12} />
           </span>
-          <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-fg">{p.name}</span>
+          {/* The name is what the row is for: the branch gives way first. */}
+          <span className="min-w-[5.5rem] flex-1 truncate text-[13px] font-medium text-fg">{p.name}</span>
           {mainBranch && (
-            <span className="mono max-w-[84px] truncate text-[11px] text-fg-faint group-hover:invisible">{mainBranch}</span>
+            <span className="mono min-w-0 max-w-[84px] shrink-[4] truncate text-[11px] text-fg-faint group-hover:invisible">{mainBranch}</span>
           )}
           {flat && !isGroup && p.kind === 'repo' && (
             <span className="group-hover:invisible"><PRDot projectId={id} worktree={node.worktrees[0] && !node.worktrees[0].isMain ? node.worktrees[0].key : ''} /></span>
