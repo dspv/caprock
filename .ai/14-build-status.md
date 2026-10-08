@@ -73,6 +73,16 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-08 — 0.87.0: Linux notifications checked on a real server
+
+The 0.86.0 Linux app was run on dunst and XFCE in a container against a real
+daemon: Approve, Deny and click-to-open worked; approvals expired after ~10 s,
+stale ones stayed up with live-looking buttons, and XFCE drew Open twice. All
+three fixed and re-run there (#299). Also a keyboard shortcuts sheet, no
+stale "Waiting for you" banners on Now, and the inspector's path cut from the
+left (#301); refreshed screenshots (#300). Raising the window on GNOME/KDE
+under Wayland is still unverified.
+
 ### 2026-10-08 — 0.86.1: harness notices out of the chat
 
 A background task's notification, a reminder or a slash command's output
