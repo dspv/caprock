@@ -13,7 +13,7 @@
  */
 import type { Event } from './api'
 
-export type ChatKind = 'user' | 'assistant' | 'tool'
+export type ChatKind = 'user' | 'assistant' | 'tool' | 'notice'
 
 export interface ChatMessage {
   /** The event's id: stable, unique, the React key. */
@@ -28,6 +28,8 @@ export interface ChatMessage {
   /** A tool call's output, once its result arrived. */
   result?: string
   failed?: boolean
+  /** A notice's full text, behind its one line. */
+  raw?: string
 }
 
 const msCache = new Map<string, number>()
@@ -108,6 +110,48 @@ function resultText(r: unknown): string {
   return typeof r === 'string' ? r : JSON.stringify(r, null, 2)
 }
 
+/** XML-ish blocks Claude Code writes into the user's turn itself, not typed by anyone. */
+const HARNESS = /^\s*<(task-notification|system-reminder|local-command-stdout|local-command-stderr|command-name|command-message|bash-stdout|bash-input)>/
+
+function tag(text: string, name: string): string {
+  const m = new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(text)
+  return m ? m[1]!.trim() : ''
+}
+
+function unescape(s: string): string {
+  return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+}
+
+/**
+ * A user turn Claude Code wrote for itself — a background task finishing, a
+ * reminder, a slash command's output — as one line, or null for a real
+ * prompt. Shown as a speech bubble it read as the user pasting XML, a screen
+ * long (owner, 2026-10-08).
+ */
+export function noticeLine(text: string): string | null {
+  const m = HARNESS.exec(text)
+  if (!m) return null
+  switch (m[1]) {
+    case 'task-notification': {
+      const summary = unescape(tag(text, 'summary'))
+      const status = tag(text, 'status')
+      const line = (summary || `background task ${status || 'update'}`).split('\n')[0]!
+      return line.length > 160 ? `${line.slice(0, 157)}…` : line
+    }
+    case 'command-name':
+    case 'command-message':
+      return tag(text, 'command-name') || tag(text, 'command-message') || 'command'
+    case 'local-command-stdout':
+    case 'local-command-stderr':
+    case 'bash-stdout':
+      return 'command output'
+    case 'bash-input':
+      return `! ${tag(text, 'bash-input')}`
+    default:
+      return 'system note'
+  }
+}
+
 /** The conversation in `events`, which must already be in server order. */
 export function toMessages(events: readonly Event[]): ChatMessage[] {
   const results = new Map<string, { text: string; failed: boolean }>()
@@ -126,7 +170,10 @@ export function toMessages(events: readonly Event[]): ChatMessage[] {
       const r = typeof p.tool_use_id === 'string' ? results.get(p.tool_use_id) : undefined
       out.push({ id: e.id, kind: 'tool', ts: e.ts, text: toolLine(tool, p.tool_input), tool, input: p.tool_input, result: r?.text, failed: r?.failed })
     } else {
-      out.push({ id: e.id, kind: e.kind === 'turn.user' ? 'user' : 'assistant', ts: e.ts, text: textOf(e) })
+      const text = textOf(e)
+      const notice = e.kind === 'turn.user' ? noticeLine(text) : null
+      if (notice !== null) out.push({ id: e.id, kind: 'notice', ts: e.ts, text: notice, raw: text })
+      else out.push({ id: e.id, kind: e.kind === 'turn.user' ? 'user' : 'assistant', ts: e.ts, text })
     }
   }
   return out

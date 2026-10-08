@@ -9,6 +9,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **What Claude Code writes to itself no longer shows as your message in
+  Chat.** A background task finishing, a reminder or a slash command's
+  output arrived as a user turn of raw XML, a screen long; it is now one
+  quiet line (the task's own summary), with the full text a click away.
+
 ## [0.86.0] - 2026-10-08
 
 ### Added
