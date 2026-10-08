@@ -73,6 +73,16 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-09 — 0.93.0: OpenCode 2
+
+OpenCode 2 shipped beside OpenCode 1 and is what opencode.ai, plain Homebrew
+and Arch now install; Caprock read none of its sessions and started it with
+flags it no longer has. Caprock now reads `session_v2`/`session_message` (and
+upgraded v1 databases without double counting), follows the v2 service's
+event stream, and starts the v2 TUI with `--standalone --session <id>`,
+config through `OPENCODE_CONFIG_CONTENT` and the first message typed once the
+TUI is ready (#322). Linux and Windows are CI-only for v2.
+
 ### 2026-10-09 — 0.92.0: the sidebar's figures, the plan-limit stop, files in a tab
 
 Five changes from one night's owner feedback. The sidebar gains a Today strip
