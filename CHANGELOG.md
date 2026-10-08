@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.86.1] - 2026-10-08
+
 ### Fixed
 
 - **What Claude Code writes to itself no longer shows as your message in

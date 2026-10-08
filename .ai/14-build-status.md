@@ -73,6 +73,12 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-08 — 0.86.1: harness notices out of the chat
+
+A background task's notification, a reminder or a slash command's output
+showed in Chat as the user's message, raw XML; now one quiet line (#297).
+The screenshot guard lets one session's own $0.00 through.
+
 ### 2026-10-08 — 0.86.0: past sessions from the palette, one way back in
 
 The rest of the app walkthrough (#295): ⌘K searches session history on the
