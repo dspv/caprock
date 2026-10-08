@@ -38,7 +38,8 @@ rather than a pipeline.
   `primary` depends on the plan (§ Plan limits). Codex writes them into the
   transcript instead of only handing them to a status-line command.
 - **Tool calls keep full fidelity** as `custom_tool_call` (a JS string) or
-  `function_call` (an object), with the name, arguments and working directory.
+  `function_call` (a JSON string holding an object), with the name, arguments
+  and working directory, and a `call_id` their output record repeats (§ Chat).
 - **No shim, no config injection, no process signalled.** Claude Code needs the
   first two; Codex needs none of them.
 
@@ -325,6 +326,59 @@ reply would be stored three times.
   1.2GB) it took 17.5s, almost all of it parsing, filled 1,785 turns and grew
   the file by 2.6MB (858.0MB → 860.8MB).
 
+## Chat
+
+A Codex session's Chat shows what the person typed, what Codex wrote (§
+Prose), and each tool call on one line that reads as done once its output
+arrived — the same rows, in the same shapes, as a Claude Code session's.
+Until 2026-10-09 it showed only the replies, every call as its raw input and
+as "running" forever: no prompt and no output was stored at all.
+
+- **Prompts are `turn.user`**, key `codex:user:<line>`, payload
+  `{prompt, cwd}`. The prompt is the `event_msg` `item_completed` item of
+  type `UserMessage` — its `text` parts, joined and clipped like prose. The
+  `response_item` message with role `user` is not read: Codex writes its own
+  environment block, AGENTS.md and plugin hints the same way, and only
+  metadata newer versions add tells them apart. A file without the item reads
+  the older `user_message` event instead, never both. Measured on the owner's
+  machine (2026-10-09): every rollout a person started that holds a prompt
+  carries the item; `user_message` appears only in imported threads. Imported
+  and subagent threads store no prompt — a subagent's file replays its
+  parent's prompts.
+- **Tool results are `tool.post`**, key `codex:result:<line>`, payload
+  `{tool_name, tool_use_id, tool_response, is_error, exit_code?, cwd}`, read
+  from `custom_tool_call_output` and `function_call_output`. `tool_use_id` is
+  Codex's `call_id`, which every `tool.pre` now carries too, so the chat pairs
+  them as it pairs Claude Code's. The output is a string, a list of
+  `input_text` blocks, or (`shell` only) a string holding
+  `{"output", "metadata": {"exit_code"}}`; `is_error` is set for an `exec`
+  script that reports "Script failed", a non-zero exit code, or a call Codex
+  refused ("failed …"). Only `shell` records an exit code: an `exec` script
+  reports whether the script completed, not the exit code of what it ran. The
+  output is clipped to 8,000 runes (`MaxToolOutput`): on the owner's 16,152
+  outputs that is 47MB of JSON against 107MB at Claude Code's 32KiB.
+- **A call's input is an object.** Every `function_call` carries its
+  arguments as a JSON string holding an object; it used to be stored as
+  `{"command": "<that JSON>"}`, which is what the chat showed. It is now the
+  object itself, and `shell`'s argv `command` becomes the line it runs (the
+  script of `<shell> -lc <script>`, else the words joined), the argv kept as
+  `argv`. An `exec` call stays the JavaScript it sends under `command`; the
+  chat reads the shell command out of its `tools.exec_command({cmd: …})` call,
+  or names the tool it called (`apply_patch` with the file it patches) —
+  the way the tool drill-down already did.
+- **History gets both once.** A one-time pass after the importer's first
+  (`meta.codex_chat_backfilled`) parses every rollout that pass did not read,
+  records its prompts and results under their keys, and gives each stored
+  call its `tool_use_id` and normalised `tool_input` (`syncTools`, matched on
+  key and timestamp, rewriting only those two keys). The chat also reads the
+  old input shapes itself, so a row whose rollout is gone still shows its
+  command. On a copy of the owner's database (2026-10-09, 87 rollouts to
+  read) it took 54s in the importer's goroutine, stored 517 prompts and
+  16,152 results, paired 16,152 calls, and grew the file by 65MB (1,571MB →
+  1,635MB). 60 calls stay unpaired: two 2025 sessions an earlier importer
+  stored twice under keys one line apart, so one copy of each call matches no
+  record.
+
 ## Imported threads and subagents
 
 Two kinds of rollout are not a session a person ran in Codex, and both were
@@ -514,6 +568,11 @@ match, not a fact**, and it is stated as one:
 - `testdata/codex/rollout-prose.jsonl` — assistant messages with their
   `item_completed` copies, a closing message after the last `token_count`, and
   a turn that only called tools (§ Prose).
+- `testdata/codex/rollout-chat.jsonl` — a Codex 0.161 rollout's shapes:
+  the environment block and the prompt as user messages, `UserMessage` items,
+  `exec` scripts, a `js` and a `shell` function call with their outputs, a
+  failed script, a non-zero exit code, and a call cut off by `turn_aborted`
+  (§ Chat).
 - `testdata/codex/rollout-subagent-parent.jsonl`, `rollout-subagent-child.jsonl`
   — a parent and a forked subagent whose records share line numbers, the
   child carrying a copy of the parent's `session_meta`.

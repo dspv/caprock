@@ -38,6 +38,7 @@ export function Inspector({
   editors = null,
   onOpenInEditor,
   onReviewChanges,
+  onOpenFile,
   summary,
 }: {
   session?: SessionSummary
@@ -52,6 +53,8 @@ export function Inspector({
   onOpenInEditor?: OpenInEditor
   /** Opens the Changes view of the worktree the session runs in. */
   onReviewChanges?: () => void
+  /** Opens a changed file in a file tab; without it a click opens the editor. */
+  onOpenFile?: (path: string) => void
   /** The day's summary: the plan windows the cockpit shows. */
   summary?: Summary
 }) {
@@ -67,7 +70,7 @@ export function Inspector({
       {!sessionId ? (
         <p className="px-4 py-5 text-[12.5px] leading-relaxed text-fg-muted">Open a session to see what it costs, how full its context is, and what it changed.</p>
       ) : (
-        <Body key={sessionId} session={session} sessionId={sessionId} hasPermission={hasPermission} showPrompt={showPrompt} onDetach={onDetach} editor={editors && onOpenInEditor ? { name: preferredName(editors), open: onOpenInEditor } : undefined} onReviewChanges={onReviewChanges} summary={summary} />
+        <Body key={sessionId} session={session} sessionId={sessionId} hasPermission={hasPermission} showPrompt={showPrompt} onDetach={onDetach} editor={editors && onOpenInEditor ? { name: preferredName(editors), open: onOpenInEditor } : undefined} onReviewChanges={onReviewChanges} onOpenFile={onOpenFile} summary={summary} />
       )}
     </aside>
   )
@@ -76,7 +79,7 @@ export function Inspector({
 type OpenInEditor = (path: string, label: string, editor?: string, line?: number) => void
 interface EditorAction { name: string; open: OpenInEditor }
 
-function Body({ session: s, sessionId, hasPermission, showPrompt, onDetach, editor, onReviewChanges, summary }: { session?: SessionSummary; sessionId: string; hasPermission: boolean; showPrompt: boolean; onDetach: () => void; editor?: EditorAction; onReviewChanges?: () => void; summary?: Summary }) {
+function Body({ session: s, sessionId, hasPermission, showPrompt, onDetach, editor, onReviewChanges, onOpenFile, summary }: { session?: SessionSummary; sessionId: string; hasPermission: boolean; showPrompt: boolean; onDetach: () => void; editor?: EditorAction; onReviewChanges?: () => void; onOpenFile?: (path: string) => void; summary?: Summary }) {
   const isShell = s?.kind === 'shell'
   const ended = s?.status === 'ended'
   if (s && !isShell) {
@@ -97,7 +100,7 @@ function Body({ session: s, sessionId, hasPermission, showPrompt, onDetach, edit
           sessionId={sessionId}
           hasPermission={hasPermission}
           summary={summary}
-          changes={<Changes sessionId={sessionId} editor={editor} onReview={onReviewChanges} />}
+          changes={<Changes sessionId={sessionId} editor={editor} onReview={onReviewChanges} onOpenFile={onOpenFile} />}
         />
         <Actions s={s} sessionId={sessionId} isShell={false} ended={ended} editor={editor} onDetach={onDetach} />
       </div>
@@ -124,7 +127,7 @@ function Body({ session: s, sessionId, hasPermission, showPrompt, onDetach, edit
 
       {!isShell && showPrompt && <PermissionPrompt sessionId={sessionId} />}
 
-      {s && <Changes sessionId={sessionId} editor={editor} onReview={onReviewChanges} />}
+      {s && <Changes sessionId={sessionId} editor={editor} onReview={onReviewChanges} onOpenFile={onOpenFile} />}
 
       <Actions s={s} sessionId={sessionId} isShell={isShell} ended={ended} editor={editor} onDetach={onDetach} />
     </div>
@@ -154,7 +157,7 @@ function Actions({ s, sessionId, isShell, ended, editor, onDetach }: { s?: Sessi
   )
 }
 
-function Changes({ sessionId, editor, onReview }: { sessionId: string; editor?: EditorAction; onReview?: () => void }) {
+function Changes({ sessionId, editor, onReview, onOpenFile }: { sessionId: string; editor?: EditorAction; onReview?: () => void; onOpenFile?: (path: string) => void }) {
   const [diff, setDiff] = useState<DiffResult | undefined>(undefined)
   const [error, setError] = useState('')
   useEffect(() => {
@@ -197,7 +200,11 @@ function Changes({ sessionId, editor, onReview }: { sessionId: string; editor?: 
             {files.slice(0, DIFF_FILES_SHOWN).map((f) => (
               <li key={f.path} className="flex items-center gap-2 text-[11.5px]" title={f.path}>
                 <span className={`mono w-3 text-center ${f.status === 'deleted' ? 'text-danger' : f.status === 'added' || f.status === 'untracked' ? 'text-ok' : 'text-fg-faint'}`}>{STATUS[f.status] ?? '·'}</span>
-                {editor && diff.root && f.status !== 'deleted' ? (
+                {onOpenFile && f.status !== 'deleted' ? (
+                  <button type="button" onClick={() => onOpenFile(f.path)} className="mono min-w-0 flex-1 truncate text-left text-fg hover:text-accent hover:underline" title={`Open ${f.path}`}>
+                    {tail(f.path)}
+                  </button>
+                ) : editor && diff.root && f.status !== 'deleted' ? (
                   <button
                     type="button"
                     onClick={() => editor.open(joinPath(diff.root, f.path), f.path, undefined, firstChangedLine(f.patch))}

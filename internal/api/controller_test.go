@@ -33,7 +33,8 @@ const (
 var viewerMay = map[string]bool{
 	"GET /v1/sessions": true, "GET /v1/sessions/{id}": true, "GET /v1/sessions/{id}/events": true,
 	"GET /v1/sessions/{id}/notes": true, "GET /v1/sessions/{id}/diff": true, "GET /v1/notes": true,
-	"GET /v1/stats/summary": true, "GET /v1/stats/daily": true, "GET /v1/events": true,
+	"GET /v1/sessions/{id}/subagents": true, // what the session's subagents are doing; the events already say it
+	"GET /v1/stats/summary":           true, "GET /v1/stats/daily": true, "GET /v1/events": true,
 	"GET /v1/history": true, "GET /v1/status": true, "GET /v1/storage": true, "GET /v1/update": true,
 	"GET /v1/settings": true, "GET /v1/premium": true, "GET /v1/gemini": true, "GET /v1/pricing": true,
 	"GET /v1/window-stop": true, "GET /v1/live": true, "GET /v1/tasks": true, "GET /v1/tasks/{id}": true, "GET /v1/approvals": true,
@@ -42,6 +43,7 @@ var viewerMay = map[string]bool{
 	"GET /v1/glance":                 true, "GET /v1/week": true, "GET /v1/tools/drill": true,
 	"GET /v1/projects": true, "GET /v1/projects/ops": true, "GET /v1/projects/{id}/worktrees": true,
 	"GET /v1/projects/{id}/changes": true, "GET /v1/projects/{id}/changes/diff": true,
+	"GET /v1/projects/{id}/file": true, "GET /v1/projects/{id}/files": true,
 	// GitHub (WP-19): the connection, the clone picker, pull requests.
 	"GET /v1/github": true, "GET /v1/github/owners": true, "GET /v1/github/repos": true,
 	"GET /v1/github/prs": true, "GET /v1/projects/{id}/github": true,

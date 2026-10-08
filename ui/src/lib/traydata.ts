@@ -76,9 +76,12 @@ export interface PopoverInput {
 /**
  * Whether the request is short and on one line, so a button can stand for all
  * of it — the rule the notifications follow (internal/alerts/notify.go,
- * shownWhole): a button must not answer a question it did not show.
+ * shownWhole): a button must not answer a question it did not show. Never
+ * while several prompts are outstanding: which one the terminal shows is
+ * unknown (ADR-035, amended 2026-10-09).
  */
-export function canApprove(p: Pick<Permission, 'detail'>): boolean {
+export function canApprove(p: Pick<Permission, 'detail' | 'waiting'>): boolean {
+  if ((p.waiting?.length ?? 0) > 1) return false
   const d = (p.detail ?? '').trim()
   return d !== '' && !/[\r\n]/.test(d) && d.length <= APPROVE_MAX_CHARS
 }

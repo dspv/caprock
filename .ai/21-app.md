@@ -193,14 +193,27 @@ One window, three regions:
   you, looping, idle, ended), what the session has cost with the cost of each
   of its last model calls, the context bar and what the next call pays to
   re-read it, what it is doing this second (the open tool call and how long
-  it has run, or *Thinking* since the last one finished), its last seven tool
-  calls with their durations, the uncommitted changes, the plan windows of
-  its agent, and a loop warning only while an alert is live. It is the screen
-  that shows what only Caprock knows, so it is built from figures Caprock
-  already holds and nothing else: the session row the sidebar polls, the
-  session's newest 400 events (fetched once, then followed on the live
-  socket), and the day's summary for the plan windows, which are
-  account-wide and labelled so. A figure an agent does not report is left
+  it has run, or *Thinking* since the last one finished; while a permission
+  prompt waits, who asks and what — "Subagent (general-purpose) wants to run
+  Bash" over the command's first real step, the full text on hover, or "2
+  approvals waiting"), a *Subagents · N* section while any works (one row
+  each, five at most: its type and the task the parent gave it, its current
+  call with how long it has run, how many calls it has made, *waiting on you*
+  while it has a prompt outstanding; "3 finished" for those that stopped in
+  the last 30 minutes), its last seven tool calls with their durations, the
+  uncommitted changes, the plan windows of its agent, and a loop warning only
+  while an alert is live. It is the screen that shows what only Caprock
+  knows, so it is built from figures Caprock already holds and nothing else:
+  the session row the sidebar polls, the main thread's newest 400 calls and
+  turns (`events?newest=1&main=1&kind=tool.pre,tool.post,turn.assistant`;
+  an unfiltered 400 held none of a busy parent's own calls, whose subagents
+  logged 635 tool calls in an hour, and the list read *No tool calls yet*),
+  fetched once and then followed on the live socket; the daemon's summary of
+  the subagents (`/v1/sessions/{id}/subagents`), read again at most every two
+  seconds while their events arrive and every twenty regardless, so their
+  thousands of events never reach the page; the session's permission prompt;
+  and the day's summary for the plan windows, which are account-wide and
+  labelled so. A figure an agent does not report is left
   out, never drawn as zero — no context bar without `context` (its
   `context_note` instead), no plan windows for an agent with none. A shell
   tab keeps the plain inspector (folder, changes, actions). Code:
@@ -769,6 +782,33 @@ there, and worktrees as first-class places to work.
 - Rule 7 holds: Caprock started the shell. A shell from a controller phone is
   P1 and needs its own ADR-034 amendment.
 
+## File tabs
+
+The owner asked (2026-10-09) to read a project's files inside the app —
+Markdown at least, code too — without adding weight to a window that is
+already at the edge of what it should carry. So a file is a **tab kind**,
+not a panel or a screen: it sits in the strip beside the terminals, closes
+with ⌘W and is restored on relaunch like them
+([04-ui.md § The app workspace](04-ui.md#the-app-workspace), File tabs).
+
+- **Read-only.** `GET /v1/projects/{id}/file` and `…/files`
+  ([03-contracts.md § Files](03-contracts.md#files-read-a-projects-file)):
+  a path resolved, symlinks included, inside the project's folder or the
+  worktree's; 1 MB at most; a binary says so and sends nothing. Editing
+  stays the editor's (*Open in …*).
+- **Light.** No syntax highlighter and no Markdown library: Markdown goes
+  through the chat's own renderer read as a document, code is plain
+  monospace with line numbers. The bundle gains a few kilobytes, not a
+  grammar set.
+- **Opened from** the Changes view, the cockpit's changed files, a relative
+  link in a Markdown file, and ⌘K → *Open file…* (git's file list, filtered
+  in the browser).
+- **Kept current without a timer**: read when the tab comes to the front,
+  on focus, and when a `project` frame or an agent's edit of that path
+  arrives on the live socket.
+- **A phone may read** what a paired viewer may already read in a diff; it
+  cannot write anything here.
+
 ## Dropping a file
 
 A file dragged from Finder, Explorer or a file manager onto a terminal in the
@@ -825,7 +865,10 @@ tells a page where a file lives.
   the prompt's buttons. The app shows them as OS notification actions and
   answers through `POST /v1/agents/{id}/permission` with the `prompt_id`, so an
   answer to a prompt that has since changed is refused, as a stale button is
-  today.
+  today. Only while the session has exactly one prompt outstanding: with
+  subagents asking in parallel, which dialog the terminal shows is unknown,
+  so the notification carries no actions and the popover drops Approve and
+  Deny for *Open terminal* (ADR-035, amended 2026-10-09).
 - **Per OS.** macOS: actionable notifications. Windows: toast buttons. Linux:
   actions where the notification server supports them, else a click that
   opens the session. Where an OS has no actions, the notification opens the

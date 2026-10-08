@@ -226,45 +226,102 @@ func TestDismissTypesNothing(t *testing.T) {
 	}
 }
 
-// Claude Code queues dialogs and shows the oldest; so does the card. A later
-// hook does not overwrite an earlier unanswered prompt.
-func TestPromptsQueueOldestFirst(t *testing.T) {
+// Parallel subagents ask at once, and which dialog the terminal shows is not
+// something a hook says. So every outstanding prompt is kept and listed, a
+// later hook never overwrites an earlier one, and no button types a key while
+// more than one is outstanding (ADR-035, amended 2026-10-09). Once only one
+// is left, its buttons work again.
+func TestSeveralOutstandingPromptsAreNotAnsweredByKey(t *testing.T) {
 	m, f, seen := spawnOwned(t)
 	first := signalFrom(t, "fixed-session-id", bashRule)
 	first.ToolUseID = "toolu_1"
 	second := signalFrom(t, "fixed-session-id", writeMode)
 	second.ToolUseID = "toolu_2"
-	second.AgentID = "sub-1"
+	second.AgentID, second.AgentType = "sub-1", "general-purpose"
 	m.ObserveHook(first)
 	m.ObserveHook(second)
 	m.ObserveHook(second) // the same call's hook again is not a third prompt
 	head, ok := m.PendingPermission("fixed-session-id")
-	if !ok || head.Tool != "Bash" || head.Queued != 1 {
+	if !ok || head.Tool != "Bash" || head.Queued != 1 || len(head.Waiting) != 2 {
 		t.Fatalf("head %+v, %v", head, ok)
 	}
-	// The queued one cannot be answered: its dialog is not on the screen.
+	if w := head.Waiting[1]; w.Tool != "Write" || w.AgentID != "sub-1" || w.AgentType != "general-purpose" || w.Waiting != nil {
+		t.Fatalf("the subagent's prompt is listed as %+v", w)
+	}
+	if head.Waiting[0].AgentID != "" || head.Waiting[0].AgentType != "" {
+		t.Fatalf("the main thread's prompt names a subagent: %+v", head.Waiting[0])
+	}
 	show(t, m, bashRuleMenu)
-	if last := (*seen)[len(*seen)-1]; last == nil || last.ID != head.ID {
+	if last := (*seen)[len(*seen)-1]; last == nil || last.ID != head.ID || len(last.Waiting) != 2 {
 		t.Fatalf("announced %+v", last)
 	}
-	m.permMu.Lock()
-	queuedID := m.perms["fixed-session-id"][1].ID
-	m.permMu.Unlock()
+	queuedID := head.Waiting[1].ID
+	for _, c := range []PermissionChoice{PermissionAllow, PermissionAlways, PermissionDeny} {
+		if err := m.AnswerPermission("fixed-session-id", head.ID, c); !errors.Is(err, ErrSeveralPrompts) {
+			t.Fatalf("%s with two outstanding: %v", c, err)
+		}
+	}
 	if err := m.AnswerPermission("fixed-session-id", queuedID, PermissionAllow); !errors.Is(err, ErrNoPermission) {
 		t.Fatalf("answered a queued prompt: %v", err)
+	}
+	// Enter in the terminal answered one of them — which, nobody can say.
+	_ = m.Input("fixed-session-id", []byte("\r"))
+	if f.session.typed() != "\r" {
+		t.Fatalf("typed %q", f.session.typed())
+	}
+	if p, _ := m.PendingPermission("fixed-session-id"); p == nil || p.Queued != 1 {
+		t.Fatalf("a terminal key dropped a prompt it cannot name: %+v", p)
+	}
+	// Dismiss types nothing, so it may take any of them.
+	if err := m.AnswerPermission("fixed-session-id", queuedID, PermissionDismiss); err != nil {
+		t.Fatal(err)
+	}
+	next, ok := m.PendingPermission("fixed-session-id")
+	if !ok || next.ID != head.ID || next.Queued != 0 || next.Waiting != nil {
+		t.Fatalf("next %+v, %v", next, ok)
 	}
 	if err := m.AnswerPermission("fixed-session-id", head.ID, PermissionAllow); err != nil {
 		t.Fatal(err)
 	}
-	if f.session.typed() != "1" {
+	if f.session.typed() != "\r1" {
 		t.Fatalf("typed %q", f.session.typed())
 	}
-	next, ok := m.PendingPermission("fixed-session-id")
-	if !ok || next.ID != queuedID || next.Tool != "Write" || next.Queued != 0 {
-		t.Fatalf("next %+v, %v", next, ok)
+	if last := (*seen)[len(*seen)-1]; last != nil {
+		t.Fatalf("the card still shows %+v", last)
 	}
-	if last := (*seen)[len(*seen)-1]; last == nil || last.ID != queuedID {
-		t.Fatalf("the card was not moved to the next prompt: %+v", last)
+}
+
+// PermissionRequest carries no tool_use_id (none of 283 on the owner's
+// database), so it is taken from the PreToolUse that asked. Two subagents
+// running the same command are then told apart: the first's PostToolUse
+// clears its own prompt, not the other's.
+func TestAPromptTakesItsCallsToolUseID(t *testing.T) {
+	m, _, _ := spawnOwned(t)
+	ask := func(agent, use string) {
+		pre := signalFrom(t, "fixed-session-id", bashRule)
+		pre.Event, pre.AgentID, pre.ToolUseID = "PreToolUse", agent, use
+		m.ObserveHook(pre)
+		req := signalFrom(t, "fixed-session-id", bashRule)
+		req.AgentID, req.AgentType, req.ToolUseID = agent, "general-purpose", ""
+		m.ObserveHook(req)
+	}
+	ask("sub-1", "toolu_a")
+	ask("sub-2", "toolu_b")
+	m.permMu.Lock()
+	var uses []string
+	for _, p := range m.perms["fixed-session-id"] {
+		uses = append(uses, p.toolUseID)
+	}
+	m.permMu.Unlock()
+	if strings.Join(uses, ",") != "toolu_a,toolu_b" {
+		t.Fatalf("tool_use_ids %v", uses)
+	}
+	post := signalFrom(t, "fixed-session-id", bashRule)
+	post.Event, post.AgentID, post.ToolUseID = "PostToolUse", "sub-2", "toolu_b"
+	m.ObserveHook(post)
+	p, ok := m.PendingPermission("fixed-session-id")
+	if !ok || p.AgentID != "sub-1" || p.Queued != 0 {
+		t.Fatalf("left %+v, %v", p, ok)
 	}
 }
 
@@ -293,7 +350,7 @@ func TestQueuedPromptsAreClearedByWhatAnswersThem(t *testing.T) {
 		event func(m *Manager)
 		left  string
 	}{
-		{"Enter answers the one on screen", func(m *Manager) { _ = m.Input("fixed-session-id", []byte("\r")) }, "Write"},
+		{"Enter answers one Caprock cannot name", func(m *Manager) { _ = m.Input("fixed-session-id", []byte("\r")) }, "Bash,Write"},
 		{"Esc rejects and interrupts them all", func(m *Manager) { _ = m.Input("fixed-session-id", []byte("\x1b")) }, ""},
 		{"the queued call's PostToolUse", func(m *Manager) {
 			s := signalFrom(t, "fixed-session-id", writeMode)
@@ -433,14 +490,17 @@ func TestAPromptSurvivesADaemonRestart(t *testing.T) {
 	if _, err := m1.Spawn(context.Background(), SpawnRequest{Cwd: t.TempDir()}); err != nil {
 		t.Fatal(err)
 	}
-	m1.ObserveHook(signalFrom(t, "fixed-session-id", bashRule))
+	sig := signalFrom(t, "fixed-session-id", bashRule)
+	sig.AgentID, sig.AgentType = "sub-1", "general-purpose"
+	m1.ObserveHook(sig)
 	before, _ := m1.PendingPermission("fixed-session-id")
 	m1.persisting.Wait()
 
 	m2, f2 := restartedMgr(t, st)
 	m2.restorePermission(context.Background(), "fixed-session-id")
 	after, ok := m2.PendingPermission("fixed-session-id")
-	if !ok || after.ID != before.ID || after.Tool != before.Tool || after.Detail != before.Detail || after.Always != before.Always {
+	if !ok || after.ID != before.ID || after.Tool != before.Tool || after.Detail != before.Detail || after.Always != before.Always ||
+		after.AgentID != "sub-1" || after.AgentType != "general-purpose" {
 		t.Fatalf("after a restart: %+v, %v; before: %+v", after, ok, before)
 	}
 	if err := m2.AnswerPermission("fixed-session-id", "not-that-one", PermissionAllow); !errors.Is(err, ErrNoPermission) {

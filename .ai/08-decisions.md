@@ -1518,9 +1518,42 @@ name one request while its key landed in another's dialog. Now:
   the terminal, `Y` or Enter is Yes, `A` the always option (when offered), `N`
   or Esc is No; the buttons say so. A focused terminal keeps every key.
 
+*Amended 2026-10-09 (the owner pressed Y and was unsure what he had
+approved):* **a button answers only a prompt that is alone, and every prompt
+says who asks.** Subagents running in parallel inside one session — the
+owner's normal case now — ask at once, and "Claude Code shows the oldest" was
+an assumption no hook confirms: on the owner's database, prompts outstanding at
+the same time finished in either order, and no event records which dialog was
+in front. Pressing Yes on the card for the oldest could type `1` into a newer
+one the reader never saw. Now:
+
+- **One outstanding: buttons, as before. Two or more: none.** The card lists
+  every outstanding prompt with who asks ("Subagent (general-purpose): Bash
+  `rm -f $C/*`", "Claude: Edit …") and offers **Open terminal** instead of Yes
+  and No; its keys are off. The API refuses `allow`, `always` and `deny` while
+  more than one is outstanding (`422`, nothing typed), including when a second
+  arrives while the screen is being read. `dismiss` types nothing, so it may
+  take any of them. The menu bar popover drops Approve and Deny the same way,
+  and a notification carries no `prompt_id`, so no actions.
+- **A key typed into the terminal clears a prompt only when one is
+  outstanding.** With several, it answered whichever was in front, which
+  Caprock cannot name. Each goes by its own call instead.
+- **A prompt is tied to its call.** `PermissionRequest` carries no
+  `tool_use_id` (0 of 283 stored on the owner's database); the id is taken
+  from the newest `PreToolUse` by the same agent with the same tool and input,
+  so the call's `PostToolUse` clears its own prompt and not another subagent's
+  running the same command.
+- **Who asks.** The hook's `agent_id` and `agent_type` travel with the prompt
+  (`agent_type` stored by migration 0043): the card, the cockpit's Now line,
+  the popover and the notification body say "Subagent (general-purpose) wants
+  to run Bash". A subagent's dialog is drawn in the parent's terminal; unnamed,
+  it read as the parent's own request.
+
 **Revisit if** Claude Code renames its options (the menus in
 `internal/agents/permmenu_test.go` would stop matching), or its dialog stops
-being the last thing on the screen.
+being the last thing on the screen; or if a hook or the screen ever says which
+of several queued dialogs is in front — then the one in front can have its
+buttons back.
 
 ---
 

@@ -24,6 +24,27 @@ Phase 3 (Delight) has no plan by design.
   plan agent as `OPENCODE_CONFIG_CONTENT`, bypass as `--auto`, and a first
   message typed once the TUI is up. `/v1/status` carries `opencode_version`.
 
+### Fixed
+
+- **New agent → OpenCode with OpenCode 2 installed** started a TUI with
+  OpenCode 1's `--port`, `-m` and `--agent`, which OpenCode 2 does not have,
+  and on a Mac with `/home` automounted OpenCode 2.0.26 hung before drawing
+  anything; it now gets the flags its version lists and starts.
+
+## [0.92.0] - 2026-10-09
+
+### Added
+
+- **Read a project's files in a tab.** ⌘K → *Open file…* lists the
+  worktree's files and narrows them as you type; the Changes view (**o**,
+  or the ↗ on a row) and the cockpit's changed files open one too. The file
+  opens read-only in a tab named after it: Markdown formatted, with a
+  *Source* switch and links to other files opening their own tabs; any
+  other text with line numbers, wrapping and ⌘F. A binary, or the part of
+  a file past its first megabyte, is left to your editor. The tab reads the
+  file again when you return to it or an agent edits it. Nothing outside
+  the project is ever read, through `..` or a symlink.
+  `GET /v1/projects/{id}/file`, `GET /v1/projects/{id}/files`.
 - **A stop at the plan limit (Premium).** When Claude's 5-hour or weekly
   window passes the share you pick in Settings → *Pause at the plan limit*
   (90% until you change it, or off), Caprock pauses the Claude Code sessions
@@ -47,6 +68,13 @@ Phase 3 (Delight) has no plan by design.
   shells in them keep running), open its folder in an editor, or remove it
   from Caprock after a confirmation — its files and sessions stay as they
   are.
+- **Subagents in the agent cockpit.** While a session's subagents work, the
+  cockpit lists them under *Subagents · N*: each one's type and the task it
+  was given, its current call and how long it has run, how many calls it
+  has made, and *waiting on you* while it has a prompt open; those that
+  finished in the last half hour are one line. The daemon sums them up
+  (`GET /v1/sessions/{id}/subagents`), so thousands of subagent events never
+  reach the page.
 
 ### Changed
 
@@ -62,10 +90,29 @@ Phase 3 (Delight) has no plan by design.
 
 ### Fixed
 
-- **New agent → OpenCode with OpenCode 2 installed** started a TUI with
-  OpenCode 1's `--port`, `-m` and `--agent`, which OpenCode 2 does not have,
-  and on a Mac with `/home` automounted OpenCode 2.0.26 hung before drawing
-  anything; it now gets the flags its version lists and starts.
+- **Codex sessions read as a conversation in Chat.** Your own prompts now
+  appear beside Codex's replies; before, only the replies did. Each command
+  shows the command it ran, not its JSON or JavaScript wrapper. A finished
+  call no longer reads "running" forever: it shows its output, and a failed
+  one says so, with the exit code where Codex recorded one. Sessions already
+  imported get their prompts and outputs once, from the transcripts still on
+  disk.
+- **The cockpit's tool list was empty on a busy parent.** A session whose
+  subagents logged hundreds of calls an hour had none of its own among its
+  newest 400 events, so *Recent tools* read "No tool calls yet" and the cost
+  spark showed one bar. The cockpit now asks for the main thread's own calls
+  and turns (`events?newest=1&main=1&kind=…`).
+- **A subagent's permission prompt read as the parent's.** The card, the
+  cockpit's Now line, the menu bar popover and the notification now say
+  "Subagent (general-purpose) wants to run Bash", lead with what the command
+  does (`rm -f $C/*` rather than `C=/pri…`), and show the whole command
+  wrapped, folded when long.
+- **Approving with several prompts open could answer the wrong one.** When
+  subagents ask at once, Caprock cannot tell which dialog the terminal is
+  showing. With two or more outstanding, the card lists them all with who
+  asks and offers *Open terminal* instead of Yes and No, the daemon refuses
+  to type an answer, and notifications carry no Approve. A prompt is now tied
+  to its own call, so the call finishing clears it and nothing else.
 
 ## [0.91.0] - 2026-10-08
 

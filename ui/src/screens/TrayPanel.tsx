@@ -10,6 +10,7 @@ import { api, ApiError, errText, type PermissionChoice } from '@/lib/api'
 import { isMacPlatform, isTauri } from '@/lib/appmode'
 import { formatAccelerator } from '@/lib/accelerator'
 import { fmtUSD } from '@/lib/format'
+import { requester } from '@/lib/cockpit'
 import { useLiveLink, live } from '@/lib/live'
 import { shell } from '@/lib/shell'
 import { buildPopover, usePopoverData, type ApprovalRow, type LimitRow, type SessionRow } from '@/lib/traydata'
@@ -239,6 +240,7 @@ function Approval({ row, onDone }: { row: ApprovalRow; onDone: () => void }) {
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState('')
   const p = row.permission
+  const several = (p.waiting?.length ?? 0) > 1
   const answer = async (choice: PermissionChoice) => {
     setBusy(true)
     setNote('')
@@ -262,22 +264,31 @@ function Approval({ row, onDone }: { row: ApprovalRow; onDone: () => void }) {
           <span className="text-fg-muted"> · {row.title}</span>
         </span>
       </div>
-      <p className="text-[11.5px] text-fg-muted">
-        Wants to use <span className="mono text-fg">{p.tool}</span>
-      </p>
-      <p
-        className="mono break-all rounded-[6px] bg-[var(--app-hairline)] px-2 py-1.5 text-[11.5px] leading-snug text-fg"
-        title={row.canApprove ? undefined : 'Shown in full in Caprock'}
-      >
-        <span className={row.canApprove ? '' : 'line-clamp-3'}>{p.detail || '—'}</span>
-      </p>
+      {several ? (
+        // Which of them the terminal shows is unknown: no Approve, no Deny.
+        <p className="text-[11.5px] text-fg-muted">
+          {p.waiting!.length} approvals waiting — {p.waiting!.map((w) => `${requester(w)}: ${w.tool}`).join(' · ')}. Answer in the terminal.
+        </p>
+      ) : (
+        <>
+          <p className="text-[11.5px] text-fg-muted">
+            {p.agent_id ? <span className="text-accent">{requester(p)}</span> : 'Claude'} wants to use <span className="mono text-fg">{p.tool}</span>
+          </p>
+          <p
+            className="mono break-all rounded-[6px] bg-[var(--app-hairline)] px-2 py-1.5 text-[11.5px] leading-snug text-fg"
+            title={row.canApprove ? undefined : 'Shown in full in Caprock'}
+          >
+            <span className={row.canApprove ? '' : 'line-clamp-3'}>{p.detail || '—'}</span>
+          </p>
+        </>
+      )}
       {note && <p role="status" className="text-[11.5px] text-fg-muted">{note}</p>}
       <div className="flex items-center gap-1.5">
         {row.canApprove && (
           <TrayButton primary disabled={busy} onClick={() => void answer('allow')}>Approve</TrayButton>
         )}
-        <TrayButton disabled={busy} onClick={() => void answer('deny')}>Deny</TrayButton>
-        <TrayButton onClick={() => open(row.session.session_id)}>{row.canApprove ? 'Open' : 'Review in Caprock'}</TrayButton>
+        {!several && <TrayButton disabled={busy} onClick={() => void answer('deny')}>Deny</TrayButton>}
+        <TrayButton onClick={() => open(row.session.session_id)}>{several ? 'Open terminal' : row.canApprove ? 'Open' : 'Review in Caprock'}</TrayButton>
       </div>
     </div>
   )

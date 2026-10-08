@@ -40,11 +40,24 @@ import (
 // only when a menu is showing: with none, Esc interrupts the turn.
 //
 // **Cleared by whatever answers it**: a button here, a key typed into the
-// terminal that answers a menu (Enter or a digit answers the oldest; Esc or
+// terminal that answers a menu (Enter or a digit answers the only one; Esc or
 // Ctrl+C rejects and interrupts, and clears them all), the tool's own
-// PostToolUse, a subagent's SubagentStop for its prompts, the next prompt or
-// Stop, or the session ending. Arrow keys do not clear it — moving through the
-// menu is not answering it.
+// PostToolUse, a subagent's SubagentStop for its prompts, the main thread's
+// next prompt or Stop, or the session ending. Arrow keys do not clear it —
+// moving through the menu is not answering it.
+//
+// **One outstanding, or none answered from here** (amended 2026-10-09).
+// Subagents running in parallel ask at once, and which of their dialogs the
+// terminal shows is not something a hook says: the order the prompts arrived
+// in is not the order they are drawn or answered in (the owner's database has
+// overlapping prompts finishing in either order). So a button answers only
+// while exactly one prompt is outstanding. With two or more, the card lists
+// them all and sends the reader to the terminal; Yes, the second option and
+// No are refused (ErrSeveralPrompts) and nothing is typed. A key typed into
+// the terminal answers one of them, but not one Caprock can name, so it
+// clears none; each goes when its own call's PostToolUse arrives (its
+// tool_use_id, taken from the PreToolUse that asked, since PermissionRequest
+// carries none), its subagent stops, or the main thread stops.
 
 // Permission is a prompt an owned session is showing or has queued.
 type Permission struct {
@@ -60,16 +73,24 @@ type Permission struct {
 	// really has it is checked when the button is pressed.
 	Always string    `json:"always,omitempty"`
 	Since  time.Time `json:"since"`
-	// Queued is how many more prompts wait behind this one.
+	// Queued is how many more prompts are outstanding besides this one.
 	Queued int `json:"queued,omitempty"`
+	// AgentID and AgentType name the subagent that asked; empty when the
+	// main thread did. Claude Code draws a subagent's dialog in the parent's
+	// terminal, and a card that did not say whose it was read as the
+	// parent's own request.
+	AgentID   string `json:"agent_id,omitempty"`
+	AgentType string `json:"agent_type,omitempty"`
+	// Waiting is every outstanding prompt, oldest first and this one
+	// included, when there is more than one; no button answers any of them.
+	Waiting []Permission `json:"waiting,omitempty"`
 
 	// input is the tool input, compacted, to recognise the PostToolUse that
 	// shows the prompt was answered in the terminal.
 	input string
-	// toolUseID is the hook's id for the call, when it sends one.
+	// toolUseID is the call's id: the hook's when it sends one, else the
+	// PreToolUse's that asked (see resolveToolUse).
 	toolUseID string
-	// agentID is set when a subagent asked.
-	agentID string
 	// ringAt is the session's output offset when the hook arrived: the
 	// dialog is drawn after it. Zero for a prompt restored after a restart.
 	ringAt uint64
@@ -96,11 +117,16 @@ var ErrNoPermission = errors.New("the session is not waiting on that permission 
 // ErrNoAlways means the prompt has no "don't ask again" option to pick.
 var ErrNoAlways = errors.New("this prompt has no \"don't ask again\" option")
 
+// ErrSeveralPrompts means more than one prompt is outstanding, so which one
+// the terminal shows is unknown and no key is pressed.
+var ErrSeveralPrompts = errors.New("several approvals are waiting and the terminal shows one of them — answer in the terminal")
+
 // HookSignal is the part of a hook payload that sets or clears a prompt.
 type HookSignal struct {
 	SessionID string
 	Event     string // hook_event_name
 	AgentID   string // set inside a subagent
+	AgentType string // the subagent's type ("general-purpose"), with AgentID
 	Tool      string
 	Input     json.RawMessage
 	ToolUseID string
@@ -120,8 +146,13 @@ func (m *Manager) ObserveHook(sig HookSignal) {
 		return
 	}
 	switch sig.Event {
+	case "PreToolUse":
+		m.notePreToolUse(sig)
 	case "PermissionRequest":
 		if p := newPermission(sig); p != nil {
+			if p.toolUseID == "" {
+				p.toolUseID = m.resolveToolUse(sig.SessionID, p)
+			}
 			m.addPermission(sig.SessionID, p)
 		}
 	case "PostToolUse", "PostToolUseFailure":
@@ -133,11 +164,11 @@ func (m *Manager) ObserveHook(sig HookSignal) {
 			if p.toolUseID != "" && sig.ToolUseID != "" {
 				return p.toolUseID == sig.ToolUseID
 			}
-			return p.agentID == sig.AgentID && p.Tool == sig.Tool && p.input == in
+			return p.AgentID == sig.AgentID && p.Tool == sig.Tool && p.input == in
 		})
 	case "SubagentStop":
 		if sig.AgentID != "" {
-			m.dropPermissions(sig.SessionID, func(p *Permission, _ bool) bool { return p.agentID == sig.AgentID })
+			m.dropPermissions(sig.SessionID, func(p *Permission, _ bool) bool { return p.AgentID == sig.AgentID })
 		}
 	case "UserPromptSubmit", "Stop":
 		if sig.AgentID == "" {
@@ -145,7 +176,55 @@ func (m *Manager) ObserveHook(sig HookSignal) {
 		}
 	case "SessionEnd":
 		m.clearPermission(sig.SessionID)
+		m.permMu.Lock()
+		delete(m.calls, sig.SessionID)
+		m.permMu.Unlock()
 	}
+}
+
+// preCall is one PreToolUse a session made, kept to name the call a later
+// PermissionRequest asks about.
+type preCall struct {
+	agentID, tool, input, toolUseID string
+}
+
+// callsKept bounds the PreToolUse calls remembered per session: a
+// PermissionRequest follows its PreToolUse within milliseconds, but parallel
+// subagents interleave theirs.
+const callsKept = 64
+
+func (m *Manager) notePreToolUse(sig HookSignal) {
+	if sig.ToolUseID == "" || sig.Tool == "" {
+		return
+	}
+	c := preCall{agentID: sig.AgentID, tool: sig.Tool, input: compactJSON(sig.Input), toolUseID: sig.ToolUseID}
+	m.permMu.Lock()
+	defer m.permMu.Unlock()
+	if m.calls == nil {
+		m.calls = map[string][]preCall{}
+	}
+	m.calls[sig.SessionID] = append(m.calls[sig.SessionID], c)
+	if cs := m.calls[sig.SessionID]; len(cs) > callsKept {
+		m.calls[sig.SessionID] = append([]preCall(nil), cs[len(cs)-callsKept:]...)
+	}
+}
+
+// resolveToolUse is the tool_use_id of the newest PreToolUse by the same
+// agent with the same tool and input — the call the prompt asks about. The
+// PermissionRequest hook carries none (0 of 283 on the owner's database), and
+// without it a PostToolUse could only be matched by tool and input, which two
+// subagents running the same command share.
+func (m *Manager) resolveToolUse(sessionID string, p *Permission) string {
+	m.permMu.Lock()
+	defer m.permMu.Unlock()
+	cs := m.calls[sessionID]
+	for i := len(cs) - 1; i >= 0; i-- {
+		c := cs[i]
+		if c.agentID == p.AgentID && c.tool == p.Tool && c.input == p.input {
+			return c.toolUseID
+		}
+	}
+	return ""
 }
 
 // newPermission builds the prompt a PermissionRequest describes, or nil for a
@@ -165,12 +244,25 @@ func newPermission(sig HookSignal) *Permission {
 		Since:     time.Now().UTC(),
 		input:     compactJSON(sig.Input),
 		toolUseID: sig.ToolUseID,
-		agentID:   sig.AgentID,
+		AgentID:   sig.AgentID,
+		AgentType: agentTypeOf(sig),
 	}
 }
 
-// PendingPermission returns the prompt an owned session is showing: the
-// oldest it is waiting on.
+// agentTypeOf is the subagent's type, "subagent" when a subagent asked
+// without naming one, and "" for the main thread.
+func agentTypeOf(sig HookSignal) string {
+	if sig.AgentID == "" {
+		return ""
+	}
+	if sig.AgentType != "" {
+		return clip(sig.AgentType, 80)
+	}
+	return "subagent"
+}
+
+// PendingPermission returns the oldest prompt an owned session waits on, with
+// every other outstanding one in Waiting.
 func (m *Manager) PendingPermission(sessionID string) (*Permission, bool) {
 	if _, ok := m.Get(sessionID); !ok {
 		return nil, false
@@ -189,12 +281,21 @@ func (m *Manager) headLocked(sessionID string) (*Permission, bool) {
 	}
 	cp := *q[0]
 	cp.Queued = len(q) - 1
+	if len(q) > 1 {
+		cp.Waiting = make([]Permission, len(q))
+		for i, p := range q {
+			cp.Waiting[i] = *p
+			cp.Waiting[i].Queued, cp.Waiting[i].Waiting = 0, nil
+		}
+	}
 	return &cp, true
 }
 
 // AnswerPermission presses the key for choice in an owned session's
-// permission dialog, if the prompt named id is the one it shows and the menu
-// on its screen has that option.
+// permission dialog, if the prompt named id is the only one outstanding and
+// the menu on its screen has that option. With several outstanding it types
+// nothing (ErrSeveralPrompts); dismiss, which types nothing, takes any of
+// them.
 func (m *Manager) AnswerPermission(sessionID, id string, choice PermissionChoice) error {
 	a, ok := m.Get(sessionID)
 	if !ok {
@@ -205,19 +306,28 @@ func (m *Manager) AnswerPermission(sessionID, id string, choice PermissionChoice
 	default:
 		return fmt.Errorf("unknown choice %q", choice)
 	}
+	if choice == PermissionDismiss {
+		m.permMu.Lock()
+		found := false
+		for _, p := range m.perms[sessionID] {
+			found = found || p.ID == id
+		}
+		m.permMu.Unlock()
+		if !found {
+			return ErrNoPermission
+		}
+		m.dropPermissions(sessionID, func(p *Permission, _ bool) bool { return p.ID == id })
+		return nil
+	}
 	m.permMu.Lock()
 	q := m.perms[sessionID]
 	if len(q) == 0 || q[0].ID != id {
 		m.permMu.Unlock()
 		return ErrNoPermission
 	}
-	if choice == PermissionDismiss {
-		m.popLocked(sessionID)
-		head, _ := m.headLocked(sessionID)
+	if len(q) > 1 {
 		m.permMu.Unlock()
-		m.notifyPermission(sessionID, head)
-		m.persistLater(sessionID)
-		return nil
+		return ErrSeveralPrompts
 	}
 	if choice == PermissionAlways && q[0].Always == "" {
 		m.permMu.Unlock()
@@ -258,6 +368,12 @@ func (m *Manager) AnswerPermission(sessionID, id string, choice PermissionChoice
 		// Answered in the terminal while the screen was being read.
 		m.permMu.Unlock()
 		return ErrNoPermission
+	}
+	if len(q) > 1 {
+		// Another prompt arrived while the screen was being read: the menu
+		// read may already be its.
+		m.permMu.Unlock()
+		return ErrSeveralPrompts
 	}
 	m.popLocked(sessionID)
 	head, _ := m.headLocked(sessionID)
@@ -305,7 +421,15 @@ func classifyMenuInput(data []byte) menuInput {
 func (m *Manager) typedIntoMenu(sessionID string, data []byte) {
 	switch classifyMenuInput(data) {
 	case menuAnswer:
-		m.dropPermissions(sessionID, func(_ *Permission, done bool) bool { return !done })
+		// With one outstanding, the key answered it. With several it
+		// answered whichever the terminal showed, which Caprock cannot name:
+		// each then goes with its own call's PostToolUse.
+		m.permMu.Lock()
+		one := len(m.perms[sessionID]) == 1
+		m.permMu.Unlock()
+		if one {
+			m.dropPermissions(sessionID, func(_ *Permission, done bool) bool { return !done })
+		}
 	case menuInterrupt:
 		m.clearPermission(sessionID)
 	}
@@ -445,7 +569,7 @@ func storedPermission(sessionID string, p *Permission) store.PendingPermission {
 	return store.PendingPermission{
 		SessionID: sessionID, PromptID: p.ID, Tool: p.Tool, Detail: p.Detail,
 		Always: p.Always, SinceMs: p.Since.UnixMilli(), Input: p.input,
-		ToolUseID: p.toolUseID, AgentID: p.agentID,
+		ToolUseID: p.toolUseID, AgentID: p.AgentID, AgentType: p.AgentType,
 	}
 }
 
@@ -486,7 +610,7 @@ func (m *Manager) restorePermission(ctx context.Context, sessionID string) {
 		q = append(q, &Permission{
 			ID: sp.PromptID, Tool: sp.Tool, Detail: sp.Detail, Always: sp.Always,
 			Since: time.UnixMilli(sp.SinceMs).UTC(), input: sp.Input,
-			toolUseID: sp.ToolUseID, agentID: sp.AgentID,
+			toolUseID: sp.ToolUseID, AgentID: sp.AgentID, AgentType: sp.AgentType,
 		})
 	}
 	m.permMu.Lock()

@@ -130,8 +130,9 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `/v1/status`, `/v1/storage`, `/v1/update`, `/v1/settings`, `/v1/premium`, `/v1/gemini`,
   `/v1/pricing`, `/v1/live`, `/v1/tasks`, `/v1/tasks/{id}`, `/v1/approvals`,
   `/v1/statusline/{id}`, `/v1/agents/{id}/permission`, `/v1/projects`,
-  `/v1/projects/ops`, `/v1/projects/{id}/worktrees`, `/v1/projects/{id}/changes`
-  and `/v1/projects/{id}/changes/diff`. Everything else is `403` — every `POST`, `PUT` and
+  `/v1/projects/ops`, `/v1/projects/{id}/worktrees`, `/v1/projects/{id}/changes`,
+  `/v1/projects/{id}/changes/diff`, `/v1/projects/{id}/file` and
+  `/v1/projects/{id}/files`. Everything else is `403` — every `POST`, `PUT` and
   `DELETE` (spawn, input, signal, paste, settings, tasks, approvals,
   orchestrator, hive, licence, pairing, shutdown), and three `GET`s that are
   not reads: `/v1/agents/{id}/term` (its socket types into the session), and
@@ -357,7 +358,7 @@ One policy for both sockets, `ui/src/lib/reconnect.ts` (WP-13, [21-app.md § Pha
 
 - **One decision, two senders.** The alert rules (below, § Phone alerts) run once over the stored events; a kind is decided while Telegram's switch or the app's is on, and the 3-minute per-session cooldown and the 20-an-hour cap count each decision once for both. Each sender then delivers it only if its own switch is on. `PUT /v1/settings` takes `notify_approval` (on unless turned off) and `notify_finished` (off unless turned on), stored as pointers in `config.json`; `GET` returns both. Telegram's `alert_*` switches are untouched and stay off unless turned on.
 - **Fields.** `id` is `<alert kind>-<session_id>-<trigger ms>`, unique per alert and the same on a replay. `kind`: `approval`, `finished`, or `error` for a turn that ended on a StopFailure. `project` is the session's project, else its folder's name. `title` is plain text, `Needs approval · <project>` (`Needs your answer`, `Finished`, `Stopped: <error>`); `body` is lines of plain text: the session's name, branch and a non-Claude agent (left out when it would only repeat the project), then for a dialog the tool and its command, file, URL or question (100 characters), for a finished run its duration, cost, tool calls, changed files and — while `alert_reply` is on — the reply's first line; the twentieth of an hour adds that the rest wait. Nothing is HTML-escaped; the frame never leaves the machine except to a paired dashboard, which already sees the same tool inputs on `event` frames.
-- **Prompt and actions.** For an approval in an owned Claude Code session waiting on an ADR-035 prompt, `prompt_id` is that prompt's `id` and `actions` lists `choice` values of `POST /v1/agents/{id}/permission`, which answers only while that prompt waits (409 otherwise): `["allow","deny"]` when the body shows the whole request (the command, file, URL or query on one line, not clipped), else `["deny"]` — a notification does not approve what it did not show; the prompt card does. `always` is never offered. The hook sets the prompt before the event is stored, so it is there when the alert is decided. No prompt (a session Caprock did not start, another agent, AskUserQuestion's menu): neither field.
+- **Prompt and actions.** For an approval in an owned Claude Code session waiting on exactly one ADR-035 prompt, `prompt_id` is that prompt's `id`; with two or more outstanding neither field is set, since which dialog the terminal shows is unknown (amended 2026-10-09). A subagent's request says so in the body: `Subagent (general-purpose) · Bash: …`. With one, `actions` lists `choice` values of `POST /v1/agents/{id}/permission`, which answers only while that prompt waits (409 otherwise): `["allow","deny"]` when the body shows the whole request (the command, file, URL or query on one line, not clipped), else `["deny"]` — a notification does not approve what it did not show; the prompt card does. `always` is never offered. The hook sets the prompt before the event is stored, so it is there when the alert is decided. No prompt (a session Caprock did not start, another agent, AskUserQuestion's menu): neither field.
 - **The app.** In the Tauri shell only, `ui/src/lib/notify.ts` shows each new `id` once through the `notify` command (`{title, body, id, sessionId, promptId, actions}`; a shell that predates the last four ignores them), unless the window has focus and that session is in front, or an approval's prompt (checked with `GET /v1/agents/{id}/permission`) no longer waits. On macOS, in the app bundle, the shell shows it through UNUserNotificationCenter: `["allow","deny"]` becomes **Approve** and **Deny**, `["deny"]` becomes **Open in Caprock** and **Deny**. The shell answers a button itself, from Rust, with `POST /v1/agents/{session_id}/permission` `{id: prompt_id, choice}` to the loopback daemon it is attached to (the supervisor's connected port; never another host), without bringing the window forward; a 409 is followed by an "Already answered" notification, any other failure by "Could not answer" with the reason, and a click on either opens the session. A click on a notification's body, or Open, brings the window up and opens the session as the tray does (`caprock:shown`, then `caprock:open-session`). When a `permission` frame says a session no longer waits, the page withdraws the approval notifications it showed for that session with `withdraw_notifications` (`{ids}`, the notify ids; macOS removes them from Notification Center, other OSes ignore it). Elsewhere the official notification plugin shows a title and body and reports neither clicks nor actions, so Approve and Deny are the prompt card's buttons: the app coming forward within 2 minutes of a notification it showed while in the background opens `#/session/<id>?tab=terminal` (the session's tab, its prompt card in view), unless the prompt was answered meanwhile or the shell brought the window up itself: the menu bar, tray and hotkey (WP-10) dispatch `caprock:shown` before showing it, and the open waits 300 ms for that event and drops the notification when it comes. A browser tab shows no notification of its own.
 
 `GET`/`HEAD`/`OPTIONS` are otherwise permissive because every `GET` route on the router is a query. The two that reach a live process — `WS /v1/live` and `WS /v1/agents/{id}/term` — are WebSocket upgrades guarded by coder/websocket's `OriginPatterns`, which already refuses a missing or foreign `Origin`. **A new `GET` with a side effect belongs behind a `POST`**, not on the safe-method list.
@@ -371,7 +372,8 @@ GET  /v1/sessions?active=true          → SessionSummary[]
 GET  /v1/sessions?dir=<path>           → SessionSummary[] — one Projects row's sessions, each with `resume`
 GET  /v1/sessions/{id}                 → SessionDetail (stats + last N events)
 GET  /v1/sessions/{id}/relay           → RelayBrief (the proposed first message for a relay)
-GET  /v1/sessions/{id}/events?after=…  → Event[] (paginated; newest=1 returns the tail)
+GET  /v1/sessions/{id}/events?after=…  → Event[] (paginated; newest=1 returns the tail; with newest=1, main=1 keeps the main thread only and kind=a,b those kinds, both before the limit)
+GET  /v1/sessions/{id}/subagents       → {working: SubagentNow[], finished} — the subagents working in it now (§ Subagents now)
 GET  /v1/sessions/{id}/notes           → AssistantNote[] — what Claude said, newest first
 GET  /v1/notes?q=…&before=…            → AssistantNote[] — search that prose across sessions, paged
 GET  /v1/sessions/{id}/diff            → { files: FileDiff[] } | 409 not-a-git-repo
@@ -511,6 +513,10 @@ The dashboard route `#/session/{id}?at=<unix-ms>` reveals a moment in the timeli
 
 **`GET /v1/sessions/{id}/events?newest=1` returns the tail rather than the head**, oldest-first within the page. Paging from the start is right for a timeline read forwards and wrong for anything showing recent activity: on a session with thousands of events, `after=0` hands back the first few hundred — hours old — so a caller asking "what just happened" renders an empty window with no indication why.
 
+**With `newest=1`, `main=1` and `kind=a,b,…` filter before the limit.** `main=1` keeps the main thread's events only (`agent_id` empty and `payload.sidechain` not true, the rule notes use); `kind` keeps the listed kinds. The agent cockpit asks for `main=1&kind=tool.pre,tool.post,turn.assistant&limit=400`: on the owner's 36-hour session (2026-10-09) the newest 400 events were all subagents' — 635 of their tool calls in the last hour — and its tool list read *No tool calls yet* over 4,933 calls. The filtered page walks `idx_events_session_ts` and took under 60 ms there. Without `newest=1` both are ignored.
+
+**Subagents now.** `GET /v1/sessions/{id}/subagents` → `{working, finished}`. `working` lists the subagents working in the session under the rule `live_subagents` counts by — an `agent_id` heard from in the last 30 minutes whose newest event is not its `SubagentStop` — newest activity first, at most 12, each `SubagentNow`: `agent_id`; `agent_type` (the hooks' own; omitted when none named one); `description` (what the parent asked, from the parent's `Agent`/`Task` call whose `tool_response.agentId` is this agent — a background launch says at once, a foreground one only once it returns; omitted otherwise); `tool_calls` (its `tool.pre` count on the plane that saw more, hook or transcript, over the whole session); `started_at`, `last_at` (unix ms, within the window); `tool`, `detail` (its newest call and that call's short line: a file's base name, a command's first line, a pattern, a URL — as the cockpit's tool list writes it) and `tool_at`; `running` (that call has no `tool.post` with its `tool_use_id`); `asking` (its newest event is a `permission.prompt`: a subagent waiting on a dialog records nothing else). `finished` counts those that stopped within the window after at least one tool call — Claude Code also fires `SubagentStop` for small internal agents that run none, dozens an hour, and they are left out. Every query pins the session's index (`+kind`), because SQLite otherwise chose `idx_events_kind_*` and walked every `tool.pre` in the database (1.1 s against 13 ms on the owner's). The cockpit reads it again at most every two seconds while subagent events arrive and every twenty seconds regardless. A paired viewer may read it, as it may read the events it is made from.
+
 **An unmatched `/v1/` path is `404` with a JSON body**, not the dashboard. The UI is served from `/` so client-side routes resolve, which previously meant any unknown API path fell through to `index.html` — a caller that mistyped an endpoint, or used one removed in an upgrade, got `200` and a document, then failed later parsing HTML as JSON. Page routes (`/`, `/cost`, `/session/{id}`) still serve the SPA.
 
 **`GET /v1/stats/daily?days=N` clamps `N` to the ceiling (3650), not to the default.** An out-of-range value used to fall back to 30 days, so a caller asking for everything received a month with nothing indicating truncation — summing that endpoint against `/v1/stats/summary` on a real database disagreed by $1,603. `days` unset, zero, or unparsable still means 30.
@@ -539,16 +545,29 @@ dialog an owned Claude Code session is showing: `id` (random, per prompt),
 clipped at 2,000 runes), `always` (the label of the second option when the
 hook's first `permission_suggestions` entry is a kind seen on a real prompt —
 `addRules`, `addDirectories`, `setMode acceptEdits` — omitted otherwise and
-always for `ExitPlanMode`), `since`. `AskUserQuestion` never becomes one: its
-menu is answers, not Yes and No. The `POST` presses the key a person would —
-`allow` = `1`, `always` = `2` (409 when `always` is not offered), `deny` =
-Esc — only while `id` is still the waiting prompt. A prompt is cleared by an
-answer here, a single Enter, Esc, Ctrl+C or digit typed into the terminal
-(arrows are not answers), its own tool's `PostToolUse` (same tool and input),
-the session's next `UserPromptSubmit` or `Stop`, `SessionEnd`, or the process
-exiting; each change is a `permission` frame. The prompt is stored, and a
-session reattached after a daemon restart is waiting on it again under the
-same `id` (migration 0039).
+always for `ExitPlanMode`), `since`, `agent_id` and `agent_type` (set when a
+subagent asked — its dialog is drawn in the parent's terminal; `agent_type` is
+the hook's, `"subagent"` when it names none; both omitted for the main
+thread), `queued` (how many more are outstanding) and `waiting` (every
+outstanding prompt oldest first, this one included, each with the same fields
+but no `queued`/`waiting` — present only when there are two or more).
+`AskUserQuestion` never becomes one: its menu is answers, not Yes and No. The
+`POST` presses the key a person would — `allow` = `1`, `always` = `2` (409
+when `always` is not offered), `deny` = Esc — only while `id` is the oldest
+prompt **and the only one outstanding**: with two or more, which dialog the
+terminal shows is unknown, and `allow`, `always` and `deny` are `422` with
+nothing typed (amended 2026-10-09). `dismiss` types nothing and takes any
+outstanding prompt. A prompt is cleared by an answer here, a single Enter or
+digit typed into the terminal while it is the only one outstanding (with
+several, the key answered one Caprock cannot name, and none is cleared), Esc
+or Ctrl+C (all of them), its own call's `PostToolUse` (by `tool_use_id`, which
+`PermissionRequest` does not carry and is taken from the newest `PreToolUse`
+by the same agent with the same tool and input; else the same agent, tool and
+input), its subagent's `SubagentStop`, the main thread's next
+`UserPromptSubmit` or `Stop`, `SessionEnd`, or the process exiting; each
+change is a `permission` frame. The prompts are stored, and a session
+reattached after a daemon restart is waiting on them again under the same ids
+(migrations 0039, 0042, 0043).
 
 `/v1/sessions/{id}/notes` and `/v1/notes` return `AssistantNote[]` — `{event_id, session_id, project, ts, model, text, fragment}` — the prose Claude wrote, as opposed to the tool calls it made. Three rules are baked into the query rather than left to callers. **Subagent sidechains are excluded** (`agent_id = ''` and `payload.sidechain IS NOT 1`): about 45% of assistant turns are subagent chatter, so an unfiltered "what did Claude say" answers with a subagent's words roughly half the time. **`fragment` marks a note shorter than 240 runes** — mid-thought asides like "Let me check that" — so a caller can avoid presenting one as a session's conclusion; ~60% of all notes are legitimately short, so the flag qualifies a *final* note and must never be used to hide prose. **Search matches Claude's prose OR the prompt that produced it** — people remember their own question ("the SSO thing") far better than Claude's phrasing of the answer, so searching only the reply misses how memory works. Only the nearest preceding `turn.user` within a short event window counts, or every reply in an exchange would match rather than the passage that answers it; the row returned is always Claude's reply. "Preceding" is in time within the reply's own session — `(ts, id)` order, the prompt inside the reply's last 60 events there — not in event id: an id is when Caprock stored a row, and a prompt imported after its replies (OpenCode's history, a transcript read after its hooks) sits after them by id. Measured on a copy of the owner's database (2026-10-01): under the id window none of 3,048 OpenCode replies had a question, and 24 Claude Code replies matched a prompt older than the one they answered; in time order 2,878 OpenCode replies have one and Claude Code replies with a prompt in the window went from 17,679 to 17,773 of 31,521 (363 fell out of the window's edge, 457 came in). A search that matches nothing scans every note either way; the prompt lookups walk `(session_id, ts)` indexes and cost about the same. The prompt's text is `payload.prompt` (Claude Code, Gemini, OpenCode) or `payload.text` (DeepSeek Harness), read through one `COALESCE`; reading only `prompt` left every DeepSeek question unsearchable. **Wildcards are escaped**, so a query containing `%` or `_` matches literally; the corpus is one developer's own sessions, so a scan is cheap and avoids an FTS table that would need rebuilding for historical rows.
 
@@ -569,6 +588,8 @@ Extended thinking is never stored at all — only `type: "text"` blocks are read
 **DeepSeek Harness's injected context is not a prompt.** DSH writes the AGENTS.md/CLAUDE.md instructions (`source.kind: agent-instructions`) and its runtime-policy snapshot (`plugin`) as `user/message` records; only `source.kind: user` is stored as `turn.user` (a record with no `source` is kept). Rows imported before this are removed once, after the importer's first pass (`meta.deepseek_injected_removed`): each transcript is read again and a `turn.user` row is deleted only when its key `dsh:user:<seq>` names a record whose `source.kind` is set and is not `user` — never judged by its text; a session whose transcript is gone keeps its rows. A `turn.user` row added nothing to `session_stats` or `daily_stats`, so nothing moves there; `sessions.started_at`, `last_event_at` and `worked_at` are recomputed from the remaining events, in the same transaction, only where one equals a deleted row's `ts`. On a copy of the owner's database (2026-10-01) it deleted 5 of 22 DeepSeek prompts and changed no session time or total.
 
 **Codex writes `payload.text` too** (`source = codex`), under the same cap: the `output_text` of the assistant messages each sampling request produced, on that request's `turn.assistant`. Threads Codex imported from another agent store nothing at all, and subagent threads keep no text. Codex turns stored before this were given their text once from the rollouts still on disk (`meta.codex_text_backfilled`), rewriting only `payload.text` on the row whose key and timestamp match. See [19-codex.md § Prose](19-codex.md#prose).
+
+**Codex prompts and tool results are `turn.user` and `tool.post` in Claude Code's shape** (`source = codex`). A prompt: key `codex:user:<line>`, payload `{prompt, cwd}`, from the `item_completed` `UserMessage` item (else the `user_message` event), clipped to 16000 runes; none for imported or subagent threads. A result: key `codex:result:<line>` (`codex:sub:<thread>:result:<line>` in a subagent file, with `agent_id` and `sidechain`), `tool` the call's name, payload `{session_id, cwd, tool_name, tool_use_id, tool_response, is_error, exit_code?}`, `tool_response` text clipped to 8000 runes, `exit_code` only where Codex recorded one (`shell`). Every Codex `tool.pre` carries `tool_use_id` = Codex's `call_id`, and its `tool_input` is the call's argument object (a `function_call`'s JSON-string arguments unwrapped; `shell`'s argv `command` turned into its command line, the array kept as `argv`). Rows stored before carry neither; a one-time pass (`meta.codex_chat_backfilled`) stores the missing prompts and results from the rollouts still on disk and rewrites only `tool_use_id` and `tool_input` on the call whose key and timestamp match. See [19-codex.md § Chat](19-codex.md#chat).
 
 Five indexes exist purely for read speed, created by migrations 0006 to 0010: `idx_events_kind_ts` (kind, ts) and `idx_events_cost_cover`, which additionally carries `model`, `session_id`, the token/cost columns and (since migration 0026) `internal` so the summary aggregates are answered from the index without touching the table. Together they take `/v1/stats/summary?range=all` from ~820ms to ~340ms and `/v1/history` from ~830ms to ~470ms on a 184k-event database, for roughly 30MB of index on a 306MB file. `idx_events_session_id` (session_id, id) serves the per-session event lookup behind Now, and `idx_events_kind_id` (kind, id) serves the Memory screen — both order by id, which the ts-ordered indexes cannot satisfy, so without them SQLite read every matching row and sorted it in a temp B-tree to return the newest few. Migration 0026 rebuilt `idx_events_cost_cover`, `idx_events_tool_dist` and `idx_events_attr_work` with `internal` as their last column: every aggregate filters on `internal = 0` since migration 0024, and without the column none of them covered any more — each query fetched every full row to test one flag, which put `/v1/history?range=all` at 9s on a 300k-event database. It also added `idx_events_ts_cover` (ts, internal, kind, session_id, token/cost columns) for the two range aggregates that group by kind or count distinct sessions; both pin it with `INDEXED BY`, because without ANALYZE statistics SQLite picked `idx_events_kind_id` or `idx_events_session_id` and walked the whole table — 4.8s for today's 772 events. `idx_events_ts_model` (ts, model, cost_usd) serves the model mix, which every summary computes: `idx_events_cost_cover` carries `model` but leads on `kind`, so a ts-only filter cannot use it — 146ms against 56ms over 30 days on a 190k-event database. `idx_events_user_turn` (migration 0033) finds a session's first prompts for the sessions list's descriptions; see § First-prompt DDL.
 
@@ -788,8 +809,8 @@ POST   /v1/agents                    {cwd?, chat?, create?, worktree?, agent?, m
 GET    /v1/agents/models?agent=      {agent, default?, models:[{id,label}]}
 POST   /v1/agents/{id}/input         {data}            → 204   (owned PTYs only)
 POST   /v1/agents/{id}/signal        {action: pause|resume|kill} → 204 (owned PTYs only)
-GET    /v1/agents/{id}/permission    → {permission: {id, tool, detail, always?, since, queued?} | null}; the oldest prompt an owned session waits on (the dialog on its screen), queued = how many wait behind it
-POST   /v1/agents/{id}/permission    {id, choice: allow|always|deny|dismiss} → 204; 409 when that prompt is not the one on screen, or no permission menu is on screen at all (the prompt is dropped); 422 {error} when the menu on screen has no such option (nothing typed); dismiss types nothing and drops the card
+GET    /v1/agents/{id}/permission    → {permission: {id, tool, detail, always?, since, queued?, agent_id?, agent_type?, waiting?} | null}; the oldest prompt an owned session waits on, queued = how many more are outstanding, waiting = all of them when two or more
+POST   /v1/agents/{id}/permission    {id, choice: allow|always|deny|dismiss} → 204; 409 when that prompt is not the oldest outstanding, or no permission menu is on screen at all (the prompt is dropped); 422 {error} when the menu on screen has no such option, or more than one prompt is outstanding (nothing typed); dismiss types nothing and drops that prompt, any of them
 WS     /v1/agents/{id}/term          bidirectional stream (xterm.js): binary = keystrokes, text = control; snapshot on connect, closes on exit; subprotocol caprock.term.v2 [?since=&client=] = protocol v2
 POST   /v1/paste                     {name, type, data:base64} → {path}; writes a pasted or dropped file so Claude Code can read it
 GET    /v1/terminals                 → {terminals: [{id, name}], preferred}; terminal apps installed here, most preferred first
@@ -1279,6 +1300,44 @@ POST /v1/projects/{id}/changes/fetch[?worktree=]    → {result: RemoteResult, c
   first. In Go, `projects.Service.Push(ctx, id, worktree)` and `Changes`
   are the calls a PR endpoint can make before talking to GitHub.
 
+### Files: read a project's file
+
+One file of a project, read-only, and the list of its files, for the app's
+file tab and the palette's *Open file…* ([04-ui.md § The app
+workspace](04-ui.md#the-app-workspace), File tabs). Code:
+`internal/projects/files.go`, `internal/api/files.go`. `?worktree=` names a
+linked worktree as in Changes; absent or empty is the project's root —
+for a plain folder project too. An unknown project or worktree is `404`.
+
+```
+GET /v1/projects/{id}/file?path=<p>[&worktree=] → FileContent
+GET /v1/projects/{id}/files[?worktree=]         → {files: [string], truncated?}
+```
+
+- **`FileContent`** — `{path, size, text, truncated?, binary?, lang}`.
+  `size` is the whole file's; `text` is at most its first 1 MB
+  (`truncated`), cut on the last line break within the final 4 KB, else on
+  a whole UTF-8 character. `binary` — a NUL byte or invalid UTF-8 in what
+  was read — sends no `text`. `lang` is named from the extension
+  (`markdown` for `.md`, `.mdx`, `.markdown`; `go`, `typescript`, … ;
+  `text` when unknown) and only decides whether the tab renders Markdown.
+- **Paths.** `path` must be relative and clean — no `.`, `..`, doubled or
+  trailing separator, NUL, absolute path, or (on Windows) backslash —
+  else `400`. The folder and the path are then resolved with every symlink
+  followed; a real location outside the folder's own real location is
+  `403`, so neither `..` nor a symlink (to a file or through a folder) reads
+  anything outside the project. Only a regular file: a folder, socket,
+  device or FIFO is `400` (checked before opening, so a FIFO never blocks);
+  a missing file or a dangling link is `404`.
+- **`files`** is `git ls-files -z --cached --others --exclude-standard` in
+  a repository (tracked files and new ones git does not ignore), else a walk
+  that skips dot-folders, `node_modules` and symlinked folders; sorted, at
+  most 20,000 (`truncated`). The palette filters it in the browser.
+- **Who.** Both are reads, open to every paired device as a worktree's diff
+  is (`pairedDeviceRoutes`). Nothing here writes, and no route is added for
+  a controller. On macOS a folder behind a privacy prompt is refused as the
+  Changes routes refuse it (`tcc`).
+
 ### GitHub
 
 Connect GitHub, pick a repository to clone, put a local project on GitHub,
@@ -1750,10 +1809,11 @@ than its conversation ([ADR-032](08-decisions.md)); written by the daemon when
 fork), and the two must not be read as one. `SessionSummary` carries it as
 `relay_from`, omitted when empty.
 
-### Pending permission DDL (migrations 0039, 0042)
+### Pending permission DDL (migrations 0039, 0042, 0043)
 
 ```sql
--- 0042 rebuilt 0039's one-row-per-session table as a queue, rows carried over.
+-- 0042 rebuilt 0039's one-row-per-session table as a queue, rows carried over;
+-- 0043 added agent_type.
 CREATE TABLE pending_permissions (
   session_id  TEXT    NOT NULL,
   prompt_id   TEXT    NOT NULL,
@@ -1764,16 +1824,20 @@ CREATE TABLE pending_permissions (
   input       TEXT    NOT NULL DEFAULT '',
   tool_use_id TEXT    NOT NULL DEFAULT '',
   agent_id    TEXT    NOT NULL DEFAULT '',
+  agent_type  TEXT    NOT NULL DEFAULT '',   -- 0043: the subagent's type, '' for the main thread
   PRIMARY KEY (session_id, prompt_id)
 );
 ```
 
 The permission prompts an owned session waits on ([ADR-035](08-decisions.md)),
 kept across a daemon restart: one row per prompt, read back oldest first
-(`since`, then insertion order). Claude Code queues its dialogs and shows the
-oldest, so a later `PermissionRequest` adds a row behind the others and never
-replaces one. `tool_use_id` is the hook's id for the call when it sends one;
-`agent_id` is set when a subagent asked, so its `SubagentStop` clears its rows.
+(`since`, then insertion order). A later `PermissionRequest` adds a row beside
+the others and never replaces one; which of several the terminal shows is not
+known, so none of them is answered by a button while there are two or more.
+`tool_use_id` is the call's id — the hook's when it sends one, else the
+matching `PreToolUse`'s; `agent_id` is set when a subagent asked, so its
+`SubagentStop` clears its rows, and `agent_type` names it on the card after a
+restart.
 
 A new prompt's row is committed on the `PermissionRequest` hook's own request,
 before the hook is answered and before the prompt is served, so a daemon killed

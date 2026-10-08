@@ -12,7 +12,8 @@
  * figure an agent does not report is left out rather than drawn as a zero.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { api, type Event, type RateWindow, type SessionSummary, type Summary } from '@/lib/api'
+import { api, type Event, type Permission, type RateWindow, type SessionSummary, type SubagentsNow, type Summary } from '@/lib/api'
+import { usePermission } from './PermissionPrompt'
 import { live } from '@/lib/live'
 import { mergeEvents } from '@/lib/chat'
 import { fmtAgo, fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
@@ -21,34 +22,88 @@ import { countdown, resetClock } from '@/lib/limitclock'
 import { readWindow } from './PlanLimits'
 import { AgentCharacter, agentName, characterFor } from './Characters'
 import {
-  cockpitState, fmtRun, planWindowsFor, runningTool, runShare, runVerb, toolRuns, turnCosts,
+  askLine, cockpitState, commandGist, fmtRun, mainThread, planWindowsFor, requester, runningTool, runShare, runVerb, subagentWaiting, toolKind, toolRuns, turnCosts,
   type CockpitState, type ToolKind, type ToolRun, type TurnCost,
 } from '@/lib/cockpit'
 
-/** How many of the session's newest events the panel reads: enough for the last several turns. */
+/** How many of the main thread's newest calls and turns the panel reads: enough for the last several turns. */
 const EVENTS_HELD = 400
 const TIMELINE_ROWS = 7
 const SPARK_TURNS = 28
+const SUBAGENT_ROWS = 5
+/** The subagent list is read again at most this often while their events stream in. */
+const SUBAGENTS_THROTTLE_MS = 2_000
+/** …and this often regardless, so a finished or silent one drops off. */
+const SUBAGENTS_POLL_MS = 20_000
+/** The kinds the tool list and the cost spark are made of. */
+const MAIN_KINDS = ['tool.pre', 'tool.post', 'turn.assistant'] as const
 
-/** The session's newest events, kept current from the live socket. */
+function isMainKind(e: Event): boolean {
+  return (MAIN_KINDS as readonly string[]).includes(e.kind) && mainThread(e)
+}
+
+/**
+ * The main thread's own calls and turns, kept current from the live socket.
+ * Fetched filtered (`main=1&kind=…`): a parent whose subagents log hundreds of
+ * events an hour had none of its own among its newest 400.
+ */
 export function useSessionEvents(sessionId: string): readonly Event[] {
-  const [events, setEvents] = useState<readonly Event[]>([])
+  const [main, setMain] = useState<readonly Event[]>([])
   const [nonce, setNonce] = useState(0)
   useEffect(() => {
     let alive = true
-    api.recentEvents(sessionId, EVENTS_HELD)
-      .then((list) => { if (alive && Array.isArray(list)) setEvents((cur) => mergeEvents(cur, list).slice(-EVENTS_HELD)) })
+    api.recentMainEvents(sessionId, MAIN_KINDS, EVENTS_HELD)
+      .then((list) => { if (alive && Array.isArray(list)) setMain((cur) => mergeEvents(cur, list.filter(isMainKind)).slice(-EVENTS_HELD)) })
       .catch(() => { /* an older daemon or a gone session: the panel shows what the row has */ })
     return () => { alive = false }
   }, [sessionId, nonce])
   useEffect(() => live.onFrame((f) => {
     if (f.type === 'event' && f.data.session_id === sessionId) {
-      setEvents((cur) => { const next = mergeEvents(cur, [f.data]); return next === cur ? cur : next.slice(-EVENTS_HELD) })
+      const e = f.data
+      if (isMainKind(e)) setMain((cur) => { const next = mergeEvents(cur, [e]); return next === cur ? cur : next.slice(-EVENTS_HELD) })
     } else if (f.type === 'reset' || (f.type === 'hello' && f.data.reset)) {
       setNonce((n) => n + 1)
     }
   }), [sessionId])
-  return events
+  return main
+}
+
+/**
+ * The subagents working in the session, as the daemon sums them up
+ * (`/subagents`): read on open, again at most every two seconds while their
+ * events stream in on the live socket, and every twenty seconds so one that
+ * finished drops off. The daemon does the counting; thousands of subagent
+ * events never reach the page.
+ */
+export function useSubagents(sessionId: string, enabled: boolean): SubagentsNow | undefined {
+  const [data, setData] = useState<SubagentsNow | undefined>(undefined)
+  const [tick, setTick] = useState(0)
+  const last = useRef(0)
+  const pending = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => {
+    if (!enabled) return
+    let alive = true
+    last.current = Date.now()
+    api.subagents(sessionId)
+      .then((r) => { if (alive && r && Array.isArray(r.working)) setData(r) })
+      .catch(() => { /* an older daemon: no section */ })
+    return () => { alive = false }
+  }, [sessionId, enabled, tick])
+  useEffect(() => {
+    if (!enabled) return
+    const poll = setInterval(() => setTick((t) => t + 1), SUBAGENTS_POLL_MS)
+    const off = live.onFrame((f) => {
+      if (f.type !== 'event' || f.data.session_id !== sessionId || !f.data.agent_id || pending.current) return
+      const wait = Math.max(0, last.current + SUBAGENTS_THROTTLE_MS - Date.now())
+      pending.current = setTimeout(() => { pending.current = undefined; setTick((t) => t + 1) }, wait)
+    })
+    return () => {
+      clearInterval(poll)
+      off()
+      if (pending.current) { clearTimeout(pending.current); pending.current = undefined }
+    }
+  }, [sessionId, enabled])
+  return enabled ? data : undefined
 }
 
 const STATE_LABEL: Record<CockpitState, string> = {
@@ -76,11 +131,14 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
   /** The working tree's changes, drawn by the inspector (it owns the diff fetch). */
   changes?: ReactNode
 }) {
-  const events = useSessionEvents(sessionId)
+  const main = useSessionEvents(sessionId)
+  const [permission] = usePermission(sessionId)
   const now = useNow(1000)
-  const runs = useMemo(() => toolRuns(events), [events])
-  const turns = useMemo(() => turnCosts(events), [events])
-  const state = cockpitState(s, hasPermission)
+  const runs = useMemo(() => toolRuns(main), [main])
+  const turns = useMemo(() => turnCosts(main), [main])
+  const state = cockpitState(s, hasPermission || !!permission)
+  // Claude Code is the agent with subagents Caprock hears from.
+  const subs = useSubagents(sessionId, state !== 'ended' && (s.agent ?? 'claude') === 'claude')
   const running = state === 'working' || state === 'looping' ? runningTool(runs, now) : undefined
   const plan = planWindowsFor(s.agent, summary)
   return (
@@ -88,7 +146,8 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
       <Hero s={s} state={state} now={now} />
       <Spend s={s} turns={turns} />
       <ContextMeter s={s} />
-      <NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} now={now} />
+      <NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} permission={permission} now={now} />
+      {subs && subs.working.length > 0 && <Subagents subs={subs} permission={permission} now={now} />}
       {s.loop && state !== 'ended' && <LoopWarning s={s} now={now} />}
       <Timeline runs={runs} total={s.stats?.tool_calls} now={now} />
       {changes}
@@ -243,12 +302,35 @@ function ContextMeter({ s }: { s: SessionSummary }) {
   )
 }
 
-function NowDoing({ s, state, running, last, now }: { s: SessionSummary; state: CockpitState; running?: ToolRun; last?: ToolRun; now: number }) {
+function NowDoing({ s, state, running, last, permission, now }: {
+  s: SessionSummary
+  state: CockpitState
+  running?: ToolRun
+  last?: ToolRun
+  permission?: Permission | null
+  now: number
+}) {
   let icon: ReactNode
   let verb: string
   let detail = ''
+  let full = ''
   let right: ReactNode = null
-  if (running) {
+  const waiting = permission?.waiting && permission.waiting.length > 1 ? permission.waiting : undefined
+  if (permission && state !== 'ended') {
+    // The prompt's own words, naming who asks: a subagent's dialog is drawn
+    // in the parent's terminal, and the narrated phrase named neither.
+    icon = <KindIcon kind="ask" />
+    if (waiting) {
+      verb = `${waiting.length} approvals waiting`
+      detail = waiting.map((w) => `${requester(w, agentName(s.agent ?? 'claude'))}: ${w.tool}`).join(' · ')
+      full = waiting.map((w) => `${askLine(w, agentName(s.agent ?? 'claude'))}\n${w.detail}`).join('\n\n')
+    } else {
+      verb = askLine(permission, agentName(s.agent ?? 'claude'))
+      detail = commandGist(permission.detail).gist
+      full = permission.detail
+    }
+    right = <span className="num text-[11.5px] text-fg-muted">{fmtAgo(permission.since, now)}</span>
+  } else if (running) {
     icon = <KindIcon kind={running.kind} />
     verb = running.kind === 'mcp' || running.kind === 'other' ? `${runVerb(running.kind)} ${running.tool.replace(/^mcp__(.+?)__/, '$1·')}` : runVerb(running.kind)
     detail = running.detail
@@ -283,11 +365,64 @@ function NowDoing({ s, state, running, last, now }: { s: SessionSummary; state: 
       <div className="cockpit-now flex items-center gap-2.5 rounded-[10px] border px-2.5 py-2" data-state={state} data-running={running ? 'true' : undefined}>
         <span className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-[7px] bg-[var(--app-row-active)]">{icon}</span>
         <span className="grid min-w-0 flex-1 leading-tight">
-          <span className="truncate text-[12.5px] font-medium text-fg">{verb}</span>
-          {detail && <span className="mono truncate text-[11.5px] text-fg-muted" title={detail}>{detail}</span>}
+          <span className={`${permission ? 'line-clamp-2' : 'truncate'} text-[12.5px] font-medium text-fg`}>{verb}</span>
+          {detail && (
+            <span className={`mono text-[11.5px] text-fg-muted ${permission ? 'line-clamp-2 break-all' : 'truncate'}`} title={full || detail}>{detail}</span>
+          )}
         </span>
         {right}
       </div>
+    </section>
+  )
+}
+
+/**
+ * The subagents at work, one compact row each: its type and what the parent
+ * asked of it, its current call and how long it has run, how many calls it
+ * has made, and a badge while it waits on a permission prompt. Those that
+ * finished lately are one line under them.
+ */
+function Subagents({ subs, permission, now }: { subs: SubagentsNow; permission?: Permission | null; now: number }) {
+  const shown = subs.working.slice(0, SUBAGENT_ROWS)
+  const hidden = subs.working.length - shown.length
+  return (
+    <section aria-label="Subagents" className="grid gap-2">
+      <SectionLabel right={subs.finished > 0 ? <span className="text-fg-faint">{subs.finished} finished</span> : undefined}>
+        Subagents · {subs.working.length}
+      </SectionLabel>
+      <ul className="grid gap-1">
+        {shown.map((a) => {
+          const waiting = subagentWaiting(a, permission)
+          const tool = a.tool?.replace(/^mcp__(.+?)__/, '$1·') ?? ''
+          const since = a.running && a.tool_at ? fmtRun(Math.max(0, now - a.tool_at)) : ''
+          return (
+            <li key={a.agent_id} className="grid gap-0.5 rounded-[8px] border border-[var(--app-hairline)] px-2 py-1.5" data-waiting={waiting ? 'true' : undefined}
+              title={[a.agent_type, a.description, a.tool && `${a.tool}${a.detail ? ` ${a.detail}` : ''}`].filter(Boolean).join(' — ')}>
+              <p className="flex min-w-0 items-center gap-1.5 text-[12px]">
+                <span className="shrink-0 text-fg-faint"><KindIcon kind="agent" size={12} /></span>
+                <span className="shrink-0 font-medium text-fg">{a.agent_type || 'subagent'}</span>
+                {a.description && <span className="min-w-0 truncate text-fg-muted">· {a.description}</span>}
+                {waiting && <span className="ml-auto shrink-0 rounded-[4px] bg-accent/15 px-1.5 text-[10.5px] font-medium text-accent">waiting on you</span>}
+              </p>
+              <p className="grid grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-1.5 text-[11.5px]">
+                {a.tool ? <span className={a.running ? 'text-ok' : 'text-fg-faint'}><KindIcon kind={toolKind(a.tool)} size={12} /></span> : <span />}
+                <span className="min-w-0 truncate">
+                  {a.tool ? (
+                    <>
+                      <span className={a.running ? 'text-fg' : 'text-fg-muted'}>{tool}</span>
+                      {a.detail && <span className="mono ml-1 text-[11px] text-fg-muted">{a.detail}</span>}
+                    </>
+                  ) : <span className="text-fg-faint">starting</span>}
+                </span>
+                <span className="num text-[11px] text-fg-faint">
+                  {since && <span className="text-ok">{since} · </span>}{a.tool_calls} {a.tool_calls === 1 ? 'call' : 'calls'}
+                </span>
+              </p>
+            </li>
+          )
+        })}
+      </ul>
+      {hidden > 0 && <p className="text-[11px] text-fg-faint">+{hidden} more</p>}
     </section>
   )
 }

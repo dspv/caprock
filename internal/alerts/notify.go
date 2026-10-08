@@ -1,6 +1,7 @@
 package alerts
 
 import (
+	"encoding/json"
 	"fmt"
 	"path"
 	"strings"
@@ -119,6 +120,11 @@ func bodyLines(a Alert, d Details) []string {
 			lines = append(lines, "“"+r+"”")
 		}
 	} else if s := plainSubject(a.Trigger, d); s != "" {
+		if by := subagentOf(a.Trigger); by != "" {
+			// Claude Code draws a subagent's dialog in the parent's terminal;
+			// unnamed, it read as the parent's own request.
+			s = by + " · " + s
+		}
 		lines = append(lines, s)
 	}
 	if a.LastThisHour {
@@ -137,4 +143,20 @@ func plainSubject(ev event.Event, d Details) string {
 		return what
 	}
 	return label + ": " + what
+}
+
+// subagentOf names the subagent that asked, "Subagent (general-purpose)", or
+// "" when the main thread did.
+func subagentOf(ev event.Event) string {
+	if ev.AgentID == "" {
+		return ""
+	}
+	var p struct {
+		AgentType string `json:"agent_type"`
+	}
+	_ = json.Unmarshal(ev.Payload, &p)
+	if t := clip(strings.TrimSpace(p.AgentType), 40); t != "" {
+		return "Subagent (" + t + ")"
+	}
+	return "Subagent"
 }
