@@ -12,7 +12,7 @@ import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { useTheme } from '@/lib/theme'
 import { ProjectRow, StatusDot } from './ProjectRow'
-import { AgentGlyph, CaprockMark, DashboardIcon, FolderPlusIcon, MoonIcon, SearchIcon, SunIcon } from './AppIcons'
+import { AgentGlyph, CaprockMark, DashboardIcon, FolderPlusIcon, MoonIcon, SearchIcon, SettingsIcon, SunIcon } from './AppIcons'
 
 const EXPANDED_KEY = 'caprock.app.expanded'
 
@@ -40,6 +40,7 @@ export interface SidebarProps {
   onFolderMenu?: (e: React.MouseEvent, path: string, label: string) => void
   onAddProject: () => void
   onDashboard: () => void
+  onSettings?: () => void
   onPalette: () => void
   /** Opens a worktree's Changes view from its ±N; absent without the projects API. */
   onOpenChanges?: (projectId: string, w?: WorktreeNode) => void
@@ -143,6 +144,7 @@ export function Sidebar(props: SidebarProps) {
             <span className="flex-1">Dashboard</span>
             <kbd className="mono text-[10.5px] text-fg-faint">⇧⌘D</kbd>
           </button>
+          {props.onSettings && <IconButton label="Settings (⌘,)" onClick={props.onSettings}><SettingsIcon size={15} /></IconButton>}
           <ThemeButton />
         </div>
       </div>
@@ -152,41 +154,57 @@ export function Sidebar(props: SidebarProps) {
 
 function Inbox({ items, activeSessionId, onOpen }: { items: InboxItem[]; activeSessionId?: string; onOpen: (i: InboxItem) => void }) {
   const now = useNow(15_000)
+  const [showOlder, setShowOlder] = useState(false)
+  const fresh = items.filter((i) => !i.stale)
+  const older = items.filter((i) => i.stale)
+  const row = (it: InboxItem) => (
+    <li key={it.session.session_id} className="app-fade-in">
+      <button
+        type="button"
+        data-nav-row
+        aria-current={it.session.session_id === activeSessionId ? 'true' : undefined}
+        onClick={() => onOpen(it)}
+        className="app-row grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 rounded-[7px] py-1.5 pl-2 pr-2 text-left"
+      >
+        <StatusDot dot={it.stale ? 'idle' : 'waiting'} />
+        <span className={`min-w-0 truncate text-[12.5px] font-medium ${it.stale ? 'text-fg-muted' : 'text-fg'}`}>{it.title}</span>
+        <span className="num text-[10.5px] text-fg-faint">{fmtAgo(it.since, now)}</span>
+        <span />
+        <span className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-fg-muted">
+          <AgentGlyph agent={it.session.agent} />
+          <span className="truncate">{it.projectName}</span>
+        </span>
+        <span className={`text-[10.5px] font-medium ${it.reason === 'permission' ? 'text-accent' : 'text-fg-faint'}`}>
+          {it.reason === 'permission' ? 'asks' : 'your turn'}
+        </span>
+      </button>
+    </li>
+  )
   return (
     <section aria-label="Waiting on you" className="mb-2">
       <SectionHead
         label="Waiting on you"
-        count={items.length}
-        tone={items.length > 0 ? 'accent' : 'faint'}
+        count={fresh.length}
+        tone={fresh.length > 0 ? 'accent' : 'faint'}
       />
-      {items.length === 0 ? (
+      {fresh.length === 0 ? (
         <p className="px-2 pb-1 text-[12px] text-fg-faint">Nothing is waiting on you.</p>
       ) : (
-        <ul className="grid grid-cols-1 gap-px">
-          {items.map((it) => (
-            <li key={it.session.session_id} className="app-fade-in">
-              <button
-                type="button"
-                data-nav-row
-                aria-current={it.session.session_id === activeSessionId ? 'true' : undefined}
-                onClick={() => onOpen(it)}
-                className="app-row grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 rounded-[7px] py-1.5 pl-2 pr-2 text-left"
-              >
-                <StatusDot dot="waiting" />
-                <span className="min-w-0 truncate text-[12.5px] font-medium text-fg">{it.title}</span>
-                <span className="num text-[10.5px] text-fg-faint">{fmtAgo(it.since, now)}</span>
-                <span />
-                <span className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-fg-muted">
-                  <AgentGlyph agent={it.session.agent} />
-                  <span className="truncate">{it.projectName}</span>
-                </span>
-                <span className={`text-[10.5px] font-medium ${it.reason === 'permission' ? 'text-accent' : 'text-fg-faint'}`}>
-                  {it.reason === 'permission' ? 'asks' : 'your turn'}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <ul className="grid grid-cols-1 gap-px">{fresh.map(row)}</ul>
+      )}
+      {older.length > 0 && (
+        <>
+          <button
+            type="button"
+            aria-expanded={showOlder}
+            onClick={() => setShowOlder((v) => !v)}
+            className="flex h-[24px] w-full items-center gap-1.5 rounded-[6px] px-2 text-left text-[11.5px] text-fg-faint hover:text-fg-muted"
+          >
+            <span className={`inline-block transition-transform motion-reduce:transition-none ${showOlder ? 'rotate-90' : ''}`} aria-hidden>›</span>
+            Older, put down more than 12h ago ({older.length})
+          </button>
+          {showOlder && <ul className="grid grid-cols-1 gap-px">{older.map(row)}</ul>}
+        </>
       )}
     </section>
   )

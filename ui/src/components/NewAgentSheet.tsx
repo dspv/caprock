@@ -22,6 +22,7 @@ import { ProjectInstructions } from './ProjectInstructions'
 import { Sheet, SheetButton, SheetField } from './Sheet'
 import { stepSelect } from '@/lib/selectKeys'
 import { BypassConsentNote, useBypassConsent } from './BypassConsent'
+import { defaultWorktreeName, WORKTREE_NAME } from '@/lib/slug'
 
 const NEW_WORKTREE = '__new__'
 
@@ -60,6 +61,9 @@ export function NewAgentSheet({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const consent = useBypassConsent(agent, mode)
+  // The name is optional: left empty, it comes from the first message.
+  const worktreeName = newBranch.trim() || defaultWorktreeName(prompt)
+  const nameBad = !!newBranch.trim() && !WORKTREE_NAME.test(newBranch.trim())
   const codexModels = useApi(() => (agent === 'codex' ? api.agentModels('codex') : Promise.resolve(undefined)), [agent], { live: false })
 
   // ⌘↩ from anywhere in the sheet — a select, the footer's buttons — not only
@@ -78,7 +82,7 @@ export function NewAgentSheet({
 
   const start = async () => {
     if (!project) { setError('Pick a project first.'); return }
-    if (where === NEW_WORKTREE && !/^[\w./-]+$/.test(newBranch.trim())) { setError('Name the new worktree: letters, digits, dot, dash, slash.'); return }
+    if (where === NEW_WORKTREE && nameBad) return
     setBusy(true)
     setError('')
     try {
@@ -87,7 +91,7 @@ export function NewAgentSheet({
       if (agent !== 'claude') req.agent = agent
       if (models[agent]?.trim()) req.model = models[agent].trim()
       if (mode) req.permission_mode = mode
-      if (where === NEW_WORKTREE) req.worktree = newBranch.trim()
+      if (where === NEW_WORKTREE) req.worktree = worktreeName
       if (prompt.trim()) req.prompt = prompt.trim()
       const { session_id } = await api.spawn(req)
       rememberMode()
@@ -145,8 +149,13 @@ export function NewAgentSheet({
             </SheetField>
           </div>
           {where === NEW_WORKTREE && (
-            <SheetField label="Worktree name" hint="a new branch, checked out in .caprock-worktrees/<name>">
-              <input className="input" autoFocus={!initialPrompt} placeholder="feature-x" value={newBranch} onChange={(e) => setNewBranch(e.target.value)} />
+            <SheetField
+              label="Worktree name"
+              hint={nameBad
+                ? <span className="text-danger">letters, digits, dot and dash only</span>
+                : `branch caprock/${worktreeName}`}
+            >
+              <input className="input" aria-invalid={nameBad || undefined} placeholder={worktreeName} value={newBranch} onChange={(e) => setNewBranch(e.target.value)} />
             </SheetField>
           )}
           <div className="grid grid-cols-2 gap-3">
@@ -169,7 +178,7 @@ export function NewAgentSheet({
           <SheetField label="First message" hint="optional">
             <textarea
               className="input min-h-[84px] resize-y font-[family-name:var(--font-sans)] text-[13px] leading-relaxed"
-              autoFocus={where !== NEW_WORKTREE || !!initialPrompt}
+              autoFocus
               placeholder="What should it do?"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}

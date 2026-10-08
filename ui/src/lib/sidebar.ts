@@ -55,7 +55,14 @@ export interface InboxItem {
   reason: 'permission' | 'waiting'
   title: string
   since: number
+  /** Its turn ended more than STALE_MS ago: put down, not waiting. Folded
+   *  under "Older" and left out of ⌘J and the badge, so a session left
+   *  three days ago does not stand in front of the one that just finished. */
+  stale: boolean
 }
+
+/** How long "your turn" stays waiting. A permission prompt never goes stale: the agent is blocked on it. */
+export const STALE_MS = 12 * 60 * 60 * 1000
 
 export interface SidebarInput {
   projects: Project[]
@@ -66,6 +73,8 @@ export interface SidebarInput {
   costs: ReadonlyMap<string, number>
   /** Sessions open in a tab: shown even after they end, so a tab never points at nothing. */
   openSessions: ReadonlySet<string>
+  /** For staleness; the clock when absent. */
+  now?: number
 }
 
 export interface SidebarModel {
@@ -99,7 +108,7 @@ function ms(v: string | number | undefined): number {
   return Number.isFinite(t) ? t : 0
 }
 
-export function buildSidebar({ projects, sessions, permissions, costs, openSessions }: SidebarInput): SidebarModel {
+export function buildSidebar({ projects, sessions, permissions, costs, openSessions, now = Date.now() }: SidebarInput): SidebarModel {
   const nodes: ProjectNode[] = projects
     .filter((p) => !p.archived_at)
     .map((p) => ({ project: p, costToday: p.cost_today ?? costs.get(p.root) ?? 0, waiting: 0, looping: 0, live: 0, lastActive: Math.max(p.last_activity ?? 0, p.added_at ?? 0), worktrees: [] }))
@@ -126,14 +135,17 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
     const isShell = s.kind === 'shell'
     if (s.status !== 'ended') node.live += 1
     if (dot === 'waiting' && !isShell) {
-      node.waiting += 1
+      const since = ms(s.activity?.at) || s.last_event_at
+      const stale = !hasPermission && now - since > STALE_MS
+      if (!stale) node.waiting += 1
       inbox.push({
         session: s,
         projectId: node.project.id,
         projectName: node.project.name,
         reason: hasPermission ? 'permission' : 'waiting',
         title: sessionTitle(s),
-        since: ms(s.activity?.at) || s.last_event_at,
+        since,
+        stale,
       })
     }
     if (dot === 'looping') node.looping += 1
@@ -210,6 +222,11 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
     other.worktrees.sort((a, b) => a.branch.localeCompare(b.branch))
     nodes.push(other)
   }
-  inbox.sort((a, b) => Number(b.reason === 'permission') - Number(a.reason === 'permission') || a.since - b.since)
+  // Then the fresh before the put-down; among the fresh the oldest first, the
+  // most recently put down first among the stale.
+  inbox.sort((a, b) =>
+    Number(b.reason === 'permission') - Number(a.reason === 'permission') ||
+    Number(a.stale) - Number(b.stale) ||
+    (a.stale ? b.since - a.since : a.since - b.since))
   return { projects: nodes, inbox }
 }

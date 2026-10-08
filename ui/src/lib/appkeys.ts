@@ -30,6 +30,7 @@ export type AppCommand =
   | { kind: 'prev-pane' }
   | { kind: 'next-waiting' }
   | { kind: 'find' }
+  | { kind: 'settings' }
 
 /** The subset of a KeyboardEvent the map reads. */
 export interface KeyLike {
@@ -94,6 +95,8 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
 function plain(k: string): AppCommand | null {
   switch (k) {
     case 't': return { kind: 'new-shell' }
+    // ⌘, is Settings in every Mac app.
+    case ',': return { kind: 'settings' }
     case 'o': return { kind: 'add-project' }
     case 'w': return { kind: 'detach-tab' }
     case 'k': return { kind: 'palette' }

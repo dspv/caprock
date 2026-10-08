@@ -179,3 +179,25 @@ describe('the permission mode a new agent starts in', () => {
     expect(saved).toEqual([])
   })
 })
+
+describe('a new worktree from the sheet', () => {
+  it('names it from the first message when the name is left empty', async () => {
+    open()
+    fireEvent.change(await screen.findByLabelText<HTMLSelectElement>('Where'), { target: { value: '__new__' } })
+    fireEvent.change(screen.getByPlaceholderText('What should it do?'), { target: { value: 'Fix the login bug' } })
+    expect(screen.getByText('branch caprock/fix-the-login-bug')).toBeTruthy()
+    fireEvent.keyDown(screen.getByPlaceholderText('What should it do?'), { key: 'Enter', metaKey: true })
+    await waitFor(() => expect(spawn).toHaveBeenCalledOnce())
+    expect(spawn.mock.calls[0]![0]).toMatchObject({ worktree: 'fix-the-login-bug' })
+  })
+
+  it('says beside the field what a typed name may not contain, and does not start', async () => {
+    open()
+    fireEvent.change(await screen.findByLabelText<HTMLSelectElement>('Where'), { target: { value: '__new__' } })
+    fireEvent.change(screen.getByLabelText(/^Worktree name/), { target: { value: 'feat/x' } })
+    expect(screen.getByText('letters, digits, dot and dash only')).toBeTruthy()
+    fireEvent.keyDown(screen.getByLabelText(/^Worktree name/), { key: 'Enter', metaKey: true })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(spawn).not.toHaveBeenCalled()
+  })
+})

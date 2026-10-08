@@ -19,6 +19,7 @@ describe('the app keyboard map', () => {
     expect(matchAppShortcut(k('w', { metaKey: true }), true)).toEqual({ kind: 'detach-tab' })
     expect(matchAppShortcut(k('k', { metaKey: true }), true)).toEqual({ kind: 'palette' })
     expect(matchAppShortcut(k('3', { metaKey: true }), true)).toEqual({ kind: 'tab', index: 2 })
+    expect(matchAppShortcut(k(',', { metaKey: true }), true)).toEqual({ kind: 'settings' })
   })
 
   it('never takes a key the terminal needs on macOS', () => {

@@ -100,6 +100,13 @@ export function focusedLeaf(tab: Tab): PaneLeaf {
   return all.find((l) => l.id === tab.focusedPaneId) ?? all[0]!
 }
 
+/** The leaf a tab is named after: its first agent, else the focused pane.
+ *  Named after the focused pane, an agent's tab read "shell" the moment a
+ *  shell was split beside it, and two tabs said the same word. */
+export function namingLeaf(tab: Tab): PaneLeaf {
+  return leaves(tab.root).find((l) => l.target.kind !== 'shell') ?? focusedLeaf(tab)
+}
+
 /** The tabs of one project, in strip order. */
 export function tabsOf(ws: Workspace, projectId: string): Tab[] {
   return ws.tabs.filter((t) => t.projectId === projectId)

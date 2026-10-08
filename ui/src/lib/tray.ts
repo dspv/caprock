@@ -48,7 +48,8 @@ export const LIMIT_WARN_PCT = 80
  * so a session done and waiting left the dock bare (owner, 2026-10-07).
  */
 export function waitingOnYou(inbox: InboxItem[]): InboxItem[] {
-  return inbox
+  // A turn that ended more than half a day ago is not news (InboxItem.stale).
+  return inbox.filter((i) => !i.stale)
 }
 
 export function buildTrayView({ summary, inbox, conn, now }: TrayInput): TrayView {
