@@ -9,7 +9,7 @@ import type { Project } from '@/lib/projects'
 
 const spawn = vi.fn(async (_req: unknown) => ({ session_id: 'new-1', cwd: '/w/app' }))
 const acceptBypass = vi.fn(async () => ({ accepted: true }))
-const status = { accepted: undefined as boolean | undefined }
+const status = { accepted: undefined as boolean | undefined, opencode: undefined as string | undefined }
 const saved: unknown[] = []
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
@@ -17,7 +17,7 @@ vi.mock('@/lib/api', async (orig) => {
     ...actual,
     api: {
       ...actual.api,
-      status: async () => ({ version: 'v0.0.0', claude_available: true, claude_bypass_accepted: status.accepted }),
+      status: async () => ({ version: 'v0.0.0', claude_available: true, claude_bypass_accepted: status.accepted, opencode_available: status.opencode !== undefined, opencode_version: status.opencode || undefined }),
       settings: async () => ({}),
       saveSettings: async (s: unknown) => { saved.push(s); return s },
       spawn: (req: unknown) => spawn(req),
@@ -39,7 +39,7 @@ function open(onClose = vi.fn()) {
   return { onClose, onStarted }
 }
 
-beforeEach(() => { spawn.mockReset().mockResolvedValue({ session_id: 'new-1', cwd: '/w/app' }); acceptBypass.mockClear(); status.accepted = undefined; saved.length = 0; localStorage.clear() })
+beforeEach(() => { spawn.mockReset().mockResolvedValue({ session_id: 'new-1', cwd: '/w/app' }); acceptBypass.mockClear(); status.accepted = undefined; status.opencode = undefined; saved.length = 0; localStorage.clear() })
 
 /** Picks a permission mode the way a reader does, in the select. */
 async function pick(mode: string) {
@@ -199,5 +199,27 @@ describe('a new worktree from the sheet', () => {
     fireEvent.keyDown(screen.getByLabelText(/^Worktree name/), { key: 'Enter', metaKey: true })
     await new Promise((r) => setTimeout(r, 0))
     expect(spawn).not.toHaveBeenCalled()
+  })
+})
+
+describe('the New agent sheet with OpenCode', () => {
+  const labels = async () => Array.from((await screen.findByLabelText<HTMLSelectElement>(/^Permissions/)).options).map((o) => o.textContent)
+  const pickOpenCode = async () => {
+    fireEvent.change(await screen.findByLabelText<HTMLSelectElement>(/^Agent/), { target: { value: 'opencode' } })
+  }
+
+  it('words bypass as OpenCode 1 does when 1 is installed', async () => {
+    status.opencode = '1.15.10'
+    open()
+    await pickOpenCode()
+    await waitFor(async () => expect(await labels()).toContain("Bypass · OpenCode's own rules"))
+  })
+
+  it('words bypass as --auto when OpenCode 2 is installed', async () => {
+    status.opencode = '2.0.26'
+    open()
+    await pickOpenCode()
+    await waitFor(async () => expect(await labels()).toContain("Bypass · approves all it doesn't deny"))
+    expect(await labels()).toContain("Plan · OpenCode's plan agent")
   })
 })

@@ -1137,6 +1137,10 @@ type Status struct {
 	// the login shell's PATH or where their installers put them.
 	CodexAvailable    bool `json:"codex_available"`
 	OpenCodeAvailable bool `json:"opencode_available"`
+	// OpenCodeVersion is the version of the OpenCode a new session would
+	// start ("2.0.26"), absent while unknown. OpenCode 1 and 2 take different
+	// flags, and the New session dialog words a mode by what it becomes.
+	OpenCodeVersion string `json:"opencode_version,omitempty"`
 	// OpenCode reports what the second agent's reader is doing, or is absent
 	// when OpenCode is not installed. Without it there was no way to tell
 	// whether a machine that runs OpenCode was having those sessions read:
@@ -1223,8 +1227,9 @@ func (d *Daemon) status(_ context.Context) any {
 		Deepseek:        d.deepseekStats(),
 		ClaudeAvailable: d.mgr.ClaudeAvailable(), GeminiAvailable: d.mgr.GeminiAvailable(), OwnedActive: len(d.mgr.OwnedRunning()),
 		CodexAvailable: d.mgr.AgentAvailable(agents.AgentCodex), OpenCodeAvailable: d.mgr.AgentAvailable(agents.AgentOpenCode),
-		ShellEnv:      userenv.Current(),
-		Orchestration: b != nil,
+		OpenCodeVersion: d.mgr.OpenCodeVersion(),
+		ShellEnv:        userenv.Current(),
+		Orchestration:   b != nil,
 	}
 	if b != nil {
 		d.hiveMu.RLock()
@@ -1523,6 +1528,11 @@ func (a *agentAdapter) Spawn(ctx context.Context, req any) (string, string, erro
 		a.d.link.Expect(agents.AgentCodex, ag.SessionID, ag.Cwd, ag.StartedAt, true)
 	case sr.Agent == agents.AgentOpenCode && ag.Port > 0:
 		go a.d.linkOpenCode(ag)
+	case sr.Agent == agents.AgentOpenCode && ag.NativeID != "":
+		// OpenCode 2 was told the id (--session), so the link is made now,
+		// exactly, before the session has written anything.
+		a.d.link.Claim(ctx, agents.AgentOpenCode, ag.SessionID, ag.NativeID)
+		go a.d.readOpenCodeOnce(ag)
 	}
 	if sr.Agent == agents.AgentGemini {
 		// Telemetry carries Gemini's own conversation id and its own idea of a
@@ -1894,7 +1904,39 @@ func (d *Daemon) startOpenCode(ctx context.Context) bool {
 	go st.Run(ctx, func(sessionID string) {
 		in.Touch(ctx, sessionID)
 	})
+	// OpenCode 2's TUI talks to a shared background service instead, which
+	// says where it listens in a file of its own; the same signal, the same
+	// re-read. Absent on a machine without OpenCode 2, and retried quietly.
+	go opencode.NewServiceStreamer(d.log).Run(ctx, func(sessionID string) {
+		in.Touch(ctx, sessionID)
+	})
 	return true
+}
+
+// readOpenCodeOnce makes sure the OpenCode reader runs for a session Caprock
+// started with OpenCode 2. On a machine where OpenCode has never run, the
+// database does not exist until that session creates it, so the reader is
+// tried until it starts or the process ends; then the session is read at
+// once rather than on the next poll. Its private server (--standalone) has no
+// port Caprock knows, so the poller is what follows it from there.
+func (d *Daemon) readOpenCodeOnce(ag *agents.Agent) {
+	t := time.NewTicker(time.Second)
+	defer t.Stop()
+	for {
+		if d.startOpenCode(d.baseCtx) {
+			if in := d.openCodeIngester(); in != nil {
+				in.Touch(d.baseCtx, ag.NativeID)
+			}
+			return
+		}
+		select {
+		case <-ag.Done():
+			return
+		case <-d.baseCtx.Done():
+			return
+		case <-t.C:
+		}
+	}
 }
 
 // startCodex starts reading Codex's rollout transcripts unless the reader is

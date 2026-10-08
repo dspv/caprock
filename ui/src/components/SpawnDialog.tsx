@@ -113,6 +113,28 @@ export const MODE_NOTE: Partial<Record<SpawnAgent, Record<string, string>>> = {
   },
 }
 
+/** OpenCode 2 (2.0.26) has the flag OpenCode 1 lacked: `--auto`, "auto-approve
+ *  permissions that are not explicitly denied", so bypass is real there. The
+ *  other two are the same plan agent and the same ask-before-commands rule,
+ *  given as config rather than flags. */
+export const OPENCODE2_MODE_NOTE: Record<string, string> = {
+  ...MODE_NOTE.opencode,
+  bypassPermissions: "Bypass · approves all it doesn't deny",
+}
+
+/** The major version in "2.0.26", 0 when unknown. */
+export function majorVersion(v?: string): number {
+  const n = Number((v ?? '').split('.')[0])
+  return Number.isFinite(n) ? n : 0
+}
+
+/** What each mode is called for this agent, given the daemon's status: the
+ *  installed OpenCode's major version decides which OpenCode's words. */
+export function modeNotes(agent: SpawnAgent, opencodeVersion?: string): Record<string, string> | undefined {
+  if (agent === 'opencode' && majorVersion(opencodeVersion) >= 2) return OPENCODE2_MODE_NOTE
+  return MODE_NOTE[agent]
+}
+
 /** The model a session starts on, per agent. Codex and OpenCode start on
  *  whatever the user's own config names, which Caprock does not try to
  *  restate; "" means exactly that. */
@@ -158,6 +180,9 @@ export function SpawnDialog({
   // Codex keeps its own model catalog on disk; the daemon reads it so the
   // list is the one Codex itself offers this account, not one written here.
   const codexModels = useApi(() => (agent === 'codex' ? api.agentModels('codex') : Promise.resolve(undefined)), [agent], { live: false })
+  // Which OpenCode is installed decides what a mode becomes in it.
+  const status = useApi(() => api.status(), [], { live: false })
+  const notes = modeNotes(agent, status.data?.opencode_version)
   const [worktree, setWorktree] = useState('')
   const [create, setCreate] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -244,7 +269,7 @@ export function SpawnDialog({
                 <select className="input" value={mode} onChange={(e) => { setMode(e.target.value); setConfirming(false) }}>
                   {modeOptions(mode).map(([v, label]) => (
                     <option key={v} value={v}>
-                      {agent === 'gemini' && !GEMINI_MAPPED.has(v) ? `${label} · Gemini asks instead` : MODE_NOTE[agent]?.[v] ?? label}
+                      {agent === 'gemini' && !GEMINI_MAPPED.has(v) ? `${label} · Gemini asks instead` : notes?.[v] ?? label}
                     </option>
                   ))}
                 </select>

@@ -16,6 +16,8 @@ import { fileURLToPath } from 'node:url'
 import { SpawnDialog } from './SpawnDialog'
 
 const spawn = vi.hoisted(() => vi.fn(async () => ({ session_id: 's1', cwd: '/x' })))
+// What the status answers: nothing, unless a test says otherwise.
+const statusAnswer = vi.hoisted(() => ({ next: (): Promise<unknown> => new Promise(() => {}) }))
 // The Settings preference for new sessions; '' is not set.
 const pref = vi.hoisted(() => ({ mode: '' }))
 
@@ -29,7 +31,7 @@ vi.mock('@/lib/api', async (orig) => {
       browse: async () => ({ entries: [] }),
       // The status is passed in by every test below; a fetch here would only
       // race it.
-      status: () => new Promise(() => {}),
+      status: () => statusAnswer.next(),
       spawn,
       settings: async () => ({ spawn_permission_mode: pref.mode }),
       // The shape GET /v1/agents/models answers for Codex, from a real
@@ -241,6 +243,20 @@ describe('Codex and OpenCode', () => {
     fireEvent.change(screen.getByLabelText<HTMLSelectElement>('Agent'), { target: { value: 'opencode' } })
     const labels = Array.from(screen.getByLabelText<HTMLSelectElement>(/Permissions/).options).map((o) => o.textContent)
     expect(labels).toContain("Bypass · OpenCode's own rules")
+  })
+
+  it('words bypass as --auto when OpenCode 2 is installed', async () => {
+    statusAnswer.next = async () => ({ claude_available: true, opencode_available: true, opencode_version: '2.0.26' })
+    try {
+      open()
+      fireEvent.change(screen.getByLabelText<HTMLSelectElement>('Agent'), { target: { value: 'opencode' } })
+      await waitFor(() => {
+        const labels = Array.from(screen.getByLabelText<HTMLSelectElement>(/Permissions/).options).map((o) => o.textContent)
+        expect(labels).toContain("Bypass · approves all it doesn't deny")
+      })
+    } finally {
+      statusAnswer.next = () => new Promise(() => {})
+    }
   })
 
   it('remembers the last agent chosen, for this viewer', () => {

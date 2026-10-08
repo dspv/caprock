@@ -9,6 +9,28 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **OpenCode 2.** OpenCode 2 is what opencode.ai, `brew install opencode`
+  and Arch now install, beside OpenCode 1 under the same command. Caprock
+  reads its sessions (`session_v2` and `session_message` in the same
+  database file) next to OpenCode 1's, with OpenCode's own cost, tokens,
+  model, prompts, replies and tool calls (`shell` is Bash, `subagent` is
+  Agent); a database OpenCode 2 migrated from 1, and a session started in 1
+  and continued in 2, count each message once. The live stream follows
+  OpenCode 2's background service as well. New agent asks
+  `opencode --version` and starts OpenCode 2 with the flags it has:
+  `--standalone --session <id>` (linked from the first byte), the model and
+  plan agent as `OPENCODE_CONFIG_CONTENT`, bypass as `--auto`, and a first
+  message typed once the TUI is up. `/v1/status` carries `opencode_version`.
+
+### Fixed
+
+- **New agent → OpenCode with OpenCode 2 installed** started a TUI with
+  OpenCode 1's `--port`, `-m` and `--agent`, which OpenCode 2 does not have,
+  and on a Mac with `/home` automounted OpenCode 2.0.26 hung before drawing
+  anything; it now gets the flags its version lists and starts.
+
 ## [0.92.0] - 2026-10-09
 
 ### Added

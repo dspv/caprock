@@ -143,7 +143,8 @@ Caprock starts it. See
 [OpenCode, Codex and DeepSeek Harness](#opencode-codex-and-deepseek-harness) for
 what that covers and what it does not.
 
-Caprock starts Codex, OpenCode and Gemini CLI sessions too: whichever of them
+Caprock starts Codex, OpenCode (1 or 2, whichever `opencode --version`
+says is installed) and Gemini CLI sessions too: whichever of them
 is installed appears next to Claude Code in the New Session dialog — same
 terminal, same directory picker, its own filter chip — and the dialog remembers
 the one you picked last. A Codex or OpenCode session started here shows its
@@ -316,7 +317,8 @@ activity feed, the projects list and the session cards all answer the same
 question. It appears only on a machine that runs more than one.
 
 Nothing to configure for any of them. OpenCode is found through its own
-database, opened read-only; Codex through the transcript it writes per session,
+database, opened read-only — OpenCode 1 and OpenCode 2 alike, including a
+database OpenCode 2 migrated from 1, where each session is counted once; Codex through the transcript it writes per session,
 under `$CODEX_HOME` (or `~/.codex`), archived sessions included; DeepSeek
 Harness through the transcript it writes per session. No shim, no
 settings file to edit, and sessions from before you installed Caprock are

@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -193,6 +194,10 @@ type Session struct {
 	CacheWrite int64
 	Created    int64 // unix ms
 	Updated    int64 // unix ms
+	// InV1 and InV2 say which table the session was read from: OpenCode 1's
+	// `session`, OpenCode 2's `session_v2`, or both for a session OpenCode 2
+	// migrated or continued (v2.go).
+	InV1, InV2 bool
 }
 
 // IsChild reports whether this session is a subagent of another.
@@ -207,59 +212,95 @@ func (s Session) IsChild() bool { return s.ParentID != "" }
 // The live path reads one row rather than the whole table: an event names a
 // session, and listing every session to find it turned a per-event read into a
 // full scan — enough, on a busy stream, to hold the store's write lock long
-// enough for the daemon's own sweeps to fail with SQLITE_BUSY.
+// enough for the daemon's own sweeps to fail with SQLITE_BUSY. A database
+// OpenCode 2 has migrated can hold the session in both tables (v2.go); the two
+// rows are merged.
 func SessionByID(ctx context.Context, db *sql.DB, id string) (Session, bool, error) {
-	const q = `
-		SELECT id, COALESCE(parent_id,''), COALESCE(directory,''), COALESCE(title,''),
-		       COALESCE(model,''), COALESCE(cost,0),
-		       COALESCE(tokens_input,0), COALESCE(tokens_output,0),
-		       COALESCE(tokens_cache_read,0), COALESCE(tokens_cache_write,0),
-		       COALESCE(time_created,0), COALESCE(time_updated,0)
-		FROM session WHERE id = ?`
-	var s Session
-	var modelJSON string
-	err := db.QueryRowContext(ctx, q, id).Scan(&s.ID, &s.ParentID, &s.Directory,
-		&s.Title, &modelJSON, &s.Cost, &s.TokensIn, &s.TokensOut,
-		&s.CacheRead, &s.CacheWrite, &s.Created, &s.Updated)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Session{}, false, nil
-	}
+	v1, v2, err := tables(ctx, db)
 	if err != nil {
-		return Session{}, false, fmt.Errorf("opencode: session %s: %w", id, err)
+		return Session{}, false, err
 	}
-	s.Model, s.Provider = parseModel(modelJSON)
-	return s, true, nil
+	var found []Session
+	if v1 {
+		rows, err := db.QueryContext(ctx, sessionColsV1+` WHERE id = ?`, id)
+		if err != nil {
+			return Session{}, false, fmt.Errorf("opencode: session %s: %w", id, err)
+		}
+		got, err := scanSessions(rows, false)
+		if err != nil {
+			return Session{}, false, err
+		}
+		found = append(found, got...)
+	}
+	if v2 {
+		rows, err := db.QueryContext(ctx, sessionColsV2+` WHERE id = ?`, id)
+		if err != nil {
+			return Session{}, false, fmt.Errorf("opencode: session %s: %w", id, err)
+		}
+		got, err := scanSessions(rows, true)
+		if err != nil {
+			return Session{}, false, err
+		}
+		found = append(found, got...)
+	}
+	switch len(found) {
+	case 0:
+		return Session{}, false, nil
+	case 1:
+		return found[0], true, nil
+	default:
+		return merge(found[0], found[1]), true, nil
+	}
 }
 
-// Sessions returns every session, newest activity first.
-func Sessions(ctx context.Context, db *sql.DB) ([]Session, error) {
-	const q = `
-		SELECT id, COALESCE(parent_id,''), COALESCE(directory,''), COALESCE(title,''),
-		       COALESCE(model,''), COALESCE(cost,0),
-		       COALESCE(tokens_input,0), COALESCE(tokens_output,0),
-		       COALESCE(tokens_cache_read,0), COALESCE(tokens_cache_write,0),
-		       COALESCE(time_created,0), COALESCE(time_updated,0)
-		FROM session
-		ORDER BY time_updated DESC`
-	rows, err := db.QueryContext(ctx, q)
-	if err != nil {
-		return nil, fmt.Errorf("opencode: sessions: %w", err)
-	}
-	defer rows.Close()
+const sessionColsV1 = `
+	SELECT id, COALESCE(parent_id,''), COALESCE(directory,''), COALESCE(title,''),
+	       COALESCE(model,''), COALESCE(cost,0),
+	       COALESCE(tokens_input,0), COALESCE(tokens_output,0),
+	       COALESCE(tokens_cache_read,0), COALESCE(tokens_cache_write,0),
+	       COALESCE(time_created,0), COALESCE(time_updated,0)
+	FROM session`
 
-	var out []Session
-	for rows.Next() {
-		var s Session
-		var modelJSON string
-		if err := rows.Scan(&s.ID, &s.ParentID, &s.Directory, &s.Title, &modelJSON,
-			&s.Cost, &s.TokensIn, &s.TokensOut, &s.CacheRead, &s.CacheWrite,
-			&s.Created, &s.Updated); err != nil {
-			return nil, fmt.Errorf("opencode: scan session: %w", err)
-		}
-		s.Model, s.Provider = parseModel(modelJSON)
-		out = append(out, s)
+// Sessions returns every session, newest activity first, from OpenCode 1's
+// `session` table, OpenCode 2's `session_v2`, or both (v2.go).
+func Sessions(ctx context.Context, db *sql.DB) ([]Session, error) {
+	v1, v2, err := tables(ctx, db)
+	if err != nil {
+		return nil, err
 	}
-	return out, rows.Err()
+	var out []Session
+	if v1 {
+		rows, err := db.QueryContext(ctx, sessionColsV1)
+		if err != nil {
+			return nil, fmt.Errorf("opencode: sessions: %w", err)
+		}
+		if out, err = scanSessions(rows, false); err != nil {
+			return nil, err
+		}
+	}
+	if v2 {
+		rows, err := db.QueryContext(ctx, sessionColsV2)
+		if err != nil {
+			return nil, fmt.Errorf("opencode: sessions: %w", err)
+		}
+		got, err := scanSessions(rows, true)
+		if err != nil {
+			return nil, err
+		}
+		at := make(map[string]int, len(out))
+		for i, s := range out {
+			at[s.ID] = i
+		}
+		for _, s := range got {
+			if i, ok := at[s.ID]; ok {
+				out[i] = merge(out[i], s)
+				continue
+			}
+			out = append(out, s)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Updated > out[j].Updated })
+	return out, nil
 }
 
 // parseModel unpacks session.model, which holds {"id":…,"providerID":…}.
@@ -648,7 +689,7 @@ func snakeCase(s string) string {
 // as itself, not vanish.
 func NormalizeTool(t string) string {
 	switch strings.ToLower(t) {
-	case "bash":
+	case "bash", "shell": // shell is OpenCode 2's name for it
 		return "Bash"
 	case "read":
 		return "Read"
@@ -668,7 +709,7 @@ func NormalizeTool(t string) string {
 		return "WebSearch"
 	case "todowrite", "todoread":
 		return "TodoWrite"
-	case "task":
+	case "task", "subagent": // subagent is OpenCode 2's
 		return "Agent"
 	case "patch":
 		return "Edit"
