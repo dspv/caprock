@@ -6,6 +6,19 @@ import (
 	"testing"
 )
 
+// Never chosen is the 90% default; turned off stays off.
+func TestWindowStopDefaultsTo90AndKeepsOff(t *testing.T) {
+	var c Config
+	if got := c.WindowStop(); got != 90 {
+		t.Fatalf("unset window stop = %d, want 90", got)
+	}
+	off := 0
+	c.WindowStopPct = &off
+	if got := c.WindowStop(); got != 0 {
+		t.Fatalf("a window stop turned off reads %d", got)
+	}
+}
+
 func TestDataDirEnvOverride(t *testing.T) {
 	t.Setenv(EnvDataDir, filepath.Join(t.TempDir(), "x"))
 	dir, err := DataDir()

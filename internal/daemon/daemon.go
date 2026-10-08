@@ -172,6 +172,8 @@ type Daemon struct {
 	// cap is the daily spend guard. Nil until run() builds it, because it needs
 	// the owned-session manager.
 	cap *cap.Guard
+	// winStop is the plan-window stop (Premium), built beside the cap.
+	winStop *cap.WindowGuard
 	// cfgMu guards opt.Config, which the settings endpoint mutates at runtime.
 	cfgMu sync.RWMutex
 	// hiveMu guards board, orch and opt.HiveDir/opt.RepoCwd. The task runner can
@@ -446,6 +448,10 @@ func (d *Daemon) run(ctx context.Context) error {
 		Now: time.Now,
 		Log: d.log,
 	}
+	// The plan-window stop: the same pause path, triggered by the plan
+	// figures the status line reports rather than by dollars.
+	d.startWindowStop(ctx)
+
 	// Checked after a turn is priced rather than on a timer: the spend only
 	// moves when a turn is priced, and a poll would either lag the crossing or
 	// ask the database for a sum it already knows is unchanged.
@@ -494,7 +500,13 @@ func (d *Daemon) run(ctx context.Context) error {
 
 	d.api = api.New(api.Deps{
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d, Alerts: d,
-		Status: d.status, InstallHooks: d.installHooks, BypassAccepted: bypassAccepted, AcceptBypass: acceptBypass, Storage: d.storageReport, ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
+		Status: d.status, InstallHooks: d.installHooks, BypassAccepted: bypassAccepted, AcceptBypass: acceptBypass, Storage: d.storageReport, WindowStop: d.windowStopStatus,
+		RateLimitsRecorded: func(ctx context.Context) {
+			if d.winStop != nil {
+				d.winStop.Check(ctx)
+			}
+		},
+		ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
 		LoopK: d.det.K, LoopWindow: d.det.Window,
 		Token: rt.Token, Shutdown: cancel, Agents: &agentAdapter{m: d.mgr, d: d},
 		Tasks: &boardAdapter{d: d}, Settings: &settingsAdapter{d: d}, Update: d.upd,
@@ -1347,6 +1359,7 @@ func (a *settingsAdapter) Get() api.Settings {
 		PlanUSDPerMonth:  c.PlanUSDPerMonth,
 		LicenseKey:       c.LicenseKey,
 		CapUSDPerDay:     c.CapUSDPerDay,
+		WindowStopPct:    c.WindowStop(),
 		BrowseRoot:       c.BrowseRoot,
 		Terminal:         c.Terminal,
 		Editor:           c.Editor,
@@ -1391,6 +1404,13 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	// stopped until midnight for a ceiling that no longer applies.
 	capChanged := in.CapUSDPerDay != a.d.opt.Config.CapUSDPerDay
 	a.d.opt.Config.CapUSDPerDay = in.CapUSDPerDay
+	// A changed share is a new instruction: the stop may fire again in the
+	// current window. Stored as a pointer once chosen, so 0 stays "off".
+	windowChanged := in.WindowStopPct != a.d.opt.Config.WindowStop()
+	if windowChanged {
+		pct := in.WindowStopPct
+		a.d.opt.Config.WindowStopPct = &pct
+	}
 	a.d.opt.Config.BrowseRoot = strings.TrimSpace(in.BrowseRoot)
 	a.d.opt.Config.Terminal = in.Terminal
 	a.d.opt.Config.Editor = in.Editor
@@ -1409,6 +1429,10 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	a.d.cfgMu.Unlock()
 	if capChanged && a.d.cap != nil {
 		a.d.cap.Reset()
+	}
+	if windowChanged && a.d.winStop != nil {
+		// The next tick or status-line sample checks against the new share.
+		a.d.winStop.ResetLatch(context.Background())
 	}
 	// Turning checks on should show an answer immediately rather than after
 	// the next restart. Runs detached so the PUT stays fast, and under the
@@ -1515,7 +1539,12 @@ func (a *agentAdapter) Write(id string, data []byte) error     { return a.m.Inpu
 func (a *agentAdapter) Resize(id string, cols, rows int) error { return a.m.Resize(id, cols, rows) }
 
 func (a *agentAdapter) Signal(id, action string) error {
-	return a.m.Signal(id, ptyman.Signal(action))
+	if err := a.m.Signal(id, ptyman.Signal(action)); err != nil {
+		return err
+	}
+	// Signalled by hand: the plan-window stop no longer resumes it later.
+	a.d.releaseFromWindowStop(id)
+	return nil
 }
 
 // Permission is the permission prompt an owned session is waiting on.

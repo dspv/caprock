@@ -121,6 +121,24 @@ describe('PremiumModal', () => {
     expect(document.body.textContent).toMatch(/two minutes/i)
   })
 
+  it('sells the plan-window stop as what it is: windows, not dollars, resumed after the reset', async () => {
+    render(<PremiumModal feature="window" onClose={() => {}} />)
+    expect(screen.getByText(/Stop at the plan limit/)).toBeTruthy()
+    expect(document.body.textContent).toMatch(/resume by themselves when the window resets/)
+    // Rule 7, printed on the dialog like the cap's.
+    expect(document.body.textContent).toMatch(/Sessions you started yourself are never touched/)
+    // The setup it needs is named before payment: the figures come from the
+    // status line, and only Pro and Max have windows at all.
+    expect(document.body.textContent).toMatch(/caprock statusline install/)
+    expect(document.body.textContent).toMatch(/Pro and Max only/)
+    // Not the cap: no dollar ceiling in its picture.
+    const picture = screen.getByRole('dialog').querySelector('figure[role="img"]')!
+    expect(picture.textContent).not.toMatch(/\$/)
+    await waitFor(() => expect(screen.getByRole('link', { name: /year/i })).toBeInTheDocument())
+    expect(screen.getByRole('link', { name: /year/i }).getAttribute('href')).toMatch(/client_reference_id=app-window$/)
+    expect(screen.getByRole('link', { name: /read more/i }).getAttribute('href')).toBe('https://caprock.dev/premium/#window')
+  })
+
   it('closes on Escape, on the backdrop, and on both close controls', () => {
     const onClose = vi.fn()
     const { rerender } = render(<PremiumModal feature="cap" onClose={onClose} />)
@@ -137,7 +155,7 @@ describe('PremiumModal', () => {
   })
 
   it('shows the feature first, and every figure in the picture is tagged an example', () => {
-    for (const f of ['cap', 'gemini', 'report'] as const) {
+    for (const f of ['cap', 'window', 'gemini', 'report', 'drill'] as const) {
       const { unmount } = render(<PremiumModal feature={f} onClose={() => {}} />)
       const picture = screen.getByRole('dialog').querySelector('figure[role="img"]')!
       expect(picture, f).toBeTruthy()

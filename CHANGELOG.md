@@ -9,6 +9,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **A stop at the plan limit (Premium).** When Claude's 5-hour or weekly
+  window passes the share you pick in Settings → *Pause at the plan limit*
+  (90% until you change it, or off), Caprock pauses the Claude Code sessions
+  it started, names them on Now and in a desktop notification with the reset
+  time, and resumes them after the window resets. A session you resume by
+  hand is left alone until the next window; a session you started yourself
+  is never touched; figures more than ten minutes old pause nothing, and
+  Settings says when that is the case. Without Premium the 90% alert on Now
+  is unchanged and offers the stop. `GET /v1/window-stop`,
+  `settings.window_stop_pct`.
+
 ## [0.91.0] - 2026-10-08
 
 ### Changed

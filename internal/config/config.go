@@ -90,6 +90,12 @@ type Config struct {
 	// default: a threshold nobody chose would eventually stop work for a
 	// reason its owner could not explain. See internal/cap.
 	CapUSDPerDay float64 `json:"cap_usd_per_day,omitempty"`
+	// WindowStopPct is the share of a Claude plan window (five-hour or
+	// weekly) at which Premium pauses the Claude Code sessions Caprock started,
+	// until the window resets. A pointer so "never chosen" (nil: the default,
+	// 90%, the free alert's own threshold) differs from "turned off" (0). See
+	// internal/cap/window.go.
+	WindowStopPct *int `json:"window_stop_pct,omitempty"`
 	// ReportBotToken and ReportChatID configure the weekly report's delivery to
 	// the user's own Telegram bot.
 	//
@@ -398,6 +404,16 @@ func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
 // would have silently re-enabled it for everyone who had said no.
 func (c Config) MemoryOn() bool {
 	return c.Memory == nil || *c.Memory
+}
+
+// WindowStop is the plan-window stop's share in percent, 0 when off. Nil is
+// the default of 90 (cap.DefaultWindowPct, repeated here so config does not
+// import the guard).
+func (c Config) WindowStop() int {
+	if c.WindowStopPct == nil {
+		return 90
+	}
+	return *c.WindowStopPct
 }
 
 // AlertApprovalOn reports whether a session waiting for approval is sent to
