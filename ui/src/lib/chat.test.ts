@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Event } from './api'
-import { compareEvents, mergeEvents, noticeLine, toMessages, toolLine } from './chat'
+import { codexScript, compareEvents, mergeEvents, noticeLine, toMessages, toolInputText, toolLine } from './chat'
 
 const BASE = Date.UTC(2026, 9, 5, 12, 0, 0)
 
@@ -98,5 +98,53 @@ describe('what Claude Code writes into the user turn', () => {
   })
   it('names a slash command by its command', () => {
     expect(noticeLine('<command-name>/clear</command-name>\n<command-message>clear</command-message>')).toBe('/clear')
+  })
+})
+
+/** Rows as the daemon stores a Codex session (source `codex`), shapes copied from a real one. */
+describe('a Codex session', () => {
+  const codex = (id: number, over: Partial<Event>): Event => ev(id, { source: 'codex' as Event['source'], ...over })
+  const execScript = 'const r = await tools.exec_command({cmd:"git status --short; git log -1 --oneline","workdir":"/p","max_output_tokens":500});text(r.output)\n'
+
+  it('shows the prompt, the command each exec ran, and every finished call as done', () => {
+    const msgs = toMessages([
+      codex(1, { kind: 'turn.user', payload: { prompt: 'Why is the Windows job red?', cwd: '/p' } }),
+      codex(2, { kind: 'tool.pre', tool: 'exec', payload: { tool_name: 'exec', tool_use_id: 'call_1', tool_input: { command: execScript } } }),
+      codex(3, { kind: 'turn.assistant', payload: { text: '' } }),
+      codex(4, { kind: 'tool.post', tool: 'exec', payload: { tool_use_id: 'call_1', tool_response: 'Script completed\nOutput:\n M chat.ts', is_error: false } }),
+      codex(5, { kind: 'tool.pre', tool: 'shell', payload: { tool_use_id: 'call_2', tool_input: { command: 'go test ./...', argv: ['bash', '-lc', 'go test ./...'] } } }),
+      codex(6, { kind: 'tool.post', tool: 'shell', payload: { tool_use_id: 'call_2', tool_response: 'FAIL', is_error: true, exit_code: 1 } }),
+      codex(7, { kind: 'turn.assistant', payload: { text: 'The test sets HOME.' } }),
+    ])
+    expect(msgs.map((m) => m.kind)).toEqual(['user', 'tool', 'tool', 'assistant'])
+    expect(msgs[0]!.text).toBe('Why is the Windows job red?')
+    expect(msgs[1]!.text).toBe('exec  git status --short; git log -1 --oneline')
+    expect(msgs[1]!.result).toContain('M chat.ts')
+    expect(msgs[1]!.failed).toBe(false)
+    expect(msgs[2]!.text).toBe('shell  go test ./...')
+    expect(msgs[2]!.failed).toBe(true)
+    expect(msgs[2]!.exitCode).toBe(1)
+  })
+
+  it('reads rows stored before the daemon unwrapped a function call', () => {
+    const shell = { command: '{"command":["bash","-lc","ls -la"],"workdir":"/p"}' }
+    expect(toolLine('shell', shell)).toBe('shell  ls -la')
+    expect(toolInputText('shell', shell)).toBe('ls -la')
+    const js = { command: '{"code":"let tab = await cua.getBrowser();","title":"Opening the page"}' }
+    expect(toolLine('js', js)).toBe('js  Opening the page')
+    expect(toolInputText('js', js)).toBe('let tab = await cua.getBrowser();')
+    expect(toolLine('wait', { command: '{"cell_id":"11","yield_time_ms":10000}' })).toBe('wait')
+  })
+
+  it('reads the command out of an exec script, in every way it is written', () => {
+    expect(codexScript(execScript)).toEqual({ line: 'git status --short; git log -1 --oneline', detail: 'git status --short; git log -1 --oneline' })
+    expect(codexScript('const r = await tools.exec_command({"cmd":"echo \\"hi\\"\\nls","yield_time_ms":1000});')).toEqual({ line: 'echo "hi"', detail: 'echo "hi"\nls' })
+    expect(codexScript("await tools.exec_command({cmd:'rg -n \\'x\\' src'})")!.line).toBe("rg -n 'x' src")
+    expect(codexScript('const patch = "*** Begin Patch\\n*** Update File: ui/src/lib/chat.ts\\n@@";\ntext(await tools.apply_patch(patch));')!.line).toBe('apply_patch ui/src/lib/chat.ts')
+    expect(codexScript('const r=await tools.write_stdin({session_id:51470,chars:""});text(r.output)')!.line).toBe('write_stdin')
+    // A command passed by a variable is not guessed at: the call is named.
+    expect(codexScript('const r = await Promise.all(cmds.map(cmd=>tools.exec_command({cmd})))')!.line).toBe('exec_command')
+    expect(codexScript('echo plain')).toBeNull()
+    expect(toolLine('exec', { command: 'echo plain' })).toBe('exec  echo plain')
   })
 })

@@ -109,6 +109,13 @@ type Session struct {
 	StartedAt  time.Time
 	Turns      []Turn
 	Tools      []ToolCall
+	// Prompts are what the person typed (§ Chat in .ai/19-codex.md). Empty for
+	// imported and subagent threads: the first replays another agent's
+	// session, the second its parent's history and a brief its parent wrote.
+	Prompts []Prompt
+	// Results are what each tool call handed back, paired to its call by
+	// CallID.
+	Results []ToolResult
 	// Limits is the most recent plan-limit sample in the transcript, when the
 	// session carried one.
 	Limits *Limits
@@ -173,7 +180,48 @@ type ToolCall struct {
 	// after them, so the call's turn is the next one in the file. Empty when
 	// no turn followed, as at the end of an aborted response.
 	TurnKey string
+	// CallID is Codex's own id for the call, which its output record repeats.
+	// Stored as the call's `tool_use_id`, the key Claude Code pairs a call
+	// with its result by.
+	CallID string
 }
+
+// Prompt is one message the person typed.
+type Prompt struct {
+	At   time.Time
+	Key  string
+	Line int64
+	// Text is the message's text parts joined with a newline, clipped like
+	// Claude Code's prose. An attached image adds nothing.
+	Text string
+}
+
+// ToolResult is what one tool call handed back: a `custom_tool_call_output`
+// or `function_call_output` record.
+type ToolResult struct {
+	At     time.Time
+	Key    string
+	Line   int64
+	CallID string
+	// Name is the call's tool, from the call record with the same CallID; ""
+	// when the call is not in the file.
+	Name string
+	// Output is the text handed back, clipped to MaxToolOutput runes.
+	Output string
+	// Failed is set when the output says so: an `exec` script that failed, a
+	// shell command with a non-zero exit code, or a call Codex refused.
+	Failed bool
+	// ExitCode is the shell's exit code where Codex recorded one (the
+	// `shell` tool's metadata); nil elsewhere — an `exec` script reports only
+	// whether the script itself completed.
+	ExitCode *int
+}
+
+// MaxToolOutput caps the tool output kept per call, in runes. Codex's outputs
+// are long — `exec` asks for up to 15,000 tokens — and every one is stored, so
+// the cap bounds the database rather than the screen. Measured on the owner's
+// 16,152 outputs (2026-10-09): 107MB of JSON at a 32KiB cap, 47MB at 8KiB.
+const MaxToolOutput = 8000
 
 // Limits is the plan-limit sample a transcript last recorded.
 //
@@ -280,11 +328,37 @@ type message struct {
 }
 
 // eventKind is the part of an `event_msg` payload the parser branches on:
-// token_count, and the bracket Codex writes around one user request —
-// task_started, then task_complete or turn_aborted.
+// token_count, the bracket Codex writes around one user request —
+// task_started, then task_complete or turn_aborted — and the two records of
+// what the person typed (userItem, `user_message`).
 type eventKind struct {
 	Type   string `json:"type"`
 	TurnID string `json:"turn_id"`
+	// Message is a `user_message` event's text and Item an `item_completed`
+	// event's item, both decoded only for those two kinds: typed here, a
+	// field of another shape on any other kind would fail the whole record.
+	Message json.RawMessage `json:"message"`
+	Item    json.RawMessage `json:"item"`
+}
+
+// userItem is the part of an `item_completed` item read here: a `UserMessage`
+// item is exactly what the person typed. The `response_item` message with role
+// `user` is not read, because Codex writes its own context the same way — the
+// environment block, AGENTS.md, plugin hints — and only metadata that newer
+// versions add tells the two apart.
+type userItem struct {
+	Type    string `json:"type"`
+	Content []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	} `json:"content"`
+}
+
+// toolOutputPayload is a `custom_tool_call_output` or `function_call_output`.
+// Output is a string or a list of typed text blocks, by version and tool.
+type toolOutputPayload struct {
+	CallID string          `json:"call_id"`
+	Output json.RawMessage `json:"output"`
 }
 
 // importedTurnPrefix is the turn id Codex gives every turn of a session it
@@ -298,8 +372,9 @@ const (
 )
 
 type toolCallPayload struct {
-	Name  string          `json:"name"`
-	Input json.RawMessage `json:"input"`
+	Name   string          `json:"name"`
+	CallID string          `json:"call_id"`
+	Input  json.RawMessage `json:"input"`
 	// A function_call spells its arguments differently from a custom_tool_call.
 	Arguments json.RawMessage `json:"arguments"`
 }
@@ -368,6 +443,13 @@ func Parse(r io.Reader, path string) (*Session, error) {
 	var pending []string
 	taskStart := 0
 	seenMeta := false
+	// Two records carry a prompt, by version: an `item_completed` UserMessage
+	// (every rollout a person started on the owner's machine) and a
+	// `user_message` event (seen there only beside the item, in imported
+	// threads). Whichever the file has is read — the item when it has both,
+	// so a prompt is never stored twice.
+	var itemPrompts, eventPrompts []Prompt
+	callNames := map[string]string{}
 	for sc.Scan() {
 		line := sc.Bytes()
 		lineNo++
@@ -476,6 +558,27 @@ func Parse(r io.Reader, path string) (*Session, error) {
 				}
 				pending = nil
 				continue
+			case "item_completed":
+				var it userItem
+				if json.Unmarshal(k.Item, &it) == nil && it.Type == "UserMessage" {
+					var parts []string
+					for _, c := range it.Content {
+						if c.Type == "text" {
+							parts = append(parts, strings.TrimSpace(c.Text))
+						}
+					}
+					if t := joinText(parts); t != "" {
+						itemPrompts = append(itemPrompts, Prompt{At: at, Key: keyFor(lineNo, "user"), Line: lineNo, Text: t})
+					}
+				}
+				continue
+			case "user_message":
+				var msg string
+				_ = json.Unmarshal(k.Message, &msg)
+				if t := joinText([]string{strings.TrimSpace(msg)}); t != "" {
+					eventPrompts = append(eventPrompts, Prompt{At: at, Key: keyFor(lineNo, "user"), Line: lineNo, Text: t})
+				}
+				continue
 			case "token_count":
 			default:
 				continue
@@ -563,6 +666,16 @@ func Parse(r io.Reader, path string) (*Session, error) {
 				}
 				continue
 			}
+			if k.Type == "custom_tool_call_output" || k.Type == "function_call_output" {
+				var op toolOutputPayload
+				if err := json.Unmarshal(rec.Payload, &op); err != nil || op.CallID == "" {
+					continue
+				}
+				r := readOutput(op.Output)
+				r.At, r.Key, r.Line, r.CallID, r.Name = at, keyFor(lineNo, "result"), lineNo, op.CallID, callNames[op.CallID]
+				s.Results = append(s.Results, r)
+				continue
+			}
 			if k.Type != "custom_tool_call" && k.Type != "function_call" {
 				continue
 			}
@@ -574,12 +687,16 @@ func Parse(r io.Reader, path string) (*Session, error) {
 			if len(in) == 0 {
 				in = tp.Arguments
 			}
+			if tp.CallID != "" {
+				callNames[tp.CallID] = tp.Name
+			}
 			s.Tools = append(s.Tools, ToolCall{
-				At:    at,
-				Key:   keyFor(lineNo, "tool"),
-				Line:  lineNo,
-				Name:  tp.Name,
-				Input: string(in),
+				At:     at,
+				Key:    keyFor(lineNo, "tool"),
+				Line:   lineNo,
+				Name:   tp.Name,
+				Input:  string(in),
+				CallID: tp.CallID,
 			})
 		}
 	}
@@ -611,6 +728,15 @@ func Parse(r io.Reader, path string) (*Session, error) {
 		for i := range s.Tools {
 			s.Tools[i].Key = subagentKey(s.ThreadID, s.Tools[i].Line, "tool")
 		}
+		for i := range s.Results {
+			s.Results[i].Key = subagentKey(s.ThreadID, s.Results[i].Line, "result")
+		}
+	}
+	if !s.Imported && !s.Subagent {
+		s.Prompts = itemPrompts
+		if len(s.Prompts) == 0 {
+			s.Prompts = eventPrompts
+		}
 	}
 	linkToolsToTurns(s)
 	if s.Imported || s.Subagent {
@@ -622,6 +748,70 @@ func Parse(r io.Reader, path string) (*Session, error) {
 		}
 	}
 	return s, nil
+}
+
+// readOutput reads a tool call's output: its text, and whether it failed.
+//
+// Three shapes, all measured on the owner's machine (2026-10-09, 16,152
+// outputs): a list of `input_text` blocks (`exec` — "Script completed" or
+// "Script failed" first — and `js`), a plain string (most function tools), and
+// a string holding a JSON object `{"output", "metadata": {"exit_code"}}` (the
+// `shell` tool, the only one that records an exit code).
+func readOutput(raw json.RawMessage) ToolResult {
+	var r ToolResult
+	var text string
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	switch {
+	case json.Unmarshal(raw, &text) == nil:
+	case json.Unmarshal(raw, &blocks) == nil:
+		var b strings.Builder
+		for _, x := range blocks {
+			if x.Type != "input_text" && x.Type != "output_text" && x.Type != "text" {
+				continue // an image the tool handed back
+			}
+			if b.Len() > 0 && !strings.HasSuffix(b.String(), "\n") {
+				b.WriteByte('\n')
+			}
+			b.WriteString(x.Text)
+		}
+		text = b.String()
+	default:
+		text = string(raw)
+	}
+	if strings.HasPrefix(text, "{") {
+		var sh struct {
+			Output   *string `json:"output"`
+			Metadata *struct {
+				ExitCode *int `json:"exit_code"`
+			} `json:"metadata"`
+		}
+		if json.Unmarshal([]byte(text), &sh) == nil && sh.Output != nil {
+			text = *sh.Output
+			if sh.Metadata != nil && sh.Metadata.ExitCode != nil {
+				code := *sh.Metadata.ExitCode
+				r.ExitCode = &code
+			}
+		}
+	}
+	r.Failed = strings.HasPrefix(text, "Script failed") || strings.HasPrefix(text, "failed ") ||
+		(r.ExitCode != nil && *r.ExitCode != 0)
+	r.Output = clipOutput(text)
+	return r
+}
+
+// clipOutput cuts a tool's output to MaxToolOutput runes on a rune boundary.
+func clipOutput(s string) string {
+	n := 0
+	for i := range s {
+		if n == MaxToolOutput {
+			return s[:i] + "…[truncated]"
+		}
+		n++
+	}
+	return s
 }
 
 // linkToolsToTurns gives every call the key of the first turn after it (see
