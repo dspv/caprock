@@ -13,7 +13,7 @@ import { APP_ROUTE, isMacPlatform, isTauri, isWorkspaceHash } from '@/lib/appmod
 import { FIND_EVENT, matchAppShortcut, type AppCommand } from '@/lib/appkeys'
 import { parseHash } from '@/lib/router'
 import { NotSupportedError, projectsApi, type Project } from '@/lib/projects'
-import { buildSidebar, sessionTitle, type InboxItem, type ProjectNode, type SessionNode, type WorktreeNode } from '@/lib/sidebar'
+import { buildSidebar, dotOf, sessionTitle, type InboxItem, type ProjectNode, type SessionNode, type WorktreeNode } from '@/lib/sidebar'
 import {
   activeTab,
   focusedLeaf,
@@ -49,7 +49,8 @@ import { EditorMenu, type EditorMenuAt } from '@/components/EditorMenu'
 import { preferredName, useEditors } from '@/lib/editors'
 import { applyTerminalChrome, getTerminalPrefs, subscribeTerminalPrefs } from '@/lib/termprefs'
 import { warmTerminal } from '@/lib/termwarm'
-import { StatusDot } from '@/components/ProjectRow'
+import { StatusDot, fmtCostShort } from '@/components/ProjectRow'
+import { fmtAgo } from '@/lib/format'
 import { RecentInProject } from '@/components/RecentInProject'
 import { worktreeSlug } from '@/lib/slug'
 
@@ -504,6 +505,27 @@ export function AppShell() {
     return items
   }, [ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, current, onNewAgent, onNewShell, onAddProject, onDashboard, toggleTheme, onSettings, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges])
 
+  // Every session the daemon knows, by what it was about; one that is open or
+  // live is already in the list above under its own id.
+  const paletteSearch = useCallback(async (q: string): Promise<PaletteItem[]> => {
+    const { items } = await api.sessionsWithTotal(false, q, 20)
+    const live = new Set(model.projects.flatMap((n) => n.worktrees.flatMap((w) => w.sessions.map((x) => x.session.session_id))))
+    return items
+      .filter((s) => s.kind !== 'shell' && !live.has(s.session_id) && !openSessions.has(s.session_id))
+      .map((s) => {
+        const project = model.projects.find((n) => n.project.root && (s.cwd === n.project.root || s.cwd.startsWith(`${n.project.root}/`)))
+        const cost = fmtCostShort(s.stats?.cost_usd ?? 0)
+        return {
+          id: `s-${s.session_id}`,
+          group: 'History' as const,
+          label: sessionTitle(s),
+          detail: [s.project, fmtAgo(s.worked_at || s.last_event_at), cost].filter(Boolean).join(' · '),
+          icon: <StatusDot dot={dotOf(s, false)} />,
+          run: () => openSession(s, project?.project.id ?? activeProjectId),
+        }
+      })
+  }, [model.projects, openSessions, openSession, activeProjectId])
+
   // Orca's "new task": text that matches nothing starts an agent on it, in a worktree named after it.
   const paletteFallback = useCallback((q: string): PaletteItem | undefined => {
     const project = projectsById.get(activeProjectId)
@@ -708,7 +730,7 @@ export function AppShell() {
         />
       )}
       {folderMenu && <EditorMenu at={folderMenu} editors={editors} onClose={closeFolderMenu} onError={setToast} />}
-      {sheet?.kind === 'palette' && <CommandPalette items={paletteItems} fallback={paletteFallback} onClose={closeSheet} />}
+      {sheet?.kind === 'palette' && <CommandPalette items={paletteItems} fallback={paletteFallback} search={paletteSearch} onClose={closeSheet} />}
     </div>
   )
 }

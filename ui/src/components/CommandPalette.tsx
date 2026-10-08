@@ -4,14 +4,15 @@
  * start of the name first, then at the start of a word, then anywhere).
  * ↑ ↓ move, Enter runs, ⇧Enter opens a session beside the one in front (a
  * split pane), Escape closes. With nothing matching, the text can start an
- * agent in a new worktree.
+ * agent in a new worktree. Past sessions are searched on the daemon as you
+ * type (History), so last week's session is found by what it was about.
  */
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Sheet } from './Sheet'
 
 export interface PaletteItem {
   id: string
-  group: 'Waiting' | 'Actions' | 'Tabs' | 'Sessions' | 'Projects'
+  group: 'Waiting' | 'Actions' | 'Tabs' | 'Sessions' | 'Projects' | 'History'
   label: string
   detail?: string
   hint?: string
@@ -60,19 +61,39 @@ export function CommandPalette({
   items,
   onClose,
   fallback,
+  search,
 }: {
   items: PaletteItem[]
   onClose: () => void
   /** What the typed text can do when nothing matches it. */
   fallback?: (q: string) => PaletteItem | undefined
+  /** Past sessions matching the text, from the daemon; shown under History. */
+  search?: (q: string) => Promise<PaletteItem[]>
 }) {
   const [q, setQ] = useState('')
   const [at, setAt] = useState(0)
+  const [history, setHistory] = useState<{ q: string; items: PaletteItem[] }>({ q: '', items: [] })
+  useEffect(() => {
+    const term = q.trim()
+    if (!search || term.length < 2) return
+    let live = true
+    // A pause in typing, not every key: each search reads the sessions table.
+    const t = window.setTimeout(() => {
+      search(term).then((items) => { if (live) setHistory({ q: term, items }) }, () => {})
+    }, 180)
+    return () => { live = false; window.clearTimeout(t) }
+  }, [q, search])
   const shown = useMemo(() => {
     const hit = rank(items, q)
-    const extra = hit.length === 0 && q.trim() ? fallback?.(q.trim()) : undefined
-    return extra ? [extra] : hit
-  }, [items, q, fallback])
+    const term = q.trim()
+    const seen = new Set(hit.map((i) => i.id))
+    const past = term.length >= 2 && history.q === term ? history.items.filter((i) => !seen.has(i.id)).slice(0, 12) : []
+    if (hit.length === 0 && past.length === 0) {
+      const extra = term ? fallback?.(term) : undefined
+      return extra ? [extra] : []
+    }
+    return [...hit, ...past]
+  }, [items, q, fallback, history])
   const run = (i: PaletteItem | undefined, alt = false) => {
     if (!i) return
     onClose()

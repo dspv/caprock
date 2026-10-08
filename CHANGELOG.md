@@ -9,6 +9,20 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Added
+
+- **The palette finds past sessions.** ⌘K searches every session the daemon
+  knows as you type and lists matches under *History* with project, age and
+  cost; before, it saw only what was running and offered to start a new
+  agent on the words instead.
+
+### Changed
+
+- **A past session in the app opens on its chat, with one way back in.**
+  *Resume in a tab* is the page's button, the permission mode beside it;
+  *Continue in…*, *Open in* your terminal and the resume command moved under
+  *More*. It opened on the raw timeline, with five controls in a row.
+
 ## [0.85.0] - 2026-10-08
 
 ### Added

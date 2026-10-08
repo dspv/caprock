@@ -31,6 +31,10 @@ others. Installing it: [install-app.md](install-app.md).
   *Dashboard* at the bottom opens Now, Cost, Lifetime and the other screens
   inside the window; the sliders beside it open Settings (⌘,), where the
   app puts how new agents start, appearance, terminal and editor first.
+- **A past session** opens on its chat, with one button: *Resume in a tab*
+  (*Branch into a tab* while it still runs elsewhere) and the permission mode
+  beside it. Continuing in another agent, opening it in your own terminal and
+  copying the resume command are under *More*.
 - **Tab names.** A tab is named after its agent, with *+N* for the panes
   split beside it.
 - **Projects.** Caprock lists the repositories your sessions ran in. ⌘O adds
@@ -59,7 +63,8 @@ others. Installing it: [install-app.md](install-app.md).
   divider, or focus it and use the arrow keys. ⌘W closes the focused pane and
   its session keeps running.
 - **Command palette** (⌘K). Sessions waiting on you come first, then actions,
-  tabs, sessions and projects, best match first. Type a task that matches
+  tabs, sessions and projects, best match first; past sessions are searched
+  as you type and listed under *History*. Type a task that matches
   nothing — "Add rate limiting to the API" — and Enter opens *New agent* with
   it as the first message, in a new worktree named after it.
 - **New worktree.** In the New agent sheet, *Where → New worktree…* names

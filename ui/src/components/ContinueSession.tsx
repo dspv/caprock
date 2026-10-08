@@ -51,6 +51,7 @@ export function ContinueSession({
   resume,
   compact = false,
   detached = false,
+  prominent = false,
 }: {
   sessionID: string
   cwd: string
@@ -62,6 +63,10 @@ export function ContinueSession({
   compact?: boolean
   /** Caprock started it and its terminal closed with a restart: lead with continue, offer a copy second. */
   detached?: boolean
+  /** The page's one main action (the session page in the desktop app): a
+   *  filled button that says where the conversation goes, the mode beside
+   *  it, and no copy command — the page offers that under More. */
+  prominent?: boolean
 }) {
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -191,6 +196,23 @@ export function ContinueSession({
         {copyButton}
         {error && <span className="text-[11px] text-danger">{error}</span>}
       </div>
+    )
+  }
+
+  if (prominent) {
+    return (
+      <span className="inline-flex items-center gap-2">
+        <button
+          onClick={() => open()}
+          disabled={busy}
+          title={live ? 'A copy of this conversation in a new tab — the original keeps running' : 'Carry this conversation on in a new tab'}
+          className="rounded-[6px] bg-accent px-3 py-1 text-[12.5px] font-medium text-panel hover:brightness-110 disabled:opacity-50"
+        >
+          {busy ? 'Opening…' : live ? 'Branch into a tab' : 'Resume in a tab'}
+        </button>
+        {modePicker}
+        {error && <span className="text-[11px] text-danger">{error}</span>}
+      </span>
     )
   }
 
