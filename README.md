@@ -511,6 +511,17 @@ Premium adds the things that act on what you are looking at.
 **A daily cap.** Pass a number you set, and Caprock pauses the sessions it
 started — paused, not killed, and never a session you started yourself. Built.
 
+**A stop at the plan limit.** On Pro or Max, what runs out is Claude's 5-hour
+or weekly window, not dollars. When either passes the share you pick in
+Settings (90% until you change it; or off), Caprock pauses the Claude Code
+sessions it started, names them in a notice with the reset time, and resumes
+them after the window resets — nobody has to type "continue". Resume one
+yourself and it is left alone until the next window. Sessions you started
+yourself are never touched, and Caprock never pauses on figures more than ten
+minutes old. The figures come from Caprock's status line
+(`caprock statusline install`). Without Premium the 90% alert on Now stays as
+it is.
+
 **Ask Gemini about your numbers, on your own key.** A second model inside
 Caprock, billed to you by Google at their prices. Get a key from
 [Google AI Studio](https://aistudio.google.com/apikey) and either export

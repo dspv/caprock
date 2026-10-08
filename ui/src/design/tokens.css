@@ -269,6 +269,34 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
   [data-app] .app-row, [data-app] .app-chevron { transition: none; }
   [data-app] .app-fade-in, [data-app] .app-ring { animation: none; }
 }
+/* The sidebar's primary action: the accent as a border and label on the
+ * panel, not a fill (owner, 2026-10-09). Still the one accent-framed control. */
+[data-app] .app-primary {
+  color: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent) 85%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+[data-app] .app-primary:hover { background: color-mix(in srgb, var(--color-accent) 14%, transparent); border-color: var(--color-accent); }
+[data-app] .app-primary:active { background: color-mix(in srgb, var(--color-accent) 20%, transparent); }
+/* A key hint beside a sidebar label: the label's size, muted, right-aligned
+ * by its row (owner, same day: the 10.5px hints could not be read). */
+[data-app] .app-kbd {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+  line-height: 1;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--color-fg-faint);
+  white-space: nowrap;
+}
+[data-app] .app-primary .app-kbd { color: color-mix(in srgb, var(--color-accent) 70%, var(--color-fg-faint)); }
+/* The sidebar's Today strip (components/TodayStrip.tsx): the cockpit's bars
+ * and numerals on a faint card under New agent. */
+[data-app] .today-strip { background: color-mix(in srgb, var(--color-fg) 2.5%, transparent); }
+[data-app] .today-dot[data-working="true"] { animation: cockpitPulse 1.6s var(--app-ease) infinite; }
+@media (prefers-reduced-motion: reduce) {
+  [data-app] .today-dot { animation: none !important; }
+}
 /* The agent cockpit (components/Cockpit.tsx): the inspector beside an agent.
  * State is carried by data-state on the avatar, its dot and the "now" card,
  * so one attribute moves the colour, the halo and the motion together. Motion

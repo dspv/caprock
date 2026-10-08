@@ -1,7 +1,9 @@
 /**
  * The status strip along the bottom of the app (.ai/21-app.md § What the user
  * sees): the connection, the plan limits, today's spend, and the terminal in
- * front. Read-only; each figure is the dashboard's own.
+ * front. Read-only; each figure is the dashboard's own. The plan limits and
+ * the spend show only while the sidebar is closed: open, its Today strip
+ * carries them, and the same figures twice on one screen read as two.
  */
 import type { Summary } from '@/lib/api'
 import { live, useLiveLink } from '@/lib/live'
@@ -12,19 +14,25 @@ import { AppUpdateNotice } from './AppUpdateNotice'
 import { StaleUiPill } from './StaleUiPill'
 import { useAppUpdate } from '@/lib/appupdate'
 
-export function StatusStrip({ summary, pane, version }: { summary?: Summary; pane?: PaneStatus; version?: string }) {
+export function StatusStrip({ summary, pane, version, figures = true }: {
+  summary?: Summary
+  pane?: PaneStatus
+  version?: string
+  /** The plan limits and today's spend; false while the sidebar shows them. */
+  figures?: boolean
+}) {
   const link = useLiveLink()
   // In the app, its own version: the one an update changes at once. The
   // daemon's follows within a minute of the move (AppShell asks again).
   const app = useAppUpdate()
-  const five = summary?.rate_limits?.five_hour
-  const seven = summary?.rate_limits?.seven_day
+  const five = figures ? summary?.rate_limits?.five_hour : undefined
+  const seven = figures ? summary?.rate_limits?.seven_day : undefined
   return (
     <footer className="flex h-[26px] shrink-0 items-center gap-4 border-t border-[var(--app-hairline)] bg-[var(--app-chrome-bg)] px-3 text-[11.5px] text-fg-muted">
       <ConnectionState link={link} heardAt={live.heardAt} />
       {five && <Limit label="5h" pct={five.used_percentage} />}
       {seven && <Limit label="7d" pct={seven.used_percentage} />}
-      {summary && (
+      {figures && summary && (
         <span title="Spent today, every agent">
           Today <span className="num text-fg">{fmtUSD(summary.cost_usd)}</span>
         </span>

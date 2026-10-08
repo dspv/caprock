@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -57,6 +59,9 @@ type Ingester struct {
 	// splitChecked is set once the first pass has repaired imported threads
 	// and subagent turns stored by earlier versions (see repairSplit).
 	splitChecked bool
+	// chatChecked is set once the first pass has given the transcripts read
+	// before prompts and tool results were stored both (see backfillChat).
+	chatChecked bool
 
 	// Link files a thread under the Caprock session that started it, when
 	// Caprock did (see internal/sessionlink). Nil leaves every thread under
@@ -208,6 +213,10 @@ func (in *Ingester) once(ctx context.Context) error {
 		in.splitChecked = true
 		in.repairSplit(ctx, files)
 	}
+	if !in.chatChecked {
+		in.chatChecked = true
+		in.backfillChat(ctx, files, readNow)
+	}
 	in.mu.Lock()
 	in.stats.LastPoll = time.Now().UnixMilli()
 	in.mu.Unlock()
@@ -312,34 +321,51 @@ func (in *Ingester) session(ctx context.Context, s *Session) error {
 		info = rollup.SessionInfo{Cwd: s.Cwd, Agent: Agent}
 	}
 
-	// Turns and tools are interleaved by time so the session's event stream
-	// reads the way it happened, rather than as all turns followed by all
-	// tools. The dashboard's narration walks this order.
+	// Prompts, turns, tools and their results are interleaved by time so the
+	// session's event stream reads the way it happened, rather than as all
+	// turns followed by all tools. The dashboard's narration walks this order.
 	type item struct {
-		at   time.Time
-		turn *Turn
-		tool *ToolCall
+		at     time.Time
+		prompt *Prompt
+		turn   *Turn
+		tool   *ToolCall
+		result *ToolResult
 	}
-	items := make([]item, 0, len(s.Turns)+len(s.Tools))
+	items := make([]item, 0, len(s.Prompts)+len(s.Turns)+len(s.Tools)+len(s.Results))
+	for i := range s.Prompts {
+		items = append(items, item{at: s.Prompts[i].At, prompt: &s.Prompts[i]})
+	}
 	for i := range s.Turns {
 		items = append(items, item{at: s.Turns[i].At, turn: &s.Turns[i]})
 	}
 	for i := range s.Tools {
 		items = append(items, item{at: s.Tools[i].At, tool: &s.Tools[i]})
 	}
+	for i := range s.Results {
+		items = append(items, item{at: s.Results[i].At, result: &s.Results[i]})
+	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].at.Before(items[j].at) })
 
 	for _, it := range items {
 		var err error
 		switch {
+		case it.prompt != nil:
+			err = in.prompt(ctx, s, *it.prompt, info)
 		case it.turn != nil:
 			err = in.turn(ctx, s, *it.turn, info)
 		case it.tool != nil:
 			err = in.tool(ctx, s, *it.tool, info)
+		case it.result != nil:
+			err = in.result(ctx, s, *it.result, info)
 		}
 		if err != nil {
 			return err
 		}
+	}
+	// Calls stored before their call id and normalised input were: given
+	// both, so their results pair with them (see syncTools).
+	if _, err := in.syncTools(ctx, s); err != nil {
+		in.log.Debug("codex tool sync failed", "component", "codex", "session_id", s.ID, "err", err)
 	}
 	// Rows written before this importer could find the model are corrected
 	// here, from the transcript they came from. Best-effort: a failure to
@@ -570,6 +596,11 @@ func (in *Ingester) tool(ctx context.Context, s *Session, c ToolCall, info rollu
 		"tool_name":  c.Name,
 		"tool_input": toolInput(c),
 	}
+	if c.CallID != "" {
+		// The key a Claude Code call and its result share, so the chat pairs
+		// a Codex call with its output the same way (see result).
+		fields["tool_use_id"] = c.CallID
+	}
 	if s.Subagent {
 		fields["sidechain"] = true
 	}
@@ -588,6 +619,69 @@ func (in *Ingester) tool(ctx context.Context, s *Session, c ToolCall, info rollu
 	res, err := in.rec.Record(ctx, ev, info)
 	if err != nil {
 		return fmt.Errorf("record codex tool: %w", err)
+	}
+	if res.Stored {
+		in.mu.Lock()
+		in.stats.Events++
+		in.mu.Unlock()
+	}
+	return nil
+}
+
+// prompt stores what the person typed as `turn.user`, in a Claude Code
+// prompt's shape — `prompt`, `cwd` — because every reader of a prompt already
+// reads that: the chat, the notes search, a session's description. No msg_id:
+// a prompt bills nothing.
+func (in *Ingester) prompt(ctx context.Context, s *Session, p Prompt, info rollup.SessionInfo) error {
+	payload, _ := json.Marshal(map[string]any{"prompt": p.Text, "cwd": s.Cwd})
+	return in.record(ctx, &event.Event{
+		Ts:        p.At,
+		SessionID: s.ID,
+		Source:    event.SourceCodex,
+		Kind:      event.KindTurnUser,
+		Payload:   payload,
+		Key:       p.Key,
+	}, info, "prompt")
+}
+
+// result stores what a tool call handed back as `tool.post`, in the shape
+// Claude Code's transcript gives one — `tool_use_id`, `tool_response` as
+// text, `is_error` — so the chat shows the call as finished, with its output,
+// and the tool sizes count it (tool_bytes). `exit_code` is added where Codex
+// recorded one.
+func (in *Ingester) result(ctx context.Context, s *Session, r ToolResult, info rollup.SessionInfo) error {
+	fields := map[string]any{
+		"session_id":    s.ID,
+		"cwd":           s.Cwd,
+		"tool_name":     r.Name,
+		"tool_use_id":   r.CallID,
+		"tool_response": r.Output,
+		"is_error":      r.Failed,
+	}
+	if r.ExitCode != nil {
+		fields["exit_code"] = *r.ExitCode
+	}
+	if s.Subagent {
+		fields["sidechain"] = true
+	}
+	payload, _ := json.Marshal(fields)
+	return in.record(ctx, &event.Event{
+		Ts:        r.At,
+		SessionID: s.ID,
+		Source:    event.SourceCodex,
+		Kind:      event.KindToolPost,
+		Tool:      r.Name,
+		Payload:   payload,
+		Key:       r.Key,
+		AgentID:   subagentID(s),
+	}, info, "tool result")
+}
+
+// record stores one event and counts it.
+func (in *Ingester) record(ctx context.Context, ev *event.Event, info rollup.SessionInfo, what string) error {
+	res, err := in.rec.Record(ctx, ev, info)
+	if err != nil {
+		return fmt.Errorf("record codex %s: %w", what, err)
 	}
 	if res.Stored {
 		in.mu.Lock()
@@ -621,24 +715,220 @@ func subagentID(s *Session) string {
 
 // toolInput normalises a call's arguments to an object.
 //
-// Codex spells them two ways: a `custom_tool_call` carries a JSON string of
-// JavaScript, a `function_call` carries a JSON object. Downstream code reads
-// `tool_input` as an object, so a string is wrapped under `command` — which is
-// what it is in every observed case (`shell`, `exec`).
-func toolInput(c ToolCall) any {
+// Codex spells them three ways: a `custom_tool_call` carries a JSON string of
+// JavaScript (`exec`) or of a patch (`apply_patch`); a `function_call` carries
+// its arguments as a JSON string holding an object (every one on the owner's
+// machine, 2,955 of them); a few older records carry the object itself.
+// Downstream code reads `tool_input` as an object, so the object is used
+// wherever there is one, and any other string is wrapped under `command`.
+// Before the string-holding-an-object case was unwrapped, every `shell`,
+// `js` and `wait` call was stored as `{"command": "{\"command\":[…]}"}` and
+// shown as that JSON.
+//
+// `shell`'s `command` is an argv array; it becomes the command line under
+// `command`, as Claude Code's Bash carries it, with the array kept as `argv`.
+func toolInput(c ToolCall) map[string]any {
 	raw := c.Input
 	if raw == "" {
 		return map[string]any{}
 	}
 	var obj map[string]any
 	if err := json.Unmarshal([]byte(raw), &obj); err == nil {
-		return obj
+		return shellLine(obj)
 	}
 	var str string
 	if err := json.Unmarshal([]byte(raw), &str); err == nil {
+		if strings.HasPrefix(strings.TrimSpace(str), "{") && json.Unmarshal([]byte(str), &obj) == nil {
+			return shellLine(obj)
+		}
 		return map[string]any{"command": str}
 	}
 	return map[string]any{"command": raw}
+}
+
+// shellLine turns an argv `command` into the line it runs: the script of a
+// `<shell> -lc <script>` (how Codex runs nearly everything), else the words
+// joined with spaces.
+func shellLine(obj map[string]any) map[string]any {
+	argv, ok := obj["command"].([]any)
+	if !ok {
+		return obj
+	}
+	words := make([]string, 0, len(argv))
+	for _, w := range argv {
+		s, ok := w.(string)
+		if !ok {
+			return obj
+		}
+		words = append(words, s)
+	}
+	line := strings.Join(words, " ")
+	if len(words) == 3 && (words[1] == "-lc" || words[1] == "-c") {
+		line = words[2]
+	}
+	obj["argv"] = argv
+	obj["command"] = line
+	return obj
+}
+
+// syncTools gives each stored call of this transcript the call id and the
+// normalised input it would be stored with today, where its row lacks them,
+// and returns how many rows changed.
+//
+// Calls stored before results were read carry no `tool_use_id`, so nothing
+// could ever pair them with their output, and the chat showed every one as
+// running forever; a `function_call`'s input was stored as the JSON string it
+// arrives as (toolInput). Keys are idempotent, so a re-read never rewrites a
+// row: this is the one place a Codex call's payload changes after it is
+// stored, and it rewrites only `tool_use_id` and `tool_input`, only on the row
+// whose key and timestamp match the record (the reason syncText gives).
+func (in *Ingester) syncTools(ctx context.Context, s *Session) (int, error) {
+	if len(s.Tools) == 0 || in.rec == nil || in.rec.Store == nil {
+		return 0, nil
+	}
+	want := make(map[string]ToolCall, len(s.Tools))
+	for _, c := range s.Tools {
+		if !c.At.IsZero() {
+			want[c.Key] = c
+		}
+	}
+	rows, err := in.rec.Store.DB().QueryContext(ctx,
+		`SELECT id, COALESCE(key,''), ts,
+		        COALESCE(json_extract(payload,'$.tool_use_id'),''),
+		        COALESCE(json_extract(payload,'$.tool_input'),'{}')
+		   FROM events
+		  WHERE session_id = ? AND source = ? AND kind = ? AND json_valid(payload)`,
+		s.ID, string(event.SourceCodex), string(event.KindToolPre))
+	if err != nil {
+		return 0, err
+	}
+	type fix struct {
+		id    int64
+		useID string
+		input []byte
+	}
+	var todo []fix
+	for rows.Next() {
+		var id, ts int64
+		var key, useID, stored string
+		if err := rows.Scan(&id, &key, &ts, &useID, &stored); err != nil {
+			_ = rows.Close()
+			return 0, err
+		}
+		c, ok := want[key]
+		if !ok || c.At.UnixMilli() != ts {
+			continue
+		}
+		input, _ := json.Marshal(toolInput(c))
+		if useID == c.CallID && sameJSON(stored, input) {
+			continue
+		}
+		todo = append(todo, fix{id: id, useID: c.CallID, input: input})
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return 0, err
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	if len(todo) == 0 {
+		return 0, nil
+	}
+	err = in.rec.Store.WithTx(ctx, func(q store.Querier) error {
+		for _, f := range todo {
+			if f.useID == "" {
+				if _, err := q.ExecContext(ctx,
+					`UPDATE events SET payload = json_set(payload, '$.tool_input', json(?)) WHERE id = ?`,
+					string(f.input), f.id); err != nil {
+					return err
+				}
+				continue
+			}
+			if _, err := q.ExecContext(ctx,
+				`UPDATE events SET payload = json_set(payload, '$.tool_use_id', ?, '$.tool_input', json(?)) WHERE id = ?`,
+				f.useID, string(f.input), f.id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return len(todo), nil
+}
+
+// sameJSON reports whether two JSON texts hold the same value, whatever their
+// key order or escaping.
+func sameJSON(a string, b []byte) bool {
+	var x, y any
+	if json.Unmarshal([]byte(a), &x) != nil || json.Unmarshal(b, &y) != nil {
+		return false
+	}
+	return reflect.DeepEqual(x, y)
+}
+
+// backfillChat stores, once, the prompts and tool results of the transcripts
+// read before either was, and pairs their stored calls (syncTools).
+//
+// The ordinary pass skips every file it has already read (see restoreSeen),
+// so each transcript the pass did not just read is parsed once more. Prompts
+// and results are recorded under their own keys — a file read twice inserts
+// nothing the second time — and the turns and calls already stored are not
+// recorded again. Like backfillText it runs in the importer's goroutine after
+// the first pass, and an interrupted run starts over on the next start, which
+// is safe for the same reason.
+func (in *Ingester) backfillChat(ctx context.Context, files []Transcript, readNow map[string]bool) {
+	if in.rec == nil || in.rec.Store == nil {
+		return
+	}
+	if done, _ := in.rec.Store.GetMeta(ctx, store.MetaCodexChatBackfilled); done == "1" {
+		return
+	}
+	start := time.Now()
+	var parsed, stored, paired int
+	for _, f := range files {
+		if ctx.Err() != nil {
+			return
+		}
+		if readNow[f.Path] {
+			continue // the pass just read it: everything is already stored
+		}
+		s, err := ParseFile(f.Path)
+		if err != nil || s.Imported {
+			continue
+		}
+		parsed++
+		in.link(ctx, s)
+		info := rollup.SessionInfo{Cwd: s.Cwd, Agent: Agent}
+		before := in.Stats().Events
+		for _, p := range s.Prompts {
+			if err := in.prompt(ctx, s, p, info); err != nil {
+				in.log.Debug("codex chat backfill", "component", "codex", "session_id", s.ID, "err", err)
+			}
+		}
+		for _, r := range s.Results {
+			if err := in.result(ctx, s, r, info); err != nil {
+				in.log.Debug("codex chat backfill", "component", "codex", "session_id", s.ID, "err", err)
+			}
+		}
+		stored += in.Stats().Events - before
+		n, err := in.syncTools(ctx, s)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			in.log.Debug("codex chat backfill", "component", "codex", "session_id", s.ID, "err", err)
+		}
+		paired += n
+	}
+	if err := in.rec.Store.SetMeta(ctx, store.MetaCodexChatBackfilled, "1"); err != nil {
+		return
+	}
+	in.log.Info("codex prompts and tool results read from the transcripts",
+		"component", "codex", "transcripts", parsed, "events", stored, "calls", paired,
+		"took_ms", time.Since(start).Milliseconds())
 }
 
 // repriceSession fills in the model on turns already stored without one, and

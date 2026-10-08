@@ -11,6 +11,29 @@ Phase 3 (Delight) has no plan by design.
 
 ### Added
 
+- **A stop at the plan limit (Premium).** When Claude's 5-hour or weekly
+  window passes the share you pick in Settings → *Pause at the plan limit*
+  (90% until you change it, or off), Caprock pauses the Claude Code sessions
+  it started, names them on Now and in a desktop notification with the reset
+  time, and resumes them after the window resets. A session you resume by
+  hand is left alone until the next window; a session you started yourself
+  is never touched; figures more than ten minutes old pause nothing, and
+  Settings says when that is the case. Without Premium the 90% alert on Now
+  is unchanged and offers the stop. `GET /v1/window-stop`,
+  `settings.window_stop_pct`.
+- **Today, at the top of the sidebar.** Under *New agent*: what every
+  agent has spent today, how many agents are running and how many wait on
+  you, and the Claude plan's 5-hour and weekly windows as thin bars with
+  the share used and when each resets. Click the spend for Cost, a window
+  for the plan limits, *Running* for Now, *Waiting* for the session that
+  has waited longest. While the sidebar is open the status strip leaves
+  the windows and the spend to it.
+- **A menu on every project.** The ⋯ on a project's row (on hover, and
+  always on the project in front), a right-click, or Shift+F10: hide it
+  from the sidebar or show it again, close all its tabs (the sessions and
+  shells in them keep running), open its folder in an editor, or remove it
+  from Caprock after a confirmation — its files and sessions stay as they
+  are.
 - **Subagents in the agent cockpit.** While a session's subagents work, the
   cockpit lists them under *Subagents · N*: each one's type and the task it
   was given, its current call and how long it has run, how many calls it
@@ -19,8 +42,27 @@ Phase 3 (Delight) has no plan by design.
   (`GET /v1/sessions/{id}/subagents`), so thousands of subagent events never
   reach the page.
 
+### Changed
+
+- **Project rows say what runs in them.** Each row shows how many agents
+  are running there and what the project cost today, beside the waiting
+  badge rather than in place of it; a project with neither shows neither.
+  The branch takes only the room left over and steps aside, rather than
+  showing as a sliver, when too little is left.
+- **New agent is outlined, and the sidebar's shortcuts are readable.** The
+  New agent button keeps the accent as a 1px border and label on the panel
+  instead of a solid fill, and the key hints beside New agent, Add project
+  and Dashboard are set at the size of the label next to them.
+
 ### Fixed
 
+- **Codex sessions read as a conversation in Chat.** Your own prompts now
+  appear beside Codex's replies; before, only the replies did. Each command
+  shows the command it ran, not its JSON or JavaScript wrapper. A finished
+  call no longer reads "running" forever: it shows its output, and a failed
+  one says so, with the exit code where Codex recorded one. Sessions already
+  imported get their prompts and outputs once, from the transcripts still on
+  disk.
 - **The cockpit's tool list was empty on a busy parent.** A session whose
   subagents logged hundreds of calls an hour had none of its own among its
   newest 400 events, so *Recent tools* read "No tool calls yet" and the cost

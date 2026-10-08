@@ -320,3 +320,48 @@ type timeoutError struct{}
 func (timeoutError) Error() string { return "condition was not met within the deadline" }
 
 var errTimeout = timeoutError{}
+
+// The plan-window stop resumes hours after it paused. By then the id may be a
+// session that ended, or one Caprock never started; both are a quiet no.
+func TestResumeOwnedRefusesASessionCaprockDidNotStart(t *testing.T) {
+	m, _, _ := newMgr(t)
+	defer m.Shutdown()
+	resumed, err := m.ResumeOwned("a-session-from-someones-terminal")
+	if err != nil || resumed {
+		t.Fatalf("ResumeOwned on a foreign session = %v, %v; want a quiet no (rule 7)", resumed, err)
+	}
+}
+
+func TestResumeOwnedResumesTheProcess(t *testing.T) {
+	m, _, f := newMgr(t)
+	defer m.Shutdown()
+	a, err := m.Spawn(context.Background(), SpawnRequest{Cwd: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.PauseOwned(a.SessionID); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := m.ResumeOwned(a.SessionID); err != nil || !ok {
+		t.Fatalf("ResumeOwned = %v, %v", ok, err)
+	}
+	if f.session.Paused() {
+		t.Error("the resume never reached the process")
+	}
+}
+
+// The plan window is Claude's: only Claude Code sessions are listed for it.
+func TestOwnedRunningKindListsOneAgent(t *testing.T) {
+	m, _, _ := newMgr(t)
+	defer m.Shutdown()
+	a, err := m.Spawn(context.Background(), SpawnRequest{Cwd: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := m.OwnedRunningKind(AgentClaude); len(got) != 1 || got[0] != a.SessionID {
+		t.Fatalf("OwnedRunningKind(claude) = %v; want %q", got, a.SessionID)
+	}
+	if got := m.OwnedRunningKind("codex"); len(got) != 0 {
+		t.Fatalf("OwnedRunningKind(codex) = %v; want nothing", got)
+	}
+}

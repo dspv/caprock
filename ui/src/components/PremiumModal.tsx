@@ -39,7 +39,7 @@ import { useApi } from '@/lib/useApi'
 import { AgentCharacter } from './Characters'
 import { Benefit, Icon, MiniCard, UpsellDialog } from './UpsellDialog'
 
-export type PaidFeature = 'cap' | 'report' | 'gemini' | 'drill'
+export type PaidFeature = 'cap' | 'window' | 'report' | 'gemini' | 'drill'
 
 /**
  * `body` says what the feature is in one sentence; `points` say why you would
@@ -57,6 +57,19 @@ const FEATURES: Record<
       { icon: 'moon', text: 'It happens while you are asleep, not in tomorrow’s summary' },
       { icon: 'user', text: 'Sessions you started yourself are never touched' },
     ],
+  },
+  // The cap's sibling for people on a plan: what a Pro or Max subscriber runs
+  // out of is the window, not dollars (owner decision, 2026-10-08).
+  window: {
+    title: 'Stop at the plan limit, carry on after the reset',
+    body: 'Claude’s 5-hour and weekly windows, not dollars. Near the line Caprock pauses the sessions it started; after the reset they carry on.',
+    points: [
+      { icon: 'stop', text: 'Paused mid-turn at the share you pick, with the conversation intact' },
+      { icon: 'moon', text: 'They resume by themselves when the window resets — nobody types “continue”' },
+      { icon: 'user', text: 'Sessions you started yourself are never touched, and keep the rest of the window' },
+    ],
+    // Named because the figures come from somewhere, and not everyone has it.
+    setup: 'Needs Caprock’s status line in Claude Code (caprock statusline install). Pro and Max only: API billing has no windows.',
   },
   gemini: {
     title: 'Ask Gemini, on your own key',
@@ -112,6 +125,29 @@ function Picture({ feature }: { feature: PaidFeature }) {
             <span className="font-semibold">2 sessions Caprock started: paused.</span>
             <br />
             <span className="text-fg-muted">The one you opened in your terminal keeps running.</span>
+          </p>
+        </div>
+      </MiniCard>
+    )
+  }
+  if (feature === 'window') {
+    return (
+      <MiniCard label="Example: Claude's 5-hour window at 90%; the sessions Caprock started are paused and resume when it resets at 19:00">
+        <p className="wk-eyebrow" style={{ fontSize: 11 }}>Claude · 5-hour window</p>
+        <p className="mt-1.5 flex items-baseline gap-2">
+          <span className="font-mono text-[30px] font-bold leading-none tracking-[-0.03em] text-fg">90%</span>
+          <span className="font-mono text-[12px] text-fg-muted">used · resets 19:00</span>
+        </p>
+        <div className="relative mt-3 h-2.5 rounded-full bg-border-strong/60">
+          <div className="absolute inset-y-0 left-0 w-[90%] rounded-full bg-accent" />
+          <div className="absolute -top-1 bottom-[-4px] left-[90%] w-[2px] bg-danger" />
+        </div>
+        <div className="mt-3 flex items-center gap-2.5">
+          <AgentCharacter who="lead" size={34} />
+          <p className="text-[12.5px] leading-snug text-fg">
+            <span className="font-semibold">2 sessions Caprock started: paused until 19:00.</span>
+            <br />
+            <span className="text-fg-muted">Then they carry on. The one in your terminal keeps the last 10%.</span>
           </p>
         </div>
       </MiniCard>
