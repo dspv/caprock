@@ -73,6 +73,13 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-08 — 0.86.0: past sessions from the palette, one way back in
+
+The rest of the app walkthrough (#295): ⌘K searches session history on the
+daemon and lists it under *History*; a past session in the app opens on its
+chat with *Resume in a tab* as the one button, the other ways in under
+*More*.
+
 ### 2026-10-08 — 0.85.0: the app, walked as a user
 
 A pass over the desktop app's main scenarios (#293). A project with no tab
