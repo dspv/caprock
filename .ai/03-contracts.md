@@ -1547,8 +1547,8 @@ POST     /v1/orchestrator/stop        → kills the orchestrator + every worker 
 Live frames gained `mail.*` events (router) in Phase 2.
 
 
-**`GET /v1/stats/summary` takes `?agent=`** — `claude`, `opencode`, or omitted
-for both. An unrecognised value is a **400**: returning every agent's spend
+**`GET /v1/stats/summary` takes `?agent=`** — `claude`, `opencode`, `gemini`,
+`codex`, `deepseek`, or omitted for every agent. An unrecognised value is a **400**: returning every agent's spend
 under a heading that names one is worse than an error, because nothing on the
 screen would say so. The filter is a subquery on `sessions` rather than a join,
 because `events` carries no agent of its own and a join would change the row

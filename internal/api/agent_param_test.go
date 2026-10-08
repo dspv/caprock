@@ -17,6 +17,8 @@ func TestAgentFilterParam(t *testing.T) {
 		{"claude", "claude", false},
 		{"opencode", "opencode", false},
 		{"gemini", "gemini", false},
+		{"codex", "codex", false},
+		{"deepseek", "deepseek", false},
 		{"OpenCode", "", true}, // case matters; a near-miss must not silently widen
 		{"Gemini", "", true},
 		{"cursor", "", true}, // an agent we do not support is an error, not "everything"
