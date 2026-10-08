@@ -160,6 +160,14 @@ func (s *Service) Clone(opID, rawURL, parent, name string) (Op, bool, error) {
 	if name == "" {
 		name = repoNameFromURL(rawURL)
 	}
+	// git clone makes missing folders on the way to its destination; so do we,
+	// or a destination typed in full ("~/dev/new/repo") fails for a parent
+	// nobody had a reason to create first.
+	if p := expandHome(parent); filepath.IsAbs(p) {
+		if _, err := os.Stat(p); errors.Is(err, os.ErrNotExist) {
+			_ = os.MkdirAll(p, 0o755)
+		}
+	}
 	dest, err := newChildDir(parent, name)
 	if err != nil {
 		return Op{}, false, err

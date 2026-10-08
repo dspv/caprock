@@ -1093,7 +1093,9 @@ GET    /v1/shells?project=<id>             → {shells: [Shell]}; every running 
   `clone` takes an `https://` URL or `user@host:path` and nothing else (no
   local path, `file://`, `ssh://`, `ext::`, leading `-` or whitespace), into
   `parent/<name>` (default: the URL's last segment without `.git`), refused
-  when that exists. It runs `git clone --progress` in the background with the
+  when that exists. A missing `parent` is created first, as `git clone` makes
+  the folders on the way to its destination. In `path`, `create.parent` and
+  `clone.parent` a leading `~` is the home folder. It runs `git clone --progress` in the background with the
   login shell's environment and `GIT_TERMINAL_PROMPT=0`, for the daemon's
   life, not the request's. A `POST` whose `op_id` (`[A-Za-z0-9_-]{1,64}`,
   generated when absent) is already known returns that operation with

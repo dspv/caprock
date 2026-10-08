@@ -37,9 +37,13 @@ others. Installing it: [install-app.md](install-app.md).
   copying the resume command are under *More*.
 - **Tab names.** A tab is named after its agent, with *+N* for the panes
   split beside it.
-- **Projects.** Caprock lists the repositories your sessions ran in. ⌘O adds
-  a folder, makes a new one (`git init` optional) or clones a repository with
-  git's progress shown. Branch, changed files and ahead/behind follow commits
+- **Projects.** Caprock lists the repositories your sessions ran in. ⌘O, or
+  *Add* beside *Projects* in the sidebar, adds a folder, makes a new one
+  (`git init` optional) or clones a repository with git's progress shown.
+  Paste a repository URL and the destination fills in as `git clone` would
+  name it — the folder beside your current project, called after the
+  repository; folders that do not exist yet are made, and `~` works. A
+  *First task* starts an agent on the new project as soon as it is added. Branch, changed files and ahead/behind follow commits
   and checkouts made anywhere, the terminal included. Removing a project from
   the list never touches its files.
 - **Project instructions.** Give a project instructions for its agents as you

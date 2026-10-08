@@ -785,8 +785,23 @@ func (s *Service) Project(id int64) (store.Project, bool) {
 	return p, ok
 }
 
+// expandHome turns a leading ~ into the user's home folder, so a path copied
+// from a terminal works as typed.
+func expandHome(path string) string {
+	if path != "~" && !strings.HasPrefix(path, "~/") && !strings.HasPrefix(path, `~\`) {
+		return path
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return path
+	}
+	return filepath.Join(home, path[1:])
+}
+
 // existingDir checks that path is an absolute directory and returns it clean.
+// A leading ~ is the home folder.
 func existingDir(path string) (string, error) {
+	path = expandHome(path)
 	if path == "" || !filepath.IsAbs(path) {
 		return "", fmt.Errorf("%q is not an absolute path", path)
 	}
