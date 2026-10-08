@@ -4,17 +4,39 @@
  *
  * Keyboard: Tab reaches every row; ↑ and ↓ move between rows, → opens a
  * project and ← closes it, Enter opens what the row names.
+ *
+ * The list stays short: projects with nothing running for a week fold under
+ * Quiet, and the ones hidden by hand under Hidden, both closed by default.
  */
-import { useCallback, useState, type KeyboardEvent, type ReactNode } from 'react'
-import type { InboxItem, SessionNode, SidebarModel, WorktreeNode } from '@/lib/sidebar'
+import { useCallback, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { groupProjects, type InboxItem, type ProjectNode, type SessionNode, type SidebarModel, type WorktreeNode } from '@/lib/sidebar'
 import type { ProjectSource } from '@/lib/projects'
 import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { useTheme } from '@/lib/theme'
 import { ProjectRow, StatusDot } from './ProjectRow'
-import { AgentGlyph, CaprockMark, DashboardIcon, FolderPlusIcon, MoonIcon, SearchIcon, SettingsIcon, SunIcon } from './AppIcons'
+import { AgentGlyph, CaprockMark, ChevronIcon, DashboardIcon, FolderPlusIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from './AppIcons'
 
 const EXPANDED_KEY = 'caprock.app.expanded'
+/** Project ids hidden by hand: this browser's, as the expanded set is. */
+export const HIDDEN_KEY = 'caprock.app.hidden-projects'
+/** Which of the folded groups are open. */
+export const FOLDS_KEY = 'caprock.app.project-folds'
+
+type Fold = 'quiet' | 'hidden'
+
+function loadIds(key: string): Set<string> {
+  try {
+    const v = JSON.parse(localStorage.getItem(key) ?? 'null') as unknown
+    return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function saveIds(key: string, ids: ReadonlySet<string>) {
+  try { localStorage.setItem(key, JSON.stringify([...ids])) } catch { /* not kept */ }
+}
 
 function loadExpanded(): Set<string> | null {
   try {
@@ -49,6 +71,27 @@ export interface SidebarProps {
 export function Sidebar(props: SidebarProps) {
   const { model, activeProjectId, activeSessionId } = props
   const [expanded, setExpanded] = useState<Set<string> | null>(loadExpanded)
+  const [hidden, setHidden] = useState<Set<string>>(() => loadIds(HIDDEN_KEY))
+  const [folds, setFolds] = useState<Set<string>>(() => loadIds(FOLDS_KEY))
+  const groups = useMemo(() => groupProjects(model.projects, { hidden, activeProjectId }), [model.projects, hidden, activeProjectId])
+  const onHide = useCallback((id: string, hide: boolean) => {
+    setHidden((cur) => {
+      const next = new Set(cur)
+      if (hide) next.add(id)
+      else next.delete(id)
+      saveIds(HIDDEN_KEY, next)
+      return next
+    })
+  }, [])
+  const toggleFold = (f: Fold) => {
+    setFolds((cur) => {
+      const next = new Set(cur)
+      if (next.has(f)) next.delete(f)
+      else next.add(f)
+      saveIds(FOLDS_KEY, next)
+      return next
+    })
+  }
   // First run: open the projects where something is running, and the one in front.
   const isOpen = (id: string, live: number) => (expanded ? expanded.has(id) : live > 0 || id === activeProjectId)
   const toggle = useCallback((id: string) => {
@@ -61,6 +104,25 @@ export function Sidebar(props: SidebarProps) {
       return next
     })
   }, [model.projects, activeProjectId])
+
+  const row = (n: ProjectNode) => (
+    <ProjectRow
+      key={n.project.id}
+      node={n}
+      expanded={isOpen(n.project.id, n.live)}
+      active={!props.dashboardActive && n.project.id === activeProjectId}
+      activeSessionId={props.dashboardActive ? undefined : activeSessionId}
+      onToggle={toggle}
+      onSelect={props.onSelectProject}
+      onOpenSession={props.onOpenSession}
+      onNewAgent={props.onNewAgent}
+      onNewShell={props.onNewShell}
+      onOpenChanges={props.onOpenChanges}
+      onFolderMenu={props.onFolderMenu}
+      hidden={hidden.has(n.project.id)}
+      onHide={onHide}
+    />
+  )
 
   const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
     const target = e.target as HTMLElement
@@ -91,24 +153,40 @@ export function Sidebar(props: SidebarProps) {
         <IconButton label="Search projects, sessions and actions (⌘K)" onClick={props.onPalette}><SearchIcon size={15} /></IconButton>
       </div>
 
+      {/* The app's main action, where the eye lands first: starting an agent
+          was a 13px plus that appears on hover, and adding a project a word
+          in a section header. */}
+      <div className="shrink-0 px-2 pb-2">
+        <button
+          type="button"
+          onClick={() => props.onNewAgent(activeProjectId)}
+          aria-label="New agent"
+          aria-keyshortcuts="Shift+Meta+N"
+          title="Start an agent in the project in front (⇧⌘N)"
+          className="flex h-[32px] w-full items-center gap-2 rounded-[8px] bg-accent pl-2.5 pr-2 text-left text-[13px] font-semibold text-panel shadow-[0_1px_0_rgba(0,0,0,0.08)] transition-[filter] hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
+        >
+          <PlusIcon size={15} />
+          <span className="flex-1">New agent</span>
+          <kbd className="mono text-[10.5px] font-medium opacity-75">⇧⌘N</kbd>
+        </button>
+        <button
+          type="button"
+          onClick={props.onAddProject}
+          aria-label="Add project"
+          aria-keyshortcuts="Meta+O"
+          title="Add a project — a folder, a new one, or a clone (⌘O)"
+          className="mt-1 flex h-[26px] w-full items-center gap-2 rounded-[7px] pl-2.5 pr-2 text-left text-[12.5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
+        >
+          <FolderPlusIcon size={14} />
+          <span className="flex-1">Add project</span>
+          <kbd className="mono text-[10.5px] text-fg-faint">⌘O</kbd>
+        </button>
+      </div>
+
       <div className="app-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-3" onKeyDown={onKeyDown}>
         <Inbox items={model.inbox} activeSessionId={activeSessionId} onOpen={props.onOpenInbox} />
 
-        <SectionHead
-          label="Projects"
-          // Words, not only an icon: a bare folder glyph in the section
-          // header was the one way to add a project, and it went unseen.
-          action={
-            <button
-              type="button"
-              title="Add a project — a folder, a new one, or a clone (⌘O)"
-              onClick={props.onAddProject}
-              className="flex h-[22px] items-center gap-1 rounded-[6px] px-1.5 text-[11.5px] font-medium normal-case tracking-normal text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
-            >
-              <FolderPlusIcon size={13} /> Add
-            </button>
-          }
-        />
+        <SectionHead label="Projects" />
         {model.projects.length === 0 ? (
           <div className="px-2 py-2 text-[12.5px] leading-relaxed text-fg-muted">
             No projects yet.{' '}
@@ -116,24 +194,11 @@ export function Sidebar(props: SidebarProps) {
             or start an agent anywhere.
           </div>
         ) : (
-          <ul className="grid grid-cols-1 gap-px">
-            {model.projects.map((n) => (
-              <ProjectRow
-                key={n.project.id}
-                node={n}
-                expanded={isOpen(n.project.id, n.live)}
-                active={!props.dashboardActive && n.project.id === activeProjectId}
-                activeSessionId={props.dashboardActive ? undefined : activeSessionId}
-                onToggle={toggle}
-                onSelect={props.onSelectProject}
-                onOpenSession={props.onOpenSession}
-                onNewAgent={props.onNewAgent}
-                onNewShell={props.onNewShell}
-                onOpenChanges={props.onOpenChanges}
-                onFolderMenu={props.onFolderMenu}
-              />
-            ))}
-          </ul>
+          <>
+            <ul className="grid grid-cols-1 gap-px">{groups.shown.map(row)}</ul>
+            <Fold label="Quiet" title="Nothing running and no activity for a week" items={groups.quiet} open={folds.has('quiet')} onToggle={() => toggleFold('quiet')} row={row} />
+            <Fold label="Hidden" title="Hidden by hand; a project shows again while something runs in it" items={groups.hidden} open={folds.has('hidden')} onToggle={() => toggleFold('hidden')} row={row} />
+          </>
         )}
         {props.source === 'derived' && model.projects.length > 0 && (
           <p className="px-2 pt-3 text-[11px] leading-snug text-fg-faint">
@@ -217,6 +282,36 @@ function Inbox({ items, activeSessionId, onOpen }: { items: InboxItem[]; activeS
           {showOlder && <ul className="grid grid-cols-1 gap-px">{older.map(row)}</ul>}
         </>
       )}
+    </section>
+  )
+}
+
+/** A folded group at the bottom of the projects: Quiet or Hidden, closed until opened. */
+function Fold({ label, title, items, open, onToggle, row }: {
+  label: string
+  title: string
+  items: ProjectNode[]
+  open: boolean
+  onToggle: () => void
+  row: (n: ProjectNode) => ReactNode
+}) {
+  if (items.length === 0) return null
+  return (
+    <section aria-label={label} className="mt-1">
+      <button
+        type="button"
+        data-nav-row
+        aria-expanded={open}
+        title={title}
+        onClick={onToggle}
+        className="flex h-[26px] w-full items-center gap-1.5 rounded-[6px] pl-1.5 pr-2 text-left text-[11.5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg-muted"
+      >
+        <span className={`flex h-4 w-4 items-center justify-center transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`} aria-hidden>
+          <ChevronIcon size={11} />
+        </span>
+        <span className="font-medium">{label} <span className="num font-normal">· {items.length}</span></span>
+      </button>
+      {open && <ul className="grid grid-cols-1 gap-px">{items.map(row)}</ul>}
     </section>
   )
 }

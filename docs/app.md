@@ -19,7 +19,9 @@ others. Installing it: [install-app.md](install-app.md).
 
 ## The window
 
-- **Sidebar.** *Waiting on you* comes first: sessions blocked on a permission
+- **Sidebar.** *New agent* (⇧⌘N), the accent button at the top, starts an
+  agent in the project in front; *Add project* (⌘O) sits under it. Then
+  *Waiting on you*: sessions blocked on a permission
   prompt, then sessions whose turn has ended, oldest first. A turn that ended
   more than 12 hours ago folds under *Older* and is left out of the count,
   the badge and ⌘J. Below it, every
@@ -28,6 +30,13 @@ others. Installing it: [install-app.md](install-app.md).
   what a session is doing: green working, amber waiting, red looping, grey
   idle, hollow ended. Hover a project for *New agent* and *New shell*.
   Sessions in a folder that is not a repository sit under *Other folders*.
+  Projects with nothing running and no activity for 7 days fold under
+  *Quiet* at the bottom of the list; hover a project and click the crossed
+  eye to put it under *Hidden*, and the open eye there to bring it back.
+  Both groups stay closed until you open them, and the app remembers which
+  are open. A project shows in the list again while something runs or
+  waits in it, or while it is the one in front, hidden or not; pinned
+  projects never go quiet.
   *Dashboard* at the bottom opens Now, Cost, Lifetime and the other screens
   inside the window; the sliders beside it open Settings (⌘,), where the
   app puts how new agents start, appearance, terminal and editor first.
@@ -38,7 +47,7 @@ others. Installing it: [install-app.md](install-app.md).
 - **Tab names.** A tab is named after its agent, with *+N* for the panes
   split beside it.
 - **Projects.** Caprock lists the repositories your sessions ran in. ⌘O, or
-  *Add* beside *Projects* in the sidebar, adds a folder, makes a new one
+  *Add project* at the top of the sidebar, adds a folder, makes a new one
   (`git init` optional) or clones a repository with git's progress shown.
   Paste a repository URL and the destination fills in as `git clone` would
   name it — the folder beside your current project, called after the

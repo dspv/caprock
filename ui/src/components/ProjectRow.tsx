@@ -6,7 +6,7 @@ import { memo } from 'react'
 import { branchLabel } from '@/lib/sessionLabels'
 import { OTHER_FOLDERS_ID, type Dot, type ProjectNode, type SessionNode, type WorktreeNode } from '@/lib/sidebar'
 import { fmtUSD } from '@/lib/format'
-import { AgentGlyph, BranchIcon, ChevronIcon, FolderIcon, PlusIcon, TerminalIcon } from './AppIcons'
+import { AgentGlyph, BranchIcon, ChevronIcon, EyeIcon, EyeOffIcon, FolderIcon, PlusIcon, TerminalIcon } from './AppIcons'
 import { PRDot } from './PullRequest'
 
 const DOT_CLASS: Record<Dot, string> = {
@@ -55,6 +55,10 @@ export interface ProjectRowProps {
   /** Right-click on a project or worktree: the folder, for the editor menu (F18). */
   onFolderMenu?: (e: React.MouseEvent, path: string, label: string) => void
   onOpenChanges?: (projectId: string, w?: WorktreeNode) => void
+  /** Hidden by hand: its row action shows it again instead of hiding it. */
+  hidden?: boolean
+  /** Hides the project from the list (true) or shows it again (false); absent, no such action. */
+  onHide?: (id: string, hide: boolean) => void
 }
 
 /** A right-click handler for a folder row, or none when there is no menu or no folder. */
@@ -91,6 +95,8 @@ export const ProjectRow = memo(function ProjectRow({
   onNewShell,
   onFolderMenu,
   onOpenChanges,
+  hidden = false,
+  onHide,
 }: ProjectRowProps) {
   const p = node.project
   const id = p.id
@@ -161,6 +167,11 @@ export const ProjectRow = memo(function ProjectRow({
             )}
             <RowAction label={`New agent in ${p.name}`} onClick={() => onNewAgent(id)}><PlusIcon size={13} /></RowAction>
             <RowAction label={`New shell in ${p.name}`} onClick={() => onNewShell(id)}><TerminalIcon size={13} /></RowAction>
+            {onHide && (hidden ? (
+              <RowAction label={`Show ${p.name} in the list again`} onClick={() => onHide(id, false)}><EyeIcon size={13} /></RowAction>
+            ) : (
+              <RowAction label={`Hide ${p.name} from the list`} onClick={() => onHide(id, true)}><EyeOffIcon size={13} /></RowAction>
+            ))}
           </span>
         )}
       </div>

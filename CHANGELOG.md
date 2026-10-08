@@ -9,6 +9,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Changed
+
+- **A New agent button you cannot miss.** The app's sidebar opens with an
+  accent *New agent* button (⇧⌘N) and *Add project* (⌘O) under it; the
+  small *Add* beside *Projects* is gone.
+- **A shorter project list.** Projects with nothing running and no activity
+  for a week fold under *Quiet* at the bottom of the sidebar, and any
+  project can be hidden from its row (the crossed eye) into *Hidden* and
+  brought back from there. Both groups start closed and remember being
+  opened. A project with something running or waiting, or the one in
+  front, always shows.
+
 ## [0.90.0] - 2026-10-08
 
 ### Added
