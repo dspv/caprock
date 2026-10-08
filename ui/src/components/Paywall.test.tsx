@@ -28,7 +28,7 @@ function locks(src: string): { feature: string; body: string }[] {
   return out
 }
 
-const SCREENS = ['screens/Cost.tsx', 'screens/History.tsx', 'screens/Now.tsx', 'screens/Session.tsx']
+const SCREENS = ['screens/Cost.tsx', 'screens/History.tsx', 'screens/Now.tsx', 'screens/Session.tsx', 'screens/Status.tsx']
 
 describe('the paywall', () => {
   it('covers only features that do not exist yet', () => {

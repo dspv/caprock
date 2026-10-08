@@ -263,6 +263,11 @@ Settings → *Desktop notifications* has two switches: *waiting for approval*
 [Phone alerts](../README.md#hear-about-it-on-your-phone), which stay off until
 you turn them on.
 
+With Premium's plan-window stop on (Settings → *Pause at the plan limit*), a
+notification names the sessions it paused and the time they resume, and a
+second one says when they have. These come whenever the stop acts; there is
+no switch for them. See [Premium](../README.md#premium).
+
 ## GitHub
 
 Settings → **GitHub** connects your account. Caprock then talks to

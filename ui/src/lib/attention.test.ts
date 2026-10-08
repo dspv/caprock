@@ -211,6 +211,47 @@ describe('plan-limit alerts', () => {
 })
 
 /**
+ * The plan-window stop (Premium). The free row above is unchanged; on an
+ * install without a licence it carries the offer, and once the stop has
+ * paused something the row becomes the notice: which sessions, and when.
+ */
+describe('the plan-window stop', () => {
+  const soon = (h: number) => (NOW + h * 3600 * 1000) / 1000
+  const limits = { five_hour: { used_percentage: 92, resets_at: soon(1) } }
+  const base = { pct: 90, fresh_for_s: 600, windows: [], paused: [] }
+
+  it('offers the stop on the free row only when the install has no licence', () => {
+    const free = findAttention({ sessions: [], alerts: [], now: NOW, limits, windowStop: { ...base, licensed: false } })
+    expect(free[0]?.offerWindowStop).toBe(true)
+    const paid = findAttention({ sessions: [], alerts: [], now: NOW, limits, windowStop: { ...base, licensed: true } })
+    expect(paid[0]?.offerWindowStop).toBe(false)
+    // Unknown is not "unlicensed": nobody is sold what they may already own.
+    const unknown = findAttention({ sessions: [], alerts: [], now: NOW, limits })
+    expect(unknown[0]?.offerWindowStop).toBeFalsy()
+  })
+
+  it('names the paused sessions and when they resume, in place of the limit row', () => {
+    const out = findAttention({
+      sessions: [], alerts: [], now: NOW, limits,
+      windowStop: {
+        ...base, licensed: true,
+        paused: [
+          { session_id: 'a1', project: 'acme-api', window: 'five_hour', resume_at: soon(1), paused_at: NOW - 60_000 },
+          { session_id: 'b2', project: 'acme-web', window: 'five_hour', resume_at: soon(1), paused_at: NOW - 60_000 },
+        ],
+        last: { kind: 'paused', at: NOW - 60_000, window: 'five_hour', used_percentage: 92, threshold_pct: 90, resume_at: soon(1), sessions: ['a1', 'b2'] },
+      },
+    })
+    expect(out).toHaveLength(1)
+    expect(out[0]?.id).toBe('window-stop')
+    expect(out[0]?.title).toBe('Paused 2 sessions Caprock started')
+    expect(out[0]?.detail).toMatch(/5-hour limit passed 90%/)
+    expect(out[0]?.detail).toMatch(/in 1 h/)
+    expect(out[0]?.detail).toMatch(/acme-api, acme-web/)
+  })
+})
+
+/**
  * The spend cap can only pause sessions Caprock started (rule 7), so whether
  * it could have acted has to reach the banner. Measured on the owner's
  * database: 122 of the 127 sessions that did real work were started by hand —

@@ -36,7 +36,7 @@ var viewerMay = map[string]bool{
 	"GET /v1/stats/summary": true, "GET /v1/stats/daily": true, "GET /v1/events": true,
 	"GET /v1/history": true, "GET /v1/status": true, "GET /v1/storage": true, "GET /v1/update": true,
 	"GET /v1/settings": true, "GET /v1/premium": true, "GET /v1/gemini": true, "GET /v1/pricing": true,
-	"GET /v1/live": true, "GET /v1/tasks": true, "GET /v1/tasks/{id}": true, "GET /v1/approvals": true,
+	"GET /v1/window-stop": true, "GET /v1/live": true, "GET /v1/tasks": true, "GET /v1/tasks/{id}": true, "GET /v1/approvals": true,
 	"GET /v1/statusline/{id}": true, "GET /v1/pair/me": true, "GET /healthz": true,
 	"GET /v1/agents/{id}/permission": true,
 	"GET /v1/glance":                 true, "GET /v1/week": true, "GET /v1/tools/drill": true,

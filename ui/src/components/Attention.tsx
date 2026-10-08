@@ -111,13 +111,20 @@ function Row({ it, now, onDismiss, session }: {
           {it.sessionId ? 'open' : 'details'}
         </a>
         {/* Only on the item a spend cap would actually have acted on: a loop
-          * burning money. Deliberately NOT on the plan-window item — a plan
-          * limit is Anthropic's, and no amount of money we take moves it, so
-          * selling a cap beside it would be selling the wrong thing. (It was
+          * burning money. The cap is deliberately NOT on the plan-window item —
+          * a plan limit is Anthropic's, and no amount of money we take moves
+          * it, so selling a cap beside it would be selling the wrong thing;
+          * that row offers the plan-window stop instead (below). (It was
           * also on the "spent a lot for nothing" item, which is gone — see
           * attention.ts for why.) */}
         {it.id.startsWith('loop-') && (
           <PremiumHint reason="this is what a cap stops" now={now} canAct={it.owned === true} />
+        )}
+        {/* The plan-window stop is the thing that does act here: it pauses
+          * Caprock's own sessions before the limit and resumes them after the
+          * reset. Offered only on an install known to be without it. */}
+        {it.id.startsWith('limit-') && it.offerWindowStop && (
+          <PremiumHint feature="window" reason="Premium pauses Caprock's sessions here" now={now} />
         )}
         {onDismiss && it.id.startsWith('loop-') && (
           <button

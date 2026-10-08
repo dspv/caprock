@@ -66,4 +66,13 @@ describe('PremiumHint', () => {
     render(<PremiumHint reason="this is what a cap stops" now={NOW} />)
     expect(screen.queryByText(/a cap that stops this/)).toBeNull()
   })
+
+  // Beside the plan-limit row it offers the plan-window stop, never the cap:
+  // no dollar ceiling moves Anthropic's window.
+  it('opens the plan-window stop from the plan-limit row', () => {
+    render(<PremiumHint feature="window" reason="Premium pauses Caprock's sessions here" now={NOW} />)
+    expect(screen.queryByText(/cap/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /pause and resume for me/ }))
+    expect(screen.getByRole('dialog').textContent).toMatch(/Stop at the plan limit/)
+  })
 })
