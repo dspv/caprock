@@ -10,10 +10,18 @@
  * and the daemon repaints them.
  */
 
-/** What a pane shows: an agent session, or a shell (a session of kind `shell`). */
+/**
+ * What a pane shows: an agent session, a shell (a session of kind `shell`),
+ * or one of the project's files, read-only. A file's `sessionId` is its key
+ * (lib/files.ts fileKey), so the same file opens once, as a session does.
+ */
 export interface TabTarget {
-  kind: 'session' | 'shell'
+  kind: 'session' | 'shell' | 'file'
   sessionId: string
+  /** A file: its path relative to the worktree. */
+  path?: string
+  /** A file: the linked worktree's name; '' or absent for the main checkout. */
+  worktree?: string
 }
 
 export interface PaneLeaf {
@@ -272,8 +280,9 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
     }
     case 'split': {
       const tab = activeTab(ws)
-      // Already open somewhere: show it where it is rather than twice.
-      if (!tab || findTabBySession(ws, a.target.sessionId)) {
+      // Already open somewhere: show it where it is rather than twice. A file
+      // is a tab of its own: neither split nor split beside.
+      if (!tab || findTabBySession(ws, a.target.sessionId) || a.target.kind === 'file' || focusedLeaf(tab).target.kind === 'file') {
         return workspaceReducer(ws, { type: 'open', target: a.target, projectId: a.projectId, title: a.title })
       }
       if (leaves(tab.root).length >= MAX_PANES) return ws
@@ -320,7 +329,9 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
 
 function isTarget(v: unknown): v is TabTarget {
   const t = v as TabTarget
-  return !!t && (t.kind === 'session' || t.kind === 'shell') && typeof t.sessionId === 'string' && t.sessionId !== ''
+  if (!t || typeof t.sessionId !== 'string' || t.sessionId === '') return false
+  if (t.kind === 'file') return typeof t.path === 'string' && t.path !== '' && (t.worktree === undefined || typeof t.worktree === 'string')
+  return t.kind === 'session' || t.kind === 'shell'
 }
 
 function isPane(v: unknown): v is PaneNode {

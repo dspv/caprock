@@ -72,6 +72,18 @@ describe('ChangesView', () => {
     expect(screen.getByText('Publish branch')).toBeTruthy()
   })
 
+  it('opens a changed file in a tab of its own: o, its row, its diff header', async () => {
+    const onOpenFile = vi.fn()
+    render(<ChangesView target={{ projectId: '7', worktree: '' }} title="repo · feat/x" onClose={() => {}} onOpenFile={onOpenFile} />)
+    await screen.findByText('came src/a.ts')
+    fireEvent.keyDown(screen.getByLabelText('Changes in repo · feat/x'), { key: 'o' })
+    expect(onOpenFile).toHaveBeenLastCalledWith('src/a.ts')
+    fireEvent.click(screen.getAllByRole('button', { name: 'Open the file (o)' })[1]!)
+    expect(onOpenFile).toHaveBeenLastCalledWith('notes.md')
+    fireEvent.click(screen.getByTitle('Open src/a.ts (o)'))
+    expect(onOpenFile).toHaveBeenCalledTimes(3)
+  })
+
   it('stages the selected file with s', async () => {
     handler = (c) => {
       if (c.url.includes('/changes/stage')) return { body: { changes: status({ staged: [{ path: 'src/a.ts', status: 'modified', additions: 2, deletions: 1 }], unstaged: [status().unstaged[1]!] }) } }

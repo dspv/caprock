@@ -420,3 +420,8 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
   font-variant-ligatures: none;
   font-feature-settings: "liga" 0, "calt" 0;
 }
+
+/* Find in a file tab (components/FileView.tsx): every match, and the one in
+ * focus, marked with the CSS Custom Highlight API — no extra elements. */
+::highlight(file-find) { background-color: color-mix(in srgb, var(--color-accent) 30%, transparent); }
+::highlight(file-find-current) { background-color: color-mix(in srgb, var(--color-accent) 75%, transparent); color: var(--color-bg); }

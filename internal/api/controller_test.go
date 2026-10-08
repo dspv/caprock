@@ -42,6 +42,7 @@ var viewerMay = map[string]bool{
 	"GET /v1/glance":                 true, "GET /v1/week": true, "GET /v1/tools/drill": true,
 	"GET /v1/projects": true, "GET /v1/projects/ops": true, "GET /v1/projects/{id}/worktrees": true,
 	"GET /v1/projects/{id}/changes": true, "GET /v1/projects/{id}/changes/diff": true,
+	"GET /v1/projects/{id}/file": true, "GET /v1/projects/{id}/files": true,
 	// GitHub (WP-19): the connection, the clone picker, pull requests.
 	"GET /v1/github": true, "GET /v1/github/owners": true, "GET /v1/github/repos": true,
 	"GET /v1/github/prs": true, "GET /v1/projects/{id}/github": true,

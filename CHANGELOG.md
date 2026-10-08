@@ -11,6 +11,16 @@ Phase 3 (Delight) has no plan by design.
 
 ### Added
 
+- **Read a project's files in a tab.** ⌘K → *Open file…* lists the
+  worktree's files and narrows them as you type; the Changes view (**o**,
+  or the ↗ on a row) and the cockpit's changed files open one too. The file
+  opens read-only in a tab named after it: Markdown formatted, with a
+  *Source* switch and links to other files opening their own tabs; any
+  other text with line numbers, wrapping and ⌘F. A binary, or the part of
+  a file past its first megabyte, is left to your editor. The tab reads the
+  file again when you return to it or an agent edits it. Nothing outside
+  the project is ever read, through `..` or a symlink.
+  `GET /v1/projects/{id}/file`, `GET /v1/projects/{id}/files`.
 - **A stop at the plan limit (Premium).** When Claude's 5-hour or weekly
   window passes the share you pick in Settings → *Pause at the plan limit*
   (90% until you change it, or off), Caprock pauses the Claude Code sessions

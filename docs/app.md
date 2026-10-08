@@ -118,9 +118,10 @@ others. Installing it: [install-app.md](install-app.md).
   its last tool calls with how long each took, the uncommitted changes in
   its checkout, your plan's 5-hour and weekly windows, and a warning when
   it is repeating the same call. The permission prompt and its buttons sit
-  at the top while one waits. Click a changed file to open it in your
-  editor at its first change. Beside a shell tab it shows the folder and
-  its changes.
+  at the top while one waits. Click a changed file to read it in a tab
+  (in a folder that is not a git repository, it opens in your editor at
+  its first change). Beside a shell tab it shows the folder and its
+  changes.
 - **Changes.** Click a worktree's ±N in the sidebar (hover the row for the
   same button), *Review and commit* in the inspector, or "Review changes" in
   the palette. The files are listed as *Staged*, *Changes* and *Conflicts*;
@@ -134,7 +135,19 @@ others. Installing it: [install-app.md](install-app.md).
   Push* (⇧⌘↵). *Push* publishes a new branch and tracks it, and never
   forces; *Pull* only fast-forwards; *Fetch* refreshes ahead and behind.
   Your git hooks run, and when one refuses, what it printed is shown. The
-  commit is made as the author your git config names.
+  commit is made as the author your git config names. **o**, the ↗ on a
+  file's row or its name above the diff opens the file itself in a tab.
+- **Files.** Read any file of a project without leaving the app, in a tab
+  named after it (hover for its path). ⌘K → *Open file…* lists the files of
+  the worktree you are in — what git tracks and new files it does not
+  ignore — and narrows them as you type. Markdown is shown formatted, with
+  a *Source* switch; a link to another file in the project opens it in a
+  tab, a web link opens in your browser, and an image shows as its
+  description. Any other text is shown with line numbers, wrapped unless
+  you switch *Wrap* off; ⌘F finds in it. The tab is read-only and reads
+  the file again when you come back to it or an agent changes it. A binary
+  file, or the part of a file past its first megabyte, is left to your
+  editor (*Open in …*).
 - **Find** (⌘F). A find bar over the terminal you are in: matches light up
   as you type, Enter and ⇧Enter step through them, **Aa** matches case and
   **.\*** takes a regular expression. Esc closes it and you are back in the
@@ -181,7 +194,7 @@ On macOS:
 | ⌘E, ⇧⌘E     | Split: a new shell beside, below        |
 | ⌘[ ]        | Previous and next pane                  |
 | ⌘J          | Next session waiting on you             |
-| ⌘F          | Find in the terminal                    |
+| ⌘F          | Find in the terminal or the file        |
 | ⌘K          | Command palette                         |
 | ⌘,          | Settings                                |
 | ⌘I          | Agent cockpit (the inspector)           |

@@ -479,6 +479,9 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/projects/{id}/changes/push", s.handleRemote("push"))
 	m.HandleFunc("POST /v1/projects/{id}/changes/pull", s.handleRemote("pull"))
 	m.HandleFunc("POST /v1/projects/{id}/changes/fetch", s.handleRemote("fetch"))
+	// One file, read-only, and the list of them (files.go).
+	m.HandleFunc("GET /v1/projects/{id}/file", s.handleProjectFile)
+	m.HandleFunc("GET /v1/projects/{id}/files", s.handleProjectFiles)
 	m.HandleFunc("GET /v1/github", s.handleGitHubStatus)
 	m.HandleFunc("PATCH /v1/github", s.handleGitHubPatch)
 	m.HandleFunc("DELETE /v1/github", s.handleGitHubDisconnect)
