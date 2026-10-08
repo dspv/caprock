@@ -347,8 +347,30 @@ const Message = memo(function Message({ m }: { m: ChatMessage }) {
       </div>
     )
   }
+  if (m.kind === 'notice') return <NoticeLine m={m} />
   return <ToolLine m={m} />
 }, (a, b) => a.m.id === b.m.id && a.m.text === b.m.text && a.m.result === b.m.result && a.m.failed === b.m.failed)
+
+/** What Claude Code told itself (a background task done, a reminder): one quiet line, the text behind it. */
+function NoticeLine({ m }: { m: ChatMessage }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div data-msg-id={m.id} className="py-0.5">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full min-w-0 items-center gap-1.5 rounded-[6px] px-1.5 py-1 text-left text-[12px] text-fg-faint hover:bg-panel-2"
+      >
+        <ChevronIcon size={12} className={`transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`} />
+        <span className="min-w-0 flex-1 truncate">{m.text}</span>
+      </button>
+      {open && (
+        <pre className="mono ml-5 max-h-[240px] overflow-auto whitespace-pre-wrap border-l border-border pl-2.5 text-[11.5px] text-fg-muted [overflow-wrap:anywhere]">{m.raw}</pre>
+      )}
+    </div>
+  )
+}
 
 function ToolLine({ m }: { m: ChatMessage }) {
   const [open, setOpen] = useState(false)

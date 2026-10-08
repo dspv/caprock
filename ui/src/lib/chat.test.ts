@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Event } from './api'
-import { compareEvents, mergeEvents, toMessages, toolLine } from './chat'
+import { compareEvents, mergeEvents, noticeLine, toMessages, toolLine } from './chat'
 
 const BASE = Date.UTC(2026, 9, 5, 12, 0, 0)
 
@@ -84,5 +84,19 @@ describe('toMessages', () => {
 
   it('toolLine names the tool when there is no argument', () => {
     expect(toolLine('TodoWrite', { todos: [] })).toBe('TodoWrite')
+  })
+})
+
+describe('what Claude Code writes into the user turn', () => {
+  it('turns a background task notification into its one-line summary', () => {
+    const xml = '<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n<summary>Background command &quot;Wait for CI&quot; completed (exit code 0)</summary>\n</task-notification>'
+    expect(noticeLine(xml)).toBe('Background command "Wait for CI" completed (exit code 0)')
+  })
+  it('leaves a real prompt alone, even one that mentions a tag', () => {
+    expect(noticeLine('why does <task-notification> show up in the chat?')).toBeNull()
+    expect(noticeLine('Fix the login bug')).toBeNull()
+  })
+  it('names a slash command by its command', () => {
+    expect(noticeLine('<command-name>/clear</command-name>\n<command-message>clear</command-message>')).toBe('/clear')
   })
 })
