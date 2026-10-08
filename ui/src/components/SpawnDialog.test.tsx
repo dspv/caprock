@@ -151,7 +151,7 @@ describe('choosing an agent', () => {
    *  not exist or you may not have access to it". Being priceable says we can
    *  cost a model, never that the account can call it. */
   const REAL_CLAUDE_MODELS = [
-    'claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5',
+    'claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5',
   ]
 
   it('offers every Claude model the CLI can actually run', () => {
@@ -186,14 +186,14 @@ describe('choosing an agent', () => {
   it('names the exact version in every Claude label', () => {
     render(<SpawnDialog available onClose={() => {}} initialCwd="/x" />)
     const labels = Array.from(screen.getByLabelText<HTMLSelectElement>(/Model/).options).map((o) => o.text)
-    expect(labels.map((l) => l.split(' · ')[0])).toEqual(['Fable 5.1', 'Opus 5.5', 'Sonnet 5.5', 'Haiku 4.5'])
+    expect(labels.map((l) => l.split(' · ')[0])).toEqual(['Fable 5.1', 'Opus 5.5', 'Sonnet 5.5', 'Haiku 5.5'])
   })
 
   it('orders the Claude models by capability, priciest first', () => {
     render(<SpawnDialog available onClose={() => {}} initialCwd="/x" />)
     const offered = Array.from(screen.getByLabelText<HTMLSelectElement>(/Model/).options).map((o) => o.value)
     // pricing.json, per million output tokens: Fable 5.1 50, Opus 5.5 20,
-    // Sonnet 5.5 10, Haiku 4.5 5. The list is a ranking, so it has to match the money.
+    // Sonnet 5.5 10, Haiku 5.5 0.5. The list is a ranking, so it has to match the money.
     expect(offered).toEqual(REAL_CLAUDE_MODELS)
   })
 })
