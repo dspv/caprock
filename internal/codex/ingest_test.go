@@ -300,22 +300,36 @@ func splitLines(s string) []string {
 	return out
 }
 
-// toolInput normalises both spellings Codex uses. Downstream code reads
-// tool_input as an object, so a bare string has to become one.
+// toolInput normalises every spelling Codex uses. Downstream code reads
+// tool_input as an object, so a bare string has to become one, and a string
+// that holds an object — how every function_call carries its arguments — is
+// that object, not a command.
 func TestToolInput(t *testing.T) {
-	obj := toolInput(ToolCall{Input: `{"cmd":"ls"}`})
-	m, ok := obj.(map[string]any)
-	if !ok || m["cmd"] != "ls" {
-		t.Errorf("object input: %#v", obj)
+	if m := toolInput(ToolCall{Input: `{"cmd":"ls"}`}); m["cmd"] != "ls" {
+		t.Errorf("object input: %#v", m)
 	}
-	str := toolInput(ToolCall{Input: `"echo hi"`})
-	m, ok = str.(map[string]any)
-	if !ok || m["command"] != "echo hi" {
-		t.Errorf("string input should become {command}: %#v", str)
+	if m := toolInput(ToolCall{Input: `"echo hi"`}); m["command"] != "echo hi" {
+		t.Errorf("string input should become {command}: %#v", m)
 	}
-	empty := toolInput(ToolCall{})
-	if m, ok := empty.(map[string]any); !ok || len(m) != 0 {
-		t.Errorf("empty input: %#v", empty)
+	if m := toolInput(ToolCall{}); len(m) != 0 {
+		t.Errorf("empty input: %#v", m)
+	}
+	// A function_call's arguments, as written: a JSON string of an object.
+	js := toolInput(ToolCall{Input: `"{\"code\":\"let tab = 1;\",\"title\":\"Opening the page\"}"`})
+	if js["title"] != "Opening the page" || js["code"] != "let tab = 1;" || js["command"] != nil {
+		t.Errorf("a string holding an object should be that object: %#v", js)
+	}
+	// shell's argv becomes the line it runs, the argv kept beside it.
+	sh := toolInput(ToolCall{Input: `"{\"command\":[\"bash\",\"-lc\",\"go test ./...\"],\"workdir\":\"/p\"}"`})
+	if sh["command"] != "go test ./..." || sh["workdir"] != "/p" || len(sh["argv"].([]any)) != 3 {
+		t.Errorf("shell argv: %#v", sh)
+	}
+	if m := toolInput(ToolCall{Input: `{"command":["git","push"]}`}); m["command"] != "git push" {
+		t.Errorf("plain argv should be joined: %#v", m)
+	}
+	// JavaScript is not an object, however it opens.
+	if m := toolInput(ToolCall{Input: `"{ const r = 1 }"`}); m["command"] != "{ const r = 1 }" {
+		t.Errorf("a script that opens with a brace: %#v", m)
 	}
 }
 

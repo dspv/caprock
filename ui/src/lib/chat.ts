@@ -28,6 +28,8 @@ export interface ChatMessage {
   /** A tool call's output, once its result arrived. */
   result?: string
   failed?: boolean
+  /** The shell's exit code, where the agent recorded one (Codex's `shell`). */
+  exitCode?: number
   /** A notice's full text, behind its one line. */
   raw?: string
 }
@@ -97,12 +99,110 @@ export function isMessageEvent(e: Event): boolean {
   return false
 }
 
+/**
+ * A tool call's input as an object, with a command line under `command` where
+ * there is one.
+ *
+ * Codex rows stored before the daemon unwrapped them carry a function call's
+ * arguments as the JSON string they arrive in —
+ * `{command: '{"command":["bash","-lc","ls"]}'}` — and `shell`'s command as an
+ * argv array; both are read here as the daemon now stores them, so a row whose
+ * transcript is gone reads right too.
+ */
+export function normalInput(input: unknown): Record<string, unknown> {
+  let i = (input ?? {}) as Record<string, unknown>
+  if (typeof i !== 'object' || Array.isArray(i)) return {}
+  if (typeof i.command === 'string' && i.command.trimStart().startsWith('{')) {
+    try {
+      const inner: unknown = JSON.parse(i.command)
+      if (inner && typeof inner === 'object' && !Array.isArray(inner)) i = inner as Record<string, unknown>
+    } catch {
+      // JavaScript that opens with a brace, not JSON: a command as it is.
+    }
+  }
+  if (Array.isArray(i.command) && i.command.every((w) => typeof w === 'string')) {
+    const argv = i.command as string[]
+    const line = argv.length === 3 && (argv[1] === '-lc' || argv[1] === '-c') ? argv[2]! : argv.join(' ')
+    i = { ...i, command: line }
+  }
+  return i
+}
+
+/** A JavaScript string literal opening at `src[at]`, decoded; null when there is none. */
+function jsString(src: string, at: number): string | null {
+  const q = src[at]
+  if (q !== '"' && q !== "'" && q !== '`') return null
+  let out = ''
+  for (let k = at + 1; k < src.length; k++) {
+    const c = src[k]!
+    if (c === q) return out
+    if (c !== '\\') {
+      out += c
+      continue
+    }
+    const n = src[++k]
+    if (n === undefined) return null
+    if (n === 'n') out += '\n'
+    else if (n === 't') out += '\t'
+    else if (n === 'r') out += '\r'
+    else if (n === 'u' && /^[0-9a-fA-F]{4}$/.test(src.slice(k + 1, k + 5))) {
+      out += String.fromCharCode(parseInt(src.slice(k + 1, k + 5), 16))
+      k += 4
+    } else out += n
+  }
+  return null
+}
+
+/**
+ * What a Codex `exec` script ran, read out of the JavaScript it sends.
+ *
+ * `exec` does not run a command: it runs a script that calls Codex's own
+ * tools — `tools.exec_command({cmd: "git status"})` for a shell command,
+ * `tools.apply_patch(…)` for an edit. Shown as sent, every line read as a wall
+ * of JavaScript. The shell command is the `cmd` string; any other call is
+ * named, with the file it patches where it says. Null when the input is not
+ * such a script.
+ */
+export function codexScript(script: string): { line: string; detail: string } | null {
+  const call = /tools\.([A-Za-z0-9_]+)\(/.exec(script)
+  if (!call) return null
+  const name = call[1]!
+  if (name === 'exec_command') {
+    const key = /["']?cmd["']?\s*:\s*/g
+    key.lastIndex = call.index
+    const m = key.exec(script)
+    const cmd = m ? jsString(script, m.index + m[0].length) : null
+    if (cmd !== null && cmd.trim()) return { line: cmd.trim().split('\n')[0]!, detail: cmd }
+  }
+  if (name === 'apply_patch') {
+    const file = /\*\*\* (?:Add|Update|Delete) File: ([^\n\\]+)/.exec(script)
+    if (file) return { line: `apply_patch ${file[1]!.trim()}`, detail: script }
+  }
+  return { line: name, detail: script }
+}
+
 /** A tool call as one line: its name and the first line of what it was given. */
 export function toolLine(tool: string, input: unknown): string {
-  const i = (input ?? {}) as Record<string, unknown>
-  const arg = i.command ?? i.file_path ?? i.pattern ?? i.query ?? i.url ?? i.description ?? i.prompt ?? ''
+  const i = normalInput(input)
+  if (tool === 'exec' && typeof i.command === 'string') {
+    const run = codexScript(i.command)
+    if (run) return `${tool}  ${run.line}`
+  }
+  const arg = i.command ?? i.cmd ?? i.file_path ?? i.pattern ?? i.query ?? i.url ?? i.description ?? i.prompt ?? i.title ?? i.code ?? ''
   const first = String(arg).split('\n')[0]!.trim()
   return first ? `${tool}  ${first}` : tool
+}
+
+/** A tool call's input in full, for the open line: the command where there is one, else the input as JSON. */
+export function toolInputText(tool: string, input: unknown): string {
+  const i = normalInput(input)
+  if (typeof i.command === 'string') {
+    const run = tool === 'exec' ? codexScript(i.command) : null
+    return run ? run.detail : i.command
+  }
+  if (typeof i.cmd === 'string') return i.cmd
+  if (typeof i.code === 'string') return i.code
+  return JSON.stringify(input ?? {}, null, 2)
 }
 
 function resultText(r: unknown): string {
@@ -154,12 +254,13 @@ export function noticeLine(text: string): string | null {
 
 /** The conversation in `events`, which must already be in server order. */
 export function toMessages(events: readonly Event[]): ChatMessage[] {
-  const results = new Map<string, { text: string; failed: boolean }>()
+  const results = new Map<string, { text: string; failed: boolean; exitCode?: number }>()
   for (const e of events) {
     if (e.kind !== 'tool.post') continue
     const p = payloadOf(e)
     const use = typeof p.tool_use_id === 'string' ? p.tool_use_id : ''
-    if (use) results.set(use, { text: resultText(p.tool_response), failed: p.is_error === true })
+    const exitCode = typeof p.exit_code === 'number' ? p.exit_code : undefined
+    if (use) results.set(use, { text: resultText(p.tool_response), failed: p.is_error === true, exitCode })
   }
   const out: ChatMessage[] = []
   for (const e of events) {
@@ -168,7 +269,7 @@ export function toMessages(events: readonly Event[]): ChatMessage[] {
       const p = payloadOf(e)
       const tool = e.tool || String(p.tool_name ?? 'tool')
       const r = typeof p.tool_use_id === 'string' ? results.get(p.tool_use_id) : undefined
-      out.push({ id: e.id, kind: 'tool', ts: e.ts, text: toolLine(tool, p.tool_input), tool, input: p.tool_input, result: r?.text, failed: r?.failed })
+      out.push({ id: e.id, kind: 'tool', ts: e.ts, text: toolLine(tool, p.tool_input), tool, input: p.tool_input, result: r?.text, failed: r?.failed, exitCode: r?.exitCode })
     } else {
       const text = textOf(e)
       const notice = e.kind === 'turn.user' ? noticeLine(text) : null

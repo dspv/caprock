@@ -56,6 +56,10 @@ const (
 	// importer read assistant prose have been given it from their transcripts
 	// once (codex.Ingester.backfillText).
 	MetaCodexTextBackfilled = "codex_text_backfilled"
+	// MetaCodexChatBackfilled marks that the Codex transcripts read before
+	// prompts and tool results were stored have been read once more for both
+	// (codex.backfillChat).
+	MetaCodexChatBackfilled = "codex_chat_backfilled"
 	// MetaCodexSplitRepaired marks that the Codex rows earlier versions stored
 	// wrongly have been repaired from the transcripts once: threads imported
 	// from another agent removed, and subagent turns moved off the parent's
