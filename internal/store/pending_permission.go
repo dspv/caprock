@@ -7,8 +7,8 @@ import (
 )
 
 // PendingPermission is the stored half of one permission prompt an owned
-// session is waiting on (migrations 0039, 0042). The agents package owns its
-// meaning; the store only keeps it across a daemon restart.
+// session is waiting on (migrations 0039, 0042, 0043). The agents package owns
+// its meaning; the store only keeps it across a daemon restart.
 type PendingPermission struct {
 	SessionID string
 	PromptID  string
@@ -19,6 +19,7 @@ type PendingPermission struct {
 	Input     string
 	ToolUseID string
 	AgentID   string
+	AgentType string
 }
 
 // SavePendingPermission records one more prompt a session waits on, behind the
@@ -26,13 +27,14 @@ type PendingPermission struct {
 // Saving a prompt id again updates its row in place.
 func SavePendingPermission(ctx context.Context, q Querier, p PendingPermission) error {
 	_, err := q.ExecContext(ctx, `
-		INSERT INTO pending_permissions(session_id, prompt_id, tool, detail, always, since, input, tool_use_id, agent_id)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO pending_permissions(session_id, prompt_id, tool, detail, always, since, input, tool_use_id, agent_id, agent_type)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(session_id, prompt_id) DO UPDATE SET
 		  tool = excluded.tool, detail = excluded.detail, always = excluded.always,
 		  since = excluded.since, input = excluded.input,
-		  tool_use_id = excluded.tool_use_id, agent_id = excluded.agent_id`,
-		p.SessionID, p.PromptID, p.Tool, p.Detail, p.Always, p.SinceMs, p.Input, p.ToolUseID, p.AgentID)
+		  tool_use_id = excluded.tool_use_id, agent_id = excluded.agent_id,
+		  agent_type = excluded.agent_type`,
+		p.SessionID, p.PromptID, p.Tool, p.Detail, p.Always, p.SinceMs, p.Input, p.ToolUseID, p.AgentID, p.AgentType)
 	return err
 }
 
@@ -60,7 +62,7 @@ func ClearPendingPermission(ctx context.Context, q Querier, sessionID string) er
 // ListPendingPermissions returns the prompts a session waits on, oldest first.
 func ListPendingPermissions(ctx context.Context, q Querier, sessionID string) ([]PendingPermission, error) {
 	rows, err := q.QueryContext(ctx, `
-		SELECT prompt_id, tool, detail, always, since, input, tool_use_id, agent_id
+		SELECT prompt_id, tool, detail, always, since, input, tool_use_id, agent_id, agent_type
 		  FROM pending_permissions WHERE session_id = ? ORDER BY since, rowid`, sessionID)
 	if err != nil {
 		return nil, err
@@ -69,7 +71,7 @@ func ListPendingPermissions(ctx context.Context, q Querier, sessionID string) ([
 	var out []PendingPermission
 	for rows.Next() {
 		p := PendingPermission{SessionID: sessionID}
-		if err := rows.Scan(&p.PromptID, &p.Tool, &p.Detail, &p.Always, &p.SinceMs, &p.Input, &p.ToolUseID, &p.AgentID); err != nil {
+		if err := rows.Scan(&p.PromptID, &p.Tool, &p.Detail, &p.Always, &p.SinceMs, &p.Input, &p.ToolUseID, &p.AgentID, &p.AgentType); err != nil {
 			return nil, err
 		}
 		out = append(out, p)

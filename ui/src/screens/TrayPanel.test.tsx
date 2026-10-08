@@ -74,6 +74,26 @@ describe('PopoverView', () => {
     expect(screen.getByRole('button', { name: 'Review in Caprock' })).toBeInTheDocument()
   })
 
+  it('names a subagent that asks', async () => {
+    state.sessions = [sess({ session_id: 'a' })]
+    state.perms = { a: { id: 'p1', tool: 'Bash', detail: 'npm test', since: '', agent_id: 'x', agent_type: 'general-purpose' } }
+    render(<PopoverView />)
+    expect(await screen.findByText('Subagent (general-purpose)')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument()
+  })
+
+  it('answers none of several outstanding prompts: which is on screen is unknown', async () => {
+    state.sessions = [sess({ session_id: 'a' })]
+    const one = { id: 'p1', tool: 'Bash', detail: 'npm test', since: '' }
+    const two = { id: 'p2', tool: 'Edit', detail: '/w/a.go', since: '', agent_id: 'x', agent_type: 'general-purpose' }
+    state.perms = { a: { ...one, queued: 1, waiting: [one, two] } }
+    render(<PopoverView />)
+    expect(await screen.findByText(/2 approvals waiting — Claude: Bash · Subagent \(general-purpose\): Edit/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Deny' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Open terminal' })).toBeInTheDocument()
+  })
+
   it('says when a prompt was already answered', async () => {
     state.sessions = [sess({ session_id: 'a' })]
     state.perms = { a: { id: 'p1', tool: 'Bash', detail: 'ls', since: '' } }

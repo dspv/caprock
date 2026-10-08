@@ -328,14 +328,23 @@ func Summarize(events []event.Event, opt Options) Activity {
 		}
 	case event.KindPermissionPrompt:
 		// Claude Code is showing a permission dialog, and nothing moves until
-		// somebody answers it. The call it asks about is the last one made.
+		// somebody answers it. The call it asks about is the prompt's own
+		// (its payload carries tool_name and tool_input), else the last one
+		// made. A subagent's dialog is drawn in the parent's terminal, so the
+		// phrase says whose it is: unnamed, it read as the parent's request.
 		act.Phrase = "waiting for approval"
 		if last.Tool == "AskUserQuestion" {
 			// Its dialog is a question with answers, not Yes and No.
 			act.Phrase = "waiting for your answer"
+		} else if last.Tool != "" && parseInput(last.Payload).Raw != nil {
+			act.Phrase += " — " + Phrase(last.Tool, last.Payload)
+			act.Tool = last.Tool
 		} else if lastTool != nil {
 			act.Phrase += " — " + Phrase(lastTool.Tool, lastTool.Payload)
 			act.Tool = lastTool.Tool
+		}
+		if by := subagentLabel(last); by != "" {
+			act.Phrase = by + " " + act.Phrase
 		}
 		act.Health = HealthWaiting
 	case event.KindTurnUser:
@@ -398,6 +407,22 @@ func Summarize(events []event.Event, opt Options) Activity {
 		act.Health = HealthEnded
 	}
 	return act
+}
+
+// subagentLabel is "subagent (general-purpose)" for an event a subagent
+// raised, "subagent" when its payload names no type, "" for the main thread.
+func subagentLabel(e event.Event) string {
+	if e.AgentID == "" {
+		return ""
+	}
+	var p struct {
+		AgentType string `json:"agent_type"`
+	}
+	_ = json.Unmarshal(e.Payload, &p)
+	if t := clipRunes(strings.TrimSpace(p.AgentType), 40); t != "" {
+		return "subagent (" + t + ")"
+	}
+	return "subagent"
 }
 
 func isError(payload json.RawMessage) bool {

@@ -212,10 +212,46 @@ describe('a permission prompt', () => {
     expect(screen.getByRole('alertdialog')).toBeTruthy()
   })
 
-  it('says how many more prompts wait behind this one', async () => {
-    h.permission.mockResolvedValue({ permission: { ...bash, queued: 2 } })
+  it('names a subagent that asks, and leads with what its command does', async () => {
+    const detail = 'C=/private/tmp/caps3; rm -f $C/*; go run ./cmd/shots --out $C'
+    h.permission.mockResolvedValue({ permission: { ...bash, detail, agent_id: 'a827d9', agent_type: 'general-purpose' } })
     render(<PermissionPrompt sessionId="s1" />)
-    expect(await screen.findByText(/2 more waiting/)).toBeTruthy()
+    const card = await screen.findByRole('alertdialog')
+    expect(card.textContent).toContain('Subagent (general-purpose) wants to run Bash')
+    expect(card.textContent).toContain('a subagent of this session asks')
+    expect(screen.getByText('rm -f $C/*')).toBeTruthy()
+    expect(screen.getByText(detail)).toBeTruthy() // the whole of it, wrapped
+  })
+
+  it('says Claude asks when the main thread does', async () => {
+    render(<PermissionPrompt sessionId="s1" />)
+    expect((await screen.findByRole('alertdialog')).textContent).toContain('Claude wants to run Bash')
+  })
+
+  it('folds a long command, with the rest one click away', async () => {
+    const detail = Array.from({ length: 12 }, (_, i) => `echo line ${i}`).join('\n')
+    h.permission.mockResolvedValue({ permission: { ...bash, detail } })
+    render(<PermissionPrompt sessionId="s1" />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Show the whole command' }))
+    expect(screen.getByRole('button', { name: 'Show less' })).toBeTruthy()
+  })
+
+  it('with several outstanding, lists them all and answers none of them', async () => {
+    const sub = { id: 'p2', tool: 'Edit', detail: '/w/a.go', since: '', agent_id: 'a1', agent_type: 'general-purpose' }
+    h.permission.mockResolvedValue({ permission: { ...bash, queued: 1, waiting: [bash, sub] } })
+    render(<PermissionPrompt sessionId="s1" />)
+    const card = await screen.findByRole('alertdialog', { name: 'Permission prompts' })
+    expect(card.textContent).toContain('2 approvals waiting')
+    expect(card.textContent).toContain('Claude: Bash')
+    expect(card.textContent).toContain('Subagent (general-purpose): Edit')
+    expect(screen.queryByRole('button', { name: 'Yes' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'No' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Open terminal' })).toBeTruthy()
+    fireEvent.keyDown(document, { key: 'y' })
+    fireEvent.keyDown(document, { key: 'Enter' })
+    expect(h.answer).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: /Hide Subagent \(general-purpose\)’s Edit prompt/ }))
+    await waitFor(() => expect(h.answer).toHaveBeenCalledWith('s1', 'p2', 'dismiss'))
   })
 
   it('says its keys work from the terminal, and never takes the keyboard from it', async () => {

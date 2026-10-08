@@ -29,6 +29,20 @@ func TestAnApprovalNotificationSaysWhoWantsWhat(t *testing.T) {
 	}
 }
 
+// Claude Code draws a subagent's dialog in the parent's terminal; the
+// notification says a subagent asked, so it does not read as the parent's.
+func TestASubagentsApprovalSaysSo(t *testing.T) {
+	a := approval("Bash", `{"agent_id":"a827d9","agent_type":"general-purpose","tool_input":{"command":"go test ./..."}}`)
+	a.Trigger.AgentID = "a827d9"
+	n := Notify(a, Details{Cwd: "/w/proj"}, "p1")
+	if n.Body != "Subagent (general-purpose) · Bash: go test ./..." {
+		t.Fatalf("body %q", n.Body)
+	}
+	if !reflect.DeepEqual(n.Actions, []string{"allow", "deny"}) {
+		t.Fatalf("actions %v", n.Actions)
+	}
+}
+
 // Without a prompt Caprock can answer (a session it did not start, another
 // agent, AskUserQuestion's menu) there are no buttons: the click opens it.
 func TestNoPromptNoActions(t *testing.T) {

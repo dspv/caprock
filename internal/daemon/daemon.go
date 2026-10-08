@@ -1564,7 +1564,7 @@ func (a *agentAdapter) AnswerPermission(id, promptID, choice string) error {
 // observeHook hands the manager what a hook says about a permission prompt.
 func (d *Daemon) observeHook(p hookd.Payload) {
 	d.mgr.ObserveHook(agents.HookSignal{
-		SessionID: p.SessionID, Event: p.HookEventName, AgentID: p.AgentID,
+		SessionID: p.SessionID, Event: p.HookEventName, AgentID: p.AgentID, AgentType: p.AgentType,
 		Tool: p.ToolName, Input: p.ToolInput, ToolUseID: p.ToolUseID, Suggestions: p.PermissionSuggestions,
 	})
 }

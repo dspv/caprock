@@ -41,7 +41,9 @@ func (s *Server) handlePermission(w http.ResponseWriter, r *http.Request) {
 // terminal, it is queued behind another, or no permission menu is on the
 // screen at all (the prompt is then dropped) — so a button drawn a moment ago
 // cannot answer a question it did not show. 422 when the menu on the screen
-// has no such option; nothing is typed.
+// has no such option, or when more than one prompt is outstanding (which the
+// terminal shows is unknown); nothing is typed. "dismiss" takes any
+// outstanding prompt.
 func (s *Server) handleAnswerPermission(w http.ResponseWriter, r *http.Request) {
 	if !s.requireAgents(w) {
 		return
@@ -66,7 +68,7 @@ func (s *Server) handleAnswerPermission(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := pm.AnswerPermission(r.PathValue("id"), body.ID, body.Choice); err != nil {
-		if errors.Is(err, agents.ErrNotOnPrompt) {
+		if errors.Is(err, agents.ErrNotOnPrompt) || errors.Is(err, agents.ErrSeveralPrompts) {
 			// The prompt still waits, but the menu on the screen has no
 			// such option: nothing was typed.
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
