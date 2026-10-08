@@ -55,6 +55,8 @@ export interface Workspace {
 export type WorkspaceAction =
   | { type: 'open'; target: TabTarget; projectId: string; title: string }
   | { type: 'close'; tabId: string }
+  /** Every tab of a project, splits included; the sessions and shells in them keep running. */
+  | { type: 'close-project'; projectId: string }
   | { type: 'activate'; tabId: string }
   | { type: 'activate-index'; index: number }
   | { type: 'cycle'; delta: 1 | -1 }
@@ -210,6 +212,10 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
       const rest = siblings.filter((t) => t.id !== tab.id)
       const next = rest[Math.min(at, rest.length - 1)]
       return withActive({ ...ws, tabs }, tab.projectId, next?.id)
+    }
+    case 'close-project': {
+      if (!ws.tabs.some((t) => t.projectId === a.projectId)) return ws
+      return withActive({ ...ws, tabs: ws.tabs.filter((t) => t.projectId !== a.projectId) }, a.projectId, undefined)
     }
     case 'activate': {
       const tab = ws.tabs.find((t) => t.id === a.tabId)

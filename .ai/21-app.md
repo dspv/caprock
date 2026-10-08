@@ -118,16 +118,53 @@ One window, three regions:
 - **Sidebar (left).** A primary *New agent* button (accent, full width,
   ⇧⌘N) with *Add project* (⌘O) under it — the app's main action, not a
   hover icon (owner, 2026-10-08: "no big button to create something new",
-  translated). Then projects, each expandable to worktrees and branches,
-  then to the sessions and shells in it. Badges: *waiting on you*, *looping*,
-  cost today. A **Dashboard** entry opens the existing screens.
+  translated). Since 2026-10-09 it is outlined, not filled: a 1px accent
+  border, accent label and icon on the panel, an accent-tinted hover
+  (`.app-primary`); the key hints beside it, *Add project* and *Dashboard*
+  are the label's size, muted (`.app-kbd`, 12.5px mono) — at 10.5px the
+  owner could not read them. Then projects, each expandable to worktrees and branches,
+  then to the sessions and shells in it. A row's figures: agents running
+  in it (live non-shell sessions; the dot green while one works), cost
+  today, and *waiting on you* or *looping* — each only when non-zero, the
+  cost beside the waiting badge rather than replaced by it. The branch is
+  the row's spacer: it takes what the name and the figures leave and goes,
+  rather than showing as a sliver, below 2.5rem (`FitOrHide` in
+  `ProjectRow.tsx`, CSS only). A **Dashboard** entry opens the existing
+  screens.
+- **Today strip** (owner, 2026-10-08: "useful data on the left too",
+  translated). Under *New agent*: today's spend across every agent, agents
+  running and waiting on you, and Claude Code's 5-hour and weekly windows
+  as thin bars with % and reset time. Every figure is one the workspace
+  already holds — `summary.cost_usd` and `rate_limits` from the day's
+  summary the status strip and cockpit read (`planWindowsFor('claude')`,
+  `readWindow`'s staleness rule and the cockpit's tone thresholds), the
+  counts from the sidebar model (`agents`, `working`, the Inbox's non-stale
+  items). Spend is a dash until the summary answers; no plan windows, no
+  bars. Clicks: spend → `#/cost`, a window → `#/cost?section=limits`,
+  *Running* → `#/now`, *Waiting* → the first Inbox item. Code:
+  `components/TodayStrip.tsx`, `lib/today.ts`. While the sidebar is open
+  the status strip drops its plan windows and spend, so the same figures
+  are never on screen twice.
+- **Project menu** (owner, same day: "a way to hide or close projects";
+  the hover-only eye was not found). The row's ⋯ — on hover or focus, and
+  always on the project in front — a right-click on the row, or
+  Shift+F10 / the context-menu key opens `ProjectMenu.tsx`: hide or show
+  again, close its tabs (the `close-project` workspace action drops every
+  tab whose `projectId` it is, splits included; nothing is signalled, so the
+  sessions and shells keep running — rule 7), *Open in* each editor from
+  `GET /v1/editors`, and *Remove from Caprock…*, which confirms inline and
+  then unlists (`DELETE /v1/projects/{id}`, or the page's local list on a
+  derived source) and closes the project's tabs. There is no "Open in
+  Finder": no endpoint reveals a folder, and the editors cover opening it.
+  The menu is portalled to `<body>`: the sidebar's backdrop filter makes it
+  the containing block of anything fixed inside it.
 - **Keeping the project list short** (owner, 2026-10-08: "a ton of stuff
   hanging in it and it's unclear how to hide things", translated). Projects
   with no live session and no activity for 7 days (`QUIET_MS`, from the
   model's `lastActive`: last session event, `last_activity`, `added_at`)
   fold under *Quiet · N* at the bottom; a project hidden by hand from its
-  row's hover action goes under *Hidden · N*, where the same action shows it
-  again. `groupProjects` in `ui/src/lib/sidebar.ts` decides: a live or
+  menu or its row's hover eye goes under *Hidden · N*, where the same
+  actions show it again. `groupProjects` in `ui/src/lib/sidebar.ts` decides: a live or
   waiting session, a session open in a tab, being the project in front, or
   *Other folders* always keeps a row in the list; pinned never goes quiet.
   Hidden ids live in the page's storage (`caprock.app.hidden-projects`),
@@ -173,8 +210,9 @@ One window, three regions:
   nobody wrote in left out) with cost, age and one button: *Continue* resumes
   an ended one in a new tab, *Open* a running one. The sidebar is for what
   runs; this is the way back to what ended.
-- **Status strip (bottom).** Connection state, plan limits (5-hour and 7-day),
-  today's spend, the daemon's state and version — read again on every
+- **Status strip (bottom).** Connection state, plan limits (5-hour and 7-day)
+  and today's spend while the sidebar is hidden (its Today strip carries
+  them otherwise), the daemon's state and version — read again on every
   reconnect of the live link and on window focus, since the app can swap its
   daemon under a page that stays loaded.
 
