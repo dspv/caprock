@@ -298,7 +298,15 @@ export function AppShell() {
     showWorkspace()
   }, [model.projects, source, showWorkspace])
   const closeSheet = useCallback(() => setSheet(null), [])
-  const onProjectAdded = useCallback((projectId: string) => { refresh(); dispatch({ type: 'project', projectId }) }, [refresh])
+  const onProjectAdded = useCallback((projectId: string, first?: { root: string; task: string }) => {
+    refresh()
+    dispatch({ type: 'project', projectId })
+    if (!first) return
+    // A first task starts an agent on the new project straight away, in a tab.
+    api.spawn({ cwd: first.root, prompt: first.task })
+      .then(({ session_id }) => { openTab({ kind: 'session', sessionId: session_id }, projectId, first.task.slice(0, 60)); refresh() })
+      .catch((e) => setToast(`The project is added, but the agent did not start: ${errText(e)}`))
+  }, [refresh, openTab])
   const newShell = useCallback(async (projectId?: string, cwd?: string, split?: 'row' | 'column') => {
     const p: Project | undefined = projectsById.get(projectId ?? activeProjectId)
     if (!p || (!p.root && !cwd)) { setSheet({ kind: 'project' }); return }

@@ -9,6 +9,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Changed
+
+- **Adding a project is easier to find and to finish.** The sidebar says
+  *Add* beside *Projects* instead of showing a lone folder icon. Pasting a
+  repository URL fills the destination the way `git clone` names it; a
+  destination whose folders do not exist yet is made rather than refused,
+  and `~` works in any path. A new *First task* field starts an agent on
+  the project once it is added — the instructions field, which only shapes
+  later sessions, now sits behind a link so it is not mistaken for one.
+
 ## [0.88.1] - 2026-10-08
 
 ### Fixed

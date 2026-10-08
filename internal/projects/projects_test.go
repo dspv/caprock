@@ -596,3 +596,29 @@ func TestParseStatus(t *testing.T) {
 }
 
 func jsonRaw(s string) json.RawMessage { return json.RawMessage(s) }
+
+// A destination typed in full may name folders that do not exist yet, as
+// `git clone url a/b/c` allows; and ~ is the home folder, as in a terminal.
+func TestCloneMakesMissingParentsAndExpandsHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if got := expandHome("~/dev/x"); !sameDir(got, filepath.Join(home, "dev", "x")) {
+		t.Fatalf("expandHome = %q", got)
+	}
+	if got := expandHome("/abs/~/x"); got != "/abs/~/x" {
+		t.Fatalf("expandHome touched a non-leading ~: %q", got)
+	}
+	s, _, _ := newService(t)
+	start(t, s)
+	op, _, err := s.Clone("op-mk", "https://example.invalid/src", "~/dev/new", "")
+	if err != nil {
+		t.Fatalf("clone into a missing parent: %v", err)
+	}
+	if !sameDir(op.Dest, filepath.Join(home, "dev", "new", "src")) {
+		t.Fatalf("dest %q", op.Dest)
+	}
+	if st, err := os.Stat(filepath.Join(home, "dev", "new")); err != nil || !st.IsDir() {
+		t.Fatalf("parent not created: %v", err)
+	}
+}

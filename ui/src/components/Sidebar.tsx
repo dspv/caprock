@@ -96,7 +96,18 @@ export function Sidebar(props: SidebarProps) {
 
         <SectionHead
           label="Projects"
-          action={<IconButton label="Add a project (⌘O)" onClick={props.onAddProject}><FolderPlusIcon size={14} /></IconButton>}
+          // Words, not only an icon: a bare folder glyph in the section
+          // header was the one way to add a project, and it went unseen.
+          action={
+            <button
+              type="button"
+              title="Add a project — a folder, a new one, or a clone (⌘O)"
+              onClick={props.onAddProject}
+              className="flex h-[22px] items-center gap-1 rounded-[6px] px-1.5 text-[11.5px] font-medium normal-case tracking-normal text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
+            >
+              <FolderPlusIcon size={13} /> Add
+            </button>
+          }
         />
         {model.projects.length === 0 ? (
           <div className="px-2 py-2 text-[12.5px] leading-relaxed text-fg-muted">
