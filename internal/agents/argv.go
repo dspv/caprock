@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // launchInput is what every agent's argv is built from. The fields are the
@@ -43,6 +44,20 @@ type launchInput struct {
 	// developer_instructions; "" for none.
 	SystemPrompt string
 	Extra        []string
+	// OpenCodeMajor is the major version of the OpenCode about to start
+	// (opencode.go); 0 when unknown, which builds OpenCode 1's command line.
+	OpenCodeMajor int
+	// Now is the clock a new OpenCode 2 session id is stamped from; zero
+	// means the wall clock.
+	Now time.Time
+}
+
+// now is in.Now, or the wall clock.
+func (in launchInput) now() time.Time {
+	if in.Now.IsZero() {
+		return time.Now()
+	}
+	return in.Now
 }
 
 // launch is one agent's start: its arguments, the environment it adds, and
@@ -51,6 +66,13 @@ type launch struct {
 	args      []string
 	env       []string
 	sessionID string
+	// nativeID is the agent's own id for a new session, when Caprock can name
+	// it at the start (OpenCode 2's --session creates the session under the
+	// id it is given); "" when the agent names it later or not at all.
+	nativeID string
+	// typed is a first message to type into the TUI once it is ready rather
+	// than pass on the command line (OpenCode 2, see opencodeV2Launch).
+	typed string
 }
 
 // builders is the table ADR-026 asked for once a third CLI arrived: one
@@ -245,7 +267,9 @@ func tomlString(s string) string {
 	return b.String()
 }
 
-// opencodeLaunch starts the OpenCode TUI (opencode 1.15.10).
+// opencodeLaunch starts the OpenCode TUI: OpenCode 2's when the binary says
+// it is 2.x (opencodeV2Launch, opencode.go), otherwise OpenCode 1's
+// (opencode 1.15.10), below.
 //
 //   - `--session <id>` continues a session; a new one gets its id from
 //     OpenCode when the first message is sent, which Caprock learns from the
@@ -258,6 +282,9 @@ func tomlString(s string) string {
 //     its config keeps for directories outside the project, so bypass is left
 //     to the user's own config rather than claimed.
 func opencodeLaunch(in launchInput) (launch, error) {
+	if in.OpenCodeMajor >= 2 {
+		return opencodeV2Launch(in)
+	}
 	l := launch{sessionID: in.SessionID}
 	if in.Resume != "" {
 		native := in.NativeResume

@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dspv/caprock/internal/config"
@@ -92,9 +93,15 @@ type Agent struct {
 	// the daemon can learn the session id it creates; 0 for other agents and
 	// for a resumed OpenCode session, whose id is already known.
 	Port int
+	// NativeID is the agent's own id for a new session Caprock named at the
+	// start — an OpenCode 2 session (`--session <id>` creates it) — for the
+	// daemon to link at once; "" otherwise.
+	NativeID string
 
-	sess   ptyman.Session
-	ring   *ring
+	sess ptyman.Session
+	ring *ring
+	// outAt is when the session last wrote output, unix ns; 0 before it has.
+	outAt  atomic.Int64
 	inputs *termbuf.Inputs // sequenced input, when the session cannot keep it itself
 	log    *slog.Logger
 	mu     sync.Mutex
@@ -118,6 +125,10 @@ type Manager struct {
 	log     *slog.Logger
 	dataDir string
 	claude  string // resolved claude binary (or "claude")
+	// vers overrides an agent's version, by agent name; tests set it.
+	// ocVersions caches what `opencode --version` answered (opencode.go).
+	vers       map[string]string
+	ocVersions versions
 	// bins overrides where an agent's binary is, by agent name; tests set it.
 	// Everything else is resolved at the moment it is needed (findBinary),
 	// because a CLI installed while the daemon runs should be offered without
@@ -424,6 +435,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 	command := req.Command
 	var args, extraEnv []string
 	port := 0
+	nativeID, typed := "", ""
 	if command != "" {
 		// An explicit command is taken as given: the caller knows what it is
 		// launching, and guessing flags for an unknown binary is worse than
@@ -445,10 +457,16 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		if in.Prompt != "" && isBatch(m.binary(agent)) {
 			in.Prompt = flattenForBatch(in.Prompt)
 		}
-		// A new OpenCode session is named by OpenCode when the first message
-		// is sent; its TUI's own server announces the id, on a port chosen
-		// here so nothing else can be on it.
-		if agent == AgentOpenCode && req.Resume == "" {
+		// OpenCode 1 and 2 take different flags (opencode.go).
+		if agent == AgentOpenCode {
+			in.OpenCodeMajor = m.openCodeMajor()
+			in.Now = m.now()
+		}
+		// A new OpenCode 1 session is named by OpenCode when the first
+		// message is sent; its TUI's own server announces the id, on a port
+		// chosen here so nothing else can be on it. OpenCode 2 is given the
+		// id instead.
+		if agent == AgentOpenCode && req.Resume == "" && in.OpenCodeMajor < 2 {
 			p, err := freePort()
 			if err != nil {
 				m.log.Warn("no free port for opencode; its session will not be linked", "component", "agents", "err", err)
@@ -461,6 +479,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 			return nil, err
 		}
 		command, args, extraEnv, sessionID = m.binary(agent), l.args, l.env, l.sessionID
+		nativeID, typed = l.nativeID, l.typed
 	}
 
 	// Pre-accept Claude Code's folder-trust dialog so the spawned session does
@@ -475,7 +494,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 	}
 
 	env := childEnv(userenv.Environ(m.log))
-	env = append(env, extraEnv...)
+	env = withEnv(env, extraEnv)
 	// The Gemini CLI reads GEMINI_API_KEY from its environment, and the key the
 	// user pasted into the dashboard lives in the daemon's config — so it has
 	// to be handed over here or the child asks for a key it cannot see. Only
@@ -527,7 +546,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		return nil, fmt.Errorf("spawn %s: %w", command, err)
 	}
 	a := &Agent{
-		SessionID: sessionID, Cwd: cwd, Worktree: worktree, Command: command + " " + join(args), StartedAt: time.Now(), Kind: agent, Port: port,
+		SessionID: sessionID, Cwd: cwd, Worktree: worktree, Command: command + " " + join(args), StartedAt: time.Now(), Kind: agent, Port: port, NativeID: nativeID,
 		sess: sess, ring: ringFor(sess, 256<<10), inputs: termbuf.NewInputs(termbuf.InputTTL), log: m.log, subs: map[chan []byte]struct{}{}, done: make(chan struct{}), onExit: m.OnExit,
 	}
 	cols, rows := req.Cols, req.Rows
@@ -563,6 +582,9 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 
 	go a.pump(m.OnOutput)
 	go a.wait(m)
+	if typed != "" {
+		go m.typeWhenReady(a, typed)
+	}
 	m.log.Info("spawned owned session", "component", "agents", "session_id", sessionID, "cwd", cwd, "pid", sess.PID())
 	return a, nil
 }
@@ -791,6 +813,7 @@ func (a *Agent) pump(onOutput func(string)) {
 			chunk := make([]byte, n)
 			copy(chunk, buf[:n])
 			a.ring.write(chunk)
+			a.outAt.Store(time.Now().UnixNano())
 			a.mu.Lock()
 			for ch := range a.subs {
 				select {

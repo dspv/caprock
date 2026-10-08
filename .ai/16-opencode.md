@@ -412,3 +412,100 @@ OpenCode's source and against `opencode db path` on a real install:
 Windows regardless of the machine the test is on, so the Windows expectations
 fail on a Mac when the logic is wrong. That is how the Windows mistake above
 was caught before anyone ran it there.
+
+## OpenCode 2
+
+OpenCode 2 is what the opencode.ai installer, `brew install opencode` and Arch
+install now; OpenCode 1 stays installable (`npm i -g opencode-ai@1`) under the
+same `opencode` command. Caprock supports both. Everything here was learned on
+2026-10-08 from OpenCode 2.0.26 installed into a throwaway prefix, its real
+`--help`, `opencode debug paths` and `debug agents`, and real sessions in a
+scratch HOME, beside OpenCode 1.15.10; the fixtures in
+`internal/opencode/testdata` and `internal/agents/testdata` are those dumps
+and help texts, not hand-written shapes.
+
+### The database
+
+- **Same file.** OpenCode 2 keeps `~/.local/share/opencode/opencode.db` with
+  the same channel suffix and `OPENCODE_DB` rules (§ Where the database is),
+  so the search above is unchanged. OpenCode 2 has no `db path` command;
+  `debug paths` lists the data directory.
+- **New tables.** Sessions are rows of `session_v2` (cost, token totals,
+  agent, model and the times on the row); messages are rows of
+  `session_message` (`session_id`, `type`, `seq`, `data` JSON). A user message
+  is `{text, files, agents}`; an assistant message is
+  `{agent, model: {id, providerID}, content: [...], finish, cost, tokens}`,
+  with its text and tool calls as items of `content` rather than part rows.
+  Caprock reads types `user`, `assistant` and a finished `compaction`;
+  `synthetic`, `system`, `shell`, `idle` and the `*-switched` markers are not
+  prompts or replies.
+- **Tool names changed.** `shell` is Bash and `subagent` is Agent, as `bash`
+  and `task` were. A tool call's key is `oc-tool:<message id>/<call id>`,
+  since there is no part id.
+- **A migrated database holds both.** OpenCode 2 migrates OpenCode 1's tables
+  in place and copies each session into `session_v2` under the same id;
+  OpenCode 1.15.10 also writes every message into `session_message` with the
+  same id. Caprock asks `sqlite_master` which tables exist, reads a session
+  from both, lets the more recently updated row decide its figures, and reads
+  each message once: from `message`/`part` when OpenCode 1 has it (so keys
+  written before the upgrade do not change), otherwise from `session_message`.
+  A session started in 1 and continued in 2 gets only the continuation as new
+  events — a test asserts this and goes red when the dedup is removed.
+- **One known gap.** `session_v2.cost` includes the call that names the
+  session, which no message carries. Caprock sums messages, so its figure for
+  an OpenCode 2 session is lower by that call (cents on a paid model).
+
+### The live stream
+
+OpenCode 2 runs a background service the TUI attaches to. Its address and
+password are in `~/.local/state/opencode/service.json` (`XDG_STATE_HOME`
+respected); events come from `GET /api/event` with basic auth, user
+`opencode`. `ServiceStreamer` (`internal/opencode/service.go`) re-reads the
+file before each connection, so a service that restarts on another port is
+found, and stays quiet while there is none. `session.created`,
+`session.renamed`, `session.step.ended` and `session.execution.*` touch the
+session; the poller remains the backstop, as for OpenCode 1.
+
+### Starting it
+
+New agent asks the binary `--version` (OpenCode 1 prints `1.15.10`, OpenCode 2
+`opencode v2.0.26`) in the background, caches the answer per file and size,
+and reports it as `opencode_version` on `/v1/status`. OpenCode 2's TUI has no
+`--port`, `-m`/`--model` or `--agent`; a test asserts each version's argv uses
+only flags its captured `--help` lists. For OpenCode 2 Caprock starts:
+
+- `opencode --standalone --session <id>`: `--standalone` runs the TUI's own
+  server instead of the shared service, so the process Caprock started is the
+  one doing the work. `--session` with a new id creates the session under
+  that id, so it is linked exactly from the first byte, as with Codex. The id
+  is built as OpenCode builds its own (`ses_`, a descending clock, 14 random
+  base62 characters), so it sorts with the rest.
+- The model, the plan agent (`default_agent`) and, for accept-edits,
+  `permission: {shell: ask}` go in `OPENCODE_CONFIG_CONTENT`, merged into any
+  the user already set, Caprock's keys winning.
+- Bypass is `--auto` (approves everything not explicitly denied); the New
+  agent sheet words it that way when OpenCode 2 is installed.
+- A first message is typed once the TUI has drawn and stayed quiet for a
+  second, not passed as `--prompt`: 2.0.26 can send a `--prompt` before the
+  configured model has resolved, and the message then runs on the catalog
+  default (4 of 9 starts in a browser terminal; 4 of 4 right once typed).
+  Newlines are ESC CR, which inserts a line in OpenCode 2's prompt as in 1's.
+- `MSGPACKR_NATIVE_ACCELERATION_DISABLED=true`: 2.0.26 probes a build-machine
+  path under `/home` for a native module, and on a Mac with `/home`
+  automounted that `open(2)` hangs and the TUI never starts.
+
+Continuing a session is `--standalone --session <id>` as well; forking is
+refused, since OpenCode 2's TUI has no fork flag.
+
+### What is verified
+
+- On a preview daemon with a scratch HOME and data dir and OpenCode 2.0.26
+  first on PATH (2026-10-08): an existing OpenCode 2 session appeared on Now
+  with cost, tokens and model; New agent → OpenCode started the 2.0.26 TUI,
+  linked the session exactly, applied the chosen model and the plan agent,
+  accept-edits made OpenCode ask before a shell command, and a two-line first
+  message arrived as two lines. Model calls went to a local stub provider
+  configured in the scratch HOME, so the costs are the stub's.
+- Fixture only: the compaction shape (built from the schema, not produced by
+  a run), Linux and Windows, continuing an OpenCode 2 session from the UI, and
+  whether a given refresh came from the service stream or the poller.

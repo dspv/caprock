@@ -779,6 +779,10 @@ export interface Status {
    *  installers put them. Absent on daemons older than this feature. */
   codex_available?: boolean
   opencode_available?: boolean
+  /** The version of the OpenCode a new session would start ("2.0.26"),
+   *  absent while the daemon has not asked it. OpenCode 1 and 2 take
+   *  different flags, so a mode can become something different in each. */
+  opencode_version?: string
   owned_active: number
   loop_k: number
   loop_t_minutes: number

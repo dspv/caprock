@@ -125,13 +125,34 @@ func (s *Streamer) Run(ctx context.Context, onChange func(sessionID string)) {
 
 // follow holds one connection open, returning when it drops.
 func (s *Streamer) follow(ctx context.Context, onChange func(sessionID string)) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.url+"/event", nil)
+	return followSSE(ctx, s.http, s.url+"/event", nil, sessionOfV1, onChange, s.log)
+}
+
+// sessionOfV1 reads the session an OpenCode 1 frame names, when it is one to
+// act on.
+func sessionOfV1(payload []byte) string {
+	var ev sseEvent
+	if json.Unmarshal(payload, &ev) != nil || !changed(ev.Type) {
+		return ""
+	}
+	return ev.Properties.SessionID
+}
+
+// followSSE holds one event-stream connection open and calls onChange with the
+// session each frame names, as parse reads it; it returns when the connection
+// drops. auth, when set, adds credentials to the request.
+func followSSE(ctx context.Context, client *http.Client, url string, auth func(*http.Request),
+	parse func([]byte) string, onChange func(string), log *slog.Logger) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Accept", "text/event-stream")
+	if auth != nil {
+		auth(req)
+	}
 
-	res, err := s.http.Do(req)
+	res, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -139,7 +160,7 @@ func (s *Streamer) follow(ctx context.Context, onChange func(sessionID string)) 
 	if res.StatusCode != http.StatusOK {
 		return fmt.Errorf("opencode stream: %s", res.Status)
 	}
-	s.log.Info("following opencode's live stream", "component", "opencode", "url", s.url)
+	log.Info("following opencode's live stream", "component", "opencode", "url", url)
 
 	// SSE frames can be long when a payload is attached; the default scanner
 	// buffer would fail on those rather than skip them.
@@ -151,14 +172,10 @@ func (s *Streamer) follow(ctx context.Context, onChange func(sessionID string)) 
 		if !strings.HasPrefix(line, "data:") {
 			continue // comments, heartbeats and blank separators
 		}
-		var ev sseEvent
-		if err := json.Unmarshal([]byte(strings.TrimSpace(line[5:])), &ev); err != nil {
-			continue // one unreadable frame is not a reason to drop the stream
+		// One unreadable frame is not a reason to drop the stream.
+		if id := parse([]byte(strings.TrimSpace(line[5:]))); id != "" {
+			onChange(id)
 		}
-		if !changed(ev.Type) || ev.Properties.SessionID == "" {
-			continue
-		}
-		onChange(ev.Properties.SessionID)
 	}
 	if err := sc.Err(); err != nil && !errors.Is(err, io.EOF) {
 		return err

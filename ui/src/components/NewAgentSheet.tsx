@@ -14,7 +14,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, errText } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { AgentPicker, spawnableAgents, useAgentChoice } from './AgentPicker'
-import { DEFAULT_MODE, DEFAULT_MODELS, GEMINI_MAPPED, MODE_NOTE, ModelField, modeOptions } from './SpawnDialog'
+import { DEFAULT_MODE, DEFAULT_MODELS, GEMINI_MAPPED, ModelField, modeNotes, modeOptions } from './SpawnDialog'
 import { useInitialMode } from '@/lib/permissionMode'
 import type { SpawnAgent } from './AgentPicker'
 import type { Project } from '@/lib/projects'
@@ -168,7 +168,7 @@ export function NewAgentSheet({
             <select className="input" value={mode} onChange={(e) => setMode(e.target.value)}>
               {modeOptions(mode).map(([v, label]) => (
                 <option key={v} value={v}>
-                  {agent === 'gemini' && !GEMINI_MAPPED.has(v) ? `${label} · Gemini asks instead` : MODE_NOTE[agent]?.[v] ?? label}
+                  {agent === 'gemini' && !GEMINI_MAPPED.has(v) ? `${label} · Gemini asks instead` : modeNotes(agent, status.data?.opencode_version)?.[v] ?? label}
                 </option>
               ))}
             </select>

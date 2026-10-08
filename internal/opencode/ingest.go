@@ -169,19 +169,23 @@ func (in *Ingester) once(ctx context.Context) error {
 
 // session imports one session and everything it contains.
 func (in *Ingester) session(ctx context.Context, s Session) error {
-	msgs, err := Messages(ctx, in.db, s.ID)
-	if err != nil {
-		return err
-	}
-	calls, err := ToolCalls(ctx, in.db, s.ID)
-	if err != nil {
-		return err
-	}
-	parts, err := TextParts(ctx, in.db, s.ID)
+	// From OpenCode 1's tables, OpenCode 2's, or both (v2.go).
+	msgs, calls, parts, err := Read(ctx, in.db, s)
 	if err != nil {
 		return err
 	}
 	texts := joinTexts(parts)
+	// OpenCode 2 leaves session_v2.model empty on the sessions it starts; the
+	// model is on each step. The latest one names the session, as the column
+	// does for OpenCode 1.
+	if s.Model == "" {
+		for i := len(msgs) - 1; i >= 0; i-- {
+			if msgs[i].Role == "assistant" && msgs[i].Model != "" {
+				s.Model, s.Provider = msgs[i].Model, msgs[i].Provider
+				break
+			}
+		}
+	}
 	// The id the session's rows are stored under: the Caprock session that
 	// started it, or OpenCode's own. OpenCode's id is still what its own
 	// database is queried by.
