@@ -11,7 +11,7 @@ where a number appears it came from a live database.
 ## Why
 
 A user asked for it. The owner reports knowing many developers whose main agent
-is [OpenCode](https://github.com/sst/opencode) rather than Claude Code — for
+is [OpenCode](https://github.com/anomalyco/opencode) rather than Claude Code — for
 them Caprock currently shows an empty dashboard, which is indistinguishable from
 a broken one.
 

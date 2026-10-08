@@ -33,7 +33,7 @@ Two data planes, mirroring what works in Munder Difflin, but in Go:
 
 ## Five agents, each by its own route
 
-Caprock reads [OpenCode](https://github.com/sst/opencode),
+Caprock reads [OpenCode](https://github.com/anomalyco/opencode),
 [Gemini CLI](https://github.com/google-gemini/gemini-cli), OpenAI Codex and
 DeepSeek Harness as well as Claude Code. Each arrives by a different route, and the asymmetry is the
 point — each is read the way that agent already keeps its own records, rather

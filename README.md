@@ -133,7 +133,7 @@ On first run `caprock up` asks before adding its hook and status-line entries to
 `~/.claude/settings.json` (it backs the file up and never touches your other
 settings). Say no and it still reads your history from transcripts.
 
-Run [OpenCode](https://github.com/sst/opencode),
+Run [OpenCode](https://github.com/anomalyco/opencode),
 [Codex](https://developers.openai.com/codex),
 [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness) or
 [Gemini CLI](https://github.com/google-gemini/gemini-cli) too? All are shown on
@@ -301,7 +301,7 @@ them are excluded and counted, so a figure is never quietly short.
 
 ## OpenCode, Codex and DeepSeek Harness
 
-Caprock also reads [OpenCode](https://github.com/sst/opencode),
+Caprock also reads [OpenCode](https://github.com/anomalyco/opencode),
 [Codex](https://developers.openai.com/codex) and
 [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness) sessions, on
 the same screens as Claude Code. A machine that runs more than one has its spend
@@ -534,7 +534,7 @@ grouped by what they were about — Bash by command, Read and Edit by file,
 WebFetch by domain — and that much is free. Output, failure rate and a trend
 per group are Premium; without a licence the daemon leaves those figures out.
 
-$5/month, $30/year, or $100 once — [caprock.dev/premium](https://caprock.dev/premium/).
+$30/year or $100 once — [caprock.dev/premium](https://caprock.dev/premium/).
 
 A key arrives by email and goes in the dashboard's settings, or:
 
