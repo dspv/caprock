@@ -9,6 +9,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+## [0.93.0] - 2026-10-09
+
 ### Added
 
 - **OpenCode 2.** OpenCode 2 is what opencode.ai, `brew install opencode`
