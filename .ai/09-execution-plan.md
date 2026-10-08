@@ -309,7 +309,7 @@ owned by the file linked, which is the home for the details.
   five-hour or weekly window crosses a share the user picks, and resumes them
   when the window resets. It reuses `internal/cap`'s pause path and the
   plan-limit figures the status line already reports. Done when:
-  - Settings has one control: off, or a share of the window (default 90%);
+  - Settings has one control: off (the default, like the daily cap), or a share of the window (80, 90, 95%);
   - at the threshold, every session Caprock started is paused and named in a
     notice with the reset time; a session the user started by hand is never
     signalled (rule 7);

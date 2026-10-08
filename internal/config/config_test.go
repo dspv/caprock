@@ -7,10 +7,17 @@ import (
 )
 
 // Never chosen is the 90% default; turned off stays off.
-func TestWindowStopDefaultsTo90AndKeepsOff(t *testing.T) {
+// Off until chosen, like the daily cap: a pause nobody asked for is a
+// surprise, not a feature.
+func TestWindowStopIsOffUntilChosen(t *testing.T) {
 	var c Config
+	if got := c.WindowStop(); got != 0 {
+		t.Fatalf("unset window stop = %d, want 0 (off)", got)
+	}
+	ninety := 90
+	c.WindowStopPct = &ninety
 	if got := c.WindowStop(); got != 90 {
-		t.Fatalf("unset window stop = %d, want 90", got)
+		t.Fatalf("a chosen 90 reads %d", got)
 	}
 	off := 0
 	c.WindowStopPct = &off

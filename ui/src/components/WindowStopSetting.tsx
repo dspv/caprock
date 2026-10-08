@@ -30,7 +30,7 @@ export function WindowStopSetting({ now = Date.now() }: { now?: number }) {
   const [plan, savePlan] = usePlan()
   const ws = useApi(() => api.windowStop(), [], { live: false, intervalMs: 15000 })
   if (!plan) return null
-  const pct = plan.window_stop_pct ?? 90
+  const pct = plan.window_stop_pct ?? 0
   // A share set over the API that the buttons do not offer still shows as
   // chosen, rather than as nothing selected.
   const shares = SHARES.includes(pct) || pct === 0 ? SHARES : [...SHARES, pct].sort((a, b) => a - b)
