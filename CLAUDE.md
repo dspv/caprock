@@ -8,7 +8,7 @@ Caprock is a local, open-source mission control for Claude Code: a single static
 the 3-OS CI matrix; Orchestrate = hive, tasks board, Stop-loop, orchestrator
 agent, verification-before-done, approvals. The Phase 2 tag gate — a
 real-`claude` unattended run with hooks — passed. Paid plans are live: free,
-$30/year or $5/month, $100 once, unlocked by an offline licence key
+$30/year or $100 once (the $5/month price is no longer sold), unlocked by an offline licence key
 ([ADR-022](.ai/08-decisions.md)). Which version is current is what `git
 describe`, the releases page and `CHANGELOG.md` answer — rule 9 below is why
 this line does not. See `.ai/14-build-status.md`.
