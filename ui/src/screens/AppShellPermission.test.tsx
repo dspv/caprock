@@ -84,11 +84,15 @@ describe('the permission card in the app', () => {
     expect(cards()).toHaveLength(1)
   })
 
-  it('moves into the inspector when it is open, never beside a second card', async () => {
+  it('sits in the inspector, open by default, and under the terminal once it is closed — never twice', async () => {
     await openAgent()
-    fireEvent.click(screen.getByRole('button', { name: /Inspector/ }))
     expect(screen.getByRole('complementary', { name: 'Inspector' })).toBeInTheDocument()
     expect(cards()).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: /Inspector/ }))
+    expect(screen.queryByRole('complementary', { name: 'Inspector' })).toBeNull()
+    expect(cards()).toHaveLength(1)
+    // Closed is remembered, under the key that replaced the old closed-by-default flag.
+    expect(JSON.parse(localStorage.getItem('caprock.app.ui') ?? '{}')).toMatchObject({ cockpit: false })
   })
 
   it('follows the tab: switching to a waiting session shows its card', async () => {
