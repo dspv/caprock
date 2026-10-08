@@ -182,17 +182,29 @@ function Picture({ feature }: { feature: PaidFeature }) {
 }
 
 /**
+ * A link that says which dialog it came from: the checkout carries it as
+ * Stripe's client_reference_id (shown in the owner's sale notification), the
+ * site page lands on that feature's own entry. Nothing about the user is in
+ * it — only the name of the feature they were reading about.
+ */
+export function fromFeature(url: string, feature: PaidFeature, kind: 'buy' | 'info'): string {
+  if (!url) return url
+  if (kind === 'info') return `${url.split('#')[0]}#${feature}`
+  return `${url}${url.includes('?') ? '&' : '?'}client_reference_id=app-${feature}`
+}
+
+/**
  * The two ways to buy, as the site sells them: a year, or once. The lifetime
  * is the one the site marks "Best value", so it is the filled button.
  */
-function Price({ p, onClose }: { p: PremiumPricing | undefined; onClose: () => void }) {
+function Price({ p, feature, onClose }: { p: PremiumPricing | undefined; feature: PaidFeature; onClose: () => void }) {
   if (!p) return <div className="h-[92px] text-[13px] text-fg-faint">…</div>
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
       <div className="flex flex-col rounded-[10px] border border-border-strong p-3">
         <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-fg-muted">Yearly</p>
         <a
-          href={p.yearly.url}
+          href={fromFeature(p.yearly.url, feature, 'buy')}
           target="_blank"
           rel="noreferrer"
           onClick={onClose}
@@ -208,7 +220,7 @@ function Price({ p, onClose }: { p: PremiumPricing | undefined; onClose: () => v
           <span className="rounded-full bg-accent px-1.5 py-[1px] text-[10px] text-panel">Best value</span>
         </p>
         <a
-          href={p.lifetime?.url}
+          href={p.lifetime?.url && fromFeature(p.lifetime.url, feature, 'buy')}
           target="_blank"
           rel="noreferrer"
           onClick={onClose}
@@ -233,11 +245,11 @@ export function PremiumModal({ feature, onClose }: { feature: PaidFeature; onClo
       title={f.title}
       onClose={onClose}
       picture={<Picture feature={feature} />}
-      actions={<Price p={p} onClose={onClose} />}
+      actions={<Price p={p} feature={feature} onClose={onClose} />}
       footer={
         <>
           <div className="flex items-center gap-3">
-            <a href={p?.info_url ?? 'https://caprock.dev/premium/'} target="_blank" rel="noreferrer"
+            <a href={fromFeature(p?.info_url ?? 'https://caprock.dev/premium/', feature, 'info')} target="_blank" rel="noreferrer"
               className="whitespace-nowrap text-fg-muted no-underline hover:text-fg">
               Read more
             </a>

@@ -18,6 +18,10 @@ Phase 3 (Delight) has no plan by design.
   and `~` works in any path. A new *First task* field starts an agent on
   the project once it is added — the instructions field, which only shapes
   later sessions, now sits behind a link so it is not mistaken for one.
+- **The Premium dialog opens the right page.** "Read more" lands on the
+  feature you were reading about on caprock.dev/premium, and the buy
+  buttons tell the checkout which feature they came from — the feature's
+  name only, nothing about you.
 
 ## [0.88.1] - 2026-10-08
 
