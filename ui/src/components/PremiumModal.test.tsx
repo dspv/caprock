@@ -87,11 +87,11 @@ describe('PremiumModal', () => {
     // twice and the thing it guards has not changed.
     const once = screen.getByRole('link', { name: /\$100/ })
     const more = screen.getByRole('link', { name: /read more/i })
-    expect(year.getAttribute('href')).toBe(pricing.yearly.url)
+    expect(year.getAttribute('href')).toBe(`${pricing.yearly.url}?client_reference_id=app-cap`)
     // Lifetime is a button of its own. It is the option people ask about, and
     // it was previously reachable only by leaving for the site.
-    expect(once.getAttribute('href')).toBe(pricing.lifetime.url)
-    expect(more.getAttribute('href')).toBe(pricing.info_url)
+    expect(once.getAttribute('href')).toBe(`${pricing.lifetime.url}?client_reference_id=app-cap`)
+    expect(more.getAttribute('href')).toBe(`${pricing.info_url.split('#')[0]}#cap`)
     for (const a of [year, once, more]) expect(a.getAttribute('target')).toBe('_blank')
   })
 
@@ -172,5 +172,15 @@ describe('PremiumModal', () => {
     render(<PremiumModal feature="cap" onClose={onClose} />)
     fireEvent.click(screen.getByText(/A number for the day/))
     expect(onClose).not.toHaveBeenCalled()
+  })
+})
+
+describe('fromFeature', () => {
+  it('tags a checkout with the feature and lands the info link on its entry', async () => {
+    const { fromFeature } = await import('./PremiumModal')
+    expect(fromFeature('https://buy.stripe.com/x', 'cap', 'buy')).toBe('https://buy.stripe.com/x?client_reference_id=app-cap')
+    expect(fromFeature('https://buy.stripe.com/x?a=1', 'drill', 'buy')).toBe('https://buy.stripe.com/x?a=1&client_reference_id=app-drill')
+    expect(fromFeature('https://caprock.dev/premium/', 'report', 'info')).toBe('https://caprock.dev/premium/#report')
+    expect(fromFeature('https://caprock.dev/premium/#old', 'gemini', 'info')).toBe('https://caprock.dev/premium/#gemini')
   })
 })
