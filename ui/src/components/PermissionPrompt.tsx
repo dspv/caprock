@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { api, ApiError, errText, type Permission, type PermissionChoice } from '@/lib/api'
+import { commandGist, requester, toolKind } from '@/lib/cockpit'
+import { navigate } from '@/lib/router'
 import { live, useLive } from '@/lib/live'
 import { useCanControl } from '@/lib/useCanControl'
 
@@ -51,13 +53,14 @@ export function PermissionPrompt({ sessionId, keys = true }: { sessionId: string
   const card = useRef<HTMLDivElement>(null)
   useEffect(() => { setError('') }, [prompt?.id])
 
-  const answer = useCallback(async (choice: PermissionChoice) => {
+  const answer = useCallback(async (choice: PermissionChoice, id?: string) => {
     if (!prompt) return
     setBusy(true)
     setError('')
     try {
-      await api.answerPermission(sessionId, prompt.id, choice)
-      setPrompt(null)
+      await api.answerPermission(sessionId, id ?? prompt.id, choice)
+      // Dismissing one of several leaves the rest: the live frame says which.
+      if (!id || id === prompt.id) setPrompt(null)
     } catch (err) {
       // 409: answered in the terminal, or it is not the dialog on screen. The
       // live frame brings the one that is; this one is gone either way. 422:
@@ -70,17 +73,31 @@ export function PermissionPrompt({ sessionId, keys = true }: { sessionId: string
     }
   }, [prompt, sessionId, setPrompt])
 
-  usePromptKeys(card, sessionId, !!prompt && canControl && !busy, !!prompt?.always, answer)
+  // With more than one outstanding, which dialog the terminal shows is
+  // unknown, so no key and no button answers any of them (ADR-035, amended
+  // 2026-10-09): the card lists them and sends the reader to the terminal.
+  const several = (prompt?.waiting?.length ?? 0) > 1
+  usePromptKeys(card, sessionId, !!prompt && !several && canControl && !busy, !!prompt?.always, answer)
   if (!prompt) return null
+  if (several) {
+    return (
+      <SeveralPrompts card={card} sessionId={sessionId} prompts={prompt.waiting!} canControl={canControl} busy={busy}
+        onDismiss={(id) => void answer('dismiss', id)} error={error} />
+    )
+  }
 
   const button = 'min-h-[48px] rounded-sm px-4 py-2 text-[15px] font-medium disabled:opacity-50'
   return (
     <div ref={card} role="alertdialog" aria-label="Permission prompt" className="grid gap-2 border border-accent/60 bg-accent/10 rounded-sm px-3 py-3 mt-2">
       <div className="flex items-start justify-between gap-2">
-        <p className="text-[13px] text-fg">
-          Claude wants to use <span className="mono font-medium">{prompt.tool}</span>
-          {!!prompt.queued && <span className="text-fg-muted"> · {prompt.queued} more waiting</span>}
-        </p>
+        <div className="grid gap-0.5">
+          <p className="text-[13px] text-fg">
+            <Asker p={prompt} /> wants to {toolKind(prompt.tool) === 'run' ? 'run' : 'use'} <span className="mono font-medium">{prompt.tool}</span>
+          </p>
+          {prompt.agent_id && (
+            <p className="text-[11.5px] text-fg-muted">Not the main thread: a subagent of this session asks, in the same terminal.</p>
+          )}
+        </div>
         {/* For a prompt settled where no hook saw it — it timed out, or a
             check denied it — the card would otherwise stay until the turn
             ends. Hiding it types nothing. */}
@@ -91,11 +108,7 @@ export function PermissionPrompt({ sessionId, keys = true }: { sessionId: string
           </button>
         )}
       </div>
-      {prompt.detail && (
-        <pre className="mono max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-sm border border-border bg-panel-2 px-2 py-1.5 text-[12px] text-fg">
-          {prompt.detail}
-        </pre>
-      )}
+      {prompt.detail && <Request detail={prompt.detail} />}
       {canControl ? (
         <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
           <button type="button" disabled={busy} onClick={() => void answer('allow')} aria-keyshortcuts={keys ? "Y Enter" : undefined} className={`${button} bg-accent text-bg hover:brightness-110`}>
@@ -119,6 +132,104 @@ export function PermissionPrompt({ sessionId, keys = true }: { sessionId: string
         </div>
       ) : (
         <p className="text-[12px] text-fg-muted">Waiting for an answer on a device that controls sessions.</p>
+      )}
+      {error && <p role="alert" className="text-[12px] text-danger">{error}</p>}
+    </div>
+  )
+}
+
+/** Who asks, "Claude" or "Subagent (general-purpose)", the latter marked. */
+function Asker({ p }: { p: Permission }) {
+  const who = requester(p)
+  return p.agent_id ? <span className="font-medium text-accent">{who}</span> : <>{who}</>
+}
+
+/**
+ * What is being asked about: the part of a command that says what it does,
+ * then the whole of it, wrapped. A long one is folded to a few lines with the
+ * rest one click away — never cut to one line, as the Now line used to.
+ */
+function Request({ detail }: { detail: string }) {
+  const { gist, more } = commandGist(detail)
+  const long = detail.length > 240 || detail.split('\n').length > 4
+  const [open, setOpen] = useState(!long)
+  return (
+    <div className="grid gap-1">
+      {more && gist && (
+        <p className="mono break-words text-[12.5px] font-medium text-fg" title={detail}>{gist}</p>
+      )}
+      <pre className={`mono overflow-auto whitespace-pre-wrap break-words rounded-sm border border-border bg-panel-2 px-2 py-1.5 text-[12px] text-fg ${open ? 'max-h-60' : 'max-h-[5.4em] overflow-hidden'}`} title={open ? undefined : detail}>
+        {detail}
+      </pre>
+      {long && (
+        <button type="button" onClick={() => setOpen((v) => !v)} className="justify-self-start text-[11.5px] text-fg-muted underline-offset-2 hover:text-fg hover:underline">
+          {open ? 'Show less' : 'Show the whole command'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** Brings the session's terminal forward: the one on this page, else the session's Terminal tab. */
+export function openTerminal(sessionId: string) {
+  const host = [...document.querySelectorAll<HTMLElement>('[data-term-session]')].find((el) => el.getAttribute('data-term-session') === sessionId)
+  if (host && !host.closest('[hidden]')) {
+    host.scrollIntoView({ block: 'nearest' })
+    host.querySelector<HTMLTextAreaElement>('textarea')?.focus()
+    return
+  }
+  navigate({ name: 'session', id: sessionId, tab: 'terminal' })
+}
+
+/**
+ * Two or more prompts outstanding at once — subagents asking in parallel.
+ * Claude Code shows them one at a time in the terminal, and nothing says
+ * which is in front, so a Yes here could approve one the reader did not read.
+ * Each is listed with who asks; the answer is given in the terminal. Hiding
+ * one types nothing.
+ */
+function SeveralPrompts({ card, sessionId, prompts, canControl, busy, onDismiss, error }: {
+  card: RefObject<HTMLDivElement | null>
+  sessionId: string
+  prompts: Permission[]
+  canControl: boolean
+  busy: boolean
+  onDismiss: (id: string) => void
+  error: string
+}) {
+  return (
+    <div ref={card} role="alertdialog" aria-label="Permission prompts" className="grid gap-2 border border-accent/60 bg-accent/10 rounded-sm px-3 py-3 mt-2">
+      <div className="grid gap-0.5">
+        <p className="text-[13px] font-medium text-fg">{prompts.length} approvals waiting</p>
+        <p className="text-[11.5px] text-fg-muted">
+          The terminal shows them one at a time, and Caprock cannot tell which one is in front — answer there.
+        </p>
+      </div>
+      <ol className="grid gap-1.5">
+        {prompts.map((p) => {
+          const { gist } = commandGist(p.detail)
+          return (
+            <li key={p.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 rounded-sm border border-border bg-panel-2 px-2 py-1.5">
+              <div className="grid min-w-0 gap-0.5">
+                <p className="text-[12.5px] text-fg"><Asker p={p} />: <span className="mono">{p.tool}</span></p>
+                {gist && <p className="mono line-clamp-2 break-all text-[11.5px] text-fg-muted" title={p.detail}>{gist}</p>}
+              </div>
+              {canControl && (
+                <button type="button" disabled={busy} onClick={() => onDismiss(p.id)} aria-label={`Hide ${requester(p)}’s ${p.tool} prompt`} title="Hide — types nothing"
+                  className="-mr-1 grid h-6 w-6 shrink-0 place-items-center rounded-sm text-fg-muted hover:bg-panel hover:text-fg">
+                  ×
+                </button>
+              )}
+            </li>
+          )
+        })}
+      </ol>
+      {canControl && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={() => openTerminal(sessionId)} className="min-h-[40px] rounded-sm bg-accent px-4 py-2 text-[14px] font-medium text-bg hover:brightness-110">
+            Open terminal
+          </button>
+        </div>
       )}
       {error && <p role="alert" className="text-[12px] text-danger">{error}</p>}
     </div>

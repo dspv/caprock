@@ -412,3 +412,20 @@ func TestAPermissionDialogNamesTheCallAndStaysWaiting(t *testing.T) {
 		t.Errorf("phrase = %q tool = %q", act.Phrase, act.Tool)
 	}
 }
+
+// A subagent's dialog is drawn in the parent's terminal. The phrase names the
+// subagent and the call its own prompt asks about — not the last tool.pre,
+// which with subagents running in parallel is often another agent's.
+func TestASubagentsDialogSaysWhoAsks(t *testing.T) {
+	base := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	evs := []event.Event{
+		{Kind: event.KindToolPre, Tool: "Bash", AgentID: "a827d9", Ts: base, Payload: []byte(`{"tool_input":{"command":"rm -f out/*"}}`)},
+		{Kind: event.KindToolPre, Tool: "Read", AgentID: "b11", Ts: base.Add(time.Millisecond), Payload: []byte(`{"tool_input":{"file_path":"/w/a.go"}}`)},
+		{Kind: event.KindPermissionPrompt, Tool: "Bash", AgentID: "a827d9", Ts: base.Add(time.Second),
+			Payload: []byte(`{"agent_id":"a827d9","agent_type":"general-purpose","tool_name":"Bash","tool_input":{"command":"rm -f out/*"}}`)},
+	}
+	act := Summarize(evs, Options{Now: base.Add(2 * time.Second)})
+	if act.Phrase != "subagent (general-purpose) waiting for approval — running `rm -f out/*`" || act.Tool != "Bash" || act.Health != HealthWaiting {
+		t.Errorf("phrase = %q tool = %q health = %q", act.Phrase, act.Tool, act.Health)
+	}
+}

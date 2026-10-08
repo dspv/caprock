@@ -1277,6 +1277,38 @@ func LastEvents(ctx context.Context, q Querier, sessionID string, n int) ([]even
 	return EventsBefore(ctx, q, sessionID, 0, n)
 }
 
+// EventFilter narrows a page of a session's events.
+type EventFilter struct {
+	// MainOnly keeps the main thread's events: no subagent's (agent_id set)
+	// and no transcript sidechain line. A parent running subagents in parallel
+	// logs hundreds of their events an hour, and a window of its newest few
+	// hundred events held none of the parent's own calls.
+	MainOnly bool
+	// Kinds keeps only these kinds; empty keeps every kind.
+	Kinds []string
+}
+
+func (f EventFilter) where() (string, []any) {
+	var where string
+	var args []any
+	if f.MainOnly {
+		where += ` AND ` + MainThreadWhere
+	}
+	if len(f.Kinds) > 0 {
+		where += ` AND e.kind IN (?` + strings.Repeat(`, ?`, len(f.Kinds)-1) + `)`
+		for _, k := range f.Kinds {
+			args = append(args, k)
+		}
+	}
+	return where, args
+}
+
+// LastEventsFiltered is LastEvents with a filter applied before the limit:
+// the n newest events that pass it, oldest first.
+func LastEventsFiltered(ctx context.Context, q Querier, sessionID string, n int, f EventFilter) ([]event.Event, error) {
+	return eventsBefore(ctx, q, sessionID, 0, n, f)
+}
+
 // EventsBefore returns the n events immediately preceding `before` (exclusive),
 // oldest-first. before <= 0 means "from the end", which is what LastEvents is.
 //
@@ -1285,6 +1317,10 @@ func LastEvents(ctx context.Context, q Querier, sessionID string, n int) ([]even
 // already had, which on a session with sixteen thousand events fetched the
 // wrong end of the history and threw nearly all of it away.
 func EventsBefore(ctx context.Context, q Querier, sessionID string, before int64, n int) ([]event.Event, error) {
+	return eventsBefore(ctx, q, sessionID, before, n, EventFilter{})
+}
+
+func eventsBefore(ctx context.Context, q Querier, sessionID string, before int64, n int, f EventFilter) ([]event.Event, error) {
 	if n <= 0 {
 		n = 50
 	}
@@ -1304,13 +1340,16 @@ func EventsBefore(ctx context.Context, q Querier, sessionID string, before int64
 		where += ` AND (ts < (SELECT ts FROM events WHERE id = ?) OR (ts = (SELECT ts FROM events WHERE id = ?) AND id < ?))`
 		args = append(args, before, before, before)
 	}
+	fw, fargs := f.where()
+	where += fw
+	args = append(args, fargs...)
 	args = append(args, n)
 	// Ordered by ts, not by id. The two agree for a session captured live, and
 	// diverge for one whose transcript was re-read: a backfill inserts old
 	// events with new rowids, so "the newest sixty by id" returned a fortnight
 	// of history and the activity feed showed it as what just happened. The id
 	// stays as the tie-break, since two events can share a millisecond.
-	rows, err := q.QueryContext(ctx, `SELECT * FROM (SELECT `+eventCols+` FROM events WHERE `+where+` ORDER BY ts DESC, id DESC LIMIT ?) ORDER BY ts ASC, id ASC`, args...)
+	rows, err := q.QueryContext(ctx, `SELECT * FROM (SELECT `+eventCols+` FROM events e WHERE `+where+` ORDER BY ts DESC, id DESC LIMIT ?) ORDER BY ts ASC, id ASC`, args...)
 	if err != nil {
 		return nil, err
 	}

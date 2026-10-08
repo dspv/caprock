@@ -7,7 +7,7 @@
  * Every function here is pure, so the panel's honesty can be tested without a
  * DOM: a figure the data does not carry comes back undefined, never zero.
  */
-import type { Event, RateLimits, SessionSummary, Summary } from './api'
+import type { Event, Permission, RateLimits, SessionSummary, Subagent, Summary } from './api'
 
 /** What kind of work a tool call is, for its glyph and colour. */
 export type ToolKind = 'edit' | 'read' | 'run' | 'search' | 'web' | 'agent' | 'plan' | 'ask' | 'mcp' | 'other'
@@ -93,7 +93,7 @@ export function toolDetail(tool: string, input: unknown): string {
 }
 
 /** A subagent's own steps are its parent call's business, not the session's line. */
-function mainThread(e: Event): boolean {
+export function mainThread(e: Event): boolean {
   if (e.agent_id) return false
   const p = e.payload as { sidechain?: boolean } | null
   return p?.sidechain !== true
@@ -147,12 +147,12 @@ export function runningTool(runs: readonly ToolRun[], now: number): ToolRun | un
   return now - last.startMs < RUNNING_STALE_MS ? last : undefined
 }
 
-/** The priced model calls, oldest first — what each turn cost as it happened. */
+/** The main thread's priced model calls, oldest first — what each turn cost as it happened. */
 export function turnCosts(events: readonly Event[]): TurnCost[] {
   const seen = new Set<number>()
   const out: TurnCost[] = []
   for (const e of events) {
-    if (e.kind !== 'turn.assistant' || typeof e.cost_usd !== 'number' || !Number.isFinite(e.cost_usd)) continue
+    if (e.kind !== 'turn.assistant' || !mainThread(e) || typeof e.cost_usd !== 'number' || !Number.isFinite(e.cost_usd)) continue
     if (seen.has(e.id)) continue
     seen.add(e.id)
     out.push({ id: e.id, ts: msOf(e.ts), cost: e.cost_usd })
@@ -213,4 +213,44 @@ export function runVerb(kind: ToolKind): string {
     case 'mcp': return 'Calling'
     default: return 'Using'
   }
+}
+
+/**
+ * Whether a subagent waits on a permission prompt: its newest event is one,
+ * or the session's outstanding prompts include one it asked.
+ */
+export function subagentWaiting(a: Pick<Subagent, 'agent_id' | 'asking'>, p?: Permission | null): boolean {
+  if (a.asking) return true
+  if (!p) return false
+  return (p.waiting ?? [p]).some((w) => w.agent_id === a.agent_id)
+}
+
+/** Who asked a permission prompt: "Subagent (general-purpose)", or the agent itself. */
+export function requester(p: Pick<Permission, 'agent_id' | 'agent_type'>, agent = 'Claude'): string {
+  if (!p.agent_id) return agent
+  const t = (p.agent_type ?? '').trim()
+  return t && t !== 'subagent' ? `Subagent (${t})` : 'Subagent'
+}
+
+/** "Subagent (general-purpose) wants to run Bash": the prompt's question, naming who asks. */
+export function askLine(p: Pick<Permission, 'agent_id' | 'agent_type' | 'tool'>, agent = 'Claude'): string {
+  const tool = p.tool.startsWith('mcp__') ? p.tool.replace(/^mcp__(.+?)__/, '$1·') : p.tool
+  return `${requester(p, agent)} wants to ${toolKind(p.tool) === 'run' ? 'run' : 'use'} ${tool}`
+}
+
+/**
+ * The first part of a command that says what it does: the leading variable
+ * assignments, `cd` and `set -e` that set a shell up are skipped, so
+ * `C=/tmp/x; rm -f $C/*; ls` reads `rm -f $C/*`. `more` says something was
+ * left out, and the full text belongs beside it.
+ */
+export function commandGist(detail: string, n = 100): { gist: string; more: boolean } {
+  const parts = detail.split(/\n|;|&&|\|\|/).map((s) => s.trim()).filter(Boolean)
+  if (parts.length === 0) return { gist: '', more: false }
+  const setup = (s: string) => /^(export\s+)?[A-Za-z_][A-Za-z0-9_]*=\S*$/.test(s) || /^cd(\s|$)/.test(s) || /^set\s+[-+]\w+$/.test(s)
+  const i = Math.max(0, parts.findIndex((s) => !setup(s)))
+  const first = parts[i]!.replace(/\s+/g, ' ')
+  const chars = [...first]
+  const clipped = chars.length > n
+  return { gist: clipped ? chars.slice(0, n - 1).join('') + '…' : first, more: clipped || parts.length > 1 }
 }

@@ -34,6 +34,13 @@ Phase 3 (Delight) has no plan by design.
   shells in them keep running), open its folder in an editor, or remove it
   from Caprock after a confirmation — its files and sessions stay as they
   are.
+- **Subagents in the agent cockpit.** While a session's subagents work, the
+  cockpit lists them under *Subagents · N*: each one's type and the task it
+  was given, its current call and how long it has run, how many calls it
+  has made, and *waiting on you* while it has a prompt open; those that
+  finished in the last half hour are one line. The daemon sums them up
+  (`GET /v1/sessions/{id}/subagents`), so thousands of subagent events never
+  reach the page.
 
 ### Changed
 
@@ -56,6 +63,22 @@ Phase 3 (Delight) has no plan by design.
   one says so, with the exit code where Codex recorded one. Sessions already
   imported get their prompts and outputs once, from the transcripts still on
   disk.
+- **The cockpit's tool list was empty on a busy parent.** A session whose
+  subagents logged hundreds of calls an hour had none of its own among its
+  newest 400 events, so *Recent tools* read "No tool calls yet" and the cost
+  spark showed one bar. The cockpit now asks for the main thread's own calls
+  and turns (`events?newest=1&main=1&kind=…`).
+- **A subagent's permission prompt read as the parent's.** The card, the
+  cockpit's Now line, the menu bar popover and the notification now say
+  "Subagent (general-purpose) wants to run Bash", lead with what the command
+  does (`rm -f $C/*` rather than `C=/pri…`), and show the whole command
+  wrapped, folded when long.
+- **Approving with several prompts open could answer the wrong one.** When
+  subagents ask at once, Caprock cannot tell which dialog the terminal is
+  showing. With two or more outstanding, the card lists them all with who
+  asks and offers *Open terminal* instead of Yes and No, the daemon refuses
+  to type an answer, and notifications carry no Approve. A prompt is now tied
+  to its own call, so the call finishing clears it and nothing else.
 
 ## [0.91.0] - 2026-10-08
 

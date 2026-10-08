@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/alerts"
 	"github.com/dspv/caprock/internal/api"
 	"github.com/dspv/caprock/internal/bus"
@@ -142,15 +143,23 @@ func (d *Daemon) publishNotify(ctx context.Context, a alerts.Alert) {
 
 // waitingPrompt is the id of the prompt an owned session waits on, for an
 // approval alert; "" otherwise. The hook sets the prompt before the event is
-// stored, so it is there when the alert is decided.
+// stored, so it is there when the alert is decided. With more than one
+// outstanding it is "" too: which dialog the terminal shows is unknown, so the
+// notification offers no answer at all (ADR-035, amended 2026-10-09).
 func (d *Daemon) waitingPrompt(a alerts.Alert) string {
 	if a.Kind != alerts.KindApproval || d.mgr == nil {
 		return ""
 	}
-	if p, ok := d.mgr.PendingPermission(a.SessionID); ok {
-		return p.ID
+	return answerablePrompt(d.mgr.PendingPermission(a.SessionID))
+}
+
+// answerablePrompt is the id a notification may answer: the prompt's, when it
+// is the only one outstanding.
+func answerablePrompt(p *agents.Permission, ok bool) string {
+	if !ok || p == nil || p.Queued > 0 {
+		return ""
 	}
-	return ""
+	return p.ID
 }
 
 // sendAlert renders one alert and delivers it. Failures are logged and kept

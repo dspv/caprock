@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { Event, SessionSummary, Summary } from './api'
-import { cockpitState, fmtRun, planWindowsFor, runShare, runningTool, toolDetail, toolKind, toolRuns, turnCosts, RUNNING_STALE_MS } from './cockpit'
+import {
+  askLine, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runShare, runningTool, subagentWaiting, toolDetail, toolKind, toolRuns, turnCosts,
+  RUNNING_STALE_MS,
+} from './cockpit'
 
 let id = 0
 function ev(p: Partial<Event> & { kind: string; ts: string }): Event {
@@ -78,6 +81,50 @@ describe('turnCosts', () => {
       ev({ kind: 'turn.assistant', ts: T(3), cost_usd: 0 }),
     ])
     expect(out.map((t) => t.cost)).toEqual([0.12, 0])
+  })
+
+  it('leaves out a subagent’s turns: the spark is the session’s own calls', () => {
+    const out = turnCosts([
+      ev({ kind: 'turn.assistant', ts: T(0), cost_usd: 0.5 }),
+      ev({ kind: 'turn.assistant', ts: T(1), cost_usd: 0.01, agent_id: 'sub' }),
+      ev({ kind: 'turn.assistant', ts: T(2), cost_usd: 0.02, payload: { sidechain: true } }),
+    ])
+    expect(out.map((t) => t.cost)).toEqual([0.5])
+  })
+})
+
+describe('subagentWaiting', () => {
+  const p = { id: 'p', tool: 'Bash', detail: 'ls', since: '', agent_id: 'b' }
+  it('is its own newest event, or a prompt it asked among those outstanding', () => {
+    expect(subagentWaiting({ agent_id: 'a', asking: true })).toBe(true)
+    expect(subagentWaiting({ agent_id: 'b', asking: false }, p)).toBe(true)
+    expect(subagentWaiting({ agent_id: 'a', asking: false }, p)).toBe(false)
+    expect(subagentWaiting({ agent_id: 'c', asking: false }, { ...p, waiting: [p, { ...p, id: 'q', agent_id: 'c' }] })).toBe(true)
+    expect(subagentWaiting({ agent_id: 'a', asking: false }, null)).toBe(false)
+  })
+})
+
+describe('who asks', () => {
+  it('names a subagent by its type, and the agent for the main thread', () => {
+    expect(askLine({ tool: 'Bash', agent_id: 'a', agent_type: 'general-purpose' })).toBe('Subagent (general-purpose) wants to run Bash')
+    expect(askLine({ tool: 'Write', agent_id: 'a' })).toBe('Subagent wants to use Write')
+    expect(askLine({ tool: 'Bash' })).toBe('Claude wants to run Bash')
+    expect(requester({ agent_id: 'a', agent_type: 'subagent' })).toBe('Subagent')
+  })
+})
+
+describe('commandGist', () => {
+  it('skips the set-up a command starts with', () => {
+    expect(commandGist('C=/private/tmp/caps3; rm -f $C/*; ls')).toEqual({ gist: 'rm -f $C/*', more: true })
+    expect(commandGist('cd ~/dev/web && export X=1 && npm run build')).toEqual({ gist: 'npm run build', more: true })
+    expect(commandGist('go test ./...')).toEqual({ gist: 'go test ./...', more: false })
+    expect(commandGist('A=1')).toEqual({ gist: 'A=1', more: false })
+    expect(commandGist('').gist).toBe('')
+  })
+  it('clips a long first step and says so', () => {
+    const g = commandGist('x'.repeat(300), 50)
+    expect([...g.gist]).toHaveLength(50)
+    expect(g.more).toBe(true)
   })
 })
 
