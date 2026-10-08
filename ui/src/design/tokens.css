@@ -230,7 +230,7 @@ a.link:hover { text-decoration: underline; }
  * right on paper, on graphite and on a translucent sidebar alike. */
 [data-app] {
   --app-sidebar-w: 260px;
-  --app-inspector-w: 304px;
+  --app-inspector-w: 324px;
   --app-sidebar-bg: color-mix(in srgb, var(--color-panel) 88%, transparent);
   --app-chrome-bg: var(--color-panel);
   --app-hairline: color-mix(in srgb, var(--color-fg) 9%, transparent);
@@ -268,6 +268,81 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
 @media (prefers-reduced-motion: reduce) {
   [data-app] .app-row, [data-app] .app-chevron { transition: none; }
   [data-app] .app-fade-in, [data-app] .app-ring { animation: none; }
+}
+/* The agent cockpit (components/Cockpit.tsx): the inspector beside an agent.
+ * State is carried by data-state on the avatar, its dot and the "now" card,
+ * so one attribute moves the colour, the halo and the motion together. Motion
+ * only while the agent works or waits; an idle or ended agent is still. */
+[data-app] .cockpit-avatar {
+  --cockpit-tint: var(--color-fg-faint);
+  background:
+    radial-gradient(120% 90% at 50% 100%, color-mix(in srgb, var(--cockpit-tint) 26%, transparent), transparent 70%),
+    color-mix(in srgb, var(--color-fg) 4%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cockpit-tint) 30%, var(--app-hairline));
+  transition: box-shadow 300ms var(--app-ease), background 300ms var(--app-ease);
+}
+[data-app] .cockpit-avatar[data-state="working"] { --cockpit-tint: var(--color-ok); }
+[data-app] .cockpit-avatar[data-state="waiting"] { --cockpit-tint: var(--color-accent); animation: cockpitHalo 2.2s var(--app-ease) infinite; }
+[data-app] .cockpit-avatar[data-state="looping"] { --cockpit-tint: var(--color-danger); }
+[data-app] .cockpit-avatar[data-state="idle"] { --cockpit-tint: var(--color-accent); }
+[data-app] .cockpit-avatar[data-state="ended"] .cockpit-character { filter: grayscale(1); opacity: 0.55; }
+[data-app] .cockpit-avatar[data-state="working"] .cockpit-character { animation: cockpitBob 2.4s ease-in-out infinite; }
+[data-app] .cockpit-avatar[data-state="looping"] .cockpit-character { animation: cockpitWobble 1.6s ease-in-out infinite; }
+@keyframes cockpitBob { 0%, 100% { transform: translateY(1px); } 50% { transform: translateY(-2px); } }
+@keyframes cockpitWobble { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-4deg); } 75% { transform: rotate(4deg); } }
+@keyframes cockpitHalo {
+  0%, 100% { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, transparent), 0 0 0 0 color-mix(in srgb, var(--color-accent) 35%, transparent); }
+  50% { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 70%, transparent), 0 0 0 5px transparent; }
+}
+[data-app] .cockpit-dot { background: var(--color-fg-faint); }
+[data-app] .cockpit-dot[data-state="working"] { background: var(--color-ok); animation: cockpitPulse 1.6s var(--app-ease) infinite; }
+[data-app] .cockpit-dot[data-state="waiting"] { background: var(--color-accent); animation: cockpitPulseAmber 1.6s var(--app-ease) infinite; }
+[data-app] .cockpit-dot[data-state="looping"] { background: var(--color-danger); }
+[data-app] .cockpit-dot[data-state="ended"] { background: transparent; box-shadow: inset 0 0 0 1px var(--color-fg-faint); }
+@keyframes cockpitPulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-ok) 55%, transparent); }
+  100% { box-shadow: 0 0 0 6px transparent; }
+}
+@keyframes cockpitPulseAmber {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 60%, transparent); }
+  100% { box-shadow: 0 0 0 6px transparent; }
+}
+[data-app] .cockpit-track { background: color-mix(in srgb, var(--color-fg) 8%, transparent); }
+[data-app] .cockpit-fill { transition: width 600ms var(--app-ease); }
+[data-app] .cockpit-fill[data-tone="ok"] { background: linear-gradient(90deg, color-mix(in srgb, var(--color-ok) 55%, transparent), var(--color-ok)); }
+[data-app] .cockpit-fill[data-tone="accent"] { background: linear-gradient(90deg, color-mix(in srgb, var(--color-accent) 55%, transparent), var(--color-accent)); }
+[data-app] .cockpit-fill[data-tone="warn"] { background: linear-gradient(90deg, color-mix(in srgb, var(--color-warn) 55%, transparent), var(--color-warn)); }
+[data-app] .cockpit-fill[data-tone="danger"] { background: linear-gradient(90deg, color-mix(in srgb, var(--color-danger) 55%, transparent), var(--color-danger)); }
+[data-app] .cockpit-now { border-color: var(--app-hairline); background: color-mix(in srgb, var(--color-fg) 3%, transparent); }
+[data-app] .cockpit-now[data-state="working"] {
+  border-color: color-mix(in srgb, var(--color-ok) 30%, transparent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--color-ok) 9%, transparent), transparent 80%);
+  color: var(--color-ok);
+}
+[data-app] .cockpit-now[data-state="waiting"] {
+  border-color: color-mix(in srgb, var(--color-accent) 38%, transparent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 80%);
+  color: var(--color-accent);
+}
+[data-app] .cockpit-now[data-state="looping"] { border-color: color-mix(in srgb, var(--color-danger) 38%, transparent); color: var(--color-danger); }
+[data-app] .cockpit-now[data-state="idle"], [data-app] .cockpit-now[data-state="ended"] { color: var(--color-fg-muted); }
+[data-app] .cockpit-now[data-running="true"] { position: relative; overflow: hidden; }
+[data-app] .cockpit-now[data-running="true"]::after {
+  content: ""; position: absolute; inset: auto 0 0 0; height: 1.5px;
+  background: linear-gradient(90deg, transparent, var(--color-ok), transparent);
+  background-size: 40% 100%; background-repeat: no-repeat;
+  animation: cockpitScan 1.8s linear infinite;
+}
+@keyframes cockpitScan { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+[data-app] .cockpit-row + .cockpit-row { border-top: 1px solid color-mix(in srgb, var(--color-fg) 5%, transparent); }
+[data-app] .cockpit-row[data-live="true"] { animation: appFadeIn 220ms var(--app-ease); }
+[data-app] .cockpit-bar-live { animation: cockpitBreath 1.4s ease-in-out infinite; }
+@keyframes cockpitBreath { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+[data-app] .cockpit-spark-new { animation: cockpitBreath 2s ease-in-out 1; }
+@media (prefers-reduced-motion: reduce) {
+  [data-app] .cockpit-avatar, [data-app] .cockpit-avatar .cockpit-character, [data-app] .cockpit-dot,
+  [data-app] .cockpit-now::after, [data-app] .cockpit-row, [data-app] .cockpit-bar-live, [data-app] .cockpit-spark-new { animation: none !important; }
+  [data-app] .cockpit-fill { transition: none; }
 }
 /* The terminal slab: the dark ground in every theme, so anything drawn on it
  * (the tab in front, the terminal's own chips) takes graphite's ink. */

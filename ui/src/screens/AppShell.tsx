@@ -67,12 +67,17 @@ interface UiPrefs {
   inspector: boolean
 }
 
-function loadPrefs(): UiPrefs {
+/** What is kept: `cockpit` is the inspector's open state since it became the
+ *  agent cockpit, open by default. The older `inspector` flag (closed by
+ *  default, so stored false by nearly everyone) is no longer read. */
+interface StoredPrefs { sidebar?: boolean; cockpit?: boolean }
+
+export function loadPrefs(): UiPrefs {
   try {
-    const v = JSON.parse(localStorage.getItem(UI_KEY) ?? '{}') as Partial<UiPrefs>
-    return { sidebar: v.sidebar !== false, inspector: v.inspector === true }
+    const v = JSON.parse(localStorage.getItem(UI_KEY) ?? '{}') as StoredPrefs
+    return { sidebar: v.sidebar !== false, inspector: v.cockpit !== false }
   } catch {
-    return { sidebar: true, inspector: false }
+    return { sidebar: true, inspector: true }
   }
 }
 
@@ -195,7 +200,8 @@ export function AppShell() {
     return () => root.removeAttribute('data-caprock-chrome')
   }, [])
   useEffect(() => {
-    try { localStorage.setItem(UI_KEY, JSON.stringify(prefs)) } catch { /* not kept */ }
+    const stored: StoredPrefs = { sidebar: prefs.sidebar, cockpit: prefs.inspector }
+    try { localStorage.setItem(UI_KEY, JSON.stringify(stored)) } catch { /* not kept */ }
   }, [prefs])
   useEffect(() => {
     if (!toast) return
@@ -704,6 +710,7 @@ export function AppShell() {
                   editors={editors}
                   onOpenInEditor={openInEditor}
                   onReviewChanges={focusedWorktree?.repo ? () => onOpenChanges(focusedWorktree.projectId, focusedWorktree.w) : undefined}
+                  summary={data.summary}
                 />
               </div>
             )}
