@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.94.1] - 2026-10-09
+
 ### Added
 
 - **Links in the terminal open.** Cmd+click (Ctrl+click on Windows and
