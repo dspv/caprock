@@ -1183,9 +1183,20 @@ macOS asks before a program reads Desktop, Documents, Downloads and a few
 other places, and remembers the answer per program and per code signature
 (ADR-040). What follows from Caprock being ad-hoc signed:
 
-- **The daemon is the program that asks**, for itself and for every session
-  it runs: a pty-host and the agent under it are attributed to the daemon
-  that launchd started. An agent reading `~/Downloads` asks as "caprock".
+- **A session asks in its own name** (ADR-044). Until then the daemon was
+  the program that asked for every session it ran: a pty-host and the agent
+  under it were attributed to the daemon launchd started, so an agent
+  reading `~/Downloads` asked as "caprock". Every session, shell, verify
+  command and login-shell read now starts through `internal/disclaim`,
+  which re-executes it with its responsibility disclaimed; the prompt names
+  `claude` (Developer ID signed, so the answer survives its updates and
+  Caprock's), `codex` or the shell.
+- **The daemon's own background reads skip guarded places**
+  (`tcc.Guarded`): Desktop, Documents, Downloads, iCloud Drive, cloud
+  storage, Music, Movies, Pictures, `/Volumes`, and links into them. What
+  the daemon still asks for is what the user opened, and Desktop, Documents
+  or Downloads when a session runs there (finding its repository reads up
+  that folder, `tcc.GuardedBeyondWork`).
 - **Every release asks again.** An ad-hoc signature's designated
   requirement is its cdhash, so each build is new code to TCC.
 - **One path, one entry.** The app runs its daemon from

@@ -474,17 +474,24 @@ shows what is new, or **Not now** to hide that version.
 ## macOS privacy prompts
 
 macOS asks before a program reads your Desktop, Documents or Downloads
-folder (System Settings → Privacy & Security → Files and Folders). Caprock
-asks when a session it runs — Claude Code, Codex, a shell — touches one of
-them: macOS counts what runs inside Caprock as Caprock, the way it counts
-what runs in Terminal as Terminal.
+folder, your Music or Photos library, or a network or removable volume
+(System Settings → Privacy & Security). A session Caprock runs — Claude
+Code, Codex, a shell — asks in its own name: Caprock starts each one
+responsible for itself, the way iTerm2 does, so the prompt says "claude" or
+"codex", not "caprock", and Claude Code keeps your answer across its
+updates. Caprock itself asks only for a folder you open in it, and for
+Desktop, Documents or Downloads when a session runs there (it reads up that
+folder to group the session under its repository). It never reads your Music
+or Photos library, cloud storage or a volume in the background.
 
 - **What to allow.** Allow the folders your projects live in, or the ones
   you ask an agent to read. Saying no does not break Caprock; that session
   just cannot read that folder.
+- **Sessions started before this change** still ask as "caprock" until they
+  end.
 - **Why it asks again after an update.** Caprock is not yet signed with an
-  Apple Developer ID, so to macOS each release is a new program. It asks
-  once per release, per folder.
+  Apple Developer ID, so to macOS each release is a new program. For a folder
+  you open in Caprock, or one a session runs in, it asks once per release.
 - **Why there are several "caprock" entries without an icon.** Each entry
   is a `caprock` binary at a different place: older Homebrew releases
   (Homebrew keeps each version at its own path), the app's daemon, and

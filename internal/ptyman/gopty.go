@@ -12,6 +12,8 @@ import (
 	"time"
 
 	gopty "github.com/aymanbagabas/go-pty"
+
+	"github.com/dspv/caprock/internal/disclaim"
 )
 
 // GoPTY is the go-pty backed Manager (creack/pty on POSIX, ConPTY on Windows).
@@ -76,7 +78,10 @@ func (GoPTY) Spawn(ctx context.Context, spec Spec) (Session, error) {
 			command = resolved
 		}
 	}
-	cmd := p.CommandContext(ctx, command, spec.Args...)
+	// Run through the disclaim trampoline where the binary set it up, so a
+	// privacy prompt names the agent or shell, not Caprock (internal/disclaim).
+	command, args := disclaim.Wrap(command, spec.Args)
+	cmd := p.CommandContext(ctx, command, args...)
 	cmd.Dir = spec.Dir
 	if spec.Env != nil {
 		cmd.Env = spec.Env

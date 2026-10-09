@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dspv/caprock/internal/tcc"
 )
 
 // Repository grouping — why the row is the repo, not the basename.
@@ -149,7 +151,18 @@ const maxWalkUp = 40
 
 // findRepoRoot walks up from dir for a `.git` entry, resolving a linked
 // worktree to the repository that owns it.
+//
+// Only the cwd's own ancestry is read, never its siblings. A session in
+// Desktop, Documents or Downloads is walked: the user works there, and people
+// keep every project in Documents. A folder in Music, Movies, Pictures, iCloud
+// Drive, cloud storage or /Volumes, or a link into one, is not
+// (tcc.GuardedBeyondWork): this runs on ingest, in the background, and the
+// read would ask for a media library or a share for a label. The session
+// keeps its folder's name instead.
 func findRepoRoot(dir string) (string, bool) {
+	if tcc.GuardedBeyondWork(dir) {
+		return "", false
+	}
 	for i := 0; i < maxWalkUp; i++ {
 		st, err := os.Stat(filepath.Join(dir, ".git"))
 		switch {

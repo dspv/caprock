@@ -45,6 +45,7 @@ import (
 	"strings"
 
 	"github.com/dspv/caprock/internal/store"
+	"github.com/dspv/caprock/internal/tcc"
 )
 
 // browseEntry is one directory a caller may pick or descend into.
@@ -172,13 +173,23 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(name, ".") {
 			continue
 		}
+		p := filepath.Join(dir, name)
+		// A folder macOS guards (Documents, Music, a network volume, a link
+		// into one) is offered by name and never read: listing home must not
+		// ask for the Music library or a share. Descending into it is the
+		// user's own request.
+		if e, guarded, list := guardedEntry(root, p, de); guarded {
+			if list {
+				out = append(out, e)
+			}
+			continue
+		}
 		// A symlink to a directory is worth offering — a lot of people keep
 		// `~/dev/thing` as a link. Stat rather than trusting the dirent type.
 		info, err := os.Stat(filepath.Join(dir, name))
 		if err != nil || !info.IsDir() {
 			continue
 		}
-		p := filepath.Join(dir, name)
 		// A phone is not shown a link out of its root: it could not open or
 		// start a session in it (ADR-034).
 		if remote {
@@ -221,6 +232,34 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// guardedEntry decides an entry that lies in, or links into, a place macOS
+// guards (tcc.Guarded), from the directory entry and the links alone. guarded
+// is false for any other entry, left to the caller's usual checks. list is
+// true for a real directory, and for a link whose target is spelled out inside
+// root — a link out of the root could not be opened anyway. Never marked a
+// repository: finding out would read inside it.
+func guardedEntry(root, p string, de os.DirEntry) (e browseEntry, guarded, list bool) {
+	target, guarded := tcc.Target(p)
+	if !guarded {
+		return browseEntry{}, false, false
+	}
+	if de.Type()&os.ModeSymlink != 0 {
+		if !textuallyWithin(root, target) {
+			return browseEntry{}, true, false
+		}
+	} else if !de.IsDir() {
+		return browseEntry{}, true, false
+	}
+	return browseEntry{Name: de.Name(), Path: p}, true, true
+}
+
+// textuallyWithin reports whether p is root or below it, from the strings
+// alone.
+func textuallyWithin(root, p string) bool {
+	rel, err := filepath.Rel(root, p)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
 // recentDir is a directory Caprock has already seen work happen in.
 type recentDir struct {
 	Dir string `json:"dir"`
@@ -250,8 +289,12 @@ func (s *Server) handleRecentDirs(w http.ResponseWriter, r *http.Request) {
 		// A directory that has since been deleted or renamed is not offered:
 		// clicking it would spawn a session that fails, and a picker that
 		// offers dead paths is worse than a shorter list.
-		if fi, err := os.Stat(d.Dir); err != nil || !fi.IsDir() {
-			continue
+		// One in a guarded place is offered unchecked: the check would ask
+		// for Documents, or a share, on opening the picker.
+		if !tcc.Guarded(d.Dir) {
+			if fi, err := os.Stat(d.Dir); err != nil || !fi.IsDir() {
+				continue
+			}
 		}
 		// Nor, to a phone, one outside home: the spawn would refuse it (ADR-034).
 		if remote && !underHome(d.Dir, false) {

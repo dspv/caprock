@@ -810,10 +810,21 @@ machine, never from a forge's API (rule 4):
 - **`projects[].repo_url`, `projects[].last_pr`** on `/v1/stats/summary` — the
   web address of the row's `dir`, and the newest pull request any session in
   that directory recorded (a `SessionPR`). Both are omitted when unknown.
-  On macOS `repo_url` is never looked up for a directory under Desktop,
-  Documents, Downloads, iCloud Drive or `/Volumes` (`protectedDir`): running
+  On macOS `repo_url` is never looked up for a directory macOS guards
+  (`protectedDir` → `tcc.Guarded`: Desktop, Documents, Downloads, iCloud
+  Drive, `~/Library/CloudStorage`, Music, Movies, Pictures, `/Volumes`, or a
+  symlink into any of them, recognised without reading the target): running
   git there makes macOS ask for the folder on opening the dashboard. The
-  session's own page still looks it up — the user opened it.
+  session's own page still looks it up — the user opened it. Ingest's
+  repository lookup and the projects list's automatic additions use the
+  narrower `tcc.GuardedBeyondWork`: they read up a session's own folder in
+  Desktop, Documents and Downloads (people keep projects there), never in
+  Music, Movies, Pictures, iCloud Drive, cloud storage or `/Volumes`, where
+  the session is labelled by its folder's name. The full rule shapes
+  `GET /v1/browse`: a guarded directory is
+  listed with `repo: false` and never read, a symlink into one is listed only
+  when its target is inside the browse root, and `GET /v1/recent-dirs` offers a
+  guarded recent folder without checking that it still exists.
 
 ```
 POST   /v1/agents                    {cwd?, chat?, create?, worktree?, agent?, model?, permission_mode?, resume?, fork?, command?, args?} → {session_id, cwd}
