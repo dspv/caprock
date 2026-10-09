@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-clipboard-image"
+description = "Enables the clipboard_image command without any pre-configured scope."
+commands.allow = ["clipboard_image"]
+
+[[permission]]
+identifier = "deny-clipboard-image"
+description = "Denies the clipboard_image command without any pre-configured scope."
+commands.deny = ["clipboard_image"]

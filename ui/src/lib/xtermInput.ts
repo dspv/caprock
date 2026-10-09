@@ -257,6 +257,9 @@ export function attachTerminalInput(
   const onDroppedPaths = (e: Event) => {
     const d = (e as CustomEvent<DroppedPaths | undefined>).detail
     if (!d || !Array.isArray(d.paths) || d.paths.length === 0) return
+    // A dialog over the terminal took the drop (Feedback, a sheet): the
+    // terminal under it is not where the file was aimed.
+    if (document.querySelector('[data-dialog-backdrop]')) return
     const r = el.getBoundingClientRect()
     if (r.width === 0 || r.height === 0) return
     if (d.x < r.left || d.x >= r.right || d.y < r.top || d.y >= r.bottom) return

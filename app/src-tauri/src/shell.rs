@@ -207,6 +207,10 @@ pub fn build(
                     None => p.clone(),
                 })
                 .collect();
+            // The only files the feedback form may read (capture.rs).
+            if let Some(d) = dropped.try_state::<crate::capture::Dropped>() {
+                d.set(&paths);
+            }
             if let Some(js) = drop_script(&paths, (position.x, position.y), scale) {
                 let _ = dropped.eval(js);
             }

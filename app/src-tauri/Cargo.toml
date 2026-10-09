@@ -22,6 +22,9 @@ tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-notification = "2"
+# Screenshots onto the clipboard for a feedback report (src/capture.rs);
+# its JavaScript commands are granted to no page.
+tauri-plugin-clipboard-manager = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "6"
@@ -35,6 +38,12 @@ notify-rust = "4.11"
 zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io"] }
 
 # SIGTERM quits through Tauri's exit (src/sigterm.rs); already in the tree.
+# The window's page as a PNG through WebView2's CapturePreview
+# (src/capture.rs); both already in the tree through wry.
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.39"
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Com_StructuredStorage"] }
+
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
@@ -52,7 +61,7 @@ snapshot = ["dep:objc2-core-graphics", "dep:objc2-core-foundation"]
 objc2 = "0.6"
 # NSPanel: the menu bar popover is a non-activating panel (src/popover.rs),
 # so opening it never activates the app or raises the main window.
-objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSPanel", "NSWindow", "NSResponder", "NSBitmapImageRep", "NSImageRep", "NSGraphics"] }
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSPanel", "NSWindow", "NSResponder", "NSBitmapImageRep", "NSImageRep", "NSGraphics", "NSImage"] }
 objc2-core-graphics = { version = "0.3", optional = true, features = ["CGWindow", "CGImage"] }
 objc2-foundation = { version = "0.3", features = ["NSData", "NSDictionary", "NSString", "NSBundle", "NSError", "NSSet", "NSArray"] }
 objc2-core-foundation = { version = "0.3", optional = true, features = ["CFCGTypes"] }

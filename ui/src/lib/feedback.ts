@@ -11,25 +11,31 @@
  * of "button is crooked" needs a model, and Caprock has no API calls; adding
  * one would mean either asking for a key or posting their words to a server,
  * which is the thing we are avoiding. Structure does the same job: a chosen
- * kind, their words verbatim, and a context block underneath.
+ * kind, their words verbatim, and a diagnostics block underneath.
+ *
+ * Screenshots cannot travel in a URL, and uploading them anywhere would be
+ * the thing we are avoiding, so they go the way a person would carry them:
+ * on the clipboard, one at a time, into GitHub's own comment box
+ * (`lib/attachments.ts`).
  */
 import type { Status } from './api'
 import { isWorkspaceHash } from './appmode'
 import { parseHash, type Route } from './router'
 
-export type FeedbackKind = 'bug' | 'feature' | 'unclear' | 'other'
+export type FeedbackKind = 'bug' | 'idea' | 'question'
 
 /**
- * One word each. "Something is broken / missing / unclear" was three sentences
- * to read before typing one — and at a glance three near-identical buttons,
- * since the distinguishing word came last. `other` exists so nobody stalls
- * deciding which of the three a thought belongs to.
+ * Three, one word each, as a segmented control. Each maps to a label that
+ * exists on dspv/caprock (`gh label list`): a label that does not exist is
+ * dropped by GitHub without a word, so the mapping is pinned by a test.
+ * "Unclear" and "other" were folded into Question: both already went out
+ * with the `question` label, and four near-identical buttons made people
+ * stop to choose.
  */
-export const KINDS: { id: FeedbackKind; label: string; hint: string; gh: string }[] = [
-  { id: 'bug', label: 'bug', hint: 'What did you see?', gh: 'bug' },
-  { id: 'feature', label: 'feature', hint: 'What would you want?', gh: 'enhancement' },
-  { id: 'unclear', label: 'unclear', hint: 'What did not make sense?', gh: 'question' },
-  { id: 'other', label: 'other', hint: 'Anything else — a sentence is enough.', gh: 'question' },
+export const KINDS: { id: FeedbackKind; label: string; title: string; hint: string; gh: string }[] = [
+  { id: 'bug', label: 'Bug', title: 'e.g. Cost chart is empty after a restart', hint: 'What did you do, what did you expect, what happened instead?', gh: 'bug' },
+  { id: 'idea', label: 'Idea', title: 'e.g. Show cost per branch', hint: 'What would you like, and what would it help you do?', gh: 'enhancement' },
+  { id: 'question', label: 'Question', title: 'e.g. What does "session total" include?', hint: 'What were you trying to find out?', gh: 'question' },
 ]
 
 /** Where issues go. */
@@ -65,51 +71,60 @@ export function context(status: Status | undefined, screen: string): string[] {
   ]
 }
 
-/** A title someone can scan in a list: kind, screen, then their own words. */
-export function title(kind: FeedbackKind, screen: string, body: string): string {
-  const first = body.trim().split('\n')[0]?.trim() ?? ''
-  const short = first.length > 60 ? `${first.slice(0, 57)}…` : first
-  return `[${kind}] ${screen}: ${short}`
+/**
+ * The issue title is the user's own title, trimmed to one line. GitHub caps a
+ * title at 256 characters; past that the form refuses to submit, so a pasted
+ * paragraph is cut here with an ellipsis rather than there with an error.
+ */
+export function title(text: string): string {
+  const line = text.trim().split('\n')[0]?.trim() ?? ''
+  return line.length > maxTitle ? `${line.slice(0, maxTitle - 1)}…` : line
+}
+
+const maxTitle = 200
+
+export interface Report {
+  kind: FeedbackKind
+  title: string
+  /** The description, verbatim. May be empty: the title can be the whole report. */
+  text: string
+  /** The diagnostics lines, or null when the user left them out. */
+  ctx: string[] | null
+  /** Screenshots attached in the dialog: they travel by clipboard, not in the URL. */
+  shots: number
+  /** ⌘V or Ctrl+V, for the line that says where the screenshots go. */
+  pasteKey?: string
 }
 
 /**
- * body is the issue text: their words first, context second, and a line saying
- * where it came from so a maintainer knows the context was filled in for them
- * rather than typed by hand.
+ * body is the issue text: their words first, diagnostics second (when kept),
+ * and a last line asking for the screenshots, which a URL cannot carry. The
+ * line is last because pasting under it is the next thing the user does.
  */
-export function body(kind: FeedbackKind, text: string, ctx: string[]): string {
-  const heading =
-    kind === 'bug'
-      ? 'What happened'
-      : kind === 'feature'
-        ? 'What is missing'
-        : kind === 'unclear'
-          ? 'What is unclear'
-          : 'Feedback'
-  const trimmed = text.trim()
+export function body(r: Report): string {
+  const heading = r.kind === 'bug' ? 'What happened' : r.kind === 'idea' ? 'The idea' : 'The question'
+  const trimmed = r.text.trim()
   const clipped =
     trimmed.length > maxText
       ? `${trimmed.slice(0, maxText)}\n\n_[…truncated — the rest did not fit in the link; paste it below]_`
       : trimmed
-  return [
-    `### ${heading}`,
-    '',
-    clipped,
-    '',
-    '### Context',
-    '',
-    ...ctx.map((c) => `- ${c}`),
-    '',
+  const out = [`### ${heading}`, '', clipped || '_(see the title)_', '']
+  if (r.ctx && r.ctx.length > 0) out.push('### Diagnostics', '', ...r.ctx.map((c) => `- ${c}`), '')
+  out.push(
     '<sub>Filed from the Caprock dashboard. Nothing was sent automatically — this issue was opened in your browser for you to review.</sub>',
-  ].join('\n')
+  )
+  if (r.shots > 0) {
+    out.push('', `**Screenshots: ${r.shots} — paste ${r.shots === 1 ? 'it' : 'them'} here (${r.pasteKey ?? '⌘V'}).**`, '')
+  }
+  return out.join('\n')
 }
 
 /** The GitHub "new issue" URL, prefilled. */
-export function issueURL(kind: FeedbackKind, screen: string, text: string, ctx: string[]): string {
-  const k = KINDS.find((x) => x.id === kind) ?? KINDS[0]!
+export function issueURL(r: Report): string {
+  const k = KINDS.find((x) => x.id === r.kind) ?? KINDS[0]!
   const q = new URLSearchParams({
-    title: title(kind, screen, text),
-    body: body(kind, text, ctx),
+    title: title(r.title),
+    body: body(r),
     labels: k.gh,
   })
   return `https://github.com/${REPO}/issues/new?${q.toString()}`
@@ -123,9 +138,9 @@ export function issueURL(kind: FeedbackKind, screen: string, text: string, ctx: 
  */
 const maxText = 6000
 
-/** Enough words to be worth filing. */
-export function isSendable(text: string): boolean {
-  return text.trim().length >= 8
+/** A title worth filing: a few characters, not whitespace. */
+export function isSendable(titleText: string): boolean {
+  return titleText.trim().length >= 3
 }
 
 /** A human name for a dashboard screen, for a report's title and context. */
