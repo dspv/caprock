@@ -418,6 +418,8 @@ export function AppShell() {
   const onPaneStatus = useCallback((sessionId: string, s: PaneStatus) => setPaneStatus((cur) => ({ ...cur, [sessionId]: s })), [])
   const onFocusPane = useCallback((tabId: string, paneId: string) => dispatch({ type: 'focus-pane', tabId, paneId }), [])
   const onClosePane = useCallback((tabId: string, paneId: string) => dispatch({ type: 'close-pane', tabId, paneId }), [])
+  /** A tab's ×, in the strip and in the sidebar alike: the tab closes, what runs in it keeps running. */
+  const onCloseTab = useCallback((tabId: string) => dispatch({ type: 'close', tabId }), [])
   const onResizePanes = useCallback((tabId: string, splitId: string, sizes: number[]) => dispatch({ type: 'resize', tabId, splitId, sizes }), [])
 
   // ⌘W closes the focused pane of a split tab, else the tab; the session runs on either way.
@@ -741,6 +743,7 @@ export function AppShell() {
               tabLabels={labels}
               activeTabId={current?.id}
               onActivateTab={onActivateTab}
+              onCloseTab={onCloseTab}
               onOpenLive={openSession}
               onSelectProject={onSelectProject}
               onOpenInbox={onOpenInbox}
@@ -781,7 +784,7 @@ export function AppShell() {
               inspectorOpen={prefs.inspector}
               sidebarOpen={prefs.sidebar}
               onActivate={onActivateTab}
-              onDetach={(id) => dispatch({ type: 'close', tabId: id })}
+              onDetach={onCloseTab}
               onMove={(id, to) => dispatch({ type: 'move', tabId: id, toIndex: to })}
               onNewAgent={() => onNewAgent()}
               onNewShell={() => onNewShell()}
