@@ -120,6 +120,10 @@ Fixture-based tests that run everywhere are step 6 and are written (`internal/op
 
 The daemon looks for OpenCode's database at startup. Finding none is the normal
 case and is silent; finding one starts a poller alongside the transcript tailer.
+Finding none, it looks again every ten seconds (`awaitOpenCode`), so OpenCode
+installed or first run after the daemon started is read without a restart —
+until 2026-10-09 it was read only once Caprock itself started an OpenCode
+session, and a session run in a terminal stayed off Now until then.
 
 **Polling, not tailing.** Every five seconds the poller lists sessions and reads
 the ones whose `time_updated` moved since the last pass. That upper bound on
@@ -376,7 +380,8 @@ change, as the shared live stream does for `opencode serve`.
   mislinked.
 - Subagent sessions keep their own rows, as for every OpenCode session.
 - On a machine where OpenCode has never run, the database is created by that
-  first session; the reader is started when the link is made.
+  first session; the reader is started when the link is made, or by the
+  ten-second look for the database, whichever comes first.
 - Verified end to end on 2026-10-04 on an isolated daemon with a scratch HOME:
   the prompt was linked and stored under Caprock's id with no second row,
   `continue here` started `opencode --session <id>`, and the model call itself
@@ -506,6 +511,22 @@ refused, since OpenCode 2's TUI has no fork flag.
   accept-edits made OpenCode ask before a shell command, and a two-line first
   message arrived as two lines. Model calls went to a local stub provider
   configured in the scratch HOME, so the costs are the stub's.
+- On Linux (2026-10-09): Debian 12.15 arm64 in a container (Docker on
+  colima), `@opencode/cli` 2.0.26 from npm, Caprock v0.93.0 built for
+  linux/arm64 from master, a scratch HOME and a local stub provider, no real
+  keys. `opencode run` sessions in the shell appeared under
+  `/v1/sessions?agent=opencode` with model, tokens, cost, prompt, reply and a
+  `shell` call stored as Bash; `opencode_version` read `2.0.26`. `POST
+  /v1/agents` with `agent: opencode` started `opencode --standalone --session
+  ses_…` with `OPENCODE_CONFIG_CONTENT={"model":"stub/stub-model"}` and
+  `MSGPACKR_NATIVE_ACCELERATION_DISABLED=true`, linked the session exactly
+  (`exact=true`), and the typed two-line first message reached the stub as two
+  lines. The service stream followed `service.json` and `/api/event`: four of
+  four `opencode run` sessions were on the API within 10 ms of exiting, where
+  the poller takes up to five seconds. The same run found the startup gap
+  above: a daemon started before OpenCode's first run never read its database
+  until a New agent start; fixed by `awaitOpenCode`, re-checked in the same
+  container (first session on the API seven seconds after it ended, from a
+  fresh HOME).
 - Fixture only: the compaction shape (built from the schema, not produced by
-  a run), Linux and Windows, continuing an OpenCode 2 session from the UI, and
-  whether a given refresh came from the service stream or the poller.
+  a run), Windows, continuing an OpenCode 2 session from the UI.
