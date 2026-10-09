@@ -73,6 +73,15 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-09 — 0.94.1: close from the sidebar, links that open
+
+Each tab and project in the sidebar closes with one ×, each row says its
+state in a word, and sessions started in other terminals fold into one line.
+Terminal links open on Cmd+click. The prompts macOS showed under Caprock's
+name came from commands sessions ran (a `find /` walked into Music and
+/Volumes); children now start disclaimed, so macOS asks in their own name,
+and background reads skip Music, Movies, Pictures, iCloud and /Volumes.
+
 ### 2026-10-09 — 0.94.0: a project list you can read, one tab strip
 
 The first user moved from the browser to the app and lost his place: picking
