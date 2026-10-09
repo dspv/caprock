@@ -854,6 +854,21 @@ describe('Shift+Enter', () => {
     expect(sent.slice(before).some((x) => x.includes('elsewhere.md'))).toBe(false)
   })
 
+  it('leaves a native drop to a dialog open over it', async () => {
+    // A screenshot dropped on the Feedback dialog was typed into the
+    // terminal under its backdrop: the terminal only checks its own box.
+    mount()
+    boxHost()
+    const before = sent.length
+    const backdrop = document.createElement('div')
+    backdrop.setAttribute('data-dialog-backdrop', '')
+    document.body.appendChild(backdrop)
+    nativeDrop(['/Users/me/shot.png'], 200, 100)
+    await new Promise((r) => setTimeout(r, 10))
+    backdrop.remove()
+    expect(sent.slice(before).some((x) => x.includes('shot.png'))).toBe(false)
+  })
+
   it('says which file was refused and what is accepted, and still sends the rest', async () => {
     pasteCalls.length = 0
     written.length = 0

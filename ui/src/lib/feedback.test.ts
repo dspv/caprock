@@ -7,7 +7,7 @@
  * here rather than left to whoever edits the file next.
  */
 import { describe, expect, it } from 'vitest'
-import { body, context, isSendable, issueURL, title } from './feedback'
+import { body, context, isSendable, issueURL, KINDS, title, type Report } from './feedback'
 import type { Status } from './api'
 
 const status = {
@@ -60,20 +60,28 @@ describe('context', () => {
   })
 })
 
+const report = (over: Partial<Report> = {}): Report => ({
+  kind: 'bug',
+  title: 'Cost chart is empty',
+  text: 'after a restart the chart is blank',
+  ctx: ['Caprock v0.10.1', 'Screen: Cost'],
+  shots: 0,
+  ...over,
+})
+
+const params = (u: string) => new URL(u).searchParams
+
 describe('title', () => {
-  it('names the kind and the screen, then the user\'s own words', () => {
-    expect(title('bug', 'History', 'the button is crooked')).toBe('[bug] History: the button is crooked')
+  it('is the user\'s own title, verbatim', () => {
+    expect(title('the button is crooked')).toBe('the button is crooked')
+    expect(params(issueURL(report())).get('title')).toBe('Cost chart is empty')
   })
 
-  it('truncates a long first line rather than filling the list with it', () => {
-    const long = 'x'.repeat(200)
-    const t = title('bug', 'Now', long)
-    expect(t.length).toBeLessThan(80)
+  it('keeps one line and stays under GitHub\'s 256-character cap', () => {
+    expect(title('add totals\nand also a chart')).toBe('add totals')
+    const t = title('x'.repeat(400))
+    expect(t.length).toBeLessThanOrEqual(256)
     expect(t).toContain('…')
-  })
-
-  it('uses only the first line, since the rest belongs in the body', () => {
-    expect(title('feature', 'Cost', 'add totals\nand also a chart')).toBe('[feature] Cost: add totals')
   })
 })
 
@@ -82,53 +90,72 @@ describe('body', () => {
     // No rewriting: their words are the report. Anything else needs a model,
     // and reaching for one would mean sending their text somewhere.
     const text = 'the button on History is crooked'
-    expect(body('bug', text, ['Caprock v0.10.1'])).toContain(text)
+    expect(body(report({ text }))).toContain(text)
   })
 
   it('says the issue was not sent automatically', () => {
-    const b = body('bug', 'something', [])
-    expect(b.toLowerCase()).toContain('nothing was sent automatically')
+    expect(body(report()).toLowerCase()).toContain('nothing was sent automatically')
   })
 
   it('heads the section by what kind of report it is', () => {
-    expect(body('bug', 'x', [])).toContain('What happened')
-    expect(body('feature', 'x', [])).toContain('What is missing')
-    expect(body('unclear', 'x', [])).toContain('What is unclear')
-    // `other` is the catch-all, so it must not fall through to a bug heading —
-    // a maintainer reading "What happened" assumes something broke.
-    expect(body('other', 'x', [])).toContain('Feedback')
-    expect(body('other', 'x', [])).not.toContain('What happened')
+    expect(body(report({ kind: 'bug' }))).toContain('What happened')
+    expect(body(report({ kind: 'idea' }))).toContain('The idea')
+    expect(body(report({ kind: 'question' }))).toContain('The question')
+    expect(body(report({ kind: 'question' }))).not.toContain('What happened')
+  })
+
+  it('stands without a description: the title can be the whole report', () => {
+    expect(body(report({ text: '' }))).toContain('see the title')
+  })
+
+  it('carries the diagnostics, or leaves them out when the box is unticked', () => {
+    expect(body(report())).toContain('### Diagnostics')
+    expect(body(report())).toContain('- Caprock v0.10.1')
+    const without = body(report({ ctx: null }))
+    expect(without).not.toContain('Diagnostics')
+    expect(without).not.toContain('v0.10.1')
+  })
+
+  it('ends by asking for the screenshots a URL cannot carry', () => {
+    const b = body(report({ shots: 2, pasteKey: 'Ctrl+V' }))
+    expect(b.trim().split('\n').pop()).toBe('**Screenshots: 2 — paste them here (Ctrl+V).**')
+    expect(body(report({ shots: 1 }))).toContain('Screenshots: 1 — paste it here (⌘V)')
+    expect(body(report({ shots: 0 }))).not.toContain('Screenshots')
   })
 })
 
 describe('issueURL', () => {
   it('points at the product repo and carries a label', () => {
-    const u = issueURL('bug', 'Now', 'it broke', ['Caprock v0.10.1'])
+    const u = issueURL(report())
     expect(u).toContain('github.com/dspv/caprock/issues/new')
-    expect(u).toContain('labels=bug')
+    expect(params(u).get('labels')).toBe('bug')
   })
 
-  it('maps a feature request to the label a maintainer filters on', () => {
-    expect(issueURL('feature', 'Now', 'add a thing', [])).toContain('labels=enhancement')
+  it('maps each kind to a label that exists on the repo', () => {
+    // `gh label list -R dspv/caprock`, 2026-10-10. GitHub drops an unknown
+    // label silently, so a typo here would file every report unlabelled.
+    const existing = ['bug', 'enhancement', 'question']
+    expect(KINDS.map((k) => k.id)).toEqual(['bug', 'idea', 'question'])
+    for (const k of KINDS) {
+      expect(existing).toContain(k.gh)
+      expect(params(issueURL(report({ kind: k.id }))).get('labels')).toBe(k.gh)
+    }
+    expect(params(issueURL(report({ kind: 'idea' }))).get('labels')).toBe('enhancement')
   })
 
   it('escapes text that would otherwise break the URL', () => {
-    const u = issueURL('bug', 'Now', 'crash on "quotes" & #hashes', [])
+    const u = issueURL(report({ title: 'crash on "quotes" & #hashes', text: 'a & b # c' }))
     expect(() => new URL(u)).not.toThrow()
-    expect(new URL(u).searchParams.get('title')).toContain('quotes')
+    expect(params(u).get('title')).toBe('crash on "quotes" & #hashes')
+    expect(params(u).get('body')).toContain('a & b # c')
   })
 })
 
 describe('isSendable', () => {
-  it('refuses a report with nothing in it', () => {
+  it('needs a title', () => {
     // An empty issue costs a maintainer more than it costs the reporter.
-    for (const empty of ['', '   ', '\n', 'ok']) {
-      expect(isSendable(empty)).toBe(false)
-    }
-  })
-
-  it('accepts a real sentence', () => {
-    expect(isSendable('the History screen is blank')).toBe(true)
+    for (const empty of ['', '   ', '\n', 'ok']) expect(isSendable(empty)).toBe(false)
+    expect(isSendable('History is blank')).toBe(true)
   })
 })
 
@@ -136,9 +163,9 @@ describe('a long report', () => {
   it('stays inside what a URL can carry', () => {
     // GitHub truncates a prefilled issue past roughly 8k; silently losing the
     // end of someone's report is worse than refusing it.
-    const long = 'x'.repeat(50000)
-    const u = issueURL('bug', 'History', long, ['Caprock v0.10.1', 'Screen: History'])
+    const u = issueURL(report({ title: 't'.repeat(1000), text: 'x'.repeat(50000), shots: 4 }))
     expect(u.length).toBeLessThan(8000)
-    expect(decodeURIComponent(u)).toContain('truncated')
+    expect(params(u).get('body')).toContain('truncated')
+    expect(params(u).get('body')).toContain('Screenshots: 4')
   })
 })

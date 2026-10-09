@@ -98,8 +98,12 @@ others. Installing it: [install-app.md](install-app.md).
   The sliders beside it open Settings (⌘,) in the same tab, where the app puts
   how new agents start, appearance, terminal and editor first. The × beside
   the *Settings* heading, or Esc, closes it as the tab's × does. The
-  megaphone beside the sliders opens *Feedback*: a sentence becomes a
-  prefilled GitHub issue in your browser, which you read and submit yourself.
+  megaphone beside the sliders opens *Feedback*: pick Bug, Idea or
+  Question, write a title and a few words, and paste (⌘V) or choose up to
+  four screenshots. *Create issue* opens a prefilled GitHub issue in your
+  browser, which you read and submit yourself, and puts the first screenshot
+  on your clipboard: press ⌘V in the issue, then *Copy next* for the rest.
+  Nothing is uploaded by Caprock — GitHub takes what you paste.
 - **Dialogs.** Every dialog — Quick chat, New agent, Add project, the
   palette, Share and the rest — closes with the × in its corner, a click
   outside it, or Esc. In the app,

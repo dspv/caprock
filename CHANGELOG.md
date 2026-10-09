@@ -7,6 +7,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **Feedback with a type, a title and screenshots.** The Feedback dialog
+  now asks what it is (Bug, Idea or Question, filed with the matching
+  GitHub label), a title that becomes the issue's title, and an optional
+  description. Paste (⌘V), drop or choose up to four screenshots, each with
+  a thumbnail and a ×. Diagnostics (version, OS, screen) sit on one line
+  you can open to read or untick to leave out. *Create issue* opens the
+  prefilled issue in your browser and puts screenshot 1 on your clipboard;
+  a short *Attach your screenshots* step says to press ⌘V in the GitHub
+  comment box and *Copy next* brings up the next one. Caprock still sends
+  nothing: GitHub uploads what you paste.
+
+### Fixed
+
+- **A file dropped on a dialog in the app no longer types into the
+  terminal underneath.** The terminal checked only its own box, so a drop
+  on a dialog over it typed the file's path at the prompt.
+
 ## [0.96.0] - 2026-10-10
 
 ### Added

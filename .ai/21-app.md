@@ -1008,6 +1008,11 @@ tells a page where a file lives.
   Nothing in the app may rely on `draggable`/`dragover`/`drop`: the tab
   strip reorders by pointer events (`TerminalTabs.tsx`). A drop outside a
   terminal does nothing, and the window never navigates to a dropped file.
+- **A dialog over a terminal takes the drop.** While any dialog is open
+  (a `[data-dialog-backdrop]` is in the page) no terminal types a dropped
+  path: the file was aimed at the dialog, not the terminal under its
+  backdrop. Feedback answers such a drop by saying to paste the screenshot
+  or choose it, since a page cannot read a file by its path.
 - **The popover** shows no terminal and keeps the default handler, so a
   drop there does nothing.
 - **Verified** by unit tests on both halves (`shell.rs` script, the
