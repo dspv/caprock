@@ -57,28 +57,3 @@ export const CaprockMark = ({ size = 16 }: { size?: number }) => (
     <rect x="6" y="22" width="20" height="3" fill="var(--color-accent)" />
   </svg>
 )
-
-/**
- * Which agent a session runs, as a two-letter monogram in a hairline square:
- * readable at 14px, and no vendor's logo is borrowed for it.
- */
-const AGENT_MONO: Record<string, string> = {
-  claude: 'Cl',
-  codex: 'Cx',
-  opencode: 'Oc',
-  gemini: 'Ge',
-  deepseek: 'Ds',
-  shell: '$',
-}
-
-export function AgentGlyph({ agent, shell = false }: { agent?: string; shell?: boolean }) {
-  const key = shell ? 'shell' : agent || 'claude'
-  return (
-    <span
-      aria-hidden
-      className="mono inline-flex h-[15px] min-w-[17px] shrink-0 items-center justify-center rounded-[4px] border border-[var(--app-hairline-strong)] px-[2px] text-[9px] font-semibold leading-none tracking-[-0.02em] text-fg-muted"
-    >
-      {AGENT_MONO[key] ?? key.slice(0, 2)}
-    </span>
-  )
-}

@@ -9,6 +9,7 @@ import { ContinueSession } from '@/components/ContinueSession'
 import { InterruptedBanner } from '@/components/Interrupted'
 import { Badge, Empty, Panel, Skeleton, StaleNote, Stat } from '@/components/ui'
 import { ProjectsPanel, AGENTS, agentName, type AgentFilter } from '@/components/Projects'
+import { AgentGlyph } from '@/components/AgentMarks'
 import { ActivityFeed } from '@/components/ActivityFeed'
 import { LifetimeStrip } from '@/components/Lifetime'
 import { CacheStat } from '@/components/CacheStat'
@@ -589,11 +590,7 @@ export function SessionCard({ s, now, earlier, projectLabel }: { s: SessionSumma
       <div className="px-3 pt-2 pb-1 flex items-center gap-2">
         <span className="font-medium truncate text-[15px]" title={s.repo_root || s.cwd}>{projectLabel || s.project || 'unknown project'}</span>
         <span className="mono text-[11px] text-fg-faint">{shortId(s.session_id)}</span>
-        {s.agent && s.agent !== 'claude' && (
-          <span className="text-[10px] uppercase tracking-[0.08em] text-fg-muted border border-border px-1 py-px rounded-sm">
-            {s.agent}
-          </span>
-        )}
+        {s.agent && s.agent !== 'claude' && <AgentGlyph agent={s.agent} />}
         {branchLabel(s.git_branch) && <span className="mono text-[11px] text-fg-muted truncate">{branchLabel(s.git_branch)}</span>}
         <span className="ml-auto flex items-center gap-2">
           {waiting && (

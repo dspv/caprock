@@ -9,6 +9,21 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **The app's status bar drops "v2 · 167×36".** The front terminal's
+  protocol and size sat beside the version and meant nothing to a reader;
+  they are now in the version's tooltip (*terminal protocol v2 · 167×36*),
+  and the bar names the terminal's state only while it is not live
+  (*reconnecting*).
+- **Each agent is shown by its mark, not by letters.** The app's sidebar,
+  *Waiting on you*, the tab strip, the tray panel and the dashboard's
+  Projects panel, pulse and Now cards named an agent with a text monogram —
+  *Cl*, *Cx*, *$*, *oc*, *cdx*. Now they show a small mark in the same
+  space: the Claude spark, the Gemini sparkle, the OpenCode and DeepSeek
+  marks, a `C` in a rounded square for Codex and a `>_` prompt for a shell.
+  Brand colours are toned down to read on graphite, white and paper alike,
+  and each mark says the agent's name on hover and to a screen reader. The
+  paths come from Simple Icons (CC0); nothing is fetched. Row heights are
+  unchanged.
 - **Closing a shell's tab closes the shell.** Until now the × of a shell's
   tab, in the strip or the sidebar, and ⌘W left the shell running, and idle
   shells piled up as muted *Shell* rows. Now it works as in iTerm, Terminal

@@ -15,7 +15,8 @@ import { type PaneLeaf, type PaneNode, type PaneSplit, type Tab } from '@/lib/ta
 import { dotOf, sessionTitle } from '@/lib/sidebar'
 import { tabLabels, type TabLabel } from '@/lib/tablabels'
 import { TerminalPane, type PaneStatus } from './TerminalPane'
-import { AgentGlyph, ChatIcon, CloseIcon, DashboardIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
+import { AgentGlyph } from './AgentMarks'
+import { ChatIcon, CloseIcon, DashboardIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
 import { StatusDot } from './ProjectRow'
 import { closeTitle, closeWord } from '@/lib/closeShell'
 
