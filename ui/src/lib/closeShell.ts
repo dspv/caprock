@@ -64,6 +64,48 @@ export function closeQuestion(busy: readonly ClosingShell[]): string {
   return `${busy.length} shells are running ${busy.map((b) => b.program).join(', ')}. Close and stop them?`
 }
 
+/**
+ * The plan for *Close project*: every shell of the project, with a tab or
+ * without, that the daemon still lists. Idle ones end; busy ones are asked
+ * about together. Agents are not in `shellIds` and are never touched.
+ * `names` is a tabbed shell's name ("Shell 1"); one with no tab is "Shell".
+ */
+export function planProjectClose(
+  shellIds: readonly string[],
+  live: ReadonlyMap<string, string | undefined>,
+  names: ReadonlyMap<string, string>,
+): ClosePlan {
+  const plan: ClosePlan = { stop: [], busy: [] }
+  for (const id of new Set(shellIds)) {
+    if (!live.has(id)) continue
+    const program = live.get(id) || undefined
+    ;(program ? plan.busy : plan.stop).push({ sessionId: id, name: names.get(id) ?? 'Shell', program })
+  }
+  return plan
+}
+
+/** What *Close project* did with the project's shells: asked and was told no, or stopped how many. */
+export interface ProjectShellsOutcome {
+  cancelled: boolean
+  stopped: number
+}
+
+/** "alpha: Shell 1 is running claude, Shell 2 is running npm. Stop them and close?" */
+export function projectCloseQuestion(project: string, busy: readonly ClosingShell[]): string {
+  const list = busy.map((b) => `${b.name} is running ${b.program}`).join(', ')
+  return `${project}: ${list}. Stop ${busy.length === 1 ? 'it' : 'them'} and close?`
+}
+
+/** Each tabbed shell's name, by session id: the name its tab carries ("Shell 2"). */
+export function shellNames(tabs: readonly Tab[], labels: ReadonlyMap<string, { shellName?: string }>): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const t of tabs) {
+    const name = labels.get(t.id)?.shellName
+    if (name) out.set(namingLeaf(t).target.sessionId, name)
+  }
+  return out
+}
+
 /** The shell list as `planClose` reads it: id to program. */
 export function liveShells(list: readonly { id: string; program?: string }[]): Map<string, string | undefined> {
   return new Map(list.map((sh) => [sh.id, sh.program]))

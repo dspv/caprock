@@ -161,6 +161,26 @@ describe('closing in the sidebar', () => {
     expect(props.onActivateTab).toHaveBeenCalledWith('tb')
   })
 
+  it('ends the project\'s shells before closing it: Cancel closes nothing, stopped shells no longer keep it listed', async () => {
+    const outcomes = [{ cancelled: true, stopped: 0 }, { cancelled: false, stopped: 0 }, { cancelled: false, stopped: 1 }]
+    const onStopProjectShells = vi.fn(async () => outcomes.shift()!)
+    const { props } = setup([live({ session_id: 'sh1', kind: 'shell' })], [shellTab], { onStopProjectShells })
+    const x = screen.getByRole('button', { name: 'Close project alpha' })
+    expect(x.getAttribute('title')).toBe('Close project: its tabs and shells close and it moves under Hidden. A shell running a program asks first.')
+    // Cancelled at the question: no tab closes.
+    await act(async () => { fireEvent.click(x) })
+    expect(onStopProjectShells).toHaveBeenCalledWith('alpha')
+    expect(props.onCloseProjectTabs).not.toHaveBeenCalled()
+    // The busy shell kept running: the tabs close, the project stays listed.
+    await act(async () => { fireEvent.click(x) })
+    expect(props.onCloseProjectTabs).toHaveBeenCalledTimes(1)
+    expect(localStorage.getItem(HIDDEN_KEY)).toBeNull()
+    // The shell stopped: nothing runs there any more, so it hides.
+    await act(async () => { fireEvent.click(x) })
+    expect(props.onCloseProjectTabs).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(localStorage.getItem(HIDDEN_KEY)!)).toEqual(['alpha'])
+  })
+
   it('keeps a project with live work listed: its × only closes the tabs', () => {
     const { props } = setup([live({ session_id: 'a1' })], [agentTab])
     const x = screen.getByRole('button', { name: 'Close project alpha' })

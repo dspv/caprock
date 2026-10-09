@@ -18,7 +18,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   same goes for a shell's pane in a split. Closing an agent's tab still
   never stops the agent, and the tooltips now say which is which (*Close
   shell* / *Close tab — the agent keeps running*). A shell left running
-  with no tab is still a muted row with ■ to stop it.
+  with no tab is still a muted row with ■ to stop it. *Close project* (a
+  project's ×) now ends that project's shells too, tab or no tab: idle ones
+  at once, and when some run a program one question lists them — *alpha:
+  Shell 1 is running claude, Shell 2 is running npm. Stop them and close?*
+  — with *Stop and close*, *Keep them running, close tabs* and *Cancel*.
+  Its agents are never stopped.
 - **A shell says what it runs.** A shell running a program reads *Shell 1 ·
   claude* in the tab strip and the sidebar. `GET /v1/shells` carries a new
   `program` field: the shell's foreground program on macOS and Linux, read

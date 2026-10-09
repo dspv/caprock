@@ -93,8 +93,8 @@ export function runningLabel(n: number): string {
 }
 
 /** Whether a project's × only closes its tabs: something runs or waits in it, and hiding it would lose it. */
-export function keepsProject(node: ProjectNode): boolean {
-  return node.live > 0 || node.waiting > 0
+export function keepsProject(node: ProjectNode, stopped = 0): boolean {
+  return node.live - stopped > 0 || node.waiting > 0
 }
 
 export interface ProjectRowProps {
@@ -153,7 +153,8 @@ export const ProjectRow = memo(function ProjectRow({
   // Other folders is a group, not a folder: no menu, no new agent in it.
   const isGroup = p.root === ''
   const menu = !isGroup && onMenu
-  const keeps = keepsProject(node)
+  // Its shells end with it; only agents and what waits keep it listed.
+  const keeps = node.agents > 0 || node.waiting > 0
   const openMenuFrom = (el: HTMLElement) => {
     const r = el.getBoundingClientRect()
     onMenu?.(id, { x: r.right - 4, y: r.bottom + 2 }, el)
@@ -221,8 +222,8 @@ export const ProjectRow = memo(function ProjectRow({
               <RowAction
                 label={`Close project ${p.name}`}
                 title={keeps
-                  ? `Close project: its tabs close. Its agents keep running, so it stays in the list (${runningLabel(Math.max(node.live, node.waiting))}).`
-                  : 'Close project: its tabs close and it moves under Hidden. Anything running keeps running.'}
+                  ? `Close project: its tabs and shells close. Its agents keep running, so it stays in the list (${runningLabel(Math.max(node.agents, node.waiting))}).`
+                  : 'Close project: its tabs and shells close and it moves under Hidden. A shell running a program asks first.'}
                 onClick={() => onCloseProject(id)}
               >
                 <CloseIcon size={13} />

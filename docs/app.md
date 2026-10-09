@@ -63,10 +63,14 @@ others. Installing it: [install-app.md](install-app.md).
   terminal app: an idle one ends with its tab; one running a program asks
   first — *Shell 1 is running claude. Close and stop it?* — with **Stop and
   close**, **Keep running, close tab** and **Cancel**. A project's **×**
-  (*Close project*) closes all its tabs and moves it under *Hidden*; if
-  something still runs or waits in it, only its tabs close and it stays,
-  with its green dot, since hiding it would lose live work. A project's ×
-  stops nothing. To stop an agent or a shell Caprock started, hover
+  (*Close project*) closes all its tabs and its shells, tab or no tab — an
+  idle shell at once; when any runs a program, one question lists them
+  (*alpha: Shell 1 is running claude, Shell 2 is running npm. Stop them and
+  close?*) with **Stop and close**, **Keep them running, close tabs** and
+  **Cancel** — and moves it under *Hidden*. If an agent still runs or
+  waits in it, or a shell you kept running, only its tabs close and it
+  stays, with its green dot, since hiding it would lose live work. Its
+  agents are never stopped. To stop an agent or a shell Caprock started, hover
   its muted row (no tab) for **■**, or right-click its tab for *Stop the
   session…* / *Stop the shell…*; either asks first, as the cockpit does.
   A session started in another terminal has no stop — Caprock never

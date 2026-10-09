@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionSummary } from './api'
-import { closeQuestion, closeTitle, closeWord, liveShells, planClose } from './closeShell'
+import { closeQuestion, closeTitle, closeWord, liveShells, planClose, planProjectClose, projectCloseQuestion, shellNames } from './closeShell'
 import type { PaneLeaf, Tab } from './tabs'
 
 const pane = (id: string, kind: 'session' | 'shell' | 'file', sessionId: string): PaneLeaf => ({ type: 'pane', id, target: { kind, sessionId } })
@@ -59,5 +59,22 @@ describe('closing a shell', () => {
     expect(closeTitle(true, false)).toBe('Close tab (⌘W)')
     expect(closeWord(false, true)).toBe('Close shell')
     expect(closeWord(true, false)).toBe('Close tab')
+  })
+
+  it('closing a project: idle shells end, busy ones are asked about in one question, gone ones are skipped', () => {
+    const live = liveShells([{ id: 'sh1', program: 'claude' }, { id: 'sh2', program: 'npm' }, { id: 'sh3' }])
+    const names = new Map([['sh1', 'Shell 1'], ['sh2', 'Shell 2']])
+    const plan = planProjectClose(['sh1', 'sh2', 'sh3', 'gone', 'sh1'], live, names)
+    expect(plan.stop).toEqual([{ sessionId: 'sh3', name: 'Shell', program: undefined }])
+    expect(plan.busy.map((b) => b.sessionId)).toEqual(['sh1', 'sh2'])
+    expect(projectCloseQuestion('alpha', plan.busy)).toBe('alpha: Shell 1 is running claude, Shell 2 is running npm. Stop them and close?')
+    expect(projectCloseQuestion('alpha', plan.busy.slice(0, 1))).toBe('alpha: Shell 1 is running claude. Stop it and close?')
+  })
+
+  it('names a tabbed shell as its tab does', () => {
+    const t1: Tab = { id: 't1', projectId: 'p', title: '', focusedPaneId: 'a', root: pane('a', 'shell', 'sh1') }
+    const t2: Tab = { id: 't2', projectId: 'p', title: '', focusedPaneId: 'b', root: pane('b', 'session', 'a1') }
+    const names = shellNames([t1, t2], new Map([['t1', { shellName: 'Shell 1' }], ['t2', {}]]))
+    expect([...names]).toEqual([['sh1', 'Shell 1']])
   })
 })

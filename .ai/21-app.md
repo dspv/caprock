@@ -830,6 +830,13 @@ there, and worktrees as first-class places to work.
   with no tab — kept by *Keep running, close tab*, or from before this — is
   still the muted row with ■ to stop it.
 
+  *Close project* (a project's ×) does the same for every shell of the
+  project, with a tab or without: idle ones end, and when some run a
+  program one question lists them — *alpha: Shell 1 is running claude,
+  Shell 2 is running npm. Stop them and close?* — with **Stop and close**,
+  **Keep them running, close tabs** and **Cancel**. Its agents are never
+  stopped. The project's ⋯ menu *Close tabs* still only closes tabs.
+
 ## File tabs
 
 The owner asked (2026-10-09) to read a project's files inside the app —
