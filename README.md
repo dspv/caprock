@@ -4,7 +4,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/hero-light.png">
-  <img alt="The Caprock app with a Claude Code session fixing a failing test, the projects and their worktrees on the left, cost and context on the right, and a paired phone asking to approve a Bash command" src="docs/hero.png">
+  <img alt="The Caprock app: a Claude Code session retrying a webhook sender with two background subagents, the current project's tabs on the left with their state, cost, context and subagents on the right" src="docs/hero.png">
 </picture>
 
 *The desktop app and a paired phone, with demo projects and a demo session.*
