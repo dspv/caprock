@@ -970,6 +970,41 @@ with ⌘W and is restored on relaunch like them
 - **A phone may read** what a paired viewer may already read in a diff; it
   cannot write anything here.
 
+## Feedback screenshots
+
+The feedback form (`.ai/04-ui.md` § Feedback) carries its screenshots to
+GitHub by clipboard. In the app three commands do the native parts
+(`src-tauri/src/capture.rs`), granted to the daemon's page alone:
+
+- **`clipboard_image`** takes a PNG as the request's raw body, decodes it
+  (`tauri::image::Image`) and writes it with the clipboard manager plugin
+  (arboard). The page's `navigator.clipboard.write` with an image depends on
+  the webview — WKWebView wants it inside the click, WebKitGTK may not have
+  it — and the shell's clipboard does not. The plugin's own JavaScript
+  commands are granted to no page.
+- **`capture_webview`** returns the calling page as PNG bytes, drawn by its
+  own webview: `takeSnapshotWithConfiguration:` on macOS (an `NSImage`,
+  encoded through `NSBitmapImageRep`), `ICoreWebView2::CapturePreview` into
+  an in-memory stream on Windows. Neither touches the screen, so neither
+  needs the Screen Recording permission that capturing a window through the
+  OS (CGWindowList, the dev-only `snapshot` feature) asks for. Linux answers
+  "not supported": WebKitGTK has `webkit_web_view_get_snapshot`, but it could
+  not be built and checked where this was written, and the page hides the
+  button there (`captureSupported` in `ui/src/lib/shell.ts`). The command
+  waits at most 5 s for the webview.
+- **`read_dropped_image`** reads a file only if its path is one of the last
+  native drop's (the drop handler records them in `capture::Dropped`), its
+  extension is png/jpg/jpeg/gif/webp, and it is a file of at most 10 MB. Any
+  path at all would make the command a file reader for whatever page the
+  window shows.
+- **Verified**: macOS by `cargo clippy -D warnings` and `cargo test` (the
+  path rules, and the ACL: another origin is refused all three); the Windows
+  code by `cargo clippy --target x86_64-pc-windows-msvc -D warnings` on a
+  crate holding `capture.rs` alone (the app's own cross-check stops at
+  `ring`'s C build). The capture and the native clipboard were not run in the
+  app before they shipped: running the app on the owner's machine would have
+  taken his clipboard and could have adopted his daemon.
+
 ## Dropping a file
 
 A file dragged from Finder, Explorer or a file manager onto a terminal in the
@@ -1008,6 +1043,11 @@ tells a page where a file lives.
   Nothing in the app may rely on `draggable`/`dragover`/`drop`: the tab
   strip reorders by pointer events (`TerminalTabs.tsx`). A drop outside a
   terminal does nothing, and the window never navigates to a dropped file.
+- **A dialog over a terminal takes the drop.** While any dialog is open
+  (a `[data-dialog-backdrop]` is in the page) no terminal types a dropped
+  path: the file was aimed at the dialog, not the terminal under its
+  backdrop. Feedback reads an image from such a drop through the shell
+  (§ Feedback screenshots).
 - **The popover** shows no terminal and keeps the default handler, so a
   drop there does nothing.
 - **Verified** by unit tests on both halves (`shell.rs` script, the

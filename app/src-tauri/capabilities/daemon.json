@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "daemon",
-  "description": "The dashboard served by the daemon on loopback. It may read the daemon's state, open web links, drag the window, fill the menu bar and badge, set the global hotkey and show and withdraw OS notifications, and install a signed app update when the user clicks for it (F20). Nothing else that starts processes or touches files: the hotkey choice and that verified update are the only writes.",
+  "description": "The dashboard served by the daemon on loopback. It may read the daemon's state, open web links, drag the window, fill the menu bar and badge, set the global hotkey and show and withdraw OS notifications, and install a signed app update when the user clicks for it (F20), and for a feedback report put an image on the clipboard, capture its own page and read an image file the user just dropped on the window. Nothing else that starts processes or touches files: the hotkey choice and that verified update are the only writes.",
   "windows": ["main"],
   "remote": { "urls": ["http://127.0.0.1:*"] },
   "permissions": [
@@ -18,6 +18,9 @@
     "allow-app-update-status",
     "allow-app-update-check",
     "allow-app-update-install",
-    "allow-app-update-asked"
+    "allow-app-update-asked",
+    "allow-clipboard-image",
+    "allow-capture-webview",
+    "allow-read-dropped-image"
   ]
 }
