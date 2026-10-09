@@ -1,15 +1,26 @@
 /**
- * One project in the app's sidebar (WP-06): its name, branch, how many agents
- * run in it and what it cost today, then — expanded — its worktrees and the
- * sessions and shells in each. Its ⋯ (on hover, on the project in front, and
- * on a right-click) opens the project menu (ProjectMenu).
+ * One project in the app's sidebar (WP-06), as an accordion (owner,
+ * 2026-10-09: "which one is active, which to pick, unclear", translated).
+ *
+ * A project is one line: its name, a green dot with how many sessions and
+ * shells run in it, and how many wait on you. The current project is the one
+ * open, with no chevron to manage: under it, exactly the tabs the tab strip
+ * shows for it, in the same order and under the same names
+ * (lib/tablabels.ts). After them, muted, whatever of the project still runs
+ * with no tab — a session started in a terminal, a tab closed on a live shell
+ * — so live work is never out of sight; a click opens it as a tab. Ended
+ * sessions are not listed. The tab in front is the one highlighted row in
+ * the whole sidebar. Hover shows New agent, New shell, hide and the ⋯ menu.
  */
-import { memo } from 'react'
+import { memo, useMemo } from 'react'
+import type { SessionSummary } from '@/lib/api'
+import type { ProjectNode, SessionNode } from '@/lib/sidebar'
+import type { Dot } from '@/lib/sidebar'
 import { branchLabel } from '@/lib/sessionLabels'
-import { OTHER_FOLDERS_ID, type Dot, type ProjectNode, type SessionNode, type WorktreeNode } from '@/lib/sidebar'
+import type { Tab } from '@/lib/tabs'
+import type { TabLabel } from '@/lib/tablabels'
 import { fmtUSD } from '@/lib/format'
-import { AgentGlyph, BranchIcon, ChevronIcon, EyeIcon, EyeOffIcon, FolderIcon, MoreIcon, PlusIcon, TerminalIcon } from './AppIcons'
-import { PRDot } from './PullRequest'
+import { AgentGlyph, EyeIcon, EyeOffIcon, FileIcon, MoreIcon, PlusIcon, TerminalIcon } from './AppIcons'
 
 const DOT_CLASS: Record<Dot, string> = {
   working: 'bg-ok',
@@ -27,11 +38,6 @@ const DOT_LABEL: Record<Dot, string> = {
   ended: 'ended',
 }
 
-/** "1 changed file", "3 changed files". */
-export function changedFiles(n: number): string {
-  return `${n} changed ${n === 1 ? 'file' : 'files'}`
-}
-
 export function StatusDot({ dot }: { dot: Dot }) {
   return <span role="img" aria-label={DOT_LABEL[dot]} className={`inline-block h-[7px] w-[7px] shrink-0 rounded-full ${DOT_CLASS[dot]}`} />
 }
@@ -44,19 +50,28 @@ export function fmtCostShort(v: number): string {
   return fmtUSD(v)
 }
 
+/** "2 running", "1 running". Sessions and shells alike: both are work in the project. */
+export function runningLabel(n: number): string {
+  return `${n} running`
+}
+
 export interface ProjectRowProps {
   node: ProjectNode
-  expanded: boolean
-  active: boolean
-  activeSessionId?: string
-  onToggle: (id: string) => void
+  /** The project in front: open, its name bold. */
+  current: boolean
+  /** Its tabs, in strip order, with their labels; drawn only when current. */
+  tabs: readonly Tab[]
+  labels: ReadonlyMap<string, TabLabel>
+  /** The tab in front, when the terminals are on screen. */
+  activeTabId?: string
   onSelect: (id: string) => void
-  onOpenSession: (s: SessionNode, projectId: string) => void
+  onActivateTab: (tabId: string) => void
+  /** Opens, as a tab, a live session or shell of the project that has none. */
+  onOpenLive?: (s: SessionSummary, projectId: string) => void
   onNewAgent: (projectId: string, cwd?: string) => void
   onNewShell: (projectId: string, cwd?: string) => void
-  /** Right-click on a project or worktree: the folder, for the editor menu (F18). */
+  /** Right-click on a project row with no menu: the folder, for the editor menu (F18). */
   onFolderMenu?: (e: React.MouseEvent, path: string, label: string) => void
-  onOpenChanges?: (projectId: string, w?: WorktreeNode) => void
   /** Hidden by hand: its row action shows it again instead of hiding it. */
   hidden?: boolean
   /** Hides the project from the list (true) or shows it again (false); absent, no such action. */
@@ -65,66 +80,28 @@ export interface ProjectRowProps {
   onMenu?: (id: string, at: { x: number; y: number }, from: HTMLElement | null) => void
 }
 
-/** "2 agents running · 1 working". */
-export function agentsLabel(agents: number, working: number): string {
-  const n = `${agents} ${agents === 1 ? 'agent' : 'agents'} running`
-  return working > 0 ? `${n} · ${working} working` : n
-}
-
-/** A right-click handler for a folder row, or none when there is no menu or no folder. */
-function folderMenu(onFolderMenu: ProjectRowProps['onFolderMenu'], path: string, label: string) {
-  if (!onFolderMenu || !path) return undefined
-  return (e: React.MouseEvent) => onFolderMenu(e, path, label)
-}
-
-/** A worktree's changed-file count; a button into its Changes view when there is one. */
-function ChangedBadge({ count, label, onOpen }: { count: number; label: string; onOpen?: () => void }) {
-  if (!onOpen) return <span title="changed files">±{count}</span>
-  return (
-    <button
-      type="button"
-      title={`Review and commit the changes ${label}`}
-      aria-label={`${changedFiles(count)} ${label}: review and commit`}
-      onClick={(e) => { e.stopPropagation(); onOpen() }}
-      className="rounded-[4px] px-0.5 text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
-    >
-      ±{count}
-    </button>
-  )
-}
-
 export const ProjectRow = memo(function ProjectRow({
   node,
-  expanded,
-  active,
-  activeSessionId,
-  onToggle,
+  current,
+  tabs,
+  labels,
+  activeTabId,
   onSelect,
-  onOpenSession,
+  onActivateTab,
+  onOpenLive,
   onNewAgent,
   onNewShell,
   onFolderMenu,
-  onOpenChanges,
   hidden = false,
   onHide,
   onMenu,
 }: ProjectRowProps) {
   const p = node.project
   const id = p.id
-  // One checkout: the worktree level says nothing, so its sessions sit
-  // directly under the project and its branch rides in the project's row.
-  // Other folders has no folder of its own: always one row per folder.
+  const untabbed = useMemo(() => (current ? liveWithoutTab(node) : []), [current, node])
+  // Other folders is a group, not a folder: no menu, no new agent in it.
   const isGroup = p.root === ''
-  const flat = node.worktrees.length <= 1 && !isGroup
-  const branch = flat ? node.worktrees[0]?.branch || p.branch : p.branch
-  // A detached checkout, or a folder that is no repository, says HEAD.
-  const mainBranch = branchLabel(branch)
-  const cost = fmtCostShort(node.costToday)
-  // One checkout: its changed count rides in the project's row.
-  const flatChanged = flat && p.kind === 'repo' ? (node.worktrees[0]?.changed ?? p.changed ?? 0) : 0
   const menu = !isGroup && onMenu
-  // The ⋯ stays on the project in front, so the menu is found without hovering.
-  const pinnedMenu = !!menu && active
   const openMenuFrom = (el: HTMLElement) => {
     const r = el.getBoundingClientRect()
     onMenu?.(id, { x: r.right - 4, y: r.bottom + 2 }, el)
@@ -136,187 +113,130 @@ export const ProjectRow = memo(function ProjectRow({
           type="button"
           data-nav-row
           data-project-row={id}
-          aria-expanded={expanded}
-          aria-current={active ? 'true' : undefined}
-          onClick={() => { onSelect(id); if (!expanded) onToggle(id) }}
-          onDoubleClick={() => onToggle(id)}
-          onContextMenu={menu ? (e) => { e.preventDefault(); onMenu(id, { x: e.clientX, y: e.clientY }, e.currentTarget) } : folderMenu(onFolderMenu, p.root, p.name)}
+          data-current={current || undefined}
+          aria-expanded={current}
+          onClick={() => onSelect(id)}
+          onContextMenu={menu
+            ? (e) => { e.preventDefault(); onMenu(id, { x: e.clientX, y: e.clientY }, e.currentTarget) }
+            : onFolderMenu && p.root ? (e) => onFolderMenu(e, p.root, p.name) : undefined}
           onKeyDown={menu ? (e) => {
             if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) { e.preventDefault(); openMenuFrom(e.currentTarget) }
           } : undefined}
           aria-haspopup={menu ? 'menu' : undefined}
           aria-keyshortcuts={menu ? 'Shift+F10' : undefined}
-          className={`app-row flex h-[30px] w-full min-w-0 items-center gap-1.5 rounded-[7px] pl-1.5 text-left ${pinnedMenu ? 'pr-[30px]' : 'pr-2'}`}
-          title={p.root}
+          className="app-row flex h-[30px] w-full min-w-0 items-center gap-2 rounded-[7px] pl-2.5 pr-2 text-left"
+          title={p.root || p.name}
         >
-          <span
-            className="app-chevron flex h-4 w-4 items-center justify-center text-fg-faint"
-            onClick={(e) => { e.stopPropagation(); onToggle(id) }}
-            aria-hidden
-          >
-            <ChevronIcon size={12} />
-          </span>
-          {/* The name is what the row is for: the branch takes only what is left. */}
-          <span className="min-w-[5.5rem] flex-[0_1_auto] truncate text-[13px] font-medium text-fg">{p.name}</span>
-          {mainBranch ? <FitOrHide text={mainBranch} /> : <span className="flex-1" />}
-          {flat && !isGroup && p.kind === 'repo' && (
-            <span className="group-hover:invisible"><PRDot projectId={id} worktree={node.worktrees[0] && !node.worktrees[0].isMain ? node.worktrees[0].key : ''} /></span>
-          )}
-          {flatChanged > 0 && (
-            <span className="num text-[10.5px] text-fg-faint group-hover:invisible">
-              <ChangedBadge count={flatChanged} label={`in ${p.name}`} onOpen={onOpenChanges ? () => onOpenChanges(id, node.worktrees[0]) : undefined} />
+          <span className={`min-w-0 flex-1 truncate text-[13px] ${current ? 'font-semibold text-fg' : 'text-fg-muted'}`}>{p.name}</span>
+          {node.live > 0 && (
+            <span className="num inline-flex shrink-0 items-center gap-[4px] text-[11px] text-fg-muted group-hover:invisible" aria-label={runningLabel(node.live)} title={runningLabel(node.live)}>
+              <span aria-hidden className="inline-block h-[6px] w-[6px] rounded-full bg-ok" />
+              {node.live}
             </span>
           )}
-          {/* What runs in it and what it cost today: each only when there is
-              some, so a quiet project reads clean rather than as a row of zeros. */}
-          {node.agents > 0 && (
-            <span className="num inline-flex shrink-0 items-center gap-[3px] text-[11px] text-fg-muted group-hover:invisible" title={agentsLabel(node.agents, node.working)} aria-label={agentsLabel(node.agents, node.working)}>
-              <span aria-hidden className={`inline-block h-[5px] w-[5px] rounded-full ${node.working > 0 ? 'bg-ok' : 'bg-fg-faint/70'}`} />
-              {node.agents}
-            </span>
-          )}
-          {cost && (
-            <span className="num shrink-0 text-[11px] text-fg-faint group-hover:invisible" title={`${p.name} spent ${cost} today`} aria-label={`${cost} today`}>{cost}</span>
-          )}
-          {node.waiting > 0 ? (
+          {node.waiting > 0 && (
             <span
-              className="num ml-0.5 inline-flex h-[17px] min-w-[17px] shrink-0 items-center justify-center rounded-full bg-accent px-1 text-[10.5px] font-semibold text-panel group-hover:invisible"
+              className="num inline-flex h-[17px] min-w-[17px] shrink-0 items-center justify-center rounded-full bg-accent px-1 text-[10.5px] font-semibold text-panel group-hover:invisible"
               aria-label={`${node.waiting} waiting on you`}
             >
               {node.waiting}
             </span>
-          ) : node.looping > 0 ? (
-            <span className="num ml-0.5 shrink-0 text-[11px] text-danger group-hover:invisible" aria-label={`${node.looping} looping`}>⟳{node.looping}</span>
-          ) : null}
+          )}
         </button>
-        {/* Actions on hover or focus, where the badges sit: the row stays one line. */}
+        {/* Actions on hover or focus, where the figures sit: the row stays one line. */}
         {!isGroup && (
-          <span className={`absolute right-1 top-1/2 -translate-y-1/2 items-center gap-0.5 group-hover:flex group-focus-within:flex ${pinnedMenu ? 'flex' : 'hidden'}`}>
-            <span className="hidden items-center gap-0.5 group-hover:flex group-focus-within:flex">
-              {flatChanged > 0 && onOpenChanges && (
-                <RowAction label={`Review and commit ${changedFiles(flatChanged)} in ${p.name}`} onClick={() => onOpenChanges(id, node.worktrees[0])}><span className="num text-[10.5px]">±{flatChanged}</span></RowAction>
-              )}
-              <RowAction label={`New agent in ${p.name}`} onClick={() => onNewAgent(id)}><PlusIcon size={13} /></RowAction>
-              <RowAction label={`New shell in ${p.name}`} onClick={() => onNewShell(id)}><TerminalIcon size={13} /></RowAction>
-              {onHide && (hidden ? (
-                <RowAction label={`Show ${p.name} in the list again`} onClick={() => onHide(id, false)}><EyeIcon size={13} /></RowAction>
-              ) : (
-                <RowAction label={`Hide ${p.name} from the list`} onClick={() => onHide(id, true)}><EyeOffIcon size={13} /></RowAction>
-              ))}
-            </span>
+          <span className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 group-hover:flex group-focus-within:flex">
+            <RowAction label={`New agent in ${p.name}`} onClick={() => onNewAgent(id)}><PlusIcon size={13} /></RowAction>
+            <RowAction label={`New shell in ${p.name}`} onClick={() => onNewShell(id)}><TerminalIcon size={13} /></RowAction>
+            {onHide && (hidden ? (
+              <RowAction label={`Show ${p.name} in the list again`} onClick={() => onHide(id, false)}><EyeIcon size={13} /></RowAction>
+            ) : (
+              <RowAction label={`Hide ${p.name} from the list`} onClick={() => onHide(id, true)}><EyeOffIcon size={13} /></RowAction>
+            ))}
             {menu && (
               <RowAction label={`More for ${p.name}: hide, close its tabs, remove`} popup onClick={(el) => openMenuFrom(el)}><MoreIcon size={14} /></RowAction>
             )}
           </span>
         )}
       </div>
-      {expanded && (
-        <ul className="grid grid-cols-1 pb-1" role="group">
-          {node.worktrees.length === 0 && (
-            <li className="flex h-[26px] items-center pl-[30px] pr-2 text-[12px] text-fg-faint">
-              Nothing running.
-              <button type="button" onClick={() => onNewAgent(id)} className="ml-1.5 text-fg-muted underline-offset-2 hover:text-fg hover:underline">Start an agent</button>
-            </li>
+      {current && (
+        <ul className="grid grid-cols-1 pb-1" role="group" aria-label={`${p.name}: open tabs`}>
+          {tabs.length === 0 && untabbed.length === 0 && (
+            <li className="flex h-[26px] items-center pl-[22px] pr-2 text-[12px] text-fg-faint">No tabs open.</li>
           )}
-          {node.worktrees.map((w) =>
-            flat ? (
-              w.sessions.map((s) => (
-                <SessionRow key={s.session.session_id} s={s} depth={1} active={s.session.session_id === activeSessionId} onOpen={() => onOpenSession(s, id)} />
-              ))
-            ) : (
-              <WorktreeRows key={w.key} w={w} projectId={id} activeSessionId={activeSessionId} onOpenSession={onOpenSession} onNewAgent={onNewAgent} onNewShell={onNewShell} onFolderMenu={onFolderMenu} onOpenChanges={isGroup ? undefined : onOpenChanges} />
-            ),
-          )}
+          {tabs.map((t) => {
+            const l = labels.get(t.id)
+            return (
+              <TabRow key={t.id} tab={t} label={l} active={t.id === activeTabId} onOpen={() => onActivateTab(t.id)} />
+            )
+          })}
+          {untabbed.map((x) => (
+            <LiveRow key={x.session.session_id} item={x} ownBranch={p.branch} onOpen={() => onOpenLive?.(x.session, id)} />
+          ))}
         </ul>
       )}
     </li>
   )
 })
 
-/**
- * The project row's branch, in the space the name and the figures leave: it
- * is the row's spacer, set against the figures. Where too little is left to
- * read (under 2.5rem) it goes rather than standing as a sliver or "ma…": a
- * zero-width item before it lets it wrap onto a second line that the fixed
- * height hides. CSS alone, so nothing is measured on every render.
- */
-function FitOrHide({ text }: { text: string }) {
-  return (
-    <span className="flex h-[16px] min-w-0 flex-1 flex-wrap content-start justify-end overflow-hidden group-hover:invisible" title={text}>
-      {/* A full-height first line, so the line it wraps to is the hidden one. */}
-      <span aria-hidden className="h-[16px] w-0" />
-      {/* A short name ("main") shows whole or not at all; a long one keeps at least 2.5rem. */}
-      <span className={`mono text-[11px] leading-[16px] text-fg-faint ${[...text].length <= 6 ? 'min-w-max' : 'min-w-[2.5rem] max-w-[96px] truncate'}`}>{text}</span>
-    </span>
-  )
-}
-
-function WorktreeRows({
-  w,
-  projectId,
-  activeSessionId,
-  onOpenSession,
-  onNewAgent,
-  onNewShell,
-  onFolderMenu,
-  onOpenChanges,
-}: {
-  w: WorktreeNode
-  projectId: string
-  activeSessionId?: string
-  onOpenSession: (s: SessionNode, projectId: string) => void
-  onNewAgent: (projectId: string, cwd?: string) => void
-  onNewShell: (projectId: string, cwd?: string) => void
-  onFolderMenu?: ProjectRowProps['onFolderMenu']
-  onOpenChanges?: (projectId: string, w?: WorktreeNode) => void
-}) {
-  return (
-    <li className="grid grid-cols-1">
-      <div className="group relative flex h-[26px] items-center gap-1.5 pl-[26px] pr-2 text-[12px] text-fg-muted" title={w.path} onContextMenu={folderMenu(onFolderMenu, w.path, w.branch)}>
-        {projectId === OTHER_FOLDERS_ID ? <FolderIcon size={12} className="text-fg-faint" /> : <BranchIcon size={12} className="text-fg-faint" />}
-        <span className={`min-w-0 flex-1 truncate ${projectId === OTHER_FOLDERS_ID ? '' : 'mono'}`}>{w.branch}</span>
-        <span className="num flex items-center gap-1.5 text-[10.5px] text-fg-faint group-hover:invisible">
-          {projectId !== OTHER_FOLDERS_ID && <PRDot projectId={projectId} worktree={w.isMain ? '' : w.key} />}
-          {!!w.ahead && <span title="commits ahead">↑{w.ahead}</span>}
-          {!!w.behind && <span title="commits behind">↓{w.behind}</span>}
-          {!!w.changed && <ChangedBadge count={w.changed} label={`on ${w.branch}`} onOpen={onOpenChanges ? () => onOpenChanges(projectId, w) : undefined} />}
-        </span>
-        <span className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 group-hover:flex group-focus-within:flex">
-          {!!w.changed && onOpenChanges && (
-            <RowAction label={`Review and commit ${changedFiles(w.changed)} on ${w.branch}`} onClick={() => onOpenChanges(projectId, w)}><span className="num text-[10.5px]">±{w.changed}</span></RowAction>
-          )}
-          <RowAction label={`New agent on ${w.branch}`} onClick={() => onNewAgent(projectId, w.path)}><PlusIcon size={12} /></RowAction>
-          <RowAction label={`New shell on ${w.branch}`} onClick={() => onNewShell(projectId, w.path)}><TerminalIcon size={12} /></RowAction>
-        </span>
-      </div>
-      {w.sessions.length > 0 && (
-        <ul className="grid grid-cols-1">
-          {w.sessions.map((s) => (
-            <SessionRow key={s.session.session_id} s={s} depth={2} active={s.session.session_id === activeSessionId} onOpen={() => onOpenSession(s, projectId)} />
-          ))}
-        </ul>
-      )}
-    </li>
-  )
-}
-
-function SessionRow({ s, depth, active, onOpen }: { s: SessionNode; depth: 1 | 2; active: boolean; onOpen: () => void }) {
-  const owned = s.session.owned
+/** One open tab under the current project: what the strip calls it, its dot, its branch when not the project's own. */
+function TabRow({ tab, label, active, onOpen }: { tab: Tab; label?: TabLabel; active: boolean; onOpen: () => void }) {
+  const title = label?.title ?? tab.title
   return (
     <li>
       <button
         type="button"
         data-nav-row
-        data-session-row={s.session.session_id}
+        data-tab-row={tab.id}
         aria-current={active ? 'true' : undefined}
         onClick={onOpen}
-        className={`app-row flex h-[26px] w-full min-w-0 items-center gap-2 rounded-[7px] pr-2 text-left ${depth === 1 ? 'pl-[26px]' : 'pl-[40px]'}`}
-        title={owned ? s.title : `${s.title} — started outside Caprock: opens its details, not a terminal`}
+        className="app-row flex h-[28px] w-full min-w-0 items-center gap-2 rounded-[7px] pl-[22px] pr-2 text-left"
+        title={label?.file ?? title}
       >
-        <StatusDot dot={s.dot} />
-        <AgentGlyph agent={s.session.agent} shell={s.isShell} />
-        <span className={`min-w-0 flex-1 truncate text-[12.5px] ${s.dot === 'ended' ? 'text-fg-faint' : owned ? 'text-fg' : 'text-fg-muted'}`}>{s.title}</span>
-        {s.dot === 'waiting' && <span className="text-[10.5px] font-medium text-accent">waiting</span>}
+        {label?.file !== undefined ? (
+          <FileIcon size={12} className="text-fg-faint" />
+        ) : (
+          <>
+            <StatusDot dot={label?.dot ?? 'idle'} />
+            <AgentGlyph agent={label?.session?.agent} shell={label?.isShell} />
+          </>
+        )}
+        <span className={`min-w-0 flex-1 truncate text-[12.5px] ${active ? 'text-fg' : 'text-fg-muted'}`}>{title}</span>
+        {label?.branch && <span className="mono min-w-0 max-w-[10ch] shrink truncate text-[11px] text-fg-faint">{label.branch}</span>}
+      </button>
+    </li>
+  )
+}
+
+/** The project's live sessions and shells that no tab shows: agents first, then the most recent. */
+export function liveWithoutTab(node: ProjectNode): SessionNode[] {
+  return node.worktrees
+    .flatMap((w) => w.sessions)
+    .filter((x) => !x.open && x.session.status !== 'ended')
+    .sort((a, b) => Number(a.isShell) - Number(b.isShell) || (b.session.last_event_at ?? 0) - (a.session.last_event_at ?? 0))
+}
+
+/** A live session or shell with no tab: muted, so it reads as not open; a click opens it. */
+function LiveRow({ item, ownBranch, onOpen }: { item: SessionNode; ownBranch?: string; onOpen: () => void }) {
+  const s = item.session
+  const own = branchLabel(ownBranch ?? '')
+  const b = branchLabel(s.git_branch ?? '')
+  const branch = b && b !== own ? b : undefined
+  const title = item.isShell ? 'Shell' : item.title
+  return (
+    <li>
+      <button
+        type="button"
+        data-nav-row
+        data-live-row={s.session_id}
+        onClick={onOpen}
+        className="app-row flex h-[28px] w-full min-w-0 items-center gap-2 rounded-[7px] pl-[22px] pr-2 text-left opacity-70"
+        title={`${title}: running, no tab. Open it as a tab.`}
+      >
+        <StatusDot dot={item.dot} />
+        <AgentGlyph agent={s.agent} shell={item.isShell} />
+        <span className="min-w-0 flex-1 truncate text-[12.5px] text-fg-faint">{title}</span>
+        {branch && <span className="mono min-w-0 max-w-[10ch] shrink truncate text-[11px] text-fg-faint">{branch}</span>}
       </button>
     </li>
   )

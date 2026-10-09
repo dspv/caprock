@@ -175,6 +175,17 @@ it('puts the one control that starts something above the session list', async ()
   expect(btn.compareDocumentPosition(list!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 })
 
+it('in the app, keeps the figures and leaves the session list to the sidebar', async () => {
+  state.summary = emptySummary()
+  state.status = { claude_available: true }
+  state.sessions = [sess({ session_id: 'a', status: 'active' })]
+  const { container } = render(<NowScreen inApp />)
+  expect(await screen.findByText('Today')).toBeInTheDocument()
+  await screen.findByRole('button', { name: /New session/ })
+  expect(container.querySelector('[data-testid="session-grid"]')).toBeNull()
+  expect(screen.queryByText('show ended sessions')).toBeNull()
+})
+
 it('starts a chat without asking where it should live', async () => {
   state.summary = emptySummary()
   state.status = { claude_available: true }
