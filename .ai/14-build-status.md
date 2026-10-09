@@ -73,6 +73,15 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-09 — 0.93.1: OpenCode on a fresh machine, Codex calls that end
+
+A Linux run of OpenCode 2 in Docker (Debian 12, @opencode/cli 2.0.26, a stub
+provider) confirmed reading, starting and the live stream, and found that a
+daemon started before OpenCode's database existed never read it; the daemon
+now waits for it (#325). A Codex call cut off by an interrupted turn shows
+"interrupted" instead of "running", and Codex `exec` calls read as their
+command everywhere, not only in Chat (#326).
+
 ### 2026-10-09 — 0.93.0: OpenCode 2
 
 OpenCode 2 shipped beside OpenCode 1 and is what opencode.ai, plain Homebrew
