@@ -33,16 +33,20 @@ export const DEFAULT_MODE = 'acceptEdits'
 // `gemini-2.5-flash-lite`, which Google has closed to new keys, and
 // `gemini-3.1-pro-preview`, which a free key cannot call at all
 // (`generate_content_free_tier_input_token_count, limit: 0`).
-const GEMINI_MODELS: [value: string, label: string][] = [
+export const GEMINI_MODELS: [value: string, label: string][] = [
   ['gemini-3.5-flash-lite', 'Flash Lite 3.5 · cheapest'],
   ['gemini-2.5-flash', 'Flash 2.5 · older, cheap'],
-  ['gemini-3.5-flash', 'Flash 3.5 · most capable here'],
+  ['gemini-3.5-flash', 'Flash 3.5 · most capable'],
 ]
 
 // Ordered most capable first, and labelled with the axis someone actually
 // picks on: price relative to the others. The ranking is pricing.json's, per
 // million output tokens (Fable 5.1 50, Opus 5.5 20, Sonnet 5.5 10, Haiku 5.5 0.5) — the figures
 // the Cost screen bills these sessions with, not a remembered ordering.
+//
+// Each label stays within 25 characters: the New agent sheet gives the model
+// half a row, in a monospace face, and a longer one was cut off mid-word
+// (owner, 2026-10-09). A test holds every label to that width.
 //
 // Each label carries the exact version. "Opus 5" read as "the current Opus"
 // to the owner, who picked it on 2026-10-07 and got the older model while
@@ -61,10 +65,10 @@ const GEMINI_MODELS: [value: string, label: string][] = [
 // it". Being in the pricing table means we can cost a model, never that this
 // account can call it — the only proof that belongs in this list is a live
 // answer from the real `claude`.
-const MODELS: [value: string, label: string][] = [
-  ['claude-fable-5-1', 'Fable 5.1 · most capable, priciest'],
-  ['claude-opus-5-5', 'Opus 5.5 · strong all-rounder'],
-  ['claude-sonnet-5-5', 'Sonnet 5.5 · faster, cheaper'],
+export const MODELS: [value: string, label: string][] = [
+  ['claude-fable-5-1', 'Fable 5.1 · top, priciest'],
+  ['claude-opus-5-5', 'Opus 5.5 · all-rounder'],
+  ['claude-sonnet-5-5', 'Sonnet 5.5 · fast, cheap'],
   ['claude-haiku-5-5', 'Haiku 5.5 · cheapest'],
 ]
 
@@ -350,7 +354,9 @@ export function ModelField({
     const listed = codex?.models ?? []
     return (
       <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">{codex?.default ? `${codex.default} · your Codex default` : 'your Codex default'}</option>
+        {/* Short enough for the New agent sheet's half-width column: the
+          * longer "· your Codex default" was cut off there (owner, 2026-10-09). */}
+        <option value="">{codex?.default ? `${codex.default} (default)` : 'Codex default'}</option>
         {listed.filter((m) => m.id !== codex?.default).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
       </select>
     )

@@ -25,6 +25,13 @@ Phase 3 (Delight) has no plan by design.
 
 ### Changed
 
+- **The New agent sheet says what *Where* means.** *This folder · main* is
+  the project's own checkout, *Existing copy · <branch>* one already made,
+  and *New copy on its own branch* a separate folder on a new branch, with a
+  one-line explanation and a *Branch name* field — no git vocabulary needed.
+  Start shows its key (⌘↩, Ctrl+↵ off macOS), which works from every field.
+  Model names fit their box: Codex's default reads *gpt-… (default)*, and
+  the Claude and Gemini labels are shorter (*Opus 5.5 · all-rounder*).
 - **Tabs never vanish when you pick another project.** The tab strip holds
   every open tab of every project, in the order you opened them, each with
   its project's name and colour; picking a project shows its tabs in the
@@ -102,6 +109,13 @@ Phase 3 (Delight) has no plan by design.
   project's name as the sidebar shows it, then the branch only when that is
   not the project's default. The full path is a tooltip. It used to show a
   branch beside a folder path cut from the left (`…nt-a874ec5240fb37a9d`).
+
+### Fixed
+
+- **Focus no longer jumps while you fill the New agent sheet.** Each time
+  the app refreshed behind it, the sheet threw the caret back to *Project*;
+  now focus moves only when you move it. The same fix covers every sheet in
+  the app.
 
 ## [0.93.1] - 2026-10-09
 

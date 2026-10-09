@@ -21,13 +21,23 @@ export function Sheet({
   label: string
 }) {
   const panel = useRef<HTMLDivElement>(null)
+  // The latest onClose, read when Esc is pressed. Callers pass an inline
+  // arrow, so it is a new function on every render of theirs — and the app
+  // shell re-renders on every poll and live event. While it was this effect's
+  // dependency, each of those re-ran the effect: the cleanup handed focus back
+  // to whatever had it before the sheet, and the set-up then focused the
+  // sheet's first field. Someone typing the first message found the caret in
+  // Project a moment later (owner, 2026-10-09: "focus sometimes jumps
+  // between fields"). Focus moves on open and on close, never in between.
+  const close = useRef(onClose)
+  close.current = onClose
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault()
         e.stopPropagation()
-        onClose()
+        close.current()
       }
     }
     window.addEventListener('keydown', onKey, true)
@@ -39,9 +49,9 @@ export function Sheet({
       window.removeEventListener('keydown', onKey, true)
       before?.focus?.()
     }
-  }, [onClose])
+  }, [])
   return (
-    <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/25 px-4 pt-[10vh]" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/25 px-4 pt-[10vh]" onMouseDown={() => close.current()}>
       <div
         ref={panel}
         role="dialog"
