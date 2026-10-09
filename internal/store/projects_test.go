@@ -46,7 +46,8 @@ func TestAProjectRootIsOneRow(t *testing.T) {
 }
 
 // Live, waiting and today's spend per directory: waiting is a live session
-// whose newest event is a main-thread Stop or a permission prompt, and an
+// whose newest event is a permission prompt or a main-thread Stop with no
+// subagent still working, and an
 // internal event's cost is in no total.
 func TestProjectActivity(t *testing.T) {
 	s := openTest(t)
@@ -54,7 +55,7 @@ func TestProjectActivity(t *testing.T) {
 	db := s.DB()
 	now := time.Now()
 	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	for _, id := range []string{"waits", "asks", "works", "subagent", "ended"} {
+	for _, id := range []string{"waits", "asks", "works", "subagent", "background", "ended"} {
 		if err := UpsertSession(ctx, db, id, SessionPatch{Cwd: "/nowhere/proj"}); err != nil {
 			t.Fatal(err)
 		}
@@ -66,6 +67,9 @@ func TestProjectActivity(t *testing.T) {
 		{SessionID: "asks", Kind: event.KindPermissionPrompt, Tool: "Bash", Ts: now},
 		{SessionID: "works", Kind: event.KindToolPre, Tool: "Bash", Ts: now},
 		{SessionID: "subagent", Kind: event.KindAgentStop, AgentID: "a1", Ts: now},
+		// Its turn ended with a subagent still at work: not waiting on anyone.
+		{SessionID: "background", Kind: event.KindToolPre, Tool: "Bash", AgentID: "a2", Ts: now.Add(-2 * time.Second)},
+		{SessionID: "background", Kind: event.KindAgentStop, Ts: now.Add(-time.Second)},
 		{SessionID: "works", Kind: event.KindTurnAssistant, Model: "codex-auto-review", CostUSD: usd(9), Ts: now},
 		{SessionID: "ended", Kind: event.KindTurnAssistant, Model: "claude-opus-4-1", CostUSD: usd(0.25), Ts: midnight.Add(-time.Hour)},
 	}
@@ -85,8 +89,8 @@ func TestProjectActivity(t *testing.T) {
 	if a == nil {
 		t.Fatalf("no activity for the folder: %v", act)
 	}
-	if a.Total != 5 || a.Live != 4 || a.Waiting != 2 {
-		t.Fatalf("total %d live %d waiting %d; want 5, 4, 2", a.Total, a.Live, a.Waiting)
+	if a.Total != 6 || a.Live != 5 || a.Waiting != 2 {
+		t.Fatalf("total %d live %d waiting %d; want 6, 5, 2", a.Total, a.Live, a.Waiting)
 	}
 	if a.CostToday != 1.5 {
 		t.Fatalf("cost today %v; want 1.5 (yesterday's and the internal review's left out)", a.CostToday)

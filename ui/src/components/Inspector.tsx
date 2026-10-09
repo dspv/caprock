@@ -15,6 +15,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { api, errText, type DiffResult, type EditorList, type SessionSummary, type Summary } from '@/lib/api'
 import { firstChangedLine, joinPath, preferredName } from '@/lib/editors'
+import { sessionPlace, type Project } from '@/lib/projects'
 import { agentName } from './Projects'
 import { PermissionPrompt } from './PermissionPrompt'
 import { StatusDot } from './ProjectRow'
@@ -40,8 +41,11 @@ export function Inspector({
   onReviewChanges,
   onOpenFile,
   summary,
+  project,
 }: {
   session?: SessionSummary
+  /** The sidebar's project the session belongs to: its name heads the place line. */
+  project?: Pick<Project, 'name' | 'default_branch'>
   sessionId?: string
   hasPermission: boolean
   /** Draw the permission card: false while the session's terminal is in front and answers it. */
@@ -70,7 +74,7 @@ export function Inspector({
       {!sessionId ? (
         <p className="px-4 py-5 text-[12.5px] leading-relaxed text-fg-muted">Open a session to see what it costs, how full its context is, and what it changed.</p>
       ) : (
-        <Body key={sessionId} session={session} sessionId={sessionId} hasPermission={hasPermission} showPrompt={showPrompt} onDetach={onDetach} editor={editors && onOpenInEditor ? { name: preferredName(editors), open: onOpenInEditor } : undefined} onReviewChanges={onReviewChanges} onOpenFile={onOpenFile} summary={summary} />
+        <Body key={sessionId} session={session} project={project} sessionId={sessionId} hasPermission={hasPermission} showPrompt={showPrompt} onDetach={onDetach} editor={editors && onOpenInEditor ? { name: preferredName(editors), open: onOpenInEditor } : undefined} onReviewChanges={onReviewChanges} onOpenFile={onOpenFile} summary={summary} />
       )}
     </aside>
   )
@@ -79,7 +83,7 @@ export function Inspector({
 type OpenInEditor = (path: string, label: string, editor?: string, line?: number) => void
 interface EditorAction { name: string; open: OpenInEditor }
 
-function Body({ session: s, sessionId, hasPermission, showPrompt, onDetach, editor, onReviewChanges, onOpenFile, summary }: { session?: SessionSummary; sessionId: string; hasPermission: boolean; showPrompt: boolean; onDetach: () => void; editor?: EditorAction; onReviewChanges?: () => void; onOpenFile?: (path: string) => void; summary?: Summary }) {
+function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDetach, editor, onReviewChanges, onOpenFile, summary }: { session?: SessionSummary; project?: Pick<Project, 'name' | 'default_branch'>; sessionId: string; hasPermission: boolean; showPrompt: boolean; onDetach: () => void; editor?: EditorAction; onReviewChanges?: () => void; onOpenFile?: (path: string) => void; summary?: Summary }) {
   const isShell = s?.kind === 'shell'
   const ended = s?.status === 'ended'
   if (s && !isShell) {
@@ -87,12 +91,7 @@ function Body({ session: s, sessionId, hasPermission, showPrompt, onDetach, edit
       <div className="grid gap-[18px] px-4 pb-4 pt-3.5">
         <header className="grid gap-1">
           <h3 className="line-clamp-2 text-[14.5px] font-semibold leading-snug tracking-[-0.01em] text-fg" title={sessionTitle(s)}>{sessionTitle(s)}</h3>
-          {s.cwd && (
-            <p className="flex min-w-0 items-baseline gap-1.5 text-[11px] text-fg-faint">
-              {branchLabel(s.git_branch) && <span className="mono shrink-0 text-fg-muted">{branchLabel(s.git_branch)}</span>}
-              <span dir="rtl" className="mono min-w-0 truncate text-left" title={s.cwd}><bdi dir="ltr">{s.cwd}</bdi></span>
-            </p>
-          )}
+          {s.cwd && <Place place={sessionPlace(s, project)} />}
         </header>
         {showPrompt && <PermissionPrompt sessionId={sessionId} />}
         <Cockpit
@@ -131,6 +130,16 @@ function Body({ session: s, sessionId, hasPermission, showPrompt, onDetach, edit
 
       <Actions s={s} sessionId={sessionId} isShell={isShell} ended={ended} editor={editor} onDetach={onDetach} />
     </div>
+  )
+}
+
+/** "caprock · feat/x": the project first, a branch only when it is not the default, the path on hover. */
+function Place({ place }: { place: { project: string; branch: string; path: string } }) {
+  return (
+    <p className="flex min-w-0 items-baseline gap-1.5 text-[12px]" title={place.path} aria-label={`Project ${place.project}${place.branch ? `, branch ${place.branch}` : ''}`}>
+      <span className="min-w-0 truncate font-medium text-fg">{place.project}</span>
+      {place.branch && <span className="mono min-w-0 truncate text-[11px] text-fg-faint">· {place.branch}</span>}
+    </p>
   )
 }
 

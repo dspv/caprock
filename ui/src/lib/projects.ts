@@ -338,6 +338,23 @@ export function folderName(path: string): string {
   return parts[parts.length - 1] || path
 }
 
+/**
+ * Where a session runs, as the inspector's header says it: the project's
+ * name as the sidebar shows it, then the branch only when it is not the
+ * project's default (main or master when git did not say), and the full path
+ * for a tooltip. A path cut to fit (`…nt-a874ec5240fb37a9d`) told nobody
+ * which project it was (owner, 2026-10-09).
+ */
+export function sessionPlace(
+  s: Pick<SessionSummary, 'cwd' | 'repo_root' | 'project' | 'git_branch'>,
+  project?: Pick<Project, 'name' | 'default_branch'>,
+): { project: string; branch: string; path: string } {
+  const name = project?.name || s.project || folderName(sessionRoot(s) || '')
+  const branch = branchLabel(s.git_branch)
+  const isDefault = project?.default_branch ? branch === project.default_branch : branch === 'main' || branch === 'master'
+  return { project: name, branch: isDefault ? '' : branch, path: s.cwd }
+}
+
 /** The key a derived project is listed under: the repository root, else the folder. */
 export function derivedProjectId(root: string): string {
   return `dir:${root}`

@@ -203,6 +203,10 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 		// nothing from the main thread has. Without this an Opus session read as
 		// Haiku on its card, and its context fill was measured against the
 		// wrong window.
+		// A subagent's cwd and branch are its own — a background agent often
+		// runs in a git worktree on another branch — and must not move the
+		// session it belongs to (store.SessionPatch.FromSubagent).
+		patch.FromSubagent = ev.Subagent()
 		if !internalModel {
 			if ev.Subagent() {
 				patch.SubagentModel = ev.Model

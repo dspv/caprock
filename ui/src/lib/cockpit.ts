@@ -162,6 +162,22 @@ export function turnCosts(events: readonly Event[]): TurnCost[] {
   return out
 }
 
+/**
+ * How many subagents keep a session working after its turn ended — the
+ * daemon's `activity.background` — or 0. Such a session waits on nobody; a
+ * pending permission prompt still does, and outranks this.
+ */
+export function backgroundAgents(s: Pick<SessionSummary, 'status' | 'activity'>): number {
+  if (s.status === 'ended') return 0
+  const n = s.activity?.background ?? 0
+  return n > 0 ? n : 0
+}
+
+/** "Background agents working · 2": what such a session says. */
+export function backgroundLabel(n: number): string {
+  return `Background agents working · ${n}`
+}
+
 /** The state the character and the "now" line show. */
 export function cockpitState(s: Pick<SessionSummary, 'status' | 'activity' | 'loop'>, hasPermission: boolean): CockpitState {
   if (s.status === 'ended') return 'ended'
