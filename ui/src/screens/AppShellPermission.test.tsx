@@ -3,9 +3,12 @@
  * for the focused agent whether or not its terminal is in front, its keys work
  * from that terminal — and never twice.
  */
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionSummary } from '@/lib/api'
+// Static, as in AppShell.test.tsx: a dynamic import transformed the whole app
+// inside the first test's 5 s budget, and on a busy run that timed it out.
+import { AppShell } from './AppShell'
 
 vi.mock('@/components/TerminalPane', () => ({
   TerminalPane: ({ sessionId, active }: { sessionId: string; active: boolean }) => (
@@ -60,9 +63,13 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 async function openAgent() {
-  const { AppShell } = await import('./AppShell')
   render(<AppShell />)
-  fireEvent.click(await screen.findByText('Fix the login bug'))
+  // Not in a tab, so not in the sidebar: the palette opens it.
+  await waitFor(() => expect(document.querySelector('[data-project-row]')).toBeTruthy())
+  act(() => { fireEvent.keyDown(window, { key: 'k', code: 'KeyK', metaKey: true }) })
+  const input = screen.getByRole('combobox', { name: 'Search' })
+  fireEvent.change(input, { target: { value: 'Fix the login bug' } })
+  fireEvent.click(screen.getAllByRole('option').find((o) => o.textContent?.startsWith('Fix the login bug'))!)
   await screen.findByRole('tab', { name: /Fix the login bug/ })
 }
 

@@ -1,21 +1,30 @@
 /**
- * The app's sidebar (WP-06): New agent and Add project, the Today strip
- * (spend, agents running and waiting, the plan windows), what is waiting on
- * you, then every project with its worktrees, sessions and shells, then the
- * way into the dashboard.
+ * The app's sidebar (WP-06): New agent, Quick chat and Add project, the Today
+ * strip (spend, agents running and waiting, the plan windows), what is
+ * waiting on you when something is, then the projects, then the way into the
+ * dashboard.
  *
- * Keyboard: Tab reaches every row; ↑ and ↓ move between rows, → opens a
- * project and ← closes it, Enter opens what the row names.
+ * The projects are an accordion (owner, 2026-10-09: "which one is active,
+ * which to pick, unclear", translated): only the current project is open,
+ * and under it exactly the tabs the strip shows for it. Picking another
+ * project makes it current; nothing is expanded or collapsed by hand. The
+ * one highlighted row in the sidebar is the tab in front.
  *
- * The list stays short: projects with nothing running for a week fold under
- * Quiet, and the ones hidden by hand under Hidden, both closed by default.
+ * Keyboard: Tab reaches every row; ↑ and ↓ move between rows, Enter opens
+ * what the row names.
+ *
+ * The list stays short: projects in play (running, waiting, a tab open,
+ * pinned, current) come first; the rest fold under More projects, and the
+ * ones hidden by hand under Hidden, both closed by default.
  * Each project's ⋯ menu (or a right-click, or Shift+F10 on its row) hides it,
  * closes its tabs, opens it in an editor or removes it from Caprock.
  */
 import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { groupProjects, type InboxItem, type ProjectNode, type SessionNode, type SidebarModel, type WorktreeNode } from '@/lib/sidebar'
+import { groupProjects, type InboxItem, type ProjectNode, type SidebarModel } from '@/lib/sidebar'
+import type { Tab } from '@/lib/tabs'
+import type { TabLabel } from '@/lib/tablabels'
 import type { ProjectSource } from '@/lib/projects'
-import type { EditorList, Summary } from '@/lib/api'
+import type { EditorList, SessionSummary, Summary } from '@/lib/api'
 import { buildToday } from '@/lib/today'
 import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
@@ -23,15 +32,14 @@ import { useTheme } from '@/lib/theme'
 import { ProjectRow, StatusDot } from './ProjectRow'
 import { ProjectMenu, type ProjectMenuAt } from './ProjectMenu'
 import { TodayStrip } from './TodayStrip'
-import { AgentGlyph, CaprockMark, ChevronIcon, DashboardIcon, FolderPlusIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from './AppIcons'
+import { AgentGlyph, CaprockMark, ChatIcon, ChevronIcon, DashboardIcon, FolderPlusIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from './AppIcons'
 
-const EXPANDED_KEY = 'caprock.app.expanded'
-/** Project ids hidden by hand: this browser's, as the expanded set is. */
+/** Project ids hidden by hand: this browser's. */
 export const HIDDEN_KEY = 'caprock.app.hidden-projects'
 /** Which of the folded groups are open. */
 export const FOLDS_KEY = 'caprock.app.project-folds'
 
-type Fold = 'quiet' | 'hidden'
+type Fold = 'more' | 'hidden'
 
 function loadIds(key: string): Set<string> {
   try {
@@ -46,34 +54,33 @@ function saveIds(key: string, ids: ReadonlySet<string>) {
   try { localStorage.setItem(key, JSON.stringify([...ids])) } catch { /* not kept */ }
 }
 
-function loadExpanded(): Set<string> | null {
-  try {
-    const v = JSON.parse(localStorage.getItem(EXPANDED_KEY) ?? 'null') as unknown
-    return Array.isArray(v) ? new Set(v.filter((x): x is string => typeof x === 'string')) : null
-  } catch {
-    return null
-  }
-}
-
 export interface SidebarProps {
   model: SidebarModel
   source: ProjectSource
+  /** The current project: the one open, its tabs listed under it. */
   activeProjectId: string
-  activeSessionId?: string
   dashboardActive: boolean
+  /** Every open tab, in strip order; the current project's are listed under it. */
+  tabs?: readonly Tab[]
+  /** What each tab is called: the strip's own labels (lib/tablabels.ts). */
+  tabLabels?: ReadonlyMap<string, TabLabel>
+  /** The tab in front: the one highlighted row. */
+  activeTabId?: string
+  onActivateTab?: (tabId: string) => void
+  /** Opens, as a tab, a live session or shell of the current project that has none. */
+  onOpenLive?: (s: SessionSummary, projectId: string) => void
   onSelectProject: (id: string) => void
-  onOpenSession: (s: SessionNode, projectId: string) => void
   onOpenInbox: (item: InboxItem) => void
   onNewAgent: (projectId: string, cwd?: string) => void
   onNewShell: (projectId: string, cwd?: string) => void
-  /** Right-click on a project or worktree row (F18's editor menu). */
+  /** Starts a Claude session that needs no folder, in a tab (⌥⌘N). */
+  onQuickChat?: () => void
+  /** Right-click on a project row with no menu (F18's editor menu). */
   onFolderMenu?: (e: React.MouseEvent, path: string, label: string) => void
   onAddProject: () => void
   onDashboard: () => void
   onSettings?: () => void
   onPalette: () => void
-  /** Opens a worktree's Changes view from its ±N; absent without the projects API. */
-  onOpenChanges?: (projectId: string, w?: WorktreeNode) => void
   /** The day's summary, for the Today strip; absent until it answers. */
   summary?: Summary
   /** The session list has answered once. */
@@ -92,11 +99,14 @@ export interface SidebarProps {
 }
 
 export function Sidebar(props: SidebarProps) {
-  const { model, activeProjectId, activeSessionId } = props
-  const [expanded, setExpanded] = useState<Set<string> | null>(loadExpanded)
+  const { model, activeProjectId } = props
   const [hidden, setHidden] = useState<Set<string>>(() => loadIds(HIDDEN_KEY))
   const [folds, setFolds] = useState<Set<string>>(() => loadIds(FOLDS_KEY))
-  const groups = useMemo(() => groupProjects(model.projects, { hidden, activeProjectId }), [model.projects, hidden, activeProjectId])
+  const allTabs = props.tabs
+  const tabbed = useMemo(() => new Set((allTabs ?? []).map((t) => t.projectId)), [allTabs])
+  const groups = useMemo(() => groupProjects(model.projects, { hidden, activeProjectId, tabbed }), [model.projects, hidden, activeProjectId, tabbed])
+  const currentTabs = useMemo(() => (allTabs ?? []).filter((t) => t.projectId === activeProjectId), [allTabs, activeProjectId])
+  const noLabels = useMemo(() => new Map<string, TabLabel>(), [])
   const now = useNow(30_000)
   const today = useMemo(() => buildToday(model, props.summary, now), [model, props.summary, now])
   const [menuAt, setMenuAt] = useState<ProjectMenuAt | null>(null)
@@ -135,38 +145,29 @@ export function Sidebar(props: SidebarProps) {
       return next
     })
   }
-  // First run: open the projects where something is running, and the one in front.
-  const isOpen = (id: string, live: number) => (expanded ? expanded.has(id) : live > 0 || id === activeProjectId)
-  const toggle = useCallback((id: string) => {
-    setExpanded((cur) => {
-      const base = cur ?? new Set(model.projects.filter((n) => n.live > 0 || n.project.id === activeProjectId).map((n) => n.project.id))
-      const next = new Set(base)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      try { localStorage.setItem(EXPANDED_KEY, JSON.stringify([...next])) } catch { /* not kept */ }
-      return next
-    })
-  }, [model.projects, activeProjectId])
-
-  const row = (n: ProjectNode) => (
-    <ProjectRow
-      key={n.project.id}
-      node={n}
-      expanded={isOpen(n.project.id, n.live)}
-      active={!props.dashboardActive && n.project.id === activeProjectId}
-      activeSessionId={props.dashboardActive ? undefined : activeSessionId}
-      onToggle={toggle}
-      onSelect={props.onSelectProject}
-      onOpenSession={props.onOpenSession}
-      onNewAgent={props.onNewAgent}
-      onNewShell={props.onNewShell}
-      onOpenChanges={props.onOpenChanges}
-      onFolderMenu={props.onFolderMenu}
-      hidden={hidden.has(n.project.id)}
-      onHide={onHide}
-      onMenu={onMenu}
-    />
-  )
+  const noop = useCallback(() => {}, [])
+  const row = (n: ProjectNode) => {
+    const current = n.project.id === activeProjectId
+    return (
+      <ProjectRow
+        key={n.project.id}
+        node={n}
+        current={current}
+        tabs={current ? currentTabs : []}
+        labels={props.tabLabels ?? noLabels}
+        activeTabId={props.dashboardActive ? undefined : props.activeTabId}
+        onSelect={props.onSelectProject}
+        onActivateTab={props.onActivateTab ?? noop}
+        onOpenLive={props.onOpenLive}
+        onNewAgent={props.onNewAgent}
+        onNewShell={props.onNewShell}
+        onFolderMenu={props.onFolderMenu}
+        hidden={hidden.has(n.project.id)}
+        onHide={onHide}
+        onMenu={onMenu}
+      />
+    )
+  }
 
   // The one that has waited longest: the Inbox's order (permission prompts first).
   const firstWaiting = model.inbox.find((i) => !i.stale)
@@ -176,14 +177,9 @@ export function Sidebar(props: SidebarProps) {
     if (!target.matches('[data-nav-row]')) return
     const rows = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[data-nav-row]'))
     const at = rows.indexOf(target)
-    const project = target.dataset.projectRow
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
       rows[Math.max(0, Math.min(rows.length - 1, at + (e.key === 'ArrowDown' ? 1 : -1)))]?.focus()
-    } else if (project && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
-      e.preventDefault()
-      const open = target.getAttribute('aria-expanded') === 'true'
-      if (open !== (e.key === 'ArrowRight')) toggle(project)
     }
   }
 
@@ -216,6 +212,20 @@ export function Sidebar(props: SidebarProps) {
           <span className="flex-1">New agent</span>
           <kbd className="app-kbd">⇧⌘N</kbd>
         </button>
+        {props.onQuickChat && (
+          <button
+            type="button"
+            onClick={props.onQuickChat}
+            aria-label="Quick chat"
+            aria-keyshortcuts="Alt+Meta+N"
+            title="Ask Claude something without picking a folder (⌥⌘N)"
+            className="mt-1 flex h-[26px] w-full items-center gap-2 rounded-[7px] pl-2.5 pr-2 text-left text-[12.5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
+          >
+            <ChatIcon size={14} />
+            <span className="flex-1">Quick chat</span>
+            <kbd className="app-kbd">⌥⌘N</kbd>
+          </button>
+        )}
         <button
           type="button"
           onClick={props.onAddProject}
@@ -241,7 +251,7 @@ export function Sidebar(props: SidebarProps) {
             onWaiting={firstWaiting ? () => props.onOpenInbox(firstWaiting) : undefined}
           />
         )}
-        <Inbox items={model.inbox} activeSessionId={activeSessionId} onOpen={props.onOpenInbox} />
+        <Inbox items={model.inbox} onOpen={props.onOpenInbox} />
 
         <SectionHead label="Projects" />
         {model.projects.length === 0 ? (
@@ -253,7 +263,7 @@ export function Sidebar(props: SidebarProps) {
         ) : (
           <>
             <ul className="grid grid-cols-1 gap-px">{groups.shown.map(row)}</ul>
-            <Fold label="Quiet" title="Nothing running and no activity for a week" items={groups.quiet} open={folds.has('quiet')} onToggle={() => toggleFold('quiet')} row={row} />
+            <Fold label="More projects" title="Nothing running and no tab open" items={groups.more} open={folds.has('more')} onToggle={() => toggleFold('more')} row={row} />
             <Fold label="Hidden" title="Hidden by hand; a project shows again while something runs in it" items={groups.hidden} open={folds.has('hidden')} onToggle={() => toggleFold('hidden')} row={row} />
           </>
         )}
@@ -300,7 +310,8 @@ export function Sidebar(props: SidebarProps) {
   )
 }
 
-function Inbox({ items, activeSessionId, onOpen }: { items: InboxItem[]; activeSessionId?: string; onOpen: (i: InboxItem) => void }) {
+/** What waits on you; nothing at all when nothing does. */
+function Inbox({ items, onOpen }: { items: InboxItem[]; onOpen: (i: InboxItem) => void }) {
   const now = useNow(15_000)
   const [showOlder, setShowOlder] = useState(false)
   const fresh = items.filter((i) => !i.stale)
@@ -310,7 +321,6 @@ function Inbox({ items, activeSessionId, onOpen }: { items: InboxItem[]; activeS
       <button
         type="button"
         data-nav-row
-        aria-current={it.session.session_id === activeSessionId ? 'true' : undefined}
         onClick={() => onOpen(it)}
         className="app-row grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 rounded-[7px] py-1.5 pl-2 pr-2 text-left"
       >
@@ -328,6 +338,7 @@ function Inbox({ items, activeSessionId, onOpen }: { items: InboxItem[]; activeS
       </button>
     </li>
   )
+  if (items.length === 0) return null
   return (
     <section aria-label="Waiting on you" className="mb-2">
       <SectionHead
@@ -335,11 +346,7 @@ function Inbox({ items, activeSessionId, onOpen }: { items: InboxItem[]; activeS
         count={fresh.length}
         tone={fresh.length > 0 ? 'accent' : 'faint'}
       />
-      {fresh.length === 0 ? (
-        <p className="px-2 pb-1 text-[12px] text-fg-faint">Nothing is waiting on you.</p>
-      ) : (
-        <ul className="grid grid-cols-1 gap-px">{fresh.map(row)}</ul>
-      )}
+      {fresh.length > 0 && <ul className="grid grid-cols-1 gap-px">{fresh.map(row)}</ul>}
       {older.length > 0 && (
         <>
           <button

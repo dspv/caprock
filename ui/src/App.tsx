@@ -58,11 +58,11 @@ export default function App() {
 }
 
 /** The dashboard's screens in their shell: the browser's whole page, and a view inside the app. */
-export function Dashboard({ route }: { route: Route }) {
+export function Dashboard({ route, inApp = false }: { route: Route; inApp?: boolean }) {
   return (
     <Shell route={route}>
       <ErrorBoundary label={route.name}>
-        {route.name === 'now' && <NowScreen />}
+        {route.name === 'now' && <NowScreen inApp={inApp} />}
         {route.name === 'session' && <SessionScreen key={route.id} id={route.id} tab={route.tab} at={route.at} />}
         {route.name === 'cost' && <CostScreen section={route.section} />}
         {route.name === 'settings' && <StatusScreen />}

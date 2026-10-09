@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 )
 
 // The extra aggregates the Now screen's At a glance block draws: who did the
@@ -149,6 +150,10 @@ func TokensByModel(ctx context.Context, q Querier, from int64) ([]ModelTokens, e
 	}
 	return out, rows.Err()
 }
+
+// LiveSubagentWindow bounds how long a silent subagent is believed to be
+// working: one whose SubagentStop never arrived must not count forever.
+const LiveSubagentWindow = 30 * time.Minute
 
 // LiveSubagents counts the subagents working in a session now: each agent id
 // heard from since `since` whose latest event is not its SubagentStop.

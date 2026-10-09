@@ -22,6 +22,14 @@ describe('the app keyboard map', () => {
     expect(matchAppShortcut(k(',', { metaKey: true }), true)).toEqual({ kind: 'settings' })
   })
 
+  it('starts a quick chat on ⌥⌘N, Ctrl+Alt+Shift+N elsewhere, and on no other Option chord', () => {
+    expect(matchAppShortcut(k('ñ', { code: 'KeyN', metaKey: true, altKey: true }), true)).toEqual({ kind: 'quick-chat' })
+    expect(matchAppShortcut(k('N', { ctrlKey: true, shiftKey: true, altKey: true }), false)).toEqual({ kind: 'quick-chat' })
+    expect(matchAppShortcut(k('n', { altKey: true }), true)).toBeNull()
+    expect(matchAppShortcut(k('n', { metaKey: true, shiftKey: true, altKey: true }), true)).toBeNull()
+    expect(matchAppShortcut(k('m', { metaKey: true, altKey: true }), true)).toBeNull()
+  })
+
   it('never takes a key the terminal needs on macOS', () => {
     for (const key of ['c', 'w', 't', 'd', 'z', 'r', 'a', 'e', 'k', 'l', 'j']) {
       expect(matchAppShortcut(k(key, { ctrlKey: true }), true)).toBeNull()

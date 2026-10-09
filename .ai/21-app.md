@@ -122,15 +122,26 @@ One window, three regions:
   border, accent label and icon on the panel, an accent-tinted hover
   (`.app-primary`); the key hints beside it, *Add project* and *Dashboard*
   are the label's size, muted (`.app-kbd`, 12.5px mono) — at 10.5px the
-  owner could not read them. Then projects, each expandable to worktrees and branches,
-  then to the sessions and shells in it. A row's figures: agents running
-  in it (live non-shell sessions; the dot green while one works), cost
-  today, and *waiting on you* or *looping* — each only when non-zero, the
-  cost beside the waiting badge rather than replaced by it. The branch is
-  the row's spacer: it takes what the name and the figures leave and goes,
-  rather than showing as a sliver, below 2.5rem (`FitOrHide` in
-  `ProjectRow.tsx`, CSS only). A **Dashboard** entry opens the existing
-  screens.
+  owner could not read them. Then the projects, as an accordion (owner,
+  2026-10-09: "the left has tons of items, which one is active, which to
+  pick, unclear … we need a simpler interface", translated; he had landed
+  on an old session started in another terminal and understood nothing).
+  A project is one line: name, a green dot with the count of live sessions
+  and shells, the waiting badge — no branch, no ±, no spend. Only the
+  current project is open, with no chevron: under it, exactly its tabs as
+  the strip shows them, same order, same names (`lib/tablabels.ts`; shells
+  numbered *Shell 1*, *Shell 2*; a branch only when it is not the
+  project's). No worktree or branch rows, and no session that is not in a
+  tab — those are on the project's page (*Recent*), in ⌘K and in the
+  Inbox. The one highlighted row in the sidebar is the tab in front; the
+  current project's name is bold. *Waiting on you* is drawn only while
+  something waits. A **Dashboard** entry opens the existing
+  screens in a Dashboard tab pinned at the left of the tab strip (2026-10-09:
+  it replaced the whole workspace, and the first tester read that as every
+  terminal closing, translated); in it, Now leaves out the session cards and
+  the projects panel the sidebar already shows. *Quick chat* (⌥⌘N) under
+  *Add project* starts a Claude session with no folder to pick, in a tab
+  (the tester could not find how to, translated).
 - **Today strip** (owner, 2026-10-08: "useful data on the left too",
   translated). Under *New agent*: today's spend across every agent, agents
   running and waiting on you, and Claude Code's 5-hour and weekly windows
@@ -146,8 +157,8 @@ One window, three regions:
   the status strip drops its plan windows and spend, so the same figures
   are never on screen twice.
 - **Project menu** (owner, same day: "a way to hide or close projects";
-  the hover-only eye was not found). The row's ⋯ — on hover or focus, and
-  always on the project in front — a right-click on the row, or
+  the hover-only eye was not found). The row's ⋯ — on hover or focus — a
+  right-click on the row, or
   Shift+F10 / the context-menu key opens `ProjectMenu.tsx`: hide or show
   again, close its tabs (the `close-project` workspace action drops every
   tab whose `projectId` it is, splits included; nothing is signalled, so the
@@ -159,21 +170,31 @@ One window, three regions:
   The menu is portalled to `<body>`: the sidebar's backdrop filter makes it
   the containing block of anything fixed inside it.
 - **Keeping the project list short** (owner, 2026-10-08: "a ton of stuff
-  hanging in it and it's unclear how to hide things", translated). Projects
-  with no live session and no activity for 7 days (`QUIET_MS`, from the
-  model's `lastActive`: last session event, `last_activity`, `added_at`)
-  fold under *Quiet · N* at the bottom; a project hidden by hand from its
-  menu or its row's hover eye goes under *Hidden · N*, where the same
-  actions show it again. `groupProjects` in `ui/src/lib/sidebar.ts` decides: a live or
-  waiting session, a session open in a tab, being the project in front, or
-  *Other folders* always keeps a row in the list; pinned never goes quiet.
+  hanging in it and it's unclear how to hide things", translated). Since
+  2026-10-09, above `FOLD_ABOVE` (8) projects the list is what is in play —
+  a live or waiting session, a tab open, a pin, or the project in front —
+  and everything else folds under *More projects · N* (it was *Quiet*, a
+  week without activity, which left eighteen projects standing in the
+  owner's list); with eight or fewer nothing folds (a preview with three
+  projects hid two of them, which only made the short list shorter). Each
+  group is in a stable order — pinned, the hand-set `sort`, then name —
+  because ordering by activity moved a project when it was clicked. A project hidden by hand
+  from its menu or its row's hover eye goes under *Hidden · N*, where the
+  same actions show it again. `groupProjects` in `ui/src/lib/sidebar.ts`
+  decides; *Other folders* always keeps a row.
   Hidden ids live in the page's storage (`caprock.app.hidden-projects`),
   not the daemon: the projects API has no hide flag, and unlisting
   (`DELETE /v1/projects/{id}`) takes the project out of every list, phone
   and palette included, which is not what hiding means. Which folds are open is
   `caprock.app.project-folds`; both start closed.
-- **Tabs (main).** Terminal tabs — an agent session or a shell — with the
-  project and branch in the title. The permission prompt card
+- **Tabs (main).** Terminal tabs — an agent session or a shell — of every
+  project in one strip, each with its project's chip; picking a project
+  never takes a tab out of it (2026-10-09: with a strip per project, the
+  first tester lost a plain shell the moment he moved to a project, and
+  Vova's two rateguard tabs "vanished" when he clicked another project,
+  both translated). The sidebar lists the current project's tabs under the
+  same names. The terminal's default palette, *Match app*, takes the window's own panel
+  colour, so it no longer reads as a dark window laid on the beige one. The permission prompt card
   ([ADR-035](08-decisions.md#adr-035--a-permission-prompt-is-answered-with-a-button-found-by-its-hook))
   is drawn for the focused agent whether or not its terminal is in front
   (owner, 2026-10-07, reversing 2026-10-06): it names the call in full, and
@@ -189,18 +210,24 @@ One window, three regions:
   the notification and the phone, which keep their buttons.
 - **Agent cockpit (right).** The inspector, open by default (⌘I closes it,
   and closed is remembered per machine), becomes the agent cockpit beside an
-  agent's terminal: the agent's character in its state (working, waiting on
-  you, looping, idle, ended), what the session has cost with the cost of each
+  agent's terminal: the session's project (and its branch when not the
+  default; the path on hover), the agent's character in its state (working,
+  *background agents working · N* once its turn ended with subagents still
+  at work, waiting on you, looping, idle, ended), what the session has cost with the cost of each
   of its last model calls, the context bar and what the next call pays to
   re-read it, what it is doing this second (the open tool call and how long
   it has run, or *Thinking* since the last one finished; while a permission
   prompt waits, who asks and what — "Subagent (general-purpose) wants to run
   Bash" over the command's first real step, the full text on hover, or "2
   approvals waiting"), a *Subagents · N* section while any works (one row
-  each, five at most: its type and the task the parent gave it, its current
-  call with how long it has run, how many calls it has made, *waiting on you*
-  while it has a prompt outstanding; "3 finished" for those that stopped in
-  the last 30 minutes), its last seven tool calls with their durations, the
+  each, five at most: a dot that pulses while its call runs, its type and the
+  task the parent gave it, its model ("Haiku 4.5") and how long it has
+  worked, its current call with how long it has run, how many calls it has
+  made and what it has cost, *waiting on you* while it has a prompt
+  outstanding; under them, muted, up to three that finished in the last 30
+  minutes with model, duration and cost, "+N finished" for the rest; the
+  header carries what all of the session's subagents cost — a cost is shown
+  only when every turn behind it was priced, never as $0), its last seven tool calls with their durations, the
   uncommitted changes, the plan windows of its agent, and a loop warning only
   while an alert is live. It is the screen that shows what only Caprock
   knows, so it is built from figures Caprock already holds and nothing else:
@@ -1228,7 +1255,7 @@ the user guide [docs/app.md § Updates](../docs/app.md#updates).
   place", translated). Sessions live in pty-hosts and survive both the app's
   restart and the daemon's move; tabs, their order, the front tab, splits
   and sizes (`caprock.app.workspace.v1`) and the sidebar
-  (`caprock.app.expanded`, `caprock.app.hidden-projects`,
+  (`caprock.app.hidden-projects`,
   `caprock.app.project-folds`) are in the page's storage; on *installing* each
   terminal saves where it is scrolled (`caprock.app.resume.v1`,
   `ui/src/lib/termresume.ts`) and goes back there after the replay; the

@@ -2,6 +2,12 @@
  * The workspace's tabs: which terminals are open, in which project, in which
  * order, and which one is in front (WP-04).
  *
+ * One strip holds every open tab of every project, in the order they were
+ * opened (2026-10-09; it was one strip per project, and picking another
+ * project hid every tab of the one before, which read as closing them). A tab
+ * still belongs to a project: picking a project brings its last tab to the
+ * front, and a project with none shows its empty state with the strip intact.
+ *
  * A tab holds a tree of panes rather than one terminal: split panes (F15)
  * are a split node in that tree, so they changed nothing about what is
  * stored. A tab's title, the inspector and the status strip follow the
@@ -53,11 +59,17 @@ export interface Tab {
 
 export interface Workspace {
   version: 1
+  /** Every open tab of every project, in strip order. */
   tabs: Tab[]
-  /** The tab in front, per project. */
+  /** The tab last in front, per project: what picking the project shows. */
   activeByProject: Record<string, string>
-  /** The project whose tabs are shown. */
+  /** The project in front; its remembered tab is the one shown. */
   activeProject: string
+  /**
+   * The Dashboard tab is in the strip, pinned at its left. Absent in a
+   * workspace stored before it existed, which reads as false.
+   */
+  dashboard?: boolean
 }
 
 export type WorkspaceAction =
@@ -70,6 +82,8 @@ export type WorkspaceAction =
   | { type: 'cycle'; delta: 1 | -1 }
   | { type: 'move'; tabId: string; toIndex: number }
   | { type: 'project'; projectId: string }
+  /** Puts the pinned Dashboard tab in the strip, or takes it out. */
+  | { type: 'dashboard'; open: boolean }
   | { type: 'retitle'; sessionId: string; title: string }
   | { type: 'drop-session'; sessionId: string }
   /**
@@ -117,7 +131,7 @@ export function namingLeaf(tab: Tab): PaneLeaf {
   return leaves(tab.root).find((l) => l.target.kind !== 'shell') ?? focusedLeaf(tab)
 }
 
-/** The tabs of one project, in strip order. */
+/** The tabs of one project, in strip order (the strip itself is `ws.tabs`). */
 export function tabsOf(ws: Workspace, projectId: string): Tab[] {
   return ws.tabs.filter((t) => t.projectId === projectId)
 }
@@ -211,15 +225,24 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
     case 'close': {
       const tab = ws.tabs.find((t) => t.id === a.tabId)
       if (!tab) return ws
-      const siblings = tabsOf(ws, tab.projectId)
-      const at = siblings.findIndex((t) => t.id === tab.id)
       const tabs = ws.tabs.filter((t) => t.id !== tab.id)
-      if (ws.activeByProject[tab.projectId] !== tab.id) return { ...ws, tabs }
       // The neighbour to the right takes the front, else the one to the left —
       // what every tabbed app does, so the hand already knows where it lands.
+      // In the one strip that neighbour may be another project's tab, and the
+      // project in front follows it.
+      if (activeTab(ws)?.id === tab.id) {
+        const at = ws.tabs.findIndex((t) => t.id === tab.id)
+        const next = tabs[Math.min(at, tabs.length - 1)]
+        const left = withActive({ ...ws, tabs }, tab.projectId, undefined)
+        return next ? { ...withActive(left, next.projectId, next.id), activeProject: next.projectId } : left
+      }
+      if (ws.activeByProject[tab.projectId] !== tab.id) return { ...ws, tabs }
+      // A tab remembered for a project not in front: the project remembers
+      // its nearest sibling instead.
+      const siblings = tabsOf(ws, tab.projectId)
+      const at = siblings.findIndex((t) => t.id === tab.id)
       const rest = siblings.filter((t) => t.id !== tab.id)
-      const next = rest[Math.min(at, rest.length - 1)]
-      return withActive({ ...ws, tabs }, tab.projectId, next?.id)
+      return withActive({ ...ws, tabs }, tab.projectId, rest[Math.min(at, rest.length - 1)]?.id)
     }
     case 'close-project': {
       if (!ws.tabs.some((t) => t.projectId === a.projectId)) return ws
@@ -231,29 +254,37 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
       return { ...withActive(ws, tab.projectId, tab.id), activeProject: tab.projectId }
     }
     case 'activate-index': {
-      const list = tabsOf(ws, ws.activeProject)
+      const list = ws.tabs
       // Cmd+9 is the last tab, however many there are, as in a browser.
       const tab = a.index === 8 ? list[list.length - 1] : list[a.index]
-      return tab ? withActive(ws, tab.projectId, tab.id) : ws
+      return tab ? { ...withActive(ws, tab.projectId, tab.id), activeProject: tab.projectId } : ws
     }
     case 'cycle': {
-      const list = tabsOf(ws, ws.activeProject)
+      const list = ws.tabs
       if (list.length === 0) return ws
-      const at = list.findIndex((t) => t.id === ws.activeByProject[ws.activeProject])
-      const next = list[(Math.max(at, 0) + a.delta + list.length) % list.length]!
-      return withActive(ws, next.projectId, next.id)
+      const shown = activeTab(ws)
+      // Nothing in front (a project with no tabs): forward starts at the first.
+      const at = shown ? list.indexOf(shown) : a.delta === 1 ? -1 : 0
+      const next = list[(at + a.delta + list.length) % list.length]!
+      return { ...withActive(ws, next.projectId, next.id), activeProject: next.projectId }
     }
     case 'move': {
       const tab = ws.tabs.find((t) => t.id === a.tabId)
       if (!tab) return ws
-      const siblings = tabsOf(ws, tab.projectId).filter((t) => t.id !== tab.id)
-      const to = Math.max(0, Math.min(a.toIndex, siblings.length))
-      siblings.splice(to, 0, tab)
-      const others = ws.tabs.filter((t) => t.projectId !== tab.projectId)
-      return { ...ws, tabs: [...others, ...siblings] }
+      const rest = ws.tabs.filter((t) => t.id !== tab.id)
+      const to = Math.max(0, Math.min(a.toIndex, rest.length))
+      rest.splice(to, 0, tab)
+      return { ...ws, tabs: rest }
     }
     case 'project':
       return ws.activeProject === a.projectId ? ws : { ...ws, activeProject: a.projectId }
+    case 'dashboard': {
+      if (!!ws.dashboard === a.open) return ws
+      if (a.open) return { ...ws, dashboard: true }
+      const rest = { ...ws }
+      delete rest.dashboard
+      return rest
+    }
     case 'retitle': {
       let changed = false
       const tabs = ws.tabs.map((t) => {
@@ -364,7 +395,12 @@ export function parseWorkspace(raw: string | null): Workspace {
     for (const [p, id] of Object.entries(v.activeByProject ?? {})) {
       if (typeof id === 'string' && ids.has(id)) activeByProject[p] = id
     }
-    return { version: 1, tabs, activeByProject, activeProject: typeof v.activeProject === 'string' ? v.activeProject : '' }
+    // A workspace from before the one strip (per-project strips) has the
+    // same fields and reads as it is: its tabs are already one list, in the
+    // order they were opened; only `dashboard` is new, and absent means shut.
+    const ws: Workspace = { version: 1, tabs, activeByProject, activeProject: typeof v.activeProject === 'string' ? v.activeProject : '' }
+    if (v.dashboard === true) ws.dashboard = true
+    return ws
   } catch {
     return EMPTY_WORKSPACE
   }
