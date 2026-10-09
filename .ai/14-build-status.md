@@ -73,6 +73,18 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-09 — 0.94.0: a project list you can read, one tab strip
+
+The first user moved from the browser to the app and lost his place: picking
+another project hid the tabs of the first, and the sidebar listed every
+worktree, branch and old session. The sidebar is now an accordion of projects
+whose rows are the current project's tabs, one tab strip holds every
+project's tabs, Dashboard opens as a tab, the terminal takes the app's
+colours and Quick chat has a button. A session whose background agents are
+still working no longer reads as waiting on you, a subagent no longer moves
+its session to its worktree, subagents show their model and cost, and the
+New agent sheet keeps focus where you put it.
+
 ### 2026-10-09 — 0.93.1: OpenCode on a fresh machine, Codex calls that end
 
 A Linux run of OpenCode 2 in Docker (Debian 12, @opencode/cli 2.0.26, a stub

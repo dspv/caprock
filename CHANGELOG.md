@@ -7,7 +7,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
-Phase 3 (Delight) has no plan by design.
+## [0.94.0] - 2026-10-09
 
 ### Added
 
@@ -103,9 +103,6 @@ Phase 3 (Delight) has no plan by design.
   project's name as the sidebar shows it, then the branch only when that is
   not the project's default. The full path is a tooltip. It used to show a
   branch beside a folder path cut from the left (`…nt-a874ec5240fb37a9d`).
-
-### Fixed
-
 - **Focus no longer jumps while you fill the New agent sheet.** Each time
   the app refreshed behind it, the sheet threw the caret back to *Project*;
   now focus moves only when you move it. The same fix covers every sheet in
