@@ -11,6 +11,40 @@ vi.mock('@/lib/api', async (orig) => {
   return { ...actual, api: { ...actual.api, status: () => Promise.reject(new Error('down')) } }
 })
 
+// The desktop app's shell, switched on per test: its clipboard, its window
+// capture and its reader for dropped files (app/src-tauri/src/capture.rs).
+const native = vi.hoisted(() => ({
+  tauri: false,
+  capture: false,
+  clip: [] as Uint8Array[],
+  captured: 0,
+  release: null as null | (() => void),
+  readable: {} as Record<string, Uint8Array>,
+}))
+vi.mock('@/lib/appmode', async (orig) => ({
+  ...(await orig<typeof import('@/lib/appmode')>()),
+  isTauri: () => native.tauri,
+}))
+vi.mock('@/lib/shell', async (orig) => {
+  const actual = await orig<typeof import('@/lib/shell')>()
+  return {
+    ...actual,
+    captureSupported: () => native.capture,
+    shell: {
+      ...actual.shell,
+      clipboardImage: async (b: Uint8Array) => { native.clip.push(b) },
+      captureWindow: () => new Promise<ArrayBuffer>((resolve) => {
+        native.release = () => { native.captured++; resolve(new Uint8Array([137, 80, 78, 71]).buffer) }
+      }),
+      readDroppedImage: async (path: string) => {
+        const b = native.readable[path]
+        if (!b) throw new Error('over 10 MB')
+        return b.buffer
+      },
+    },
+  }
+})
+
 import { FeedbackButton } from './Feedback'
 import { currentScreen } from '@/lib/feedback'
 
@@ -29,6 +63,12 @@ let refuse: boolean
 
 beforeEach(() => {
   opened.length = 0
+  native.tauri = false
+  native.capture = false
+  native.clip = []
+  native.captured = 0
+  native.release = null
+  native.readable = {}
   written = []
   refuse = false
   let n = 0
@@ -177,5 +217,58 @@ describe('the feedback form', () => {
     expect(currentScreen('#/app', true)).toBe('App tabs')
     expect(currentScreen('#/cost', true)).toBe('Cost')
     expect(currentScreen('', false)).toBe('Now')
+  })
+})
+
+describe('the feedback form in the desktop app', () => {
+  it('puts the screenshot on the clipboard through the shell, not the webview', async () => {
+    native.tauri = true
+    openForm()
+    await paste([png('a.png')])
+    fireEvent.change(screen.getByRole('textbox', { name: 'Title' }), { target: { value: 'Chart is crooked' } })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Create issue' })) })
+    expect(native.clip).toHaveLength(1)
+    expect(native.clip[0]).toBeInstanceOf(Uint8Array)
+    expect(written).toEqual([]) // navigator.clipboard was not used
+    expect(screen.getByRole('status').textContent).toContain('is on your clipboard')
+  })
+
+  it('offers Capture window only where the shell can, and hides the dialog while it captures', async () => {
+    openForm()
+    expect(screen.queryByRole('button', { name: 'Capture window' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    native.tauri = true
+    native.capture = true
+    fireEvent.click(screen.getByRole('button', { name: 'Feedback' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Capture window' }))
+    const backdrop = document.querySelector('[data-dialog-backdrop]')!
+    expect(backdrop.className).toContain('invisible')
+    await vi.waitFor(() => expect(native.release).not.toBeNull())
+    await act(async () => { native.release!() })
+    await vi.waitFor(() => expect(screen.getAllByRole('img')).toHaveLength(1))
+    expect(native.captured).toBe(1)
+    expect(backdrop.className).not.toContain('invisible')
+    expect(screen.getByRole('img').getAttribute('alt')).toBe('Screenshot 1')
+  })
+
+  it('attaches an image dropped on the window, and leaves out anything else with a note', async () => {
+    native.tauri = true
+    native.readable = { '/Users/me/Desktop/shot.PNG': new Uint8Array([1, 2, 3]) }
+    openForm()
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('caprock:drop-paths', {
+        detail: { paths: ['/Users/me/Desktop/shot.PNG', '/Users/me/notes.txt'], x: 10, y: 10 },
+      }))
+    })
+    await vi.waitFor(() => expect(screen.getAllByRole('img')).toHaveLength(1))
+    expect(screen.getByRole('status').textContent).toContain('Only images can be attached.')
+
+    // An image the shell refuses (over 10 MB, unreadable) is left out too.
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('caprock:drop-paths', { detail: { paths: ['C:\\big.jpg'], x: 10, y: 10 } }))
+    })
+    await vi.waitFor(() => expect(screen.getByRole('status').textContent).toContain('over 10 MB'))
+    expect(screen.getAllByRole('img')).toHaveLength(1)
   })
 })

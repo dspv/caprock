@@ -19,6 +19,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   a short *Attach your screenshots* step says to press ⌘V in the GitHub
   comment box and *Copy next* brings up the next one. Caprock still sends
   nothing: GitHub uploads what you paste.
+- **In the desktop app: Capture window, dropped images, the real
+  clipboard.** On macOS and Windows, *Capture window* attaches a picture of
+  the app's own page (the dialog steps aside for it); it is drawn by the
+  app's webview, so no screen-recording permission is asked. Image files
+  dropped on the window are attached (png, jpg, gif or webp, up to 10 MB).
+  Screenshots go onto the clipboard through the app itself rather than the
+  webview, which not every webview allows.
 
 ### Fixed
 

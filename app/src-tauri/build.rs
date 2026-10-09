@@ -21,6 +21,9 @@ fn main() {
             "app_update_check",
             "app_update_install",
             "app_update_asked",
+            "clipboard_image",
+            "capture_webview",
+            "read_dropped_image",
         ]),
     ))
     .expect("tauri build");

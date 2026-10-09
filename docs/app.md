@@ -100,7 +100,9 @@ others. Installing it: [install-app.md](install-app.md).
   the *Settings* heading, or Esc, closes it as the tab's × does. The
   megaphone beside the sliders opens *Feedback*: pick Bug, Idea or
   Question, write a title and a few words, and paste (⌘V) or choose up to
-  four screenshots. *Create issue* opens a prefilled GitHub issue in your
+  four screenshots — drop image files on the window, or on macOS and Windows
+  press *Capture window* for a picture of the app itself (not your screen; no
+  permission is asked). *Create issue* opens a prefilled GitHub issue in your
   browser, which you read and submit yourself, and puts the first screenshot
   on your clipboard: press ⌘V in the issue, then *Copy next* for the rest.
   Nothing is uploaded by Caprock — GitHub takes what you paste.

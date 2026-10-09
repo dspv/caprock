@@ -8,7 +8,7 @@ import { isTauri } from './appmode'
 import type { AppUpdateInfo } from './appupdate'
 
 interface TauriInternals {
-  invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>
+  invoke: <T>(cmd: string, args?: Record<string, unknown> | Uint8Array) => Promise<T>
 }
 
 /** A session waiting on you, as the tray lists it. */
@@ -40,7 +40,10 @@ export const OPEN_SESSION_EVENT = 'caprock:open-session'
 /** The event the shell dispatches before it brings the window up from the tray or the hotkey. */
 export const SHOWN_EVENT = 'caprock:shown'
 
-function shellInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+/** A command's arguments, or for the screenshot commands the raw bytes of an image. */
+type Args = Record<string, unknown> | Uint8Array
+
+function shellInvoke<T>(cmd: string, args?: Args): Promise<T> {
   const internals = (window as unknown as { __TAURI_INTERNALS__?: TauriInternals }).__TAURI_INTERNALS__
   if (!isTauri() || !internals) return Promise.reject(new Error('not in the desktop app'))
   return internals.invoke<T>(cmd, args ?? {})
@@ -68,4 +71,19 @@ export const shell = {
   updateAsked: () => shellInvoke<void>('app_update_asked'),
   /** Open an http, https or mailto link in the default browser or mail app; rejects on any other scheme. */
   openExternal: (url: string) => shellInvoke<void>('open_external', { url }),
+  /** A PNG onto the system clipboard, through the shell rather than the webview (app/src-tauri/src/capture.rs). */
+  clipboardImage: (png: Uint8Array) => shellInvoke<void>('clipboard_image', png),
+  /** The app's own page as PNG bytes: the webview's drawing, never the screen. */
+  captureWindow: () => shellInvoke<ArrayBuffer>('capture_webview'),
+  /** An image file from the last drop on the window (png/jpg/jpeg/gif/webp, at most 10 MB). */
+  readDroppedImage: (path: string) => shellInvoke<ArrayBuffer>('read_dropped_image', { path }),
+}
+
+/**
+ * Whether the app can capture its own window: macOS (WKWebView) and Windows
+ * (WebView2). Linux's WebKitGTK path is not built, so the button is hidden
+ * there, and in a browser tab, which has no shell at all.
+ */
+export function captureSupported(ua: string = typeof navigator === 'undefined' ? '' : navigator.userAgent): boolean {
+  return isTauri() && /Mac|Windows/.test(ua) && !/Linux|Android/.test(ua)
 }

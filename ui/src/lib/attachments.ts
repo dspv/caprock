@@ -13,9 +13,17 @@
  * The clipboard takes `image/png` only (Chromium refuses anything else in a
  * ClipboardItem), so an image of another type is redrawn as PNG when it is
  * attached — then the copy at click time starts at once, with no drawing in
- * between, which Safari's WebKit (and so the macOS app) needs: a clipboard
- * write must begin inside the click.
+ * between, which Safari's WebKit needs: a clipboard write must begin
+ * inside the click.
+ *
+ * **In the desktop app the clipboard is the shell's**, not the webview's:
+ * the PNG's bytes go to the app's `clipboard_image` command, which writes
+ * them through the OS clipboard (app/src-tauri/src/capture.rs). Whether a
+ * webview lets a page write an image differs by OS and version; the shell's
+ * clipboard does not.
  */
+import { isTauri } from './appmode'
+import { shell } from './shell'
 
 /** At most this many screenshots on one report. */
 export const MAX_SHOTS = 4
@@ -57,6 +65,25 @@ export function accept(have: number, files: File[]): Accepted {
   const take = small.slice(0, room)
   if (take.length < small.length) notes.push(`Up to ${MAX_SHOTS} screenshots.`)
   return { take, note: notes.join(' ') }
+}
+
+const DROP_TYPES: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+}
+
+/** The image type of a dropped path by its extension, or '' when the app would not read it. */
+export function imageTypeOfPath(path: string): string {
+  const ext = /\.([A-Za-z0-9]+)$/.exec(path)?.[1]?.toLowerCase() ?? ''
+  return DROP_TYPES[ext] ?? ''
+}
+
+/** The file name at the end of a path, on any OS. */
+export function baseName(path: string): string {
+  return path.split(/[\\/]/).pop() || 'screenshot'
 }
 
 /** The images in a paste or a drop, in order. */
@@ -110,6 +137,15 @@ export async function toPNG(file: Blob): Promise<Blob> {
  * the click that asked for it.
  */
 export async function copyImage(png: Blob, clip: Clipboard | undefined = navigator.clipboard): Promise<boolean> {
+  if (isTauri()) {
+    if (png.type !== 'image/png') return false
+    try {
+      await shell.clipboardImage(new Uint8Array(await png.arrayBuffer()))
+      return true
+    } catch {
+      return false
+    }
+  }
   try {
     const Item = (globalThis as unknown as { ClipboardItem?: typeof ClipboardItem }).ClipboardItem
     if (!Item || !clip?.write) return false

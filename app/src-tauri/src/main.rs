@@ -5,6 +5,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod badge;
+mod capture;
 mod commands;
 mod discovery;
 mod hotkey;
@@ -54,7 +55,10 @@ macro_rules! handler {
             commands::app_update_status,
             commands::app_update_check,
             commands::app_update_install,
-            commands::app_update_asked
+            commands::app_update_asked,
+            capture::clipboard_image,
+            capture::capture_webview,
+            capture::read_dropped_image
         ]
     };
 }
@@ -68,6 +72,8 @@ fn configure<R: tauri::Runtime>(b: tauri::Builder<R>, sup: commands::Sup) -> tau
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(updater::Updates::new(&sup.data_dir))
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .manage(capture::Dropped::default())
         .manage(sup)
         .manage(shell::Downloads::default())
         .manage(tray::Tray::default())
@@ -341,6 +347,23 @@ mod tests {
         for url in ["https://example.com/", "http://localhost:4391/"] {
             let err = invoke(url, "withdraw_notifications", none.clone()).expect_err(url);
             assert!(err.to_string().contains("not allowed"), "{url}: {err}");
+        }
+    }
+
+    #[test]
+    fn only_the_daemon_page_may_read_a_dropped_image_and_only_a_dropped_one() {
+        // Allowed to call, but a path the shell did not just hand over is refused.
+        let path = serde_json::json!({"path": "/etc/hosts.png"});
+        let err = invoke(DAEMON, "read_dropped_image", path.clone()).expect_err("not dropped");
+        assert!(err.to_string().contains("not a dropped file"), "{err}");
+        for url in ["https://example.com/", "http://localhost:4391/"] {
+            for cmd in ["read_dropped_image", "capture_webview", "clipboard_image"] {
+                let err = invoke(url, cmd, path.clone()).expect_err(&format!("{url} {cmd}"));
+                assert!(
+                    err.to_string().contains("not allowed"),
+                    "{url} {cmd}: {err}"
+                );
+            }
         }
     }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { accept, copyImage, imagesIn, MAX_SHOT_BYTES, MAX_SHOTS, nextShot, stepLine } from './attachments'
+import { accept, baseName, copyImage, imageTypeOfPath, imagesIn, MAX_SHOT_BYTES, MAX_SHOTS, nextShot, stepLine } from './attachments'
 
 const png = (name = 'a.png', size = 10) => new File([new Uint8Array(size)], name, { type: 'image/png' })
 
@@ -78,5 +78,21 @@ describe('the attach step', () => {
     // A refused clipboard is a calm next step, never an error.
     expect(stepLine(1, 2, false, '⌘V')).toBe('One more step: save the screenshots, then drag them into the GitHub comment box.')
     expect(stepLine(0, 1, false, '⌘V', true)).toBe('Saved to your downloads — drag it into the GitHub comment box.')
+  })
+})
+
+describe('a dropped path', () => {
+  it('is an image by the extensions the app reads, in any case', () => {
+    expect(imageTypeOfPath('/a/b/Shot.PNG')).toBe('image/png')
+    expect(imageTypeOfPath('C:\\x\\photo.jpeg')).toBe('image/jpeg')
+    expect(imageTypeOfPath('/a/x.jpg')).toBe('image/jpeg')
+    expect(imageTypeOfPath('/a/x.gif')).toBe('image/gif')
+    expect(imageTypeOfPath('/a/x.webp')).toBe('image/webp')
+    for (const no of ['/a/x.txt', '/a/x', '/a/x.svg', '/a/x.png.exe']) expect(imageTypeOfPath(no)).toBe('')
+  })
+
+  it('is named by its last part on any OS', () => {
+    expect(baseName('/Users/me/shot.png')).toBe('shot.png')
+    expect(baseName('C:\\Users\\me\\shot.png')).toBe('shot.png')
   })
 })

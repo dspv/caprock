@@ -28,11 +28,13 @@
  * app's `open_external` command, which hands the URL to the default browser,
  * and `window.open` in a browser tab.
  *
- * **Not offered: "Capture this window".** Tauri has no webview capture, and
- * capturing the window through the OS (CGWindowList on macOS, the path the
- * app's dev-only `snapshot` feature takes) needs the Screen Recording
- * permission — a system prompt the first time. The OS's own screenshot keys
- * put an image on the clipboard, and pasting it here is one keystroke.
+ * **In the desktop app** three things go through the shell
+ * (app/src-tauri/src/capture.rs) rather than the webview: the clipboard
+ * (`clipboard_image`), **Capture window** — the app's own page drawn by its
+ * webview, never the screen, so no Screen Recording permission; on macOS and
+ * Windows, hidden on Linux and in a browser — and a file dropped on the
+ * window, which reaches the page as a path and is read by the shell only if
+ * it is an image of at most 10 MB from that very drop.
  */
 import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
 import { api } from '@/lib/api'
@@ -40,7 +42,8 @@ import { useApi } from '@/lib/useApi'
 import { openExternal } from '@/lib/nudges'
 import { isAppMode, isMacPlatform } from '@/lib/appmode'
 import { context, currentScreen, isSendable, issueURL, KINDS, type FeedbackKind } from '@/lib/feedback'
-import { accept, copyImage, imagesIn, MAX_SHOTS, nextShot, stepLine, toPNG, type Shot } from '@/lib/attachments'
+import { accept, baseName, copyImage, imageTypeOfPath, imagesIn, MAX_SHOTS, nextShot, stepLine, toPNG, type Shot } from '@/lib/attachments'
+import { captureSupported, shell } from '@/lib/shell'
 import { DROP_PATHS_EVENT } from '@/lib/xtermInput'
 import { FeedbackIcon } from './AppIcons'
 import { CloseButton, DialogBackdrop } from './Dialog'
@@ -94,6 +97,9 @@ function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => vo
   const [withDiag, setWithDiag] = useState(true)
   const [showDiag, setShowDiag] = useState(false)
   const [dragging, setDragging] = useState(false)
+  /** While the window is being captured the dialog is hidden, so the shot shows the app. */
+  const [capturing, setCapturing] = useState(false)
+  const canCapture = captureSupported()
   /** Set once the issue is open and there are screenshots to carry over. */
   const [step, setStep] = useState<{ i: number; copied: boolean; saved?: boolean } | null>(null)
   const status = useApi(() => api.status(), [], { live: false, intervalMs: 0 })
@@ -103,14 +109,13 @@ function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => vo
   const isMac = isMacPlatform()
   const pasteKey = isMac ? '⌘V' : 'Ctrl+V'
   const picker = useRef<HTMLInputElement>(null)
-  const panel = useRef<HTMLDivElement>(null)
   // Pending conversions count against the cap too, so a fast double paste
   // cannot slip a fifth image in while the first four are being drawn.
   const count = useRef(0)
 
-  const add = useCallback(async (files: File[]) => {
+  const add = useCallback(async (files: File[], also = '') => {
     const { take, note: why } = accept(count.current, files)
-    setNote(why)
+    setNote([also, why].filter(Boolean).join(' '))
     if (take.length === 0) return
     count.current += take.length
     const made = await Promise.all(take.map(async (f) => ({
@@ -151,19 +156,49 @@ function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => vo
     return () => document.removeEventListener('paste', onPaste)
   }, [add, step])
 
-  // In the desktop app a file dropped from Finder never reaches the page as
-  // bytes — the shell hands over its path (lib/xtermInput.ts), which a page
-  // cannot read. Say what works instead rather than doing nothing.
+  // In the desktop app a file dropped from Finder reaches the page as a path
+  // (lib/xtermInput.ts), not bytes; the shell reads it for us if it is an
+  // image from that drop. Anything else gets the same short note as a paste.
   useEffect(() => {
+    if (step) return
     const onPaths = (e: Event) => {
-      const d = (e as CustomEvent<{ x: number; y: number } | undefined>).detail
-      const r = panel.current?.getBoundingClientRect()
-      if (!d || !r || d.x < r.left || d.x > r.right || d.y < r.top || d.y > r.bottom) return
-      setNote(`A dropped file cannot be read in the app — paste the screenshot (${pasteKey}) or choose it with Add.`)
+      const d = (e as CustomEvent<{ paths?: unknown } | undefined>).detail
+      const paths = Array.isArray(d?.paths) ? d.paths.filter((p): p is string => typeof p === 'string') : []
+      if (paths.length === 0) return
+      void (async () => {
+        const files: File[] = []
+        let refused = ''
+        for (const p of paths) {
+          const type = imageTypeOfPath(p)
+          if (!type) { refused = 'Only images can be attached.'; continue }
+          try {
+            const bytes = await shell.readDroppedImage(p)
+            files.push(new File([bytes], baseName(p), { type }))
+          } catch {
+            refused = 'An image over 10 MB, or one that could not be read, was left out.'
+          }
+        }
+        await add(files, refused)
+      })()
     }
     window.addEventListener(DROP_PATHS_EVENT, onPaths)
     return () => window.removeEventListener(DROP_PATHS_EVENT, onPaths)
-  }, [pasteKey])
+  }, [add, step])
+
+  // The dialog steps aside for a frame or two so the capture shows the app,
+  // then comes back with the shot attached.
+  const capture = async () => {
+    setCapturing(true)
+    try {
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 50))))
+      const bytes = await shell.captureWindow()
+      setCapturing(false)
+      await add([new File([bytes], 'caprock-window.png', { type: 'image/png' })])
+    } catch {
+      setCapturing(false)
+      setNote(`Could not capture the window — paste a screenshot (${pasteKey}) instead.`)
+    }
+  }
 
   const onDragOver = (e: DragEvent) => {
     if (!Array.from(e.dataTransfer?.types ?? []).includes('Files')) return
@@ -217,10 +252,10 @@ function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => vo
   return (
     <DialogBackdrop
       onClose={onClose}
-      className="fixed inset-0 z-30 bg-black/50 flex items-start justify-center pt-[10vh] px-4"
+      className={`fixed inset-0 z-30 bg-black/50 flex items-start justify-center pt-[10vh] px-4 ${capturing ? 'invisible' : ''}`}
+      aria-busy={capturing || undefined}
     >
       <div
-        ref={panel}
         role="dialog"
         aria-modal="true"
         aria-label="Feedback"
@@ -361,11 +396,21 @@ function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => vo
                     onClick={() => picker.current?.click()}
                     className={`flex h-14 items-center gap-1.5 rounded-[5px] border border-dashed px-3 text-[12px] ${
                       dragging ? 'border-accent text-accent' : 'border-border-strong text-fg-muted hover:text-fg hover:border-fg-muted'
-                    } ${shots.length === 0 ? 'w-full justify-center' : 'w-20 justify-center'}`}
+                    } ${shots.length === 0 ? 'flex-1 justify-center' : 'w-20 justify-center'}`}
                   >
                     {shots.length === 0
                       ? <>Add screenshots — paste ({pasteKey}), drop, or <span className="underline underline-offset-2">choose</span></>
                       : '+ Add'}
+                  </button>
+                )}
+                {canCapture && shots.length < MAX_SHOTS && (
+                  <button
+                    type="button"
+                    onClick={() => void capture()}
+                    title="Attach a picture of this window — the app only, not your screen"
+                    className="flex h-14 shrink-0 items-center justify-center rounded-[5px] border border-dashed border-border-strong px-3 text-[12px] text-fg-muted hover:text-fg hover:border-fg-muted"
+                  >
+                    Capture window
                   </button>
                 )}
                 <input
