@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.95.0] - 2026-10-09
+
 ### Added
 
 - **Scrub through a session's spend.** Hover the small per-call spark beside
