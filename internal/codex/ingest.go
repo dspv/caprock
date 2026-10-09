@@ -648,7 +648,7 @@ func (in *Ingester) prompt(ctx context.Context, s *Session, p Prompt, info rollu
 // Claude Code's transcript gives one — `tool_use_id`, `tool_response` as
 // text, `is_error` — so the chat shows the call as finished, with its output,
 // and the tool sizes count it (tool_bytes). `exit_code` is added where Codex
-// recorded one.
+// recorded one, and `interrupted` for a call whose request ended without one.
 func (in *Ingester) result(ctx context.Context, s *Session, r ToolResult, info rollup.SessionInfo) error {
 	fields := map[string]any{
 		"session_id":    s.ID,
@@ -660,6 +660,10 @@ func (in *Ingester) result(ctx context.Context, s *Session, r ToolResult, info r
 	}
 	if r.ExitCode != nil {
 		fields["exit_code"] = *r.ExitCode
+	}
+	if r.Interrupted {
+		// No output was ever written: the request ended first (closeCalls).
+		fields["interrupted"] = true
 	}
 	if s.Subagent {
 		fields["sidechain"] = true

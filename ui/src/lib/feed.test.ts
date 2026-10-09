@@ -123,3 +123,13 @@ describe('a cleared context', () => {
     expect(item!.text).not.toContain('compact')
   })
 })
+
+describe('a Codex call', () => {
+  const codex = (tool: string, command: string) => toFeedItem(ev('tool.pre', { tool_name: tool, tool_input: { command } }))
+  it('reads as the command its exec script ran, never the JavaScript', () => {
+    expect(codex('exec', "const r = await tools.exec_command({cmd:\"git status --short\",\"workdir\":\"/p\",\"max_output_tokens\":500});text(r.output)\n")).toMatchObject({ text: 'running', detail: 'git status --short' })
+    expect(codex('exec', "const patch = \"*** Begin Patch\\n*** Update File: ui/src/lib/chat.ts\\n@@\";\ntext(await tools.apply_patch(patch));")).toMatchObject({ text: 'editing', detail: 'chat.ts' })
+    expect(codex('exec', "const r = await tools.web__run({search_query:[{q:\"site:caprock.dev\"}]})")).toMatchObject({ text: 'used', detail: 'web__run' })
+    expect(codex('shell', 'go test ./internal/home/')).toMatchObject({ text: 'running', detail: 'go test ./internal/home/' })
+  })
+})

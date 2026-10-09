@@ -173,3 +173,18 @@ describe('formatting', () => {
     expect(toolDetail('LS', { path: '/w/acme' })).toBe('acme')
   })
 })
+
+describe('a Codex exec in the tool list', () => {
+  it('shows the command its script ran', () => {
+    expect(toolDetail('exec', { command: "const r = await tools.exec_command({cmd:\"git status --short\",\"workdir\":\"/p\",\"max_output_tokens\":500});text(r.output)\n" })).toBe('git status --short')
+    expect(toolDetail('exec', { command: "const patch = \"*** Begin Patch\\n*** Update File: ui/src/lib/chat.ts\\n@@\";\ntext(await tools.apply_patch(patch));" })).toBe('apply_patch ui/src/lib/chat.ts')
+    expect(toolDetail('Bash', { command: 'ls\nmore' })).toBe('ls')
+  })
+  it('ends a run at the interrupted mark, so it never reads as running', () => {
+    const runs = toolRuns([
+      ev({ kind: 'tool.pre', ts: T(0), tool: 'exec', payload: { tool_use_id: 'x', tool_input: { command: "const r = await tools.exec_command({cmd:\"git status --short\",\"workdir\":\"/p\",\"max_output_tokens\":500});text(r.output)\n" } } }),
+      ev({ kind: 'tool.post', ts: T(9), tool: 'exec', payload: { tool_use_id: 'x', tool_response: '', interrupted: true } }),
+    ])
+    expect(runningTool(runs, Date.parse(T(10)))).toBeUndefined()
+  })
+})

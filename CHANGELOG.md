@@ -9,6 +9,23 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **A Codex call its turn cut off no longer says "running" forever.** A call
+  with no output reads "interrupted", muted, once its turn has ended: Codex
+  wrote `turn_aborted` or `task_complete` (stored as a `tool.post` marked
+  `interrupted`, key `codex:interrupted:<line>`), the next request started,
+  the person typed the next prompt, or the session ended. Only the call still
+  in its turn says "running". The same holds for any agent's call left
+  unanswered by a prompt or a Stop.
+- **Codex's `exec` reads as the command it ran everywhere, not only in the
+  Chat.** The Timeline, the activity feed, the cockpit's tool list and its
+  subagents, the Now phrase, notifications and loop alerts showed the
+  JavaScript an `exec` call sends; they now show the shell command it ran,
+  `apply_patch <file>` for an edit, or the tool it called. The daemon reads
+  it the way the Chat does (`internal/toolcmd`). Memory shows only what the
+  agent wrote, never a tool call, so it had nothing to fix.
+
 ## [0.93.0] - 2026-10-09
 
 ### Added

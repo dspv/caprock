@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Event } from './api'
-import { codexScript, compareEvents, mergeEvents, noticeLine, toMessages, toolInputText, toolLine } from './chat'
+import { codexScript, compareEvents, mergeEvents, noticeLine, toMessages, toolCommand, toolInputText, toolLine } from './chat'
 
 const BASE = Date.UTC(2026, 9, 5, 12, 0, 0)
 
@@ -137,8 +137,8 @@ describe('a Codex session', () => {
   })
 
   it('reads the command out of an exec script, in every way it is written', () => {
-    expect(codexScript(execScript)).toEqual({ line: 'git status --short; git log -1 --oneline', detail: 'git status --short; git log -1 --oneline' })
-    expect(codexScript('const r = await tools.exec_command({"cmd":"echo \\"hi\\"\\nls","yield_time_ms":1000});')).toEqual({ line: 'echo "hi"', detail: 'echo "hi"\nls' })
+    expect(codexScript(execScript)).toEqual({ line: 'git status --short; git log -1 --oneline', detail: 'git status --short; git log -1 --oneline', call: 'exec_command' })
+    expect(codexScript('const r = await tools.exec_command({"cmd":"echo \\"hi\\"\\nls","yield_time_ms":1000});')).toEqual({ line: 'echo "hi"', detail: 'echo "hi"\nls', call: 'exec_command' })
     expect(codexScript("await tools.exec_command({cmd:'rg -n \\'x\\' src'})")!.line).toBe("rg -n 'x' src")
     expect(codexScript('const patch = "*** Begin Patch\\n*** Update File: ui/src/lib/chat.ts\\n@@";\ntext(await tools.apply_patch(patch));')!.line).toBe('apply_patch ui/src/lib/chat.ts')
     expect(codexScript('const r=await tools.write_stdin({session_id:51470,chars:""});text(r.output)')!.line).toBe('write_stdin')
@@ -146,5 +146,71 @@ describe('a Codex session', () => {
     expect(codexScript('const r = await Promise.all(cmds.map(cmd=>tools.exec_command({cmd})))')!.line).toBe('exec_command')
     expect(codexScript('echo plain')).toBeNull()
     expect(toolLine('exec', { command: 'echo plain' })).toBe('exec  echo plain')
+  })
+})
+
+/**
+ * A call that never gets a result. rollout-chat.jsonl's second request is the
+ * real shape: an exec call, then turn_aborted with no output, which the daemon
+ * stores as a `tool.post` marked `interrupted`.
+ */
+describe('a call its turn ended without answering', () => {
+  const codex = (id: number, over: Partial<Event>): Event => ev(id, { source: 'codex' as Event['source'], ...over })
+  const call = (id: number, use: string) => codex(id, { kind: 'tool.pre', tool: 'exec', payload: { tool_name: 'exec', tool_use_id: use, tool_input: { command: "const r = await tools.exec_command({cmd:\"git status --short\",\"workdir\":\"/p\",\"max_output_tokens\":500});text(r.output)\n" } } })
+  const prompt = (id: number) => codex(id, { kind: 'turn.user', payload: { prompt: 'Fix it and run the tests again', cwd: '/p' } })
+  const state = (m: ReturnType<typeof toMessages>[number]) => (m.interrupted ? 'interrupted' : m.result === undefined ? 'running' : 'done')
+
+  it('reads interrupted once Codex wrote that its turn aborted', () => {
+    const msgs = toMessages([
+      prompt(1),
+      call(2, 'call_exec2'),
+      codex(3, { kind: 'tool.post', tool: 'exec', payload: { tool_name: 'exec', tool_use_id: 'call_exec2', tool_response: '', is_error: false, interrupted: true } }),
+    ])
+    expect(msgs.map((m) => m.kind)).toEqual(['user', 'tool'])
+    expect(state(msgs[1]!)).toBe('interrupted')
+    expect(msgs[1]!.interrupted).toBe(true)
+    expect(msgs[1]!.result).toBeUndefined()
+    expect(msgs[1]!.failed).toBeUndefined()
+  })
+
+  it('reads interrupted once the next prompt, a Stop or the end of the session came', () => {
+    expect(toMessages([prompt(1), call(2, 'a'), prompt(3)]).map((m) => m.interrupted)).toEqual([undefined, true, undefined])
+    expect(toMessages([call(1, 'a'), ev(2, { kind: 'agent.stop', payload: { stop_reason: 'end_turn' } })])[0]!.interrupted).toBe(true)
+    expect(toMessages([call(1, 'a')], { ended: true })[0]!.interrupted).toBe(true)
+  })
+
+  it('still runs while nothing has ended its turn — only the current call', () => {
+    const msgs = toMessages([prompt(1), call(2, 'a'), codex(3, { kind: 'turn.assistant', payload: { text: '' } })])
+    expect(state(msgs[1]!)).toBe('running')
+    // A subagent stopping, or a notice Claude Code wrote for itself, ends nothing.
+    expect(state(toMessages([call(1, 'a'), ev(2, { kind: 'agent.stop', agent_id: 'sub1', payload: {} })])[0]!)).toBe('running')
+    expect(state(toMessages([call(1, 'a'), ev(2, { kind: 'turn.user', payload: { prompt: '<task-notification><summary>build done</summary></task-notification>' } })])[0]!)).toBe('running')
+  })
+
+  it('shows a real output over the mark, whichever came first', () => {
+    const out = codex(4, { kind: 'tool.post', tool: 'exec', payload: { tool_use_id: 'a', tool_response: 'Script completed', is_error: false } })
+    const mark = codex(3, { kind: 'tool.post', tool: 'exec', payload: { tool_use_id: 'a', tool_response: '', interrupted: true } })
+    for (const evs of [[call(1, 'a'), mark, out], [call(1, 'a'), { ...out, id: 3 }, { ...mark, id: 4 }]]) {
+      const m = toMessages(evs)[0]!
+      expect(m.interrupted).toBeUndefined()
+      expect(m.result).toBe('Script completed')
+    }
+  })
+
+  it('never marks a call that has its result', () => {
+    const msgs = toMessages([call(1, 'a'), codex(2, { kind: 'tool.post', payload: { tool_use_id: 'a', tool_response: 'ok' } }), prompt(3)], { ended: true })
+    expect(msgs[0]!.interrupted).toBeUndefined()
+    expect(msgs[0]!.result).toBe('ok')
+  })
+})
+
+describe('toolCommand', () => {
+  it('is what a call ran, for every place that describes one', () => {
+    expect(toolCommand('exec', { command: "const r = await tools.exec_command({cmd:\"git status --short\",\"workdir\":\"/p\",\"max_output_tokens\":500});text(r.output)\n" })).toBe('git status --short')
+    expect(toolCommand('exec', { command: "const patch = \"*** Begin Patch\\n*** Update File: ui/src/lib/chat.ts\\n@@\";\ntext(await tools.apply_patch(patch));" })).toBe('apply_patch ui/src/lib/chat.ts')
+    expect(toolCommand('exec', { command: "const r = await tools.web__run({search_query:[{q:\"site:caprock.dev\"}]})" })).toBe('web__run')
+    expect(toolCommand('shell', { command: '{"command":["bash","-lc","ls -la"]}' })).toBe('ls -la')
+    expect(toolCommand('Bash', { command: 'go test ./...' })).toBe('go test ./...')
+    expect(toolCommand('Read', { file_path: '/a' })).toBe('')
   })
 })

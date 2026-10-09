@@ -32,6 +32,12 @@ func TestPhraseMap(t *testing.T) {
 		{"mcp__github__create_issue", `{"title":"x"}`, "create_issue via github"},
 		{"AskUserQuestion", `{}`, "asking you a question"},
 		{"SomethingNew", `{}`, "using SomethingNew"},
+		// Codex: what its exec script ran, never the JavaScript.
+		{"exec", `{"command":"const r = await tools.exec_command({cmd:\"git status --short\",\"workdir\":\"/p\"});text(r.output)\n"}`, "running `git status --short`"},
+		{"exec", `{"command":"const patch = \"*** Begin Patch\\n*** Update File: ui/src/lib/chat.ts\\n@@\";\ntext(await tools.apply_patch(patch));"}`, "editing chat.ts"},
+		{"exec", `{"command":"const r = await tools.web__run({search_query:[{q:\"site:caprock.dev\"}]})"}`, "using web__run"},
+		{"shell", `{"command":"go test ./internal/home/","argv":["bash","-lc","go test ./internal/home/"]}`, "running `go test ./internal/home/`"},
+		{"shell", `{"command":"{\"command\":[\"bash\",\"-lc\",\"ls -la\"]}"}`, "running `ls -la`"},
 	}
 	for _, c := range cases {
 		tool, payload := in(c.tool, c.input)

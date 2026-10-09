@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/dspv/caprock/internal/event"
+	"github.com/dspv/caprock/internal/toolcmd"
 )
 
 // Alert is what the detector emits (WS "alert" frame).
@@ -273,6 +274,9 @@ func Describe(tool string, input map[string]json.RawMessage) string {
 	switch tool {
 	case "Bash":
 		s = get("command")
+	case "exec", "shell", "local_shell", "exec_command":
+		// Codex: the line its script or argv ran, not the JavaScript.
+		s = toolcmd.Command(tool, get("command"))
 	case "Edit", "Write", "MultiEdit", "Read":
 		s = get("file_path")
 	case "Grep", "Glob":

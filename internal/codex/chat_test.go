@@ -79,8 +79,10 @@ func TestToolResultsPairWithTheirCalls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(s.Tools) != 5 || len(s.Results) != 4 {
-		t.Fatalf("want 5 calls and 4 results, got %d and %d", len(s.Tools), len(s.Results))
+	// Four outputs, and the mark for the call the second request's
+	// turn_aborted cut off (TestAnInterruptedCallIsOverWhenItsRequestIs).
+	if len(s.Tools) != 5 || len(s.Results) != 5 {
+		t.Fatalf("want 5 calls and 5 results, got %d and %d", len(s.Tools), len(s.Results))
 	}
 	byCall := map[string]ToolResult{}
 	for _, r := range s.Results {
@@ -103,6 +105,68 @@ func TestToolResultsPairWithTheirCalls(t *testing.T) {
 	for _, c := range s.Tools {
 		if c.CallID == "" {
 			t.Errorf("call %s has no call id", c.Key)
+		}
+	}
+}
+
+// A call its request ended without answering is over: the chat must not show
+// it running forever. rollout-chat.jsonl's second request is the real shape —
+// an exec call, a token_count, then turn_aborted with no output between.
+func TestAnInterruptedCallIsOverWhenItsRequestIs(t *testing.T) {
+	s, err := ParseFile(chatFixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var marks []ToolResult
+	for _, r := range s.Results {
+		if r.Interrupted {
+			marks = append(marks, r)
+		}
+	}
+	if len(marks) != 1 {
+		t.Fatalf("want the one cut-off call marked, got %+v", marks)
+	}
+	m := marks[0]
+	if m.CallID != "call_exec2" || m.Name != "exec" || m.Key != "codex:interrupted:30" || m.Output != "" || m.Failed {
+		t.Errorf("mark: %+v", m)
+	}
+	if want := "2026-10-07T23:01:09Z"; m.At.UTC().Format(time.RFC3339) != want {
+		t.Errorf("marked at %s, want the turn_aborted's %s", m.At.UTC().Format(time.RFC3339), want)
+	}
+}
+
+// Each way a request ends closes its open calls; an output that arrives after
+// all replaces the mark, and a call that was answered is never marked.
+func TestEveryRequestEndClosesItsCalls(t *testing.T) {
+	head := `{"timestamp":"2026-10-07T17:00:00.000Z","type":"session_meta","payload":{"id":"s-end","cwd":"/p","source":"cli"}}
+{"timestamp":"2026-10-07T17:00:01.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"t1"}}
+{"timestamp":"2026-10-07T17:00:02.000Z","type":"response_item","payload":{"type":"custom_tool_call","status":"completed","call_id":"a","name":"exec","input":"await tools.exec_command({cmd:'sleep 60'})"}}
+`
+	for _, c := range []struct {
+		name, tail string
+		marked     bool
+	}{
+		{"task_complete", `{"timestamp":"2026-10-07T17:00:03.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"t1"}}`, true},
+		{"turn_aborted", `{"timestamp":"2026-10-07T17:00:03.000Z","type":"event_msg","payload":{"type":"turn_aborted","turn_id":"t1","reason":"interrupted"}}`, true},
+		{"the next request", `{"timestamp":"2026-10-07T17:00:03.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"t2"}}`, true},
+		{"still running", ``, false},
+		{"answered", `{"timestamp":"2026-10-07T17:00:03.000Z","type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"a","output":"Script completed"}}
+{"timestamp":"2026-10-07T17:00:04.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"t1"}}`, false},
+		{"answered late", `{"timestamp":"2026-10-07T17:00:03.000Z","type":"event_msg","payload":{"type":"turn_aborted","turn_id":"t1","reason":"interrupted"}}
+{"timestamp":"2026-10-07T17:00:04.000Z","type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"a","output":"Script completed"}}`, false},
+	} {
+		s, err := Parse(strings.NewReader(head+c.tail+"\n"), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		marked := 0
+		for _, r := range s.Results {
+			if r.Interrupted {
+				marked++
+			}
+		}
+		if (marked == 1) != c.marked || marked > 1 {
+			t.Errorf("%s: %d marks, want marked=%v (%+v)", c.name, marked, c.marked, s.Results)
 		}
 	}
 }
@@ -131,8 +195,13 @@ func TestChatEventsAreStored(t *testing.T) {
 	if n := count(t, h.out, `SELECT COUNT(*) FROM events p JOIN events c
 		ON c.session_id = p.session_id AND c.kind = 'tool.pre'
 		AND json_extract(c.payload,'$.tool_use_id') = json_extract(p.payload,'$.tool_use_id')
-		WHERE p.source='codex' AND p.kind='tool.post'`); n != 4 {
-		t.Fatalf("want 4 results paired with their calls, got %d", n)
+		WHERE p.source='codex' AND p.kind='tool.post'`); n != 5 {
+		t.Fatalf("want 5 results paired with their calls, got %d", n)
+	}
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE kind='tool.post' AND key = 'codex:interrupted:30'
+		AND json_extract(payload,'$.interrupted') = 1 AND json_extract(payload,'$.is_error') = 0
+		AND json_extract(payload,'$.tool_use_id') = 'call_exec2' AND json_extract(payload,'$.tool_response') = ''`); n != 1 {
+		t.Fatalf("the cut-off call was not stored as interrupted: %d", n)
 	}
 	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE kind='tool.post' AND json_extract(payload,'$.exit_code') = 1 AND json_extract(payload,'$.is_error') = 1 AND tool = 'shell'`); n != 1 {
 		t.Fatalf("the shell result lost its exit code: %d", n)
@@ -188,8 +257,9 @@ func TestBackfillGivesOldSessionsTheirChat(t *testing.T) {
 	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE source='codex' AND kind='turn.user'`); n != 2 {
 		t.Fatalf("backfill stored %d prompts, want 2", n)
 	}
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE source='codex' AND kind='tool.post'`); n != 4 {
-		t.Fatalf("backfill stored %d results, want 4", n)
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE source='codex' AND kind='tool.post'`); n != 5 {
+		// Four outputs, and the call the second request's turn_aborted cut off.
+		t.Fatalf("backfill stored %d results, want 5", n)
 	}
 	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE source='codex' AND kind='tool.pre' AND COALESCE(json_extract(payload,'$.tool_use_id'),'') = ''`); n != 0 {
 		t.Fatalf("%d calls left without their call id", n)

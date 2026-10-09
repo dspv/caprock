@@ -365,7 +365,29 @@ as "running" forever: no prompt and no output was stored at all.
   `argv`. An `exec` call stays the JavaScript it sends under `command`; the
   chat reads the shell command out of its `tools.exec_command({cmd: …})` call,
   or names the tool it called (`apply_patch` with the file it patches) —
-  the way the tool drill-down already did.
+  the way the tool drill-down already did. Every other place that describes
+  a call reads it the same way (2026-10-09): the Timeline, the activity feed
+  and the cockpit's tool list through the chat's `toolCommand`, and the Now
+  phrase ("running `git status`", "editing chat.ts", "using web__run"), the
+  subagent list, notifications and loop alerts through `internal/toolcmd`,
+  which ports the chat's reading and is tested against the same scripts.
+  Memory searches what the agent wrote, never its calls.
+- **A call its request ended without answering is interrupted, not
+  running.** Codex brackets a request with `task_started` and
+  `task_complete` or `turn_aborted`; a call still without an output when the
+  request ends, or when the next one starts, gets a `tool.post` of its own:
+  key `codex:interrupted:<call line>`, at the closing record's time,
+  `tool_response` empty, `is_error` false, `interrupted: true` — written by
+  the agent's own record of the turn ending, not guessed from a clock. An
+  output that arrives later replaces it on a re-read, and the chat prefers a
+  real output to the mark whichever it holds first. On the owner's machine
+  (2026-10-09, 207 rollouts) all 16,152 calls have their output and none of
+  the 11 `turn_aborted` records cut a call off mid-flight, so nothing is
+  backfilled; the rule is for the call that is cut off before its output is
+  written. The chat adds what no record says: a call with no result is
+  interrupted once a prompt the person typed, a Stop or the session's end
+  comes after it — which also ends the 60 calls a duplicated 2025 import
+  left unpaired. Only a call still inside its turn says "running".
 - **History gets both once.** A one-time pass after the importer's first
   (`meta.codex_chat_backfilled`) parses every rollout that pass did not read,
   records its prompts and results under their keys, and gives each stored

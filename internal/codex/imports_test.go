@@ -68,8 +68,10 @@ func TestSubagentTurnsSurviveBesideTheParents(t *testing.T) {
 			t.Errorf("%v: %d tool calls, want 3", order, n)
 		}
 		if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE agent_id = '`+childID+`'
-			AND json_extract(payload,'$.sidechain') = 1 AND session_id = '`+parentID+`'`); n != 3 {
-			t.Errorf("%v: %d subagent events marked as its sidechain, want 3", order, n)
+			AND json_extract(payload,'$.sidechain') = 1 AND session_id = '`+parentID+`'`); n != 4 {
+			// 2 turns, its call, and that call's interrupted mark: the
+			// request completes without the call's output (closeCalls).
+			t.Errorf("%v: %d subagent events marked as its sidechain, want 4", order, n)
 		}
 		h.assertRollupsMatchEvents()
 	}

@@ -153,7 +153,9 @@ func TestUnchangedFilesAreSkipped(t *testing.T) {
 	h.put()
 	h.poll()
 	h.poll()
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE source='codex'`); n != 4 {
+	// rollout-basic.jsonl: 2 turns, 2 calls, and 2 results — its request ends
+	// with neither call answered, so both read interrupted (closeCalls).
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE source='codex'`); n != 6 {
 		t.Errorf("second poll changed the event count: %d", n)
 	}
 }
@@ -168,7 +170,7 @@ func TestJunkFileDoesNotStopTheImport(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.poll()
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE source='codex'`); n != 4 {
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE source='codex'`); n != 6 {
 		t.Errorf("junk file cost us the good one: %d events", n)
 	}
 }
@@ -351,8 +353,8 @@ func TestARestartSkipsFilesAlreadyRead(t *testing.T) {
 	if err := restarted.once(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE source='codex'`); n != 3 {
-		t.Fatalf("restart re-read an unchanged transcript: %d events, want 3", n)
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE source='codex'`); n != 5 {
+		t.Fatalf("restart re-read an unchanged transcript: %d events, want 5", n)
 	}
 	if restarted.Stats().Sessions != 1 {
 		t.Fatalf("restored file not counted as read: %+v", restarted.Stats())
@@ -373,7 +375,7 @@ func TestARestartRereadsASessionWhoseEventsAreGone(t *testing.T) {
 	if err := restarted.once(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE source='codex'`); n != 4 {
-		t.Fatalf("emptied session not re-imported: %d events, want 4", n)
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE source='codex'`); n != 6 {
+		t.Fatalf("emptied session not re-imported: %d events, want 6", n)
 	}
 }

@@ -11,6 +11,7 @@
  * stop looking at a feed.
  */
 import type { Event } from '@/lib/api'
+import { codexScript, normalInput, toolCommand } from '@/lib/chat'
 
 export interface FeedItem {
   id: string
@@ -94,6 +95,19 @@ function describeTool(tool: string, input: ToolInput): { icon: string; text: str
       return str(input.file_path) ? { icon: '◇', text: 'reading', detail: baseName(str(input.file_path)) } : null
     case 'Bash':
       return str(input.command) ? { icon: '$', text: 'running', detail: clip(shortenPaths(str(input.command)), 46) } : null
+    // Codex: the line its exec script or shell argv ran, never the JavaScript.
+    case 'exec':
+    case 'shell':
+    case 'local_shell':
+    case 'exec_command': {
+      const run = tool === 'exec' ? codexScript(str(normalInput(input).command)) : null
+      if (run?.call === 'apply_patch' && run.line !== run.call) return { icon: '✎', text: 'editing', detail: baseName(run.line.slice('apply_patch '.length)) }
+      // A script that called another of Codex's tools (web__run) names it.
+      if (run && run.call !== 'exec_command') return { icon: '·', text: 'used', detail: run.call }
+      const cmd = toolCommand(tool, input)
+      if (!cmd) return { icon: '·', text: 'used', detail: tool }
+      return { icon: '$', text: 'running', detail: clip(shortenPaths(cmd), 46) }
+    }
     case 'Grep':
     case 'Glob':
       return { icon: '⌕', text: 'searching', detail: clip(str(input.pattern) || str(input.query), 40) || undefined }

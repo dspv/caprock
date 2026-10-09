@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/dspv/caprock/internal/store"
+	"github.com/dspv/caprock/internal/toolcmd"
 )
 
 // SubagentNow is one subagent working in a session, as the agent cockpit
@@ -71,7 +72,8 @@ func callDetail(tool string, input json.RawMessage) string {
 		}
 	}
 	if c := str("command"); c != "" {
-		return oneLine(c, 80)
+		// Codex's exec carries a script: the line is what it ran.
+		return oneLine(toolcmd.Command(tool, c), 80)
 	}
 	for _, k := range []string{"pattern", "query", "url", "description", "subagent_type", "skill", "prompt"} {
 		if v := str(k); v != "" {

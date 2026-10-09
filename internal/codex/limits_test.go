@@ -64,8 +64,8 @@ func TestATranscriptArchivedBeforeInstallIsImported(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.poll()
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE source='codex'`); n != 4 {
-		t.Fatalf("archived transcript: %d events, want 4", n)
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE source='codex'`); n != 6 {
+		t.Fatalf("archived transcript: %d events, want 6", n)
 	}
 }
 

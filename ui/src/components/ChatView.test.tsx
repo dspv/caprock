@@ -273,6 +273,21 @@ describe('ChatView', () => {
     expect(log().firstElementChild!.className).toMatch(/\bmt-auto\b/)
   })
 
+  it('a call its turn cut off says "interrupted"; only the current one says "running"', async () => {
+    const call = (id: number, use: string): Event => ({ ...msg(id), source: 'codex' as Event['source'], kind: 'tool.pre', tool: 'exec', payload: { tool_name: 'exec', tool_use_id: use, tool_input: { command: 'await tools.exec_command({cmd:"sleep 60"})' } } })
+    store.events = [
+      call(1, 'a'),
+      { ...msg(2), source: 'codex' as Event['source'], kind: 'tool.post', tool: 'exec', payload: { tool_use_id: 'a', tool_response: '', interrupted: true } },
+      msg(3, 'try again'),
+      call(4, 'b'),
+    ]
+    render(<ChatView sessionId="s" canType={false} />)
+    await waitFor(() => expect(renderedIds()).toEqual([1, 3, 4]))
+    const line = (id: number) => log().querySelector(`[data-msg-id="${id}"]`)!.textContent
+    expect(line(1)).toBe('exec  sleep 60interrupted')
+    expect(line(4)).toBe('exec  sleep 60running')
+  })
+
   it('offline, a message is held as "will send", and goes when the live socket is back', async () => {
     render(<ChatView sessionId="s" canType />)
     setPhase('reconnecting')

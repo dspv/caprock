@@ -118,6 +118,10 @@ d('event describe', () => {
     expect(describe({ ...base, kind: 'agent.stop', agent_id: 'a1' }, {})).toBe('subagent a1 stopped')
     expect(describe({ ...base, kind: 'context.compact' }, { trigger: 'auto' })).toBe('context compaction (auto)')
     expect(describe({ ...base, kind: 'weird.new' }, {})).toBe('weird.new')
+    // Codex: the command an exec script ran, and a call its turn cut off.
+    const exec = { tool_input: { command: "const r = await tools.exec_command({cmd:\"git status --short\",\"workdir\":\"/p\",\"max_output_tokens\":500});text(r.output)\n" } }
+    expect(describe({ ...base, tool: 'exec', payload: exec }, exec)).toBe('exec  git status --short')
+    expect(describe({ ...base, kind: 'tool.post', tool: 'exec' }, { interrupted: true, tool_response: '' })).toBe('exec interrupted')
   })
 })
 

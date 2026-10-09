@@ -276,6 +276,7 @@ internal/hooks/       # settings.json installer (ordered-JSON merge, backup, uni
 internal/ingest/      # transcript discovery + tailer (fsnotify + poll) + parser
 internal/loop/        # loop detector
 internal/narrate/     # tool event → phrase, health badge, plan progress
+internal/toolcmd/     # the command a call ran, read out of its input (Codex's exec script) for every one-line description
 internal/gitdiff/     # live `git diff` of a session's cwd
 internal/api/         # REST + WS + embedded UI (dist/ committed for go install, placeholder/ fallback)
 internal/daemon/      # wiring, runtime.json lifecycle, sweeper, auto-pause, Stop-decision
