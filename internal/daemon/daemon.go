@@ -561,8 +561,12 @@ func (d *Daemon) run(ctx context.Context) error {
 	// OpenCode, when this machine has it. A second coding agent keeps its own
 	// SQLite database with cost and tokens already computed, so the daemon
 	// reads it directly rather than installing anything. Its absence is the
-	// normal case and is silent: most machines run Claude Code only.
-	d.startOpenCode(ctx)
+	// normal case and is silent: most machines run Claude Code only. OpenCode
+	// installed or first run after the daemon started creates the database
+	// later, so its absence is looked at again until it appears.
+	if !d.startOpenCode(ctx) && !d.opt.DisableIngest {
+		go d.awaitOpenCode(ctx, openCodeAwaitEvery)
+	}
 
 	// Codex, when this machine has it. Easier to observe than either of the
 	// others: it writes one append-only JSONL transcript per session carrying
@@ -1861,10 +1865,7 @@ func (d *Daemon) startOpenCode(ctx context.Context) bool {
 	if d.ocIn != nil {
 		return true
 	}
-	p := d.opt.OpenCodeDB
-	if p == "" {
-		p = opencode.DBPath()
-	}
+	p := d.openCodeDBPath()
 	if p == "off" || p == "" {
 		return false
 	}
@@ -1911,6 +1912,59 @@ func (d *Daemon) startOpenCode(ctx context.Context) bool {
 		in.Touch(ctx, sessionID)
 	})
 	return true
+}
+
+// openCodeDBPath is the database the OpenCode reader would open: the
+// configured path, "off", or the one OpenCode itself would use, "" when there
+// is none yet.
+func (d *Daemon) openCodeDBPath() string {
+	if p := d.opt.OpenCodeDB; p != "" {
+		return p
+	}
+	return opencode.DBPath()
+}
+
+// openCodeAwaitEvery is how often a daemon that found no OpenCode database
+// looks again. A stat or two per tick; a session run in the user's own
+// terminal is on Now within this long of OpenCode first creating the file.
+const openCodeAwaitEvery = 10 * time.Second
+
+// awaitOpenCode starts the OpenCode reader once OpenCode's database appears.
+//
+// The reader used to be tried once at startup and again only when Caprock
+// itself started an OpenCode session. On a machine where OpenCode first ran
+// after the daemon started — installed later, or run once in a terminal —
+// its sessions were not read until the daemon restarted, and the service
+// stream was never followed either (found on Linux, 2026-10-09: an `opencode
+// run` session missing from /v1/sessions until a New agent start). A missing
+// file is the normal case and stays silent; a file that is there but cannot
+// be read is warned about by startOpenCode and asked about less often.
+func (d *Daemon) awaitOpenCode(ctx context.Context, every time.Duration) {
+	wait := every
+	t := time.NewTimer(wait)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		p := d.openCodeDBPath()
+		if p == "off" {
+			return
+		}
+		if p != "" {
+			if _, err := os.Stat(p); err == nil {
+				if d.startOpenCode(ctx) {
+					return
+				}
+				if wait < 5*time.Minute {
+					wait *= 2
+				}
+			}
+		}
+		t.Reset(wait)
+	}
 }
 
 // readOpenCodeOnce makes sure the OpenCode reader runs for a session Caprock
