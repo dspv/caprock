@@ -303,4 +303,20 @@ describe('the sidebar', () => {
     expect(within(today).getByRole('button', { name: /not known yet/ })).toHaveTextContent('—')
     expect(within(today).queryByRole('meter')).toBeNull()
   })
+
+  it('shows no Waiting on you block when only turns put down more than 12h ago wait, and folds them under a current one', () => {
+    const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString()
+    const waiting = (id: string, msAgo: number) => ({
+      session_id: id, cwd: '/w/alpha', project: 'alpha', model: '', started_at: 1, last_event_at: 1, status: 'active', git_branch: '', owned: true,
+      title: id, activity: { phrase: '', at: iso(msAgo), health: 'waiting-on-you' },
+    }) as unknown as SessionSummary
+    const build = (sessions: SessionSummary[]) => buildSidebar({ projects: [proj('alpha', 1, true)], sessions, permissions: new Set(), costs: new Map(), openSessions: new Set() })
+    const { rerender, props } = renderSidebar({ model: build([waiting('old1', 2 * day), waiting('old2', day)]) })
+    expect(screen.queryByRole('region', { name: 'Waiting on you' })).toBeNull()
+    expect(screen.queryByText(/Older, put down/)).toBeNull()
+    rerender(<Sidebar {...props} model={build([waiting('old1', 2 * day), waiting('now1', 60_000)])} />)
+    const block = screen.getByRole('region', { name: 'Waiting on you' })
+    expect(within(block).getByText('now1')).toBeInTheDocument()
+    expect(within(block).getByText(/Older, put down more than 12h ago \(1\)/)).toBeInTheDocument()
+  })
 })

@@ -31,11 +31,13 @@ others. Installing it: [install-app.md](install-app.md).
   only while something waits, *Waiting on you*: sessions blocked on a
   permission prompt, then sessions whose turn has ended, oldest first. A
   turn that ended more than 12 hours ago folds under *Older* and is left out
-  of the count, the badge and ⌘J. Then the projects, one line each: the
+  of the count, the badge and ⌘J; when only such turns are left, the block
+  is not shown at all (they stay on the Dashboard). Then the projects, one line each: the
   name, a green dot with how many sessions and shells run in it, and how
   many wait on you. Only the current project is open, and under it are
   exactly its tabs — the ones in the tab strip, in the same order and under
-  the same names (*Shell 1*, *Shell 2* for shells; a branch beside a tab
+  the same names (*Shell 1*, *Shell 2* for shells, *Shell 1 · claude* while
+  one runs a program; a branch beside a tab
   only when it is not the project's own). Click another project to make it
   current: its last tab comes to the front, or its own page when it has
   none, and the project before folds up. The one highlighted row in the
@@ -56,12 +58,15 @@ others. Installing it: [install-app.md](install-app.md).
   quick chat.
 - **Closing things: ×.** Hover a tab under the project — or look at the
   one in front, where it always shows — for its **×**: it closes the tab
-  exactly as ⌘W and the tab strip's × do, and the agent or shell in it
-  keeps running (it moves to the muted rows below). A project's **×**
+  exactly as ⌘W and the tab strip's × do. An agent in it keeps running (it
+  moves to the muted rows below). A shell closes for real, as in any
+  terminal app: an idle one ends with its tab; one running a program asks
+  first — *Shell 1 is running claude. Close and stop it?* — with **Stop and
+  close**, **Keep running, close tab** and **Cancel**. A project's **×**
   (*Close project*) closes all its tabs and moves it under *Hidden*; if
   something still runs or waits in it, only its tabs close and it stays,
-  with its green dot, since hiding it would lose live work. Nothing is
-  stopped by closing. To stop an agent or a shell Caprock started, hover
+  with its green dot, since hiding it would lose live work. A project's ×
+  stops nothing. To stop an agent or a shell Caprock started, hover
   its muted row (no tab) for **■**, or right-click its tab for *Stop the
   session…* / *Stop the shell…*; either asks first, as the cockpit does.
   A session started in another terminal has no stop — Caprock never
@@ -129,14 +134,14 @@ others. Installing it: [install-app.md](install-app.md).
   tabs are listed under it in the sidebar, under the same names, or its
   page shows when it has none. Picking a tab makes its project current.
   ⌘1–9, ⌃Tab and dragging run along the whole strip. Tabs come back when
-  you reopen the app. Closing a tab (⌘W) never stops its session, and the
-  tab beside it comes to the front; *Stop the session…* in the inspector
+  you reopen the app. Closing a tab (⌘W) never stops its agent — a shell's
+  tab closes the shell, as above — and the tab beside it comes to the front; *Stop the session…* in the inspector
   stops one, after asking.
 - **Split panes.** ⌘E opens a new shell beside the terminal in front, ⇧⌘E
   below it; ⇧Enter on a session in the palette opens it there. Up to four
   panes a tab. Click a pane or press ⌘[ ⌘] to move between them; drag the
-  divider, or focus it and use the arrow keys. ⌘W closes the focused pane and
-  its session keeps running.
+  divider, or focus it and use the arrow keys. ⌘W closes the focused pane: an
+  agent in it keeps running, a shell closes as its tab would.
 - **Command palette** (⌘K). Sessions waiting on you come first, then actions,
   tabs, sessions and projects, best match first; past sessions are searched
   as you type and listed under *History*. *Keyboard shortcuts* lists every

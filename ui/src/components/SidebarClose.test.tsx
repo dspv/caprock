@@ -69,14 +69,14 @@ beforeEach(() => {
 })
 
 describe('closing in the sidebar', () => {
-  it('gives every tab row a × that closes the tab as the strip does, shown always on the tab in front', () => {
+  it("gives every tab row a × that closes the tab as the strip does, shown always on the tab in front, and says a shell's closes the shell", () => {
     const { props } = setup([live({ session_id: 'a1', title: 'Fix the login' }), live({ session_id: 'sh1', kind: 'shell' })], [agentTab, shellTab, fileTab])
     const agentX = screen.getByRole('button', { name: 'Close tab Fix the login' })
     expect(agentX).toHaveAttribute('title', 'Close tab (⌘W) — the agent keeps running')
     // On the tab in front always; on the others, on hover or focus.
     expect(agentX.parentElement!.className).toMatch(/^absolute .* flex$/)
-    const shellX = screen.getByRole('button', { name: 'Close tab Shell 1' })
-    expect(shellX).toHaveAttribute('title', 'Close tab (⌘W) — the shell keeps running')
+    const shellX = screen.getByRole('button', { name: 'Close shell Shell 1' })
+    expect(shellX).toHaveAttribute('title', 'Close shell (⌘W)')
     expect(shellX.parentElement!.className).toContain('hidden group-hover/row:flex')
     expect(screen.getByRole('button', { name: 'Close tab app.ts' })).toHaveAttribute('title', 'Close tab (⌘W)')
     fireEvent.click(shellX)
@@ -199,5 +199,15 @@ describe('closing in the sidebar', () => {
     const model = buildSidebar({ projects: [proj('alpha'), proj('beta')], sessions: next, permissions: new Set(), costs: new Map(), openSessions: new Set(['a1', 'sh1']) })
     rerender(<Sidebar {...props} model={model} tabLabels={tabLabels([agentTab, shellTab], new Map(next.map((s) => [s.session_id, s])), new Set(), () => undefined)} />)
     expect(words()).toEqual([['Fix the login', 'idle'], ['Shell 1', ''], ['Write the docs', 'working'], ['Older one', 'idle'], ['Brand new', 'working']])
+  })
+
+  it('names what a shell runs, on its tab row and on a running shell with no tab', () => {
+    setup(
+      [live({ session_id: 'sh1', kind: 'shell', program: 'claude' }), live({ session_id: 'sh2', kind: 'shell', program: 'npm', started_at: 2 })],
+      [shellTab],
+    )
+    expect(tabRow('t2').querySelector('[data-row-title]')!.textContent).toBe('Shell 1 · claude')
+    expect(document.querySelector('[data-live-row="sh2"] [data-row-title]')!.textContent).toBe('Shell · npm')
+    expect(screen.getByRole('button', { name: 'Stop the shell…' })).toBeInTheDocument()
   })
 })

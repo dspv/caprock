@@ -810,6 +810,25 @@ there, and worktrees as first-class places to work.
   restart.
 - Rule 7 holds: Caprock started the shell. A shell from a controller phone is
   P1 and needs its own ADR-034 amendment.
+- **Closing a shell's tab closes the shell** (owner, 2026-10-09: "close means
+  really close", translated). Until then the × of a shell's tab, in the strip
+  or the sidebar, and ⌘W left the shell running, and it came back as a muted
+  *Shell* row: idle shells piled up as ghosts. Now it behaves as iTerm,
+  Terminal and VS Code do. The daemon names the shell's foreground program
+  (`program` on `GET /v1/shells`, [03-contracts.md § Projects and
+  shells](03-contracts.md#projects-and-shells-desktop-app-wp-05-wp-07-wp-08)),
+  and the app, asking for the list fresh at the moment of closing:
+  - ends an idle shell with the tab, through the same kill as *Stop the
+    shell…*, without asking;
+  - asks about a busy one — *Shell 1 is running claude. Close and stop it?* —
+    with **Stop and close**, **Keep running, close tab** and **Cancel**;
+  - leaves agent tabs as they were: closing the tab of Claude Code, Codex or
+    any agent never stops it.
+
+  The same holds for a shell's pane in a split. A shell running a program
+  reads *Shell 1 · claude* in the strip and the sidebar. A shell left running
+  with no tab — kept by *Keep running, close tab*, or from before this — is
+  still the muted row with ■ to stop it.
 
 ## File tabs
 

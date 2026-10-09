@@ -7,6 +7,28 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **Closing a shell's tab closes the shell.** Until now the × of a shell's
+  tab, in the strip or the sidebar, and ⌘W left the shell running, and idle
+  shells piled up as muted *Shell* rows. Now it works as in iTerm, Terminal
+  or VS Code: an idle shell ends with its tab, without asking; a shell
+  running a program asks first — *Shell 1 is running claude. Close and stop
+  it?* — with *Stop and close*, *Keep running, close tab* and *Cancel*. The
+  same goes for a shell's pane in a split. Closing an agent's tab still
+  never stops the agent, and the tooltips now say which is which (*Close
+  shell* / *Close tab — the agent keeps running*). A shell left running
+  with no tab is still a muted row with ■ to stop it.
+- **A shell says what it runs.** A shell running a program reads *Shell 1 ·
+  claude* in the tab strip and the sidebar. `GET /v1/shells` carries a new
+  `program` field: the shell's foreground program on macOS and Linux, read
+  from the terminal's foreground process group; on Windows its child
+  process, best effort. It is read at most every 2 seconds per shell, only
+  for shells Caprock started, and never signals anything.
+- **No "Waiting on you" block with nothing current in it.** When only turns
+  put down more than 12 hours ago are left, the sidebar no longer shows the
+  block with its lone *Older* line; those turns stay on the Dashboard.
+
 ## [0.94.1] - 2026-10-09
 
 ### Added

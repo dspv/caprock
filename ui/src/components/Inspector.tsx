@@ -159,7 +159,7 @@ function Actions({ s, sessionId, isShell, ended, editor, onDetach }: { s?: Sessi
         )}
         <button type="button" onClick={onDetach} className="app-row flex h-[30px] items-center gap-2 rounded-[7px] px-2 text-left text-[12.5px] text-fg">
           <CloseIcon size={14} className="text-fg-muted" />
-          <span className="flex-1">Close the tab</span>
+          <span className="flex-1">{isShell ? 'Close the shell' : 'Close the tab'}</span>
           <kbd className="mono text-[10.5px] text-fg-faint">⌘W</kbd>
         </button>
         {s?.owned && !ended && <StopButton sessionId={sessionId} what={isShell ? 'shell' : 'session'} />}

@@ -335,7 +335,12 @@ export function Sidebar(props: SidebarProps) {
   )
 }
 
-/** What waits on you; nothing at all when nothing does. */
+/**
+ * What waits on you; nothing at all when nothing does. Turns put down more
+ * than 12h ago fold under the current ones, and alone they show no block:
+ * a lone "Older, put down…" line was clutter (owner, 2026-10-09). They stay
+ * on the Dashboard and in ⌘J.
+ */
 function Inbox({ items, onOpen }: { items: InboxItem[]; onOpen: (i: InboxItem) => void }) {
   const now = useNow(15_000)
   const [showOlder, setShowOlder] = useState(false)
@@ -363,15 +368,11 @@ function Inbox({ items, onOpen }: { items: InboxItem[]; onOpen: (i: InboxItem) =
       </button>
     </li>
   )
-  if (items.length === 0) return null
+  if (fresh.length === 0) return null
   return (
     <section aria-label="Waiting on you" className="mb-2">
-      <SectionHead
-        label="Waiting on you"
-        count={fresh.length}
-        tone={fresh.length > 0 ? 'accent' : 'faint'}
-      />
-      {fresh.length > 0 && <ul className="grid grid-cols-1 gap-px">{fresh.map(row)}</ul>}
+      <SectionHead label="Waiting on you" count={fresh.length} tone="accent" />
+      <ul className="grid grid-cols-1 gap-px">{fresh.map(row)}</ul>
       {older.length > 0 && (
         <>
           <button

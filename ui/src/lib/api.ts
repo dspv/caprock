@@ -35,6 +35,8 @@ export interface Session {
   worktree?: string
   /** `shell` for a shell tab's session (.ai/21-app.md § Shell tabs); absent for an agent. */
   kind?: 'agent' | 'shell'
+  /** A shell's foreground program (`GET /v1/shells`): "claude", "npm"; absent while it is idle. */
+  program?: string
 }
 
 export interface Stats {

@@ -7,8 +7,10 @@ import (
 	"os/exec"
 	"runtime"
 	"sort"
+	"sync"
 	"time"
 
+	"github.com/dspv/caprock/internal/fgproc"
 	"github.com/dspv/caprock/internal/ptyman"
 	"github.com/dspv/caprock/internal/termbuf"
 	"github.com/dspv/caprock/internal/userenv"
@@ -79,6 +81,43 @@ func (m *Manager) Shells() []*Agent {
 func (m *Manager) IsShell(id string) bool {
 	a, ok := m.Get(id)
 	return ok && a.Kind == KindShell
+}
+
+// fgTTL is how long a shell's foreground program is reused before it is read
+// again: the shell list is polled, and two clients polling must not cost two
+// process-table reads each.
+const fgTTL = 2 * time.Second
+
+// foreground names the program; tests replace it.
+var foreground = fgproc.Foreground
+
+type fgCache struct {
+	mu   sync.Mutex
+	at   time.Time
+	name string
+}
+
+// ShellProgram is the program running in front of shell id's prompt —
+// "claude", "npm", "vim" — or "" when the shell is idle, unknown or not a
+// shell. Closing an idle shell's tab ends it; a busy one asks first
+// (.ai/21-app.md § Shell tabs). Read at most every fgTTL per shell, and only
+// for a shell Caprock started (rule 7: this reads, it never signals).
+func (m *Manager) ShellProgram(id string) string {
+	a, ok := m.Get(id)
+	if !ok || a.Kind != KindShell {
+		return ""
+	}
+	a.fg.mu.Lock()
+	defer a.fg.mu.Unlock()
+	if !a.fg.at.IsZero() && time.Since(a.fg.at) < fgTTL {
+		return a.fg.name
+	}
+	name := ""
+	if _, exited := a.Exited(); !exited {
+		name = foreground(a.sess.PID())
+	}
+	a.fg.at, a.fg.name = time.Now(), name
+	return name
 }
 
 // loginShell is the shell a tab runs and its arguments: on POSIX the user's

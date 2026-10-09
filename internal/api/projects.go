@@ -32,6 +32,10 @@ type ShellInfo struct {
 	StartedAt       int64  `json:"started_at"`
 	SurvivesRestart bool   `json:"survives_restart"`
 	ProjectID       int64  `json:"project_id,omitempty"`
+	// Program is what runs in front of the shell's prompt ("claude", "npm",
+	// "vim"); absent when the shell is idle or the platform cannot tell.
+	// Closing the tab of an idle shell ends it; a busy one asks first.
+	Program string `json:"program,omitempty"`
 	// Internal is always true: a shell is not a session and is in no total.
 	Internal bool   `json:"internal"`
 	Kind     string `json:"kind"` // "shell"
