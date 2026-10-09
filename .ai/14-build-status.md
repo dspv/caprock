@@ -73,6 +73,18 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-09 — 0.95.0: scrub a session's spend, Quick chat on any agent
+
+The cockpit's spend spark opens into a scrubber that reads one model call at
+a time (time, model, cost, tokens, tools) from a new per-call endpoint, and
+the header shows a chip per subagent. Claude Code writes a worktree agent's
+branch onto the parent's own transcript lines, so recent lines now take the
+branch from their folder's checkout. Quick chat starts at once on the last
+agent and model, or offers every installed agent and its models in two
+clicks. Add project starts on a default folder, browses folders properly,
+says whether the target exists before you act, and carries shortcuts. The
+tab strip marks the active tab and the Dashboard, and "+" opens a menu.
+
 ### 2026-10-09 — 0.94.2: typing stays quick beside busy agents
 
 The owner felt typing lag in the app. Part of it was the machine: parallel
