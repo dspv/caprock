@@ -116,6 +116,17 @@
 }
 [data-theme="light"] { color-scheme: light; }
 
+/* Agent marks (components/AgentMarks.tsx): each brand colour mixed 70/30 with
+ * the muted ink. The mix lowers the saturation and follows the theme, and
+ * clears 3:1 (non-text contrast) on every surface of graphite, white and
+ * paper; the pure brand colours do not on the light grounds. Declared on the
+ * root, where data-theme lives, so the muted ink is the theme's own. */
+:root {
+  --agent-claude: color-mix(in srgb, #d97757 70%, var(--color-fg-muted));
+  --agent-gemini: color-mix(in srgb, #8e75b2 70%, var(--color-fg-muted));
+  --agent-deepseek: color-mix(in srgb, #5786fe 70%, var(--color-fg-muted));
+}
+
 /* Edge to edge on a phone (viewport-fit=cover in index.html): keep content
  * clear of the notch in landscape and of the home bar. The top inset is the
  * sticky header's own padding (Shell), so its colour runs up under the status

@@ -103,6 +103,7 @@
  * Every number here is measured from captured events at API list price — never
  * modelled, never extrapolated (rule 6).
  */
+import { AgentGlyph } from './AgentMarks'
 import { ProjectTerminal } from '@/components/ProjectTerminal'
 import { ProjectRepoLinks } from '@/components/RepoLinks'
 import { TeamsModal } from '@/components/TeamsModal'
@@ -132,24 +133,13 @@ export const AGENTS: { key: AgentFilter; label: string }[] = [
   { key: 'deepseek', label: 'deepseek' },
 ]
 
-/** The short mark for an agent that is not Claude Code, or '' for one that is.
- *  Claude is the common case on almost every machine, so badging it too would
- *  put a label on every row; the mark answers "why is this one different".
+/** Whether a list row wears its agent's mark: every agent but Claude Code.
+ *  Claude is the common case on almost every machine, so marking it too would
+ *  put a glyph on every row; the mark answers "why is this one different".
  *  Written once because it was three copies of `agent === 'opencode'`, each of
  *  which silently called a Gemini session Claude. */
-export function agentMark(agent?: string): string {
-  switch (agent) {
-    case 'opencode':
-      return 'oc'
-    case 'gemini':
-      return 'gem'
-    case 'codex':
-      return 'cdx'
-    case 'deepseek':
-      return 'dsh'
-    default:
-      return ''
-  }
+export function showsAgentMark(agent?: string): boolean {
+  return agent === 'opencode' || agent === 'gemini' || agent === 'codex' || agent === 'deepseek'
 }
 
 /** How to name an agent in a sentence. */
@@ -403,11 +393,7 @@ function ProjectRow({
         <div className="flex items-center gap-2">
           {live && <span className="inline-block w-1.5 h-1.5 rounded-full bg-ok shrink-0" title="a session is live in this project" />}
           <span className="truncate text-[14px]">{label}</span>
-          {agentMark(p.agent) && (
-            <span className="shrink-0 text-[9px] uppercase tracking-[0.08em] text-fg-faint border border-border px-1 rounded-sm">
-              {agentMark(p.agent)}
-            </span>
-          )}
+          {showsAgentMark(p.agent) && <AgentGlyph agent={p.agent} />}
           <span className="text-[11px] text-fg-faint num shrink-0">
             {p.sessions} {p.sessions === 1 ? 'session' : 'sessions'}
           </span>

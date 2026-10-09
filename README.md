@@ -307,8 +307,8 @@ Caprock also reads [OpenCode](https://github.com/anomalyco/opencode),
 [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness) sessions, on
 the same screens as Claude Code. A machine that runs more than one has its spend
 split across tools that each see part of it; here the projects list, the history
-and the cost add up over all of them, and the rows carry an `oc`, `cdx` or `dsh`
-mark so you can still tell them apart.
+and the cost add up over all of them, and the rows carry each agent's own mark
+so you can still tell them apart.
 
 **Or see one at a time.** The Now screen carries
 `all / claude / opencode / gemini / codex / deepseek` in the middle of its

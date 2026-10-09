@@ -26,7 +26,8 @@ import { RepoButtons } from '@/components/RepoLinks'
 import { useApi } from '@/lib/useApi'
 import { Panel } from '@/components/ui'
 import { href, navigate } from '@/lib/router'
-import { agentMark } from '@/components/Projects'
+import { showsAgentMark } from '@/components/Projects'
+import { AgentGlyph } from '@/components/AgentMarks'
 
 /** How many tracks to show. More than this and no single one is readable. */
 const MAX_TRACKS = 6
@@ -257,11 +258,7 @@ function Track({
                 {branchLabel(s.git_branch)}
               </span>
             )}
-            {agentMark(s.agent) && (
-              <span className="shrink-0 text-[9px] uppercase tracking-[0.08em] text-fg-faint border border-border px-1 rounded-sm">
-                {agentMark(s.agent)}
-              </span>
-            )}
+            {showsAgentMark(s.agent) && <AgentGlyph agent={s.agent} />}
           </div>
           <div className="text-[10px] text-fg-faint mono truncate pl-3.5">
             {showId && <span title={`session ${s.session_id} · started ${fmtAgo(s.started_at)} ago`}>{shortId(s.session_id)} · </span>}
