@@ -379,7 +379,7 @@ func (t *Tailer) handleLine(ctx context.Context, f *fileState, raw []byte, fallb
 	if f.sessionID == "" {
 		f.sessionID = l.SessionID
 	}
-	info := rollup.SessionInfo{Cwd: l.Cwd, TranscriptPath: f.path, GitBranch: l.GitBranch, Version: l.Version}
+	info := rollup.SessionInfo{Cwd: l.Cwd, TranscriptPath: f.path, GitBranch: lineBranch(l, fallbackTs, time.Now()), Version: l.Version}
 	if l.Message != nil {
 		info.Model = l.Message.Model
 	}
@@ -426,4 +426,66 @@ func endsLineAt(fh *os.File, off int64) bool {
 		return false
 	}
 	return b[0] == '\n'
+}
+
+// liveBranchWindow is how recent a transcript line must be for the branch of
+// its cwd's checkout, as it is now, to stand for the branch it was written on.
+const liveBranchWindow = 10 * time.Minute
+
+// lineBranch is the branch a transcript line puts on its session. Claude
+// Code's `gitBranch` is not the branch of the line's cwd: while a background
+// agent worked in a linked worktree, the parent's own lines (no agentId, not
+// a sidechain, cwd the main checkout on master) reported the worktree's
+// branch, and the session's header read `caprock · feat/cockpit-scrub`. A
+// line written in the last few minutes takes the branch its cwd's checkout
+// has now, read from HEAD; an older line — a backfill, a session re-read —
+// keeps what it says, since today's HEAD says nothing about last week's line.
+func lineBranch(l *Line, fallbackTs, now time.Time) string {
+	if l.Cwd == "" || l.GitBranch == "" {
+		return l.GitBranch
+	}
+	if d := now.Sub(l.Ts(fallbackTs)); d > liveBranchWindow || d < -liveBranchWindow {
+		return l.GitBranch
+	}
+	if b, ok := checkoutBranches.at(l.Cwd, now); ok {
+		return b
+	}
+	return l.GitBranch
+}
+
+// branchCacheTTL is how long a folder's branch, once read, answers for it.
+// A transcript arrives in bursts — dozens of lines a second while a turn
+// streams — and each would otherwise stat and read HEAD again; a checkout
+// switched mid-burst is picked up two seconds later.
+const branchCacheTTL = 2 * time.Second
+
+// branchCache remembers the branch read for a folder (store.BranchAt) for
+// branchCacheTTL. Safe for the tailers' concurrent use.
+type branchCache struct {
+	mu   sync.Mutex
+	read func(dir string) (string, bool)
+	m    map[string]cachedBranch
+}
+
+type cachedBranch struct {
+	branch string
+	ok     bool
+	at     time.Time
+}
+
+var checkoutBranches = &branchCache{read: store.BranchAt}
+
+func (c *branchCache) at(dir string, now time.Time) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if e, hit := c.m[dir]; hit && now.Sub(e.at) < branchCacheTTL && !now.Before(e.at) {
+		return e.branch, e.ok
+	}
+	b, ok := c.read(dir)
+	if c.m == nil || len(c.m) > 256 {
+		// Folders are few; a map that grew past that is cleared rather than swept.
+		c.m = map[string]cachedBranch{}
+	}
+	c.m[dir] = cachedBranch{branch: b, ok: ok, at: now}
+	return b, ok
 }

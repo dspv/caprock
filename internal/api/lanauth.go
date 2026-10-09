@@ -241,6 +241,7 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/sessions/{id}":           true,
 	"GET /v1/sessions/{id}/events":    true,
 	"GET /v1/sessions/{id}/subagents": true,
+	"GET /v1/sessions/{id}/calls":     true,
 	"GET /v1/sessions/{id}/notes":     true,
 	"GET /v1/sessions/{id}/diff":      true,
 	"GET /v1/notes":                   true,

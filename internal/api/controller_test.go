@@ -34,6 +34,7 @@ var viewerMay = map[string]bool{
 	"GET /v1/sessions": true, "GET /v1/sessions/{id}": true, "GET /v1/sessions/{id}/events": true,
 	"GET /v1/sessions/{id}/notes": true, "GET /v1/sessions/{id}/diff": true, "GET /v1/notes": true,
 	"GET /v1/sessions/{id}/subagents": true, // what the session's subagents are doing; the events already say it
+	"GET /v1/sessions/{id}/calls":     true, // the priced model calls; the events already say them
 	"GET /v1/stats/summary":           true, "GET /v1/stats/daily": true, "GET /v1/events": true,
 	"GET /v1/history": true, "GET /v1/status": true, "GET /v1/storage": true, "GET /v1/update": true,
 	"GET /v1/settings": true, "GET /v1/premium": true, "GET /v1/gemini": true, "GET /v1/pricing": true,

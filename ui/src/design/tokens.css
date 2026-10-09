@@ -403,9 +403,46 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
 [data-app] .cockpit-bar-live { animation: cockpitBreath 1.4s ease-in-out infinite; }
 @keyframes cockpitBreath { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
 [data-app] .cockpit-spark-new { animation: cockpitBreath 2s ease-in-out 1; }
+/* The spend scrubber opens over the Spend block: no layout below it moves. */
+[data-app] .cockpit-scrub {
+  transform-origin: top right;
+  transition: opacity 150ms var(--app-ease), transform 150ms var(--app-ease), visibility 0s linear 0s;
+}
+[data-app] .cockpit-scrub[data-open="false"] {
+  opacity: 0; transform: scale(0.97); pointer-events: none; visibility: hidden;
+  transition: opacity 150ms var(--app-ease), transform 150ms var(--app-ease), visibility 0s linear 150ms;
+}
+/* The header's subagent strip: a tint per type, pulsing while it works. The
+ * ring in the panel's colour separates overlapping chips. */
+[data-app] .cockpit-subchip {
+  --chip: var(--color-ok);
+  color: var(--chip);
+  background: color-mix(in srgb, var(--chip) 16%, var(--app-chrome-bg));
+  box-shadow: 0 0 0 1.5px var(--app-chrome-bg), inset 0 0 0 1px color-mix(in srgb, var(--chip) 38%, transparent);
+}
+[data-app] .cockpit-subchip[data-tone="1"] { --chip: var(--color-premium); }
+[data-app] .cockpit-subchip[data-tone="2"] { --chip: var(--color-accent); }
+[data-app] .cockpit-subchip[data-tone="3"] { --chip: var(--color-fg-muted); }
+[data-app] .cockpit-subchip[data-state="working"]::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  box-shadow: 0 0 0 1.5px var(--chip); opacity: 0;
+  animation: cockpitChip 1.8s var(--app-ease) infinite;
+}
+[data-app] .cockpit-subchip[data-state="waiting"] {
+  --chip: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 30%, var(--app-chrome-bg));
+}
+[data-app] .cockpit-subchip[data-state="done"], [data-app] .cockpit-subchip[data-state="more"] {
+  --chip: var(--color-fg-faint);
+  background: var(--app-chrome-bg);
+}
+[data-app] .cockpit-subchip[data-state="more"] { color: var(--color-fg-muted); }
+@keyframes cockpitChip { 0% { opacity: 0.7; transform: scale(1); } 100% { opacity: 0; transform: scale(1.45); } }
 @media (prefers-reduced-motion: reduce) {
+  [data-app] .cockpit-subchip::after { animation: none !important; }
   [data-app] .cockpit-avatar::after, [data-app] .cockpit-avatar .cockpit-character, [data-app] .cockpit-dot::after,
   [data-app] .cockpit-now::after, [data-app] .cockpit-row, [data-app] .cockpit-bar-live, [data-app] .cockpit-spark-new { animation: none !important; }
+  [data-app] .cockpit-scrub { transition: none; }
   [data-app] .cockpit-fill { transition: none; }
 }
 /* The terminal slab: the terminal palette's ground, dark unless the palette
