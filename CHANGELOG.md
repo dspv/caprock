@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.94.2] - 2026-10-09
+
 ### Changed
 
 - **The app's status bar drops "v2 · 167×36".** The front terminal's

@@ -73,6 +73,19 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-09 — 0.94.2: typing stays quick beside busy agents
+
+The owner felt typing lag in the app. Part of it was the machine: parallel
+agent builds pushed the load average to about 83. The app's own share was
+measured on a quiet machine with a busy stand (nine tabs, a chatty hidden tab,
+four agents sending hooks): every live event re-rendered the window and all
+terminal panes, hidden tabs kept drawing, and CSS pulses repainted the main
+thread every frame. Fixing the three took keystroke-to-echo p50 from about 7
+to about 4 ms; p95 did not move. Closing a shell tab now ends an idle shell
+and asks when a program runs, shells name their program, agents show their
+own marks instead of letter badges, and the status bar drops the terminal
+protocol and size.
+
 ### 2026-10-09 — 0.94.1: close from the sidebar, links that open
 
 Each tab and project in the sidebar closes with one ×, each row says its
