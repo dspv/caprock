@@ -7,7 +7,7 @@
  * Every function here is pure, so the panel's honesty can be tested without a
  * DOM: a figure the data does not carry comes back undefined, never zero.
  */
-import type { Event, Permission, RateLimits, SessionSummary, Subagent, Summary } from './api'
+import type { Event, Permission, RateLimits, SessionSummary, Subagent, SubagentsNow, Summary } from './api'
 import { toolCommand } from './chat'
 
 /** What kind of work a tool call is, for its glyph and colour. */
@@ -271,4 +271,49 @@ export function commandGist(detail: string, n = 100): { gist: string; more: bool
   const chars = [...first]
   const clipped = chars.length > n
   return { gist: clipped ? chars.slice(0, n - 1).join('') + '…' : first, more: clipped || parts.length > 1 }
+}
+
+/** One mini-avatar in the cockpit header's subagent strip. */
+export interface SubagentChip {
+  id: string
+  /** The type's first letter, upper case: E for Explore, G for general-purpose; "·" when no hook named one. */
+  initial: string
+  state: 'working' | 'waiting' | 'done'
+  /** One of four tints, fixed per type so an Explore is always the same colour. */
+  tone: 0 | 1 | 2 | 3
+  /** "Explore · find the pricing table · Haiku 4.5 · working". */
+  label: string
+}
+
+/** Claude Code's own types keep a tint each, so the common three never share one. */
+const KNOWN_TONES: Record<string, 0 | 1 | 2 | 3> = { 'general-purpose': 0, Explore: 1, Plan: 2 }
+
+/** The tint a subagent type takes: fixed for the built-in types, a stable hash of the name otherwise. */
+export function subagentTone(type: string | undefined): 0 | 1 | 2 | 3 {
+  const known = type ? KNOWN_TONES[type] : undefined
+  if (known !== undefined) return known
+  let h = 0
+  for (const ch of type ?? '') h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return (h % 4) as 0 | 1 | 2 | 3
+}
+
+/**
+ * The header's strip: the working subagents first (as the daemon orders them,
+ * newest activity first), then the recently finished, muted, up to `max`;
+ * `more` counts the working ones left out — finished ones past the strip are
+ * the Subagents section's business, not a count to chase.
+ */
+export function subagentChips(subs: SubagentsNow | undefined, permission?: Permission | null, max = 4): { chips: SubagentChip[]; more: number } {
+  if (!subs) return { chips: [], more: 0 }
+  const chip = (a: { agent_id: string; agent_type?: string; description?: string; model_display?: string }, state: SubagentChip['state']): SubagentChip => ({
+    id: a.agent_id,
+    initial: (a.agent_type?.trim()[0] ?? '·').toUpperCase(),
+    state,
+    tone: subagentTone(a.agent_type),
+    label: [a.agent_type || 'subagent', a.description, a.model_display, state === 'waiting' ? 'waiting on you' : state === 'working' ? 'working' : 'finished'].filter(Boolean).join(' · '),
+  })
+  const working = subs.working.map((a) => chip(a, subagentWaiting(a, permission) ? 'waiting' : 'working'))
+  const shown = working.slice(0, max)
+  const done = (subs.recent ?? []).slice(0, Math.max(0, max - shown.length)).map((a) => chip(a, 'done'))
+  return { chips: [...shown, ...done], more: working.length - shown.length }
 }

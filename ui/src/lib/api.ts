@@ -218,6 +218,20 @@ export interface Event {
   key?: string
 }
 
+/** One priced main-thread model call (`GET /v1/sessions/{id}/calls`), oldest first. */
+export interface SessionCall {
+  id: number
+  /** Unix ms. */
+  ts: number
+  model?: string
+  model_display?: string
+  cost_usd: number
+  tokens?: TokenDelta
+  /** The tool calls it asked for, the first six, joined by message id; absent when none or unknown. */
+  tools?: { tool: string; detail?: string }[]
+  tool_count?: number
+}
+
 export interface SessionDetail extends SessionSummary {
   files: string[]
   events: Event[]
@@ -1063,6 +1077,8 @@ export const api = {
    *  limit: a parent's own calls, however busy its subagents are. */
   recentMainEvents: (id: string, kinds: readonly string[], limit = 400) =>
     get<Event[]>(`/v1/sessions/${encodeURIComponent(id)}/events?newest=1&main=1&kind=${encodeURIComponent(kinds.join(','))}&limit=${limit}`),
+  /** Every priced model call of the session's main thread, oldest first (the spend scrubber). */
+  sessionCalls: (id: string) => get<SessionCall[]>(`/v1/sessions/${encodeURIComponent(id)}/calls`),
   /** The subagents working in a session now, and how many finished lately. */
   subagents: (id: string) => get<SubagentsNow>(`/v1/sessions/${encodeURIComponent(id)}/subagents`),
   diff: (id: string) => get<DiffResult>(`/v1/sessions/${encodeURIComponent(id)}/diff`),

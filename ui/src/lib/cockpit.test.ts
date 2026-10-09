@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { Event, SessionSummary, Summary } from './api'
+import type { Event, SessionSummary, Subagent, Summary } from './api'
 import {
-  askLine, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runShare, runningTool, subagentWaiting, toolDetail, toolKind, toolRuns, turnCosts,
+  askLine, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runShare, runningTool, subagentChips, subagentWaiting, toolDetail, toolKind, toolRuns, turnCosts,
   RUNNING_STALE_MS,
 } from './cockpit'
 
@@ -186,5 +186,31 @@ describe('a Codex exec in the tool list', () => {
       ev({ kind: 'tool.post', ts: T(9), tool: 'exec', payload: { tool_use_id: 'x', tool_response: '', interrupted: true } }),
     ])
     expect(runningTool(runs, Date.parse(T(10)))).toBeUndefined()
+  })
+})
+
+describe('subagentChips', () => {
+  const a = (id: string, type?: string, extra: Partial<Subagent> = {}): Subagent =>
+    ({ agent_id: id, agent_type: type, tool_calls: 1, started_at: 1, last_at: 2, running: true, asking: false, ...extra }) as Subagent
+  it('draws the working first, then the finished muted, at most four, and counts the working left out', () => {
+    const subs = {
+      working: [a('1', 'Explore', { description: 'find the table', model_display: 'Haiku 4.5' }), a('2', 'general-purpose'), a('3', 'Plan'), a('4', 'Explore'), a('5', 'Explore'), a('6')],
+      finished: 1, recent: [{ agent_id: 'd', agent_type: 'Plan', tool_calls: 3, started_at: 1, stopped_at: 2 }],
+    }
+    const { chips, more } = subagentChips(subs)
+    expect(chips.map((c) => c.initial)).toEqual(['E', 'G', 'P', 'E'])
+    expect(more).toBe(2)
+    expect(chips[0]!.label).toBe('Explore · find the table · Haiku 4.5 · working')
+    expect(chips[0]!.tone).toBe(chips[3]!.tone)
+  })
+  it('fills spare places with the recently finished, and marks one asking as waiting', () => {
+    const subs = { working: [a('1', 'Explore', { asking: true })], finished: 2, recent: [{ agent_id: 'd', tool_calls: 3, started_at: 1, stopped_at: 2 }] }
+    const { chips, more } = subagentChips(subs)
+    expect(chips.map((c) => [c.initial, c.state])).toEqual([['E', 'waiting'], ['·', 'done']])
+    expect(chips[1]!.label).toBe('subagent · finished')
+    expect(more).toBe(0)
+  })
+  it('has nothing to draw without the list', () => {
+    expect(subagentChips(undefined)).toEqual({ chips: [], more: 0 })
   })
 })

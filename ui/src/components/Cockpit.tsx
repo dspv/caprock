@@ -11,7 +11,7 @@
  * and the day's summary for the plan windows. Nothing here is estimated, and a
  * figure an agent does not report is left out rather than drawn as a zero.
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { api, type Event, type Permission, type RateWindow, type SessionSummary, type SubagentsNow, type Summary } from '@/lib/api'
 import { usePermission } from './PermissionPrompt'
 import { live } from '@/lib/live'
@@ -20,16 +20,16 @@ import { fmtAgo, fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { countdown, resetClock } from '@/lib/limitclock'
 import { readWindow } from './PlanLimits'
+import { SpendSpark } from './SpendScrub'
 import { AgentCharacter, agentName, characterFor } from './Characters'
 import {
-  askLine, backgroundAgents, backgroundLabel, cockpitState, commandGist, fmtRun, mainThread, planWindowsFor, requester, runningTool, runShare, runVerb, subagentWaiting, toolKind, toolRuns, turnCosts,
-  type CockpitState, type ToolKind, type ToolRun, type TurnCost,
+  askLine, backgroundAgents, subagentChips, backgroundLabel, cockpitState, commandGist, fmtRun, mainThread, planWindowsFor, requester, runningTool, runShare, runVerb, subagentWaiting, toolKind, toolRuns, turnCosts,
+  type CockpitState, type SubagentChip, type ToolKind, type ToolRun, type TurnCost,
 } from '@/lib/cockpit'
 
 /** How many of the main thread's newest calls and turns the panel reads: enough for the last several turns. */
 const EVENTS_HELD = 400
 const TIMELINE_ROWS = 7
-const SPARK_TURNS = 28
 const SUBAGENT_ROWS = 5
 /** The subagent list is read again at most this often while their events stream in. */
 const SUBAGENTS_THROTTLE_MS = 2_000
@@ -143,8 +143,8 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
   const plan = planWindowsFor(s.agent, summary)
   return (
     <>
-      <Hero s={s} state={state} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s)} />
-      <Spend s={s} turns={turns} />
+      <Hero s={s} state={state} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s)} subs={subs} permission={permission} />
+      <Spend s={s} turns={turns} sessionId={sessionId} events={main} now={now} />
       <ContextMeter s={s} />
       <NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} permission={permission} background={backgroundAgents(s)} now={now} />
       {subs && (subs.working.length > 0 || (subs.recent?.length ?? 0) > 0) && <Subagents subs={subs} permission={permission} now={now} />}
@@ -165,8 +165,10 @@ export function SectionLabel({ children, right }: { children: ReactNode; right?:
   )
 }
 
-function Hero({ s, state, now, background }: { s: SessionSummary; state: CockpitState; now: number; background: number }) {
+function Hero({ s, state, now, background, subs, permission }: { s: SessionSummary; state: CockpitState; now: number; background: number; subs?: SubagentsNow; permission?: Permission | null }) {
   const since = s.worked_at || s.last_event_at
+  const strip = subagentChips(subs, permission)
+  const saysBackground = background > 0 && state === 'working'
   return (
     <div className="flex items-center gap-3.5" data-state={state}>
       <div className={`cockpit-avatar relative grid h-[58px] w-[58px] shrink-0 place-items-center rounded-[15px]`} data-state={state}>
@@ -185,11 +187,43 @@ function Hero({ s, state, now, background }: { s: SessionSummary; state: Cockpit
         {s.started_at > 0 && state !== 'ended' && (
           <p className="text-[11px] text-fg-faint">started {fmtAgo(s.started_at, now)}</p>
         )}
-        {(s.live_subagents ?? 0) > 0 && !(background > 0 && state === 'working') && (
+        {strip.chips.length > 0 ? (
+          <SubagentStrip chips={strip.chips} more={strip.more} working={saysBackground ? 0 : subs?.working.length ?? 0} />
+        ) : (s.live_subagents ?? 0) > 0 && !(background > 0 && state === 'working') && (
           <p className="text-[11.5px] text-fg-muted">{s.live_subagents} {s.live_subagents === 1 ? 'subagent' : 'subagents'} working</p>
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * One mini-avatar per subagent under the state line: its type's initial in a
+ * tint fixed per type, pulsing while it works, accent while it waits on you,
+ * muted once finished; at most four and "+N". A click scrolls to the
+ * Subagents section, which says the rest.
+ */
+function SubagentStrip({ chips, more, working }: { chips: SubagentChip[]; more: number; working: number }) {
+  const open = (e: MouseEvent<HTMLButtonElement>) => {
+    const root = e.currentTarget.closest('[data-cockpit]') ?? document
+    root.querySelector('section[aria-label="Subagents"]')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }
+  return (
+    <button type="button" onClick={open} className="flex w-fit items-center gap-1.5 rounded-[6px] text-left outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]"
+      aria-label={`Subagents: ${chips.map((c) => c.label).join('; ')}${more > 0 ? `; and ${more} more working` : ''}. Show the list`}>
+      <span className="flex -space-x-1">
+        {chips.map((c) => (
+          <span key={c.id} title={c.label} data-state={c.state} data-tone={c.tone}
+            className="cockpit-subchip num relative grid h-[18px] w-[18px] place-items-center rounded-[5px] text-[10px] font-semibold">
+            {c.initial}
+          </span>
+        ))}
+        {more > 0 && (
+          <span title={`${more} more working`} className="cockpit-subchip num relative grid h-[18px] min-w-[18px] place-items-center rounded-[5px] px-1 text-[10px] font-medium" data-state="more">+{more}</span>
+        )}
+      </span>
+      {working > 0 && <span className="text-[11.5px] text-fg-muted">{working} {working === 1 ? 'subagent' : 'subagents'} working</span>}
+    </button>
   )
 }
 
@@ -217,20 +251,20 @@ function useTweened(value: number, ms = 650): number {
   return shown
 }
 
-function Spend({ s, turns }: { s: SessionSummary; turns: TurnCost[] }) {
+function Spend({ s, turns, sessionId, events, now }: { s: SessionSummary; turns: TurnCost[]; sessionId: string; events: readonly Event[]; now: number }) {
   const st = s.stats
   const cost = st?.cost_usd ?? 0
   const shown = useTweened(cost)
   const last = turns[turns.length - 1]
   const tokensIn = st ? st.tokens_in + st.cache_read + st.cache_write : undefined
   return (
-    <section aria-label="Spend" className="grid gap-2.5">
+    <section aria-label="Spend" className="relative grid gap-2.5">
       <SectionLabel right={last ? <span className="num text-fg-faint" title="What the newest model call cost">last call <span className="text-fg">{fmtUSD(last.cost)}</span></span> : undefined}>
         Spent this session
       </SectionLabel>
       <div className="flex items-end justify-between gap-3">
         <span className="num text-[34px] font-semibold leading-none tracking-[-0.03em] text-fg" aria-label={`Cost ${fmtUSD(cost)}`}>{fmtUSD(shown)}</span>
-        <TurnSpark turns={turns.slice(-SPARK_TURNS)} />
+        <SpendSpark sessionId={sessionId} events={events} now={now} />
       </div>
       {st && (
         <dl className="grid grid-cols-4 overflow-hidden rounded-[9px] border border-[var(--app-hairline)]">
@@ -250,29 +284,6 @@ function Cell({ label, value, title }: { label: string; value: string; title?: s
       <dt className="text-[10px] uppercase tracking-[0.06em] text-fg-faint">{label}</dt>
       <dd className="num truncate text-[13px] font-medium text-fg">{value}</dd>
     </div>
-  )
-}
-
-/** What each of the last turns cost, newest at the right. */
-function TurnSpark({ turns }: { turns: TurnCost[] }) {
-  if (turns.length < 2) return null
-  const max = Math.max(...turns.map((t) => t.cost), 0.0001)
-  const W = 112, H = 30, gap = 1.5
-  const bw = Math.max(1.5, (W - gap * (SPARK_TURNS - 1)) / SPARK_TURNS)
-  const x0 = W - turns.length * (bw + gap) + gap
-  return (
-    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Cost of the last ${turns.length} model calls`} className="mb-[3px] shrink-0 overflow-visible">
-      {turns.map((t, i) => {
-        const h = Math.max(1.5, (t.cost / max) * H)
-        const newest = i === turns.length - 1
-        return (
-          <rect key={t.id} x={x0 + i * (bw + gap)} y={H - h} width={bw} height={h} rx={Math.min(1, bw / 2)}
-            className={newest ? 'cockpit-spark-new fill-accent' : 'fill-accent'} opacity={newest ? 1 : 0.28 + 0.5 * (i / turns.length)}>
-            <title>{fmtUSD(t.cost)}</title>
-          </rect>
-        )
-      })}
-    </svg>
   )
 }
 
