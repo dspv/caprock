@@ -7,6 +7,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **The Paper light theme is caprock.dev's palette, all of it.** It had the
+  site's cream surfaces but the neutral theme's grey text and light amber, so
+  the app looked paler than its own screenshots. Paper now uses the site's
+  warm dark-brown text, its deep amber for links and accents, and the site's
+  orange button with dark text for filled controls. White is unchanged.
+
 ## [0.96.0] - 2026-10-10
 
 ### Added
