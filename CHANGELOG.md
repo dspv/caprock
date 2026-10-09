@@ -53,7 +53,9 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 - **Tabs are easier to tell apart.** The tab in front has an amber top edge;
   the others are shaded tabs of their own. The strip's + is an amber outline
   that opens a menu — New agent, Quick chat, New shell, Open file, Add
-  project, each with its key; the separate new-shell button is gone.
+  project, each with its key; the separate new-shell button is gone. The
+  pinned Dashboard tab stands apart: an amber grid icon, an amber tint, and
+  a divider before the session tabs.
 
 ### Fixed
 

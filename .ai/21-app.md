@@ -162,7 +162,9 @@ One window, three regions:
   amber top edge over its hairline frame and a medium-weight label
   (`.app-tab-front`); every other tab is a faintly filled surface with its own
   hairline frame (`.app-tab-back`), 4px apart, so each reads as a tab in both
-  themes. The + is an amber outline (`.app-primary`, like the sidebar's New
+  themes. The pinned Dashboard tab is not a session and looks it
+  (`.app-tab-dash`): an amber grid icon, an amber-tinted fill and frame
+  while it is behind, and a hairline divider after it. The + is an amber outline (`.app-primary`, like the sidebar's New
   agent) that opens a menu (`components/NewMenu.tsx`, portalled): *New
   agent* ⇧⌘N, *Quick chat…* ⌥⌘N (the chooser; the key itself skips it),
   *New shell* ⌘T, *Open file…*, *Add project* ⌘O, each with its key; ↑ ↓,

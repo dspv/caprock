@@ -78,6 +78,29 @@ describe('TabStrip', () => {
     expect(screen.getByRole('button', { name: 'New' })).toHaveAttribute('aria-haspopup', 'menu')
   })
 
+  it('sets the pinned Dashboard tab apart from the sessions', () => {
+    render(
+      <TabStrip
+        tabs={[tab('one')]}
+        activeTabId="one"
+        dashboard={{ active: false, label: 'Dashboard', onActivate: () => {}, onClose: () => {} }}
+        sessions={new Map()}
+        permissions={new Set()}
+        inspectorOpen={false}
+        sidebarOpen
+        onActivate={() => {}}
+        onDetach={() => {}}
+        onMove={() => {}}
+        onNewAgent={() => {}}
+        onNewShell={() => {}}
+        onToggleInspector={() => {}}
+      />,
+    )
+    const dash = screen.getByRole('tab', { name: /Dashboard/ })
+    expect(dash).toHaveClass('app-tab-dash')
+    expect(dash).not.toHaveClass('app-tab-back')
+  })
+
   it('takes a press that barely moves for a click', () => {
     const { onMove, onActivate, tabs } = strip()
     document.elementFromPoint = () => tabs[2]!

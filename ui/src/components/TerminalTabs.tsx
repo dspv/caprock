@@ -124,10 +124,10 @@ export function TabStrip(props: TabStripProps) {
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') props.dashboard!.onActivate() }}
             title={`${props.dashboard.label} — ⇧⌘D`}
             className={`group relative flex h-[32px] shrink-0 cursor-default select-none items-center gap-2 rounded-t-[9px] pl-3 pr-1.5 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
-              props.dashboard.active ? 'app-tab-front bg-bg font-medium text-fg' : 'app-tab-back text-fg-muted hover:text-fg'
+              props.dashboard.active ? 'app-tab-front app-tab-dash bg-bg font-medium text-fg' : 'app-tab-dash text-fg hover:text-fg'
             }`}
           >
-            <DashboardIcon size={13} className="text-fg-faint" />
+            <DashboardIcon size={13} className="text-accent" />
             <span>{props.dashboard.label}</span>
             <button
               type="button"
