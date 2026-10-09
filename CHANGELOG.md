@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.96.0] - 2026-10-10
+
 ### Added
 
 - **A share sheet worth opening.** Share shows the card itself, with Today,

@@ -73,6 +73,16 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-10 — 0.96.0: a share sheet, offers that answer something, dialogs you can close
+
+Share shows the card itself with four ranges and copy, save and post; a
+star strip asks once after three days and ten sessions; Premium and Teams
+are offered only when a plan window, a heavy day or a second committer makes
+them relevant, one at a time, dismissals kept by the daemon. Every dialog
+gets the same ×, backdrop click and Esc through one shared Dialog; Settings
+gets its own × and Esc; Feedback is a labelled button and a sidebar icon,
+and opens the prefilled issue through the app's own link path.
+
 ### 2026-10-09 — 0.95.0: scrub a session's spend, Quick chat on any agent
 
 The cockpit's spend spark opens into a scrubber that reads one model call at
