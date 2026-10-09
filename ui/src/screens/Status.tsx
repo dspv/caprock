@@ -33,6 +33,7 @@ import { GlobalHotkey } from '@/components/GlobalHotkey'
 import { isAppMode, isTauri } from '@/lib/appmode'
 import { TerminalSettings } from '@/components/TerminalSettings'
 import { EditorSetting } from '@/components/EditorSetting'
+import { DefaultFolderSetting } from '@/components/DefaultFolderSetting'
 import { SpawnModeSetting } from '@/components/SpawnModeSetting'
 import { GitHubSettings } from '@/components/GitHubSettings'
 import { WindowStopSetting } from '@/components/WindowStopSetting'
@@ -60,6 +61,7 @@ export function StatusScreen() {
           <AppearanceSection />
           <TerminalSettings />
           {owner && <EditorSetting />}
+          {owner && <DefaultFolderSetting />}
           {owner && isTauri() && <DesktopNotifications />}
           {owner && isTauri() && <GlobalHotkey />}
           <GitHubSettings />
@@ -79,6 +81,7 @@ export function StatusScreen() {
           <AppearanceSection />
           {owner && <SpawnModeSetting />}
           {owner && <EditorSetting />}
+          {owner && <DefaultFolderSetting />}
           <GitHubSettings />
           {owner && isTauri() && <GlobalHotkey />}
         </>

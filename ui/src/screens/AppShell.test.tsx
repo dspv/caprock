@@ -190,10 +190,24 @@ describe('the app workspace', () => {
     expect(screen.queryByRole('tab', { name: /Dashboard/ })).not.toBeInTheDocument()
   })
 
-  it('starts a quick chat in a tab from the sidebar and ⌥⌘N, without leaving the workspace', async () => {
+  // A click asks which vendor and model (Enter takes the last one); ⌥⌘N
+  // never asks (owner, 2026-10-09).
+  it('starts a quick chat in a tab from the sidebar’s chooser, without leaving the workspace', async () => {
     await renderApp()
     fireEvent.click(screen.getByRole('button', { name: 'Quick chat' }))
+    const chooser = await screen.findByRole('dialog', { name: 'Quick chat' })
+    fireEvent.keyDown(within(chooser).getByRole('listbox'), { key: 'Enter' })
     const tab = await screen.findByRole('tab', { name: /Quick chat/ })
+    expect(tab).toHaveAttribute('aria-selected', 'true')
+    expect(location.hash).toBe('#/app')
+    expect(screen.getByTestId('pane-chat-1')).toBeInTheDocument()
+  })
+
+  it('starts a quick chat at once on ⌥⌘N', async () => {
+    await renderApp()
+    await cmd('n', { altKey: true })
+    const tab = await screen.findByRole('tab', { name: /Quick chat/ })
+    expect(screen.queryByRole('dialog', { name: 'Quick chat' })).toBeNull()
     expect(tab).toHaveAttribute('aria-selected', 'true')
     expect(location.hash).toBe('#/app')
     expect(screen.getByTestId('pane-chat-1')).toBeInTheDocument()

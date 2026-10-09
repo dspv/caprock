@@ -211,6 +211,7 @@ func TestBrowseEndpointRefusesOutsideTheRoot(t *testing.T) {
 // must not be offered, because clicking it spawns a session that fails and a
 // picker that offers dead paths is worse than a shorter list.
 func TestRecentDirsSkipsDirectoriesThatAreGone(t *testing.T) {
+	keepTempDirs(t)
 	e := newEnv(t)
 	live := t.TempDir()
 	gone := filepath.Join(t.TempDir(), "deleted-since")
@@ -283,6 +284,7 @@ func seedIn(t *testing.T, e *env, sessionID, cwd string) {
 // "/", home and a temp directory are not projects: something running `claude`
 // from "/" every ten minutes held the top of the picker on the owner's Mac.
 func TestRecentDirsLeavesOutRootHomeAndTemp(t *testing.T) {
+	keepTempDirs(t)
 	e := newEnv(t)
 	live := t.TempDir()
 	e.seed(t, live)

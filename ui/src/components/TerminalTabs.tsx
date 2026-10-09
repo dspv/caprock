@@ -19,6 +19,7 @@ import { AgentGlyph } from './AgentMarks'
 import { ChatIcon, CloseIcon, DashboardIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
 import { StatusDot } from './ProjectRow'
 import { closeTitle, closeWord } from '@/lib/closeShell'
+import { NewMenu, type NewMenuItem } from './NewMenu'
 
 /** The pinned Dashboard tab: the dashboard's screens, in the strip with the terminals. */
 export interface DashboardTab {
@@ -61,6 +62,8 @@ export interface TabStripProps {
   onMove: (id: string, toIndex: number) => void
   onNewAgent: () => void
   onNewShell: () => void
+  /** The + menu's rows; New agent and New shell when absent. */
+  newItems?: readonly NewMenuItem[]
   onToggleInspector: () => void
   /** The tab in front shows its chat instead of its terminal (WP-14). */
   chatOpen?: boolean
@@ -109,7 +112,7 @@ export function TabStrip(props: TabStripProps) {
       aria-label="Terminals"
       className={`app-strip flex h-[40px] shrink-0 items-end gap-0.5 bg-[var(--app-chrome-bg)] pr-2 ${props.sidebarOpen ? 'pl-2' : 'pl-[max(8px,calc(var(--caprock-traffic-lights-inset,0px)+2px))]'}`}
     >
-      <div className="flex min-w-0 flex-1 items-end gap-0.5 overflow-hidden" data-tauri-drag-region>
+      <div className="flex min-w-0 flex-1 items-end gap-1 overflow-hidden" data-tauri-drag-region>
         {props.dashboard && (
           <div
             role="tab"
@@ -121,7 +124,7 @@ export function TabStrip(props: TabStripProps) {
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') props.dashboard!.onActivate() }}
             title={`${props.dashboard.label} — ⇧⌘D`}
             className={`group relative flex h-[32px] shrink-0 cursor-default select-none items-center gap-2 rounded-t-[9px] pl-3 pr-1.5 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
-              props.dashboard.active ? 'app-tab-front bg-bg text-fg' : 'text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'
+              props.dashboard.active ? 'app-tab-front bg-bg font-medium text-fg' : 'app-tab-back text-fg-muted hover:text-fg'
             }`}
           >
             <DashboardIcon size={13} className="text-fg-faint" />
@@ -164,7 +167,7 @@ export function TabStrip(props: TabStripProps) {
               title={`${file ?? title}${label?.branch ? ` · ${label.branch}` : ''}${project ? ` · ${project}` : ''}${i < 9 ? ` — ⌘${i + 1}` : ''}`}
               data-project={t.projectId}
               className={`group relative flex h-[32px] min-w-[112px] max-w-[260px] flex-1 basis-[200px] cursor-default select-none items-center gap-2 rounded-t-[9px] pl-3 pr-1.5 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
-                active ? (file !== undefined ? 'app-tab-front bg-bg text-fg' : 'app-tab-front app-slab text-fg') : 'text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'
+                active ? (file !== undefined ? 'app-tab-front bg-bg font-medium text-fg' : 'app-tab-front app-slab font-medium text-fg') : 'app-tab-back text-fg-muted hover:text-fg'
               } ${dragging === t.id ? 'opacity-60' : ''}`}
             >
               {file !== undefined ? (
@@ -195,9 +198,11 @@ export function TabStrip(props: TabStripProps) {
             </div>
           )
         })}
-        <div className="mb-1 ml-1 flex shrink-0 items-center gap-0.5">
-          <StripButton label="New agent (⇧⌘N)" onClick={props.onNewAgent}><PlusIcon size={15} /></StripButton>
-          <StripButton label="New shell (⌘T)" onClick={props.onNewShell}><TerminalIcon size={15} /></StripButton>
+        <div className="mb-[5px] ml-1.5 flex shrink-0 items-center">
+          <NewMenu items={props.newItems ?? [
+            { id: 'agent', label: 'New agent', hint: '⇧⌘N', icon: <PlusIcon size={13} />, run: props.onNewAgent },
+            { id: 'shell', label: 'New shell', hint: '⌘T', icon: <TerminalIcon size={13} />, run: props.onNewShell },
+          ]} />
         </div>
       </div>
       <div className="mb-1 flex shrink-0 items-center gap-0.5">

@@ -254,6 +254,10 @@ type Settings struct {
 	// personal — ~/dev for one person, ~/src or /work for another — and because
 	// the narrower it is, the less this endpoint can be asked. See browse.go.
 	BrowseRoot string `json:"browse_root,omitempty"`
+	// DefaultFolder is where the Add project sheet starts: its folder field,
+	// a new project's parent, a clone's destination and the folder browser.
+	// Empty means the home folder. A leading ~ is the home folder.
+	DefaultFolder string `json:"default_folder,omitempty"`
 	// Terminal is the terminal application a session opens in when the user
 	// asks for their own terminal: an id from GET /v1/terminals, or empty for
 	// the first one installed.
@@ -428,6 +432,7 @@ func New(d Deps) *Server {
 	// Picking a folder without typing its path: see browse.go for what stops
 	// this being a filesystem-read API.
 	m.HandleFunc("GET /v1/browse", s.handleBrowse)
+	m.HandleFunc("GET /v1/browse/stat", s.handleBrowseStat)
 	m.HandleFunc("GET /v1/recent-dirs", s.handleRecentDirs)
 	m.HandleFunc("GET /v1/status", s.handleStatus)
 	m.HandleFunc("GET /v1/storage", s.handleStorage)
@@ -1158,6 +1163,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		CapUSDPerDay    *float64 `json:"cap_usd_per_day"`
 		WindowStopPct   *int     `json:"window_stop_pct"`
 		BrowseRoot      *string  `json:"browse_root"`
+		DefaultFolder   *string  `json:"default_folder"`
 		Terminal        *string  `json:"terminal"`
 		Editor          *string  `json:"editor"`
 		SpawnMode       *string  `json:"spawn_permission_mode"`
@@ -1219,6 +1225,15 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.BrowseRoot != nil {
 		in.BrowseRoot = *patch.BrowseRoot
+	}
+	if patch.DefaultFolder != nil {
+		// A path, never a command: absolute or ~-led, one line, no NUL.
+		v := strings.TrimSpace(*patch.DefaultFolder)
+		if v != "" && !validDefaultFolder(v) {
+			s.failCode(w, http.StatusBadRequest, errors.New("default_folder must be empty, an absolute path or one starting with ~"))
+			return
+		}
+		in.DefaultFolder = v
 	}
 	if patch.Terminal != nil {
 		v := strings.TrimSpace(*patch.Terminal)

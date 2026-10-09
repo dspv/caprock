@@ -1370,6 +1370,7 @@ func (a *settingsAdapter) Get() api.Settings {
 		CapUSDPerDay:     c.CapUSDPerDay,
 		WindowStopPct:    c.WindowStop(),
 		BrowseRoot:       c.BrowseRoot,
+		DefaultFolder:    c.DefaultFolder,
 		Terminal:         c.Terminal,
 		Editor:           c.Editor,
 		SpawnMode:        c.SpawnPermissionMode,
@@ -1421,6 +1422,7 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 		a.d.opt.Config.WindowStopPct = &pct
 	}
 	a.d.opt.Config.BrowseRoot = strings.TrimSpace(in.BrowseRoot)
+	a.d.opt.Config.DefaultFolder = strings.TrimSpace(in.DefaultFolder)
 	a.d.opt.Config.Terminal = in.Terminal
 	a.d.opt.Config.Editor = in.Editor
 	a.d.opt.Config.SpawnPermissionMode = in.SpawnMode

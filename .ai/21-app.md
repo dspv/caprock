@@ -140,8 +140,52 @@ One window, three regions:
   it replaced the whole workspace, and the first tester read that as every
   terminal closing, translated); in it, Now leaves out the session cards and
   the projects panel the sidebar already shows. *Quick chat* (⌥⌘N) under
-  *Add project* starts a Claude session with no folder to pick, in a tab
-  (the tester could not find how to, translated).
+  *Add project* starts a session with no folder to pick, in a tab (the
+  tester could not find how to, translated).
+- **Quick chat: vendor and model** (owner, 2026-10-09: "three buttons to
+  switch between model vendors — Claude, Codex, Gemini — and a model in two
+  clicks", translated). Decision: **⌥⌘N never asks** — it starts at once on
+  the vendor and model used last (else Claude Code on its default). A click
+  on *Quick chat* (sidebar, the strip's + menu, the palette's *Quick chat
+  with…*) opens a chooser sheet (`components/QuickChat.tsx`): a segmented
+  row of the agents installed here (`useSpawnableAgents`), the selected
+  one's models under it with the New agent sheet's labels (Codex's from
+  `GET /v1/agents/models`, OpenCode its own default). A click on a model
+  starts the chat on it — another vendor's model is two clicks, the last
+  vendor's one; Enter starts on the highlighted model; ← → or ⌘1–4 switch
+  the agent, ↑ ↓ the model, Esc closes. The choice is kept per viewer in
+  localStorage (`caprock.quickchat`). Rejected: a header on the started tab
+  that restarts the chat on another model — it starts a process only to kill
+  it, and cannot change vendor once a conversation has begun.
+- **Tab strip** (owner, 2026-10-09: "tabs are barely noticeable", and "the
+  + amber, or better a dropdown", translated). The tab in front has a 2px
+  amber top edge over its hairline frame and a medium-weight label
+  (`.app-tab-front`); every other tab is a faintly filled surface with its own
+  hairline frame (`.app-tab-back`), 4px apart, so each reads as a tab in both
+  themes. The + is an amber outline (`.app-primary`, like the sidebar's New
+  agent) that opens a menu (`components/NewMenu.tsx`, portalled): *New
+  agent* ⇧⌘N, *Quick chat…* ⌥⌘N (the chooser; the key itself skips it),
+  *New shell* ⌘T, *Open file…*, *Add project* ⌘O, each with its key; ↑ ↓,
+  Enter, Esc. The separate >_ new-shell button is gone: it is the menu's
+  third row and ⌘T, and two lone icons side by side read as one ambiguous
+  control.
+- **Add project sheet** (owner, 2026-10-09). The folder field starts on the
+  default folder — `settings.default_folder` (Settings → Projects), else
+  `~/` — and is focused; *Set … as default* beside it keeps the field's
+  folder (an existing folder's own, the parent of a new project or a clone's
+  destination). Under it, 250 ms after the last key, what is there (`GET
+  /v1/browse/stat`, `lib/addproject.ts`): *no such folder* / *not a folder* /
+  *already in Caprock* for an existing folder; *will be created* or *exists —
+  add it as an existing folder instead* for a new project; *will be
+  created*, *exists, empty — will clone here* or *exists — not empty, clone
+  will fail* (red) for a clone. Browse is a folder browser: it opens on the
+  default folder, a breadcrumb and ↑ walk up, a click selects, a
+  double-click, Enter or › goes in, *Choose* picks the selection or the
+  folder shown; ↑ ↓ ← → from the keyboard, hidden folders never listed.
+  Recent leaves out temp folders, Caprock's data directory and
+  `.claude/worktrees` (§ contracts, `/v1/recent-dirs`). Keys, shown on the
+  buttons: ⌘↩ Add / Create / Clone from anywhere in the sheet, Esc Cancel,
+  ⌘1 ⌘2 ⌘3 the modes, ⌘B Recent ⇄ Browse (Ctrl off macOS).
 - **Today strip** (owner, 2026-10-08: "useful data on the left too",
   translated). Under *New agent*: today's spend across every agent, agents
   running and waiting on you, and Claude Code's 5-hour and weekly windows

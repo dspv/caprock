@@ -52,7 +52,7 @@ var viewerMay = map[string]bool{
 // What a controller may do on top (ADR-034): work on a session, nothing about
 // the machine.
 var controllerMayAlso = map[string]bool{
-	"POST /v1/agents": true, "GET /v1/agents/models": true, "GET /v1/recent-dirs": true, "GET /v1/browse": true,
+	"POST /v1/agents": true, "GET /v1/agents/models": true, "GET /v1/recent-dirs": true, "GET /v1/browse": true, "GET /v1/browse/stat": true,
 	"GET /v1/sessions/{id}/relay": true, "GET /v1/agents/{id}/term": true,
 	"POST /v1/agents/{id}/input": true, "POST /v1/agents/{id}/signal": true, "POST /v1/paste": true,
 	"POST /v1/agents/{id}/permission": true,
@@ -548,6 +548,7 @@ func TestPairingFromThisMachinesOwnAddressSaysSo(t *testing.T) {
 // A phone's Recent list holds only folders under home: anything else would be
 // refused when picked. The machine's list is unchanged.
 func TestAControllersRecentFoldersAreUnderHome(t *testing.T) {
+	keepTempDirs(t)
 	st, err := store.Open(context.Background(), ":memory:", nil)
 	if err != nil {
 		t.Fatal(err)

@@ -555,6 +555,8 @@ export interface Settings {
   memory_holdout_pct?: number
   /** Where the folder picker may look. Empty means the home directory. */
   browse_root?: string
+  /** Where the Add project sheet starts (its field, a new project, a clone, Browse). Empty: home. */
+  default_folder?: string
   /** The terminal app sessions open in ("ghostty", "iterm2", ...). Empty: the first installed. */
   terminal?: string
   /** The editor "Open in editor" uses ("vscode", "zed", ...). Empty: the first installed. */
@@ -856,6 +858,8 @@ export interface StorageWindow { days: number; events: number; payload_bytes: nu
 /** One directory the folder picker may offer. */
 export interface BrowseEntry { name: string; path: string; repo: boolean }
 export interface BrowseResponse { dir: string; parent: string; root: string; entries: BrowseEntry[] }
+/** What a typed path is (GET /v1/browse/stat), held to the browse root: a 404 outside it. */
+export interface BrowseStat { path: string; exists: boolean; is_dir: boolean; empty: boolean; parent_exists: boolean; guarded?: boolean; project_id?: number; project_name?: string }
 /** A directory Caprock has already seen sessions run in. */
 export interface RecentDir { dir: string; name: string; sessions: number; last_event_at: number }
 
@@ -1106,6 +1110,8 @@ export const api = {
   gemini: () => get<GeminiStatus>('/v1/gemini'),
   askGemini: (prompt: string, model?: string) => post<GeminiReply>('/v1/gemini/ask', { prompt, model }),
   browse: (dir = '') => get<BrowseResponse>(`/v1/browse${dir ? `?dir=${encodeURIComponent(dir)}` : ''}`),
+  /** Whether a path exists, is a folder, is empty, is already a project. */
+  browseStat: (path: string) => get<BrowseStat>(`/v1/browse/stat?path=${encodeURIComponent(path)}`),
   recentDirs: () => get<RecentDir[]>('/v1/recent-dirs'),
   history: (range: 'today' | '7d' | '30d' | 'all' = 'all') => get<History>(`/v1/history?range=${range}`),
   /** `start` is the first local day (YYYY-MM-DD); omitted, the seven days ending today. */

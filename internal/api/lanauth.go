@@ -321,6 +321,7 @@ var controllerRoutes = map[string]bool{
 	"GET /v1/agents/models":       true, // the start form's model list
 	"GET /v1/recent-dirs":         true, // the start form's project list
 	"GET /v1/browse":              true, // the start form's folder picker, rooted inside home (handleBrowse)
+	"GET /v1/browse/stat":         true, // the start form's "exists / will be created", same root (handleBrowseStat)
 	"GET /v1/sessions/{id}/relay": true, // the brief a relay offers, to read before starting it
 	"GET /v1/agents/{id}/term":    true, // the terminal: output, and typing
 	"POST /v1/agents/{id}/input":  true,
