@@ -1,8 +1,8 @@
 /**
  * The spend scrubber's model (.ai/04-ui.md § Inspector, the cockpit's spend
- * spark): the session's priced model calls as bars, which bar is under the
+ * spark): the session's priced model calls as bars, which call is under the
  * pointer, how thousands of calls fold into the width there is, and what the
- * readout says about the call — or the run of calls — under the cursor.
+ * readout says about that one call. Bars fold; the cursor never does.
  *
  * Kept apart from the component that paints it so the arithmetic is tested.
  * Nothing here is estimated: a field the data does not carry is left out of
@@ -105,14 +105,35 @@ export function bucketize(n: number, slots: number): Bucket[] {
   return out
 }
 
-/** The bar under `x` pixels from the left of a chart `width` wide with `bars` bars, clamped to the ends. */
-export function barAt(x: number, width: number, bars: number): number {
-  if (bars <= 0) return -1
-  if (!(width > 0) || !Number.isFinite(x)) return bars - 1
-  return Math.max(0, Math.min(bars - 1, Math.floor((x / width) * bars)))
+/**
+ * The call under `x` pixels from the left of a chart `width` wide holding
+ * `n` calls, clamped to the ends: always one exact call, however many calls
+ * a bar draws. -1 when there are none; the newest when the width is unknown.
+ */
+export function callAt(x: number, width: number, n: number): number {
+  if (n <= 0) return -1
+  if (!(width > 0) || !Number.isFinite(x)) return n - 1
+  return Math.max(0, Math.min(n - 1, Math.floor((x / width) * n)))
 }
 
-/** What a bar stands for: one call's cost, or the sum of its run. */
+/** The bar that draws call `i`: the last bucket starting at or before it. */
+export function bucketOf(buckets: readonly Bucket[], i: number): number {
+  let lo = 0, hi = buckets.length - 1
+  if (hi < 0) return -1
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1
+    if ((buckets[mid]?.from ?? Infinity) <= i) lo = mid
+    else hi = mid - 1
+  }
+  return lo
+}
+
+/** Where the cursor line for call `i` of `n` sits across `width`: the middle of the call's own share of the width, inside its bar. */
+export function cursorX(i: number, n: number, width: number): number {
+  return n > 0 ? ((i + 0.5) / n) * width : 0
+}
+
+/** What a bar draws: one call's cost, or the sum of its run. */
 export function bucketCost(calls: readonly CallPoint[], b: Bucket): number {
   let sum = 0
   for (let i = b.from; i < b.to; i++) sum += calls[i]?.cost ?? 0
@@ -121,16 +142,16 @@ export function bucketCost(calls: readonly CallPoint[], b: Bucket): number {
 
 /** The readout's lines; any of the optional ones is absent when the data does not say. */
 export interface Readout {
-  /** "Call 12 of 340" or "Calls 1,201–1,240 of 3,000". */
+  /** "Call 412 of 640". */
   title: string
-  /** "$0.08", or "$1.23 total" for a run. */
+  /** "$0.08". */
   cost: string
-  /** "14:32:05 · 3m ago", or the run's first and last times. */
+  /** "14:32:05 · 3m ago". */
   when?: string
   model?: string
   /** "in 3 · cache read 120k · cache write 2.1k · out 400". */
   tokens?: string
-  /** "Bash go test ./... · Read main.go"; one call's only. */
+  /** "Bash go test ./... · Read main.go". */
   did?: string
 }
 
@@ -159,42 +180,16 @@ function didLine(c: CallPoint): string | undefined {
   return more > 0 ? `${shown} · +${more} more` : shown
 }
 
-/** What the readout says about bar `b` of `calls`. */
-export function readout(calls: readonly CallPoint[], b: Bucket, now: number): Readout | undefined {
-  const total = n0.format(calls.length)
-  const c = calls[b.from]
+/** What the readout says about call `i` of `calls`: always one call, never a run. */
+export function readout(calls: readonly CallPoint[], i: number, now: number): Readout | undefined {
+  const c = calls[i]
   if (!c) return undefined
-  if (b.to - b.from <= 1) {
-    const r: Readout = { title: `Call ${n0.format(b.from + 1)} of ${total}`, cost: fmtUSD(c.cost) }
-    if (c.ts > 0) r.when = `${clock(c.ts)} · ${fmtAgo(c.ts, now)}`
-    if (c.model) r.model = c.model
-    const tk = tokensLine(c.tokens)
-    if (tk) r.tokens = tk
-    const did = didLine(c)
-    if (did) r.did = did
-    return r
-  }
-  const run = calls.slice(b.from, b.to)
-  const lastCall = run[run.length - 1] ?? c
-  const r: Readout = {
-    title: `Calls ${n0.format(b.from + 1)}–${n0.format(b.to)} of ${total}`,
-    cost: `${fmtUSD(bucketCost(calls, b))} total`,
-  }
-  const first = c.ts, last = lastCall.ts
-  if (first > 0 && last > 0) r.when = `${clock(first)}–${clock(last)} · ${fmtAgo(last, now)}`
-  const models = new Set(run.map((c) => c.model).filter(Boolean))
-  if (models.size === 1 && run.every((c) => c.model)) r.model = [...models][0]
-  else if (models.size > 1) r.model = `${models.size} models`
-  // Token sums only when every call in the run reports them: a partial sum would read as the whole.
-  if (run.every((c) => c.tokens)) {
-    const sum: TokenDelta = { in: 0, out: 0, cache_read: 0, cache_write: 0 }
-    for (const c of run) {
-      const t = c.tokens as TokenDelta
-      sum.in += t.in; sum.out += t.out; sum.cache_read += t.cache_read; sum.cache_write += t.cache_write
-    }
-    r.tokens = tokensLine(sum)
-  }
-  // No tool line for a run: a call without a recorded link reads the same as
-  // one that asked for nothing, so a count over the run could only undercount.
+  const r: Readout = { title: `Call ${n0.format(i + 1)} of ${n0.format(calls.length)}`, cost: fmtUSD(c.cost) }
+  if (c.ts > 0) r.when = `${clock(c.ts)} · ${fmtAgo(c.ts, now)}`
+  if (c.model) r.model = c.model
+  const tk = tokensLine(c.tokens)
+  if (tk) r.tokens = tk
+  const did = didLine(c)
+  if (did) r.did = did
   return r
 }

@@ -60,3 +60,42 @@ func TestLineBranchTrustsTheCheckoutNotTheTranscript(t *testing.T) {
 }
 
 func q(s string) string { return `"` + filepath.ToSlash(s) + `"` }
+
+// A burst of lines from one folder reads HEAD once; the answer stands for two
+// seconds, then a switched checkout is read again. Folders are cached apart.
+func TestBranchCacheReadsAFolderOncePerTwoSeconds(t *testing.T) {
+	reads := map[string]int{}
+	branch := "master"
+	c := &branchCache{read: func(dir string) (string, bool) { reads[dir]++; return branch, true }}
+	t0 := time.Date(2026, 10, 9, 17, 35, 0, 0, time.UTC)
+
+	for i := 0; i < 50; i++ {
+		if b, ok := c.at("/w/caprock", t0.Add(time.Duration(i)*30*time.Millisecond)); !ok || b != "master" {
+			t.Fatalf("line %d: %q %v", i, b, ok)
+		}
+	}
+	if reads["/w/caprock"] != 1 {
+		t.Fatalf("a 1.5 s burst read HEAD %d times, want 1", reads["/w/caprock"])
+	}
+
+	branch = "feat/x"
+	if b, _ := c.at("/w/caprock", t0.Add(1900*time.Millisecond)); b != "master" {
+		t.Errorf("within the TTL = %q, want the cached master", b)
+	}
+	if b, _ := c.at("/w/caprock", t0.Add(2*time.Second)); b != "feat/x" {
+		t.Errorf("after the TTL = %q, want the switched branch", b)
+	}
+	if reads["/w/caprock"] != 2 {
+		t.Errorf("reads = %d, want 2", reads["/w/caprock"])
+	}
+
+	c.at("/w/other", t0.Add(2*time.Second))
+	if reads["/w/other"] != 1 {
+		t.Errorf("another folder was answered from the first one's entry")
+	}
+	// A clock that went backwards does not keep a stale entry alive.
+	c.at("/w/other", t0)
+	if reads["/w/other"] != 2 {
+		t.Errorf("an entry from the future was trusted")
+	}
+}

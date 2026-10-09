@@ -11,11 +11,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 - **Scrub through a session's spend.** Hover the small per-call spark beside
   *Spent this session* in the app's cockpit (or focus it, or press it on a
-  phone) and it opens over the block into every priced call of the session,
-  one bar per call — runs of calls once there are more than the width holds.
-  Moving across it reads the call under the cursor: *Call N of M*, when, the
-  model, what it cost, its tokens and the tools it asked for (*Bash go test
-  ./...*); ←/→ step bar by bar, Esc or leaving closes it. A field the data
+  phone) and it opens over the block into every priced call of the session.
+  Bars fold into runs once there are more calls than the width holds, but
+  the cursor reads one exact call: *Call 412 of 640*, when, the model, what
+  it cost, its tokens and the tools it asked for (*Bash go test ./...*);
+  ←/→ step one call at a time, Esc or leaving closes it. A field the data
   does not carry is left out, never shown as $0. The series comes from a
   new lean endpoint, `GET /v1/sessions/{id}/calls`.
 - **See the subagents at a glance.** Under the cockpit's state line, one

@@ -447,8 +447,45 @@ func lineBranch(l *Line, fallbackTs, now time.Time) string {
 	if d := now.Sub(l.Ts(fallbackTs)); d > liveBranchWindow || d < -liveBranchWindow {
 		return l.GitBranch
 	}
-	if b, ok := store.BranchAt(l.Cwd); ok {
+	if b, ok := checkoutBranches.at(l.Cwd, now); ok {
 		return b
 	}
 	return l.GitBranch
+}
+
+// branchCacheTTL is how long a folder's branch, once read, answers for it.
+// A transcript arrives in bursts — dozens of lines a second while a turn
+// streams — and each would otherwise stat and read HEAD again; a checkout
+// switched mid-burst is picked up two seconds later.
+const branchCacheTTL = 2 * time.Second
+
+// branchCache remembers the branch read for a folder (store.BranchAt) for
+// branchCacheTTL. Safe for the tailers' concurrent use.
+type branchCache struct {
+	mu   sync.Mutex
+	read func(dir string) (string, bool)
+	m    map[string]cachedBranch
+}
+
+type cachedBranch struct {
+	branch string
+	ok     bool
+	at     time.Time
+}
+
+var checkoutBranches = &branchCache{read: store.BranchAt}
+
+func (c *branchCache) at(dir string, now time.Time) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if e, hit := c.m[dir]; hit && now.Sub(e.at) < branchCacheTTL && !now.Before(e.at) {
+		return e.branch, e.ok
+	}
+	b, ok := c.read(dir)
+	if c.m == nil || len(c.m) > 256 {
+		// Folders are few; a map that grew past that is cleared rather than swept.
+		c.m = map[string]cachedBranch{}
+	}
+	c.m[dir] = cachedBranch{branch: b, ok: ok, at: now}
+	return b, ok
 }

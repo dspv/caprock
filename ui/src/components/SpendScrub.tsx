@@ -8,7 +8,7 @@
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { api, type Event } from '@/lib/api'
-import { barAt, bucketCost, bucketize, callsFromEvents, callsFromSeries, mergeCalls, readout, slotsFor, type CallPoint } from '@/lib/scrub'
+import { bucketCost, bucketOf, bucketize, callAt, callsFromEvents, callsFromSeries, cursorX, mergeCalls, readout, slotsFor, type CallPoint } from '@/lib/scrub'
 
 const SPARK_TURNS = 28
 const CHART_H = 64
@@ -49,27 +49,29 @@ export function SpendSpark({ sessionId, events, now }: { sessionId: string; even
   const buckets = useMemo(() => bucketize(calls.length, slotsFor(width)), [calls.length, width])
   const sums = useMemo(() => buckets.map((b) => bucketCost(calls, b)), [buckets, calls])
   const max = Math.max(...sums, 0.0001)
-  // The cursor is a bar index; undefined follows the newest.
+  // The cursor is a CALL index, never a bar's: bars fold to fit the width, the
+  // readout always names one call. Undefined follows the newest.
   const [cursor, setCursor] = useState<number | undefined>(undefined)
-  const at = cursor === undefined ? buckets.length - 1 : Math.min(cursor, buckets.length - 1)
-  const bar = buckets[at]
-  const r = open && bar ? readout(calls, bar, now) : undefined
+  const last = calls.length - 1
+  const at = cursor === undefined ? last : Math.min(cursor, last)
+  const atBar = bucketOf(buckets, at)
+  const r = open && at >= 0 ? readout(calls, at, now) : undefined
 
   const close = () => { setHover(false); setCursor(undefined) }
   const moveTo = (clientX: number) => {
     const el = chart.current
     if (!el) return
     const box = el.getBoundingClientRect()
-    setCursor(barAt(clientX - box.left, box.width, buckets.length))
+    setCursor(callAt(clientX - box.left, box.width, calls.length))
   }
 
   const onKey = (e: KeyboardEvent) => {
     if (e.key === 'Escape') { setDismissed(true); setCursor(undefined); e.stopPropagation(); return }
     if (!open) return
     const step = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0
-    if (step) { setCursor(Math.max(0, Math.min(buckets.length - 1, at + step))); e.preventDefault() }
+    if (step) { setCursor(Math.max(0, Math.min(last, at + step))); e.preventDefault() }
     else if (e.key === 'Home') { setCursor(0); e.preventDefault() }
-    else if (e.key === 'End') { setCursor(buckets.length - 1); e.preventDefault() }
+    else if (e.key === 'End') { setCursor(last); e.preventDefault() }
   }
   // A finger presses the spark and drags across the card: the spark keeps the pointer.
   const onDown = (e: PointerEvent<HTMLDivElement>) => {
@@ -89,7 +91,7 @@ export function SpendSpark({ sessionId, events, now }: { sessionId: string; even
         role="slider"
         aria-label="Spend per model call: hover, or use the arrow keys, to read each call"
         aria-valuemin={1}
-        aria-valuemax={Math.max(1, buckets.length)}
+        aria-valuemax={Math.max(1, calls.length)}
         aria-valuenow={at + 1}
         aria-valuetext={r ? `${r.title}, ${r.cost}${r.when ? `, ${r.when}` : ''}` : undefined}
         className="mb-[3px] shrink-0 cursor-ew-resize touch-none rounded-[3px] outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]"
@@ -127,14 +129,14 @@ export function SpendSpark({ sessionId, events, now }: { sessionId: string; even
             {buckets.map((b, i) => {
               const slot = width / buckets.length
               const h = Math.max(1, ((sums[i] ?? 0) / max) * (CHART_H - 2))
-              const on = open && i === at
+              const on = open && i === atBar
               return (
                 <rect key={b.from} x={i * slot} y={CHART_H - h} width={Math.max(1, slot - (slot > 2.5 ? 1 : 0))} height={h}
                   className="fill-accent" opacity={on ? 1 : 0.42} />
               )
             })}
             {open && at >= 0 && (
-              <line x1={(at + 0.5) * (width / buckets.length)} x2={(at + 0.5) * (width / buckets.length)} y1={0} y2={CHART_H}
+              <line x1={cursorX(at, calls.length, width)} x2={cursorX(at, calls.length, width)} y1={0} y2={CHART_H}
                 className="stroke-fg-muted" strokeWidth={1} strokeDasharray="2 2" vectorEffect="non-scaling-stroke" />
             )}
           </svg>

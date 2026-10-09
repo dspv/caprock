@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Event } from './api'
-import { barAt, bucketCost, bucketize, callsFromEvents, callsFromSeries, clock, mergeCalls, readout, slotsFor, type CallPoint } from './scrub'
+import { bucketCost, bucketOf, bucketize, callAt, callsFromEvents, callsFromSeries, clock, cursorX, mergeCalls, readout, slotsFor, type CallPoint } from './scrub'
 
 const T0 = Date.UTC(2026, 9, 9, 12, 0, 0)
 const pt = (id: number, cost: number, p: Partial<CallPoint> = {}): CallPoint => ({ id, ts: T0 + id * 1000, cost, ...p })
@@ -30,21 +30,48 @@ describe('bucketize', () => {
   })
 })
 
-describe('barAt', () => {
-  it('reads the bar under the pointer', () => {
-    expect(barAt(0, 100, 10)).toBe(0)
-    expect(barAt(9.9, 100, 10)).toBe(0)
-    expect(barAt(10, 100, 10)).toBe(1)
-    expect(barAt(55, 100, 10)).toBe(5)
+describe('callAt', () => {
+  it('reads the exact call under the pointer, whatever the bars fold', () => {
+    expect(callAt(0, 100, 10)).toBe(0)
+    expect(callAt(9.9, 100, 10)).toBe(0)
+    expect(callAt(10, 100, 10)).toBe(1)
+    expect(callAt(55, 100, 10)).toBe(5)
+    // 640 calls across 290 px: one pixel is about two calls, still one exact call.
+    expect(callAt(186, 290, 640)).toBe(410)
+    expect(callAt(186.5, 290, 640)).toBe(411)
   })
   it('clamps past either end', () => {
-    expect(barAt(-20, 100, 10)).toBe(0)
-    expect(barAt(100, 100, 10)).toBe(9)
-    expect(barAt(500, 100, 10)).toBe(9)
+    expect(callAt(-20, 100, 10)).toBe(0)
+    expect(callAt(100, 100, 10)).toBe(9)
+    expect(callAt(500, 100, 10)).toBe(9)
   })
-  it('falls back to the newest with no width, and to nothing with no bars', () => {
-    expect(barAt(5, 0, 4)).toBe(3)
-    expect(barAt(5, 100, 0)).toBe(-1)
+  it('falls back to the newest with no width, and to nothing with no calls', () => {
+    expect(callAt(5, 0, 4)).toBe(3)
+    expect(callAt(5, 100, 0)).toBe(-1)
+  })
+})
+
+describe('bucketOf and cursorX', () => {
+  it('finds the bar drawing a call', () => {
+    const b = bucketize(640, 96)
+    for (const i of [0, 6, 7, 411, 639]) {
+      const k = bucketOf(b, i)
+      expect(b[k]!.from).toBeLessThanOrEqual(i)
+      expect(b[k]!.to).toBeGreaterThan(i)
+    }
+    expect(bucketOf([], 3)).toBe(-1)
+  })
+  it('puts the cursor at the call\'s own place inside its bar', () => {
+    expect(cursorX(0, 10, 100)).toBe(5)
+    expect(cursorX(9, 10, 100)).toBe(95)
+    const b = bucketize(640, 96)
+    const width = 288, slot = width / b.length
+    const k = bucketOf(b, 411)
+    const x = cursorX(411, 640, width)
+    expect(x).toBeGreaterThanOrEqual(k * slot)
+    expect(x).toBeLessThan((k + 1) * slot)
+    expect(callAt(x, width, 640)).toBe(411)
+    expect(bucketCost([pt(1, 0.25), pt(2, 0.5), pt(3, 1)], { from: 1, to: 3 })).toBe(1.5)
   })
 })
 
@@ -58,7 +85,7 @@ describe('readout', () => {
         tools: [{ tool: 'Bash', detail: 'go test ./...' }, { tool: 'Read', detail: 'main.go' }], toolCount: 3,
       }),
     ]
-    const r = readout(calls, { from: 1, to: 2 }, now)!
+    const r = readout(calls, 1, now)!
     expect(r.title).toBe('Call 2 of 2')
     expect(r.cost).toBe('$0.08')
     expect(r.when).toBe(`${clock(T0 + 2000)} · ${'2m ago'}`)
@@ -67,28 +94,13 @@ describe('readout', () => {
     expect(r.did).toBe('Bash go test ./... · Read main.go · +1 more')
   })
   it('leaves out what the data does not say, never a zero', () => {
-    const r = readout([pt(1, 0.02)], { from: 0, to: 1 }, now)!
+    const r = readout([pt(1, 0.02)], 0, now)!
     expect(r).toEqual({ title: 'Call 1 of 1', cost: '$0.02', when: expect.any(String) })
   })
-  it('states a run as a range with its sum, labelled a total', () => {
-    const calls = [pt(1, 0.25, { model: 'Opus 5.5' }), pt(2, 0.5, { model: 'Opus 5.5' }), pt(3, 1, { model: 'Sonnet 5' })]
-    const r = readout(calls, { from: 0, to: 3 }, now)!
-    expect(r.title).toBe('Calls 1–3 of 3')
-    expect(r.cost).toBe('$1.75 total')
-    expect(r.model).toBe('2 models')
-    expect(r.tokens).toBeUndefined()
-    expect(r.did).toBeUndefined()
-    expect(bucketCost(calls, { from: 1, to: 3 })).toBe(1.5)
-  })
-  it('sums a run\'s tokens only when every call reports them', () => {
-    const t = { in: 1, out: 2, cache_read: 3, cache_write: 4 }
-    expect(readout([pt(1, 1, { tokens: t }), pt(2, 1, { tokens: t })], { from: 0, to: 2 }, now)!.tokens)
-      .toBe('in 2 · cache read 6 · cache write 8 · out 4')
-    expect(readout([pt(1, 1, { tokens: t }), pt(2, 1)], { from: 0, to: 2 }, now)!.tokens).toBeUndefined()
-  })
-  it('formats large positions with separators', () => {
+  it('names one call even when thousands fold into each bar', () => {
     const calls = Array.from({ length: 3000 }, (_, i) => pt(i + 1, 0.01))
-    expect(readout(calls, { from: 1200, to: 1240 }, now)!.title).toBe('Calls 1,201–1,240 of 3,000')
+    expect(readout(calls, 1200, now)!.title).toBe('Call 1,201 of 3,000')
+    expect(readout(calls, 3000, now)).toBeUndefined()
   })
 })
 
