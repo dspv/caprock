@@ -452,8 +452,10 @@ folder, your Music or Photos library, or a network or removable volume
 Code, Codex, a shell — asks in its own name: Caprock starts each one
 responsible for itself, the way iTerm2 does, so the prompt says "claude" or
 "codex", not "caprock", and Claude Code keeps your answer across its
-updates. Caprock itself never reads those places in the background; it
-asks only for a folder you open in it.
+updates. Caprock itself asks only for a folder you open in it, and for
+Desktop, Documents or Downloads when a session runs there (it reads up that
+folder to group the session under its repository). It never reads your Music
+or Photos library, cloud storage or a volume in the background.
 
 - **What to allow.** Allow the folders your projects live in, or the ones
   you ask an agent to read. Saying no does not break Caprock; that session
@@ -461,8 +463,8 @@ asks only for a folder you open in it.
 - **Sessions started before this change** still ask as "caprock" until they
   end.
 - **Why it asks again after an update.** Caprock is not yet signed with an
-  Apple Developer ID, so to macOS each release is a new program. For a
-  folder you open in Caprock itself, it asks once per release.
+  Apple Developer ID, so to macOS each release is a new program. For a folder
+  you open in Caprock, or one a session runs in, it asks once per release.
 - **Why there are several "caprock" entries without an icon.** Each entry
   is a `caprock` binary at a different place: older Homebrew releases
   (Homebrew keeps each version at its own path), the app's daemon, and

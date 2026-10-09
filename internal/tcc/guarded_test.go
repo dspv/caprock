@@ -69,7 +69,7 @@ func TestGuardedPlacesAsWritten(t *testing.T) {
 		"/Users/u/Library/Application Support/x":         false,
 		"/VolumesX":                                      false,
 	} {
-		if got := guardedText(homes, dir); got != want {
+		if got := guardedText(homes, allRel, dir); got != want {
 			t.Errorf("%q: got %v, want %v", dir, got, want)
 		}
 	}
@@ -83,7 +83,7 @@ func TestOnlyMacOSGuardsAndOnlyAbsolutePaths(t *testing.T) {
 		{"darwin", ""},
 		{"darwin", "Documents/repo"},
 	} {
-		if _, g := resolveGuarded(c.goos, []string{"/Users/u"}, c.p, f.lstat, f.readlink); g {
+		if _, g := resolveGuarded(c.goos, []string{"/Users/u"}, allRel, c.p, f.lstat, f.readlink); g {
 			t.Errorf("%s %q: guarded", c.goos, c.p)
 		}
 	}
@@ -107,12 +107,12 @@ func TestLinksAreFollowedWithoutEnteringAGuardedPlace(t *testing.T) {
 		"/Users/u/Documents/repo": {"/Users/u/Documents/repo", true},
 	} {
 		f := newFakeFS()
-		got, g := resolveGuarded("darwin", []string{"/Users/u"}, p, f.lstat, f.readlink)
+		got, g := resolveGuarded("darwin", []string{"/Users/u"}, allRel, p, f.lstat, f.readlink)
 		if got != want.target || g != want.guarded {
 			t.Errorf("%q: got (%q, %v), want (%q, %v)", p, got, g, want.target, want.guarded)
 		}
 		for _, r := range f.read {
-			if guardedText([]string{"/Users/u"}, r) {
+			if guardedText([]string{"/Users/u"}, allRel, r) {
 				t.Errorf("%q: read %q, inside a guarded place", p, r)
 			}
 		}
@@ -122,7 +122,7 @@ func TestLinksAreFollowedWithoutEnteringAGuardedPlace(t *testing.T) {
 func TestALinkLoopOrADeadLinkIsNotGuarded(t *testing.T) {
 	for _, p := range []string{"/Users/u/dev/loop", "/Users/u/dev/missing/x"} {
 		f := newFakeFS()
-		if _, g := resolveGuarded("darwin", []string{"/Users/u"}, p, f.lstat, f.readlink); g {
+		if _, g := resolveGuarded("darwin", []string{"/Users/u"}, allRel, p, f.lstat, f.readlink); g {
 			t.Errorf("%q: guarded", p)
 		}
 	}
@@ -132,8 +132,36 @@ func TestEveryHomeIsGuarded(t *testing.T) {
 	// An isolated daemon's HOME and the account's home both count.
 	homes := []string{"/tmp/iso", "/Users/u"}
 	for _, p := range []string{"/tmp/iso/Documents/x", "/Users/u/Music/x"} {
-		if !guardedText(homes, p) {
+		if !guardedText(homes, allRel, p) {
 			t.Errorf("%q: not guarded", p)
 		}
+	}
+}
+
+// Reads up a session's own folder may enter Desktop, Documents and Downloads
+// (the first user keeps every project in Documents), never the rest.
+func TestWorkFoldersAreOpenToASessionsOwnFolder(t *testing.T) {
+	homes := []string{"/Users/u"}
+	for p, want := range map[string]bool{
+		"/Users/u/Documents/rateguard":      false,
+		"/Users/u/Desktop/x":                false,
+		"/Users/u/Downloads/repo":           false,
+		"/Users/u/Music/x":                  true,
+		"/Users/u/Pictures/x":               true,
+		"/Users/u/Library/CloudStorage/x":   true,
+		"/Users/u/Library/Mobile Documents": true,
+		"/Volumes/NAS/repo":                 true,
+	} {
+		if got := guardedText(homes, mediaRel, p); got != want {
+			t.Errorf("%q: got %v, want %v", p, got, want)
+		}
+	}
+	f := newFakeFS()
+	if _, g := resolveGuarded("darwin", homes, mediaRel, "/Users/u/dev/docsym", f.lstat, f.readlink); g {
+		t.Error("a link into Documents is a work folder too")
+	}
+	f = newFakeFS()
+	if _, g := resolveGuarded("darwin", homes, mediaRel, "/Users/u/dev/nas", f.lstat, f.readlink); !g {
+		t.Error("a link to a share stays guarded")
 	}
 }

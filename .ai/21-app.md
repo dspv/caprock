@@ -1192,7 +1192,9 @@ other places, and remembers the answer per program and per code signature
 - **The daemon's own background reads skip guarded places**
   (`tcc.Guarded`): Desktop, Documents, Downloads, iCloud Drive, cloud
   storage, Music, Movies, Pictures, `/Volumes`, and links into them. What
-  the daemon still asks for is what the user opened.
+  the daemon still asks for is what the user opened, and Desktop, Documents
+  or Downloads when a session runs there (finding its repository reads up
+  that folder, `tcc.GuardedBeyondWork`).
 - **Every release asks again.** An ad-hoc signature's designated
   requirement is its cdhash, so each build is new code to TCC.
 - **One path, one entry.** The app runs its daemon from

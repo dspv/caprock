@@ -152,12 +152,15 @@ const maxWalkUp = 40
 // findRepoRoot walks up from dir for a `.git` entry, resolving a linked
 // worktree to the repository that owns it.
 //
-// A folder macOS guards (tcc.Guarded: Documents, Music, a network volume, a
-// link into one) is not walked: this runs on ingest, in the background, and
-// the read would put a privacy prompt in the user's face for a label. The
-// session keeps its folder's name instead.
+// Only the cwd's own ancestry is read, never its siblings. A session in
+// Desktop, Documents or Downloads is walked: the user works there, and people
+// keep every project in Documents. A folder in Music, Movies, Pictures, iCloud
+// Drive, cloud storage or /Volumes, or a link into one, is not
+// (tcc.GuardedBeyondWork): this runs on ingest, in the background, and the
+// read would ask for a media library or a share for a label. The session
+// keeps its folder's name instead.
 func findRepoRoot(dir string) (string, bool) {
-	if tcc.Guarded(dir) {
+	if tcc.GuardedBeyondWork(dir) {
 		return "", false
 	}
 	for i := 0; i < maxWalkUp; i++ {

@@ -72,15 +72,17 @@ Phase 3 (Delight) has no plan by design.
   that asked, and the answer outlasts both their updates and Caprock's. The
   process keeps its pid, terminal and environment (`internal/disclaim`, pure
   Go, no cgo).
-- **Background reads stay out of every folder macOS guards.** Caprock's own
-  background work — finding the repository a session's folder belongs to,
-  listing projects, the folder picker — no longer reads inside Desktop,
-  Documents, Downloads, iCloud Drive, cloud-storage folders, Music, Movies,
-  Pictures or `/Volumes`, nor follows a link into one (a link in `~/dev` to a
-  share is recognised from the link, without touching the share). A session
-  in such a folder keeps the folder's name rather than its repository's; the
-  picker still offers those folders, unprobed, and opening one is yours to
-  ask for.
+- **Background reads stay out of the folders macOS guards.** The folder
+  picker and the Projects panel no longer read inside Desktop, Documents,
+  Downloads, iCloud Drive, cloud-storage folders, Music, Movies, Pictures or
+  `/Volumes`, nor follow a link into one (a link in `~/dev` to a share is
+  recognised from the link, without touching the share); the picker still
+  offers those folders, unprobed, and opening one is yours to ask for.
+  Finding the repository a session's folder belongs to still reads up that
+  folder in Desktop, Documents and Downloads — a session there means you
+  work there, and projects in `~/Documents` stay grouped by repository — but
+  never in Music, Movies, Pictures, iCloud Drive, cloud storage or
+  `/Volumes`, where the session keeps its folder's name.
 - **A session whose background agents are still working is no longer
   "waiting on you".** When a Claude Code turn ends with subagents still
   running, Claude Code resumes the session by itself once they finish. The

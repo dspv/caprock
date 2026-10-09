@@ -2195,11 +2195,19 @@ spawning the child. iTerm2 (`iTermPosixTTYReplacements.c`) and Chromium
   and the account's home. Symlinks are followed one component at a time and
   each prefix is checked before it is read, so a link in `~/dev` to a share
   is recognised from the link. It replaces the textual `protectedDir` of
-  2026-10-07 and now also covers ingest's repository walk
-  (`store.findRepoRoot`), the projects list's automatic additions
-  (`store.ProjectWorthListing`) and the folder picker (`/v1/browse`,
+  2026-10-07 and now also covers the folder picker (`/v1/browse`,
   `/v1/recent-dirs`). A read the user asked for (opening a session, a file
   tab, a folder) is unchanged.
+- **A session's own folder is walked in Desktop, Documents and Downloads,
+  never in the rest** (`tcc.GuardedBeyondWork`, for ingest's
+  `store.findRepoRoot` and `store.ProjectWorthListing`). The first user
+  keeps every project in `~/Documents`; labelling those sessions by folder
+  instead of repository would break his sidebar. A session there means the
+  user works there, the walk reads only the folder's own ancestry (never its
+  siblings), and one prompt per release for that folder is legitimate until
+  releases are Developer ID signed. Music, Movies, Pictures, iCloud Drive,
+  cloud storage and `/Volumes` stay untouched: a session there keeps its
+  folder's name.
 
 **Verified.** Without a dialog: macOS checks the Developer Tools service
 silently whenever a new unsigned binary starts, and logs the attribution.
@@ -2212,10 +2220,12 @@ exit status and a PTY shell remaining its terminal's foreground group.
 **Consequences.** A prompt now names `claude` (`com.anthropic.claude-code`,
 Developer ID signed, so the answer survives Claude Code's updates and
 Caprock's), `codex`, or the user's shell (a shell binary under `/bin` is
-Apple's, and macOS may attribute it further; untested). A session in
-Documents or on a share is labelled by its folder rather than grouped under
-its repository, since finding the repository would mean reading there; the
-user can still add such a project by hand.
+Apple's, and macOS may attribute it further; untested). A session in a media
+library, cloud storage or on a share is labelled by its folder rather than
+grouped under its repository, since finding the repository would mean
+reading there; the user can still add such a project by hand. Caprock itself
+may still ask once per release for Desktop, Documents or Downloads when a
+session runs there.
 
 **Revisit if** Apple removes or changes the attribute (the fallback is a
 plain exec, so the symptom would be prompts in Caprock's name again), or

@@ -26,7 +26,18 @@ import (
 // in ~/dev to a network share is guarded, and finding that out reads the
 // links, never the share.
 func Guarded(p string) bool {
-	_, g := resolveGuarded(runtime.GOOS, homes(), p, lstatMode, os.Readlink)
+	_, g := resolveGuarded(runtime.GOOS, homes(), allRel, p, lstatMode, os.Readlink)
+	return g
+}
+
+// GuardedBeyondWork is Guarded without Desktop, Documents and Downloads, for
+// reads up a session's own folder (finding its repository): people keep their
+// projects in Documents, a session there means the user works there, and one
+// prompt per release for that folder is the honest price of grouping it by
+// repository. Music, Movies, Pictures, iCloud Drive, cloud storage and
+// /Volumes stay untouched even then.
+func GuardedBeyondWork(p string) bool {
+	_, g := resolveGuarded(runtime.GOOS, homes(), mediaRel, p, lstatMode, os.Readlink)
 	return g
 }
 
@@ -34,16 +45,20 @@ func Guarded(p string) bool {
 // possible without entering a guarded place, and whether it leads into one.
 // A target inside a guarded place is spelled out but never read.
 func Target(p string) (string, bool) {
-	return resolveGuarded(runtime.GOOS, homes(), p, lstatMode, os.Readlink)
+	return resolveGuarded(runtime.GOOS, homes(), allRel, p, lstatMode, os.Readlink)
 }
 
-// guardedRel are the guarded folders relative to a home directory.
-var guardedRel = []string{
-	"Desktop", "Documents", "Downloads",
-	"Library/Mobile Documents", // iCloud Drive
-	"Library/CloudStorage",     // Dropbox, OneDrive, Google Drive (File Provider)
-	"Music", "Movies", "Pictures",
-}
+// workRel are the guarded folders people keep projects in, relative to a
+// home directory; mediaRel the ones nobody works in. allRel is both.
+var (
+	workRel  = []string{"Desktop", "Documents", "Downloads"}
+	mediaRel = []string{
+		"Library/Mobile Documents", // iCloud Drive
+		"Library/CloudStorage",     // Dropbox, OneDrive, Google Drive (File Provider)
+		"Music", "Movies", "Pictures",
+	}
+	allRel = append(append([]string(nil), workRel...), mediaRel...)
+)
 
 // homes are the home directories to guard: $HOME and the account's own,
 // which differ only for an isolated daemon.
@@ -68,7 +83,7 @@ func lstatMode(p string) (fs.FileMode, error) {
 
 // guardedText is the rule on a path as written: no file system access.
 // macOS paths only, so POSIX path rules wherever the test runs.
-func guardedText(homes []string, p string) bool {
+func guardedText(homes, rel []string, p string) bool {
 	within := func(root string) bool {
 		return p == root || strings.HasPrefix(p, root+"/")
 	}
@@ -80,7 +95,7 @@ func guardedText(homes []string, p string) bool {
 			continue
 		}
 		h = path.Clean(h)
-		for _, r := range guardedRel {
+		for _, r := range rel {
 			if within(path.Join(h, r)) {
 				return true
 			}
@@ -98,12 +113,12 @@ const maxHops = 40
 // before anything inside it is touched. It returns the path reached (the
 // fully resolved one when nothing on the way is guarded) and whether it is
 // guarded. Off macOS nothing is guarded and nothing is read.
-func resolveGuarded(goos string, homes []string, p string, lstat func(string) (fs.FileMode, error), readlink func(string) (string, error)) (string, bool) {
+func resolveGuarded(goos string, homes, rel []string, p string, lstat func(string) (fs.FileMode, error), readlink func(string) (string, error)) (string, bool) {
 	if goos != "darwin" || p == "" || !path.IsAbs(p) {
 		return p, false
 	}
 	p = path.Clean(p)
-	if guardedText(homes, p) {
+	if guardedText(homes, rel, p) {
 		return p, true
 	}
 	parts := strings.Split(strings.TrimPrefix(p, "/"), "/")
@@ -113,7 +128,7 @@ func resolveGuarded(goos string, homes []string, p string, lstat func(string) (f
 			continue
 		}
 		next := path.Join(cur, parts[i])
-		if guardedText(homes, next) {
+		if guardedText(homes, rel, next) {
 			return path.Join(append([]string{next}, parts[i+1:]...)...), true
 		}
 		mode, err := lstat(next)
@@ -136,7 +151,7 @@ func resolveGuarded(goos string, homes []string, p string, lstat func(string) (f
 			target = path.Join(cur, target)
 		}
 		rest := path.Clean(path.Join(append([]string{target}, parts[i+1:]...)...))
-		if guardedText(homes, rest) {
+		if guardedText(homes, rel, rest) {
 			return rest, true
 		}
 		parts = strings.Split(strings.TrimPrefix(rest, "/"), "/")
