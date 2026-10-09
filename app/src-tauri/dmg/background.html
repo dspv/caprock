@@ -1,0 +1,81 @@
+<!doctype html>
+<!--
+  The .dmg window's background (bundle.macOS.dmg in tauri.conf.json), in
+  caprock.dev's Paper style: cream ground, the caprock mark and wordmark, a
+  soft arrow from where the app icon sits to where the Applications folder
+  sits, and one line saying what to do.
+
+  The source of background.png. To re-render after an edit (fonts come from
+  the dashboard's own packages, so run `make ui-install` first), draw this
+  page at exactly 660x400 at scale 1 with a headless Chromium and save the
+  screenshot over background.png — for example with Playwright's headless
+  shell: `chrome-headless-shell --screenshot=background.png
+  --window-size=660,400 --hide-scrollbars file://$PWD/background.html`.
+
+  The icon spots match appPosition (170, 196) and applicationFolderPosition
+  (490, 196): Finder places an icon's centre there, 128 points wide, its name
+  under it; each well holds an icon and its name. Change one, change both.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Caprock installer background</title>
+<style>
+  @font-face {
+    font-family: "Hanken Grotesk";
+    src: url("../../../ui/node_modules/@fontsource-variable/hanken-grotesk/files/hanken-grotesk-latin-wght-normal.woff2") format("woff2");
+    font-weight: 100 900;
+  }
+  @font-face {
+    font-family: "JetBrains Mono";
+    src: url("../../../ui/node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2") format("woff2");
+    font-weight: 100 800;
+  }
+  html, body { margin: 0; width: 660px; height: 400px; overflow: hidden; }
+  body {
+    position: relative;
+    background-color: #efe7d6;
+    background-image:
+      radial-gradient(420px 260px at 50% 49%, rgba(235, 154, 62, 0.16), transparent 70%),
+      radial-gradient(500px 300px at 100% 0%, rgba(235, 154, 62, 0.10), transparent 70%);
+    color: #2b251c;
+    font-family: "Hanken Grotesk", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .brand {
+    position: absolute; top: 34px; left: 0; right: 0;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    font: 700 22px/1 "JetBrains Mono", ui-monospace, monospace; letter-spacing: -0.01em;
+  }
+  .brand b { color: #8a4f0c; font-weight: 700; }
+  /* The two spots the icons sit on: soft cream wells, so the eye reads a
+   * "from" and a "to" before the arrow between them. */
+  .well {
+    position: absolute; top: 120px; width: 156px; height: 182px; margin-left: -78px;
+    border-radius: 34px; background: rgba(244, 236, 221, 0.85);
+    box-shadow: inset 0 0 0 1px rgba(194, 178, 147, 0.55), 0 10px 24px -18px rgba(60, 45, 20, 0.45);
+  }
+  .well.app { left: 170px; }
+  .well.apps { left: 490px; }
+  svg.arrow { position: absolute; left: 262px; top: 166px; }
+  .line {
+    position: absolute; left: 0; right: 0; top: 338px; text-align: center;
+    font-weight: 600; font-size: 17px; letter-spacing: -0.005em; color: #4f473b;
+  }
+  .line b { color: #2b251c; font-weight: 700; }
+</style>
+</head>
+<body>
+  <div class="brand">
+    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 21.5 20h-19z" fill="none" stroke="#8a4f0c" stroke-width="2.4" stroke-linejoin="round"/></svg>
+    <span>cap<b>rock</b></span>
+  </div>
+  <div class="well app"></div>
+  <div class="well apps"></div>
+  <svg class="arrow" width="136" height="60" viewBox="0 0 136 60" aria-hidden="true">
+    <path d="M8 38 C 44 10, 86 10, 114 28" fill="none" stroke="#eb9a3e" stroke-width="4" stroke-linecap="round" stroke-dasharray="1 11"/>
+    <path d="M112 16 L 119 30 L 104 31" fill="none" stroke="#eb9a3e" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+  <div class="line">Drag <b>Caprock</b> to Applications</div>
+</body>
+</html>

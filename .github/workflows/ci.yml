@@ -193,6 +193,20 @@ jobs:
         run: make app-test
       - name: bundle
         run: make app-bundle APP_BUNDLES=${{ matrix.bundles }}
+      # The branded .dmg window: the picture has to be inside the image, or
+      # the window opens as a bare Finder folder and nothing else says so.
+      - name: dmg background
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          dmg=$(ls app/src-tauri/target/release/bundle/dmg/*.dmg | head -1)
+          mnt=$(mktemp -d)
+          hdiutil attach -readonly -nobrowse -noautoopen -mountpoint "$mnt" "$dmg" >/dev/null
+          trap 'hdiutil detach "$mnt" -quiet || true' EXIT
+          ls -la "$mnt" "$mnt/.background"
+          ls "$mnt/.background/"*.png >/dev/null
+          test -d "$mnt/Caprock.app"
+          test -L "$mnt/Applications"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v6.0.0
         with:
           name: caprock-app-${{ matrix.os }}

@@ -8,7 +8,11 @@ import { live } from './live'
 import { applySessionFrames, mergeSessions, resyncPermissions, SESSION_FRAMES_MS, useWorkspaceData } from './useWorkspaceData'
 import type { SessionSummary } from './api'
 
-const pending = vi.hoisted(() => ({ ids: new Set<string>(['a']) }))
+const pending = vi.hoisted(() => ({
+  ids: new Set<string>(['a']),
+  /** When set, answers the live list (`active=true`) in place of the fixed two. */
+  live: null as null | (() => Promise<unknown>),
+}))
 
 vi.mock('./api', async (orig) => {
   const actual = await orig<typeof import('./api')>()
@@ -20,7 +24,7 @@ vi.mock('./api', async (orig) => {
     ...actual,
     api: {
       ...actual.api,
-      sessions: async () => sessions,
+      sessions: async (activeOnly?: boolean) => (activeOnly && pending.live ? pending.live() : sessions),
       summary: async () => ({ cost_usd: 0, projects: [] }),
       permission: async (id: string) => ({ permission: pending.ids.has(id) ? { id: 'p' } : null }),
     },
@@ -91,4 +95,32 @@ describe('session updates that re-render nothing', () => {
       vi.useRealTimers()
     }
   })
+})
+
+describe('the live list', () => {
+  it('lands even when ticks come faster than it answers, and asks before the first tick', async () => {
+    // Context recovery: started days ago in another terminal, so not among the
+    // 200 most recent the full list returns; only the live list carries it.
+    const old = { session_id: 'ctx', owned: false, status: 'idle', title: 'Context recovery' } as SessionSummary
+    let calls = 0
+    const answers: ((v: SessionSummary[]) => void)[] = []
+    pending.live = () => { calls += 1; return new Promise((r) => { answers.push(r) }) }
+    try {
+      const { result } = renderHook(() => useWorkspaceData())
+      // Asked at mount, with no tick yet.
+      await waitFor(() => expect(calls).toBe(1))
+      // An agent busy beside it: ticks keep coming while the answer is out.
+      for (let i = 0; i < 3; i++) {
+        act(() => live.handle({ type: 'event', data: {} as never }))
+        await new Promise((r) => setTimeout(r, 1100))
+      }
+      // One request at a time: the ticks queued one more, not three.
+      expect(calls).toBe(1)
+      await act(async () => { answers[0]!([old]) })
+      await waitFor(() => expect(result.current.sessions.some((x) => x.session_id === 'ctx')).toBe(true))
+      await waitFor(() => expect(calls).toBe(2))
+    } finally {
+      pending.live = null
+    }
+  }, 10_000)
 })

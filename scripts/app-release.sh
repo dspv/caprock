@@ -111,6 +111,9 @@ trap 'hdiutil detach "$MNT" -quiet || true' EXIT
 APP="$MNT/Caprock.app"
 [[ -d "$APP" ]] || die "no Caprock.app in the .dmg"
 [[ -L "$MNT/Applications" ]] || die "no Applications link in the .dmg"
+# The branded window (bundle.macOS.dmg): the bundler copies the picture into
+# .background/; without it the window opens as a bare white Finder folder.
+ls "$MNT/.background/"*.png >/dev/null 2>&1 || die "no background picture in the .dmg"
 plist() { /usr/libexec/PlistBuddy -c "Print :$1" "$APP/Contents/Info.plist"; }
 [[ "$(plist CFBundleIdentifier)" == dev.caprock.app ]] || die "bundle id is $(plist CFBundleIdentifier)"
 [[ "$(plist CFBundleShortVersionString)" == "$VERSION" ]] || die "app version is $(plist CFBundleShortVersionString)"

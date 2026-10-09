@@ -16,6 +16,7 @@ import {
   sideStats, tally, type CrewMember, type Headline, type SideStat, type TallyItem,
 } from '@/lib/week'
 import { AgentCharacter, CaprockMark } from './Characters'
+import type { CardLook } from './ShareCard'
 import './WeekCard.css'
 
 export type CardLayout = 'land' | 'port'
@@ -32,9 +33,11 @@ interface Props {
   when: string
   /** What a share of the cost is "of": "week" unless the card is for another period. */
   noun?: string
+  /** The ground it is drawn on; absent, the screen's theme. */
+  look?: CardLook
 }
 
-export const WeekCard = forwardRef<HTMLElement, Props>(function WeekCard({ week, layout, when, noun = 'week' }, ref) {
+export const WeekCard = forwardRef<HTMLElement, Props>(function WeekCard({ week, layout, when, noun = 'week', look }, ref) {
   const h = headline(week, when, noun)
   const items = tally(week, h.led)
   const stats = sideStats(week)
@@ -52,8 +55,8 @@ export const WeekCard = forwardRef<HTMLElement, Props>(function WeekCard({ week,
   )
   const foot = (
     <div className="wk-foot">
-      <span>measured locally with <b>Caprock</b> · <span className="wk-url">caprock.dev</span></span>
-      <span>{week.prs_merged > 0 ? 'merged = merges the agents ran · ' : ''}≈ = estimate · API list prices</span>
+      <span><span className="wk-url">caprock.dev</span> · <b className="wk-ask">What&apos;s yours?</b></span>
+      <span>{week.prs_merged > 0 ? 'merged = merges the agents ran · ' : ''}measured locally · ≈ = estimate · API list prices, not a bill</span>
     </div>
   )
 
@@ -63,7 +66,7 @@ export const WeekCard = forwardRef<HTMLElement, Props>(function WeekCard({ week,
     const shown = members.slice(0, loop || big ? 3 : 4)
     const callout = loop ? <LoopCallout week={week} short /> : big ? <BiggestCallout week={week} noun={noun} /> : null
     return (
-      <section ref={ref} className="wk-card wk-land" role="img" aria-label={label}>
+      <section ref={ref} className={`wk-card wk-land${look ? ` wk-look-${look}` : ''}`} role="img" aria-label={label}>
         {top}
         <div className="wk-main">
           <div>
@@ -103,7 +106,7 @@ export const WeekCard = forwardRef<HTMLElement, Props>(function WeekCard({ week,
 
   const bars = dayBars(week)
   return (
-    <section ref={ref} className="wk-card wk-port" role="img" aria-label={label}>
+    <section ref={ref} className={`wk-card wk-port${look ? ` wk-look-${look}` : ''}`} role="img" aria-label={label}>
       {top}
       <div className="wk-eyebrow">{eyebrow(week)}</div>
       <Head h={h} />

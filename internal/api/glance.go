@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -39,8 +40,16 @@ type Bill struct {
 const glanceTTL = 60 * time.Second
 
 func (s *Server) handleGlance(w http.ResponseWriter, r *http.Request) {
-	v, err := s.glance.get(r.Context(), "glance:all", func() (any, error) {
-		return s.buildGlance(context.WithoutCancel(r.Context()), 0)
+	// All time unless a range is asked for: the share card draws the agent
+	// split of the period it is about (today, 7d, 30d). The key carries the
+	// range's start, so "7d" computed yesterday is not served today.
+	from, label := int64(0), "all"
+	if rng := r.URL.Query().Get("range"); rng != "" && rng != "all" {
+		from, label = s.rangeFrom(rng)
+	}
+	key := "glance:" + label + ":" + strconv.FormatInt(from, 10)
+	v, err := s.glance.get(r.Context(), key, func() (any, error) {
+		return s.buildGlance(context.WithoutCancel(r.Context()), from)
 	})
 	if err != nil {
 		s.fail(w, err)

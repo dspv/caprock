@@ -349,7 +349,7 @@ function TabRow({ tab, label, active, onOpen, onClose, onMenu }: {
           }
         }}
         className={`app-row flex h-[28px] w-full min-w-0 items-center gap-2 rounded-[7px] pl-[22px] text-left ${onClose ? (active ? 'pr-7' : 'pr-2 group-hover/row:pr-7 group-focus-within/row:pr-7') : 'pr-2'}`}
-        title={label?.file ?? title}
+        title={label?.file ?? (label?.branch ? `${title} · ${label.branch}` : title)}
       >
         {isFile ? (
           <FileIcon size={12} className="text-fg-faint" />
@@ -359,8 +359,7 @@ function TabRow({ tab, label, active, onOpen, onClose, onMenu }: {
             <AgentGlyph agent={label?.session?.agent} shell={label?.isShell} />
           </>
         )}
-        <span data-row-title className={`min-w-0 flex-1 truncate text-[12.5px] ${active ? 'text-fg' : 'text-fg-muted'}`}>{title}</span>
-        {label?.branch && <span className="mono min-w-0 max-w-[10ch] shrink truncate text-[11px] text-fg-faint">{label.branch}</span>}
+        <TitleAndBranch title={title} branch={label?.branch} className={active ? 'text-fg' : 'text-fg-muted'} />
         {word && <StateWord dot={word} hideOnHover={false} />}
       </button>
       {onClose && (
@@ -402,12 +401,11 @@ function LiveRow({ item, ownBranch, onOpen, onStop }: { item: SessionNode; ownBr
         data-live-row={s.session_id}
         onClick={onOpen}
         className={`app-row flex h-[28px] w-full min-w-0 items-center gap-2 rounded-[7px] pl-[22px] text-left opacity-70 ${canStop ? 'pr-2 group-hover/row:pr-7 group-focus-within/row:pr-7' : 'pr-2'}`}
-        title={s.owned ? `${title}: running, no tab. Open it as a tab.` : `${title}: started in another terminal. Open its details.`}
+        title={`${title}${branch ? ` · ${branch}` : ''}: ${s.owned ? 'running, no tab. Open it as a tab.' : 'started in another terminal. Open its details.'}`}
       >
         <StatusDot dot={item.dot} />
         <AgentGlyph agent={s.agent} shell={item.isShell} />
-        <span data-row-title className="min-w-0 flex-1 truncate text-[12.5px] text-fg-faint">{title}</span>
-        {branch && <span className="mono min-w-0 max-w-[10ch] shrink truncate text-[11px] text-fg-faint">{branch}</span>}
+        <TitleAndBranch title={title} branch={branch} className="text-fg-faint" />
         {!item.isShell && <StateWord dot={item.dot} hideOnHover={canStop} />}
       </button>
       {canStop && (
@@ -416,6 +414,26 @@ function LiveRow({ item, ownBranch, onOpen, onStop }: { item: SessionNode; ownBr
         </span>
       )}
     </li>
+  )
+}
+
+/**
+ * A row's title and, after it, the branch it runs on — the title wins.
+ *
+ * Both used to shrink together, and the title was `flex-1` (a basis of zero),
+ * so a long branch kept its ten characters while the title went to "Fix…":
+ * the row said where the work was and not what it was. Now the title never
+ * shrinks while the branch has any width left: it is sized to its text up to
+ * the whole row, and the branch takes only what is left over, truncating to
+ * nothing first. The title is cut only once the branch is gone. The full
+ * text of both is in the row's tooltip.
+ */
+export function TitleAndBranch({ title, branch, className }: { title: string; branch?: string; className: string }) {
+  return (
+    <span className="flex min-w-0 flex-1 items-center overflow-hidden">
+      <span data-row-title className={`max-w-full shrink-0 truncate text-[12.5px] ${className}`}>{title}</span>
+      {branch && <span data-row-branch className="mono ml-2 min-w-0 max-w-[10ch] shrink truncate text-[11px] text-fg-faint">{branch}</span>}
+    </span>
   )
 }
 

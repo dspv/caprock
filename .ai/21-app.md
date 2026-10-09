@@ -414,6 +414,15 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
   (the `caprock-app` cask, the `caprock` formula), dismissed per version; the
   check runs at most every 6 hours, conditionally
   ([04-ui.md § Update notice](04-ui.md#update-notice)).
+  The `.dmg` opens on a branded window (`bundle.macOS.dmg` in
+  `tauri.conf.json`, 2026-10-10): 660×400, caprock.dev's paper ground, the
+  mark and wordmark, the app icon at (170, 196) and the Applications folder
+  at (490, 196) in two soft wells with a dotted arrow between, and *Drag
+  Caprock to Applications*. The picture is `app/src-tauri/dmg/background.png`,
+  rendered from `background.html` beside it (one image at window size: the
+  bundler takes PNG, JPG or GIF, so no @2x). CI's macOS app job mounts the
+  built `.dmg` and fails without `.background/*.png` in it, and so does
+  `make app-release`.
 - **F13 — Phone v2 Phase A.** The phone (the existing web dashboard on the
   home screen) never needs a manual reconnect, resumes a terminal from the
   byte it last saw, queues a message typed while offline, replays the live

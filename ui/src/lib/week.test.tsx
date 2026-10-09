@@ -81,8 +81,9 @@ describe('week card wording', () => {
       const text = container.textContent ?? ''
       expect(text).toContain('126 PRs')
       expect(text).toContain('≈$3.77')
-      expect(text).toContain('measured locally with Caprock')
-      expect(text).toContain('≈ = estimate · API list prices')
+      expect(text).toContain('measured locally')
+      expect(text).toContain('≈ = estimate · API list prices, not a bill')
+      expect(text).toContain("caprock.dev · What's yours?")
       unmount()
     }
   })

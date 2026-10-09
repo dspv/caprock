@@ -24,7 +24,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useApi } from '@/lib/useApi'
 import { api, type Week } from '@/lib/api'
-import { cardFilename, drawShareCard, PERIOD_LABEL, type CardData, type SharePeriod } from './ShareCard'
+import { cardFilename, drawShareCard, PERIOD_LABEL, screenLook, STEP_LABEL, type CardData, type CardLook, type CardStep, type SharePeriod } from './ShareCard'
 import { CARD_SIZE, WeekCard, type CardLayout } from './WeekCard'
 import { Scaled } from './Scaled'
 import { renderCardPNG } from '@/lib/cardimage'
@@ -37,23 +37,20 @@ export function ShareButton() {
   const [open, setOpen] = useState(false)
   return (
     <>
-      {/* Loud on purpose, and twice now not loud enough.
+      {/* Visible, not loud (owner, 2026-10-10).
         *
-        * A tinted border in the accent colour still lost, because everything
-        * around it is the same 11px and the premium button beside it is a
-        * solid block of colour: an outline cannot win an argument with a fill.
-        * This is filled, a size up, and carries an icon, so the eye finds it
-        * without reading the row.
-        *
-        * It earns that: sharing is the only thing on this dashboard that
-        * leaves the machine, and somebody who has just had a good week has
-        * nowhere to say so. */}
+        * It was a solid amber block, filled after an outline lost to the
+        * premium button beside it — and then it was the loudest thing in the
+        * header, louder than the figures it shares. A tinted pill with the
+        * share icon is found without reading the row and does not shout:
+        * the accent at a sixth of its strength, its border at two fifths,
+        * the label in the accent itself. */}
       <button
         onClick={() => setOpen(true)}
         // The default card's figures start loading on the way to the click.
         onMouseEnter={warmShare}
         onFocus={warmShare}
-        className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-[12px] font-medium text-bg hover:brightness-110"
+        className="inline-flex items-center gap-1.5 rounded-full border border-accent/40 bg-accent/15 px-2.5 py-[3px] text-[12px] font-medium text-accent transition-colors hover:bg-accent/25"
         title="Draw a shareable picture of your figures"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -71,6 +68,7 @@ type Style = 'figures' | 'story'
 
 const STYLE_KEY = 'caprock-share-style'
 const LAYOUT_KEY = 'caprock-share-layout'
+const LOOK_KEY = 'caprock-share-look'
 
 function remembered<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
   try {
@@ -88,7 +86,8 @@ function remember(key: string, v: string) {
 /** Two frames, so a card just given new figures has been laid out before it is captured. */
 const settled = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
 
-const STEP_LABEL: Record<SharePeriod, string> = {
+/** The period as the story card's progress line says it. */
+const PERIOD_WORDS: Record<SharePeriod, string> = {
   today: 'today',
   '7d': 'this week',
   '30d': 'this month',
@@ -116,6 +115,11 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
   // of the four periods.
   const [style, setStyleState] = useState<Style>(() => remembered(STYLE_KEY, ['figures', 'story'] as const, 'figures'))
   const [layout, setLayoutState] = useState<CardLayout>(() => remembered(LAYOUT_KEY, ['land', 'port'] as const, 'land'))
+  // The ground the card is drawn on: the screen's by default, remembered once
+  // chosen. A dark card stands out in a light feed and the paper one matches
+  // caprock.dev, so it is the poster's choice, not the dashboard's theme.
+  const [look, setLookState] = useState<CardLook>(() => remembered(LOOK_KEY, ['dark', 'paper'] as const, screenLook()))
+  const setLook = (l: CardLook) => { setLookState(l); remember(LOOK_KEY, l) }
   const setStyle = (s: Style) => { setStyleState(s); remember(STYLE_KEY, s) }
   const setLayout = (l: CardLayout) => { setLayoutState(l); remember(LAYOUT_KEY, l) }
 
@@ -138,7 +142,7 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
   const [failed, setFailed] = useState(false)
   // Which ranges have answered, and since when the dialog has been waiting —
   // the progress shown while there is no card yet.
-  const [steps, setSteps] = useState<Set<SharePeriod>>(new Set())
+  const [steps, setSteps] = useState<Set<CardStep>>(new Set())
   const [startedAt, setStartedAt] = useState(() => Date.now())
   const card = useRef<HTMLElement>(null)
 
@@ -163,7 +167,7 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
     })
     const draw = async (d: CardData, fresh: boolean) => {
       let blob: Blob | null = null
-      try { blob = await drawShareCard(d) } catch { blob = null }
+      try { blob = await drawShareCard(d, look) } catch { blob = null }
       if (!live || (!fresh && freshShown)) return false
       if (!blob) return false
       if (fresh) freshShown = true
@@ -199,7 +203,7 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
         if (!kept) setFailed(true)
       })
     return () => { live = false }
-  }, [period, style])
+  }, [period, style, look])
 
   // Story: the same — last figures at once, current behind them.
   useEffect(() => {
@@ -239,7 +243,7 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
    * the screen shows an earlier reading, this waits for the current one first.
    */
   const build = async (): Promise<Blob | null> => {
-    if (style === 'figures') return drawShareCard(await currentFigures(period))
+    if (style === 'figures') return drawShareCard(await currentFigures(period), look)
     const w = await currentStory(period)
     setStory(w)
     setStale(0)
@@ -360,58 +364,71 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
   const storyEmpty = style === 'story' && !!story && story.sessions === 0
   const aspect = style === 'figures' ? '1200 / 630' : `${size.w} / ${size.h}`
   const progressSteps = style === 'figures'
-    ? (['today', '7d', '30d', 'all'] as SharePeriod[]).map((p) => ({ label: `Reading ${STEP_LABEL[p]}`, done: steps.has(p) }))
-    : [{ label: `Counting PRs, commits and loops — ${STEP_LABEL[period]}`, done: false }]
+    ? (['totals', 'agents', 'plan'] as CardStep[]).map((k) => ({ label: STEP_LABEL[k], done: steps.has(k) }))
+    : [{ label: `Counting PRs, commits and loops — ${PERIOD_WORDS[period]}`, done: false }]
 
-  const seg = (on: boolean) => `rounded-sm px-2 py-1 text-[12px] ${on ? 'bg-accent text-bg font-medium' : 'text-fg-muted hover:text-fg'}`
+  const seg = (on: boolean) => `rounded-[5px] px-2.5 py-1 text-[12px] transition-colors ${on ? 'bg-panel text-fg font-medium shadow-sm' : 'text-fg-muted hover:text-fg'}`
+  const group = 'inline-flex items-center gap-0.5 rounded-md border border-border bg-panel-2 p-0.5'
+  const quiet = 'rounded-md border border-border px-3 py-2 text-[13px] text-fg transition-colors hover:border-border-strong hover:bg-panel-2 disabled:opacity-50'
+  const primary = 'rounded-md bg-accent px-4 py-2.5 text-[14px] font-semibold text-bg transition hover:brightness-110 disabled:opacity-50'
 
   return (
     <DialogBackdrop
       onClose={onClose}
-      className="fixed inset-0 z-30 flex items-start justify-center overflow-y-auto bg-black/50 px-4 py-[8vh]"
+      className="fixed inset-0 z-30 flex items-start justify-center overflow-y-auto bg-black/55 px-4 py-[6vh]"
       role="dialog"
       aria-modal="true"
       aria-label="Share your figures"
     >
-      <div className="w-[520px] max-w-full rounded-[var(--radius-panel)] border border-border-strong bg-panel" onClick={(e) => e.stopPropagation()}>
+      <div className="w-[760px] max-w-full rounded-[var(--radius-panel)] border border-border-strong bg-panel shadow-[var(--shadow-panel)]" onClick={(e) => e.stopPropagation()}>
         <header className="flex items-center border-b border-border py-1.5 pl-4 pr-2">
           <h2 className="text-[13px] font-medium text-fg">Share your figures</h2>
           <CloseButton onClick={onClose} className="ml-auto" />
         </header>
 
-        <div className="px-4 py-4">
-          <div className="mb-2 flex flex-wrap items-center gap-1" role="group" aria-label="Card style">
-            <span className="mr-1 w-11 text-[12px] text-fg-muted">Style</span>
-            <button onClick={() => setStyle('figures')} aria-pressed={style === 'figures'} className={seg(style === 'figures')}>Figures</button>
-            <button onClick={() => setStyle('story')} aria-pressed={style === 'story'} className={seg(style === 'story')}>Story</button>
-            {style === 'story' && (
-              <span className="ml-auto inline-flex gap-1" role="group" aria-label="Card size">
-                {(['land', 'port'] as CardLayout[]).map((l) => (
-                  <button key={l} onClick={() => setLayout(l)} aria-pressed={layout === l} className={seg(layout === l)}
-                    title={`${CARD_SIZE[l].w}×${CARD_SIZE[l].h}`}>
-                    {l === 'land' ? 'Landscape' : 'Portrait'}
+        <div className="px-4 py-4 sm:px-5">
+          {/* What the card is about, then how it looks: one row of small
+            * segmented controls above the picture, so the picture can be big. */}
+          <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+            <div className={group} role="group" aria-label="Period">
+              {(['today', '7d', '30d', 'all'] as SharePeriod[]).map((p) => (
+                <button key={p} onClick={() => setPeriod(p)} aria-pressed={period === p} className={seg(period === p)}>
+                  {PERIOD_LABEL[p]}
+                </button>
+              ))}
+            </div>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <div className={group} role="group" aria-label="Card style">
+                <button onClick={() => setStyle('figures')} aria-pressed={style === 'figures'} className={seg(style === 'figures')} title="One figure, said big">Figures</button>
+                <button onClick={() => setStyle('story')} aria-pressed={style === 'story'} className={seg(style === 'story')} title="Who did what, the longest loop, the biggest session">Story</button>
+              </div>
+              <div className={group} role="group" aria-label="Card look">
+                {(['dark', 'paper'] as CardLook[]).map((l) => (
+                  <button key={l} onClick={() => setLook(l)} aria-pressed={look === l} className={seg(look === l)}>
+                    {l === 'dark' ? 'Dark' : 'Paper'}
                   </button>
                 ))}
-              </span>
-            )}
-          </div>
-          {/* Which stretch, before where it goes. */}
-          <div className="mb-3.5 flex flex-wrap items-center gap-1" role="group" aria-label="Period">
-            <span className="mr-1 w-11 text-[12px] text-fg-muted">Show</span>
-            {(['today', '7d', '30d', 'all'] as SharePeriod[]).map((p) => (
-              <button key={p} onClick={() => setPeriod(p)} aria-pressed={period === p} className={seg(period === p)}>
-                {PERIOD_LABEL[p]}
-              </button>
-            ))}
+              </div>
+              {style === 'story' && (
+                <div className={group} role="group" aria-label="Card size">
+                  {(['land', 'port'] as CardLayout[]).map((l) => (
+                    <button key={l} onClick={() => setLayout(l)} aria-pressed={layout === l} className={seg(layout === l)}
+                      title={`${CARD_SIZE[l].w}×${CARD_SIZE[l].h}`}>
+                      {l === 'land' ? 'Landscape' : 'Portrait'}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* The card, at the size it will be seen. Above the buttons, because
-            * it is the thing being decided — the buttons only choose where it
-            * goes. A fixed aspect box so switching period does not make the
-            * dialog jump while the next draw lands. */}
-          <div className="relative mb-3.5">
+          {/* The card, as big as the sheet allows. It is the thing being
+            * decided — the buttons only choose where it goes. A fixed aspect
+            * box so switching period does not make the sheet jump while the
+            * next draw lands. */}
+          <div className="relative mb-4">
             {style === 'figures' ? (
-              <div className="overflow-hidden rounded-md border border-border bg-panel-2" style={{ aspectRatio: aspect }}>
+              <div className="overflow-hidden rounded-[10px] border border-border bg-panel-2 shadow-[var(--shadow-panel)]" style={{ aspectRatio: aspect }}>
                 {failed ? (
                   // Before the picture: a card from another period must not
                   // stand in for one that could not be drawn.
@@ -426,12 +443,12 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
                 )}
               </div>
             ) : story && !storyEmpty ? (
-              <Scaled w={size.w} h={size.h} max={layout === 'port' ? 300 : 488}>
-                <WeekCard ref={card} week={story} layout={layout} when={words.when} noun={words.noun} />
+              <Scaled w={size.w} h={size.h} max={layout === 'port' ? 360 : 718}>
+                <WeekCard ref={card} week={story} layout={layout} when={words.when} noun={words.noun} look={look} />
               </Scaled>
             ) : (
-              <div className="mx-auto overflow-hidden rounded-md border border-border bg-panel-2"
-                style={{ aspectRatio: aspect, maxWidth: layout === 'port' ? 300 : undefined }}>
+              <div className="mx-auto overflow-hidden rounded-[10px] border border-border bg-panel-2"
+                style={{ aspectRatio: aspect, maxWidth: layout === 'port' ? 360 : undefined }}>
                 {storyEmpty ? (
                   <div className="flex h-full items-center justify-center px-6 text-center text-[12px] text-fg-muted">
                     Nothing ran {words.when.replace('— ', '')} on this machine, so there is no story to tell yet.
@@ -448,73 +465,53 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
             )}
           </div>
 
-          <div className="grid gap-2.5">
-            {canNative && (
-              <button
-                onClick={shareNative}
-                disabled={locked || storyEmpty}
-                className="rounded-md border border-accent bg-accent/15 px-4 py-3 text-[14px] font-medium text-accent hover:bg-accent/25 disabled:opacity-50"
-              >
-                {drawing ? 'Drawing the card…' : 'Send it somewhere'}
-                <span className="mt-0.5 block text-[12px] font-normal text-fg-muted">
-                  Opens your share menu — Messages, Mail, anywhere
-                </span>
+          {/* One obvious next step, filled: the operating system's share menu
+            * where there is one, the clipboard where there is not — the
+            * fastest way into any post or chat. Then the other ways out,
+            * quiet, beside it. Hover is a fill, not a border shade: a control
+            * the eye cannot confirm it is pointing at reads as disabled. */}
+          <div className="flex flex-wrap items-stretch gap-2">
+            {canNative ? (
+              <button onClick={shareNative} disabled={locked || storyEmpty} className={`${primary} min-w-[180px] flex-1`}
+                title="Opens your share menu — Messages, Mail, anywhere">
+                {drawing ? 'Drawing the card…' : 'Share…'}
+              </button>
+            ) : (
+              <button onClick={copy} disabled={locked || storyEmpty} className={`${primary} min-w-[180px] flex-1`}
+                title="Puts the picture on your clipboard, to paste into a post or a chat">
+                {drawing ? 'Drawing the card…' : 'Copy image'}
               </button>
             )}
-            {/* Hover is a fill, not a border shade.
-              *
-              * This changed only its border colour, one step of grey against a
-              * dark panel — the owner hovered it and could not tell anything
-              * had happened. A control the eye cannot confirm it is pointing
-              * at reads as disabled. */}
-            {/* Three ways out, side by side: the clipboard (the fastest path
-              * into any post or chat), a file, and X with the words written.
-              * The first is filled when there is no OS share sheet above it,
-              * so the dialog always has one obvious next step. */}
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                onClick={copy}
-                disabled={locked || storyEmpty}
-                className={canNative
-                  ? 'rounded-md border border-border px-2 py-2.5 text-[13px] text-fg transition-colors hover:border-border-strong hover:bg-panel-2 disabled:opacity-50'
-                  : 'rounded-md bg-accent px-2 py-2.5 text-[13px] font-medium text-bg hover:brightness-110 disabled:opacity-50'}
-              >
-                {drawing && !canNative ? 'Drawing…' : 'Copy image'}
-              </button>
-              <button
-                onClick={save}
-                disabled={locked || storyEmpty}
-                title={style === 'story' ? `A ${size.w}×${size.h} PNG in your downloads` : 'A PNG in your downloads'}
-                className="rounded-md border border-border px-2 py-2.5 text-[13px] text-fg transition-colors hover:border-border-strong hover:bg-panel-2 disabled:opacity-50"
-              >
-                Save image
-              </button>
-              <button
-                onClick={postX}
-                disabled={locked || storyEmpty}
-                title="Opens a post on X with the text written; the card goes on your clipboard to paste in"
-                className="rounded-md border border-border px-2 py-2.5 text-[13px] text-fg transition-colors hover:border-border-strong hover:bg-panel-2 disabled:opacity-50"
-              >
-                Post to X
-              </button>
-            </div>
-            <p className="text-center text-[11px] text-fg-faint">
-              {style === 'story' ? `A ${size.w}×${size.h} PNG` : 'A 1200×630 PNG'} · at API list price · not a bill
-            </p>
+            {canNative && (
+              <button onClick={copy} disabled={locked || storyEmpty} className={quiet}>Copy image</button>
+            )}
+            <button
+              onClick={save}
+              disabled={locked || storyEmpty}
+              title={style === 'story' ? `A ${size.w}×${size.h} PNG in your downloads` : 'A 1200×630 PNG in your downloads'}
+              className={quiet}
+            >
+              Save image
+            </button>
+            <button
+              onClick={postX}
+              disabled={locked || storyEmpty}
+              title="Opens a post on X with the text written; the card goes on your clipboard to paste in"
+              className={quiet}
+            >
+              Post to X
+            </button>
           </div>
+          {note && <p className="mt-2 text-[12px] text-fg-muted" role="status">{note}</p>}
 
-          {/* Two bullets, not a paragraph.
-            *
-            * This was two sentences of 12px grey prose, and prose is the wrong
-            * shape for a list of guarantees: the reader is scanning for what
-            * does and does not leave the machine, and a sentence makes them
-            * read it to find out. Bigger, and one claim per line. */}
-          <ul className="mt-4 grid gap-1 text-[13px] text-fg-muted">
+          {/* One claim per line: the reader is scanning for what does and does
+            * not leave the machine, and a sentence makes them read it. */}
+          <ul className="mt-4 grid gap-1 border-t border-border pt-3 text-[12.5px] text-fg-muted">
             <li>Totals only — no names, no paths, nothing Claude wrote.</li>
             <li>Drawn on your machine. Uploaded nowhere.</li>
+            <li>{style === 'story' ? `A ${size.w}×${size.h} PNG` : 'A 1200×630 PNG'} · at API list prices — not a bill.</li>
             {style === 'story' && <li>≈ marks an estimate. Merged means a merge the agents ran; Caprock does not ask GitHub.</li>}
           </ul>
-          {note && <p className="mt-2 text-[12px] text-fg-muted" role="status">{note}</p>}
         </div>
       </div>
     </DialogBackdrop>
