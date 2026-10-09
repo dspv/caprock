@@ -6,7 +6,7 @@
  * bottom, as every terminal does on a launch.
  *
  * Tabs, splits, the front tab and the sidebar are already kept
- * (`caprock.app.workspace.v1`, `caprock.app.expanded`); this is the one thing
+ * (`caprock.app.workspace.v1`, `caprock.app.hidden-projects`); this is the one thing
  * a fresh page could not know.
  */
 

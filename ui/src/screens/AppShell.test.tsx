@@ -71,28 +71,41 @@ afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 async function renderApp() {
   const view = render(<AppShell />)
-  await screen.findByText('Fix the login bug')
+  // The sidebar lists projects; a session not in a tab is reached through
+  // the palette, the Inbox or the project's page.
+  await waitFor(() => expect(document.querySelector('[data-project-row]')).toBeTruthy())
+  await screen.findByRole('region', { name: 'Waiting on you' })
   return view
 }
 
 const cmd = (key: string, extra: Partial<KeyboardEventInit> = {}) =>
   act(() => { fireEvent.keyDown(window, { key, code: /^\d$/.test(key) ? `Digit${key}` : `Key${key.toUpperCase()}`, metaKey: true, ...extra }) })
 
+/** Opens a session the way a person does when it is not in a tab: ⌘K, its name, Enter. */
+async function openFromPalette(text: string) {
+  await cmd('k')
+  const input = screen.getByRole('combobox', { name: 'Search' })
+  fireEvent.change(input, { target: { value: text } })
+  const option = screen.getAllByRole('option').find((o) => o.textContent?.startsWith(text))!
+  fireEvent.click(option)
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Command palette' })).toBeNull())
+}
+
 describe('the app workspace', () => {
   it('lists projects from sessions, with what waits on you first', async () => {
     await renderApp()
     const inbox = screen.getByRole('region', { name: 'Waiting on you' })
     expect(within(inbox).getByText('Waiting one')).toBeInTheDocument()
-    const projects = [...document.querySelectorAll('[data-project-row]')].map((b) => b.querySelector('span.font-medium')?.textContent)
+    const projects = [...document.querySelectorAll('[data-project-row]')].map((b) => b.querySelector('span.truncate')?.textContent)
     expect(projects.sort()).toEqual(['app', 'other'])
-    // Today, in the sidebar's Today strip and on the project's row; the
-    // status strip leaves it out while the sidebar shows it.
+    // Today, in the sidebar's Today strip; the status strip leaves it out
+    // while the sidebar shows it.
     const today = screen.getByRole('region', { name: 'Today' })
     expect(await within(today).findByText('$1.25')).toBeInTheDocument()
-    expect(screen.getByLabelText('$1.25 today')).toBeInTheDocument()
     expect(within(document.querySelector('footer')!).queryByText('$1.25')).toBeNull()
     expect(screen.getByLabelText('1 waiting on you')).toBeInTheDocument()
-    expect(screen.getByLabelText('2 agents running · 1 working')).toBeInTheDocument()
+    // A project's row: what runs in it, nothing else.
+    expect(screen.getByLabelText('2 running')).toBeInTheDocument()
     // With the sidebar closed the status strip carries them again.
     await act(() => { fireEvent.keyDown(window, { key: '\\', code: 'Backslash', metaKey: true }) })
     expect(screen.queryByRole('region', { name: 'Today' })).toBeNull()
@@ -109,7 +122,7 @@ describe('the app workspace', () => {
 
   it('opens a session as a tab, and ⌘W closes the tab without stopping anything', async () => {
     await renderApp()
-    fireEvent.click(screen.getByText('Fix the login bug'))
+    await openFromPalette('Fix the login bug')
     const tab = await screen.findByRole('tab', { name: /Fix the login bug/ })
     expect(tab).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByTestId('pane-agent-1')).toHaveAttribute('data-active', 'true')
@@ -119,7 +132,7 @@ describe('the app workspace', () => {
 
   it('shows an agent tab as its chat, over the terminal that stays mounted', async () => {
     await renderApp()
-    fireEvent.click(screen.getByText('Fix the login bug'))
+    await openFromPalette('Fix the login bug')
     await screen.findByRole('tab', { name: /Fix the login bug/ })
     fireEvent.click(screen.getByRole('button', { name: 'Show the chat' }))
     expect(await screen.findByText('Fix it, please')).toBeInTheDocument()
@@ -130,29 +143,34 @@ describe('the app workspace', () => {
 
   it('opens a session it does not own in the dashboard, never as a terminal (rule 7)', async () => {
     await renderApp()
-    fireEvent.click(screen.getByText('Started elsewhere'))
+    await openFromPalette('Started elsewhere')
     expect(location.hash).toBe('#/session/theirs')
     expect(screen.queryByRole('tab', { name: /Started elsewhere/ })).not.toBeInTheDocument()
   })
 
-  it('keeps every tab in one strip when another project is picked (tester, 2026-10-09)', async () => {
+  it('lists the current project’s tabs in the sidebar as the strip shows them, and one click brings a project back (tester, 2026-10-09)', async () => {
     await renderApp()
-    fireEvent.click(screen.getByText('Fix the login bug'))
+    await openFromPalette('Fix the login bug')
     await screen.findByRole('tab', { name: /Fix the login bug/ })
-    // The other project: its empty state, and the app's tab still in the strip.
-    fireEvent.click(document.querySelector('[data-project-row="dir:/w/other"]') ?? screen.getAllByText('other')[0]!)
-    await waitFor(() => expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'false'))
+    const appRow = () => [...document.querySelectorAll<HTMLElement>('[data-project-row]')].find((b) => b.textContent?.startsWith('app'))!
+    const otherRow = () => [...document.querySelectorAll<HTMLElement>('[data-project-row]')].find((b) => b.textContent?.startsWith('other'))!
+    // The sidebar's list under the current project is the strip, word for word.
+    const list = screen.getByRole('group', { name: 'app: open tabs' })
+    expect(within(list).getByText('Fix the login bug')).toBeInTheDocument()
+    expect(document.querySelectorAll('[aria-current="true"]')).toHaveLength(1)
+    // Another project: its own (empty) strip; the app's terminal stays mounted and its row says it runs.
+    fireEvent.click(otherRow())
+    await waitFor(() => expect(screen.queryByRole('tab', { name: /Fix the login bug/ })).toBeNull())
     expect(screen.getByTestId('pane-agent-1')).toBeInTheDocument()
-    // Each tab names its project.
-    expect(within(screen.getByRole('tab', { name: /Fix the login bug/ })).getByText('app')).toBeInTheDocument()
-    // One click back.
-    fireEvent.click(screen.getByRole('tab', { name: /Fix the login bug/ }))
-    expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'true')
+    expect(within(appRow()).getByLabelText(/running/)).toBeInTheDocument()
+    // One click back, on the tab last in front.
+    fireEvent.click(appRow())
+    expect(await screen.findByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'true')
   })
 
   it('opens the dashboard as a tab beside the terminals, and one click comes back', async () => {
     await renderApp()
-    fireEvent.click(screen.getByText('Fix the login bug'))
+    await openFromPalette('Fix the login bug')
     await screen.findByRole('tab', { name: /Fix the login bug/ })
     await cmd('d', { shiftKey: true })
     const dash = await screen.findByRole('tab', { name: /Dashboard/ })
@@ -172,14 +190,13 @@ describe('the app workspace', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Quick chat' }))
     const tab = await screen.findByRole('tab', { name: /Quick chat/ })
     expect(tab).toHaveAttribute('aria-selected', 'true')
-    expect(within(tab).getByText('no project')).toBeInTheDocument()
     expect(location.hash).toBe('#/app')
     expect(screen.getByTestId('pane-chat-1')).toBeInTheDocument()
   })
 
   it('switches tabs with ⌘1–9 and keeps every terminal mounted', async () => {
     await renderApp()
-    fireEvent.click(screen.getByText('Fix the login bug'))
+    await openFromPalette('Fix the login bug')
     fireEvent.click(within(screen.getByRole('region', { name: 'Waiting on you' })).getByText('Waiting one'))
     await screen.findAllByRole('tab')
     await cmd('1')
@@ -189,7 +206,7 @@ describe('the app workspace', () => {
 
   it('restores its tabs after a reload', async () => {
     const first = await renderApp()
-    fireEvent.click(screen.getByText('Fix the login bug'))
+    await openFromPalette('Fix the login bug')
     await screen.findByRole('tab')
     await waitFor(() => expect(localStorage.getItem(WORKSPACE_KEY)).toContain('agent-1'))
     first.unmount()
@@ -221,7 +238,7 @@ describe('the app workspace', () => {
 
   it('⇧Enter in the palette opens a session beside the one in front, and ⌘W closes just that pane', async () => {
     await renderApp()
-    fireEvent.click(screen.getByText('Fix the login bug'))
+    await openFromPalette('Fix the login bug')
     await screen.findByRole('tab')
     await cmd('k')
     const input = screen.getByRole('combobox', { name: 'Search' })
@@ -277,7 +294,7 @@ describe('workspace helpers', () => {
     const on = () => { heard++ }
     window.addEventListener(FIND_EVENT, on)
     await renderApp()
-    fireEvent.click(screen.getByText('Fix the login bug'))
+    await openFromPalette('Fix the login bug')
     await screen.findByRole('tab')
     await cmd('f')
     expect(heard).toBe(1)

@@ -14,18 +14,20 @@ import { APP_ROUTE, isMacPlatform, isTauri, isWorkspaceHash } from '@/lib/appmod
 import { FIND_EVENT, matchAppShortcut, type AppCommand } from '@/lib/appkeys'
 import { parseHash } from '@/lib/router'
 import { NotSupportedError, projectsApi, type Project } from '@/lib/projects'
-import { buildSidebar, dotOf, OTHER_FOLDERS_ID, sessionTitle, type InboxItem, type ProjectNode, type SessionNode, type WorktreeNode } from '@/lib/sidebar'
+import { buildSidebar, dotOf, OTHER_FOLDERS_ID, sessionTitle, type InboxItem, type ProjectNode, type WorktreeNode } from '@/lib/sidebar'
 import {
   activeTab,
   focusedLeaf,
   leaves,
   loadWorkspace,
   saveWorkspace,
+  tabsOf,
   workspaceReducer,
   type PaneLeaf,
   type Tab,
   type TabTarget,
 } from '@/lib/tabs'
+import { tabLabels } from '@/lib/tablabels'
 import { baseName, fileKey } from '@/lib/files'
 import { useWorkspaceData } from '@/lib/useWorkspaceData'
 import { useShellTray } from '@/lib/tray'
@@ -229,8 +231,13 @@ export function AppShell() {
     ? ws.activeProject
     : model.projects[0]?.project.id ?? ''
   const shownWs = activeProjectId === ws.activeProject ? ws : { ...ws, activeProject: activeProjectId }
-  // The one strip: every project's tabs, whichever project is in front.
-  const tabs = ws.tabs
+  // The strip shows the current project's tabs: the same list the sidebar
+  // shows under it, under the same names (lib/tablabels.ts).
+  const tabs = tabsOf(shownWs, activeProjectId)
+  const labels = useMemo(
+    () => tabLabels(ws.tabs, sessionsById, data.permissions, (id) => projectsById.get(id)?.branch),
+    [ws.tabs, sessionsById, data.permissions, projectsById],
+  )
   const current = activeTab(shownWs)
   const focused = current ? focusedLeaf(current).target : undefined
   const focusedSession = focused ? sessionsById.get(focused.sessionId) : undefined
@@ -264,10 +271,12 @@ export function AppShell() {
     lastDashboard.current = '#/'
     showWorkspace()
   }, [showWorkspace])
-  const projectName = useCallback(
-    (id: string) => (id === OTHER_FOLDERS_ID ? 'no project' : projectsById.get(id)?.name),
-    [projectsById],
-  )
+  /** A tab picked in the strip or in the sidebar's list. */
+  const onActivateTab = useCallback((id: string) => {
+    setChangesView(null)
+    dispatch({ type: 'activate', tabId: id })
+    showWorkspace()
+  }, [showWorkspace])
 
   const openTab = useCallback((target: TabTarget, projectId: string, title: string) => {
     setChangesView(null)
@@ -297,7 +306,6 @@ export function AppShell() {
     openTab({ kind: s.kind === 'shell' ? 'shell' : 'session', sessionId: s.session_id }, projectId, sessionTitle(s))
   }, [openSessions, openTab])
 
-  const onOpenNode = useCallback((n: SessionNode, projectId: string) => openSession(n.session, projectId), [openSession])
   const onOpenInbox = useCallback((i: InboxItem) => openSession(i.session, i.projectId), [openSession])
   const jumpToWaiting = useCallback(() => {
     const item = nextWaiting(model.inbox, focused?.sessionId)
@@ -719,10 +727,12 @@ export function AppShell() {
               model={model}
               source={data.source}
               activeProjectId={activeProjectId}
-              activeSessionId={focused?.sessionId}
               dashboardActive={!workspaceShown}
+              tabs={ws.tabs}
+              tabLabels={labels}
+              activeTabId={current?.id}
+              onActivateTab={onActivateTab}
               onSelectProject={onSelectProject}
-              onOpenSession={onOpenNode}
               onOpenInbox={onOpenInbox}
               onNewAgent={onNewAgent}
               onNewShell={onNewShell}
@@ -732,7 +742,6 @@ export function AppShell() {
               onDashboard={onDashboard}
               onSettings={onSettings}
               onPalette={onPalette}
-              onOpenChanges={data.source === 'api' ? onOpenChanges : undefined}
               summary={data.summary}
               loaded={data.loaded}
               onRoute={onRoute}
@@ -748,7 +757,7 @@ export function AppShell() {
           <TabStrip
               tabs={tabs}
               activeTabId={workspaceShown ? current?.id : undefined}
-              projectName={projectName}
+              labels={labels}
               dashboard={ws.dashboard || !workspaceShown ? {
                 active: !workspaceShown,
                 label: dashboardRoute.name === 'settings' ? 'Settings' : 'Dashboard',
@@ -760,7 +769,7 @@ export function AppShell() {
               permissions={data.permissions}
               inspectorOpen={prefs.inspector}
               sidebarOpen={prefs.sidebar}
-              onActivate={(id) => { setChangesView(null); dispatch({ type: 'activate', tabId: id }); showWorkspace() }}
+              onActivate={onActivateTab}
               onDetach={(id) => dispatch({ type: 'close', tabId: id })}
               onMove={(id, to) => dispatch({ type: 'move', tabId: id, toIndex: to })}
               onNewAgent={() => onNewAgent()}

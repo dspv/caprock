@@ -240,38 +240,36 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
   return { projects: nodes, inbox }
 }
 
-/** A project with nothing running for this long folds under Quiet. */
-export const QUIET_MS = 7 * 24 * 60 * 60 * 1000
-
 export interface ProjectGroups {
-  /** The list as it always was. */
+  /** In play: something running or waiting, a tab open, pinned, or the project in front. */
   shown: ProjectNode[]
-  /** Nothing running and no activity for QUIET_MS: folded at the bottom. */
-  quiet: ProjectNode[]
+  /** Everything else, under "More projects", closed until opened. */
+  more: ProjectNode[]
   /** Hidden by hand. */
   hidden: ProjectNode[]
 }
 
 /**
- * Splits the sidebar's projects into what is listed, what has gone quiet and
- * what was hidden by hand, keeping the model's order inside each group.
- * Something running, waiting or open in a tab, and the project in front,
- * always stay in the list: a hidden project that comes back to life shows
- * normally until it is quiet again. Pinned projects never go quiet, and
- * Other folders holds only what is live or open, so it is never folded.
+ * Splits the sidebar's projects into what is in play, the rest ("More
+ * projects") and what was hidden by hand, keeping the model's order inside
+ * each group (owner, 2026-10-09: eighteen projects in a column were "a mess,
+ * unclear how to navigate", translated). In play: a live or waiting session,
+ * a tab open (`tabbed`), pinned, or the project in front. A hidden project
+ * that comes back to life shows normally until it is idle again. Other
+ * folders holds only what is live or open, so it is always in play.
  */
 export function groupProjects(
   nodes: ProjectNode[],
-  { hidden, activeProjectId, now = Date.now() }: { hidden: ReadonlySet<string>; activeProjectId?: string; now?: number },
+  { hidden, activeProjectId, tabbed }: { hidden: ReadonlySet<string>; activeProjectId?: string; tabbed?: ReadonlySet<string> },
 ): ProjectGroups {
-  const out: ProjectGroups = { shown: [], quiet: [], hidden: [] }
+  const out: ProjectGroups = { shown: [], more: [], hidden: [] }
   for (const n of nodes) {
     const id = n.project.id
-    const busy = n.live > 0 || n.waiting > 0 || n.worktrees.some((w) => w.sessions.some((s) => s.open))
+    const busy = n.live > 0 || n.waiting > 0 || !!tabbed?.has(id) || n.worktrees.some((w) => w.sessions.some((s) => s.open))
     if (busy || id === activeProjectId || id === OTHER_FOLDERS_ID) out.shown.push(n)
     else if (hidden.has(id)) out.hidden.push(n)
-    else if (!n.project.pinned && now - n.lastActive > QUIET_MS) out.quiet.push(n)
-    else out.shown.push(n)
+    else if (n.project.pinned) out.shown.push(n)
+    else out.more.push(n)
   }
   return out
 }

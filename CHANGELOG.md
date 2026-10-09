@@ -11,13 +11,17 @@ Phase 3 (Delight) has no plan by design.
 
 ### Changed
 
-- **One tab strip for every project in the app.** Every open tab stays in the
-  strip, in the order you opened it, with its project's name and colour on
-  it. Picking a project brings its last tab to the front, or shows the
-  project's empty page, and no longer hides the tabs of the project before:
-  a shell opened before moving to a project is where you left it. ⌘1–9,
-  ⌃Tab and dragging run along the whole strip. Tabs saved by an earlier
-  version come back as they were.
+- **A simpler project list in the app.** Only the current project is open
+  in the sidebar, and under it are exactly its tabs — the ones in the tab
+  strip, in the same order and under the same names; shells read *Shell 1*,
+  *Shell 2*. No branch rows, no worktree rows, and no sessions that are not
+  in a tab (they are on the project's page, in ⌘K and in *Waiting on you*).
+  Click another project to make it current; there is nothing to expand or
+  collapse. The tab you are looking at is the one highlighted row. A
+  project's row shows only what runs in it and what waits; projects with
+  something running, a tab open or a pin come first, and the rest fold
+  under *More projects* (it was *Quiet*, after a week without activity).
+  *Waiting on you* shows only when something waits.
 - **Dashboard opens as a tab.** ⇧⌘D and the sidebar's *Dashboard* open Now,
   Cost and the other screens in a *Dashboard* tab pinned at the left of the
   strip, with the terminals beside it, one click away; Settings opens there
@@ -35,7 +39,7 @@ Phase 3 (Delight) has no plan by design.
 
 - **Quick chat in the app.** *Quick chat* under *New agent* in the sidebar,
   ⌥⌘N (Ctrl+Alt+Shift+N on Windows and Linux) and the palette start a Claude
-  Code session without picking a folder, in a tab marked *no project*. It
+  Code session without picking a folder, in a tab under *Other folders*. It
   was only on the browser's Now screen.
 
 ## [0.93.1] - 2026-10-09

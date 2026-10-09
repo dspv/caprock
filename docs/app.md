@@ -20,39 +20,46 @@ others. Installing it: [install-app.md](install-app.md).
 ## The window
 
 - **Sidebar.** *New agent* (⇧⌘N), the accent-outlined button at the top, starts an
-  agent in the project in front; *Add project* (⌘O) sits under it. Under
+  agent in the project in front; *Quick chat* (⌥⌘N) and *Add project* (⌘O)
+  sit under it. Under
   them, *Today*: what every agent has spent today, how many agents are
   running (the dot is green while one is working) and how many wait on
   you, then your Claude plan's 5-hour and weekly windows — the share used
   and when each resets. Click the spend for Cost, a window for the plan
   limits, *Running* for Now, *Waiting* for the session that has waited
-  longest. On API billing there are no windows, so there are no bars. Then
-  *Waiting on you*: sessions blocked on a permission
-  prompt, then sessions whose turn has ended, oldest first. A turn that ended
-  more than 12 hours ago folds under *Older* and is left out of the count,
-  the badge and ⌘J. Below it, every
-  project with its branch, how many agents run in it, what it cost today
-  and how many sessions wait — each only when there is some — opening
-  to its worktrees and the agent sessions and shells in each. The dot says
-  what a session is doing: green working, amber waiting, red looping, grey
-  idle, hollow ended. Hover a project for *New agent* and *New shell*.
-  Sessions in a folder that is not a repository sit under *Other folders*.
-- **A project's menu.** Click the ⋯ on its row (it shows on hover, and
-  always on the project in front), right-click the row, or press Shift+F10
+  longest. On API billing there are no windows, so there are no bars. Then,
+  only while something waits, *Waiting on you*: sessions blocked on a
+  permission prompt, then sessions whose turn has ended, oldest first. A
+  turn that ended more than 12 hours ago folds under *Older* and is left out
+  of the count, the badge and ⌘J. Then the projects, one line each: the
+  name, a green dot with how many sessions and shells run in it, and how
+  many wait on you. Only the current project is open, and under it are
+  exactly its tabs — the ones in the tab strip, in the same order and under
+  the same names (*Shell 1*, *Shell 2* for shells; a branch beside a tab
+  only when it is not the project's own). Click another project to make it
+  current: its last tab comes to the front, or its own page when it has
+  none, and the project before folds up. The one highlighted row in the
+  sidebar is the tab you are looking at; the current project's name is
+  bold. A session not open in a tab is on the project's page (*Recent*),
+  in ⌘K and in *Waiting on you* when it waits. Projects with something
+  running, a tab open or a pin come first; the rest are under *More
+  projects*. Hover a project for *New agent* and *New shell*. Sessions in a
+  folder that is not a repository sit under *Other folders*, and so does a
+  quick chat.
+- **A project's menu.** Click the ⋯ on its row (it shows on hover), right-click the row, or press Shift+F10
   on it: *Hide from the sidebar* (or *Show in the sidebar again*), *Close
   its tabs* — every tab and split of that project; the sessions and shells
   in them keep running — *Open in* each editor found, and *Remove from
   Caprock…*, which asks first and takes the project off the list without
   touching its folder, its files or its sessions; *Add project* lists it
   again. ↑ ↓ move through the menu, Esc closes it.
-- **Keeping the list short.** Projects with nothing running and no
-  activity for 7 days fold under *Quiet* at the bottom of the list; a
+- **Keeping the list short.** Projects with nothing running, no tab open
+  and no pin fold under *More projects* at the bottom of the list; a
   project you hide (from its menu, or the crossed eye on hover) goes under
   *Hidden*, and the same menu or the open eye there brings it back.
   Both groups stay closed until you open them, and the app remembers which
   are open. A project shows in the list again while something runs or
-  waits in it, or while it is the one in front, hidden or not; pinned
-  projects never go quiet.
+  waits in it, or while it is the one in front, hidden or not.
 - **Dashboard.** At the bottom of the sidebar, *Dashboard* (⇧⌘D) opens Now,
   Cost, Lifetime and the other screens in a *Dashboard* tab pinned at the
   left of the tab strip; your terminals stay in the strip beside it, one click
@@ -65,8 +72,8 @@ others. Installing it: [install-app.md](install-app.md).
   shows both.
 - **Quick chat.** *Quick chat* under *New agent* (⌥⌘N, or the palette) asks
   Claude something without picking a folder: a Claude Code session in
-  Caprock's data directory opens in a tab marked *no project*, and sits under
-  *Other folders* in the sidebar.
+  Caprock's data directory opens in a tab, under *Other folders* in the
+  sidebar.
 - **A past session** opens on its chat, with one button: *Resume in a tab*
   (*Branch into a tab* while it still runs elsewhere) and the permission mode
   beside it. Continuing in another agent, opening it in your own terminal and
@@ -93,14 +100,13 @@ others. Installing it: [install-app.md](install-app.md).
   on. *Continue* carries an ended one on in a new tab, in the permission mode
   it was last running in; *Open* goes to a running one. The sidebar lists only
   what is running, so this is where yesterday's work is.
-- **Tabs.** One strip holds every open tab of every project, in the order
-  you opened them, an agent session, a shell or a file each; each tab names
-  its project beside a dot in that project's colour. Picking a project in the
-  sidebar brings its last tab to the front, or shows its empty page when it
-  has none, and never hides another project's tabs. ⌘1–9, ⌃Tab and dragging a
-  tab work along the whole strip. Tabs come back when you reopen the app.
-  Closing a tab (⌘W) never stops its session, and the tab beside it comes to
-  the front; *Stop the session…* in the inspector stops one, after asking.
+- **Tabs.** The strip holds the current project's tabs — an agent session,
+  a shell or a file each — the same list the sidebar shows under that
+  project. Another project's tabs keep running and wait in its own strip:
+  its row in the sidebar shows what runs there, and one click brings them
+  back. Tabs come back when you reopen the app. Closing a tab (⌘W) never
+  stops its session; *Stop the session…* in the inspector does, after
+  asking.
 - **Split panes.** ⌘E opens a new shell beside the terminal in front, ⇧⌘E
   below it; ⇧Enter on a session in the palette opens it there. Up to four
   panes a tab. Click a pane or press ⌘[ ⌘] to move between them; drag the
