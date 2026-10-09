@@ -8,7 +8,7 @@
  * type (History), so last week's session is found by what it was about.
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Sheet } from './Sheet'
+import { Sheet, SHEET_CLOSE_ROOM } from './Sheet'
 
 export interface PaletteItem {
   id: string
@@ -103,7 +103,7 @@ export function CommandPalette({
   let lastGroup = ''
   return (
     <Sheet label="Command palette" onClose={onClose} width={600}>
-      <div className="flex items-center gap-2 border-b border-[var(--app-hairline)] px-4">
+      <div className={`flex items-center gap-2 border-b border-[var(--app-hairline)] pl-4 ${SHEET_CLOSE_ROOM}`}>
         <input
           autoFocus
           aria-label="Search"

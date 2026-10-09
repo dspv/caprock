@@ -17,6 +17,7 @@
  * browser), storage and the install details. Settings and pairing change on
  * the machine Caprock runs on (ADR-029), and the daemon refuses them anyway.
  */
+import { useEffect } from 'react'
 import { useLightTone, useTheme } from '@/lib/theme'
 import { api, isPairedDevice, type Status } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
@@ -38,16 +39,45 @@ import { SpawnModeSetting } from '@/components/SpawnModeSetting'
 import { GitHubSettings } from '@/components/GitHubSettings'
 import { WindowStopSetting } from '@/components/WindowStopSetting'
 import { Locked } from '@/components/Locked'
+import { CloseButton, dialogOpen } from '@/components/Dialog'
+import { escapeLeavesPage, useCloseSettings } from '@/lib/settingsClose'
+
+/**
+ * The page's own way out (lib/settingsClose.ts): a × beside the heading, and
+ * Escape from anywhere on the page but a field or an open dialog. In the app
+ * both do what the Settings tab's × does.
+ */
+function useSettingsEscape(close: () => void) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!dialogOpen() && escapeLeavesPage(e)) { e.preventDefault(); close() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [close])
+}
+
+function SettingsHeading({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="flex items-center gap-3 px-1 pt-1">
+      <h1 className="min-w-0 flex-1 text-[20px] font-medium text-fg">Settings</h1>
+      <CloseButton onClick={onClose} label="Close settings" title="Close settings (Esc)" />
+    </div>
+  )
+}
 
 export function StatusScreen() {
+  const close = useCloseSettings()
+  useSettingsEscape(close)
   const st = useApi(() => api.status(), [], { live: false, intervalMs: 5000 })
   const s = st.data
-  if (st.error && !s) return <Empty title="Cannot reach the daemon">{st.error.message}</Empty>
-  if (!s) return <div className="text-fg-muted">loading…</div>
+  const head = <SettingsHeading onClose={close} />
+  if (st.error && !s) return <div className="mx-auto grid w-full max-w-3xl gap-3">{head}<Empty title="Cannot reach the daemon">{st.error.message}</Empty></div>
+  if (!s) return <div className="mx-auto grid w-full max-w-3xl gap-3">{head}<div className="px-1 text-fg-muted">loading…</div></div>
   const owner = !isPairedDevice()
   return (
     <div className="mx-auto grid w-full max-w-3xl gap-3">
-      <h1 className="px-1 pt-1 text-[20px] font-medium text-fg">Settings</h1>
+      {head}
       {/* Problems first: each one means something is not being captured or
         * cannot be started, and none of them is a preference. */}
       <Problems s={s} />

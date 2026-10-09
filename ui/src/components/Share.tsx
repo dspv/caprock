@@ -29,6 +29,7 @@ import { CARD_SIZE, WeekCard, type CardLayout } from './WeekCard'
 import { Scaled } from './Scaled'
 import { renderCardPNG } from '@/lib/cardimage'
 import { openExternal } from '@/lib/nudges'
+import { CloseButton, DialogBackdrop } from './Dialog'
 import { periodWords } from '@/lib/week'
 import { currentFigures, currentStory, fetchFigures, fetchStory, FRESH_MS, lastFigures, lastStory, warmShare } from '@/lib/sharecache'
 
@@ -365,17 +366,17 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
   const seg = (on: boolean) => `rounded-sm px-2 py-1 text-[12px] ${on ? 'bg-accent text-bg font-medium' : 'text-fg-muted hover:text-fg'}`
 
   return (
-    <div
+    <DialogBackdrop
+      onClose={onClose}
       className="fixed inset-0 z-30 flex items-start justify-center overflow-y-auto bg-black/50 px-4 py-[8vh]"
-      onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label="Share your figures"
     >
       <div className="w-[520px] max-w-full rounded-[var(--radius-panel)] border border-border-strong bg-panel" onClick={(e) => e.stopPropagation()}>
-        <header className="flex items-center border-b border-border px-4 py-3">
+        <header className="flex items-center border-b border-border py-1.5 pl-4 pr-2">
           <h2 className="text-[13px] font-medium text-fg">Share your figures</h2>
-          <button onClick={onClose} className="ml-auto text-fg-muted hover:text-fg" aria-label="Close">✕</button>
+          <CloseButton onClick={onClose} className="ml-auto" />
         </header>
 
         <div className="px-4 py-4">
@@ -516,7 +517,7 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
           {note && <p className="mt-2 text-[12px] text-fg-muted" role="status">{note}</p>}
         </div>
       </div>
-    </div>
+    </DialogBackdrop>
   )
 }
 

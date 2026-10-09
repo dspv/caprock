@@ -52,6 +52,7 @@ import { ChangesView } from '@/components/ChangesView'
 import { FileView } from '@/components/FileView'
 import { FilePicker } from '@/components/FilePicker'
 import { NewAgentSheet } from '@/components/NewAgentSheet'
+import { CloseSettingsContext } from '@/lib/settingsClose'
 import { QuickChatSheet, quickChatRequest, rememberQuickChoice, rememberedQuickChoice, type QuickChoice } from '@/components/QuickChat'
 import { useSpawnableAgents } from '@/components/AgentPicker'
 import { AddProjectSheet } from '@/components/AddProjectSheet'
@@ -150,14 +151,25 @@ export function nextWaiting(all: InboxItem[], currentSessionId?: string): InboxI
   return inbox[(at + 1) % inbox.length]
 }
 
-function useHash(): string {
+/**
+ * The location hash, and a way to move it that the next render already sees.
+ * `hashchange` arrives after React has rendered the click that changed the
+ * hash; closing the front Dashboard tab rendered once more on the old hash,
+ * and that render opened the tab again (the strip kept a "Settings" tab after
+ * its × was clicked).
+ */
+function useHash(): [string, (h: string) => void] {
   const [hash, setHash] = useState(() => location.hash)
   useEffect(() => {
     const on = () => setHash(location.hash)
     window.addEventListener('hashchange', on)
     return () => window.removeEventListener('hashchange', on)
   }, [])
-  return hash
+  const go = useCallback((h: string) => {
+    location.hash = h
+    setHash(location.hash)
+  }, [])
+  return [hash, go]
 }
 
 /** Asks, as the dashboard does, whether this browser may see anything at all. */
@@ -188,7 +200,7 @@ export default function AppRoot() {
 
 export function AppShell() {
   const isMac = isMacPlatform()
-  const hash = useHash()
+  const [hash, goHash] = useHash()
   const workspaceShown = isWorkspaceHash(hash)
   const data = useWorkspaceData()
   const [ws, dispatch] = useReducer(workspaceReducer, undefined, loadWorkspace)
@@ -289,8 +301,9 @@ export function AppShell() {
   const closeDashboard = useCallback(() => {
     dispatch({ type: 'dashboard', open: false })
     lastDashboard.current = '#/'
-    showWorkspace()
-  }, [showWorkspace])
+    // In the same render as the dispatch: on the old hash the tab reopened.
+    if (!isWorkspaceHash(location.hash)) goHash(APP_ROUTE)
+  }, [goHash])
   const projectName = useCallback((id: string) => projectsById.get(id)?.name, [projectsById])
   /** A tab picked in the strip or in the sidebar's list. */
   const onActivateTab = useCallback((id: string) => {
@@ -950,9 +963,12 @@ export function AppShell() {
               </div>
               {!workspaceShown && (
                 <div className="app-scroll absolute inset-0 overflow-y-auto bg-bg">
-                  <Suspense fallback={null}>
-                    <Dashboard route={parseHash(hash)} inApp />
-                  </Suspense>
+                  {/* Settings' own × and Escape close it as its tab's × does (lib/settingsClose.ts). */}
+                  <CloseSettingsContext.Provider value={closeDashboard}>
+                    <Suspense fallback={null}>
+                      <Dashboard route={parseHash(hash)} inApp />
+                    </Suspense>
+                  </CloseSettingsContext.Provider>
                 </div>
               )}
             </div>

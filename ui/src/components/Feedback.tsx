@@ -7,27 +7,64 @@
  * gathered and *shown* before anything happens.
  *
  * Nothing is transmitted from here. The button opens a prefilled GitHub issue
- * in a new tab; the user reads it, edits it, and submits it. That is what keeps
- * this compatible with the promise the product is bought on — and it is also
- * why the panel says so out loud rather than making anyone wonder.
+ * in the browser; the user reads it, edits it, and submits it. That is what
+ * keeps this compatible with the promise the product is bought on — and it is
+ * also why the panel says so out loud rather than making anyone wonder.
+ *
+ * **Where it is.** It was an 11px grey word, "feedback", among the header's
+ * chips, and the owner never noticed it was there (2026-10-10). It is now a
+ * labelled button with a megaphone in the dashboard's header, and in the
+ * desktop app also an icon beside Settings in the sidebar's bottom bar, which
+ * is on screen whatever tab is in front.
+ *
+ * **How the issue opens.** Through `openExternal` (lib/nudges.ts): the desktop
+ * app's `open_external` command, which hands the URL to the default browser,
+ * and `window.open` in a browser tab. A bare `window.open` inside the app's
+ * webview only reached the browser by way of the shell's new-window handler.
  */
 import { useState } from 'react'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
-import { context, isSendable, issueURL, KINDS, type FeedbackKind } from '@/lib/feedback'
+import { openExternal } from '@/lib/nudges'
+import { isAppMode } from '@/lib/appmode'
+import { context, currentScreen, isSendable, issueURL, KINDS, type FeedbackKind } from '@/lib/feedback'
+import { FeedbackIcon } from './AppIcons'
+import { CloseButton, DialogBackdrop } from './Dialog'
 
-export function FeedbackButton({ screen }: { screen: string }) {
-  const [open, setOpen] = useState(false)
+const TIP = 'Report a bug, ask for something, or say what was unclear'
+
+/**
+ * `header`: the labelled button in the dashboard's header. `icon`: a 26px
+ * icon button for the app sidebar's bottom bar. `screen` names where the
+ * report comes from; without it, the screen in front when the dialog opens.
+ */
+export function FeedbackButton({ screen, variant = 'header' }: { screen?: string; variant?: 'header' | 'icon' }) {
+  const [open, setOpen] = useState<string | null>(null)
+  const show = () => setOpen(screen ?? currentScreen(location.hash, isAppMode()))
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className="text-[11px] text-fg-muted hover:text-fg border border-border px-1.5 py-0.5 rounded-sm"
-        title="Report a bug, ask for something, or say what was unclear"
-      >
-        feedback
-      </button>
-      {open && <FeedbackDialog screen={screen} onClose={() => setOpen(false)} />}
+      {variant === 'icon' ? (
+        <button
+          type="button"
+          onClick={show}
+          title={`Feedback: ${TIP.toLowerCase()}`}
+          aria-label="Send feedback"
+          className="flex h-[26px] w-[26px] items-center justify-center rounded-[6px] text-fg-muted transition-colors hover:bg-[var(--app-row-hover)] hover:text-fg motion-reduce:transition-none"
+        >
+          <FeedbackIcon size={15} />
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={show}
+          title={TIP}
+          className="inline-flex h-[24px] items-center gap-1.5 rounded-[6px] border border-border-strong px-2 text-[12px] font-medium text-fg transition-colors hover:border-accent/60 hover:text-accent motion-reduce:transition-none"
+        >
+          <FeedbackIcon size={13} />
+          Feedback
+        </button>
+      )}
+      {open !== null && <FeedbackDialog screen={open} onClose={() => setOpen(null)} />}
     </>
   )
 }
@@ -42,24 +79,24 @@ function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => vo
 
   const send = () => {
     if (!ready) return
-    window.open(issueURL(kind, screen, text, ctx), '_blank', 'noopener')
+    openExternal(issueURL(kind, screen, text, ctx))
     onClose()
   }
 
   return (
-    <div
+    <DialogBackdrop
+      onClose={onClose}
       className="fixed inset-0 z-30 bg-black/50 flex items-start justify-center pt-[12vh] px-4"
-      onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Feedback"
         className="w-full max-w-[660px] border border-border-strong bg-panel rounded-[var(--radius-panel)] shadow-lg"
-        onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-4 pt-3 pb-2 border-b border-border flex items-center">
+        <div className="pl-4 pr-2 py-1.5 border-b border-border flex items-center">
           <span className="text-[15px] font-medium">Tell us what happened</span>
-          <button onClick={onClose} className="ml-auto text-[16px] leading-none text-fg-faint hover:text-fg">
-            ×
-          </button>
+          <CloseButton onClick={onClose} className="ml-auto" />
         </div>
 
         <div className="p-4 grid gap-3">
@@ -130,6 +167,6 @@ function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => vo
           </p>
         </div>
       </div>
-    </div>
+    </DialogBackdrop>
   )
 }

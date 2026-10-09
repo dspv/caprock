@@ -36,6 +36,7 @@ import { keepsProject, ProjectRow, StatusDot } from './ProjectRow'
 import { ProjectMenu, type ProjectMenuAt } from './ProjectMenu'
 import { TodayStrip } from './TodayStrip'
 import { AgentGlyph } from './AgentMarks'
+import { FeedbackButton } from './Feedback'
 import { CaprockMark, ChatIcon, ChevronIcon, DashboardIcon, FolderPlusIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from './AppIcons'
 
 /** Project ids hidden by hand: this browser's. */
@@ -326,6 +327,9 @@ export function Sidebar(props: SidebarProps) {
             <span className="flex-1">Dashboard</span>
             <kbd className="app-kbd">⇧⌘D</kbd>
           </button>
+          {/* Feedback beside Settings: on screen whatever tab is in front,
+            * where the header's button is only on the dashboard. */}
+          <FeedbackButton variant="icon" />
           {props.onSettings && <IconButton label="Settings (⌘,)" onClick={props.onSettings}><SettingsIcon size={15} /></IconButton>}
           <ThemeButton />
         </div>

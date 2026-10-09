@@ -5,7 +5,7 @@
  * closes and the shell ends with it. *Close project* asks the same way about
  * all its busy shells at once (`project`).
  */
-import { Sheet, SheetButton } from './Sheet'
+import { Sheet, SheetButton, SHEET_CLOSE_ROOM } from './Sheet'
 import { closeQuestion, projectCloseQuestion, type ClosingShell } from '@/lib/closeShell'
 
 export function CloseShellConfirm({ busy, project, onStop, onKeep, onCancel }: {
@@ -39,7 +39,7 @@ export function CloseShellConfirm({ busy, project, onStop, onKeep, onCancel }: {
         </>
       }
     >
-      <div className="grid gap-1.5 px-5 py-4">
+      <div className={`grid gap-1.5 py-4 pl-5 ${SHEET_CLOSE_ROOM}`}>
         <p className="text-[13.5px] font-medium text-fg">{project ? projectCloseQuestion(project, busy) : closeQuestion(busy)}</p>
         <p className="text-[12.5px] text-fg-muted">
           Stopping ends {many ? 'the shells and what they run' : 'the shell and what it runs'}. Kept running, {many ? 'they stay' : 'it stays'} in the sidebar as a muted row, to open again or stop with ■.

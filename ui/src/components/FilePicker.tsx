@@ -9,7 +9,7 @@ import type { WorktreeRef } from '@/lib/changes'
 import { failureOf } from '@/lib/changes'
 import { baseName, filesApi, rankFiles, type FileList } from '@/lib/files'
 import { FileIcon } from './AppIcons'
-import { Sheet } from './Sheet'
+import { Sheet, SHEET_CLOSE_ROOM } from './Sheet'
 
 /** Rows drawn at once: enough to scroll, few enough to stay instant. */
 const SHOWN = 60
@@ -40,7 +40,7 @@ export function FilePicker({ target, title, onOpen, onClose }: {
   }
   return (
     <Sheet label="Open file" onClose={onClose} width={600}>
-      <div className="flex items-center gap-2 border-b border-[var(--app-hairline)] px-4">
+      <div className={`flex items-center gap-2 border-b border-[var(--app-hairline)] pl-4 ${SHEET_CLOSE_ROOM}`}>
         <input
           autoFocus
           aria-label="File name"

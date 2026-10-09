@@ -14,6 +14,8 @@
  * kind, their words verbatim, and a context block underneath.
  */
 import type { Status } from './api'
+import { isWorkspaceHash } from './appmode'
+import { parseHash, type Route } from './router'
 
 export type FeedbackKind = 'bug' | 'feature' | 'unclear' | 'other'
 
@@ -124,4 +126,25 @@ const maxText = 6000
 /** Enough words to be worth filing. */
 export function isSendable(text: string): boolean {
   return text.trim().length >= 8
+}
+
+/** A human name for a dashboard screen, for a report's title and context. */
+export function screenName(r: Route): string {
+  switch (r.name) {
+    case 'now': return 'Now'
+    case 'session': return 'Session detail'
+    case 'cost': return 'Cost'
+    case 'history': return 'Lifetime'
+    case 'week': return 'Week'
+    case 'tasks': return 'Tasks'
+    case 'graph': return 'Graph'
+    case 'notes': return 'Memory'
+    case 'settings': return 'Settings'
+    case 'start': return 'Start work'
+  }
+}
+
+/** The screen in front, from the location hash: the app's tabs, or a dashboard screen. */
+export function currentScreen(hash: string, app: boolean): string {
+  return app && isWorkspaceHash(hash) ? 'App tabs' : screenName(parseHash(hash))
 }

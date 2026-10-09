@@ -147,7 +147,9 @@ describe('PremiumModal', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
 
     rerender(<PremiumModal feature="cap" onClose={onClose} />)
-    fireEvent.click(screen.getByRole('dialog'))
+    const backdrop = screen.getByRole('dialog')
+    fireEvent.mouseDown(backdrop)
+    fireEvent.click(backdrop)
     expect(onClose).toHaveBeenCalledTimes(2)
 
     for (const b of screen.getAllByRole('button', { name: 'Close' })) fireEvent.click(b)
