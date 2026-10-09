@@ -12,6 +12,7 @@
  * Reading has no such cost, so this works for every session, including the ones
  * started by hand — which is nearly all of them.
  */
+import { CloseButton, DialogBackdrop } from './Dialog'
 import { useEffect, useState } from 'react'
 import { api, type AssistantNote, type SessionSummary } from '@/lib/api'
 import { fmtAgo } from '@/lib/format'
@@ -48,17 +49,18 @@ export function LastWord({ session, now, onClose }: {
   const shown = conclusion ?? newest
 
   return (
-    <div className="fixed inset-0 z-30 bg-black/50 flex items-start justify-center pt-[10vh] px-4" onClick={onClose}>
+    <DialogBackdrop onClose={onClose} className="fixed inset-0 z-30 bg-black/50 flex items-start justify-center pt-[10vh] px-4">
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="What it said last"
         className="w-full max-w-[720px] max-h-[76vh] flex flex-col border border-border-strong bg-panel rounded-[var(--radius-panel)] shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-4 pt-3 pb-2 border-b border-border flex items-baseline gap-2">
           <span className="text-[13px] font-medium truncate">{session.project || 'unknown project'}</span>
           <span className="text-[11px] text-fg-muted truncate">{session.activity?.phrase}</span>
-          <button onClick={onClose} className="ml-auto text-[16px] leading-none text-fg-faint hover:text-fg">
-            ×
-          </button>
+          <CloseButton onClick={onClose} className="-my-1 ml-auto" />
         </div>
 
         <div className="overflow-y-auto px-4 py-3 grid gap-3">
@@ -111,6 +113,6 @@ export function LastWord({ session, now, onClose }: {
           </span>
         </div>
       </div>
-    </div>
+    </DialogBackdrop>
   )
 }

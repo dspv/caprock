@@ -20,6 +20,19 @@ vi.mock('@/components/TerminalPane', () => ({
   ),
 }))
 
+// Settings in full needs the whole status; its own test renders it
+// (StatusClose.test.tsx). Here only its way out matters: the × it renders
+// calls what the app shell provides.
+vi.mock('@/screens/Status', async () => {
+  const { useCloseSettings } = await import('@/lib/settingsClose')
+  return {
+    StatusScreen: () => {
+      const close = useCloseSettings()
+      return <button type="button" aria-label="Close settings" onClick={close}>×</button>
+    },
+  }
+})
+
 function sess(p: Partial<SessionSummary>): SessionSummary {
   return {
     session_id: 's', cwd: '/w/app', repo_root: '/w/app', project: 'app', model: 'claude-opus-5', started_at: 0, last_event_at: 1, status: 'active',
@@ -189,6 +202,23 @@ describe('the app workspace', () => {
     fireEvent.click(within(back).getByRole('button', { name: 'Close tab Dashboard' }))
     expect(screen.queryByRole('tab', { name: /Dashboard/ })).not.toBeInTheDocument()
   })
+
+  // Owner, 2026-10-10: Settings had no way out on the page. Its × closes the
+  // tab, as the strip's × does, and the tab stays closed (it used to reopen
+  // in the render before the hash change arrived).
+  it('closes Settings from the page’s own ×, and from the strip’s, for good', async () => {
+    await renderApp()
+    for (const how of ['page', 'strip'] as const) {
+      await cmd(',')
+      // The dashboard is a lazy chunk: on a busy machine it takes more than a second.
+      const x = await screen.findByRole('button', { name: 'Close settings' }, { timeout: 8000 })
+      expect(screen.getByRole('tab', { name: /Settings/ })).toHaveAttribute('aria-selected', 'true')
+      if (how === 'page') fireEvent.click(x)
+      else fireEvent.click(within(screen.getByRole('tab', { name: /Settings/ })).getByRole('button', { name: 'Close tab Settings' }))
+      await waitFor(() => expect(location.hash).toBe('#/app'))
+      expect(screen.queryByRole('tab', { name: /Settings|Dashboard/ }), how).not.toBeInTheDocument()
+    }
+  }, 20_000)
 
   // A click asks which vendor and model (Enter takes the last one); ⌥⌘N
   // never asks (owner, 2026-10-09).

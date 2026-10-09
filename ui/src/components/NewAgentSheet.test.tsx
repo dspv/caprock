@@ -102,7 +102,8 @@ describe('the New agent sheet on the keyboard', () => {
       .filter((el) => !el.hasAttribute('disabled'))
       // A button's name without its key badge, which is aria-hidden.
       .map((el) => el.getAttribute('aria-label') || (el.closest('label')?.querySelector('span')?.firstChild?.textContent ?? el.firstChild?.textContent ?? '').trim())
-    expect(order).toEqual(['Project', 'Where', 'Model', 'Permissions', 'Add', 'First message', 'Cancel', 'Start'])
+    // The sheet's × comes first, in its header; the first message still has the caret.
+    expect(order).toEqual(['Close', 'Project', 'Where', 'Model', 'Permissions', 'Add', 'First message', 'Cancel', 'Start'])
   })
 })
 

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { CloseButton, DialogBackdrop } from '@/components/Dialog'
 import { api, ApiError, errText, isPairedDevice, type DiffResult, type Status, type Task, type TaskVerification, type TaskWork } from '@/lib/api'
 import { useCanControl } from '@/lib/useCanControl'
 import { useApi } from '@/lib/useApi'
@@ -171,11 +172,11 @@ function EnableDialog({ hive, repo, onClose, onDone }: { hive: string; repo: str
     } finally { setBusy(false) }
   }
   return (
-    <div className="fixed inset-0 z-20 bg-black/50 flex items-start justify-center pt-24" onClick={onClose}>
-      <div className="border border-border-strong bg-panel rounded-[var(--radius-panel)] w-[560px] max-w-[92vw]" onClick={(e) => e.stopPropagation()}>
+    <DialogBackdrop onClose={onClose} className="fixed inset-0 z-20 bg-black/50 flex items-start justify-center pt-24">
+      <div role="dialog" aria-modal="true" aria-label="Turn on the task runner" className="border border-border-strong bg-panel rounded-[var(--radius-panel)] w-[560px] max-w-[92vw]" onClick={(e) => e.stopPropagation()}>
         <header className="px-3 py-2 border-b border-border flex items-center">
           <h2 className="text-[12px] uppercase tracking-[0.08em] text-fg-muted">Turn on the task runner</h2>
-          <button onClick={onClose} className="ml-auto text-fg-muted hover:text-fg">✕</button>
+          <CloseButton onClick={onClose} className="-my-1 ml-auto" />
         </header>
         <div className="px-4 py-3 grid gap-3 text-[13px]">
           <ul className="grid gap-1 text-[12px] text-fg-muted">
@@ -198,7 +199,7 @@ function EnableDialog({ hive, repo, onClose, onDone }: { hive: string; repo: str
           <button onClick={submit} disabled={busy} className="border border-accent bg-accent/15 text-accent px-3 py-1 rounded-sm hover:bg-accent/25 disabled:opacity-50">{busy ? 'turning on…' : 'Turn it on'}</button>
         </footer>
       </div>
-    </div>
+    </DialogBackdrop>
   )
 }
 
@@ -280,13 +281,13 @@ function TaskDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   // respawned after a crash). The newest window is the one holding the work.
   const session = work?.sessions?.[0]
   return (
-    <div className="fixed inset-0 z-20 bg-black/50 flex items-start justify-center pt-16" onClick={onClose}>
-      <div className="border border-border-strong bg-panel rounded-[var(--radius-panel)] w-[820px] max-w-[94vw] max-h-[82vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+    <DialogBackdrop onClose={onClose} className="fixed inset-0 z-20 bg-black/50 flex items-start justify-center pt-16">
+      <div role="dialog" aria-modal="true" aria-label="Task" className="border border-border-strong bg-panel rounded-[var(--radius-panel)] w-[820px] max-w-[94vw] max-h-[82vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
         <header className="px-3 py-2 border-b border-border flex items-center gap-2 sticky top-0 bg-panel z-10">
           <h2 className="text-[12px] uppercase tracking-[0.08em] text-fg-muted">Task</h2>
           {d && <span className="text-[12px] truncate">{d.task.title || d.task.id}</span>}
           {d && <span className="mono text-[10px] text-fg-faint">{d.task.status}</span>}
-          <button onClick={onClose} className="ml-auto text-fg-muted hover:text-fg">✕</button>
+          <CloseButton onClick={onClose} className="-my-1 ml-auto" />
         </header>
         {!d && !detail.error && <Skeleton rows={5} />}
         {detail.error && !d && <Empty title="Cannot load the task">{detail.error.message}</Empty>}
@@ -303,7 +304,7 @@ function TaskDrawer({ id, onClose }: { id: string; onClose: () => void }) {
           </div>
         )}
       </div>
-    </div>
+    </DialogBackdrop>
   )
 }
 
@@ -471,9 +472,9 @@ export function NewTask({ onClose }: { onClose: () => void }) {
     } catch (e) { setError(errText(e)) } finally { setBusy(false) }
   }
   return (
-    <div className="fixed inset-0 z-20 bg-black/50 flex items-start justify-center pt-24" onClick={onClose}>
-      <div className="border border-border-strong bg-panel rounded-[var(--radius-panel)] w-[560px] max-w-[92vw]" onClick={(e) => e.stopPropagation()}>
-        <header className="px-3 py-2 border-b border-border flex items-center"><h2 className="text-[12px] uppercase tracking-[0.08em] text-fg-muted">New task</h2><button onClick={onClose} className="ml-auto text-fg-muted hover:text-fg">✕</button></header>
+    <DialogBackdrop onClose={onClose} className="fixed inset-0 z-20 bg-black/50 flex items-start justify-center pt-24">
+      <div role="dialog" aria-modal="true" aria-label="New task" className="border border-border-strong bg-panel rounded-[var(--radius-panel)] w-[560px] max-w-[92vw]" onClick={(e) => e.stopPropagation()}>
+        <header className="px-3 py-2 border-b border-border flex items-center"><h2 className="text-[12px] uppercase tracking-[0.08em] text-fg-muted">New task</h2><CloseButton onClick={onClose} className="-my-1 ml-auto" /></header>
         <div className="px-4 py-3 grid gap-3 text-[13px]">
           <label className="grid gap-1"><span className="text-[11px] text-fg-muted">Title</span><input autoFocus className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Add /healthz endpoint" /></label>
           <label className="grid gap-1"><span className="text-[11px] text-fg-muted">Budget (USD)</span><input className="input" value={budget} onChange={(e) => setBudget(e.target.value)} /></label>
@@ -486,6 +487,6 @@ export function NewTask({ onClose }: { onClose: () => void }) {
           <button onClick={submit} disabled={busy} className="border border-accent bg-accent/15 text-accent px-3 py-1 rounded-sm hover:bg-accent/25 disabled:opacity-50">{busy ? 'creating…' : 'Create task'}</button>
         </footer>
       </div>
-    </div>
+    </DialogBackdrop>
   )
 }

@@ -1,9 +1,13 @@
 /**
  * A sheet: the app's modal, dropped from the top of the window as a macOS
- * sheet is. Escape or a click outside closes it; focus returns to whatever
- * had it before, so closing a sheet hands the keyboard back to the terminal.
+ * sheet is. The × in its corner, Escape or a click outside closes it
+ * (components/Dialog.tsx, shared with every other dialog); focus returns to
+ * whatever had it before, so closing a sheet hands the keyboard back to the
+ * terminal.
  */
 import { useEffect, useRef, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import { CloseButton, useBackdropClose, useEscapeToClose } from './Dialog'
 
 export function Sheet({
   title,
@@ -21,7 +25,8 @@ export function Sheet({
   label: string
 }) {
   const panel = useRef<HTMLDivElement>(null)
-  // The latest onClose, read when Esc is pressed. Callers pass an inline
+  // Escape and the backdrop read the latest onClose (components/Dialog.tsx),
+  // so the focus effect below depends on nothing. Callers pass an inline
   // arrow, so it is a new function on every render of theirs — and the app
   // shell re-renders on every poll and live event. While it was this effect's
   // dependency, each of those re-ran the effect: the cleanup handed focus back
@@ -29,49 +34,51 @@ export function Sheet({
   // sheet's first field. Someone typing the first message found the caret in
   // Project a moment later (owner, 2026-10-09: "focus sometimes jumps
   // between fields"). Focus moves on open and on close, never in between.
-  const close = useRef(onClose)
-  close.current = onClose
+  useEscapeToClose(onClose)
+  const backdrop = useBackdropClose(onClose)
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        e.stopPropagation()
-        close.current()
-      }
-    }
-    window.addEventListener('keydown', onKey, true)
-    // Focus the first field unless something inside already took it.
+    // Focus the first field unless something inside already took it. Never
+    // the ×: Enter on an opened sheet must not close it.
     if (!panel.current?.contains(document.activeElement)) {
-      panel.current?.querySelector<HTMLElement>('[autofocus], input, textarea, select, button')?.focus()
+      panel.current?.querySelector<HTMLElement>('[autofocus], input, textarea, select, button:not([data-dialog-close])')?.focus()
     }
     return () => {
-      window.removeEventListener('keydown', onKey, true)
       before?.focus?.()
     }
   }, [])
-  return (
-    <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/25 px-4 pt-[10vh]" onMouseDown={() => close.current()}>
+  // On document.body, as every dialog's backdrop is (components/Dialog.tsx).
+  return createPortal(
+    <div data-dialog-backdrop="" className="fixed inset-0 z-40 flex items-start justify-center bg-black/25 px-4 pt-[10vh]" {...backdrop}>
       <div
         ref={panel}
         role="dialog"
         aria-modal="true"
         aria-label={label}
-        onMouseDown={(e) => e.stopPropagation()}
         style={{ maxWidth: width }}
-        className="app-fade-in flex max-h-[78vh] w-full flex-col overflow-hidden rounded-[12px] border border-[var(--app-hairline-strong)] bg-panel shadow-[0_24px_64px_-20px_rgba(0,0,0,0.55)]"
+        className="app-fade-in relative flex max-h-[78vh] w-full flex-col overflow-hidden rounded-[12px] border border-[var(--app-hairline-strong)] bg-panel shadow-[0_24px_64px_-20px_rgba(0,0,0,0.55)]"
       >
-        {title && (
-          <div className="shrink-0 border-b border-[var(--app-hairline)] px-5 py-3.5">
-            <h2 className="text-[14px] font-semibold tracking-[-0.01em] text-fg">{title}</h2>
+        {title ? (
+          <div className="flex shrink-0 items-center gap-3 border-b border-[var(--app-hairline)] py-2 pl-5 pr-2.5">
+            <h2 className="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-[-0.01em] text-fg">{title}</h2>
+            <CloseButton onClick={onClose} />
           </div>
+        ) : (
+          // A sheet without a title (the palette, the file picker, a
+          // question) keeps the × in the same corner, over its first row;
+          // that row leaves room for it (`SHEET_CLOSE_ROOM`).
+          <CloseButton onClick={onClose} className="absolute right-2.5 top-2.5 z-10" />
         )}
         <div className="app-scroll min-h-0 flex-1 overflow-y-auto">{children}</div>
         {footer && <div className="flex shrink-0 items-center justify-end gap-2 border-t border-[var(--app-hairline)] px-5 py-3">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
+
+/** Right padding for the first row of a sheet without a title, clear of its ×. */
+export const SHEET_CLOSE_ROOM = 'pr-12'
 
 /** The sheet's buttons: one primary, the rest quiet. */
 export function SheetButton({ primary, children, ...rest }: { primary?: boolean; children: ReactNode } & React.ButtonHTMLAttributes<HTMLButtonElement>) {

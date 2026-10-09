@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { CloseButton, DialogBackdrop } from '@/components/Dialog'
 import type { ReactNode } from 'react'
 import { live as liveStore, useLiveLink } from '@/lib/live'
 import { href, type Route } from '@/lib/router'
@@ -18,6 +19,7 @@ import {
 import { useApi } from '@/lib/useApi'
 import { PlanChip, usePlan } from '@/components/PlanPicker'
 import { FeedbackButton } from '@/components/Feedback'
+import { screenName } from '@/lib/feedback'
 import { ShareButton } from '@/components/Share'
 import { PremiumChip } from '@/components/PremiumChip'
 import { SiteFooter } from '@/components/SiteFooter'
@@ -50,22 +52,6 @@ const NAV: { route: Route; label: string; phase?: string }[] = [
 // only draw session ids around a hub — topology, not work — which costs a
 // permanent nav slot to say nothing. The route stays live at #/graph and Tasks
 // links to it while an orchestration is actually running.
-
-/** A human name for the current route, for a feedback report. */
-function screenName(r: Route): string {
-  switch (r.name) {
-    case 'now': return 'Now'
-    case 'session': return 'Session detail'
-    case 'cost': return 'Cost'
-    case 'history': return 'Lifetime'
-    case 'week': return 'Week'
-    case 'tasks': return 'Tasks'
-    case 'graph': return 'Graph'
-    case 'notes': return 'Memory'
-    case 'settings': return 'Settings'
-    case 'start': return 'Start work'
-  }
-}
 
 export function Shell({ route, children }: { route: Route; children: ReactNode }) {
   const link = useLiveLink()
@@ -252,7 +238,7 @@ function VersionChip() {
  */
 function NotesDialog({ u, onClose }: { u: UpdateStatus; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-30 bg-black/50 flex items-start justify-center pt-[10vh] px-4" onClick={onClose}>
+    <DialogBackdrop onClose={onClose} className="fixed inset-0 z-30 bg-black/50 flex items-start justify-center pt-[10vh] px-4">
       <div
         className="w-full max-w-[620px] max-h-[76vh] flex flex-col border border-border-strong bg-panel rounded-[var(--radius-panel)] shadow-lg"
         onClick={(e) => e.stopPropagation()}
@@ -262,7 +248,7 @@ function NotesDialog({ u, onClose }: { u: UpdateStatus; onClose: () => void }) {
         <div className="px-4 pt-3 pb-2 border-b border-border flex items-baseline gap-2">
           <span className="text-[15px] font-medium">What&apos;s new</span>
           {u.notes_for && <span className="mono text-[12px] text-accent">{u.notes_for}</span>}
-          <button onClick={onClose} className="ml-auto text-[16px] leading-none text-fg-faint hover:text-fg">×</button>
+          <CloseButton onClick={onClose} className="-my-1 ml-auto" />
         </div>
         <div className="overflow-y-auto px-4 py-3">
           <Prose text={u.notes ?? ''} />
@@ -283,7 +269,7 @@ function NotesDialog({ u, onClose }: { u: UpdateStatus; onClose: () => void }) {
           </a>
         </div>
       </div>
-    </div>
+    </DialogBackdrop>
   )
 }
 
@@ -348,7 +334,7 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-30 bg-black/50 flex items-start justify-center pt-[10vh] px-4" onClick={onClose}>
+    <DialogBackdrop onClose={onClose} className="fixed inset-0 z-30 bg-black/50 flex items-start justify-center pt-[10vh] px-4">
       <div
         className="w-full max-w-[560px] max-h-[80vh] overflow-y-auto border border-border-strong bg-panel rounded-[var(--radius-panel)] shadow-lg"
         onClick={(e) => e.stopPropagation()}
@@ -357,7 +343,7 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
       >
         <div className="px-4 pt-3 pb-2 border-b border-border flex items-center">
           <span className="text-[15px] font-medium">Version</span>
-          <button onClick={onClose} className="ml-auto text-[16px] leading-none text-fg-faint hover:text-fg">×</button>
+          <CloseButton onClick={onClose} className="-my-1 ml-auto" />
         </div>
         <div className="p-4 grid gap-3.5">
           <div className="flex items-baseline gap-2 text-[13px]">
@@ -478,6 +464,6 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       </div>
-    </div>
+    </DialogBackdrop>
   )
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { CloseButton, DialogBackdrop } from './Dialog'
 import { DirPicker } from './DirPicker'
 import { AgentPicker, useAgentChoice, useSpawnableAgents, type SpawnAgent } from './AgentPicker'
 import { api, errText, isPairedDevice } from '@/lib/api'
@@ -223,11 +224,11 @@ export function SpawnDialog({
     } finally { setBusy(false) }
   }
   return (
-    <div className="fixed inset-0 z-20 bg-black/50 flex items-start justify-center pt-4 sm:pt-24" onClick={onClose}>
-      <div className="border border-border-strong bg-panel rounded-[var(--radius-panel)] w-[620px] max-w-[94vw] max-h-[calc(100dvh-2rem)] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <DialogBackdrop onClose={onClose} className="fixed inset-0 z-20 bg-black/50 flex items-start justify-center pt-4 sm:pt-24">
+      <div role="dialog" aria-modal="true" aria-label="New session" className="border border-border-strong bg-panel rounded-[var(--radius-panel)] w-[620px] max-w-[94vw] max-h-[calc(100dvh-2rem)] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <header className="px-3 py-2 border-b border-border flex items-center">
           <h2 className="text-[12px] uppercase tracking-[0.08em] text-fg-muted">New session</h2>
-          <button onClick={onClose} aria-label="Close" className="ml-auto text-fg-muted hover:text-fg max-sm:-my-2 max-sm:-mr-2 max-sm:h-11 max-sm:w-11">✕</button>
+          <CloseButton onClick={onClose} className="-my-1 ml-auto" />
         </header>
         {!available && agents.length === 0 ? (
           <div className="px-4 py-6 text-[13px] text-fg-muted">
@@ -324,7 +325,7 @@ export function SpawnDialog({
           </footer>
         )}
       </div>
-    </div>
+    </DialogBackdrop>
   )
 }
 

@@ -96,7 +96,13 @@ others. Installing it: [install-app.md](install-app.md).
   left of the tab strip; your terminals stay in the strip beside it, one click
   away, and the tab brings back the screen you left it on until you close it.
   The sliders beside it open Settings (⌘,) in the same tab, where the app puts
-  how new agents start, appearance, terminal and editor first. In the app,
+  how new agents start, appearance, terminal and editor first. The × beside
+  the *Settings* heading, or Esc, closes it as the tab's × does. The
+  megaphone beside the sliders opens *Feedback*: a sentence becomes a
+  prefilled GitHub issue in your browser, which you read and submit yourself.
+- **Dialogs.** Every dialog — Quick chat, New agent, Add project, the
+  palette, Share and the rest — closes with the × in its corner, a click
+  outside it, or Esc. In the app,
   Now keeps its figures — today, plan limits, the pulse, all time, at a
   glance, the activity feed — and leaves the session cards and the projects
   panel to the sidebar, which lists the same sessions; the browser dashboard

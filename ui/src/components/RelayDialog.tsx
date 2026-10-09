@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { CloseButton, DialogBackdrop } from './Dialog'
 import { api, errText, isPairedDevice } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { href, navigate } from '@/lib/router'
@@ -88,11 +89,11 @@ export function RelayDialog({ sessionID, agent, onClose }: { sessionID: string; 
   const name = agentName(agent)
   const files = b?.git && !b.git.not_repo ? b.git.files.length + (b.git.more ?? 0) : undefined
   return (
-    <div className="fixed inset-0 z-20 bg-black/50 flex items-start justify-center pt-16" onClick={onClose}>
+    <DialogBackdrop onClose={onClose} className="fixed inset-0 z-20 bg-black/50 flex items-start justify-center pt-16">
       <div role="dialog" aria-label={`Continue in ${name}`} className="border border-border-strong bg-panel rounded-[var(--radius-panel)] w-[720px] max-w-[94vw]" onClick={(e) => e.stopPropagation()}>
         <header className="px-3 py-2 border-b border-border flex items-center">
           <h2 className="text-[12px] uppercase tracking-[0.08em] text-fg-muted">Continue in {name}</h2>
-          <button onClick={onClose} className="ml-auto text-fg-muted hover:text-fg">✕</button>
+          <CloseButton onClick={onClose} className="-my-1 ml-auto" />
         </header>
         <div className="px-4 py-3 grid min-w-0 gap-2.5 text-[13px]">
           {/* The honest sentence first: what the user would otherwise assume
@@ -143,7 +144,7 @@ export function RelayDialog({ sessionID, agent, onClose }: { sessionID: string; 
           </button>
         </footer>
       </div>
-    </div>
+    </DialogBackdrop>
   )
 }
 

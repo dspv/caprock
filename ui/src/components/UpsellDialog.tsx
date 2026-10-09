@@ -8,22 +8,25 @@
  * so with a tag on the picture itself, not in a footnote (rule 6): someone
  * glancing at a big number must never take it for one of theirs.
  *
- * It behaves like a dialog: Escape and the backdrop close it, focus moves into
- * it when it opens, Tab stays inside it, and focus goes back to whatever opened
- * it when it closes.
+ * It behaves like a dialog: the ×, Escape and the backdrop close it
+ * (components/Dialog.tsx), focus moves into it when it opens, Tab stays inside
+ * it, and focus goes back to whatever opened it when it closes.
  */
 import { useEffect, useRef, type ReactNode } from 'react'
+import { CloseButton, DialogBackdrop } from './Dialog'
 import './WeekCard.css'
 
-export function useDialogFocus(onClose: () => void) {
+/** Focus into the panel on open, Tab kept inside it, focus back on close. Escape is DialogBackdrop's. */
+export function useDialogFocus() {
   const panel = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null
     const focusables = () =>
       [...(panel.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])') ?? [])]
-    focusables()[0]?.focus()
+    // The first control that is not the ×: Enter on an opened dialog must not close it.
+    const first = focusables().find((el) => !el.hasAttribute('data-dialog-close')) ?? focusables()[0]
+    first?.focus()
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { onClose(); return }
       if (e.key !== 'Tab') return
       const f = focusables()
       if (f.length === 0) return
@@ -37,7 +40,7 @@ export function useDialogFocus(onClose: () => void) {
       window.removeEventListener('keydown', onKey)
       try { opener?.focus?.() } catch { /* the opener may be gone */ }
     }
-  }, [onClose])
+  }, [])
   return panel
 }
 
@@ -51,11 +54,11 @@ export function UpsellDialog({ label, eyebrow, title, onClose, picture, children
   actions: ReactNode
   footer: ReactNode
 }) {
-  const panel = useDialogFocus(onClose)
+  const panel = useDialogFocus()
   return (
-    <div
+    <DialogBackdrop
+      onClose={onClose}
       className="fixed inset-0 z-30 flex items-start justify-center overflow-y-auto bg-black/55 px-3 py-[6vh] sm:px-4"
-      onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label={label}
@@ -70,16 +73,14 @@ export function UpsellDialog({ label, eyebrow, title, onClose, picture, children
             <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">{eyebrow}</p>
             <h2 className="mt-1 text-[19px] font-semibold leading-snug tracking-[-0.01em] text-fg">{title}</h2>
           </div>
-          <button type="button" onClick={onClose} className="-mr-1 ml-auto text-fg-muted hover:text-fg" aria-label="Close">
-            ✕
-          </button>
+          <CloseButton onClick={onClose} className="-mr-2 -mt-1 ml-auto" />
         </header>
         <div className="px-5 pt-3">{picture}</div>
         <div className="px-5 pt-4">{children}</div>
         <div className="mt-4 border-t border-border px-5 py-4">{actions}</div>
         <footer className="border-t border-border px-5 py-2.5 text-[12px]">{footer}</footer>
       </div>
-    </div>
+    </DialogBackdrop>
   )
 }
 

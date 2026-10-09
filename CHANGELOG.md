@@ -29,6 +29,27 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   endpoint `GET /v1/team-signal` counts commit authors from git on this
   machine; counts only, nothing leaves it.
 
+### Fixed
+
+- **Every dialog has a way out you can see.** Each one now has the same 30px
+  × in its header (44px on a phone), closes on a click on the dimmed
+  backdrop, and closes on Esc: Quick chat, New agent, Add project, the
+  command palette, Open file, the shell-close question, Share, Premium,
+  Teams, Feedback, Version, What's new, New session, Continue in, and the
+  Tasks dialogs. Quick chat had no × at all. Esc closes only the newest
+  dialog, and a text selection dragged out of a dialog no longer closes it.
+- **Settings has its own ×.** Beside the *Settings* heading, and Esc from
+  anywhere on the page but a field: in the app both do what the Settings
+  tab's × does; in a browser they go back to the screen you came from.
+  Closing the Settings or Dashboard tab while it is in front no longer
+  leaves the tab in the strip.
+- **Feedback you can find.** The header's 11px grey *feedback* is now a
+  labelled **Feedback** button with an icon, and the app's sidebar has a
+  feedback icon beside Settings, on screen whatever tab is in front (a dialog
+  opened from the sidebar is no longer squeezed into it). The
+  prefilled GitHub issue opens in your default browser through the app's
+  own link path, as a terminal link does.
+
 ## [0.95.0] - 2026-10-09
 
 ### Added
