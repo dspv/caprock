@@ -1044,3 +1044,38 @@ func TestNotifySwitchesRoundTrip(t *testing.T) {
 		t.Errorf("notify approval=%v finished=%v, want false/true", got.NotifyApproval, got.NotifyFinished)
 	}
 }
+
+// The dashboard's prompt answers merge rather than replace, 0 clears one, and
+// a key that is not a prompt id is refused rather than stored.
+func TestSettingsPromptsMergeAndValidate(t *testing.T) {
+	e := newEnv(t)
+	if code := e.putSettings(t, map[string]any{"prompts": map[string]int64{"star-done": 100}}); code != 200 {
+		t.Fatalf("first put = %d", code)
+	}
+	if code := e.putSettings(t, map[string]any{"prompts": map[string]int64{"teams-nudge": 200}}); code != 200 {
+		t.Fatalf("second put = %d", code)
+	}
+	var got Settings
+	e.get(t, "/v1/settings", &got)
+	if got.Prompts["star-done"] != 100 || got.Prompts["teams-nudge"] != 200 {
+		t.Fatalf("prompts = %v, want both kept", got.Prompts)
+	}
+	e.putSettings(t, map[string]any{"prompts": map[string]int64{"star-done": 0}})
+	got = Settings{}
+	e.get(t, "/v1/settings", &got)
+	if _, ok := got.Prompts["star-done"]; ok || got.Prompts["teams-nudge"] != 200 {
+		t.Fatalf("prompts = %v, want star-done cleared only", got.Prompts)
+	}
+	// An unrelated save keeps them.
+	e.putSettings(t, map[string]any{"update_checks": false})
+	got = Settings{}
+	e.get(t, "/v1/settings", &got)
+	if got.Prompts["teams-nudge"] != 200 {
+		t.Fatalf("prompts lost on an unrelated save: %v", got.Prompts)
+	}
+	for _, bad := range []map[string]int64{{"Star": 1}, {"a b": 1}, {"x": -1}} {
+		if code := e.putSettings(t, map[string]any{"prompts": bad}); code != 400 {
+			t.Fatalf("put %v = %d, want 400", bad, code)
+		}
+	}
+}

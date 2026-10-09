@@ -39,6 +39,10 @@ import { Sidebar } from '@/components/Sidebar'
 import { TabStrip, TerminalStack } from '@/components/TerminalTabs'
 import { Inspector } from '@/components/Inspector'
 import { StatusStrip } from '@/components/StatusStrip'
+import { StarStrip } from '@/components/StarStrip'
+import { ShareMoment } from '@/components/Nudges'
+import { ShareDialog } from '@/components/Share'
+import { usePromptSync } from '@/lib/nudges'
 import { AppUpdateToast } from '@/components/AppUpdateToast'
 import { AppUpdateAsk } from '@/components/AppUpdateAsk'
 import { appUpdate } from '@/lib/appupdate'
@@ -119,6 +123,8 @@ type SheetState =
   | { kind: 'project' }
   | { kind: 'palette' }
   | { kind: 'keys' }
+  /** ⌘K "Share my numbers": the share sheet. */
+  | { kind: 'share' }
   /** Quick chat's vendor and model chooser (components/QuickChat.tsx). */
   | { kind: 'quick-chat' }
   /** The palette's "Open file…": the files of one worktree. */
@@ -188,6 +194,8 @@ export function AppShell() {
   const [ws, dispatch] = useReducer(workspaceReducer, undefined, loadWorkspace)
   const [prefs, setPrefs] = useState<UiPrefs>(loadPrefs)
   const [sheet, setSheet] = useState<SheetState>(null)
+  // Offer answers live on the daemon so the app and a browser tab agree.
+  usePromptSync()
   const [toast, setToast] = useState('')
   /** A close that waits on the question about a busy shell. */
   const [closing, setClosing] = useState<
@@ -657,6 +665,7 @@ export function AppShell() {
       { id: 'a-settings', group: 'Actions', label: 'Settings', detail: 'permission mode, theme, terminal, notifications, phone', hint: '⌘,', icon: <SettingsIcon size={14} />, run: onSettings },
       { id: 'a-keys', group: 'Actions', label: 'Keyboard shortcuts', detail: 'every key the app answers to', icon: <SearchIcon size={14} />, run: () => setSheet({ kind: 'keys' }) },
       { id: 'a-theme', group: 'Actions', label: 'Switch theme', icon: <SparkIcon size={14} />, run: toggleTheme },
+      { id: 'a-share', group: 'Actions', label: 'Share my numbers', detail: 'a card of your figures: copy, save or post to X', icon: <SparkIcon size={14} />, run: () => setSheet({ kind: 'share' }) },
       ...SCREENS.map(([route, label, detail]) => ({ id: `a-screen-${route}`, group: 'Actions' as const, label, detail, icon: <DashboardIcon size={14} />, run: () => { location.hash = `#/${route}` } })),
       { id: 'a-waiting', group: 'Actions', label: 'Next session waiting on you', hint: '⌘J', icon: <SparkIcon size={14} />, run: jumpToWaiting },
     )
@@ -969,6 +978,10 @@ export function AppShell() {
         </main>
       </div>
       {/* With the sidebar open its Today strip carries the plan windows and the day's spend, so the strip leaves them out. */}
+      {/* The GitHub star ask sits above the status strip, never over a
+        * terminal; the share toast floats (lib/nudges.ts, one at a time). */}
+      <StarStrip app />
+      <ShareMoment />
       <StatusStrip summary={data.summary} pane={focused ? paneStatus[focused.sessionId] : undefined} version={version} figures={!prefs.sidebar} />
       <AppUpdateToast />
       {isTauri() && <AppUpdateAsk />}
@@ -1007,6 +1020,7 @@ export function AppShell() {
       )}
       {folderMenu && <EditorMenu at={folderMenu} editors={editors} onClose={closeFolderMenu} onError={setToast} />}
       {sheet?.kind === 'keys' && <ShortcutsSheet isMac={isMac} onClose={closeSheet} />}
+      {sheet?.kind === 'share' && <ShareDialog onClose={closeSheet} />}
       {sheet?.kind === 'files' && (
         <FilePicker
           target={sheet}

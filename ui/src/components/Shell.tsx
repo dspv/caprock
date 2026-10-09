@@ -21,6 +21,9 @@ import { FeedbackButton } from '@/components/Feedback'
 import { ShareButton } from '@/components/Share'
 import { PremiumChip } from '@/components/PremiumChip'
 import { SiteFooter } from '@/components/SiteFooter'
+import { StarStrip } from '@/components/StarStrip'
+import { ShareMoment } from '@/components/Nudges'
+import { usePromptSync } from '@/lib/nudges'
 import { Prose } from './Prose'
 import { ConnectionState } from './ConnectionState'
 import { StaleUiPill } from './StaleUiPill'
@@ -72,6 +75,8 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
   // version and the theme (status strip, sidebar), and the website's footer
   // is the website's: a second set in the dashboard read as another app.
   const app = isAppMode()
+  // Offer answers live on the daemon so the app and a browser tab agree.
+  usePromptSync()
   return (
     <div className="min-h-screen flex flex-col">
       {/* Wraps on a phone. One fixed-height row was 882px wide at 390, so
@@ -134,6 +139,10 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
         </div>
       </header>
       <main className="flex-1 p-3 max-w-[1600px] w-full mx-auto">{children}</main>
+      {/* The star strip sits above the footer, never over content; one offer
+        * at a time (lib/nudges.ts). The share toast floats bottom-right. */}
+      <StarStrip app={app} />
+      <ShareMoment />
       {!app && <SiteFooter />}
     </div>
   )

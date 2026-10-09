@@ -14,7 +14,8 @@
  * someone opened to do their work into a storefront; the link says what it is
  * and the page it opens does the selling.
  */
-import { markAnswered, isDue, type PromptKind } from '@/lib/prompts'
+import { markAnswered, usePromptDue, type PromptKind } from '@/lib/prompts'
+import { useLicensed, useNudgeSlot } from '@/lib/nudges'
 import { PremiumModal } from './PremiumModal'
 import { useState } from 'react'
 
@@ -39,10 +40,13 @@ export function PremiumHint({
   // claim does not depend on ownership — the alert is about the account.
   feature = 'cap',
 }: { reason: string; now: number; canAct?: boolean; feature?: 'cap' | 'window' }) {
-  const [shown] = useState(() => isDue(KIND, now))
+  const shown = usePromptDue(KIND, now)
   const [gone, setGone] = useState(false)
   const [open, setOpen] = useState(false)
-  if (!shown || gone) return null
+  // Never to someone who has paid; and one offer at a time (lib/nudges.ts).
+  const licensed = useLicensed()
+  const mine = useNudgeSlot('premium-hint', shown && !gone && !licensed)
+  if (!mine) return open ? <PremiumModal feature={feature} onClose={() => setOpen(false)} /> : null
   const window = feature === 'window'
   return (
     <span className="flex shrink-0 items-center gap-2 text-[11px]">

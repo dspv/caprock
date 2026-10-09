@@ -130,6 +130,13 @@ type Config struct {
 	// the same 0600/0700 posture as everything else here, and never returned
 	// over HTTP.
 	GeminiAPIKey string `json:"gemini_api_key,omitempty"`
+	// Prompts records when each of the dashboard's own offers was last
+	// answered — the GitHub star strip, the Premium and Teams nudges, the
+	// share prompt — keyed by prompt id, in Unix ms. Kept here rather than in
+	// the browser so an answer given in the desktop app holds in a browser
+	// tab too, and the other way round. See .ai/04-ui.md, "Product-led
+	// surfaces".
+	Prompts map[string]int64 `json:"prompts,omitempty"`
 	// BrowseRoot is where the folder picker may look. Empty means $HOME.
 	BrowseRoot string `json:"browse_root,omitempty"`
 	// DefaultFolder is where the Add project sheet starts: its folder field,

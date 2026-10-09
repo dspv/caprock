@@ -241,6 +241,10 @@ type Settings struct {
 	// finished off unless turned on (WP-09).
 	NotifyApproval bool `json:"notify_approval"`
 	NotifyFinished bool `json:"notify_finished"`
+	// Prompts is when each of the dashboard's own offers (star strip, Premium
+	// and Teams nudges, share prompt) was last answered: prompt id → Unix ms.
+	// On the daemon so the answer holds across the app and a browser tab.
+	Prompts map[string]int64 `json:"prompts,omitempty"`
 	// AlertLastError is why the last alert failed to send, empty when it did
 	// not; AlertLastSentMs is when one last arrived, 0 for never since the
 	// daemon started.
@@ -469,6 +473,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/paste", s.handlePaste)
 	m.HandleFunc("GET /v1/agents/{id}/term", s.ws.serveTerm(s))
 	m.HandleFunc("GET /v1/projects", s.handleProjects)
+	m.HandleFunc("GET /v1/team-signal", s.handleTeamSignal)
 	m.HandleFunc("POST /v1/projects", s.handleAddProject)
 	m.HandleFunc("GET /v1/projects/ops", s.handleProjectOps)
 	m.HandleFunc("PATCH /v1/projects/{id}", s.handlePatchProject)
@@ -1178,6 +1183,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		AlertReply     *bool   `json:"alert_reply"`
 		NotifyApproval *bool   `json:"notify_approval"`
 		NotifyFinished *bool   `json:"notify_finished"`
+		// Merged, not replaced: each named prompt keeps the later time, 0 clears one, and
+		// prompts not named keep their answer.
+		Prompts map[string]int64 `json:"prompts"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&patch); err != nil {
 		s.failCode(w, http.StatusBadRequest, fmt.Errorf("parse body: %w", err))
@@ -1289,6 +1297,14 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	if patch.NotifyFinished != nil {
 		in.NotifyFinished = *patch.NotifyFinished
 	}
+	if patch.Prompts != nil {
+		merged, err := mergePrompts(in.Prompts, patch.Prompts)
+		if err != nil {
+			s.failCode(w, http.StatusBadRequest, err)
+			return
+		}
+		in.Prompts = merged
+	}
 	if patch.LicenseKey != nil {
 		in.LicenseKey = *patch.LicenseKey
 	}
@@ -1316,6 +1332,56 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.d.Settings.Get())
+}
+
+// maxPrompts bounds the prompts map: the dashboard has a handful of offers,
+// and a config file that any page can grow without limit is a bug.
+const maxPrompts = 32
+
+// mergePrompts applies a prompts patch: each named id takes the later of its
+// stored time and the new one, 0 removes it. Ids are short lower-case words with dashes; anything else is
+// refused rather than stored.
+func mergePrompts(cur, patch map[string]int64) (map[string]int64, error) {
+	out := make(map[string]int64, len(cur)+len(patch))
+	for k, v := range cur {
+		out[k] = v
+	}
+	for k, v := range patch {
+		if !promptID(k) {
+			return nil, fmt.Errorf("prompts: %q is not a prompt id (a-z, 0-9 and dashes, at most 40)", k)
+		}
+		if v < 0 {
+			return nil, fmt.Errorf("prompts: %q must be a time in Unix ms, or 0 to clear", k)
+		}
+		if v == 0 {
+			delete(out, k)
+			continue
+		}
+		// The later answer wins: a screen that read settings a while ago and
+		// writes them back must not undo a dismissal made since.
+		if v > out[k] {
+			out[k] = v
+		}
+	}
+	if len(out) > maxPrompts {
+		return nil, fmt.Errorf("prompts: at most %d", maxPrompts)
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, nil
+}
+
+func promptID(k string) bool {
+	if k == "" || len(k) > 40 {
+		return false
+	}
+	for _, r := range k {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
+			return false
+		}
+	}
+	return true
 }
 
 // sparkSpec maps a range label to the bucket grid the Projects sparkline draws.

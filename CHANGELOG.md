@@ -7,6 +7,28 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **A share sheet worth opening.** Share shows the card itself, with Today,
+  This week, This month and All time, and three ways out: **Copy image**,
+  **Save image** and **Post to X** (copies the card and opens a post with the
+  words and caprock.dev written; X cannot be handed an image by link). In the
+  app it is in ⌘K as *Share my numbers* and in the corner of the Today strip.
+  When a week closes or a milestone passes (100 sessions, a billion tokens, a
+  week of 95% cache hits), a small toast offers it, at most once a week.
+- **Star on GitHub, asked once.** After three days with sessions and ten
+  sessions, a slim strip at the bottom of the dashboard and the app asks for
+  a star. *I starred it* says thank you and never asks again; × waits a month.
+- **Premium and Teams, offered when they answer something.** A Claude plan
+  window at 80% offers Premium's pause before the limit (under Plan limits and
+  in the app's Today strip); a day in the top quarter of your own days offers
+  the daily cap on Cost; and when two or more people commit to your
+  repositories, Cost and Lifetime offer Caprock for Teams. One offer on screen
+  at a time, never to a licence holder, each dismissible. Dismissals are kept
+  by the daemon (`settings.prompts`), so the app and a browser agree. New
+  endpoint `GET /v1/team-signal` counts commit authors from git on this
+  machine; counts only, nothing leaves it.
+
 ## [0.95.0] - 2026-10-09
 
 ### Added

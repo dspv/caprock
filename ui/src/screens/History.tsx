@@ -17,6 +17,7 @@ import { BarChart, BarReadout } from '@/components/BarChart'
 import { costBasis, costBasisLong, costLabel } from '@/components/CostBasis'
 import { usePlan } from '@/components/PlanPicker'
 import { PremiumBanner } from '@/components/PremiumBanner'
+import { TeamsBanner } from '@/components/TeamsBanner'
 import { Locked } from '@/components/Locked'
 import { WeeklyReport } from '@/components/WeeklyReport'
 import { UnpricedNote } from '@/components/Unpriced'
@@ -132,6 +133,11 @@ export function HistoryScreen() {
         * moment a paid spend control is a relevant thing to mention. */}
       {measured && d && (
         <PremiumBanner costUSD={d.totals.cost_usd} days={d.totals.days} now={Date.now()} />
+      )}
+      {/* The team card, when a second person commits to the same code; the
+        * Premium banner above and this one share the single offer slot. */}
+      {measured && d && (
+        <TeamsBanner fact={{ costUSD: d.totals.cost_usd, projects: d.summary?.projects?.filter((p) => p.cost_usd > 0).length ?? 0, window: 'all time' }} now={Date.now()} />
       )}
       {h.error && !d && <Empty title="Cannot reach the daemon">{h.error.message}</Empty>}
 

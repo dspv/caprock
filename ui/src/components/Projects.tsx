@@ -107,6 +107,7 @@ import { AgentGlyph } from './AgentMarks'
 import { ProjectTerminal } from '@/components/ProjectTerminal'
 import { ProjectRepoLinks } from '@/components/RepoLinks'
 import { TeamsModal } from '@/components/TeamsModal'
+import { useNudgeSlot } from '@/lib/nudges'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { WorkMixStrip } from '@/components/WorkMix'
 import { api, type PathShare, type ProjectShare, type SessionSummary } from '@/lib/api'
@@ -845,7 +846,9 @@ function SparkCanvas({
  */
 function TeamsHint({ count }: { count: number }) {
   const [open, setOpen] = useState(false)
-  if (count < 10) return null
+  // One offer on screen at a time (lib/nudges.ts).
+  const mine = useNudgeSlot('teams-nudge', count >= 10)
+  if (!mine) return open ? <TeamsModal onClose={() => setOpen(false)} /> : null
   // Opens the explanation in place, like the footer and the Cost banner: the
   // reader should not have to leave their numbers to learn what this is.
   return (

@@ -16,6 +16,7 @@ import { CacheStat } from '@/components/CacheStat'
 import { PlanLimitsPanel } from '@/components/PlanLimits'
 import { AtAGlancePanel } from '@/components/AtAGlance'
 import { PremiumBanner } from '@/components/PremiumBanner'
+import { PlanLimitNudge } from '@/components/Nudges'
 import { BreakdownPanel } from '@/components/Breakdown'
 import { PulsePanel } from '@/components/Pulse'
 import { HooksBanner } from '@/components/HooksBanner'
@@ -224,7 +225,7 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
       )}
 
       {/* The share offer lives beside the figures it is about, in the ALL TIME
-        * panel — see ShareNudge. It used to be a second banner here, which put
+        * panel and the ShareMoment toast. It used to be a second banner here, which put
         * two invitations one above the other and made the screen read as a
         * page that wants something from you. */}
 
@@ -324,6 +325,7 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
         * smallest thing on the screen. Every window the product tracks, by
         * agent, as gauges with the reset counting down. */}
       <PlanLimitsPanel limits={summary.data?.rate_limits} codex={summary.data?.codex_rate_limits} now={now} />
+      <PlanLimitNudge limits={summary.data?.rate_limits} now={now} />
 
       {/* The shape of the work, above the detail of it: a glance says which
         * sessions are busy, which are grinding, and which have gone quiet. */}

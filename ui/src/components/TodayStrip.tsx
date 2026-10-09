@@ -11,12 +11,16 @@
  * does not carry is left out (no windows on API billing) or shown as a dash
  * until it is known, never as a zero.
  */
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { fmtUSD } from '@/lib/format'
 import { countdown, resetClock } from '@/lib/limitclock'
 import { useNow } from '@/lib/useNow'
 import type { TodayModel, TodayWindow } from '@/lib/today'
 import { fmtCostShort } from './ProjectRow'
+import { PlanLimitNudge } from './Nudges'
+import { ShareDialog } from './Share'
+import type { RateLimits } from '@/lib/api'
 
 export interface TodayStripProps {
   today: TodayModel
@@ -36,9 +40,20 @@ function fmtSpend(v: number): string {
 export function TodayStrip({ today, loaded, onSpend, onWindows, onRunning, onWaiting }: TodayStripProps) {
   const now = useNow(30_000)
   const { spend, agents, working, waiting, windows } = today
+  const [sharing, setSharing] = useState(false)
+  // The windows as the plan-limit nudge reads them (components/Nudges.tsx).
+  const limits: RateLimits = {}
+  for (const w of windows) {
+    const row = { used_percentage: w.pct, resets_at: 0 }
+    if (w.label === '5h') limits.five_hour = row
+    else limits.seven_day = row
+  }
   return (
     <section aria-label="Today" className="today-strip mb-2 rounded-[10px] border border-[var(--app-hairline)] px-1 pb-1 pt-1">
-      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-stretch">
+      {/* Portalled: the sidebar is a containing block, and a fixed dialog
+        * inside it was drawn sidebar-wide. */}
+      {sharing && createPortal(<ShareDialog initialPeriod="today" onClose={() => setSharing(false)} />, document.body)}
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-stretch">
         <Cell
           label="Today"
           title={spend === undefined ? 'Spent today, every agent — not known yet' : `Spent today, every agent: ${fmtUSD(spend)}. Opens Cost.`}
@@ -65,6 +80,20 @@ export function TodayStrip({ today, loaded, onSpend, onWindows, onRunning, onWai
         >
           <span className={`num text-[14px] font-semibold leading-none ${waiting > 0 ? 'text-accent' : 'text-fg-faint'}`}>{loaded ? waiting : '—'}</span>
         </Cell>
+        {/* Share my numbers, from the strip that shows them: its own narrow
+          * column, so it never sits on a figure. */}
+        <button
+          type="button"
+          onClick={() => setSharing(true)}
+          title="Share my numbers — draws a card of your figures"
+          aria-label="Share my numbers"
+          className="app-row grid h-6 w-6 place-items-center self-start rounded-[6px] text-fg-faint hover:text-accent"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+            <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
+          </svg>
+        </button>
       </div>
       {windows.length > 0 && (
         // One grid for both rows, so the bars start and end together however long each reset time reads.
@@ -72,6 +101,7 @@ export function TodayStrip({ today, loaded, onSpend, onWindows, onRunning, onWai
           {windows.map((w) => <WindowRow key={w.label} w={w} now={now} onClick={onWindows} />)}
         </div>
       )}
+      {windows.length > 0 && <PlanLimitNudge compact limits={limits} now={now} />}
     </section>
   )
 }

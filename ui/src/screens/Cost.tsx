@@ -11,6 +11,7 @@ import { usePlan } from '@/components/PlanPicker'
 import { costBasis, costBasisLong, costLabel } from '@/components/CostBasis'
 import { PlanLimitsPanel } from '@/components/PlanLimits'
 import { TeamsBanner } from '@/components/TeamsBanner'
+import { CapNudge, PlanLimitNudge } from '@/components/Nudges'
 import { Locked } from '@/components/Locked'
 import { SpendCap } from '@/components/SpendCap'
 import { GeminiPanel } from '@/components/Gemini'
@@ -73,6 +74,10 @@ export function CostScreen({ section }: { section?: string } = {}) {
           now={now}
         />
       )}
+      {/* Premium's daily cap, only on a day in the top quarter of this
+        * machine's own days (lib/nudges.ts capNudge). One offer at a time:
+        * if the team card holds the slot, this waits. */}
+      <CapNudge daily={daily.data} now={now} />
 
       <PlanValue summary={s} plan={plan} days={rangeDays(range, s?.from_ms)} />
       <Panel title={`Totals · ${range}`}>
@@ -257,6 +262,7 @@ export function CostScreen({ section }: { section?: string } = {}) {
           </div>
         } />
       )}
+      {s && <PlanLimitNudge limits={s.rate_limits} now={now} className="col-span-full" />}
       </div>
       <div className="text-[11px] text-fg-faint">
         {s && s.throttles > 0

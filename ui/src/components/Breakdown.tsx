@@ -19,7 +19,6 @@ import { useApi } from '@/lib/useApi'
 import { fmtBytes, fmtPct, fmtTokens, fmtTool, fmtUSD } from '@/lib/format'
 import { Panel } from '@/components/ui'
 import { ShareCard } from '@/components/Share'
-import { ShareNudge } from '@/components/ShareNudge'
 
 export function BreakdownPanel() {
   // Lifetime figures move slowly; a minute is far more often than they change,
@@ -57,8 +56,7 @@ export function BreakdownPanel() {
             * machine. */}
           {/* Always here, whatever the figures say: whether they are worth
             * posting is the reader's call, not ours. The nudge beside it is
-            * the part that waits for an occasion. */}
-          <ShareNudge now={Date.now()} />
+            * the part that waits for an occasion — now a toast (ShareMoment). */}
           <ShareCard />
           <a href="#/history" className="text-fg-faint hover:text-accent no-underline">
             every tool, model and project →

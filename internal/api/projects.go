@@ -84,6 +84,23 @@ func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"projects": list})
 }
 
+// handleTeamSignal is GET /v1/team-signal: how many distinct people committed
+// to the listed repositories in the last 30 days. Counts only — the Caprock
+// for Teams card shows when the answer is two or more (see .ai/04-ui.md,
+// "Product-led surfaces"). Cached for hours in the projects service, so a
+// polled screen does not start a process on every load.
+func (s *Server) handleTeamSignal(w http.ResponseWriter, r *http.Request) {
+	if !s.requireProjects(w) {
+		return
+	}
+	sig, err := s.d.Projects.TeamSignal(r.Context(), 30)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, sig)
+}
+
 // addProjectRequest is POST /v1/projects: exactly one of path, create, clone.
 type addProjectRequest struct {
 	Path   string `json:"path,omitempty"`
