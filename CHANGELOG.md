@@ -11,6 +11,22 @@ Phase 3 (Delight) has no plan by design.
 
 ### Fixed
 
+- **A Codex call its turn cut off no longer says "running" forever.** A call
+  with no output reads "interrupted", muted, once its turn has ended: Codex
+  wrote `turn_aborted` or `task_complete` (stored as a `tool.post` marked
+  `interrupted`, key `codex:interrupted:<line>`), the next request started,
+  the person typed the next prompt, or the session ended. Only the call still
+  in its turn says "running". Any other agent's call left without a result
+  reads "interrupted" at its turn's Stop or the session's end — never because
+  a prompt came after it: a prompt queued in Claude Code while a long tool
+  runs leaves that tool running.
+- **Codex's `exec` reads as the command it ran everywhere, not only in the
+  Chat.** The Timeline, the activity feed, the cockpit's tool list and its
+  subagents, the Now phrase, notifications and loop alerts showed the
+  JavaScript an `exec` call sends; they now show the shell command it ran,
+  `apply_patch <file>` for an edit, or the tool it called. The daemon reads
+  it the way the Chat does (`internal/toolcmd`). Memory shows only what the
+  agent wrote, never a tool call, so it had nothing to fix.
 - **OpenCode first run after the daemon started.** A daemon that found no
   OpenCode database at startup read none until it restarted or started an
   OpenCode session itself, so a session run in a terminal on a machine

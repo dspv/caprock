@@ -215,6 +215,12 @@ type ToolResult struct {
 	// `shell` tool's metadata); nil elsewhere — an `exec` script reports only
 	// whether the script itself completed.
 	ExitCode *int
+	// Interrupted marks a call whose request ended — Codex wrote
+	// `turn_aborted` or `task_complete`, or the next request started — with
+	// no output record for it. Nothing ran on after that point, so the call
+	// is over, not running; Output is empty. Line is the call's own line, so
+	// the key is fixed however many times the file is read.
+	Interrupted bool
 }
 
 // MaxToolOutput caps the tool output kept per call, in runes. Codex's outputs
@@ -450,6 +456,13 @@ func Parse(r io.Reader, path string) (*Session, error) {
 	// so a prompt is never stored twice.
 	var itemPrompts, eventPrompts []Prompt
 	callNames := map[string]string{}
+	// open holds the calls of the current request still waiting for their
+	// output, by call id: the index into s.Tools. A request that ends with a
+	// call still open cut it off (see closeCalls).
+	open := map[string]int{}
+	// closed is the index into s.Results of each call closeCalls marked
+	// interrupted, so a late output record replaces the mark.
+	closed := map[string]int{}
 	for sc.Scan() {
 		line := sc.Bytes()
 		lineNo++
@@ -550,8 +563,10 @@ func Parse(r io.Reader, path string) (*Session, error) {
 				// messages on the owner's machine, all in subagent files
 				// replaying their parent's history.
 				pending, taskStart = nil, len(s.Turns)
+				closeCalls(s, open, closed, at)
 				continue
 			case "task_complete", "turn_aborted":
+				closeCalls(s, open, closed, at)
 				if len(pending) > 0 && len(s.Turns) > taskStart {
 					last := &s.Turns[len(s.Turns)-1]
 					last.Text = joinText(append([]string{last.Text}, pending...))
@@ -673,6 +688,18 @@ func Parse(r io.Reader, path string) (*Session, error) {
 				}
 				r := readOutput(op.Output)
 				r.At, r.Key, r.Line, r.CallID, r.Name = at, keyFor(lineNo, "result"), lineNo, op.CallID, callNames[op.CallID]
+				delete(open, op.CallID)
+				if i, ok := closed[op.CallID]; ok {
+					// The output came after all: the call finished, and the
+					// mark closeCalls left for it is dropped.
+					s.Results = append(s.Results[:i], s.Results[i+1:]...)
+					delete(closed, op.CallID)
+					for id, j := range closed {
+						if j > i {
+							closed[id] = j - 1
+						}
+					}
+				}
 				s.Results = append(s.Results, r)
 				continue
 			}
@@ -689,6 +716,7 @@ func Parse(r io.Reader, path string) (*Session, error) {
 			}
 			if tp.CallID != "" {
 				callNames[tp.CallID] = tp.Name
+				open[tp.CallID] = len(s.Tools)
 			}
 			s.Tools = append(s.Tools, ToolCall{
 				At:     at,
@@ -729,7 +757,11 @@ func Parse(r io.Reader, path string) (*Session, error) {
 			s.Tools[i].Key = subagentKey(s.ThreadID, s.Tools[i].Line, "tool")
 		}
 		for i := range s.Results {
-			s.Results[i].Key = subagentKey(s.ThreadID, s.Results[i].Line, "result")
+			kind := "result"
+			if s.Results[i].Interrupted {
+				kind = "interrupted"
+			}
+			s.Results[i].Key = subagentKey(s.ThreadID, s.Results[i].Line, kind)
 		}
 	}
 	if !s.Imported && !s.Subagent {
@@ -748,6 +780,39 @@ func Parse(r io.Reader, path string) (*Session, error) {
 		}
 	}
 	return s, nil
+}
+
+// closeCalls ends the request's calls that never got an output: each becomes
+// an interrupted result (ToolResult.Interrupted), so the chat stops saying
+// "running" for a call nothing will ever answer.
+//
+// Codex brackets a request with task_started and task_complete or
+// turn_aborted. On the owner's machine (2026-10-09: 16,152 calls in 207
+// rollouts) every call has its output, and none of the 11 turn_aborted
+// records cut a call off mid-flight — but a call that is cut off before its
+// output is written has nothing else that would ever end it, and read as
+// running forever. A request that ends, or a new one that starts, is the
+// point after which nothing more can arrive for it. The key is the call's
+// line under its own kind, `codex:interrupted:<line>`, so it never collides
+// with a result.
+func closeCalls(s *Session, open map[string]int, closed map[string]int, at time.Time) {
+	if len(open) == 0 {
+		return
+	}
+	idx := make([]int, 0, len(open))
+	for _, i := range open {
+		idx = append(idx, i)
+	}
+	sort.Ints(idx)
+	for _, i := range idx {
+		c := s.Tools[i]
+		closed[c.CallID] = len(s.Results)
+		s.Results = append(s.Results, ToolResult{
+			At: at, Key: keyFor(c.Line, "interrupted"), Line: c.Line,
+			CallID: c.CallID, Name: c.Name, Interrupted: true,
+		})
+	}
+	clear(open)
 }
 
 // readOutput reads a tool call's output: its text, and whether it failed.

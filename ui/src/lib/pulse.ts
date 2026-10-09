@@ -16,6 +16,7 @@
  * machine) and they carry no intent at all.
  */
 import type { Event } from './api'
+import { toolCommand } from './chat'
 
 /** One minute of one session. */
 export interface Bar {
@@ -102,7 +103,9 @@ export function signature(ev: Event): { sig: string; label: string } | null {
     if (key === 'content' || key === 'new_string' || key === 'old_string') value = value.slice(0, 200)
     parts.push(`${key}=${value}`)
     if (label === tool && (key === 'command' || key === 'file_path' || key === 'pattern')) {
-      label = `${tool} ${value.slice(0, 48)}`
+      // A Codex exec's command is a script: the label is what it ran.
+      const shown = key === 'command' ? toolCommand(tool, fields) || value : value
+      label = `${tool} ${shown.slice(0, 48)}`
     }
   }
   return { sig: parts.join('|'), label }

@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/dspv/caprock/internal/event"
+	"github.com/dspv/caprock/internal/toolcmd"
 )
 
 // Health badges (spec: working / idle / waiting-on-you / looping? / error).
@@ -103,6 +104,22 @@ func Phrase(tool string, payload json.RawMessage) string {
 		return "editing a notebook"
 	case "Bash":
 		return "running " + commandHead(in.Command)
+	case "shell", "local_shell", "exec_command":
+		// Codex's shell tools: the command line, as Bash's.
+		return "running " + commandHead(toolcmd.Command(tool, in.Command))
+	case "exec":
+		// Codex's exec runs a script that calls one of its own tools; the
+		// phrase is what that call did, not the JavaScript (toolcmd).
+		inner, arg, ok := toolcmd.ScriptCall(in.Command)
+		switch {
+		case !ok:
+			return "running " + commandHead(in.Command)
+		case inner == "exec_command" && arg != "":
+			return "running " + commandHead(arg)
+		case inner == "apply_patch" && arg != "":
+			return "editing " + base(arg)
+		}
+		return "using " + inner
 	case "Grep":
 		if in.Pattern != "" {
 			return "searching for " + quote(in.Pattern)

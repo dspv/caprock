@@ -117,6 +117,11 @@ describe('signature', () => {
     expect(signature(ev({ kind: 'tool.pre' }))).toBeNull() // no tool name
   })
 
+  it('labels a Codex exec with the command it ran', () => {
+    const s = signature(ev({ kind: 'tool.pre', tool: 'exec', payload: { tool_input: { command: "const r = await tools.exec_command({cmd:\"git status --short\",\"workdir\":\"/p\",\"max_output_tokens\":500});text(r.output)\n" } } as never }))
+    expect(s!.label).toBe('exec git status --short')
+  })
+
   it('does not throw on a hostile payload', () => {
     for (const payload of [null, 'text', 42, [], { tool_input: 'not an object' }, { tool_input: { a: [1, { b: 2 }] } }]) {
       expect(() => signature(ev({ kind: 'tool.pre', tool: 'Bash', payload: payload as never }))).not.toThrow()

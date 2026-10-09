@@ -62,6 +62,8 @@ func TestAnApprovalNamesTheToolAndWhatItAsks(t *testing.T) {
 		{"WebFetch", `{"tool_input":{"url":"https://example.com/a"}}`, "WebFetch: <code>https://example.com/a</code>"},
 		{"mcp__github__create_issue", `{"tool_input":{}}`, "create_issue via github"},
 		{"AskUserQuestion", `{"tool_input":{"questions":[{"question":"Which branch?"}]}}`, "Which branch?"},
+		// Codex's exec: the command its script ran, not the script.
+		{"exec", `{"tool_input":{"command":"const r = await tools.exec_command({cmd:\"git status --short\",\"workdir\":\"/p\"});text(r.output)\n"}}`, "exec: <code>git status --short</code>"},
 	}
 	for _, c := range cases {
 		got := Message(approval(c.tool, c.payload), d)

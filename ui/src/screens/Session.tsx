@@ -24,6 +24,7 @@ import { useStickToBottom } from '@/lib/useStickToBottom'
 import { setDraft } from '@/lib/draft'
 import { RemoveSession } from '@/components/RemoveSession'
 import { ChatView } from '@/components/ChatView'
+import { toolLine } from '@/lib/chat'
 import { ChevronIcon } from '@/components/AppIcons'
 import { isAppMode } from '@/lib/appmode'
 import { MoreMenu } from '@/components/MoreMenu'
@@ -536,15 +537,15 @@ function EventRow({ e, now, toolByUse, inMinute }: {
 }
 
 export function describe(e: Event, p: Record<string, unknown>): string {
-  const input = (p.tool_input ?? {}) as Record<string, unknown>
   switch (e.kind) {
-    case 'tool.pre': {
-      const t = e.tool ?? String(p.tool_name ?? 'tool')
-      const arg = (input.command ?? input.file_path ?? input.pattern ?? input.query ?? input.url ?? input.prompt ?? '') as string
-      return arg ? `${t}  ${String(arg).split('\n')[0]}` : t
-    }
+    // The chat's line (lib/chat toolLine): a Codex exec reads as the command
+    // its script ran, not the JavaScript it sent.
+    case 'tool.pre':
+      return toolLine(e.tool ?? String(p.tool_name ?? 'tool'), p.tool_input)
     case 'tool.post': {
       const t = e.tool ?? String(p.tool_name ?? 'tool')
+      // Codex's mark for a call its turn ended without answering.
+      if (p.interrupted === true) return `${t} interrupted`
       const r = p.tool_response
       const isErr = p.is_error === true
       const s = typeof r === 'string' ? r : r ? JSON.stringify(r) : ''

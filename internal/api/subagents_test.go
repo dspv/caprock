@@ -11,6 +11,17 @@ import (
 	"github.com/dspv/caprock/internal/store"
 )
 
+// A Codex subagent's current call reads as the command its exec script ran.
+func TestCallDetailReadsACodexScript(t *testing.T) {
+	in := json.RawMessage(`{"command":"const r = await tools.exec_command({cmd:\"go vet ./...\"});text(r.output)\n"}`)
+	if got := callDetail("exec", in); got != "go vet ./..." {
+		t.Fatalf("callDetail = %q", got)
+	}
+	if got := callDetail("Bash", json.RawMessage(`{"command":"ls"}`)); got != "ls" {
+		t.Fatalf("Bash callDetail = %q", got)
+	}
+}
+
 // The cockpit's subagent list: who is working, what each is doing, how many
 // calls it has made and whether it waits on a dialog — computed by the daemon,
 // so a session with thousands of subagent events is not paged through.

@@ -8,6 +8,7 @@
  * DOM: a figure the data does not carry comes back undefined, never zero.
  */
 import type { Event, Permission, RateLimits, SessionSummary, Subagent, Summary } from './api'
+import { toolCommand } from './chat'
 
 /** What kind of work a tool call is, for its glyph and colour. */
 export type ToolKind = 'edit' | 'read' | 'run' | 'search' | 'web' | 'agent' | 'plan' | 'ask' | 'mcp' | 'other'
@@ -83,7 +84,8 @@ export function toolDetail(tool: string, input: unknown): string {
   if (file) return base(file)
   const cmd = i.command
   if (Array.isArray(cmd)) return oneLine(cmd.filter((x) => typeof x === 'string').join(' '))
-  if (typeof cmd === 'string' && cmd) return oneLine(cmd)
+  // Codex's exec carries a script: the line is what it ran (lib/chat).
+  if (typeof cmd === 'string' && cmd) return oneLine(toolCommand(tool, input) || cmd)
   // A search's pattern says more than the folder it searched.
   const other = str(i.pattern) || str(i.query) || str(i.url) || str(i.description) || str(i.subagent_type) || str(i.skill) || str(i.prompt)
   if (other) return oneLine(other)

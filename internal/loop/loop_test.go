@@ -122,6 +122,10 @@ func TestSignatureNormalization(t *testing.T) {
 	if got := Describe("mcp__gh__issue", map[string]json.RawMessage{"query": json.RawMessage(`"bugs"`)}); got != "mcp__gh__issue: bugs" {
 		t.Fatalf("describe %q", got)
 	}
+	// Codex's exec: a loop alert names the command, not the JavaScript.
+	if _, sample := Signature("exec", json.RawMessage(`{"tool_input":{"command":"const r = await tools.exec_command({cmd:\"git status --short\",\"workdir\":\"/p\"});text(r.output)\n"}}`)); sample != "exec: git status --short" {
+		t.Fatalf("exec sample %q", sample)
+	}
 }
 
 // A repeated read is ordinary work, not a loop worth interrupting someone over.

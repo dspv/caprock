@@ -30,6 +30,11 @@ export interface ChatMessage {
   failed?: boolean
   /** The shell's exit code, where the agent recorded one (Codex's `shell`). */
   exitCode?: number
+  /**
+   * A tool call that will never get a result: its turn ended first. Only a
+   * call with neither a result nor this is still running.
+   */
+  interrupted?: boolean
   /** A notice's full text, behind its one line. */
   raw?: string
 }
@@ -160,10 +165,10 @@ function jsString(src: string, at: number): string | null {
  * tools — `tools.exec_command({cmd: "git status"})` for a shell command,
  * `tools.apply_patch(…)` for an edit. Shown as sent, every line read as a wall
  * of JavaScript. The shell command is the `cmd` string; any other call is
- * named, with the file it patches where it says. Null when the input is not
- * such a script.
+ * named, with the file it patches where it says. `call` is the tool it
+ * called. Null when the input is not such a script.
  */
-export function codexScript(script: string): { line: string; detail: string } | null {
+export function codexScript(script: string): { line: string; detail: string; call: string } | null {
   const call = /tools\.([A-Za-z0-9_]+)\(/.exec(script)
   if (!call) return null
   const name = call[1]!
@@ -172,13 +177,26 @@ export function codexScript(script: string): { line: string; detail: string } | 
     key.lastIndex = call.index
     const m = key.exec(script)
     const cmd = m ? jsString(script, m.index + m[0].length) : null
-    if (cmd !== null && cmd.trim()) return { line: cmd.trim().split('\n')[0]!, detail: cmd }
+    if (cmd !== null && cmd.trim()) return { line: cmd.trim().split('\n')[0]!, detail: cmd, call: name }
   }
   if (name === 'apply_patch') {
     const file = /\*\*\* (?:Add|Update|Delete) File: ([^\n\\]+)/.exec(script)
-    if (file) return { line: `apply_patch ${file[1]!.trim()}`, detail: script }
+    if (file) return { line: `apply_patch ${file[1]!.trim()}`, detail: script, call: name }
   }
-  return { line: name, detail: script }
+  return { line: name, detail: script, call: name }
+}
+
+/**
+ * The command line a call ran, where it ran one: Codex's `exec` script read
+ * for what it ran (codexScript), a `shell` argv as its line, a Bash command as
+ * it is. '' for a call that carries no command. The daemon reads the same way
+ * (internal/toolcmd) for the Now phrase, notifications and loop alerts.
+ */
+export function toolCommand(tool: string, input: unknown): string {
+  const i = normalInput(input)
+  if (typeof i.command !== 'string') return ''
+  if (tool === 'exec') return codexScript(i.command)?.line ?? i.command
+  return i.command
 }
 
 /** A tool call as one line: its name and the first line of what it was given. */
@@ -252,30 +270,68 @@ export function noticeLine(text: string): string | null {
   }
 }
 
-/** The conversation in `events`, which must already be in server order. */
-export function toMessages(events: readonly Event[]): ChatMessage[] {
-  const results = new Map<string, { text: string; failed: boolean; exitCode?: number }>()
-  for (const e of events) {
-    if (e.kind !== 'tool.post') continue
+/** Whether `e` is the main thread's Stop or the session's end: no call before it runs on. */
+function isStop(e: Event): boolean {
+  return isMainThread(e) && (e.kind === 'agent.stop' || e.kind === 'session.end')
+}
+
+/** Whether `e` is a prompt the person typed (a harness notice is not one). */
+function isPrompt(e: Event): boolean {
+  return isMainThread(e) && e.kind === 'turn.user' && textOf(e).trim() !== '' && noticeLine(textOf(e)) === null
+}
+
+/**
+ * The conversation in `events`, which must already be in server order.
+ *
+ * A call with no result is running only while its turn is: once the turn has
+ * ended — a Stop, the session over (`ended`), or the agent's own record that
+ * it ended (Codex's `interrupted` result, written at turn_aborted) — nothing
+ * will ever answer it, and it reads "interrupted". It used to say "running"
+ * forever.
+ *
+ * A later prompt ends a call only in Codex, where a prompt starts a new
+ * request. In Claude Code a prompt typed while a long tool runs is queued and
+ * the tool keeps running (the owner does this all the time), so there only the
+ * turn's Stop or the session's end does.
+ */
+export function toMessages(events: readonly Event[], opts: { ended?: boolean } = {}): ChatMessage[] {
+  const results = new Map<string, { text: string; failed: boolean; exitCode?: number; interrupted?: boolean }>()
+  let lastStop = -1
+  let lastPrompt = -1
+  events.forEach((e, k) => {
+    if (isStop(e)) lastStop = k
+    if (isPrompt(e)) lastPrompt = k
+    if (e.kind !== 'tool.post') return
     const p = payloadOf(e)
     const use = typeof p.tool_use_id === 'string' ? p.tool_use_id : ''
+    if (!use) return
+    if (p.interrupted === true) {
+      // The agent's mark that no output came; a real output, if one ever
+      // does, wins whichever arrives first.
+      if (!results.has(use)) results.set(use, { text: '', failed: false, interrupted: true })
+      return
+    }
     const exitCode = typeof p.exit_code === 'number' ? p.exit_code : undefined
-    if (use) results.set(use, { text: resultText(p.tool_response), failed: p.is_error === true, exitCode })
-  }
+    results.set(use, { text: resultText(p.tool_response), failed: p.is_error === true, exitCode })
+  })
   const out: ChatMessage[] = []
-  for (const e of events) {
-    if (!isMessageEvent(e)) continue
+  events.forEach((e, k) => {
+    if (!isMessageEvent(e)) return
     if (e.kind === 'tool.pre') {
       const p = payloadOf(e)
       const tool = e.tool || String(p.tool_name ?? 'tool')
       const r = typeof p.tool_use_id === 'string' ? results.get(p.tool_use_id) : undefined
-      out.push({ id: e.id, kind: 'tool', ts: e.ts, text: toolLine(tool, p.tool_input), tool, input: p.tool_input, result: r?.text, failed: r?.failed, exitCode: r?.exitCode })
+      const msg: ChatMessage = { id: e.id, kind: 'tool', ts: e.ts, text: toolLine(tool, p.tool_input), tool, input: p.tool_input }
+      const ended = opts.ended || lastStop > k || ((e.source as string) === 'codex' && lastPrompt > k)
+      if (r?.interrupted || (!r && ended)) msg.interrupted = true
+      else if (r) Object.assign(msg, { result: r.text, failed: r.failed, exitCode: r.exitCode })
+      out.push(msg)
     } else {
       const text = textOf(e)
       const notice = e.kind === 'turn.user' ? noticeLine(text) : null
       if (notice !== null) out.push({ id: e.id, kind: 'notice', ts: e.ts, text: notice, raw: text })
       else out.push({ id: e.id, kind: e.kind === 'turn.user' ? 'user' : 'assistant', ts: e.ts, text })
     }
-  }
+  })
   return out
 }

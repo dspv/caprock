@@ -193,7 +193,7 @@ export function ChatView({ sessionId, canType, ended = false, className = '' }: 
     }
   }, [conn, loadNewest])
 
-  const messages = useMemo(() => toMessages(events), [events])
+  const messages = useMemo(() => toMessages(events, { ended }), [events, ended])
   const start = startKey ? indexFrom(messages, startKey) : Math.max(0, messages.length - CHAT_WINDOW)
   const shown = messages.slice(start)
 
@@ -386,7 +386,9 @@ function ToolLine({ m }: { m: ChatMessage }) {
       >
         <ChevronIcon size={12} className={`transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`} />
         <span className="mono min-w-0 flex-1 truncate">{m.text}</span>
-        {m.result === undefined && <span className="shrink-0 text-[11px] text-fg-faint">running</span>}
+        {m.interrupted ? (
+          <span className="shrink-0 text-[11px] text-fg-faint">interrupted</span>
+        ) : m.result === undefined && <span className="shrink-0 text-[11px] text-fg-faint">running</span>}
         {m.failed && <span className="shrink-0 text-[11px]">{m.exitCode ? `exit ${m.exitCode}` : 'failed'}</span>}
       </button>
       {open && (

@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/dspv/caprock/internal/event"
+	"github.com/dspv/caprock/internal/toolcmd"
 )
 
 // Details is what the daemon knows about the session an alert is about. Any
@@ -224,7 +225,8 @@ func subjectSource(ev event.Event, d Details) (label, full string, path, questio
 	}
 	switch {
 	case in.Command != "":
-		full = in.Command
+		// Codex's exec carries a script; the subject is what it ran.
+		full = toolcmd.Command(tool, in.Command)
 	case in.FilePath != "" || in.NotebookPath != "" || in.Path != "":
 		return toolLabel(tool), relPath(firstOf(in.FilePath, in.NotebookPath, in.Path), d.Cwd, d.Home), true, false
 	case in.URL != "":
