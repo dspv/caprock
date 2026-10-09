@@ -132,6 +132,10 @@ type Config struct {
 	GeminiAPIKey string `json:"gemini_api_key,omitempty"`
 	// BrowseRoot is where the folder picker may look. Empty means $HOME.
 	BrowseRoot string `json:"browse_root,omitempty"`
+	// DefaultFolder is where the Add project sheet starts: its folder field,
+	// a new project's parent, a clone's destination and the folder browser.
+	// Empty means the home folder. A leading ~ is the home folder.
+	DefaultFolder string `json:"default_folder,omitempty"`
 	// Terminal is the terminal application "Open in my terminal" uses
 	// ("ghostty", "iterm2", ...; internal/nativeterm). Empty means the first
 	// one installed.

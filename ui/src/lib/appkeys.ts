@@ -127,7 +127,7 @@ export function shortcutLabel(keys: string, opts: { shift?: boolean } = {}, isMa
  *  macOS each is Ctrl+Shift with the same key (docs/app.md § Keyboard). */
 export const SHORTCUTS: [keys: string, does: string][] = [
   ['⇧⌘N', 'New agent'],
-  ['⌥⌘N', 'Quick chat: Claude without picking a folder'],
+  ['⌥⌘N', 'Quick chat: no folder, the agent and model used last'],
   ['⌘T', 'New shell in the folder of the tab'],
   ['⌘O', 'Add a project'],
   ['⌘K', 'Command palette'],

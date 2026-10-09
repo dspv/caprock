@@ -777,6 +777,21 @@ func (s *Service) SystemPrompt(dir string) string {
 	return d.SystemPrompt
 }
 
+// ListedAt is the listed project that adding dir would return: the one whose
+// root is dir, or the repository dir lies in. The folder field asks it so the
+// Add project sheet can say "already in Caprock" before Add is pressed.
+func (s *Service) ListedAt(dir string) (store.Project, bool) {
+	root := dir
+	if r := store.ResolveRepoRoot(dir); r != "" {
+		root = filepath.FromSlash(r)
+	}
+	p, ok := s.ProjectFor(root)
+	if !ok || !sameFolder(filepath.FromSlash(p.Root), root) {
+		return store.Project{}, false
+	}
+	return p, true
+}
+
 // Project returns a listed project's row.
 func (s *Service) Project(id int64) (store.Project, bool) {
 	s.mu.Lock()

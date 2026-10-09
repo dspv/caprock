@@ -23,6 +23,39 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   general-purpose, P for Plan), pulsing while it works, accent while it waits
   on you, muted once finished; at most four and *+N*. Hover names its type,
   task and model; a click scrolls to the *Subagents* list.
+- **Quick chat picks a vendor and a model.** Clicking *Quick chat* (the
+  sidebar, the tab strip's + menu, or *Quick chat with…* in the palette)
+  shows the agents installed here — Claude Code, Codex, Gemini CLI,
+  OpenCode — and their models; a click on a model starts the chat on it,
+  Enter starts the highlighted one. ⌥⌘N still starts at once, on the agent
+  and model used last.
+- **A default folder for new projects.** Settings → Projects, or *Set as
+  default* beside the Add project sheet's folder field; the sheet starts
+  there (your home folder until set) for an existing folder, a new project,
+  a clone and Browse.
+- **The Add project sheet says what is at the path as you type**: *will be
+  created*, *exists, empty — will clone here*, *exists — not empty, clone
+  will fail*, *not a folder*, *already in Caprock*. A new daemon endpoint,
+  `GET /v1/browse/stat`, answers it under the folder browser's rules.
+
+### Changed
+
+- **Browse is a folder browser**: it opens on the default folder, with a
+  breadcrumb, ↑ to the parent, double-click or Enter to go in, *Choose* to
+  pick, and arrow keys throughout.
+- **Recent folders leave out scratch**: temp folders, Caprock's own data
+  directory (quick chats) and `.claude/worktrees` agent worktrees.
+- **The Add project sheet has keys on its buttons**: ⌘↩ adds, Esc cancels,
+  ⌘1–3 switch Existing folder / New project / Clone, ⌘B switches Recent and
+  Browse (Ctrl off macOS).
+- **A clone may go into an empty folder**, as git allows; one with anything
+  in it is still refused.
+- **Tabs are easier to tell apart.** The tab in front has an amber top edge;
+  the others are shaded tabs of their own. The strip's + is an amber outline
+  that opens a menu — New agent, Quick chat, New shell, Open file, Add
+  project, each with its key; the separate new-shell button is gone. The
+  pinned Dashboard tab stands apart: an amber grid icon, an amber tint, and
+  a divider before the session tabs.
 
 ### Fixed
 

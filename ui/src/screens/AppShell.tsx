@@ -48,7 +48,9 @@ import { ChangesView } from '@/components/ChangesView'
 import { FileView } from '@/components/FileView'
 import { FilePicker } from '@/components/FilePicker'
 import { NewAgentSheet } from '@/components/NewAgentSheet'
-import { AddProjectSheet, splitPath } from '@/components/AddProjectSheet'
+import { QuickChatSheet, quickChatRequest, rememberQuickChoice, rememberedQuickChoice, type QuickChoice } from '@/components/QuickChat'
+import { useSpawnableAgents } from '@/components/AgentPicker'
+import { AddProjectSheet } from '@/components/AddProjectSheet'
 import { CommandPalette, type PaletteItem } from '@/components/CommandPalette'
 import { BranchIcon, ChatIcon, DashboardIcon, ExternalIcon, FileIcon, FolderIcon, FolderPlusIcon, InspectorIcon, PlusIcon, SearchIcon, SettingsIcon, SparkIcon, TerminalIcon } from '@/components/AppIcons'
 import type { PaneStatus } from '@/components/TerminalPane'
@@ -117,6 +119,8 @@ type SheetState =
   | { kind: 'project' }
   | { kind: 'palette' }
   | { kind: 'keys' }
+  /** Quick chat's vendor and model chooser (components/QuickChat.tsx). */
+  | { kind: 'quick-chat' }
   /** The palette's "Open file…": the files of one worktree. */
   | { kind: 'files'; projectId: string; worktree: string; title: string }
   | null
@@ -409,19 +413,34 @@ export function AppShell() {
   const onPalette = useCallback(() => setSheet({ kind: 'palette' }), [])
   const onDashboard = useCallback(() => { location.hash = lastDashboard.current || '#/' }, [])
   /**
-   * A Claude session that needs no folder — the Now screen's Quick chat — in
-   * a tab of the strip. The daemon finds it a home in its data directory;
-   * it shows under Other folders, its tab marked "no project".
+   * A session that needs no folder — the Now screen's Quick chat — in a tab
+   * of the strip. The daemon finds it a home in its data directory; it shows
+   * under Other folders, its tab marked "no project". ⌥⌘N starts it at once
+   * on the vendor and model used last; a click opens the chooser
+   * (components/QuickChat.tsx says why).
    */
-  const onQuickChat = useCallback(async () => {
+  const spawnable = useSpawnableAgents()
+  const startQuickChat = useCallback(async (choice: QuickChoice) => {
     try {
-      const { session_id } = await api.spawn({ chat: true })
+      const { session_id } = await api.spawn(quickChatRequest(choice))
+      rememberQuickChoice(choice)
       openTab({ kind: 'session', sessionId: session_id }, OTHER_FOLDERS_ID, 'Quick chat')
       refresh()
     } catch (e) {
       setToast(`Could not start a quick chat: ${errText(e)}`)
     }
   }, [openTab, refresh])
+  const onQuickChat = useCallback(() => startQuickChat(rememberedQuickChoice(spawnable)), [startQuickChat, spawnable])
+  const onQuickChatChooser = useCallback(() => setSheet({ kind: 'quick-chat' }), [])
+  // The strip's + menu (components/NewMenu.tsx): what opens a tab, with its key.
+  const fileScopeRef = useRef<{ projectId: string; worktree: string; title: string } | undefined>(undefined)
+  const newItems = useMemo(() => [
+    { id: 'agent', label: 'New agent', hint: '⇧⌘N', icon: <PlusIcon size={13} />, run: () => onNewAgent() },
+    { id: 'quick-chat', label: 'Quick chat…', hint: '⌥⌘N', icon: <ChatIcon size={13} />, run: onQuickChatChooser },
+    { id: 'shell', label: 'New shell', hint: '⌘T', icon: <TerminalIcon size={13} />, run: () => onNewShell() },
+    { id: 'file', label: 'Open file…', icon: <FileIcon size={13} />, run: () => { const f = fileScopeRef.current; if (f) setSheet({ kind: 'files', ...f }); else setToast('Open a project first: files are opened from one.') } },
+    { id: 'project', label: 'Add project', hint: '⌘O', icon: <FolderPlusIcon size={13} />, run: onAddProject },
+  ], [onNewAgent, onQuickChatChooser, onNewShell, onAddProject])
   const onSettings = useCallback(() => { location.hash = '#/settings' }, [])
   const onPaneStatus = useCallback((sessionId: string, s: PaneStatus) => setPaneStatus((cur) => ({ ...cur, [sessionId]: s })), [])
   const onFocusPane = useCallback((tabId: string, paneId: string) => dispatch({ type: 'focus-pane', tabId, paneId }), [])
@@ -614,6 +633,7 @@ export function AppShell() {
     const n = model.projects.find((x) => x.project.id === activeProjectId)
     return n?.project.root ? scope(n) : undefined
   }, [source, focused, current, model.projects, activeProjectId])
+  fileScopeRef.current = fileScope
 
   const paletteItems = useMemo<PaletteItem[]>(() => {
     const items: PaletteItem[] = model.inbox.map((i) => ({
@@ -628,7 +648,8 @@ export function AppShell() {
     items.push(
       { id: 'a-agent', group: 'Actions', label: 'New agent', hint: '⇧⌘N', icon: <PlusIcon size={14} />, run: () => onNewAgent() },
       { id: 'a-shell', group: 'Actions', label: 'New shell', hint: '⌘T', icon: <TerminalIcon size={14} />, run: () => onNewShell() },
-      { id: 'a-quick-chat', group: 'Actions', label: 'Quick chat', detail: 'a Claude session without picking a folder', hint: '⌥⌘N', icon: <ChatIcon size={14} />, run: () => { void onQuickChat() } },
+      { id: 'a-quick-chat', group: 'Actions', label: 'Quick chat', detail: 'starts at once, on the agent and model used last', hint: '⌥⌘N', icon: <ChatIcon size={14} />, run: () => { void onQuickChat() } },
+      { id: 'a-quick-chat-with', group: 'Actions', label: 'Quick chat with…', detail: 'pick Claude, Codex, Gemini or OpenCode and a model', icon: <ChatIcon size={14} />, run: onQuickChatChooser },
       { id: 'a-project', group: 'Actions', label: 'Add a project', hint: '⌘O', icon: <FolderPlusIcon size={14} />, run: onAddProject },
       { id: 'a-inspector', group: 'Actions', label: prefs.inspector ? 'Hide the inspector' : 'Show the inspector', hint: '⌘I', icon: <InspectorIcon size={14} />, run: () => run({ kind: 'inspector' }) },
       ...(fileScope ? [{ id: 'a-open-file', group: 'Actions' as const, label: 'Open file…', detail: fileScope.title, icon: <FileIcon size={14} />, run: () => setSheet({ kind: 'files', ...fileScope }) }] : []),
@@ -695,7 +716,7 @@ export function AppShell() {
       }
     }
     return items
-  }, [ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, current, onNewAgent, onNewShell, onQuickChat, onAddProject, onDashboard, toggleTheme, onSettings, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges, fileScope, focused?.kind])
+  }, [ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, current, onNewAgent, onNewShell, onQuickChat, onQuickChatChooser, onAddProject, onDashboard, toggleTheme, onSettings, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges, fileScope, focused?.kind])
 
   // Every session the daemon knows, by what it was about; one that is open or
   // live is already in the list above under its own id.
@@ -813,7 +834,7 @@ export function AppShell() {
               onOpenInbox={onOpenInbox}
               onNewAgent={onNewAgent}
               onNewShell={onNewShell}
-              onQuickChat={onQuickChat}
+              onQuickChat={onQuickChatChooser}
               onFolderMenu={editors ? onFolderMenu : undefined}
               onAddProject={onAddProject}
               onDashboard={onDashboard}
@@ -853,6 +874,7 @@ export function AppShell() {
               onMove={(id, to) => dispatch({ type: 'move', tabId: id, toIndex: to })}
               onNewAgent={() => onNewAgent()}
               onNewShell={() => onNewShell()}
+              newItems={newItems}
               onToggleInspector={() => setPrefs((p) => ({ ...p, inspector: !p.inspector }))}
               chatOpen={showChat}
               onToggleChat={focusedIsAgent ? toggleChat : undefined}
@@ -967,10 +989,16 @@ export function AppShell() {
           onStarted={(id, projectId, title) => { openTab({ kind: 'session', sessionId: id }, projectId, title); data.refresh() }}
         />
       )}
+      {sheet?.kind === 'quick-chat' && (
+        <QuickChatSheet
+          agents={spawnable}
+          onClose={closeSheet}
+          onStart={(c) => { setSheet(null); void startQuickChat(c) }}
+        />
+      )}
       {sheet?.kind === 'project' && (
         <AddProjectSheet
           source={data.source}
-          defaultParent={activeProject?.root ? splitPath(activeProject.root).parent : ''}
           ops={data.ops}
           onClose={closeSheet}
           onAdded={onProjectAdded}

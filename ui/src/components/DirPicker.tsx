@@ -9,10 +9,15 @@
  *
  *  - **Recent** — where sessions have already run, newest first. Almost every
  *    session starts in a repository the person was in yesterday, so for most
- *    people this is the entire picker and nothing needs browsing.
- *  - **Browse** — walking down from one root, for the first session in a new
- *    project. Repositories are marked and sorted first, because a repository is
- *    what is being looked for and everything else is the route to it.
+ *    people this is the entire picker and nothing needs browsing. The daemon
+ *    leaves out temp folders, its own data directory (quick chats) and agent
+ *    worktrees under .claude/worktrees.
+ *  - **Browse** — a folder browser (owner, 2026-10-09): it opens on the
+ *    default folder, a breadcrumb walks back up, ↑ goes to the parent; a
+ *    click selects a folder, a double-click or Enter goes into it, and
+ *    *Choose* picks the selected folder, or the one shown when none is.
+ *    ↑ ↓ move, → or Enter go in, ← or Backspace go up. Hidden folders are never
+ *    listed. Repositories are marked and sorted first.
  *
  * The text field stays. It is the fastest input for anyone who knows the path,
  * it is what a paste goes into, and it is the only way to reach somewhere the
@@ -23,16 +28,34 @@
  * code" is personal, and the narrower it is, the less the daemon's directory
  * listing can be asked for. See internal/api/browse.go.
  */
-import { useEffect, useState } from 'react'
-import { api, type BrowseEntry, type RecentDir } from '@/lib/api'
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { api, type BrowseResponse, type RecentDir } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtAgo } from '@/lib/format'
 
-export function DirPicker({ value, onPick }: { value: string; onPick: (dir: string) => void }) {
-  const [tab, setTab] = useState<'recent' | 'browse'>('recent')
+export type PickerTab = 'recent' | 'browse'
+
+export function DirPicker({
+  value,
+  onPick,
+  start = '',
+  tab: tabProp,
+  onTab,
+}: {
+  value: string
+  onPick: (dir: string) => void
+  /** Where Browse opens: the default folder (`~/dev` works). Empty: the root. */
+  start?: string
+  /** Which list is shown, when the caller drives it (the sheet's ⌘B). */
+  tab?: PickerTab
+  onTab?: (t: PickerTab) => void
+}) {
+  const [ownTab, setOwnTab] = useState<PickerTab>('recent')
+  const tab = tabProp ?? ownTab
+  const setTab = (t: PickerTab) => { setOwnTab(t); onTab?.(t) }
   // Where the browse list currently is. Empty means the root, which is what
   // the daemon returns for a missing dir.
-  const [dir, setDir] = useState('')
+  const [dir, setDir] = useState(start)
 
   const recent = useApi(() => api.recentDirs(), [], { live: false })
   const browse = useApi(() => api.browse(dir), [dir], { live: false })
@@ -42,14 +65,21 @@ export function DirPicker({ value, onPick }: { value: string; onPick: (dir: stri
   // on an empty tab.
   useEffect(() => {
     if (recent.data && recent.data.length === 0) setTab('browse')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recent.data])
+  // A default folder that is gone opens the root rather than an error.
+  useEffect(() => {
+    if (browse.error && dir && dir === start) setDir('')
+  }, [browse.error, dir, start])
 
   // The surface matches the .input above it — panel-2 on border-strong, same
   // radius. It sat on a transparent background with the lighter border,
   // directly beneath a field that had neither, and the two read as separate
   // surfaces at different opacities rather than as one control.
   return (
-    <div className="rounded-[3px] border border-border-strong bg-panel-2">
+    // Inside a <label> (the dialogs' fields), a click on a row would also be
+    // sent to the field's input and take the focus from the list.
+    <div className="rounded-[3px] border border-border-strong bg-panel-2" onClick={(e) => { if (!(e.target as Element).closest('button')) e.preventDefault() }}>
       <div className="flex items-center gap-1 border-b border-border-strong px-2 py-1.5 text-[12px]">
         <Tab on={tab === 'recent'} onClick={() => setTab('recent')}>
           Recent
@@ -57,32 +87,18 @@ export function DirPicker({ value, onPick }: { value: string; onPick: (dir: stri
         <Tab on={tab === 'browse'} onClick={() => setTab('browse')}>
           Browse
         </Tab>
-        {tab === 'browse' && browse.data && (
-          <span className="mono ml-auto min-w-0 truncate pl-2 text-[11px] text-fg-faint" title={browse.data.dir}>
-            {shorten(browse.data.dir, browse.data.root)}
-          </span>
-        )}
       </div>
 
-      {/* A fixed height, so the dialog does not jump as lists of different
-        * lengths replace each other under the cursor. */}
-      {/* overflow-x-hidden as well as -y: a path like
-        * /Users/x/Library/Application Support/... is wider than the dialog, and
-        * with only vertical clipping the row grew past the panel's own border
-        * rather than being truncated inside it. */}
-      <div className="h-[168px] overflow-y-auto overflow-x-hidden">
-        {tab === 'recent' ? (
+      {tab === 'recent' ? (
+        // A fixed height, so the dialog does not jump as lists of different
+        // lengths replace each other under the cursor. overflow-x-hidden as
+        // well as -y: a long path is wider than the dialog.
+        <div className="h-[196px] overflow-y-auto overflow-x-hidden">
           <RecentList rows={recent.data} value={value} onPick={onPick} />
-        ) : (
-          <BrowseList
-            data={browse.data}
-            value={value}
-            onOpen={setDir}
-            onPick={onPick}
-            error={browse.error?.message}
-          />
-        )}
-      </div>
+        </div>
+      ) : (
+        <Browser data={browse.data} error={browse.error?.message} onOpen={setDir} onPick={onPick} />
+      )}
     </div>
   )
 }
@@ -92,6 +108,7 @@ function Tab({ on, onClick, children }: { on: boolean; onClick: () => void; chil
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={on}
       className={`rounded-sm px-2 py-0.5 ${on ? 'bg-accent/15 text-accent' : 'text-fg-muted hover:text-fg'}`}
     >
       {children}
@@ -108,110 +125,172 @@ function RecentList({
   value: string
   onPick: (d: string) => void
 }) {
-  if (!rows) return <Note>…</Note>
+  if (!rows) return <ul><Note>…</Note></ul>
   if (rows.length === 0) {
-    return <Note>No sessions yet — use Browse, or type a path.</Note>
+    return <ul><Note>No sessions yet — use Browse, or type a path.</Note></ul>
   }
   return (
     <ul>
       {rows.map((r) => (
-        <Row key={r.dir} selected={value === r.dir} onClick={() => onPick(r.dir)}>
-          <span className="shrink-0 text-fg">{r.name}</span>
-          <span className="mono ml-2 min-w-0 flex-1 truncate text-[11px] text-fg-faint" title={r.dir}>
-            {r.dir}
-          </span>
-          <span className="shrink-0 pl-2 text-[11px] text-fg-faint">{fmtAgo(r.last_event_at)}</span>
-        </Row>
-      ))}
-    </ul>
-  )
-}
-
-function BrowseList({
-  data,
-  value,
-  onOpen,
-  onPick,
-  error,
-}: {
-  data: { dir: string; parent: string; root: string; entries: BrowseEntry[] } | undefined
-  value: string
-  onOpen: (d: string) => void
-  onPick: (d: string) => void
-  error?: string
-}) {
-  if (error) return <Note>{error}</Note>
-  if (!data) return <Note>…</Note>
-  return (
-    <ul>
-      {/* Absent at the root rather than disabled: an "up" that refuses is worse
-        * than no "up", and the daemon reports the boundary for exactly this. */}
-      {data.parent && (
-        <Row selected={false} onClick={() => onOpen(data.parent)}>
-          <span className="text-fg-muted">↑ up</span>
-        </Row>
-      )}
-      {data.entries.length === 0 && <Note>Nothing here.</Note>}
-      {data.entries.map((e) => (
-        <Row
-          key={e.path}
-          selected={value === e.path}
-          // A repository is what someone came for, so clicking one picks it.
-          // A plain folder is the route, so clicking it goes in. Both are
-          // reachable either way — the arrow descends, the name picks.
-          onClick={() => (e.repo ? onPick(e.path) : onOpen(e.path))}
-        >
-          <span className={`min-w-0 truncate ${e.repo ? 'text-fg' : 'text-fg-muted'}`}>{e.name}</span>
-          {e.repo && <span className="ml-2 shrink-0 text-[10px] uppercase tracking-wide text-accent">repo</span>}
-          <span className="flex-1" />
+        <li key={r.dir}>
           <button
             type="button"
-            onClick={(ev) => {
-              ev.stopPropagation()
-              e.repo ? onOpen(e.path) : onPick(e.path)
-            }}
-            className="shrink-0 px-1 text-[11px] text-fg-faint hover:text-fg"
-            title={e.repo ? 'Open this folder' : 'Use this folder'}
+            onClick={() => onPick(r.dir)}
+            className={`flex w-full min-w-0 items-center px-2.5 py-1 text-left text-[12px] hover:bg-panel ${value === r.dir ? 'bg-accent/10' : ''}`}
           >
-            {e.repo ? '›' : 'use'}
+            <span className="shrink-0 text-fg">{r.name}</span>
+            <span className="mono ml-2 min-w-0 flex-1 truncate text-[11px] text-fg-faint" title={r.dir}>
+              {r.dir}
+            </span>
+            <span className="shrink-0 pl-2 text-[11px] text-fg-faint">{fmtAgo(r.last_event_at)}</span>
           </button>
-        </Row>
+        </li>
       ))}
     </ul>
   )
 }
 
-function Row({
-  selected,
-  onClick,
-  children,
+/** The breadcrumb's steps from the root down to `dir`: `~ › dev › api`. */
+export function crumbs(dir: string, root: string): { label: string; path: string }[] {
+  const out = [{ label: '~', path: root }]
+  if (!dir || dir === root || !dir.startsWith(root)) return out
+  const sep = dir.includes('\\') && !dir.includes('/') ? '\\' : '/'
+  let at = root
+  for (const part of dir.slice(root.length).split(/[\\/]/).filter(Boolean)) {
+    at = `${at.replace(/[\\/]+$/, '')}${sep}${part}`
+    out.push({ label: part, path: at })
+  }
+  return out
+}
+
+function Browser({
+  data,
+  error,
+  onOpen,
+  onPick,
 }: {
-  selected: boolean
-  onClick: () => void
-  children: React.ReactNode
+  data: BrowseResponse | undefined
+  error?: string
+  onOpen: (d: string) => void
+  onPick: (d: string) => void
 }) {
+  // The selected row, by path; a new folder starts with none.
+  const [sel, setSel] = useState('')
+  const list = useRef<HTMLUListElement>(null)
+  const entries = data?.entries ?? []
+  useEffect(() => { setSel('') }, [data?.dir])
+  const at = entries.findIndex((e) => e.path === sel)
+  const chosen = at >= 0 ? entries[at]! : undefined
+  const choose = () => { if (data) onPick(chosen ? chosen.path : data.dir) }
+  const enter = (path: string) => { onOpen(path); list.current?.focus() }
+
+  const onKey = (e: ReactKeyboardEvent) => {
+    if (!data || e.metaKey || e.ctrlKey || e.altKey) return
+    const move = (i: number) => {
+      const next = entries[Math.max(0, Math.min(entries.length - 1, i))]
+      if (!next) return
+      setSel(next.path)
+      list.current?.querySelector<HTMLElement>(`[data-path="${CSS.escape(next.path)}"]`)?.scrollIntoView?.({ block: 'nearest' })
+    }
+    switch (e.key) {
+      case 'ArrowDown': move(at + 1); break
+      case 'ArrowUp': move(at < 0 ? entries.length - 1 : at - 1); break
+      case 'Home': move(0); break
+      case 'End': move(entries.length - 1); break
+      case 'Enter': case 'ArrowRight': if (chosen) enter(chosen.path); else return; break
+      case 'ArrowLeft': case 'Backspace': if (data.parent) enter(data.parent); else return; break
+      default: return
+    }
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
   return (
-    <li>
-      <button
-        type="button"
-        onClick={onClick}
-        className={`flex w-full min-w-0 items-center px-2.5 py-1 text-left text-[12px] hover:bg-panel ${
-          selected ? 'bg-accent/10' : ''
-        }`}
+    <div>
+      <div className="flex min-w-0 items-center gap-1 border-b border-border-strong px-1.5 py-1 text-[11.5px]">
+        <button
+          type="button"
+          disabled={!data?.parent}
+          onClick={() => data?.parent && enter(data.parent)}
+          aria-label="Up to the parent folder"
+          title="Up (← or Backspace)"
+          className="shrink-0 rounded-sm px-1.5 py-0.5 text-fg-muted hover:bg-panel hover:text-fg disabled:opacity-40"
+        >
+          ↑
+        </button>
+        <nav aria-label="Path" className="mono flex min-w-0 flex-1 items-center overflow-hidden text-fg-faint">
+          {data && crumbs(data.dir, data.root).map((c, i, all) => (
+            <span key={c.path} className={`flex min-w-0 items-center ${i < all.length - 2 ? 'shrink' : 'shrink-0'}`}>
+              {i > 0 && <span aria-hidden className="px-0.5">›</span>}
+              <button
+                type="button"
+                onClick={() => enter(c.path)}
+                aria-current={i === all.length - 1 ? 'location' : undefined}
+                className={`truncate rounded-sm px-0.5 hover:text-fg ${i === all.length - 1 ? 'text-fg' : ''}`}
+              >
+                {c.label}
+              </button>
+            </span>
+          ))}
+        </nav>
+      </div>
+      <ul
+        ref={list}
+        role="listbox"
+        aria-label="Folders"
+        tabIndex={0}
+        onKeyDown={onKey}
+        aria-activedescendant={chosen ? `dir-${at}` : undefined}
+        className="h-[150px] overflow-y-auto overflow-x-hidden outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
       >
-        {children}
-      </button>
-    </li>
+        {error && <Note>{error}</Note>}
+        {!error && !data && <Note>…</Note>}
+        {data && entries.length === 0 && <Note>Nothing here.</Note>}
+        {entries.map((e, i) => (
+          <li
+            key={e.path}
+            id={`dir-${i}`}
+            role="option"
+            aria-selected={e.path === sel}
+            data-path={e.path}
+            onClick={() => setSel(e.path)}
+            onDoubleClick={() => enter(e.path)}
+            title="Double-click to open"
+            className={`flex min-w-0 cursor-default select-none items-center px-2.5 py-1 text-[12px] ${e.path === sel ? 'bg-accent/15 text-fg' : 'hover:bg-panel'}`}
+          >
+            <span className={`min-w-0 truncate ${e.repo ? 'text-fg' : 'text-fg-muted'}`}>{e.name}</span>
+            {e.repo && <span className="ml-2 shrink-0 text-[10px] uppercase tracking-wide text-accent">repo</span>}
+            <span className="flex-1" />
+            {/* Going in by touch, where a double-tap zooms. */}
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label={`Open ${e.name}`}
+              onClick={(ev) => { ev.stopPropagation(); enter(e.path) }}
+              className="shrink-0 rounded-sm px-1.5 text-[12px] text-fg-faint hover:bg-panel-2 hover:text-fg"
+            >
+              ›
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="flex items-center justify-end gap-2 border-t border-border-strong px-2 py-1.5">
+        <span className="mr-auto min-w-0 truncate text-[11px] text-fg-faint">
+          <span className="mono">↑↓</span> select · <span className="mono">↩</span> open · <span className="mono">←</span> up
+        </span>
+        <button
+          type="button"
+          disabled={!data}
+          onClick={choose}
+          className="max-w-[60%] truncate rounded-[5px] border border-border-strong px-2 py-0.5 text-[12px] text-fg hover:bg-panel disabled:opacity-40"
+        >
+          {chosen ? `Choose ${chosen.name}` : 'Choose this folder'}
+        </button>
+      </div>
+    </div>
   )
 }
 
 function Note({ children }: { children: React.ReactNode }) {
-  return <p className="px-2.5 py-3 text-[12px] text-fg-faint">{children}</p>
-}
-
-/** `/Users/you/dev/api` under root `/Users/you` reads as `~/dev/api`. */
-function shorten(dir: string, root: string): string {
-  if (dir === root) return '~'
-  if (dir.startsWith(root + '/')) return '~' + dir.slice(root.length)
-  return dir
+  return <li role="presentation" className="list-none px-2.5 py-3 text-[12px] text-fg-faint">{children}</li>
 }

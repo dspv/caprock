@@ -152,7 +152,7 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 		// A controller phone picks folders too (ADR-034), but never outside home.
 		root = s.deviceBrowseRoot()
 	}
-	dir, err := resolveInRoot(root, r.URL.Query().Get("dir"))
+	dir, err := resolveInRoot(root, expandTilde(r.URL.Query().Get("dir")))
 	if err != nil {
 		// 404 rather than 403: a 403 confirms the path exists, which is the one
 		// fact a caller probing outside the root would be trying to learn.
@@ -278,14 +278,22 @@ type recentDir struct {
 // database rather than the filesystem, so the root does not apply — these are
 // directories the user has demonstrably already worked in.
 func (s *Server) handleRecentDirs(w http.ResponseWriter, r *http.Request) {
-	dirs, err := store.RecentDirs(r.Context(), s.d.Store.DB(), 8)
+	// Read past the eight shown: the junk left out below would otherwise
+	// leave a short list on a machine that runs many scratch sessions.
+	dirs, err := store.RecentDirs(r.Context(), s.d.Store.DB(), 40)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	out := make([]recentDir, 0, len(dirs))
+	out := make([]recentDir, 0, 8)
 	remote := deviceFrom(r) != nil
 	for _, d := range dirs {
+		if len(out) == 8 {
+			break
+		}
+		if recentJunk(d.Dir, s.d.DataDir) {
+			continue
+		}
 		// A directory that has since been deleted or renamed is not offered:
 		// clicking it would spawn a session that fails, and a picker that
 		// offers dead paths is worse than a shorter list.

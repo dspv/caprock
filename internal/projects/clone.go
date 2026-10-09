@@ -172,7 +172,10 @@ func (s *Service) Clone(opID, rawURL, parent, name string) (Op, bool, error) {
 	if err != nil {
 		return Op{}, false, err
 	}
-	if _, err := os.Lstat(dest); err == nil { // Lstat: a dangling link is not a free name
+	// Lstat: a dangling link is not a free name. An empty folder is, as it is
+	// for git itself: someone who made the folder first, or picked it in the
+	// folder browser, means "put it here".
+	if fi, err := os.Lstat(dest); err == nil && (!fi.IsDir() || !EmptyDir(dest)) {
 		return Op{}, false, fmt.Errorf("%s already exists; add it instead, or clone under another name", dest)
 	}
 	now := s.Now().UnixMilli()
@@ -323,4 +326,16 @@ func (s *Service) publishOp(o Op) {
 	if s.Bus != nil {
 		s.Bus.Publish(bus.Frame{Type: FrameOp, Data: o})
 	}
+}
+
+// EmptyDir reports whether dir is a folder with nothing in it, hidden files
+// included: git refuses to clone into a folder holding even a .DS_Store.
+func EmptyDir(dir string) bool {
+	f, err := os.Open(dir)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	_, err = f.Readdirnames(1)
+	return errors.Is(err, io.EOF)
 }

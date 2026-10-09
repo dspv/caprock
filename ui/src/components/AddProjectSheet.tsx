@@ -5,18 +5,28 @@
  * shows git's progress from the `op` frames until the project is listed.
  * Without that endpoint an existing folder is still listed — kept by this
  * app — and the other two say what they need rather than failing quietly.
+ *
+ * Since 2026-10-09 (owner): the field starts on the default folder
+ * (`settings.default_folder`, else `~/`), with *Set as default* beside it;
+ * under it, as the path is typed, what will happen there (`GET
+ * /v1/browse/stat`, 250 ms after the last key; lib/addproject.ts); Browse is
+ * a folder browser; and the keys are on the buttons: ⌘↩ adds, Esc cancels,
+ * ⌘1/⌘2/⌘3 the modes, ⌘B Browse ⇄ Recent (Ctrl off macOS).
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { INSTRUCTIONS_HINT } from './ProjectInstructions'
-import { errText } from '@/lib/api'
-import { DirPicker } from './DirPicker'
+import { api, errText, type BrowseStat, type Settings } from '@/lib/api'
+import { useApi } from '@/lib/useApi'
+import { isMacPlatform } from '@/lib/appmode'
+import { defaultFolder, keyLabel, sheetKey, statWorthy, targetNote, withSlash, type SheetKey } from '@/lib/addproject'
+import { DirPicker, type PickerTab } from './DirPicker'
 import { RepoPicker } from './RepoPicker'
 import { folderName, instructionsPatch, newOpId, NotSupportedError, projectsApi, type AddProjectRequest, type LocalProject, type OpFrame, type ProjectSource } from '@/lib/projects'
 import { Sheet, SheetButton, SheetField } from './Sheet'
 
 type Mode = 'folder' | 'new' | 'clone'
 
-const MODES: { key: Mode; label: string }[] = [
+const MODES: { key: Mode & SheetKey; label: string }[] = [
   { key: 'folder', label: 'Existing folder' },
   { key: 'new', label: 'New project' },
   { key: 'clone', label: 'Clone' },
@@ -48,8 +58,8 @@ export function cloneDest(url: string, defaultParent: string): string {
 
 /**
  * What to send for each way of adding. A clone's field is the whole
- * destination, as `git clone url dest` takes it — the folder is created, so
- * it must not already exist — and goes to the daemon as parent and name.
+ * destination, as `git clone url dest` takes it — the folder is created, or
+ * an empty one used — and goes to the daemon as parent and name.
  */
 export function requestFor(mode: Mode, path: string, url: string, defaultParent: string, opId: string): AddProjectRequest {
   if (mode === 'folder') return { path }
@@ -57,20 +67,32 @@ export function requestFor(mode: Mode, path: string, url: string, defaultParent:
     const { parent, name } = splitPath(path)
     return { create: { parent, name, git_init: true } }
   }
-  const { parent, name } = splitPath(path || cloneDest(url, defaultParent))
+  // A folder still open for a name ("~/dev/") is where the repository's own
+  // folder goes.
+  const dest = !path || /[\\/]$/.test(path) ? cloneDest(url, path || defaultParent) : path
+  const { parent, name } = splitPath(dest)
   return { clone: { url, parent, name }, op_id: opId }
+}
+
+/** The folder *Set as default* keeps: the field's own folder for an existing
+ *  folder, or one typed with a trailing slash; else the folder it goes in. */
+export function defaultCandidate(mode: Mode, path: string): string {
+  const p = path.trim()
+  const typed = p.replace(/[\\/]+$/, '')
+  if (!typed) return p ? p.slice(0, 1) : ''
+  return mode === 'folder' || /[\\/]$/.test(p) ? typed : splitPath(typed).parent
 }
 
 export function AddProjectSheet({
   source,
-  defaultParent = '',
+  defaultParent,
   ops = [],
   onClose,
   onAdded,
   onAddLocal,
 }: {
   source: ProjectSource
-  /** Where a clone goes when no folder is named: beside the current project. */
+  /** Where the sheet starts, in place of the default folder setting. */
   defaultParent?: string
   /** Clone progress from the `op` live frames. */
   ops?: readonly OpFrame[]
@@ -79,8 +101,12 @@ export function AddProjectSheet({
   onAdded: (projectId: string, first?: { root: string; task: string }) => void
   onAddLocal: (p: LocalProject) => void
 }) {
+  const settings = useApi(() => api.settings(), [], { live: false })
+  const [savedDefault, setSavedDefault] = useState<string | undefined>(undefined)
+  const base = defaultParent || defaultFolder(savedDefault ?? settings.data?.default_folder)
+  const isMac = isMacPlatform()
   const [mode, setMode] = useState<Mode>('folder')
-  const [path, setPath] = useState('')
+  const [path, setPath] = useState(() => withSlash(base))
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -97,17 +123,39 @@ export function AddProjectSheet({
   // empty prompt, and a task typed into "instructions" — which only shapes
   // later sessions — started nothing (the owner's report, 2026-10-08).
   const [task, setTask] = useState('')
+  const [list, setList] = useState<PickerTab>('recent')
+  const [stat, setStat] = useState<BrowseStat | null>(null)
+  const field = useRef<HTMLInputElement>(null)
   // The destination follows the URL until it is edited by hand, the way
   // `git clone` names the folder after the repository.
   const [pathTouched, setPathTouched] = useState(false)
+  const startPath = (m: Mode, u: string) => (m === 'clone' ? cloneDest(u, base) || withSlash(base) : withSlash(base))
   const editPath = (v: string) => { setPath(v); setPathTouched(true) }
   const editUrl = (v: string) => {
     setUrl(v)
     setError('')
-    if (!pathTouched) setPath(cloneDest(v, defaultParent))
+    if (!pathTouched) setPath(startPath('clone', v))
   }
+  // The setting arrives after the first render: an untouched field follows it.
+  useEffect(() => {
+    if (!pathTouched) setPath(startPath(mode, url))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [base])
   const first = (root: string | undefined) => (task.trim() && root ? { root, task: task.trim() } : undefined)
   const op = cloning ? ops.find((o) => o.op_id === cloning.op_id) ?? cloning : null
+
+  // What is at the path, asked 250 ms after the last key.
+  useEffect(() => {
+    setStat(null)
+    const p = path.trim()
+    if (!statWorthy(mode, p)) return
+    let live = true
+    const t = setTimeout(() => {
+      api.browseStat(p).then((s) => { if (live) setStat(s) }, () => { if (live) setStat(null) })
+    }, 250)
+    return () => { live = false; clearTimeout(t) }
+  }, [mode, path])
+  const note = statWorthy(mode, path) ? targetNote(mode, stat) : null
 
   useEffect(() => {
     if (!op || op.state === 'running') return
@@ -129,17 +177,35 @@ export function AddProjectSheet({
     try { await projectsApi.patch(id, instructionsPatch(undefined, instructions)) } catch { /* set later */ }
   }
 
+  const pickMode = (m: Mode) => {
+    setMode(m); setError(''); setOpId(newOpId())
+    // Each mode starts in the default folder, with only a name left to type.
+    if (!pathTouched) setPath(startPath(m, url))
+    field.current?.focus()
+  }
+
+  const candidate = defaultCandidate(mode, path)
+  const showSetDefault = !!candidate && candidate !== base.replace(/[\\/]+$/, '') && source !== 'derived'
+  const setAsDefault = async () => {
+    try {
+      await api.saveSettings({ default_folder: candidate } as Settings)
+      setSavedDefault(candidate)
+    } catch (e) {
+      setError(errText(e))
+    }
+  }
+
   const submit = async () => {
     setError('')
     const p = path.trim()
     if (mode !== 'clone' && !p) { setError('Choose a folder.'); return }
     if (mode === 'clone' && !isCloneURL(url.trim())) { setError('A clone URL is https://… or git@host:path.'); return }
-    if (mode === 'clone' && !p && !cloneDest(url, defaultParent)) { setError('Choose a folder to clone into.'); return }
-    if (mode === 'new' && !splitPath(p).parent) { setError('Name the new folder with its full path.'); return }
+    if (mode === 'clone' && /[\\/]$/.test(p) && !cloneDest(url, base)) { setError('Choose a folder to clone into.'); return }
+    if (mode === 'new' && (!splitPath(p).parent || /[\\/]$/.test(p))) { setError('Name the new folder.'); return }
     setBusy(true)
     let keepBusy = false
     try {
-      const added = await projectsApi.add(requestFor(mode, p, url.trim(), defaultParent, opId))
+      const added = await projectsApi.add(requestFor(mode, p, url.trim(), base, opId))
       if ('op' in added) {
         // The clone runs in the daemon; its frames say when it is listed.
         keepBusy = true
@@ -161,6 +227,28 @@ export function AddProjectSheet({
     }
   }
 
+  // The sheet's keys, from anywhere in it; a ref keeps the listener on the
+  // latest state.
+  const keyRef = useRef<(k: SheetKey) => void>(() => {})
+  keyRef.current = (k) => {
+    if (k === 'submit') { if (!busy) void submit(); return }
+    if (k === 'toggle-list') { setList((t) => (t === 'recent' ? 'browse' : 'recent')); return }
+    pickMode(k)
+  }
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const k = sheetKey(e, isMac)
+      if (!k) return
+      e.preventDefault()
+      e.stopPropagation()
+      keyRef.current(k)
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [isMac])
+
+  const submitKey = keyLabel('submit', isMac)
+  const verb = mode === 'clone' ? 'Clone' : mode === 'new' ? 'Create' : 'Add'
   return (
     <Sheet
       label="Add a project"
@@ -174,57 +262,85 @@ export function AddProjectSheet({
               {op.phase ? `${op.phase} ${op.progress ?? 0}%` : 'Starting the clone…'}
             </p>
           )}
-          <SheetButton onClick={onClose}>Cancel</SheetButton>
-          <SheetButton primary disabled={busy} onClick={() => void submit()}>
-            {busy ? (mode === 'clone' ? 'Cloning…' : 'Adding…') : mode === 'clone' ? 'Clone' : mode === 'new' ? 'Create' : 'Add'}
+          <SheetButton onClick={onClose} aria-keyshortcuts="Escape" title="Cancel (Esc)">
+            Cancel
+            <kbd aria-hidden="true" className="mono ml-2 text-[11px] font-normal opacity-60">Esc</kbd>
+          </SheetButton>
+          <SheetButton primary disabled={busy} onClick={() => void submit()} aria-keyshortcuts={isMac ? 'Meta+Enter' : 'Control+Enter'} title={`${verb} (${submitKey})`}>
+            {busy ? (mode === 'clone' ? 'Cloning…' : 'Adding…') : verb}
+            {!busy && <kbd aria-hidden="true" className="mono ml-2 text-[11px] font-normal opacity-70">{submitKey}</kbd>}
           </SheetButton>
         </>
       }
     >
       <div className="grid gap-4 px-5 py-4">
         <div role="tablist" aria-label="How" className="inline-flex w-fit gap-0.5 rounded-[8px] bg-[var(--app-row-hover)] p-0.5">
-          {MODES.map((m) => (
+          {MODES.map((m, i) => (
             <button
               key={m.key}
               type="button"
               role="tab"
               aria-selected={mode === m.key}
-              onClick={() => {
-                setMode(m.key); setError(''); setOpId(newOpId())
-                // A new project starts in the default folder, with only its name to type.
-                if (m.key === 'new' && !path.trim() && defaultParent) setPath(`${defaultParent.replace(/[\\/]+$/, '')}/`)
-                if (m.key === 'clone' && !pathTouched) setPath(cloneDest(url, defaultParent))
-              }}
-              className={`h-[26px] rounded-[6px] px-3 text-[12.5px] ${mode === m.key ? 'bg-panel font-medium text-fg shadow-sm' : 'text-fg-muted hover:text-fg'}`}
+              aria-keyshortcuts={`${isMac ? 'Meta' : 'Control'}+${i + 1}`}
+              title={`${m.label} (${keyLabel(m.key, isMac)})`}
+              onClick={() => pickMode(m.key)}
+              className={`flex h-[26px] items-center gap-1.5 rounded-[6px] px-3 text-[12.5px] ${mode === m.key ? 'bg-panel font-medium text-fg shadow-sm' : 'text-fg-muted hover:text-fg'}`}
             >
               {m.label}
+              <kbd aria-hidden="true" className="mono text-[10.5px] font-normal text-fg-faint">{keyLabel(m.key, isMac)}</kbd>
             </button>
           ))}
         </div>
         {mode === 'clone' && <RepoPicker picked={url} onPick={editUrl} />}
         {mode === 'clone' && (
           <SheetField label="Repository URL">
-            <input className="input" autoFocus placeholder="https://github.com/you/repo or git@github.com:you/repo.git" value={url} onChange={(e) => editUrl(e.target.value)} />
+            <input className="input" placeholder="https://github.com/you/repo or git@github.com:you/repo.git" value={url} onChange={(e) => editUrl(e.target.value)} />
           </SheetField>
         )}
-        <SheetField
-          label={mode === 'folder' ? 'Folder' : mode === 'new' ? 'New folder' : 'Clone into'}
-          hint={mode === 'new' ? 'created, then git init' : mode === 'clone' ? 'created by the clone · ~ works' : '~ works'}
-        >
-          <input
-            className="input"
-            autoFocus={mode !== 'clone'}
-            placeholder={mode === 'clone' ? cloneDest('project', defaultParent) || '~/dev/project' : mode === 'new' ? (defaultParent ? `${defaultParent}/new-project` : '~/dev/new-project') : (defaultParent || '~/dev') + '/project'}
-            value={path}
-            onChange={(e) => editPath(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') void submit() }}
-          />
-          <div className="mt-1.5 min-w-0">
-            {/* Picking a folder in clone mode picks where it goes: the
-              * repository's own folder is made inside it. */}
-            <DirPicker value={path} onPick={(d) => editPath(mode === 'clone' && repoName(url) ? `${d.replace(/[\\/]+$/, '')}/${repoName(url)}` : d)} />
+        <div className="grid min-w-0 gap-1.5">
+          <SheetField
+            label={mode === 'folder' ? 'Folder' : mode === 'new' ? 'New folder' : 'Clone into'}
+            hint={mode === 'new' ? 'created, then git init' : mode === 'clone' ? 'created by the clone, or an empty folder · ~ works' : '~ works'}
+          >
+            <input
+              ref={field}
+              className="input"
+              autoFocus
+              spellCheck={false}
+              placeholder={mode === 'clone' ? cloneDest('project', base) : `${withSlash(base)}${mode === 'new' ? 'new-project' : 'project'}`}
+              value={path}
+              onChange={(e) => editPath(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) void submit() }}
+            />
+          </SheetField>
+          <div className="flex min-h-[18px] min-w-0 items-center gap-2 text-[12px]">
+            <span
+              role="status"
+              aria-label="What is there"
+              className={`min-w-0 flex-1 truncate ${note?.tone === 'bad' ? 'text-danger' : note?.tone === 'ok' ? 'text-fg-muted' : 'text-fg-faint'}`}
+            >
+              {note?.text ?? ''}
+            </span>
+            {showSetDefault && (
+              <button type="button" onClick={() => void setAsDefault()} className="min-w-0 shrink truncate text-fg-faint hover:text-fg" title={`New projects, clones and Browse start in ${candidate}`}>
+                Set <span className="mono">{candidate}</span> as default
+              </button>
+            )}
           </div>
-        </SheetField>
+          {/* Picking a folder in clone mode picks where it goes: the
+            * repository's own folder is made inside it. Outside the field's
+            * label, so a click in the list stays in the list. */}
+          <div className="min-w-0">
+            <DirPicker
+              value={path}
+              start={base}
+              tab={list}
+              onTab={setList}
+              onPick={(d) => editPath(mode === 'clone' && repoName(url) ? `${d.replace(/[\\/]+$/, '')}/${repoName(url)}` : mode === 'new' ? withSlash(d) : d)}
+            />
+            <p className="mt-1 text-[11px] text-fg-faint"><kbd className="mono">{keyLabel('toggle-list', isMac)}</kbd> switches Recent and Browse</p>
+          </div>
+        </div>
         {source !== 'derived' && (
           <SheetField label="First task" hint="optional · an agent starts on it once the project is added">
             <textarea

@@ -20,12 +20,13 @@ vi.mock('@/lib/api', async (orig) => {
     api: {
       ...actual.api,
       recentDirs: async () => data.recent,
-      browse: async (dir = '') => ({ ...data.browse, dir: dir || data.browse.dir }),
+      // The daemon answers with the folder resolved: "~/dev" comes back absolute.
+      browse: async (dir = '') => ({ ...data.browse, dir: dir.startsWith('/') ? dir : data.browse.dir }),
     },
   }
 })
 
-import { DirPicker } from './DirPicker'
+import { crumbs, DirPicker } from './DirPicker'
 
 const NOW = Date.now()
 
@@ -74,12 +75,12 @@ describe('DirPicker', () => {
     expect(screen.getByText('repo')).toBeTruthy()
   })
 
-  it('offers no "up" at the root, rather than one that would be refused', async () => {
+  it('disables "up" at the root, rather than offering one that would be refused', async () => {
     data.recent = []
     data.browse = { dir: '/Users/x', parent: '', root: '/Users/x', entries: [] }
     render(<DirPicker value="" onPick={() => {}} />)
     await waitFor(() => expect(screen.getByText(/nothing here/i)).toBeInTheDocument())
-    expect(screen.queryByText(/up/i)).toBeNull()
+    expect(screen.getByRole('button', { name: 'Up to the parent folder' })).toBeDisabled()
   })
 
   it('offers "up" below the root', async () => {
@@ -91,6 +92,56 @@ describe('DirPicker', () => {
       entries: [{ name: 'thing', path: '/Users/x/dev/thing', repo: false }],
     }
     render(<DirPicker value="" onPick={() => {}} />)
-    expect(await screen.findByText(/up/i)).toBeTruthy()
+    await screen.findByText('thing')
+    expect(screen.getByRole('button', { name: 'Up to the parent folder' })).toBeEnabled()
+  })
+
+  // A folder browser (owner, 2026-10-09): opens on the default folder, a
+  // click selects, Enter or a double-click goes in, Choose picks.
+  it('opens on the default folder and is driven from the keyboard', async () => {
+    data.recent = []
+    data.browse = {
+      dir: '/Users/x/dev',
+      parent: '/Users/x',
+      root: '/Users/x',
+      entries: [
+        { name: 'api', path: '/Users/x/dev/api', repo: true },
+        { name: 'web', path: '/Users/x/dev/web', repo: false },
+      ],
+    }
+    const browse = vi.spyOn((await import('@/lib/api')).api, 'browse')
+    const onPick = vi.fn()
+    render(<DirPicker value="" onPick={onPick} start="~/dev" />)
+    await screen.findByText('api')
+    expect(browse).toHaveBeenCalledWith('~/dev')
+    // Nothing selected: Choose takes the folder shown.
+    fireEvent.click(screen.getByRole('button', { name: 'Choose this folder' }))
+    expect(onPick).toHaveBeenLastCalledWith('/Users/x/dev')
+    const list = screen.getByRole('listbox', { name: 'Folders' })
+    fireEvent.keyDown(list, { key: 'ArrowDown' })
+    fireEvent.keyDown(list, { key: 'ArrowDown' })
+    expect(screen.getByRole('option', { name: /web/ })).toHaveAttribute('aria-selected', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Choose web' }))
+    expect(onPick).toHaveBeenLastCalledWith('/Users/x/dev/web')
+    fireEvent.keyDown(list, { key: 'Enter' })
+    await waitFor(() => expect(browse).toHaveBeenCalledWith('/Users/x/dev/web'))
+    fireEvent.doubleClick(screen.getByRole('option', { name: /api/ }))
+    await waitFor(() => expect(browse).toHaveBeenCalledWith('/Users/x/dev/api'))
+    browse.mockRestore()
+  })
+})
+
+describe('crumbs', () => {
+  it('walks from the root down, the root called ~', () => {
+    expect(crumbs('/Users/x/dev/api', '/Users/x')).toEqual([
+      { label: '~', path: '/Users/x' },
+      { label: 'dev', path: '/Users/x/dev' },
+      { label: 'api', path: '/Users/x/dev/api' },
+    ])
+    expect(crumbs('/Users/x', '/Users/x')).toEqual([{ label: '~', path: '/Users/x' }])
+    expect(crumbs('C:\\Users\\x\\dev', 'C:\\Users\\x')).toEqual([
+      { label: '~', path: 'C:\\Users\\x' },
+      { label: 'dev', path: 'C:\\Users\\x\\dev' },
+    ])
   })
 })

@@ -467,7 +467,30 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
  * own hairline frames it: since the terminal took the strip's colour (Match
  * app), a fill alone no longer tells the tab in front from the rest. */
 [data-app] .app-strip { background-image: linear-gradient(to top, var(--app-hairline) 1px, transparent 1px); }
-[data-app] .app-tab-front { box-shadow: inset 0 1px 0 var(--app-hairline-strong), inset 1px 0 0 var(--app-hairline-strong), inset -1px 0 0 var(--app-hairline-strong); }
+/* Tabs that can be told apart at a glance (owner, 2026-10-09: "tabs are
+ * barely noticeable", translated): the tab in front carries a 2px amber top
+ * edge over its hairline frame and a medium label; the others are filled
+ * surfaces of their own with a hairline frame, so each reads as a tab and the
+ * gaps between them as separators, in both themes. */
+[data-app] .app-tab-front { box-shadow: inset 0 2px 0 var(--color-accent), inset 1px 0 0 var(--app-hairline-strong), inset -1px 0 0 var(--app-hairline-strong); }
+[data-app] .app-tab-back {
+  background: color-mix(in srgb, var(--color-fg) 5%, transparent);
+  box-shadow: inset 0 1px 0 var(--app-hairline), inset 1px 0 0 var(--app-hairline), inset -1px 0 0 var(--app-hairline);
+}
+[data-app] .app-tab-back:hover { background: color-mix(in srgb, var(--color-fg) 9%, transparent); }
+/* The pinned Dashboard tab is not a session (owner, 2026-10-09: "highlight
+ * the Dashboard entry", translated): an amber grid icon, an amber-tinted fill
+ * of its own, and a divider after it that sets it apart from the sessions. */
+[data-app] .app-tab-dash:not(.app-tab-front) {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-accent) 30%, transparent), inset 1px 0 0 color-mix(in srgb, var(--color-accent) 30%, transparent), inset -1px 0 0 color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+[data-app] .app-tab-dash:not(.app-tab-front):hover { background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
+[data-app] .app-tab-dash { margin-right: 9px; }
+[data-app] .app-tab-dash::after {
+  content: ""; position: absolute; right: -6px; top: 7px; bottom: 7px; width: 1px;
+  background: var(--app-hairline-strong); pointer-events: none;
+}
 /* A light terminal palette (Paper, Match app in the light theme): the slab takes the light theme's ink. */
 [data-app][data-term-tone="light"] .app-slab {
   --color-fg: #24211c;

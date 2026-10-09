@@ -101,10 +101,16 @@ others. Installing it: [install-app.md](install-app.md).
   glance, the activity feed — and leaves the session cards and the projects
   panel to the sidebar, which lists the same sessions; the browser dashboard
   shows both.
-- **Quick chat.** *Quick chat* under *New agent* (⌥⌘N, or the palette) asks
-  Claude something without picking a folder: a Claude Code session in
+- **Quick chat.** Ask something without picking a folder: a session in
   Caprock's data directory opens in a tab, under *Other folders* in the
-  sidebar.
+  sidebar. ⌥⌘N starts it at once with the agent and model you used last.
+  Clicking *Quick chat* (the sidebar, the + menu, or *Quick chat with…* in
+  the palette) first shows the agents installed here — Claude Code, Codex,
+  Gemini CLI, OpenCode — and their models: click a model to start on it, or
+  press Enter for the highlighted one.
+- **The tab strip.** The tab in front has an amber top edge; the others are
+  shaded tabs of their own. The amber + opens a menu: New agent, Quick
+  chat, New shell, Open file, Add project, each with its key.
 - **A past session** opens on its chat, with one button: *Resume in a tab*
   (*Branch into a tab* while it still runs elsewhere) and the permission mode
   beside it. Continuing in another agent, opening it in your own terminal and
@@ -114,9 +120,16 @@ others. Installing it: [install-app.md](install-app.md).
 - **Projects.** Caprock lists the repositories your sessions ran in. ⌘O, or
   *Add project* at the top of the sidebar, adds a folder, makes a new one
   (`git init` optional) or clones a repository with git's progress shown.
-  Paste a repository URL and the destination fills in as `git clone` would
-  name it — the folder beside your current project, called after the
-  repository; folders that do not exist yet are made, and `~` works. A
+  The folder starts at your default folder — your home folder until you set
+  one in Settings → Projects or with *Set as default* beside the field — and
+  a line under it says what is there as you type: *will be created*, *exists,
+  empty — will clone here*, *exists — not empty, clone will fail*, *already in
+  Caprock*. *Browse* walks folders (double-click or Enter to go in, *Choose*
+  to pick); *Recent* leaves out temp and scratch folders. Paste a repository
+  URL and the destination fills in as `git clone` would name it — the
+  default folder plus the repository's name; folders that do not exist yet
+  are made, and `~` works. Keys: ⌘↩ adds, Esc cancels, ⌘1–3 the modes, ⌘B
+  Recent or Browse. A
   *First task* starts an agent on the new project as soon as it is added. Branch, changed files and ahead/behind follow commits
   and checkouts made anywhere, the terminal included. Removing a project from
   the list never touches its files.
@@ -249,7 +262,7 @@ On macOS:
 | ----------- | --------------------------------------- |
 | ⌘T          | New shell in the folder of the tab      |
 | ⇧⌘N         | New agent session                       |
-| ⌥⌘N         | Quick chat: Claude without a folder     |
+| ⌥⌘N         | Quick chat, on the last agent and model |
 | ⌘O          | Add a project (folder, new, clone)      |
 | ⌘1–8, ⌘9    | A tab by position; the last tab         |
 | ⌃Tab, ⇧⌘[ ] | Next and previous tab                   |
