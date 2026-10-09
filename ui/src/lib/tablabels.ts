@@ -19,6 +19,10 @@ export interface TabLabel {
   /** A file tab: the file's path, for its tooltip. */
   file?: string
   isShell: boolean
+  /** A shell tab: its name alone, "Shell 2", for the question before closing it. */
+  shellName?: string
+  /** A shell tab: what runs in front of its prompt, when something does. */
+  program?: string
   /** The session the tab is named after, when the list knows it. */
   session?: SessionSummary
   dot: Dot
@@ -27,8 +31,9 @@ export interface TabLabel {
 /**
  * The label of every tab, by id. Shells are numbered within their project in
  * strip order — "Shell 1", "Shell 2" — since "shell" twice tells nothing
- * apart. `defaultBranch` is the branch a project's main checkout is on; a tab
- * on any other branch says so.
+ * apart; one running a program says which, "Shell 1 · claude".
+ * `defaultBranch` is the branch a project's main checkout is on; a tab on
+ * any other branch says so.
  */
 export function tabLabels(
   tabs: readonly Tab[],
@@ -56,7 +61,9 @@ export function tabLabels(
     if (isShell) {
       const n = (shells.get(t.projectId) ?? 0) + 1
       shells.set(t.projectId, n)
-      out.set(t.id, { title: `Shell ${n}${more}`, branch, isShell, session: s, dot })
+      const shellName = `Shell ${n}`
+      const program = s?.program || undefined
+      out.set(t.id, { title: `${shellName}${program ? ` · ${program}` : ''}${more}`, shellName, program, branch, isShell, session: s, dot })
       continue
     }
     out.set(t.id, { title: `${s ? sessionTitle(s) : t.title || 'session'}${more}`, branch, isShell, session: s, dot })

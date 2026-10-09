@@ -1182,7 +1182,21 @@ GET    /v1/shells?project=<id>             → {shells: [Shell]}; every running 
   first starts the shell and the rest get the same one while it runs. The map
   is the daemon's memory only and forgets a shell once it has ended.
 - **`Shell`** — `{id, cwd, command, started_at, survives_restart, project_id?,
-  internal: true, kind: "shell"}`. The user's login shell — `$SHELL -l` from
+  program?, internal: true, kind: "shell"}`. **`program`** is what runs in
+  front of the shell's prompt — `"claude"`, `"npm"`, `"vim"`, the program's
+  argv[0] base name (not the kernel's short name: Claude Code's native binary
+  is a file named after its version) — and is absent while the shell sits at
+  its prompt. On macOS and Linux it is the terminal's foreground process group
+  read from the shell's own process (`tpgid` from `kern.proc.pid` or
+  `/proc/<pid>/stat`): a group other than the shell's is a running job, named
+  by its leader, or `"program"` when no member can be named. On Windows it is
+  the shell's first child process other than a console host, best effort; it
+  may be absent while something runs, and reading it never fails the list.
+  It is read only for a running shell Caprock started, at most once per 2 s
+  per shell however often the list is asked (`internal/fgproc`,
+  `Manager.ShellProgram`); reading signals nothing (rule 7). The app ends an
+  idle shell whose tab is closed and asks first about a busy one
+  ([21-app.md § Shell tabs](21-app.md#shell-tabs)). The user's login shell — `$SHELL -l` from
   the login environment on POSIX; `pwsh.exe -NoLogo`, else `powershell.exe
   -NoLogo`, else `%ComSpec%` on Windows — under a pty-host with `meta.kind =
   "shell"`, so it outlives the daemon like an agent session. Its terminal,

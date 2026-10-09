@@ -94,6 +94,42 @@ func TestAShellIsInNoTotal(t *testing.T) {
 	}
 }
 
+// A shell's foreground program is read for shells only, and at most once per
+// fgTTL however often the list is polled.
+func TestShellProgramIsCachedAndShellOnly(t *testing.T) {
+	m, _, _ := newMgr(t)
+	defer m.Shutdown()
+	m.shellCmd = func() (string, []string) { return "/bin/fake-shell", []string{"-l"} }
+	var calls int
+	prog := "claude"
+	old := foreground
+	foreground = func(int) string { calls++; return prog }
+	t.Cleanup(func() { foreground = old })
+
+	sh, err := m.SpawnShell(context.Background(), ShellRequest{Cwd: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		if got := m.ShellProgram(sh.SessionID); got != "claude" {
+			t.Fatalf("ShellProgram = %q, want claude", got)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("read the process table %d times in one TTL, want 1", calls)
+	}
+	sh.fg.mu.Lock()
+	sh.fg.at = time.Now().Add(-fgTTL - time.Second)
+	sh.fg.mu.Unlock()
+	prog = ""
+	if got := m.ShellProgram(sh.SessionID); got != "" || calls != 2 {
+		t.Fatalf("after the TTL: %q in %d reads, want idle in 2", got, calls)
+	}
+	if got := m.ShellProgram("no-such-shell"); got != "" || calls != 2 {
+		t.Fatalf("an unknown id was read: %q, %d reads", got, calls)
+	}
+}
+
 func TestAShellNeedsAFolder(t *testing.T) {
 	m, _, _ := newMgr(t)
 	if _, err := m.SpawnShell(context.Background(), ShellRequest{Cwd: t.TempDir() + "/missing"}); err == nil {

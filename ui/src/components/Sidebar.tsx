@@ -26,6 +26,7 @@ import { groupProjects, type InboxItem, type ProjectNode, type SidebarModel } fr
 import type { Tab } from '@/lib/tabs'
 import type { TabLabel } from '@/lib/tablabels'
 import type { ProjectSource } from '@/lib/projects'
+import type { ProjectShellsOutcome } from '@/lib/closeShell'
 import type { EditorList, SessionSummary, Summary } from '@/lib/api'
 import { buildToday } from '@/lib/today'
 import { fmtAgo } from '@/lib/format'
@@ -95,6 +96,12 @@ export interface SidebarProps {
   tabCounts?: ReadonlyMap<string, number>
   /** Closes every tab of a project; the sessions keep running. */
   onCloseProjectTabs?: (projectId: string) => void
+  /**
+   * Before *Close project* closes the tabs: end the project's shells — idle
+   * ones at once, busy ones after asking (lib/closeShell). Resolves with
+   * whether the user cancelled and how many shells were stopped.
+   */
+  onStopProjectShells?: (projectId: string) => Promise<ProjectShellsOutcome>
   /** The editors found on this machine, for the menu's "Open in …"; null when none can be asked. */
   editors?: EditorList | null
   onOpenInEditor?: (path: string, label: string, editorId: string) => void
@@ -153,22 +160,28 @@ export function Sidebar(props: SidebarProps) {
   /**
    * A project's ×: its tabs close, and it moves under Hidden — unless
    * something still runs or waits in it, which hiding would lose: then it
-   * stays, its dot green. Nothing is stopped either way. Closing the project
+   * stays, its dot green. Its shells end first, as a shell's tab does —
+   * idle ones at once, busy ones after one question (`onStopProjectShells`);
+   * its agents are never stopped. Closing the project
    * in front moves the front to the next tab, else the next project listed.
    */
-  const { onCloseProjectTabs, onActivateTab, onSelectProject, dashboardActive } = props
+  const { onCloseProjectTabs, onStopProjectShells, onActivateTab, onSelectProject, dashboardActive } = props
   const onCloseProject = useCallback((id: string) => {
     const node = model.projects.find((n) => n.project.id === id)
     if (!node) return
-    onCloseProjectTabs?.(id)
-    if (keepsProject(node)) return
-    onHide(id, true)
-    if (id !== activeProjectId || dashboardActive) return
-    const nextTab = (allTabs ?? []).find((t) => t.projectId !== id)
-    if (nextTab && onActivateTab) { onActivateTab(nextTab.id); return }
-    const nextProject = groups.shown.find((n) => n.project.id !== id && n.project.root !== '')
-    if (nextProject) onSelectProject(nextProject.project.id)
-  }, [model.projects, onCloseProjectTabs, onHide, activeProjectId, dashboardActive, allTabs, onActivateTab, groups.shown, onSelectProject])
+    const close = (stopped: number) => {
+      onCloseProjectTabs?.(id)
+      if (keepsProject(node, stopped)) return
+      onHide(id, true)
+      if (id !== activeProjectId || dashboardActive) return
+      const nextTab = (allTabs ?? []).find((t) => t.projectId !== id)
+      if (nextTab && onActivateTab) { onActivateTab(nextTab.id); return }
+      const nextProject = groups.shown.find((n) => n.project.id !== id && n.project.root !== '')
+      if (nextProject) onSelectProject(nextProject.project.id)
+    }
+    if (!onStopProjectShells) { close(0); return }
+    void onStopProjectShells(id).then((o) => { if (!o.cancelled) close(o.stopped) })
+  }, [model.projects, onCloseProjectTabs, onStopProjectShells, onHide, activeProjectId, dashboardActive, allTabs, onActivateTab, groups.shown, onSelectProject])
   const row = (n: ProjectNode) => {
     const current = n.project.id === activeProjectId
     return (
@@ -335,7 +348,12 @@ export function Sidebar(props: SidebarProps) {
   )
 }
 
-/** What waits on you; nothing at all when nothing does. */
+/**
+ * What waits on you; nothing at all when nothing does. Turns put down more
+ * than 12h ago fold under the current ones, and alone they show no block:
+ * a lone "Older, put down…" line was clutter (owner, 2026-10-09). They stay
+ * on the Dashboard and in ⌘J.
+ */
 function Inbox({ items, onOpen }: { items: InboxItem[]; onOpen: (i: InboxItem) => void }) {
   const now = useNow(15_000)
   const [showOlder, setShowOlder] = useState(false)
@@ -363,15 +381,11 @@ function Inbox({ items, onOpen }: { items: InboxItem[]; onOpen: (i: InboxItem) =
       </button>
     </li>
   )
-  if (items.length === 0) return null
+  if (fresh.length === 0) return null
   return (
     <section aria-label="Waiting on you" className="mb-2">
-      <SectionHead
-        label="Waiting on you"
-        count={fresh.length}
-        tone={fresh.length > 0 ? 'accent' : 'faint'}
-      />
-      {fresh.length > 0 && <ul className="grid grid-cols-1 gap-px">{fresh.map(row)}</ul>}
+      <SectionHead label="Waiting on you" count={fresh.length} tone="accent" />
+      <ul className="grid grid-cols-1 gap-px">{fresh.map(row)}</ul>
       {older.length > 0 && (
         <>
           <button

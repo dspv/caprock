@@ -17,6 +17,7 @@ import { tabLabels, type TabLabel } from '@/lib/tablabels'
 import { TerminalPane, type PaneStatus } from './TerminalPane'
 import { AgentGlyph, ChatIcon, CloseIcon, DashboardIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
 import { StatusDot } from './ProjectRow'
+import { closeTitle, closeWord } from '@/lib/closeShell'
 
 /** The pinned Dashboard tab: the dashboard's screens, in the strip with the terminals. */
 export interface DashboardTab {
@@ -183,8 +184,8 @@ export function TabStrip(props: TabStripProps) {
               )}
               <button
                 type="button"
-                aria-label={file !== undefined ? `Close tab ${title}` : `Close tab ${title} — the session keeps running`}
-                title={file !== undefined ? 'Close tab (⌘W)' : 'Close tab (⌘W) — the session keeps running'}
+                aria-label={`${closeWord(file !== undefined, isShell)} ${title}`}
+                title={closeTitle(file !== undefined, isShell)}
                 onClick={(e) => { e.stopPropagation(); props.onDetach(t.id) }}
                 className={`flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${active ? '' : 'invisible group-hover:visible'}`}
               >
@@ -302,7 +303,7 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
     if (!ctx.split) return term
     const s = ctx.sessions?.get(id)
     const isShell = node.target.kind === 'shell' || s?.kind === 'shell'
-    const title = s ? sessionTitle(s) : isShell ? 'shell' : 'session'
+    const title = `${s ? sessionTitle(s) : isShell ? 'shell' : 'session'}${isShell && s?.program ? ` · ${s.program}` : ''}`
     return (
       <div
         className="flex h-full w-full flex-col"
@@ -317,8 +318,8 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
           <span className="min-w-0 flex-1 truncate">{title}</span>
           <button
             type="button"
-            aria-label={`Close pane ${title} — the session keeps running`}
-            title="Close pane (⌘W) — the session keeps running"
+            aria-label={isShell ? `Close shell ${title}` : `Close pane ${title} — the agent keeps running`}
+            title={isShell ? 'Close shell (⌘W)' : 'Close pane (⌘W) — the agent keeps running'}
             onClick={(e) => { e.stopPropagation(); ctx.onClosePane?.(node.id) }}
             className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[4px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg"
           >
@@ -406,3 +407,4 @@ function SplitView({ node, visible, ctx }: { node: PaneSplit; visible: boolean; 
     </div>
   )
 }
+

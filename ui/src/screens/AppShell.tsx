@@ -27,6 +27,7 @@ import {
   type TabTarget,
 } from '@/lib/tabs'
 import { tabLabels } from '@/lib/tablabels'
+import { isShellLeaf, liveShells, planClose, planProjectClose, shellNames, type ClosePlan, type ClosingShell, type ProjectShellsOutcome } from '@/lib/closeShell'
 import { baseName, fileKey } from '@/lib/files'
 import { useWorkspaceData } from '@/lib/useWorkspaceData'
 import { useShellTray } from '@/lib/tray'
@@ -58,6 +59,7 @@ import { warmTerminal } from '@/lib/termwarm'
 import { StatusDot, fmtCostShort } from '@/components/ProjectRow'
 import { fmtAgo } from '@/lib/format'
 import { RecentInProject } from '@/components/RecentInProject'
+import { CloseShellConfirm } from '@/components/CloseShellConfirm'
 import { ShortcutsSheet } from '@/components/ShortcutsSheet'
 import { worktreeSlug } from '@/lib/slug'
 
@@ -183,6 +185,12 @@ export function AppShell() {
   const [prefs, setPrefs] = useState<UiPrefs>(loadPrefs)
   const [sheet, setSheet] = useState<SheetState>(null)
   const [toast, setToast] = useState('')
+  /** A close that waits on the question about a busy shell. */
+  const [closing, setClosing] = useState<
+    | { kind: 'tab'; tabId: string; paneId?: string; plan: ClosePlan }
+    | { kind: 'project'; name: string; plan: ClosePlan; resolve: (o: ProjectShellsOutcome) => void }
+    | null
+  >(null)
   const [paneStatus, setPaneStatus] = useState<Record<string, PaneStatus>>({})
   // Sessions whose tab shows the chat over the terminal; the terminal stays
   // mounted behind it.
@@ -417,17 +425,73 @@ export function AppShell() {
   const onSettings = useCallback(() => { location.hash = '#/settings' }, [])
   const onPaneStatus = useCallback((sessionId: string, s: PaneStatus) => setPaneStatus((cur) => ({ ...cur, [sessionId]: s })), [])
   const onFocusPane = useCallback((tabId: string, paneId: string) => dispatch({ type: 'focus-pane', tabId, paneId }), [])
-  const onClosePane = useCallback((tabId: string, paneId: string) => dispatch({ type: 'close-pane', tabId, paneId }), [])
-  /** A tab's ×, in the strip and in the sidebar alike: the tab closes, what runs in it keeps running. */
-  const onCloseTab = useCallback((tabId: string) => dispatch({ type: 'close', tabId }), [])
+  const stopShells = useCallback((stop: readonly ClosingShell[]) => {
+    if (stop.length === 0) return
+    void Promise.all(stop.map((sh) => api.signal(sh.sessionId, 'kill').catch((e) => setToast(`Could not stop the shell: ${errText(e)}`))))
+      .then(() => refresh())
+  }, [refresh])
+  const finishClose = useCallback((tabId: string, paneId: string | undefined, stop: readonly ClosingShell[]) => {
+    dispatch(paneId ? { type: 'close-pane', tabId, paneId } : { type: 'close', tabId })
+    stopShells(stop)
+  }, [stopShells])
+  // What requestClose reads, kept current without making it, and so every
+  // close button, a new function on each poll.
+  const closeCtx = useRef({ tabs: ws.tabs, sessionsById, sessions: data.sessions, labels, model })
+  closeCtx.current = { tabs: ws.tabs, sessionsById, sessions: data.sessions, labels, model }
+  /** The daemon's shells now, id to program; the last poll's when it cannot answer. */
+  const liveNow = useCallback(async () => {
+    try {
+      return liveShells(await projectsApi.shells())
+    } catch {
+      return liveShells(closeCtx.current.sessions.filter((s) => s.kind === 'shell').map((s) => ({ id: s.session_id, program: s.program })))
+    }
+  }, [])
+  /**
+   * Close a tab, or one pane of it (.ai/21-app.md § Shell tabs). An agent
+   * runs on: closing its tab never stops it. A shell is closed for real, as
+   * in any terminal app: idle, it ends with its tab; running a program, it
+   * asks first. The daemon's shell list is read at this moment, so the
+   * answer is about now, not the last poll; only shells on that list —
+   * started by Caprock — are ever stopped (rule 7).
+   */
+  const requestClose = useCallback(async (tabId: string, paneId?: string) => {
+    const { tabs, sessionsById, labels } = closeCtx.current
+    const tab = tabs.find((t) => t.id === tabId)
+    if (!tab) return
+    const panes = paneId ? leaves(tab.root).filter((l) => l.id === paneId) : leaves(tab.root)
+    if (!panes.some((l) => isShellLeaf(l, sessionsById))) { finishClose(tabId, paneId, []); return }
+    const plan = planClose(tab, paneId, sessionsById, await liveNow(), labels.get(tabId)?.shellName)
+    if (plan.busy.length === 0) finishClose(tabId, paneId, plan.stop)
+    else setClosing({ kind: 'tab', tabId, paneId, plan })
+  }, [finishClose, liveNow])
+  /**
+   * *Close project* ends the project's shells too, tab or no tab, the way a
+   * shell's tab does: idle ones without asking, busy ones after one question
+   * listing them all. Its agents are not touched. The sidebar then closes
+   * the tabs and decides whether to hide the project.
+   */
+  const onStopProjectShells = useCallback(async (projectId: string): Promise<ProjectShellsOutcome> => {
+    const { tabs, labels, model } = closeCtx.current
+    const node = model.projects.find((n) => n.project.id === projectId)
+    const ids = (node?.worktrees ?? []).flatMap((w) => w.sessions).filter((x) => x.isShell && x.session.status !== 'ended').map((x) => x.session.session_id)
+    if (!node || ids.length === 0) return { cancelled: false, stopped: 0 }
+    const plan = planProjectClose(ids, await liveNow(), shellNames(tabs, labels))
+    if (plan.busy.length === 0) {
+      stopShells(plan.stop)
+      return { cancelled: false, stopped: plan.stop.length }
+    }
+    return new Promise((resolve) => setClosing({ kind: 'project', name: node.project.name, plan, resolve }))
+  }, [liveNow, stopShells])
+  const onClosePane = useCallback((tabId: string, paneId: string) => { void requestClose(tabId, paneId) }, [requestClose])
+  /** A tab's ×, in the strip and in the sidebar alike. */
+  const onCloseTab = useCallback((tabId: string) => { void requestClose(tabId) }, [requestClose])
   const onResizePanes = useCallback((tabId: string, splitId: string, sizes: number[]) => dispatch({ type: 'resize', tabId, splitId, sizes }), [])
 
-  // ⌘W closes the focused pane of a split tab, else the tab; the session runs on either way.
+  // ⌘W closes the focused pane of a split tab, else the tab.
   const detach = useCallback(() => {
     if (!current) return
-    if (current.root.type === 'split') dispatch({ type: 'close-pane', tabId: current.id, paneId: focusedLeaf(current).id })
-    else dispatch({ type: 'close', tabId: current.id })
-  }, [current])
+    void requestClose(current.id, current.root.type === 'split' ? focusedLeaf(current).id : undefined)
+  }, [current, requestClose])
   /** A new shell beside the focused pane, in the same folder, as a terminal's split does. */
   const splitShell = useCallback((direction: 'row' | 'column') => {
     if (!current) { onNewShell(); return }
@@ -760,6 +824,7 @@ export function AppShell() {
               onRoute={onRoute}
               tabCounts={tabCounts}
               onCloseProjectTabs={onCloseProjectTabs}
+              onStopProjectShells={onStopProjectShells}
               editors={editors}
               onOpenInEditor={editors ? onOpenProjectInEditor : undefined}
               onRemoveProject={onRemoveProject}
@@ -920,6 +985,26 @@ export function AppShell() {
           title={sheet.title}
           onClose={closeSheet}
           onOpen={(p) => openFile(sheet.projectId, sheet.worktree, p)}
+        />
+      )}
+      {closing?.kind === 'tab' && (
+        <CloseShellConfirm
+          busy={closing.plan.busy}
+          onStop={() => { setClosing(null); finishClose(closing.tabId, closing.paneId, [...closing.plan.stop, ...closing.plan.busy]) }}
+          onKeep={() => { setClosing(null); finishClose(closing.tabId, closing.paneId, closing.plan.stop) }}
+          onCancel={() => setClosing(null)}
+        />
+      )}
+      {closing?.kind === 'project' && (
+        <CloseShellConfirm
+          busy={closing.plan.busy}
+          project={closing.name}
+          onStop={() => {
+            const all = [...closing.plan.stop, ...closing.plan.busy]
+            setClosing(null); stopShells(all); closing.resolve({ cancelled: false, stopped: all.length })
+          }}
+          onKeep={() => { setClosing(null); stopShells(closing.plan.stop); closing.resolve({ cancelled: false, stopped: closing.plan.stop.length }) }}
+          onCancel={() => { setClosing(null); closing.resolve({ cancelled: true, stopped: 0 }) }}
         />
       )}
       {sheet?.kind === 'palette' && <CommandPalette items={paletteItems} fallback={paletteFallback} search={paletteSearch} onClose={closeSheet} />}

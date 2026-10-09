@@ -1609,7 +1609,7 @@ func (a *shellAdapter) Shells() []api.ShellInfo {
 func (a *shellAdapter) IsShell(id string) bool { return a.m.IsShell(id) }
 
 func (a *shellAdapter) info(sh *agents.Agent) api.ShellInfo {
-	return api.ShellInfo{ID: sh.SessionID, Cwd: sh.Cwd, Command: sh.Command, StartedAt: sh.StartedAt.UnixMilli(), SurvivesRestart: a.m.Survives(sh.SessionID)}
+	return api.ShellInfo{ID: sh.SessionID, Cwd: sh.Cwd, Command: sh.Command, StartedAt: sh.StartedAt.UnixMilli(), SurvivesRestart: a.m.Survives(sh.SessionID), Program: a.m.ShellProgram(sh.SessionID)}
 }
 
 func (a *agentAdapter) Holds(id string) bool {

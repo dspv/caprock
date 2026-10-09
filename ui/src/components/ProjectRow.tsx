@@ -20,7 +20,8 @@
  *
  * Closing has one sign, × (owner, 2026-10-09: "unclear how to close projects
  * on the left, or their parts", translated). A tab row's × closes the tab,
- * as ⌘W and the strip's × do — what runs in it keeps running. A project's ×
+ * as ⌘W and the strip's × do — an agent keeps running; a shell closes with
+ * it, after a question when it runs a program (lib/closeShell). A project's ×
  * closes its tabs and moves it under Hidden, unless something still runs or
  * waits in it: then only its tabs close and it stays, its dot green. ■ on a
  * row with no tab stops what Caprock started there, after the cockpit's
@@ -35,6 +36,7 @@ import type { Dot } from '@/lib/sidebar'
 import { branchLabel } from '@/lib/sessionLabels'
 import type { Tab } from '@/lib/tabs'
 import type { TabLabel } from '@/lib/tablabels'
+import { closeTitle, closeWord } from '@/lib/closeShell'
 import { fmtUSD } from '@/lib/format'
 import { AgentGlyph, CloseIcon, EyeIcon, FileIcon, MoreIcon, PlusIcon, StopIcon, TerminalIcon } from './AppIcons'
 import { MenuBox, MenuItem, type MenuAt } from './RowMenu'
@@ -91,8 +93,8 @@ export function runningLabel(n: number): string {
 }
 
 /** Whether a project's × only closes its tabs: something runs or waits in it, and hiding it would lose it. */
-export function keepsProject(node: ProjectNode): boolean {
-  return node.live > 0 || node.waiting > 0
+export function keepsProject(node: ProjectNode, stopped = 0): boolean {
+  return node.live - stopped > 0 || node.waiting > 0
 }
 
 export interface ProjectRowProps {
@@ -151,7 +153,8 @@ export const ProjectRow = memo(function ProjectRow({
   // Other folders is a group, not a folder: no menu, no new agent in it.
   const isGroup = p.root === ''
   const menu = !isGroup && onMenu
-  const keeps = keepsProject(node)
+  // Its shells end with it; only agents and what waits keep it listed.
+  const keeps = node.agents > 0 || node.waiting > 0
   const openMenuFrom = (el: HTMLElement) => {
     const r = el.getBoundingClientRect()
     onMenu?.(id, { x: r.right - 4, y: r.bottom + 2 }, el)
@@ -219,8 +222,8 @@ export const ProjectRow = memo(function ProjectRow({
               <RowAction
                 label={`Close project ${p.name}`}
                 title={keeps
-                  ? `Close project: its tabs close. Its agents keep running, so it stays in the list (${runningLabel(Math.max(node.live, node.waiting))}).`
-                  : 'Close project: its tabs close and it moves under Hidden. Anything running keeps running.'}
+                  ? `Close project: its tabs and shells close. Its agents keep running, so it stays in the list (${runningLabel(Math.max(node.agents, node.waiting))}).`
+                  : 'Close project: its tabs and shells close and it moves under Hidden. A shell running a program asks first.'}
                 onClick={() => onCloseProject(id)}
               >
                 <CloseIcon size={13} />
@@ -283,7 +286,7 @@ export const ProjectRow = memo(function ProjectRow({
       )}
       {tabMenu && menuTab && (
         <MenuBox at={tabMenu} label={`${labels.get(menuTab.id)?.title ?? menuTab.title}: tab actions`} width={200} onClose={closeTabMenu}>
-          {onCloseTab && <MenuItem icon={<CloseIcon size={14} />} label="Close tab" hint="⌘W" onClick={() => { setTabMenu(null); onCloseTab(menuTab.id) }} />}
+          {onCloseTab && <MenuItem icon={<CloseIcon size={14} />} label={closeWord(labels.get(menuTab.id)?.file !== undefined, !!labels.get(menuTab.id)?.isShell)} hint="⌘W" onClick={() => { setTabMenu(null); onCloseTab(menuTab.id) }} />}
           {menuStop && (
             <MenuItem
               icon={<StopIcon size={14} />}
@@ -326,7 +329,7 @@ function TabRow({ tab, label, active, onOpen, onClose, onMenu }: {
   const title = label?.title ?? tab.title
   const isFile = label?.file !== undefined
   const word = !isFile && !label?.isShell && label?.session ? label.dot : undefined
-  const closeTitle = isFile ? 'Close tab (⌘W)' : label?.isShell ? 'Close tab (⌘W) — the shell keeps running' : 'Close tab (⌘W) — the agent keeps running'
+  const closeTip = closeTitle(isFile, !!label?.isShell)
   return (
     <li className="group/row relative">
       <button
@@ -361,7 +364,7 @@ function TabRow({ tab, label, active, onOpen, onClose, onMenu }: {
       </button>
       {onClose && (
         <span className={`absolute right-1 top-1/2 -translate-y-1/2 ${active ? 'flex' : 'hidden group-hover/row:flex group-focus-within/row:flex'}`}>
-          <RowAction label={`Close tab ${title}`} title={closeTitle} onClick={onClose}><CloseIcon size={12} /></RowAction>
+          <RowAction label={`${closeWord(isFile, !!label?.isShell)} ${title}`} title={closeTip} onClick={onClose}><CloseIcon size={12} /></RowAction>
         </span>
       )}
     </li>
@@ -388,7 +391,7 @@ function LiveRow({ item, ownBranch, onOpen, onStop }: { item: SessionNode; ownBr
   const own = branchLabel(ownBranch ?? '')
   const b = branchLabel(s.git_branch ?? '')
   const branch = b && b !== own ? b : undefined
-  const title = item.isShell ? 'Shell' : item.title
+  const title = item.isShell ? `Shell${s.program ? ` · ${s.program}` : ''}` : item.title
   const canStop = !!onStop && s.owned && s.status !== 'ended'
   return (
     <li className="group/row relative">

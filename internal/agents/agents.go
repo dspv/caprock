@@ -115,6 +115,9 @@ type Agent struct {
 	// permission answer reads the screen.
 	sizeMu     sync.Mutex
 	cols, rows int
+
+	// fg is a shell's foreground program, as last read (shell.go).
+	fg fgCache
 }
 
 // Manager owns the set of running agents.
