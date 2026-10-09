@@ -327,8 +327,10 @@ PROFILE = "/tmp/caprock-shots-profile"
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:4290"
 OUT = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else ".")
 SHOTS = [("now", "shot-now"), ("cost", "shot-cost"),
-         ("history", "shot-history"), ("tasks", "shot-tasks"),
-         ("notes", "shot-memory")]
+         ("history", "shot-history"), ("tasks", "shot-tasks")]
+# No Memory shot: its rows are the prose Claude wrote on the machine, which a
+# scrub cannot make public (the 0.94.2 capture showed the owner's own chats).
+# The site takes Memory from its demo stand (caprock-web scripts/demo).
 
 # What to do on a screen before capturing it. Memory is a search screen, and
 # browsing it shows the newest prose on the machine — whatever the last
