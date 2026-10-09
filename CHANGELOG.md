@@ -27,11 +27,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   Screenshots go onto the clipboard through the app itself rather than the
   webview, which not every webview allows.
 
-### Fixed
-
-- **A file dropped on a dialog in the app no longer types into the
-  terminal underneath.** The terminal checked only its own box, so a drop
-  on a dialog over it typed the file's path at the prompt.
 ### Changed
 
 - **A share card worth posting.** The Figures card says one figure big —
@@ -57,6 +52,9 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **A file dropped on a dialog in the app no longer types into the
+  terminal underneath.** The terminal checked only its own box, so a drop
+  on a dialog over it typed the file's path at the prompt.
 - **A long branch no longer hides what a session is.** In the sidebar and
   the tab strip the branch shrinks first and the title keeps its words; the
   title is cut only once the branch is gone, and the tooltip has both.
