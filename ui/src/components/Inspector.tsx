@@ -12,7 +12,7 @@
  * panel is open, every 20 s; an agent's events once, then from the live
  * socket.
  */
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import { api, errText, type DiffResult, type EditorList, type SessionSummary, type Summary } from '@/lib/api'
 import { firstChangedLine, joinPath, preferredName } from '@/lib/editors'
 import { sessionPlace, type Project } from '@/lib/projects'
@@ -25,6 +25,7 @@ import { href } from '@/lib/router'
 import { CloseIcon, ExternalIcon, StopIcon } from './AppIcons'
 import { everyWhileVisible } from '@/lib/visible'
 import { Cockpit, SectionLabel } from './Cockpit'
+import { StopConfirm, stopLabel, type StopWhat } from './StopConfirm'
 
 const DIFF_REFRESH_MS = 20_000
 const DIFF_FILES_SHOWN = 5
@@ -255,44 +256,15 @@ function tail(path: string): string {
   return parts.length <= 2 ? path : `…/${parts.slice(-2).join('/')}`
 }
 
-/** Stopping is separate from closing a tab, and asks first. */
-function StopButton({ sessionId, what }: { sessionId: string; what: 'session' | 'shell' }) {
+/** Stopping is separate from closing a tab, and asks first (components/StopConfirm.tsx). */
+function StopButton({ sessionId, what }: { sessionId: string; what: StopWhat }) {
   const [confirming, setConfirming] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const stop = async () => {
-    setBusy(true)
-    setError('')
-    try {
-      await api.signal(sessionId, 'kill')
-      setConfirming(false)
-    } catch (e) {
-      setError(errText(e))
-    } finally {
-      setBusy(false)
-    }
-  }
   if (!confirming) {
     return (
       <button type="button" onClick={() => setConfirming(true)} className="app-row flex h-[30px] items-center gap-2 rounded-[7px] px-2 text-left text-[12.5px] text-danger">
-        <StopIcon size={14} /> Stop the {what}…
+        <StopIcon size={14} /> {stopLabel(what)}
       </button>
     )
   }
-  return (
-    <Confirm>
-      <p className="text-[12.5px] text-fg">Stop this {what}? Its process ends; the {what === 'shell' ? 'shell' : 'conversation'} is kept{what === 'session' ? ' and can be continued' : ''}.</p>
-      {error && <p className="text-[11.5px] text-danger">{error}</p>}
-      <div className="flex justify-end gap-2">
-        <button type="button" onClick={() => setConfirming(false)} className="h-[28px] rounded-[7px] border border-[var(--app-hairline-strong)] px-3 text-[12.5px] text-fg hover:bg-[var(--app-row-hover)]">Keep it</button>
-        <button type="button" autoFocus disabled={busy} onClick={() => void stop()} className="h-[28px] rounded-[7px] bg-danger px-3 text-[12.5px] font-medium text-white hover:brightness-110 disabled:opacity-50">
-          {busy ? 'Stopping…' : `Stop ${what}`}
-        </button>
-      </div>
-    </Confirm>
-  )
-}
-
-function Confirm({ children }: { children: ReactNode }) {
-  return <div role="alertdialog" aria-label="Confirm stop" className="grid gap-2 rounded-[9px] border border-danger/40 bg-danger/[0.06] p-3">{children}</div>
+  return <StopConfirm sessionId={sessionId} what={what} onDone={() => setConfirming(false)} />
 }

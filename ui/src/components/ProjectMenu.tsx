@@ -10,13 +10,12 @@
  * when the daemon keeps none — after a confirmation, and never touches the
  * folder or its sessions.
  *
- * Keyboard: the first item takes focus; ↑ ↓ Home End move, Enter or Space
- * picks, Esc or Tab closes and gives focus back to what opened it.
+ * The menu's frame, placement and keys are components/RowMenu.tsx.
  */
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
+import { useState } from 'react'
 import { errText, type EditorList } from '@/lib/api'
 import { CloseIcon, ExternalIcon, EyeIcon, EyeOffIcon, TrashIcon } from './AppIcons'
+import { MenuBox, MenuItem as Item, MenuSeparator as Separator } from './RowMenu'
 
 export interface ProjectMenuAt {
   projectId: string
@@ -45,56 +44,9 @@ const WIDTH = 248
 
 export function ProjectMenu(props: ProjectMenuProps) {
   const { at, name, root, hidden, tabs, editors, onClose } = props
-  const box = useRef<HTMLDivElement>(null)
   const [confirm, setConfirm] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [pos, setPos] = useState({ left: at.x, top: at.y })
-
-  // Kept inside the window: near the right or bottom edge it flips.
-  useLayoutEffect(() => {
-    const h = box.current?.offsetHeight ?? 0
-    const left = Math.max(8, Math.min(at.x, window.innerWidth - WIDTH - 8))
-    const top = Math.max(8, at.y + h > window.innerHeight - 8 ? at.y - h : at.y)
-    setPos((cur) => (cur.left === left && cur.top === top ? cur : { left, top }))
-  }, [at.x, at.y, confirm, error])
-
-  useEffect(() => {
-    box.current?.querySelector<HTMLButtonElement>('[role="menuitem"]:not([disabled]), button')?.focus()
-  }, [confirm])
-
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) onClose() }
-    window.addEventListener('mousedown', onDown, true)
-    window.addEventListener('blur', onClose)
-    window.addEventListener('resize', onClose)
-    return () => {
-      window.removeEventListener('mousedown', onDown, true)
-      window.removeEventListener('blur', onClose)
-      window.removeEventListener('resize', onClose)
-    }
-  }, [onClose])
-
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape' || e.key === 'Tab') {
-      e.preventDefault()
-      e.stopPropagation()
-      onClose()
-      return
-    }
-    const items = Array.from(box.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? [])
-    if (items.length === 0) return
-    const at = items.indexOf(document.activeElement as HTMLButtonElement)
-    let next = -1
-    if (e.key === 'ArrowDown') next = (at + 1) % items.length
-    else if (e.key === 'ArrowUp') next = (at - 1 + items.length) % items.length
-    else if (e.key === 'Home') next = 0
-    else if (e.key === 'End') next = items.length - 1
-    if (next < 0) return
-    e.preventDefault()
-    e.stopPropagation()
-    items[next]!.focus()
-  }
 
   const pick = (fn?: () => void) => () => { onClose(); fn?.() }
   const remove = async () => {
@@ -112,18 +64,8 @@ export function ProjectMenu(props: ProjectMenuProps) {
 
   const ordered = editors && root ? [...editors.editors].sort((a, b) => Number(b.id === editors.preferred) - Number(a.id === editors.preferred)) : []
 
-  // On the page's body: the sidebar's backdrop filter makes it the containing
-  // block of anything fixed inside it, so the menu would be cut at its edge.
-  return createPortal(
-    <div
-      ref={box}
-      role="menu"
-      aria-label={`${name}: project actions`}
-      onKeyDown={onKeyDown}
-      onContextMenu={(e) => e.preventDefault()}
-      className="app-fade-in fixed z-50 grid gap-px rounded-[10px] border border-[var(--app-hairline-strong)] bg-panel p-1 shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)]"
-      style={{ left: pos.left, top: pos.top, width: WIDTH }}
-    >
+  return (
+    <MenuBox at={at} label={`${name}: project actions`} width={WIDTH} refocusKey={confirm} onClose={onClose}>
       <p className="truncate px-2 pb-1 pt-1 text-[12px] font-semibold text-fg" title={root || name}>{name}</p>
       {confirm ? (
         <div className="grid gap-2 px-2 pb-1.5 pt-0.5" role="group" aria-label={`Remove ${name} from Caprock`}>
@@ -171,34 +113,7 @@ export function ProjectMenu(props: ProjectMenuProps) {
           )}
         </>
       )}
-    </div>,
-    document.body,
+    </MenuBox>
   )
 }
 
-function Item({ icon, label, hint, onClick, disabled, tone }: {
-  icon: ReactNode
-  label: string
-  hint?: string
-  onClick: () => void
-  disabled?: boolean
-  tone?: 'danger'
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      disabled={disabled}
-      onClick={onClick}
-      className={`app-row flex h-[28px] w-full min-w-0 items-center gap-2 rounded-[6px] px-2 text-left text-[12.5px] disabled:pointer-events-none ${disabled ? 'text-fg-faint' : tone === 'danger' ? 'text-danger' : 'text-fg'}`}
-    >
-      <span className={tone === 'danger' ? 'text-danger' : 'text-fg-muted'}>{icon}</span>
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {hint && <span className="shrink-0 text-[10.5px] text-fg-faint">{hint}</span>}
-    </button>
-  )
-}
-
-function Separator() {
-  return <span role="separator" className="mx-2 my-0.5 h-px bg-[var(--app-hairline)]" />
-}

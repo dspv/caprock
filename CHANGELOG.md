@@ -7,7 +7,26 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
-Phase 3 (Delight) has no plan by design.
+### Changed
+
+- **Closing things in the sidebar is one ×.** Each tab under the project
+  has a × (always on the one in front) that closes it as ⌘W does; the
+  agent or shell keeps running. A project's × closes its tabs and moves it
+  under *Hidden*, or, while something still runs or waits in it, only
+  closes its tabs and leaves it listed. It replaces the crossed eye. A
+  running agent or shell Caprock started that has no tab gets a ■ on
+  hover, and a tab's right-click menu has *Close tab* and *Stop…*; both
+  ask first, as the cockpit does. Sessions started in another terminal
+  have no stop. Delete and Backspace close nothing.
+- **The sidebar says each thing's state, in a fixed order.** Every agent
+  under the project ends in one word: *working*, *waiting* (amber, the only
+  amber in the list), *idle* or *done*. Rows keep the tab strip's order,
+  then the order things started, so a state change never moves one.
+  Sessions started in another terminal fold into one *Running in other
+  terminals · N* line instead of a row each. The tab in front is marked by
+  a plain edge, no longer amber.
+
+## [0.94.0] - 2026-10-09
 
 ### Added
 
@@ -73,6 +92,28 @@ Phase 3 (Delight) has no plan by design.
 
 ### Fixed
 
+- **macOS no longer asks "caprock" for what a session did.** A `find /` an
+  agent ran inside a Caprock session asked, in Caprock's name, for the Music
+  library and network volumes, and an `ls ~/Desktop` for the Desktop: macOS
+  counts everything a program starts as that program, and every new release
+  is a new program to it, so the questions came back after each upgrade
+  (`tccd` log, 2026-10-09). Sessions, shells, verify commands and the
+  login-shell read now start with their responsibility disclaimed, as iTerm2
+  and Chromium start theirs: a prompt names Claude Code, Codex or the shell
+  that asked, and the answer outlasts both their updates and Caprock's. The
+  process keeps its pid, terminal and environment (`internal/disclaim`, pure
+  Go, no cgo).
+- **Background reads stay out of the folders macOS guards.** The folder
+  picker and the Projects panel no longer read inside Desktop, Documents,
+  Downloads, iCloud Drive, cloud-storage folders, Music, Movies, Pictures or
+  `/Volumes`, nor follow a link into one (a link in `~/dev` to a share is
+  recognised from the link, without touching the share); the picker still
+  offers those folders, unprobed, and opening one is yours to ask for.
+  Finding the repository a session's folder belongs to still reads up that
+  folder in Desktop, Documents and Downloads — a session there means you
+  work there, and projects in `~/Documents` stay grouped by repository — but
+  never in Music, Movies, Pictures, iCloud Drive, cloud storage or
+  `/Volumes`, where the session keeps its folder's name.
 - **A session whose background agents are still working is no longer
   "waiting on you".** When a Claude Code turn ends with subagents still
   running, Claude Code resumes the session by itself once they finish. The
@@ -92,9 +133,6 @@ Phase 3 (Delight) has no plan by design.
   project's name as the sidebar shows it, then the branch only when that is
   not the project's default. The full path is a tooltip. It used to show a
   branch beside a folder path cut from the left (`…nt-a874ec5240fb37a9d`).
-
-### Fixed
-
 - **Focus no longer jumps while you fill the New agent sheet.** Each time
   the app refreshed behind it, the sheet threw the caret back to *Project*;
   now focus moves only when you move it. The same fix covers every sheet in

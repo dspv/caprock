@@ -16,8 +16,10 @@
  * The list stays short: projects in play (running, waiting, a tab open,
  * pinned, current) come first; the rest fold under More projects, and the
  * ones hidden by hand under Hidden, both closed by default.
- * Each project's ⋯ menu (or a right-click, or Shift+F10 on its row) hides it,
- * closes its tabs, opens it in an editor or removes it from Caprock.
+ * A project's × closes it: its tabs close and it moves under Hidden, unless
+ * something still runs in it (components/ProjectRow.tsx). Each project's ⋯
+ * menu (or a right-click, or Shift+F10 on its row) hides it, closes its tabs,
+ * opens it in an editor or removes it from Caprock.
  */
 import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { groupProjects, type InboxItem, type ProjectNode, type SidebarModel } from '@/lib/sidebar'
@@ -29,7 +31,7 @@ import { buildToday } from '@/lib/today'
 import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { useTheme } from '@/lib/theme'
-import { ProjectRow, StatusDot } from './ProjectRow'
+import { keepsProject, ProjectRow, StatusDot } from './ProjectRow'
 import { ProjectMenu, type ProjectMenuAt } from './ProjectMenu'
 import { TodayStrip } from './TodayStrip'
 import { AgentGlyph, CaprockMark, ChatIcon, ChevronIcon, DashboardIcon, FolderPlusIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from './AppIcons'
@@ -67,6 +69,8 @@ export interface SidebarProps {
   /** The tab in front: the one highlighted row. */
   activeTabId?: string
   onActivateTab?: (tabId: string) => void
+  /** Closes a tab, as ⌘W and the strip's × do; what runs in it keeps running. */
+  onCloseTab?: (tabId: string) => void
   /** Opens, as a tab, a live session or shell of the current project that has none. */
   onOpenLive?: (s: SessionSummary, projectId: string) => void
   onSelectProject: (id: string) => void
@@ -146,6 +150,25 @@ export function Sidebar(props: SidebarProps) {
     })
   }
   const noop = useCallback(() => {}, [])
+  /**
+   * A project's ×: its tabs close, and it moves under Hidden — unless
+   * something still runs or waits in it, which hiding would lose: then it
+   * stays, its dot green. Nothing is stopped either way. Closing the project
+   * in front moves the front to the next tab, else the next project listed.
+   */
+  const { onCloseProjectTabs, onActivateTab, onSelectProject, dashboardActive } = props
+  const onCloseProject = useCallback((id: string) => {
+    const node = model.projects.find((n) => n.project.id === id)
+    if (!node) return
+    onCloseProjectTabs?.(id)
+    if (keepsProject(node)) return
+    onHide(id, true)
+    if (id !== activeProjectId || dashboardActive) return
+    const nextTab = (allTabs ?? []).find((t) => t.projectId !== id)
+    if (nextTab && onActivateTab) { onActivateTab(nextTab.id); return }
+    const nextProject = groups.shown.find((n) => n.project.id !== id && n.project.root !== '')
+    if (nextProject) onSelectProject(nextProject.project.id)
+  }, [model.projects, onCloseProjectTabs, onHide, activeProjectId, dashboardActive, allTabs, onActivateTab, groups.shown, onSelectProject])
   const row = (n: ProjectNode) => {
     const current = n.project.id === activeProjectId
     return (
@@ -164,6 +187,8 @@ export function Sidebar(props: SidebarProps) {
         onFolderMenu={props.onFolderMenu}
         hidden={hidden.has(n.project.id)}
         onHide={onHide}
+        onCloseProject={onCloseProject}
+        onCloseTab={props.onCloseTab}
         onMenu={onMenu}
       />
     )

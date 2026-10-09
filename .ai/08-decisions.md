@@ -1913,7 +1913,8 @@ Full Disk Access. What the machine runs, measured 2026-10-06:
 - The daemon is a launchd agent, so it is its own responsible process, and
   every `caprock pty-host` it starts — and every `claude` or `codex` under
   one — is attributed to it. An agent working in `~/Documents` asks in
-  Caprock's name.
+  Caprock's name. (No longer: since ADR-044 every session starts
+  responsible for itself.)
 - The app's bundled daemon, when it runs, runs from
   `<data_dir>/bin/caprock`: one path, copied there by the app.
 - Agents' test and preview daemons run from their own builds (worktrees,
@@ -2139,3 +2140,94 @@ quarantine step goes. Nothing in the app changes.
 measure that an update still opens without a prompt), a second channel
 (beta) is wanted, or GitHub's `releases/latest/download` redirect stops
 serving release assets.
+
+## ADR-044 — Sessions answer for themselves to macOS privacy prompts; background reads skip every guarded place
+
+**Date:** 2026-10-09 · **Status:** accepted (decided without the owner; he
+may overrule it)
+
+**Context.** The owner kept being asked, in Caprock's name, for "files on a
+network volume" (`kTCCServiceSystemPolicyNetworkVolumes`) and for "your
+music, video activity, and media library" (`kTCCServiceMediaLibrary`),
+"periodically". The `tccd` log (`log show --predicate 'process == "tccd"'`,
+read 2026-10-09; it reached back about twelve hours) holds every prompt
+shown in that window: eight, all with the installed daemon as the
+responsible process and none from the daemon's own code. The accessing
+binary was `claude` seven times and an OpenCode binary once. Matched to the
+events table by time: 10:52 an agent ran `ls ~/Desktop/*.png
+~/Downloads/*.png` (Desktop, Downloads); 11:32 a subagent ran `find /
+-maxdepth 6 -name playwright` (Documents, Media Library twice, Network
+Volumes twice); 01:44 `opencode debug agents` scanned from a scratch home
+(Network Volumes). The log also shows why it repeats: "Failed to match
+existing code requirement for subject …/caprock/bin/caprock" — the earlier
+answer belonged to an earlier ad-hoc build (ADR-040).
+
+macOS names a process's *responsible* program, inherited down the tree from
+the app or launchd job that started it, unless a parent disclaims it when
+spawning the child. iTerm2 (`iTermPosixTTYReplacements.c`) and Chromium
+(`base/process/launch_mac.cc`) do, through the private but long-stable
+`responsibility_spawnattrs_setdisclaim` on a `posix_spawn` attribute (macOS
+10.14+); iTerm2 with `POSIX_SPAWN_SETEXEC`, in place of an exec. Go's
+`os/exec` forks, so the attribute cannot be set there, and
+06-engineering-rules forbids cgo.
+
+**The decision.**
+
+- **Every process Caprock starts for the user runs through a re-exec
+  trampoline on macOS.** `disclaim.Wrap` turns `prog args` into `caprock
+  __disclaim-exec <abs prog> <argv0> args`; the binary's `main` calls
+  `disclaim.Main` first, which calls `posix_spawn` with `SETEXEC`,
+  `SETSIGDEF` (all signals), an empty `SETSIGMASK` and the disclaim
+  attribute. The process keeps its pid, descriptors, session and controlling
+  terminal; only the program and its responsibility change. libSystem is
+  called the way `golang.org/x/sys/unix` calls it (dynamic imports,
+  assembly trampolines, `syscall.syscall6`), so the build stays
+  `CGO_ENABLED=0`; the private symbol is looked up with `dlsym`, so a macOS
+  without it loads the binary and falls back to a plain exec. Wrapped:
+  PTY sessions (`ptyman`, in the pty-host and the in-process fallback), the
+  login-shell read (`userenv`), verify commands (`board`). Not wrapped: git
+  and other fixed helpers, which the daemon runs for itself and which are
+  kept out of guarded places instead. Cost: one start of the caprock binary
+  per spawn, about 19 ms measured on the owner's M-series Mac.
+- **Background reads skip every guarded place** (`tcc.Guarded`): the
+  account's Desktop, Documents, Downloads, `Library/Mobile Documents`,
+  `Library/CloudStorage`, Music, Movies, Pictures, and `/Volumes`, for `$HOME`
+  and the account's home. Symlinks are followed one component at a time and
+  each prefix is checked before it is read, so a link in `~/dev` to a share
+  is recognised from the link. It replaces the textual `protectedDir` of
+  2026-10-07 and now also covers the folder picker (`/v1/browse`,
+  `/v1/recent-dirs`). A read the user asked for (opening a session, a file
+  tab, a folder) is unchanged.
+- **A session's own folder is walked in Desktop, Documents and Downloads,
+  never in the rest** (`tcc.GuardedBeyondWork`, for ingest's
+  `store.findRepoRoot` and `store.ProjectWorthListing`). The first user
+  keeps every project in `~/Documents`; labelling those sessions by folder
+  instead of repository would break his sidebar. A session there means the
+  user works there, the walk reads only the folder's own ancestry (never its
+  siblings), and one prompt per release for that folder is legitimate until
+  releases are Developer ID signed. Music, Movies, Pictures, iCloud Drive,
+  cloud storage and `/Volumes` stay untouched: a session there keeps its
+  folder's name.
+
+**Verified.** Without a dialog: macOS checks the Developer Tools service
+silently whenever a new unsigned binary starts, and logs the attribution.
+A fresh binary started directly from a session was logged with
+`responsible_path=…/caprock/bin/caprock`; the same binary started through
+`caprock __disclaim-exec` had no separate responsible process — the subject
+was the binary itself (2026-10-09). Tests cover pid, directory, environment,
+exit status and a PTY shell remaining its terminal's foreground group.
+
+**Consequences.** A prompt now names `claude` (`com.anthropic.claude-code`,
+Developer ID signed, so the answer survives Claude Code's updates and
+Caprock's), `codex`, or the user's shell (a shell binary under `/bin` is
+Apple's, and macOS may attribute it further; untested). A session in a media
+library, cloud storage or on a share is labelled by its folder rather than
+grouped under its repository, since finding the repository would mean
+reading there; the user can still add such a project by hand. Caprock itself
+may still ask once per release for Desktop, Documents or Downloads when a
+session runs there.
+
+**Revisit if** Apple removes or changes the attribute (the fallback is a
+plain exec, so the symptom would be prompts in Caprock's name again), or
+Caprock ships as a Developer ID app whose own grants should cover its
+sessions.
