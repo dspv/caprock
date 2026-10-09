@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/dspv/caprock/internal/tcc"
 )
 
 // Project is one row of the projects list (migration 0041).
@@ -327,7 +329,9 @@ func SessionRepoRoots(ctx context.Context, q Querier) ([]RecentDirDetail, error)
 // worktree), and not a place nobody works in (NotAProject) or a temp
 // directory's scratch repository.
 func ProjectWorthListing(root string) bool {
-	if NotAProject(root) || UnderTempDir(root) || strings.Contains(NormalizeDir(root), "/"+WorktreeDir+"/") {
+	// A guarded folder is not probed in the background (tcc.Guarded); the
+	// user can still add it by hand.
+	if NotAProject(root) || UnderTempDir(root) || strings.Contains(NormalizeDir(root), "/"+WorktreeDir+"/") || tcc.Guarded(filepath.FromSlash(root)) {
 		return false
 	}
 	st, err := os.Stat(filepath.Join(filepath.FromSlash(root), ".git"))

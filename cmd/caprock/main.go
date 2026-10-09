@@ -30,6 +30,7 @@ import (
 	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/daemon"
+	"github.com/dspv/caprock/internal/disclaim"
 	"github.com/dspv/caprock/internal/hooks"
 	"github.com/dspv/caprock/internal/shim"
 	"github.com/dspv/caprock/internal/statusline"
@@ -37,6 +38,10 @@ import (
 )
 
 func main() {
+	// First: a process started as the disclaim trampoline becomes the program
+	// it was asked to run and never gets further.
+	disclaim.Main()
+	disclaim.Enable()
 	if err := newRoot().Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)

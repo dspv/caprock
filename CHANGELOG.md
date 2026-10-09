@@ -9,6 +9,29 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **macOS no longer asks "caprock" for what a session did.** A `find /` an
+  agent ran inside a Caprock session asked, in Caprock's name, for the Music
+  library and network volumes, and an `ls ~/Desktop` for the Desktop: macOS
+  counts everything a program starts as that program, and every new release
+  is a new program to it, so the questions came back after each upgrade
+  (`tccd` log, 2026-10-09). Sessions, shells, verify commands and the
+  login-shell read now start with their responsibility disclaimed, as iTerm2
+  and Chromium start theirs: a prompt names Claude Code, Codex or the shell
+  that asked, and the answer outlasts both their updates and Caprock's. The
+  process keeps its pid, terminal and environment (`internal/disclaim`, pure
+  Go, no cgo).
+- **Background reads stay out of every folder macOS guards.** Caprock's own
+  background work — finding the repository a session's folder belongs to,
+  listing projects, the folder picker — no longer reads inside Desktop,
+  Documents, Downloads, iCloud Drive, cloud-storage folders, Music, Movies,
+  Pictures or `/Volumes`, nor follows a link into one (a link in `~/dev` to a
+  share is recognised from the link, without touching the share). A session
+  in such a folder keeps the folder's name rather than its repository's; the
+  picker still offers those folders, unprobed, and opening one is yours to
+  ask for.
+
 ## [0.93.1] - 2026-10-09
 
 ### Fixed
