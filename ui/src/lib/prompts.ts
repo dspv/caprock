@@ -12,31 +12,54 @@
  * it away for a full period; taking it puts it away too, because someone who
  * just shared this week's numbers has nothing new to share tomorrow.
  *
- * State is local — a dismissal is a preference about this browser, not
- * something to send anywhere. Rule 4: all data stays on the machine.
+ * Where the answers live: in the daemon's settings (`prompts`, an id → Unix
+ * ms map), mirrored in this browser's storage. The daemon copy is the one
+ * that counts — "I starred it" said in the desktop app must hold in a browser
+ * tab too, and browser storage is per origin and per window. The local copy
+ * is what a test, a paired phone (which may not write settings) or an older
+ * daemon falls back to. Nothing leaves the machine either way (rule 4).
  */
+import { useSyncExternalStore } from 'react'
 
-export type PromptKind = 'share-week' | 'share-month' | 'premium-hint' | 'premium-banner' | 'teams-banner'
+export type PromptKind =
+  | 'share-week' | 'share-month'
+  | 'premium-hint' | 'premium-banner' | 'premium-limit' | 'premium-cap'
+  | 'teams-banner' | 'teams-nudge'
+  | 'star-dismissed' | 'star-done'
 
 const KEY = 'caprock-prompts'
+const DAY = 24 * 60 * 60 * 1000
 
 const PERIOD_MS: Record<PromptKind, number> = {
-  'share-week': 7 * 24 * 60 * 60 * 1000,
-  'share-month': 30 * 24 * 60 * 60 * 1000,
+  'share-week': 7 * DAY,
+  'share-month': 30 * DAY,
   // Dismissed for a month, not a week. This one is an advertisement inside a
   // tool someone installed for its own sake, and the tolerance for seeing it
   // again is lower than for being offered a card of your own numbers.
-  'premium-hint': 30 * 24 * 60 * 60 * 1000,
-  'premium-banner': 30 * 24 * 60 * 60 * 1000,
-  'teams-banner': 30 * 24 * 60 * 60 * 1000,
+  'premium-hint': 30 * DAY,
+  'premium-banner': 30 * DAY,
+  // The contextual Premium nudges come back sooner, because they only appear
+  // while the problem they answer is happening — a plan window nearly spent,
+  // a day well above this machine's normal.
+  'premium-limit': 14 * DAY,
+  'premium-cap': 14 * DAY,
+  'teams-banner': 30 * DAY,
+  'teams-nudge': 30 * DAY,
+  'star-dismissed': 30 * DAY,
+  // "I starred it" is final.
+  'star-done': Number.POSITIVE_INFINITY,
 }
 
 type Store = Partial<Record<PromptKind, number>>
 
-function read(): Store {
+const listeners = new Set<() => void>()
+let persist: ((patch: Store) => void) | null = null
+
+function readLocal(): Store {
   try {
     const raw = localStorage.getItem(KEY)
-    return raw ? (JSON.parse(raw) as Store) : {}
+    const v = raw ? (JSON.parse(raw) as unknown) : {}
+    return v && typeof v === 'object' ? (v as Store) : {}
   } catch {
     // A corrupt or unavailable store must not take the dashboard down; the
     // worst case is being asked once more than intended.
@@ -44,10 +67,42 @@ function read(): Store {
   }
 }
 
+// Read through on every call rather than cached: the store is a few bytes, and
+// a cache is one more copy that can disagree with what a test or another tab
+// just wrote.
+function read(): Store {
+  return readLocal()
+}
+
 function write(s: Store) {
   try {
     localStorage.setItem(KEY, JSON.stringify(s))
   } catch { /* private mode, quota — the offer just repeats */ }
+  for (const l of listeners) l()
+}
+
+/**
+ * Merge the daemon's answers in. The later answer wins per prompt, so a
+ * dismissal made in one window is never undone by an older one from another.
+ */
+export function hydratePrompts(remote: Record<string, number> | undefined) {
+  if (!remote) return
+  const cur = { ...read() }
+  let changed = false
+  for (const [k, v] of Object.entries(remote)) {
+    if (!(k in PERIOD_MS) || typeof v !== 'number') continue
+    const kind = k as PromptKind
+    if ((cur[kind] ?? 0) < v) { cur[kind] = v; changed = true }
+  }
+  if (changed) write(cur)
+}
+
+/**
+ * Turn on writing answers to the daemon. Called once by the dashboard and the
+ * app at start; tests never call it, so they stay on browser storage alone.
+ */
+export function syncPromptsWith(save: (patch: Store) => void) {
+  persist = save
 }
 
 /** Whether this prompt is due: never answered, or answered a period ago. */
@@ -66,9 +121,10 @@ export function isDue(kind: PromptKind, now: number): boolean {
  * The reverse does not hold: dismissing a week says nothing about the month.
  */
 export function markAnswered(kind: PromptKind, now: number) {
-  const s = { ...read(), [kind]: now }
-  if (kind === 'share-month') s['share-week'] = now
-  write(s)
+  const patch: Store = { [kind]: now }
+  if (kind === 'share-month') patch['share-week'] = now
+  write({ ...read(), ...patch })
+  try { persist?.(patch) } catch { /* the local copy still holds */ }
 }
 
 /**
@@ -88,4 +144,20 @@ export function dueShare(now: number): 'share-week' | 'share-month' | null {
 /** Clear everything. Exported for tests and for a settings-screen reset. */
 export function resetPrompts() {
   try { localStorage.removeItem(KEY) } catch { /* nothing to clear */ }
+  for (const l of listeners) l()
+}
+
+function subscribe(l: () => void) {
+  listeners.add(l)
+  return () => { listeners.delete(l) }
+}
+
+/**
+ * Re-renders when any answer changes — a dismissal arriving from the daemon
+ * after first paint, or one given in another component — and reports whether
+ * `kind` is due.
+ */
+export function usePromptDue(kind: PromptKind, now: number): boolean {
+  const last = useSyncExternalStore(subscribe, () => read()[kind] ?? 0)
+  return !last || now - last >= PERIOD_MS[kind]
 }

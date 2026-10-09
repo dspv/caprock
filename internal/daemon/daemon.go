@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"os"
@@ -1389,6 +1390,7 @@ func (a *settingsAdapter) Get() api.Settings {
 		AlertReply:       c.AlertReplyOn(),
 		NotifyApproval:   c.NotifyApprovalOn(),
 		NotifyFinished:   c.NotifyFinishedOn(),
+		Prompts:          maps.Clone(c.Prompts),
 		AlertLastError:   alertErr,
 		AlertLastSentMs:  alertSent,
 	}
@@ -1436,6 +1438,7 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	notifyApproval, notifyFinished := in.NotifyApproval, in.NotifyFinished
 	a.d.opt.Config.NotifyApproval = &notifyApproval
 	a.d.opt.Config.NotifyFinished = &notifyFinished
+	a.d.opt.Config.Prompts = maps.Clone(in.Prompts)
 	cfg := a.d.opt.Config
 	a.d.cfgMu.Unlock()
 	if capChanged && a.d.cap != nil {

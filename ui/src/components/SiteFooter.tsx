@@ -16,18 +16,17 @@
 
 import { useState } from 'react'
 import { TeamsModal } from './TeamsModal'
+import { usePromptDue } from '@/lib/prompts'
 
 const REPO = 'https://github.com/dspv/caprock'
 const PREMIUM = 'https://caprock.dev/premium'
-const STAR_KEY = 'caprock.footer.starred'
 
 export function SiteFooter() {
   const [teams, setTeams] = useState(false)
-  // Remembered so the ask stops once it has been acted on. A prompt that keeps
-  // asking after you have done the thing is how a footer becomes noise.
-  const [starred, setStarred] = useState(
-    () => localStorage.getItem(STAR_KEY) === '1',
-  )
+  // Gone once the reader has said "I starred it" in the star strip
+  // (StarStrip): a prompt that keeps asking after you have done the thing is
+  // how a footer becomes noise. Kept on the daemon (lib/prompts.ts).
+  const starred = !usePromptDue('star-done', Date.now())
 
   return (
     <footer className="mt-6 border-t border-border">
@@ -71,10 +70,6 @@ export function SiteFooter() {
               href={REPO}
               target="_blank"
               rel="noreferrer"
-              onClick={() => {
-                localStorage.setItem(STAR_KEY, '1')
-                setStarred(true)
-              }}
               className="text-fg-faint hover:text-fg no-underline"
               title="Opens GitHub in a new tab"
             >

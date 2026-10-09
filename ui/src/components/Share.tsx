@@ -28,6 +28,7 @@ import { cardFilename, drawShareCard, PERIOD_LABEL, type CardData, type SharePer
 import { CARD_SIZE, WeekCard, type CardLayout } from './WeekCard'
 import { Scaled } from './Scaled'
 import { renderCardPNG } from '@/lib/cardimage'
+import { openExternal } from '@/lib/nudges'
 import { periodWords } from '@/lib/week'
 import { currentFigures, currentStory, fetchFigures, fetchStory, FRESH_MS, lastFigures, lastStory, warmShare } from '@/lib/sharecache'
 
@@ -93,7 +94,7 @@ const STEP_LABEL: Record<SharePeriod, string> = {
   all: 'all time',
 }
 
-export function ShareDialog({ onClose }: { onClose: () => void }) {
+export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => void; initialPeriod?: SharePeriod }) {
   // Two separate things, and conflating them produced two cards.
   //
   // `drawing` is "the card is being made" — that is what the label reports,
@@ -108,7 +109,7 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
   // Which stretch the card is about. Defaults to the week: a working week is
   // the thing people actually finish and want to show, and an all-time total
   // shared on its own reads as a boast rather than a result.
-  const [period, setPeriod] = useState<SharePeriod>('7d')
+  const [period, setPeriod] = useState<SharePeriod>(initialPeriod)
   // Figures: the dense card of totals. Story: the Week screen's card — a
   // headline, the money beside it, who did what, the longest loop — for any
   // of the four periods.
@@ -297,6 +298,60 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
     } finally { setDrawing(false); setLocked(false) }
   }
 
+  /**
+   * Put the card on the clipboard, to paste into a post or a chat. Returns
+   * whether it got there: a browser without image clipboard support (or a
+   * page that is not focused) refuses, and the caller says so.
+   */
+  const copyBlob = async (blob: Blob): Promise<boolean> => {
+    try {
+      if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) return false
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  const copy = async () => {
+    if (locked) return
+    setLocked(true); setDrawing(true); setNote('')
+    try {
+      const blob = await build()
+      if (!blob) { setNote('Could not draw the card in this browser.'); return }
+      setNote(await copyBlob(blob) ? 'Copied — paste it anywhere.' : 'This browser would not copy an image. Save the image instead.')
+    } catch {
+      setNote('Could not read the figures — nothing was copied.')
+    } finally { setDrawing(false); setLocked(false) }
+  }
+
+  /**
+   * X cannot be handed an image by URL, so this copies the card (or saves it
+   * when copying is refused) and opens a post with the words written; the
+   * image is one paste away. The note says exactly that.
+   */
+  const postX = async () => {
+    if (locked) return
+    setLocked(true); setDrawing(true); setNote('')
+    try {
+      const blob = await build()
+      let how = 'Opened X with the text.'
+      if (blob && await copyBlob(blob)) how = 'Opened X with the text — the card is on your clipboard, paste it in.'
+      else if (blob) {
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url; a.download = fileName()
+        document.body.appendChild(a); a.click(); a.remove()
+        setTimeout(() => URL.revokeObjectURL(url), 10_000)
+        how = 'Opened X with the text — the card is in your downloads, drag it in.'
+      }
+      openExternal(xIntent(period))
+      setNote(how)
+    } catch {
+      setNote('Could not read the figures — nothing was posted.')
+    } finally { setDrawing(false); setLocked(false) }
+  }
+
   const canNative = typeof navigator !== 'undefined' && typeof navigator.canShare === 'function'
     && navigator.canShare({ files: [new File([], 'x.png', { type: 'image/png' })] })
 
@@ -411,16 +466,40 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
               * dark panel — the owner hovered it and could not tell anything
               * had happened. A control the eye cannot confirm it is pointing
               * at reads as disabled. */}
-            <button
-              onClick={save}
-              disabled={locked || storyEmpty}
-              className="rounded-md border border-border bg-transparent px-4 py-3 text-[14px] text-fg transition-colors hover:border-border-strong hover:bg-panel-2 disabled:opacity-50"
-            >
-              {drawing && !canNative ? 'Drawing the card…' : 'Save the image'}
-              <span className="mt-0.5 block text-[12px] text-fg-muted">
-                {style === 'story' ? `A ${size.w}×${size.h} PNG in your downloads` : 'A PNG in your downloads, to post wherever you like'}
-              </span>
-            </button>
+            {/* Three ways out, side by side: the clipboard (the fastest path
+              * into any post or chat), a file, and X with the words written.
+              * The first is filled when there is no OS share sheet above it,
+              * so the dialog always has one obvious next step. */}
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                onClick={copy}
+                disabled={locked || storyEmpty}
+                className={canNative
+                  ? 'rounded-md border border-border px-2 py-2.5 text-[13px] text-fg transition-colors hover:border-border-strong hover:bg-panel-2 disabled:opacity-50'
+                  : 'rounded-md bg-accent px-2 py-2.5 text-[13px] font-medium text-bg hover:brightness-110 disabled:opacity-50'}
+              >
+                {drawing && !canNative ? 'Drawing…' : 'Copy image'}
+              </button>
+              <button
+                onClick={save}
+                disabled={locked || storyEmpty}
+                title={style === 'story' ? `A ${size.w}×${size.h} PNG in your downloads` : 'A PNG in your downloads'}
+                className="rounded-md border border-border px-2 py-2.5 text-[13px] text-fg transition-colors hover:border-border-strong hover:bg-panel-2 disabled:opacity-50"
+              >
+                Save image
+              </button>
+              <button
+                onClick={postX}
+                disabled={locked || storyEmpty}
+                title="Opens a post on X with the text written; the card goes on your clipboard to paste in"
+                className="rounded-md border border-border px-2 py-2.5 text-[13px] text-fg transition-colors hover:border-border-strong hover:bg-panel-2 disabled:opacity-50"
+              >
+                Post to X
+              </button>
+            </div>
+            <p className="text-center text-[11px] text-fg-faint">
+              {style === 'story' ? `A ${size.w}×${size.h} PNG` : 'A 1200×630 PNG'} · at API list price · not a bill
+            </p>
           </div>
 
           {/* Two bullets, not a paragraph.
@@ -439,6 +518,16 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
       </div>
     </div>
   )
+}
+
+/**
+ * The X post: words and the site, no figures — the card carries those, with
+ * their caveat, and a number typed into a tweet travels without it.
+ */
+export function xIntent(period: SharePeriod): string {
+  const what = period === 'all' ? 'My Claude Code, all time' : `My Claude Code ${PERIOD_LABEL[period]}`
+  const text = `${what}, measured on my own machine with Caprock — free and open source.`
+  return `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent('https://caprock.dev')}`
 }
 
 function Failed() {

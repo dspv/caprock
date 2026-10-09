@@ -126,6 +126,9 @@ type Service struct {
 	// folder.
 	closed atomic.Bool
 	life   sync.RWMutex
+
+	// team is the last commit-author count (authors.go).
+	team teamCache
 }
 
 type gitState struct {

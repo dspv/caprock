@@ -23,18 +23,23 @@
  */
 import { useState } from 'react'
 import { fmtUSD } from '@/lib/format'
-import { isDue, markAnswered, type PromptKind } from '@/lib/prompts'
+import { markAnswered, usePromptDue, type PromptKind } from '@/lib/prompts'
+import { useLicensed, useNudgeSlot } from '@/lib/nudges'
 import { PremiumModal } from './PremiumModal'
 
 const KIND: PromptKind = 'premium-banner'
 
 export function PremiumBanner({ costUSD, days, now }: { costUSD: number; days: number; now: number }) {
-  const [shown] = useState(() => isDue(KIND, now))
+  const shown = usePromptDue(KIND, now)
   const [gone, setGone] = useState(false)
   const [open, setOpen] = useState(false)
+  // Never to someone who has paid, and only when no other offer holds the
+  // one slot (lib/nudges.ts).
+  const licensed = useLicensed()
   // Nothing measured, nothing to say. A banner over an empty dashboard is an
   // advertisement to someone who has not seen the product work yet.
-  if (!shown || gone || costUSD <= 0 || days <= 0) return null
+  const mine = useNudgeSlot('premium-banner', shown && !gone && !licensed && costUSD > 0 && days > 0)
+  if (!mine) return open ? <PremiumModal feature="cap" onClose={() => setOpen(false)} /> : null
 
   const perDay = costUSD / days
   return (

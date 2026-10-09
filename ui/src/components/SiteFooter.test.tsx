@@ -7,7 +7,8 @@
  * link to a page with no product behind it is fine; a link that reads like a
  * purchase is not, and that distinction lives entirely in this string.
  */
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { markAnswered } from '@/lib/prompts'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { SiteFooter } from './SiteFooter'
 
@@ -44,9 +45,10 @@ describe('SiteFooter', () => {
     )
   })
 
-  it('stops asking for a star once one is given', () => {
+  it('stops asking for a star once the reader says they gave one', () => {
     const { unmount } = render(<SiteFooter />)
-    fireEvent.click(screen.getByRole('link', { name: /star on GitHub/ }))
+    // "I starred it" in the star strip is the answer; the footer link follows it.
+    act(() => markAnswered('star-done', Date.now()))
     expect(screen.queryByRole('link', { name: /star on GitHub/ })).toBeNull()
 
     // And stays gone on the next visit, which is the point of remembering it.

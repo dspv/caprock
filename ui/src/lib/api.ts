@@ -618,7 +618,13 @@ export interface Settings {
   plan_usd_per_month: number
   /** The paid key, checked locally against the expiry it carries. */
   license_key?: string
+  /** When each dashboard offer (star strip, Premium and Teams nudges, share
+   *  prompt) was last answered: prompt id → Unix ms. PUT merges; 0 clears one. */
+  prompts?: Record<string, number>
 }
+
+/** GET /v1/team-signal: distinct commit authors across the listed repositories. */
+export interface TeamSignal { authors: number; repos: number; window_days: number; checked_ms: number }
 
 export interface UpdateStatus {
   enabled: boolean
@@ -1122,6 +1128,8 @@ export const api = {
     get<Summary>(`/v1/stats/summary?range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}`),
   daily: (days = 30) => get<DailyStat[]>(`/v1/stats/daily?days=${days}`),
   premium: () => get<PremiumPricing>('/v1/premium'),
+  /** How many people committed to the listed repositories in 30 days (counts only). */
+  teamSignal: () => get<TeamSignal>('/v1/team-signal'),
   windowStop: () => get<WindowStop>('/v1/window-stop'),
   gemini: () => get<GeminiStatus>('/v1/gemini'),
   askGemini: (prompt: string, model?: string) => post<GeminiReply>('/v1/gemini/ask', { prompt, model }),

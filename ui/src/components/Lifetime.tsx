@@ -18,6 +18,7 @@ import { StaleNote } from '@/components/ui'
 import { fmtUSD } from '@/lib/format'
 import { costBasis, costBasisLong } from '@/components/CostBasis'
 import type { Settings } from '@/lib/api'
+import { useLicensed, useNudgeSlot } from '@/lib/nudges'
 
 export function LifetimeStrip({ plan }: { plan?: Settings }) {
   // Lifetime totals move slowly; a minute is far more often than they change,
@@ -87,18 +88,17 @@ function CapHint() {
   const today = useApi(() => api.summary('today'), [], { intervalMs: 30000, cache: 'summary:today:all' })
 
   const rows = daily.data ?? []
-  if (rows.length === 0) return null
-
   const byDay = new Map<string, number>()
   for (const r of rows) byDay.set(r.day, (byDay.get(r.day) ?? 0) + r.cost_usd)
   const spent = [...byDay.values()].filter((v) => v > 0).sort((a, b) => a - b)
-  // Fewer than a week of data is not a baseline, and a threshold drawn from
-  // two days would fire on the second one.
-  if (spent.length < 7) return null
-
   const median = spent[Math.floor(spent.length / 2)] ?? 0
   const cost = today.data?.cost_usd ?? 0
-  if (median <= 0 || cost < median * 1.5) return null
+  // Fewer than a week of data is not a baseline, and a threshold drawn from
+  // two days would fire on the second one. Never to a payer, and one offer
+  // on screen at a time (lib/nudges.ts).
+  const licensed = useLicensed()
+  const mine = useNudgeSlot('premium-cap', !licensed && spent.length >= 7 && median > 0 && cost >= median * 1.5)
+  if (!mine) return null
 
   return (
     <a

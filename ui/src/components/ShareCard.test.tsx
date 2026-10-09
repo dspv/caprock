@@ -217,7 +217,7 @@ describe('cardFilename', () => {
 })
 
 /**
- * Milestones moved to ShareNudge, which knows about occasions this button has
+ * Milestones moved to the ShareMoment toast, which knows about occasions this button has
  * no business judging — and a control that renames itself is one people stop
  * recognising. What matters here is that the button is always the same button.
  */
@@ -256,7 +256,7 @@ describe('the share dialog', () => {
     // The mounted button itself fetches history once; count only from here.
     const before = calls.n
     fireEvent.click(open)
-    const save = await screen.findByRole('button', { name: /save the image/i })
+    const save = await screen.findByRole('button', { name: /save image/i })
     fireEvent.click(save)
     fireEvent.click(save)
     fireEvent.click(save)
