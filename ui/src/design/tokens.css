@@ -135,11 +135,14 @@ body {
   padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
-/* Paper: the light palette caprock.dev uses — a cream ground, cards a shade
- * lighter, warm hairlines — so the product and its screenshots on the site
- * are one tone. Only the surfaces change; ink, status and accent colours are
- * the white palette's, which already clear AA on this ground. White stays the
- * palette above: Settings → Light theme, and DEFAULT_TONE in lib/theme.ts. */
+/* Paper: caprock.dev's light palette, all of it (owner, 2026-10-10: the
+ * product and its screenshots on the site must read as one thing). Surfaces,
+ * ink and accent are the site's `:root[data-theme="light"]` values: a cream
+ * ground, cards a shade lighter, warm dark-brown ink rather than grey, and the
+ * deep amber the site uses for text (5.3:1 on this ground). A filled accent
+ * control is the site's button — #eb9a3e with dark ink — because the deep
+ * amber as a fill read as mud. White stays the palette above: Settings →
+ * Light theme, and DEFAULT_TONE in lib/theme.ts. */
 [data-theme="light"][data-tone="paper"] {
   --color-bg: #efe7d6;
   --color-panel: #f4ecdd;
@@ -147,6 +150,26 @@ body {
   --color-border: #dccfb6;
   --color-border-strong: #c2b293;
   --shadow-panel: 0 8px 20px -14px rgba(60, 45, 20, 0.28);
+
+  --color-fg: #2b251c;
+  --color-fg-muted: #4f473b;
+  --color-fg-faint: #665d4f;
+
+  --color-accent: #8a4f0c;
+  --color-accent-strong: #7d4808;
+  --color-info: #8a4f0c;
+  --color-ok: #2a8a46;
+  --color-danger: #c23d3d;
+}
+/* The site's button, on paper only: orange fill, dark ink. Unlayered on
+ * purpose — it must beat the `text-bg`/`text-panel` utility a filled control
+ * carries, which on this orange would be cream on orange. */
+[data-theme="light"][data-tone="paper"] .bg-accent {
+  background-color: #eb9a3e;
+  color: #201c16;
+}
+[data-theme="light"][data-tone="paper"] .bg-accent:hover {
+  background-color: #f2a955;
 }
 
 /* Every number, cost, id, and terminal string is monospace with tabular numerals. */
