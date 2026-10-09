@@ -7,22 +7,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
-## [0.94.0] - 2026-10-09
-
-### Added
-
-- **Quick chat in the app.** *Quick chat* under *New agent* in the sidebar,
-  ⌥⌘N (Ctrl+Alt+Shift+N on Windows and Linux) and the palette start a Claude
-  Code session without picking a folder, in a tab under *Other folders*. It
-  was only on the browser's Now screen.
-- **Subagents show their model and what they cost.** Each row in the
-  cockpit's *Subagents* section shows the model the subagent runs on (for
-  example *Haiku 4.5*), how long it has worked and what its own calls have
-  cost. A dot pulses while its call runs. Up to three that finished lately
-  stay listed, muted, with model, duration and cost. The section's header
-  shows what all of the session's subagents cost. A cost Caprock cannot
-  price is left out rather than shown as $0.
-
 ### Changed
 
 - **Closing things in the sidebar is one ×.** Each tab under the project
@@ -41,6 +25,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   Sessions started in another terminal fold into one *Running in other
   terminals · N* line instead of a row each. The tab in front is marked by
   a plain edge, no longer amber.
+
+## [0.94.0] - 2026-10-09
+
+### Added
+
+- **Quick chat in the app.** *Quick chat* under *New agent* in the sidebar,
+  ⌥⌘N (Ctrl+Alt+Shift+N on Windows and Linux) and the palette start a Claude
+  Code session without picking a folder, in a tab under *Other folders*. It
+  was only on the browser's Now screen.
+- **Subagents show their model and what they cost.** Each row in the
+  cockpit's *Subagents* section shows the model the subagent runs on (for
+  example *Haiku 4.5*), how long it has worked and what its own calls have
+  cost. A dot pulses while its call runs. Up to three that finished lately
+  stay listed, muted, with model, duration and cost. The section's header
+  shows what all of the session's subagents cost. A cost Caprock cannot
+  price is left out rather than shown as $0.
+
+### Changed
+
 - **The New agent sheet says what *Where* means.** *This folder · main* is
   the project's own checkout, *Existing copy · <branch>* one already made,
   and *New copy on its own branch* a separate folder on a new branch, with a
