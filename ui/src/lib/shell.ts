@@ -66,4 +66,6 @@ export const shell = {
   updateInstall: () => shellInvoke<AppUpdateInfo>('app_update_install'),
   /** The first-launch question about update checks was answered. */
   updateAsked: () => shellInvoke<void>('app_update_asked'),
+  /** Open an http, https or mailto link in the default browser or mail app; rejects on any other scheme. */
+  openExternal: (url: string) => shellInvoke<void>('open_external', { url }),
 }

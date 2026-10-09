@@ -47,12 +47,13 @@ pub async fn set_background(on: bool, sup: tauri::State<'_, Sup>) -> Result<(), 
         .map_err(|e| e.to_string())?
 }
 
-/// Open a web link in the system browser. Only http(s): a page must not be
-/// able to launch arbitrary URL schemes through the shell.
+/// Open a web or mail link in the system browser or mail app. Only http(s)
+/// and mailto, as the window's own link handling (`shell.rs`): a page must
+/// not be able to launch arbitrary URL schemes through the shell.
 #[tauri::command]
 pub fn open_external<R: Runtime>(url: String, app: AppHandle<R>) -> Result<(), String> {
     let parsed: Url = url.parse().map_err(|_| format!("not a URL: {url}"))?;
-    if !matches!(parsed.scheme(), "http" | "https") {
+    if !matches!(parsed.scheme(), "http" | "https" | "mailto") {
         return Err(format!("refused to open a {} URL", parsed.scheme()));
     }
     app.opener()

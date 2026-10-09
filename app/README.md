@@ -165,7 +165,8 @@ ADR-042): the state (`{version, supported, blocked?, asked, phase, …}`), a
 check of `latest.json`, the signed install and restart, and the first-launch
 question; every change also arrives as `caprock:app-update` in the page. The
 updater plugin's own commands are granted to no page.
-`open_external` opens `http` and `https` only.
+`open_external` opens `http`, `https` and `mailto` only; a Cmd/Ctrl+click on
+a link in a terminal goes through it (`ui/src/lib/termlinks.ts`).
 `notify` shows one OS notification (`{title, body, id?, sessionId?,
 promptId?, actions?}`); the page decides when (`ui/src/lib/notify.ts`,
 WP-09). On macOS, inside the `.app`, it goes through UNUserNotificationCenter

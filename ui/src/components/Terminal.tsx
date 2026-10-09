@@ -12,6 +12,7 @@ import { ConnectionState } from './ConnectionState'
 import { attachTerminalInput } from '@/lib/xtermInput'
 import { registerBenchTerminal } from '@/lib/benchhook'
 import { writeSliced } from '@/lib/termwrite'
+import { attachTerminalLinks } from '@/lib/termlinks'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
@@ -169,6 +170,8 @@ export function TerminalView({
     term.loadAddon(fit)
     term.open(host.current)
     const unbench = registerBenchTerminal(sessionId, term)
+    // URLs and OSC 8 links open on Cmd/Ctrl+click (lib/termlinks).
+    const links = attachTerminalLinks(term)
 
     try { fit.fit() } catch { /* not yet laid out */ }
     // Input first: the keyboard goes to the terminal the moment it exists.
@@ -356,7 +359,7 @@ export function TerminalView({
       unwake()
       sendRef.current = () => {}
       attachRef.current = async () => {}
-      ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); client.dispose(); unbench(); unfont(); term.dispose()
+      ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); client.dispose(); unbench(); links.dispose(); unfont(); term.dispose()
     }
   }, [sessionId, owned, attempt, phone])
   if (!owned && detached) {

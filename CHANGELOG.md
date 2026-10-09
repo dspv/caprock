@@ -11,6 +11,11 @@ Phase 3 (Delight) has no plan by design.
 
 ### Added
 
+- **Links in the terminal open.** Cmd+click (Ctrl+click on Windows and
+  Linux) on a URL in any terminal, or on a link Claude Code prints, opens it
+  in your browser; in the app, the default browser. Hovering underlines it
+  and says how to open it. A plain click still selects text. Only web and
+  mail links open: anything else a program prints is ignored.
 - **Quick chat in the app.** *Quick chat* under *New agent* in the sidebar,
   ⌥⌘N (Ctrl+Alt+Shift+N on Windows and Linux) and the palette start a Claude
   Code session without picking a folder, in a tab under *Other folders*. It
