@@ -220,10 +220,14 @@ One window, three regions:
   prompt waits, who asks and what — "Subagent (general-purpose) wants to run
   Bash" over the command's first real step, the full text on hover, or "2
   approvals waiting"), a *Subagents · N* section while any works (one row
-  each, five at most: its type and the task the parent gave it, its current
-  call with how long it has run, how many calls it has made, *waiting on you*
-  while it has a prompt outstanding; "3 finished" for those that stopped in
-  the last 30 minutes), its last seven tool calls with their durations, the
+  each, five at most: a dot that pulses while its call runs, its type and the
+  task the parent gave it, its model ("Haiku 4.5") and how long it has
+  worked, its current call with how long it has run, how many calls it has
+  made and what it has cost, *waiting on you* while it has a prompt
+  outstanding; under them, muted, up to three that finished in the last 30
+  minutes with model, duration and cost, "+N finished" for the rest; the
+  header carries what all of the session's subagents cost — a cost is shown
+  only when every turn behind it was priced, never as $0), its last seven tool calls with their durations, the
   uncommitted changes, the plan windows of its agent, and a loop warning only
   while an alert is live. It is the screen that shows what only Caprock
   knows, so it is built from figures Caprock already holds and nothing else:

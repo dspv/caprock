@@ -131,6 +131,36 @@ describe('the agent cockpit', () => {
     }
   })
 
+  // "In subagents I don't see which model is used and costs" (owner,
+  // 2026-10-09, translated). A cost the daemon does not know is not drawn.
+  it('shows each subagent’s model, time and cost, the finished ones muted, and the total', async () => {
+    h.subagents = {
+      working: [
+        { agent_id: 'a1', agent_type: 'general-purpose', tool_calls: 4, started_at: now - 125_000, last_at: now - 1_000, tool: 'Bash', detail: 'go test ./...', tool_at: now - 3_000, running: true, asking: false, model: 'claude-haiku-4-5', model_display: 'Haiku 4.5', cost_usd: 0.42 },
+        { agent_id: 'b2', agent_type: 'Explore', tool_calls: 1, started_at: now - 9_000, last_at: now - 2_000, tool: 'Read', detail: 'a.go', tool_at: now - 4_000, running: false, asking: false, model_display: 'Sonnet 4.5' },
+      ],
+      finished: 2,
+      recent: [{ agent_id: 'c3', agent_type: 'Explore', tool_calls: 6, started_at: now - 300_000, stopped_at: now - 180_000, model_display: 'Sonnet 4.5', cost_usd: 1.1 }],
+      cost_usd: 1.52,
+    }
+    try {
+      show(agent({ live_subagents: 2 }))
+      const section = await screen.findByRole('region', { name: 'Subagents' })
+      expect(section).toHaveTextContent('Subagents · 2')
+      expect(section).toHaveTextContent('$1.52')
+      expect(section).toHaveTextContent('+1 finished')
+      const [a, b] = within(section).getAllByRole('listitem')
+      expect(a).toHaveTextContent(/Haiku 4\.5 · 2m 0\ds/)
+      expect(a).toHaveTextContent('4 calls · $0.42')
+      expect(b).toHaveTextContent('Sonnet 4.5')
+      expect(b).not.toHaveTextContent('$')
+      const done = within(section).getByRole('list', { name: 'Finished subagents' })
+      expect(done).toHaveTextContent('Sonnet 4.5 · 2m 00s · $1.10')
+    } finally {
+      h.subagents = { working: [], finished: 0 }
+    }
+  })
+
   it('has no subagent section while none works', async () => {
     show(agent())
     await screen.findByRole('region', { name: 'Recent tool calls' })

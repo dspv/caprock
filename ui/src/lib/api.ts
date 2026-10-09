@@ -1184,12 +1184,35 @@ export interface Subagent {
   running: boolean
   /** Its newest event is a permission prompt. */
   asking: boolean
+  /** The model of its newest turn, and the table's short name ("Haiku 4.5"); absent before its first turn. */
+  model?: string
+  model_display?: string
+  /** What its own calls cost so far; absent when unknown (no turn yet, or one the table could not price). */
+  cost_usd?: number
+}
+
+/** A subagent that finished lately (GET /v1/sessions/{id}/subagents `recent`). */
+export interface SubagentDone {
+  agent_id: string
+  agent_type?: string
+  description?: string
+  tool_calls: number
+  /** Unix ms: its first event in the window, and its SubagentStop. */
+  started_at: number
+  stopped_at: number
+  model?: string
+  model_display?: string
+  cost_usd?: number
 }
 
 export interface SubagentsNow {
   working: Subagent[]
   /** How many stopped in the same window after making a tool call. */
   finished: number
+  /** The newest of those, at most three. Absent from a daemon that predates it. */
+  recent?: SubagentDone[]
+  /** What every subagent of the session has cost; absent when any is unknown. */
+  cost_usd?: number
 }
 
 /** A permission prompt an owned Claude Code session is showing (ADR-035). */

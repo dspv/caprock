@@ -55,8 +55,41 @@ func TestSessionSubagentsSaysWhoIsWorkingOnWhat(t *testing.T) {
 	add(time.Minute, event.KindAgentStop, "", "d", `{"agent_type":""}`)
 	add(2*time.Hour, event.KindToolPre, "Read", "old", `{"tool_use_id":"o1"}`)
 
+	turn := func(ago time.Duration, agent, model string, usd *float64) {
+		n++
+		ev := &event.Event{
+			SessionID: "s-par", Source: event.SourceTranscript, Kind: event.KindTurnAssistant, AgentID: agent, Model: model,
+			Key: "t" + strconv.Itoa(n), Ts: e.now.Add(-ago), Tokens: &event.TokenDelta{In: 10}, CostUSD: usd, Payload: json.RawMessage(`{"sidechain":true}`),
+		}
+		if _, err := store.InsertEvent(context.Background(), e.st.DB(), ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	usd := func(v float64) *float64 { return &v }
+	// a on Haiku, two priced turns; c on Sonnet, finished; b's turn is unpriced.
+	turn(9*time.Minute, "a", "claude-haiku-4-5", usd(0.25))
+	turn(20*time.Second, "a", "claude-haiku-4-5", usd(0.5))
+	turn(3*time.Minute, "c", "claude-sonnet-4-5", usd(1))
+	turn(5*time.Second, "b", "claude-sonnet-4-5", nil)
+
 	var got SubagentsResponse
 	e.get(t, "/v1/sessions/s-par/subagents", &got)
+	if len(got.Recent) != 1 || got.Recent[0].AgentID != "c" || got.Recent[0].ModelDisplay != "Sonnet 4.5" || got.Recent[0].CostUSD == nil ||
+		*got.Recent[0].CostUSD != 1 || got.Recent[0].StoppedAt != e.now.Add(-2*time.Minute).UnixMilli() || got.Recent[0].ToolCalls != 1 || got.Recent[0].AgentType != "Explore" {
+		t.Errorf("recent = %+v", got.Recent)
+	}
+	// b cannot be priced, so neither can the total: nothing, never a zero.
+	if got.CostUSD != nil {
+		t.Errorf("total cost %v with an unpriced subagent turn; want none", *got.CostUSD)
+	}
+	if len(got.Working) == 2 {
+		if b := got.Working[0]; b.CostUSD != nil || b.ModelDisplay != "Sonnet 4.5" {
+			t.Errorf("unpriced b: model %q cost %v", b.ModelDisplay, b.CostUSD)
+		}
+		if a := got.Working[1]; a.CostUSD == nil || *a.CostUSD != 0.75 || a.ModelDisplay != "Haiku 4.5" || a.Model != "claude-haiku-4-5" {
+			t.Errorf("a: model %q cost %v", a.ModelDisplay, a.CostUSD)
+		}
+	}
 	if got.Finished != 1 || len(got.Working) != 2 {
 		t.Fatalf("finished %d, working %+v", got.Finished, got.Working)
 	}

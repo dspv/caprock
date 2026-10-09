@@ -147,7 +147,7 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
       <Spend s={s} turns={turns} />
       <ContextMeter s={s} />
       <NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} permission={permission} background={backgroundAgents(s)} now={now} />
-      {subs && subs.working.length > 0 && <Subagents subs={subs} permission={permission} now={now} />}
+      {subs && (subs.working.length > 0 || (subs.recent?.length ?? 0) > 0) && <Subagents subs={subs} permission={permission} now={now} />}
       {s.loop && state !== 'ended' && <LoopWarning s={s} now={now} />}
       <Timeline runs={runs} total={s.stats?.tool_calls} now={now} />
       {changes}
@@ -386,17 +386,27 @@ function NowDoing({ s, state, running, last, permission, background, now }: {
 }
 
 /**
- * The subagents at work, one compact row each: its type and what the parent
- * asked of it, its current call and how long it has run, how many calls it
- * has made, and a badge while it waits on a permission prompt. Those that
- * finished lately are one line under them.
+ * The subagents at work, one compact row each: a dot that pulses while its
+ * call runs, its type and what the parent asked of it, its model and how
+ * long it has worked; its current call and how long that has run, how many
+ * calls it has made and what it has cost; a badge while it waits on a
+ * permission prompt. Those that finished lately are one muted line each:
+ * model, time, cost. A cost is shown only when the daemon knows it — never
+ * a $0 standing in for unknown.
  */
 function Subagents({ subs, permission, now }: { subs: SubagentsNow; permission?: Permission | null; now: number }) {
   const shown = subs.working.slice(0, SUBAGENT_ROWS)
   const hidden = subs.working.length - shown.length
+  const recent = (subs.recent ?? []).slice(0, Math.max(0, SUBAGENT_ROWS - shown.length))
+  const moreDone = subs.finished - recent.length
   return (
     <section aria-label="Subagents" className="grid gap-2">
-      <SectionLabel right={subs.finished > 0 ? <span className="text-fg-faint">{subs.finished} finished</span> : undefined}>
+      <SectionLabel right={
+        <>
+          {typeof subs.cost_usd === 'number' && <span className="num text-fg-muted" title="What every subagent of this session has cost">{fmtUSD(subs.cost_usd)}</span>}
+          {moreDone > 0 && <span className="text-fg-faint">+{moreDone} finished</span>}
+        </>
+      }>
         Subagents · {subs.working.length}
       </SectionLabel>
       <ul className="grid gap-1">
@@ -408,10 +418,14 @@ function Subagents({ subs, permission, now }: { subs: SubagentsNow; permission?:
             <li key={a.agent_id} className="grid gap-0.5 rounded-[8px] border border-[var(--app-hairline)] px-2 py-1.5" data-waiting={waiting ? 'true' : undefined}
               title={[a.agent_type, a.description, a.tool && `${a.tool}${a.detail ? ` ${a.detail}` : ''}`].filter(Boolean).join(' — ')}>
               <p className="flex min-w-0 items-center gap-1.5 text-[12px]">
-                <span className="shrink-0 text-fg-faint"><KindIcon kind="agent" size={12} /></span>
+                <span aria-hidden className={`grid h-[12px] w-[12px] shrink-0 place-items-center`}>
+                  <span className={`h-[6px] w-[6px] rounded-full ${waiting ? 'bg-accent' : 'bg-ok'} ${a.running && !waiting ? 'animate-pulse' : ''}`} />
+                </span>
                 <span className="shrink-0 font-medium text-fg">{a.agent_type || 'subagent'}</span>
                 {a.description && <span className="min-w-0 truncate text-fg-muted">· {a.description}</span>}
-                {waiting && <span className="ml-auto shrink-0 rounded-[4px] bg-accent/15 px-1.5 text-[10.5px] font-medium text-accent">waiting on you</span>}
+                {waiting
+                  ? <span className="ml-auto shrink-0 rounded-[4px] bg-accent/15 px-1.5 text-[10.5px] font-medium text-accent">waiting on you</span>
+                  : <span className="num ml-auto shrink-0 text-[11px] text-fg-faint">{[a.model_display, a.started_at ? fmtRun(Math.max(0, now - a.started_at)) : ''].filter(Boolean).join(' · ')}</span>}
               </p>
               <p className="grid grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-1.5 text-[11.5px]">
                 {a.tool ? <span className={a.running ? 'text-ok' : 'text-fg-faint'}><KindIcon kind={toolKind(a.tool)} size={12} /></span> : <span />}
@@ -425,6 +439,7 @@ function Subagents({ subs, permission, now }: { subs: SubagentsNow; permission?:
                 </span>
                 <span className="num text-[11px] text-fg-faint">
                   {since && <span className="text-ok">{since} · </span>}{a.tool_calls} {a.tool_calls === 1 ? 'call' : 'calls'}
+                  {typeof a.cost_usd === 'number' && <span className="text-fg-muted"> · {fmtUSD(a.cost_usd)}</span>}
                 </span>
               </p>
             </li>
@@ -432,6 +447,20 @@ function Subagents({ subs, permission, now }: { subs: SubagentsNow; permission?:
         })}
       </ul>
       {hidden > 0 && <p className="text-[11px] text-fg-faint">+{hidden} more</p>}
+      {recent.length > 0 && (
+        <ul aria-label="Finished subagents" className="grid gap-0.5">
+          {recent.map((d) => (
+            <li key={d.agent_id} className="flex min-w-0 items-center gap-1.5 px-2 text-[11.5px] text-fg-faint" title={[d.agent_type, d.description].filter(Boolean).join(' — ')}>
+              <span aria-hidden className="grid h-[12px] w-[12px] shrink-0 place-items-center"><span className="h-[6px] w-[6px] rounded-full border border-fg-faint" /></span>
+              <span className="shrink-0 text-fg-muted">{d.agent_type || 'subagent'}</span>
+              {d.description && <span className="min-w-0 truncate">· {d.description}</span>}
+              <span className="num ml-auto shrink-0">
+                {[d.model_display, d.stopped_at > d.started_at ? fmtRun(d.stopped_at - d.started_at) : '', typeof d.cost_usd === 'number' ? fmtUSD(d.cost_usd) : ''].filter(Boolean).join(' · ')}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   )
 }

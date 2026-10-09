@@ -15,6 +15,13 @@ Phase 3 (Delight) has no plan by design.
   ⌥⌘N (Ctrl+Alt+Shift+N on Windows and Linux) and the palette start a Claude
   Code session without picking a folder, in a tab under *Other folders*. It
   was only on the browser's Now screen.
+- **Subagents show their model and what they cost.** Each row in the
+  cockpit's *Subagents* section shows the model the subagent runs on (for
+  example *Haiku 4.5*), how long it has worked and what its own calls have
+  cost. A dot pulses while its call runs. Up to three that finished lately
+  stay listed, muted, with model, duration and cost. The section's header
+  shows what all of the session's subagents cost. A cost Caprock cannot
+  price is left out rather than shown as $0.
 
 ### Changed
 
