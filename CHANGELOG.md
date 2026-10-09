@@ -7,6 +7,31 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **Scrub through a session's spend.** Hover the small per-call spark beside
+  *Spent this session* in the app's cockpit (or focus it, or press it on a
+  phone) and it opens over the block into every priced call of the session,
+  one bar per call — runs of calls once there are more than the width holds.
+  Moving across it reads the call under the cursor: *Call N of M*, when, the
+  model, what it cost, its tokens and the tools it asked for (*Bash go test
+  ./...*); ←/→ step bar by bar, Esc or leaving closes it. A field the data
+  does not carry is left out, never shown as $0. The series comes from a
+  new lean endpoint, `GET /v1/sessions/{id}/calls`.
+- **See the subagents at a glance.** Under the cockpit's state line, one
+  small tinted avatar per subagent: its type's initial (E for Explore, G for
+  general-purpose, P for Plan), pulsing while it works, accent while it waits
+  on you, muted once finished; at most four and *+N*. Hover names its type,
+  task and model; a click scrolls to the *Subagents* list.
+
+### Fixed
+
+- **A session no longer takes a background agent's branch.** With an agent
+  working in a git worktree, Claude Code wrote the worktree's branch on the
+  parent's own transcript lines, and the session's header read the agent's
+  `feat/…` branch over the main checkout's master. A live line now takes the
+  branch its folder's checkout actually has, read from its `HEAD`.
+
 ## [0.94.2] - 2026-10-09
 
 ### Changed

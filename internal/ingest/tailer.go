@@ -379,7 +379,7 @@ func (t *Tailer) handleLine(ctx context.Context, f *fileState, raw []byte, fallb
 	if f.sessionID == "" {
 		f.sessionID = l.SessionID
 	}
-	info := rollup.SessionInfo{Cwd: l.Cwd, TranscriptPath: f.path, GitBranch: l.GitBranch, Version: l.Version}
+	info := rollup.SessionInfo{Cwd: l.Cwd, TranscriptPath: f.path, GitBranch: lineBranch(l, fallbackTs, time.Now()), Version: l.Version}
 	if l.Message != nil {
 		info.Model = l.Message.Model
 	}
@@ -426,4 +426,29 @@ func endsLineAt(fh *os.File, off int64) bool {
 		return false
 	}
 	return b[0] == '\n'
+}
+
+// liveBranchWindow is how recent a transcript line must be for the branch of
+// its cwd's checkout, as it is now, to stand for the branch it was written on.
+const liveBranchWindow = 10 * time.Minute
+
+// lineBranch is the branch a transcript line puts on its session. Claude
+// Code's `gitBranch` is not the branch of the line's cwd: while a background
+// agent worked in a linked worktree, the parent's own lines (no agentId, not
+// a sidechain, cwd the main checkout on master) reported the worktree's
+// branch, and the session's header read `caprock · feat/cockpit-scrub`. A
+// line written in the last few minutes takes the branch its cwd's checkout
+// has now, read from HEAD; an older line — a backfill, a session re-read —
+// keeps what it says, since today's HEAD says nothing about last week's line.
+func lineBranch(l *Line, fallbackTs, now time.Time) string {
+	if l.Cwd == "" || l.GitBranch == "" {
+		return l.GitBranch
+	}
+	if d := now.Sub(l.Ts(fallbackTs)); d > liveBranchWindow || d < -liveBranchWindow {
+		return l.GitBranch
+	}
+	if b, ok := store.BranchAt(l.Cwd); ok {
+		return b
+	}
+	return l.GitBranch
 }

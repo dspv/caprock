@@ -187,6 +187,59 @@ func findRepoRoot(dir string) (string, bool) {
 	return "", false
 }
 
+// BranchAt is the branch checked out in the git checkout holding dir, read
+// from its HEAD file — no git process — and ok=false when there is no
+// checkout, HEAD cannot be read, or it is detached.
+//
+// It exists because Claude Code's own `gitBranch` cannot be trusted for the
+// main thread: with a background agent working in a linked worktree, the
+// parent's transcript lines kept their cwd and reported the worktree's
+// branch, and the owner's session on master read `feat/cockpit-scrub`
+// (2026-10-09, 0.94.2). A linked worktree has its own HEAD, under the
+// `gitdir:` its `.git` file names.
+func BranchAt(dir string) (string, bool) {
+	dir = normalizeCwd(dir)
+	if dir == "" || tcc.GuardedBeyondWork(dir) {
+		return "", false
+	}
+	for i := 0; i < maxWalkUp; i++ {
+		dotGit := filepath.Join(dir, ".git")
+		if st, err := os.Stat(dotGit); err == nil {
+			head := filepath.Join(dotGit, "HEAD")
+			if !st.IsDir() {
+				b, err := os.ReadFile(dotGit)
+				if err != nil {
+					return "", false
+				}
+				gitDir, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "gitdir:")
+				if !ok {
+					return "", false
+				}
+				gitDir = strings.TrimSpace(gitDir)
+				if !filepath.IsAbs(gitDir) {
+					gitDir = filepath.Join(dir, gitDir)
+				}
+				head = filepath.Join(gitDir, "HEAD")
+			}
+			b, err := os.ReadFile(head)
+			if err != nil {
+				return "", false
+			}
+			ref, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "ref: refs/heads/")
+			if !ok || ref == "" {
+				return "", false
+			}
+			return ref, true
+		}
+		next := filepath.Dir(dir)
+		if next == dir {
+			return "", false
+		}
+		dir = next
+	}
+	return "", false
+}
+
 // parentOfWorktree reads a `.git` file and returns the repository that owns the
 // linked worktree it points at.
 //
