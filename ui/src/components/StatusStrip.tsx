@@ -27,6 +27,14 @@ export function StatusStrip({ summary, pane, version, figures = true }: {
   const app = useAppUpdate()
   const five = figures ? summary?.rate_limits?.five_hour : undefined
   const seven = figures ? summary?.rate_limits?.seven_day : undefined
+  // The front terminal's protocol and size are for debugging, not for
+  // reading: "v2 · 167×36" beside the version was noise to the owner
+  // (2026-10-09). They live in the version's tooltip.
+  const term = pane ? `terminal protocol ${pane.protocol ?? 'unknown'} · ${pane.cols}×${pane.rows}` : ''
+  const versionTitle = [
+    app?.version && version && version !== app.version ? `The app ${app.version} · the daemon ${version}` : '',
+    term,
+  ].filter(Boolean).join('\n')
   return (
     <footer className="flex h-[26px] shrink-0 items-center gap-4 border-t border-[var(--app-hairline)] bg-[var(--app-chrome-bg)] px-3 text-[11.5px] text-fg-muted">
       <ConnectionState link={link} heardAt={live.heardAt} />
@@ -38,16 +46,13 @@ export function StatusStrip({ summary, pane, version, figures = true }: {
         </span>
       )}
       <span className="ml-auto flex items-center gap-4">
-        {pane && (
-          <span className="num" title="The terminal in front: protocol and size">
-            {pane.status === 'live' ? '' : `${pane.status} · `}
-            {pane.protocol ? `${pane.protocol} · ` : ''}{pane.cols}×{pane.rows}
-          </span>
+        {pane && pane.status !== 'live' && (
+          <span title="The terminal in front">{pane.status}</span>
         )}
         <StaleUiPill />
         <AppUpdateNotice />
         {(app?.version || version) && (
-          <span className="mono text-fg-faint" title={app?.version && version && version !== app.version ? `The app ${app.version} · the daemon ${version}` : undefined}>
+          <span className="mono text-fg-faint" title={versionTitle || undefined}>
             {app?.version || version}
           </span>
         )}

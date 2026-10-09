@@ -35,7 +35,8 @@ import { useTheme } from '@/lib/theme'
 import { keepsProject, ProjectRow, StatusDot } from './ProjectRow'
 import { ProjectMenu, type ProjectMenuAt } from './ProjectMenu'
 import { TodayStrip } from './TodayStrip'
-import { AgentGlyph, CaprockMark, ChatIcon, ChevronIcon, DashboardIcon, FolderPlusIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from './AppIcons'
+import { AgentGlyph } from './AgentMarks'
+import { CaprockMark, ChatIcon, ChevronIcon, DashboardIcon, FolderPlusIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from './AppIcons'
 
 /** Project ids hidden by hand: this browser's. */
 export const HIDDEN_KEY = 'caprock.app.hidden-projects'

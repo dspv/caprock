@@ -7,26 +7,59 @@
  * is the shape of that bug, so these tests are about every agent, not Gemini.
  */
 import { describe, expect, it } from 'vitest'
-import { AGENTS, agentMark, agentName } from './Projects'
+import { render, screen } from '@testing-library/react'
+import { AGENTS, agentName, showsAgentMark } from './Projects'
+import { AgentGlyph } from './AgentMarks'
 
-const OTHERS = ['opencode', 'gemini']
+const OTHERS = ['opencode', 'gemini', 'codex', 'deepseek']
 
 describe('an agent that is not Claude is marked as itself', () => {
-  it('gives every non-Claude agent a distinct mark', () => {
-    const marks = OTHERS.map(agentMark)
-    for (const m of marks) expect(m).not.toBe('')
-    expect(new Set(marks).size).toBe(marks.length)
+  it('marks every non-Claude agent in a list row', () => {
+    for (const a of OTHERS) expect(showsAgentMark(a)).toBe(true)
   })
 
-  it('leaves Claude unmarked, because it is almost every row', () => {
-    expect(agentMark('claude')).toBe('')
-    expect(agentMark(undefined)).toBe('')
+  it('leaves Claude unmarked in lists, because it is almost every row', () => {
+    expect(showsAgentMark('claude')).toBe(false)
+    expect(showsAgentMark(undefined)).toBe(false)
   })
 
   it('never calls another agent Claude Code in prose', () => {
     for (const a of OTHERS) expect(agentName(a)).not.toBe('Claude Code')
     expect(agentName('claude')).toBe('Claude Code')
     expect(agentName(undefined)).toBe('Claude Code')
+  })
+})
+
+describe('the agent glyph is a mark that says its name', () => {
+  const cases: [string | undefined, boolean, string][] = [
+    ['claude', false, 'Claude Code'],
+    [undefined, false, 'Claude Code'],
+    ['codex', false, 'Codex'],
+    ['gemini', false, 'Gemini CLI'],
+    ['opencode', false, 'OpenCode'],
+    ['deepseek', false, 'DeepSeek'],
+    ['claude', true, 'Shell'],
+    ['someday-agent', false, 'someday-agent'],
+  ]
+  for (const [agent, shell, name] of cases) {
+    it(`${shell ? 'a shell' : agent ?? 'no agent'} reads as ${name}`, () => {
+      render(<AgentGlyph agent={agent} shell={shell} />)
+      const g = screen.getByRole('img', { name })
+      expect(g).toHaveAttribute('title', name)
+      // A drawn mark, not the old text monogram.
+      expect(g.querySelector('svg')).not.toBeNull()
+      expect(g.textContent).toBe('')
+    })
+  }
+
+  it('gives every agent its own mark', () => {
+    const marks = ['claude', ...OTHERS].map((a) => {
+      const { container, unmount } = render(<AgentGlyph agent={a} />)
+      const html = container.querySelector('svg')!.innerHTML
+      unmount()
+      return html
+    })
+    expect(new Set(marks).size).toBe(marks.length)
   })
 })
 
