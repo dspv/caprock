@@ -25,6 +25,22 @@ Phase 3 (Delight) has no plan by design.
 
 ### Changed
 
+- **Closing things in the sidebar is one ×.** Each tab under the project
+  has a × (always on the one in front) that closes it as ⌘W does; the
+  agent or shell keeps running. A project's × closes its tabs and moves it
+  under *Hidden*, or, while something still runs or waits in it, only
+  closes its tabs and leaves it listed. It replaces the crossed eye. A
+  running agent or shell Caprock started that has no tab gets a ■ on
+  hover, and a tab's right-click menu has *Close tab* and *Stop…*; both
+  ask first, as the cockpit does. Sessions started in another terminal
+  have no stop. Delete and Backspace close nothing.
+- **The sidebar says each thing's state, in a fixed order.** Every agent
+  under the project ends in one word: *working*, *waiting* (amber, the only
+  amber in the list), *idle* or *done*. Rows keep the tab strip's order,
+  then the order things started, so a state change never moves one.
+  Sessions started in another terminal fold into one *Running in other
+  terminals · N* line instead of a row each. The tab in front is marked by
+  a plain edge, no longer amber.
 - **The New agent sheet says what *Where* means.** *This folder · main* is
   the project's own checkout, *Existing copy · <branch>* one already made,
   and *New copy on its own branch* a separate folder on a new branch, with a

@@ -40,12 +40,33 @@ others. Installing it: [install-app.md](install-app.md).
   current: its last tab comes to the front, or its own page when it has
   none, and the project before folds up. The one highlighted row in the
   sidebar is the tab you are looking at; the current project's name is
-  bold. After the tabs, muted, come the project's sessions and shells that
-  still run with no tab; click one to open it as a tab. An ended session is
+  bold. After the tabs, muted, come the sessions and shells Caprock started
+  in the project that still run with no tab; click one to open it as a tab.
+  Sessions started in another terminal are not listed one by one: a muted
+  *Running in other terminals · N* at the bottom opens the list, and one of
+  them waiting on you is still under *Waiting on you*. Each row says its
+  state in one word at its right: *working* (green), *waiting* (amber — it
+  needs you, and nothing else in the list is amber), *idle* or *done*; a
+  shell says nothing. Rows keep the strip's order, then the order things
+  started: a change of state never moves one, and a new one appears at the
+  end. An ended session is
   on the project's page (*Recent*) and in ⌘K. Pinned projects come first,
   then the rest by name, and clicking a project never moves it. Hover a project for *New agent* and *New shell*. Sessions in a
   folder that is not a repository sit under *Other folders*, and so does a
   quick chat.
+- **Closing things: ×.** Hover a tab under the project — or look at the
+  one in front, where it always shows — for its **×**: it closes the tab
+  exactly as ⌘W and the tab strip's × do, and the agent or shell in it
+  keeps running (it moves to the muted rows below). A project's **×**
+  (*Close project*) closes all its tabs and moves it under *Hidden*; if
+  something still runs or waits in it, only its tabs close and it stays,
+  with its green dot, since hiding it would lose live work. Nothing is
+  stopped by closing. To stop an agent or a shell Caprock started, hover
+  its muted row (no tab) for **■**, or right-click its tab for *Stop the
+  session…* / *Stop the shell…*; either asks first, as the cockpit does.
+  A session started in another terminal has no stop — Caprock never
+  signals a process it did not start. Right-click a tab for *Close tab*
+  and, when there is one, *Stop…*. Delete and Backspace close nothing.
 - **A project's menu.** Click the ⋯ on its row (it shows on hover), right-click the row, or press Shift+F10
   on it: *Hide from the sidebar* (or *Show in the sidebar again*), *Close
   its tabs* — every tab and split of that project; the sessions and shells
@@ -56,8 +77,8 @@ others. Installing it: [install-app.md](install-app.md).
 - **Keeping the list short.** With more than eight projects, the ones with
   nothing running, no tab open and no pin fold under *More projects* at the
   bottom of the list; with eight or fewer, every project shows. A
-  project you hide (from its menu, or the crossed eye on hover) goes under
-  *Hidden*, and the same menu or the open eye there brings it back.
+  project you close with its × or hide from its menu goes under *Hidden*,
+  and the same menu or the open eye on its row there brings it back.
   Both groups stay closed until you open them, and the app remembers which
   are open. A project shows in the list again while something runs or
   waits in it, or while it is the one in front, hidden or not.

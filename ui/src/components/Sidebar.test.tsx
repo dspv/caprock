@@ -153,9 +153,9 @@ describe('the sidebar', () => {
     expect(within(screen.getByRole('group', { name: 'alpha: open tabs' })).getByText('No tabs open.')).toBeInTheDocument()
   })
 
-  it('hides a project into Hidden and shows it again from there, across a reload', () => {
+  it('closes a project into Hidden with its × and shows it again from there, across a reload', () => {
     const first = renderSidebar()
-    fireEvent.click(screen.getByRole('button', { name: 'Hide beta from the list' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close project beta' }))
     expect(listed()).toEqual(['alpha', 'stale'])
     expect(JSON.parse(localStorage.getItem(HIDDEN_KEY)!)).toEqual(['beta'])
     first.unmount()

@@ -179,7 +179,9 @@ One window, three regions:
   projects hid two of them, which only made the short list shorter). Each
   group is in a stable order — pinned, the hand-set `sort`, then name —
   because ordering by activity moved a project when it was clicked. A project hidden by hand
-  from its menu or its row's hover eye goes under *Hidden · N*, where the
+  from its menu or closed with its row's × (which since 2026-10-09
+  replaces the hover eye, and hides only when nothing runs or waits in it)
+  goes under *Hidden · N*, where the
   same actions show it again. `groupProjects` in `ui/src/lib/sidebar.ts`
   decides; *Other folders* always keeps a row.
   Hidden ids live in the page's storage (`caprock.app.hidden-projects`),
