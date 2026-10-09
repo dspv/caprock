@@ -7,6 +7,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **Links in the terminal open.** Cmd+click (Ctrl+click on Windows and
+  Linux) on a URL in any terminal, or on a link Claude Code prints, opens it
+  in your browser; in the app, the default browser. Hovering underlines it
+  and says how to open it. A plain click still selects text. Only web and
+  mail links open: anything else a program prints is ignored.
+
 ### Changed
 
 - **Closing things in the sidebar is one ×.** Each tab under the project

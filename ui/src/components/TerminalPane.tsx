@@ -37,6 +37,7 @@ import { FIND_EVENT, matchAppShortcut } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
 import { registerBenchTerminal } from '@/lib/benchhook'
 import { writeSliced } from '@/lib/termwrite'
+import { attachTerminalLinks } from '@/lib/termlinks'
 import { lineFor, markOf, saveScroll, takeScroll } from '@/lib/termresume'
 import { APP_UPDATE_EVENT } from '@/lib/appupdate'
 import { WEBGL_QUIET_MS } from './Terminal'
@@ -129,6 +130,8 @@ export function TerminalPane({
     term.loadAddon(search)
     term.open(el)
     const unbench = registerBenchTerminal(sessionId, term)
+    // URLs and OSC 8 links open on Cmd/Ctrl+click (lib/termlinks).
+    const links = attachTerminalLinks(term)
     const resultsSub = search.onDidChangeResults((r) => setResults({ index: r.resultIndex, count: r.resultCount }))
     const decorations = () => ({ decorations: searchColors(terminalTheme(prefs.theme)) })
     searchRef.current = {
@@ -380,6 +383,7 @@ export function TerminalPane({
       scrollSub.dispose()
       conn.dispose()
       unbench()
+      links.dispose()
       term.dispose()
     }
   }, [sessionId])
