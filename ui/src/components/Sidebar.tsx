@@ -24,7 +24,7 @@ import { groupProjects, type InboxItem, type ProjectNode, type SidebarModel } fr
 import type { Tab } from '@/lib/tabs'
 import type { TabLabel } from '@/lib/tablabels'
 import type { ProjectSource } from '@/lib/projects'
-import type { EditorList, Summary } from '@/lib/api'
+import type { EditorList, SessionSummary, Summary } from '@/lib/api'
 import { buildToday } from '@/lib/today'
 import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
@@ -67,6 +67,8 @@ export interface SidebarProps {
   /** The tab in front: the one highlighted row. */
   activeTabId?: string
   onActivateTab?: (tabId: string) => void
+  /** Opens, as a tab, a live session or shell of the current project that has none. */
+  onOpenLive?: (s: SessionSummary, projectId: string) => void
   onSelectProject: (id: string) => void
   onOpenInbox: (item: InboxItem) => void
   onNewAgent: (projectId: string, cwd?: string) => void
@@ -156,6 +158,7 @@ export function Sidebar(props: SidebarProps) {
         activeTabId={props.dashboardActive ? undefined : props.activeTabId}
         onSelect={props.onSelectProject}
         onActivateTab={props.onActivateTab ?? noop}
+        onOpenLive={props.onOpenLive}
         onNewAgent={props.onNewAgent}
         onNewShell={props.onNewShell}
         onFolderMenu={props.onFolderMenu}

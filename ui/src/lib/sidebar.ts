@@ -241,35 +241,58 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
 }
 
 export interface ProjectGroups {
-  /** In play: something running or waiting, a tab open, pinned, or the project in front. */
+  /** In view: every project while there are few, what is in play when there are many. */
   shown: ProjectNode[]
-  /** Everything else, under "More projects", closed until opened. */
+  /** Above FOLD_ABOVE projects, the ones not in play, under "More projects", closed until opened. */
   more: ProjectNode[]
   /** Hidden by hand. */
   hidden: ProjectNode[]
 }
 
+/** "More projects" folds only above this many projects: eight read at a glance. */
+export const FOLD_ABOVE = 8
+
 /**
- * Splits the sidebar's projects into what is in play, the rest ("More
- * projects") and what was hidden by hand, keeping the model's order inside
- * each group (owner, 2026-10-09: eighteen projects in a column were "a mess,
- * unclear how to navigate", translated). In play: a live or waiting session,
- * a tab open (`tabbed`), pinned, or the project in front. A hidden project
- * that comes back to life shows normally until it is idle again. Other
- * folders holds only what is live or open, so it is always in play.
+ * Splits the sidebar's projects into what is in view, the rest ("More
+ * projects") and what was hidden by hand (owner, 2026-10-09: eighteen
+ * projects in a column were "a mess, unclear how to navigate", translated).
+ *
+ * With FOLD_ABOVE projects or fewer nothing folds: every project not hidden
+ * by hand is in view. Above that, in view is what is in play: a live or
+ * waiting session, a tab open (`tabbed`), pinned, or the project in front. A
+ * hidden project that comes back to life shows normally until it is idle
+ * again. Other folders holds only what is live or open, so it is always in
+ * view, and last.
+ *
+ * Inside each group the order is stable: pinned first, then the order set by
+ * hand, then by name. Activity never moves a row and neither does a click: a
+ * project that jumps when picked has to be found again.
  */
 export function groupProjects(
   nodes: ProjectNode[],
   { hidden, activeProjectId, tabbed }: { hidden: ReadonlySet<string>; activeProjectId?: string; tabbed?: ReadonlySet<string> },
 ): ProjectGroups {
   const out: ProjectGroups = { shown: [], more: [], hidden: [] }
+  const fold = nodes.filter((n) => n.project.id !== OTHER_FOLDERS_ID).length > FOLD_ABOVE
+  let other: ProjectNode | undefined
   for (const n of nodes) {
     const id = n.project.id
+    if (id === OTHER_FOLDERS_ID) { other = n; continue }
     const busy = n.live > 0 || n.waiting > 0 || !!tabbed?.has(id) || n.worktrees.some((w) => w.sessions.some((s) => s.open))
-    if (busy || id === activeProjectId || id === OTHER_FOLDERS_ID) out.shown.push(n)
+    if (busy || id === activeProjectId) out.shown.push(n)
     else if (hidden.has(id)) out.hidden.push(n)
-    else if (n.project.pinned) out.shown.push(n)
+    else if (!fold || n.project.pinned) out.shown.push(n)
     else out.more.push(n)
   }
+  for (const g of [out.shown, out.more, out.hidden]) g.sort(stableOrder)
+  if (other) out.shown.push(other)
   return out
+}
+
+/** Pinned first, then the order set by hand, then by name: nothing that changes with activity. */
+function stableOrder(a: ProjectNode, b: ProjectNode): number {
+  return Number(!!b.project.pinned) - Number(!!a.project.pinned) ||
+    (a.project.sort ?? Infinity) - (b.project.sort ?? Infinity) ||
+    a.project.name.localeCompare(b.project.name, undefined, { sensitivity: 'base' }) ||
+    a.project.id.localeCompare(b.project.id)
 }

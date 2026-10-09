@@ -40,10 +40,10 @@ others. Installing it: [install-app.md](install-app.md).
   current: its last tab comes to the front, or its own page when it has
   none, and the project before folds up. The one highlighted row in the
   sidebar is the tab you are looking at; the current project's name is
-  bold. A session not open in a tab is on the project's page (*Recent*),
-  in ⌘K and in *Waiting on you* when it waits. Projects with something
-  running, a tab open or a pin come first; the rest are under *More
-  projects*. Hover a project for *New agent* and *New shell*. Sessions in a
+  bold. After the tabs, muted, come the project's sessions and shells that
+  still run with no tab; click one to open it as a tab. An ended session is
+  on the project's page (*Recent*) and in ⌘K. Pinned projects come first,
+  then the rest by name, and clicking a project never moves it. Hover a project for *New agent* and *New shell*. Sessions in a
   folder that is not a repository sit under *Other folders*, and so does a
   quick chat.
 - **A project's menu.** Click the ⋯ on its row (it shows on hover), right-click the row, or press Shift+F10
@@ -53,8 +53,9 @@ others. Installing it: [install-app.md](install-app.md).
   Caprock…*, which asks first and takes the project off the list without
   touching its folder, its files or its sessions; *Add project* lists it
   again. ↑ ↓ move through the menu, Esc closes it.
-- **Keeping the list short.** Projects with nothing running, no tab open
-  and no pin fold under *More projects* at the bottom of the list; a
+- **Keeping the list short.** With more than eight projects, the ones with
+  nothing running, no tab open and no pin fold under *More projects* at the
+  bottom of the list; with eight or fewer, every project shows. A
   project you hide (from its menu, or the crossed eye on hover) goes under
   *Hidden*, and the same menu or the open eye there brings it back.
   Both groups stay closed until you open them, and the app remembers which

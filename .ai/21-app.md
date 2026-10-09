@@ -171,10 +171,14 @@ One window, three regions:
   the containing block of anything fixed inside it.
 - **Keeping the project list short** (owner, 2026-10-08: "a ton of stuff
   hanging in it and it's unclear how to hide things", translated). Since
-  2026-10-09 the list is what is in play — a live or waiting session, a tab
-  open, a pin, or the project in front — and everything else folds under
-  *More projects · N* (it was *Quiet*, a week without activity, which left
-  eighteen projects standing in the owner's list); a project hidden by hand
+  2026-10-09, above `FOLD_ABOVE` (8) projects the list is what is in play —
+  a live or waiting session, a tab open, a pin, or the project in front —
+  and everything else folds under *More projects · N* (it was *Quiet*, a
+  week without activity, which left eighteen projects standing in the
+  owner's list); with eight or fewer nothing folds (a preview with three
+  projects hid two of them, which only made the short list shorter). Each
+  group is in a stable order — pinned, the hand-set `sort`, then name —
+  because ordering by activity moved a project when it was clicked. A project hidden by hand
   from its menu or its row's hover eye goes under *Hidden · N*, where the
   same actions show it again. `groupProjects` in `ui/src/lib/sidebar.ts`
   decides; *Other folders* always keeps a row.

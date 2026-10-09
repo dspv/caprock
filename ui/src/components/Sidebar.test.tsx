@@ -87,32 +87,85 @@ describe('the sidebar', () => {
     expect(props.onAddProject).toHaveBeenCalled()
   })
 
-  it('folds the projects not in play under More projects, closed until opened, and remembers it open', () => {
-    const first = renderSidebar()
+  it('lists every project while there are eight or fewer, and never reorders on a click', () => {
+    const { props, rerender } = renderSidebar({ activeProjectId: 'alpha', dashboardActive: false })
+    expect(listed()).toEqual(['alpha', 'beta', 'stale'])
+    expect(screen.queryByRole('button', { name: /More projects/ })).toBeNull()
+    fireEvent.click(document.querySelector('[data-project-row="stale"]')!)
+    rerender(<Sidebar {...props} activeProjectId="stale" />)
+    expect(listed()).toEqual(['alpha', 'beta', 'stale'])
+  })
+
+  it('above eight projects, folds the ones not in play under More projects, closed until opened, and remembers it open', () => {
+    const many = buildSidebar({
+      projects: [proj('alpha', 1, true), proj('beta', 2, true), ...['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7'].map((id) => proj(id, 30))],
+      sessions: [],
+      permissions: new Set(),
+      costs: new Map(),
+      openSessions: new Set(),
+    })
+    const rest = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7']
+    const first = renderSidebar({ model: many })
     expect(listed()).toEqual(['alpha', 'beta'])
-    const fold = screen.getByRole('button', { name: /More projects · 1/ })
+    const fold = screen.getByRole('button', { name: /More projects · 7/ })
     expect(fold).toHaveAttribute('aria-expanded', 'false')
     fireEvent.click(fold)
-    expect(listed()).toEqual(['alpha', 'beta', 'stale'])
+    expect(listed()).toEqual(['alpha', 'beta', ...rest])
     expect(JSON.parse(localStorage.getItem(FOLDS_KEY)!)).toEqual(['more'])
     first.unmount()
-    renderSidebar()
-    expect(listed()).toEqual(['alpha', 'beta', 'stale'])
+    renderSidebar({ model: many })
+    expect(listed()).toEqual(['alpha', 'beta', ...rest])
+  })
+
+  it('lists, after the current project\'s tabs, what of it still runs with no tab, muted; a click opens it', () => {
+    const live = (p: Partial<SessionSummary>) => ({
+      session_id: 's', cwd: '/w/alpha', project: 'alpha', model: '', started_at: 0, last_event_at: 1, status: 'active',
+      git_branch: '', owned: true, activity: { phrase: '', at: '', health: 'working' }, ...p,
+    }) as SessionSummary
+    const sessions = [
+      live({ session_id: 'a1', title: 'Fix the login' }),
+      live({ session_id: 'a2', title: 'Write the docs', last_event_at: 5 }),
+      live({ session_id: 'a3', kind: 'shell' }),
+      live({ session_id: 'a4', title: 'Done long ago', status: 'ended' }),
+    ]
+    const withLive = buildSidebar({
+      projects: [proj('alpha', 1, true), proj('beta', 2, true)],
+      sessions,
+      permissions: new Set(),
+      costs: new Map(),
+      openSessions: new Set(['a1']),
+    })
+    const tabs: Tab[] = [{ id: 't1', projectId: 'alpha', root: { type: 'pane', id: 'p1', target: { kind: 'session', sessionId: 'a1' } }, focusedPaneId: 'p1', title: 'Fix the login' }]
+    const onOpenLive = vi.fn()
+    renderSidebar({ model: withLive, tabs, tabLabels: tabLabels(tabs, new Map(), new Set(), () => undefined), activeProjectId: 'alpha', activeTabId: 't1', dashboardActive: false, onOpenLive })
+    const list = screen.getByRole('group', { name: 'alpha: open tabs' })
+    expect([...list.querySelectorAll('[data-tab-row]')].map((b) => b.getAttribute('data-tab-row'))).toEqual(['t1'])
+    // Agents first, the most recent first; the ended one is not listed.
+    expect([...list.querySelectorAll('[data-live-row] span.flex-1')].map((b) => b.textContent)).toEqual(['Write the docs', 'Shell'])
+    expect(within(list).queryByText('No tabs open.')).toBeNull()
+    expect(document.querySelectorAll('[aria-current="true"]')).toHaveLength(1)
+    fireEvent.click(list.querySelector('[data-live-row="a3"]')!)
+    expect(onOpenLive).toHaveBeenCalledWith(sessions[2], 'alpha')
+  })
+
+  it('says no tabs are open only when nothing of the project runs', () => {
+    renderSidebar({ activeProjectId: 'alpha', dashboardActive: false })
+    expect(within(screen.getByRole('group', { name: 'alpha: open tabs' })).getByText('No tabs open.')).toBeInTheDocument()
   })
 
   it('hides a project into Hidden and shows it again from there, across a reload', () => {
     const first = renderSidebar()
     fireEvent.click(screen.getByRole('button', { name: 'Hide beta from the list' }))
-    expect(listed()).toEqual(['alpha'])
+    expect(listed()).toEqual(['alpha', 'stale'])
     expect(JSON.parse(localStorage.getItem(HIDDEN_KEY)!)).toEqual(['beta'])
     first.unmount()
 
     renderSidebar()
-    expect(listed()).toEqual(['alpha'])
+    expect(listed()).toEqual(['alpha', 'stale'])
     const hidden = screen.getByRole('region', { name: 'Hidden' })
     fireEvent.click(within(hidden).getByRole('button', { name: /Hidden · 1/ }))
     fireEvent.click(within(hidden).getByRole('button', { name: 'Show beta in the list again' }))
-    expect(listed()).toEqual(['alpha', 'beta'])
+    expect(listed()).toEqual(['alpha', 'beta', 'stale'])
     expect(screen.queryByRole('region', { name: 'Hidden' })).not.toBeInTheDocument()
     expect(JSON.parse(localStorage.getItem(HIDDEN_KEY)!)).toEqual([])
   })
@@ -120,7 +173,7 @@ describe('the sidebar', () => {
   it('keeps the project in front listed even when hidden', () => {
     localStorage.setItem(HIDDEN_KEY, JSON.stringify(['beta']))
     renderSidebar({ activeProjectId: 'beta', dashboardActive: false })
-    expect(listed()).toEqual(['alpha', 'beta'])
+    expect(listed()).toEqual(['alpha', 'beta', 'stale'])
     expect(screen.getByRole('button', { name: 'Show beta in the list again' })).toBeInTheDocument()
   })
 
@@ -128,7 +181,7 @@ describe('the sidebar', () => {
     localStorage.setItem(HIDDEN_KEY, '{not json')
     localStorage.setItem(FOLDS_KEY, '"quiet"')
     renderSidebar()
-    expect(listed()).toEqual(['alpha', 'beta'])
+    expect(listed()).toEqual(['alpha', 'beta', 'stale'])
   })
 
   it('opens the project menu from its ⋯, from a right-click and from Shift+F10, and closes on Esc with focus back', async () => {
@@ -169,13 +222,13 @@ describe('the sidebar', () => {
 
     fireEvent.contextMenu(document.querySelector('[data-project-row="alpha"]')!)
     fireEvent.click(screen.getByRole('menuitem', { name: /Hide from the sidebar/ }))
-    expect(listed()).toEqual(['beta'])
+    expect(listed()).toEqual(['beta', 'stale'])
     expect(JSON.parse(localStorage.getItem(HIDDEN_KEY)!)).toEqual(['alpha'])
     // From Hidden, the same menu shows it again.
     fireEvent.click(screen.getByRole('button', { name: /Hidden · 1/ }))
     fireEvent.contextMenu(document.querySelector('[data-project-row="alpha"]')!)
     fireEvent.click(screen.getByRole('menuitem', { name: /Show in the sidebar again/ }))
-    expect(listed()).toEqual(['alpha', 'beta'])
+    expect(listed()).toEqual(['alpha', 'beta', 'stale'])
   })
 
   it('opens the folder in an editor, the default first', () => {

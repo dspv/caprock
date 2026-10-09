@@ -25,9 +25,9 @@ function model(projects: Project[], sessions: SessionSummary[] = [], openSession
 const ids = (ns: { project: { id: string } }[]) => ns.map((n) => n.project.id)
 
 describe('grouping the sidebar projects', () => {
-  it('lists what is in play — running, waiting, a tab open, pinned, in front — and folds the rest under More projects, in order', () => {
+  it('above eight projects, lists what is in play — running, waiting, a tab open, pinned, in front — and folds the rest under More projects', () => {
     const nodes = model(
-      [proj('running', 30), proj('tab', 30), proj('file', 30), proj('front', 30), proj('pinned', 30, { pinned: true }), proj('fresh', 0), proj('old', 60)],
+      [proj('running', 30), proj('tab', 30), proj('file', 30), proj('front', 30), proj('pinned', 30, { pinned: true }), proj('fresh', 0), proj('old', 60), proj('quiet', 9), proj('idle', 9)],
       [
         sess({ session_id: 'r', cwd: '/running', last_event_at: now - 30 * day }),
         sess({ session_id: 't', cwd: '/tab', status: 'ended', last_event_at: now - 30 * day }),
@@ -36,10 +36,40 @@ describe('grouping the sidebar projects', () => {
     )
     // A file tab holds no session: the project counts as in play through its tab.
     const g = groupProjects(nodes, { hidden: new Set(), activeProjectId: 'front', tabbed: new Set(['file']) })
-    expect(ids(g.shown).sort()).toEqual(['file', 'front', 'pinned', 'running', 'tab'])
+    // Pinned first, then by name.
+    expect(ids(g.shown)).toEqual(['pinned', 'file', 'front', 'running', 'tab'])
     // Recent activity alone is not work in progress.
-    expect(ids(g.more)).toEqual(['fresh', 'old'])
+    expect(ids(g.more)).toEqual(['fresh', 'idle', 'old', 'quiet'])
     expect(g.hidden).toEqual([])
+  })
+
+  it('folds nothing with eight projects or fewer', () => {
+    const nodes = model([proj('gamma', 0), proj('alpha', 60), proj('beta', 30)])
+    const g = groupProjects(nodes, { hidden: new Set(), activeProjectId: 'gamma' })
+    expect(ids(g.shown)).toEqual(['alpha', 'beta', 'gamma'])
+    expect(g.more).toEqual([])
+    const eight = model(Array.from({ length: 8 }, (_, i) => proj(`p${i}`, i)))
+    expect(groupProjects(eight, { hidden: new Set() }).more).toEqual([])
+    const nine = model(Array.from({ length: 9 }, (_, i) => proj(`p${i}`, i)))
+    expect(groupProjects(nine, { hidden: new Set() }).more).toHaveLength(9)
+  })
+
+  it('keeps one order whatever is picked or active: pinned first, then by name, Other folders last', () => {
+    const projects = [proj('gamma', 0), proj('Alpha', 60), proj('beta', 30), proj('zed', 90, { pinned: true })]
+    const busy = model(projects, [
+      sess({ session_id: 'g', cwd: '/gamma', last_event_at: now }),
+      sess({ session_id: 'x', cwd: '/elsewhere', last_event_at: now }),
+    ])
+    const order = ['zed', 'Alpha', 'beta', 'gamma', OTHER_FOLDERS_ID]
+    for (const front of ['gamma', 'Alpha', 'beta', undefined]) {
+      expect(ids(groupProjects(busy, { hidden: new Set(), activeProjectId: front }).shown)).toEqual(order)
+    }
+    // Activity moving to another project moves nothing.
+    const later = model(projects, [
+      sess({ session_id: 'a', cwd: '/Alpha', last_event_at: now }),
+      sess({ session_id: 'x', cwd: '/elsewhere', last_event_at: now }),
+    ])
+    expect(ids(groupProjects(later, { hidden: new Set(), activeProjectId: 'Alpha' }).shown)).toEqual(order)
   })
 
   it('puts hidden projects under Hidden, and shows them while they are busy or in front', () => {

@@ -6,12 +6,17 @@
  * shells run in it, and how many wait on you. The current project is the one
  * open, with no chevron to manage: under it, exactly the tabs the tab strip
  * shows for it, in the same order and under the same names
- * (lib/tablabels.ts). The tab in front is the one highlighted row in the
- * whole sidebar. Hover shows New agent, New shell, hide and the ⋯ menu.
+ * (lib/tablabels.ts). After them, muted, whatever of the project still runs
+ * with no tab — a session started in a terminal, a tab closed on a live shell
+ * — so live work is never out of sight; a click opens it as a tab. Ended
+ * sessions are not listed. The tab in front is the one highlighted row in
+ * the whole sidebar. Hover shows New agent, New shell, hide and the ⋯ menu.
  */
-import { memo } from 'react'
-import type { ProjectNode } from '@/lib/sidebar'
+import { memo, useMemo } from 'react'
+import type { SessionSummary } from '@/lib/api'
+import type { ProjectNode, SessionNode } from '@/lib/sidebar'
 import type { Dot } from '@/lib/sidebar'
+import { branchLabel } from '@/lib/sessionLabels'
 import type { Tab } from '@/lib/tabs'
 import type { TabLabel } from '@/lib/tablabels'
 import { fmtUSD } from '@/lib/format'
@@ -61,6 +66,8 @@ export interface ProjectRowProps {
   activeTabId?: string
   onSelect: (id: string) => void
   onActivateTab: (tabId: string) => void
+  /** Opens, as a tab, a live session or shell of the project that has none. */
+  onOpenLive?: (s: SessionSummary, projectId: string) => void
   onNewAgent: (projectId: string, cwd?: string) => void
   onNewShell: (projectId: string, cwd?: string) => void
   /** Right-click on a project row with no menu: the folder, for the editor menu (F18). */
@@ -81,6 +88,7 @@ export const ProjectRow = memo(function ProjectRow({
   activeTabId,
   onSelect,
   onActivateTab,
+  onOpenLive,
   onNewAgent,
   onNewShell,
   onFolderMenu,
@@ -90,6 +98,7 @@ export const ProjectRow = memo(function ProjectRow({
 }: ProjectRowProps) {
   const p = node.project
   const id = p.id
+  const untabbed = useMemo(() => (current ? liveWithoutTab(node) : []), [current, node])
   // Other folders is a group, not a folder: no menu, no new agent in it.
   const isGroup = p.root === ''
   const menu = !isGroup && onMenu
@@ -152,7 +161,7 @@ export const ProjectRow = memo(function ProjectRow({
       </div>
       {current && (
         <ul className="grid grid-cols-1 pb-1" role="group" aria-label={`${p.name}: open tabs`}>
-          {tabs.length === 0 && (
+          {tabs.length === 0 && untabbed.length === 0 && (
             <li className="flex h-[26px] items-center pl-[22px] pr-2 text-[12px] text-fg-faint">No tabs open.</li>
           )}
           {tabs.map((t) => {
@@ -161,6 +170,9 @@ export const ProjectRow = memo(function ProjectRow({
               <TabRow key={t.id} tab={t} label={l} active={t.id === activeTabId} onOpen={() => onActivateTab(t.id)} />
             )
           })}
+          {untabbed.map((x) => (
+            <LiveRow key={x.session.session_id} item={x} ownBranch={p.branch} onOpen={() => onOpenLive?.(x.session, id)} />
+          ))}
         </ul>
       )}
     </li>
@@ -191,6 +203,40 @@ function TabRow({ tab, label, active, onOpen }: { tab: Tab; label?: TabLabel; ac
         )}
         <span className={`min-w-0 flex-1 truncate text-[12.5px] ${active ? 'text-fg' : 'text-fg-muted'}`}>{title}</span>
         {label?.branch && <span className="mono min-w-0 max-w-[10ch] shrink truncate text-[11px] text-fg-faint">{label.branch}</span>}
+      </button>
+    </li>
+  )
+}
+
+/** The project's live sessions and shells that no tab shows: agents first, then the most recent. */
+export function liveWithoutTab(node: ProjectNode): SessionNode[] {
+  return node.worktrees
+    .flatMap((w) => w.sessions)
+    .filter((x) => !x.open && x.session.status !== 'ended')
+    .sort((a, b) => Number(a.isShell) - Number(b.isShell) || (b.session.last_event_at ?? 0) - (a.session.last_event_at ?? 0))
+}
+
+/** A live session or shell with no tab: muted, so it reads as not open; a click opens it. */
+function LiveRow({ item, ownBranch, onOpen }: { item: SessionNode; ownBranch?: string; onOpen: () => void }) {
+  const s = item.session
+  const own = branchLabel(ownBranch ?? '')
+  const b = branchLabel(s.git_branch ?? '')
+  const branch = b && b !== own ? b : undefined
+  const title = item.isShell ? 'Shell' : item.title
+  return (
+    <li>
+      <button
+        type="button"
+        data-nav-row
+        data-live-row={s.session_id}
+        onClick={onOpen}
+        className="app-row flex h-[28px] w-full min-w-0 items-center gap-2 rounded-[7px] pl-[22px] pr-2 text-left opacity-70"
+        title={`${title}: running, no tab. Open it as a tab.`}
+      >
+        <StatusDot dot={item.dot} />
+        <AgentGlyph agent={s.agent} shell={item.isShell} />
+        <span className="min-w-0 flex-1 truncate text-[12.5px] text-fg-faint">{title}</span>
+        {branch && <span className="mono min-w-0 max-w-[10ch] shrink truncate text-[11px] text-fg-faint">{branch}</span>}
       </button>
     </li>
   )

@@ -733,6 +733,7 @@ export function AppShell() {
               tabLabels={labels}
               activeTabId={current?.id}
               onActivateTab={onActivateTab}
+              onOpenLive={openSession}
               onSelectProject={onSelectProject}
               onOpenInbox={onOpenInbox}
               onNewAgent={onNewAgent}
