@@ -9,7 +9,7 @@ describe('Settings → Terminal (F21)', () => {
   it('previews and saves each choice at once, and resets', () => {
     render(<TerminalSettings />)
     const preview = screen.getByTestId('terminal-preview')
-    expect(preview.style.background).toBe('rgb(27, 27, 26)')
+    expect(preview.style.background).toBe('rgb(33, 31, 29)')
     fireEvent.click(screen.getByRole('radio', { name: 'Catppuccin Mocha' }))
     expect(getTerminalPrefs().theme).toBe('catppuccin-mocha')
     expect(preview.style.background).toBe('rgb(30, 30, 46)')

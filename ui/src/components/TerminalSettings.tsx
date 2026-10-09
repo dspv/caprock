@@ -16,7 +16,7 @@ import {
   type CursorStyle,
   type TerminalPrefs,
 } from '@/lib/termprefs'
-import { TERMINAL_THEMES, terminalTheme } from '@/lib/termthemes'
+import { TERMINAL_CHOICES, terminalTheme } from '@/lib/termthemes'
 
 export function TerminalSettings() {
   const [prefs, set] = useTerminalPrefs()
@@ -25,7 +25,7 @@ export function TerminalSettings() {
   const shown = fonts.some((f) => f.id === prefs.font) ? fonts : [...fonts, { id: prefs.font, name: prefs.font, family: '' }]
   return (
     <Section title="Terminal">
-      <Choice label="Colours" value={prefs.theme} options={TERMINAL_THEMES.map((t) => ({ value: t.id, label: t.name }))} onChange={(theme) => set({ theme })} />
+      <Choice label="Colours" value={prefs.theme} options={TERMINAL_CHOICES.map((t) => ({ value: t.id, label: t.name }))} onChange={(theme) => set({ theme })} />
       <Choice label="Font" value={prefs.font} options={shown.map((f) => ({ value: f.id, label: f.name }))} onChange={(font) => set({ font })} />
       <Slider
         label="Size"

@@ -9,6 +9,49 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Changed
+
+- **Tabs never vanish when you pick another project.** The tab strip holds
+  every open tab of every project, in the order you opened them, each with
+  its project's name and colour; picking a project shows its tabs in the
+  sidebar or its page, and the strip keeps the rest. ⌘1–9, ⌃Tab and
+  dragging run along the whole strip. Tabs saved by an earlier version come
+  back as they were.
+- **A simpler project list in the app.** Only the current project is open
+  in the sidebar, and under it are exactly its tabs — the ones in the tab
+  strip, in the same order and under the same names; shells read *Shell 1*,
+  *Shell 2*. After them, muted, whatever of that project still runs with no
+  tab — a session you closed the tab of, a shell left running — and a click
+  opens it as a tab; ended sessions are not listed (they are on the
+  project's page and in ⌘K). No branch rows and no worktree rows. Click
+  another project to make it current; there is nothing to expand or
+  collapse, and the list never reorders when you click: pinned projects
+  first, then by name. The tab you are looking at is the one highlighted
+  row. A project's row shows only what runs in it and what waits. With more
+  than eight projects, the ones with nothing running, no tab open and no
+  pin fold under *More projects* (it was *Quiet*, after a week without
+  activity); with eight or fewer every project shows. *Waiting on you*
+  shows only when something waits.
+- **Dashboard opens as a tab.** ⇧⌘D and the sidebar's *Dashboard* open Now,
+  Cost and the other screens in a *Dashboard* tab pinned at the left of the
+  strip, with the terminals beside it, one click away; Settings opens there
+  too. In the app, Now leaves out the session cards and the projects panel,
+  which the sidebar already lists; the browser dashboard still shows them.
+- **The terminal matches the app.** A new colour choice, *Match app*, is the
+  default: the dark Caprock palette in the dark theme and Paper on the
+  window's own colour in the light one, so the terminal no longer looks like
+  a dark window laid on a beige one. Caprock's ground is now the dark panel
+  colour, the same as the tab strip. A palette you picked by hand is kept;
+  Caprock saved before this version, when it was the default, reads as
+  *Match app* — pick it again to keep it in the light theme.
+
+### Added
+
+- **Quick chat in the app.** *Quick chat* under *New agent* in the sidebar,
+  ⌥⌘N (Ctrl+Alt+Shift+N on Windows and Linux) and the palette start a Claude
+  Code session without picking a folder, in a tab under *Other folders*. It
+  was only on the browser's Now screen.
+
 ## [0.93.1] - 2026-10-09
 
 ### Fixed

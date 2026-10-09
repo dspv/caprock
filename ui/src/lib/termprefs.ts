@@ -5,7 +5,7 @@
  * `term.options`, it is never re-created.
  */
 import { useEffect, useState } from 'react'
-import { terminalTheme, DEFAULT_TERMINAL_THEME, type TerminalTheme } from './termthemes'
+import { appLook, isTerminalChoice, terminalTheme, DEFAULT_TERMINAL_THEME, MATCH_APP_THEME, type TerminalTheme } from './termthemes'
 
 export type CursorStyle = 'bar' | 'block' | 'underline'
 
@@ -59,12 +59,27 @@ function clamp(v: unknown, min: number, max: number, fallback: number): number {
 export function normalizePrefs(raw: unknown): TerminalPrefs {
   const v = (raw && typeof raw === 'object' ? raw : {}) as Partial<Record<keyof TerminalPrefs, unknown>>
   return {
-    theme: terminalTheme(String(v.theme ?? '')).id,
+    theme: isTerminalChoice(String(v.theme ?? '')) ? String(v.theme) : DEFAULT_TERMINAL_THEME,
     font: MONO_FONTS.some((f) => f.id === v.font) ? String(v.font) : DEFAULT_PREFS.font,
     fontSize: Math.round(clamp(v.fontSize, FONT_SIZE_RANGE.min, FONT_SIZE_RANGE.max, DEFAULT_PREFS.fontSize)),
     lineHeight: Math.round(clamp(v.lineHeight, LINE_HEIGHT_RANGE.min, LINE_HEIGHT_RANGE.max, DEFAULT_PREFS.lineHeight) * 100) / 100,
     cursor: v.cursor === 'block' || v.cursor === 'underline' || v.cursor === 'bar' ? v.cursor : DEFAULT_PREFS.cursor,
   }
+}
+
+/**
+ * The stored form's version. Before Match app (v1, no field) every save wrote
+ * the whole set, so a stored `caprock` was as likely the untouched default as
+ * a choice; it reads as Match app, which is Caprock in the dark theme anyway.
+ * Anything saved since carries v2 and is taken as chosen.
+ */
+const STORED_VERSION = 2
+
+/** A stored value as prefs, the pre-Match-app default read as Match app. */
+export function readStoredPrefs(raw: unknown): TerminalPrefs {
+  const v = (raw && typeof raw === 'object' ? raw : {}) as { theme?: unknown; v?: unknown }
+  const p = normalizePrefs(raw)
+  return v.v !== STORED_VERSION && v.theme === 'caprock' ? { ...p, theme: MATCH_APP_THEME } : p
 }
 
 let current: TerminalPrefs | null = null
@@ -73,7 +88,7 @@ const listeners = new Set<(p: TerminalPrefs) => void>()
 export function getTerminalPrefs(): TerminalPrefs {
   if (!current) {
     try {
-      current = normalizePrefs(JSON.parse(localStorage.getItem(KEY) ?? '{}'))
+      current = readStoredPrefs(JSON.parse(localStorage.getItem(KEY) ?? '{}'))
     } catch {
       current = { ...DEFAULT_PREFS }
     }
@@ -83,14 +98,40 @@ export function getTerminalPrefs(): TerminalPrefs {
 
 export function setTerminalPrefs(patch: Partial<TerminalPrefs>): void {
   current = normalizePrefs({ ...getTerminalPrefs(), ...patch })
-  try { localStorage.setItem(KEY, JSON.stringify(current)) } catch { /* kept for this page only */ }
+  try { localStorage.setItem(KEY, JSON.stringify({ ...current, v: STORED_VERSION })) } catch { /* kept for this page only */ }
   for (const f of listeners) f(current)
 }
 
-/** Called with the new prefs on every change, from this page or another window. */
+/**
+ * Match app follows the app's theme: a change of data-theme or data-tone on
+ * <html> is a new palette for every pane, told as a change of prefs (a fresh
+ * object, so React state sees it). Watched only while someone listens.
+ */
+let watcher: MutationObserver | null = null
+let lastLook = ''
+function watchLook(): void {
+  if (watcher || typeof MutationObserver === 'undefined' || typeof document === 'undefined') return
+  lastLook = JSON.stringify(appLook())
+  watcher = new MutationObserver(() => {
+    const look = JSON.stringify(appLook())
+    if (look === lastLook) return
+    lastLook = look
+    const p = getTerminalPrefs()
+    if (p.theme !== MATCH_APP_THEME) return
+    current = { ...p }
+    for (const f of listeners) f(current)
+  })
+  watcher.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-tone'] })
+}
+
+/** Called with the new prefs on every change, from this page or another window, and when Match app's palette moves with the app. */
 export function subscribeTerminalPrefs(f: (p: TerminalPrefs) => void): () => void {
   listeners.add(f)
-  return () => { listeners.delete(f) }
+  watchLook()
+  return () => {
+    listeners.delete(f)
+    if (listeners.size === 0 && watcher) { watcher.disconnect(); watcher = null }
+  }
 }
 
 if (typeof window !== 'undefined') {
@@ -163,7 +204,7 @@ function canvasMeasure(): (font: string) => number {
  * headers, the padding. Set on <html> for the app's `.app-slab` (tokens.css).
  */
 export function applyTerminalChrome(p: TerminalPrefs, root: HTMLElement = document.documentElement): void {
-  const t = terminalTheme(p.theme)
+  const t = terminalTheme(p.theme, appLook(document.documentElement))
   root.style.setProperty('--app-term-bg', t.colors.background)
   root.style.setProperty('--app-term-border', t.colors.selectionBackground)
   root.setAttribute('data-term-tone', t.tone)

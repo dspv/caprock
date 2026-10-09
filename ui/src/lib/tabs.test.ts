@@ -32,6 +32,82 @@ describe('workspace tabs', () => {
     expect(back.activeProject).toBe('p1')
   })
 
+  it('keeps every project’s tabs in one strip: picking a project hides nothing', () => {
+    // The tester's day: a shell and an agent in one project, then another project.
+    let ws = run(
+      { type: 'open', target: { kind: 'shell', sessionId: 'sh' }, projectId: 'p1', title: 'shell' },
+      open('claude-1', 'p1'),
+      { type: 'project', projectId: 'p2' },
+    )
+    expect(ws.activeProject).toBe('p2')
+    expect(activeTab(ws)).toBeUndefined() // p2's empty state…
+    expect(ws.tabs.map((t) => t.title)).toEqual(['shell', 'claude-1']) // …with the strip intact
+    ws = workspaceReducer(ws, open('claude-2', 'p2'))
+    expect(ws.tabs.map((t) => [t.title, t.projectId])).toEqual([['shell', 'p1'], ['claude-1', 'p1'], ['claude-2', 'p2']])
+    // Back to p1: its tab last in front, and p2's tab is still in the strip.
+    ws = workspaceReducer(ws, { type: 'project', projectId: 'p1' })
+    expect(activeTab(ws)!.title).toBe('claude-1')
+    expect(ws.tabs).toHaveLength(3)
+    // A tab of another project, picked in the strip, brings its project along.
+    ws = workspaceReducer(ws, { type: 'activate', tabId: ws.tabs[0]!.id })
+    expect(ws.activeProject).toBe('p1')
+    expect(activeTab(ws)!.title).toBe('shell')
+  })
+
+  it('⌘1–9, cycling and moving work across the whole strip', () => {
+    let ws = run(open('a', 'p1'), open('b', 'p2'), open('c', 'p1'))
+    ws = workspaceReducer(ws, { type: 'activate-index', index: 1 })
+    expect([activeTab(ws)!.title, ws.activeProject]).toEqual(['b', 'p2'])
+    ws = workspaceReducer(ws, { type: 'cycle', delta: 1 })
+    expect([activeTab(ws)!.title, ws.activeProject]).toEqual(['c', 'p1'])
+    ws = workspaceReducer(ws, { type: 'cycle', delta: 1 })
+    expect(activeTab(ws)!.title).toBe('a')
+    ws = workspaceReducer(ws, { type: 'move', tabId: ws.tabs[2]!.id, toIndex: 0 })
+    expect(ws.tabs.map((t) => t.title)).toEqual(['c', 'a', 'b'])
+  })
+
+  it('closing the tab in front hands the front to its neighbour in the strip, of whatever project', () => {
+    let ws = run(open('a', 'p1'), open('b', 'p2'))
+    ws = workspaceReducer(ws, { type: 'close', tabId: activeTab(ws)!.id })
+    expect([activeTab(ws)!.title, ws.activeProject]).toEqual(['a', 'p1'])
+    expect(ws.activeByProject.p2).toBeUndefined()
+    // A remembered tab of a project not in front: the project remembers a sibling.
+    ws = run(open('x', 'p2'), open('y', 'p2'), open('a', 'p1'))
+    const y = ws.tabs[1]!
+    ws = workspaceReducer(ws, { type: 'close', tabId: y.id })
+    expect(ws.activeProject).toBe('p1')
+    expect(ws.activeByProject.p2).toBe(ws.tabs[0]!.id)
+  })
+
+  it('holds a pinned Dashboard tab that survives storage and closes', () => {
+    let ws = run(open('a'), { type: 'dashboard', open: true })
+    expect(ws.dashboard).toBe(true)
+    expect(workspaceReducer(ws, { type: 'dashboard', open: true })).toBe(ws)
+    expect(parseWorkspace(JSON.stringify(ws))).toEqual(ws)
+    ws = workspaceReducer(ws, { type: 'dashboard', open: false })
+    expect(ws.dashboard).toBeUndefined()
+    expect(ws.tabs).toHaveLength(1) // the terminals are untouched
+  })
+
+  it('loads a workspace stored by the per-project strips as it was', () => {
+    const pane = (id: string, sessionId: string) => ({ type: 'pane', id, target: { kind: 'session', sessionId } })
+    const stored = {
+      version: 1,
+      tabs: [
+        { id: 't1', projectId: 'p1', root: pane('q1', 's1'), focusedPaneId: 'q1', title: 'one' },
+        { id: 't2', projectId: 'p1', root: pane('q2', 's2'), focusedPaneId: 'q2', title: 'two' },
+        { id: 't3', projectId: 'p2', root: pane('q3', 's3'), focusedPaneId: 'q3', title: 'three' },
+      ],
+      activeByProject: { p1: 't2', p2: 't3' },
+      activeProject: 'p2',
+    }
+    const ws = parseWorkspace(JSON.stringify(stored))
+    expect(ws.tabs.map((t) => t.id)).toEqual(['t1', 't2', 't3'])
+    expect(activeTab(ws)!.id).toBe('t3')
+    expect(ws.dashboard).toBeUndefined()
+    expect(activeTab(workspaceReducer(ws, { type: 'project', projectId: 'p1' }))!.id).toBe('t2')
+  })
+
   it("closes every tab of one project, splits included, and leaves the others' alone", () => {
     let ws = run(open('a', 'p1'), open('b', 'p1'), open('c', 'p2'))
     ws = workspaceReducer(ws, { type: 'activate', tabId: tabsOf(ws, 'p1')[0]!.id })

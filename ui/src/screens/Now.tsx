@@ -59,7 +59,15 @@ export function recentEnough(s: { last_event_at?: number | null }, now: number):
 
 const PAGE = 200
 
-export function NowScreen() {
+/**
+ * `inApp`: shown in the desktop app's Dashboard tab, beside a sidebar that
+ * already lists every project and its sessions. There the screen keeps its
+ * figures — Today, plan limits, the pulse, all time, at a glance, the feed —
+ * and leaves out the projects panel and the session cards, which repeated the
+ * sidebar (tester, 2026-10-09). Hidden, not removed: the browser dashboard
+ * and the phone still show both.
+ */
+export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
   const [showEnded, setShowEnded] = useState(false)
   // Which agent this whole screen is about. It reaches every panel, so the
   // figure at the top and the rows underneath always answer the same question
@@ -338,7 +346,7 @@ export function NowScreen() {
       <AtAGlancePanel />
 
       {/* What is happening (left) beside what it costs (right). */}
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className={`grid gap-3 ${inApp ? '' : 'lg:grid-cols-2'}`}>
         <ActivityFeed
           sessions={list}
           now={now}
@@ -350,7 +358,7 @@ export function NowScreen() {
             )
           }
         />
-        <ProjectsPanel sessions={list} agent={agent} />
+        {!inApp && <ProjectsPanel sessions={list} agent={agent} />}
       </div>
 
       {sessions.error && !sessions.data && (
@@ -384,6 +392,7 @@ export function NowScreen() {
         * The cards now flow through a single grid in the same order, with the
         * state label riding on the first card of each run. Grouping survives —
         * it just stops reserving a row per group. */}
+      {!inApp && (<>
       <SessionGrid
         groups={[
           { label: 'Active', items: working },
@@ -424,6 +433,7 @@ export function NowScreen() {
         )}
         {sessions.loadedAt > 0 && <span className="num ml-auto">refreshed {fmtAgo(sessions.loadedAt, now)}</span>}
       </div>
+      </>)}
       {spawning && (
         <SpawnDialog
           available={status.data?.claude_available ?? false}

@@ -3,29 +3,30 @@
  * status strip — what the desktop app opens on (.ai/21-app.md § What the
  * user sees). Served at `#/app` or `?app=1`, and inside the Tauri shell.
  *
- * The dashboard's screens open inside it at their usual hash routes; the
- * terminals stay mounted behind them, so switching back never repaints from
- * nothing and never drops a socket that was in use.
+ * One tab strip holds every open tab of every project, and the dashboard's
+ * screens open in a Dashboard tab pinned at its left, at their usual hash
+ * routes; the terminals stay mounted behind them, so switching back is one
+ * click, never repaints from nothing and never drops a socket that was in use.
  */
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { api, ApiError, errText, type SessionSummary } from '@/lib/api'
 import { APP_ROUTE, isMacPlatform, isTauri, isWorkspaceHash } from '@/lib/appmode'
 import { FIND_EVENT, matchAppShortcut, type AppCommand } from '@/lib/appkeys'
 import { parseHash } from '@/lib/router'
 import { NotSupportedError, projectsApi, type Project } from '@/lib/projects'
-import { buildSidebar, dotOf, sessionTitle, type InboxItem, type ProjectNode, type SessionNode, type WorktreeNode } from '@/lib/sidebar'
+import { buildSidebar, dotOf, OTHER_FOLDERS_ID, sessionTitle, type InboxItem, type ProjectNode, type WorktreeNode } from '@/lib/sidebar'
 import {
   activeTab,
   focusedLeaf,
   leaves,
   loadWorkspace,
   saveWorkspace,
-  tabsOf,
   workspaceReducer,
   type PaneLeaf,
   type Tab,
   type TabTarget,
 } from '@/lib/tabs'
+import { tabLabels } from '@/lib/tablabels'
 import { baseName, fileKey } from '@/lib/files'
 import { useWorkspaceData } from '@/lib/useWorkspaceData'
 import { useShellTray } from '@/lib/tray'
@@ -48,7 +49,7 @@ import { FilePicker } from '@/components/FilePicker'
 import { NewAgentSheet } from '@/components/NewAgentSheet'
 import { AddProjectSheet, splitPath } from '@/components/AddProjectSheet'
 import { CommandPalette, type PaletteItem } from '@/components/CommandPalette'
-import { BranchIcon, DashboardIcon, ExternalIcon, FileIcon, FolderIcon, FolderPlusIcon, InspectorIcon, PlusIcon, SearchIcon, SettingsIcon, SparkIcon, TerminalIcon } from '@/components/AppIcons'
+import { BranchIcon, ChatIcon, DashboardIcon, ExternalIcon, FileIcon, FolderIcon, FolderPlusIcon, InspectorIcon, PlusIcon, SearchIcon, SettingsIcon, SparkIcon, TerminalIcon } from '@/components/AppIcons'
 import type { PaneStatus } from '@/components/TerminalPane'
 import { EditorMenu, type EditorMenuAt } from '@/components/EditorMenu'
 import { joinPath, preferredName, useEditors } from '@/lib/editors'
@@ -229,7 +230,14 @@ export function AppShell() {
     ? ws.activeProject
     : model.projects[0]?.project.id ?? ''
   const shownWs = activeProjectId === ws.activeProject ? ws : { ...ws, activeProject: activeProjectId }
-  const tabs = tabsOf(shownWs, activeProjectId)
+  // The strip shows every open tab of every project — a tab never leaves it
+  // because another project was picked — and the sidebar lists the current
+  // project's under the same names (lib/tablabels.ts).
+  const tabs = ws.tabs
+  const labels = useMemo(
+    () => tabLabels(ws.tabs, sessionsById, data.permissions, (id) => projectsById.get(id)?.branch),
+    [ws.tabs, sessionsById, data.permissions, projectsById],
+  )
   const current = activeTab(shownWs)
   const focused = current ? focusedLeaf(current).target : undefined
   const focusedSession = focused ? sessionsById.get(focused.sessionId) : undefined
@@ -249,6 +257,27 @@ export function AppShell() {
   const showWorkspace = useCallback(() => {
     if (!isWorkspaceHash(location.hash)) location.hash = APP_ROUTE
   }, [])
+
+  // The Dashboard tab: in the strip from the moment a dashboard screen is
+  // shown until it is closed, and it brings back the screen last shown in it.
+  const lastDashboard = useRef('#/')
+  if (!workspaceShown) lastDashboard.current = hash
+  useEffect(() => {
+    if (!workspaceShown && !ws.dashboard) dispatch({ type: 'dashboard', open: true })
+  }, [workspaceShown, ws.dashboard])
+  const dashboardRoute = parseHash(workspaceShown ? lastDashboard.current : hash)
+  const closeDashboard = useCallback(() => {
+    dispatch({ type: 'dashboard', open: false })
+    lastDashboard.current = '#/'
+    showWorkspace()
+  }, [showWorkspace])
+  const projectName = useCallback((id: string) => projectsById.get(id)?.name, [projectsById])
+  /** A tab picked in the strip or in the sidebar's list. */
+  const onActivateTab = useCallback((id: string) => {
+    setChangesView(null)
+    dispatch({ type: 'activate', tabId: id })
+    showWorkspace()
+  }, [showWorkspace])
 
   const openTab = useCallback((target: TabTarget, projectId: string, title: string) => {
     setChangesView(null)
@@ -278,7 +307,6 @@ export function AppShell() {
     openTab({ kind: s.kind === 'shell' ? 'shell' : 'session', sessionId: s.session_id }, projectId, sessionTitle(s))
   }, [openSessions, openTab])
 
-  const onOpenNode = useCallback((n: SessionNode, projectId: string) => openSession(n.session, projectId), [openSession])
   const onOpenInbox = useCallback((i: InboxItem) => openSession(i.session, i.projectId), [openSession])
   const jumpToWaiting = useCallback(() => {
     const item = nextWaiting(model.inbox, focused?.sessionId)
@@ -326,16 +354,18 @@ export function AppShell() {
       .catch((e) => setToast(`The project is added, but the agent did not start: ${errText(e)}`))
   }, [refresh, openTab])
   const newShell = useCallback(async (projectId?: string, cwd?: string, split?: 'row' | 'column') => {
-    const p: Project | undefined = projectsById.get(projectId ?? activeProjectId)
-    if (!p || (!p.root && !cwd)) { setSheet({ kind: 'project' }); return }
+    const pid = projectId ?? activeProjectId
+    const p: Project | undefined = projectsById.get(pid)
+    // A folder is enough: a quick chat's tab has no project, but its folder takes a shell.
+    if (!cwd && !p?.root) { setSheet({ kind: 'project' }); return }
     try {
-      const projectNumber = Number(p.id)
+      const projectNumber = Number(p?.id)
       const req = source === 'api' && !cwd && Number.isInteger(projectNumber)
         ? { project_id: projectNumber, cols: 120, rows: 32 }
-        : { cwd: cwd ?? p.root, cols: 120, rows: 32 }
+        : { cwd: cwd ?? p!.root, cols: 120, rows: 32 }
       const shell = await projectsApi.startShell(req)
-      if (split) openSplit({ kind: 'shell', sessionId: shell.id }, p.id, 'shell', split)
-      else openTab({ kind: 'shell', sessionId: shell.id }, p.id, 'shell')
+      if (split) openSplit({ kind: 'shell', sessionId: shell.id }, pid, 'shell', split)
+      else openTab({ kind: 'shell', sessionId: shell.id }, pid, 'shell')
       refresh()
     } catch (e) {
       setToast(e instanceof NotSupportedError ? `${e.message} Start an agent with ⇧⌘N meanwhile.` : `Could not start a shell: ${errText(e)}`)
@@ -369,7 +399,21 @@ export function AppShell() {
   const onNewShell = useCallback((projectId?: string, cwd?: string) => { void newShell(projectId, cwd) }, [newShell])
   const onAddProject = useCallback(() => setSheet({ kind: 'project' }), [])
   const onPalette = useCallback(() => setSheet({ kind: 'palette' }), [])
-  const onDashboard = useCallback(() => { location.hash = '#/' }, [])
+  const onDashboard = useCallback(() => { location.hash = lastDashboard.current || '#/' }, [])
+  /**
+   * A Claude session that needs no folder — the Now screen's Quick chat — in
+   * a tab of the strip. The daemon finds it a home in its data directory;
+   * it shows under Other folders, its tab marked "no project".
+   */
+  const onQuickChat = useCallback(async () => {
+    try {
+      const { session_id } = await api.spawn({ chat: true })
+      openTab({ kind: 'session', sessionId: session_id }, OTHER_FOLDERS_ID, 'Quick chat')
+      refresh()
+    } catch (e) {
+      setToast(`Could not start a quick chat: ${errText(e)}`)
+    }
+  }, [openTab, refresh])
   const onSettings = useCallback(() => { location.hash = '#/settings' }, [])
   const onPaneStatus = useCallback((sessionId: string, s: PaneStatus) => setPaneStatus((cur) => ({ ...cur, [sessionId]: s })), [])
   const onFocusPane = useCallback((tabId: string, paneId: string) => dispatch({ type: 'focus-pane', tabId, paneId }), [])
@@ -394,6 +438,7 @@ export function AppShell() {
       // In the folder of the session in front — its worktree, not the project's root.
       case 'new-shell': if (workspaceShown && current) onNewShell(current.projectId, focusedSession?.cwd || undefined); else onNewShell(); break
       case 'new-agent': onNewAgent(); break
+      case 'quick-chat': void onQuickChat(); break
       case 'add-project': onAddProject(); break
       case 'detach-tab': if (workspaceShown) detach(); break
       case 'palette': onPalette(); break
@@ -410,7 +455,7 @@ export function AppShell() {
       case 'find': if (workspaceShown) window.dispatchEvent(new Event(FIND_EVENT)); break
       case 'settings': onSettings(); break
     }
-  }, [onNewShell, onNewAgent, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings])
+  }, [onNewShell, onNewAgent, onQuickChat, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings])
 
   // The app's keys, before anything else on the page sees them. The terminal
   // already lets them through (xtermInput), and they are never its keys.
@@ -517,6 +562,7 @@ export function AppShell() {
     items.push(
       { id: 'a-agent', group: 'Actions', label: 'New agent', hint: '⇧⌘N', icon: <PlusIcon size={14} />, run: () => onNewAgent() },
       { id: 'a-shell', group: 'Actions', label: 'New shell', hint: '⌘T', icon: <TerminalIcon size={14} />, run: () => onNewShell() },
+      { id: 'a-quick-chat', group: 'Actions', label: 'Quick chat', detail: 'a Claude session without picking a folder', hint: '⌥⌘N', icon: <ChatIcon size={14} />, run: () => { void onQuickChat() } },
       { id: 'a-project', group: 'Actions', label: 'Add a project', hint: '⌘O', icon: <FolderPlusIcon size={14} />, run: onAddProject },
       { id: 'a-inspector', group: 'Actions', label: prefs.inspector ? 'Hide the inspector' : 'Show the inspector', hint: '⌘I', icon: <InspectorIcon size={14} />, run: () => run({ kind: 'inspector' }) },
       ...(fileScope ? [{ id: 'a-open-file', group: 'Actions' as const, label: 'Open file…', detail: fileScope.title, icon: <FileIcon size={14} />, run: () => setSheet({ kind: 'files', ...fileScope }) }] : []),
@@ -583,7 +629,7 @@ export function AppShell() {
       }
     }
     return items
-  }, [ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, current, onNewAgent, onNewShell, onAddProject, onDashboard, toggleTheme, onSettings, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges, fileScope, focused?.kind])
+  }, [ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, current, onNewAgent, onNewShell, onQuickChat, onAddProject, onDashboard, toggleTheme, onSettings, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges, fileScope, focused?.kind])
 
   // Every session the daemon knows, by what it was about; one that is open or
   // live is already in the list above under its own id.
@@ -682,19 +728,22 @@ export function AppShell() {
               model={model}
               source={data.source}
               activeProjectId={activeProjectId}
-              activeSessionId={focused?.sessionId}
               dashboardActive={!workspaceShown}
+              tabs={ws.tabs}
+              tabLabels={labels}
+              activeTabId={current?.id}
+              onActivateTab={onActivateTab}
+              onOpenLive={openSession}
               onSelectProject={onSelectProject}
-              onOpenSession={onOpenNode}
               onOpenInbox={onOpenInbox}
               onNewAgent={onNewAgent}
               onNewShell={onNewShell}
+              onQuickChat={onQuickChat}
               onFolderMenu={editors ? onFolderMenu : undefined}
               onAddProject={onAddProject}
               onDashboard={onDashboard}
               onSettings={onSettings}
               onPalette={onPalette}
-              onOpenChanges={data.source === 'api' ? onOpenChanges : undefined}
               summary={data.summary}
               loaded={data.loaded}
               onRoute={onRoute}
@@ -707,15 +756,23 @@ export function AppShell() {
           </div>
         )}
         <main className="flex min-w-0 flex-1 flex-col bg-[var(--app-chrome-bg)]">
-          {workspaceShown && (
-            <TabStrip
+          <TabStrip
               tabs={tabs}
-              activeTabId={current?.id}
+              activeTabId={workspaceShown ? current?.id : undefined}
+              labels={labels}
+              projectName={projectName}
+              dashboard={ws.dashboard || !workspaceShown ? {
+                active: !workspaceShown,
+                label: dashboardRoute.name === 'settings' ? 'Settings' : 'Dashboard',
+                onActivate: onDashboard,
+                onClose: closeDashboard,
+              } : undefined}
+              paneTools={workspaceShown}
               sessions={sessionsById}
               permissions={data.permissions}
               inspectorOpen={prefs.inspector}
               sidebarOpen={prefs.sidebar}
-              onActivate={(id) => { setChangesView(null); dispatch({ type: 'activate', tabId: id }) }}
+              onActivate={onActivateTab}
               onDetach={(id) => dispatch({ type: 'close', tabId: id })}
               onMove={(id, to) => dispatch({ type: 'move', tabId: id, toIndex: to })}
               onNewAgent={() => onNewAgent()}
@@ -724,7 +781,6 @@ export function AppShell() {
               chatOpen={showChat}
               onToggleChat={focusedIsAgent ? toggleChat : undefined}
             />
-          )}
           <div className="flex min-h-0 flex-1">
             <div className="relative min-w-0 flex-1">
               <div className="absolute inset-0 flex flex-col" hidden={!workspaceShown}>
@@ -786,11 +842,9 @@ export function AppShell() {
                 )}
               </div>
               {!workspaceShown && (
-                <div
-                  className={`app-scroll absolute inset-0 overflow-y-auto bg-bg ${prefs.sidebar ? '' : 'pt-[var(--caprock-titlebar-inset,0px)]'}`}
-                >
+                <div className="app-scroll absolute inset-0 overflow-y-auto bg-bg">
                   <Suspense fallback={null}>
-                    <Dashboard route={parseHash(hash)} />
+                    <Dashboard route={parseHash(hash)} inApp />
                   </Suspense>
                 </div>
               )}

@@ -8,9 +8,42 @@ beforeEach(() => {
 const load = () => import('./termprefs')
 
 describe('terminal preferences', () => {
-  it('start at what the app terminal looked like before the setting existed', async () => {
+  it('start on Match app, in the font and size the app terminal always had', async () => {
     const m = await load()
-    expect(m.getTerminalPrefs()).toEqual({ theme: 'caprock', font: 'jetbrains', fontSize: 13, lineHeight: 1.2, cursor: 'bar' })
+    expect(m.getTerminalPrefs()).toEqual({ theme: 'match', font: 'jetbrains', fontSize: 13, lineHeight: 1.2, cursor: 'bar' })
+  })
+
+  it('read a pre-Match-app Caprock as the untouched default, and a choice saved since as a choice', async () => {
+    localStorage.setItem('caprock.app.terminal', JSON.stringify({ theme: 'caprock', font: 'menlo', fontSize: 15 }))
+    let m = await load()
+    expect(m.getTerminalPrefs()).toMatchObject({ theme: 'match', font: 'menlo', fontSize: 15 })
+    // Any other palette was picked by hand: it stays.
+    vi.resetModules()
+    localStorage.setItem('caprock.app.terminal', JSON.stringify({ theme: 'tokyo-night' }))
+    m = await load()
+    expect(m.getTerminalPrefs().theme).toBe('tokyo-night')
+    // Caprock chosen now is saved as chosen and kept.
+    m.setTerminalPrefs({ theme: 'caprock' })
+    vi.resetModules()
+    m = await load()
+    expect(m.getTerminalPrefs().theme).toBe('caprock')
+  })
+
+  it('tell subscribers when the app’s theme moves Match app, and only then', async () => {
+    const m = await load()
+    const heard: string[] = []
+    const off = m.subscribeTerminalPrefs((p) => heard.push(m.xtermOptions(p, 'monospace').theme.background))
+    document.documentElement.setAttribute('data-theme', 'light')
+    document.documentElement.setAttribute('data-tone', 'paper')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(heard).toEqual(['#f4ecdd'])
+    m.setTerminalPrefs({ theme: 'solarized-dark' })
+    document.documentElement.setAttribute('data-theme', 'dark')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(heard).toEqual(['#f4ecdd', '#002b36'])
+    off()
+    document.documentElement.removeAttribute('data-theme')
+    document.documentElement.removeAttribute('data-tone')
   })
 
   it('repair stored values one by one instead of dropping them all', async () => {
