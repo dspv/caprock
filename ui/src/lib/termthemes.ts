@@ -5,11 +5,16 @@
  *
  * Licences, checked 2026-10-06 — every palette here is MIT:
  *
- * - **Caprock** and **Paper** are ours. Graphite is the dashboard terminal's
- *   ground and ink (TERMINAL_THEME in components/Terminal.tsx, asserted equal
- *   in termthemes.test.ts) with a warm 16-colour set; Paper is the light
- *   theme's cream (tokens.css, `[data-tone="paper"]`) with ink dark enough to
- *   read on it.
+ * - **Caprock** and **Paper** are ours. Caprock is the dashboard terminal's
+ *   ink (TERMINAL_THEME in components/Terminal.tsx, asserted equal in
+ *   termthemes.test.ts) on the dark theme's panel, the colour of the tab
+ *   strip around it, with a warm 16-colour set; Paper is the light theme's
+ *   cream (tokens.css, `[data-tone="paper"]`) with ink dark enough to read on
+ *   it.
+ * - **Match app** is not a palette but a choice between the two: Caprock in
+ *   the dark theme, Paper on the light theme's panel colour in the light one,
+ *   so the terminal reads as part of the window rather than a window on top
+ *   of it (tester, 2026-10-09). It is the default.
  * - **Catppuccin Mocha** — github.com/catppuccin/alacritty (catppuccin-mocha.toml), MIT.
  * - **Tokyo Night** — github.com/enkia/tokyo-night-vscode-theme, MIT. Bright
  *   black is lifted from its #363b54 (the same as black) so dim text shows.
@@ -49,12 +54,21 @@ export interface TerminalTheme {
   colors: TerminalColors
 }
 
-/** The app terminal's palette since WP-04, and still the default. */
+/**
+ * The panel colour of each app palette (`--color-panel` in design/tokens.css,
+ * THEME_COLORS in lib/theme.ts): the tab strip's ground, so a terminal on it
+ * has no edge.
+ */
+export const APP_PANEL = { dark: '#211f1d', paper: '#f4ecdd', white: '#ffffff' } as const
+
+/** The app terminal's dark palette since WP-04; what Match app shows in the dark theme. */
 export const APP_TERMINAL_THEME: TerminalColors = {
-  background: '#1b1b1a',
+  // The dark panel, not the page's #1b1b1a: one shade darker than the strip
+  // above it, the terminal read as a window laid over the app.
+  background: APP_PANEL.dark,
   foreground: '#e8e6e2',
   cursor: '#feb157',
-  cursorAccent: '#1b1b1a',
+  cursorAccent: APP_PANEL.dark,
   selectionBackground: '#4a4640',
   black: '#2b2926',
   red: '#e8786d',
@@ -74,10 +88,14 @@ export const APP_TERMINAL_THEME: TerminalColors = {
   brightWhite: '#f4f0e8',
 }
 
-export const DEFAULT_TERMINAL_THEME = 'caprock'
+/** The choice that follows the app's theme rather than naming a palette. */
+export const MATCH_APP_THEME = 'match'
+
+/** What a viewer who never chose sees. */
+export const DEFAULT_TERMINAL_THEME = MATCH_APP_THEME
 
 export const TERMINAL_THEMES: readonly TerminalTheme[] = [
-  { id: DEFAULT_TERMINAL_THEME, name: 'Caprock', tone: 'dark', colors: APP_TERMINAL_THEME },
+  { id: 'caprock', name: 'Caprock', tone: 'dark', colors: APP_TERMINAL_THEME },
   {
     id: 'paper',
     name: 'Paper',
@@ -195,9 +213,42 @@ export const TERMINAL_THEMES: readonly TerminalTheme[] = [
   },
 ]
 
-/** The theme with this id, or the default for an id no longer offered. */
-export function terminalTheme(id: string): TerminalTheme {
-  return TERMINAL_THEMES.find((t) => t.id === id) ?? TERMINAL_THEMES[0]!
+/** What the app shows: its theme and, when light, which light palette. */
+export interface AppLook {
+  theme: 'dark' | 'light'
+  tone: 'paper' | 'white'
+}
+
+/** The app's look, read off <html> (lib/theme.ts sets data-theme and data-tone). */
+export function appLook(root: HTMLElement | null = typeof document === 'undefined' ? null : document.documentElement): AppLook {
+  return {
+    theme: root?.getAttribute('data-theme') === 'light' ? 'light' : 'dark',
+    tone: root?.getAttribute('data-tone') === 'white' ? 'white' : 'paper',
+  }
+}
+
+/** Every choice Settings → Terminal offers: Match app, then the palettes. */
+export const TERMINAL_CHOICES: readonly { id: string; name: string }[] = [
+  { id: MATCH_APP_THEME, name: 'Match app' },
+  ...TERMINAL_THEMES.map((t) => ({ id: t.id, name: t.name })),
+]
+
+/** Whether an id is something a viewer can choose. */
+export function isTerminalChoice(id: string): boolean {
+  return TERMINAL_CHOICES.some((c) => c.id === id)
+}
+
+/**
+ * The palette a choice shows. Match app, and an id no longer offered, follow
+ * the app: Caprock when it is dark, Paper on the light panel when it is light.
+ */
+export function terminalTheme(id: string, look: AppLook = appLook()): TerminalTheme {
+  const named = TERMINAL_THEMES.find((t) => t.id === id)
+  if (named) return named
+  if (look.theme === 'dark') return TERMINAL_THEMES[0]!
+  const paper = TERMINAL_THEMES.find((t) => t.id === 'paper')!
+  const ground = APP_PANEL[look.tone]
+  return { id: `${MATCH_APP_THEME}-${look.tone}`, name: 'Match app', tone: 'light', colors: { ...paper.colors, background: ground, cursorAccent: ground } }
 }
 
 /** `a` mixed toward `b` by t (0–1), as #rrggbb — what xterm's decorations accept. */

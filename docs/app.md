@@ -53,9 +53,20 @@ others. Installing it: [install-app.md](install-app.md).
   are open. A project shows in the list again while something runs or
   waits in it, or while it is the one in front, hidden or not; pinned
   projects never go quiet.
-- **Dashboard.** At the bottom of the sidebar, *Dashboard* opens Now, Cost,
-  Lifetime and the other screens inside the window; the sliders beside it open Settings (⌘,), where the
-  app puts how new agents start, appearance, terminal and editor first.
+- **Dashboard.** At the bottom of the sidebar, *Dashboard* (⇧⌘D) opens Now,
+  Cost, Lifetime and the other screens in a *Dashboard* tab pinned at the
+  left of the tab strip; your terminals stay in the strip beside it, one click
+  away, and the tab brings back the screen you left it on until you close it.
+  The sliders beside it open Settings (⌘,) in the same tab, where the app puts
+  how new agents start, appearance, terminal and editor first. In the app,
+  Now keeps its figures — today, plan limits, the pulse, all time, at a
+  glance, the activity feed — and leaves the session cards and the projects
+  panel to the sidebar, which lists the same sessions; the browser dashboard
+  shows both.
+- **Quick chat.** *Quick chat* under *New agent* (⌥⌘N, or the palette) asks
+  Claude something without picking a folder: a Claude Code session in
+  Caprock's data directory opens in a tab marked *no project*, and sits under
+  *Other folders* in the sidebar.
 - **A past session** opens on its chat, with one button: *Resume in a tab*
   (*Branch into a tab* while it still runs elsewhere) and the permission mode
   beside it. Continuing in another agent, opening it in your own terminal and
@@ -82,10 +93,14 @@ others. Installing it: [install-app.md](install-app.md).
   on. *Continue* carries an ended one on in a new tab, in the permission mode
   it was last running in; *Open* goes to a running one. The sidebar lists only
   what is running, so this is where yesterday's work is.
-- **Tabs.** One strip of terminal tabs per project, an agent session or a
-  shell each. Tabs come back when you reopen the app. Closing a tab (⌘W)
-  never stops its session; *Stop the session…* in the inspector does, after
-  asking.
+- **Tabs.** One strip holds every open tab of every project, in the order
+  you opened them, an agent session, a shell or a file each; each tab names
+  its project beside a dot in that project's colour. Picking a project in the
+  sidebar brings its last tab to the front, or shows its empty page when it
+  has none, and never hides another project's tabs. ⌘1–9, ⌃Tab and dragging a
+  tab work along the whole strip. Tabs come back when you reopen the app.
+  Closing a tab (⌘W) never stops its session, and the tab beside it comes to
+  the front; *Stop the session…* in the inspector stops one, after asking.
 - **Split panes.** ⌘E opens a new shell beside the terminal in front, ⇧⌘E
   below it; ⇧Enter on a session in the palette opens it there. Up to four
   panes a tab. Click a pane or press ⌘[ ⌘] to move between them; drag the
@@ -157,12 +172,15 @@ others. Installing it: [install-app.md](install-app.md).
   are installed; the palette and the inspector have *Open in …* too.
   Settings → *Editor* picks the default. Only this computer can do this; a
   paired phone cannot open an editor here.
-- **Terminal look.** Settings → *Terminal*: the colours (Caprock, Paper,
-  Catppuccin Mocha, Tokyo Night, Solarized Dark), the font (JetBrains Mono,
+- **Terminal look.** Settings → *Terminal*: the colours (*Match app*,
+  Caprock, Paper, Catppuccin Mocha, Tokyo Night, Solarized Dark), the font (JetBrains Mono,
   or SF Mono, Menlo, Fira Code and other monospace fonts you have), size,
   line height and cursor, with a preview. Every open terminal changes as you
-  choose. The defaults match the JetBrains IDE terminal: JetBrains Mono,
-  13 px, line height 1.2, no ligatures.
+  choose. *Match app*, the default, follows the app's theme: Caprock in the
+  dark theme, Paper on the light window's own colour in the light one, so the
+  terminal reads as part of the window; a palette you pick stays whatever the
+  app shows. The font defaults match the JetBrains IDE terminal: JetBrains
+  Mono, 13 px, line height 1.2, no ligatures.
 - **Permission mode.** A new install starts sessions in *Accept edits · asks
   first*: the agent edits files on its own and asks before running a command.
   *Bypass · never asks* is one pick away in the New agent sheet, and the mode
@@ -187,6 +205,7 @@ On macOS:
 | ----------- | --------------------------------------- |
 | ⌘T          | New shell in the folder of the tab      |
 | ⇧⌘N         | New agent session                       |
+| ⌥⌘N         | Quick chat: Claude without a folder     |
 | ⌘O          | Add a project (folder, new, clone)      |
 | ⌘1–8, ⌘9    | A tab by position; the last tab         |
 | ⌃Tab, ⇧⌘[ ] | Next and previous tab                   |
@@ -199,10 +218,11 @@ On macOS:
 | ⌘,          | Settings                                |
 | ⌘I          | Agent cockpit (the inspector)           |
 | ⌘\          | Hide or show the sidebar                |
-| ⇧⌘D         | Dashboard                               |
+| ⇧⌘D         | Dashboard tab, and back                 |
 | ⌘R          | Reload the window (View → Reload)       |
 
-On Windows and Linux each is Ctrl+Shift with the same letter; Ctrl+Shift+C
+On Windows and Linux each is Ctrl+Shift with the same letter (Quick chat is
+Ctrl+Alt+Shift+N); Ctrl+Shift+C
 and Ctrl+Shift+V stay the terminal's copy and paste. Reload is F5 there:
 Ctrl+R stays the shell's history search, and F5 in a focused terminal goes
 to the program running in it. The terminal's own keys (Ctrl+C, Ctrl+W,

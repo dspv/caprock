@@ -1,7 +1,8 @@
 /**
- * The tab strip of the project in front, and every open terminal behind it
- * (WP-04). Terminals of every project stay mounted — switching a tab or a
- * project shows one that is already painted — and each pane tree renders
+ * The one tab strip — every open tab of every project, each marked with its
+ * project, behind a pinned Dashboard tab when that is open — and every open
+ * terminal behind it (WP-04). Terminals of every project stay mounted —
+ * switching a tab or a project shows one that is already painted — and each pane tree renders
  * through one recursive view: a split tab (F15) shows its panes side by side
  * or stacked, each with a header, behind dividers that drag or take arrows.
  */
@@ -11,12 +12,39 @@ import { leaves, namingLeaf, type PaneLeaf, type PaneNode, type PaneSplit, type 
 import { baseName } from '@/lib/files'
 import { dotOf, sessionTitle } from '@/lib/sidebar'
 import { TerminalPane, type PaneStatus } from './TerminalPane'
-import { AgentGlyph, ChatIcon, CloseIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
+import { AgentGlyph, ChatIcon, CloseIcon, DashboardIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
 import { StatusDot } from './ProjectRow'
 
+/** The pinned Dashboard tab: the dashboard's screens, in the strip with the terminals. */
+export interface DashboardTab {
+  /** It is the tab in front. */
+  active: boolean
+  /** Its label: "Dashboard", or the screen when that is not one of the dashboard's own (Settings). */
+  label: string
+  onActivate: () => void
+  onClose: () => void
+}
+
+/**
+ * A project's mark on its tabs: a hue from its id, muted, so tabs of one
+ * project share a colour without the strip turning into a rainbow.
+ */
+export function projectHue(projectId: string): number {
+  let h = 0
+  for (let i = 0; i < projectId.length; i++) h = (h * 31 + projectId.charCodeAt(i)) >>> 0
+  return h % 360
+}
+
 export interface TabStripProps {
+  /** Every open tab of every project, in strip order. */
   tabs: Tab[]
   activeTabId?: string
+  /** The name each tab's project chip shows; a tab with none shows no chip. */
+  projectName?: (projectId: string) => string | undefined
+  /** The Dashboard tab, when it is open. */
+  dashboard?: DashboardTab
+  /** The terminals are in front, so the chat and inspector buttons apply. */
+  paneTools?: boolean
   sessions: ReadonlyMap<string, SessionSummary>
   permissions: ReadonlySet<string>
   inspectorOpen: boolean
@@ -71,9 +99,36 @@ export function TabStrip(props: TabStripProps) {
       data-tauri-drag-region
       role="tablist"
       aria-label="Terminals"
-      className={`flex h-[40px] shrink-0 items-end gap-0.5 border-b border-[var(--app-hairline)] bg-[var(--app-chrome-bg)] pr-2 ${props.sidebarOpen ? 'pl-2' : 'pl-[max(8px,calc(var(--caprock-traffic-lights-inset,0px)+2px))]'}`}
+      className={`app-strip flex h-[40px] shrink-0 items-end gap-0.5 bg-[var(--app-chrome-bg)] pr-2 ${props.sidebarOpen ? 'pl-2' : 'pl-[max(8px,calc(var(--caprock-traffic-lights-inset,0px)+2px))]'}`}
     >
       <div className="flex min-w-0 flex-1 items-end gap-0.5 overflow-hidden" data-tauri-drag-region>
+        {props.dashboard && (
+          <div
+            role="tab"
+            tabIndex={props.dashboard.active ? 0 : -1}
+            aria-selected={props.dashboard.active}
+            data-dashboard-tab
+            onClick={props.dashboard.onActivate}
+            onAuxClick={(e) => { if (e.button === 1) props.dashboard!.onClose() }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') props.dashboard!.onActivate() }}
+            title={`${props.dashboard.label} — ⇧⌘D`}
+            className={`group relative flex h-[32px] shrink-0 cursor-default select-none items-center gap-2 rounded-t-[9px] pl-3 pr-1.5 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
+              props.dashboard.active ? 'app-tab-front bg-bg text-fg' : 'text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'
+            }`}
+          >
+            <DashboardIcon size={13} className="text-fg-faint" />
+            <span>{props.dashboard.label}</span>
+            <button
+              type="button"
+              aria-label={`Close tab ${props.dashboard.label}`}
+              title="Close the dashboard tab"
+              onClick={(e) => { e.stopPropagation(); props.dashboard!.onClose() }}
+              className={`flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${props.dashboard.active ? '' : 'invisible group-hover:visible'}`}
+            >
+              <CloseIcon size={12} />
+            </button>
+          </div>
+        )}
         {tabs.map((t, i) => {
           const leaf = namingLeaf(t)
           // A file tab is named by the file; its tooltip is the whole path.
@@ -85,6 +140,7 @@ export function TabStrip(props: TabStripProps) {
             ? baseName(file)
             : `${s ? sessionTitle(s) : t.title || (isShell ? 'shell' : 'session')}${panes > 1 ? ` +${panes - 1}` : ''}`
           const active = t.id === activeTabId
+          const project = props.projectName?.(t.projectId)
           return (
             <div
               key={t.id}
@@ -100,9 +156,10 @@ export function TabStrip(props: TabStripProps) {
               }}
               onAuxClick={(e) => { if (e.button === 1) props.onDetach(t.id) }}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') props.onActivate(t.id) }}
-              title={`${file ?? title}${i < 9 ? ` — ⌘${i + 1}` : ''}`}
-              className={`group relative flex h-[32px] min-w-[112px] max-w-[232px] flex-1 basis-[180px] cursor-default select-none items-center gap-2 rounded-t-[9px] pl-3 pr-1.5 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
-                active ? (file !== undefined ? 'bg-bg text-fg' : 'app-slab text-fg') : 'text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'
+              title={`${file ?? title}${project ? ` · ${project}` : ''}${i < 9 ? ` — ⌘${i + 1}` : ''}`}
+              data-project={t.projectId}
+              className={`group relative flex h-[32px] min-w-[112px] max-w-[260px] flex-1 basis-[200px] cursor-default select-none items-center gap-2 rounded-t-[9px] pl-3 pr-1.5 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
+                active ? (file !== undefined ? 'app-tab-front bg-bg text-fg' : 'app-tab-front app-slab text-fg') : 'text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'
               } ${dragging === t.id ? 'opacity-60' : ''}`}
             >
               {file !== undefined ? (
@@ -114,6 +171,12 @@ export function TabStrip(props: TabStripProps) {
                 </>
               )}
               <span className="min-w-0 flex-1 truncate">{title}</span>
+              {project && (
+                <span data-project-chip className="flex min-w-0 max-w-[10ch] shrink items-center gap-1 text-[11px] text-fg-faint">
+                  <span aria-hidden className="h-[6px] w-[6px] shrink-0 rounded-full" style={{ background: `hsl(${projectHue(t.projectId)} 42% 56%)` }} />
+                  <span className="truncate">{project}</span>
+                </span>
+              )}
               <button
                 type="button"
                 aria-label={file !== undefined ? `Close tab ${title}` : `Close tab ${title} — the session keeps running`}
@@ -132,10 +195,10 @@ export function TabStrip(props: TabStripProps) {
         </div>
       </div>
       <div className="mb-1 flex shrink-0 items-center gap-0.5">
-        {props.onToggleChat && (
+        {props.paneTools !== false && props.onToggleChat && (
           <StripButton label={props.chatOpen ? 'Show the terminal' : 'Show the chat'} pressed={props.chatOpen} onClick={props.onToggleChat}><ChatIcon size={15} /></StripButton>
         )}
-        <StripButton label="Inspector (⌘I)" pressed={props.inspectorOpen} onClick={props.onToggleInspector}><InspectorIcon size={15} /></StripButton>
+        {props.paneTools !== false && <StripButton label="Inspector (⌘I)" pressed={props.inspectorOpen} onClick={props.onToggleInspector}><InspectorIcon size={15} /></StripButton>}
       </div>
     </div>
   )

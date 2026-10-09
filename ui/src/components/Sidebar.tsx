@@ -23,7 +23,7 @@ import { useTheme } from '@/lib/theme'
 import { ProjectRow, StatusDot } from './ProjectRow'
 import { ProjectMenu, type ProjectMenuAt } from './ProjectMenu'
 import { TodayStrip } from './TodayStrip'
-import { AgentGlyph, CaprockMark, ChevronIcon, DashboardIcon, FolderPlusIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from './AppIcons'
+import { AgentGlyph, CaprockMark, ChatIcon, ChevronIcon, DashboardIcon, FolderPlusIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from './AppIcons'
 
 const EXPANDED_KEY = 'caprock.app.expanded'
 /** Project ids hidden by hand: this browser's, as the expanded set is. */
@@ -66,6 +66,8 @@ export interface SidebarProps {
   onOpenInbox: (item: InboxItem) => void
   onNewAgent: (projectId: string, cwd?: string) => void
   onNewShell: (projectId: string, cwd?: string) => void
+  /** Starts a Claude session that needs no folder, in a tab (⌥⌘N). */
+  onQuickChat?: () => void
   /** Right-click on a project or worktree row (F18's editor menu). */
   onFolderMenu?: (e: React.MouseEvent, path: string, label: string) => void
   onAddProject: () => void
@@ -216,6 +218,20 @@ export function Sidebar(props: SidebarProps) {
           <span className="flex-1">New agent</span>
           <kbd className="app-kbd">⇧⌘N</kbd>
         </button>
+        {props.onQuickChat && (
+          <button
+            type="button"
+            onClick={props.onQuickChat}
+            aria-label="Quick chat"
+            aria-keyshortcuts="Alt+Meta+N"
+            title="Ask Claude something without picking a folder (⌥⌘N)"
+            className="mt-1 flex h-[26px] w-full items-center gap-2 rounded-[7px] pl-2.5 pr-2 text-left text-[12.5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
+          >
+            <ChatIcon size={14} />
+            <span className="flex-1">Quick chat</span>
+            <kbd className="app-kbd">⌥⌘N</kbd>
+          </button>
+        )}
         <button
           type="button"
           onClick={props.onAddProject}

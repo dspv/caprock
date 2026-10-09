@@ -47,6 +47,7 @@ vi.mock('@/lib/api', async (orig) => {
       ...actual.api,
       status: async () => ({ version: 'v0.0.0', claude_available: true }),
       sessions: async () => sessions,
+      spawn: async () => ({ session_id: 'chat-1', cwd: '/data/chat' }),
       summary: async () => ({ cost_usd: 1.25, projects: [{ project: 'app', dir: '/w/app', cost_usd: 1.25, tokens: 0, sessions: 2 }], rate_limits: { five_hour: { used_percentage: 40, resets_at: 0 } } }),
       permission: async () => ({ permission: null }),
       diff: async () => ({ root: '/w/app', branch: 'main', files: [], stat: '' }),
@@ -131,7 +132,49 @@ describe('the app workspace', () => {
     await renderApp()
     fireEvent.click(screen.getByText('Started elsewhere'))
     expect(location.hash).toBe('#/session/theirs')
-    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: /Started elsewhere/ })).not.toBeInTheDocument()
+  })
+
+  it('keeps every tab in one strip when another project is picked (tester, 2026-10-09)', async () => {
+    await renderApp()
+    fireEvent.click(screen.getByText('Fix the login bug'))
+    await screen.findByRole('tab', { name: /Fix the login bug/ })
+    // The other project: its empty state, and the app's tab still in the strip.
+    fireEvent.click(document.querySelector('[data-project-row="dir:/w/other"]') ?? screen.getAllByText('other')[0]!)
+    await waitFor(() => expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'false'))
+    expect(screen.getByTestId('pane-agent-1')).toBeInTheDocument()
+    // Each tab names its project.
+    expect(within(screen.getByRole('tab', { name: /Fix the login bug/ })).getByText('app')).toBeInTheDocument()
+    // One click back.
+    fireEvent.click(screen.getByRole('tab', { name: /Fix the login bug/ }))
+    expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('opens the dashboard as a tab beside the terminals, and one click comes back', async () => {
+    await renderApp()
+    fireEvent.click(screen.getByText('Fix the login bug'))
+    await screen.findByRole('tab', { name: /Fix the login bug/ })
+    await cmd('d', { shiftKey: true })
+    const dash = await screen.findByRole('tab', { name: /Dashboard/ })
+    expect(dash).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'false')
+    fireEvent.click(screen.getByRole('tab', { name: /Fix the login bug/ }))
+    await waitFor(() => expect(location.hash).toBe('#/app'))
+    expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'true')
+    // Still in the strip, and it closes like any tab.
+    const back = screen.getByRole('tab', { name: /Dashboard/ })
+    fireEvent.click(within(back).getByRole('button', { name: 'Close tab Dashboard' }))
+    expect(screen.queryByRole('tab', { name: /Dashboard/ })).not.toBeInTheDocument()
+  })
+
+  it('starts a quick chat in a tab from the sidebar and ⌥⌘N, without leaving the workspace', async () => {
+    await renderApp()
+    fireEvent.click(screen.getByRole('button', { name: 'Quick chat' }))
+    const tab = await screen.findByRole('tab', { name: /Quick chat/ })
+    expect(tab).toHaveAttribute('aria-selected', 'true')
+    expect(within(tab).getByText('no project')).toBeInTheDocument()
+    expect(location.hash).toBe('#/app')
+    expect(screen.getByTestId('pane-chat-1')).toBeInTheDocument()
   })
 
   it('switches tabs with ⌘1–9 and keeps every terminal mounted', async () => {

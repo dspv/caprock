@@ -9,6 +9,35 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Changed
+
+- **One tab strip for every project in the app.** Every open tab stays in the
+  strip, in the order you opened it, with its project's name and colour on
+  it. Picking a project brings its last tab to the front, or shows the
+  project's empty page, and no longer hides the tabs of the project before:
+  a shell opened before moving to a project is where you left it. ⌘1–9,
+  ⌃Tab and dragging run along the whole strip. Tabs saved by an earlier
+  version come back as they were.
+- **Dashboard opens as a tab.** ⇧⌘D and the sidebar's *Dashboard* open Now,
+  Cost and the other screens in a *Dashboard* tab pinned at the left of the
+  strip, with the terminals beside it, one click away; Settings opens there
+  too. In the app, Now leaves out the session cards and the projects panel,
+  which the sidebar already lists; the browser dashboard still shows them.
+- **The terminal matches the app.** A new colour choice, *Match app*, is the
+  default: the dark Caprock palette in the dark theme and Paper on the
+  window's own colour in the light one, so the terminal no longer looks like
+  a dark window laid on a beige one. Caprock's ground is now the dark panel
+  colour, the same as the tab strip. A palette you picked by hand is kept;
+  Caprock saved before this version, when it was the default, reads as
+  *Match app* — pick it again to keep it in the light theme.
+
+### Added
+
+- **Quick chat in the app.** *Quick chat* under *New agent* in the sidebar,
+  ⌥⌘N (Ctrl+Alt+Shift+N on Windows and Linux) and the palette start a Claude
+  Code session without picking a folder, in a tab marked *no project*. It
+  was only on the browser's Now screen.
+
 ## [0.93.1] - 2026-10-09
 
 ### Fixed

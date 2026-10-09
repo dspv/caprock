@@ -16,6 +16,7 @@ export const FIND_EVENT = 'caprock:terminal-find'
 export type AppCommand =
   | { kind: 'new-shell' }
   | { kind: 'new-agent' }
+  | { kind: 'quick-chat' }
   | { kind: 'add-project' }
   | { kind: 'detach-tab' }
   | { kind: 'palette' }
@@ -54,7 +55,12 @@ function baseKey(e: KeyLike): string {
 
 /** Which app command a key press is, or null when it belongs to the page or the terminal. */
 export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null {
-  if (e.altKey) return null
+  // ⌥⌘N (Ctrl+Alt+Shift+N off macOS) is Quick chat: the one chord with
+  // Option, which is otherwise the terminal's Meta and never the app's.
+  if (e.altKey) {
+    const quick = isMac ? e.metaKey && !e.ctrlKey && !e.shiftKey : e.ctrlKey && e.shiftKey && !e.metaKey
+    return quick && baseKey(e) === 'n' ? { kind: 'quick-chat' } : null
+  }
   // Ctrl+Tab and Ctrl+Shift+Tab cycle tabs everywhere, as in every tabbed app.
   if (e.key === 'Tab' && e.ctrlKey && !e.metaKey) return e.shiftKey ? { kind: 'prev-tab' } : { kind: 'next-tab' }
   const k = baseKey(e)
@@ -121,6 +127,7 @@ export function shortcutLabel(keys: string, opts: { shift?: boolean } = {}, isMa
  *  macOS each is Ctrl+Shift with the same key (docs/app.md § Keyboard). */
 export const SHORTCUTS: [keys: string, does: string][] = [
   ['⇧⌘N', 'New agent'],
+  ['⌥⌘N', 'Quick chat: Claude without picking a folder'],
   ['⌘T', 'New shell in the folder of the tab'],
   ['⌘O', 'Add a project'],
   ['⌘K', 'Command palette'],

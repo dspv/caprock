@@ -130,7 +130,12 @@ One window, three regions:
   the row's spacer: it takes what the name and the figures leave and goes,
   rather than showing as a sliver, below 2.5rem (`FitOrHide` in
   `ProjectRow.tsx`, CSS only). A **Dashboard** entry opens the existing
-  screens.
+  screens in a Dashboard tab pinned at the left of the tab strip (2026-10-09:
+  it replaced the whole workspace, and the first tester read that as every
+  terminal closing, translated); in it, Now leaves out the session cards and
+  the projects panel the sidebar already shows. *Quick chat* (⌥⌘N) under
+  *Add project* starts a Claude session with no folder to pick, in a tab
+  (the tester could not find how to, translated).
 - **Today strip** (owner, 2026-10-08: "useful data on the left too",
   translated). Under *New agent*: today's spend across every agent, agents
   running and waiting on you, and Claude Code's 5-hour and weekly windows
@@ -172,8 +177,12 @@ One window, three regions:
   (`DELETE /v1/projects/{id}`) takes the project out of every list, phone
   and palette included, which is not what hiding means. Which folds are open is
   `caprock.app.project-folds`; both start closed.
-- **Tabs (main).** Terminal tabs — an agent session or a shell — with the
-  project and branch in the title. The permission prompt card
+- **Tabs (main).** Terminal tabs — an agent session or a shell — in one
+  strip for every project, each marked with its project; picking a project
+  brings its last tab forward and hides none (2026-10-09: a strip per project
+  lost a plain shell the moment the tester moved to a project, translated).
+  The terminal's default palette, *Match app*, takes the window's own panel
+  colour, so it no longer reads as a dark window laid on the beige one. The permission prompt card
   ([ADR-035](08-decisions.md#adr-035--a-permission-prompt-is-answered-with-a-button-found-by-its-hook))
   is drawn for the focused agent whether or not its terminal is in front
   (owner, 2026-10-07, reversing 2026-10-06): it names the call in full, and

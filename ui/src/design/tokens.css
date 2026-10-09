@@ -225,7 +225,9 @@ a.link:hover { text-decoration: underline; }
  * Only under <html data-app>, set by screens/AppShell.tsx, so the browser
  * dashboard and the phone never see any of it. The chrome around the
  * terminal is the theme's (graphite or paper); the terminal and the tab in
- * front of it are one dark slab in both, cut from --color-term-bg.
+ * front of it are one slab, cut from --color-term-bg. Its default palette,
+ * Match app, puts that slab on the chrome's own panel colour, so the terminal
+ * is part of the window rather than a window on top of it.
  * Hairlines are the ink at low alpha rather than a fixed grey, so they sit
  * right on paper, on graphite and on a translucent sidebar alike. */
 [data-app] {
@@ -372,11 +374,12 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
   [data-app] .cockpit-now::after, [data-app] .cockpit-row, [data-app] .cockpit-bar-live, [data-app] .cockpit-spark-new { animation: none !important; }
   [data-app] .cockpit-fill { transition: none; }
 }
-/* The terminal slab: the dark ground in every theme, so anything drawn on it
- * (the tab in front, the terminal's own chips) takes graphite's ink. */
+/* The terminal slab: the terminal palette's ground, dark unless the palette
+ * is light, so anything drawn on it (the tab in front, the terminal's own
+ * chips) takes graphite's ink, or paper's below. */
 [data-app] .app-slab {
   /* The terminal palette's ground (Settings → Terminal, lib/termprefs.ts). */
-  --color-term-bg: var(--app-term-bg, #1b1b1a);
+  --color-term-bg: var(--app-term-bg, #211f1d);
   --color-term-border: var(--app-term-border, #3a3835);
   --color-fg: #e8e6e2;
   --color-fg-muted: #a9a59e;
@@ -388,7 +391,13 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
   background: var(--color-term-bg);
   color: var(--color-fg);
 }
-/* A light terminal palette (Paper): the slab takes the light theme's ink. */
+/* The tab strip's hairline is painted under the tabs rather than as a border,
+ * so the tab in front, opaque, covers it and opens into what it shows. Its
+ * own hairline frames it: since the terminal took the strip's colour (Match
+ * app), a fill alone no longer tells the tab in front from the rest. */
+[data-app] .app-strip { background-image: linear-gradient(to top, var(--app-hairline) 1px, transparent 1px); }
+[data-app] .app-tab-front { box-shadow: inset 0 1px 0 var(--app-hairline-strong), inset 1px 0 0 var(--app-hairline-strong), inset -1px 0 0 var(--app-hairline-strong); }
+/* A light terminal palette (Paper, Match app in the light theme): the slab takes the light theme's ink. */
 [data-app][data-term-tone="light"] .app-slab {
   --color-fg: #24211c;
   --color-fg-muted: #5f5a51;

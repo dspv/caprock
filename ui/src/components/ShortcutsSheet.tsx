@@ -8,7 +8,7 @@ export function ShortcutsSheet({ isMac, onClose }: { isMac: boolean; onClose: ()
       <div className="grid gap-3 px-5 py-4">
         {!isMac && (
           <p className="text-[12px] text-fg-muted">
-            Here each is Ctrl+Shift with the same key; Ctrl+Shift+C and V stay the terminal&rsquo;s copy and paste, and F5 reloads.
+            Here each is Ctrl+Shift with the same key (Quick chat is Ctrl+Alt+Shift+N); Ctrl+Shift+C and V stay the terminal&rsquo;s copy and paste, and F5 reloads.
           </p>
         )}
         <dl className="grid grid-cols-[auto_1fr] gap-x-5 gap-y-1.5 text-[13px]">
