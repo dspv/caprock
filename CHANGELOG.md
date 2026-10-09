@@ -30,7 +30,8 @@ Phase 3 (Delight) has no plan by design.
   and *New copy on its own branch* a separate folder on a new branch, with a
   one-line explanation and a *Branch name* field — no git vocabulary needed.
   Start shows its key (⌘↩, Ctrl+↵ off macOS), which works from every field.
-  Codex's default model reads *gpt-… (default)*, short enough to fit.
+  Model names fit their box: Codex's default reads *gpt-… (default)*, and
+  the Claude and Gemini labels are shorter (*Opus 5.5 · all-rounder*).
 - **Tabs never vanish when you pick another project.** The tab strip holds
   every open tab of every project, in the order you opened them, each with
   its project's name and colour; picking a project shows its tabs in the
