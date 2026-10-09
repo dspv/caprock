@@ -9,6 +9,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **OpenCode first run after the daemon started.** A daemon that found no
+  OpenCode database at startup read none until it restarted or started an
+  OpenCode session itself, so a session run in a terminal on a machine
+  where OpenCode had just been installed stayed off Now. The daemon now
+  looks for the database every ten seconds until it appears, and follows
+  OpenCode 2's service stream from then on. Found while verifying OpenCode 2
+  on Linux, where the rest of the support checked out end to end.
+
 ## [0.93.0] - 2026-10-09
 
 ### Added
