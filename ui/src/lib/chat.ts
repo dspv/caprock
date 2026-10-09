@@ -270,30 +270,37 @@ export function noticeLine(text: string): string | null {
   }
 }
 
-/**
- * Whether `e` ends the turn a still-unanswered call belongs to: a prompt the
- * person typed (a harness notice is not one), or the main thread's Stop.
- */
-function endsTurn(e: Event): boolean {
-  if (!isMainThread(e)) return false
-  if (e.kind === 'agent.stop' || e.kind === 'session.end') return true
-  return e.kind === 'turn.user' && textOf(e).trim() !== '' && noticeLine(textOf(e)) === null
+/** Whether `e` is the main thread's Stop or the session's end: no call before it runs on. */
+function isStop(e: Event): boolean {
+  return isMainThread(e) && (e.kind === 'agent.stop' || e.kind === 'session.end')
+}
+
+/** Whether `e` is a prompt the person typed (a harness notice is not one). */
+function isPrompt(e: Event): boolean {
+  return isMainThread(e) && e.kind === 'turn.user' && textOf(e).trim() !== '' && noticeLine(textOf(e)) === null
 }
 
 /**
  * The conversation in `events`, which must already be in server order.
  *
  * A call with no result is running only while its turn is: once the turn has
- * ended — the next prompt, a Stop, the session over (`ended`), or the agent's
- * own record that it ended (Codex's `interrupted` result, written at
- * turn_aborted) — nothing will ever answer it, and it reads "interrupted".
- * It used to say "running" forever.
+ * ended — a Stop, the session over (`ended`), or the agent's own record that
+ * it ended (Codex's `interrupted` result, written at turn_aborted) — nothing
+ * will ever answer it, and it reads "interrupted". It used to say "running"
+ * forever.
+ *
+ * A later prompt ends a call only in Codex, where a prompt starts a new
+ * request. In Claude Code a prompt typed while a long tool runs is queued and
+ * the tool keeps running (the owner does this all the time), so there only the
+ * turn's Stop or the session's end does.
  */
 export function toMessages(events: readonly Event[], opts: { ended?: boolean } = {}): ChatMessage[] {
   const results = new Map<string, { text: string; failed: boolean; exitCode?: number; interrupted?: boolean }>()
-  let lastEnd = -1
+  let lastStop = -1
+  let lastPrompt = -1
   events.forEach((e, k) => {
-    if (endsTurn(e)) lastEnd = k
+    if (isStop(e)) lastStop = k
+    if (isPrompt(e)) lastPrompt = k
     if (e.kind !== 'tool.post') return
     const p = payloadOf(e)
     const use = typeof p.tool_use_id === 'string' ? p.tool_use_id : ''
@@ -315,7 +322,8 @@ export function toMessages(events: readonly Event[], opts: { ended?: boolean } =
       const tool = e.tool || String(p.tool_name ?? 'tool')
       const r = typeof p.tool_use_id === 'string' ? results.get(p.tool_use_id) : undefined
       const msg: ChatMessage = { id: e.id, kind: 'tool', ts: e.ts, text: toolLine(tool, p.tool_input), tool, input: p.tool_input }
-      if (r?.interrupted || (!r && (opts.ended || lastEnd > k))) msg.interrupted = true
+      const ended = opts.ended || lastStop > k || ((e.source as string) === 'codex' && lastPrompt > k)
+      if (r?.interrupted || (!r && ended)) msg.interrupted = true
       else if (r) Object.assign(msg, { result: r.text, failed: r.failed, exitCode: r.exitCode })
       out.push(msg)
     } else {

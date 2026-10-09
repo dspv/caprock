@@ -16,8 +16,10 @@ Phase 3 (Delight) has no plan by design.
   wrote `turn_aborted` or `task_complete` (stored as a `tool.post` marked
   `interrupted`, key `codex:interrupted:<line>`), the next request started,
   the person typed the next prompt, or the session ended. Only the call still
-  in its turn says "running". The same holds for any agent's call left
-  unanswered by a prompt or a Stop.
+  in its turn says "running". Any other agent's call left without a result
+  reads "interrupted" at its turn's Stop or the session's end — never because
+  a prompt came after it: a prompt queued in Claude Code while a long tool
+  runs leaves that tool running.
 - **Codex's `exec` reads as the command it ran everywhere, not only in the
   Chat.** The Timeline, the activity feed, the cockpit's tool list and its
   subagents, the Now phrase, notifications and loop alerts showed the

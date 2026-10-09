@@ -179,6 +179,17 @@ describe('a call its turn ended without answering', () => {
     expect(toMessages([call(1, 'a')], { ended: true })[0]!.interrupted).toBe(true)
   })
 
+  it('a Claude Code call keeps running past a queued prompt, and ends at its Stop', () => {
+    const bash = ev(1, { kind: 'tool.pre', tool: 'Bash', payload: { tool_name: 'Bash', tool_use_id: 'toolu_1', tool_input: { command: 'go test ./...' } } })
+    const queued = ev(2, { kind: 'turn.user', payload: { prompt: 'also run the linter after' } })
+    const running = toMessages([bash, queued])
+    expect(state(running[0]!)).toBe('running')
+    expect(running[1]!.kind).toBe('user')
+    const stopped = toMessages([bash, queued, ev(3, { kind: 'agent.stop', payload: { stop_reason: 'end_turn' } })])
+    expect(state(stopped[0]!)).toBe('interrupted')
+    expect(state(toMessages([bash, queued], { ended: true })[0]!)).toBe('interrupted')
+  })
+
   it('still runs while nothing has ended its turn — only the current call', () => {
     const msgs = toMessages([prompt(1), call(2, 'a'), codex(3, { kind: 'turn.assistant', payload: { text: '' } })])
     expect(state(msgs[1]!)).toBe('running')

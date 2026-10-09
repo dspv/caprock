@@ -384,10 +384,13 @@ as "running" forever: no prompt and no output was stored at all.
   (2026-10-09, 207 rollouts) all 16,152 calls have their output and none of
   the 11 `turn_aborted` records cut a call off mid-flight, so nothing is
   backfilled; the rule is for the call that is cut off before its output is
-  written. The chat adds what no record says: a call with no result is
+  written. The chat adds what no record says: a Codex call with no result is
   interrupted once a prompt the person typed, a Stop or the session's end
   comes after it — which also ends the 60 calls a duplicated 2025 import
-  left unpaired. Only a call still inside its turn says "running".
+  left unpaired. For every other agent only the Stop or the session's end
+  does: a prompt typed into Claude Code while a long tool runs is queued and
+  the tool runs on, so a later prompt says nothing about it. Only a call
+  still inside its turn says "running".
 - **History gets both once.** A one-time pass after the importer's first
   (`meta.codex_chat_backfilled`) parses every rollout that pass did not read,
   records its prompts and results under their keys, and gives each stored
