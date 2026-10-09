@@ -1,8 +1,9 @@
 /**
- * The tab strip of the project in front, behind a pinned Dashboard tab when
- * that is open, and every open terminal behind it (WP-04). The strip shows
- * the same tabs, in the same order and under the same names, as the
- * sidebar's list under the current project (lib/tablabels.ts). Terminals of
+ * The one tab strip — every open tab of every project, each with its
+ * project's chip, behind a pinned Dashboard tab when that is open — and every
+ * open terminal behind it (WP-04). A tab never leaves the strip because
+ * another project was picked. Its name is the one the sidebar gives it under
+ * its project (lib/tablabels.ts). Terminals of
  * every project stay mounted — switching a tab or a project shows one that
  * is already painted — and each pane tree renders
  * through one recursive view: a split tab (F15) shows its panes side by side
@@ -27,10 +28,22 @@ export interface DashboardTab {
   onClose: () => void
 }
 
+/**
+ * A project's mark on its tabs: a hue from its id, muted, so tabs of one
+ * project share a colour without the strip turning into a rainbow.
+ */
+export function projectHue(projectId: string): number {
+  let h = 0
+  for (let i = 0; i < projectId.length; i++) h = (h * 31 + projectId.charCodeAt(i)) >>> 0
+  return h % 360
+}
+
 export interface TabStripProps {
-  /** The tabs of the project in front, in strip order. */
+  /** Every open tab of every project, in strip order. */
   tabs: Tab[]
   activeTabId?: string
+  /** The name each tab's project chip shows; a tab with none shows no chip. */
+  projectName?: (projectId: string) => string | undefined
   /** What each tab is called, shared with the sidebar (lib/tablabels.ts); worked out here when absent. */
   labels?: ReadonlyMap<string, TabLabel>
   /** The Dashboard tab, when it is open. */
@@ -130,6 +143,7 @@ export function TabStrip(props: TabStripProps) {
           const isShell = !!label?.isShell
           const title = label?.title ?? t.title
           const active = t.id === activeTabId
+          const project = props.projectName?.(t.projectId)
           return (
             <div
               key={t.id}
@@ -145,8 +159,9 @@ export function TabStrip(props: TabStripProps) {
               }}
               onAuxClick={(e) => { if (e.button === 1) props.onDetach(t.id) }}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') props.onActivate(t.id) }}
-              title={`${file ?? title}${label?.branch ? ` · ${label.branch}` : ''}${i < 9 ? ` — ⌘${i + 1}` : ''}`}
-              className={`group relative flex h-[32px] min-w-[112px] max-w-[232px] flex-1 basis-[180px] cursor-default select-none items-center gap-2 rounded-t-[9px] pl-3 pr-1.5 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
+              title={`${file ?? title}${label?.branch ? ` · ${label.branch}` : ''}${project ? ` · ${project}` : ''}${i < 9 ? ` — ⌘${i + 1}` : ''}`}
+              data-project={t.projectId}
+              className={`group relative flex h-[32px] min-w-[112px] max-w-[260px] flex-1 basis-[200px] cursor-default select-none items-center gap-2 rounded-t-[9px] pl-3 pr-1.5 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
                 active ? (file !== undefined ? 'app-tab-front bg-bg text-fg' : 'app-tab-front app-slab text-fg') : 'text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'
               } ${dragging === t.id ? 'opacity-60' : ''}`}
             >
@@ -159,7 +174,13 @@ export function TabStrip(props: TabStripProps) {
                 </>
               )}
               <span className="min-w-0 flex-1 truncate">{title}</span>
-              {label?.branch && <span className="mono min-w-0 max-w-[12ch] shrink truncate text-[11px] text-fg-faint">{label.branch}</span>}
+              {label?.branch && <span className="mono min-w-0 max-w-[10ch] shrink truncate text-[11px] text-fg-faint">{label.branch}</span>}
+              {project && (
+                <span data-project-chip className="flex min-w-0 max-w-[10ch] shrink items-center gap-1 text-[11px] text-fg-faint">
+                  <span aria-hidden className="h-[6px] w-[6px] shrink-0 rounded-full" style={{ background: `hsl(${projectHue(t.projectId)} 42% 56%)` }} />
+                  <span className="truncate">{project}</span>
+                </span>
+              )}
               <button
                 type="button"
                 aria-label={file !== undefined ? `Close tab ${title}` : `Close tab ${title} — the session keeps running`}

@@ -11,6 +11,12 @@ Phase 3 (Delight) has no plan by design.
 
 ### Changed
 
+- **Tabs never vanish when you pick another project.** The tab strip holds
+  every open tab of every project, in the order you opened them, each with
+  its project's name and colour; picking a project shows its tabs in the
+  sidebar or its page, and the strip keeps the rest. ⌘1–9, ⌃Tab and
+  dragging run along the whole strip. Tabs saved by an earlier version come
+  back as they were.
 - **A simpler project list in the app.** Only the current project is open
   in the sidebar, and under it are exactly its tabs — the ones in the tab
   strip, in the same order and under the same names; shells read *Shell 1*,

@@ -100,13 +100,16 @@ others. Installing it: [install-app.md](install-app.md).
   on. *Continue* carries an ended one on in a new tab, in the permission mode
   it was last running in; *Open* goes to a running one. The sidebar lists only
   what is running, so this is where yesterday's work is.
-- **Tabs.** The strip holds the current project's tabs — an agent session,
-  a shell or a file each — the same list the sidebar shows under that
-  project. Another project's tabs keep running and wait in its own strip:
-  its row in the sidebar shows what runs there, and one click brings them
-  back. Tabs come back when you reopen the app. Closing a tab (⌘W) never
-  stops its session; *Stop the session…* in the inspector does, after
-  asking.
+- **Tabs.** One strip holds every open tab of every project, in the order
+  you opened them — an agent session, a shell or a file each — and each tab
+  carries its project's name beside a dot in that project's colour. Picking
+  another project never takes a tab out of the strip: the project's own
+  tabs are listed under it in the sidebar, under the same names, or its
+  page shows when it has none. Picking a tab makes its project current.
+  ⌘1–9, ⌃Tab and dragging run along the whole strip. Tabs come back when
+  you reopen the app. Closing a tab (⌘W) never stops its session, and the
+  tab beside it comes to the front; *Stop the session…* in the inspector
+  stops one, after asking.
 - **Split panes.** ⌘E opens a new shell beside the terminal in front, ⇧⌘E
   below it; ⇧Enter on a session in the palette opens it there. Up to four
   panes a tab. Click a pane or press ⌘[ ⌘] to move between them; drag the

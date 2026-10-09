@@ -158,14 +158,19 @@ describe('the app workspace', () => {
     const list = screen.getByRole('group', { name: 'app: open tabs' })
     expect(within(list).getByText('Fix the login bug')).toBeInTheDocument()
     expect(document.querySelectorAll('[aria-current="true"]')).toHaveLength(1)
-    // Another project: its own (empty) strip; the app's terminal stays mounted and its row says it runs.
+    // Another project: its empty state, the app's tab still in the strip with
+    // its project's chip (Vova, 2026-10-09: tabs must never vanish), and the
+    // app's row folded with its running count.
     fireEvent.click(otherRow())
-    await waitFor(() => expect(screen.queryByRole('tab', { name: /Fix the login bug/ })).toBeNull())
+    await waitFor(() => expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'false'))
+    expect(within(screen.getByRole('tab', { name: /Fix the login bug/ })).getByText('app')).toBeInTheDocument()
     expect(screen.getByTestId('pane-agent-1')).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'app: open tabs' })).toBeNull()
     expect(within(appRow()).getByLabelText(/running/)).toBeInTheDocument()
-    // One click back, on the tab last in front.
-    fireEvent.click(appRow())
-    expect(await screen.findByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'true')
+    // One click back on the tab, and its project is current again.
+    fireEvent.click(screen.getByRole('tab', { name: /Fix the login bug/ }))
+    expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('group', { name: 'app: open tabs' })).toBeInTheDocument()
   })
 
   it('opens the dashboard as a tab beside the terminals, and one click comes back', async () => {

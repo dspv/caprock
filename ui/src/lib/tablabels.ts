@@ -1,7 +1,8 @@
 /**
  * What a tab is called, once, for both places that list tabs: the tab strip
- * and the sidebar's list under the current project. The two show the same
- * tabs in the same order, so they must say the same words (owner,
+ * and the sidebar's list under the current project. The sidebar shows the
+ * current project's part of the strip, in the strip's order, so the two
+ * must say the same words (owner,
  * 2026-10-09: "which one is active, which to pick, unclear", translated).
  */
 import type { SessionSummary } from './api'

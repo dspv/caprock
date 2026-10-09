@@ -21,7 +21,6 @@ import {
   leaves,
   loadWorkspace,
   saveWorkspace,
-  tabsOf,
   workspaceReducer,
   type PaneLeaf,
   type Tab,
@@ -231,9 +230,10 @@ export function AppShell() {
     ? ws.activeProject
     : model.projects[0]?.project.id ?? ''
   const shownWs = activeProjectId === ws.activeProject ? ws : { ...ws, activeProject: activeProjectId }
-  // The strip shows the current project's tabs: the same list the sidebar
-  // shows under it, under the same names (lib/tablabels.ts).
-  const tabs = tabsOf(shownWs, activeProjectId)
+  // The strip shows every open tab of every project — a tab never leaves it
+  // because another project was picked — and the sidebar lists the current
+  // project's under the same names (lib/tablabels.ts).
+  const tabs = ws.tabs
   const labels = useMemo(
     () => tabLabels(ws.tabs, sessionsById, data.permissions, (id) => projectsById.get(id)?.branch),
     [ws.tabs, sessionsById, data.permissions, projectsById],
@@ -271,6 +271,7 @@ export function AppShell() {
     lastDashboard.current = '#/'
     showWorkspace()
   }, [showWorkspace])
+  const projectName = useCallback((id: string) => projectsById.get(id)?.name, [projectsById])
   /** A tab picked in the strip or in the sidebar's list. */
   const onActivateTab = useCallback((id: string) => {
     setChangesView(null)
@@ -758,6 +759,7 @@ export function AppShell() {
               tabs={tabs}
               activeTabId={workspaceShown ? current?.id : undefined}
               labels={labels}
+              projectName={projectName}
               dashboard={ws.dashboard || !workspaceShown ? {
                 active: !workspaceShown,
                 label: dashboardRoute.name === 'settings' ? 'Settings' : 'Dashboard',

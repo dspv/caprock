@@ -183,13 +183,13 @@ One window, three regions:
   (`DELETE /v1/projects/{id}`) takes the project out of every list, phone
   and palette included, which is not what hiding means. Which folds are open is
   `caprock.app.project-folds`; both start closed.
-- **Tabs (main).** Terminal tabs — an agent session or a shell — of the
-  current project: the strip and the sidebar's list under that project are
-  one list (owner, 2026-10-09: consistency over features). The first
-  tester lost a plain shell the moment he moved to a project (translated);
-  that project's row now stays in the list with its running count, and one
-  click brings its tabs back. A one-strip-for-every-project design was
-  built and dropped the same day for this. The terminal's default palette, *Match app*, takes the window's own panel
+- **Tabs (main).** Terminal tabs — an agent session or a shell — of every
+  project in one strip, each with its project's chip; picking a project
+  never takes a tab out of it (2026-10-09: with a strip per project, the
+  first tester lost a plain shell the moment he moved to a project, and
+  Vova's two rateguard tabs "vanished" when he clicked another project,
+  both translated). The sidebar lists the current project's tabs under the
+  same names. The terminal's default palette, *Match app*, takes the window's own panel
   colour, so it no longer reads as a dark window laid on the beige one. The permission prompt card
   ([ADR-035](08-decisions.md#adr-035--a-permission-prompt-is-answered-with-a-button-found-by-its-hook))
   is drawn for the focused agent whether or not its terminal is in front
