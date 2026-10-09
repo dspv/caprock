@@ -13,7 +13,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { SpawnDialog } from './SpawnDialog'
+import { GEMINI_MODELS, MODELS, SpawnDialog } from './SpawnDialog'
 
 const spawn = vi.hoisted(() => vi.fn(async () => ({ session_id: 's1', cwd: '/x' })))
 // What the status answers: nothing, unless a test says otherwise.
@@ -226,7 +226,7 @@ describe('Codex and OpenCode', () => {
     const model = screen.getByLabelText<HTMLSelectElement>(/Model/)
     // "" is "what your config says": the default is not restated as a flag.
     expect(model.value).toBe('')
-    expect(model.options[0]!.textContent).toMatch(/gpt-6-astra · your Codex default/)
+    expect(model.options[0]!.textContent).toBe('gpt-6-astra (default)')
     expect(Array.from(model.options).map((o) => o.value)).toEqual(['', 'gpt-6-sol'])
   })
 
@@ -329,5 +329,13 @@ describe('on a phone', () => {
       expect(screen.getByRole('button', { name }).className).toContain('max-sm:min-h-11')
     }
     expect(screen.getByRole('button', { name: 'Close' }).className).toContain('max-sm:h-11')
+  })
+})
+
+/** Owner, 2026-10-09: the New agent sheet's half-width Model select cut
+ *  "gpt-6.1-sol · your Codex def…" off mid-word. Every label fits it. */
+describe('model labels fit a half-width select', () => {
+  it('keeps every Claude and Gemini label within 25 characters', () => {
+    for (const [, label] of [...MODELS, ...GEMINI_MODELS]) expect(label.length, label).toBeLessThanOrEqual(25)
   })
 })

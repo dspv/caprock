@@ -8,7 +8,12 @@
  * first message; Tab and ⇧Tab walk Project, Where, Agent, Model, Permissions,
  * First message, Cancel, Start in that order; ↑ and ↓ change a select in
  * place; ⌘↩ starts from anywhere in the sheet, the buttons included; Esc
- * cancels. The keys are named in the footer, not only in the docs.
+ * cancels. The keys are named in the footer and on Start itself.
+ *
+ * Where is worded for someone who has never heard of a git worktree (owner,
+ * 2026-10-09: "existing or new — totally unclear"): *This folder* is the
+ * project's own checkout, *Existing copy* a worktree already there, *New copy
+ * on its own branch* a new one, explained in a line under the name field.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, errText } from '@/lib/api'
@@ -23,8 +28,18 @@ import { Sheet, SheetButton, SheetField } from './Sheet'
 import { stepSelect } from '@/lib/selectKeys'
 import { BypassConsentNote, useBypassConsent } from './BypassConsent'
 import { defaultWorktreeName, WORKTREE_NAME } from '@/lib/slug'
+import { isMacPlatform } from '@/lib/appmode'
 
 const NEW_WORKTREE = '__new__'
+
+/** What the Where select says of a worktree, for a tooltip: the plain words
+ *  in the options are "copy", and this is where the git term lives. */
+export const WHERE_TOOLTIP = 'A copy is a git worktree: a second folder of the same repository, checked out on its own branch.'
+
+/** The last segment of a path, either separator. */
+function baseName(path: string): string {
+  return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path
+}
 
 export function NewAgentSheet({
   projects,
@@ -105,6 +120,7 @@ export function NewAgentSheet({
   }
 
   startRef.current = () => { if (!busy && agents.length > 0) void start() }
+  const startKey = isMacPlatform() ? '⌘↩' : 'Ctrl+↵'
 
   return (
     <Sheet
@@ -116,12 +132,24 @@ export function NewAgentSheet({
           {error
             ? <p role="alert" className="mr-auto min-w-0 truncate text-[12px] text-danger" title={error}>{error}</p>
             : (
-              <p className="mr-auto min-w-0 truncate text-[11.5px] text-fg-faint" aria-label="Keys: Tab moves, arrows change a choice, Command Enter starts, Escape cancels">
-                <span className="mono">Tab</span> moves · <span className="mono">↑↓</span> change · <span className="mono">⌘↩</span> starts · <span className="mono">Esc</span> cancels
+              <p className="mr-auto min-w-0 truncate text-[11.5px] text-fg-faint" aria-label={`Keys: Tab moves, arrows change a choice, ${isMacPlatform() ? 'Command' : 'Control'} Enter starts, Escape cancels`}>
+                <span className="mono">Tab</span> moves · <span className="mono">↑↓</span> change · <span className="mono">{startKey}</span> starts · <span className="mono">Esc</span> cancels
               </p>
             )}
           <SheetButton onClick={onClose}>Cancel</SheetButton>
-          <SheetButton primary disabled={busy || agents.length === 0} onClick={() => void start()}>{busy ? 'Starting…' : consent.needed ? 'Accept and start' : 'Start'}</SheetButton>
+          <SheetButton
+            primary
+            disabled={busy || agents.length === 0}
+            onClick={() => void start()}
+            aria-keyshortcuts={isMacPlatform() ? 'Meta+Enter' : 'Control+Enter'}
+            title={`Start (${startKey})`}
+          >
+            {busy ? 'Starting…' : consent.needed ? 'Accept and start' : 'Start'}
+            {/* The key on the button it presses (owner, 2026-10-09: "the button
+              * is there but the shortcut is unclear"). Hidden from the
+              * accessible name, which aria-keyshortcuts carries instead. */}
+            {!busy && <kbd aria-hidden="true" className="mono ml-2 text-[11px] font-normal opacity-70">{startKey}</kbd>}
+          </SheetButton>
         </>
       }
     >
@@ -140,23 +168,26 @@ export function NewAgentSheet({
               </select>
             </SheetField>
             <SheetField label="Where">
-              <select className="input" value={where} onChange={(e) => setWhere(e.target.value)}>
-                <option value="">{project?.branch ? `${project.branch} · main checkout` : 'main checkout'}</option>
-                {worktrees.map((w) => <option key={w.path} value={w.path}>{w.branch} · {w.name}</option>)}
-                {initialCwd && initialCwd !== project?.root && !worktrees.some((w) => w.path === initialCwd) && <option value={initialCwd}>{initialCwd}</option>}
-                <option value={NEW_WORKTREE}>New worktree…</option>
+              <select className="input" title={WHERE_TOOLTIP} value={where} onChange={(e) => setWhere(e.target.value)}>
+                <option value="">{project?.branch ? `This folder · ${project.branch}` : 'This folder'}</option>
+                {worktrees.map((w) => <option key={w.path} value={w.path}>Existing copy · {w.branch || w.name}</option>)}
+                {initialCwd && initialCwd !== project?.root && !worktrees.some((w) => w.path === initialCwd) && <option value={initialCwd}>Existing copy · {baseName(initialCwd)}</option>}
+                <option value={NEW_WORKTREE}>New copy on its own branch</option>
               </select>
             </SheetField>
           </div>
           {where === NEW_WORKTREE && (
-            <SheetField
-              label="Worktree name"
-              hint={nameBad
-                ? <span className="text-danger">letters, digits, dot and dash only</span>
-                : `branch caprock/${worktreeName}`}
-            >
-              <input className="input" aria-invalid={nameBad || undefined} placeholder={worktreeName} value={newBranch} onChange={(e) => setNewBranch(e.target.value)} />
-            </SheetField>
+            <div className="grid min-w-0 gap-1.5">
+              <SheetField
+                label="Branch name"
+                hint={nameBad ? <span className="text-danger">letters, digits, dot and dash only</span> : 'optional'}
+              >
+                <input className="input" aria-invalid={nameBad || undefined} placeholder={worktreeName} value={newBranch} onChange={(e) => setNewBranch(e.target.value)} spellCheck={false} />
+              </SheetField>
+              <p className="text-[12px] leading-snug text-fg-faint" title={WHERE_TOOLTIP}>
+                A separate folder with its own branch, so this agent doesn’t collide with others. Branch: <span className="mono text-fg-muted">caprock/{worktreeName}</span>
+              </p>
+            </div>
           )}
           <div className="grid grid-cols-2 gap-3">
             {agents.length > 1 ? <AgentPicker value={agent} agents={agents} onChange={setAgent} /> : <div />}

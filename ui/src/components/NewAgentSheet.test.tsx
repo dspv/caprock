@@ -49,7 +49,7 @@ async function pick(mode: string) {
 describe('the New agent sheet on the keyboard', () => {
   it('names its keys in the sheet', async () => {
     open()
-    expect(await screen.findByLabelText(/Tab moves, arrows change a choice, Command Enter starts, Escape cancels/)).toBeTruthy()
+    expect(await screen.findByLabelText(/Tab moves, arrows change a choice, Control Enter starts, Escape cancels/)).toBeTruthy()
   })
 
   it('changes a select with the arrow keys, in place', async () => {
@@ -100,7 +100,8 @@ describe('the New agent sheet on the keyboard', () => {
     expect(document.activeElement).toBe(screen.getByPlaceholderText('What should it do?'))
     const order = Array.from(document.querySelectorAll<HTMLElement>('select, textarea, input, button'))
       .filter((el) => !el.hasAttribute('disabled'))
-      .map((el) => el.getAttribute('aria-label') || (el.closest('label')?.querySelector('span')?.firstChild?.textContent ?? el.textContent ?? '').trim())
+      // A button's name without its key badge, which is aria-hidden.
+      .map((el) => el.getAttribute('aria-label') || (el.closest('label')?.querySelector('span')?.firstChild?.textContent ?? el.firstChild?.textContent ?? '').trim())
     expect(order).toEqual(['Project', 'Where', 'Model', 'Permissions', 'Add', 'First message', 'Cancel', 'Start'])
   })
 })
@@ -185,7 +186,7 @@ describe('a new worktree from the sheet', () => {
     open()
     fireEvent.change(await screen.findByLabelText<HTMLSelectElement>('Where'), { target: { value: '__new__' } })
     fireEvent.change(screen.getByPlaceholderText('What should it do?'), { target: { value: 'Fix the login bug' } })
-    expect(screen.getByText('branch caprock/fix-the-login-bug')).toBeTruthy()
+    expect(screen.getByText('caprock/fix-the-login-bug')).toBeTruthy()
     fireEvent.keyDown(screen.getByPlaceholderText('What should it do?'), { key: 'Enter', metaKey: true })
     await waitFor(() => expect(spawn).toHaveBeenCalledOnce())
     expect(spawn.mock.calls[0]![0]).toMatchObject({ worktree: 'fix-the-login-bug' })
@@ -194,11 +195,122 @@ describe('a new worktree from the sheet', () => {
   it('says beside the field what a typed name may not contain, and does not start', async () => {
     open()
     fireEvent.change(await screen.findByLabelText<HTMLSelectElement>('Where'), { target: { value: '__new__' } })
-    fireEvent.change(screen.getByLabelText(/^Worktree name/), { target: { value: 'feat/x' } })
+    fireEvent.change(screen.getByLabelText(/^Branch name/), { target: { value: 'feat/x' } })
     expect(screen.getByText('letters, digits, dot and dash only')).toBeTruthy()
-    fireEvent.keyDown(screen.getByLabelText(/^Worktree name/), { key: 'Enter', metaKey: true })
+    fireEvent.keyDown(screen.getByLabelText(/^Branch name/), { key: 'Enter', metaKey: true })
     await new Promise((r) => setTimeout(r, 0))
     expect(spawn).not.toHaveBeenCalled()
+  })
+})
+
+/** Owner, 2026-10-09: "I didn't understand what worktree this is — existing
+ *  or new". Where says it in words that need no git. */
+describe('Where, in plain words', () => {
+  const withCopy = [
+    { ...projects[0]!, branch: 'main', worktrees: [{ path: '/w/app/.caprock-worktrees/login', name: 'login', branch: 'caprock/login' }] },
+    projects[1]!,
+  ] as Project[]
+
+  it('names this folder, an existing copy and a new copy, never "worktree"', async () => {
+    render(<NewAgentSheet projects={withCopy} projectId="1" onClose={vi.fn()} onStarted={vi.fn()} />)
+    const where = await screen.findByLabelText<HTMLSelectElement>('Where')
+    const labels = Array.from(where.options).map((o) => o.textContent)
+    expect(labels).toEqual(['This folder · main', 'Existing copy · caprock/login', 'New copy on its own branch'])
+    expect(labels.join(' ')).not.toMatch(/worktree/i)
+    expect(where.title).toMatch(/git worktree/)
+  })
+
+  it('explains a new copy in one line and asks for a branch name', async () => {
+    open()
+    fireEvent.change(await screen.findByLabelText<HTMLSelectElement>('Where'), { target: { value: '__new__' } })
+    expect(screen.getByLabelText(/^Branch name/)).toBeTruthy()
+    expect(screen.getByText(/A separate folder with its own branch, so this agent doesn’t collide with others\. Branch:/)).toBeTruthy()
+    expect(screen.getByText(/^caprock\/agent-\d{4}-\d{4}$/)).toBeTruthy()
+    fireEvent.change(screen.getByLabelText(/^Branch name/), { target: { value: 'login-fix' } })
+    expect(screen.getByText('caprock/login-fix')).toBeTruthy()
+    expect(screen.queryByText(/worktree/i)).toBeNull()
+  })
+})
+
+/** Owner, 2026-10-09: "the button is there but the shortcut is unclear". */
+describe('the start key on the Start button', () => {
+  it('shows ⌘↩ on Start on a Mac, and Start keeps its name', async () => {
+    const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel')
+    try {
+      open()
+      const start = await screen.findByRole('button', { name: 'Start' })
+      expect(start.querySelector('kbd')?.textContent).toBe('⌘↩')
+      expect(start.getAttribute('aria-keyshortcuts')).toBe('Meta+Enter')
+      expect(screen.getByLabelText(/Command Enter starts/).textContent).toContain('⌘↩ starts')
+    } finally {
+      platform.mockRestore()
+    }
+  })
+
+  it('shows Ctrl+↵ off macOS, and Ctrl+Enter starts', async () => {
+    const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32')
+    try {
+      open()
+      const start = await screen.findByRole('button', { name: 'Start' })
+      expect(start.querySelector('kbd')?.textContent).toBe('Ctrl+↵')
+      expect(start.getAttribute('aria-keyshortcuts')).toBe('Control+Enter')
+      fireEvent.keyDown(screen.getByLabelText('Project'), { key: 'Enter', ctrlKey: true })
+      await waitFor(() => expect(spawn).toHaveBeenCalledOnce())
+    } finally {
+      platform.mockRestore()
+    }
+  })
+
+  it('starts with ⌘↩ from every field: each select and the first message', async () => {
+    for (const field of ['Project', 'Where', 'Model', 'Permissions', 'First message']) {
+      spawn.mockClear()
+      const { unmount } = render(<NewAgentSheet projects={projects} projectId="1" onClose={vi.fn()} onStarted={vi.fn()} />)
+      const el = field === 'First message' ? await screen.findByPlaceholderText('What should it do?') : await screen.findByLabelText(field === 'Permissions' ? /^Permissions/ : field)
+      el.focus()
+      fireEvent.keyDown(el, { key: 'Enter', metaKey: true })
+      await waitFor(() => expect(spawn, field).toHaveBeenCalledOnce())
+      unmount()
+    }
+  })
+})
+
+/** Owner, 2026-10-09: "when filling the form, focus sometimes jumps between
+ *  fields". The app shell re-renders on every poll and live event, with a new
+ *  onClose and a new projects array each time; none of that may move focus. */
+describe('focus stays where the person put it', () => {
+  it('survives the parent re-rendering mid-typing', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const props = () => ({ projects: projects.map((p) => ({ ...p })), projectId: '1', onClose: () => {}, onStarted: () => {} })
+      const { rerender } = render(<NewAgentSheet {...props()} />)
+      const message = await screen.findByPlaceholderText<HTMLTextAreaElement>('What should it do?')
+      expect(document.activeElement).toBe(message)
+      fireEvent.change(message, { target: { value: 'Fix the' } })
+      // A poll tick: same data, new identities, as AppShell passes them.
+      for (let i = 0; i < 5; i++) {
+        rerender(<NewAgentSheet {...props()} />)
+        await vi.advanceTimersByTimeAsync(1000)
+      }
+      expect(document.activeElement).toBe(message)
+      // And where the person moved it, it stays too.
+      const model = screen.getByLabelText<HTMLSelectElement>('Model')
+      model.focus()
+      rerender(<NewAgentSheet {...props()} />)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(document.activeElement).toBe(model)
+      expect(message.value).toBe('Fix the')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('stays put when a new copy is chosen and its field appears', async () => {
+    open()
+    const where = await screen.findByLabelText<HTMLSelectElement>('Where')
+    where.focus()
+    fireEvent.keyDown(where, { key: 'ArrowDown' })
+    expect(where.value).toBe('__new__')
+    expect(document.activeElement).toBe(where)
   })
 })
 
