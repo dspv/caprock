@@ -1,7 +1,7 @@
 import { api, errText, isPairedDevice, type SessionSummary } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { navigate } from '@/lib/router'
-import { live, useLive } from '@/lib/live'
+import { live, useLiveAlerts } from '@/lib/live'
 import { branchLabel, projectLabels, sessionHealth } from '@/lib/sessionLabels'
 import { fmtAgo, fmtPct, fmtSpan, fmtTokens, fmtUSD, fmtWhen, shortId } from '@/lib/format'
 import { foldChains } from '@/lib/chains'
@@ -103,7 +103,7 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
   // The plan-window stop: what it has paused, and whether this install has
   // it — the free plan-limit row offers it only when it does not.
   const windowStop = useApi(() => api.windowStop(), [], { intervalMs: 15000 })
-  const { alerts } = useLive()
+  const alerts = useLiveAlerts()
   const now = useNow(1000)
   const everySession = sessions.data?.items ?? []
   // How many the server holds, against how many it sent. The list is capped at

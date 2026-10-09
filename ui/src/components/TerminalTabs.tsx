@@ -9,7 +9,7 @@
  * through one recursive view: a split tab (F15) shows its panes side by side
  * or stacked, each with a header, behind dividers that drag or take arrows.
  */
-import { Fragment, memo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { Fragment, memo, useCallback, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { SessionSummary } from '@/lib/api'
 import { type PaneLeaf, type PaneNode, type PaneSplit, type Tab } from '@/lib/tabs'
 import { dotOf, sessionTitle } from '@/lib/sidebar'
@@ -254,6 +254,16 @@ export const TerminalStack = memo(function TerminalStack({
   onClosePane?: (tabId: string, paneId: string) => void
   onResize?: (tabId: string, splitId: string, sizes: number[]) => void
 }) {
+  // The panes' callbacks, stable for the life of the stack: the workspace
+  // hands new ones whenever its session list changes (several times a second
+  // with agents at work), and a new callback would redraw every terminal pane
+  // of every tab for nothing (PaneTerminal).
+  const statusRef = useRef(onPaneStatus)
+  statusRef.current = onPaneStatus
+  const exitRef = useRef(onPaneExit)
+  exitRef.current = onPaneExit
+  const paneStatus = useCallback((id: string, s: PaneStatus) => statusRef.current?.(id, s), [])
+  const paneExit = useCallback((id: string) => exitRef.current?.(id), [])
   return (
     // The terminal slab is each terminal tab's own ground; a file tab reads
     // on the page's, in the app's theme.
@@ -266,8 +276,8 @@ export const TerminalStack = memo(function TerminalStack({
             ctx={{
               tab: t,
               split: t.root.type === 'split',
-              onPaneStatus,
-              onPaneExit,
+              onPaneStatus: onPaneStatus && paneStatus,
+              onPaneExit: onPaneExit && paneExit,
               sessions,
               permissions,
               onFocusPane: onFocusPane && ((paneId: string) => onFocusPane(t.id, paneId)),
@@ -299,7 +309,7 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
   if (node.type === 'pane') {
     const id = node.target.sessionId
     const focused = ctx.tab.focusedPaneId === node.id || (!ctx.split)
-    const term = <TerminalPane sessionId={id} active={visible} focused={focused} onStatus={ctx.onPaneStatus ? (s) => ctx.onPaneStatus!(id, s) : undefined} onExit={ctx.onPaneExit ? () => ctx.onPaneExit!(id) : undefined} />
+    const term = <PaneTerminal id={id} visible={visible} focused={focused} onPaneStatus={ctx.onPaneStatus} onPaneExit={ctx.onPaneExit} />
     if (!ctx.split) return term
     const s = ctx.sessions?.get(id)
     const isShell = node.target.kind === 'shell' || s?.kind === 'shell'
@@ -336,6 +346,24 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
   }
   return <SplitView node={node} visible={visible} ctx={ctx} />
 }
+
+/**
+ * A pane's terminal, redrawn only when what it shows changes: its session,
+ * whether its tab is in front, whether it has the keyboard. The stack's
+ * callbacks are stable (TerminalStack), so a new session list — the sidebar's
+ * dots moving — does not reach a terminal.
+ */
+const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneStatus, onPaneExit }: {
+  id: string
+  visible: boolean
+  focused: boolean
+  onPaneStatus?: (sessionId: string, s: PaneStatus) => void
+  onPaneExit?: (sessionId: string) => void
+}) {
+  const onStatus = useMemo(() => onPaneStatus && ((s: PaneStatus) => onPaneStatus(id, s)), [onPaneStatus, id])
+  const onExit = useMemo(() => onPaneExit && (() => onPaneExit(id)), [onPaneExit, id])
+  return <TerminalPane sessionId={id} active={visible} focused={focused} onStatus={onStatus} onExit={onExit} />
+})
 
 /** A split's children with a divider between each pair, dragged or moved with the arrow keys. */
 function SplitView({ node, visible, ctx }: { node: PaneSplit; visible: boolean; ctx: PaneCtx }) {

@@ -34,6 +34,12 @@ const SUMMARY_MS = 60_000
 const PROJECTS_MS = 60_000
 /** Shells write no session row, so their list is the only word on one ending. */
 const SHELLS_MS = 10_000
+/**
+ * Session and project frames are applied together at most this often. Each one used to
+ * redraw the whole workspace — sidebar, tab strip, inspector — and busy agents
+ * send several a second while someone types in a terminal beside them.
+ */
+export const SESSION_FRAMES_MS = 300
 
 /** A session's prompt as asked again after a gap: pending, none, or not known. */
 export type PromptAnswer = 'pending' | 'none' | 'unknown'
@@ -73,11 +79,37 @@ export interface WorkspaceData {
   archiveLocal: (root: string) => void
 }
 
-/** Merge a fresh page of sessions over what is held, newest copy wins. */
-function mergeSessions(held: SessionSummary[], fresh: SessionSummary[]): SessionSummary[] {
+/**
+ * Merge a fresh page of sessions over what is held, newest copy wins. The held
+ * list itself comes back when nothing in the page differs from it, so an
+ * unchanged refetch (the live list, once a second) re-renders nothing.
+ */
+export function mergeSessions(held: SessionSummary[], fresh: SessionSummary[]): SessionSummary[] {
   const byId = new Map(held.map((s) => [s.session_id, s]))
-  for (const s of fresh) if (s?.session_id) byId.set(s.session_id, s)
-  return [...byId.values()]
+  let changed = false
+  for (const s of fresh) {
+    if (!s?.session_id) continue
+    const cur = byId.get(s.session_id)
+    if (cur && JSON.stringify(cur) === JSON.stringify(s)) continue
+    byId.set(s.session_id, s)
+    changed = true
+  }
+  return changed ? [...byId.values()] : held
+}
+
+type SessionPatch = { session?: Partial<SessionSummary>; stats?: SessionSummary['stats'] }
+
+/** Session frames applied to the held list, in arrival order; the list itself when none matches. */
+export function applySessionFrames(cur: SessionSummary[], frames: ReadonlyArray<[string, SessionPatch]>): SessionSummary[] {
+  let next: SessionSummary[] | null = null
+  for (const [id, d] of frames) {
+    const list: SessionSummary[] = next ?? cur
+    const at = list.findIndex((s) => s.session_id === id)
+    if (at < 0) continue
+    next ??= cur.slice()
+    next[at] = { ...list[at]!, ...d.session, stats: d.stats ?? list[at]!.stats } as SessionSummary
+  }
+  return next ?? cur
 }
 
 export function useWorkspaceData(): WorkspaceData {
@@ -150,6 +182,23 @@ export function useWorkspaceData(): WorkspaceData {
   // Git state, clones and permission prompts, as they happen.
   useEffect(() => {
     let hellos = 0
+    // Session and project frames wait here for the next flush
+    // (SESSION_FRAMES_MS), applied in one render. An agent's hook event moves
+    // its project's last activity, so each one used to be a project frame and
+    // a redraw of the whole workspace.
+    let frames: [string, SessionPatch][] = []
+    let projectFrames: ((cur: Project[] | null) => Project[] | null)[] = []
+    let flushTimer = 0
+    const flush = () => {
+      flushTimer = 0
+      const batch = frames
+      const pbatch = projectFrames
+      frames = []
+      projectFrames = []
+      if (batch.length) setSessions((cur) => applySessionFrames(cur, batch))
+      if (pbatch.length) setApiProjects((cur) => pbatch.reduce((acc, f) => f(acc), cur))
+    }
+    const later = () => { if (!flushTimer) flushTimer = window.setTimeout(flush, SESSION_FRAMES_MS) }
     // Frames were lost (a `reset`, or a reconnect the daemon could not
     // replay): a missed `permission` frame would leave a prompt or the badge
     // stale, so every live owned session is asked again.
@@ -160,7 +209,7 @@ export function useWorkspaceData(): WorkspaceData {
         .catch((): [string, PromptAnswer] => [s.session_id, 'unknown'])))
         .then((pairs) => setPermissions((cur) => resyncPermissions(cur, new Map(pairs))))
     }
-    return live.onFrame((frame) => {
+    const off = live.onFrame((frame) => {
     if (frame.type === 'reset') {
       resync()
     } else if (frame.type === 'hello') {
@@ -170,31 +219,28 @@ export function useWorkspaceData(): WorkspaceData {
     } else if (frame.type === 'project') {
       const id = String(frame.data.id)
       if (frame.data.removed) {
-        setApiProjects((cur) => cur && cur.filter((x) => x.id !== id))
+        projectFrames.push((cur) => cur && cur.filter((x) => x.id !== id))
+        later()
         return
       }
       const p = fromApiProject(frame.data)
-      setApiProjects((cur) => {
+      projectFrames.push((cur) => {
         if (!cur) return cur
         const at = cur.findIndex((x) => x.id === id)
         return at >= 0 ? cur.map((x, i) => (i === at ? p : x)) : [...cur, p]
       })
+      later()
     } else if (frame.type === 'op') {
       const op = frame.data
       setOps((cur) => [op, ...cur.filter((o) => o.op_id !== op.op_id)])
     } else if (frame.type === 'session') {
       // A session's row changed — most usefully, it ended, which the live
       // list (active sessions only) cannot say by omission.
-      const d = frame.data as { session?: Partial<SessionSummary>; stats?: SessionSummary['stats'] }
+      const d = frame.data as SessionPatch
       const id = d.session?.session_id
       if (!id) return
-      setSessions((cur) => {
-        const at = cur.findIndex((s) => s.session_id === id)
-        if (at < 0) return cur
-        const next = cur.slice()
-        next[at] = { ...cur[at]!, ...d.session, stats: d.stats ?? cur[at]!.stats } as SessionSummary
-        return next
-      })
+      frames.push([id, d])
+      later()
     } else if (frame.type === 'permission') {
       const d = frame.data
       setPermissions((cur) => {
@@ -207,6 +253,10 @@ export function useWorkspaceData(): WorkspaceData {
       })
     }
     })
+    return () => {
+      off()
+      if (flushTimer) window.clearTimeout(flushTimer)
+    }
   }, [])
 
   // A prompt already pending when the app opened is not announced again:

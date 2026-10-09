@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObje
 import { api, ApiError, errText, type Permission, type PermissionChoice } from '@/lib/api'
 import { commandGist, requester, toolKind } from '@/lib/cockpit'
 import { navigate } from '@/lib/router'
-import { live, useLive } from '@/lib/live'
+import { live, useLiveConn } from '@/lib/live'
 import { useCanControl } from '@/lib/useCanControl'
 
 /**
@@ -11,7 +11,7 @@ import { useCanControl } from '@/lib/useCanControl'
  */
 export function usePermission(sessionId: string): [Permission | null, (p: Permission | null) => void] {
   const [prompt, setPrompt] = useState<Permission | null>(null)
-  const { conn } = useLive()
+  const conn = useLiveConn()
   useEffect(() => {
     if (conn !== 'open') return
     let alive = true

@@ -6,7 +6,7 @@
 // daemon no longer holds them) makes screens refetch. Liveness is protocol v2's:
 // a ping every 10 s, and 25 s of silence means the socket is dead.
 // Retries follow lib/reconnect.ts, the policy every socket shares (WP-13).
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { Event, LoopAlert, Permission, Session, Stats, TaskFrame } from './api'
 import { deviceToken } from './api'
 import type { OpFrame, ProjectFrame } from './projects'
@@ -313,40 +313,55 @@ class LiveStore {
 
 export const live = new LiveStore()
 
+/**
+ * The whole live state. Re-renders on EVERY frame — `lastFrameAt` and `tick`
+ * move with each one — so a component that wants one field asks for that field
+ * (useLiveConn, useLiveLink, useLiveAlerts) or the debounced tick (useLiveTick).
+ */
 export function useLive(): LiveState {
   return useSyncExternalStore(live.subscribe, live.getState, live.getState)
 }
 
-/** Debounced "something changed" signal: returns a number that bumps at most every `ms`. */
+/**
+ * Debounced "something changed" signal: returns a number that bumps at most every `ms`.
+ *
+ * The frames are counted outside React. It used to read the tick through
+ * useLive(), which re-rendered the calling component on every frame and only
+ * debounced what it returned: the app workspace (useWorkspaceData) redrew its
+ * whole tree, nine terminal panes included, about 19 times a second under five
+ * hook events a second, while the person typed (bench, 2026-10-09).
+ */
 export function useLiveTick(ms = 400): number {
-  const { tick } = useLive()
-  const [debounced, setDebounced] = useDebouncedValue(tick, ms)
-  useEffect(() => { setDebounced(tick) }, [tick, setDebounced])
-  return debounced
-}
-
-function useDebouncedValue<T>(initial: T, ms: number): [T, (v: T) => void] {
-  const [v, setV] = useState(initial)
-  const timer = useRef<number | null>(null)
-  const pending = useRef(initial)
-  // The timer outlives the component unless we cancel it: a screen unmounted
-  // inside the debounce window would wake up and set state on a component that
-  // is gone. Under a test runner that tears the DOM down first, the same timer
-  // fires into a world with no `window` and fails the whole run.
-  useEffect(() => () => {
-    if (timer.current !== null) { clearTimeout(timer.current); timer.current = null }
-  }, [])
-  const set = useCallback((next: T) => {
-    pending.current = next
-    if (timer.current !== null) return
-    timer.current = window.setTimeout(() => { timer.current = null; setV(pending.current) }, ms)
+  const [v, setV] = useState(() => live.getState().tick)
+  useEffect(() => {
+    let timer: number | null = null
+    // Caught up at once if frames came between the render and this effect.
+    setV(live.getState().tick)
+    const off = live.subscribe(() => {
+      if (timer !== null) return
+      // The timer outlives the component unless it is cancelled: a screen
+      // unmounted inside the window would set state on something gone, and
+      // under a test runner that tears the DOM down first it fires into a
+      // world with no `window` and fails the run.
+      timer = window.setTimeout(() => { timer = null; setV(live.getState().tick) }, ms)
+    })
+    return () => {
+      off()
+      if (timer !== null) { clearTimeout(timer); timer = null }
+    }
   }, [ms])
-  return [v, set]
+  return v
 }
 
 /** The connection state alone: re-renders only when it changes, not on every frame. */
 export function useLiveConn(): ConnState {
   const get = () => live.getState().conn
+  return useSyncExternalStore(live.subscribe, get, get)
+}
+
+/** The loop alerts, re-rendering only when they change. */
+export function useLiveAlerts(): LoopAlert[] {
+  const get = () => live.getState().alerts
   return useSyncExternalStore(live.subscribe, get, get)
 }
 

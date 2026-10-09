@@ -79,6 +79,34 @@ describe('the live tick timer does not outlive its component', () => {
   })
 })
 
+/**
+ * The tick is debounced before React sees it. It used to be read through
+ * useLive(), which re-rendered the caller on every frame — the app workspace,
+ * terminals and all, ~19 times a second under five hook events a second.
+ */
+describe('useLiveTick renders at the debounce, not per frame', () => {
+  it('re-renders once for a burst of frames, with the latest tick', () => {
+    vi.useFakeTimers()
+    try {
+      let renders = 0
+      const Probe = () => { renders++; return <span data-testid="tick">{useLiveTick(400)}</span> }
+      const { getByTestId, unmount } = render(<Probe />)
+      const before = renders
+      const start = Number(getByTestId('tick').textContent)
+      act(() => {
+        for (let i = 0; i < 20; i++) live.handle({ type: 'session', data: { session_id: 's', tick: i } as never })
+      })
+      expect(renders).toBe(before)
+      act(() => { vi.advanceTimersByTime(400) })
+      expect(renders).toBe(before + 1)
+      expect(Number(getByTestId('tick').textContent)).toBe(start + 20)
+      unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
 function TickProbe() {
   return <span>{useLiveTick(400)}</span>
 }

@@ -34,6 +34,13 @@ export interface ApiOptions {
    *  events) are dropped, so the kept copy stays small and says nothing
    *  about now. */
   cacheTrim?: (data: unknown) => unknown
+  /**
+   * An answer equal to the one shown re-renders nothing (and leaves
+   * `loadedAt` alone). For a hook whose caller redraws a lot on each answer —
+   * the app's tray summary, asked on every live tick, redrew the whole
+   * workspace up to twice a second while agents worked.
+   */
+  keepUnchanged?: boolean
 }
 
 export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = [], opts: ApiOptions = {}): Loaded<T> {
@@ -47,6 +54,8 @@ export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = [], opts: ApiO
   cacheRef.current = cache
   const trimRef = useRef(opts.cacheTrim)
   trimRef.current = opts.cacheTrim
+  const keepRef = useRef(opts.keepUnchanged)
+  keepRef.current = opts.keepUnchanged
   const seq = useRef(0)
   const fnRef = useRef(fn)
   fnRef.current = fn
@@ -99,7 +108,9 @@ export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = [], opts: ApiO
     fnRef.current().then(
       (data) => {
         if (my === seq.current) {
-          setState((s) => ({ ...s, data, error: undefined, loading: false, loadedAt: Date.now(), stale: false, cachedAt: 0 }))
+          setState((s) => (keepRef.current && !s.loading && !s.error && !s.stale && s.loadedAt > 0 && JSON.stringify(s.data) === JSON.stringify(data)
+            ? s
+            : { ...s, data, error: undefined, loading: false, loadedAt: Date.now(), stale: false, cachedAt: 0 }))
           if (key) writeCache(key, trimRef.current ? trimRef.current(data) : data)
         }
         settle()
