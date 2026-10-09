@@ -4,6 +4,9 @@
 
 const usd2 = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const usd4 = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 4, maximumFractionDigits: 4 })
+// Built once: a NumberFormat costs far more to make than to use, and the
+// inspector formats tokens on every render of the workspace.
+const int = new Intl.NumberFormat('en-US')
 
 // A dashboard that prints "$∞" or "NaNh NaNm" has stopped being measured, so
 // every formatter falls back to an em dash rather than rendering garbage.
@@ -27,7 +30,7 @@ export function fmtTokens(v: number | undefined | null): string {
   if (abs >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(2)}B`
   if (abs >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M`
   if (abs >= 10_000) return `${(v / 1_000).toFixed(1)}k`
-  return new Intl.NumberFormat('en-US').format(v)
+  return int.format(v)
 }
 
 /** Bytes, in the units a person reads them in.

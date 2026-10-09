@@ -33,6 +33,23 @@ load average and busiest processes before it starts: re-run when it is high.
 | `update-build.sh`, `update.mjs`                   | The app update end to end (F20): two signed builds under their own bundle id, a loopback update server, then sessions, tabs, split, sidebar, window, scroll and a half-typed line compared before and after |
 | `reference-orca.mjs`                              | The reference app on the same Mac. Not run: refuses unless `ORCA_BENCH_OK=1` and Orca is quit                                                                                                               |
 | `run-macos.sh`, `run-linux.sh`, `run-windows.ps1` | The one command per OS                                                                                                                                                                                      |
+| `busy-stand.sh`, `busy.mjs`                       | Typing beside busy agents: nine tabs over three projects, one printing, hook events every 200 ms; echo, main-thread share, Long Tasks, React commits                                                        |
+
+## Typing beside busy agents
+
+```bash
+bench/busy-stand.sh "$TMPDIR/caprock-busy" 4540 ./bin/caprock    # the stand: nine tabs
+node bench/busy.mjs --stand "$TMPDIR/caprock-busy" --port 4540 --hooks 1
+bench/busy-stand.sh stop "$PWD/bin/caprock"                      # kill -9 all it started
+```
+
+The page is the workspace in Playwright's headless shell (never the user's
+Chrome; `--chrome` to point at another), GPU on. One JSON line per run: echo
+p50/p95/max, the socket leg, the main thread's busy share
+(`Performance.getMetrics`), Long Tasks, the 16 ms timer's gaps and the React
+commits during the typing. Which components re-rendered needs a build whose
+names survive (`npx vite build --minify false`). Results and what they found
+are in [.ai/21-app.md](../.ai/21-app.md#typing-beside-busy-agents-2026-10-09).
 
 ## The update, end to end
 

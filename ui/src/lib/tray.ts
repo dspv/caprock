@@ -100,7 +100,7 @@ export function useShellTray(inbox: InboxItem[]): void {
   // with events, which the tick follows. The interval is only a backstop, so
   // a slow one (WP-16: every poll re-renders the workspace), and slower still
   // with the window hidden, where the menu bar must stay current.
-  const summary = useApi(() => (inApp ? api.summary('today') : Promise.resolve(undefined)), [inApp], { intervalMs: 30_000, hiddenIntervalMs: 60_000 })
+  const summary = useApi(() => (inApp ? api.summary('today') : Promise.resolve(undefined)), [inApp], { intervalMs: 30_000, hiddenIntervalMs: 60_000, keepUnchanged: true })
   const view = buildTrayView({ summary: summary.data, inbox, conn, now: Date.now() })
   const key = JSON.stringify(view)
   const count = view.waiting.length

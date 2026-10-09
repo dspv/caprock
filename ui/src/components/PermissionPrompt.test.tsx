@@ -19,7 +19,7 @@ vi.mock('@/lib/api', async (orig) => {
   return { ...actual, api: { ...actual.api, permission: h.permission, answerPermission: h.answer } }
 })
 vi.mock('@/lib/live', () => ({
-  useLive: () => ({ conn: 'open', lastFrameAt: 0, tick: 0, alerts: [] }),
+  useLiveConn: () => 'open',
   live: { onFrame: (fn: (f: Frame) => void) => { h.subs.add(fn); return () => { h.subs.delete(fn) } } },
 }))
 vi.mock('@/lib/useCanControl', () => ({ useCanControl: () => h.canControl }))

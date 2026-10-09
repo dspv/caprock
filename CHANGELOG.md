@@ -49,6 +49,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   put down more than 12 hours ago are left, the sidebar no longer shows the
   block with its lone *Older* line; those turns stay on the Dashboard.
 
+### Fixed
+
+- **Typing stays quick while other agents work.** The app redrew its whole
+  window, every terminal included, on each event an agent sent (about 19
+  times a second with four busy agents); now terminals are left alone and the
+  sidebar updates at most a few times a second. A tab out of sight no longer
+  draws what its program prints until you bring it forward, and the pulsing
+  "working" dots no longer repaint the window every frame.
+
 ## [0.94.1] - 2026-10-09
 
 ### Added

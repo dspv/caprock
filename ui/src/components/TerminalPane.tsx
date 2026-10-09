@@ -10,6 +10,13 @@
  * - **Hidden tabs disconnect after 30 s** (`TermClient.suspend`) and catch up
  *   when shown: v2 from the byte last seen, v1 from the daemon's snapshot. The xterm instance and its
  *   scrollback stay, so switching back paints at once.
+ * - **A hidden tab does no terminal work.** Once its first output has been
+ *   drawn, what arrives while it is out of sight is held and handed to xterm
+ *   when it is shown (past HIDDEN_HOLD_BYTES the socket is let go and the
+ *   daemon keeps the rest). xterm redraws every row of a hidden DOM-rendered
+ *   terminal on each scroll and re-measures each glyph in a `display: none`
+ *   box, so one background tab printing 20 lines a second cost 12% of the
+ *   page's main thread while the person typed in another (bench, 2026-10-09).
  * - **WebGL, late and recoverable.** Swapped in after the first output once
  *   typing pauses (as in the dashboard), dropped while hidden so ten tabs
  *   never hold ten GPU contexts, and re-created after a context loss — a
@@ -52,6 +59,16 @@ export { APP_TERMINAL_THEME } from '@/lib/termthemes'
 
 /** A tab out of sight this long drops its socket. */
 export const HIDDEN_DISCONNECT_MS = 30_000
+
+/** Output held for a hidden tab before its socket is let go and the daemon keeps the rest. */
+export const HIDDEN_HOLD_BYTES = 256 * 1024
+
+/**
+ * How long a terminal's first output may run before what comes next is held
+ * while hidden: the replay a tab opens with is drawn in the background, as it
+ * always was, so the first switch to it paints a finished screen.
+ */
+export const SETTLE_MS = 3000
 
 export interface PaneStatus {
   status: TermState
@@ -151,6 +168,31 @@ export function TerminalPane({
     let webglLost = false
     let webglTimer = 0
     let hideTimer = 0
+    // Output that arrived while hidden, after the first burst (see the header),
+    // and a reset among it, in the order they came.
+    let held: ({ data: Uint8Array | string; done: () => void } | { reset: true })[] = []
+    let heldBytes = 0
+    let settled = false
+    let settleTimer = 0
+    let settleBy = 0
+    const settle = () => {
+      const now = Date.now()
+      if (!settleBy) settleBy = now + SETTLE_MS
+      if (settleTimer) window.clearTimeout(settleTimer)
+      // Settled when the output pauses, or SETTLE_MS after it began.
+      settleTimer = window.setTimeout(() => { settleTimer = 0; settled = true }, Math.max(0, Math.min(400, settleBy - now)))
+    }
+    const flushHeld = () => {
+      const out = held
+      held = []
+      heldBytes = 0
+      for (const h of out) {
+        if ('reset' in h) term.reset()
+        else writeSliced(term, h.data, h.done)
+      }
+      if (out.length) scheduleResume()
+    }
+    const holding = () => !visible && settled
 
     const report = (s: TermState) => {
       setStatus(s)
@@ -199,12 +241,27 @@ export function TerminalPane({
             try { if (visible) fit.fit() } catch { /* not laid out */ }
             conn.resize(term.cols, term.rows)
           }
+          if (holding()) {
+            held.push({ data: d, done })
+            heldBytes += d.length
+            // The daemon keeps the rest, and the tab resumes from here when shown.
+            if (heldBytes > HIDDEN_HOLD_BYTES) conn.suspend()
+            return
+          }
+          if (!settled) settle()
           writeSliced(term, d, done)
           scheduleResume()
         },
         // Clears the screen and every mode a dead TUI left on (mouse tracking,
         // bracketed paste, the alternate screen) before a repaint.
-        reset: () => term.reset(),
+        reset: () => {
+          if (!holding()) { term.reset(); return }
+          // What was held is cleared by the reset: let it go, parsed as far
+          // as the client's flow control is concerned, and keep the reset.
+          for (const h of held) if (!('reset' in h)) h.done()
+          held = [{ reset: true }]
+          heldBytes = 0
+        },
         state: report,
         open: () => {
           try { if (visible) fit.fit() } catch { /* not laid out */ }
@@ -332,6 +389,8 @@ export function TerminalPane({
         visible = true
         if (hideTimer) window.clearTimeout(hideTimer)
         hideTimer = 0
+        // What was held goes to xterm before anything newer the socket brings.
+        flushHeld()
         conn.wake()
         lastGeom = ''
         refit()
@@ -366,6 +425,8 @@ export function TerminalPane({
       window.removeEventListener(FIND_EVENT, onFind)
       window.removeEventListener(APP_UPDATE_EVENT, onAppUpdate)
       if (resumeTimer) window.clearTimeout(resumeTimer)
+      if (settleTimer) window.clearTimeout(settleTimer)
+      held = []
       unprefs()
       unfont()
       resultsSub.dispose()

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from './api'
-import { useLive } from './live'
+import { useLiveConn } from './live'
 
 /**
  * The version of the daemon this page is talking to, for the status strip.
@@ -11,7 +11,7 @@ import { useLive } from './live'
  * every time the live link comes back open, and when the window regains focus.
  */
 export function useDaemonVersion(): string | undefined {
-  const { conn } = useLive()
+  const conn = useLiveConn()
   const [version, setVersion] = useState<string | undefined>(undefined)
   const [focused, setFocused] = useState(0)
   const asked = useRef(false)

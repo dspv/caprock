@@ -311,9 +311,10 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
 /* The sidebar's Today strip (components/TodayStrip.tsx): the cockpit's bars
  * and numerals on a faint card under New agent. */
 [data-app] .today-strip { background: color-mix(in srgb, var(--color-fg) 2.5%, transparent); }
-[data-app] .today-dot[data-working="true"] { animation: cockpitPulse 1.6s var(--app-ease) infinite; }
+[data-app] .today-dot[data-working="true"] { position: relative; }
+[data-app] .today-dot[data-working="true"]::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: var(--color-ok); opacity: 0; animation: cockpitPulse 1.6s var(--app-ease) infinite; }
 @media (prefers-reduced-motion: reduce) {
-  [data-app] .today-dot { animation: none !important; }
+  [data-app] .today-dot::after { animation: none !important; }
 }
 /* The agent cockpit (components/Cockpit.tsx): the inspector beside an agent.
  * State is carried by data-state on the avatar, its dot and the "now" card,
@@ -328,7 +329,12 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
   transition: box-shadow 300ms var(--app-ease), background 300ms var(--app-ease);
 }
 [data-app] .cockpit-avatar[data-state="working"] { --cockpit-tint: var(--color-ok); }
-[data-app] .cockpit-avatar[data-state="waiting"] { --cockpit-tint: var(--color-accent); animation: cockpitHalo 2.2s var(--app-ease) infinite; }
+[data-app] .cockpit-avatar[data-state="waiting"] { --cockpit-tint: var(--color-accent); }
+[data-app] .cockpit-avatar[data-state="waiting"]::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 35%, transparent);
+  animation: cockpitHalo 2.2s var(--app-ease) infinite;
+}
 [data-app] .cockpit-avatar[data-state="looping"] { --cockpit-tint: var(--color-danger); }
 [data-app] .cockpit-avatar[data-state="idle"] { --cockpit-tint: var(--color-accent); }
 [data-app] .cockpit-avatar[data-state="ended"] .cockpit-character { filter: grayscale(1); opacity: 0.55; }
@@ -336,22 +342,34 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
 [data-app] .cockpit-avatar[data-state="looping"] .cockpit-character { animation: cockpitWobble 1.6s ease-in-out infinite; }
 @keyframes cockpitBob { 0%, 100% { transform: translateY(1px); } 50% { transform: translateY(-2px); } }
 @keyframes cockpitWobble { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-4deg); } 75% { transform: rotate(4deg); } }
+/* Every infinite animation here moves only transform and opacity, which the
+ * compositor runs off the main thread. They used to animate box-shadow and
+ * background-position, which restyle and repaint on the main thread every
+ * frame: the Today strip's one working dot cost 7% of it, in the frames a
+ * keystroke's echo is drawn in (bench, 2026-10-09). */
 @keyframes cockpitHalo {
-  0%, 100% { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, transparent), 0 0 0 0 color-mix(in srgb, var(--color-accent) 35%, transparent); }
-  50% { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 70%, transparent), 0 0 0 5px transparent; }
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.17); opacity: 0; }
 }
 [data-app] .cockpit-dot { background: var(--color-fg-faint); }
-[data-app] .cockpit-dot[data-state="working"] { background: var(--color-ok); animation: cockpitPulse 1.6s var(--app-ease) infinite; }
-[data-app] .cockpit-dot[data-state="waiting"] { background: var(--color-accent); animation: cockpitPulseAmber 1.6s var(--app-ease) infinite; }
+[data-app] .cockpit-dot[data-state="working"], [data-app] .cockpit-dot[data-state="waiting"] { position: relative; }
+[data-app] .cockpit-dot[data-state="working"] { background: var(--color-ok); }
+[data-app] .cockpit-dot[data-state="waiting"] { background: var(--color-accent); }
+[data-app] .cockpit-dot[data-state="working"]::after, [data-app] .cockpit-dot[data-state="waiting"]::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: inherit; opacity: 0; animation: cockpitPulseDot 1.6s var(--app-ease) infinite;
+}
 [data-app] .cockpit-dot[data-state="looping"] { background: var(--color-danger); }
 [data-app] .cockpit-dot[data-state="ended"] { background: transparent; box-shadow: inset 0 0 0 1px var(--color-fg-faint); }
+/* A ring 6px wide growing out of the dot and fading: the dot's own disc,
+ * scaled — 3 times for the Today strip's 6px dot, 2.7 for the cockpit's 7px. */
 @keyframes cockpitPulse {
-  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-ok) 55%, transparent); }
-  100% { box-shadow: 0 0 0 6px transparent; }
+  0% { transform: scale(1); opacity: 0.55; }
+  100% { transform: scale(3); opacity: 0; }
 }
-@keyframes cockpitPulseAmber {
-  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 60%, transparent); }
-  100% { box-shadow: 0 0 0 6px transparent; }
+@keyframes cockpitPulseDot {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(2.7); opacity: 0; }
 }
 [data-app] .cockpit-track { background: color-mix(in srgb, var(--color-fg) 8%, transparent); }
 [data-app] .cockpit-fill { transition: width 600ms var(--app-ease); }
@@ -374,19 +392,19 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
 [data-app] .cockpit-now[data-state="idle"], [data-app] .cockpit-now[data-state="ended"] { color: var(--color-fg-muted); }
 [data-app] .cockpit-now[data-running="true"] { position: relative; overflow: hidden; }
 [data-app] .cockpit-now[data-running="true"]::after {
-  content: ""; position: absolute; inset: auto 0 0 0; height: 1.5px;
+  content: ""; position: absolute; left: 0; bottom: 0; width: 40%; height: 1.5px;
   background: linear-gradient(90deg, transparent, var(--color-ok), transparent);
-  background-size: 40% 100%; background-repeat: no-repeat;
   animation: cockpitScan 1.8s linear infinite;
 }
-@keyframes cockpitScan { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+/* The bar's left edge from -24% to 84% of the card, as the background-position sweep it replaces. */
+@keyframes cockpitScan { from { transform: translateX(-60%); } to { transform: translateX(210%); } }
 [data-app] .cockpit-row + .cockpit-row { border-top: 1px solid color-mix(in srgb, var(--color-fg) 5%, transparent); }
 [data-app] .cockpit-row[data-live="true"] { animation: appFadeIn 220ms var(--app-ease); }
 [data-app] .cockpit-bar-live { animation: cockpitBreath 1.4s ease-in-out infinite; }
 @keyframes cockpitBreath { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
 [data-app] .cockpit-spark-new { animation: cockpitBreath 2s ease-in-out 1; }
 @media (prefers-reduced-motion: reduce) {
-  [data-app] .cockpit-avatar, [data-app] .cockpit-avatar .cockpit-character, [data-app] .cockpit-dot,
+  [data-app] .cockpit-avatar::after, [data-app] .cockpit-avatar .cockpit-character, [data-app] .cockpit-dot::after,
   [data-app] .cockpit-now::after, [data-app] .cockpit-row, [data-app] .cockpit-bar-live, [data-app] .cockpit-spark-new { animation: none !important; }
   [data-app] .cockpit-fill { transition: none; }
 }

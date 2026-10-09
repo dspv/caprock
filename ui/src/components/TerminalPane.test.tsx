@@ -13,7 +13,9 @@ const h = vi.hoisted(() => ({
   results: [] as ((r: { resultIndex: number; resultCount: number }) => void)[],
   clears: 0,
   steps: [] as string[],
-  clients: [] as { callbacks: { write: (d: Uint8Array, done: () => void) => void } }[],
+  clients: [] as { callbacks: { write: (d: Uint8Array, done: () => void) => void; reset: () => void } }[],
+  writes: [] as unknown[],
+  suspends: 0,
 }))
 
 vi.mock('@xterm/xterm', () => ({
@@ -29,9 +31,9 @@ vi.mock('@xterm/xterm', () => ({
     loadAddon() {}
     open(parent: HTMLElement) { h.steps.push('open'); this.element = document.createElement('div'); parent.appendChild(this.element) }
     focus() { this.focused++ }
-    write(_d: unknown, cb?: () => void) { cb?.() }
+    write(d: unknown, cb?: () => void) { h.writes.push(d); cb?.() }
     scrollToLine(n: number) { this.scrolledTo = n }
-    reset() {}
+    reset() { h.writes.push('reset') }
     clearTextureAtlas() { h.steps.push('atlas') }
     refresh() {}
     scrollToBottom() {}
@@ -61,10 +63,10 @@ vi.mock('@/lib/termv2', () => ({
   TermClient: class {
     state = 'connecting'
     protocol = 'v2'
-    constructor(opts: { callbacks: { write: (d: Uint8Array, done: () => void) => void } }) { h.clients.push(opts) }
+    constructor(opts: { callbacks: { write: (d: Uint8Array, done: () => void) => void; reset: () => void } }) { h.clients.push(opts) }
     start() {}
     wake() {}
-    suspend() {}
+    suspend() { h.suspends++ }
     send() { return true }
     resize() {}
     dispose() {}
@@ -72,7 +74,7 @@ vi.mock('@/lib/termv2', () => ({
 }))
 vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
 
-import { TerminalPane } from './TerminalPane'
+import { HIDDEN_HOLD_BYTES, SETTLE_MS, TerminalPane } from './TerminalPane'
 import { FIND_EVENT } from '@/lib/appkeys'
 import { setTerminalPrefs, DEFAULT_PREFS } from '@/lib/termprefs'
 import { APP_UPDATE_EVENT } from '@/lib/appupdate'
@@ -85,6 +87,8 @@ beforeEach(() => {
   h.clears = 0
   h.steps.length = 0
   h.clients.length = 0
+  h.writes.length = 0
+  h.suspends = 0
   localStorage.clear()
   setTerminalPrefs(DEFAULT_PREFS)
 })
@@ -250,6 +254,85 @@ describe('TerminalPane across an app update (F20)', () => {
       act(() => h.clients[1]!.callbacks.write(new TextEncoder().encode('x'), () => {}))
       act(() => { vi.advanceTimersByTime(4000) })
       expect(h.terms[1]!.scrolledTo).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('a hidden pane does no terminal work', () => {
+  const bytes = (n: number) => new Uint8Array(n).fill(120)
+
+  it('draws its first output while hidden, then holds what comes until it is shown', () => {
+    vi.useFakeTimers()
+    try {
+      const { rerender } = render(<TerminalPane sessionId="a" active={false} />)
+      const write = h.clients[0]!.callbacks.write
+      // The replay a tab opens with is drawn in the background.
+      act(() => write(bytes(10), () => {}))
+      expect(h.writes).toHaveLength(1)
+      act(() => { vi.advanceTimersByTime(SETTLE_MS) })
+      // After that, nothing reaches xterm while the tab is out of sight, and
+      // the client is told nothing is parsed yet.
+      const done = vi.fn()
+      act(() => { write(bytes(5), done); write(bytes(6), done) })
+      expect(h.writes).toHaveLength(1)
+      expect(done).not.toHaveBeenCalled()
+      // Shown: everything held, in order, before anything newer.
+      rerender(<TerminalPane sessionId="a" active />)
+      expect(h.writes.map((w) => (w as Uint8Array).length)).toEqual([10, 5, 6])
+      expect(done).toHaveBeenCalledTimes(2)
+      act(() => write(bytes(7), () => {}))
+      expect(h.writes).toHaveLength(4)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a repaint while hidden drops what it replaces and keeps its place in line', () => {
+    vi.useFakeTimers()
+    try {
+      const { rerender } = render(<TerminalPane sessionId="a" active={false} />)
+      const { write, reset } = h.clients[0]!.callbacks
+      act(() => write(bytes(1), () => {}))
+      act(() => { vi.advanceTimersByTime(SETTLE_MS) })
+      const stale = vi.fn()
+      act(() => { write(bytes(2), stale); reset(); write(bytes(3), () => {}) })
+      // The client hears the stale bytes are done with; xterm never sees them.
+      expect(stale).toHaveBeenCalledTimes(1)
+      expect(h.writes).toHaveLength(1)
+      rerender(<TerminalPane sessionId="a" active />)
+      expect(h.writes.slice(1).map((w) => (typeof w === 'string' ? w : (w as Uint8Array).length))).toEqual(['reset', 3])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('lets the socket go past the hold limit, so the daemon keeps the rest', () => {
+    vi.useFakeTimers()
+    try {
+      render(<TerminalPane sessionId="a" active={false} />)
+      const write = h.clients[0]!.callbacks.write
+      act(() => write(bytes(1), () => {}))
+      act(() => { vi.advanceTimersByTime(SETTLE_MS) })
+      act(() => write(bytes(HIDDEN_HOLD_BYTES), () => {}))
+      expect(h.suspends).toBe(0)
+      act(() => write(bytes(1), () => {}))
+      expect(h.suspends).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a pane in front writes at once', () => {
+    vi.useFakeTimers()
+    try {
+      render(<TerminalPane sessionId="a" active />)
+      const write = h.clients[0]!.callbacks.write
+      act(() => { vi.advanceTimersByTime(SETTLE_MS) })
+      act(() => write(bytes(3), () => {}))
+      act(() => write(bytes(4), () => {}))
+      expect(h.writes).toHaveLength(2)
     } finally {
       vi.useRealTimers()
     }

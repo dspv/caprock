@@ -7,6 +7,16 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TabStrip, TerminalStack } from './TerminalTabs'
 import type { Tab } from '@/lib/tabs'
+import type { SessionSummary } from '@/lib/api'
+
+// A pane that counts its renders: xterm is beside the point here.
+const panes = vi.hoisted(() => ({ renders: new Map<string, number>() }))
+vi.mock('./TerminalPane', () => ({
+  TerminalPane: ({ sessionId }: { sessionId: string }) => {
+    panes.renders.set(sessionId, (panes.renders.get(sessionId) ?? 0) + 1)
+    return null
+  },
+}))
 
 const tab = (id: string): Tab => ({
   id,
@@ -106,5 +116,30 @@ describe('a file tab', () => {
     render(<TerminalStack tabs={[fileTab]} visibleTabId="f" renderFile={renderFile} />)
     expect(screen.getByText('docs/app.md in front')).toBeInTheDocument()
     expect(document.querySelector('[data-tab-panel="f"]')!.className).not.toContain('app-slab')
+  })
+})
+
+describe('TerminalStack', () => {
+  it('does not redraw a terminal when only the session list or the callbacks change', () => {
+    panes.renders.clear()
+    const tabs = [tab('one'), tab('two'), tab('three')]
+    const props = (n: number) => ({
+      tabs,
+      visibleTabId: 'one',
+      // What the workspace hands down each time a session's row moves: a new
+      // map and new callbacks.
+      sessions: new Map<string, SessionSummary>([[`s${n}`, { session_id: `s${n}` } as SessionSummary]]),
+      permissions: new Set<string>(),
+      onPaneStatus: () => {},
+      onPaneExit: () => {},
+    })
+    const { rerender } = render(<TerminalStack {...props(0)} />)
+    for (let i = 1; i <= 5; i++) rerender(<TerminalStack {...props(i)} />)
+    expect([...panes.renders.values()]).toEqual([1, 1, 1])
+    // Bringing another tab forward redraws the two whose state changed.
+    rerender(<TerminalStack {...props(6)} visibleTabId="two" />)
+    expect(panes.renders.get('one')).toBe(2)
+    expect(panes.renders.get('two')).toBe(2)
+    expect(panes.renders.get('three')).toBe(1)
   })
 })

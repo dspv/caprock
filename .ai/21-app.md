@@ -587,6 +587,66 @@ What still fails or is close, and what to try next:
   p95 is 19 ms in every run. The socket leg is 2 ms; the rest is the page's
   frame. No fix proposed until a quiet run misses.
 
+### Typing beside busy agents (2026-10-09)
+
+The owner found typing sluggish in 0.94.0 with several agents at work.
+`bench/busy.mjs` (bench/README.md) measures that case: nine tabs over three
+projects, one hidden tab printing 20 lines a second, four agents sending a
+hook event every 200 ms, 200 keys typed into a silent tab, in Playwright's
+headless Chrome (GPU on, ANGLE Metal) on the M1 Pro. Other agents loaded the
+machine (1-minute load average 20–48 on 10 cores), so single runs vary;
+the main-thread figures below repeat across runs, the echo tails less so.
+
+Found, each measured on its own, and fixed:
+
+- **Every live frame redrew the workspace.** `useLiveTick` read the tick
+  through `useLive()`, which re-renders on every frame, and debounced only
+  what it returned; `useDaemonVersion` and the permission card did the same
+  for the connection state. The workspace — sidebar, tab strip, inspector,
+  all nine terminal panes — committed 772 times in a 50 s typing run (722
+  of them the whole `AppShell`). Now the tick is debounced before React sees
+  it, the others read one field, session and project frames are applied
+  together at most every 300 ms, an unchanged refetch keeps the list it
+  had, a pane is redrawn only when its session, visibility or focus
+  changes, and the tray's summary re-renders nothing when it is unchanged.
+- **Hidden tabs did terminal work.** xterm redraws every row of a hidden,
+  DOM-rendered terminal on each scroll (its selection refresh ignores the
+  paused renderer) and measures each glyph again, because a `display: none`
+  box measures zero and is never cached. One hidden tab at 20 lines a
+  second took the page's main thread from 7.6% to 19.5% busy. A hidden pane
+  now holds what arrives after its first output and writes it when shown;
+  past 256 KB it lets the socket go and the daemon keeps the rest.
+- **The working dots repainted every frame.** The Today strip's and the
+  cockpit's pulses animated `box-shadow` (and the cockpit's scan line
+  `background-position`), which restyle and repaint on the main thread at
+  60 fps: with nothing else running, the one dot held the main thread 7.6%
+  busy, 0.2% with it paused. They now animate `transform` and `opacity` on
+  a pseudo-element, which the compositor runs.
+- Measured and not a cause: the links addon (its provider runs on hover,
+  not on render) and WebGL (only panes in front hold a context).
+
+Three busy runs per build, each on a fresh stand killed before the next,
+the builds interleaved, 14:47–14:52 with the machine quiet again (load
+average 3.5–7.8). Echo is in ms, from the key event to the frame after the
+echo is parsed; a run is about 55 s:
+
+| Busy run, per build        | 0.93.1            | This change       |
+| -------------------------- | ----------------- | ----------------- |
+| Echo p50                   | 6.8 / 7.0 / 7.0   | 4.5 / 4.1 / 4.3   |
+| Echo p95                   | 16 / 17 / 17      | 17 / 14 / 15      |
+| Echo max                   | 22 / 25 / 32      | 28 / 24 / 21      |
+| Long tasks                 | 0 / 0 / 0         | 0 / 0 / 0         |
+| Main thread busy           | 5.8 / 5.5 / 5.7 % | 3.4 / 3.6 / 3.3 % |
+| React commits while typing | 805 / 784 / 776   | 411 / 423 / 406   |
+
+The same runs with the machine at a load average of 80–256 (other agents'
+builds) spread far wider — p95 24–137 ms and up to 75 long tasks on master
+— and this change still had the fewest long tasks (0 / 1 / 0) and the
+least main-thread time (2.7–4.8%). What is left of the commits is the
+workspace taking session and project updates (at most about three a second)
+and the live ticks; the terminals are not among them. The p95 is the frame
+and the machine, not the page: it did not move on a quiet machine.
+
 The phone's chat view opens in 46–47 ms p50 at a 10 ms round trip and
 147–162 ms at 120 ms (no budget row). The reference-app runs against Orca
 1.4.220 (its Info.plist) are scripted (`bench/reference-orca.mjs`) and not

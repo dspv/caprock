@@ -5,7 +5,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { live } from './live'
-import { resyncPermissions, useWorkspaceData } from './useWorkspaceData'
+import { applySessionFrames, mergeSessions, resyncPermissions, SESSION_FRAMES_MS, useWorkspaceData } from './useWorkspaceData'
 import type { SessionSummary } from './api'
 
 const pending = vi.hoisted(() => ({ ids: new Set<string>(['a']) }))
@@ -47,5 +47,48 @@ describe('resyncPermissions', () => {
   it('keeps what it knew for a session whose answer failed, and drops ended ones', () => {
     const next = resyncPermissions(new Set(['a', 'gone']), new Map([['a', 'unknown'], ['b', 'none']] as const))
     expect([...next]).toEqual(['a'])
+  })
+})
+
+describe('session updates that re-render nothing', () => {
+  const s = (id: string, status = 'active') => ({ session_id: id, owned: true, status }) as SessionSummary
+
+  it('a refetch that changes nothing gives back the list held', () => {
+    const held = [s('a'), s('b')]
+    expect(mergeSessions(held, [s('a'), s('b')])).toBe(held)
+    const next = mergeSessions(held, [s('b', 'ended')])
+    expect(next).not.toBe(held)
+    expect(next.map((x) => x.status)).toEqual(['active', 'ended'])
+    expect(mergeSessions(held, [s('c')]).map((x) => x.session_id)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('applies a batch of frames in order, and only to sessions it holds', () => {
+    const held = [s('a'), s('b')]
+    expect(applySessionFrames(held, [['zz', { session: { session_id: 'zz' } }]])).toBe(held)
+    const next = applySessionFrames(held, [
+      ['a', { session: { session_id: 'a', status: 'idle' } as Partial<SessionSummary> }],
+      ['a', { session: { session_id: 'a', status: 'ended' } as Partial<SessionSummary> }],
+    ])
+    expect(next.map((x) => x.status)).toEqual(['ended', 'active'])
+    expect(next[1]).toBe(held[1])
+  })
+
+  it('folds a burst of session frames into one update', async () => {
+    const { result } = renderHook(() => useWorkspaceData())
+    await waitFor(() => expect(result.current.sessions.map((x) => x.session_id)).toEqual(['a', 'b']))
+    vi.useFakeTimers()
+    try {
+      const before = result.current.sessions
+      act(() => {
+        for (const status of ['idle', 'active', 'ended']) {
+          live.handle({ type: 'session', data: { session: { session_id: 'b', status } } as never })
+        }
+      })
+      expect(result.current.sessions).toBe(before)
+      act(() => { vi.advanceTimersByTime(SESSION_FRAMES_MS) })
+      expect(result.current.sessions.find((x) => x.session_id === 'b')?.status).toBe('ended')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

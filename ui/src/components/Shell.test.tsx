@@ -18,7 +18,7 @@ const heard = vi.hoisted(() => ({ at: 0 }))
 
 vi.mock('@/lib/live', async (orig) => {
   const actual = await orig<typeof import('@/lib/live')>()
-  return { ...actual, useLive: () => liveState, live: { heardAt: () => heard.at } }
+  return { ...actual, useLive: () => liveState, useLiveLink: () => liveState.link, live: { heardAt: () => heard.at } }
 })
 
 vi.mock('@/lib/api', async (orig) => {

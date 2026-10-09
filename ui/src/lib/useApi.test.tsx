@@ -2,6 +2,27 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
 import { useApi } from './useApi'
 
+describe('useApi keepUnchanged', () => {
+  it('an equal answer re-renders nothing; a different one does', async () => {
+    let renders = 0
+    let answer = { v: 1 }
+    const Keep = () => {
+      renders++
+      const q = useApi(() => Promise.resolve({ ...answer }), [], { keepUnchanged: true })
+      return <button onClick={q.refresh}>{q.data?.v ?? '-'}</button>
+    }
+    render(<Keep />)
+    await act(async () => {})
+    const settled = renders
+    for (let i = 0; i < 3; i++) await act(async () => { screen.getByRole('button').click() })
+    // React may run the component once to find the state unchanged; never more.
+    expect(renders - settled).toBeLessThanOrEqual(1)
+    answer = { v: 2 }
+    await act(async () => { screen.getByRole('button').click() })
+    expect(screen.getByRole('button').textContent).toBe('2')
+  })
+})
+
 // The hook subscribes to a live tick; without a stub every test would sit and
 // wait for a real interval to fire.
 vi.mock('./live', () => ({ useLiveTick: () => 0 }))

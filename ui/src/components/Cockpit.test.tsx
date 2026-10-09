@@ -34,7 +34,7 @@ vi.mock('@/lib/api', async (orig) => {
 
 vi.mock('@/lib/live', async (orig) => {
   const actual = await orig<typeof import('@/lib/live')>()
-  return { ...actual, useLive: () => ({ ...actual.useLive(), conn: 'open' }) }
+  return { ...actual, useLive: () => ({ ...actual.useLive(), conn: 'open' }), useLiveConn: () => 'open' }
 })
 
 import { Inspector } from './Inspector'

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { live as liveStore, useLive } from '@/lib/live'
+import { live as liveStore, useLiveLink } from '@/lib/live'
 import { href, type Route } from '@/lib/router'
 import { useTheme } from '@/lib/theme'
 import { api, isPairedDevice, type UpdateStatus } from '@/lib/api'
@@ -65,7 +65,7 @@ function screenName(r: Route): string {
 }
 
 export function Shell({ route, children }: { route: Route; children: ReactNode }) {
-  const live = useLive()
+  const link = useLiveLink()
   const [plan, savePlan] = usePlan()
   const active = (r: Route) => (r.name === route.name) || (r.name === 'now' && route.name === 'session')
   // Inside the desktop app the window already carries the link state, the
@@ -123,7 +123,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           <FeedbackButton screen={screenName(route)} />
           {/* Live only with a round trip in the last 25 s; otherwise what is
             * being done about it (components/ConnectionState.tsx). */}
-          {!app && <ConnectionState link={live.link} heardAt={liveStore.heardAt} />}
+          {!app && <ConnectionState link={link} heardAt={liveStore.heardAt} />}
           {/* Inside the app the status strip carries it (StatusStrip). */}
           {!app && <StaleUiPill />}
           {/* Setting the plan is a settings change: on the machine only (ADR-029). */}

@@ -16,12 +16,10 @@ vi.mock('./api', () => ({ api: { status: h.status } }))
 vi.mock('./live', async () => {
   const { useSyncExternalStore } = await import('react')
   return {
-    useLive: () => ({
-      conn: useSyncExternalStore(
-        (l: () => void) => { h.subs.add(l); return () => { h.subs.delete(l) } },
-        () => h.conn,
-      ),
-    }),
+    useLiveConn: () => useSyncExternalStore(
+      (l: () => void) => { h.subs.add(l); return () => { h.subs.delete(l) } },
+      () => h.conn,
+    ),
   }
 })
 
