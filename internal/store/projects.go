@@ -212,8 +212,8 @@ type ProjectActivity struct {
 // The caller attributes each key to the project that contains it.
 //
 // Live is a session not ended; waiting is a live one whose newest event is a
-// main-thread Stop or a permission prompt — what narrate calls
-// waiting-on-you. Spend is events at or after sinceMs, internal ones left out
+// permission prompt, or a main-thread Stop with no subagent still working
+// (LiveSubagents) — what narrate calls waiting-on-you. Spend is events at or after sinceMs, internal ones left out
 // as every total leaves them out.
 func ProjectActivityByDir(ctx context.Context, q Querier, sinceMs int64) (map[string]*ProjectActivity, error) {
 	out := map[string]*ProjectActivity{}
@@ -252,22 +252,31 @@ func ProjectActivityByDir(ctx context.Context, q Querier, sinceMs int64) (map[st
 		return nil, err
 	}
 	rows, err = q.QueryContext(ctx, `
-		SELECT COALESCE(NULLIF(s.repo_root,''), s.cwd) AS d,
+		SELECT COALESCE(NULLIF(s.repo_root,''), s.cwd) AS d, s.session_id,
 		       (SELECT e.kind || '|' || COALESCE(e.agent_id, '') FROM events e
 		        WHERE e.session_id = s.session_id ORDER BY e.ts DESC, e.id DESC LIMIT 1)
 		FROM sessions s WHERE s.status != 'ended' AND COALESCE(NULLIF(s.repo_root,''), s.cwd, '') != ''`)
 	if err != nil {
 		return nil, err
 	}
+	// A turn that ended with subagents still at work is not waiting on
+	// anyone: Claude Code resumes the parent when they finish. Counted after
+	// the rows are closed, so the two queries never hold one connection.
+	type stoppedSession struct{ dir, id string }
+	var stopped []stoppedSession
 	for rows.Next() {
-		var d string
+		var d, id string
 		var last sql.NullString
-		if err := rows.Scan(&d, &last); err != nil {
+		if err := rows.Scan(&d, &id, &last); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
-		if strings.HasPrefix(last.String, "permission.prompt|") || last.String == "agent.stop|" {
+		if strings.HasPrefix(last.String, "permission.prompt|") {
 			get(d).Waiting++
+			continue
+		}
+		if last.String == "agent.stop|" {
+			stopped = append(stopped, stoppedSession{dir: d, id: id})
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -276,6 +285,15 @@ func ProjectActivityByDir(ctx context.Context, q Querier, sinceMs int64) (map[st
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
+	}
+	for _, st := range stopped {
+		n, err := LiveSubagents(ctx, q, st.id, nowMs()-LiveSubagentWindow.Milliseconds())
+		if err != nil {
+			return nil, err
+		}
+		if n == 0 {
+			get(st.dir).Waiting++
+		}
 	}
 	rows, err = q.QueryContext(ctx, `
 		SELECT COALESCE(NULLIF(s.repo_root,''), s.cwd) AS d, COALESCE(SUM(e.cost_usd), 0)

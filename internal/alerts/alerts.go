@@ -35,6 +35,10 @@ const (
 	// freshFor is how old an event may be and still page anyone. A transcript
 	// read from the start after a restart replays every Stop it holds.
 	freshFor = 2 * time.Minute
+	// subagentWindow is how long a silent subagent is believed to be working,
+	// as store.LiveSubagentWindow: one whose stop never arrived must not hold
+	// a finished alert back forever.
+	subagentWindow = 30 * time.Minute
 )
 
 // Alert is one message to send.
@@ -58,6 +62,57 @@ type session struct {
 	stoppedAt    time.Time   // a Stop is pending as "finished"; zero if none
 	stop         event.Event // the event that set stoppedAt
 	lastSent     map[Kind]time.Time
+	// subagents is each subagent heard from in this session: when it was
+	// last heard and when it last stopped. One whose newest event is newer
+	// than its stop is still working.
+	subagents map[string]subagent
+}
+
+type subagent struct{ last, stopped time.Time }
+
+// working counts the session's subagents still at work at now.
+func (s *session) working(now time.Time) int {
+	n := 0
+	for id, a := range s.subagents {
+		switch {
+		case now.Sub(a.last) > subagentWindow:
+			delete(s.subagents, id)
+		case a.last.After(a.stopped):
+			n++
+		}
+	}
+	return n
+}
+
+// heard records one subagent event. When it is the stop of the last subagent
+// working, a pending "finished" restarts its minute from here: a turn that
+// ended with work still running in the background is only now done.
+func (s *session) heard(ev event.Event, now time.Time) {
+	if s.subagents == nil {
+		s.subagents = map[string]subagent{}
+	}
+	id := ev.AgentID
+	if id == "" {
+		id = "subagent"
+	}
+	a := s.subagents[id]
+	if ev.Kind == event.KindAgentStop {
+		if ev.Ts.After(a.stopped) {
+			a.stopped = ev.Ts
+		}
+		if a.last.IsZero() {
+			a.last = ev.Ts
+		}
+		s.subagents[id] = a
+		if !s.stoppedAt.IsZero() && s.working(now) == 0 && ev.Ts.After(s.stoppedAt) {
+			s.stoppedAt = ev.Ts
+		}
+		return
+	}
+	if ev.Ts.After(a.last) {
+		a.last = ev.Ts
+	}
+	s.subagents[id] = a
 }
 
 // Rules holds what the alerts depend on: which sessions are waiting or
@@ -107,6 +162,10 @@ func (r *Rules) Observe(ev event.Event, now time.Time) []Alert {
 		return out
 	}
 	if ev.Subagent() {
+		// A subagent's work says nothing about whether the parent's turn
+		// ended, but while one runs in the background the session is not
+		// finished: Claude Code resumes the parent when it is done.
+		r.state(ev.SessionID).heard(ev, now)
 		return nil
 	}
 	s, ok := r.sessions[ev.SessionID]
@@ -143,14 +202,14 @@ func (r *Rules) Observe(ev event.Event, now time.Time) []Alert {
 func (r *Rules) Due(now time.Time) []Alert {
 	var out []Alert
 	for id, s := range r.sessions {
-		if !s.stoppedAt.IsZero() && now.Sub(s.stoppedAt) >= FinishedAfter {
+		if !s.stoppedAt.IsZero() && now.Sub(s.stoppedAt) >= FinishedAfter && s.working(now) == 0 {
 			s.stoppedAt = time.Time{}
 			for _, a := range r.emit(KindFinished, id, now) {
 				a.Trigger = s.stop
 				out = append(out, a)
 			}
 		}
-		if s.waitingSince.IsZero() && s.stoppedAt.IsZero() && r.quiet(s, now) {
+		if s.waitingSince.IsZero() && s.stoppedAt.IsZero() && s.working(now) == 0 && r.quiet(s, now) {
 			delete(r.sessions, id)
 		}
 	}

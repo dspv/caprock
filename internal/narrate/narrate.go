@@ -42,6 +42,11 @@ type Activity struct {
 	Plan   *Plan     `json:"plan,omitempty"`
 	// Repeats counts consecutive identical (tool, sample) calls ending at the latest event.
 	Repeats int `json:"repeats,omitempty"`
+	// Background is how many subagents are still working after the main
+	// thread ended its turn. Claude Code resumes the parent by itself when
+	// they finish, so nothing is wanted from the user and Health is working.
+	// Zero otherwise.
+	Background int `json:"background,omitempty"`
 }
 
 // toolInput extracts common tool_input fields from a tool.* payload.
@@ -291,6 +296,36 @@ type Options struct {
 	IdleAfter    time.Duration // no events for this long ⇒ idle (default 5m)
 	Looping      bool          // an unexpired loop alert exists for the session
 	SessionEnded bool
+	// LiveSubagents is how many subagents are working in the session now
+	// (store.LiveSubagents). With the main thread's turn ended, they make the
+	// session "working in background", not waiting on anyone.
+	LiveSubagents int
+	// MainLast is the main thread's newest event, for a caller that had to
+	// look it up because events holds none (a parent whose subagents logged
+	// more than the window). Nil means "find it in events".
+	MainLast *event.Event
+}
+
+// BackgroundPhrase is what a session whose turn ended says while n of its
+// subagents still work.
+func BackgroundPhrase(n int) string {
+	return fmt.Sprintf("background agents working · %d", n)
+}
+
+// MainTurnEnded reports whether the main thread's newest event is a
+// top-level Stop: the parent finished its turn, whatever its subagents still
+// do. mainLast, when given, is that event; otherwise it is found in events
+// (oldest first).
+func MainTurnEnded(events []event.Event, mainLast *event.Event) bool {
+	if mainLast == nil {
+		for i := len(events) - 1; i >= 0; i-- {
+			if !events[i].Subagent() {
+				mainLast = &events[i]
+				break
+			}
+		}
+	}
+	return mainLast != nil && mainLast.Kind == event.KindAgentStop && mainLast.AgentID == ""
 }
 
 // Summarize derives the activity for a session from its most recent events
@@ -416,6 +451,21 @@ func Summarize(events []event.Event, opt Options) Activity {
 	if act.Health == HealthWorking && now.Sub(last.Ts) > idleAfter {
 		act.Health = HealthIdle
 		act.Phrase = "was " + act.Phrase
+	}
+	// The turn ended but subagents it started in the background still work.
+	// Claude Code resumes the parent by itself when they finish, so the
+	// session wants nothing from anyone: it read "waiting on you" beside "1
+	// subagent working" (owner, 2026-10-09). A permission dialog, the main
+	// thread's or a subagent's, still waits — that is the one thing that does.
+	if opt.LiveSubagents > 0 && last.Kind != event.KindPermissionPrompt && MainTurnEnded(events, opt.MainLast) {
+		switch act.Health {
+		case HealthWaiting, HealthWorking, HealthIdle:
+			act.Health = HealthWorking
+			act.Phrase = BackgroundPhrase(opt.LiveSubagents)
+			act.Tool = ""
+			act.Repeats = 0
+			act.Background = opt.LiveSubagents
+		}
 	}
 	if opt.Looping {
 		act.Health = HealthLooping

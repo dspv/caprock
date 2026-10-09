@@ -375,6 +375,13 @@ type SessionPatch struct {
 	// its list row and its context window all read this column. Model, the
 	// main thread's, always wins over it.
 	SubagentModel string
+	// FromSubagent says Cwd, GitBranch and TranscriptPath were reported by a
+	// subagent of this session. A subagent works where it was put — often a
+	// git worktree of its own, on its own branch — so its place only fills a
+	// session that has none yet and never overwrites the main thread's: the
+	// owner's session in ~/dev/caprock on master read as a background agent's
+	// `feat/…` worktree (2026-10-09).
+	FromSubagent bool
 	// Agent is the coding agent that produced the session ("claude",
 	// "opencode"). Empty leaves the column at its default rather than
 	// overwriting a value already stored.
@@ -432,6 +439,10 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 	// basename label by accident. repoKnown is false when the patch carries no
 	// cwd, and then the stored resolution is left alone rather than blanked.
 	project, repoRoot, repoPath, repoKnown := p.resolveRepoFields()
+	if p.FromSubagent {
+		// Leaves a stored resolution alone, and fills a missing one.
+		repoKnown = false
+	}
 	model := p.Model
 	if model == "" {
 		model = p.SubagentModel
@@ -440,15 +451,21 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 		INSERT INTO sessions(session_id, cwd, project, model, started_at, last_event_at, status, transcript_path, has_hooks, has_transcript, git_branch, version, repo_root, repo_path, agent, pid, title, worked_at, parent_session)
 		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), 'claude'), ?, ?, ?, ?)
 		ON CONFLICT(session_id) DO UPDATE SET
-		  cwd             = COALESCE(NULLIF(excluded.cwd, ''), sessions.cwd),
-		  project         = COALESCE(NULLIF(excluded.project, ''), sessions.project),
+		  -- A subagent's place fills an empty row only (SessionPatch.FromSubagent);
+		  -- the main thread's always wins.
+		  cwd             = CASE WHEN ? THEN COALESCE(NULLIF(sessions.cwd, ''), excluded.cwd)
+		                         ELSE COALESCE(NULLIF(excluded.cwd, ''), sessions.cwd) END,
+		  project         = CASE WHEN ? THEN COALESCE(NULLIF(sessions.project, ''), excluded.project)
+		                         ELSE COALESCE(NULLIF(excluded.project, ''), sessions.project) END,
 		  repo_root       = CASE WHEN ? THEN excluded.repo_root ELSE COALESCE(sessions.repo_root, excluded.repo_root) END,
 		  repo_path       = CASE WHEN ? THEN excluded.repo_path ELSE COALESCE(sessions.repo_path, excluded.repo_path) END,
 		  -- The main thread's model wins; a subagent's only fills an empty one.
 		  model           = CASE WHEN ? != '' THEN excluded.model
 		                         ELSE COALESCE(NULLIF(sessions.model, ''), NULLIF(excluded.model, ''), sessions.model) END,
-		  transcript_path = COALESCE(NULLIF(excluded.transcript_path, ''), sessions.transcript_path),
-		  git_branch      = COALESCE(NULLIF(excluded.git_branch, ''), sessions.git_branch),
+		  transcript_path = CASE WHEN ? THEN COALESCE(NULLIF(sessions.transcript_path, ''), excluded.transcript_path)
+		                         ELSE COALESCE(NULLIF(excluded.transcript_path, ''), sessions.transcript_path) END,
+		  git_branch      = CASE WHEN ? THEN COALESCE(NULLIF(sessions.git_branch, ''), excluded.git_branch)
+		                         ELSE COALESCE(NULLIF(excluded.git_branch, ''), sessions.git_branch) END,
 		  version         = COALESCE(NULLIF(excluded.version, ''), sessions.version),
 		  started_at      = MIN(sessions.started_at, excluded.started_at),
 		  last_event_at   = MAX(sessions.last_event_at, excluded.last_event_at),
@@ -475,7 +492,7 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 		  worked_at       = MAX(sessions.worked_at, excluded.worked_at),
 		  parent_session  = COALESCE(NULLIF(excluded.parent_session, ''), sessions.parent_session)`,
 		id, p.Cwd, project, model, p.StartedAt, p.LastEventAt, status, p.TranscriptPath, b2i(p.FromHook), b2i(p.FromTranscript), p.GitBranch, p.Version, repoRoot, repoPath, p.Agent, p.PID, strings.TrimSpace(p.Title), p.WorkedAt, p.ParentSession,
-		repoKnown, repoKnown, p.Model,
+		p.FromSubagent, p.FromSubagent, repoKnown, repoKnown, p.Model, p.FromSubagent, p.FromSubagent,
 		p.Status, p.Status)
 	if err != nil {
 		return fmt.Errorf("upsert session: %w", err)

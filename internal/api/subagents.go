@@ -26,7 +26,36 @@ type SubagentNow struct {
 	ToolAt  int64  `json:"tool_at,omitempty"`
 	Running bool   `json:"running"`
 	Asking  bool   `json:"asking"`
+	SubagentModel
 }
+
+// SubagentModel is the model a subagent runs on and what its own calls cost
+// so far, from its transcript's turns.
+type SubagentModel struct {
+	// Model is its newest turn's model id, ModelDisplay the pricing table's
+	// short name for it ("Haiku 4.5"); both omitted before its first turn.
+	Model        string `json:"model,omitempty"`
+	ModelDisplay string `json:"model_display,omitempty"`
+	// CostUSD is omitted when unknown: no turn yet, or one the pricing
+	// table could not price. Never a zero standing in for unknown.
+	CostUSD *float64 `json:"cost_usd,omitempty"`
+}
+
+// SubagentDone is a subagent that finished lately.
+type SubagentDone struct {
+	AgentID     string `json:"agent_id"`
+	AgentType   string `json:"agent_type,omitempty"`
+	Description string `json:"description,omitempty"`
+	ToolCalls   int    `json:"tool_calls"`
+	// StartedAt is its first event in the window, StoppedAt its
+	// SubagentStop (unix ms).
+	StartedAt int64 `json:"started_at"`
+	StoppedAt int64 `json:"stopped_at"`
+	SubagentModel
+}
+
+// recentSubagents bounds the finished subagents listed.
+const recentSubagents = 3
 
 // SubagentsResponse is GET /v1/sessions/{id}/subagents.
 type SubagentsResponse struct {
@@ -34,6 +63,11 @@ type SubagentsResponse struct {
 	// Finished is how many stopped within the same window after making a
 	// tool call.
 	Finished int `json:"finished"`
+	// Recent is the newest of those, at most three, newest stop first.
+	Recent []SubagentDone `json:"recent"`
+	// CostUSD is what every subagent of the session has cost, over its whole
+	// life; omitted when any of them is unknown.
+	CostUSD *float64 `json:"cost_usd,omitempty"`
 }
 
 // handleSessionSubagents lists the subagents working in a session, under
@@ -47,13 +81,44 @@ func (s *Server) handleSessionSubagents(w http.ResponseWriter, r *http.Request) 
 		s.fail(w, err)
 		return
 	}
-	resp := SubagentsResponse{Working: []SubagentNow{}, Finished: finished}
+	id := r.PathValue("id")
+	done, err := store.SubagentsDone(r.Context(), s.d.Store.DB(), id, since, recentSubagents)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	spend, total, err := store.SubagentsSpend(r.Context(), s.d.Store.DB(), id)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	model := func(agent string) SubagentModel {
+		sp, ok := spend[agent]
+		if !ok {
+			return SubagentModel{}
+		}
+		m := SubagentModel{Model: sp.Model, ModelDisplay: s.modelDisplay(sp.Model)}
+		if sp.Known {
+			m.CostUSD = &sp.CostUSD
+		}
+		return m
+	}
+	resp := SubagentsResponse{Working: []SubagentNow{}, Finished: finished, Recent: []SubagentDone{}}
+	if total.Known {
+		resp.CostUSD = &total.CostUSD
+	}
+	for _, a := range done {
+		resp.Recent = append(resp.Recent, SubagentDone{
+			AgentID: a.AgentID, AgentType: a.AgentType, Description: oneLine(a.Description, 120),
+			ToolCalls: a.ToolCalls, StartedAt: a.StartedAt, StoppedAt: a.StoppedAt, SubagentModel: model(a.AgentID),
+		})
+	}
 	for _, a := range list {
 		resp.Working = append(resp.Working, SubagentNow{
 			AgentID: a.AgentID, AgentType: a.AgentType, Description: oneLine(a.Description, 120),
 			ToolCalls: a.ToolCalls, StartedAt: a.StartedAt, LastAt: a.LastAt,
 			Tool: a.Tool, Detail: callDetail(a.Tool, a.Input), ToolAt: a.ToolAt,
-			Running: a.Running, Asking: a.Asking,
+			Running: a.Running, Asking: a.Asking, SubagentModel: model(a.AgentID),
 		})
 	}
 	writeJSON(w, http.StatusOK, resp)
