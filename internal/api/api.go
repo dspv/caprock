@@ -665,8 +665,29 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 	if s.d.ActiveLoops != nil {
 		la = s.d.ActiveLoops(sess.SessionID)
 	}
-	act := narrate.Summarize(last, narrate.Options{Now: s.d.Now(), IdleAfter: s.d.IdleAfter, Looping: la != nil, SessionEnded: sess.Status == store.StatusEnded})
-	if act.Health == narrate.HealthWorking && sess.Status == store.StatusIdle {
+	opt := narrate.Options{Now: s.d.Now(), IdleAfter: s.d.IdleAfter, Looping: la != nil, SessionEnded: sess.Status == store.StatusEnded}
+	if sess.Status != store.StatusEnded {
+		// Counted before narrating: a turn that ended with subagents still at
+		// work is "working in background", not waiting on anyone.
+		n, err := store.LiveSubagents(ctx, q, sess.SessionID, s.d.Now().Add(-liveSubagentWindow).UnixMilli())
+		if err != nil {
+			return SessionSummary{}, nil, err
+		}
+		opt.LiveSubagents = n
+		if n > 0 && !hasMainEvent(last) {
+			// Subagents filled the window; the main thread's newest event
+			// decides whether the parent's turn has ended.
+			main, err := store.LastEventsFiltered(ctx, q, sess.SessionID, 1, store.EventFilter{MainOnly: true})
+			if err != nil {
+				return SessionSummary{}, nil, err
+			}
+			if len(main) > 0 {
+				opt.MainLast = &main[0]
+			}
+		}
+	}
+	act := narrate.Summarize(last, opt)
+	if act.Health == narrate.HealthWorking && act.Background == 0 && sess.Status == store.StatusIdle {
 		act.Health = narrate.HealthIdle
 		act.Phrase = "was " + act.Phrase
 	}
@@ -685,13 +706,7 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 		sum.OpenTerminal = s.openTerminalInfo(sess)
 	}
 	sum.ModelDisplay = s.modelDisplay(sess.Model)
-	if sess.Status != store.StatusEnded {
-		n, err := store.LiveSubagents(ctx, q, sess.SessionID, s.d.Now().Add(-liveSubagentWindow).UnixMilli())
-		if err != nil {
-			return SessionSummary{}, nil, err
-		}
-		sum.LiveSubagents = n
-	}
+	sum.LiveSubagents = opt.LiveSubagents
 	// Context fill: last assistant turn's input+cache tokens vs the model's window.
 	// When it cannot be computed, say which of the two reasons applies. The
 	// dashboard used to caption every empty Context "unknown model", including
@@ -2286,4 +2301,14 @@ func (s *Server) handleWindowStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.d.WindowStop(r.Context()))
+}
+
+// hasMainEvent reports whether any of events is the main thread's own.
+func hasMainEvent(events []event.Event) bool {
+	for _, e := range events {
+		if !e.Subagent() {
+			return true
+		}
+	}
+	return false
 }

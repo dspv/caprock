@@ -152,6 +152,47 @@ describe('the agent cockpit', () => {
     }
   })
 
+  // The owner's session ended its turn with a background subagent still at
+  // work, and the cockpit read "Waiting on you" beside "1 subagent working".
+  // The daemon now narrates it as working with `background`; the cockpit says
+  // so, and the Now card does not name the parent's last call as running.
+  it('says background agents are working, not waiting on you, after the turn ended', async () => {
+    show(agent({ live_subagents: 1, activity: { phrase: 'background agents working · 1', at: iso(1_000), health: 'working', background: 1 } }))
+    await screen.findByRole('region', { name: 'Recent tool calls' })
+    expect(screen.getByRole('status')).toHaveTextContent('Background agents working · 1')
+    expect(screen.getByRole('status')).not.toHaveTextContent('Waiting')
+    const nowCard = screen.getByRole('region', { name: 'Now' })
+    expect(within(nowCard).getByText('Background agents working · 1')).toBeInTheDocument()
+    expect(within(nowCard).queryByText(/Waiting|Thinking/)).toBeNull()
+  })
+
+  it('still waits on a permission prompt while background agents work', async () => {
+    h.permission = { id: 'p1', tool: 'Bash', detail: 'rm -rf out', since: iso(2_000), agent_id: 'a1', agent_type: 'general-purpose' }
+    try {
+      show(agent({ live_subagents: 1, activity: { phrase: 'background agents working · 1', at: iso(1_000), health: 'working', background: 1 } }))
+      const nowCard = screen.getByRole('region', { name: 'Now' })
+      expect(await within(nowCard).findByText('Subagent (general-purpose) wants to run Bash')).toBeInTheDocument()
+      expect(screen.getByRole('status')).toHaveTextContent('Waiting on you')
+    } finally {
+      h.permission = null
+    }
+  })
+
+  // "feat/app-one-tab-strip …nt-a874ec5240fb37a9d" said neither which
+  // project nor, cut from the left, which folder (owner, 2026-10-09).
+  it('heads the panel with the project, a branch only off the default, the path on hover', () => {
+    const { unmount } = render(<Inspector session={agent({ cwd: '/u/dev/caprock', repo_root: '/u/dev/caprock', project: 'caprock', git_branch: 'master' })} project={{ name: 'caprock', default_branch: 'master' }} sessionId="s1" hasPermission={false} onClose={() => {}} onDetach={() => {}} />)
+    const place = screen.getByLabelText('Project caprock')
+    expect(place).toHaveTextContent(/^caprock$/)
+    expect(place).toHaveAttribute('title', '/u/dev/caprock')
+    unmount()
+    render(<Inspector session={agent({ cwd: '/u/dev/caprock/.claude/worktrees/agent-a1', repo_root: '/u/dev/caprock', project: 'caprock', git_branch: 'feat/x' })} project={{ name: 'caprock', default_branch: 'master' }} sessionId="s1" hasPermission={false} onClose={() => {}} onDetach={() => {}} />)
+    const other = screen.getByLabelText('Project caprock, branch feat/x')
+    expect(other).toHaveTextContent('caprock· feat/x')
+    expect(other).not.toHaveTextContent('agent-a1')
+    expect(other).toHaveAttribute('title', '/u/dev/caprock/.claude/worktrees/agent-a1')
+  })
+
   it('leaves a shell tab the plain inspector', () => {
     show(agent({ kind: 'shell' }))
     expect(screen.getByRole('heading', { name: 'Inspector' })).toBeInTheDocument()

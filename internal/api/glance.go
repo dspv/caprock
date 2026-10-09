@@ -102,4 +102,4 @@ func (s *Server) modelDisplay(model string) string {
 
 // liveSubagentWindow bounds how long a silent subagent is believed to be
 // working: one whose SubagentStop never arrived must not count forever.
-const liveSubagentWindow = 30 * time.Minute
+const liveSubagentWindow = store.LiveSubagentWindow

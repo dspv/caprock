@@ -9,6 +9,28 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 Phase 3 (Delight) has no plan by design.
 
+### Fixed
+
+- **A session whose background agents are still working is no longer
+  "waiting on you".** When a Claude Code turn ends with subagents still
+  running, Claude Code resumes the session by itself once they finish. The
+  cockpit used to say "Waiting on you" beside "1 subagent working". It now
+  says *Background agents working · N*. Such a session gets no waiting dot,
+  is left out of the Waiting on you inbox, ⌘J and the project's waiting
+  count, and sends no "finished" notification until its last subagent stops.
+  A permission prompt still waits, whoever asked.
+- **A subagent no longer moves its session to its own folder and branch.**
+  Hooks and transcript lines from a background agent working in a git
+  worktree carry that worktree's folder and branch. They overwrote the
+  session's, so a session in `~/dev/caprock` on master showed an agent's
+  `feat/…` branch and worktree path. A subagent's folder and branch now only
+  fill a session that has none yet. A session already moved goes back with
+  its main thread's next event.
+- **The cockpit header names the project.** Under the title it shows the
+  project's name as the sidebar shows it, then the branch only when that is
+  not the project's default. The full path is a tooltip. It used to show a
+  branch beside a folder path cut from the left (`…nt-a874ec5240fb37a9d`).
+
 ## [0.93.1] - 2026-10-09
 
 ### Fixed

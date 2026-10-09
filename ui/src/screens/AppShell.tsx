@@ -13,7 +13,7 @@ import { APP_ROUTE, isMacPlatform, isTauri, isWorkspaceHash } from '@/lib/appmod
 import { FIND_EVENT, matchAppShortcut, type AppCommand } from '@/lib/appkeys'
 import { parseHash } from '@/lib/router'
 import { NotSupportedError, projectsApi, type Project } from '@/lib/projects'
-import { buildSidebar, dotOf, sessionTitle, type InboxItem, type ProjectNode, type SessionNode, type WorktreeNode } from '@/lib/sidebar'
+import { buildSidebar, dotOf, OTHER_FOLDERS_ID, sessionTitle, type InboxItem, type ProjectNode, type SessionNode, type WorktreeNode } from '@/lib/sidebar'
 import {
   activeTab,
   focusedLeaf,
@@ -630,6 +630,14 @@ export function AppShell() {
     return undefined
   }, [focused, model.projects, source])
 
+  // The project the focused session is listed under, named as the sidebar names it.
+  const focusedProject = useMemo(() => {
+    if (!focused) return undefined
+    const p = model.projects.find((n) => n.worktrees.some((w) => w.sessions.some((x) => x.session.session_id === focused.sessionId)))?.project
+    // "Other folders" is a heading, not a project: the session's own folder names it.
+    return p && p.id !== OTHER_FOLDERS_ID ? p : undefined
+  }, [focused, model.projects])
+
   const focusedIsAgent = !!focused && focused.kind === 'session' && focusedSession?.kind !== 'shell'
   const showChat = focusedIsAgent && !!focused && chatOpen.has(focused.sessionId)
   // The permission card shows for the focused agent whether or not its
@@ -799,6 +807,7 @@ export function AppShell() {
               <div className="h-full shrink-0" style={{ width: 'var(--app-inspector-w)' }}>
                 <Inspector
                   session={focusedSession}
+                  project={focusedProject}
                   sessionId={focusedFile ? undefined : focused?.sessionId}
                   hasPermission={!!focused && data.permissions.has(focused.sessionId)}
                   showPrompt={promptCard}

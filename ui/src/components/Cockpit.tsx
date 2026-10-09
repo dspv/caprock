@@ -22,7 +22,7 @@ import { countdown, resetClock } from '@/lib/limitclock'
 import { readWindow } from './PlanLimits'
 import { AgentCharacter, agentName, characterFor } from './Characters'
 import {
-  askLine, cockpitState, commandGist, fmtRun, mainThread, planWindowsFor, requester, runningTool, runShare, runVerb, subagentWaiting, toolKind, toolRuns, turnCosts,
+  askLine, backgroundAgents, backgroundLabel, cockpitState, commandGist, fmtRun, mainThread, planWindowsFor, requester, runningTool, runShare, runVerb, subagentWaiting, toolKind, toolRuns, turnCosts,
   type CockpitState, type ToolKind, type ToolRun, type TurnCost,
 } from '@/lib/cockpit'
 
@@ -143,10 +143,10 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
   const plan = planWindowsFor(s.agent, summary)
   return (
     <>
-      <Hero s={s} state={state} now={now} />
+      <Hero s={s} state={state} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s)} />
       <Spend s={s} turns={turns} />
       <ContextMeter s={s} />
-      <NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} permission={permission} now={now} />
+      <NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} permission={permission} background={backgroundAgents(s)} now={now} />
       {subs && subs.working.length > 0 && <Subagents subs={subs} permission={permission} now={now} />}
       {s.loop && state !== 'ended' && <LoopWarning s={s} now={now} />}
       <Timeline runs={runs} total={s.stats?.tool_calls} now={now} />
@@ -165,7 +165,7 @@ export function SectionLabel({ children, right }: { children: ReactNode; right?:
   )
 }
 
-function Hero({ s, state, now }: { s: SessionSummary; state: CockpitState; now: number }) {
+function Hero({ s, state, now, background }: { s: SessionSummary; state: CockpitState; now: number; background: number }) {
   const since = s.worked_at || s.last_event_at
   return (
     <div className="flex items-center gap-3.5" data-state={state}>
@@ -179,13 +179,13 @@ function Hero({ s, state, now }: { s: SessionSummary; state: CockpitState; now: 
         </p>
         <p className={`flex items-center gap-1.5 text-[12px] font-medium ${STATE_TEXT[state]}`} role="status">
           <span className={`cockpit-dot inline-block h-[7px] w-[7px] rounded-full`} data-state={state} />
-          {STATE_LABEL[state]}
+          {background > 0 && state === 'working' ? backgroundLabel(background) : STATE_LABEL[state]}
           {(state === 'idle' || state === 'ended') && since ? <span className="font-normal text-fg-faint">· {fmtAgo(since, now)}</span> : null}
         </p>
         {s.started_at > 0 && state !== 'ended' && (
           <p className="text-[11px] text-fg-faint">started {fmtAgo(s.started_at, now)}</p>
         )}
-        {(s.live_subagents ?? 0) > 0 && (
+        {(s.live_subagents ?? 0) > 0 && !(background > 0 && state === 'working') && (
           <p className="text-[11.5px] text-fg-muted">{s.live_subagents} {s.live_subagents === 1 ? 'subagent' : 'subagents'} working</p>
         )}
       </div>
@@ -302,12 +302,14 @@ function ContextMeter({ s }: { s: SessionSummary }) {
   )
 }
 
-function NowDoing({ s, state, running, last, permission, now }: {
+function NowDoing({ s, state, running, last, permission, background, now }: {
   s: SessionSummary
   state: CockpitState
   running?: ToolRun
   last?: ToolRun
   permission?: Permission | null
+  /** Subagents working after the turn ended (backgroundAgents). */
+  background: number
   now: number
 }) {
   let icon: ReactNode
@@ -330,6 +332,13 @@ function NowDoing({ s, state, running, last, permission, now }: {
       full = permission.detail
     }
     right = <span className="num text-[11.5px] text-fg-muted">{fmtAgo(permission.since, now)}</span>
+  } else if (background > 0 && state === 'working') {
+    // The turn ended with subagents still at work. Nothing is wanted from
+    // the user: Claude Code picks the session up when they finish. Before
+    // the main thread's last call, which "Thinking after …" would name.
+    icon = <KindIcon kind="agent" />
+    verb = backgroundLabel(background)
+    detail = 'resumes when they finish'
   } else if (running) {
     icon = <KindIcon kind={running.kind} />
     verb = running.kind === 'mcp' || running.kind === 'other' ? `${runVerb(running.kind)} ${running.tool.replace(/^mcp__(.+?)__/, '$1·')}` : runVerb(running.kind)

@@ -189,8 +189,10 @@ One window, three regions:
   the notification and the phone, which keep their buttons.
 - **Agent cockpit (right).** The inspector, open by default (⌘I closes it,
   and closed is remembered per machine), becomes the agent cockpit beside an
-  agent's terminal: the agent's character in its state (working, waiting on
-  you, looping, idle, ended), what the session has cost with the cost of each
+  agent's terminal: the session's project (and its branch when not the
+  default; the path on hover), the agent's character in its state (working,
+  *background agents working · N* once its turn ended with subagents still
+  at work, waiting on you, looping, idle, ended), what the session has cost with the cost of each
   of its last model calls, the context bar and what the next call pays to
   re-read it, what it is doing this second (the open tool call and how long
   it has run, or *Thinking* since the last one finished; while a permission

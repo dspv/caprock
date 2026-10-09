@@ -58,6 +58,10 @@ export interface Activity {
   health: Health
   plan?: Plan
   repeats?: number
+  /** Subagents still working after the main thread ended its turn: health is
+   *  working, nothing is wanted from the user, and Claude Code resumes the
+   *  parent when they finish. Absent otherwise. */
+  background?: number
 }
 
 export interface Savings { billed_with: number; billed_without: number; saved: number; hit_rate: number; cut_pct: number }
