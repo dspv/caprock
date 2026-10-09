@@ -122,9 +122,13 @@ others. Installing it: [install-app.md](install-app.md).
   key. Type a task that matches
   nothing — "Add rate limiting to the API" — and Enter opens *New agent* with
   it as the first message, in a new worktree named after it.
-- **New worktree.** In the New agent sheet, *Where → New worktree…* names
-  the worktree after the first message unless you type a name, and keeps
-  `.caprock-worktrees/` out of the main checkout's changes.
+- **A new copy on its own branch.** In the New agent sheet, *Where* offers
+  *This folder* (the project's own checkout, on its current branch), each
+  *Existing copy* by its branch, and *New copy on its own branch* — a git
+  worktree: a separate folder on a new `caprock/<name>` branch, so the agent
+  does not collide with others. The branch is named after the first message
+  unless you type a name, and `.caprock-worktrees/` is kept out of the main
+  checkout's changes.
 - **Terminal.** A real terminal for every session Caprock started and every
   shell, and it keeps running when the app or the daemon restarts. Scrolled
   up, new output never moves what you are reading; a "↓ N new lines" pill
@@ -251,8 +255,10 @@ status strip (in a browser, in the header) instead, for when you are done.
 The *New agent* sheet needs no mouse. It opens on the first message; Tab and
 ⇧Tab walk Project, Where, Agent, Model, Permissions, First message, Cancel
 and Start; ↑ and ↓ change a choice in place (Space still opens the list);
-⌘↩ (Ctrl+Enter off macOS) starts from anywhere in the sheet, and Esc
-cancels. The footer names these keys.
+⌘↩ (Ctrl+Enter off macOS) starts from anywhere in the sheet, the selects
+and the first message included, and Esc cancels. The footer names these
+keys, and the Start button carries its own. Focus moves only when you move
+it: nothing that updates behind the sheet takes it from the field you are in.
 
 ## Outside the window
 

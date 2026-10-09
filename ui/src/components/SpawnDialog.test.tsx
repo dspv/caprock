@@ -226,7 +226,7 @@ describe('Codex and OpenCode', () => {
     const model = screen.getByLabelText<HTMLSelectElement>(/Model/)
     // "" is "what your config says": the default is not restated as a flag.
     expect(model.value).toBe('')
-    expect(model.options[0]!.textContent).toMatch(/gpt-6-astra · your Codex default/)
+    expect(model.options[0]!.textContent).toBe('gpt-6-astra (default)')
     expect(Array.from(model.options).map((o) => o.value)).toEqual(['', 'gpt-6-sol'])
   })
 

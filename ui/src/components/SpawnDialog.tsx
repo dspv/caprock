@@ -350,7 +350,9 @@ export function ModelField({
     const listed = codex?.models ?? []
     return (
       <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">{codex?.default ? `${codex.default} · your Codex default` : 'your Codex default'}</option>
+        {/* Short enough for the New agent sheet's half-width column: the
+          * longer "· your Codex default" was cut off there (owner, 2026-10-09). */}
+        <option value="">{codex?.default ? `${codex.default} (default)` : 'Codex default'}</option>
         {listed.filter((m) => m.id !== codex?.default).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
       </select>
     )

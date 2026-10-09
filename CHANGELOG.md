@@ -11,6 +11,12 @@ Phase 3 (Delight) has no plan by design.
 
 ### Changed
 
+- **The New agent sheet says what *Where* means.** *This folder · main* is
+  the project's own checkout, *Existing copy · <branch>* one already made,
+  and *New copy on its own branch* a separate folder on a new branch, with a
+  one-line explanation and a *Branch name* field — no git vocabulary needed.
+  Start shows its key (⌘↩, Ctrl+↵ off macOS), which works from every field.
+  Codex's default model reads *gpt-… (default)*, short enough to fit.
 - **Tabs never vanish when you pick another project.** The tab strip holds
   every open tab of every project, in the order you opened them, each with
   its project's name and colour; picking a project shows its tabs in the
@@ -51,6 +57,13 @@ Phase 3 (Delight) has no plan by design.
   ⌥⌘N (Ctrl+Alt+Shift+N on Windows and Linux) and the palette start a Claude
   Code session without picking a folder, in a tab under *Other folders*. It
   was only on the browser's Now screen.
+
+### Fixed
+
+- **Focus no longer jumps while you fill the New agent sheet.** Each time
+  the app refreshed behind it, the sheet threw the caret back to *Project*;
+  now focus moves only when you move it. The same fix covers every sheet in
+  the app.
 
 ## [0.93.1] - 2026-10-09
 
