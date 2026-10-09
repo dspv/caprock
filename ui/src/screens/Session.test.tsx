@@ -23,6 +23,7 @@ const diffGate = vi.hoisted(() => ({ wait: undefined as Promise<void> | undefine
 // ones they can.
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
+    options: Record<string, unknown> = {}
     constructor() { termsMade.n++ }
     open() {}
     write() {}
