@@ -18,20 +18,20 @@
  * Nothing names a repository, a path or a prompt — the same rule as the card.
  */
 import { api, type Week } from '@/lib/api'
-import { collectCardData, type CardData, type SharePeriod } from '@/components/ShareCard'
+import { collectCardData, type CardData, type CardStep, type SharePeriod } from '@/components/ShareCard'
 
 export interface Kept<T> { value: T; at: number }
 
 /** How long a reading is current enough to save without asking again. */
 export const FRESH_MS = 60_000
 
-const FIG_KEY = (p: SharePeriod) => `caprock-share-figures-v1-${p}`
+const FIG_KEY = (p: SharePeriod) => `caprock-share-figures-v2-${p}`
 const STORY_KEY = (p: SharePeriod) => `caprock-share-story-v1-${p}`
 
 const figures = new Map<SharePeriod, Kept<CardData>>()
 const stories = new Map<SharePeriod, Kept<Week>>()
 
-interface Flight<T> { promise: Promise<T>; done: Set<SharePeriod>; subs: Set<(done: Set<SharePeriod>) => void> }
+interface Flight<T> { promise: Promise<T>; done: Set<CardStep>; subs: Set<(done: Set<CardStep>) => void> }
 const figFlights = new Map<SharePeriod, Flight<CardData>>()
 const storyFlights = new Map<SharePeriod, Promise<Week>>()
 
@@ -61,17 +61,17 @@ export function lastFigures(p: SharePeriod): Kept<CardData> | undefined {
   if (!isKept(raw)) return undefined
   const v = raw.value as unknown as CardData & { takenAt: string }
   // A shape from another version is dropped rather than half-drawn.
-  if (v.period !== p || !v.today || !v.week || !v.month || !v.allTime || !Array.isArray(v.models)) return undefined
+  if (v.period !== p || typeof v.cost !== 'number' || typeof v.sessions !== 'number' || !Array.isArray(v.agents)) return undefined
   const kept = { value: { ...v, takenAt: new Date(v.takenAt) }, at: raw.at }
   figures.set(p, kept)
   return kept
 }
 
 /**
- * The current figures for a period. `onStep` hears which ranges have answered
+ * The current figures for a period. `onStep` hears which reads have answered
  * so far — at once with any already in, then as each lands.
  */
-export function fetchFigures(p: SharePeriod, onStep?: (done: Set<SharePeriod>) => void): Promise<CardData> {
+export function fetchFigures(p: SharePeriod, onStep?: (done: Set<CardStep>) => void): Promise<CardData> {
   let f = figFlights.get(p)
   if (!f) {
     const flight: Flight<CardData> = { promise: Promise.resolve(undefined as unknown as CardData), done: new Set(), subs: new Set() }

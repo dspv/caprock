@@ -35,6 +35,16 @@ const MARKS: Record<string, Mark> = {
   codex: { draw: 'codex' },
 }
 
+/**
+ * An agent's mark as plain path data, for a drawing that is not a DOM tree
+ * (the share card paints on a canvas). The path is in a 24x24 box; Codex and
+ * an unknown agent have none and are drawn by the caller, as here.
+ */
+export function agentMarkPath(agent: string): string | undefined {
+  const m = MARKS[agent]
+  return m && 'path' in m ? m.path : undefined
+}
+
 /** The name a glyph announces: the agent's, "Shell", or the raw key. */
 export function agentGlyphLabel(agent?: string, shell = false): string {
   if (shell) return 'Shell'

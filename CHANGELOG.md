@@ -27,18 +27,43 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   Screenshots go onto the clipboard through the app itself rather than the
   webview, which not every webview allows.
 
-### Fixed
-
-- **A file dropped on a dialog in the app no longer types into the
-  terminal underneath.** The terminal checked only its own box, so a drop
-  on a dialog over it typed the file's path at the prompt.
 ### Changed
 
+- **A share card worth posting.** The Figures card says one figure big —
+  the period's cost at API list prices, or, with a flat plan set and a week
+  or a month chosen, the multiple of the plan ("28× my $200/mo Max plan") —
+  with two or three facts under it (sessions, tokens, cache hit), the agents
+  that did the work as marks and shares, the caprock mark, and *What's
+  yours? caprock.dev*. *At API list prices — not a bill* stays under the
+  figure. Both styles come in Dark or Paper (caprock.dev's cream), chosen in
+  the sheet. The sheet shows the card large, with one obvious button —
+  Share… where the system has a share menu, Copy image where it does not —
+  and Save image and Post to X beside it. The header's Share is an amber
+  pill rather than a solid block, and the app's Today strip shows its share
+  button in amber. `GET /v1/glance` takes `?range=` for the card's agent mix.
+- **The macOS .dmg opens on a branded window**: cream ground, the caprock
+  mark, the app and the Applications folder side by side with an arrow
+  between, and "Drag Caprock to Applications".
 - **The Paper light theme is caprock.dev's palette, all of it.** It had the
   site's cream surfaces but the neutral theme's grey text and light amber, so
   the app looked paler than its own screenshots. Paper now uses the site's
   warm dark-brown text, its deep amber for links and accents, and the site's
   orange button with dark text for filled controls. White is unchanged.
+
+### Fixed
+
+- **A file dropped on a dialog in the app no longer types into the
+  terminal underneath.** The terminal checked only its own box, so a drop
+  on a dialog over it typed the file's path at the prompt.
+- **A long branch no longer hides what a session is.** In the sidebar and
+  the tab strip the branch shrinks first and the title keeps its words; the
+  title is cut only once the branch is gone, and the tooltip has both.
+- **Sessions started days ago in another terminal show up under "Running in
+  other terminals".** The app asked for the live sessions only after the
+  first live update and dropped any answer a newer update overtook, so
+  beside a busy agent an old session (a "Context recovery" left open in a
+  terminal) never reached the sidebar. It now asks at once and always uses
+  the answer.
 
 ## [0.96.0] - 2026-10-10
 

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Summary, History } from './api'
 
-const calls = { summary: 0, history: 0, week: 0 }
+const calls = { summary: 0, history: 0, week: 0, glance: 0, settings: 0 }
 const gates: Array<() => void> = []
 
 vi.mock('@/lib/api', async (orig) => {
@@ -16,6 +16,8 @@ vi.mock('@/lib/api', async (orig) => {
       // watched one range at a time.
       summary: () => { calls.summary++; return new Promise((r) => gates.push(() => r(summary))) },
       history: () => { calls.history++; return new Promise((r) => gates.push(() => r(history))) },
+      glance: () => { calls.glance++; return new Promise((r) => gates.push(() => r({ agents: [{ agent: 'claude', subagent: false, turns: 3, cost_usd: 5, sessions: 1 }], display: {} }))) },
+      settings: () => { calls.settings++; return new Promise((r) => gates.push(() => r({ plan_kind: '', plan_label: '', plan_usd_per_month: 0 }))) },
       weekFor: async (p: string) => { calls.week++; return { start: '2026-10-04', end: '2026-10-04', days: [], agents: [], period: p } },
     },
   }
@@ -26,24 +28,28 @@ import { currentFigures, fetchFigures, fetchStory, lastFigures, lastStory, reset
 beforeEach(() => {
   resetShareCache()
   localStorage.clear()
-  calls.summary = 0; calls.history = 0; calls.week = 0
+  calls.summary = 0; calls.history = 0; calls.week = 0; calls.glance = 0; calls.settings = 0
   gates.length = 0
 })
 
 const flush = () => new Promise((r) => setTimeout(r, 0))
 
 describe('share cache', () => {
-  it('shares one round of requests and reports each range as it lands', async () => {
+  it('shares one round of requests and reports each read as it lands', async () => {
     const seen: number[] = []
     const a = fetchFigures('7d', (done) => seen.push(done.size))
     const b = fetchFigures('7d')
     expect(a).toBe(b)
-    expect(calls.summary).toBe(3)
-    expect(calls.history).toBe(1)
+    // The period's own totals, its agents and the plan: one request each.
+    expect(calls.summary).toBe(1)
+    expect(calls.history).toBe(0)
+    expect(calls.glance).toBe(1)
+    expect(calls.settings).toBe(1)
     while (gates.length) { gates.shift()!(); await flush() }
     const data = await a
     expect(data.period).toBe('7d')
-    expect(seen).toEqual([0, 1, 2, 3, 4])
+    expect(data.agents.map((x) => x.agent)).toEqual(['claude'])
+    expect(seen).toEqual([0, 1, 2, 3])
   })
 
   it('keeps the last figures for the next tab, and reuses a fresh reading', async () => {
@@ -52,16 +58,16 @@ describe('share cache', () => {
     await p
     resetShareCache() // a new tab: memory gone, localStorage kept
     const kept = lastFigures('30d')
-    expect(kept?.value.allTime.cost).toBe(50)
+    expect(kept?.value.cost).toBe(5)
     expect(kept?.value.takenAt).toBeInstanceOf(Date)
     expect(lastFigures('today')).toBeUndefined()
     // Within a minute, saving does not ask again.
     await currentFigures('30d')
-    expect(calls.summary).toBe(3)
+    expect(calls.summary).toBe(1)
   })
 
   it('drops a kept reading of another shape rather than half-drawing it', () => {
-    localStorage.setItem('caprock-share-figures-v1-7d', JSON.stringify({ at: 1, value: { period: '7d' } }))
+    localStorage.setItem('caprock-share-figures-v2-7d', JSON.stringify({ at: 1, value: { period: '7d' } }))
     expect(lastFigures('7d')).toBeUndefined()
     localStorage.setItem('caprock-share-story-v1-all', 'not json')
     expect(lastStory('all')).toBeUndefined()

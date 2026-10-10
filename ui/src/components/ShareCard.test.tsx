@@ -6,7 +6,7 @@
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { cardFilename, collectCardData, drawShareCard, PERIOD_LABEL } from './ShareCard'
+import { cardFilename, collectCardData, drawShareCard, heroOf, mixOf, PERIOD_LABEL, type CardData } from './ShareCard'
 import { ShareCard } from './Share'
 import type { History } from '@/lib/api'
 import { resetShareCache } from '@/lib/sharecache'
@@ -14,13 +14,18 @@ import { resetShareCache } from '@/lib/sharecache'
 // The dialog keeps the last figures per period, in memory and in
 // localStorage; every test starts from a dialog that has never drawn.
 beforeEach(() => {
+  plan.kind = ''; plan.label = ''; plan.usd = 0
+  agents.rows = [{ agent: 'claude', subagent: false, turns: 40, cost_usd: 12, sessions: 2 }]
   resetShareCache()
   try { localStorage.clear() } catch { /* jsdom always has it */ }
 })
 
 const data = vi.hoisted(() => ({ value: undefined as unknown }))
 const drawn = vi.hoisted(() => ({ text: [] as string[] }))
-const calls = vi.hoisted(() => ({ n: 0 }))
+const calls = vi.hoisted(() => ({ n: 0, summary: 0, ranges: [] as string[] }))
+/** What /v1/settings says about the plan, and which agents /v1/glance reports. */
+const plan = vi.hoisted(() => ({ kind: '' as string, label: '', usd: 0 }))
+const agents = vi.hoisted(() => ({ rows: [{ agent: 'claude', subagent: false, turns: 40, cost_usd: 12, sessions: 2 }] as unknown[] }))
 
 /** A distinct cost per range, so a card drawing the wrong one is visible. */
 const RANGE_COST = vi.hoisted(() => ({ today: 11, '7d': 22, '30d': 33 }) as Record<string, number>)
@@ -40,13 +45,6 @@ vi.mock('@/lib/api', async (orig) => {
     api: {
       ...actual.api,
       history: async () => { calls.n++; return data.value },
-      // Answers per range. Ignoring the argument here is what let the card
-      // draw a month's breakdown under a week's heading without any test
-      // noticing: every range returned the same object.
-      // Answers per range. Ignoring the argument here is what let the card
-      // draw a month's breakdown under a week's heading without any test
-      // noticing: every range returned the same object. The model ids come
-      // from the fixture, so a test that sets one still sees it.
       // The Story card's figures: one per period, so a card for the wrong
       // period shows in its headline.
       weekFor: async (period: string) => ({
@@ -57,11 +55,16 @@ vi.mock('@/lib/api', async (orig) => {
         lines_added: 100, lines_removed: 0, ci_wait_ms: 0, tool_ms: 0,
         agents: [{ agent: 'claude', subagent: false, turns: 40, cost_usd: 12, sessions: 2 }], estimates: [],
       }),
-      summary: async (range: string) => ({
-        ...summary,
-        models: summary.models.map((m) => ({ ...m, cost_usd: RANGE_COST[range] ?? m.cost_usd })),
-        work: summary.work.map((w) => ({ ...w, cost_usd: RANGE_COST[range] ?? w.cost_usd })),
-      }) as never,
+      glance: async () => ({ agents: agents.rows, display: {} }),
+      settings: async () => ({ plan_kind: plan.kind, plan_label: plan.label, plan_usd_per_month: plan.usd }),
+      // Answers per range, with a distinct cost each. Ignoring the argument
+      // here is what once let the card draw a month's figures under a week's
+      // heading without any test noticing.
+      summary: async (range: string) => {
+        calls.summary++
+        calls.ranges.push(range)
+        return { ...summary, cost_usd: RANGE_COST[range] ?? summary.cost_usd } as never
+      },
     },
   }
 })
@@ -95,6 +98,7 @@ function stubCanvas() {
     // The heading measures its own text to place the domain and date, so a
     // stub without this stops the paint at the first word.
     measureText: vi.fn((t: string) => ({ width: t.length * 16 })),
+    lineTo: vi.fn(),
     set fillStyle(_v: string) {},
     set strokeStyle(_v: string) {},
     set lineWidth(_v: number) {},
@@ -112,86 +116,107 @@ function stubCanvas() {
 }
 
 describe('ShareCard', () => {
-  it('carries the caveat with the figure', async () => {
-    data.value = history()
+  it('says one figure big, with the caveat', async () => {
     stubCanvas()
-    await drawShareCard(await collectCardData())
+    await drawShareCard(await collectCardData('7d'))
 
     const all = drawn.text.join(' ')
-    // The all-time figure, which is the one the card leads its tiles with.
-    expect(all).toContain('$10,845.61')
+    // The week's figure, in whole dollars at this size, is the hero.
+    expect(drawn.text).toContain('$22.00')
+    expect(all).toContain('of Claude Code this week')
     // A dollar figure posted without this reads as a bill someone paid.
     expect(all).toMatch(/not a bill/i)
-    expect(all).toMatch(/not money saved/i)
+    expect(all).toMatch(/API list prices/)
+  })
+
+  it('carries two or three facts, not sixteen', async () => {
+    stubCanvas()
+    await drawShareCard(await collectCardData('7d'))
+    const all = drawn.text.join(' ')
+    expect(all).toContain('sessions')
+    expect(all).toContain('tokens')
+    expect(all).toContain('99%')
+    expect(all).toContain('cache hit')
+    // The dense card's tiles and breakdowns are gone.
+    expect(all).not.toMatch(/WHERE THE MONEY WENT|PER 1M TOKENS|A DAY/)
   })
 
   it('asks the reader what theirs is', async () => {
     // The loop this product grows by is: see somebody's figure, want your
-    // own, install, post yours. The card carried a number and a domain and
-    // started none of it — a reader saw someone else's total with no reason
-    // to think it was a thing they could do too.
-    data.value = history()
+    // own, install, post yours. A question, not a command: an install line on
+    // a picture is an advertisement and reads as one.
     stubCanvas()
-    await drawShareCard(await collectCardData())
-
+    await drawShareCard(await collectCardData('7d'))
     const all = drawn.text.join(' ')
     expect(all).toMatch(/what's yours/i)
-    // A question, not a command: an install line on a picture is an
-    // advertisement and reads as one. The domain in the heading is where
-    // someone who wonders goes to find out.
+    expect(all).toContain('caprock.dev')
     expect(all).not.toMatch(/brew install/i)
   })
 
-  it('states no multiple, which it cannot compute from these figures', async () => {
-    data.value = history()
+  it('says the multiple of a flat plan over a week or a month, and only there', async () => {
+    plan.kind = 'flat'; plan.label = 'Max'; plan.usd = 200
     stubCanvas()
-    await drawShareCard(await collectCardData())
+    // $22 against a week of $200/mo is 0.8× — too small to say; the dollars stay.
+    await drawShareCard(await collectCardData('7d'))
+    expect(drawn.text.join(' ')).not.toMatch(/\d×/)
 
-    // The endpoint reports active days, not the window's calendar span, so a
-    // multiple built here divided 59 days of plan into 95 days of usage and
-    // printed 27.6x where every other surface said 17.1x.
-    expect(drawn.text.join(' ')).not.toMatch(/\d+(\.\d+)?×/)
+    const week: CardData = { period: '7d', takenAt: new Date(2026, 9, 10), cost: 1539, sessions: 42, tokens: 9e8, cacheHitPct: 98, agents: [{ agent: 'claude', cost: 1539, turns: 900 }], plan: { kind: 'flat', label: 'Max', usdPerMonth: 200 } }
+    // $200 a month is $46.67 a week; $1,539 is 33 of those.
+    expect(heroOf(week)).toEqual({ figure: '33×', line: 'my $200/mo Max plan', sub: '$1,539 of Claude Code this week at API list prices — not a bill' })
+    // A day's share of a monthly fee is not a thing anyone pays, and the
+    // lifetime of a subscription is not something Caprock knows.
+    expect(heroOf({ ...week, period: 'today' }).figure).toBe('$1,539')
+    expect(heroOf({ ...week, period: 'all' }).figure).toBe('$1,539')
+    // Billed per token: the dollars are close to the bill, no multiple.
+    expect(heroOf({ ...week, plan: { kind: 'metered', label: 'API', usdPerMonth: 0 } }).figure).toBe('$1,539')
+    // Never "saved".
+    expect(JSON.stringify(heroOf(week))).not.toMatch(/sav/i)
+  })
+
+  it('shows which agents did the work, by their marks and shares', async () => {
+    agents.rows = [
+      { agent: 'claude', subagent: false, turns: 40, cost_usd: 60, sessions: 2 },
+      { agent: 'claude', subagent: true, turns: 10, cost_usd: 20, sessions: 2 },
+      { agent: 'codex', subagent: false, turns: 30, cost_usd: 20, sessions: 1 },
+    ]
+    stubCanvas()
+    const d = await collectCardData('7d')
+    // Subagents fold into the agent that ran them.
+    expect(mixOf(d)).toEqual([{ agent: 'claude', name: 'Claude Code', pct: 80 }, { agent: 'codex', name: 'Codex', pct: 20 }])
+    await drawShareCard(d)
+    const all = drawn.text.join(' ')
+    expect(all).toContain('Claude Code')
+    expect(all).toContain('Codex')
+    expect(all).toContain('80%')
+    // Two agents: the line names both.
+    expect(all).toContain('of Claude Code and Codex this week')
   })
 
   it('puts no project or session names on an image meant to be posted', async () => {
-    data.value = history()
     stubCanvas()
-    await drawShareCard(await collectCardData())
-
+    await drawShareCard(await collectCardData('30d'))
     const all = drawn.text.join(' ')
-    // Model ids are the only names on the card now, and they are public
-    // product names. Anything with a path separator in it would be a
-    // repository, a directory, or a file — none of which belong on an image
-    // somebody is about to post.
+    // Anything with a path separator would be a repository, a directory or a
+    // file — none of which belong on an image somebody is about to post.
     expect(all).not.toMatch(/\//)
     expect(all).toContain('caprock.dev')
   })
 
-  it('strips the vendor prefix a gateway puts in a model id', async () => {
-    // OpenRouter reports `minimax/minimax-m3`. A slash on this card would be
-    // indistinguishable from a repository path to anyone reading it, and the
-    // leak check above is what makes that a rule rather than a preference.
-    summary.models = [{ model: 'minimax/minimax-m3', cost_usd: 900 }]
-    data.value = history()
+  it('says when it was taken', async () => {
+    // The card lives in a feed for weeks; without a date a reader cannot tell
+    // whether the figure is current or a year old.
     stubCanvas()
-    await drawShareCard(await collectCardData())
-
-    const all = drawn.text.join(' ')
-    expect(all).not.toMatch(/\//)
-    expect(all).toContain('minimax-m3')
-    summary.models = [{ model: 'claude-opus-5', cost_usd: 900 }]
+    await drawShareCard(await collectCardData('7d'))
+    expect(drawn.text.join(' ')).toContain(String(new Date().getFullYear()))
   })
 
-  it('says when it was taken', async () => {
-    // The card lives in a feed for weeks. Without a date, a reader cannot tell
-    // whether "$11,278 all time" is current or a year old, and the figures
-    // stop meaning anything the moment that is in doubt.
-    data.value = history()
+  it('says how many days an all-time figure covers', async () => {
+    data.value = history({ days: 59 })
     stubCanvas()
-    await drawShareCard(await collectCardData())
-
-    const year = String(new Date().getFullYear())
-    expect(drawn.text.join(' ')).toContain(year)
+    await drawShareCard(await collectCardData('all'))
+    const all = drawn.text.join(' ')
+    expect(all).toContain('$10,846')
+    expect(all).toContain('59 ACTIVE DAYS')
   })
 
   it('offers nothing on a machine that has captured nothing', async () => {
@@ -243,18 +268,16 @@ describe('the share button', () => {
  * Counted at the API rather than at the canvas: jsdom has no 2d context, so
  * drawing bails before it ever reaches `toBlob` and a canvas-level counter
  * stays at zero no matter how many times the button is pressed — green for
- * the wrong reason. Every press calls `history` exactly once, so that is the
- * honest place to count presses that got through.
+ * the wrong reason. Every press reads the week's summary exactly once, so
+ * that is the honest place to count presses that got through.
  */
 describe('the share dialog', () => {
   it('starts one draw however fast the button is pressed', async () => {
     stubCanvas()
     data.value = history()
-    calls.n = 0
     render(<ShareCard />)
     const open = await screen.findByRole('button', { name: /share these numbers/i })
-    // The mounted button itself fetches history once; count only from here.
-    const before = calls.n
+    const before = calls.summary
     fireEvent.click(open)
     const save = await screen.findByRole('button', { name: /save image/i })
     fireEvent.click(save)
@@ -264,7 +287,7 @@ describe('the share dialog', () => {
     // The preview's reading and the save share one round of requests: the
     // save waits for the reading already in flight rather than starting its
     // own, and the guarded button starts one save, not three.
-    expect(calls.n - before).toBe(1)
+    expect(calls.summary - before).toBe(1)
   })
 })
 
@@ -285,7 +308,7 @@ describe('the native share', () => {
 
     render(<ShareCard />)
     fireEvent.click(await screen.findByRole('button', { name: /share these numbers/i }))
-    fireEvent.click(await screen.findByRole('button', { name: /send it somewhere/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /^share…$/i }))
     await waitFor(() => expect(shared.length).toBe(1))
 
     const payload = shared[0] as { files?: unknown[]; text?: string }
@@ -326,9 +349,7 @@ describe('the share dialog’s guarantees', () => {
  * loudly.
  */
 describe('the period a card is about', () => {
-  it('names the stretch in the heading, so a card out of context still says what it is', () => {
-    // "My stats on caprock.dev" beside four periods is a shrug. "My week on
-    // caprock.dev" is a claim.
+  it('names the stretch, so a card out of context still says what it is', () => {
     expect(PERIOD_LABEL['7d']).toBe('this week')
     expect(PERIOD_LABEL['30d']).toBe('this month')
     expect(PERIOD_LABEL.today).toBe('today')
@@ -337,55 +358,18 @@ describe('the period a card is about', () => {
 
   it('carries the choice into the data, not only into the dialog', async () => {
     // A picker that does not reach the drawing is a control that lies.
-    const d = await collectCardData('7d')
-    expect(d.period).toBe('7d')
+    expect((await collectCardData('7d')).period).toBe('7d')
+    expect((await collectCardData()).period).toBe('7d')
   })
 
-  it('defaults to all time when nobody chose', async () => {
-    const d = await collectCardData()
-    expect(d.period).toBe('all')
-  })
-
-  it('still gathers every period, whichever one is chosen', async () => {
-    // The other figures are context, not competition: a week means nothing
-    // without knowing whether it was a normal one.
-    const d = await collectCardData('today')
-    expect(d.week).toBeDefined()
-    expect(d.month).toBeDefined()
-    expect(d.allTime).toBeDefined()
-  })
-})
-
-describe('the card is about the period it names', () => {
-  // A card headed "My week on Caprock" carried the last thirty days' models
-  // and work under it: `collectCardData` fetched four ranges and then read the
-  // breakdowns out of the 30-day one whatever was chosen. On this machine that
-  // was five models and $5,473 of Opus against the one model and $1,936 that
-  // the week actually ran — the heading naming one stretch, the chart drawing
-  // another.
-  it('draws the chosen period\'s breakdown, not always the month\'s', async () => {
+  it('reads only the period it is about, and draws that period\'s figure', async () => {
+    calls.ranges = []
     stubCanvas()
     await drawShareCard(await collectCardData('today'))
-    // $11 is the today fixture; $33 is the month's.
-    expect(drawn.text.some((t) => t.includes('$11'))).toBe(true)
-    expect(drawn.text.some((t) => t.includes('$33'))).toBe(false)
-
-    stubCanvas()
-    await drawShareCard(await collectCardData('7d'))
-    expect(drawn.text.some((t) => t.includes('$22'))).toBe(true)
-    expect(drawn.text.some((t) => t.includes('$33'))).toBe(false)
-  })
-
-  it('says so when an all-time card shows the month, because there is no all-time split', async () => {
-    stubCanvas()
-    await drawShareCard(await collectCardData('all'))
-    expect(drawn.text.some((t) => t.includes('LAST 30 DAYS'))).toBe(true)
-  })
-
-  it('leaves the heading unqualified when the breakdown is the period asked for', async () => {
-    stubCanvas()
-    await drawShareCard(await collectCardData('7d'))
-    expect(drawn.text.some((t) => t.includes('LAST 30 DAYS'))).toBe(false)
+    expect(calls.ranges).toEqual(['today'])
+    // $11 is the today fixture; $22 the week's, $33 the month's.
+    expect(drawn.text).toContain('$11.00')
+    expect(drawn.text.some((t) => t.includes('$22') || t.includes('$33'))).toBe(false)
   })
 })
 

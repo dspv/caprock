@@ -17,7 +17,7 @@ import { tabLabels, type TabLabel } from '@/lib/tablabels'
 import { TerminalPane, type PaneStatus } from './TerminalPane'
 import { AgentGlyph } from './AgentMarks'
 import { ChatIcon, CloseIcon, DashboardIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
-import { StatusDot } from './ProjectRow'
+import { StatusDot, TitleAndBranch } from './ProjectRow'
 import { closeTitle, closeWord } from '@/lib/closeShell'
 import { NewMenu, type NewMenuItem } from './NewMenu'
 
@@ -178,8 +178,7 @@ export function TabStrip(props: TabStripProps) {
                   <AgentGlyph agent={s?.agent} shell={isShell} />
                 </>
               )}
-              <span className="min-w-0 flex-1 truncate">{title}</span>
-              {label?.branch && <span className="mono min-w-0 max-w-[10ch] shrink truncate text-[11px] text-fg-faint">{label.branch}</span>}
+              <TitleAndBranch title={title} branch={label?.branch} className="" />
               {project && (
                 <span data-project-chip className="flex min-w-0 max-w-[10ch] shrink items-center gap-1 text-[11px] text-fg-faint">
                   <span aria-hidden className="h-[6px] w-[6px] shrink-0 rounded-full" style={{ background: `hsl(${projectHue(t.projectId)} 42% 56%)` }} />

@@ -61,7 +61,22 @@
     "copyright": "Apache-2.0",
     "macOS": {
       "minimumSystemVersion": "13.0",
-      "signingIdentity": "-"
+      "signingIdentity": "-",
+      "dmg": {
+        "background": "dmg/background.png",
+        "windowSize": {
+          "width": 660,
+          "height": 400
+        },
+        "appPosition": {
+          "x": 170,
+          "y": 196
+        },
+        "applicationFolderPosition": {
+          "x": 490,
+          "y": 196
+        }
+      }
     },
     "windows": {
       "webviewInstallMode": {

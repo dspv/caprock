@@ -18,6 +18,7 @@ vi.mock('@/lib/api', async (orig) => {
 })
 
 import { buildSidebar } from '@/lib/sidebar'
+import { branchLabel } from '@/lib/sessionLabels'
 import { tabLabels } from '@/lib/tablabels'
 import type { Tab } from '@/lib/tabs'
 import { HIDDEN_KEY, Sidebar, type SidebarProps } from './Sidebar'
@@ -229,5 +230,24 @@ describe('closing in the sidebar', () => {
     expect(tabRow('t2').querySelector('[data-row-title]')!.textContent).toBe('Shell 1 · claude')
     expect(document.querySelector('[data-live-row="sh2"] [data-row-title]')!.textContent).toBe('Shell · npm')
     expect(screen.getByRole('button', { name: 'Stop the shell…' })).toBeInTheDocument()
+  })
+
+  it('lets the title win over a long branch: the branch shrinks first, both are in the tooltip', () => {
+    const branch = 'feature/an-extremely-long-branch-name-for-the-login-rework'
+    setup([live({ session_id: 'x1', title: 'Context recovery', owned: false, git_branch: branch })], [])
+    fireEvent.click(screen.getByRole('button', { name: /Running in other terminals · 1/ }))
+    const row = document.querySelector('[data-live-row="x1"]')!
+    const title = row.querySelector('[data-row-title]')!
+    const tail = row.querySelector('[data-row-branch]')!
+    expect(title.textContent).toBe('Context recovery')
+    // Sized to its text and never shrunk while the branch has width; the
+    // branch takes what is left and truncates to nothing first. (jsdom has no
+    // layout, so the classes that make it so are what can be checked.)
+    expect(title.className).toMatch(/\bshrink-0\b/)
+    expect(title.className).toMatch(/\bmax-w-full\b/)
+    expect(title.className).not.toMatch(/\bflex-1\b/)
+    expect(tail.className).toMatch(/\bmin-w-0\b/)
+    expect(tail.className).toMatch(/\btruncate\b/)
+    expect(row.getAttribute('title')).toContain(`Context recovery · ${branchLabel(branch)}`)
   })
 })

@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/store"
@@ -41,5 +42,41 @@ func TestGlanceSplitsAgentsAndPricesTheBillByTokenType(t *testing.T) {
 	}
 	if g.Display["claude-opus-5"] == "" {
 		t.Fatalf("no display name: %+v", g.Display)
+	}
+}
+
+func TestGlanceRangeSplitsOnlyThePeriod(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	put := func(sid, agent, key string, ts time.Time) {
+		if err := store.UpsertSession(ctx, e.st.DB(), sid, store.SessionPatch{Agent: agent, StartedAt: ts.UnixMilli(), LastEventAt: ts.UnixMilli()}); err != nil {
+			t.Fatal(err)
+		}
+		c := 2.0
+		ev := event.Event{SessionID: sid, Source: event.SourceTranscript, Kind: event.KindTurnAssistant,
+			Ts: ts, Key: key, Model: "claude-opus-5", CostUSD: &c, Tokens: &event.TokenDelta{In: 10, Out: 10}}
+		if _, err := store.InsertEvent(ctx, e.st.DB(), &ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put("new", "claude", "n1", e.now)
+	// Forty days back: in all time, in no shorter range.
+	put("old", "codex", "o1", e.now.Add(-40*24*time.Hour))
+	agents := func(path string) map[string]bool {
+		var g GlanceResponse
+		if code := e.get(t, path, &g); code != 200 {
+			t.Fatalf("%s: status %d", path, code)
+		}
+		seen := map[string]bool{}
+		for _, a := range g.Agents {
+			seen[a.Agent] = true
+		}
+		return seen
+	}
+	if got := agents("/v1/glance"); !got["claude"] || !got["codex"] {
+		t.Fatalf("all time: %v", got)
+	}
+	if got := agents("/v1/glance?range=7d"); !got["claude"] || got["codex"] {
+		t.Fatalf("7d: %v", got)
 	}
 }

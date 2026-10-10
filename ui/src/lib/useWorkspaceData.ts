@@ -141,15 +141,38 @@ export function useWorkspaceData(): WorkspaceData {
     return () => { alive = false; stop() }
   }, [nonce])
 
-  // The live ones, on the debounced tick.
-  useEffect(() => {
-    if (tick === 0) return
-    let alive = true
+  // The live ones: at once, then on the debounced tick, one request at a time.
+  //
+  // This list is the only way a session that runs but has been quiet for a
+  // while gets into the sidebar: the full list is the 200 most recently
+  // active, and a frame only patches a session already held. It used to wait
+  // for the first tick, and every tick dropped the answer still in flight —
+  // so with an agent busy beside it (a tick a second) and an answer slower
+  // than a second, no answer ever landed. A session started days ago in
+  // another terminal ("Context recovery", owner, 2026-10-10) was missing from
+  // "Running in other terminals" for as long as anything else was working.
+  // Now an answer is always applied, and a tick that arrives while one is in
+  // flight asks once more after it, rather than abandoning it.
+  const liveFlight = useRef({ busy: false, again: false, alive: true })
+  const fetchLive = useCallback(() => {
+    const f = liveFlight.current
+    if (f.busy) { f.again = true; return }
+    f.busy = true
+    f.again = false
     api.sessions(true)
-      .then((list) => { if (alive) setSessions((cur) => mergeSessions(cur, list)) })
+      .then((list) => { if (f.alive) setSessions((cur) => mergeSessions(cur, list)) })
       .catch(() => { /* the full list's error already speaks */ })
-    return () => { alive = false }
-  }, [tick])
+      .finally(() => {
+        f.busy = false
+        if (f.alive && f.again) fetchLive()
+      })
+  }, [])
+  useEffect(() => {
+    const f = liveFlight.current
+    f.alive = true
+    return () => { f.alive = false }
+  }, [])
+  useEffect(() => { fetchLive() }, [tick, nonce, fetchLive])
 
   // The daemon's project list, or the derived one when it has none.
   useEffect(() => {

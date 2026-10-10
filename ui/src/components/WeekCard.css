@@ -61,7 +61,22 @@
 
 .wk-foot { display: flex; justify-content: space-between; align-items: baseline; gap: 24px; font: 500 15px/1 var(--font-mono); color: var(--wk-dim); }
 .wk-foot b { color: var(--wk-mute); font-weight: 500; }
-.wk-foot .wk-url { color: var(--wk-amber); }
+.wk-foot .wk-url { color: var(--wk-amber); font-weight: 700; }
+.wk-foot .wk-ask { color: var(--wk-ink); font-family: var(--font-sans); font-weight: 600; }
+
+/* A look chosen in the share sheet, whatever the screen's theme: the card is
+ * a picture that leaves the machine. Graphite, or caprock.dev's paper — the
+ * same values as the Figures card (ShareCard.tsx PALETTE). */
+.wk-card.wk-look-dark {
+  --wk-bg: #1b1b1a; --wk-raise: #262422; --wk-line: #3a3835;
+  --wk-ink: #ece9e4; --wk-mute: #a9a59e; --wk-dim: #837f78; --wk-amber: #feb157;
+  --character-outline: transparent;
+}
+.wk-card.wk-look-paper {
+  --wk-bg: #efe7d6; --wk-raise: #f4ecdd; --wk-line: #c2b293;
+  --wk-ink: #2b251c; --wk-mute: #4f473b; --wk-dim: #665d4f; --wk-amber: #8a4f0c;
+  --character-outline: #c2b293;
+}
 
 /* 1200 x 675 — X / LinkedIn */
 .wk-land { width: 1200px; height: 675px; padding: 50px 60px 40px; display: grid; grid-template-rows: auto 1fr auto auto; }

@@ -81,13 +81,15 @@ export function TodayStrip({ today, loaded, onSpend, onWindows, onRunning, onWai
           <span className={`num text-[14px] font-semibold leading-none ${waiting > 0 ? 'text-accent' : 'text-fg-faint'}`}>{loaded ? waiting : '—'}</span>
         </Cell>
         {/* Share my numbers, from the strip that shows them: its own narrow
-          * column, so it never sits on a figure. */}
+          * column, so it never sits on a figure. Tinted amber rather than
+          * faint grey (owner, 2026-10-10): a faint icon in a corner was not
+          * found; a filled one would outshout the figures beside it. */}
         <button
           type="button"
           onClick={() => setSharing(true)}
           title="Share my numbers — draws a card of your figures"
           aria-label="Share my numbers"
-          className="app-row grid h-6 w-6 place-items-center self-start rounded-[6px] text-fg-faint hover:text-accent"
+          className="mt-1 grid h-6 w-6 place-items-center self-start rounded-[6px] border border-accent/30 bg-accent/10 text-accent transition-colors hover:bg-accent/20"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
