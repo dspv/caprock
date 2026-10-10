@@ -211,9 +211,10 @@ describe('the feedback form', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('has an icon form for the app sidebar that names the screen in front', () => {
-    render(<FeedbackButton variant="icon" />)
-    expect(screen.getByRole('button', { name: 'Send feedback' })).toBeTruthy()
+  it('has a labelled row for the app sidebar that names the screen in front', () => {
+    render(<FeedbackButton variant="row" />)
+    const row = screen.getByRole('button', { name: 'Send feedback' })
+    expect(row.textContent).toContain('Send feedback')
     expect(currentScreen('#/app', true)).toBe('App tabs')
     expect(currentScreen('#/cost', true)).toBe('Cost')
     expect(currentScreen('', false)).toBe('Now')

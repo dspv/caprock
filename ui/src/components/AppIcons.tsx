@@ -46,7 +46,9 @@ export const StopIcon = (p: P) => <Icon {...p}><rect x="6" y="6" width="12" heig
 export const FileIcon = (p: P) => <Icon {...p}><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4M9 12h6M9 16h4" /></Icon>
 export const ExternalIcon = (p: P) => <Icon {...p}><path d="M14 4h6v6M20 4l-8.5 8.5M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10" /></Icon>
 /** A megaphone: feedback, set apart from Quick chat's speech bubble. */
-export const FeedbackIcon = (p: P) => <Icon {...p}><path d="M4 10v4a1 1 0 0 0 1 1h2l6 4.5V4.5L7 9H5a1 1 0 0 0-1 1zM16.5 9a3.5 3.5 0 0 1 0 6M19 6a7.5 7.5 0 0 1 0 12" /></Icon>
+// A speech bubble, not a megaphone: the megaphone read as a volume control
+// beside Settings and the theme switch.
+export const FeedbackIcon = (p: P) => <Icon {...p}><path d="M20 14.5a2 2 0 0 1-2 2H8.5L4 20V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2zM8 8.5h8M8 12h5" /></Icon>
 export const ChatIcon = (p: P) => <Icon {...p}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></Icon>
 export const MoreIcon = (p: P) => <Icon {...p}><circle cx="5.5" cy="12" r="1.1" fill="currentColor" /><circle cx="12" cy="12" r="1.1" fill="currentColor" /><circle cx="18.5" cy="12" r="1.1" fill="currentColor" /></Icon>
 export const TrashIcon = (p: P) => <Icon {...p}><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l.9 12a1.5 1.5 0 0 0 1.5 1.4h6.2a1.5 1.5 0 0 0 1.5-1.4l.9-12" /></Icon>
