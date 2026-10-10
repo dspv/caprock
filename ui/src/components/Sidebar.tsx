@@ -315,6 +315,11 @@ export function Sidebar(props: SidebarProps) {
       </div>
 
       <div className="shrink-0 border-t border-[var(--app-hairline)] px-2 py-2">
+        {/* Feedback on a labelled row of its own: on screen whatever tab is in
+          * front, where the header's button is only on the dashboard. As a bare
+          * icon beside Settings and the theme switch it read as a volume
+          * control. */}
+        <FeedbackButton variant="row" />
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -327,9 +332,6 @@ export function Sidebar(props: SidebarProps) {
             <span className="flex-1">Dashboard</span>
             <kbd className="app-kbd">⇧⌘D</kbd>
           </button>
-          {/* Feedback beside Settings: on screen whatever tab is in front,
-            * where the header's button is only on the dashboard. */}
-          <FeedbackButton variant="icon" />
           {props.onSettings && <IconButton label="Settings (⌘,)" onClick={props.onSettings}><SettingsIcon size={15} /></IconButton>}
           <ThemeButton />
         </div>

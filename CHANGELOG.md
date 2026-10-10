@@ -7,6 +7,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **Feedback no longer looks like a volume control.** Its icon is a speech
+  bubble rather than a megaphone, and in the desktop app it is a labelled
+  *Send feedback* row above *Dashboard* instead of a bare icon beside
+  Settings and the theme switch.
+
 ## [0.97.0] - 2026-10-10
 
 ### Added

@@ -97,8 +97,8 @@ others. Installing it: [install-app.md](install-app.md).
   away, and the tab brings back the screen you left it on until you close it.
   The sliders beside it open Settings (⌘,) in the same tab, where the app puts
   how new agents start, appearance, terminal and editor first. The × beside
-  the *Settings* heading, or Esc, closes it as the tab's × does. The
-  megaphone beside the sliders opens *Feedback*: pick Bug, Idea or
+  the *Settings* heading, or Esc, closes it as the tab's × does. *Send
+  feedback*, the row above *Dashboard*, opens the feedback form: pick Bug, Idea or
   Question, write a title and a few words, and paste (⌘V) or choose up to
   four screenshots — drop image files on the window, or on macOS and Windows
   press *Capture window* for a picture of the app itself (not your screen; no
