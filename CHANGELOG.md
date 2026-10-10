@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.97.0] - 2026-10-10
+
 ### Added
 
 - **Feedback with a type, a title and screenshots.** The Feedback dialog
