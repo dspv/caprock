@@ -73,6 +73,17 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-10 — 0.97.0: a share card worth posting, feedback with screenshots, Paper is the site
+
+The Figures card leads with one figure (cost at API list prices, or the
+multiple of a flat plan for a week or a month), three facts, the agent mix
+and *What's yours? caprock.dev*, in Dark or Paper. Feedback takes a type, a
+title and up to four screenshots, with Capture window and the real clipboard
+in the desktop app. Paper uses caprock.dev's palette in full; the .dmg opens
+on a branded window. Fixed: a long branch hiding the session title, old
+sessions in other terminals missing from the sidebar, a drop on a dialog
+typing into the terminal.
+
 ### 2026-10-10 — 0.96.0: a share sheet, offers that answer something, dialogs you can close
 
 Share shows the card itself with four ranges and copy, save and post; a
