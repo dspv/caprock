@@ -468,7 +468,9 @@ def main():
             localStorage.setItem('caprock.update.dismissed', 'offer');
             const t = Date.now();
             localStorage.setItem('caprock-prompts', JSON.stringify({
-              'premium-banner': t, 'premium-hint': t, 'share-month': t,
+              'premium-banner': t, 'premium-hint': t, 'premium-limit': t,
+              'premium-cap': t, 'share-week': t, 'share-month': t,
+              'teams-banner': t, 'teams-nudge': t, 'star-dismissed': t,
             }));
           } catch (e) {}
         """)
