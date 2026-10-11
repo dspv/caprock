@@ -306,8 +306,8 @@ function usePromptKeys(
       if (modal) return
       const onPage = !active || active === document.body || el.contains(active)
       let choice: PermissionChoice | null = null
-      // By the physical key, so Y is Y on any layout: on a Russian one it
-      // types "н", and the owner's Y did nothing (2026-10-11).
+      // By the physical key, so Y is Y on any layout: on the owner's Russian
+      // layout it types a Cyrillic letter, and his Y did nothing (2026-10-11).
       const key = LETTER_BY_CODE[e.code] ?? e.key
       switch (inOwnTerminal && (key === 'Enter' || key === 'Escape') ? '' : key) {
         case 'y': case 'Y': choice = 'allow'; break

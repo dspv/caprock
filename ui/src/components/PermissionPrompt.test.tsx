@@ -104,10 +104,10 @@ describe('a permission prompt', () => {
       host.remove()
     })
 
-    it('takes Y by the key, not the letter: on a Russian layout it types н', async () => {
+    it('takes Y by the key, not the letter: on a non-Latin layout it types another letter (Greek: υ)', async () => {
       render(<PermissionPrompt sessionId="s1" />)
       await screen.findByRole('alertdialog')
-      fireEvent.keyDown(document.body, { key: 'н', code: 'KeyY' })
+      fireEvent.keyDown(document.body, { key: 'υ', code: 'KeyY' })
       await waitFor(() => expect(h.answer).toHaveBeenCalledWith('s1', 'p1', 'allow'))
     })
 
