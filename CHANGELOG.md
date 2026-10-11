@@ -7,6 +7,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **ui:** *Settings* in the dashboard header is a framed button with a gear,
+  like *Feedback* beside it, instead of grey text.
+
 ### Fixed
 
 - **app:** the update card no longer stacks on top of the version panel:

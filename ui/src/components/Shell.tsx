@@ -21,6 +21,7 @@ import {
 import { useApi } from '@/lib/useApi'
 import { PlanChip, usePlan } from '@/components/PlanPicker'
 import { FeedbackButton } from '@/components/Feedback'
+import { SettingsIcon } from '@/components/AppIcons'
 import { screenName } from '@/lib/feedback'
 import { ShareButton } from '@/components/Share'
 import { PremiumChip } from '@/components/PremiumChip'
@@ -131,7 +132,13 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           {!isPairedDevice() && <PlanChip plan={plan} onSave={savePlan} />}
           {!app && <ThemeToggle />}
           {!app && <VersionChip />}
-          <a href="#/settings" className="text-fg-muted hover:text-fg no-underline">settings</a>
+          {/* A button with a gear, framed like Feedback beside it (owner,
+            * 2026-10-12: "settings" in grey text was not noticeable). */}
+          <a href="#/settings" data-settings-button title="Settings"
+            className="inline-flex h-[24px] items-center gap-1.5 rounded-[6px] border border-border-strong bg-panel-2/60 px-2 text-[12px] font-medium text-fg no-underline transition-colors hover:border-accent/60 hover:text-accent motion-reduce:transition-none">
+            <SettingsIcon size={14} className="text-fg-muted" />
+            <span>Settings</span>
+          </a>
         </div>
       </header>
       <main className={`flex-1 p-3 max-w-[1600px] w-full mx-auto ${immersive ? 'pt-[max(0.75rem,env(safe-area-inset-top))]' : ''}`}>{children}</main>
