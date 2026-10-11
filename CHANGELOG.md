@@ -7,6 +7,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **app:** the version panel is the version, whether it is current, when it
+  was checked, the update button and *Release notes →*. The release notes
+  themselves left the panel, where they were unreadable.
+
 ## [0.107.7] - 2026-10-11
 
 ### Added
