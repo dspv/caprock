@@ -253,7 +253,7 @@ export function attachTerminalInput(
   // ("Application Support") and an unquoted path there is two arguments. Not
   // with JSON.stringify, which doubles every backslash in a Windows path.
   const sendPath = async (p: string) => {
-    const bracketed = term.modes.bracketedPasteMode
+    const bracketed = term.modes?.bracketedPasteMode ?? false
     send(pathInput(p, bracketed))
     if (bracketed && isImagePath(p)) await new Promise((r) => setTimeout(r, IMAGE_SETTLE_MS))
   }
