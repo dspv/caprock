@@ -330,7 +330,7 @@ others. Installing it: [install-app.md](install-app.md).
   of the session's pull request, its branch with what is not committed or
   pushed, and its latest pull requests. *CI* lists every GitHub Actions job
   of the PR's latest commit with its state, OS and time (ticking while it
-  runs) and the runner time so far, measured from GitHub's job times and
+  runs), in as many columns as the deck is wide, and the runner time so far, measured from GitHub's job times and
   split per OS — never turned into money. Click a job for its steps and
   their times; click a failed step for the lines around the error in its
   log, with a link to the job on GitHub. CI needs GitHub connected (one
