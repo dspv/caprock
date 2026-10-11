@@ -661,15 +661,6 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
 [data-app] .cockpit-bar-live { animation: cockpitBreath 1.4s ease-in-out infinite; }
 @keyframes cockpitBreath { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
 [data-app] .cockpit-spark-new { animation: cockpitBreath 2s ease-in-out 1; }
-/* The spend scrubber opens over the Spend block: no layout below it moves. */
-[data-app] .cockpit-scrub {
-  transform-origin: top right;
-  transition: opacity 150ms var(--app-ease), transform 150ms var(--app-ease), visibility 0s linear 0s;
-}
-[data-app] .cockpit-scrub[data-open="false"] {
-  opacity: 0; transform: scale(0.97); pointer-events: none; visibility: hidden;
-  transition: opacity 150ms var(--app-ease), transform 150ms var(--app-ease), visibility 0s linear 150ms;
-}
 /* The header's subagent strip: a tint per type, pulsing while it works. The
  * ring in the panel's colour separates overlapping chips. */
 [data-app] .cockpit-subchip {
@@ -700,7 +691,6 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
   [data-app] .cockpit-subchip::after { animation: none !important; }
   [data-app] .cockpit-avatar::after, [data-app] .cockpit-avatar .cockpit-character, [data-app] .cockpit-dot::after,
   [data-app] .cockpit-now::after, [data-app] .cockpit-row, [data-app] .cockpit-bar-live, [data-app] .cockpit-spark-new { animation: none !important; }
-  [data-app] .cockpit-scrub { transition: none; }
   [data-app] .cockpit-fill { transition: none; }
 }
 /* The terminal slab: the terminal palette's ground, so anything drawn on it
