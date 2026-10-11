@@ -193,3 +193,79 @@ export function readout(calls: readonly CallPoint[], i: number, now: number): Re
   if (did) r.did = did
   return r
 }
+
+/** The bar widths a session's spend is drawn in, by time: the smallest that keeps it to MAX_TIME_BARS. */
+const STEPS_MIN = [5, 10, 30, 60, 180, 360, 1440]
+export const MAX_TIME_BARS = 48
+
+/** One stretch of wall-clock time and what was spent in it. */
+export interface TimeBar {
+  /** Unix ms, inclusive. */
+  start: number
+  end: number
+  cost: number
+  calls: number
+  /** Tool name → how many calls asked for it, from the calls that say. */
+  tools: Map<string, number>
+}
+
+/**
+ * The session's calls by time rather than one bar a call (owner, 2026-10-11:
+ * the per-call view was "not informative and not convenient"). Bars follow
+ * the clock, so an idle stretch is an empty bar, and the step grows with the
+ * session: 5 minutes for a short one up to a day for a long one. Steps of an
+ * hour and up start on the local hour.
+ */
+export function timeBars(calls: readonly CallPoint[]): { step: number; bars: TimeBar[] } {
+  const timed = calls.filter((c) => c.ts > 0)
+  if (timed.length === 0) return { step: 0, bars: [] }
+  const first = Math.min(...timed.map((c) => c.ts))
+  const last = Math.max(...timed.map((c) => c.ts))
+  const span = Math.max(1, last - first)
+  const stepMin = STEPS_MIN.find((m) => Math.ceil(span / (m * 60_000)) + 1 <= MAX_TIME_BARS) ?? STEPS_MIN[STEPS_MIN.length - 1]!
+  const step = stepMin * 60_000
+  const offset = new Date(first).getTimezoneOffset() * 60_000
+  const start0 = Math.floor((first - offset) / step) * step + offset
+  const n = Math.floor((last - start0) / step) + 1
+  const bars: TimeBar[] = Array.from({ length: n }, (_, i) => ({ start: start0 + i * step, end: start0 + (i + 1) * step, cost: 0, calls: 0, tools: new Map() }))
+  for (const c of timed) {
+    const b = bars[Math.min(n - 1, Math.floor((c.ts - start0) / step))]!
+    b.cost += c.cost
+    b.calls++
+    for (const t of c.tools ?? []) b.tools.set(t.tool, (b.tools.get(t.tool) ?? 0) + 1)
+  }
+  return { step, bars }
+}
+
+/** "Today 14:00–15:00", "Fri 22:00–Sat 01:00", "Mon 6 Oct" for a day. */
+export function barLabel(b: TimeBar, step: number, now: number): string {
+  const d = new Date(b.start)
+  const e = new Date(b.end)
+  const p = (v: number) => String(v).padStart(2, '0')
+  const hm = (x: Date) => `${p(x.getHours())}:${p(x.getMinutes())}`
+  const day = (x: Date) => {
+    const t = new Date(now)
+    const same = (a: Date, z: Date) => a.toDateString() === z.toDateString()
+    if (same(x, t)) return 'Today'
+    const y = new Date(now - 86_400_000)
+    if (same(x, y)) return 'Yesterday'
+    return x.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+  }
+  if (step >= 86_400_000) return day(d)
+  return d.toDateString() === e.toDateString() || (e.getHours() === 0 && e.getMinutes() === 0)
+    ? `${day(d)} ${hm(d)}–${hm(e)}`
+    : `${day(d)} ${hm(d)}–${day(e)} ${hm(e)}`
+}
+
+/** "Bash 40 · Edit 22 · Read 10": the tools a bar's calls asked for most. */
+export function topTools(b: TimeBar, n = 3): string {
+  return [...b.tools.entries()].sort((a, z) => z[1] - a[1]).slice(0, n).map(([t, k]) => `${t} ${k}`).join(' · ')
+}
+
+/** "10 min", "1 h", "1 day": a step in words. */
+export function stepText(step: number): string {
+  const m = step / 60_000
+  if (m < 60) return `${m} min`
+  if (m < 1440) return `${m / 60} h`
+  return '1 day'
+}

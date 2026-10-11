@@ -7,6 +7,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **app:** the inspector's spend spark opens, on a click, the session's
+  spend by time instead of a bar per model call: bars follow the clock
+  (5 min to a day, by the session's length), and a stretch reads as when,
+  what it cost, how many calls and which tools. It stays open until closed.
+- **app:** the session deck's top edge is a plain hairline; the accent
+  line with its glow was too bright.
+
 ### Added
 
 - **app:** ⇧⌘G (Ctrl+Shift+G) opens the diff of the session in front — its
