@@ -25,18 +25,31 @@ import { parseHash, type Route } from './router'
 export type FeedbackKind = 'bug' | 'idea' | 'question'
 
 /**
- * Three, one word each, as a segmented control. Each maps to a label that
- * exists on dspv/caprock (`gh label list`): a label that does not exist is
- * dropped by GitHub without a word, so the mapping is pinned by a test.
- * "Unclear" and "other" were folded into Question: both already went out
- * with the `question` label, and four near-identical buttons made people
- * stop to choose.
+ * Three, one word each, as three large cards picked with a click or the keys
+ * 1, 2, 3 (`kindForCode`). Each maps to a label that exists on dspv/caprock
+ * (`gh label list`): a label that does not exist is dropped by GitHub without
+ * a word, so the mapping is pinned by a test. "Unclear" and "other" were
+ * folded into Question: both already went out with the `question` label, and
+ * four near-identical buttons made people stop to choose.
+ *
+ * `blurb` is the card's one line; `title` and `hint` are the placeholders of
+ * the title and the description, a question per kind rather than an example.
  */
-export const KINDS: { id: FeedbackKind; label: string; title: string; hint: string; gh: string }[] = [
-  { id: 'bug', label: 'Bug', title: 'e.g. Cost chart is empty after a restart', hint: 'What did you do, what did you expect, what happened instead?', gh: 'bug' },
-  { id: 'idea', label: 'Idea', title: 'e.g. Show cost per branch', hint: 'What would you like, and what would it help you do?', gh: 'enhancement' },
-  { id: 'question', label: 'Question', title: 'e.g. What does "session total" include?', hint: 'What were you trying to find out?', gh: 'question' },
+export const KINDS: { id: FeedbackKind; label: string; blurb: string; title: string; hint: string; gh: string }[] = [
+  { id: 'bug', label: 'Bug', blurb: 'Something broke', title: 'What broke?', hint: 'What did you do, what did you expect, what happened instead?', gh: 'bug' },
+  { id: 'idea', label: 'Idea', blurb: 'Make it better', title: 'What would make it better?', hint: 'What would you like, and what would it help you do?', gh: 'enhancement' },
+  { id: 'question', label: 'Question', blurb: 'How do I…', title: 'What do you want to know?', hint: 'What were you trying to find out?', gh: 'question' },
 ]
+
+/**
+ * The kind a key picks: 1, 2, 3 on the digit row or the numpad. By `code`,
+ * the physical key, so it is the same key on any layout — on AZERTY the
+ * unshifted 2 is é, and a Greek or Japanese input method changes `key` too.
+ */
+export function kindForCode(code: string): FeedbackKind | null {
+  const m = /^(?:Digit|Numpad)([1-3])$/.exec(code)
+  return m ? KINDS[Number(m[1]) - 1]!.id : null
+}
 
 /** Where issues go. */
 const REPO = 'dspv/caprock'

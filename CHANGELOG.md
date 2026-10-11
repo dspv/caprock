@@ -9,6 +9,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **Send feedback** picks Bug, Idea or Question from three large cards with
+  an icon, a line each and their key: press 1, 2 or 3 (any keyboard layout)
+  and type the title straight away. Enter in the title moves to the
+  description, ⌘↩ (Ctrl+Enter on Windows and Linux) creates the issue, and
+  each kind asks its own question ("What broke?").
+
 - **Slate** has no orange left: waiting and idle marks read as a cool yellow
   there instead of graphite's amber.
 

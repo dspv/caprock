@@ -73,6 +73,15 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-11 — unreleased: feedback picked from big cards with 1 2 3
+
+The owner asked for a livelier feedback form. Bug, Idea and Question are
+three large cards with an icon, a line and a key; 1, 2, 3 pick by physical
+key and put focus in the title, Enter moves to the description, ⌘↩ / Ctrl+Enter
+creates the issue, and each kind asks its own question. Checked in a headless
+browser on Graphite, Slate, Paper and White at 1440×900 and at phone width;
+the dialog is 10px shorter than before. Nothing else about the issue changed.
+
 ### 2026-10-11 — 0.108.1: 0.108.0, published
 
 The v0.108.0 tag stopped at the release workflow's golangci-lint (two
