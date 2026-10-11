@@ -500,7 +500,7 @@ function TabRow({ tab, label, active, waiting, asks, onOpen, onClose, onMenu, di
   const title = label?.title ?? tab.title
   const isFile = label?.file !== undefined
   const word = !isFile && !label?.isShell && label?.session ? label.dot : undefined
-  const closeTip = closeTitle(isFile, !!label?.isShell)
+  const closeTip = closeTitle(isFile, !!label?.isShell, !!label?.chat)
   const n = onClose ? 1 : 0
   return (
     <li className="group/row relative">

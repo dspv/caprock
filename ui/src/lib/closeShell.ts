@@ -112,11 +112,60 @@ export function liveShells(list: readonly { id: string; program?: string }[]): M
   return new Map(list.map((sh) => [sh.id, sh.program]))
 }
 
-/** What a tab's close button says: a shell closes for real, an agent runs on. */
-export function closeTitle(isFile: boolean, isShell: boolean): string {
+/** What a tab's close button says: a shell closes for real, a quick chat ends, an agent runs on. */
+export function closeTitle(isFile: boolean, isShell: boolean, isChat = false): string {
   if (isFile) return `Close tab (${keys('⌘W')})`
-  return isShell ? `Close shell (${keys('⌘W')})` : `Close tab (${keys('⌘W')}) — the agent keeps running`
+  if (isShell) return `Close shell (${keys('⌘W')})`
+  return isChat ? `Close tab (${keys('⌘W')}) — the chat ends` : `Close tab (${keys('⌘W')}) — the agent keeps running`
 }
+
+/** The quick chats a close ends: `stop` at once, `busy` (still answering) after one question. */
+export interface ChatClosePlan {
+  stop: string[]
+  busy: string[]
+}
+
+/**
+ * The plan for the quick chats in a closing tab or pane (.ai/21-app.md §
+ * Quick chat). A quick chat lives in Caprock's own folder and has nothing to
+ * come back to, so closing its tab ends its process — closed chats piled up
+ * as idle sessions under Outside projects (owner, 2026-10-12). Only a chat
+ * Caprock started and still running (`owned`, not ended) is ever stopped
+ * (rule 7); one mid-turn is asked about first. Any other agent's tab still
+ * leaves its agent running. `isChat` is lib/quickchat's test, passed in so
+ * this module stays free of storage. `startedHere` is a chat this window
+ * spawned a moment ago, before the session list has it: Caprock started
+ * it, and it has not answered anything yet, so it ends with no question.
+ */
+export function planChatClose(
+  tab: Tab,
+  paneId: string | undefined,
+  sessions: ReadonlyMap<string, SessionSummary>,
+  isChat: (s: SessionSummary) => boolean,
+  startedHere: (id: string) => boolean = () => false,
+): ChatClosePlan {
+  const closing = paneId ? leaves(tab.root).filter((l) => l.id === paneId) : leaves(tab.root)
+  const plan: ChatClosePlan = { stop: [], busy: [] }
+  const seen = new Set<string>()
+  for (const leaf of closing) {
+    if (leaf.target.kind !== 'session') continue
+    const id = leaf.target.sessionId
+    if (seen.has(id)) continue
+    const s = sessions.get(id)
+    if (!s) {
+      if (startedHere(id)) { seen.add(id); plan.stop.push(id) }
+      continue
+    }
+    if (!s.owned || s.status === 'ended' || s.kind === 'shell' || !isChat(s)) continue
+    seen.add(s.session_id)
+    const health = s.activity?.health
+    ;(health === 'working' || health === 'looping' ? plan.busy : plan.stop).push(s.session_id)
+  }
+  return plan
+}
+
+/** The one question before ending a chat that is still answering. */
+export const CHAT_CLOSE_QUESTION = 'Stop the chat? It is still answering.'
 
 /** The close action's name: "Close shell" for a shell's tab, else "Close tab". */
 export function closeWord(isFile: boolean, isShell: boolean): string {

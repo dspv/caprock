@@ -76,11 +76,15 @@ function exitCommand(agent: string | undefined): string {
   return agent === 'gemini' ? '/quit' : '/exit'
 }
 
-/** The line above a quick chat's terminal: who it is with, and the two ways out. `closeKey` is ⌘W in this platform's words. */
+/**
+ * The line above a quick chat's terminal: who it is with, and the two ways
+ * out. Closing the tab ends the chat too (AppShell requestClose), so both
+ * say "ends it". `closeKey` is ⌘W in this platform's words.
+ */
 export function quickChatHint(s: Pick<SessionSummary, 'session_id' | 'model_display' | 'agent'>, closeKey: string): string {
   const agent = s.agent ?? startedChat(s.session_id)?.agent
   const model = chatModel(s)
-  return `Quick chat with ${chatAgentName(agent)}${model ? ` · ${model}` : ''} — ${closeKey} closes, ${exitCommand(agent)} ends it`
+  return `Quick chat with ${chatAgentName(agent)}${model ? ` · ${model}` : ''} — ${closeKey} or ${exitCommand(agent)} ends it`
 }
 
 export function hintDismissed(): boolean {

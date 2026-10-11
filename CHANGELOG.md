@@ -7,6 +7,20 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **app:** the cockpit's Spend block opens **Compact** by default: a period
+  chip (session, today, 7d, 30d), three large figures (Spent, Tokens, Cache
+  hit rate) and a small spark of that period's spend, about half as tall.
+  Today, 7d and 30d are every session's figures, from the existing summary.
+  *Compact | Full* in its header switches back to the cells and *Spend over
+  time*; both choices are remembered.
+
+- **app:** closing a quick chat (⌘W, the tab's ×, *Close tab*) now ends its
+  process, so closed chats no longer pile up as idle sessions under *Outside
+  projects*. A chat that is still answering asks once first. Closing any
+  other agent's tab still leaves it running.
+
 ## [0.110.0] - 2026-10-12
 
 ### Added

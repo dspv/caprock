@@ -27,7 +27,7 @@ describe('a quick chat', () => {
 
   it('hints the way out in the platform’s words', () => {
     rememberStartedChat('c1', { agent: 'claude', model: 'claude-opus-5-5', label: 'Opus 5.5' })
-    expect(quickChatHint({ session_id: 'c1' }, '⌘W')).toBe('Quick chat with Claude · Opus 5.5 — ⌘W closes, /exit ends it')
-    expect(quickChatHint({ session_id: 'g', agent: 'gemini' }, 'Ctrl+Shift+W')).toBe('Quick chat with Gemini — Ctrl+Shift+W closes, /quit ends it')
+    expect(quickChatHint({ session_id: 'c1' }, '⌘W')).toBe('Quick chat with Claude · Opus 5.5 — ⌘W or /exit ends it')
+    expect(quickChatHint({ session_id: 'g', agent: 'gemini' }, 'Ctrl+Shift+W')).toBe('Quick chat with Gemini — Ctrl+Shift+W or /quit ends it')
   })
 })

@@ -218,7 +218,7 @@ export function TabStrip(props: TabStripProps) {
               <button
                 type="button"
                 aria-label={`${closeWord(file !== undefined, isShell)} ${title}`}
-                title={closeTitle(file !== undefined, isShell)}
+                title={closeTitle(file !== undefined, isShell, !!label?.chat)}
                 onClick={(e) => { e.stopPropagation(); props.onDetach(t.id) }}
                 className={`flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${active ? '' : 'invisible group-hover:visible'}`}
               >

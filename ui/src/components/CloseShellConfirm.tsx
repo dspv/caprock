@@ -6,7 +6,37 @@
  * all its busy shells at once (`project`).
  */
 import { Sheet, SheetButton, SHEET_CLOSE_ROOM } from './Sheet'
-import { closeQuestion, projectCloseQuestion, type ClosingShell } from '@/lib/closeShell'
+import { CHAT_CLOSE_QUESTION, closeQuestion, projectCloseQuestion, type ClosingShell } from '@/lib/closeShell'
+
+/**
+ * The one question before closing a quick chat that is still answering
+ * (.ai/21-app.md § Quick chat). An idle chat never gets here: its tab
+ * closes and the chat ends with it.
+ */
+export function CloseChatConfirm({ onStop, onKeep, onCancel }: { onStop: () => void; onKeep: () => void; onCancel: () => void }) {
+  return (
+    <Sheet
+      label="Close a chat that is answering"
+      width={420}
+      onClose={onCancel}
+      footer={
+        <>
+          <SheetButton onClick={onCancel}>Cancel</SheetButton>
+          <SheetButton onClick={onKeep}>Keep it running, close tab</SheetButton>
+          <button type="button" autoFocus onClick={onStop}
+            className="h-[30px] rounded-[7px] bg-danger px-3.5 text-[13px] font-medium text-white hover:brightness-110">
+            Stop and close
+          </button>
+        </>
+      }
+    >
+      <div className={`grid gap-1.5 py-4 pl-5 ${SHEET_CLOSE_ROOM}`}>
+        <p className="text-[13.5px] font-medium text-fg">{CHAT_CLOSE_QUESTION}</p>
+        <p className="text-[12.5px] text-fg-muted">Stopping ends its process; the conversation is kept and can be continued. Kept running, it stays under Outside projects.</p>
+      </div>
+    </Sheet>
+  )
+}
 
 export function CloseShellConfirm({ busy, project, onStop, onKeep, onCancel }: {
   busy: readonly ClosingShell[]

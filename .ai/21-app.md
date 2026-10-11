@@ -200,7 +200,7 @@ One window, three regions:
   a chat is known by its folder, `<data_dir>/chats/<stamp>`, as the daemon's
   `chatLabel` knows it). The sidebar still groups it under *Outside
   projects*; the tab no longer wears that group as its chip. A line above
-  its terminal says *Quick chat with Claude · Opus 5.5 — ⌘W closes, /exit
+  its terminal says *Quick chat with Claude · Opus 5.5 — ⌘W or /exit
   ends it* (keys through `keys()`; Gemini's is /quit), with a × that hides it
   for good (`caprock.quickchat.hint`). **When the agent exits** the tab stays,
   dimmed, with *The chat ended*, **Close tab** (focused, so Enter takes it)
@@ -210,6 +210,20 @@ One window, three regions:
   and that shell — a login prompt in Application Support, under the same
   tab — was the "can't get out": the owner typed `/exit`, was still in a
   terminal, and reloaded the window to leave.
+- **Closing a quick chat ends it** (owner, 2026-10-12: closed chats piled
+  up as idle sessions under *Outside projects*). ⌘W, the tab's ×, the
+  sidebar's × and *Close tab* stop a quick chat's process with the tab — the
+  same `kill` as the cockpit's *Stop the session…*; the conversation is
+  kept and can be continued. An idle chat ends with no question; one still
+  answering (activity `working` or `looping`) asks once — *Stop the chat? It
+  is still answering.* — with **Stop and close**, **Keep it running, close
+  tab** and **Cancel** (`CloseChatConfirm`). Only a chat Caprock started and
+  still running is stopped (`owned`, not ended; rule 7): known by its
+  folder, or one this window spawned a moment ago that the session list
+  does not have yet (`planChatClose`, `lib/closeShell.ts`). One whose agent
+  already exited is not signalled. Every other agent's tab still leaves its
+  agent running when it closes; the tab's × says *the chat ends* on a chat
+  and *the agent keeps running* on the rest.
 - **Tab strip** (owner, 2026-10-09: "tabs are barely noticeable", and "the
   + amber, or better a dropdown", translated). The tab in front has a 2px
   amber top edge over its hairline frame and a medium-weight label
@@ -1241,7 +1255,8 @@ there, and worktrees as first-class places to work.
   - asks about a busy one — *Shell 1 is running claude. Close and stop it?* —
     with **Stop and close**, **Keep running, close tab** and **Cancel**;
   - leaves agent tabs as they were: closing the tab of Claude Code, Codex or
-    any agent never stops it.
+    any agent never stops it — except a quick chat, which ends with its tab
+    (*Closing a quick chat ends it*, above).
 
   The same holds for a shell's pane in a split. A shell running a program
   reads *Shell 1 · claude* in the strip and the sidebar. A shell left running

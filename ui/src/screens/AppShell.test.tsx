@@ -56,10 +56,10 @@ const sessions = [
 const editorCalls = vi.hoisted(() => [] as { path: string; line?: number; editor?: string }[])
 // Every quick chat starts as chat-1, chat-2, … in its own dated folder, as
 // the daemon makes one (internal/agents newChatDir).
-const spawned = vi.hoisted(() => ({ n: 0, shells: 0 }))
+const spawned = vi.hoisted(() => ({ n: 0, shells: 0, health: 'idle' as 'idle' | 'working', signals: [] as [string, string][] }))
 const chatSession = (id: string) => sess({
   session_id: id, cwd: `/data/caprock/chats/2026-10-12-00515${id.slice(-1)}`, repo_root: '', project: 'chat · Oct 12, 00:51', model: '', title: undefined,
-  activity: { phrase: '', at: '', health: 'idle' },
+  activity: { phrase: '', at: '', health: spawned.health },
 })
 
 vi.mock('@/lib/api', async (orig) => {
@@ -77,6 +77,7 @@ vi.mock('@/lib/api', async (orig) => {
         return { session_id: id, cwd: chatSession(id).cwd }
       },
       summary: async () => ({ cost_usd: 1.25, projects: [{ project: 'app', dir: '/w/app', cost_usd: 1.25, tokens: 0, sessions: 2 }], rate_limits: { five_hour: { used_percentage: 40, resets_at: 0 } } }),
+      signal: async (id: string, action: string) => { spawned.signals.push([id, action]) },
       permission: async () => ({ permission: null }),
       diff: async () => ({ root: '/w/app', branch: 'main', files: [], stat: '' }),
       editors: async () => ({ editors: [{ id: 'zed', name: 'Zed' }, { id: 'vscode', name: 'VS Code' }], preferred: 'zed' }),
@@ -91,6 +92,8 @@ const fetchMock = vi.fn(async () => new Response('', { status: 404 }))
 beforeEach(() => {
   spawned.n = 0
   spawned.shells = 0
+  spawned.health = 'idle'
+  spawned.signals = []
   sessions.splice(3)
   localStorage.clear()
   sessionStorage.clear()
@@ -165,6 +168,9 @@ describe('the app workspace', () => {
     expect(screen.getByTestId('pane-agent-1')).toHaveAttribute('data-active', 'true')
     await cmd('w')
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+    // An agent's tab is not its process: closing it stops nothing.
+    await act(async () => { await Promise.resolve() })
+    expect(spawned.signals).toEqual([])
   })
 
   it('shows an agent tab as its chat, over the terminal that stays mounted', async () => {
@@ -307,7 +313,7 @@ describe('the app workspace', () => {
   it('says in the chat how to leave it, until the hint is dismissed for good', async () => {
     await startChat()
     const hint = await screen.findByRole('note', { name: 'Quick chat' })
-    expect(hint).toHaveTextContent('Quick chat with Claude · Opus 5.5 — ⌘W closes, /exit ends it')
+    expect(hint).toHaveTextContent('Quick chat with Claude · Opus 5.5 — ⌘W or /exit ends it')
     fireEvent.click(within(hint).getByRole('button', { name: 'Dismiss' }))
     expect(screen.queryByRole('note', { name: 'Quick chat' })).toBeNull()
     expect(localStorage.getItem('caprock.quickchat.hint')).toBe('dismissed')
@@ -345,6 +351,43 @@ describe('the app workspace', () => {
     await waitFor(() => expect(location.hash).toBe('#/app'))
     await cmd('w')
     expect(screen.queryByRole('tab', { name: /Quick chat/ })).toBeNull()
+  })
+
+  // Owner, 2026-10-12: closed chats piled up as idle sessions under Outside projects.
+  it('ends an idle quick chat with its tab, without asking', async () => {
+    await startChat()
+    await cmd('w')
+    await waitFor(() => expect(spawned.signals).toEqual([['chat-1', 'kill']]))
+    expect(screen.queryByRole('tab', { name: /Quick chat/ })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: /Close a chat/ })).toBeNull()
+  })
+
+  it('asks once before ending a quick chat that is still answering', async () => {
+    spawned.health = 'working'
+    // The close reads the session list: wait until it has the chat, answering.
+    await startChat()
+    await screen.findByRole('heading', { name: 'Quick chat · Opus 5.5' })
+    await waitFor(() => expect(screen.getAllByText('Working').length).toBeGreaterThan(0))
+    await cmd('w')
+    const ask = await screen.findByRole('dialog', { name: 'Close a chat that is answering' })
+    expect(ask).toHaveTextContent('Stop the chat? It is still answering.')
+    expect(spawned.signals).toEqual([])
+    fireEvent.click(within(ask).getByRole('button', { name: 'Stop and close' }))
+    await waitFor(() => expect(spawned.signals).toEqual([['chat-1', 'kill']]))
+    expect(screen.queryByRole('tab', { name: /Quick chat/ })).toBeNull()
+  })
+
+  it('keeps a busy quick chat running when told to, and closes only its tab', async () => {
+    spawned.health = 'working'
+    // The close reads the session list: wait until it has the chat, answering.
+    await startChat()
+    await screen.findByRole('heading', { name: 'Quick chat · Opus 5.5' })
+    await waitFor(() => expect(screen.getAllByText('Working').length).toBeGreaterThan(0))
+    await cmd('w')
+    const ask = await screen.findByRole('dialog', { name: 'Close a chat that is answering' })
+    fireEvent.click(within(ask).getByRole('button', { name: 'Keep it running, close tab' }))
+    await waitFor(() => expect(screen.queryByRole('tab', { name: /Quick chat/ })).toBeNull())
+    expect(spawned.signals).toEqual([])
   })
 
   it('switches tabs with ⌘1–9 and keeps every terminal mounted', async () => {

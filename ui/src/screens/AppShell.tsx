@@ -30,7 +30,7 @@ import {
   type TabTarget,
 } from '@/lib/tabs'
 import { tabLabels } from '@/lib/tablabels'
-import { isShellLeaf, liveShells, planClose, planProjectClose, shellNames, type ClosePlan, type ClosingShell, type ProjectShellsOutcome } from '@/lib/closeShell'
+import { isShellLeaf, liveShells, planChatClose, planClose, planProjectClose, shellNames, type ChatClosePlan, type ClosePlan, type ClosingShell, type ProjectShellsOutcome } from '@/lib/closeShell'
 import { baseName, fileKey } from '@/lib/files'
 import { useWorkspaceData } from '@/lib/useWorkspaceData'
 import { useShellTray } from '@/lib/tray'
@@ -80,7 +80,7 @@ import { fmtAgo } from '@/lib/format'
 import { RecentInProject } from '@/components/RecentInProject'
 import { ProjectRepos } from '@/components/ProjectRepos'
 import { isMultiRepo } from '@/lib/multirepo'
-import { CloseShellConfirm } from '@/components/CloseShellConfirm'
+import { CloseChatConfirm, CloseShellConfirm } from '@/components/CloseShellConfirm'
 import { ShortcutsSheet } from '@/components/ShortcutsSheet'
 import { CopiesSheet } from '@/components/CopiesSheet'
 import { worktreeSlug } from '@/lib/slug'
@@ -247,7 +247,8 @@ export function AppShell() {
   const [toast, setToast] = useState('')
   /** A close that waits on the question about a busy shell. */
   const [closing, setClosing] = useState<
-    | { kind: 'tab'; tabId: string; paneId?: string; plan: ClosePlan }
+    | { kind: 'tab'; tabId: string; paneId?: string; plan: ClosePlan; chats: readonly string[] }
+    | { kind: 'chat'; tabId: string; paneId?: string; chat: ChatClosePlan }
     | { kind: 'project'; name: string; plan: ClosePlan; resolve: (o: ProjectShellsOutcome) => void }
     | null
   >(null)
@@ -684,14 +685,21 @@ export function AppShell() {
     void Promise.all(stop.map((sh) => api.signal(sh.sessionId, 'kill').catch((e) => setToast(`Could not stop the shell: ${errText(e)}`))))
       .then(() => refresh())
   }, [refresh])
-  const finishClose = useCallback((tabId: string, paneId: string | undefined, stop: readonly ClosingShell[]) => {
+  /** End quick chats whose tab closed: the cockpit's *Stop the session* (`kill`), never asked twice. */
+  const stopChats = useCallback((ids: readonly string[]) => {
+    if (ids.length === 0) return
+    void Promise.all(ids.map((id) => api.signal(id, 'kill').catch((e) => setToast(`Could not stop the chat: ${errText(e)}`))))
+      .then(() => refresh())
+  }, [refresh])
+  const finishClose = useCallback((tabId: string, paneId: string | undefined, stop: readonly ClosingShell[], chats: readonly string[] = []) => {
     dispatch(paneId ? { type: 'close-pane', tabId, paneId } : { type: 'close', tabId })
     stopShells(stop)
-  }, [stopShells])
+    stopChats(chats)
+  }, [stopShells, stopChats])
   // What requestClose reads, kept current without making it, and so every
   // close button, a new function on each poll.
-  const closeCtx = useRef({ tabs: ws.tabs, sessionsById, sessions: data.sessions, labels, model })
-  closeCtx.current = { tabs: ws.tabs, sessionsById, sessions: data.sessions, labels, model }
+  const closeCtx = useRef({ tabs: ws.tabs, sessionsById, sessions: data.sessions, labels, model, endedChats })
+  closeCtx.current = { tabs: ws.tabs, sessionsById, sessions: data.sessions, labels, model, endedChats }
   /** The daemon's shells now, id to program; the last poll's when it cannot answer. */
   const liveNow = useCallback(async () => {
     try {
@@ -700,24 +708,36 @@ export function AppShell() {
       return liveShells(closeCtx.current.sessions.filter((s) => s.kind === 'shell').map((s) => ({ id: s.session_id, program: s.program })))
     }
   }, [])
-  /**
-   * Close a tab, or one pane of it (.ai/21-app.md § Shell tabs). An agent
-   * runs on: closing its tab never stops it. A shell is closed for real, as
-   * in any terminal app: idle, it ends with its tab; running a program, it
-   * asks first. The daemon's shell list is read at this moment, so the
-   * answer is about now, not the last poll; only shells on that list —
-   * started by Caprock — are ever stopped (rule 7).
-   */
-  const requestClose = useCallback(async (tabId: string, paneId?: string) => {
+  /** The shells' half of a close, once the quick chats' is decided: `chats` end with the tab. */
+  const closeShells = useCallback(async (tabId: string, paneId: string | undefined, chats: readonly string[]) => {
     const { tabs, sessionsById, labels } = closeCtx.current
     const tab = tabs.find((t) => t.id === tabId)
     if (!tab) return
     const panes = paneId ? leaves(tab.root).filter((l) => l.id === paneId) : leaves(tab.root)
-    if (!panes.some((l) => isShellLeaf(l, sessionsById))) { finishClose(tabId, paneId, []); return }
+    if (!panes.some((l) => isShellLeaf(l, sessionsById))) { finishClose(tabId, paneId, [], chats); return }
     const plan = planClose(tab, paneId, sessionsById, await liveNow(), labels.get(tabId)?.shellName)
-    if (plan.busy.length === 0) finishClose(tabId, paneId, plan.stop)
-    else setClosing({ kind: 'tab', tabId, paneId, plan })
+    if (plan.busy.length === 0) finishClose(tabId, paneId, plan.stop, chats)
+    else setClosing({ kind: 'tab', tabId, paneId, plan, chats })
   }, [finishClose, liveNow])
+  /**
+   * Close a tab, or one pane of it (.ai/21-app.md § Shell tabs, § Quick
+   * chat). An agent runs on: closing its tab never stops it — except a quick
+   * chat Caprock started, which has nothing to come back to and ends with its
+   * tab (idle at once; still answering, after one question). A shell is
+   * closed for real, as in any terminal app: idle, it ends with its tab;
+   * running a program, it asks first. The daemon's shell list is read at this
+   * moment, so the answer is about now, not the last poll; only shells on
+   * that list and chats Caprock owns are ever stopped (rule 7).
+   */
+  const requestClose = useCallback(async (tabId: string, paneId?: string) => {
+    const { tabs, sessionsById, endedChats } = closeCtx.current
+    const tab = tabs.find((t) => t.id === tabId)
+    if (!tab) return
+    // A chat whose agent already exited (its tab says so) has nothing to stop.
+    const chat = planChatClose(tab, paneId, sessionsById, (s) => !endedChats.has(s.session_id) && (isQuickChat(s) || !!startedChat(s.session_id)), (id) => !endedChats.has(id) && !!startedChat(id))
+    if (chat.busy.length > 0) { setClosing({ kind: 'chat', tabId, paneId, chat }); return }
+    await closeShells(tabId, paneId, chat.stop)
+  }, [closeShells])
   /**
    * *Close project* ends the project's shells too, tab or no tab, the way a
    * shell's tab does: idle ones without asking, busy ones after one question
@@ -1378,8 +1398,15 @@ export function AppShell() {
       {closing?.kind === 'tab' && (
         <CloseShellConfirm
           busy={closing.plan.busy}
-          onStop={() => { setClosing(null); finishClose(closing.tabId, closing.paneId, [...closing.plan.stop, ...closing.plan.busy]) }}
-          onKeep={() => { setClosing(null); finishClose(closing.tabId, closing.paneId, closing.plan.stop) }}
+          onStop={() => { setClosing(null); finishClose(closing.tabId, closing.paneId, [...closing.plan.stop, ...closing.plan.busy], closing.chats) }}
+          onKeep={() => { setClosing(null); finishClose(closing.tabId, closing.paneId, closing.plan.stop, closing.chats) }}
+          onCancel={() => setClosing(null)}
+        />
+      )}
+      {closing?.kind === 'chat' && (
+        <CloseChatConfirm
+          onStop={() => { setClosing(null); void closeShells(closing.tabId, closing.paneId, [...closing.chat.stop, ...closing.chat.busy]) }}
+          onKeep={() => { setClosing(null); void closeShells(closing.tabId, closing.paneId, closing.chat.stop) }}
           onCancel={() => setClosing(null)}
         />
       )}

@@ -10,8 +10,8 @@
  * as a zero.
  */
 import { useSyncExternalStore } from 'react'
-import type { SessionSummary } from './api'
-import type { CallPoint } from './scrub'
+import type { SessionSummary, Summary } from './api'
+import { timeBars, type CallPoint } from './scrub'
 import { fmtDuration, fmtPct, fmtTokens, fmtUSD } from './format'
 
 /** What the big figure can be. */
@@ -42,15 +42,25 @@ export const CELL_LABEL: Record<Metric, string> = {
   cost: 'Cost', burn: 'Burn', tokens: 'Tokens', turns: 'Turns', cache: 'Cache', time: 'Time', tools: 'Tools',
 }
 
+/** How the unfolded Spend block reads: three figures and a spark, or the cells and *Spend over time*. */
+export type SpendView = 'compact' | 'full'
+/** What the compact figures cover: this session, or every session on the machine over a range. */
+export type SpendPeriod = 'session' | 'today' | '7d' | '30d'
+export const SPEND_PERIODS: readonly SpendPeriod[] = ['session', 'today', '7d', '30d']
+
 export interface SpendPrefs {
   /** The Spend details folded to one line: the default, since most viewers want context and the plan first. */
   folded: boolean
   headline: Headline
   /** *Spend over time* open under the cells. */
   chart: boolean
+  /** Compact by default (owner, 2026-10-12: about half as tall, only the figures that inform). */
+  view: SpendView
+  /** What the compact figures cover. */
+  period: SpendPeriod
 }
 
-export const DEFAULT_SPEND_PREFS: SpendPrefs = { folded: true, headline: 'cost', chart: false }
+export const DEFAULT_SPEND_PREFS: SpendPrefs = { folded: true, headline: 'cost', chart: false, view: 'compact', period: 'session' }
 
 const KEY = 'caprock.app.cockpit.spend'
 const listeners = new Set<() => void>()
@@ -62,6 +72,8 @@ export function normalizeSpendPrefs(raw: unknown): SpendPrefs {
     folded: typeof v.folded === 'boolean' ? v.folded : DEFAULT_SPEND_PREFS.folded,
     headline: HEADLINES.some((x) => x.id === v.headline) ? (v.headline as Headline) : DEFAULT_SPEND_PREFS.headline,
     chart: typeof v.chart === 'boolean' ? v.chart : DEFAULT_SPEND_PREFS.chart,
+    view: v.view === 'compact' || v.view === 'full' ? v.view : DEFAULT_SPEND_PREFS.view,
+    period: SPEND_PERIODS.includes(v.period as SpendPeriod) ? (v.period as SpendPeriod) : DEFAULT_SPEND_PREFS.period,
   }
 }
 
@@ -221,4 +233,51 @@ export function foldedLine(h: Headline, f: SpendFigures): string {
   const order: Metric[] = [h, ...(['cost', 'turns', 'time'] as Metric[]).filter((m) => m !== h)]
   const line = order.map((m) => phrase(m, f)).filter((x): x is string => !!x).slice(0, 3).join(' · ')
   return line.charAt(0).toUpperCase() + line.slice(1)
+}
+
+/** What the compact block shows for a period. A figure the source does not carry is undefined (a dash). */
+export interface PeriodFigures {
+  cost?: number
+  /** Input tokens with cache reads and writes, as the session's Tokens counts them. */
+  tokens?: number
+  /** Percent of input read from the cache. */
+  cache?: number
+  /** Spend over the period, oldest first: the spark under the figures. */
+  series: number[]
+}
+
+/** Whose money the compact figures are: "This session", "Today · all sessions". */
+export function periodScope(p: SpendPeriod): string {
+  switch (p) {
+    case 'session': return 'This session'
+    case 'today': return 'Today · all sessions'
+    case '7d': return '7 days · all sessions'
+    case '30d': return '30 days · all sessions'
+  }
+}
+
+/**
+ * The compact figures for a period. *session* is this session's own figures
+ * and its calls summed by time (`timeBars`, as *Spend over time* draws
+ * them). today, 7d and 30d are Caprock-wide, from that range's
+ * `/v1/stats/summary`: its totals, its savings' hit rate, and the projects'
+ * sparks (24 hours, 7 or 30 days) summed bucket by bucket — no new query.
+ * No summary yet: dashes, never zeros.
+ */
+export function periodFigures(p: SpendPeriod, f: SpendFigures, calls: readonly CallPoint[], summary: Summary | undefined): PeriodFigures {
+  if (p === 'session') {
+    return { cost: f.cost, tokens: f.tokens, cache: f.cache, series: timeBars(calls).bars.map((b) => b.cost) }
+  }
+  if (!summary) return { series: [] }
+  const tokens = summary.tokens_in + summary.cache_read + summary.cache_write
+  const series: number[] = []
+  for (const proj of summary.projects ?? []) {
+    proj.spark?.cost.forEach((v, i) => { series[i] = (series[i] ?? 0) + (Number.isFinite(v) ? v : 0) })
+  }
+  return {
+    cost: summary.cost_usd,
+    tokens,
+    cache: tokens > 0 ? (summary.savings?.hit_rate ?? 0) * 100 : undefined,
+    series: Array.from(series, (v) => v ?? 0),
+  }
 }

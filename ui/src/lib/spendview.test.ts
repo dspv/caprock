@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { burnRate, cellsFor, foldedLine, normalizeSpendPrefs, type SpendFigures } from './spendview'
+import { burnRate, cellsFor, foldedLine, normalizeSpendPrefs, periodFigures, periodScope, type SpendFigures } from './spendview'
 import type { CallPoint } from './scrub'
+import type { Summary } from './api'
 
 const call = (id: number, ts: number, cost: number): CallPoint => ({ id, ts, cost })
 const H = 3_600_000
@@ -34,7 +35,25 @@ describe('the spend figures', () => {
   })
 
   it('reads stored choices field by field, folded by default', () => {
-    expect(normalizeSpendPrefs(undefined)).toEqual({ folded: true, headline: 'cost', chart: false })
-    expect(normalizeSpendPrefs({ folded: false, headline: 'nope', chart: true })).toEqual({ folded: false, headline: 'cost', chart: true })
+    expect(normalizeSpendPrefs(undefined)).toEqual({ folded: true, headline: 'cost', chart: false, view: 'compact', period: 'session' })
+    expect(normalizeSpendPrefs({ folded: false, headline: 'nope', chart: true, view: 'full', period: '7d' }))
+      .toEqual({ folded: false, headline: 'cost', chart: true, view: 'full', period: '7d' })
+    expect(normalizeSpendPrefs({ view: 'tiny', period: '90d' })).toMatchObject({ view: 'compact', period: 'session' })
+  })
+
+  it('takes the compact figures from the session, or from the range summary', () => {
+    const f: SpendFigures = { cost: 2, tokens: 1_000, cache: 80 }
+    const calls = [call(1, H, 1), call(2, 2 * H, 1)]
+    const own = periodFigures('session', f, calls, undefined)
+    expect(own).toMatchObject({ cost: 2, tokens: 1_000, cache: 80 })
+    expect(own.series.length).toBeGreaterThan(1)
+    expect(periodFigures('7d', f, calls, undefined)).toEqual({ series: [] })
+    const sum = {
+      cost_usd: 9, tokens_in: 10, cache_read: 30, cache_write: 0, savings: { hit_rate: 0.75 },
+      projects: [{ spark: { cost: [1, 0, 2] } }, { spark: { cost: [0, 4] } }, {}],
+    } as unknown as Summary
+    expect(periodFigures('today', f, calls, sum)).toEqual({ cost: 9, tokens: 40, cache: 75, series: [1, 4, 2] })
+    expect(periodScope('session')).toBe('This session')
+    expect(periodScope('30d')).toBe('30 days · all sessions')
   })
 })

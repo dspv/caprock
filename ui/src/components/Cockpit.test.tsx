@@ -16,6 +16,8 @@ const h = vi.hoisted(() => ({
   subagents: { working: [], finished: 0 } as SubagentsNow,
   permission: null as unknown,
   mainAsked: [] as string[][],
+  summaries: {} as Record<string, Summary>,
+  summaryAsked: [] as string[],
 }))
 
 vi.mock('@/lib/api', async (orig) => {
@@ -29,6 +31,12 @@ vi.mock('@/lib/api', async (orig) => {
       recentMainEvents: async (_id: string, kinds: string[]) => { h.mainAsked.push(kinds); return events },
       permission: async () => ({ permission: h.permission }),
       sessionCalls: async () => [],
+      summary: async (range: string) => {
+        h.summaryAsked.push(range)
+        const s = h.summaries[range]
+        if (!s) throw new Error('no summary')
+        return s
+      },
       diff: async () => ({ root: '/w', branch: 'main', stat: '', files: [{ path: 'internal/session.go', status: 'modified', additions: 12, deletions: 3 }] }),
     },
   }
@@ -45,11 +53,15 @@ import { resetSpendPrefsForTest } from '@/lib/spendview'
 beforeEach(() => {
   localStorage.clear()
   resetSpendPrefsForTest()
+  h.summaries = {}
+  h.summaryAsked = []
 })
 
-/** Open the folded spend details. */
-function unfoldSpend() {
-  fireEvent.click(within(screen.getByRole('region', { name: 'Spend' })).getByRole('button', { expanded: false }))
+/** Open the folded spend details, in the Full view unless told otherwise (Compact is the default). */
+function unfoldSpend(view: 'compact' | 'full' = 'full') {
+  const region = screen.getByRole('region', { name: 'Spend' })
+  fireEvent.click(within(region).getByRole('button', { expanded: false }))
+  if (view === 'full') fireEvent.click(within(region).getByRole('button', { name: 'Full' }))
 }
 
 function agent(p: Partial<SessionSummary> = {}): SessionSummary {
@@ -257,12 +269,80 @@ describe('the spend details', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     expect(within(spend()).queryByText('Turns')).toBeNull()
     fireEvent.click(toggle)
-    expect(within(spend()).getByRole('button', { name: /Spent this session/ })).toHaveAttribute('aria-expanded', 'true')
+    expect(within(spend()).getByRole('button', { name: /^Spend$/ })).toHaveAttribute('aria-expanded', 'true')
     expect(stored().folded).toBe(false)
     unmount()
     resetSpendPrefsForTest()
     show(agent())
-    expect(within(spend()).getByText('Turns')).toBeInTheDocument()
+    expect(within(spend()).getByText('Tokens')).toBeInTheDocument()
+  })
+
+  it('opens Compact by default and remembers Full, and the fold works in both', () => {
+    const { unmount } = show(agent())
+    unfoldSpend('compact')
+    expect(spend()).toHaveAttribute('data-spend-view', 'compact')
+    expect(within(spend()).getByRole('button', { name: 'Compact' })).toHaveAttribute('aria-pressed', 'true')
+    expect(Array.from(spend().querySelectorAll('dt')).map((d) => d.textContent)).toEqual(['Spent', 'Tokens', 'Cache'])
+    expect(within(spend()).queryByRole('button', { name: /Spend over time/ })).toBeNull()
+    fireEvent.click(within(spend()).getByRole('button', { name: 'Full' }))
+    expect(stored().view).toBe('full')
+    expect(within(spend()).getByRole('button', { name: /Spent this session/ })).toBeInTheDocument()
+    expect(within(spend()).getByRole('button', { name: /Spend over time/ })).toBeInTheDocument()
+    unmount()
+    resetSpendPrefsForTest()
+    show(agent())
+    expect(spend()).toHaveAttribute('data-spend-view', 'full')
+    // Folded, both views read the same one line.
+    fireEvent.click(within(spend()).getByRole('button', { expanded: true }))
+    expect(spend().querySelector('[data-spend-folded]')).toHaveTextContent('Spent $1.84')
+    expect(within(spend()).queryByRole('group', { name: 'Spend view' })).toBeNull()
+  })
+
+  it('reads the compact figures from the session, then from each range’s summary', async () => {
+    h.summaries = {
+      '7d': { range: '7d', cost_usd: 84.5, tokens_in: 1_000, cache_read: 9_000, cache_write: 0, savings: { hit_rate: 0.9 }, projects: [{ project: 'a', spark: { from_ms: 0, width_ms: 1, cost: [1, 0, 2], tokens: [] } }, { project: 'b', spark: { from_ms: 0, width_ms: 1, cost: [0, 3, 1], tokens: [] } }] } as unknown as Summary,
+      '30d': { range: '30d', cost_usd: 310, tokens_in: 0, cache_read: 0, cache_write: 0, savings: { hit_rate: 0 }, projects: [] } as unknown as Summary,
+    }
+    const today = { ...summary, range: 'today', cost_usd: 12.25, tokens_in: 500, cache_read: 1_500, cache_write: 0, savings: { hit_rate: 0.75 }, projects: [] } as unknown as Summary
+    show(agent(), today)
+    unfoldSpend('compact')
+    const fig = (name: RegExp) => within(spend()).getByLabelText(name)
+    expect(fig(/^Spent, this session/)).toHaveTextContent('$1.84')
+    expect(within(spend()).getByRole('button', { name: 'session' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(within(spend()).getByRole('button', { name: 'today' }))
+    // Today is the summary the window already holds: no extra request.
+    expect(fig(/^Spent, today · all sessions/)).toHaveTextContent('$12.25')
+    expect(fig(/^Cache hit rate, today/)).toHaveTextContent('75%')
+    expect(h.summaryAsked).toEqual([])
+    expect(spend().querySelector('[data-spend-scope]')).toHaveTextContent('Today · all sessions')
+    await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: '7d' })) })
+    expect(h.summaryAsked).toEqual(['7d'])
+    expect(fig(/^Spent, 7 days/)).toHaveTextContent('$84.50')
+    expect(fig(/^Tokens, 7 days/)).toHaveTextContent('10.0k')
+    expect(fig(/^Cache hit rate, 7 days/)).toHaveTextContent('90%')
+    // The projects' sparks summed bucket by bucket: [1, 3, 3].
+    expect(spend().querySelectorAll('[data-period-spark] rect')).toHaveLength(3)
+    await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: '30d' })) })
+    expect(fig(/^Spent, 30 days/)).toHaveTextContent('$310.00')
+    // No input in the range: no cache rate, a dash rather than a zero.
+    expect(fig(/^Cache hit rate, 30 days/)).toHaveTextContent('—')
+    expect(stored().period).toBe('30d')
+  })
+
+  it('lays the compact block out to shrink: min-w-0 down the chain, three equal columns', () => {
+    show(agent())
+    unfoldSpend('compact')
+    const block = spend().querySelector('[data-spend-compact]')!
+    expect(block.className).toMatch(/\bmin-w-0\b/)
+    expect(block.className).toMatch(/grid-cols-\[minmax\(0,1fr\)\]/)
+    const dl = block.querySelector('dl')!
+    expect(dl.className).toMatch(/\bgrid-cols-3\b/)
+    expect(dl.className).toMatch(/\bmin-w-0\b/)
+    for (const d of Array.from(dl.children)) expect(d.className).toMatch(/\bmin-w-0\b/)
+    for (const dd of Array.from(dl.querySelectorAll('dd'))) expect(dd.className).toMatch(/\btruncate\b/)
+    expect(spend().querySelector('[data-spend-scope]')!.className).toMatch(/\bmin-w-0\b.*\btruncate\b|\btruncate\b.*\bmin-w-0\b/)
+    const spark = block.querySelector('[data-period-spark]')!
+    expect(Number(spark.getAttribute('height') ?? (spark as HTMLElement).style.height.replace('px', ''))).toBeLessThanOrEqual(24)
   })
 
   it('takes the headline the viewer picks, remembers it, and the cells never repeat it', () => {

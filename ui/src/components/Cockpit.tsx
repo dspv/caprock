@@ -23,8 +23,9 @@ import { readWindow } from './PlanLimits'
 import { PlanChip, usePlan } from './PlanPicker'
 import { WINDOW_MS, pace } from '@/lib/pace'
 import { SpendOverTime, SpendSpark } from './SpendScrub'
-import { callsFromEvents } from '@/lib/scrub'
-import { CELL_LABEL, HEADLINES, cellsFor, foldedLine, metricTitle, metricValue, setSpendPrefs, spendFigures, useSpendPrefs, type Headline, type SpendFigures } from '@/lib/spendview'
+import { callsFromEvents, type CallPoint } from '@/lib/scrub'
+import { everyWhileVisible } from '@/lib/visible'
+import { CELL_LABEL, HEADLINES, SPEND_PERIODS, cellsFor, foldedLine, metricTitle, metricValue, periodFigures, periodScope, setSpendPrefs, spendFigures, useSpendPrefs, type Headline, type SpendFigures, type SpendPeriod } from '@/lib/spendview'
 import { AgentCharacter, agentName, characterFor } from './Characters'
 import { SubscriptionTag } from './SubscriptionPicker'
 import { TodoBlock } from './SessionTodos'
@@ -143,7 +144,7 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
       <TodoBlock sessionId={sessionId} />
       <ContextMeter s={s} />
       {plan && <PlanWindows limits={plan} agent={s.agent} now={now} />}
-      <Spend s={s} turns={turns} sessionId={sessionId} events={main} now={now} figures={figures} />
+      <Spend s={s} turns={turns} sessionId={sessionId} events={main} now={now} figures={figures} calls={calls} summary={summary} />
       <Timeline runs={runs} total={s.stats?.tool_calls} now={now} />
       {changes}
     </>
@@ -321,33 +322,44 @@ function HeadlineFigure({ figures }: { figures: SpendFigures }) {
 }
 
 /**
- * The spend details under the plan: four cells (never the headline again)
- * and *Spend over time*, which opens in the flow as wide as the cockpit.
- * Folded by default to one line, and both choices remembered per viewer.
+ * The spend details under the plan, folded by default to one line. Unfolded
+ * they read one of two ways, picked by *Compact | Full* in the header and
+ * remembered per viewer: **Compact** (the default; owner, 2026-10-12: about
+ * half as tall, only the figures that inform) — Spent, Tokens and Cache for
+ * this session, today, 7 or 30 days, and a spark of that period's spend;
+ * **Full** — four cells (never the headline again) and *Spend over time*,
+ * which opens in the flow as wide as the cockpit.
  */
-function Spend({ s, turns, sessionId, events, now, figures }: { s: SessionSummary; turns: TurnCost[]; sessionId: string; events: readonly Event[]; now: number; figures: SpendFigures }) {
-  const { folded, headline, chart } = useSpendPrefs()
+function Spend({ s, turns, sessionId, events, now, figures, calls, summary }: { s: SessionSummary; turns: TurnCost[]; sessionId: string; events: readonly Event[]; now: number; figures: SpendFigures; calls: readonly CallPoint[]; summary?: Summary }) {
+  const { folded, headline, chart, view, period } = useSpendPrefs()
   const st = s.stats
   const last = turns[turns.length - 1]
   if (!st) return null
   const cells = cellsFor(headline)
   const chartId = `spend-time-${sessionId}`
+  const compact = view === 'compact'
   return (
-    <section aria-label="Spend" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2.5">
-      <button type="button" aria-expanded={!folded} onClick={() => setSpendPrefs({ folded: !folded })}
-        title={folded ? 'Show the spend details' : 'Fold the spend details'}
-        className="-mx-1 flex min-w-0 items-center gap-1.5 rounded-[6px] px-1 py-0.5 text-left outline-none hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
-        <Chevron open={!folded} />
-        {folded ? (
-          <span data-spend-folded className="num min-w-0 truncate text-[12.5px] text-fg-muted">{foldedLine(headline, figures)}</span>
-        ) : (
-          <>
-            <h4 className="shrink-0 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-faint">Spent this session</h4>
-            {last && <span className="num ml-auto min-w-0 truncate text-[11.5px] text-fg-faint" title="What the newest model call cost">last call <span className="text-fg">{fmtUSD(last.cost)}</span></span>}
-          </>
+    <section aria-label="Spend" data-spend-view={folded ? undefined : view} className="@container grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2.5">
+      <div className="flex min-w-0 items-center gap-2">
+        <button type="button" aria-expanded={!folded} onClick={() => setSpendPrefs({ folded: !folded })}
+          title={folded ? 'Show the spend details' : 'Fold the spend details'}
+          className="-mx-1 flex min-w-0 flex-1 items-center gap-1.5 rounded-[6px] px-1 py-0.5 text-left outline-none hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
+          <Chevron open={!folded} />
+          {folded ? (
+            <span data-spend-folded className="num min-w-0 truncate text-[12.5px] text-fg-muted">{foldedLine(headline, figures)}</span>
+          ) : (
+            <>
+              <h4 className="shrink-0 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-faint">{compact ? 'Spend' : 'Spent this session'}</h4>
+              {!compact && last && <span className="num ml-auto hidden min-w-0 truncate text-[11.5px] text-fg-faint @[330px]:block" title="What the newest model call cost">last call <span className="text-fg">{fmtUSD(last.cost)}</span></span>}
+            </>
+          )}
+        </button>
+        {!folded && (
+          <Segmented label="Spend view" value={view} options={[['compact', 'Compact'], ['full', 'Full']]} onPick={(v) => setSpendPrefs({ view: v })} />
         )}
-      </button>
-      {!folded && (
+      </div>
+      {!folded && compact && <CompactSpend period={period} figures={figures} calls={calls} summary={summary} />}
+      {!folded && !compact && (
         <>
           <dl className="grid grid-cols-4 overflow-hidden rounded-[9px] border border-[var(--app-hairline)]">
             {cells.map((m) => <Cell key={m} label={CELL_LABEL[m]} value={metricValue(m, figures)} title={metricTitle(m, figures)} />)}
@@ -370,6 +382,102 @@ function Chevron({ open }: { open: boolean }) {
   return (
     <svg aria-hidden width="12" height="12" viewBox="0 0 12 12" className={`shrink-0 text-fg-muted transition-transform duration-150 ${open ? 'rotate-90' : ''}`}>
       <path d="M4.5 2.5L8 6l-3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/** A small segmented choice: toggle buttons in one hairline frame, the picked one filled. */
+function Segmented<T extends string>({ label, value, options, onPick }: { label: string; value: T; options: readonly (readonly [T, string])[]; onPick: (v: T) => void }) {
+  return (
+    <div role="group" aria-label={label} className="flex shrink-0 items-center rounded-[6px] border border-[var(--app-hairline)] p-px">
+      {options.map(([id, name]) => (
+        <button key={id} type="button" aria-pressed={id === value} onClick={() => onPick(id)}
+          className={`rounded-[5px] px-1.5 py-px text-[11px] leading-[16px] outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] ${id === value ? 'bg-panel-2 font-medium text-fg' : 'text-fg-muted hover:text-fg'}`}>
+          {name}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** How often a 7d or 30d summary (or today's, when the window does not hold one) is read while shown. */
+const PERIOD_SUMMARY_MS = 30_000
+
+/**
+ * The summary behind a Caprock-wide period: today's is the one the window
+ * already polls (`given`); 7d and 30d are read from `/v1/stats/summary` only
+ * while that period is shown, every 30 seconds.
+ */
+function usePeriodSummary(period: SpendPeriod, given: Summary | undefined): Summary | undefined {
+  const own = period === 'today' && given?.range === 'today' ? given : undefined
+  const need = period !== 'session' && !own
+  const [got, setGot] = useState<{ period: SpendPeriod; s: Summary } | undefined>(undefined)
+  useEffect(() => {
+    if (period === 'session' || !need) return
+    let alive = true
+    const load = () => {
+      api.summary(period)
+        .then((s) => { if (alive && s) setGot({ period, s }) })
+        .catch(() => { /* the figures stay dashes */ })
+    }
+    load()
+    const stop = everyWhileVisible(load, PERIOD_SUMMARY_MS)
+    return () => { alive = false; stop() }
+  }, [need, period])
+  if (period === 'session') return undefined
+  return own ?? (got?.period === period ? got.s : undefined)
+}
+
+/**
+ * Compact spend: a period chip, one row of three figures — Spent, Tokens,
+ * Cache — for that period, and a spark of its spend no taller than 24px.
+ * *session* is this session's; today, 7d and 30d are every session's.
+ */
+function CompactSpend({ period, figures, calls, summary }: { period: SpendPeriod; figures: SpendFigures; calls: readonly CallPoint[]; summary?: Summary }) {
+  const range = usePeriodSummary(period, summary)
+  const pf = periodFigures(period, figures, calls, range)
+  const scope = periodScope(period)
+  return (
+    <div data-spend-compact className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1">
+      <div className="flex min-w-0 items-center gap-2">
+        <Segmented label="Period" value={period} options={SPEND_PERIODS.map((p) => [p, p] as const)} onPick={(p) => setSpendPrefs({ period: p })} />
+        <span data-spend-scope className="ml-auto min-w-0 truncate text-[11px] text-fg-faint" title={scope}>{scope}</span>
+      </div>
+      <dl className="grid min-w-0 grid-cols-3 gap-2">
+        <Figure label="Spent" aria={`Spent, ${scope.toLowerCase()}`} value={pf.cost === undefined ? '—' : fmtUSD(pf.cost)} title={period === 'session' ? 'What the session has spent, at API list price' : `What every session spent, ${scope.split(' · ')[0]!.toLowerCase()}, at API list price`} />
+        <Figure label="Tokens" aria={`Tokens, ${scope.toLowerCase()}`} value={pf.tokens === undefined ? '—' : fmtTokens(pf.tokens)} title="Input tokens, cache reads and writes included" />
+        <Figure label="Cache" aria={`Cache hit rate, ${scope.toLowerCase()}`} value={pf.cache === undefined ? '—' : fmtPct(pf.cache)} title="Share of input tokens read from the prompt cache" />
+      </dl>
+      <PeriodSpark values={pf.series} label={`Spend over ${period === 'session' ? 'the session' : scope.split(' · ')[0]!.toLowerCase()}`} />
+    </div>
+  )
+}
+
+function Figure({ label, aria, value, title }: { label: string; aria: string; value: string; title: string }) {
+  return (
+    <div className="grid min-w-0 gap-0.5" title={title}>
+      <dt className="truncate text-[10px] uppercase tracking-[0.06em] text-fg-faint">{label}</dt>
+      <dd aria-label={`${aria}: ${value}`} className="num truncate text-[18px] font-semibold leading-[22px] tracking-[-0.02em] text-fg">{value}</dd>
+    </div>
+  )
+}
+
+const PERIOD_SPARK_H = 18
+
+/** The period's spend as bars across the block's width; a hairline floor when there is nothing to draw. */
+function PeriodSpark({ values, label }: { values: readonly number[]; label: string }) {
+  const max = Math.max(...values, 0)
+  const H = PERIOD_SPARK_H
+  if (values.length < 2 || max <= 0) {
+    return <div data-period-spark aria-hidden className="relative min-w-0" style={{ height: H }}><span className="absolute inset-x-0 bottom-0 h-px bg-[var(--app-hairline)]" /></div>
+  }
+  const lastSpent = values.reduce((m, v, i) => (v > 0 ? i : m), 0)
+  return (
+    <svg data-period-spark role="img" aria-label={label} width="100%" height={H} viewBox={`0 0 ${values.length} ${H}`} preserveAspectRatio="none" className="block min-w-0">
+      {values.map((v, i) => {
+        const h = v > 0 ? Math.max(1.5, (v / max) * H) : 1
+        return <rect key={i} x={i + 0.12} y={H - h} width={0.76} height={h} className={v > 0 ? 'fill-accent' : 'fill-fg-faint'} opacity={i === lastSpent ? 1 : v > 0 ? 0.5 : 0.3} />
+      })}
     </svg>
   )
 }
