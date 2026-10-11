@@ -4,6 +4,7 @@ import { useCanControl } from '@/lib/useCanControl'
 import { navigate } from '@/lib/router'
 import { modeWords } from '@/lib/permissionMode'
 import { modeOptions } from './SpawnDialog'
+import { narrowScreen } from '@/lib/phone'
 
 /**
  * Pick up a conversation that is not Caprock's to type into.
@@ -52,6 +53,7 @@ export function ContinueSession({
   compact = false,
   detached = false,
   prominent = false,
+  big = false,
 }: {
   sessionID: string
   cwd: string
@@ -67,6 +69,8 @@ export function ContinueSession({
    *  filled button that says where the conversation goes, the mode beside
    *  it, and no copy command — the page offers that under More. */
   prominent?: boolean
+  /** Under a phone's chat, in place of the field: a thumb-sized button. */
+  big?: boolean
 }) {
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -91,7 +95,8 @@ export function ContinueSession({
       const req: Parameters<typeof api.spawn>[0] = { cwd, resume: sessionID, fork }
       if (mode) req.permission_mode = mode
       const res = await api.spawn(req)
-      navigate({ name: 'session', id: res.session_id, tab: 'terminal' })
+      // A phone carries on in the chat, where it can type; a desktop in the terminal.
+      navigate({ name: 'session', id: res.session_id, tab: narrowScreen() ? 'chat' : 'terminal' })
       // Continuing under the same id lands on the page already open, so
       // nothing navigates; the screen swaps to the live terminal on its next
       // poll. Stay "Opening…" until then rather than looking like the click
@@ -196,6 +201,22 @@ export function ContinueSession({
         {copyButton}
         {error && <span className="text-[11px] text-danger">{error}</span>}
       </div>
+    )
+  }
+
+  if (big) {
+    return (
+      <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <button
+          onClick={() => open()}
+          disabled={busy}
+          className="min-h-11 rounded-sm bg-accent px-4 text-[14px] font-medium text-bg hover:brightness-110 disabled:opacity-50"
+        >
+          {busy ? 'Opening…' : live ? 'Branch here to type' : 'Continue here'}
+        </button>
+        {modePicker}
+        {error && <span className="basis-full text-[12px] text-danger">{error}</span>}
+      </span>
     )
   }
 

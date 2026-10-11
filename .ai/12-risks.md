@@ -65,6 +65,21 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
 
 - `OQ-11` — **Does the memory handoff help?** On the owner's database a session continuing the previous day's work reached its first edit no faster than one starting cold (17 vs 16 minutes, 24 vs 23 tool calls; 18 and 19 Claude Code sessions, 2026-09-30) with the handoff already on for most of them. Decided by: the Memory-screen comparison once each group has 5 sessions that reached an edit — the owner's machine runs the 25% holdout since 2026-09-30, and Vova has been asked to. If there is no difference, revisit [ADR-030](08-decisions.md) before building anything on context continuity.
 
+- `OQ-12` — **Voice input on the phone needs https.** Browsers give speech
+  recognition only to a secure context, and a paired phone opens Caprock at
+  `http://<Wi-Fi or Tailscale address>`, so the chat's microphone button can
+  only point at the keyboard's dictation key there (04-ui.md § From a
+  phone). Serving the dashboard over https on the machine's Tailscale name
+  would fix it: `tailscale cert` issues a certificate for `*.ts.net` names
+  when HTTPS is on in the tailnet, or `tailscale serve` terminates TLS and
+  forwards to loopback. Neither is built, and neither is simple: a
+  `tailscale serve` request arrives from 127.0.0.1 carrying `Tailscale-*`
+  headers, which `isLocal` already treats as a relayed device, and the
+  Host and Origin checks, the pairing token per origin and the "nothing
+  listens beyond loopback unless turned on" promise would each need
+  re-deciding for a TLS listener. Decided by: the owner, after real-iPhone
+  use of the keyboard-dictation path shows whether it is enough.
+
 ## What would falsify the whole plan
 
 - Anthropic ships an equivalent first-party mission control before Phase 1 — observe-only loses its reason to exist and only the orchestration/verification layer remains defensible.

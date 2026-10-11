@@ -32,7 +32,8 @@ function Shadow({ rx = 22 }: { rx?: number }) {
   return <ellipse cx="40" cy="73" rx={rx} ry="3.5" fill="#000" opacity=".22" />
 }
 
-function Body({ who }: { who: Character }) {
+/** A character's drawing in its 80x80 box, for composing several into one scene (BannerArt). */
+export function Body({ who }: { who: Character }) {
   const outline = { stroke: 'var(--character-outline, transparent)', strokeWidth: 1.5 }
   switch (who) {
     case 'lead':

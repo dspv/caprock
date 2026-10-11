@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { TerminalKeys } from './TerminalKeys'
 
 describe('TerminalKeys — typing from a phone', () => {
@@ -207,5 +207,52 @@ describe('TerminalKeys — the offline queue (WP-13)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit the message: change me' }))
     expect((screen.getByLabelText('Type to the session') as HTMLTextAreaElement).value).toBe('change me')
     expect(screen.queryByText('Will send when connected')).toBeNull()
+  })
+})
+
+describe('TerminalKeys — the phone chat: voice and folded keys', () => {
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+    delete (window as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition
+  })
+
+  it('keeps the raw keys behind a Keys button when folded', () => {
+    render(<TerminalKeys send={vi.fn()} foldKeys />)
+    expect(screen.queryByRole('button', { name: /^Escape/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Keys' }))
+    expect(screen.getByRole('button', { name: /^Escape/ })).toBeTruthy()
+  })
+
+  it('says in one line how to dictate when the page is plain http', () => {
+    ;(window as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition = class {}
+    vi.stubGlobal('isSecureContext', false)
+    render(<TerminalKeys send={vi.fn()} voice />)
+    fireEvent.click(screen.getByRole('button', { name: 'Dictate' }))
+    expect(screen.getByRole('status').textContent).toMatch(/https.*keyboard/)
+  })
+
+  it('shows what is heard in the field, after what was typed, and sends nothing by itself', () => {
+    let rec: { onresult?: (e: unknown) => void; onend?: () => void } = {}
+    ;(window as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition = class {
+      onresult?: (e: unknown) => void
+      onend?: () => void
+      constructor() { rec = this }
+      start() {}
+      stop() { this.onend?.() }
+    }
+    vi.stubGlobal('isSecureContext', true)
+    const submitText = vi.fn()
+    render(<TerminalKeys send={vi.fn()} submitText={submitText} voice />)
+    const field = screen.getByLabelText('Type to the session') as HTMLTextAreaElement
+    fireEvent.change(field, { target: { value: 'Next:' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Dictate' }))
+    expect(screen.getByRole('status').textContent).toMatch(/Listening/)
+    act(() => rec.onresult?.({ results: [{ isFinal: false, 0: { transcript: 'fix the test' } }] }))
+    expect(field.value).toBe('Next: fix the test')
+    fireEvent.click(screen.getByRole('button', { name: 'Stop dictating' }))
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(field.value).toBe('Next: fix the test')
+    expect(submitText).not.toHaveBeenCalled()
   })
 })

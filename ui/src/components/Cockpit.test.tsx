@@ -74,7 +74,9 @@ describe('the agent cockpit', () => {
     expect(within(nowCard).getByText('Editing')).toBeInTheDocument()
     expect(within(nowCard).getByText('session.go')).toBeInTheDocument()
     expect(screen.getByText(/last call/)).toHaveTextContent('$0.07')
-    expect(screen.getByRole('meter', { name: '5-hour window used' })).toHaveAttribute('aria-valuenow', '41')
+    expect(screen.getByRole('meter', { name: '5 hours window used' })).toHaveAttribute('aria-valuenow', '41')
+    // One line: when it resets, and whether it lasts (owner, 2026-10-11).
+    expect(document.querySelector('[data-window="5 hours"]')?.textContent).toMatch(/resets in/)
     expect(await screen.findByText('1 file')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).toBeNull()
   })

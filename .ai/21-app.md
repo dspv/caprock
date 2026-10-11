@@ -136,7 +136,10 @@ One window, three regions:
   button to fold or hide, a quick button to add something in the same
   project"); hide, a new shell, the menu and close stay on hover. The current
   project and any with something live or waiting are open; the chevron folds
-  one by hand, kept per viewer (`caprock-sidebar-folded`). Under an open one, exactly its tabs as
+  one by hand, kept per viewer (`caprock-sidebar-folded`). The *Projects*
+  heading says how many and how many have something running (*● 3 of 12*),
+  and *Outside projects* can be hidden from its row like any project (it was
+  the one row with no way out; owner, 2026-10-11). Under an open one, exactly its tabs as
   the strip shows them, same order, same names (`lib/tablabels.ts`; shells
   numbered *Shell 1*, *Shell 2*; a branch only when it is not the
   project's). No worktree or branch rows, and no session that is not in a
@@ -324,7 +327,15 @@ One window, three regions:
   minutes with model, duration and cost, "+N finished" for the rest; the
   header carries what all of the session's subagents cost — a cost is shown
   only when every turn behind it was priced, never as $0), its last seven tool calls with their durations, the
-  uncommitted changes, the plan windows of its agent, and a loop warning only
+  uncommitted changes, the plan windows of its agent (each a bar with a tick
+  where an even pace would be by the clock, the percentage large, and one
+  line — *resets in 4 h 56 min · ✓ enough* or *⚠ out at 23:50*, amber, red
+  under half an hour — from the daemon's `limit_at`, never computed here;
+  `lib/pace.ts`. A click shows the exact reset and the forecast in words.
+  Codex is never forecast, so its line has no verdict. The section header is
+  the plan chip, to confirm or change the plan in place; owner, 2026-10-11:
+  "I want to understand at once whether it's enough or not, in one line"),
+  and a loop warning only
   while an alert is live. It is the screen that shows what only Caprock
   knows, so it is built from figures Caprock already holds and nothing else:
   the session row the sidebar polls, the main thread's newest 400 calls and
@@ -1531,8 +1542,10 @@ the user guide [docs/app.md § Updates](../docs/app.md#updates).
 - **The offer.** When the daemon's release check (`/v1/update`) knows a
   release newer than *the app's* version and this install can replace
   itself, a card in the bottom-right corner announces it once per version
-  — *Caprock vX.Y.Z is available*, **Update and restart**, *What's new*,
-  **Later** (`AppUpdateToast.tsx`, owner 2026-10-07, after Orca) — and the
+  — *Update 0.107.6 → 0.107.7* large, the running version to the new one
+  (owner 2026-10-11: "an arrow from one to the other"), *Sessions and tabs
+  stay as they are.*, **Update and restart**, *What's new*, **Later**
+  (`AppUpdateToast.tsx`, owner 2026-10-07, after Orca) — and the
   status strip keeps **Update to vX.Y.Z — Restart**
   (`ui/src/components/AppUpdateNotice.tsx`). The card shows the download's
   progress too and never takes focus. One click: the shell fetches
