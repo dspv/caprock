@@ -324,7 +324,15 @@ One window, three regions:
   minutes with model, duration and cost, "+N finished" for the rest; the
   header carries what all of the session's subagents cost — a cost is shown
   only when every turn behind it was priced, never as $0), its last seven tool calls with their durations, the
-  uncommitted changes, the plan windows of its agent, and a loop warning only
+  uncommitted changes, the plan windows of its agent (each a bar with a tick
+  where an even pace would be by the clock, the percentage large, and one
+  line — *resets in 4 h 56 min · ✓ enough* or *⚠ out at 23:50*, amber, red
+  under half an hour — from the daemon's `limit_at`, never computed here;
+  `lib/pace.ts`. A click shows the exact reset and the forecast in words.
+  Codex is never forecast, so its line has no verdict. The section header is
+  the plan chip, to confirm or change the plan in place; owner, 2026-10-11:
+  "I want to understand at once whether it's enough or not, in one line"),
+  and a loop warning only
   while an alert is live. It is the screen that shows what only Caprock
   knows, so it is built from figures Caprock already holds and nothing else:
   the session row the sidebar polls, the main thread's newest 400 calls and
