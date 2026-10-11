@@ -17,7 +17,7 @@
  * browser), storage and the install details. Settings and pairing change on
  * the machine Caprock runs on (ADR-029), and the daemon refuses them anyway.
  */
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLightTone, useTheme } from '@/lib/theme'
 import { api, isPairedDevice, type Status } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
@@ -65,10 +65,24 @@ function useSettingsEscape(close: () => void) {
   }, [close])
 }
 
-function SettingsHeading({ onClose }: { onClose: () => void }) {
+const EXPLAIN_KEY = 'caprock-settings-explain'
+
+/** Whether Settings shows its explanations; off by default, kept per viewer. */
+function useExplain(): [boolean, (v: boolean) => void] {
+  const [v, setV] = useState(() => { try { return localStorage.getItem(EXPLAIN_KEY) === 'on' } catch { return false } })
+  return [v, (next) => { setV(next); try { localStorage.setItem(EXPLAIN_KEY, next ? 'on' : 'off') } catch { /* private window */ } }]
+}
+
+function SettingsHeading({ onClose, explain, onExplain }: { onClose: () => void; explain?: boolean; onExplain?: (v: boolean) => void }) {
   return (
     <div className="flex items-center gap-3 px-1 pt-1">
-      <h1 className="min-w-0 flex-1 text-[20px] font-medium text-fg">Settings</h1>
+      <h1 className="min-w-0 flex-1 text-[24px] font-semibold text-fg">Settings</h1>
+      {onExplain && (
+        <label className="flex cursor-pointer items-center gap-2 text-[13.5px] text-fg-muted">
+          <input type="checkbox" className="h-4 w-4 accent-[var(--color-accent)]" checked={!!explain} onChange={(e) => onExplain(e.target.checked)} />
+          Show explanations
+        </label>
+      )}
       <CloseButton onClick={onClose} label="Close settings" title="Close settings (Esc)" />
     </div>
   )
@@ -79,15 +93,16 @@ export function StatusScreen() {
   useSettingsEscape(close)
   const st = useApi(() => api.status(), [], { live: false, intervalMs: 5000 })
   const page = useRef<HTMLDivElement>(null)
+  const [explain, setExplain] = useExplain()
   const s = st.data
-  const head = <SettingsHeading onClose={close} />
+  const head = <SettingsHeading onClose={close} explain={explain} onExplain={setExplain} />
   if (st.error && !s) return <div className="mx-auto grid w-full max-w-3xl gap-3">{head}<Empty title="Cannot reach the daemon">{st.error.message}</Empty></div>
   if (!s) return <div className="mx-auto grid w-full max-w-3xl gap-3">{head}<div className="px-1 text-fg-muted">loading…</div></div>
   const owner = !isPairedDevice()
   return (
     <div className="flex w-full justify-center gap-6">
     <SettingsNav root={page} />
-    <div ref={page} className="grid w-full max-w-3xl gap-3">
+    <div ref={page} data-settings-explain={explain ? 'on' : 'off'} className="grid w-full max-w-3xl gap-3">
       {head}
       {/* Problems first: each one means something is not being captured or
         * cannot be started, and none of them is a preference. */}
@@ -315,7 +330,7 @@ function Problems({ s }: { s: Status }) {
       {/* A dead tailer meant nothing was being captured while every other row
         * on this screen looked healthy. */}
       {s.ingest_error && (
-        <Section title="Nothing new is being recorded">
+        <Section title="Nothing new is being recorded" explained>
           <p className="text-fg-muted">
             <span className="mono text-fg break-all">{s.ingest_error}</span>. Check that
             <span className="mono text-fg"> ~/.claude</span> is readable, then restart with
@@ -324,7 +339,7 @@ function Problems({ s }: { s: Status }) {
         </Section>
       )}
       {!s.claude_available && (
-        <Section title="Claude Code was not found">
+        <Section title="Claude Code was not found" explained>
           <p className="text-fg-muted">
             Caprock cannot start sessions for you, but it still records every session you start yourself. Install
             Claude Code, or make sure <span className="mono">claude</span> is on the PATH Caprock was started with.
@@ -332,7 +347,7 @@ function Problems({ s }: { s: Status }) {
         </Section>
       )}
       {missingHooks.length > 0 && (
-        <Section title="Live activity is a few seconds late">
+        <Section title="Live activity is a few seconds late" explained>
           <p className="text-fg-muted">
             Some Claude Code hooks are missing (<span className="mono break-all">{missingHooks.join(', ')}</span>). Run{' '}
             <span className="mono text-fg">caprock hooks install</span> to see activity as it happens.

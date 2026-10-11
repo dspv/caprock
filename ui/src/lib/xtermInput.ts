@@ -126,9 +126,13 @@ export function attachTerminalInput(
   const copySelection = () => {
     const sel = term.getSelection()
     if (!sel) return false
-    void navigator.clipboard?.writeText(sel)
+    void navigator.clipboard?.writeText(sel).then(() => flashCopied(term.element, sel.length), () => {})
     return true
   }
+  // By the physical key: on a Russian layout Cmd+C reports "с" (Cyrillic), so
+  // matching the letter never copied, and the unhandled key made macOS beep
+  // (owner, 2026-10-11).
+  const letter = (e: KeyboardEvent) => (/^Key[A-Z]$/.test(e.code) ? e.code.slice(3).toLowerCase() : e.key.toLowerCase())
   // Paste is the browser's own event, handled by xterm, and never a
   // clipboard read of ours. xterm applies bracketed paste when the process
   // asked for it — a multi-line paste has to arrive as one paste, not as N
@@ -144,25 +148,32 @@ export function attachTerminalInput(
     // Cmd+C / Cmd+V on macOS: the platform's own keys, and they never
     // collide with anything the process wants.
     if (isMac && e.metaKey && !e.ctrlKey && !e.altKey) {
-      if (e.key === 'c') return !copySelection()  // nothing selected → let it through
+      if (letter(e) === 'c') {
+        if (!copySelection()) return true  // nothing selected → let it through
+        // Ours entirely: left to the browser too, its copy finds nothing
+        // selected in xterm's textarea and the system beeps.
+        e.preventDefault()
+        return false
+      }
       // Not ours: returning false only stops xterm *interpreting* the key,
       // and the browser's own paste still reaches xterm's textarea, which
       // brackets it. Pasting here as well sent every Cmd+V twice (FB-034).
-      if (e.key === 'v') return false
+      if (letter(e) === 'v') return false
     }
     // Ctrl+Shift+C / Ctrl+Shift+V elsewhere: the terminal convention,
     // deliberately distinct from Ctrl+C so SIGINT keeps its key.
     if (!isMac && e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
-      if (e.key === 'C' || e.key === 'c') { copySelection(); return false }
+      if (letter(e) === 'c') { if (copySelection()) e.preventDefault(); return false }
       // Returning false leaves the browser's paste to xterm, as with Cmd+V;
       // returning true would have xterm send ^V and cancel the event.
-      if (e.key === 'V' || e.key === 'v') return false
+      if (letter(e) === 'v') return false
     }
     // Ctrl+C with a selection copies; without one it is SIGINT and belongs
     // to the process. This is what VS Code does, and it is what people
     // expect without being told.
-    if (!isMac && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && (e.key === 'c' || e.key === 'C')) {
+    if (!isMac && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && letter(e) === 'c') {
       if (copySelection()) {
+        e.preventDefault()
         term.clearSelection()
         return false
       }
@@ -284,4 +295,25 @@ export function attachTerminalInput(
       window.removeEventListener(DROP_PATHS_EVENT, onDroppedPaths)
     },
   }
+}
+
+/**
+ * "Copied · N chars" over the terminal for a moment: a copy that says
+ * nothing reads as a copy that did not happen (owner, 2026-10-11: "I hear a
+ * beep and cannot tell whether it copied"). Drawn in the terminal's corner,
+ * not as an app toast, so it is where the eye already is.
+ */
+export function flashCopied(el: HTMLElement | undefined, chars: number): void {
+  const host = el?.parentElement
+  if (!host) return
+  host.querySelector('[data-copied]')?.remove()
+  const tip = document.createElement('div')
+  tip.setAttribute('data-copied', '')
+  tip.setAttribute('role', 'status')
+  tip.textContent = `Copied · ${chars.toLocaleString('en-US')} ${chars === 1 ? 'char' : 'chars'}`
+  tip.style.cssText = 'position:absolute;top:10px;right:14px;z-index:20;padding:5px 10px;border-radius:8px;font:600 12.5px var(--font-sans,system-ui);color:#1b1b1a;background:var(--color-accent,#feb157);box-shadow:0 6px 18px -8px rgba(0,0,0,.6);pointer-events:none;transition:opacity .25s;opacity:1'
+  if (getComputedStyle(host).position === 'static') host.style.position = 'relative'
+  host.appendChild(tip)
+  window.setTimeout(() => { tip.style.opacity = '0' }, 1100)
+  window.setTimeout(() => tip.remove(), 1400)
 }

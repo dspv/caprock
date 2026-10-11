@@ -7,6 +7,17 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **Settings is quick to scan:** larger titles, buttons and checkboxes; the
+  explanations are hidden until you turn on *Show explanations* or press a
+  section's **?**; a section's title folds it, and the fold is remembered.
+
+### Fixed
+
+- **app:** Cmd+C in a terminal copies on any keyboard layout and says
+  *Copied · N chars*; on a Russian layout it copied nothing and macOS beeped.
+
 ## [0.107.7] - 2026-10-11
 
 ### Added
