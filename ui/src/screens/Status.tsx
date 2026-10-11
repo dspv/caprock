@@ -17,10 +17,11 @@
  * browser), storage and the install details. Settings and pairing change on
  * the machine Caprock runs on (ADR-029), and the daemon refuses them anyway.
  */
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useLightTone, useTheme } from '@/lib/theme'
 import { api, isPairedDevice, type Status } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
+import { SettingsNav } from '@/components/SettingsNav'
 import { fmtDuration, fmtUSD } from '@/lib/format'
 import { Empty } from '@/components/ui'
 import { PlanOptions, usePlan } from '@/components/PlanPicker'
@@ -77,13 +78,16 @@ export function StatusScreen() {
   const close = useCloseSettings()
   useSettingsEscape(close)
   const st = useApi(() => api.status(), [], { live: false, intervalMs: 5000 })
+  const page = useRef<HTMLDivElement>(null)
   const s = st.data
   const head = <SettingsHeading onClose={close} />
   if (st.error && !s) return <div className="mx-auto grid w-full max-w-3xl gap-3">{head}<Empty title="Cannot reach the daemon">{st.error.message}</Empty></div>
   if (!s) return <div className="mx-auto grid w-full max-w-3xl gap-3">{head}<div className="px-1 text-fg-muted">loading…</div></div>
   const owner = !isPairedDevice()
   return (
-    <div className="mx-auto grid w-full max-w-3xl gap-3">
+    <div className="flex w-full justify-center gap-6">
+    <SettingsNav root={page} />
+    <div ref={page} className="grid w-full max-w-3xl gap-3">
       {head}
       {/* Problems first: each one means something is not being captured or
         * cannot be started, and none of them is a preference. */}
@@ -138,6 +142,7 @@ export function StatusScreen() {
       {owner && <MemorySection />}
       <StoragePanel />
       <AboutSection s={s} />
+    </div>
     </div>
   )
 }

@@ -320,6 +320,26 @@ describe('the sidebar', () => {
     expect(within(block).getByText(/Older, put down more than 12h ago \(1\)/)).toBeInTheDocument()
   })
 
+  it('draws a project’s last hour, offers a new agent at rest, and folds a live project by hand', () => {
+    const live = { session_id: 'a1', cwd: '/w/alpha', project: 'alpha', model: '', started_at: 1, last_event_at: Date.now(), status: 'active', git_branch: '', owned: true, title: 'Fix the login' } as unknown as SessionSummary
+    const ended = { ...live, session_id: 'a0', status: 'ended', title: 'old' } as unknown as SessionSummary
+    const m = buildSidebar({
+      projects: [proj('alpha', 1, true)], sessions: [live, ended], permissions: new Set(), costs: new Map(), openSessions: new Set(),
+      activity: { a1: [0, 2, 3], a0: [1, 0, 0] },
+    })
+    expect(m.projects.find((n) => n.project.id === 'alpha')?.activity).toEqual([1, 2, 3])
+    const { props } = renderSidebar({ model: m })
+    expect(document.querySelector('[data-project-spark]')).not.toBeNull()
+    fireEvent.click(document.querySelector('[data-project-new]')!)
+    expect(props.onNewAgent).toHaveBeenCalledWith('alpha')
+    const row = () => document.querySelector('[data-project-row="alpha"]')!
+    expect(row().getAttribute('aria-expanded')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: 'Fold alpha' }))
+    expect(row().getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(screen.getByRole('button', { name: 'Unfold alpha' }))
+    expect(row().getAttribute('aria-expanded')).toBe('true')
+  })
+
   it('folds the bottom block to a row of icons and back, remembered across a reload', () => {
     const onSettings = vi.fn()
     const first = renderSidebar({ onSettings })

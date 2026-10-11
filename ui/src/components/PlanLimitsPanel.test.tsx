@@ -46,11 +46,10 @@ describe('plan limits in plain words', () => {
       />,
     )
     const text = () => document.body.textContent ?? ''
-    expect(text()).toContain('5-hour window: 97% used')
-    expect(text()).toMatch(/Resets .+ — in 9 min\./)
-    expect(text()).toContain('At 100%, Claude Code pauses until then.')
-    expect(text()).toContain('Weekly: 47% used')
-    expect(text()).toContain("Anthropic's plan limits, per 5-hour window and per week — not Caprock's.")
+    expect(screen.getByRole('img', { name: /Claude Code 5 hours: 97% used, resets/ })).toBeTruthy()
+    expect(text()).toMatch(/resets .+in 9 min/)
+    expect(screen.getByRole('img', { name: /Claude Code Week: 47% used/ })).toBeTruthy()
+    expect(text()).toContain("Your plan's limits, per 5 hours and per week — not Caprock's. At 100% the agent pauses until the reset.")
     // The details are one click away, not three lines of the panel.
     expect(text()).not.toContain('rolling 5-hour window')
     fireEvent.click(screen.getByRole('button', { name: 'more' }))

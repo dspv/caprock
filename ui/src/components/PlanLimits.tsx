@@ -15,7 +15,8 @@ import { useState, type ReactNode } from 'react'
 import type { RateLimits, RateWindow, Settings } from '@/lib/api'
 import { Panel, Stat } from '@/components/ui'
 import { Ring } from '@/components/Donut'
-import { usePlan } from '@/components/PlanPicker'
+import { PlanOptions, usePlan } from '@/components/PlanPicker'
+import { AgentCharacter, type Character } from '@/components/Characters'
 import { countdown, resetClock } from '@/lib/limitclock'
 
 /** A window's percentage, and whether its reset clock can be believed. */
@@ -194,34 +195,85 @@ export function forecastLine(w: RateWindow, now: number): { text: string; urgent
   }
 }
 
-export function LimitGauge({ label, w, now, source }: { label: string; w: RateWindow; now: number; source: string }) {
+export function LimitGauge({ label, w, now, source }: { label: string; w: RateWindow | undefined; now: number; source: string }) {
+  // A window the agent has not reported keeps its place, so both cards stay
+  // the same shape (owner, 2026-10-11: "asymmetric"); it says so instead.
+  if (!w) {
+    return (
+      <div className="flex min-w-0 items-center gap-3" data-limit-empty>
+        <Ring value={0} size={76} width={8} dim ariaLabel={`${source} ${label}: not reported`}>
+          <span className="num text-[20px] font-semibold text-fg-faint">—</span>
+        </Ring>
+        <div className="min-w-0 leading-snug">
+          <div className="text-[15px] font-semibold text-fg-muted">{label}</div>
+          <div className="text-[13px] text-fg-faint">not reported by {source}</div>
+        </div>
+      </div>
+    )
+  }
   const r = readWindow(w, now)
   const resetMs = w.resets_at * 1000
   const clock = r.resetsAt ? resetClock(resetMs, now) : null
   const color = gaugeColor(r.pct)
   const fc = r.stale ? null : forecastLine(w, now)
   return (
-    <div className="flex items-center gap-3 min-w-0">
-      <Ring value={r.pct / 100} size={92} width={9} color={color} dim={r.stale}
+    <div className="flex min-w-0 items-center gap-3">
+      <Ring value={r.pct / 100} size={76} width={8} color={color} dim={r.stale}
         marker={fc ? { to: 1, color: fc.urgent ? 'var(--color-danger)' : 'var(--color-warn)' } : undefined}
         ariaLabel={`${source} ${label}: ${r.pct}% used${r.stale ? ', reading is stale' : clock ? `, resets ${clock}` : ''}${fc ? `. ${fc.text}` : ''}`}>
-        <span className={`num text-[22px] font-semibold ${r.stale ? 'text-fg-faint' : ''}`} style={r.stale ? undefined : { color }}>{r.pct}%</span>
-        <span className="text-[9px] uppercase tracking-[0.1em] text-fg-faint mt-1">used</span>
+        <span className={`num text-[21px] font-semibold ${r.stale ? 'text-fg-faint' : ''}`} style={r.stale ? undefined : { color }}>{r.pct}%</span>
       </Ring>
-      <div className="min-w-0 text-[12.5px] leading-snug">
-        <div className="font-medium text-fg">{label}: {r.pct}% used</div>
+      <div className="min-w-0 leading-snug">
+        <div className="text-[15px] font-semibold text-fg">{label}</div>
         {r.stale ? (
-          <div className="text-fg-faint" title={`${source} has not refreshed this window recently, so the reset time and the percentage are old`}>
-            Not a live reading — {source} has not reported it lately.
+          <div className="text-[13px] text-fg-faint" title={`${source} has not refreshed this window recently, so the reset time and the percentage are old`}>
+            not reported lately
           </div>
         ) : clock ? (
           <>
-            <div className="text-fg-muted">Resets <span className="num text-fg">{clock}</span> — in {countdown(resetMs - now)}.</div>
-            <div className="text-fg-faint">At 100%, {source} pauses until then.</div>
+            <div className="text-[13px] text-fg-muted">resets <span className="num text-fg">{clock}</span></div>
+            <div className="text-[13px] text-fg-faint">in {countdown(resetMs - now)}</div>
           </>
         ) : null}
-        {fc && <div className={fc.urgent ? 'text-danger' : 'text-warn'}>{fc.text}</div>}
+        {fc && <div className={`text-[12.5px] ${fc.urgent ? 'text-danger' : 'text-warn'}`}>{fc.text}</div>}
       </div>
+    </div>
+  )
+}
+
+/** One agent's windows: its character and name, then 5 hours and the week side by side. */
+function LimitCard({ who, name, note, l, now, source }: { who: Character; name: string; note?: ReactNode; l: RateLimits | undefined; now: number; source: string }) {
+  return (
+    <section className="min-w-0 rounded-xl border border-border bg-panel-2/40 p-3" data-limit-card={source}>
+      <div className="mb-3 flex items-center gap-2.5">
+        <AgentCharacter who={who} size={30} />
+        <span className="text-[15px] font-semibold text-fg">{name}</span>
+        {note && <span className="ml-auto text-[12px] text-fg-faint">{note}</span>}
+      </div>
+      <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+        <LimitGauge label="5 hours" w={l?.five_hour} now={now} source={source} />
+        <LimitGauge label="Week" w={l?.seven_day} now={now} source={source} />
+      </div>
+    </section>
+  )
+}
+
+/**
+ * Asks for the plan until it is set, and says why: Caprock cannot detect it,
+ * and the plan is what makes spend at API prices mean something (owner,
+ * 2026-10-11: "always ask with a banner to set your plan and explain why").
+ */
+function SetPlanBanner({ onSave }: { onSave: (patch: Partial<Settings>) => void }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="mx-3 mb-3 rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-[13px] text-fg" role="note" data-set-plan>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span><b className="font-semibold">Which plan are you on?</b> Caprock can&apos;t detect it. With it, Cost compares what you used at API prices with what the plan costs you.</span>
+        <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="ml-auto rounded-md bg-accent px-2.5 py-1 text-[12.5px] font-medium text-panel hover:opacity-90">
+          {open ? 'Close' : 'Set my plan'}
+        </button>
+      </div>
+      {open && <div className="mt-2 max-w-[320px] rounded-md border border-border bg-panel p-2"><PlanOptions onSave={(p) => { onSave(p); setOpen(false) }} /></div>}
     </div>
   )
 }
@@ -266,7 +318,7 @@ export function PlanLimitsPanel({ limits, codex, now, id, empty, className = '' 
   /** For the wrapper: Cost spans it across its grid. */
   className?: string
 }) {
-  const [plan] = usePlan()
+  const [plan, savePlan] = usePlan()
   const [more, setMore] = useState(false)
   const claude: [string, RateWindow][] = []
   if (limits?.five_hour) claude.push(['5-hour window', limits.five_hour])
@@ -293,34 +345,21 @@ export function PlanLimitsPanel({ limits, codex, now, id, empty, className = '' 
   return (
     <div id={id} className={`scroll-mt-16 ${className}`}>
       <Panel fold="plan-limits" title="Plan limits">
-        <div className="grid gap-x-8 gap-y-4 px-3 py-3 md:grid-cols-2">
-          {claude.length > 0 && (
-            <section className="min-w-0">
-              <div className="text-[10px] uppercase tracking-[0.12em] text-fg-faint mb-2">{planName(plan)}</div>
-              <div className="flex flex-wrap gap-x-8 gap-y-3">
-                {claude.map(([l, w]) => <LimitGauge key={l} label={l} w={w} now={now} source="Claude Code" />)}
-              </div>
-            </section>
-          )}
+        <div className={`grid gap-3 px-3 py-3 ${cdx.length > 0 ? 'lg:grid-cols-2' : ''}`}>
+          <LimitCard who="lead" name={planName(plan)} l={limits} now={now} source="Claude Code" />
           {cdx.length > 0 && (
-            <section className="min-w-0">
-              <div className="text-[10px] uppercase tracking-[0.12em] text-fg-faint mb-2 flex gap-2">
-                <span>Codex</span>
-                {observed ? <span className="normal-case tracking-normal">as of {fmtObserved(observed, now)}</span> : null}
-              </div>
-              <div className="flex flex-wrap gap-x-8 gap-y-3">
-                {cdx.map(([l, w]) => <LimitGauge key={l} label={l} w={w} now={now} source="Codex" />)}
-              </div>
-            </section>
+            <LimitCard who="codex" name="Codex" l={codex} now={now} source="Codex"
+              note={observed ? <>as of {fmtObserved(observed, now)}</> : undefined} />
           )}
         </div>
+        {plan && !plan.plan_kind && <SetPlanBanner onSave={savePlan} />}
         {advice && (
           <div className="mx-3 mb-3 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-[12.5px] text-fg" role="note">{advice}</div>
         )}
         {/* One line, because the long explainer was the thing the owner
           * skipped; the details are a click (or a hover) away. */}
         <div className="border-t border-border px-3 py-2 text-[11.5px] leading-relaxed text-fg-muted" title={EXPLAIN(cdx.length > 0)}>
-          Anthropic's plan limits, per 5-hour window and per week — not Caprock's.{' '}
+          Your plan's limits, per 5 hours and per week — not Caprock's. At 100% the agent pauses until the reset.{' '}
           <button type="button" onClick={() => setMore((v) => !v)} aria-expanded={more} className="text-fg-faint underline-offset-2 hover:text-fg hover:underline">
             {more ? 'less' : 'more'}
           </button>

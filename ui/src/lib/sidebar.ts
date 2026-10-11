@@ -51,6 +51,8 @@ export interface ProjectNode {
   working: number
   lastActive: number
   worktrees: WorktreeNode[]
+  /** Turns and tool calls over the last hour, oldest bucket first (GET /v1/activity); absent when nothing ran. */
+  activity?: number[]
 }
 
 export interface InboxItem {
@@ -80,6 +82,8 @@ export interface SidebarInput {
   openSessions: ReadonlySet<string>
   /** For staleness; the clock when absent. */
   now?: number
+  /** Each session's activity buckets over the last hour (GET /v1/activity). */
+  activity?: Readonly<Record<string, number[]>>
 }
 
 export interface SidebarModel {
@@ -119,7 +123,7 @@ function ms(v: string | number | undefined): number {
   return Number.isFinite(t) ? t : 0
 }
 
-export function buildSidebar({ projects, sessions, permissions, costs, openSessions, now = Date.now() }: SidebarInput): SidebarModel {
+export function buildSidebar({ projects, sessions, permissions, costs, openSessions, now = Date.now(), activity }: SidebarInput): SidebarModel {
   const nodes: ProjectNode[] = projects
     .filter((p) => !p.archived_at)
     .map((p) => ({ project: p, costToday: p.cost_today ?? costs.get(p.root) ?? 0, waiting: 0, looping: 0, live: 0, agents: 0, working: 0, lastActive: Math.max(p.last_activity ?? 0, p.added_at ?? 0), worktrees: [] }))
@@ -140,6 +144,9 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
     if (!listed && !shown) continue
     const node = listed ?? other
     node.lastActive = Math.max(node.lastActive, s.last_event_at ?? 0)
+    // An ended session's last hour still counts toward its project's line.
+    const act = activity?.[s.session_id]
+    if (act) node.activity = node.activity ? node.activity.map((v, i) => v + (act[i] ?? 0)) : [...act]
     if (!shown) continue
     const hasPermission = permissions.has(s.session_id)
     const dot = dotOf(s, hasPermission)

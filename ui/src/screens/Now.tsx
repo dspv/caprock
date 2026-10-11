@@ -332,7 +332,14 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
         * sessions are busy, which are grinding, and which have gone quiet. */}
       <PulsePanel sessions={list} now={now} />
 
-      {/* Straight after the pulse, not at the bottom of the screen.
+      {/* The all-time figures as pictures: donuts with the share printed
+        * big, and the agents drawn as the Week card's characters. Collapsible,
+        * with a Numbers view that is also the charts' text alternative. Above
+        * the exact table since 2026-10-11: the owner reads the pictures first
+        * and opens the numbers after. */}
+      <AtAGlancePanel />
+
+      {/* Under the pulse and the pictures, not at the bottom of the screen.
         *
         * It was last, below the activity feed and the project list, and the
         * feed is tall — so the most legible thing on this screen was the thing
@@ -343,11 +350,6 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
         * still holds — expanded up there it pushed Today and the pulse below
         * the fold — so it goes under the pulse rather than above it. */}
       <BreakdownPanel />
-
-      {/* The same all-time figures as pictures: donuts with the share printed
-        * big, and the agents drawn as the Week card's characters. Collapsible,
-        * with a Numbers view that is also the charts' text alternative. */}
-      <AtAGlancePanel />
 
       {/* What is happening (left) beside what it costs (right). */}
       <div className={`grid gap-3 ${inApp ? '' : 'lg:grid-cols-2'}`}>

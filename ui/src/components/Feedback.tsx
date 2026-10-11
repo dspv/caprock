@@ -45,7 +45,7 @@ import { context, currentScreen, isSendable, issueURL, KINDS, type FeedbackKind 
 import { accept, baseName, copyImage, imageTypeOfPath, imagesIn, MAX_SHOTS, nextShot, stepLine, toPNG, type Shot } from '@/lib/attachments'
 import { captureSupported, shell } from '@/lib/shell'
 import { DROP_PATHS_EVENT } from '@/lib/xtermInput'
-import { FeedbackIcon } from './AppIcons'
+import { BugIcon } from './AppIcons'
 import { CloseButton, DialogBackdrop } from './Dialog'
 import { KeyChip } from './Sheet'
 
@@ -70,7 +70,7 @@ export function FeedbackButton({ screen, variant = 'header' }: { screen?: string
           aria-label="Send feedback"
           className="flex h-[26px] w-[26px] items-center justify-center rounded-[6px] text-fg-muted transition-colors hover:bg-[var(--app-row-hover)] hover:text-fg motion-reduce:transition-none"
         >
-          <FeedbackIcon size={14} />
+          <BugIcon size={15} className="text-accent" />
         </button>
       ) : variant === 'row' ? (
         <button
@@ -80,7 +80,7 @@ export function FeedbackButton({ screen, variant = 'header' }: { screen?: string
           aria-label="Send feedback"
           className="app-row flex h-[28px] w-full items-center gap-2 rounded-[7px] px-2 text-left text-[12.5px] text-fg-muted hover:text-fg"
         >
-          <FeedbackIcon size={14} />
+          <BugIcon size={15} className="text-accent" />
           <span className="flex-1 whitespace-nowrap">Send feedback</span>
           <span className="min-w-0 truncate text-[11px] text-fg-faint">bug, idea, question</span>
         </button>
@@ -91,7 +91,7 @@ export function FeedbackButton({ screen, variant = 'header' }: { screen?: string
           title={TIP}
           className="inline-flex h-[24px] items-center gap-1.5 rounded-[6px] border border-border-strong bg-panel-2/60 px-2 text-[12px] font-medium text-fg transition-colors hover:border-accent/60 hover:text-accent motion-reduce:transition-none"
         >
-          <FeedbackIcon size={13} />
+          <BugIcon size={14} className="text-accent" />
           Feedback
         </button>
       )}

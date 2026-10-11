@@ -7,14 +7,20 @@
  * why live in the code comments and .ai/04-ui.md; the screen is for deciding.
  */
 import type { ReactNode } from 'react'
+import { SectionIcon } from './SettingsIcons'
+
+/** A section's anchor: its own id, else one made from its title. */
+export function sectionId(title: string): string {
+  return `settings-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`
+}
 
 export function Section({ id, title, aside, children }: { id?: string; title: string; aside?: ReactNode; children: ReactNode }) {
   return (
-    <section id={id} className="min-w-0 scroll-mt-16 rounded-[var(--radius-panel)] border border-border bg-panel shadow-[var(--shadow-panel)]">
+    <section id={id ?? sectionId(title)} data-settings-section={title} className="min-w-0 scroll-mt-16 rounded-[var(--radius-panel)] border border-border bg-panel shadow-[var(--shadow-panel)]">
       {/* Wraps rather than squeezing: on a phone the status beside a long
         * title drops under it instead of pushing the page sideways. */}
       <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 pt-3.5">
-        <h2 className="text-[15px] font-medium text-fg">{title}</h2>
+        <h2 className="flex items-center gap-2 text-[15px] font-medium text-fg"><SectionIcon title={title} size={16} />{title}</h2>
         {aside}
       </header>
       <div className="grid grid-cols-[minmax(0,1fr)] gap-3 px-4 pb-4 pt-2.5 text-[13px]">{children}</div>

@@ -78,6 +78,13 @@ whole corpus. Contributing? See [`CONTRIBUTING.md`](CONTRIBUTING.md).
     README, press kit or any copy. Rule 6 still holds: example figures are
     labelled as examples; the product is not.
 
+12. **A shortcut change is checked on Windows and Linux in the same PR.** Every
+    key shown goes through `keys()` in `ui/src/lib/appkeys.ts`; the *every
+    listed shortcut, on every OS* test presses each `SHORTCUTS` row as
+    Windows and Linux spell it. A new chord that collides off macOS with the
+    terminal or another command gets its own spelling there, not a shrug
+    (owner, 2026-10-11).
+
 ## Dev commands
 
 ```bash

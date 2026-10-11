@@ -1351,6 +1351,7 @@ export const api = {
   history: (range: 'today' | '7d' | '30d' | 'all' = 'all') => get<History>(`/v1/history?range=${range}`),
   /** `start` is the first local day (YYYY-MM-DD); omitted, the seven days ending today. */
   /** All time; with a range, that range's agents and bill (the share card's agent mix). */
+  activity: () => get<{ from: number; bucket_ms: number; buckets: number; sessions: Record<string, number[]> }>('/v1/activity'),
   glance: (range?: 'today' | '7d' | '30d' | 'all') => get<Glance>(range && range !== 'all' ? `/v1/glance?range=${range}` : '/v1/glance'),
   toolDrill: (tool: string, range: 'today' | '7d' | '30d' | 'all' = 'all', agent?: string) =>
     get<ToolDrill>(`/v1/tools/drill?tool=${encodeURIComponent(tool)}&range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}`),
