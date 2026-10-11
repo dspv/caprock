@@ -45,6 +45,7 @@ export function AppUpdateToast() {
     <div
       role="status"
       aria-label="Caprock update"
+      data-update-toast
       className="app-fade-in pointer-events-auto fixed bottom-[34px] right-3 z-40 grid w-[340px] max-w-[calc(100vw-24px)] gap-2.5 rounded-[12px] border border-[var(--app-hairline-strong)] bg-panel p-4 text-[13.5px] text-fg shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)]"
     >
       {/* From what to what, large (owner, 2026-10-11: "short — an arrow from

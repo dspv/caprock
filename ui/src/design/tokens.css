@@ -620,6 +620,12 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
 .ci-spin { border: 1.5px solid color-mix(in srgb, var(--color-warn) 30%, transparent); border-top-color: var(--color-warn); animation: ciSpin 900ms linear infinite; }
 @keyframes ciSpin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .ci-spin { animation: none; border-color: var(--color-warn); } }
+.pipe-node { display: inline-block; width: 10px; height: 10px; flex: none; border-radius: 9999px; }
+.pipe-node[data-tone="pass"] { background: var(--color-ok); }
+.pipe-node[data-tone="fail"] { background: var(--color-danger); }
+.pipe-node[data-tone="queued"] { border: 1.5px solid var(--color-fg-faint); }
+.pipe-node[data-tone="skipped"] { border: 1.5px solid var(--color-fg-faint); background: linear-gradient(135deg, transparent 43%, var(--color-fg-faint) 43%, var(--color-fg-faint) 57%, transparent 57%); }
+.pipe-link { display: inline-block; width: 4px; height: 1px; flex: none; background: var(--color-fg-faint); opacity: 0.6; }
 .ci-failed-step { background: color-mix(in srgb, var(--color-danger) 10%, transparent); }
 .ci-failed-step:hover { background: color-mix(in srgb, var(--color-danger) 17%, transparent); }
 .ci-log { background: color-mix(in srgb, var(--color-fg) 4%, transparent); }
@@ -796,3 +802,7 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
 [data-settings-explain="off"] [data-settings-section]:not([data-explain="on"]) :is(p.text-fg-muted, p.text-fg-faint, [data-help]):not([data-keep]) {
   display: none;
 }
+
+/* The update card gives way to the version panel, which offers the same
+ * update in the same corner (components/VersionPanel.tsx). */
+html[data-version-open] [data-update-toast] { display: none; }

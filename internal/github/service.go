@@ -155,6 +155,8 @@ type Service struct {
 	byURL byURLCache
 	// ci keeps commits' Actions runs and failed jobs' log tails (actions.go).
 	ci ciCache
+	// repoCI keeps the release and default-branch CI (release.go).
+	repoCI repoCI
 }
 
 func (s *Service) init() {

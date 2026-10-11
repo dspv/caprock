@@ -12,11 +12,11 @@ const events: Event[] = [
   { id: 3, ts: iso(4_000), session_id: 's1', source: 'hook', kind: 'tool.pre', tool: 'Bash', payload: { tool_use_id: 'b', tool_input: { command: 'go test ./internal/...' } } },
 ]
 
-const h = vi.hoisted(() => ({ asked: 0, prs: { connected: true, prs: [] as unknown[] }, ci: { connected: true } as unknown, logs: 0, queued: [] as string[] }))
+const h = vi.hoisted(() => ({ asked: 0, prs: { connected: true, prs: [] as unknown[] }, ci: { connected: true } as unknown, logs: 0, queued: [] as string[], rel: { connected: false } as unknown, main: { connected: false } as unknown, logViews: [] as string[], ciPrs: [] as (number | undefined)[] }))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
-  return { ...actual, api: { ...actual.api, recentMainEvents: async () => { h.asked++; return events }, sessionPRs: async () => h.prs, sessionCI: async () => h.ci, queueSend: async (_id: string, text: string) => { h.queued.push(text); return { sent: false, queue: { session_id: 's1', messages: [], waiting: 'turn' } } },
-    sessionCILog: async () => { h.logs++; return { job_id: 71, lines: ['go test ./...', '--- FAIL: TestDeck (0.01s)', '##[error]Process completed with exit code 1.'], error_line: 2 } } } }
+  return { ...actual, api: { ...actual.api, recentMainEvents: async () => { h.asked++; return events }, sessionPRs: async () => h.prs, sessionCI: async (_id: string, pr?: number) => { h.ciPrs.push(pr); return h.ci }, sessionCIRelease: async () => h.rel, sessionCIMain: async () => h.main, queueSend: async (_id: string, text: string) => { h.queued.push(text); return { sent: false, queue: { session_id: 's1', messages: [], waiting: 'turn' } } },
+    sessionCILog: async (_id: string, _job: number, view = 'pr') => { h.logs++; h.logViews.push(view); return { job_id: 71, lines: ['go test ./...', '--- FAIL: TestDeck (0.01s)', '##[error]Process completed with exit code 1.'], error_line: 2 } } } }
 })
 
 import { SessionDeck } from './SessionDeck'
@@ -40,7 +40,7 @@ function show(p: Partial<Parameters<typeof SessionDeck>[0]> = {}) {
   return { ...r, onResize }
 }
 
-afterEach(() => { vi.useRealTimers(); h.asked = 0 })
+afterEach(() => { vi.useRealTimers(); h.asked = 0; h.rel = { connected: false }; h.main = { connected: false }; localStorage.clear() })
 
 describe('the session deck', () => {
   it('asks nothing of the session’s events, and leaves the context to the status bar', async () => {
@@ -223,5 +223,133 @@ describe('the session deck', () => {
     expect(b).toHaveTextContent('Hide')
     fireEvent.click(b)
     expect(onClose).toHaveBeenCalled()
+  })
+
+  it('switches the CI cell to the release build, with an estimate, and remembers the choice', async () => {
+    const started = now - 4 * 60_000
+    h.rel = { connected: true, repo: 'a/b', release: { repo: 'a/b', tag: 'v0.109.1', state: 'running', at: now, estimate: { median_ms: 16 * 60_000, runs: 5 },
+      run: { id: 30, name: 'Release', status: 'in_progress', started_at: started, created_at: started, head_branch: 'v0.109.1', html_url: 'https://github.com/a/b/actions/runs/30', jobs: [
+        { id: 301, run_id: 30, name: 'goreleaser', status: 'in_progress', started_at: started, labels: ['ubuntu-latest'], os: 'linux',
+          steps: [{ number: 1, name: 'Build', status: 'in_progress', started_at: started }] },
+      ] } } }
+    const first = show()
+    // From the PR view, a running release shows as a chip.
+    const chip = await waitFor(() => {
+      const c = document.querySelector('[data-deck-release-chip]')
+      if (!c) throw new Error('no chip')
+      return c
+    })
+    expect(chip.textContent).toBe('Release v0.109.1 · ~12 min')
+    fireEvent.click(screen.getByRole('tab', { name: 'Release' }))
+    expect(screen.getByRole('tab', { name: 'Release' })).toHaveAttribute('aria-selected', 'true')
+    expect(await screen.findByText('about 12 min left (estimate from the last 5 runs)')).toBeInTheDocument()
+    expect(document.querySelector('[data-deck-ci-release]')).toHaveTextContent('v0.109.1')
+    expect(screen.getByText('goreleaser').closest('button')).toHaveTextContent('Build')
+    // The chip is the PR view's; the Release view says it in full.
+    expect(document.querySelector('[data-deck-release-chip]')).toBeNull()
+    first.unmount()
+    show()
+    expect(screen.getByRole('tab', { name: 'Release' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('says a finished release build was published, and links the release', async () => {
+    h.rel = { connected: true, repo: 'a/b', release: { repo: 'a/b', tag: 'v0.109.1', state: 'pass', at: now,
+      release: { url: 'https://github.com/a/b/releases/tag/v0.109.1', published_at: now - 3 * 60_000 },
+      run: { id: 30, name: 'Release', status: 'completed', conclusion: 'success', updated_at: now - 3 * 60_000, head_branch: 'v0.109.1', jobs: [] } } }
+    localStorage.setItem('caprock.deck.ciView', 'release')
+    show()
+    const done = await screen.findByText('v0.109.1 · published 3 min ago ✓')
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    fireEvent.click(done)
+    expect(String(open.mock.calls.at(-1)?.[0] ?? '')).toBe('https://github.com/a/b/releases/tag/v0.109.1')
+    open.mockRestore()
+  })
+
+  it('shows the default branch, a row per workflow, and reads a failed job’s log in that view', async () => {
+    const t0 = now - 10 * 60_000
+    h.main = { connected: true, repo: 'a/b', branch: 'master', ci: { repo: 'a/b', head_sha: 'm', branch: 'master', state: 'fail', runner_ms: 60_000, by_os: [], at: now, runs: [
+      { id: 50, name: 'CI', status: 'completed', conclusion: 'failure', jobs: [
+        { id: 501, run_id: 50, name: 'test (windows)', status: 'completed', conclusion: 'failure', started_at: t0, completed_at: t0 + 60_000, duration_ms: 60_000, labels: [], os: 'windows',
+          steps: [{ number: 1, name: 'go test', status: 'completed', conclusion: 'failure', started_at: t0, completed_at: t0 + 60_000, duration_ms: 60_000 }] }] },
+      { id: 48, name: 'Docs', status: 'completed', conclusion: 'success', jobs: [] },
+    ] } }
+    h.logViews = []
+    localStorage.setItem('caprock.deck.ciView', 'main')
+    show()
+    expect(await screen.findByText('Docs')).toBeInTheDocument()
+    expect(screen.getByText('master')).toBeInTheDocument()
+    const failed = await waitFor(() => {
+      const b = document.querySelector('[data-deck-ci-job="501"] [data-deck-ci-step="1"] button')
+      if (!b) throw new Error('the failed job did not open')
+      return b
+    })
+    fireEvent.click(failed)
+    await screen.findByText('##[error]Process completed with exit code 1.')
+    expect(h.logViews).toContain('main')
+  })
+
+  it('says how to connect GitHub for the release build, and when the folder has no repository', async () => {
+    h.rel = { connected: false, repo: 'a/b' }
+    localStorage.setItem('caprock.deck.ciView', 'release')
+    const first = show()
+    expect(await screen.findByRole('button', { name: 'Connect GitHub to see a/b’s release build' })).toBeInTheDocument()
+    first.unmount()
+    h.rel = { connected: true, reason: 'no_repo' }
+    show()
+    expect(await screen.findByText('This session’s folder has no GitHub repository.')).toBeInTheDocument()
+  })
+
+  it('draws each PR’s pipeline, and a click on a job opens it in the CI cell for that PR', async () => {
+    const t0 = now - 5 * 60_000
+    const live = { number: 8, url: 'https://github.com/a/b/pull/8', title: 'PR 8', state: 'open', draft: false, review: '', reviews: [],
+      checks: { state: 'fail', passed: 1, failed: 1, pending: 1, items: [
+        { name: 'lint', state: 'pass', status: 'completed', started_at: t0, completed_at: t0 + 30_000, job_id: 80, url: 'https://github.com/a/b/actions/runs/8/job/80' },
+        { name: 'test (windows)', state: 'fail', status: 'completed', started_at: t0 + 1_000, completed_at: t0 + 61_000, job_id: 81, url: 'https://github.com/a/b/actions/runs/8/job/81' },
+        { name: 'smoke', state: 'pending', status: 'in_progress', started_at: t0 + 2_000, job_id: 82 },
+      ] } }
+    h.prs = { connected: true, prs: [
+      { session_id: 's1', number: 9, url: 'https://github.com/a/b/pull/9', title: 'PR 9', last_at: now },
+      { session_id: 's1', number: 8, url: 'https://github.com/a/b/pull/8', title: 'PR 8', last_at: now, live },
+    ] }
+    h.ci = { connected: true, pr: { number: 9, url: 'https://github.com/a/b/pull/9', repo: 'a/b', head_sha: 's9' }, ci: { repo: 'a/b', head_sha: 's9', state: 'none', runs: [], runner_ms: 0, by_os: [], at: now } }
+    h.ciPrs = []
+    show()
+    const row = await waitFor(() => {
+      const r = document.querySelector('[data-deck-pr="8"]')
+      if (!r?.querySelector('[data-pipeline]')) throw new Error('no pipeline')
+      return r
+    })
+    const tones = [...row.querySelectorAll('[data-pipe-node]')].map((b) => b.getAttribute('data-tone'))
+    expect(tones).toEqual(['pass', 'fail', 'running'])
+    // The CI cell turns to #8 and opens its failed job.
+    h.ci = { connected: true, pr: { number: 8, url: 'https://github.com/a/b/pull/8', repo: 'a/b', head_sha: 's8' }, ci: {
+      repo: 'a/b', head_sha: 's8', state: 'fail', runner_ms: 60_000, by_os: [], at: now, runs: [{ id: 8, name: 'CI', status: 'completed', conclusion: 'failure', jobs: [
+        { id: 80, run_id: 8, name: 'lint', status: 'completed', conclusion: 'success', started_at: t0, completed_at: t0 + 30_000, duration_ms: 30_000, labels: [], steps: [] },
+        { id: 81, run_id: 8, name: 'test (windows)', status: 'completed', conclusion: 'failure', started_at: t0, completed_at: t0 + 60_000, duration_ms: 60_000, labels: [],
+          steps: [{ number: 1, name: 'go test', status: 'completed', conclusion: 'failure', started_at: t0, completed_at: t0 + 60_000, duration_ms: 60_000 }] },
+      ] }] } }
+    fireEvent.click(row.querySelector('[data-pipe-node="81"]')!)
+    await waitFor(() => expect(h.ciPrs).toContain(8))
+    await waitFor(() => expect(document.querySelector('[data-deck-ci-job="81"] [data-deck-ci-step="1"]')).not.toBeNull())
+    expect(screen.getByRole('tab', { name: 'PR' })).toHaveAttribute('aria-selected', 'true')
+    h.prs = { connected: true, prs: [] }
+    h.ci = { connected: true }
+  })
+
+  it('draws the release build’s jobs as a pipeline beside its tag', async () => {
+    const started = now - 60_000
+    h.rel = { connected: true, repo: 'a/b', release: { repo: 'a/b', tag: 'v2.0.0', state: 'running', at: now,
+      run: { id: 30, name: 'Release', status: 'in_progress', started_at: started, jobs: [
+        { id: 301, run_id: 30, name: 'build', status: 'completed', conclusion: 'success', started_at: started, completed_at: started + 20_000, duration_ms: 20_000, labels: [], steps: [] },
+        { id: 302, run_id: 30, name: 'publish', status: 'in_progress', started_at: started + 20_000, labels: [], steps: [] },
+      ] } } }
+    localStorage.setItem('caprock.deck.ciView', 'release')
+    show()
+    const line = await waitFor(() => {
+      const l = document.querySelector('[data-deck-ci-release] [data-pipeline]')
+      if (!l) throw new Error('no pipeline')
+      return l
+    })
+    expect([...line.querySelectorAll('[data-pipe-node]')].map((b) => b.getAttribute('data-tone'))).toEqual(['pass', 'running'])
   })
 })
