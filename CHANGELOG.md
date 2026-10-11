@@ -19,6 +19,26 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 - **app:** the update card no longer stacks on top of the version panel:
   while the panel is open (it offers the same update), the card steps aside.
 
+### Added
+
+- **app:** the session deck's CI cell has a switch: **PR** (as before),
+  **Release** and **Main**, remembered per viewer. *Release* is the
+  repository's newest release build — found from the run a tag push or a
+  release started, for any repository — with its tag, the time so far,
+  *about N min left (estimate from the last K runs)* from the median of
+  that workflow's past successful runs, and its jobs and steps with errors
+  and *Investigate*; once done, *v1.2.3 · published 3 min ago ✓* with a
+  link to the release. *Main* is the newest run of each workflow on the
+  default branch, so a red default branch shows at once. While a release
+  builds, a chip *Release v1.2.3 · ~6 min* shows from the other views
+  (`GET /v1/sessions/{id}/ci/release`, `GET /v1/sessions/{id}/ci/main`).
+- **app:** a GitLab-style **mini pipeline** beside each pull request in the
+  deck, beside the release tag and beside each default-branch workflow: a
+  circle per job (✓ passed, ✗ failed, a turning ring running, hollow
+  queued, a slash skipped), joined within a workflow. Hover says the job,
+  its state and its time; a click opens that job's steps and error in the
+  CI cell, turning it to that pull request.
+
 ## [0.109.1] - 2026-10-12
 
 ### Changed

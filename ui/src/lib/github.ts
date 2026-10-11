@@ -70,7 +70,17 @@ export interface RepoPage { repos: GitHubRepo[]; page: number; next: boolean; se
 
 export type CheckState = 'pass' | 'fail' | 'pending' | 'skipped'
 
-export interface PRCheck { name: string; state: CheckState; url?: string }
+export interface PRCheck {
+  name: string
+  state: CheckState
+  url?: string
+  /** A check run's own status (queued | in_progress | completed); absent for a commit status. */
+  status?: string
+  started_at?: number
+  completed_at?: number
+  /** The GitHub Actions job this check run is, read from its link; absent for any other check. */
+  job_id?: number
+}
 export interface PRReview { user: string; state: 'approved' | 'changes_requested' | 'commented' | 'dismissed'; at?: number }
 
 export interface PullRequest {

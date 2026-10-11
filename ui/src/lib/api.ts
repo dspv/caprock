@@ -452,12 +452,20 @@ export interface CIRun {
   html_url?: string
   created_at?: number
   updated_at?: number
+  /** When this attempt started (GitHub's run_started_at). */
+  started_at?: number
+  /** The branch, or for a tag push or a release the tag. */
+  head_branch?: string
+  head_sha?: string
+  workflow_id?: number
   jobs: CIJob[]
 }
 /** A commit's GitHub Actions. runner_ms sums the finished jobs; by_os splits it, no billing multiplier. */
 export interface CIState {
   repo: string
   head_sha: string
+  /** Set on a branch's CI (the Main view). */
+  branch?: string
   state: 'running' | 'fail' | 'pass' | 'none'
   runs: CIRun[]
   runner_ms: number
@@ -469,6 +477,31 @@ export interface CIState {
 export interface SessionCI {
   connected: boolean
   pr?: { number: number; url: string; title?: string; state?: string; repo: string; head_sha?: string }
+  ci?: CIState
+  error?: { message: string; kind?: string }
+}
+/** A repository's newest release run: a tag push or a release event. */
+export interface ReleaseCI {
+  repo: string
+  tag?: string
+  state: 'running' | 'fail' | 'pass' | 'none'
+  run?: CIRun
+  /** The median span of the last `runs` successful release runs of the same workflow; set while it runs. An estimate. */
+  estimate?: { median_ms: number; runs: number }
+  /** The GitHub release published for the tag, once the run passed. */
+  release?: { url: string; published_at?: number; draft?: boolean }
+  at: number
+  error?: { message: string; kind?: string }
+}
+/** `GET /v1/sessions/{id}/ci/release` and `…/ci/main`: the session's repository's release build or default branch. */
+export interface SessionRepoCI {
+  connected: boolean
+  /** owner/name, from the session's directory's remote. */
+  repo?: string
+  /** Why there is no repository: no_repo | not_github. */
+  reason?: string
+  branch?: string
+  release?: ReleaseCI
   ci?: CIState
   error?: { message: string; kind?: string }
 }
@@ -1361,9 +1394,14 @@ export const api = {
   /** The session's latest PRs, with CI and review when GitHub is connected (the session deck). */
   sessionPRs: (id: string) => get<{ connected: boolean; prs: SessionPRLive[] }>(`/v1/sessions/${encodeURIComponent(id)}/prs`),
   /** The GitHub Actions runs, jobs and steps of the session's PR (the session deck's CI cell). */
-  sessionCI: (id: string) => get<SessionCI>(`/v1/sessions/${encodeURIComponent(id)}/ci`),
+  sessionCI: (id: string, pr?: number) => get<SessionCI>(`/v1/sessions/${encodeURIComponent(id)}/ci${pr ? `?pr=${pr}` : ''}`),
   /** The lines around a failed job's error, on demand. */
-  sessionCILog: (id: string, job: number) => get<CILog>(`/v1/sessions/${encodeURIComponent(id)}/ci/jobs/${job}/log`),
+  sessionCILog: (id: string, job: number, view: 'pr' | 'release' | 'main' = 'pr', pr?: number) =>
+    get<CILog>(`/v1/sessions/${encodeURIComponent(id)}/ci/jobs/${job}/log${view !== 'pr' ? `?view=${view}` : pr ? `?pr=${pr}` : ''}`),
+  /** The newest release run of the session's repository (the CI cell's Release view, and the deck's release chip). */
+  sessionCIRelease: (id: string) => get<SessionRepoCI>(`/v1/sessions/${encodeURIComponent(id)}/ci/release`),
+  /** The newest run of each workflow on the session's repository's default branch (the CI cell's Main view). */
+  sessionCIMain: (id: string) => get<SessionRepoCI>(`/v1/sessions/${encodeURIComponent(id)}/ci/main`),
   notes: (id: string, limit = 200) => get<AssistantNote[]>(`/v1/sessions/${encodeURIComponent(id)}/notes?limit=${limit}`),
   /** `before` pages backwards: pass the lowest event_id already shown. */
   searchNotes: (q: string, limit = 100, before = 0) =>
