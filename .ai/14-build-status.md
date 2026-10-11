@@ -73,6 +73,11 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-11 — 0.107.7: the spend spark says it opens; three-way theme
+
+The inspector's spend spark shows a large hover label and a corner ↗. The
+theme button walks Graphite → Paper → White.
+
 ### 2026-10-11 — 0.107.6: the keep-awake mark stays when off
 
 The status bar's keep-awake mark reads *awake off* instead of vanishing. The
