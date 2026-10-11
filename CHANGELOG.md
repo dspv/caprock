@@ -7,6 +7,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **app:** the inspector's spend spark says it opens: a large *Spend by time
+  ↗ click* label on hover and a small ↗ in its corner at rest.
+- **The theme button walks all three palettes:** Graphite → Paper → White,
+  its label naming the next one. It only flipped light and dark before, and
+  Paper or White was a trip to Settings.
+
 ## [0.107.5] - 2026-10-11
 
 ### Changed
