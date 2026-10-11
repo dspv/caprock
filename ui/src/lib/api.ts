@@ -413,6 +413,73 @@ export interface SessionPRLive extends SessionPR {
   live?: PullRequest
   error?: { message: string }
 }
+/** One step of a GitHub Actions job (`GET /v1/sessions/{id}/ci`). Times are unix ms. */
+export interface CIStep {
+  number: number
+  name: string
+  status: string
+  conclusion?: string
+  started_at?: number
+  completed_at?: number
+  duration_ms?: number
+}
+export interface CIJob {
+  id: number
+  run_id: number
+  name: string
+  /** queued | in_progress | completed (and waiting, pending, requested). */
+  status: string
+  /** success | failure | cancelled | skipped | timed_out | neutral…, once completed. */
+  conclusion?: string
+  started_at?: number
+  completed_at?: number
+  /** completed_at - started_at, from GitHub's own timestamps; absent until it finished. */
+  duration_ms?: number
+  labels: string[]
+  /** linux | windows | macos | self-hosted, read from the labels; absent when they name none. */
+  os?: string
+  runner_name?: string
+  html_url?: string
+  steps: CIStep[]
+}
+export interface CIRun {
+  id: number
+  name: string
+  event?: string
+  status: string
+  conclusion?: string
+  attempt?: number
+  html_url?: string
+  created_at?: number
+  updated_at?: number
+  jobs: CIJob[]
+}
+/** A commit's GitHub Actions. runner_ms sums the finished jobs; by_os splits it, no billing multiplier. */
+export interface CIState {
+  repo: string
+  head_sha: string
+  state: 'running' | 'fail' | 'pass' | 'none'
+  runs: CIRun[]
+  runner_ms: number
+  by_os: { os: string; ms: number }[]
+  at: number
+  error?: { message: string; kind?: string }
+}
+/** `GET /v1/sessions/{id}/ci`: the CI of the session's open PR, else its newest. */
+export interface SessionCI {
+  connected: boolean
+  pr?: { number: number; url: string; title?: string; state?: string; repo: string; head_sha?: string }
+  ci?: CIState
+  error?: { message: string; kind?: string }
+}
+/** The lines around a failed job's last error (`GET /v1/sessions/{id}/ci/jobs/{job}/log`). */
+export interface CILog {
+  job_id: number
+  lines: string[]
+  /** Index in lines of the error, -1 when the log marks none. */
+  error_line: number
+  truncated?: boolean
+}
 export interface SessionPR {
   session_id: string
   url: string
@@ -1284,6 +1351,10 @@ export const api = {
   diff: (id: string) => get<DiffResult>(`/v1/sessions/${encodeURIComponent(id)}/diff`),
   /** The session's latest PRs, with CI and review when GitHub is connected (the session deck). */
   sessionPRs: (id: string) => get<{ connected: boolean; prs: SessionPRLive[] }>(`/v1/sessions/${encodeURIComponent(id)}/prs`),
+  /** The GitHub Actions runs, jobs and steps of the session's PR (the session deck's CI cell). */
+  sessionCI: (id: string) => get<SessionCI>(`/v1/sessions/${encodeURIComponent(id)}/ci`),
+  /** The lines around a failed job's error, on demand. */
+  sessionCILog: (id: string, job: number) => get<CILog>(`/v1/sessions/${encodeURIComponent(id)}/ci/jobs/${job}/log`),
   notes: (id: string, limit = 200) => get<AssistantNote[]>(`/v1/sessions/${encodeURIComponent(id)}/notes?limit=${limit}`),
   /** `before` pages backwards: pass the lowest event_id already shown. */
   searchNotes: (q: string, limit = 100, before = 0) =>

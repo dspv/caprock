@@ -339,19 +339,41 @@ One window, three regions:
   that's comfortable — and in this new area show data useful to me while I
   work"). A full-width terminal puts Claude Code's prompt on the window's
   bottom edge; the deck is a band under the terminal of the agent in front
-  that lifts it. One dense row, none of it estimated: *Context* (`context.pct`, the bar, `next_call_usd`; taller, tokens of the
-  window), *Branch* (the sidebar's branch for the session's checkout, how
+  that lifts it. One dense row, none of it estimated: *CI*, *Branch* (the sidebar's branch for the session's checkout, how
   many files are not committed and commits not pushed, *Review changes*)
   and *Pull requests* — the session's latest three (`session_prs`) with
   their CI and review from `GET /v1/sessions/{id}/prs`, a dot per PR
   (green passed, amber running, red failed or changes requested, violet
-  merged), in columns (CI, then state); a click on the title opens the PR, a click on the CI opens the failing or running job, else the PR's Checks tab. Asked every 20 s while a check runs,
+  merged), in columns (CI, then state); a PR with no checks reads *CI not started* (muted) for 10 minutes after it was opened — GitHub often has not registered them yet — and *no checks* after that, each with a tooltip saying so, never "CI no CI"; a click on the title opens the PR, a click on the CI opens the failing or running job, else the PR's Checks tab. Asked every 20 s while a check runs,
   else every minute, never while the window is hidden; the daemon keeps
   each PR as long, so a poll costs GitHub nothing. While GitHub is not
   connected the rows show what the session recorded (open, merged) and
   *connect GitHub for CI* turns the integration on through the `gh` login
   in one click (ADR-047: this click is the user turning it on), else opens
-  Settings. The minute chart, the plan windows, *Now* and *Spent* left the
+  Settings. *CI* (owner, 2026-10-11, translated: "Context duplicates what
+  is on the right (the status bar), sacrifice it for CI/CD … I want to see
+  which steps run, how long each step takes … what failed and with which
+  error, and the time of each stage, because runners are money") is the
+  GitHub Actions of the session's open PR, else its newest, from
+  `GET /v1/sessions/{id}/ci`: a row per job with a mark (an amber turning
+  ring while it runs, ✓, ✗, ○ queued, – skipped or cancelled), its name,
+  the step it failed at or is on, its OS (from the runner labels) and its
+  time, ticking each second while it runs; a click opens its steps with
+  theirs, and a click on a failed step shows the lines around the error in
+  the job's log inline (monospace, scrolling, the error line marked) with
+  *Open on GitHub*. The first failed job opens by itself, and
+  *Investigate* under it queues the failure into the agent (`.ai/04-ui.md`
+  § CI in the session deck, and Investigate). At the top, the
+  PR's number (its Checks tab) and *runner* — the finished jobs' time from
+  GitHub's own stamps plus the running ones on the clock; the minutes per
+  OS are in its tooltip and, with more than one OS, under the jobs. Never
+  priced: what a runner minute costs depends on the plan and the OS, and we
+  do not invent the multiplier. The cell scrolls inside itself and never
+  grows the deck. Asked every 12 s while a job runs, else every minute,
+  only while the deck is open and the window visible; the daemon keeps a
+  commit's runs 10 s while one runs and 2 min once settled. Not connected,
+  no PR and no runs are one short line each. It replaced *Context*, which
+  repeated the status bar. The minute chart, the plan windows, *Now* and *Spent* left the
   deck on 2026-10-11 (owner, translated: "we already have charts
   everywhere", "Spent doesn't help", "Working now is debatable"); the
   sidebar and the inspector carry them, and the deck holds no session

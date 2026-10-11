@@ -7,8 +7,33 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **app:** the session deck's first cell is now **CI**, the live GitHub
+  Actions of the session's pull request: a row per job with its state (a
+  turning ring while it runs, ✓, ✗), the step it is on or failed at, its
+  OS and its time, ticking while it runs; a job opens into its steps with
+  their times, and a failed step into the lines around the error in its
+  log, with *Open on GitHub*. At the top, the runner time so far, measured
+  from GitHub's job times and split per OS, never priced. Asked every 12 s
+  while a job runs, else every minute, only while the deck is open
+  (`GET /v1/sessions/{id}/ci`, `GET /v1/sessions/{id}/ci/jobs/{job}/log`).
+- **app:** **Investigate** on a failed CI job queues it into the agent in
+  front — the PR, the workflow, job and step, the job's link and the last
+  40 lines of its log, with "investigate and fix; push to the same branch" —
+  through the message queue, so it types in at the prompt or when the turn
+  ends. Only into a session Caprock started, from a device that may
+  control; otherwise the button says why it is off.
+
+### Removed
+
+- **app:** the deck's *Context* cell: the status bar already shows it.
+
 ### Fixed
 
+- **app:** a pull request in the deck with no checks no longer reads "CI no
+  CI": a fresh one says *CI not started* (GitHub has not reported its checks
+  yet), one older than 10 minutes says *no checks*, each with a tooltip.
 - **app:** the keep-awake mark in the status bar stays when keep-awake is
   off — it reads *awake off*, and a click opens the modes — instead of
   vanishing with no way back from there.

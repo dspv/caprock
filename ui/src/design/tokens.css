@@ -422,6 +422,17 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
 [data-app] .deck-grip { background: color-mix(in srgb, var(--color-accent) 30%, var(--app-hairline-strong)); transition: background-color 120ms var(--app-ease); }
 [data-app] .deck-divider:hover .deck-grip, [data-app] .deck-divider:focus-visible .deck-grip, [data-app] .deck-divider[data-dragging] .deck-grip { background: var(--color-accent); }
 html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; user-select: none !important; }
+/* The deck's CI cell: a job or step that is running turns a small amber
+   ring (a state, not a load: it stops when the job does; still under
+   reduced motion); a failed step is tinted, and its error line in the log
+   tail is marked. */
+.ci-spin { border: 1.5px solid color-mix(in srgb, var(--color-warn) 30%, transparent); border-top-color: var(--color-warn); animation: ciSpin 900ms linear infinite; }
+@keyframes ciSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ci-spin { animation: none; border-color: var(--color-warn); } }
+.ci-failed-step { background: color-mix(in srgb, var(--color-danger) 10%, transparent); }
+.ci-failed-step:hover { background: color-mix(in srgb, var(--color-danger) 17%, transparent); }
+.ci-log { background: color-mix(in srgb, var(--color-fg) 4%, transparent); }
+.ci-error-line { color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 14%, transparent); }
 [data-app] .cockpit-fill { transition: width 600ms var(--app-ease); }
 [data-app] .cockpit-fill[data-tone="ok"] { background: linear-gradient(90deg, color-mix(in srgb, var(--color-ok) 55%, transparent), var(--color-ok)); }
 [data-app] .cockpit-fill[data-tone="accent"] { background: linear-gradient(90deg, color-mix(in srgb, var(--color-accent) 55%, transparent), var(--color-accent)); }
