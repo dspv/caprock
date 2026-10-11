@@ -43,7 +43,7 @@ var viewerMay = map[string]bool{
 	"GET /v1/statusline/{id}": true, "GET /v1/pair/me": true, "GET /healthz": true,
 	"GET /v1/agents/{id}/permission": true, "GET /v1/sessions/{id}/permission-mode": true,
 	// The message queue and the chat field's pickers (ADR-053).
-	"GET /v1/agents/{id}/queue": true, "GET /v1/sessions/{id}/commands": true, "GET /v1/sessions/{id}/files": true,
+	"GET /v1/agents/{id}/queue": true, "GET /v1/queue": true, "GET /v1/sessions/{id}/commands": true, "GET /v1/sessions/{id}/files": true,
 	"GET /v1/glance": true, "GET /v1/week": true, "GET /v1/tools/drill": true, "GET /v1/saved-prompts": true, "GET /v1/attempts/{group}": true,
 	"GET /v1/projects": true, "GET /v1/projects/ops": true, "GET /v1/projects/{id}/worktrees": true,
 	"GET /v1/projects/{id}/changes": true, "GET /v1/projects/{id}/changes/diff": true,

@@ -73,6 +73,22 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-12 — unreleased: the Queue view
+
+Tasks gained a *Board | Queue* switch. The Queue (`#/queue`, `GET /v1/queue`)
+lists what each agent Caprock started is doing (its task list item, how long
+the turn has run), every queued message in order with a rough start and done
+range, and the turns finished in the last three hours; *Add to queue* sends to
+a chosen session or whichever of a project's sessions is free first. The
+estimates come from the project's newest 200 finished Claude Code turns,
+through a new partial covering index (migration 0048, 1 ms per project). The
+backtest on the owner's database (RISK-08) says they are rough — median miss
+55 s against a typical 48 s turn, 49% inside the p25–p75 range — so the view
+shows ranges and its basis, never a time. A queued message's finished turn
+notifies at once through the existing finished alert. Not built: a per-item
+estimate for the agent's own task list (the task tools give no per-item
+timing cheaply), and estimates for agents other than Claude Code.
+
 ### 2026-10-12 — 0.109.1: a large filled triangle for the Dock icon
 
 The app icon is a large filled amber triangle on a dark tile on the macOS

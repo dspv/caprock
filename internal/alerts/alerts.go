@@ -51,6 +51,9 @@ type Alert struct {
 	// LastThisHour says this alert used the hour's final slot, so the message
 	// can say the rest are held back rather than leaving a silence to explain.
 	LastThisHour bool
+	// Queued is the queued message whose turn this finished alert is about
+	// (the Queue view); "" for an ordinary finished turn.
+	Queued string
 	// Trigger is the event the alert is about: the permission.prompt, or the
 	// Stop (or StopFailure, recorded as throttle) that ended the turn. The
 	// message reads what it asks about or how the turn ended from it.
@@ -195,6 +198,24 @@ func (r *Rules) Observe(ev event.Event, now time.Time) []Alert {
 		s.stoppedAt = time.Time{}
 	}
 	return nil
+}
+
+// QueuedDone is the end of a turn a queued message started: a finished alert
+// at once rather than after a quiet minute, since the next message goes in
+// straight after it and the minute never comes. Under the same switch,
+// per-session cooldown and hourly cap as every alert, so a queue of short
+// turns is one message every few minutes and the minute alert for the last
+// one is not sent twice.
+func (r *Rules) QueuedDone(ev event.Event, text string, now time.Time) []Alert {
+	if ev.SessionID == "" || now.Sub(ev.Ts) > freshFor {
+		return nil
+	}
+	out := r.emit(KindFinished, ev.SessionID, now)
+	for i := range out {
+		out[i].Trigger = ev
+		out[i].Queued = text
+	}
+	return out
 }
 
 // Due returns the finished alerts whose minute has passed, and forgets

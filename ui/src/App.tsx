@@ -68,7 +68,7 @@ export function Dashboard({ route, inApp = false }: { route: Route; inApp?: bool
         {route.name === 'settings' && <StatusScreen />}
         {route.name === 'history' && <HistoryScreen />}
         {route.name === 'week' && <WeekScreen start={route.start} />}
-        {route.name === 'tasks' && <TasksScreen />}
+        {route.name === 'tasks' && <TasksScreen view={route.view} />}
         {route.name === 'graph' && <OrchestrationScreen />}
         {route.name === 'notes' && <NotesScreen />}
         {route.name === 'start' && <NewProjectScreen mode={route.mode} />}

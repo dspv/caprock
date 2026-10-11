@@ -167,6 +167,7 @@ const SCREENS: [string, string, string][] = [
   ['week', 'Week', 'one week, as a card'],
   ['notes', 'Memory', 'what the agents said, searchable'],
   ['tasks', 'Tasks', 'the board'],
+  ['queue', 'Queue', 'what each agent is doing, what waits, roughly when it is done'],
 ]
 
 /** The next session waiting on you after the one in front, wrapping; the first when the one in front is not waiting. Stale ones are skipped. */

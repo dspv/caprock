@@ -129,7 +129,7 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `/v1/stats/summary`, `/v1/stats/daily`, `/v1/window-stop`, `/v1/events`, `/v1/history`,
   `/v1/status`, `/v1/storage`, `/v1/update`, `/v1/settings`, `/v1/premium`, `/v1/gemini`,
   `/v1/pricing`, `/v1/live`, `/v1/tasks`, `/v1/tasks/{id}`, `/v1/approvals`,
-  `/v1/statusline/{id}`, `/v1/agents/{id}/permission`, `/v1/agents/{id}/queue`,
+  `/v1/statusline/{id}`, `/v1/agents/{id}/permission`, `/v1/agents/{id}/queue`, `/v1/queue`,
   `/v1/sessions/{id}/commands`, `/v1/sessions/{id}/files`, `/v1/projects`,
   `/v1/projects/ops`, `/v1/projects/{id}/worktrees`, `/v1/projects/{id}/changes`,
   `/v1/projects/{id}/changes/diff`, `/v1/projects/{id}/file` and
@@ -405,7 +405,7 @@ One policy for both sockets, `ui/src/lib/reconnect.ts` (WP-13, [21-app.md § Pha
 `{type:"notify", seq, data:{id, kind, session_id, project?, title, body, prompt_id?, actions?}}` — an alert for the desktop app (kinds `ci` and `review`, with an empty `session_id`, come from GitHub, § GitHub; kind `window`, also with an empty `session_id`, is the plan-window stop pausing or resuming sessions — `id` `window-paused-<ms>` or `window-resumed-<ms>`, `title` `Paused 2 sessions · Claude's 5-hour limit at 91%` or `Resumed 2 sessions · Claude's plan window reset`, `body` one session per line (project · title) and, for a pause, `They resume after it resets at 19:00.`; published whenever the stop acts, not behind a notify switch) (WP-09, [21-app.md § Notifications](21-app.md#notifications)). Code: `internal/alerts` (`Notify`), `internal/daemon/phonealerts.go`, `ui/src/lib/notify.ts`, `app/src-tauri/src/notify.rs`, `app/src-tauri/src/notify_macos.rs`.
 
 - **One decision, two senders.** The alert rules (below, § Phone alerts) run once over the stored events; a kind is decided while Telegram's switch or the app's is on, and the 3-minute per-session cooldown and the 20-an-hour cap count each decision once for both. Each sender then delivers it only if its own switch is on. `PUT /v1/settings` takes `notify_approval` (on unless turned off) and `notify_finished` (off unless turned on), stored as pointers in `config.json`; `GET` returns both. Telegram's `alert_*` switches are untouched and stay off unless turned on.
-- **Fields.** `id` is `<alert kind>-<session_id>-<trigger ms>`, unique per alert and the same on a replay. `kind`: `approval`, `finished`, or `error` for a turn that ended on a StopFailure. `project` is the session's project, else its folder's name. `title` is plain text, `Needs approval · <project>` (`Needs your answer`, `Finished`, `Stopped: <error>`); `body` is lines of plain text: the session's name, branch and a non-Claude agent (left out when it would only repeat the project), then for a dialog the tool and its command, file, URL or question (100 characters), for a finished run its duration, cost, tool calls, changed files and — while `alert_reply` is on — the reply's first line; the twentieth of an hour adds that the rest wait. Nothing is HTML-escaped; the frame never leaves the machine except to a paired dashboard, which already sees the same tool inputs on `event` frames.
+- **Fields.** `id` is `<alert kind>-<session_id>-<trigger ms>`, unique per alert and the same on a replay. `kind`: `approval`, `finished`, or `error` for a turn that ended on a StopFailure. `project` is the session's project, else its folder's name. `title` is plain text, `Needs approval · <project>` (`Needs your answer`, `Finished`, `Queued message done` — § Queue —, `Stopped: <error>`); `body` is lines of plain text: the session's name, branch and a non-Claude agent (left out when it would only repeat the project), then for a dialog the tool and its command, file, URL or question (100 characters), for a finished run its duration, cost, tool calls, changed files and — while `alert_reply` is on — the reply's first line; the twentieth of an hour adds that the rest wait. Nothing is HTML-escaped; the frame never leaves the machine except to a paired dashboard, which already sees the same tool inputs on `event` frames.
 - **Prompt and actions.** For an approval in an owned Claude Code session waiting on exactly one ADR-035 prompt, `prompt_id` is that prompt's `id`; with two or more outstanding neither field is set, since which dialog the terminal shows is unknown (amended 2026-10-09). A subagent's request says so in the body: `Subagent (general-purpose) · Bash: …`. With one, `actions` lists `choice` values of `POST /v1/agents/{id}/permission`, which answers only while that prompt waits (409 otherwise): `["allow","deny"]` when the body shows the whole request (the command, file, URL or query on one line, not clipped), else `["deny"]` — a notification does not approve what it did not show; the prompt card does. `always` is never offered. The hook sets the prompt before the event is stored, so it is there when the alert is decided. No prompt (a session Caprock did not start, another agent, AskUserQuestion's menu): neither field.
 - **The app.** In the Tauri shell only, `ui/src/lib/notify.ts` shows each new `id` once through the `notify` command (`{title, body, id, sessionId, promptId, actions}`; a shell that predates the last four ignores them), unless the window has focus and that session is in front, or an approval's prompt (checked with `GET /v1/agents/{id}/permission`) no longer waits. On macOS, in the app bundle, the shell shows it through UNUserNotificationCenter: `["allow","deny"]` becomes **Approve** and **Deny**, `["deny"]` becomes **Open in Caprock** and **Deny**. The shell answers a button itself, from Rust, with `POST /v1/agents/{session_id}/permission` `{id: prompt_id, choice}` to the loopback daemon it is attached to (the supervisor's connected port; never another host), without bringing the window forward; a 409 is followed by an "Already answered" notification, any other failure by "Could not answer" with the reason, and a click on either opens the session. A click on a notification's body, or Open, brings the window up and opens the session as the tray does (`caprock:shown`, then `caprock:open-session`). When a `permission` frame says a session no longer waits, the page withdraws the approval notifications it showed for that session with `withdraw_notifications` (`{ids}`, the notify ids; macOS removes them from Notification Center, other OSes ignore it). Elsewhere the official notification plugin shows a title and body and reports neither clicks nor actions, so Approve and Deny are the prompt card's buttons: the app coming forward within 2 minutes of a notification it showed while in the background opens `#/session/<id>?tab=terminal` (the session's tab, its prompt card in view), unless the prompt was answered meanwhile or the shell brought the window up itself: the menu bar, tray and hotkey (WP-10) dispatch `caprock:shown` before showing it, and the open waits 300 ms for that event and drops the notification when it comes. A browser tab shows no notification of its own.
 
@@ -1877,6 +1877,89 @@ POST   /v1/agents/{id}/queue/{qid}/send     → QueueView; 409 while a prompt or
   controller, as `POST /v1/agents/{id}/input` is.
 - **Frames.** Every change publishes a `queue` frame with the QueueView.
 
+### Queue
+
+The Queue view (Tasks → Queue, `#/queue`): across the sessions Caprock
+started, what each is doing, what waits in its message queue (§ Queued
+messages) and roughly when each message starts and is done, and the turns
+finished lately. Code: `internal/daemon/queueboard.go`, `internal/eta`,
+`internal/store/turns.go`, `internal/api/queueboard.go`,
+`ui/src/components/QueueView.tsx`, `ui/src/lib/queueboard.ts`.
+
+```
+GET /v1/queue → QueueBoard
+```
+
+- **`QueueBoard`** — `{now, sessions: [BoardSession], done: [BoardDone],
+  done_since}`. `now` is the daemon's clock (unix ms); every estimate is in
+  ms from it. `sessions` is every session Caprock started and still runs
+  (shells left out): working first, then waiting on a prompt, then at their
+  prompt, each group by project.
+- **`BoardSession`** — `{session_id, agent, title?, project?, dir?, branch?,
+  waiting, turn_started_at?, todo?, queue: [BoardItem], turn_left?, free_in?,
+  estimate?, estimate_note?}`. `dir` is the project estimates group by (the
+  repository root, else the folder, as Cost groups). `waiting` is the queue's
+  own (§ Queued messages). `turn_started_at` is the running turn's prompt
+  (unix ms), else when Caprock last typed into it. `todo` is
+  `{active?, done, total}` from Session todos, cancelled items left out,
+  `active` the in-progress item's `active_form` (else its text).
+  `BoardItem` is a `QueuedMessage` plus `position` (1 = typed in when this
+  turn ends), `start?` and `finish?`. `ETA` is `{lo_ms, mid_ms, hi_ms}`:
+  median and the 25th–75th percentile range. `free_in` is when a message
+  added now would start (0 at the prompt with nothing queued).
+- **A turn** is a Claude Code main-thread turn on the hook plane: from
+  `turn.user` to the next `agent.stop` without an agent id, or `throttle`
+  (then `failed`). A second prompt before any Stop means the first was
+  interrupted and is not a turn. No other agent records when a turn ends,
+  so only Claude Code with hooks has estimates; the others carry
+  `estimate_note` and no `free_in`.
+- **`estimate`** is `{turns, p25_ms, median_ms, p75_ms}` over the project's
+  newest 200 finished turns of the last 90 days (any session in the
+  project, started by Caprock or not), read through
+  `idx_events_turn_bounds` (migration 0048) and kept for 2 minutes per
+  project. Under 5 turns there is no `estimate`, only `estimate_note`
+  ("3 turns finished in this project so far; an estimate needs 5").
+- **The arithmetic** (`internal/eta`). The running turn's remaining time
+  (`turn_left`) is the median, p25 and p75 less the time it has run, floored
+  at 0, while it has run less than the median; past the median it is the
+  quantiles of what the past turns that ran at least that long still took
+  (none when fewer than 5 did). The message at `position` p starts after the
+  remaining time plus p − 1 typical turns and finishes one turn later; each
+  bound adds its own quantile (lo adds p25, hi adds p75). At the prompt
+  with nothing queued the remaining time is 0. No `start`/`finish` while a
+  permission prompt or question waits, when the turn has outlasted the
+  history, or when messages are left at the prompt (they wait for Send now).
+  How good this is was measured before it was shown: [12-risks.md
+  RISK-08](12-risks.md#risks) — about as wrong as a typical turn is long, the
+  ranges calibrated, so the UI shows ranges, the word "rough" and the basis.
+- **`BoardDone`** — `{session_id, agent, title?, project?, prompt, started_at,
+  ended_at, queued?, failed?}`: the turns of sessions Caprock started that
+  ended in the last 3 hours (`done_since`), newest first, at most 30;
+  `prompt` clipped to 200 characters. `queued` marks a prompt that was a
+  queued message the daemon typed in (remembered in memory: the last 200,
+  not across a restart).
+- **Live.** Nothing polls. The page reads the board again (at most once a
+  second) on a `queue` or `permission` frame, an `event` frame of kind
+  `turn.user`, `agent.stop`, `throttle`, `agent.spawn`, `session.end` or
+  `permission.prompt`, a `tool.pre` of `TodoWrite`, `TaskCreate`,
+  `TaskUpdate` or `update_plan`, a `session` frame that ends a session, a
+  `reset`, and a reconnect; ages tick on the page's own clock.
+- **Adding** goes through `POST /v1/agents/{id}/queue`. "Whichever is free
+  first" is decided on the page: the project's session with the smallest
+  `free_in.mid_ms`, else a Claude Code session at its prompt with nothing
+  queued, else the shortest queue; never one waiting on a prompt or a
+  question. Only sessions on the board are offered: Caprock's own (rule 7).
+- **Done notification.** When the Stop (or StopFailure) that ends a queued
+  message's turn arrives, the alert rules decide a `finished` alert at once
+  (`Rules.QueuedDone`) instead of after the quiet minute, which never comes
+  while the next message goes straight in. Same switches (`notify_finished`,
+  `alert_finished`), per-session 3-minute cooldown and hourly cap; the title
+  is `Queued message done · <project>` and the body adds `Queued: <the
+  message, 100 characters>`. A message typed in at once (the session was at
+  its prompt) is an ordinary turn and gets the ordinary finished alert.
+- **Who.** A read open to every paired device, as the per-session queue is.
+  `501` without a queue (a test server).
+
 ### Chat field pickers
 
 The chat field's `/` and `@` pickers ([ADR-053](08-decisions.md)). Code:
@@ -2584,6 +2667,19 @@ CREATE INDEX IF NOT EXISTS idx_saved_prompts_project ON saved_prompts(project_id
 Saved prompts and commands ([ADR-051](08-decisions.md), § Saved prompts and
 commands). No foreign key: unlisting a project (`archived_at`) keeps its
 rows, and nothing deletes a project row.
+
+### Turn bounds DDL (migration 0048)
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_events_turn_bounds
+  ON events(session_id, ts, kind, agent_id)
+  WHERE source = 'hook' AND kind IN ('turn.user', 'agent.stop', 'throttle');
+```
+
+Where Claude Code's turns begin and end (§ Queue), partial and covering. On
+a copy of the owner's database (2026-10-12, 2 GB) it holds 16k rows; one
+project's turns read in 1 ms through it against 1.6 s cold and 47 ms warm
+through `idx_events_kind_id`, and building it took 4 s, once.
 
 ### Queued messages DDL (migration 0047)
 

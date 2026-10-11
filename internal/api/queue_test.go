@@ -121,3 +121,32 @@ func TestSessionPickers(t *testing.T) {
 		t.Fatalf("files without projects: %d", code)
 	}
 }
+
+type fakeBoard struct{ b QueueBoard }
+
+func (f fakeBoard) Board(context.Context) (QueueBoard, error) { return f.b, nil }
+
+// GET /v1/queue answers the daemon's board as is; without one, 501.
+func TestQueueBoardEndpoint(t *testing.T) {
+	e := newEnv(t)
+	if code := e.get(t, "/v1/queue", nil); code != http.StatusNotImplemented {
+		t.Fatalf("no board: %d", code)
+	}
+	e.api.d.Board = fakeBoard{b: QueueBoard{Now: 5, Sessions: []BoardSession{{
+		SessionID: "s1", Agent: "claude", Waiting: WaitingTurn,
+		Queue:    []BoardItem{{QueuedMessage: store.QueuedMessage{ID: 7, Text: "next"}, Position: 1, Start: &ETA{LoMs: 1, MidMs: 2, HiMs: 3}}},
+		Estimate: &Estimate{Turns: 18, MedianMs: 60000},
+	}}, Done: []BoardDone{}}}
+	var got map[string]any
+	if code := e.get(t, "/v1/queue", &got); code != 200 {
+		t.Fatalf("board: %d", code)
+	}
+	s := got["sessions"].([]any)[0].(map[string]any)
+	item := s["queue"].([]any)[0].(map[string]any)
+	if item["text"] != "next" || item["position"] != float64(1) || item["start"].(map[string]any)["mid_ms"] != float64(2) {
+		t.Fatalf("item = %v", item)
+	}
+	if s["estimate"].(map[string]any)["turns"] != float64(18) || s["turn_left"] != nil {
+		t.Fatalf("session = %v", s)
+	}
+}

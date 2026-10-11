@@ -6,6 +6,7 @@ import { useApi } from '@/lib/useApi'
 import { fmtUSD } from '@/lib/format'
 import { checksFor, TASK_TEMPLATES, unfilled, type TaskTemplate } from '@/lib/taskTemplates'
 import { Copyable, Empty, Panel, Skeleton } from '@/components/ui'
+import { QueueView } from '@/components/QueueView'
 
 /**
  * Tasks — hand a job to an agent and get it back verified.
@@ -33,7 +34,26 @@ const GROUPS: { key: string; label: string; statuses: string[] }[] = [
   { key: 'finished', label: 'Finished', statuses: ['done', 'failed'] },
 ]
 
-export function TasksScreen() {
+/**
+ * Tasks has two tabs: the Board (tasks handed to workers and verified) and the
+ * Queue (what each agent Caprock started is doing and what waits for it). One
+ * screen, not a new nav item: both answer "what is being worked on".
+ */
+export function TasksScreen({ view }: { view?: 'queue' } = {}) {
+  return (
+    <div className="grid gap-4">
+      <nav aria-label="Tasks views" className="inline-flex w-fit items-center gap-0.5 rounded-md bg-panel-2 p-0.5 text-[12px]">
+        {([['Board', '#/tasks', view !== 'queue'], ['Queue', '#/queue', view === 'queue']] as const).map(([label, to, on]) => (
+          <a key={label} href={to} aria-current={on ? 'page' : undefined}
+            className={`rounded-[5px] px-3 py-1 no-underline hover:no-underline ${on ? 'bg-accent font-medium text-panel' : 'text-fg hover:text-accent'}`}>{label}</a>
+        ))}
+      </nav>
+      {view === 'queue' ? <QueueView /> : <BoardView />}
+    </div>
+  )
+}
+
+function BoardView() {
   const status = useApi(() => api.status(), [], { live: false, intervalMs: 30000 })
   const tasks = useApi(() => api.tasks(), [], { intervalMs: 4000 })
   // The templates' prefill. A paired device never writes tasks (ADR-029), and

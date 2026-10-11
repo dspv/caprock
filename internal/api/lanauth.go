@@ -279,6 +279,9 @@ var pairedDeviceRoutes = map[string]bool{
 	// The messages waiting for an owned session's turn to end (ADR-053);
 	// the live socket carries every change to a viewer too.
 	"GET /v1/agents/{id}/queue": true,
+	// The Queue view: the queues of every owned session with their rough
+	// estimates and the turns finished lately — the same reads, together.
+	"GET /v1/queue": true,
 	// The chat field's pickers: the session's slash commands (names and
 	// descriptions from its .claude folders) and its folder's file list,
 	// as a project's file list is a read.

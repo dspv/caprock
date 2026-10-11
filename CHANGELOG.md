@@ -7,6 +7,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **ui:** a *Queue* tab on Tasks (`#/queue`, also in the palette): what each
+  agent Caprock started is doing now (its task-list item, how long the turn
+  has run), every queued message in order with a rough range (for example "starts in 2–9 min ·
+  done in 4–14 min"), and the turns finished in the last three hours.
+  *Add to queue* sends to a session, or to whichever of a project's sessions
+  is free first. Every estimate is a range from that project's past turns,
+  labelled with its basis, and is left out under five turns.
+- **daemon:** `GET /v1/queue`, and a finished notification as soon as a
+  queued message's turn ends (same switches and limits as the finished
+  alert).
+
 ### Changed
 
 - **app:** the status bar says whose load it shows: *agent cpu 17% ram 2.0
