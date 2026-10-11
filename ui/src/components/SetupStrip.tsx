@@ -15,6 +15,7 @@ import { useApi } from '@/lib/useApi'
 import { markAnswered, usePromptDue } from '@/lib/prompts'
 import { useNudgeSlot } from '@/lib/nudges'
 import { openPhoneSettings, openSettingsAt } from './Pairing'
+import { Banner, BannerButton, BannerDismiss } from './Banner'
 
 interface Item {
   key: 'phone' | 'telegram'
@@ -26,7 +27,8 @@ interface Item {
   skip: () => void
 }
 
-export function SetupStrip({ now = Date.now(), app = false }: { now?: number; app?: boolean }) {
+/** `app`: kept for the callers; the strip draws the same in the app and the dashboard. */
+export function SetupStrip({ now = Date.now() }: { now?: number; app?: boolean }) {
   const machine = !isPairedDevice()
   const pair = useApi(() => (machine ? api.pairState() : Promise.resolve(null)), [machine], { live: false, intervalMs: 30_000 })
   const tg = useApi(() => (machine ? api.telegram() : Promise.resolve(null)), [machine], { live: false, intervalMs: 30_000 })
@@ -62,51 +64,35 @@ export function SetupStrip({ now = Date.now(), app = false }: { now?: number; ap
 
   const shown = items.filter((i) => !i.skipped)
   const doneCount = shown.filter((i) => i.done).length
+  const first = shown.find((i) => !i.done)
   return (
-    <div
+    <Banner
+      id="setup"
+      edge
+      art="phone"
       role="region"
-      aria-label="Take Caprock with you"
-      className={`flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border bg-panel-2 px-3 py-2 text-[13px] ${app ? '' : 'justify-center'}`}
-    >
-      <span className="font-medium text-fg">
-        Take Caprock with you
-        {shown.length > 1 && <span className="ml-1.5 font-normal text-fg-muted">{doneCount} of {shown.length}</span>}
-      </span>
-      <span className="hidden text-fg-muted xl:inline">answer your agents away from the desk</span>
-      {shown.map((i) =>
-        i.done ? (
-          <span key={i.key} data-setup={i.key} className="inline-flex items-center gap-1.5 text-fg-muted">
-            <span aria-hidden className="text-ok">✓</span> {i.label} connected
-          </span>
-        ) : (
-          <span key={i.key} data-setup={i.key} className="inline-flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={i.open}
-              className="inline-flex h-[26px] items-center rounded-md bg-accent px-2.5 text-[13px] font-medium text-panel hover:brightness-110"
-            >
-              {i.action}
-            </button>
-            <button
-              type="button"
-              onClick={i.skip}
-              title={`Never ask about ${i.label} again`}
-              className="text-[12.5px] text-fg-muted underline-offset-2 hover:text-fg hover:underline"
-            >
-              Not needed
-            </button>
-          </span>
-        ),
-      )}
-      <button
-        type="button"
-        onClick={() => markAnswered('setup-later', now)}
-        aria-label="Hide for a week"
-        title="Hide for a week"
-        className="ml-auto px-1 text-[15px] leading-none text-fg-muted hover:text-fg"
-      >
-        ×
-      </button>
-    </div>
+      label="Take Caprock with you"
+      title={<>Take Caprock with you{shown.length > 1 && <small className="num">{doneCount} of {shown.length}</small>}</>}
+      line="Answer your agents away from the desk."
+      actions={<>
+        {shown.map((i) =>
+          i.done ? (
+            <span key={i.key} data-setup={i.key} className="inline-flex items-center gap-1.5 text-[12.5px] text-fg-muted">
+              <span aria-hidden className="text-ok">✓</span> {i.label} connected
+            </span>
+          ) : (
+            <span key={i.key} data-setup={i.key} className="inline-flex items-center gap-2">
+              {/* One filled button: the first open item. A second is the
+                * outlined kind, so the strip still has one primary. */}
+              <BannerButton kind={i === first ? 'accent' : 'ghost'} onClick={i.open}>{i.action}</BannerButton>
+              <button type="button" onClick={i.skip} title={`Never ask about ${i.label} again`} className="bn-link">
+                Not needed
+              </button>
+            </span>
+          ),
+        )}
+        <BannerDismiss icon onClick={() => markAnswered('setup-later', now)} aria-label="Hide for a week" title="Hide for a week" />
+      </>}
+    />
   )
 }

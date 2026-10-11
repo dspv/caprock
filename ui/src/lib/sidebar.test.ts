@@ -96,9 +96,11 @@ describe('grouping the sidebar projects', () => {
     expect(ids(g.shown)).toEqual(['ask'])
   })
 
-  it('never folds Other folders', () => {
+  it('never folds Other folders into More, but hides it when asked (owner, 2026-10-11)', () => {
     const nodes = model([], [sess({ session_id: 'x', cwd: '/elsewhere', status: 'ended', last_event_at: 1 })], new Set(['x']))
+    expect(ids(groupProjects(nodes, { hidden: new Set() }).shown)).toEqual([OTHER_FOLDERS_ID])
     const g = groupProjects(nodes, { hidden: new Set([OTHER_FOLDERS_ID]) })
-    expect(ids(g.shown)).toEqual([OTHER_FOLDERS_ID])
+    expect(ids(g.shown)).toEqual([])
+    expect(ids(g.hidden)).toEqual([OTHER_FOLDERS_ID])
   })
 })

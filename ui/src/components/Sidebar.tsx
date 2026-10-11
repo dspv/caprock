@@ -124,6 +124,9 @@ export function Sidebar(props: SidebarProps) {
   const allTabs = props.tabs
   const tabbed = useMemo(() => new Set((allTabs ?? []).map((t) => t.projectId)), [allTabs])
   const groups = useMemo(() => groupProjects(model.projects, { hidden, activeProjectId, tabbed }), [model.projects, hidden, activeProjectId, tabbed])
+  const real = model.projects.filter((n) => n.project.root !== '')
+  const projectCount = real.length
+  const busyCount = real.filter((n) => n.live > 0 || n.waiting > 0).length
   // Every project's tabs: the current one lists them, and so does any
   // project where something runs or waits (ProjectRow decides it is open).
   const tabsByProject = useMemo(() => {
@@ -317,7 +320,13 @@ export function Sidebar(props: SidebarProps) {
         )}
         <Inbox items={model.inbox} onOpen={props.onOpenInbox} />
 
-        <SectionHead label="Projects" />
+        {/* How many, and how many have something running, so the heading
+          * says something (owner, 2026-10-11: "nothing on the right"). */}
+        <SectionHead label="Projects" action={projectCount > 0 ? (
+          <span className="num text-[11.5px] text-fg-faint" title={`${projectCount} ${projectCount === 1 ? 'project' : 'projects'}, ${busyCount} with something running`}>
+            {busyCount > 0 && <><span aria-hidden className="mr-1 inline-block h-[6px] w-[6px] rounded-full bg-ok align-middle" />{busyCount} of </>}{projectCount}
+          </span>
+        ) : undefined} />
         {model.projects.length === 0 ? (
           <div className="px-2 py-2 text-[12.5px] leading-relaxed text-fg-muted">
             No projects yet.{' '}
