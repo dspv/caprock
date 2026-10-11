@@ -732,6 +732,13 @@ export interface TaskWork {
 }
 export interface TaskDetail { task: Task; body: string; done_criteria?: string[]; work?: TaskWork }
 export interface CreateTaskRequest { title: string; budget_usd?: number; done_criteria?: string[]; body?: string }
+/** What a detected check proves; the templates ask for kinds, not commands. */
+export type CheckKind = 'all' | 'test' | 'lint' | 'typecheck' | 'build'
+/** One check command the repository declares (internal/projcheck). */
+export interface DetectedCheck { command: string; kind: CheckKind; source: string }
+/** GET /v1/hive/starter — what the Tasks templates prefill from. Answers with
+ *  the runner off too. `checks` is found from the repo's files, never run. */
+export interface TaskStarter { repo: string; checks: DetectedCheck[]; default_budget_usd: number }
 
 /** What a range paid to re-send its own context: every turn re-reads the whole
  *  conversation before it does anything. Absent when nothing could be priced. */
@@ -1353,6 +1360,8 @@ export const api = {
   /** Turns the task runner on over the running daemon — no restart. Empty
    *  fields mean the daemon's own suggestion (see status.suggested_hive). */
   enableHive: (hive?: string, repo?: string) => post<{ hive: string; repo: string }>('/v1/hive', { hive: hive ?? '', repo: repo ?? '' }),
+  /** The templates' prefill: the repo, the checks it declares, the default budget. */
+  taskStarter: () => get<TaskStarter>('/v1/hive/starter'),
   tasks: () => get<Task[]>('/v1/tasks'),
   task: (id: string) => get<TaskDetail>(`/v1/tasks/${encodeURIComponent(id)}`),
   createTask: (req: CreateTaskRequest) => post<TaskDetail>('/v1/tasks', req),

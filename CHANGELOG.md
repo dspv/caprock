@@ -7,6 +7,27 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **ui:** the Tasks screen says what it is and how to start. One sentence and
+  a worked example (you write the task, a worker does it on its own branch,
+  Caprock runs your checks, you merge), then a gallery of templates — fix
+  failing tests, bump a dependency, add tests for a file, fix lint and type
+  errors, write docs for a module, port a script — that open the form
+  prefilled. Their checks are the commands the repository declares (Makefile
+  targets, package.json scripts, go.mod, Cargo.toml, pytest/ruff/mypy when
+  configured), found by the new `GET /v1/hive/starter`, never guessed. The
+  budget field starts empty with the daemon's own ceiling as the hint.
+- **ui:** the board is one list grouped by what each task needs — Needs you,
+  Working, Waiting to start, Finished — instead of six narrow columns, and
+  each row says what the task is doing now, how its checks went, what it cost
+  against its budget, and its one action (Approve/Reject, Review & merge,
+  Open). A queued task with nothing moving says the orchestrator has to be
+  started, with the button.
+- **A new queue directory starts empty.** It no longer gets an example task
+  in the inbox, which the board showed as waiting and the orchestrator would
+  assign with checks guessed for the repository; the format is in its README.
+
 ### Fixed
 
 - **app:** the keep-awake mark in the status bar stays when keep-awake is
