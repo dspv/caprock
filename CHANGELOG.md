@@ -9,6 +9,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **Slate's terminal is cool too:** in Slate, the terminal (app, dashboard and
+  phone) takes a neutral ground, a blue cursor and a cool 16-colour set
+  instead of graphite's warm one, and follows a theme switch while open. It
+  is also a palette of its own in Settings → Terminal.
+
+### Changed
+
 - **Slate** has no orange left: waiting and idle marks read as a cool yellow
   there instead of graphite's amber.
 
