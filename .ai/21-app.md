@@ -224,6 +224,13 @@ One window, three regions:
   bold; ↑ ↓ Enter pick, Esc closes the list before the sheet. A recent folder
   or repository is added (`POST /v1/projects {path}`) when picked and
   selected. The same ranking serves the Add project sheet.
+- **A folder of repositories** (2026-10-12, ADR-055): *Add* on an
+  existing folder that holds two or more repositories (two levels deep, `GET
+  /v1/projects/scan`) asks once, in place of the search and the folder
+  browser: *One project of N repositories* (the default) or *N separate
+  projects*, each repository a checkbox, ticked unless another project holds
+  it; the button says *Add 1 project* / *Add N projects* (`RepoChoice.tsx`,
+  `lib/multirepo.ts`). A folder inside one repository asks nothing.
 - **Add project sheet** (owner, 2026-10-09). The folder field starts on the
   default folder — `settings.default_folder` (Settings → Projects), else
   `~/` — and is focused; *Set … as default* beside it keeps the field's
@@ -1085,6 +1092,20 @@ there, and worktrees as first-class places to work.
   under home, and create a worktree; this extends ADR-034's allowlist by name,
   in an amendment landed with the work package. A clone URL must be `https://`
   or `git@host:path`; nothing else runs.
+- **Multi-repo projects** (owner, 2026-10-12, translated: "both monorepo and
+  several repos … very important and must be done carefully";
+  [ADR-055](08-decisions.md)). A folder holding several repositories is one
+  project with named members (migration 0049): one sidebar row (*work · 3
+  repos*, the members in its tooltip), its sessions and spend summed, and on
+  its page (`ProjectRepos.tsx`) each member's branch, ± changed, ↑↓, open
+  pull requests and share of today's spend. *Edit* there
+  (`ProjectEditor.tsx`): rename, tick and untick members, *Rescan* the
+  folder, merge repository projects in, split into one project per member.
+  Nothing deletes a file. A session in a member is its own row under the
+  project with that member's branch, which the deck shows. Agents start in
+  the folder; one started inside a member gets the others as `--add-dir`.
+  Members are not watched (contract in 03-contracts.md § Projects and
+  shells). A monorepo stays one repository with its per-directory split.
 
 ## Shell tabs
 

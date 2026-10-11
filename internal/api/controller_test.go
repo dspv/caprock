@@ -45,7 +45,7 @@ var viewerMay = map[string]bool{
 	// The message queue and the chat field's pickers (ADR-053).
 	"GET /v1/agents/{id}/queue": true, "GET /v1/sessions/{id}/commands": true, "GET /v1/sessions/{id}/files": true,
 	"GET /v1/glance": true, "GET /v1/week": true, "GET /v1/tools/drill": true, "GET /v1/saved-prompts": true, "GET /v1/attempts/{group}": true,
-	"GET /v1/projects": true, "GET /v1/projects/ops": true, "GET /v1/projects/{id}/worktrees": true,
+	"GET /v1/projects": true, "GET /v1/projects/ops": true, "GET /v1/projects/{id}/worktrees": true, "GET /v1/projects/{id}/repos": true,
 	"GET /v1/projects/{id}/changes": true, "GET /v1/projects/{id}/changes/diff": true,
 	"GET /v1/projects/{id}/file": true, "GET /v1/projects/{id}/files": true,
 	// GitHub (WP-19): the connection, the clone picker, pull requests, and

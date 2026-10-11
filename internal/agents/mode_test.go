@@ -76,9 +76,9 @@ func TestOwnDirectoriesAreAllowedToBeRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got []string
-	for i, a := range l.args {
-		if a == "--add-dir" && i+1 < len(l.args) {
-			got = append(got, l.args[i+1])
+	for _, a := range l.args {
+		if d, ok := strings.CutPrefix(a, "--add-dir="); ok {
+			got = append(got, d)
 		}
 	}
 	if len(got) != 2 || got[0] != "/data/paste" || got[1] != "/data/chats" {

@@ -103,7 +103,10 @@ func (s *Server) handleTeamSignal(w http.ResponseWriter, r *http.Request) {
 
 // addProjectRequest is POST /v1/projects: exactly one of path, create, clone.
 type addProjectRequest struct {
-	Path   string `json:"path,omitempty"`
+	Path string `json:"path,omitempty"`
+	// Repos, with path, lists path as one multi-repo project of these
+	// repositories (ADR-055).
+	Repos  []string `json:"repos,omitempty"`
 	Create *struct {
 		Parent  string `json:"parent"`
 		Name    string `json:"name"`
@@ -144,7 +147,7 @@ func (s *Server) handleAddProject(w http.ResponseWriter, r *http.Request) {
 		case req.Clone != nil:
 			dir = req.Clone.Parent
 		}
-		if !filepath.IsAbs(dir) || !underHome(filepath.Clean(dir), false) {
+		if !filepath.IsAbs(dir) || !underHome(filepath.Clean(dir), false) || !allUnderHome(req.Repos) {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "a phone adds, creates and clones projects in folders under your home directory"})
 			return
 		}
@@ -156,7 +159,18 @@ func (s *Server) handleAddProject(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	ctx := context.WithoutCancel(r.Context())
+	if len(req.Repos) > 0 && req.Path == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": `repos goes with {"path"}: the folder that holds them`})
+		return
+	}
 	switch {
+	case req.Path != "" && len(req.Repos) > 0:
+		v, created, err := s.d.Projects.AddMulti(ctx, filepath.Clean(req.Path), req.Repos)
+		if err != nil {
+			projectErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"project": v, "created": created})
 	case req.Path != "":
 		v, created, err := s.d.Projects.Add(ctx, filepath.Clean(req.Path))
 		if err != nil {
@@ -202,7 +216,11 @@ func (s *Server) handlePatchProject(w http.ResponseWriter, r *http.Request) {
 	}
 	var p projects.Patch
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&p); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "body is {name?, pinned?, sort?, defaults?}"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "body is {name?, pinned?, sort?, defaults?, repos?}"})
+		return
+	}
+	if p.Repos != nil && s.fromPairedDevice(r) && !allUnderHome(*p.Repos) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "a phone adds repositories under your home directory"})
 		return
 	}
 	// A setup command is a command this machine will run (ADR-050). A

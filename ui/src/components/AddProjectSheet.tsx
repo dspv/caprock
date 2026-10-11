@@ -12,6 +12,10 @@
  * /v1/browse/stat`, 250 ms after the last key; lib/addproject.ts); Browse is
  * a folder browser; and the keys are on the buttons: ⌘↩ adds, Esc cancels,
  * ⌘1/⌘2/⌘3 the modes, ⌘B Browse ⇄ Recent (Ctrl off macOS).
+ *
+ * A folder that holds several git repositories (ADR-055) is asked about once,
+ * on Add: one project of N repositories (the default) or N separate
+ * projects, with the repositories found as checkboxes (RepoChoice).
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { INSTRUCTIONS_HINT } from './ProjectInstructions'
@@ -26,7 +30,9 @@ import { Sheet, SheetButton, SheetField } from './Sheet'
 import { CandidateList, useProjectCandidates } from './ProjectSearch'
 import { useEscapeToClose } from './Dialog'
 import { closest, queryOf, rankCandidates, tildePath, type Candidate } from '@/lib/projectSearch'
-import type { Project } from '@/lib/projects'
+import type { Project, ScanResult } from '@/lib/projects'
+import { addLabel, addRequests, defaultPicked, worthAsking, type AddChoice } from '@/lib/multirepo'
+import { RepoChoice } from './RepoChoice'
 
 type Mode = 'folder' | 'new' | 'clone'
 
@@ -132,12 +138,17 @@ export function AddProjectSheet({
   const [task, setTask] = useState('')
   const [list, setList] = useState<PickerTab>('recent')
   const [stat, setStat] = useState<BrowseStat | null>(null)
+  // The repositories found below the folder, once Add was pressed on one
+  // that holds several; null until then, and again when the folder changes.
+  const [scan, setScan] = useState<ScanResult | null>(null)
+  const [choice, setChoice] = useState<AddChoice>('one')
+  const [picked, setPicked] = useState<Set<string>>(() => new Set())
   const field = useRef<HTMLInputElement>(null)
   // The destination follows the URL until it is edited by hand, the way
   // `git clone` names the folder after the repository.
   const [pathTouched, setPathTouched] = useState(false)
   const startPath = (m: Mode, u: string) => (m === 'clone' ? cloneDest(u, base) || withSlash(base) : withSlash(base))
-  const editPath = (v: string) => { setPath(v); setPathTouched(true) }
+  const editPath = (v: string) => { setPath(v); setPathTouched(true); setScan(null) }
   const editUrl = (v: string) => {
     setUrl(v)
     setError('')
@@ -235,6 +246,37 @@ export function AddProjectSheet({
     setBusy(true)
     let keepBusy = false
     try {
+      if (mode === 'folder' && source === 'api') {
+        // A folder of repositories asks once (ADR-055).
+        let found = scan
+        if (!found) {
+          // Best effort: a daemon without the scan, or one that cannot read
+          // the folder, adds it as before.
+          try { found = await projectsApi.scan(p) } catch { found = null }
+          if (found && worthAsking(found)) {
+            setScan(found)
+            setChoice('one')
+            setPicked(new Set(defaultPicked(found.repos)))
+            return
+          }
+        }
+        if (found && worthAsking(found)) {
+          const reqs = addRequests(choice, found.root, [...picked])
+          if (typeof reqs === 'string') { setError(reqs); return }
+          let firstId = ''
+          let firstRoot: string | undefined
+          for (const req of reqs) {
+            const one = await projectsApi.add(req)
+            if ('project' in one && !firstId) { firstId = one.project.id; firstRoot = one.project.root }
+          }
+          if (firstId) {
+            await keepInstructions(firstId)
+            onAdded(firstId, first(firstRoot))
+          }
+          onClose()
+          return
+        }
+      }
       const added = await projectsApi.add(requestFor(mode, p, url.trim(), base, opId))
       if ('op' in added) {
         // The clone runs in the daemon; its frames say when it is listed.
@@ -278,7 +320,8 @@ export function AddProjectSheet({
   }, [isMac])
 
   const submitKey = keyLabel('submit', isMac)
-  const verb = mode === 'clone' ? 'Clone' : mode === 'new' ? 'Create' : 'Add'
+  const asking = mode === 'folder' && worthAsking(scan)
+  const verb = mode === 'clone' ? 'Clone' : mode === 'new' ? 'Create' : asking ? addLabel(choice, picked.size) : 'Add'
   return (
     <Sheet
       label="Add a project"
@@ -379,7 +422,12 @@ export function AddProjectSheet({
               </button>
             )}
           </div>
-          {matches.length > 0 && (
+          {/* Once the folder is chosen and holds several repositories, the
+            * question takes the place of the search and the browser. */}
+          {asking && scan && (
+            <RepoChoice scan={scan} choice={choice} onChoice={(c) => { setChoice(c); setError('') }} picked={picked} onPicked={(n) => { setPicked(n); setError('') }} />
+          )}
+          {!asking && matches.length > 0 && (
             <div className="rounded-[8px] border border-[var(--app-hairline)] p-1">
               <CandidateList id="add-project-matches" label="Matching folders" items={matches} active={active} home={home} onPick={pickMatch} onHover={setActive} />
             </div>
@@ -387,7 +435,7 @@ export function AddProjectSheet({
           {/* Picking a folder in clone mode picks where it goes: the
             * repository's own folder is made inside it. Outside the field's
             * label, so a click in the list stays in the list. */}
-          <div className="min-w-0">
+          <div className="min-w-0" hidden={asking}>
             <DirPicker
               value={path}
               start={base}

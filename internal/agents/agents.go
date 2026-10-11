@@ -184,7 +184,12 @@ type Manager struct {
 	// session started there gets them through --append-system-prompt, a Codex
 	// one as developer_instructions. Set by the daemon; nil means none.
 	ProjectPrompt func(dir string) string
-	permMu        sync.Mutex
+	// ProjectRepos returns the other member repositories of the multi-repo
+	// project a directory is in (projects' OtherRepos, ADR-055): a Claude
+	// Code or Codex session started there gets each as --add-dir, a Gemini
+	// one as --include-directories. Nil means none.
+	ProjectRepos func(dir string) []string
+	permMu       sync.Mutex
 	// perms is each session's prompts still outstanding, oldest first. Which
 	// one its screen shows is not known when there are several (ADR-035,
 	// amended 2026-10-09).
@@ -526,6 +531,9 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		}
 		if (agent == AgentClaude || agent == AgentCodex || agent == AgentGrok) && m.ProjectPrompt != nil {
 			in.SystemPrompt = m.ProjectPrompt(cwd)
+		}
+		if m.ProjectRepos != nil {
+			in.RepoDirs = m.ProjectRepos(cwd)
 		}
 		if in.Prompt != "" && isBatch(m.binary(agent)) {
 			in.Prompt = flattenForBatch(in.Prompt)

@@ -19,10 +19,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **agents:** a Claude Code session started with a first message no longer
+  loses it when no project instructions are set: Caprock's own `--add-dir`
+  folders came right before the message, and the flag takes every word after
+  it as another folder. Each is now written `--add-dir=<folder>`.
+
 - **app:** the update card no longer stacks on top of the version panel:
   while the panel is open (it offers the same update), the card steps aside.
 
 ### Added
+
+- **app:** multi-repo projects. *Add project* on a folder that holds several
+  git repositories asks once: one project of them (the default) or a
+  project each, with the repositories found as checkboxes. A multi-repo
+  project is one sidebar row; its page lists each repository's branch,
+  changes, open pull requests and share of today's spend, and *Edit* renames
+  it, adds or removes repositories, rescans the folder, merges repository
+  projects in or splits it — never deleting a file. An agent started inside
+  one of its repositories can reach the others (`--add-dir` for Claude Code
+  and Codex, `--include-directories` for Gemini).
 
 - **app:** the session deck's CI cell has a switch: **PR** (as before),
   **Release** and **Main**, remembered per viewer. *Release* is the
