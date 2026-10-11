@@ -230,7 +230,7 @@ function Branch({ branch, changed, ahead, onReview }: { branch?: string; changed
       <p className="mono truncate text-[13px] font-medium text-fg" title={branch}>{branch}</p>
       {bits.length > 0 && <p className={`truncate text-[11.5px] ${changed || ahead ? 'text-warn' : 'text-fg-muted'}`}>{bits.join(' · ')}</p>}
       {onReview && !!changed && (
-        <button type="button" onClick={onReview} className="w-fit text-left text-[11.5px] text-accent underline-offset-2 hover:underline">Review changes</button>
+        <button type="button" onClick={onReview} className="flex w-fit items-center gap-1.5 text-left text-[11.5px] text-accent underline-offset-2 hover:underline">Review changes <kbd aria-hidden className="app-kbd-key">{keys('⇧⌘G')}</kbd></button>
       )}
     </Cell>
   )

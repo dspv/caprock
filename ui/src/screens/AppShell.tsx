@@ -701,6 +701,9 @@ export function AppShell() {
     void newShell(current.projectId, cwd, direction)
   }, [current, focusedSession, newShell, onNewShell])
 
+  // ⇧⌘G opens the diff of the session in front; what that is is known further
+  // down (focusedWorktree), so it is reached through a ref set there.
+  const openChangesRef = useRef<(() => void) | undefined>(undefined)
   const run = useCallback((c: AppCommand) => {
     switch (c.kind) {
       // In the folder of the session in front — its worktree, not the project's root.
@@ -717,6 +720,10 @@ export function AppShell() {
         if (workspaceShown && !frontIsAgent && !deck.open) { setToast('The session deck shows an agent’s figures: bring an agent’s tab to the front.'); break }
         setDeck((d) => ({ ...d, open: !d.open }))
         showWorkspace()
+        break
+      case 'changes':
+        if (openChangesRef.current) openChangesRef.current()
+        else setToast('Changes shows a git project’s diff: bring a session in one to the front.')
         break
       case 'dashboard': if (workspaceShown) onDashboard(); else location.hash = APP_ROUTE; break
       case 'next-tab': dispatch({ type: 'cycle', delta: 1 }); showWorkspace(); break
@@ -981,6 +988,12 @@ export function AppShell() {
     }
     return undefined
   }, [focused, model.projects, source])
+
+  useEffect(() => {
+    openChangesRef.current = focusedWorktree?.repo
+      ? () => onOpenChanges(focusedWorktree.projectId, focusedWorktree.w)
+      : undefined
+  }, [focusedWorktree, onOpenChanges])
 
   // The project the focused session is listed under, named as the sidebar names it.
   const focusedProject = useMemo(() => {

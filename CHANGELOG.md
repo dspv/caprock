@@ -7,6 +7,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **app:** ⇧⌘G (Ctrl+Shift+G) opens the diff of the session in front — its
+  worktree's Changes view — from anywhere in the workspace; the session
+  deck's *Review changes* shows the key.
+
 ## [0.107.3] - 2026-10-11
 
 ### Changed

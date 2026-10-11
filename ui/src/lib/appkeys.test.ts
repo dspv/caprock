@@ -135,6 +135,11 @@ describe('zoom keys', () => {
     expect(matchAppShortcut(k('0', 'Digit0', { metaKey: true }), true)).toEqual({ kind: 'dashboard' })
     expect(matchAppShortcut(k('D', 'KeyD', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'dashboard' })
   })
+  it('opens the diff of the session in front on ⇧⌘G, Ctrl+Shift+G elsewhere', () => {
+    expect(matchAppShortcut(k('G', 'KeyG', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'changes' })
+    expect(matchAppShortcut(k('G', 'KeyG', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'changes' })
+    expect(matchAppShortcut(k('g', 'KeyG', { metaKey: true }), true)).toBeNull()
+  })
   it('maps Ctrl+Shift elsewhere and leaves Ctrl alone to the terminal', () => {
     expect(matchAppShortcut(k('+', 'Equal', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'zoom', step: 1 })
     expect(matchAppShortcut(k('_', 'Minus', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'zoom', step: -1 })

@@ -24,6 +24,7 @@ export type AppCommand =
   | { kind: 'palette' }
   | { kind: 'inspector' }
   | { kind: 'deck' }
+  | { kind: 'changes' }
   | { kind: 'sidebar' }
   | { kind: 'dashboard' }
   | { kind: 'next-tab' }
@@ -83,6 +84,8 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
         case '[': return { kind: 'prev-tab' }
         case ']': return { kind: 'next-tab' }
         case 'e': return { kind: 'split', direction: 'column' }
+        // G for git: the diff of the session in front.
+        case 'g': return { kind: 'changes' }
         default: return null
       }
     }
@@ -97,6 +100,7 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
   switch (k) {
     case 'n': return { kind: 'new-agent' }
     case 'd': return { kind: 'dashboard' }
+    case 'g': return { kind: 'changes' }
     case '[': return { kind: 'prev-tab' }
     case ']': return { kind: 'next-tab' }
     // C and V are the terminal's copy and paste: never ours.
@@ -196,6 +200,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘F', 'Find in the terminal'],
   ['⌘I', 'Inspector'],
   ['⌘B', 'Session deck: the agent’s live figures under its terminal'],
+  ['⇧⌘G', 'Changes: the diff of the session in front'],
   ['⌘\\', 'Hide or show the sidebar'],
   ['⌘0, ⇧⌘D', 'Dashboard'],
   ['⌘,', 'Settings'],
