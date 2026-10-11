@@ -173,7 +173,6 @@ func TestEnableHiveTurnsTheRunnerOnWithoutARestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
-	// The seeded example task is there too — the point is that the new one is.
 	rows, _ := list.([]store.TaskRow)
 	var found bool
 	for _, r := range rows {

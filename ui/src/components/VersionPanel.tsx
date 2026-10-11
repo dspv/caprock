@@ -1,9 +1,12 @@
 /**
  * The version in the status strip, and what a click on it opens: whether an
  * update is out, when Caprock last looked, the update itself in one click
- * where this install can replace itself, and a short "what changed" (owner,
- * 2026-10-11, translated: "why do I need what's new — I want to see whether
- * there is an update and when it was last checked, a small dialog").
+ * where this install can replace itself, and a link to the release notes
+ * (owner, 2026-10-11, translated: "why do I need what's new — I want to see
+ * whether there is an update and when it was last checked, a small dialog").
+ * The notes themselves were in the panel too until the same evening, wrapped
+ * as raw markdown, and the owner found them unreadable: "keep it simple about
+ * the version; whoever needs the release notes will click".
  *
  * Reading /v1/update never touches the network; *Check now* asks the daemon
  * to look (and, in the app, the app's own updater), as the menu's Check for
@@ -17,15 +20,6 @@ import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { upgradeCommands } from './AppUpdateNotice'
 import { Copyable } from './ui'
-
-/** How many lines of the release's notes the panel shows before "the rest". */
-export const NOTES_LINES = 8
-
-/** The first lines of a release's notes, as plain text. */
-export function notesPreview(notes: string | undefined, lines = NOTES_LINES): { text: string; more: boolean } {
-  const all = (notes ?? '').split('\n').map((l) => l.replace(/^#+\s*/, '').replace(/\*\*/g, '')).filter((l) => l.trim() !== '')
-  return { text: all.slice(0, lines).join('\n'), more: all.length > lines }
-}
 
 export function VersionPanel({ shown, title, status, onStatus }: {
   /** The version on screen: the app's own, else the daemon's. */
@@ -54,12 +48,10 @@ export function VersionPanel({ shown, title, status, onStatus }: {
   const available = Boolean(latest && newerVersion(latest, shown))
   const offer = offerFor(info, st, '')
   const commands = st ? upgradeCommands(st) : []
-  const notesFor = st?.notes_for ? v(st.notes_for) : undefined
   // The app and the daemon behind it should run one version: the app replaces
   // its own daemon on launch (ADR-040). When they still differ, say so.
   const daemon = st?.current ? v(st.current) : undefined
   const apart = Boolean(info?.version && daemon && v(info.version) !== daemon)
-  const notes = notesPreview(st?.notes)
   const check = async () => {
     setChecking(true)
     setError('')
@@ -77,25 +69,25 @@ export function VersionPanel({ shown, title, status, onStatus }: {
   return (
     <span ref={box} className="relative inline-flex">
       <button type="button" data-version onClick={() => setOpen((o) => !o)} aria-expanded={open}
-        className="flex items-center gap-1.5 text-fg-faint hover:text-accent" title={[apart ? `The daemon runs ${daemon}` : available ? `Caprock ${latest} is available` : 'Updates and what changed', title].filter(Boolean).join('\n')}>
+        className="flex items-center gap-1.5 text-fg-faint hover:text-accent" title={[apart ? `The daemon runs ${daemon}` : available ? `Caprock ${latest} is available` : 'Version and updates', title].filter(Boolean).join('\n')}>
         {(available || apart) && <span aria-hidden data-version-apart={apart || undefined} className={`h-[6px] w-[6px] rounded-full ${apart ? 'bg-warn' : 'bg-accent'}`} />}
         <span className="mono">{shown}</span>
       </button>
       {open && (
         <div role="dialog" aria-label="Caprock version" data-version-panel
-          className="app-fade-in absolute bottom-[22px] right-0 z-40 grid w-[380px] max-w-[calc(100vw-24px)] gap-2.5 rounded-[10px] border border-[var(--app-hairline-strong)] bg-panel p-3 text-[12px] text-fg shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)]">
+          className="app-fade-in absolute bottom-[22px] right-0 z-40 grid w-[320px] max-w-[calc(100vw-24px)] gap-3 rounded-[12px] border border-[var(--app-hairline-strong)] bg-panel p-4 text-[13.5px] text-fg shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)]">
           <div className="flex items-baseline justify-between gap-2">
-            <span className="font-medium">Caprock <span className="mono">{shown}</span></span>
+            <span className="text-[16px] font-semibold">Caprock <span className="mono">{shown}</span></span>
             {available
-              ? <span className="text-accent">{latest} is available</span>
+              ? <span className="font-medium text-accent">{latest} is out</span>
               : st?.enabled === false
                 ? <span className="text-fg-faint">checks are off</span>
-                : latest ? <span className="text-ok">up to date</span> : null}
+                : latest ? <span className="font-medium text-ok">✓ up to date</span> : null}
           </div>
           <p className="text-fg-muted" data-checked>
             {st?.enabled === false
               ? 'Release checks are off in Settings → Privacy.'
-              : st?.checked_at ? `Last checked ${fmtAgo(st.checked_at, now)}.` : 'Not checked yet.'}
+              : st?.checked_at ? `Checked ${fmtAgo(st.checked_at, now)}` : 'Not checked yet'}
           </p>
           {apart && (
             <p data-apart className="rounded-[7px] border border-warn/40 bg-warn/10 px-2.5 py-2 text-[13px] text-fg">
@@ -114,20 +106,14 @@ export function VersionPanel({ shown, title, status, onStatus }: {
               {commands.map((c) => <Copyable key={c.command} command={c.command} className="break-all" />)}
             </div>
           )}
-          {notes.text && (
-            <div className="grid gap-1 border-t border-[var(--app-hairline)] pt-2">
-              <span className="text-[10.5px] uppercase tracking-[0.08em] text-fg-faint">What changed in {notesFor ?? 'the latest release'}</span>
-              <p className="whitespace-pre-line leading-relaxed text-fg-muted" data-notes>{notes.text}{notes.more ? ' …' : ''}</p>
-            </div>
-          )}
           {error && <p className="break-words text-warn">{error}</p>}
           <div className="flex items-center gap-3">
             <button type="button" onClick={() => void check()} disabled={checking || st?.enabled === false}
-              className="rounded-[6px] border border-[var(--app-hairline-strong)] px-2 py-1 text-fg hover:border-accent disabled:opacity-50">
+              className="rounded-[7px] border border-[var(--app-hairline-strong)] px-3 py-1.5 text-fg hover:border-accent disabled:opacity-50">
               {checking ? 'Checking…' : 'Check now'}
             </button>
             <button type="button" onClick={() => openExternal('https://caprock.dev/changelog')} className="text-fg-muted hover:text-accent">
-              Full changelog →
+              Release notes →
             </button>
           </div>
         </div>
