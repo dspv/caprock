@@ -9,6 +9,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **app:** the pinned Dashboard or Settings tab is its icon and its key —
+  ⌘0, or ⌘, for Settings — the name in the tooltip.
+
+### Changed
+
 - **app:** the version panel is the version, whether it is current, when it
   was checked, the update button and *Release notes →*. The release notes
   themselves left the panel, where they were unreadable.
