@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
-import type { CIState } from './api'
-import { byOSLine, ciElapsed, ciTone, fmtRun, investigateMessage, keyStep, runnerTime } from './ci'
+import { describe, expect, it, vi } from 'vitest'
+import type { CIState, ReleaseCI } from './api'
+import { ago, byOSLine, ciElapsed, ciTone, fmtRun, investigateMessage, keyStep, readCIView, releaseChip, releaseDoneText, releaseEstimateText, runnerTime, saveCIView } from './ci'
 
 describe('the Investigate message', () => {
   it('names the PR, workflow, job and step, links the job, carries the log’s last 40 lines and says what to do', () => {
@@ -58,5 +58,58 @@ describe('the deck’s CI arithmetic', () => {
     expect(fmtRun(187_000)).toBe('3m 07s')
     expect(fmtRun(3_720_000)).toBe('1h 02m')
     expect(fmtRun(undefined)).toBe('')
+  })
+})
+
+describe('the release build', () => {
+  const t = 1_800_000_000_000
+  const running = (estimate?: ReleaseCI['estimate']): ReleaseCI => ({ repo: 'a/b', tag: 'v1.2.0', state: 'running', at: t, estimate,
+    run: { id: 1, name: 'Release', status: 'in_progress', started_at: t - 5 * 60_000, jobs: [] } })
+
+  it('says what is left as an estimate from the last runs’ median', () => {
+    expect(releaseEstimateText(running({ median_ms: 15 * 60_000, runs: 7 }), t)).toBe('about 10 min left (estimate from the last 7 runs)')
+    expect(releaseChip(running({ median_ms: 15 * 60_000, runs: 7 }), t)).toBe('Release v1.2.0 · ~10 min')
+    expect(releaseEstimateText(running({ median_ms: 4 * 60_000, runs: 3 }), t)).toBe('longer than usual: these took about 4 min (estimate from the last 3 runs)')
+    expect(releaseChip(running({ median_ms: 4 * 60_000, runs: 3 }), t)).toBe('Release v1.2.0 · over the usual')
+  })
+
+  it('makes up no estimate without past runs: the chip shows the time so far', () => {
+    expect(releaseEstimateText(running(), t)).toBe('')
+    expect(releaseChip(running(), t)).toBe('Release v1.2.0 · 5m 00s')
+    expect(releaseChip(undefined, t)).toBe('')
+    expect(releaseChip({ ...running(), state: 'pass' }, t)).toBe('')
+  })
+
+  it('says when a finished build was published, or that it failed', () => {
+    const run = { id: 1, name: 'Release', status: 'completed', updated_at: t - 7 * 60_000, jobs: [] }
+    expect(releaseDoneText({ repo: 'a/b', tag: 'v0.109.1', state: 'pass', at: t, run, release: { url: 'u', published_at: t - 3 * 60_000 } }, t)).toBe('v0.109.1 · published 3 min ago ✓')
+    expect(releaseDoneText({ repo: 'a/b', tag: 'v0.109.1', state: 'pass', at: t, run }, t)).toBe('v0.109.1 · built 7 min ago ✓')
+    expect(releaseDoneText({ repo: 'a/b', tag: 'v0.109.1', state: 'fail', at: t, run }, t)).toBe('v0.109.1 · failed 7 min ago ✗')
+    expect(ago(30_000)).toBe('just now')
+    expect(ago(2 * 3_600_000)).toBe('2 h ago')
+  })
+
+  it('names the release in an Investigate message', () => {
+    const m = investigateMessage({ where: { text: 'the release build of v1.2.0', url: 'https://github.com/a/b/actions/runs/1' }, job: { name: 'goreleaser' } })
+    expect(m).toContain('CI failed on the release build of v1.2.0 (https://github.com/a/b/actions/runs/1).')
+    expect(m.endsWith('Investigate why this CI step failed and fix it.')).toBe(true)
+  })
+})
+
+describe('the CI view kept per viewer', () => {
+  it('remembers the choice, and falls back to PR when storage throws', () => {
+    localStorage.clear()
+    expect(readCIView()).toBe('pr')
+    saveCIView('main')
+    expect(readCIView()).toBe('main')
+    localStorage.setItem('caprock.deck.ciView', 'nonsense')
+    expect(readCIView()).toBe('pr')
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked') })
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked') })
+    expect(readCIView()).toBe('pr')
+    expect(() => saveCIView('release')).not.toThrow()
+    get.mockRestore()
+    set.mockRestore()
+    localStorage.clear()
   })
 })

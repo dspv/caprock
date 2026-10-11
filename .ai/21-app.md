@@ -404,7 +404,41 @@ One window, three regions:
   grows the deck. Asked every 12 s while a job runs, else every minute,
   only while the deck is open and the window visible; the daemon keeps a
   commit's runs 10 s while one runs and 2 min once settled. Not connected,
-  no PR and no runs are one short line each. It replaced *Context*, which
+  no PR and no runs are one short line each. A switch beside the label
+  (owner, 2026-10-12, translated: "Can I also see here, in the deck, the
+  status of the release build? And whatever else matters to me") picks
+  **PR** (the above), **Release** or **Main**, kept per viewer in
+  `localStorage`. *Release* is the repository's newest release build — the
+  newest run started by a tag push or a release, found for any repository
+  without knowing its workflow file (`GET /v1/sessions/{id}/ci/release`):
+  its tag, a mark, the time so far ticking and *about N min left (estimate
+  from the last K runs)*, the median of that workflow's last successful
+  release runs from GitHub's own run times, or nothing when fewer than two
+  exist; once done, *v0.109.1 · published 3 min ago ✓* linking the GitHub
+  release (else *built*, or *failed … ✗*), then its jobs as the PR view
+  draws them, with steps, errors and *Investigate*. *Main* is the newest run
+  of each workflow on the default branch, a header per workflow with its
+  mark (`GET /v1/sessions/{id}/ci/main`), so a red default branch shows at
+  once. The repository is the session's directory's remote; a folder with
+  none, a remote off GitHub and GitHub not connected are one line each, the
+  last with the same connect button. While a release builds, a chip
+  *Release v0.109.1 · ~6 min* sits at the top of the cell in the PR and
+  Main views; a click opens Release. The release build is asked whatever
+  the view (12 s while it runs, else a minute, only while the deck is
+  open), Main only while it is shown. The cell keeps its size. Every PR row
+  in *Pull requests*, the release tag line and each Main workflow header
+  carry a **mini pipeline** (owner, 2026-10-12, translated: "I'd like the
+  CI/CD stages together with the pull requests — like GitLab's pipeline
+  indicators"; `components/MiniPipeline.tsx`): a circle per job — ✓ on
+  green, ✗ on red, a turning ring running, hollow queued, a grey slash
+  skipped or cancelled — joined by a thin line within a workflow and set
+  apart between workflows, up to 14 and then *+N*. GitHub's API does not
+  report `needs`, so the jobs stand in the order they started, the ones not
+  started last. Hover names the job, its state and its time; a click opens
+  that job, with its steps and error, in the CI cell (for a PR row, the CI
+  cell turns to that PR, `GET /v1/sessions/{id}/ci?pr=N`); a check that is
+  no Actions job opens its own link. A PR row's circles come from the
+  checks the PRs cell already reads, so they cost no extra request. It replaced *Context*, which
   repeated the status bar. The minute chart, the plan windows, *Now* and *Spent* left the
   deck on 2026-10-11 (owner, translated: "we already have charts
   everywhere", "Spent doesn't help", "Working now is debatable"); the
@@ -1605,6 +1639,17 @@ the user guide [docs/app.md § Updates](../docs/app.md#updates).
   before it installs. A half-typed line lives in the agent's process and is
   repainted with the rest. Checked end to end by `bench/update.mjs`
   (two signed builds, a loopback update server, the fake `claude`).
+- **The Dock icon after an update** (`src/dock_icon.rs`, macOS, from a real
+  `.app` only). The bundle is swapped in place, and the Dock and
+  LaunchServices kept the old icon cached: 0.109.1's new icon did not show
+  on updated installs. Every launch sets the running app's Dock tile from
+  the bundle's `Contents/Resources/icon.icns`
+  (`NSApplication.setApplicationIconImage`, main thread; the badge is the
+  tile's label and draws over it). When the version differs from
+  `<data_dir>/app-last-run-version` (absent counts as different), the shell
+  records it and, on a background thread, touches the bundle's mtime and
+  runs `lsregister -f <bundle>` (ten seconds at most, every error ignored).
+  Never `killall Dock`, no prompt, no privilege.
 - **What it sends** is in ADR-042: the plugin's `User-Agent`, an `Accept`
   header, no identifier and no version in the URL.
 

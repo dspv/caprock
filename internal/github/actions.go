@@ -75,15 +75,21 @@ type CIJob struct {
 
 // CIRun is one workflow run of a commit.
 type CIRun struct {
-	ID         int64   `json:"id"`
-	Name       string  `json:"name"`
-	Event      string  `json:"event,omitempty"`
-	Status     string  `json:"status"`
-	Conclusion string  `json:"conclusion,omitempty"`
-	Attempt    int     `json:"attempt,omitempty"`
-	HTMLURL    string  `json:"html_url,omitempty"`
-	CreatedAt  int64   `json:"created_at,omitempty"`
-	UpdatedAt  int64   `json:"updated_at,omitempty"`
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	Event      string `json:"event,omitempty"`
+	Status     string `json:"status"`
+	Conclusion string `json:"conclusion,omitempty"`
+	Attempt    int    `json:"attempt,omitempty"`
+	HTMLURL    string `json:"html_url,omitempty"`
+	CreatedAt  int64  `json:"created_at,omitempty"`
+	UpdatedAt  int64  `json:"updated_at,omitempty"`
+	// StartedAt is when this attempt started (GitHub's run_started_at).
+	StartedAt int64 `json:"started_at,omitempty"`
+	// HeadBranch is the branch, or for a tag push or a release the tag.
+	HeadBranch string  `json:"head_branch,omitempty"`
+	HeadSHA    string  `json:"head_sha,omitempty"`
+	WorkflowID int64   `json:"workflow_id,omitempty"`
 	Jobs       []CIJob `json:"jobs"`
 }
 
@@ -101,6 +107,8 @@ type CIOS struct {
 type CI struct {
 	Repo    string `json:"repo"`
 	HeadSHA string `json:"head_sha"`
+	// Branch is set on a branch's CI (MainCI), "" on a commit's.
+	Branch string `json:"branch,omitempty"`
 	// State: running (a run is queued or in progress), fail, pass, or none.
 	State    string  `json:"state"`
 	Runs     []CIRun `json:"runs"`
@@ -138,15 +146,25 @@ type ciCache struct {
 
 // apiRun, apiStep and apiJob are the parts of GitHub's answers read here.
 type apiRun struct {
-	ID         int64  `json:"id"`
-	Name       string `json:"name"`
-	Event      string `json:"event"`
-	Status     string `json:"status"`
-	Conclusion string `json:"conclusion"`
-	RunAttempt int    `json:"run_attempt"`
-	HTMLURL    string `json:"html_url"`
-	CreatedAt  string `json:"created_at"`
-	UpdatedAt  string `json:"updated_at"`
+	ID           int64  `json:"id"`
+	Name         string `json:"name"`
+	Event        string `json:"event"`
+	Status       string `json:"status"`
+	Conclusion   string `json:"conclusion"`
+	RunAttempt   int    `json:"run_attempt"`
+	HTMLURL      string `json:"html_url"`
+	CreatedAt    string `json:"created_at"`
+	UpdatedAt    string `json:"updated_at"`
+	RunStartedAt string `json:"run_started_at"`
+	HeadBranch   string `json:"head_branch"`
+	HeadSHA      string `json:"head_sha"`
+	WorkflowID   int64  `json:"workflow_id"`
+}
+
+func (ar apiRun) run() CIRun {
+	return CIRun{ID: ar.ID, Name: ar.Name, Event: ar.Event, Status: ar.Status, Conclusion: ar.Conclusion, Attempt: ar.RunAttempt,
+		HTMLURL: ar.HTMLURL, CreatedAt: unixMS(ar.CreatedAt), UpdatedAt: unixMS(ar.UpdatedAt), StartedAt: unixMS(ar.RunStartedAt),
+		HeadBranch: ar.HeadBranch, HeadSHA: ar.HeadSHA, WorkflowID: ar.WorkflowID, Jobs: []CIJob{}}
 }
 
 type apiStep struct {
@@ -234,7 +252,7 @@ func (s *Service) CIBySHA(ctx context.Context, repo Repo, sha string) (CI, *Erro
 	if s.source() == "" {
 		return CI{}, errorf(KindNotConnected, "Reading the CI", "GitHub is not connected.")
 	}
-	ci, ce := s.readCI(ctx, repo, sha, e.ci, have)
+	ci, ce := s.readCI(ctx, repo, sha, e.ci)
 	if ce != nil {
 		if have {
 			e.ci.Error = ce
@@ -265,7 +283,7 @@ func ciKeep(ci CI) time.Duration {
 	return ciSettled
 }
 
-func (s *Service) readCI(ctx context.Context, repo Repo, sha string, prev CI, havePrev bool) (CI, *Error) {
+func (s *Service) readCI(ctx context.Context, repo Repo, sha string, prev CI) (CI, *Error) {
 	doing := "Reading the GitHub Actions runs of " + repo.FullName()
 	res, ce := s.call(ctx, request{method: http.MethodGet, doing: doing,
 		path: fmt.Sprintf("%s/actions/runs?head_sha=%s&per_page=%d", repoPath(repo), url.QueryEscape(sha), ciRunsShown)})
@@ -278,17 +296,24 @@ func (s *Service) readCI(ctx context.Context, repo Repo, sha string, prev CI, ha
 	if de := decode(res, doing, &list); de != nil {
 		return CI{}, de
 	}
-	// A settled run whose update time is unchanged keeps the jobs read before.
+	out := CI{Repo: repo.FullName(), HeadSHA: sha, State: "none", ByOS: []CIOS{}, At: s.Now().UnixMilli()}
+	out.Runs, out.Error = s.withJobs(ctx, repo, list.Runs, prev.Runs)
+	settle(&out)
+	return out, nil
+}
+
+// withJobs turns GitHub's runs into CIRuns with their jobs. A settled run
+// whose update time and attempt are unchanged since prev keeps the jobs read
+// then; a failed jobs read keeps them too, and is returned.
+func (s *Service) withJobs(ctx context.Context, repo Repo, runs []apiRun, prev []CIRun) ([]CIRun, *Error) {
 	before := map[int64]CIRun{}
-	if havePrev {
-		for _, r := range prev.Runs {
-			before[r.ID] = r
-		}
+	for _, r := range prev {
+		before[r.ID] = r
 	}
-	out := CI{Repo: repo.FullName(), HeadSHA: sha, State: "none", Runs: []CIRun{}, ByOS: []CIOS{}, At: s.Now().UnixMilli()}
-	for _, ar := range list.Runs {
-		run := CIRun{ID: ar.ID, Name: ar.Name, Event: ar.Event, Status: ar.Status, Conclusion: ar.Conclusion, Attempt: ar.RunAttempt,
-			HTMLURL: ar.HTMLURL, CreatedAt: unixMS(ar.CreatedAt), UpdatedAt: unixMS(ar.UpdatedAt), Jobs: []CIJob{}}
+	out := make([]CIRun, 0, len(runs))
+	var err *Error
+	for _, ar := range runs {
+		run := ar.run()
 		old, ok := before[run.ID]
 		if ok && run.Status == "completed" && old.Status == "completed" && old.UpdatedAt == run.UpdatedAt && old.Attempt == run.Attempt {
 			run.Jobs = old.Jobs
@@ -296,14 +321,13 @@ func (s *Service) readCI(ctx context.Context, repo Repo, sha string, prev CI, ha
 			if ok {
 				run.Jobs = old.Jobs
 			}
-			out.Error = je
+			err = je
 		} else {
 			run.Jobs = jobs
 		}
-		out.Runs = append(out.Runs, run)
+		out = append(out, run)
 	}
-	settle(&out)
-	return out, nil
+	return out, err
 }
 
 func (s *Service) readJobs(ctx context.Context, repo Repo, runID int64) ([]CIJob, *Error) {

@@ -74,6 +74,13 @@ func TestSessionCI(t *testing.T) {
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `##[error]Process completed`) || !strings.Contains(w.Body.String(), `"error_line":1`) {
 		t.Fatalf("log: %d %s", w.Code, w.Body.String())
 	}
+	// The PR asked for by number (a click on its mini pipeline), its job's log in that view.
+	if w := call(t, s, machine, "", "GET", "/v1/sessions/s1/ci?pr=5", ""); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"number":5`) || !strings.Contains(w.Body.String(), `"ci"`) {
+		t.Fatalf("?pr=5: %d %s", w.Code, w.Body.String())
+	}
+	if w := call(t, s, machine, "", "GET", "/v1/sessions/s1/ci/jobs/71/log?view=pr&pr=5", ""); w.Code != http.StatusOK {
+		t.Fatalf("log ?pr=5: %d %s", w.Code, w.Body.String())
+	}
 	if w := call(t, s, machine, "", "GET", "/v1/sessions/s1/ci/jobs/99/log", ""); w.Code != http.StatusNotFound {
 		t.Fatalf("a job outside the session's CI: %d %s", w.Code, w.Body.String())
 	}

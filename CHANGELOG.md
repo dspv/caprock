@@ -9,6 +9,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **app:** the status bar says whose load it shows: *agent cpu 17% ram 2.0
+  GB* is the session's own processes (the agent and what it runs), and a new
+  *caprock 160 MB* beside it is Caprock itself (daemon, app, terminal
+  holders), with the split in its tooltip.
+
+- **ui:** *Settings* in the dashboard header is a framed button with a gear,
+  like *Feedback* beside it, instead of grey text.
+
 - **app:** the agent cockpit puts what people watch first: the agent with a
   headline figure beside it, then what it and its subagents are doing now,
   its task list, the context and the plan limits; *Spent this session*
@@ -34,6 +42,34 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 - **app:** the update card no longer stacks on top of the version panel:
   while the panel is open (it offers the same update), the card steps aside.
+
+### Added
+
+- **app:** the session deck's CI cell has a switch: **PR** (as before),
+  **Release** and **Main**, remembered per viewer. *Release* is the
+  repository's newest release build — found from the run a tag push or a
+  release started, for any repository — with its tag, the time so far,
+  *about N min left (estimate from the last K runs)* from the median of
+  that workflow's past successful runs, and its jobs and steps with errors
+  and *Investigate*; once done, *v1.2.3 · published 3 min ago ✓* with a
+  link to the release. *Main* is the newest run of each workflow on the
+  default branch, so a red default branch shows at once. While a release
+  builds, a chip *Release v1.2.3 · ~6 min* shows from the other views
+  (`GET /v1/sessions/{id}/ci/release`, `GET /v1/sessions/{id}/ci/main`).
+- **app:** a GitLab-style **mini pipeline** beside each pull request in the
+  deck, beside the release tag and beside each default-branch workflow: a
+  circle per job (✓ passed, ✗ failed, a turning ring running, hollow
+  queued, a slash skipped), joined within a workflow. Hover says the job,
+  its state and its time; a click opens that job's steps and error in the
+  CI cell, turning it to that pull request.
+
+### Fixed
+
+- **app:** the Dock shows the new icon after an in-app update. On macOS the
+  app sets its Dock tile from its own bundle's icon at every launch, and on
+  the first launch of a new version re-registers the bundle with
+  LaunchServices, so the cached old icon is replaced without restarting the
+  Dock.
 
 ## [0.109.1] - 2026-10-12
 
