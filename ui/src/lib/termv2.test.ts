@@ -196,6 +196,21 @@ describe('TermClient (protocol v2)', () => {
     expect(FakeSocket.all).toHaveLength(1)
   })
 
+  it('reconnects to the new process after a restart exit, from its start, without ending', () => {
+    const t = mount()
+    last().accept()
+    last().text({ hello: { v: 2, offset: 0, reset: true, ack: 0 } })
+    last().bytes(0, 'old')
+    last().text({ exit: { code: 0, restart: 1 } })
+    last().drop(1000)
+    expect(t.exit()).toBeUndefined()
+    expect(t.states.at(-1)).toBe('reconnecting')
+    vi.advanceTimersByTime(BACKOFF_MAX_MS)
+    expect(FakeSocket.all.length).toBeGreaterThan(1)
+    // A new process has a new ring: nothing is asked "since" the old one.
+    expect(last().url).not.toContain('since=')
+  })
+
   it('reconnects forever, backing off to 15 s, and at once when the page wakes', () => {
     const t = mount()
     for (let i = 0; i < 200; i++) {

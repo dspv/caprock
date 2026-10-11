@@ -51,13 +51,20 @@ type fakeSession struct {
 	termed     atomic.Bool
 	// written is every byte typed into the session.
 	written []byte
+	// onWrite, when set, sees each write after it is recorded: a test's
+	// stand-in for a program reacting to a key.
+	onWrite func([]byte)
 }
 
 func (s *fakeSession) Output() io.Reader { return &chanReader{ch: s.out, done: s.done} }
 func (s *fakeSession) Write(p []byte) (int, error) {
 	s.mu.Lock()
 	s.written = append(s.written, p...)
+	react := s.onWrite
 	s.mu.Unlock()
+	if react != nil {
+		react(p)
+	}
 	if strings.Contains(string(p), "exit") {
 		s.finish(7)
 	}

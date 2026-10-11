@@ -300,7 +300,7 @@ internal/board/       # task board: verification runner, destructive-command pol
 internal/orchestrator/ # orchestrator + worker lifecycle, the mailbox-router reconciler — Orchestrate
 ui/                   # React + Vite app; builds into internal/api/dist (go:embed)
 pricing/              # pricing.json + embed.go (versioned pricing table)
-testdata/             # hook payloads, transcript fixtures + expected totals, loop fixtures, fakeclaude (a Go line-REPL `claude`)
+testdata/             # hook payloads, transcript fixtures + expected totals, loop fixtures, fakeclaude (a Go line-REPL `claude`; with a permission flag it draws the mode footer and cycles it on Shift+Tab)
 ```
 
 Tooling, versions, CI, and release mechanics: [10-infrastructure.md](10-infrastructure.md).

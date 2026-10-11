@@ -195,6 +195,21 @@ type Manager struct {
 	// the writes in flight (see persistPermission).
 	persistMu  sync.Mutex
 	persisting sync.WaitGroup
+	// BypassConsent reports whether Claude Code's one-time bypass warning
+	// has been accepted in the settings a session started with configDir
+	// ("" for the user's own) reads. A Claude Code session is started with
+	// --allow-dangerously-skip-permissions only when it has, so Shift+Tab can
+	// reach bypass without that start opening on the warning (ADR-054). Nil
+	// means never.
+	BypassConsent func(configDir string) bool
+	// modeMu guards modes and restarting (modeswitch.go).
+	modeMu sync.Mutex
+	// modes is each owned session's permission mode as last seen: from its
+	// own hooks, or read off its screen after a switch.
+	modes map[string]seenMode
+	// restarting marks a session being stopped to be resumed in another
+	// mode, so its terminals are told to reconnect rather than that it ended.
+	restarting map[string]bool
 	// NewSessionID generates a session id; overridable in tests.
 	NewSessionID func() string
 	// Now is the clock chat directory names are stamped from; overridable in
@@ -504,6 +519,9 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 			SessionID: sessionID, Cwd: cwd, Model: req.Model, Mode: req.PermissionMode,
 			Resume: req.Resume, NativeResume: req.NativeResume, Fork: req.Fork, Extra: req.Args,
 			Prompt: req.Prompt, AddDirs: m.ownDirs(),
+		}
+		if agent == AgentClaude && m.BypassConsent != nil {
+			in.AllowBypass = m.BypassConsent(req.ConfigDir)
 		}
 		if (agent == AgentClaude || agent == AgentCodex || agent == AgentGrok) && m.ProjectPrompt != nil {
 			in.SystemPrompt = m.ProjectPrompt(cwd)
@@ -966,6 +984,7 @@ func (a *Agent) wait(m *Manager) {
 	delete(m.agents, a.SessionID)
 	m.mu.Unlock()
 	m.clearPermission(a.SessionID)
+	m.forgetMode(a.SessionID)
 	if a.Kind != KindShell {
 		_ = m.store.WithTx(context.Background(), func(q store.Querier) error { return store.SetExit(context.Background(), q, a.SessionID, code) })
 	}

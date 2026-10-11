@@ -274,6 +274,8 @@ var pairedDeviceRoutes = map[string]bool{
 	// The permission prompt an owned session waits on (ADR-035); the live
 	// socket already carries it to a viewer.
 	"GET /v1/agents/{id}/permission": true,
+	// A session's permission mode, as its chip shows it (ADR-054).
+	"GET /v1/sessions/{id}/permission-mode": true,
 	// The messages waiting for an owned session's turn to end (ADR-053);
 	// the live socket carries every change to a viewer too.
 	"GET /v1/agents/{id}/queue": true,
@@ -350,6 +352,12 @@ var controllerRoutes = map[string]bool{
 
 	// Answer a permission prompt with a button (ADR-035).
 	"POST /v1/agents/{id}/permission": true,
+
+	// Change an owned session's permission mode (ADR-054): Shift+Tab typed
+	// in, which a controller can already type, or the same conversation
+	// resumed in a new process — as continuing one is. Bypass is allowed
+	// as it is for a start (ADR-034); its one-time consent is the machine's.
+	"POST /v1/agents/{id}/permission-mode": true,
 
 	// The chat field: send or queue a message, and change, drop or send now
 	// one that waits (ADR-053). Typing, as /input is.

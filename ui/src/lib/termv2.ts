@@ -109,6 +109,9 @@ export class TermClient {
   private stateNow: TermState = 'connecting'
   /** Let go on purpose while out of sight (the app's hidden tabs); `wake` resumes. */
   private suspended = false
+  /** The program exited to be started again under the same id (a
+   *  permission-mode restart): the close that follows is reconnected. */
+  private restarting = false
 
   constructor(private readonly opts: TermOptions) {
     this.random = opts.random ?? Math.random
@@ -262,6 +265,14 @@ export class TermClient {
       this.ws = null
       clearInterval(this.pingTimer)
       if (this.disposed) return
+      if (this.restarting) {
+        // The new process takes a moment to start; the daemon answers 501
+        // until it has, and each failure is retried with the usual backoff.
+        this.restarting = false
+        this.setState('reconnecting')
+        this.retry.fail()
+        return
+      }
       if (this.ended || e?.code === 1000) {
         this.ended = true
         this.setState('ended')
@@ -340,7 +351,13 @@ export class TermClient {
     if (m.ping !== undefined) { ws.send(JSON.stringify({ pong: m.ping })); return }
     const reset = m.reset as { offset: number } | undefined
     if (reset) { this.snapshotAt = reset.offset; return }
-    const exit = m.exit as { code: number } | undefined
+    const exit = m.exit as { code: number; restart?: number } | undefined
+    if (exit?.restart) {
+      // A new process, a new ring: the next connect asks for all of it.
+      this.restarting = true
+      this.pos = null
+      return
+    }
     if (exit) {
       this.ended = true
       this.opts.callbacks.exit?.(exit.code)

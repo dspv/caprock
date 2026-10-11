@@ -218,7 +218,14 @@ func (h *wsHub) serveTermV2(s *Server, src termV2Source, w http.ResponseWriter, 
 				_ = t.text(map[string]uint64{"ack": a})
 			}
 			code, _ := ts.Exited()
-			_ = t.text(map[string]map[string]int{"exit": {"code": code}})
+			exit := map[string]int{"code": code}
+			if s.restarting(id) {
+				// The same conversation is being resumed in a new process
+				// under this id (a permission-mode restart): the terminal
+				// reconnects to it rather than closing the tab.
+				exit["restart"] = 1
+			}
+			_ = t.text(map[string]map[string]int{"exit": exit})
 			_ = c.Close(websocket.StatusNormalClosure, "session ended")
 			return
 		}

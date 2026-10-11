@@ -26,6 +26,7 @@ import { SpendSpark } from './SpendScrub'
 import { AgentCharacter, agentName, characterFor } from './Characters'
 import { SubscriptionTag } from './SubscriptionPicker'
 import { TodoBlock } from './SessionTodos'
+import { PermissionModeChip } from './PermissionModeChip'
 import {
   askLine, backgroundAgents, subagentChips, backgroundLabel, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runningTool, runShare, runVerb, subagentWaiting, toolKind, toolRuns, turnCosts,
   type CockpitState, type SubagentChip, type ToolKind, type ToolRun, type TurnCost,
@@ -114,7 +115,7 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
   const plan = planWindowsFor(s.agent, summary)
   return (
     <>
-      <Hero s={s} state={state} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s)} subs={subs} permission={permission} />
+      <Hero s={s} sessionId={sessionId} state={state} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s)} subs={subs} permission={permission} />
       <Spend s={s} turns={turns} sessionId={sessionId} events={main} now={now} />
       <ContextMeter s={s} />
       <NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} permission={permission} background={backgroundAgents(s)} now={now} />
@@ -137,7 +138,7 @@ export function SectionLabel({ children, right }: { children: ReactNode; right?:
   )
 }
 
-function Hero({ s, state, now, background, subs, permission }: { s: SessionSummary; state: CockpitState; now: number; background: number; subs?: SubagentsNow; permission?: Permission | null }) {
+function Hero({ s, sessionId, state, now, background, subs, permission }: { s: SessionSummary; sessionId: string; state: CockpitState; now: number; background: number; subs?: SubagentsNow; permission?: Permission | null }) {
   const since = s.worked_at || s.last_event_at
   const strip = subagentChips(subs, permission)
   const saysBackground = background > 0 && state === 'working'
@@ -152,6 +153,9 @@ function Hero({ s, state, now, background, subs, permission }: { s: SessionSumma
           {s.model_display || s.model ? <span> · {s.model_display || s.model}</span> : null}
           <SubscriptionTag id={s.subscription} />
         </p>
+        {/* The permission mode, and for a session Caprock started, the
+          * way to change it while it runs (ADR-054). */}
+        {state !== 'ended' && <p className="flex"><PermissionModeChip sessionId={sessionId} agent={s.agent} /></p>}
         <p className={`flex items-center gap-1.5 text-[12px] font-medium ${STATE_TEXT[state]}`} role="status">
           <span className={`cockpit-dot inline-block h-[7px] w-[7px] rounded-full`} data-state={state} />
           {background > 0 && state === 'working' ? backgroundLabel(background) : STATE_LABEL[state]}

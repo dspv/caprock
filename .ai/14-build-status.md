@@ -73,6 +73,26 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-11 — The permission mode changes in a running session (ADR-054)
+
+A chip in the session header and the agent cockpit says the mode a session
+runs in, and for a Claude Code session Caprock started it is a menu:
+default, accept edits, plan, bypass (when the process can reach it) and
+auto are reached by Shift+Tab typed in and confirmed on the footer; the rest
+by *Restart in …*, which resumes the same conversation under its own id in
+the same tab after a confirm, at the prompt only, with the bypass consent
+where it applies. New Claude Code sessions carry
+`--allow-dangerously-skip-permissions` where that consent was given. New
+`GET /v1/sessions/{id}/permission-mode`, `POST
+/v1/agents/{id}/permission-mode`; the terminal's exit frame says `restart`.
+The fake `claude` draws the footer and cycles on Shift+Tab when started with
+a permission flag. Verified in a headless browser against a preview daemon
+on the fake: switch to plan, restart into bypass with the consent, back to
+accept edits by keys, the cockpit and a 390 px phone. **Not verified against
+the real `claude`** (it opens a Keychain dialog from tests): the cycle, the
+footer words and the allow flag's behaviour were read from 2.1.296's
+`--help` and bundled source.
+
 ### 2026-10-11 — 0.108.1: 0.108.0, published
 
 The v0.108.0 tag stopped at the release workflow's golangci-lint (two

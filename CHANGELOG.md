@@ -7,6 +7,27 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **app:** change a running session's permission mode. A chip in the session
+  header and the agent cockpit says the mode a Claude Code session is in; for
+  one Caprock started it is a menu. Default, accept edits, plan, bypass (when
+  the process can reach it) and auto are switched in place by Shift+Tab,
+  typed in and checked on the session's own footer; bypass in a process that
+  cannot reach it, and don't ask, are *Restart in …*: after a confirm, at the
+  prompt only, the same conversation is resumed in a new process in the same
+  tab, with the one-time bypass consent where it applies. A session started
+  elsewhere shows its mode read-only. New `GET
+  /v1/sessions/{id}/permission-mode` and `POST
+  /v1/agents/{id}/permission-mode` (ADR-054).
+
+### Changed
+
+- **agents:** a new Claude Code session is started with
+  `--allow-dangerously-skip-permissions` where the bypass warning was already
+  accepted, so bypass is a Shift+Tab away in it without being its mode
+  (ADR-054). Without that consent nothing changes.
+
 ## [0.108.1] - 2026-10-11
 
 Ships everything listed under 0.108.0: its tag failed the release lint on a

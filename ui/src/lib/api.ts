@@ -1520,6 +1520,28 @@ export const api = {
   /** Answer it: the daemon presses the key, while `promptId` is still the one waiting (409 otherwise). */
   answerPermission: (id: string, promptId: string, choice: PermissionChoice) =>
     post<void>(`/v1/agents/${encodeURIComponent(id)}/permission`, { id: promptId, choice }),
+  /** A session's permission mode and, for one Caprock started, what can change it (ADR-054). */
+  permissionMode: (id: string) => get<PermissionModeView>(`/v1/sessions/${encodeURIComponent(id)}/permission-mode`),
+  /** Switch an owned session's mode by Shift+Tab, or with `restart`, resume it in a new process in that mode. */
+  setPermissionMode: (id: string, mode: string, restart = false) =>
+    post<PermissionModeView>(`/v1/agents/${encodeURIComponent(id)}/permission-mode`, { mode, restart }),
+}
+
+/** GET /v1/sessions/{id}/permission-mode (ADR-054). */
+export interface PermissionModeView {
+  session_id: string
+  /** Claude Code's word: default, acceptEdits, plan, bypassPermissions, auto, dontAsk; '' unknown. */
+  mode: string
+  /** Where it was learned: the footer now, a hook, a switch Caprock saw take, the command line. */
+  source?: 'screen' | 'hook' | 'switch' | 'launch'
+  /** A Claude Code session Caprock started and holds: the mode can be changed here. */
+  switchable: boolean
+  /** Modes Shift+Tab reaches in this process ("auto" only if the account has it). */
+  in_session?: string[]
+  /** Modes only a restart in a new process reaches. */
+  restart?: string[]
+  /** What keeps a switch from happening now. */
+  waiting?: QueueWaiting
 }
 
 /** One subagent working in a session (GET /v1/sessions/{id}/subagents). */

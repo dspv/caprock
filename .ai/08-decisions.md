@@ -2912,3 +2912,72 @@ answers a different question — WP-13's rule stands).
 **Revisit if** Claude Code reports an interrupted turn in a hook (then Esc
 can deliver too), another agent gains a turn-end signal, or people ask to
 reorder the queue.
+
+## ADR-054 — The permission mode changes in a running session: Shift+Tab typed in, or the same conversation restarted in the new mode
+
+**Date:** 2026-10-11 · **Status:** accepted (owner asked for it, translated:
+"I need to be able to change the approval scheme — ask, bypass and so on —
+in an already running session; this is very, very important")
+
+**Context.** The mode was chosen once, at the start, and the only way to
+change it was the terminal. What Claude Code allows was read from 2.1.296
+itself — `claude --help` and the bundled source — not from memory:
+
+- Shift+Tab (`chat:cycleMode`, sent as `ESC [ Z`; `meta+m` only on
+  Windows under a Node runtime outside 22.17–22.x and 24.2+; the native
+  build takes Shift+Tab) cycles a live session: default →
+  acceptEdits → plan → bypassPermissions → auto → default. Bypass is in the
+  cycle only when the process was started with
+  `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions`
+  or `--permission-mode bypassPermissions` (`isBypassPermissionsModeAvailable`);
+  auto only when the account's auto-mode gate is open. Setting bypass in a
+  process without it is refused: "the session was not launched with
+  --dangerously-skip-permissions".
+- The footer names the mode: `⏸ manual mode on` (the default is titled
+  *Manual* in 2.1.29x), `⏸ plan mode on`, `⏵⏵ accept edits on`,
+  `⏵⏵ bypass permissions on`, `⏵⏵ auto mode on`, `⏵⏵ don't ask on`.
+- Every hook payload carries `permission_mode`, but no hook fires when the
+  mode changes, so only the screen confirms a switch.
+- `--allow-dangerously-skip-permissions` shows the one-time bypass warning
+  at start exactly as `--dangerously-skip-permissions` does, unless
+  `skipDangerousModePermissionPrompt` is already set.
+
+**Decision.**
+
+- **A chip says the mode** in the session header and the agent cockpit: the
+  footer read now, else the newest hook or Caprock's own switch, else the
+  command line. For a session Caprock did not start it is read-only and its
+  tooltip says Shift+Tab in that terminal (rule 7). Other agents show none.
+- **Switching in the session is typing Shift+Tab**, one press at a time,
+  reading the footer after each, until it shows the mode asked for. It stops
+  when a press changes nothing (Shift+Tab rebound, a footer hidden) or the
+  cycle comes round without the mode (auto on an account without it), and
+  says where the session was left. Never while a permission prompt or a
+  question is on the screen, and never mid-turn on a way that passes through
+  bypass.
+- **A mode the process cannot reach is "Restart in …"**: confirmed first,
+  only with the agent at its prompt, the process is stopped and the same
+  conversation resumed under its own id with the new flag, the model it had
+  and the size of its terminal. The terminal keeps the tab: its exit frame
+  says `restart` and it reconnects to the new process. A restart into
+  bypass asks for the ADR-041 consent like any bypass start.
+- **New Claude Code sessions get `--allow-dangerously-skip-permissions`
+  where the bypass warning was already accepted**, in the settings the
+  session reads (a subscription's own, ADR-048), so bypass is a Shift+Tab
+  away without a restart. Without the consent the flag is not added: it
+  would open the session on the warning whose default is *No, exit*, which
+  is what ADR-041 exists to prevent. Consent is never written for the user.
+
+**Rejected.**
+
+- **Always adding the allow flag.** A new user would meet Claude Code's
+  warning on every start; silently writing the consent to avoid it is the
+  path ADR-041 rejected.
+- **Counting presses from a table instead of reading the footer.** Whether
+  auto is in the cycle depends on the account, and a user can rebind the
+  key; a count would land in a mode nobody chose and report success.
+- **Setting the mode through a hook's `setMode` permission update.** It
+  answers a permission request, so it exists only while one is open — the
+  moment the switcher refuses to act.
+- **Restarting mid-turn.** It cuts off the work in flight; the menu waits for
+  the turn to end instead.
