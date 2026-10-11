@@ -28,6 +28,16 @@ Each target first builds the daemon from this checkout into
 as sidecars; the app installs both into its data directory's `bin/`. Bundle id `dev.caprock.app`, minimum macOS 13. Builds are unsigned
 (ad-hoc on macOS) until the owner's signing decisions say otherwise.
 
+## The app icon
+
+`app/icon-src/icon.svg` is the source: a large filled amber triangle with
+rounded corners on a dark tile, drawn on the macOS icon grid (an 824 px tile
+with 100 px clear on every side of 1024) so it sits the same size as its Dock
+neighbours (owner, 2026-10-11: big, a plain coloured triangle). After editing
+it, run `app/icon-src/render.sh` (needs `rsvg-convert` and `magick`); it
+writes every PNG, `icon.icns` and `icon.ico` in `src-tauri/icons`, which are
+committed. The menu bar's `tray.png` is separate.
+
 ## Trying a change on your own Mac
 
 `make app-local` builds this checkout's app and puts it in place of the one

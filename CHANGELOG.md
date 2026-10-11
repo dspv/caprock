@@ -7,6 +7,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **app:** the Dock and taskbar icon is a large filled amber triangle on a
+  dark tile, sized to the macOS icon grid, in place of the outlined mark that
+  filled its square and read small beside its neighbours.
+
 ## [0.109.0] - 2026-10-11
 
 ### Added
