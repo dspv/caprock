@@ -9,6 +9,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **app:** the sidebar's *Projects* heading counts them — *● 3 of 12* has
+  something running — and *Outside projects* can be hidden like any project.
+
+### Changed
+
 - **app:** the version panel is the version, whether it is current, when it
   was checked, the update button and *Release notes →*. The release notes
   themselves left the panel, where they were unreadable.

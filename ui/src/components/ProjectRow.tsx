@@ -240,6 +240,15 @@ export const ProjectRow = memo(function ProjectRow({
             <PlusIcon size={13} />
           </button>
         )}
+        {/* Outside projects is a group, not a folder: only hide and show,
+          * so it can leave the list like any project (owner, 2026-10-11). */}
+        {isGroup && onHide && (
+          <span className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 group-hover:flex group-focus-within:flex">
+            {hidden
+              ? <RowAction label={`Show ${p.name} in the list again`} onClick={() => onHide(id, false)}><EyeIcon size={13} /></RowAction>
+              : <RowAction label={`Hide ${p.name}: it moves under Hidden; what runs there keeps running`} onClick={() => onHide(id, true)}><EyeOffIcon size={13} /></RowAction>}
+          </span>
+        )}
         {/* Actions on hover or focus, where the figures sit: the row stays one line. */}
         {!isGroup && (
           <span className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 group-hover:flex group-focus-within:flex">

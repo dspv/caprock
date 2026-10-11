@@ -136,7 +136,10 @@ One window, three regions:
   button to fold or hide, a quick button to add something in the same
   project"); hide, a new shell, the menu and close stay on hover. The current
   project and any with something live or waiting are open; the chevron folds
-  one by hand, kept per viewer (`caprock-sidebar-folded`). Under an open one, exactly its tabs as
+  one by hand, kept per viewer (`caprock-sidebar-folded`). The *Projects*
+  heading says how many and how many have something running (*● 3 of 12*),
+  and *Outside projects* can be hidden from its row like any project (it was
+  the one row with no way out; owner, 2026-10-11). Under an open one, exactly its tabs as
   the strip shows them, same order, same names (`lib/tablabels.ts`; shells
   numbered *Shell 1*, *Shell 2*; a branch only when it is not the
   project's). No worktree or branch rows, and no session that is not in a
