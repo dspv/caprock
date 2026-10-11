@@ -297,7 +297,9 @@ others. Installing it: [install-app.md](install-app.md).
   it: the agent and its state, what the session has cost and what each of
   its last model calls cost, how full its context is and what every call
   now pays to re-read it, what it is doing this second and for how long,
-  its last tool calls with how long each took, the uncommitted changes in
+  the task list the agent keeps for itself (each task with a spinner, a
+  check or an empty circle, and *3 of 7 done* above them; not there when
+  the agent kept none), its last tool calls with how long each took, the uncommitted changes in
   its checkout, your plan's 5-hour and weekly windows, and a warning when
   it is repeating the same call. The permission prompt and its buttons sit
   at the top while one waits. Click a changed file to read it in a tab

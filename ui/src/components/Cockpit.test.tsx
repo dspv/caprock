@@ -25,6 +25,7 @@ vi.mock('@/lib/api', async (orig) => {
     api: {
       ...actual.api,
       subagents: async () => h.subagents,
+      todos: async () => ({ items: [], updated_at: 0 }),
       recentMainEvents: async (_id: string, kinds: string[]) => { h.mainAsked.push(kinds); return events },
       permission: async () => ({ permission: h.permission }),
       diff: async () => ({ root: '/w', branch: 'main', stat: '', files: [{ path: 'internal/session.go', status: 'modified', additions: 12, deletions: 3 }] }),

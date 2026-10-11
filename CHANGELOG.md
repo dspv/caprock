@@ -7,6 +7,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **app:** the agent cockpit shows the task list the agent keeps for itself
+  — Claude Code's TodoWrite and TaskCreate/TaskUpdate, OpenCode's todos,
+  Codex's plan — one large row per task with a spinner, a check or an empty
+  circle, the task in hand as the agent words it, and *3 of 7 done* above.
+  Not there when the session kept none. New `GET /v1/sessions/{id}/todos`.
+
 ### Changed
 
 - **app:** the pinned Dashboard or Settings tab is its icon and its key —

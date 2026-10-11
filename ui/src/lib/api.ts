@@ -1355,6 +1355,8 @@ export const api = {
   sessionCalls: (id: string) => get<SessionCall[]>(`/v1/sessions/${encodeURIComponent(id)}/calls`),
   /** The subagents working in a session now, and how many finished lately. */
   subagents: (id: string) => get<SubagentsNow>(`/v1/sessions/${encodeURIComponent(id)}/subagents`),
+  /** The task list the session's agent keeps for itself (TodoWrite, TaskCreate/TaskUpdate, update_plan). */
+  todos: (id: string) => get<SessionTodos>(`/v1/sessions/${encodeURIComponent(id)}/todos`),
   diff: (id: string) => get<DiffResult>(`/v1/sessions/${encodeURIComponent(id)}/diff`),
   /** The session's latest PRs, with CI and review when GitHub is connected (the session deck). */
   sessionPRs: (id: string) => get<{ connected: boolean; prs: SessionPRLive[] }>(`/v1/sessions/${encodeURIComponent(id)}/prs`),
@@ -1568,6 +1570,21 @@ export interface SubagentsNow {
   recent?: SubagentDone[]
   /** What every subagent of the session has cost; absent when any is unknown. */
   cost_usd?: number
+}
+
+/** One entry of the agent's own task list (GET /v1/sessions/{id}/todos). */
+export interface TodoItem {
+  id: string
+  text: string
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+  /** What the agent says while doing it ("Running the tests"); absent when it gave none. */
+  active_form?: string
+}
+
+export interface SessionTodos {
+  items: TodoItem[]
+  /** Unix ms of the call that last changed the list; 0 when it never kept one. */
+  updated_at: number
 }
 
 /** One message waiting for a session's turn to end (ADR-053). */
