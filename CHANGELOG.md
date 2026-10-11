@@ -7,6 +7,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **app:** the update card no longer stacks on top of the version panel:
+  while the panel is open (it offers the same update), the card steps aside.
+
 ### Added
 
 - **app:** the session deck's CI cell has a switch: **PR** (as before),

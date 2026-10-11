@@ -1595,7 +1595,8 @@ the user guide [docs/app.md § Updates](../docs/app.md#updates).
   (`AppUpdateToast.tsx`, owner 2026-10-07, after Orca) — and the
   status strip keeps **Update to vX.Y.Z — Restart**
   (`ui/src/components/AppUpdateNotice.tsx`). The card shows the download's
-  progress too and never takes focus. One click: the shell fetches
+  progress too and never takes focus; while the version panel is open (it
+  offers the same update in the same corner) the card is hidden. One click: the shell fetches
   `latest.json`, downloads the platform's bundle with progress
   (`Downloading vX.Y.Z` and a bar, 5 events a second at most), verifies it,
   installs it (`Installing … — restarting…`) and restarts. A failure opens a

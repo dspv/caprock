@@ -34,6 +34,14 @@ export function VersionPanel({ shown, title, status, onStatus }: {
   const [error, setError] = useState('')
   const box = useRef<HTMLSpanElement>(null)
   const now = useNow(open ? 15_000 : 3_600_000)
+  // The update card sits in the same corner; while this panel is open it says
+  // the same thing with its own Update button, so the card steps aside
+  // (owner, 2026-10-12: the two stacked on top of each other).
+  useEffect(() => {
+    const root = document.documentElement
+    root.toggleAttribute('data-version-open', open)
+    return () => root.removeAttribute('data-version-open')
+  }, [open])
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false) }

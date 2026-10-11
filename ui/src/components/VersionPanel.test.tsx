@@ -24,6 +24,16 @@ describe('the version panel', () => {
     expect(screen.getByRole('button', { name: 'Release notes →' })).toBeTruthy()
   })
 
+  it('marks the page while open, so the update card in the same corner steps aside', () => {
+    render(<VersionPanel shown="0.104.0" title="" onStatus={() => {}} status={{ ...base, latest: 'v0.105.0', update_available: true }} />)
+    expect(document.documentElement.hasAttribute('data-version-open')).toBe(false)
+    const toggle = document.querySelector('[data-version]')!
+    fireEvent.click(toggle)
+    expect(document.documentElement.hasAttribute('data-version-open')).toBe(true)
+    fireEvent.click(toggle)
+    expect(document.documentElement.hasAttribute('data-version-open')).toBe(false)
+  })
+
   it('says up to date when the latest is the one running', () => {
     render(<VersionPanel shown="0.105.0" title="" onStatus={() => {}} status={{ ...base, current: '0.105.0', latest: '0.105.0', checked_at: Date.now() }} />)
     fireEvent.click(screen.getByText('0.105.0'))

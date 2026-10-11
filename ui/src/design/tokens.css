@@ -802,3 +802,7 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
 [data-settings-explain="off"] [data-settings-section]:not([data-explain="on"]) :is(p.text-fg-muted, p.text-fg-faint, [data-help]):not([data-keep]) {
   display: none;
 }
+
+/* The update card gives way to the version panel, which offers the same
+ * update in the same corner (components/VersionPanel.tsx). */
+html[data-version-open] [data-update-toast] { display: none; }
