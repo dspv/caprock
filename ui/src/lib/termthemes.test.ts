@@ -73,7 +73,7 @@ describe('terminal palettes', () => {
     root.setAttribute('data-dark', 'slate')
     expect(dashTerminalTheme(root).background).toBe(DASH_GROUND.slate)
     root.setAttribute('data-dark', 'side')
-    expect(dashTerminalTheme(root).cursor).toBe('#ff4040')
+    expect(dashTerminalTheme(root).cursor).toBe('#b45cff')
     root.setAttribute('data-theme', 'light')
     root.setAttribute('data-tone', 'cold')
     expect(dashTerminalTheme(root).background).toBe(DASH_GROUND.slate)

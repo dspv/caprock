@@ -9,8 +9,10 @@ import (
 	"github.com/dspv/caprock/internal/store"
 )
 
-// sessionPRsShown is how many of a session's pull requests the deck shows.
-const sessionPRsShown = 3
+// sessionPRsShown is how many of a session's pull requests the deck shows:
+// the current one and up to three before it (owner, 2026-10-12: "plus at
+// least a couple of previous PRs"). Each is one kept read (github.PullByURL).
+const sessionPRsShown = 4
 
 // SessionPRLive is one of a session's pull requests with what GitHub says of
 // it now: state, checks and review. Live is absent while GitHub is not

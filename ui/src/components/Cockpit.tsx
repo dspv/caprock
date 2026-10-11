@@ -11,7 +11,7 @@
  * and the day's summary for the plan windows. Nothing here is estimated, and a
  * figure an agent does not report is left out rather than drawn as a zero.
  */
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { api, type Event, type Permission, type RateWindow, type SessionSummary, type SubagentsNow, type Summary } from '@/lib/api'
 import { usePermission } from './PermissionPrompt'
 import { live } from '@/lib/live'
@@ -22,18 +22,24 @@ import { countdown, resetClock } from '@/lib/limitclock'
 import { readWindow } from './PlanLimits'
 import { PlanChip, usePlan } from './PlanPicker'
 import { WINDOW_MS, pace } from '@/lib/pace'
-import { SpendSpark } from './SpendScrub'
+import { SpendOverTime, SpendSpark } from './SpendScrub'
+import { callsFromEvents } from '@/lib/scrub'
+import { CELL_LABEL, HEADLINES, cellsFor, foldedLine, metricTitle, metricValue, setSpendPrefs, spendFigures, useSpendPrefs, type Headline, type SpendFigures } from '@/lib/spendview'
 import { AgentCharacter, agentName, characterFor } from './Characters'
 import { SubscriptionTag } from './SubscriptionPicker'
 import { TodoBlock } from './SessionTodos'
 import { PermissionModeChip } from './PermissionModeChip'
+import { KindIcon } from './KindIcon'
+import { SubagentDetail } from './SubagentDetail'
 import {
-  askLine, backgroundAgents, subagentChips, backgroundLabel, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runningTool, runShare, runVerb, subagentWaiting, toolKind, toolRuns, turnCosts,
-  type CockpitState, type SubagentChip, type ToolKind, type ToolRun, type TurnCost,
+  askLine, backgroundAgents, chipGroups, subagentChips, backgroundLabel, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runningTool, runShare, runVerb, subagentWaiting, toolKind, toolRuns, turnCosts,
+  type CockpitState, type SubagentChip, type ToolRun, type TurnCost,
 } from '@/lib/cockpit'
 
 const TIMELINE_ROWS = 7
 const SUBAGENT_ROWS = 5
+/** How many finished subagents "+N finished", opened, asks the daemon for. */
+const FINISHED_OPEN = 30
 /** The subagent list is read again at most this often while their events stream in. */
 const SUBAGENTS_THROTTLE_MS = 2_000
 /** …and this often regardless, so a finished or silent one drops off. */
@@ -46,7 +52,7 @@ const SUBAGENTS_POLL_MS = 20_000
  * finished drops off. The daemon does the counting; thousands of subagent
  * events never reach the page.
  */
-export function useSubagents(sessionId: string, enabled: boolean): SubagentsNow | undefined {
+export function useSubagents(sessionId: string, enabled: boolean, recent = 0): SubagentsNow | undefined {
   const [data, setData] = useState<SubagentsNow | undefined>(undefined)
   const [tick, setTick] = useState(0)
   const last = useRef(0)
@@ -55,11 +61,11 @@ export function useSubagents(sessionId: string, enabled: boolean): SubagentsNow 
     if (!enabled) return
     let alive = true
     last.current = Date.now()
-    api.subagents(sessionId)
+    api.subagents(sessionId, recent)
       .then((r) => { if (alive && r && Array.isArray(r.working)) setData(r) })
       .catch(() => { /* an older daemon: no section */ })
     return () => { alive = false }
-  }, [sessionId, enabled, tick])
+  }, [sessionId, enabled, tick, recent])
   useEffect(() => {
     if (!enabled) return
     const poll = setInterval(() => setTick((t) => t + 1), SUBAGENTS_POLL_MS)
@@ -109,22 +115,37 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
   const runs = useMemo(() => toolRuns(main), [main])
   const turns = useMemo(() => turnCosts(main), [main])
   const state = cockpitState(s, hasPermission || !!permission)
+  // The subagent row opened in place (one at a time), and whether "+N
+  // finished" is open — which asks the daemon for more than three of them.
+  const [openSub, setOpenSub] = useState<string | null>(null)
+  const [allFinished, setAllFinished] = useState(false)
+  const [reveal, setReveal] = useState(0)
   // Claude Code is the agent with subagents Caprock hears from.
-  const subs = useSubagents(sessionId, state !== 'ended' && (s.agent ?? 'claude') === 'claude')
+  const subs = useSubagents(sessionId, state !== 'ended' && (s.agent ?? 'claude') === 'claude', allFinished ? FINISHED_OPEN : 0)
+  const openFromChip = (id: string) => { setOpenSub(id); setReveal((n) => n + 1) }
   const running = state === 'working' || state === 'looping' ? runningTool(runs, now) : undefined
   const plan = planWindowsFor(s.agent, summary)
+  const calls = useMemo(() => callsFromEvents(main), [main])
+  const figures = spendFigures(s, calls)
+  // The order is what the people using it look at (owner, 2026-10-12): the
+  // agent and its headline figure, what it and its subagents are doing now,
+  // its task list, the context, the plan limits; the spend details after,
+  // folded until a viewer opens them.
   return (
     <>
-      <Hero s={s} sessionId={sessionId} state={state} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s)} subs={subs} permission={permission} />
-      <Spend s={s} turns={turns} sessionId={sessionId} events={main} now={now} />
-      <ContextMeter s={s} />
+      <Hero s={s} sessionId={sessionId} state={state} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s)} subs={subs} permission={permission} figures={figures} onChip={openFromChip} />
       <NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} permission={permission} background={backgroundAgents(s)} now={now} />
-      <TodoBlock sessionId={sessionId} />
-      {subs && (subs.working.length > 0 || (subs.recent?.length ?? 0) > 0) && <Subagents subs={subs} permission={permission} now={now} />}
       {s.loop && state !== 'ended' && <LoopWarning s={s} now={now} />}
+      {subs && (subs.working.length > 0 || (subs.recent?.length ?? 0) > 0) && (
+        <Subagents subs={subs} permission={permission} now={now} sessionId={sessionId} open={openSub} onOpen={setOpenSub}
+          allFinished={allFinished} onAllFinished={setAllFinished} reveal={reveal} />
+      )}
+      <TodoBlock sessionId={sessionId} />
+      <ContextMeter s={s} />
+      {plan && <PlanWindows limits={plan} agent={s.agent} now={now} />}
+      <Spend s={s} turns={turns} sessionId={sessionId} events={main} now={now} figures={figures} />
       <Timeline runs={runs} total={s.stats?.tool_calls} now={now} />
       {changes}
-      {plan && <PlanWindows limits={plan} agent={s.agent} now={now} />}
     </>
   )
 }
@@ -138,38 +159,46 @@ export function SectionLabel({ children, right }: { children: ReactNode; right?:
   )
 }
 
-function Hero({ s, sessionId, state, now, background, subs, permission }: { s: SessionSummary; sessionId: string; state: CockpitState; now: number; background: number; subs?: SubagentsNow; permission?: Permission | null }) {
+function Hero({ s, sessionId, state, now, background, subs, permission, figures, onChip }: { s: SessionSummary; sessionId: string; state: CockpitState; now: number; background: number; subs?: SubagentsNow; permission?: Permission | null; figures: SpendFigures; onChip: (id: string) => void }) {
   const since = s.worked_at || s.last_event_at
   const strip = subagentChips(subs, permission)
   const saysBackground = background > 0 && state === 'working'
+  const working = subs?.working.length ?? 0
+  // One row: the agent at the left, the headline figure at the right (owner,
+  // 2026-10-12: "put it to the right of the agent, then the chart is wide").
+  // Too narrow for both, the figure wraps under the name. Under the name, the
+  // state and how many subagents work (owner, 2026-10-12: "move the text with
+  // how many subagents are running higher"); their chips under the row.
   return (
-    <div className="flex items-center gap-3.5" data-state={state}>
+    <div className="flex min-w-0 flex-wrap items-center gap-x-3.5 gap-y-2" data-state={state}>
       <div className={`cockpit-avatar relative grid h-[58px] w-[58px] shrink-0 place-items-center rounded-[15px]`} data-state={state}>
         <AgentCharacter who={characterFor(s.agent ?? 'claude')} size={46} className="cockpit-character" />
       </div>
-      <div className="grid min-w-0 gap-1">
+      <div className="grid min-w-0 flex-1 basis-[9.5rem] gap-1">
         <p className="text-[12px] text-fg-muted">
           <span className="font-medium text-fg">{agentName(s.agent ?? 'claude')}</span>
           {s.model_display || s.model ? <span> · {s.model_display || s.model}</span> : null}
           <SubscriptionTag id={s.subscription} />
         </p>
+        <p className={`flex items-center gap-1.5 text-[12px] font-medium ${STATE_TEXT[state]}`} role="status">
+          <span className={`cockpit-dot inline-block h-[7px] w-[7px] rounded-full`} data-state={state} />
+          {saysBackground ? backgroundLabel(background) : STATE_LABEL[state]}
+          {(state === 'idle' || state === 'ended') && since ? <span className="font-normal text-fg-faint">· {fmtAgo(since, now)}</span> : null}
+        </p>
+        {!saysBackground && (working > 0 || (strip.chips.length === 0 && (s.live_subagents ?? 0) > 0)) && (
+          <p className="text-[11.5px] text-fg-muted">{working || s.live_subagents} {(working || s.live_subagents) === 1 ? 'subagent' : 'subagents'} working</p>
+        )}
         {/* The permission mode, and for a session Caprock started, the
           * way to change it while it runs (ADR-054). */}
         {state !== 'ended' && <p className="flex"><PermissionModeChip sessionId={sessionId} agent={s.agent} /></p>}
-        <p className={`flex items-center gap-1.5 text-[12px] font-medium ${STATE_TEXT[state]}`} role="status">
-          <span className={`cockpit-dot inline-block h-[7px] w-[7px] rounded-full`} data-state={state} />
-          {background > 0 && state === 'working' ? backgroundLabel(background) : STATE_LABEL[state]}
-          {(state === 'idle' || state === 'ended') && since ? <span className="font-normal text-fg-faint">· {fmtAgo(since, now)}</span> : null}
-        </p>
         {s.started_at > 0 && state !== 'ended' && (
           <p className="text-[11px] text-fg-faint">started {fmtAgo(s.started_at, now)}</p>
         )}
-        {strip.chips.length > 0 ? (
-          <SubagentStrip chips={strip.chips} more={strip.more} working={saysBackground ? 0 : subs?.working.length ?? 0} />
-        ) : (s.live_subagents ?? 0) > 0 && !(background > 0 && state === 'working') && (
-          <p className="text-[11.5px] text-fg-muted">{s.live_subagents} {s.live_subagents === 1 ? 'subagent' : 'subagents'} working</p>
-        )}
       </div>
+      {s.stats && <HeadlineFigure figures={figures} />}
+      {/* The chips take the hero's whole width, so three groups of four fit
+        * a row in a 324px inspector rather than one beside the figure. */}
+      {strip.chips.length > 0 && <div className="basis-full"><SubagentStrip chips={strip.chips} more={strip.more} onChip={onChip} /></div>}
     </div>
   )
 }
@@ -177,30 +206,31 @@ function Hero({ s, sessionId, state, now, background, subs, permission }: { s: S
 /**
  * One mini-avatar per subagent under the state line: its type's initial in a
  * tint fixed per type, pulsing while it works, accent while it waits on you,
- * muted once finished; at most four and "+N". A click scrolls to the
- * Subagents section, which says the rest.
+ * muted once finished. In groups of four, at most three groups (twelve) to a
+ * row and two rows, then "+N" (owner, 2026-10-12: "why doesn't it show more
+ * agents?"); a narrow inspector fits fewer groups to a row. A chip opens its
+ * subagent's row in the Subagents section below.
  */
-function SubagentStrip({ chips, more, working }: { chips: SubagentChip[]; more: number; working: number }) {
-  const open = (e: MouseEvent<HTMLButtonElement>) => {
-    const root = e.currentTarget.closest('[data-cockpit]') ?? document
-    root.querySelector('section[aria-label="Subagents"]')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  }
+function SubagentStrip({ chips, more, onChip }: { chips: SubagentChip[]; more: number; onChip: (id: string) => void }) {
+  const groups = chipGroups(chips)
   return (
-    <button type="button" onClick={open} className="flex w-fit items-center gap-1.5 rounded-[6px] text-left outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]"
-      aria-label={`Subagents: ${chips.map((c) => c.label).join('; ')}${more > 0 ? `; and ${more} more working` : ''}. Show the list`}>
-      <span className="flex -space-x-1">
-        {chips.map((c) => (
-          <span key={c.id} title={c.label} data-state={c.state} data-tone={c.tone}
-            className="cockpit-subchip num relative grid h-[18px] w-[18px] place-items-center rounded-[5px] text-[10px] font-semibold">
-            {c.initial}
-          </span>
-        ))}
-        {more > 0 && (
-          <span title={`${more} more working`} className="cockpit-subchip num relative grid h-[18px] min-w-[18px] place-items-center rounded-[5px] px-1 text-[10px] font-medium" data-state="more">+{more}</span>
-        )}
-      </span>
-      {working > 0 && <span className="text-[11.5px] text-fg-muted">{working} {working === 1 ? 'subagent' : 'subagents'} working</span>}
-    </button>
+    <div role="group" aria-label={`Subagents${more > 0 ? `, and ${more} more working` : ''}`}
+      className="flex max-w-[16.75rem] flex-wrap gap-x-2 gap-y-1.5 p-[2px]" data-chips={chips.length}>
+      {groups.map((g, i) => (
+        <span key={i} className="flex gap-[3px]">
+          {g.map((c) => (
+            <button key={c.id} type="button" title={c.label} aria-label={`${c.label}. Open`} data-state={c.state} data-tone={c.tone}
+              onClick={() => onChip(c.id)}
+              className="cockpit-subchip num relative grid h-[18px] w-[18px] place-items-center rounded-[5px] text-[10px] font-semibold outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
+              {c.initial}
+            </button>
+          ))}
+          {i === groups.length - 1 && more > 0 && (
+            <span title={`${more} more working`} className="cockpit-subchip num relative grid h-[18px] min-w-[18px] place-items-center rounded-[5px] px-1 text-[10px] font-medium" data-state="more">+{more}</span>
+          )}
+        </span>
+      ))}
+    </div>
   )
 }
 
@@ -228,37 +258,126 @@ function useTweened(value: number, ms = 650): number {
   return shown
 }
 
-function Spend({ s, turns, sessionId, events, now }: { s: SessionSummary; turns: TurnCost[]; sessionId: string; events: readonly Event[]; now: number }) {
-  const st = s.stats
-  const cost = st?.cost_usd ?? 0
-  const shown = useTweened(cost)
-  const last = turns[turns.length - 1]
-  const tokensIn = st ? st.tokens_in + st.cache_read + st.cache_write : undefined
+/**
+ * The headline figure beside the agent, and what it is: cost by default, or
+ * whatever the viewer picked from the ▾ (burn rate, tokens, turns, cache hit
+ * rate, time working), remembered per viewer (owner, 2026-10-12: "the number
+ * is cool but says nothing; let me switch what matters more to me").
+ */
+function HeadlineFigure({ figures }: { figures: SpendFigures }) {
+  const { headline } = useSpendPrefs()
+  const [open, setOpen] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+  const tweened = useTweened(figures.cost)
+  const meta = HEADLINES.find((h) => h.id === headline) ?? HEADLINES[0]!
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: globalThis.MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.code === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    // The current choice takes the focus, so arrows move from it.
+    box.current?.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="true"]')?.focus()
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [open])
+  const value = headline === 'cost' ? fmtUSD(tweened) : metricValue(headline, figures)
+  const [num, unit] = value.endsWith('/h') ? [value.slice(0, -2), '/h'] : [value, '']
+  const choose = (h: Headline) => { setSpendPrefs({ headline: h }); setOpen(false) }
+  const onMenuKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const d = e.code === 'ArrowDown' ? 1 : e.code === 'ArrowUp' ? -1 : 0
+    if (!d) return
+    e.preventDefault()
+    const items = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'))
+    const i = items.indexOf(document.activeElement as HTMLButtonElement)
+    items[(i + d + items.length) % items.length]?.focus()
+  }
   return (
-    <section aria-label="Spend" className="relative grid gap-2.5">
-      <SectionLabel right={last ? <span className="num text-fg-faint" title="What the newest model call cost">last call <span className="text-fg">{fmtUSD(last.cost)}</span></span> : undefined}>
-        Spent this session
-      </SectionLabel>
-      <div className="flex items-end justify-between gap-3">
-        <span className="num text-[34px] font-semibold leading-none tracking-[-0.03em] text-fg" aria-label={`Cost ${fmtUSD(cost)}`}>{fmtUSD(shown)}</span>
-        <SpendSpark sessionId={sessionId} events={events} now={now} />
-      </div>
-      {st && (
-        <dl className="grid grid-cols-4 overflow-hidden rounded-[9px] border border-[var(--app-hairline)]">
-          <Cell label="Turns" value={String(st.turns)} />
-          <Cell label="Tools" value={String(st.tool_calls)} />
-          <Cell label="Tokens" value={fmtTokens(tokensIn)} title={`${fmtTokens(tokensIn)} in · ${fmtTokens(st.tokens_out)} out`} />
-          <Cell label="Cache" value={tokensIn ? fmtPct((s.savings?.hit_rate ?? 0) * 100) : '—'} title="Share of input tokens read from the prompt cache" />
-        </dl>
+    <div ref={box} className="relative ml-auto grid min-w-0 justify-items-end gap-1" data-headline={headline}>
+      <span className="num max-w-full truncate text-[30px] font-semibold leading-none tracking-[-0.03em] text-fg"
+        aria-label={`${meta.name} ${metricValue(headline, figures)}`} title={metricTitle(headline, figures)}>
+        {num}{unit && <span className="text-[16px] font-medium text-fg-muted">{unit}</span>}
+      </span>
+      <button type="button" aria-haspopup="menu" aria-expanded={open} aria-label={`Headline: ${meta.name}. Choose what it shows`}
+        onClick={() => setOpen((o) => !o)}
+        title="Choose what this figure shows"
+        className="inline-flex items-center gap-1 rounded-[6px] border border-border px-1.5 text-[11.5px] text-fg-muted outline-none hover:border-border-strong hover:text-fg focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
+        {meta.name.toLowerCase()}<span aria-hidden className="text-[9px]">▾</span>
+      </button>
+      {open && (
+        <div role="menu" aria-label="Headline figure" onKeyDown={onMenuKey}
+          className="absolute right-0 top-full z-30 mt-1 grid w-[min(16rem,calc(100vw-32px))] gap-0.5 rounded-[9px] border border-border-strong bg-panel p-1.5 shadow-lg">
+          {HEADLINES.map((h) => (
+            <button key={h.id} type="button" role="menuitemradio" aria-checked={h.id === headline} onClick={() => choose(h.id)}
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2 rounded-[6px] px-2 py-1.5 text-left outline-none hover:bg-panel-2 focus-visible:bg-panel-2 aria-checked:bg-accent/10">
+              <span className={`truncate text-[13px] ${h.id === headline ? 'font-semibold text-fg' : 'text-fg'}`}>{h.name}</span>
+              <span className="num text-[12px] text-fg-muted">{metricValue(h.id, figures)}</span>
+              <span className="col-span-2 truncate text-[11.5px] text-fg-muted">{h.hint}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The spend details under the plan: four cells (never the headline again)
+ * and *Spend over time*, which opens in the flow as wide as the cockpit.
+ * Folded by default to one line, and both choices remembered per viewer.
+ */
+function Spend({ s, turns, sessionId, events, now, figures }: { s: SessionSummary; turns: TurnCost[]; sessionId: string; events: readonly Event[]; now: number; figures: SpendFigures }) {
+  const { folded, headline, chart } = useSpendPrefs()
+  const st = s.stats
+  const last = turns[turns.length - 1]
+  if (!st) return null
+  const cells = cellsFor(headline)
+  const chartId = `spend-time-${sessionId}`
+  return (
+    <section aria-label="Spend" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2.5">
+      <button type="button" aria-expanded={!folded} onClick={() => setSpendPrefs({ folded: !folded })}
+        title={folded ? 'Show the spend details' : 'Fold the spend details'}
+        className="-mx-1 flex min-w-0 items-center gap-1.5 rounded-[6px] px-1 py-0.5 text-left outline-none hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
+        <Chevron open={!folded} />
+        {folded ? (
+          <span data-spend-folded className="num min-w-0 truncate text-[12.5px] text-fg-muted">{foldedLine(headline, figures)}</span>
+        ) : (
+          <>
+            <h4 className="shrink-0 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-faint">Spent this session</h4>
+            {last && <span className="num ml-auto min-w-0 truncate text-[11.5px] text-fg-faint" title="What the newest model call cost">last call <span className="text-fg">{fmtUSD(last.cost)}</span></span>}
+          </>
+        )}
+      </button>
+      {!folded && (
+        <>
+          <dl className="grid grid-cols-4 overflow-hidden rounded-[9px] border border-[var(--app-hairline)]">
+            {cells.map((m) => <Cell key={m} label={CELL_LABEL[m]} value={metricValue(m, figures)} title={metricTitle(m, figures)} />)}
+          </dl>
+          <button type="button" aria-expanded={chart} aria-controls={chart ? chartId : undefined} onClick={() => setSpendPrefs({ chart: !chart })}
+            className="-mx-1 flex min-w-0 items-center gap-1.5 rounded-[6px] px-1 py-0.5 text-left text-[12.5px] text-fg-muted outline-none hover:bg-panel-2 hover:text-fg focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
+            <Chevron open={chart} />
+            <span className="min-w-0 truncate">Spend over time</span>
+            <span className="ml-auto"><SpendSpark events={events} /></span>
+          </button>
+          {chart && <SpendOverTime sessionId={sessionId} events={events} now={now} />}
+        </>
       )}
     </section>
   )
 }
 
+/** A disclosure's mark: pointing right when closed, down when open. */
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg aria-hidden width="12" height="12" viewBox="0 0 12 12" className={`shrink-0 text-fg-muted transition-transform duration-150 ${open ? 'rotate-90' : ''}`}>
+      <path d="M4.5 2.5L8 6l-3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 function Cell({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
-    <div className="grid gap-0.5 border-l border-[var(--app-hairline)] px-2 py-1.5 first:border-l-0" title={title}>
-      <dt className="text-[10px] uppercase tracking-[0.06em] text-fg-faint">{label}</dt>
+    <div className="grid min-w-0 gap-0.5 border-l border-[var(--app-hairline)] px-2 py-1.5 first:border-l-0" title={title}>
+      <dt className="truncate text-[10px] uppercase tracking-[0.06em] text-fg-faint">{label}</dt>
       <dd className="num truncate text-[13px] font-medium text-fg">{value}</dd>
     </div>
   )
@@ -379,74 +498,132 @@ function NowDoing({ s, state, running, last, permission, background, now }: {
  * long it has worked; its current call and how long that has run, how many
  * calls it has made and what it has cost; a badge while it waits on a
  * permission prompt. Those that finished lately are one muted line each:
- * model, time, cost. A cost is shown only when the daemon knows it — never
- * a $0 standing in for unknown.
+ * model, time, cost; "+N finished" opens the rest. A cost is shown only when
+ * the daemon knows it — never a $0 standing in for unknown.
+ *
+ * Every row opens in place, one at a time (owner, 2026-10-12: "can we expand
+ * the subagents to look inside?"): its task, its calls, its answer and its
+ * numbers (SubagentDetail).
  */
-function Subagents({ subs, permission, now }: { subs: SubagentsNow; permission?: Permission | null; now: number }) {
-  const shown = subs.working.slice(0, SUBAGENT_ROWS)
+function Subagents({ subs, permission, now, sessionId, open, onOpen, allFinished, onAllFinished, reveal }: {
+  subs: SubagentsNow
+  permission?: Permission | null
+  now: number
+  sessionId: string
+  /** The row open, by agent id. */
+  open: string | null
+  onOpen: (id: string | null) => void
+  allFinished: boolean
+  onAllFinished: (v: boolean) => void
+  /** Bumped by a hero chip: bring the open row into view. */
+  reveal: number
+}) {
+  const [allWorking, setAllWorking] = useState(false)
+  const box = useRef<HTMLElement>(null)
+  const openIdx = open ? subs.working.findIndex((a) => a.agent_id === open) : -1
+  const showAllWorking = allWorking || openIdx >= SUBAGENT_ROWS
+  const shown = showAllWorking ? subs.working : subs.working.slice(0, SUBAGENT_ROWS)
   const hidden = subs.working.length - shown.length
-  const recent = (subs.recent ?? []).slice(0, Math.max(0, SUBAGENT_ROWS - shown.length))
+  const recentAll = subs.recent ?? []
+  const openDone = open ? recentAll.findIndex((d) => d.agent_id === open) : -1
+  const room = Math.max(0, SUBAGENT_ROWS - shown.length)
+  const recent = allFinished ? recentAll : recentAll.slice(0, Math.max(room, openDone + 1))
   const moreDone = subs.finished - recent.length
+  useEffect(() => {
+    if (!reveal || !open) return
+    const row = box.current?.querySelector(`[data-subagent="${CSS.escape(open)}"]`)
+    row?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
+  }, [reveal, open])
+  const toggle = (id: string) => onOpen(open === id ? null : id)
   return (
-    <section aria-label="Subagents" className="grid gap-2">
+    <section ref={box} aria-label="Subagents" className="grid gap-2">
       <SectionLabel right={
         <>
           {typeof subs.cost_usd === 'number' && <span className="num text-fg-muted" title="What every subagent of this session has cost">{fmtUSD(subs.cost_usd)}</span>}
-          {moreDone > 0 && <span className="text-fg-faint">+{moreDone} finished</span>}
+          {(moreDone > 0 || allFinished) && subs.finished > 0 && (
+            <button type="button" onClick={() => onAllFinished(!allFinished)} aria-expanded={allFinished}
+              className="rounded-[4px] text-fg-faint outline-none hover:text-fg-muted focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
+              {allFinished ? 'fewer finished' : `+${moreDone} finished`}
+            </button>
+          )}
         </>
       }>
         Subagents · {subs.working.length}
       </SectionLabel>
-      <ul className="grid gap-1">
-        {shown.map((a) => {
-          const waiting = subagentWaiting(a, permission)
-          const tool = a.tool?.replace(/^mcp__(.+?)__/, '$1·') ?? ''
-          const since = a.running && a.tool_at ? fmtRun(Math.max(0, now - a.tool_at)) : ''
-          return (
-            <li key={a.agent_id} className="grid gap-0.5 rounded-[8px] border border-[var(--app-hairline)] px-2 py-1.5" data-waiting={waiting ? 'true' : undefined}
-              title={[a.agent_type, a.description, a.tool && `${a.tool}${a.detail ? ` ${a.detail}` : ''}`].filter(Boolean).join(' — ')}>
-              <p className="flex min-w-0 items-center gap-1.5 text-[12px]">
-                <span aria-hidden className={`grid h-[12px] w-[12px] shrink-0 place-items-center`}>
-                  <span className={`h-[6px] w-[6px] rounded-full ${waiting ? 'bg-accent' : 'bg-ok'} ${a.running && !waiting ? 'animate-pulse' : ''}`} />
-                </span>
-                <span className="shrink-0 font-medium text-fg">{a.agent_type || 'subagent'}</span>
-                {a.description && <span className="min-w-0 truncate text-fg-muted">· {a.description}</span>}
-                {waiting
-                  ? <span className="ml-auto shrink-0 rounded-[4px] bg-accent/15 px-1.5 text-[10.5px] font-medium text-accent">waiting on you</span>
-                  : <span className="num ml-auto shrink-0 text-[11px] text-fg-faint">{[a.model_display, a.started_at ? fmtRun(Math.max(0, now - a.started_at)) : ''].filter(Boolean).join(' · ')}</span>}
-              </p>
-              <p className="grid grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-1.5 text-[11.5px]">
-                {a.tool ? <span className={a.running ? 'text-ok' : 'text-fg-faint'}><KindIcon kind={toolKind(a.tool)} size={12} /></span> : <span />}
-                <span className="min-w-0 truncate">
-                  {a.tool ? (
-                    <>
-                      <span className={a.running ? 'text-fg' : 'text-fg-muted'}>{tool}</span>
-                      {a.detail && <span className="mono ml-1 text-[11px] text-fg-muted">{a.detail}</span>}
-                    </>
-                  ) : <span className="text-fg-faint">starting</span>}
-                </span>
-                <span className="num text-[11px] text-fg-faint">
-                  {since && <span className="text-ok">{since} · </span>}{a.tool_calls} {a.tool_calls === 1 ? 'call' : 'calls'}
-                  {typeof a.cost_usd === 'number' && <span className="text-fg-muted"> · {fmtUSD(a.cost_usd)}</span>}
-                </span>
-              </p>
-            </li>
-          )
-        })}
-      </ul>
-      {hidden > 0 && <p className="text-[11px] text-fg-faint">+{hidden} more</p>}
+      {shown.length > 0 && (
+        <ul aria-label="Working subagents" className="grid gap-1">
+          {shown.map((a) => {
+            const waiting = subagentWaiting(a, permission)
+            const tool = a.tool?.replace(/^mcp__(.+?)__/, '$1·') ?? ''
+            const since = a.running && a.tool_at ? fmtRun(Math.max(0, now - a.tool_at)) : ''
+            const isOpen = open === a.agent_id
+            const panel = `subagent-${a.agent_id}`
+            return (
+              <li key={a.agent_id} data-subagent={a.agent_id} className="grid rounded-[8px] border border-[var(--app-hairline)]" data-waiting={waiting ? 'true' : undefined} data-open={isOpen ? 'true' : undefined}>
+                <button type="button" onClick={() => toggle(a.agent_id)} aria-expanded={isOpen} aria-controls={isOpen ? panel : undefined}
+                  className="grid gap-0.5 rounded-[8px] px-2 py-1.5 text-left outline-none hover:bg-[var(--app-row-hover)] focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]"
+                  title={[a.agent_type, a.description, a.tool && `${a.tool}${a.detail ? ` ${a.detail}` : ''}`].filter(Boolean).join(' — ')}>
+                  <span className="flex min-w-0 items-center gap-1.5 text-[12px]">
+                    <span aria-hidden className={`grid h-[12px] w-[12px] shrink-0 place-items-center`}>
+                      <span className={`h-[6px] w-[6px] rounded-full ${waiting ? 'bg-accent' : 'bg-ok'} ${a.running && !waiting ? 'animate-pulse' : ''}`} />
+                    </span>
+                    <span className="shrink-0 font-medium text-fg">{a.agent_type || 'subagent'}</span>
+                    {a.description && <span className="min-w-0 truncate text-fg-muted">· {a.description}</span>}
+                    {waiting
+                      ? <span className="ml-auto shrink-0 rounded-[4px] bg-accent/15 px-1.5 text-[10.5px] font-medium text-accent">waiting on you</span>
+                      : <span className="num ml-auto shrink-0 text-[11px] text-fg-faint">{[a.model_display, a.started_at ? fmtRun(Math.max(0, now - a.started_at)) : ''].filter(Boolean).join(' · ')}</span>}
+                    <Chevron open={isOpen} />
+                  </span>
+                  <span className="grid grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-1.5 text-[11.5px]">
+                    {a.tool ? <span className={a.running ? 'text-ok' : 'text-fg-faint'}><KindIcon kind={toolKind(a.tool)} size={12} /></span> : <span />}
+                    <span className="min-w-0 truncate">
+                      {a.tool ? (
+                        <>
+                          <span className={a.running ? 'text-fg' : 'text-fg-muted'}>{tool}</span>
+                          {a.detail && <span className="mono ml-1 text-[11px] text-fg-muted">{a.detail}</span>}
+                        </>
+                      ) : <span className="text-fg-faint">starting</span>}
+                    </span>
+                    <span className="num text-[11px] text-fg-faint">
+                      {since && <span className="text-ok">{since} · </span>}{a.tool_calls} {a.tool_calls === 1 ? 'call' : 'calls'}
+                      {typeof a.cost_usd === 'number' && <span className="text-fg-muted"> · {fmtUSD(a.cost_usd)}</span>}
+                    </span>
+                  </span>
+                </button>
+                {isOpen && <SubagentDetail id={panel} sessionId={sessionId} agentId={a.agent_id} now={now} />}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {hidden > 0 && (
+        <button type="button" onClick={() => setAllWorking(true)}
+          className="w-fit rounded-[4px] text-[11px] text-fg-faint outline-none hover:text-fg-muted focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
+          +{hidden} more working
+        </button>
+      )}
       {recent.length > 0 && (
         <ul aria-label="Finished subagents" className="grid gap-0.5">
-          {recent.map((d) => (
-            <li key={d.agent_id} className="flex min-w-0 items-center gap-1.5 px-2 text-[11.5px] text-fg-faint" title={[d.agent_type, d.description].filter(Boolean).join(' — ')}>
-              <span aria-hidden className="grid h-[12px] w-[12px] shrink-0 place-items-center"><span className="h-[6px] w-[6px] rounded-full border border-fg-faint" /></span>
-              <span className="shrink-0 text-fg-muted">{d.agent_type || 'subagent'}</span>
-              {d.description && <span className="min-w-0 truncate">· {d.description}</span>}
-              <span className="num ml-auto shrink-0">
-                {[d.model_display, d.stopped_at > d.started_at ? fmtRun(d.stopped_at - d.started_at) : '', typeof d.cost_usd === 'number' ? fmtUSD(d.cost_usd) : ''].filter(Boolean).join(' · ')}
-              </span>
-            </li>
-          ))}
+          {recent.map((d) => {
+            const isOpen = open === d.agent_id
+            const panel = `subagent-${d.agent_id}`
+            return (
+              <li key={d.agent_id} data-subagent={d.agent_id} className={`grid rounded-[8px] ${isOpen ? 'border border-[var(--app-hairline)]' : ''}`} data-open={isOpen ? 'true' : undefined}>
+                <button type="button" onClick={() => toggle(d.agent_id)} aria-expanded={isOpen} aria-controls={isOpen ? panel : undefined}
+                  className="flex min-w-0 items-center gap-1.5 rounded-[8px] px-2 py-[3px] text-left text-[11.5px] text-fg-faint outline-none hover:bg-[var(--app-row-hover)] focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]"
+                  title={[d.agent_type, d.description].filter(Boolean).join(' — ')}>
+                  <span aria-hidden className="grid h-[12px] w-[12px] shrink-0 place-items-center"><span className="h-[6px] w-[6px] rounded-full border border-fg-faint" /></span>
+                  <span className="shrink-0 text-fg-muted">{d.agent_type || 'subagent'}</span>
+                  {d.description && <span className="min-w-0 truncate">· {d.description}</span>}
+                  <span className="num ml-auto shrink-0">
+                    {[d.model_display, d.stopped_at > d.started_at ? fmtRun(d.stopped_at - d.started_at) : '', typeof d.cost_usd === 'number' ? fmtUSD(d.cost_usd) : ''].filter(Boolean).join(' · ')}
+                  </span>
+                  <Chevron open={isOpen} />
+                </button>
+                {isOpen && <SubagentDetail id={panel} sessionId={sessionId} agentId={d.agent_id} now={now} />}
+              </li>
+            )
+          })}
         </ul>
       )}
     </section>
@@ -566,33 +743,4 @@ function Timeline({ runs, total, now }: { runs: ToolRun[]; total?: number; now: 
       )}
     </section>
   )
-}
-
-type IconKind = ToolKind | 'think' | 'loop' | 'stop' | 'pause'
-
-/** A tool's kind as a line glyph on the app's 24px grid. */
-function KindIcon({ kind, size = 15 }: { kind: IconKind; size?: number }) {
-  const path = ICON_PATHS[kind]
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0">
-      {path}
-    </svg>
-  )
-}
-
-const ICON_PATHS: Record<IconKind, ReactNode> = {
-  edit: <path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16zM13.5 6.5l4 4" />,
-  read: <><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4M9 12h6M9 16h4" /></>,
-  run: <><rect x="3" y="4.5" width="18" height="15" rx="2.5" /><path d="m7 10 3 2.5L7 15M12.5 15H17" /></>,
-  search: <><circle cx="11" cy="11" r="6" /><path d="m20 20-4.5-4.5" /></>,
-  web: <><circle cx="12" cy="12" r="8.5" /><path d="M3.5 12h17M12 3.5c2.5 2.6 3.5 5.5 3.5 8.5s-1 5.9-3.5 8.5c-2.5-2.6-3.5-5.5-3.5-8.5s1-5.9 3.5-8.5z" /></>,
-  agent: <><circle cx="9" cy="9" r="3" /><circle cx="17" cy="10" r="2.3" /><path d="M3.5 19c.6-3 2.8-5 5.5-5s4.9 2 5.5 5M15 14.6c2.6-.5 4.8 1.2 5.5 4.4" /></>,
-  plan: <><path d="M9 6h11M9 12h11M9 18h11" /><path d="m3.5 6 1.3 1.3L7 5M3.5 12l1.3 1.3L7 11" /><circle cx="5" cy="18" r="1" /></>,
-  ask: <><circle cx="12" cy="12" r="8.5" /><path d="M9.6 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.7M12 17h.01" /></>,
-  mcp: <><path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4" /></>,
-  other: <><circle cx="12" cy="12" r="2.2" /><circle cx="12" cy="12" r="8" /></>,
-  think: <><path d="M12 3.5 13.8 9l5.7.2-4.5 3.4 1.6 5.5L12 14.8 7.4 18l1.6-5.5-4.5-3.4L10.2 9z" /></>,
-  loop: <><path d="M4 12a8 8 0 0 1 13.7-5.6L20 9M20 4v5h-5M20 12a8 8 0 0 1-13.7 5.6L4 15M4 20v-5h5" /></>,
-  stop: <rect x="6.5" y="6.5" width="11" height="11" rx="2" />,
-  pause: <path d="M9 6.5v11M15 6.5v11" />,
 }

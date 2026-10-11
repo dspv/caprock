@@ -10,6 +10,10 @@ describe('router', () => {
     expect(parseHash('#/nope')).toEqual({ name: 'now' })
     expect(href({ name: 'session', id: 'x y', tab: 'timeline' })).toBe('#/session/x%20y?tab=timeline')
     expect(parseHash(href({ name: 'history' }))).toEqual({ name: 'history' })
+    // The Queue is a tab of Tasks with its own address.
+    expect(parseHash('#/queue')).toEqual({ name: 'tasks', view: 'queue' })
+    expect(href({ name: 'tasks', view: 'queue' })).toBe('#/queue')
+    expect(href({ name: 'tasks' })).toBe('#/tasks')
   })
 })
 

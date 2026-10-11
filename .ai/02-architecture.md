@@ -285,6 +285,7 @@ internal/hooks/       # settings.json installer (ordered-JSON merge, backup, uni
 internal/ingest/      # transcript discovery + tailer (fsnotify + poll) + parser
 internal/loop/        # loop detector
 internal/narrate/     # tool event → phrase, health badge, plan progress
+internal/eta/         # the Queue view's rough estimates: turn-length quantiles, remaining time, queue positions
 internal/toolcmd/     # the command a call ran, read out of its input (Codex's exec script) for every one-line description
 internal/gitdiff/     # live `git diff` of a session's cwd
 internal/api/         # REST + WS + embedded UI (dist/ committed for go install, placeholder/ fallback)
@@ -306,7 +307,7 @@ internal/hive/        # on-disk orchestration state: agents/tasks/mailboxes/ledg
 internal/board/       # task board: verification runner, destructive-command policy, approvals — Orchestrate
 internal/orchestrator/ # orchestrator + worker lifecycle, the mailbox-router reconciler — Orchestrate
 ui/                   # React + Vite app; builds into internal/api/dist (go:embed)
-pricing/              # pricing.json + embed.go (versioned pricing table)
+pricing/              # pricing.json (models) + actions.json (GitHub Actions runners) + embed.go, each versioned
 testdata/             # hook payloads, transcript fixtures + expected totals, loop fixtures, fakeclaude (a Go line-REPL `claude`; with a permission flag it draws the mode footer and cycles it on Shift+Tab)
 ```
 

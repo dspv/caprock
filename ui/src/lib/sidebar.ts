@@ -4,6 +4,7 @@
  * waiting on you. A pure function, so 50 projects and 30 live sessions cost
  * one pass and can be tested without a screen.
  */
+import { isQuickChat, quickChatTitle } from './quickchat'
 import type { SessionSummary } from './api'
 import { branchLabel, sessionHealth } from './sessionLabels'
 import { folderName, matchLength, sessionRoot, worktreeKeyOf, type Project } from './projects'
@@ -118,6 +119,8 @@ export function dotOf(s: SessionSummary, hasPermission: boolean): Dot {
 export function sessionTitle(s: SessionSummary): string {
   const branch = branchLabel(s.git_branch)
   if (s.kind === 'shell') return branch ? `shell · ${branch}` : 'shell'
+  // A quick chat is named as one, not by its dated folder (lib/quickchat.ts).
+  if (isQuickChat(s)) return quickChatTitle(s)
   const title = (s.title || s.description || '').trim() || (branch ? `on ${branch}` : 'new session')
   return attemptLabel(s) ? `${attemptLabel(s)} · ${title}` : title
 }

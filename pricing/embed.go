@@ -10,3 +10,10 @@ import _ "embed"
 //
 //go:embed pricing.json
 var JSON []byte
+
+// ActionsJSON is the versioned table of GitHub-hosted Actions runner rates
+// (pricing/actions.json), read from GitHub's documentation with the source and
+// the date inside the JSON. internal/github prices a job's minutes with it.
+//
+//go:embed actions.json
+var ActionsJSON []byte

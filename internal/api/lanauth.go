@@ -237,39 +237,40 @@ func (s *Server) gateDevice(r *http.Request) (status int, reason string, dev *pa
 //   - /v1/pair/state — pairing is managed from the machine, and its handler
 //     refuses the network anyway.
 var pairedDeviceRoutes = map[string]bool{
-	"GET /v1/sessions":                true,
-	"GET /v1/sessions/{id}":           true,
-	"GET /v1/sessions/{id}/events":    true,
-	"GET /v1/sessions/{id}/subagents": true,
-	"GET /v1/sessions/{id}/calls":     true,
-	"GET /v1/sessions/{id}/notes":     true,
-	"GET /v1/sessions/{id}/todos":     true,
-	"GET /v1/sessions/{id}/diff":      true,
-	"GET /v1/notes":                   true,
-	"GET /v1/stats/summary":           true,
-	"GET /v1/stats/daily":             true,
-	"GET /v1/window-stop":             true,
-	"GET /v1/events":                  true,
-	"GET /v1/history":                 true,
-	"GET /v1/status":                  true,
-	"GET /v1/storage":                 true, // sizes only; the data dir is already in /v1/status
-	"GET /v1/resources":               true, // CPU and memory of the session trees and of Caprock; the reap is machine-only
-	"GET /v1/update":                  true,
-	"GET /v1/settings":                true, // without the licence key; see handleGetSettings
-	"GET /v1/premium":                 true,
-	"GET /v1/gemini":                  true,
-	"GET /v1/pricing":                 true,
-	"GET /v1/live":                    true,
-	"GET /v1/tasks":                   true,
-	"GET /v1/tasks/{id}":              true,
-	"GET /v1/approvals":               true,
-	"GET /v1/statusline/{id}":         true,
-	"GET /v1/pair/me":                 true, // which role this device holds, so its screens draw the right controls
-	"GET /v1/glance":                  true, // Now's At a glance
-	"GET /v1/week":                    true, // the Week screen
-	"GET /v1/tools/drill":             true, // the tool drill-down; its Premium half is gated in the handler
-	"GET /v1/saved-prompts":           true, // the phone's chips (ADR-051); changing them is the machine's
-	"GET /v1/attempts/{group}":        true, // Compare attempts (ADR-052): what each changed and cost, a read
+	"GET /v1/sessions":                        true,
+	"GET /v1/sessions/{id}":                   true,
+	"GET /v1/sessions/{id}/events":            true,
+	"GET /v1/sessions/{id}/subagents":         true,
+	"GET /v1/sessions/{id}/subagents/{agent}": true,
+	"GET /v1/sessions/{id}/calls":             true,
+	"GET /v1/sessions/{id}/notes":             true,
+	"GET /v1/sessions/{id}/todos":             true,
+	"GET /v1/sessions/{id}/diff":              true,
+	"GET /v1/notes":                           true,
+	"GET /v1/stats/summary":                   true,
+	"GET /v1/stats/daily":                     true,
+	"GET /v1/window-stop":                     true,
+	"GET /v1/events":                          true,
+	"GET /v1/history":                         true,
+	"GET /v1/status":                          true,
+	"GET /v1/storage":                         true, // sizes only; the data dir is already in /v1/status
+	"GET /v1/resources":                       true, // CPU and memory of the session trees and of Caprock; the reap is machine-only
+	"GET /v1/update":                          true,
+	"GET /v1/settings":                        true, // without the licence key; see handleGetSettings
+	"GET /v1/premium":                         true,
+	"GET /v1/gemini":                          true,
+	"GET /v1/pricing":                         true,
+	"GET /v1/live":                            true,
+	"GET /v1/tasks":                           true,
+	"GET /v1/tasks/{id}":                      true,
+	"GET /v1/approvals":                       true,
+	"GET /v1/statusline/{id}":                 true,
+	"GET /v1/pair/me":                         true, // which role this device holds, so its screens draw the right controls
+	"GET /v1/glance":                          true, // Now's At a glance
+	"GET /v1/week":                            true, // the Week screen
+	"GET /v1/tools/drill":                     true, // the tool drill-down; its Premium half is gated in the handler
+	"GET /v1/saved-prompts":                   true, // the phone's chips (ADR-051); changing them is the machine's
+	"GET /v1/attempts/{group}":                true, // Compare attempts (ADR-052): what each changed and cost, a read
 
 	// The permission prompt an owned session waits on (ADR-035); the live
 	// socket already carries it to a viewer.
@@ -279,6 +280,9 @@ var pairedDeviceRoutes = map[string]bool{
 	// The messages waiting for an owned session's turn to end (ADR-053);
 	// the live socket carries every change to a viewer too.
 	"GET /v1/agents/{id}/queue": true,
+	// The Queue view: the queues of every owned session with their rough
+	// estimates and the turns finished lately — the same reads, together.
+	"GET /v1/queue": true,
 	// The chat field's pickers: the session's slash commands (names and
 	// descriptions from its .claude folders) and its folder's file list,
 	// as a project's file list is a read.

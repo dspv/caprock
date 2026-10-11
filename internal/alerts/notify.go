@@ -89,6 +89,8 @@ func plainHeadline(a Alert) string {
 			return "Stopped: " + why
 		}
 		return "Stopped on an error"
+	case a.Kind == KindFinished && a.Queued != "":
+		return "Queued message done"
 	case a.Kind == KindFinished:
 		return "Finished"
 	case a.Question:
@@ -115,6 +117,9 @@ func bodyLines(a Alert, d Details) []string {
 		lines = append(lines, strings.Join(who, " · "))
 	}
 	if a.Kind == KindFinished {
+		if a.Queued != "" {
+			lines = append(lines, "Queued: "+clip(a.Queued, queuedMaxRunes))
+		}
 		lines = append(lines, runLines(d, func(s string) string { return s })...)
 		if r := clip(plainReply(d.Reply), replyMaxRunes); r != "" {
 			lines = append(lines, "“"+r+"”")

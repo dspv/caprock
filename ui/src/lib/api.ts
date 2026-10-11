@@ -441,7 +441,12 @@ export interface CIJob {
   runner_name?: string
   html_url?: string
   steps: CIStep[]
+  /** The median duration of the job of this name in the workflow's last
+   *  successful runs (up to 5); absent with fewer than 2 of them. */
+  baseline?: CIBaseline
 }
+/** What a run or a job usually takes: a median, and how many runs it is of. */
+export interface CIBaseline { median_ms: number; runs: number }
 export interface CIRun {
   id: number
   name: string
@@ -459,6 +464,9 @@ export interface CIRun {
   head_sha?: string
   workflow_id?: number
   jobs: CIJob[]
+  /** The median wall-clock span of the workflow's last successful runs (up
+   *  to 5); absent with fewer than 2 of them. */
+  baseline?: CIBaseline
 }
 /** A commit's GitHub Actions. runner_ms sums the finished jobs; by_os splits it, no billing multiplier. */
 export interface CIState {
@@ -1387,7 +1395,15 @@ export const api = {
   /** Every priced model call of the session's main thread, oldest first (the spend scrubber). */
   sessionCalls: (id: string) => get<SessionCall[]>(`/v1/sessions/${encodeURIComponent(id)}/calls`),
   /** The subagents working in a session now, and how many finished lately. */
-  subagents: (id: string) => get<SubagentsNow>(`/v1/sessions/${encodeURIComponent(id)}/subagents`),
+  subagents: (id: string, recent = 0) => get<SubagentsNow>(`/v1/sessions/${encodeURIComponent(id)}/subagents${recent > 0 ? `?recent=${recent}` : ''}`),
+  /** One subagent opened up: its task, its newest `limit` calls (before a call id), its result and numbers. */
+  subagent: (id: string, agent: string, opts: { before?: number; limit?: number } = {}) => {
+    const q = new URLSearchParams()
+    if (opts.before) q.set('before', String(opts.before))
+    if (opts.limit) q.set('limit', String(opts.limit))
+    const qs = q.toString()
+    return get<SubagentDetail>(`/v1/sessions/${encodeURIComponent(id)}/subagents/${encodeURIComponent(agent)}${qs ? `?${qs}` : ''}`)
+  },
   /** The task list the session's agent keeps for itself (TodoWrite, TaskCreate/TaskUpdate, update_plan). */
   todos: (id: string) => get<SessionTodos>(`/v1/sessions/${encodeURIComponent(id)}/todos`),
   diff: (id: string) => get<DiffResult>(`/v1/sessions/${encodeURIComponent(id)}/diff`),
@@ -1543,6 +1559,8 @@ export const api = {
   agentInput: (id: string, data: string) => post<void>(`/v1/agents/${encodeURIComponent(id)}/input`, { data }),
   /** The messages waiting for an owned session's turn to end, and why (ADR-053). */
   queue: (id: string) => get<QueueView>(`/v1/agents/${encodeURIComponent(id)}/queue`),
+  /** The Queue view: every owned session, what waits in its queue, rough estimates, recent turns. */
+  queueBoard: () => get<QueueBoard>('/v1/queue'),
   /** The chat field's send: typed in now at the prompt, otherwise queued. */
   queueSend: (id: string, text: string) => post<QueueSendResult>(`/v1/agents/${encodeURIComponent(id)}/queue`, { text }),
   queueEdit: (id: string, qid: number, text: string) => post<QueueView>(`/v1/agents/${encodeURIComponent(id)}/queue/${qid}`, { text }, 'PATCH'),
@@ -1626,10 +1644,58 @@ export interface SubagentsNow {
   working: Subagent[]
   /** How many stopped in the same window after making a tool call. */
   finished: number
-  /** The newest of those, at most three. Absent from a daemon that predates it. */
+  /** The newest of those, three unless `recent` asked for more (at most 30). Absent from a daemon that predates it. */
   recent?: SubagentDone[]
   /** What every subagent of the session has cost; absent when any is unknown. */
   cost_usd?: number
+}
+
+/** One call in a subagent's activity feed (GET /v1/sessions/{id}/subagents/{agent}). */
+export interface SubagentCall {
+  /** Its tool.pre event id: the cursor `before` pages by. */
+  id: number
+  tool_use_id?: string
+  tool: string
+  /** Its short line, as the tool list writes it. */
+  detail?: string
+  /** Unix ms; `ended_at` absent while it has no result. */
+  started_at: number
+  ended_at?: number
+  error?: boolean
+}
+
+/** One subagent opened up (GET /v1/sessions/{id}/subagents/{agent}). */
+export interface SubagentDetail {
+  agent_id: string
+  agent_type?: string
+  /** The parent's Agent/Task call input; absent when no call is linked. */
+  description?: string
+  prompt?: string
+  subagent_type?: string
+  parent_tool_use_id?: string
+  background?: boolean
+  state: 'working' | 'finished' | 'quiet'
+  asking: boolean
+  started_at: number
+  last_at: number
+  stopped_at?: number
+  /** What it returned to its parent; absent while it works or when none was recorded. */
+  result?: string
+  /** The newest calls, oldest first; `earlier` is how many came before them. */
+  calls: SubagentCall[]
+  earlier: number
+  stats: {
+    tool_calls: number
+    turns: number
+    tokens: TokenDelta
+    duration_ms: number
+    /** The costliest tool kinds, at most four; `tool` empty for turns that only wrote. */
+    by_tool: { tool: string; calls: number; cost_usd?: number }[]
+    model?: string
+    model_display?: string
+    /** Absent when unknown: no turn, or one the table could not price. */
+    cost_usd?: number
+  }
 }
 
 /** One entry of the agent's own task list (GET /v1/sessions/{id}/todos). */
@@ -1663,6 +1729,67 @@ export interface QueueView {
   session_id: string
   messages: QueuedMessage[] | null
   waiting: QueueWaiting
+}
+
+/** An estimate in ms from the board's `now`: median and the p25–p75 range. */
+export interface ETA {
+  lo_ms: number
+  mid_ms: number
+  hi_ms: number
+}
+
+/** What the estimates are made from: the project's newest finished Claude Code turns. */
+export interface TurnEstimate {
+  turns: number
+  p25_ms: number
+  median_ms: number
+  p75_ms: number
+}
+
+export interface BoardItem extends QueuedMessage {
+  /** 1 = typed in when the current turn ends. */
+  position: number
+  start?: ETA
+  finish?: ETA
+}
+
+/** One session Caprock started, as the Queue view shows it (GET /v1/queue). */
+export interface BoardSession {
+  session_id: string
+  agent: string
+  title?: string
+  project?: string
+  dir?: string
+  branch?: string
+  waiting: QueueWaiting
+  /** Unix ms the running turn's prompt went in; absent when not known. */
+  turn_started_at?: number
+  todo?: { active?: string; done: number; total: number }
+  queue: BoardItem[]
+  turn_left?: ETA
+  /** When a message added now would start; absent when it cannot be estimated. */
+  free_in?: ETA
+  estimate?: TurnEstimate
+  estimate_note?: string
+}
+
+export interface BoardDone {
+  session_id: string
+  agent: string
+  title?: string
+  project?: string
+  prompt: string
+  started_at: number
+  ended_at: number
+  queued?: boolean
+  failed?: boolean
+}
+
+export interface QueueBoard {
+  now: number
+  sessions: BoardSession[]
+  done: BoardDone[]
+  done_since: number
 }
 
 export interface QueueSendResult {

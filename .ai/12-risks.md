@@ -44,6 +44,16 @@ The spike proves the PTY once; a later dependency bump can break it silently. Mi
 **`RISK-07` — Cost math drift vs the real bill.**
 Prices change; a stale table under-reports spend and users notice on their invoice. Mitigation: `meta.pricing_version` recorded and never applied retroactively, user override file, a dated `source` in `pricing.json`, and a release-checklist step to re-fetch the pricing page. Accepted residuals: partner platforms (Bedrock/Vertex) are not priced ([OQ-02](#open-questions)); the gpt-6 rows cannot apply OpenAI's cache-write rate because Codex reports no cache-write tokens, so those figures can be low by up to a quarter of that unreported share; and the gpt-6 surcharge above 272K input tokens is not modelled (no observed turn reached it).
 
+**`RISK-08` — Queue estimates are rough.**
+The Queue view says when a queued message starts and is done from how long the project's past Claude Code turns took ([03-contracts.md § Queue](03-contracts.md#queue)). A turn's length depends on what it was asked, which history cannot see, so the estimate is weak. Measured on a copy of the owner's database (2026-10-12): 2,227 finished Claude Code turns (prompt to Stop; 85 more were interrupted), median 48 s, p25 16 s, p75 216 s, p90 577 s. Backtest, each turn predicted from the newest 200 turns of its project that ended before it started (2,168 turns with at least five such):
+
+- **Median absolute error 55 s**, mean 238 s, p75 144 s; median error relative to the turn's own length 86%.
+- **Inside the predicted p25–p75: 49%** of turns (a calibrated range holds 50%); inside p10–p90: 78% (80%).
+- **Other windows were no better.** Every past turn instead of the newest 200: median error 63 s, 44% inside p25–p75; the newest 20: 53 s, 43%; the session's own past turns instead of the project's: 62 s, 48%.
+- **The running turn's remaining time**, for turns still running at 30 s, 2 min and 10 min: the median minus the elapsed time missed by 87 s, 211 s and 381 s; the median of what the past turns that ran at least that long still took missed by 111 s, 178 s and 319 s, and held the actual in its p25–p75 46–49% of the time. The view uses the first before the median and the second after it.
+
+Mitigation: the ranges are calibrated, the points are not, so the view shows the p25–p75 range with the word "rough" and its basis ("middle half of the last 200 turns in caprock"), never a single time; under five finished turns in a project it shows the count, not a number; for agents whose turn end Caprock does not hear (everything but Claude Code with hooks) it shows none. Re-run the backtest over a database copy before presenting the estimate as anything better.
+
 ## Open questions
 
 Anything the spec did not answer. Do not resolve these by inventing an answer. "Decided by" is a person, an event, or a task — never "later".

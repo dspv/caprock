@@ -219,3 +219,36 @@ func TestGitHubItemsForNewAgent(t *testing.T) {
 		t.Fatalf("no such project: %d %s", w.Code, w.Body.String())
 	}
 }
+
+// The Actions usage route answers GitHub's refusal as an answer naming the
+// permission; a phone may not read the account's billing.
+func TestGitHubActionsUsageRoute(t *testing.T) {
+	s, viewer, _, _, _, _ := githubServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/users/ada/settings/billing/usage" {
+			w.Header().Set("X-Accepted-GitHub-Permissions", "plan=read")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"message":"Resource not accessible by personal access token"}`))
+			return
+		}
+		fakeRoutes(w, r)
+	})
+	w := call(t, s, machine, "", "GET", "/v1/github/actions-usage", "")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"reason":"not_connected"`) {
+		t.Fatalf("not connected: %d %s", w.Code, w.Body.String())
+	}
+	call(t, s, machine, "", "POST", "/v1/github/connect", `{"source":"token","token":"ghp_good"}`)
+	w = call(t, s, machine, "", "GET", "/v1/github/actions-usage", "")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"reason":"permission"`) || !strings.Contains(w.Body.String(), `"needs":["plan=read"]`) {
+		t.Fatalf("permission: %d %s", w.Code, w.Body.String())
+	}
+	w = call(t, s, machine, "", "GET", "/v1/github/actions-usage?owner=acme", "")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"reason":"not_found"`) || !strings.Contains(w.Body.String(), `"org":true`) {
+		t.Fatalf("not found: %d %s", w.Code, w.Body.String())
+	}
+	if w := call(t, s, machine, "", "GET", "/v1/github/actions-usage?owner=a/b", ""); w.Code < 400 || w.Code > 499 {
+		t.Fatalf("bad owner: %d %s", w.Code, w.Body.String())
+	}
+	if w := call(t, s, testPhone, viewer, "GET", "/v1/github/actions-usage", ""); w.Code != http.StatusForbidden {
+		t.Fatalf("a phone read billing: %d", w.Code)
+	}
+}

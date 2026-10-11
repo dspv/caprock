@@ -1,6 +1,7 @@
 package alerts
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -170,5 +171,35 @@ func TestAnAlertCarriesItsTrigger(t *testing.T) {
 	r.Observe(stop, t0)
 	if got := r.Due(t0.Add(FinishedAfter)); len(got) != 1 || got[0].Trigger.Kind != event.KindAgentStop {
 		t.Fatalf("finished trigger: %+v", got)
+	}
+}
+
+// A queued message's turn is heard at its Stop, says which message it was,
+// and the quiet-minute alert for the same Stop is not sent again.
+func TestQueuedDoneAlertsAtOnceAndOnce(t *testing.T) {
+	r := New(allOn)
+	stop := ev("s", event.KindAgentStop, t0)
+	r.Observe(stop, t0)
+	got := r.QueuedDone(stop, "run the tests", t0)
+	if len(got) != 1 || got[0].Kind != KindFinished || got[0].Queued != "run the tests" || got[0].Trigger.Ts != t0 {
+		t.Fatalf("queued done: %+v", got)
+	}
+	if due := r.Due(t0.Add(FinishedAfter + time.Second)); len(due) != 0 {
+		t.Fatalf("finished twice: %+v", due)
+	}
+	n := Notify(got[0], Details{Project: "caprock"}, "")
+	if n.Title != "Queued message done · caprock" || !strings.Contains(n.Body, "Queued: run the tests") {
+		t.Fatalf("notification = %+v", n)
+	}
+	if m := Message(got[0], Details{Project: "caprock"}); !strings.Contains(m, "Queued message done") || !strings.Contains(m, "run the tests") {
+		t.Fatalf("telegram = %q", m)
+	}
+	// Switched off, or an old Stop: nothing.
+	off := New(func(Kind) bool { return false })
+	if got := off.QueuedDone(stop, "x", t0); len(got) != 0 {
+		t.Fatalf("switched off: %+v", got)
+	}
+	if got := New(allOn).QueuedDone(stop, "x", t0.Add(time.Hour)); len(got) != 0 {
+		t.Fatalf("stale: %+v", got)
 	}
 }

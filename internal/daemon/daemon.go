@@ -175,6 +175,9 @@ type Daemon struct {
 	mgr   *agents.Manager
 	// queue holds what the chat field sends while a turn runs (ADR-053).
 	queue *msgQueue
+	// queueDoneC carries a queued message's finished turn to the alert
+	// loop (queueboard.go).
+	queueDoneC chan queuedDoneMsg
 	// projs is the projects list and its git watcher (WP-05).
 	projs *projects.Service
 	// gh is the GitHub integration (WP-19); idle until the user connects.
@@ -417,6 +420,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	// Phone alerts (ADR-036), subscribed before any producer starts so the
 	// first Stop is not missed.
 	d.tg = d.newTelegram()
+	d.queueDoneC = make(chan queuedDoneMsg, 16)
 	go d.alertLoop(ctx, d.bus.Subscribe(1024))
 
 	// Owned-session manager (Phase 1).
@@ -430,6 +434,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	logcap.Watch(config.LogPath(d.opt.DataDir), config.ServiceLogPath(d.opt.DataDir))
 	go logcap.Run(ctx, d.log)
 	d.queue = newMsgQueue(d)
+	d.queue.onDone = d.queuedDone
 	d.mgr.OnExit = func(id string, code int) {
 		d.link.Ended(id)
 		go d.queue.ended(id)
@@ -557,7 +562,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		},
 		ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
 		LoopK: d.det.K, LoopWindow: d.det.Window,
-		Token: rt.Token, Shutdown: cancel, Agents: &agentAdapter{m: d.mgr, d: d}, Queue: d.queue, Catalog: &catalogAdapter{d: d}, Subscriptions: &subsAdapter{d: d},
+		Token: rt.Token, Shutdown: cancel, Agents: &agentAdapter{m: d.mgr, d: d}, Queue: d.queue, Board: d.queue, Catalog: &catalogAdapter{d: d}, Subscriptions: &subsAdapter{d: d},
 		Tasks: &boardAdapter{d: d}, Settings: &settingsAdapter{d: d}, Update: d.upd,
 		AskGemini: d.askGemini,
 		DataDir:   d.opt.DataDir,

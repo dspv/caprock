@@ -166,10 +166,14 @@ One window, three regions:
   tester could not find how to, translated).
 - **Quick chat: vendor and model** (owner, 2026-10-09: "three buttons to
   switch between model vendors — Claude, Codex, Gemini — and a model in two
-  clicks", translated). Decision: **⌥⌘N never asks** — it starts at once on
-  the vendor and model used last (else Claude Code on its default). A click
-  on *Quick chat* (sidebar, the strip's + menu, the palette's *Quick chat
-  with…*) opens a chooser sheet (`components/QuickChat.tsx`): a segmented
+  clicks", translated). Decision then: **⌥⌘N never asks** — it started at
+  once on the vendor and model used last. **Reversed 2026-10-12** (owner:
+  "Quick chat opened a terminal without asking with whom, and now I can't
+  get out of there", translated): **⌥⌘N asks, with one keystroke to
+  accept.** Every way in — ⌥⌘N, the sidebar, the strip's + menu, the
+  palette's *Quick chat…* — opens a chooser sheet
+  (`components/QuickChat.tsx`) with the agent and model used last (else
+  Claude Code on its default) picked and focused, so Enter starts it: a segmented
   row of the agents installed here (`useSpawnableAgents`), the selected
   one's models under it with the New agent sheet's labels (since
   2026-10-10 from `GET /v1/agents/catalog`: Codex's catalog, the models of
@@ -180,14 +184,32 @@ One window, three regions:
   the agents not installed are named under the list, each opening its install
   note (ADR-046). A click on a model
   starts the chat on it — another vendor's model is two clicks, the last
-  vendor's one; Enter starts on the highlighted model; ← → or ⌘1–9 switch
-  the agent, ↑ ↓ the model, Esc closes. The choice is kept per viewer in
+  vendor's one; Enter starts on the highlighted model; ← → or 1–9 (⌘1–9
+  too) switch the agent, ↑ ↓ the model, Esc closes. The choice is kept per viewer in
   localStorage (`caprock.quickchat`). With more than one Claude Code or
   Codex sign-in, a Subscription select sits under the agent row, its pick
   kept in `caprock.subscription.<agent>.-` and sent as `subscription`
   (ADR-048). Rejected: a header on the started tab
   that restarts the chat on another model — it starts a process only to kill
   it, and cannot change vendor once a conversation has begun.
+- **A quick chat's tab** (owner, 2026-10-12, same report). It is named
+  *Quick chat · Opus 5.5* — the pricing table's model name once it has
+  answered, before that the model it was started on, which the window that
+  started it keeps (`caprock.quickchat.started`), else the agent's name — in
+  the strip, the sidebar row and the inspector's header (`lib/quickchat.ts`;
+  a chat is known by its folder, `<data_dir>/chats/<stamp>`, as the daemon's
+  `chatLabel` knows it). The sidebar still groups it under *Outside
+  projects*; the tab no longer wears that group as its chip. A line above
+  its terminal says *Quick chat with Claude · Opus 5.5 — ⌘W closes, /exit
+  ends it* (keys through `keys()`; Gemini's is /quit), with a × that hides it
+  for good (`caprock.quickchat.hint`). **When the agent exits** the tab stays,
+  dimmed, with *The chat ended*, **Close tab** (focused, so Enter takes it)
+  and **Start again** (a new chat on the same agent and model, in the same
+  tab: `replace-session`). Every other agent's tab becomes a shell in its
+  folder on exit ([04-ui.md](04-ui.md)); a chat's folder is Caprock's own,
+  and that shell — a login prompt in Application Support, under the same
+  tab — was the "can't get out": the owner typed `/exit`, was still in a
+  terminal, and reloaded the window to leave.
 - **Tab strip** (owner, 2026-10-09: "tabs are barely noticeable", and "the
   + amber, or better a dropdown", translated). The tab in front has a 2px
   amber top edge over its hairline frame and a medium-weight label
@@ -197,7 +219,7 @@ One window, three regions:
   (`.app-tab-dash`): an amber grid icon, an amber-tinted fill and frame
   while it is behind, and a hairline divider after it. The + is an amber outline (`.app-primary`, like the sidebar's New
   agent) that opens a menu (`components/NewMenu.tsx`, portalled): *New
-  agent* ⇧⌘N, *Quick chat…* ⌥⌘N (the chooser; the key itself skips it),
+  agent* ⇧⌘N, *Quick chat…* ⌥⌘N (the chooser, as the key opens it),
   *New shell* ⌘T, *Open file…*, *Add project* ⌘O, each with its key; ↑ ↓,
   Enter, Esc. The separate >_ new-shell button is gone: it is the menu's
   third row and ⌘T, and two lone icons side by side read as one ambiguous
@@ -330,8 +352,10 @@ One window, three regions:
   agent's terminal: the session's project (and its branch when not the
   default; the path on hover), the agent's character in its state (working,
   *background agents working · N* once its turn ended with subagents still
-  at work, waiting on you, looping, idle, ended), what the session has cost with the cost of each
-  of its last model calls, the context bar and what the next call pays to
+  at work, waiting on you, looping, idle, ended) with a headline figure at
+  the right that the viewer picks (cost, burn rate, tokens, turns, cache
+  hit rate, time working), the spend details folded to one line below the
+  plan windows (cells, and *Spend over time* opening in the flow), the context bar and what the next call pays to
   re-read it, what it is doing this second (the open tool call and how long
   it has run, or *Thinking* since the last one finished; while a permission
   prompt waits, who asks and what — "Subagent (general-purpose) wants to run
@@ -342,9 +366,13 @@ One window, three regions:
   worked, its current call with how long it has run, how many calls it has
   made and what it has cost, *waiting on you* while it has a prompt
   outstanding; under them, muted, up to three that finished in the last 30
-  minutes with model, duration and cost, "+N finished" for the rest; the
-  header carries what all of the session's subagents cost — a cost is shown
-  only when every turn behind it was priced, never as $0), its last seven tool calls with their durations, the
+  minutes with model, duration and cost, "+N finished" opening the rest as
+  rows; the header carries what all of the session's subagents cost — a
+  cost is shown only when every turn behind it was priced, never as $0;
+  every row opens in place, one at a time, to the task the parent gave it,
+  its own calls live, what it answered and its numbers — owner, 2026-10-12:
+  "can we expand the subagents to look inside?"; the hero's chips, groups
+  of four up to two rows of twelve, open a row too), its last seven tool calls with their durations, the
   uncommitted changes, the plan windows of its agent (each a bar with a tick
   where an even pace would be by the clock, the percentage large, and one
   line — *resets in 4 h 56 min · ✓ enough* or *⚠ out at 23:50*, amber, red
@@ -363,7 +391,8 @@ One window, three regions:
   fetched once and then followed on the live socket; the daemon's summary of
   the subagents (`/v1/sessions/{id}/subagents`), read again at most every two
   seconds while their events arrive and every twenty regardless, so their
-  thousands of events never reach the page; the session's permission prompt;
+  thousands of events never reach the page — one opened subagent is read
+  once (`/subagents/{agent}`) and then followed on the socket; the session's permission prompt;
   and the day's summary for the plan windows, which are account-wide and
   labelled so. A figure an agent does not report is left
   out, never drawn as zero — no context bar without `context` (its
@@ -376,75 +405,111 @@ One window, three regions:
   that's comfortable — and in this new area show data useful to me while I
   work"). A full-width terminal puts Claude Code's prompt on the window's
   bottom edge; the deck is a band under the terminal of the agent in front
-  that lifts it. One dense row, none of it estimated: *CI*, *Branch* (the sidebar's branch for the session's checkout, how
-  many files are not committed and commits not pushed, *Review changes*)
-  and *Pull requests* — the session's latest three (`session_prs`) with
-  their CI and review from `GET /v1/sessions/{id}/prs`, a dot per PR
-  (green passed, amber running, red failed or changes requested, violet
-  merged), in columns (CI, then state); a PR with no checks reads *CI not started* (muted) for 10 minutes after it was opened — GitHub often has not registered them yet — and *no checks* after that, each with a tooltip saying so, never "CI no CI"; a click on the title opens the PR, a click on the CI opens the failing or running job, else the PR's Checks tab. Asked every 20 s while a check runs,
-  else every minute, never while the window is hidden; the daemon keeps
-  each PR as long, so a poll costs GitHub nothing. While GitHub is not
-  connected the rows show what the session recorded (open, merged) and
-  *connect GitHub for CI* turns the integration on through the `gh` login
-  in one click (ADR-047: this click is the user turning it on), else opens
-  Settings. *CI* (owner, 2026-10-11, translated: "Context duplicates what
-  is on the right (the status bar), sacrifice it for CI/CD … I want to see
-  which steps run, how long each step takes … what failed and with which
-  error, and the time of each stage, because runners are money") is the
-  GitHub Actions of the session's open PR, else its newest, from
-  `GET /v1/sessions/{id}/ci`: a row per job with a mark (an amber turning
-  ring while it runs, ✓, ✗, ○ queued, – skipped or cancelled), its name,
-  the step it failed at or is on, its OS (from the runner labels) and its
-  time, ticking each second while it runs; a click opens its steps with
-  theirs, and a click on a failed step shows the lines around the error in
-  the job's log inline (monospace, scrolling, the error line marked) with
-  *Open on GitHub*. The first failed job opens by itself, and
-  *Investigate* under it queues the failure into the agent (`.ai/04-ui.md`
-  § CI in the session deck, and Investigate). At the top, the
-  PR's number (its Checks tab) and *runner* — the finished jobs' time from
-  GitHub's own stamps plus the running ones on the clock; the minutes per
-  OS are in its tooltip and, with more than one OS, under the jobs. Never
-  priced: what a runner minute costs depends on the plan and the OS, and we
-  do not invent the multiplier. The cell scrolls inside itself and never
-  grows the deck. Asked every 12 s while a job runs, else every minute,
-  only while the deck is open and the window visible; the daemon keeps a
-  commit's runs 10 s while one runs and 2 min once settled. Not connected,
-  no PR and no runs are one short line each. A switch beside the label
-  (owner, 2026-10-12, translated: "Can I also see here, in the deck, the
-  status of the release build? And whatever else matters to me") picks
-  **PR** (the above), **Release** or **Main**, kept per viewer in
-  `localStorage`. *Release* is the repository's newest release build — the
-  newest run started by a tag push or a release, found for any repository
-  without knowing its workflow file (`GET /v1/sessions/{id}/ci/release`):
-  its tag, a mark, the time so far ticking and *about N min left (estimate
-  from the last K runs)*, the median of that workflow's last successful
-  release runs from GitHub's own run times, or nothing when fewer than two
-  exist; once done, *v0.109.1 · published 3 min ago ✓* linking the GitHub
-  release (else *built*, or *failed … ✗*), then its jobs as the PR view
-  draws them, with steps, errors and *Investigate*. *Main* is the newest run
-  of each workflow on the default branch, a header per workflow with its
-  mark (`GET /v1/sessions/{id}/ci/main`), so a red default branch shows at
-  once. The repository is the session's directory's remote; a folder with
-  none, a remote off GitHub and GitHub not connected are one line each, the
-  last with the same connect button. While a release builds, a chip
-  *Release v0.109.1 · ~6 min* sits at the top of the cell in the PR and
-  Main views; a click opens Release. The release build is asked whatever
-  the view (12 s while it runs, else a minute, only while the deck is
-  open), Main only while it is shown. The cell keeps its size. Every PR row
-  in *Pull requests*, the release tag line and each Main workflow header
-  carry a **mini pipeline** (owner, 2026-10-12, translated: "I'd like the
-  CI/CD stages together with the pull requests — like GitLab's pipeline
-  indicators"; `components/MiniPipeline.tsx`): a circle per job — ✓ on
-  green, ✗ on red, a turning ring running, hollow queued, a grey slash
-  skipped or cancelled — joined by a thin line within a workflow and set
-  apart between workflows, up to 14 and then *+N*. GitHub's API does not
-  report `needs`, so the jobs stand in the order they started, the ones not
-  started last. Hover names the job, its state and its time; a click opens
-  that job, with its steps and error, in the CI cell (for a PR row, the CI
-  cell turns to that PR, `GET /v1/sessions/{id}/ci?pr=N`); a check that is
-  no Actions job opens its own link. A PR row's circles come from the
-  checks the PRs cell already reads, so they cost no extra request. It replaced *Context*, which
-  repeated the status bar. The minute chart, the plan windows, *Now* and *Spent* left the
+  that lifts it. It holds one cell, **Pull requests & CI** (owner,
+  2026-10-12, translated: "Remove the Branch cell — put it somewhere else …
+  CI/CD and Pull requests should simply be merged properly into one, with
+  all the statuses and so on, plus at least a couple of previous PRs"; it
+  was three cells — CI, Branch, Pull requests — until then), and *Hide ⌘B*
+  at its right.
+  - **Header.** The title; the session's branch as a mono chip, *feat/x →
+    main* when the current PR is from it, its tooltip saying what is not
+    committed or pushed and, beside it in amber, *3 not committed · 2 not
+    pushed* (a click opens the Changes view, ⇧⌘G); the release chip
+    *Release v0.109.1 · ~6 min* while a release builds (a click opens
+    Release); in Main the branch and *runner*; the **PRs | Release | Main**
+    switch, kept per viewer in `localStorage`. The chips give way below a
+    480px container.
+  - **PRs view.** The session's pull requests from `GET
+    /v1/sessions/{id}/prs` — its latest four (`session_prs`): the open one
+    (the current) first, then the earlier ones newest first, and *No earlier
+    PRs from this session.* when there is one. A row: a state dot (green
+    open, a hollow ring draft, violet merged, grey closed; `.pr-dot`,
+    `--color-merged`), the number and title, the mini pipeline, the CI in
+    words — *✓ 9m 10s · −6%* (the run's time and its delta, below), *✗
+    failed at test (windows)*, *running · 3/5 · 4m 10s* (since the first
+    check started, measured), *CI not started* (muted, for 10 minutes after
+    the PR opened — GitHub often has not registered the checks yet) and *no
+    checks* after that, never "CI no CI" — then the review GitHub returned
+    (*approved*, *changes requested*, *review required*) and *conflict* when
+    GitHub says it cannot merge, both only for an open PR, then the age
+    (*now*, *5m*, *2h*, *3d*; since merged, closed or opened) and ↗ (the
+    PR on GitHub). Columns line up row to row; the pipeline, then the
+    review, give way as the deck narrows. A click on a row opens it in place,
+    one at a time, into its GitHub Actions from `GET
+    /v1/sessions/{id}/ci?pr=N`: *run 9m 10s · −6%* (one workflow), *runner*
+    — the finished jobs' time from GitHub's own stamps plus the running ones
+    on the clock, the minutes per OS beside it and in its tooltip, never
+    priced — and *checks ↗*; then a row per job with a mark (an amber
+    turning ring while it runs, ✓, ✗, ○ queued, – skipped or cancelled), its
+    name, the step it failed at or is on, its OS (from the runner labels),
+    its time ticking each second while it runs, and its time against its
+    median. A job opens into its steps, and a failed step into the lines
+    around the error in the job's log (monospace, scrolling, the error line
+    marked) with *Investigate* and *Open on GitHub*. The first failed job of
+    each PR opens by itself. The current PR is open by default while its CI
+    runs or failed. Every row keeps its line and the open one's CI takes the
+    height left, scrolling inside, so the earlier PRs stay in view; while an
+    error log is open they fold into one line (*also #13 ✓ #12 ✓*) so the
+    error has the room. A settled PR's runs are read once while the deck is
+    open, so its row carries its time against the median without being
+    opened. While GitHub is not connected the rows show what the session
+    recorded (open, merged) and *connect GitHub for CI* turns the integration
+    on through the `gh` login in one click (ADR-047: this click is the user
+    turning it on), else opens Settings.
+  - **Time against the median** (owner, 2026-10-12, translated: "In CI runs
+    I want to see the execution time plus an estimate relative to the
+    average — plus or minus percent"). A run's wall-clock time (started to
+    last updated) and each job's duration are set against the median of the
+    same workflow's last five successful runs on the repository, jobs
+    matched by name (`baseline` on runs and jobs, `github.WithBaselines`):
+    *4m 45s +18%* once finished and passed — amber past +20%, green below
+    −10%, muted between; while running *≈ 3m left* (an estimate, the
+    tooltip giving *median 7m 40s*) and *+12% over median* once past it.
+    The tooltip names the basis, *the median of the last 5 successful
+    runs*. Fewer than two past runs is no figure at all (rule 6); a failed
+    job has none (it stopped early). Reading the past runs costs one list
+    per workflow per 30 minutes and one jobs read per past run, kept for the
+    daemon's lifetime since a finished run never changes, and only the
+    deck's routes ask for it.
+  - **Release view** (owner, 2026-10-12, translated: "Can I also see here,
+    in the deck, the status of the release build? And whatever else matters
+    to me"): the repository's newest release build — the newest run started
+    by a tag push or a release, found for any repository without knowing its
+    workflow file (`GET /v1/sessions/{id}/ci/release`): its tag, a mark, the
+    time so far ticking and *about N min left (estimate from the last K
+    runs)*, the median of that workflow's last successful release runs from
+    GitHub's own run times, or nothing when fewer than two exist; once done,
+    *v0.109.1 · published 3 min ago ✓* linking the GitHub release (else
+    *built*, or *failed … ✗*), then its jobs as a PR's, with steps, errors,
+    *Investigate* and each job against its median.
+  - **Main view**: the newest run of each workflow on the default branch, a
+    header per workflow with its mark, mini pipeline and *run 9m 10s · −6%*
+    (`GET /v1/sessions/{id}/ci/main`), so a red default branch shows at
+    once.
+  - **States and cadence.** The repository is the session's directory's
+    remote; a folder with none, a remote off GitHub and GitHub not connected
+    are one line each, the last with the connect button. No PR, no runs and
+    a failed read are one short line each. The PRs are asked every 20 s
+    while a check runs, else every minute; the open row's CI and Main every
+    12 s while a job runs, else every minute; the release build whatever the
+    view, as often — all only while the deck is open and the window visible.
+    The daemon keeps each PR 20 s while its checks run, 2 min once settled
+    and 30 min once merged or closed, and a commit's runs 10 s while one runs
+    and 2 min once settled, so a poll inside that costs GitHub nothing.
+  - **Mini pipeline** (owner, 2026-10-12, translated: "I'd like the CI/CD
+    stages together with the pull requests — like GitLab's pipeline
+    indicators"; `components/MiniPipeline.tsx`): a circle per job — ✓ on
+    green, ✗ on red, a turning ring running, hollow queued, a grey slash
+    skipped or cancelled — joined by a thin line within a workflow and set
+    apart between workflows, up to 14 and then *+N*. GitHub's API does not
+    report `needs`, so the jobs stand in the order they started, the ones
+    not started last. Hover names the job, its state and its time; a click
+    opens that job, with its steps and error (for a PR row, that row opens);
+    a check that is no Actions job opens its own link. A PR row's circles
+    come from the checks already read, so they cost no extra request.
+
+  The CI part replaced *Context*, which repeated the status bar (owner,
+  2026-10-11, translated: "sacrifice it for CI/CD"). The minute chart, the plan windows, *Now* and *Spent* left the
   deck on 2026-10-11 (owner, translated: "we already have charts
   everywhere", "Spent doesn't help", "Working now is debatable"); the
   sidebar and the inspector carry them, and the deck holds no session
@@ -452,8 +517,7 @@ One window, three regions:
   upward (the first, brighter one distracted; a grey hairline lost the
   division), framing the line above it where the prompt sits, and *Hide ⌘B*
   sits at its right. A figure the agent does not report is
-  left out, never drawn as zero. As the terminal narrows the Branch cell
-  gives way first, below 720px (a container query). ⌘B (Ctrl+Shift+B off macOS), a strip
+  left out, never drawn as zero. ⌘B (Ctrl+Shift+B off macOS), a strip
   button beside the inspector's — labelled *Deck* with its key, since an
   icon alone left the deck unfound — and the palette open and close it; the
   Add project sheet's own ⌘B is not reached, since a sheet owns the
@@ -1268,7 +1332,9 @@ tells a page where a file lives.
   `/v1/live`, `{id, seq, kind, session_id, project, title, body, prompt_id?,
   actions?}`, with `kind` one of `approval`, `finished`, `loop`, `limit`,
   `error`. Telegram and the app read the same decision; the rules, cooldowns
-  and hourly cap are the same.
+  and hourly cap are the same. A queued message's turn ending is a
+  `finished` alert at once, titled *Queued message done*
+  ([03-contracts.md § Queue](03-contracts.md#queue)).
 - **Actions.** For an approval on an owned Claude Code session, `actions` are
   the prompt's buttons. The app shows them as OS notification actions and
   answers through `POST /v1/agents/{id}/permission` with the `prompt_id`, so an

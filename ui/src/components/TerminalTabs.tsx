@@ -22,6 +22,7 @@ import { HotMark } from './ResourceMeter'
 import { closeTitle, closeWord } from '@/lib/closeShell'
 import { NewMenu, type NewMenuItem } from './NewMenu'
 import { keys, tabDigit, tabKey } from '@/lib/appkeys'
+import { ChatEnded, ChatHint, type ChatPane } from './QuickChatPane'
 
 /** The pinned Dashboard tab: the dashboard's screens, in the strip with the terminals. */
 export interface DashboardTab {
@@ -166,7 +167,9 @@ export function TabStrip(props: TabStripProps) {
           // A tab is named by its project — the repo is what tells tabs apart
           // at a glance. A second tab of the same project adds its own title,
           // faint, so the two still differ; a file tab keeps the file name.
-          const twin = project !== undefined && tabs.some((o) => o.id !== t.id && o.projectId === t.projectId && labels.get(o.id)?.file === undefined)
+          // A quick chat is named as one: Outside projects is its group, not its name.
+          const chip = file === undefined && !label?.chat ? project : undefined
+          const twin = chip !== undefined && tabs.some((o) => o.id !== t.id && o.projectId === t.projectId && labels.get(o.id)?.file === undefined)
           return (
             <div
               key={t.id}
@@ -174,7 +177,7 @@ export function TabStrip(props: TabStripProps) {
               tabIndex={active ? 0 : -1}
               aria-selected={active}
               data-tab-index={i}
-              aria-label={file === undefined && project ? `${title} · ${project}` : undefined}
+              aria-label={chip ? `${title} · ${chip}` : undefined}
               data-dragging={dragging === t.id || undefined}
               onPointerDown={press(t.id)}
               onClick={() => {
@@ -183,7 +186,7 @@ export function TabStrip(props: TabStripProps) {
               }}
               onAuxClick={(e) => { if (e.button === 1) props.onDetach(t.id) }}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') props.onActivate(t.id) }}
-              title={`${file ?? title}${label?.branch ? ` · ${label.branch}` : ''}${project ? ` · ${project}` : ''}${digit ? ` — ${keys(`⌘${digit}`)}` : ''}`}
+              title={`${file ?? title}${label?.branch ? ` · ${label.branch}` : ''}${chip ? ` · ${chip}` : ''}${digit ? ` — ${keys(`⌘${digit}`)}` : ''}`}
               data-project={t.projectId}
               className={`group relative flex h-[32px] min-w-[112px] max-w-[260px] flex-1 basis-[200px] cursor-default select-none items-center gap-2 rounded-t-[9px] pl-3 pr-1.5 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
                 active ? (file !== undefined ? 'app-tab-front bg-bg font-medium text-fg' : 'app-tab-front app-slab font-medium text-fg') : 'app-tab-back text-fg-muted hover:text-fg'
@@ -197,10 +200,10 @@ export function TabStrip(props: TabStripProps) {
                   <AgentGlyph agent={s?.agent} shell={isShell} />
                 </>
               )}
-              {file === undefined && project ? (
+              {chip ? (
                 <span data-project-chip className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
                   <span aria-hidden className="h-[6px] w-[6px] shrink-0 rounded-full" style={{ background: `hsl(${projectHue(t.projectId)} 42% 56%)` }} />
-                  <span data-row-title className="shrink-0 truncate">{project}</span>
+                  <span data-row-title className="shrink-0 truncate">{chip}</span>
                   {twin && <span data-tab-subtitle className="min-w-0 shrink truncate text-[11px] font-normal text-fg-faint">{title}</span>}
                 </span>
               ) : (
@@ -283,6 +286,10 @@ export const TerminalStack = memo(function TerminalStack({
   onClosePane,
   onResize,
   renderFile,
+  chats,
+  onChatClose,
+  onChatRestart,
+  onChatHintDismiss,
 }: {
   tabs: Tab[]
   /** The tab shown, or undefined when the workspace itself is hidden. */
@@ -298,6 +305,13 @@ export const TerminalStack = memo(function TerminalStack({
   onFocusPane?: (tabId: string, paneId: string) => void
   onClosePane?: (tabId: string, paneId: string) => void
   onResize?: (tabId: string, splitId: string, sizes: number[]) => void
+  /** Quick chats among the panes, by session id: the hint above, the ended state over (components/QuickChatPane.tsx). */
+  chats?: ReadonlyMap<string, ChatPane>
+  /** An ended chat's Close tab. */
+  onChatClose?: (tabId: string, paneId: string) => void
+  /** An ended chat's Start again: a new chat in its place. */
+  onChatRestart?: (sessionId: string) => void
+  onChatHintDismiss?: () => void
 }) {
   // The panes' callbacks, stable for the life of the stack: the workspace
   // hands new ones whenever its session list changes (several times a second
@@ -309,6 +323,11 @@ export const TerminalStack = memo(function TerminalStack({
   exitRef.current = onPaneExit
   const paneStatus = useCallback((id: string, s: PaneStatus) => statusRef.current?.(id, s), [])
   const paneExit = useCallback((id: string) => exitRef.current?.(id), [])
+  const chatRef = useRef({ onChatClose, onChatRestart, onChatHintDismiss })
+  chatRef.current = { onChatClose, onChatRestart, onChatHintDismiss }
+  const chatClose = useCallback((tabId: string, paneId: string) => chatRef.current.onChatClose?.(tabId, paneId), [])
+  const chatRestart = useCallback((id: string) => chatRef.current.onChatRestart?.(id), [])
+  const hintDismiss = useCallback(() => chatRef.current.onChatHintDismiss?.(), [])
   return (
     // The terminal slab is each terminal tab's own ground; a file tab reads
     // on the page's, in the app's theme.
@@ -328,6 +347,10 @@ export const TerminalStack = memo(function TerminalStack({
               onFocusPane: onFocusPane && ((paneId: string) => onFocusPane(t.id, paneId)),
               onClosePane: onClosePane && ((paneId: string) => onClosePane(t.id, paneId)),
               onResize: onResize && ((splitId: string, sizes: number[]) => onResize(t.id, splitId, sizes)),
+              chats,
+              onChatClose: (paneId: string) => chatClose(t.id, paneId),
+              onChatRestart: chatRestart,
+              onChatHintDismiss: hintDismiss,
             }}
           />}
         </div>
@@ -348,6 +371,10 @@ interface PaneCtx {
   onFocusPane?: (paneId: string) => void
   onClosePane?: (paneId: string) => void
   onResize?: (splitId: string, sizes: number[]) => void
+  chats?: ReadonlyMap<string, ChatPane>
+  onChatClose?: (paneId: string) => void
+  onChatRestart?: (sessionId: string) => void
+  onChatHintDismiss?: () => void
 }
 
 function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ctx: PaneCtx }) {
@@ -355,7 +382,24 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
     const id = node.target.sessionId
     const focused = ctx.tab.focusedPaneId === node.id || (!ctx.split)
     const term = <PaneTerminal id={id} visible={visible} focused={focused} onPaneStatus={ctx.onPaneStatus} onPaneExit={ctx.onPaneExit} />
-    if (!ctx.split) return term
+    const chat = ctx.chats?.get(id)
+    const ended = chat?.ended && (
+      <ChatEnded visible={visible && focused} onClose={() => ctx.onChatClose?.(node.id)} onRestart={() => ctx.onChatRestart?.(id)} />
+    )
+    // One shape whether or not the pane is a chat: the terminal's place in
+    // the tree never changes, so learning that it is one (the session list
+    // answers after the tab opens) does not remount and reconnect it.
+    if (!ctx.split) {
+      return (
+        <div className="flex h-full w-full flex-col">
+          {chat?.hint && !chat.ended && <ChatHint text={chat.hint} onDismiss={() => ctx.onChatHintDismiss?.()} />}
+          <div className="relative min-h-0 flex-1">
+            {term}
+            {ended}
+          </div>
+        </div>
+      )
+    }
     const s = ctx.sessions?.get(id)
     const isShell = node.target.kind === 'shell' || s?.kind === 'shell'
     const title = `${s ? sessionTitle(s) : isShell ? 'shell' : 'session'}${isShell && s?.program ? ` · ${s.program}` : ''}`
@@ -383,6 +427,7 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
         </div>
         <div className="relative min-h-0 flex-1">
           {term}
+          {ended}
           {/* The focused pane carries a ring; the others dim a little, as in Ghostty. */}
           <div aria-hidden className={`pointer-events-none absolute inset-0 ${focused ? 'shadow-[inset_0_0_0_1px_rgba(231,187,99,0.45)]' : 'bg-black/15'}`} />
         </div>

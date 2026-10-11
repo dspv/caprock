@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Event, SessionSummary, Subagent, Summary } from './api'
 import {
-  askLine, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runShare, runningTool, subagentChips, subagentWaiting, toolDetail, toolKind, toolRuns, turnCosts,
-  RUNNING_STALE_MS,
+  askLine, chipGroups, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runShare, runningTool, subagentChips, subagentWaiting, toolDetail, toolKind, toolRuns, turnCosts,
+  MAX_SUBAGENT_CHIPS, RUNNING_STALE_MS,
 } from './cockpit'
 
 let id = 0
@@ -192,12 +192,12 @@ describe('a Codex exec in the tool list', () => {
 describe('subagentChips', () => {
   const a = (id: string, type?: string, extra: Partial<Subagent> = {}): Subagent =>
     ({ agent_id: id, agent_type: type, tool_calls: 1, started_at: 1, last_at: 2, running: true, asking: false, ...extra }) as Subagent
-  it('draws the working first, then the finished muted, at most four, and counts the working left out', () => {
+  it('draws the working first, then the finished muted, up to max, and counts the working left out', () => {
     const subs = {
       working: [a('1', 'Explore', { description: 'find the table', model_display: 'Haiku 4.5' }), a('2', 'general-purpose'), a('3', 'Plan'), a('4', 'Explore'), a('5', 'Explore'), a('6')],
       finished: 1, recent: [{ agent_id: 'd', agent_type: 'Plan', tool_calls: 3, started_at: 1, stopped_at: 2 }],
     }
-    const { chips, more } = subagentChips(subs)
+    const { chips, more } = subagentChips(subs, null, 4)
     expect(chips.map((c) => c.initial)).toEqual(['E', 'G', 'P', 'E'])
     expect(more).toBe(2)
     expect(chips[0]!.label).toBe('Explore · find the table · Haiku 4.5 · working')
@@ -212,5 +212,15 @@ describe('subagentChips', () => {
   })
   it('has nothing to draw without the list', () => {
     expect(subagentChips(undefined)).toEqual({ chips: [], more: 0 })
+  })
+  // "Why doesn't it show more agents?" (owner, 2026-10-12): two rows of
+  // twelve before a "+N", in groups of four.
+  it('draws up to 24 by default, in groups of four', () => {
+    const working = Array.from({ length: 26 }, (_, i) => a(String(i), 'Explore'))
+    const { chips, more } = subagentChips({ working, finished: 0 })
+    expect(chips).toHaveLength(MAX_SUBAGENT_CHIPS)
+    expect(more).toBe(2)
+    expect(chipGroups(chips).map((g) => g.length)).toEqual([4, 4, 4, 4, 4, 4])
+    expect(chipGroups([1, 2, 3, 4, 5, 6]).map((g) => g.length)).toEqual([4, 2])
   })
 })

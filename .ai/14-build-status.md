@@ -96,6 +96,34 @@ first message last. **Not verified against the real `claude`** (Keychain
 dialog from tests): `--add-dir` and its parser were read from 2.1.296's
 `--help` and binary.
 
+### 2026-10-12 — unreleased: what a CI run cost, backend only
+
+A versioned runner rate table, `pricing/actions.json` (`2026-10-12.1`), read
+from GitHub's *Actions runner pricing* reference on 2026-10-12, prices each
+CI job the deck reads: the SKU from its labels (or a larger runner's name),
+its time rounded up to the whole minute, free for standard runners in a
+public repository, unpriced for self-hosted and unknown runners. Each job,
+run and commit carries `cost`; `GET /v1/github/actions-usage` reads what
+GitHub itself billed this month when the token may read billing, and says
+which permission is missing when it may not. Not shown in the interface yet;
+not checked against a real account's billing report.
+
+### 2026-10-12 — unreleased: the Queue view
+
+Tasks gained a *Board | Queue* switch. The Queue (`#/queue`, `GET /v1/queue`)
+lists what each agent Caprock started is doing (its task list item, how long
+the turn has run), every queued message in order with a rough start and done
+range, and the turns finished in the last three hours; *Add to queue* sends to
+a chosen session or whichever of a project's sessions is free first. The
+estimates come from the project's newest 200 finished Claude Code turns,
+through a new partial covering index (migration 0048, 1 ms per project). The
+backtest on the owner's database (RISK-08) says they are rough — median miss
+55 s against a typical 48 s turn, 49% inside the p25–p75 range — so the view
+shows ranges and its basis, never a time. A queued message's finished turn
+notifies at once through the existing finished alert. Not built: a per-item
+estimate for the agent's own task list (the task tools give no per-item
+timing cheaply), and estimates for agents other than Claude Code.
+
 ### 2026-10-12 — 0.109.1: a large filled triangle for the Dock icon
 
 The app icon is a large filled amber triangle on a dark tile on the macOS

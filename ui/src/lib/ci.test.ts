@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { CIState, ReleaseCI } from './api'
-import { ago, byOSLine, ciElapsed, ciTone, fmtRun, investigateMessage, keyStep, readCIView, releaseChip, releaseDoneText, releaseEstimateText, runnerTime, saveCIView } from './ci'
+import type { CIJob, CIRun, CIState, ReleaseCI, SessionPRLive } from './api'
+import { jobVsMedian, runningVsMedian, runVsMedian, slowestVsMedian, vsMedian, ago, byOSLine, orderPRs, prAge, prDotState, prMergeText, prReviewText, prVerdict, ciElapsed, ciTone, fmtRun, investigateMessage, keyStep, readCIView, releaseChip, releaseDoneText, releaseEstimateText, runnerTime, saveCIView } from './ci'
 
 describe('the Investigate message', () => {
   it('names the PR, workflow, job and step, links the job, carries the log’s last 40 lines and says what to do', () => {
@@ -111,5 +111,91 @@ describe('the CI view kept per viewer', () => {
     get.mockRestore()
     set.mockRestore()
     localStorage.clear()
+  })
+})
+
+describe('the deck’s pull requests', () => {
+  const now = 1_800_000_000_000
+  const pr = (n: number, live?: object, p: object = {}) => ({ session_id: 's', number: n, url: `u/${n}`, last_at: now,
+    ...(live ? { live: { number: n, url: `u/${n}`, title: '', state: 'open', draft: false, review: '', reviews: [], base: 'main', mergeable: null,
+      checks: { state: 'none', passed: 0, failed: 0, pending: 0, items: [] }, ...live } } : {}), ...p }) as unknown as SessionPRLive
+
+  it('puts the open one first and keeps the rest newest first', () => {
+    const list = [pr(3, { state: 'merged' }), pr(4, {}), pr(2, { state: 'closed' }), pr(1, {})]
+    expect(orderPRs(list).map((p) => p.number)).toEqual([4, 3, 2, 1])
+    // Without GitHub, what the session recorded decides.
+    expect(orderPRs([pr(3, undefined, { merged_at: now }), pr(2)]).map((p) => p.number)).toEqual([2, 3])
+    expect(orderPRs([pr(5, {}), pr(4, {})]).map((p) => p.number)).toEqual([5, 4])
+  })
+
+  it('says the CI in words', () => {
+    const checks = (state: string, items: object[], pending = 0) => ({ checks: { state, passed: 0, failed: 0, pending, items } })
+    expect(prVerdict(pr(1, checks('pass', [{ name: 'a', state: 'pass' }])), now).text).toBe('✓ passed')
+    expect(prVerdict(pr(1, checks('fail', [{ name: 'lint', state: 'pass' }, { name: 'test (windows)', state: 'fail' }, { name: 'smoke', state: 'fail' }])), now).text).toBe('✗ failed at test (windows) +1')
+    expect(prVerdict(pr(1, checks('pending', [{ name: 'a', state: 'pass' }, { name: 'b', state: 'pending', started_at: now - 250_000 }, { name: 'c', state: 'pending' }], 2)), now).text).toBe('running · 1/3 · 4m 10s')
+    expect(prVerdict(pr(1, checks('pending', [{ name: 'b', state: 'pending' }], 1)), now).text).toBe('running · 0/1')
+    expect(prVerdict(pr(1, {}, { opened_at: now - 60_000 }), now).text).toBe('CI not started')
+    expect(prVerdict(pr(1, {}, { opened_at: now - 3_600_000 }), now).text).toBe('no checks')
+    expect(prVerdict(pr(1, undefined, { merged_at: now }), now).text).toBe('merged')
+  })
+
+  it('says the review and a conflict only for an open PR, and its state and age', () => {
+    expect(prReviewText(pr(1, { review: 'approved' }))?.text).toBe('approved')
+    expect(prReviewText(pr(1, { review: 'changes_requested' }))?.text).toBe('changes requested')
+    expect(prReviewText(pr(1, { review: 'review_required' }))?.text).toBe('review required')
+    expect(prReviewText(pr(1, { review: 'approved', state: 'merged' }))).toBeUndefined()
+    expect(prMergeText(pr(1, { mergeable: false, mergeable_state: 'dirty' }))?.text).toBe('conflict')
+    expect(prMergeText(pr(1, { mergeable: null }))).toBeUndefined()
+    expect(prDotState(pr(1, { draft: true }))).toBe('draft')
+    expect(prDotState(pr(1, { state: 'merged' }))).toBe('merged')
+    expect(prAge(pr(1, {}, { opened_at: now - 2 * 3_600_000 }), now)).toEqual({ text: '2h', title: 'Opened 2 h ago' })
+    expect(prAge(pr(1, {}, { merged_at: now - 30_000 }), now).text).toBe('now')
+  })
+})
+
+describe('a CI time against its median', () => {
+  const now = 1_800_000_000_000
+  const b = (m: number, runs = 5) => ({ median_ms: m, runs })
+
+  it('says a finished time in signed percent, coloured past a fifth slower or a tenth faster', () => {
+    expect(vsMedian(285_000, b(240_000))).toMatchObject({ text: '+19%', tone: 'muted' })
+    expect(vsMedian(300_000, b(240_000))).toMatchObject({ text: '+25%', tone: 'warn' })
+    expect(vsMedian(517_000, b(550_000))).toMatchObject({ text: '\u22126%', tone: 'muted' })
+    expect(vsMedian(450_000, b(550_000))).toMatchObject({ text: '\u221218%', tone: 'ok' })
+    expect(vsMedian(285_000, b(240_000))!.title).toMatch(/median of the last 5 successful runs/)
+  })
+
+  it('says nothing with fewer than two past runs, or no time', () => {
+    expect(vsMedian(285_000, b(240_000, 1))).toBeUndefined()
+    expect(vsMedian(285_000, undefined)).toBeUndefined()
+    expect(vsMedian(undefined, b(240_000))).toBeUndefined()
+    expect(runningVsMedian(60_000, b(240_000, 1))).toBeUndefined()
+  })
+
+  it('says the time left while under the median, and how far over once past it', () => {
+    expect(runningVsMedian(280_000, b(460_000))).toMatchObject({ kind: 'left', text: '≈ 3m left' })
+    expect(runningVsMedian(280_000, b(460_000))!.title).toMatch(/median 7m 40s/)
+    expect(runningVsMedian(450_000, b(460_000))!.text).toBe('≈ <1m left')
+    expect(runningVsMedian(515_200, b(460_000))).toMatchObject({ kind: 'over', text: '+12% over median', tone: 'muted' })
+  })
+
+  it('compares a passed job and a whole run, never a failed one', () => {
+    const job = (p: Partial<CIJob>) => ({ id: 1, run_id: 1, name: 'test', status: 'completed', conclusion: 'success', labels: [], steps: [], duration_ms: 285_000, baseline: b(240_000), ...p }) as CIJob
+    expect(jobVsMedian(job({}), now)!.text).toBe('+19%')
+    expect(jobVsMedian(job({ conclusion: 'failure' }), now)).toBeUndefined()
+    expect(jobVsMedian(job({ status: 'in_progress', duration_ms: undefined, started_at: now - 60_000 }), now)!.text).toBe('≈ 3m left')
+    const run = (p: Partial<CIRun>) => ({ id: 1, name: 'CI', status: 'completed', conclusion: 'success', started_at: now - 600_000, updated_at: now - 50_000, jobs: [], baseline: b(585_000), ...p }) as CIRun
+    expect(runVsMedian(run({}), now)!.text).toBe('\u22126%')
+    // The slowest run with a median decides the PR's.
+    expect(slowestVsMedian([run({ id: 2, started_at: now - 60_000, baseline: b(30_000) }), run({})], now)!.text).toBe('\u22126%')
+    expect(slowestVsMedian([run({ baseline: undefined })], now)).toBeUndefined()
+  })
+
+  it('puts the run time and its delta on a passed PR whose runs were read', () => {
+    const p = { session_id: 's', number: 1, url: 'u', last_at: now, live: { number: 1, url: 'u', title: '', state: 'merged', draft: false, review: '', reviews: [], base: 'main', mergeable: null,
+      checks: { state: 'pass', passed: 1, failed: 0, pending: 0, items: [{ name: 'a', state: 'pass', started_at: now - 600_000, completed_at: now - 60_000 }] } } } as unknown as SessionPRLive
+    expect(prVerdict(p, now).text).toBe('✓ 9m 00s')
+    const runs = [{ id: 1, name: 'CI', status: 'completed', conclusion: 'success', started_at: now - 600_000, updated_at: now - 50_000, jobs: [], baseline: b(585_000) }] as unknown as CIRun[]
+    expect(prVerdict(p, now, runs).text).toBe('✓ 9m 10s · \u22126%')
   })
 })

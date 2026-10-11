@@ -3,9 +3,11 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/store"
 	"github.com/dspv/caprock/internal/toolcmd"
 )
@@ -54,8 +56,13 @@ type SubagentDone struct {
 	SubagentModel
 }
 
-// recentSubagents bounds the finished subagents listed.
-const recentSubagents = 3
+// recentSubagents is how many finished subagents are listed by default;
+// ?recent= asks for up to maxRecentSubagents (the cockpit's "+N finished",
+// opened).
+const (
+	recentSubagents    = 3
+	maxRecentSubagents = 30
+)
 
 // SubagentsResponse is GET /v1/sessions/{id}/subagents.
 type SubagentsResponse struct {
@@ -63,7 +70,8 @@ type SubagentsResponse struct {
 	// Finished is how many stopped within the same window after making a
 	// tool call.
 	Finished int `json:"finished"`
-	// Recent is the newest of those, at most three, newest stop first.
+	// Recent is the newest of those, three unless ?recent= asks for more
+	// (at most 30), newest stop first.
 	Recent []SubagentDone `json:"recent"`
 	// CostUSD is what every subagent of the session has cost, over its whole
 	// life; omitted when any of them is unknown.
@@ -82,7 +90,11 @@ func (s *Server) handleSessionSubagents(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	id := r.PathValue("id")
-	done, err := store.SubagentsDone(r.Context(), s.d.Store.DB(), id, since, recentSubagents)
+	recent, _ := strconv.Atoi(r.URL.Query().Get("recent"))
+	if recent <= 0 {
+		recent = recentSubagents
+	}
+	done, err := store.SubagentsDone(r.Context(), s.d.Store.DB(), id, since, min(recent, maxRecentSubagents))
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -176,4 +188,149 @@ func oneLine(s string, n int) string {
 	}
 	r := []rune(s)
 	return string(r[:n-1]) + "…"
+}
+
+// SubagentCallView is one call in a subagent's activity feed.
+type SubagentCallView struct {
+	// ID is the call's event id, the cursor ?before= pages by.
+	ID        int64  `json:"id"`
+	ToolUseID string `json:"tool_use_id,omitempty"`
+	Tool      string `json:"tool"`
+	// Detail is its short line, as the cockpit's tool list writes it.
+	Detail    string `json:"detail,omitempty"`
+	StartedAt int64  `json:"started_at"`
+	// EndedAt is omitted while it has no result.
+	EndedAt int64 `json:"ended_at,omitempty"`
+	Error   bool  `json:"error,omitempty"`
+}
+
+// SubagentToolCost is one tool kind's share of a subagent's spend.
+type SubagentToolCost struct {
+	// Tool is empty for the turns that called no tool (they only wrote).
+	Tool  string `json:"tool"`
+	Calls int    `json:"calls"`
+	// CostUSD is omitted when a turn behind it was not priced.
+	CostUSD *float64 `json:"cost_usd,omitempty"`
+}
+
+// SubagentStats are a subagent's own numbers.
+type SubagentStats struct {
+	ToolCalls  int                `json:"tool_calls"`
+	Turns      int                `json:"turns"`
+	Tokens     event.TokenDelta   `json:"tokens"`
+	DurationMs int64              `json:"duration_ms"`
+	ByTool     []SubagentToolCost `json:"by_tool"`
+	SubagentModel
+}
+
+// SubagentDetail is GET /v1/sessions/{id}/subagents/{agent}: one subagent
+// opened up — the task its parent gave it, its calls, what it answered and
+// its numbers.
+type SubagentDetail struct {
+	AgentID      string `json:"agent_id"`
+	AgentType    string `json:"agent_type,omitempty"`
+	Description  string `json:"description,omitempty"`
+	Prompt       string `json:"prompt,omitempty"`
+	SubagentType string `json:"subagent_type,omitempty"`
+	// ParentToolUseID is the parent's Agent/Task call that launched it.
+	ParentToolUseID string `json:"parent_tool_use_id,omitempty"`
+	Background      bool   `json:"background,omitempty"`
+	// State is "working", "finished" (its newest event is its
+	// SubagentStop) or "quiet" (neither, and nothing heard for longer than
+	// the live window).
+	State     string `json:"state"`
+	Asking    bool   `json:"asking"`
+	StartedAt int64  `json:"started_at"`
+	LastAt    int64  `json:"last_at"`
+	StoppedAt int64  `json:"stopped_at,omitempty"`
+	Result    string `json:"result,omitempty"`
+	// Calls are the newest `limit` calls before the cursor, oldest first;
+	// Earlier is how many older ones there are.
+	Calls   []SubagentCallView `json:"calls"`
+	Earlier int                `json:"earlier"`
+	Stats   SubagentStats      `json:"stats"`
+}
+
+const (
+	subagentFeedDefault = 30
+	subagentFeedMax     = 500
+	subagentByTool      = 4
+)
+
+// handleSubagentDetail opens one subagent of a session. Read once when the
+// cockpit expands its row (and again when it stops); the live socket carries
+// its calls in between.
+func (s *Server) handleSubagentDetail(w http.ResponseWriter, r *http.Request) {
+	tr, ok, err := store.SubagentTrailOf(r.Context(), s.d.Store.DB(), r.PathValue("id"), r.PathValue("agent"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such subagent in this session"})
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit <= 0 {
+		limit = subagentFeedDefault
+	}
+	limit = min(limit, subagentFeedMax)
+	before, _ := strconv.ParseInt(r.URL.Query().Get("before"), 10, 64)
+	end := len(tr.Calls)
+	if before > 0 {
+		// Calls are in time order and ids grow with it within one plane;
+		// the cursor is the first call shown, so cut at its position.
+		for i, c := range tr.Calls {
+			if c.ID == before {
+				end = i
+				break
+			}
+		}
+	}
+	start := max(0, end-limit)
+	d := SubagentDetail{
+		AgentID: tr.AgentID, AgentType: tr.AgentType, Description: tr.Description, Prompt: tr.Prompt,
+		SubagentType: tr.SubagentType, ParentToolUseID: tr.ParentToolUseID, Background: tr.Background,
+		Asking: tr.Asking, StartedAt: tr.StartedAt, LastAt: tr.LastAt, StoppedAt: tr.StoppedAt, Result: tr.Result,
+		Calls: make([]SubagentCallView, 0, end-start), Earlier: start,
+	}
+	switch {
+	case tr.StoppedAt > 0:
+		d.State = "finished"
+	case tr.LastAt >= s.d.Now().Add(-liveSubagentWindow).UnixMilli():
+		d.State = "working"
+	default:
+		d.State = "quiet"
+	}
+	for _, c := range tr.Calls[start:end] {
+		d.Calls = append(d.Calls, SubagentCallView{
+			ID: c.ID, ToolUseID: c.ToolUseID, Tool: c.Tool, Detail: callDetail(c.Tool, c.Input),
+			StartedAt: c.StartedAt, EndedAt: c.EndedAt, Error: c.Error,
+		})
+	}
+	until := tr.LastAt
+	if d.State == "working" {
+		until = s.d.Now().UnixMilli()
+	}
+	d.Stats = SubagentStats{
+		ToolCalls: len(tr.Calls), Turns: tr.Turns, DurationMs: max(0, until-tr.StartedAt),
+		Tokens: event.TokenDelta{In: tr.TokensIn, Out: tr.TokensOut, CacheRead: tr.CacheRead, CacheWrite: tr.CacheWrite},
+		ByTool: []SubagentToolCost{}, SubagentModel: SubagentModel{Model: tr.Model, ModelDisplay: s.modelDisplay(tr.Model)},
+	}
+	if tr.CostKnown {
+		v := tr.CostUSD
+		d.Stats.CostUSD = &v
+	}
+	for _, t := range tr.ByTool {
+		if len(d.Stats.ByTool) == subagentByTool {
+			break
+		}
+		tc := SubagentToolCost{Tool: t.Tool, Calls: t.Calls}
+		if t.Known && tr.Turns > 0 {
+			v := t.CostUSD
+			tc.CostUSD = &v
+		}
+		d.Stats.ByTool = append(d.Stats.ByTool, tc)
+	}
+	writeJSON(w, http.StatusOK, d)
 }
