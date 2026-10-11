@@ -33,6 +33,7 @@ export function AppUpdateToast() {
   const offer = offerFor(info, st, '')
 
   const next = offer.kind === 'install' || offer.kind === 'progress' || offer.kind === 'installing' ? offer.next : ''
+  const current = info?.version ? v(info.version).replace(/^v/, '') : ''
   if (!next || (offer.kind === 'install' && seen === next)) return null
 
   const later = () => {
@@ -44,26 +45,33 @@ export function AppUpdateToast() {
     <div
       role="status"
       aria-label="Caprock update"
-      className="app-fade-in pointer-events-auto fixed bottom-[34px] right-3 z-40 grid w-[320px] max-w-[calc(100vw-24px)] gap-2 rounded-[10px] border border-[var(--app-hairline-strong)] bg-panel p-3 text-[12.5px] text-fg shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)]"
+      className="app-fade-in pointer-events-auto fixed bottom-[34px] right-3 z-40 grid w-[340px] max-w-[calc(100vw-24px)] gap-2.5 rounded-[12px] border border-[var(--app-hairline-strong)] bg-panel p-4 text-[13.5px] text-fg shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)]"
     >
-      <p className="font-medium">Caprock {next} is available</p>
+      {/* From what to what, large (owner, 2026-10-11: "short — an arrow from
+        * one version to the other, so I see I'm asked to go from this to that"). */}
+      <p className="flex flex-wrap items-baseline gap-x-2 text-[16px] font-semibold" data-update-from-to>
+        <span>Update</span>
+        {current && <span className="mono text-fg-muted">{current}</span>}
+        {current && <span aria-label="to" className="text-fg-faint">→</span>}
+        <span className="mono text-accent">{v(next).replace(/^v/, '')}</span>
+      </p>
       {offer.kind === 'install' && (
         <>
-          <p className="text-fg-muted">Restarting keeps every session running, and brings back your tabs, splits and scroll where they were.</p>
+          <p className="text-fg-muted">Sessions and tabs stay as they are.</p>
           <div className="flex items-center gap-2">
             {/* In the app, not a GitHub tab: the notes come with the release
               * check that found the update, and a link out of a webview did
               * not always open. */}
             {st?.notes && st.notes_for && v(st.notes_for) === next ? (
-              <button type="button" className="link text-[12px]" onClick={() => setNotes(true)}>What’s new</button>
+              <button type="button" className="link text-[13px]" onClick={() => setNotes(true)}>What’s new</button>
             ) : (
-              <button type="button" className="link text-[12px]" onClick={() => openExternal(st?.url ?? 'https://caprock.dev/changelog')}>What’s new</button>
+              <button type="button" className="link text-[13px]" onClick={() => openExternal(st?.url ?? 'https://caprock.dev/changelog')}>What’s new</button>
             )}
-            <button type="button" onClick={later} className="ml-auto rounded-[6px] px-2 py-1 text-[12px] text-fg-muted hover:text-fg">Later</button>
+            <button type="button" onClick={later} className="ml-auto rounded-[7px] px-2.5 py-1.5 text-[13px] text-fg-muted hover:text-fg">Later</button>
             <button
               type="button"
               onClick={() => void appUpdate.install()}
-              className="rounded-[6px] bg-accent px-2.5 py-1 text-[12px] font-medium text-panel hover:brightness-110"
+              className="rounded-[7px] bg-accent px-3 py-1.5 text-[13px] font-semibold text-panel hover:brightness-110"
             >
               Update and restart
             </button>

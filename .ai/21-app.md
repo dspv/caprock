@@ -1509,8 +1509,10 @@ the user guide [docs/app.md § Updates](../docs/app.md#updates).
 - **The offer.** When the daemon's release check (`/v1/update`) knows a
   release newer than *the app's* version and this install can replace
   itself, a card in the bottom-right corner announces it once per version
-  — *Caprock vX.Y.Z is available*, **Update and restart**, *What's new*,
-  **Later** (`AppUpdateToast.tsx`, owner 2026-10-07, after Orca) — and the
+  — *Update 0.107.6 → 0.107.7* large, the running version to the new one
+  (owner 2026-10-11: "an arrow from one to the other"), *Sessions and tabs
+  stay as they are.*, **Update and restart**, *What's new*, **Later**
+  (`AppUpdateToast.tsx`, owner 2026-10-07, after Orca) — and the
   status strip keeps **Update to vX.Y.Z — Restart**
   (`ui/src/components/AppUpdateNotice.tsx`). The card shows the download's
   progress too and never takes focus. One click: the shell fetches

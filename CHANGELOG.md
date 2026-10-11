@@ -9,6 +9,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **app:** the update card says it in one line, large — *Update 0.107.6 →
+  0.107.7* — with one short line under it and bigger buttons.
+
+### Changed
+
 - **app:** the version panel is the version, whether it is current, when it
   was checked, the update button and *Release notes →*. The release notes
   themselves left the panel, where they were unreadable.
