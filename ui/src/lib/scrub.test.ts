@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Event } from './api'
-import { bucketCost, bucketOf, bucketize, callAt, callsFromEvents, callsFromSeries, clock, cursorX, mergeCalls, readout, slotsFor, type CallPoint } from './scrub'
+import { MAX_TIME_BARS, barLabel, bucketCost, bucketOf, bucketize, callAt, callsFromEvents, callsFromSeries, clock, cursorX, mergeCalls, readout, slotsFor, stepText, timeBars, topTools, type CallPoint } from './scrub'
 
 const T0 = Date.UTC(2026, 9, 9, 12, 0, 0)
 const pt = (id: number, cost: number, p: Partial<CallPoint> = {}): CallPoint => ({ id, ts: T0 + id * 1000, cost, ...p })
@@ -124,5 +124,31 @@ describe('series', () => {
   it('adds the calls made since the series was read, once', () => {
     const merged = mergeCalls([pt(1, 1), pt(2, 2)], [pt(2, 9), pt(3, 3)])
     expect(merged.map((c) => [c.id, c.cost])).toEqual([[1, 1], [2, 2], [3, 3]])
+  })
+})
+
+describe('the spend by time', () => {
+  const at = (h: number, m = 0) => new Date(2026, 9, 11, h, m).getTime()
+  const call = (id: number, ts: number, cost: number, tools: string[] = []): CallPoint => ({ id, ts, cost, tools: tools.map((tool) => ({ tool })) })
+
+  it('draws bars by the clock, an idle stretch as an empty bar', () => {
+    const { step, bars } = timeBars([call(1, at(10, 1), 0.5, ['Bash']), call(2, at(10, 2), 0.25, ['Bash', 'Edit']), call(3, at(12, 40), 1)])
+    expect(step).toBe(5 * 60_000)
+    expect(bars[0]!.start).toBe(at(10))
+    expect(bars[0]!.cost).toBeCloseTo(0.75)
+    expect(bars[0]!.calls).toBe(2)
+    expect(topTools(bars[0]!)).toBe('Bash 2 · Edit 1')
+    expect(bars.some((b) => b.calls === 0)).toBe(true)
+    expect(bars.at(-1)!.cost).toBe(1)
+    expect(bars.length).toBeLessThanOrEqual(MAX_TIME_BARS)
+  })
+
+  it('widens the step for a long session and names the stretch', () => {
+    const { step, bars } = timeBars([call(1, at(9), 1), call(2, at(9) + 4 * 86_400_000, 2)])
+    expect(step).toBe(3 * 3_600_000)
+    expect(bars.length).toBeLessThanOrEqual(MAX_TIME_BARS)
+    expect(stepText(step)).toBe('3 h')
+    expect(barLabel(bars[0]!, step, at(9) + 4 * 86_400_000)).toMatch(/^\w{3} \d+ \w{3} 09:00–12:00$/)
+    expect(barLabel(bars.at(-1)!, step, at(9) + 4 * 86_400_000)).toBe('Today 09:00–12:00')
   })
 })
