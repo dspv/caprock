@@ -9,6 +9,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **Dark Side** is neon purple instead of crimson: a near-black violet
+  ground, a glowing purple accent and cursor, neon cyan for premium, and a
+  red of its own for errors. Body text stays at 5.1:1 or more.
+
+### Changed
+
 - **app:** the status bar says whose load it shows: *agent cpu 17% ram 2.0
   GB* is the session's own processes (the agent and what it runs), and a new
   *caprock 160 MB* beside it is Caprock itself (daemon, app, terminal

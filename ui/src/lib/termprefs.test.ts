@@ -107,7 +107,7 @@ describe('terminal preferences', () => {
     document.documentElement.setAttribute('data-dark', 'side')
     m.applyTerminalChrome({ ...m.DEFAULT_PREFS }, root)
     expect(root.hasAttribute('data-term-match')).toBe(true)
-    expect(root.style.getPropertyValue('--app-term-bg')).toBe('#181113')
+    expect(root.style.getPropertyValue('--app-term-bg')).toBe('#15111d')
     document.documentElement.removeAttribute('data-dark')
   })
 })
