@@ -71,8 +71,9 @@ describe('plan limits panel', () => {
     expect(screen.getByText('5%')).toBeTruthy()
     expect(screen.getByText('24%')).toBeTruthy()
     expect(document.body.textContent).toMatch(/as of /)
-    // Only the window Codex reported: one 5-hour row (Claude Code's), not two.
-    expect(screen.getAllByText(/^5-hour window/)).toHaveLength(1)
+    // Both cards keep both windows; the one Codex did not report says so.
+    expect(screen.getAllByText('5 hours')).toHaveLength(2)
+    expect(screen.getByText('not reported by Codex')).toBeTruthy()
     // The Codex caveat lives behind "more", and on hover.
     expect(screen.getByTitle(/never forecast/)).toBeTruthy()
   })

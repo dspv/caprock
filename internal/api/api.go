@@ -343,6 +343,12 @@ type TaskController interface {
 	// StopOrchestrator kills the orchestrator and every worker it spawned, in
 	// one call. Returns how many sessions were stopped.
 	StopOrchestrator(ctx context.Context) (any, error)
+	// Starter is what the Tasks screen's templates prefill from: the repository
+	// the workers branch from (current, or suggested while the runner is off),
+	// the check commands that repository declares (internal/projcheck), and the
+	// budget Caprock applies when a task names none. It answers with the runner
+	// off too, so the off state can show a template against the real repo.
+	Starter(ctx context.Context) (any, error)
 	// Verify runs a task's done_criteria (T22). Returns the VerifyResult.
 	Verify(ctx context.Context, id string) (any, error)
 }
@@ -491,6 +497,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/history", s.handleHistory)
 	m.HandleFunc("GET /v1/week", s.handleWeek)
 	m.HandleFunc("GET /v1/glance", s.handleGlance)
+	m.HandleFunc("GET /v1/activity", s.handleActivity)
 	m.HandleFunc("GET /v1/tools/drill", s.handleToolDrill)
 	// Picking a folder without typing its path: see browse.go for what stops
 	// this being a filesystem-read API.
@@ -515,6 +522,7 @@ func New(d Deps) *Server {
 		m.Handle("POST /v1/hook", d.Hook)
 	}
 	m.HandleFunc("POST /v1/hive", s.handleEnableHive)
+	m.HandleFunc("GET /v1/hive/starter", s.handleTaskStarter)
 	m.HandleFunc("GET /v1/tasks", s.handleTasks)
 	m.HandleFunc("POST /v1/tasks", s.handleCreateTask)
 	m.HandleFunc("GET /v1/tasks/{id}", s.handleGetTask)
@@ -2070,6 +2078,21 @@ func (s *Server) handleEnableHive(w http.ResponseWriter, r *http.Request) {
 	out, err := s.d.Tasks.Enable(context.WithoutCancel(r.Context()), strings.TrimSpace(req.Hive), strings.TrimSpace(req.Repo))
 	if err != nil {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleTaskStarter serves the Tasks templates' prefill. It reads the
+// repository's manifests and runs nothing, so it does not need the runner on.
+func (s *Server) handleTaskStarter(w http.ResponseWriter, r *http.Request) {
+	if s.d.Tasks == nil {
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "the task runner is not available in this build"})
+		return
+	}
+	out, err := s.d.Tasks.Starter(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusOK, out)

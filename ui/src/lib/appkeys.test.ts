@@ -146,3 +146,34 @@ describe('zoom keys', () => {
     expect(matchAppShortcut(k('-', 'Minus', { ctrlKey: true }), false)).toBeNull()
   })
 })
+
+// Every shortcut the app lists works on Windows and Linux as it reads there
+// (owner, 2026-10-11: "always check Linux and Windows when a shortcut
+// changes, or it is an epic fail"). For each single-key chord in SHORTCUTS,
+// the macOS chord and the text `keys()` shows off macOS must reach the same
+// command.
+import { SHORTCUTS } from './appkeys'
+
+describe('every listed shortcut, on every OS', () => {
+  const chords = SHORTCUTS.flatMap(([k]) => k.split(', ')).filter((c) => /^[⇧⌘⌥⌃]+[A-Z0-9,\\.\-=+[\]]$/.test(c) && c.includes('⌘'))
+  const event = (code: string, key: string, mods: Partial<KeyLike>): KeyLike => ({ key, code, altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, ...mods } as KeyLike)
+  const codeOf = (ch: string) => (/[A-Z]/.test(ch) ? `Key${ch}` : /[0-9]/.test(ch) ? `Digit${ch}` : ({ ',': 'Comma', '\\': 'Backslash', '.': 'Period', '-': 'Minus', '=': 'Equal', '+': 'Equal', '[': 'BracketLeft', ']': 'BracketRight' } as Record<string, string>)[ch] ?? ch)
+
+  it('has chords to check', () => { expect(chords.length).toBeGreaterThan(10) })
+
+  for (const c of chords) {
+    it(`${c} reaches the same command as ${keys(c, false)}`, () => {
+      if (c === '⌘R') return // the webview's own reload, not an app command
+      const ch = c.slice(-1)
+      const mac = matchAppShortcut(event(codeOf(ch), ch.toLowerCase(), { metaKey: true, shiftKey: c.includes('⇧'), altKey: c.includes('⌥') }), true)
+      expect(mac, `${c} on macOS`).not.toBeNull()
+      const off = keys(c, false)
+      if (off === '' || off === 'F5') return // macOS-only, or the browser's own reload
+      const parts = off.split('+')
+      const last = parts[parts.length - 1]!
+      const k1 = last === 'F5' ? 'F5' : last
+      const ev = event(last === 'F5' ? 'F5' : codeOf(k1.toUpperCase().length === 1 ? k1.toUpperCase() : k1), k1.toLowerCase(), { ctrlKey: parts.includes('Ctrl'), shiftKey: parts.includes('Shift'), altKey: parts.includes('Alt') })
+      expect(matchAppShortcut(ev, false), `${off} off macOS`).toEqual(mac)
+    })
+  }
+})

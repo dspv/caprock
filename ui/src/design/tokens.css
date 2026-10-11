@@ -334,14 +334,16 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
  * dashboard and did not see the faint hint (2026-10-11). */
 [data-app] .app-kbd-key {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11.5px;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1;
   white-space: nowrap;
-  color: var(--color-fg-muted);
-  padding: 2px 5px;
+  /* Readable at a glance (owner, 2026-10-11: "the shortcut is not visible"). */
+  color: var(--color-fg);
+  padding: 2px 6px;
   border-radius: 5px;
-  border: 1px solid var(--app-hairline-strong);
-  background: color-mix(in srgb, var(--color-fg) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-fg) 28%, transparent);
+  background: color-mix(in srgb, var(--color-fg) 10%, transparent);
 }
 [data-app] .app-primary .app-kbd { color: color-mix(in srgb, var(--color-accent) 70%, var(--color-fg-faint)); }
 /* The sidebar's Today strip (components/TodayStrip.tsx): the cockpit's bars

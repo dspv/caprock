@@ -7,6 +7,82 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **app:** the version panel is the version, whether it is current, when it
+  was checked, the update button and *Release notes →*. The release notes
+  themselves left the panel, where they were unreadable.
+
+- **Lifetime:** the big figures are short — *$16.8k*, *$159* — with the
+  exact sum on hover. Top projects' rows start with the donut's colour and
+  the share, large.
+
+### Added
+
+- **Lifetime → Daily cost** has its own period (30d, 90d, 180d, all) and a
+  **×2** height toggle; both are remembered.
+
+## [0.107.7] - 2026-10-11
+
+### Added
+
+- **app:** each project in the sidebar draws its last hour as a small line —
+  amber while something in it works — and has a **+** for a new agent there
+  without hovering. A chevron folds a project by hand, even one with
+  something running; the choice is kept. `GET /v1/activity` serves the line.
+
+### Changed
+
+- **Plan limits** is two matching cards, Claude and Codex, each with its
+  character and both windows side by side — 5 hours and Week — in larger,
+  shorter words. A window an agent did not report is an empty ring that
+  says so, instead of a missing one.
+
+### Added
+
+- **Plan limits asks for your plan** until it is set, saying why: Caprock
+  can't detect it, and Cost needs it to weigh usage at API prices against
+  what the plan costs. *Set my plan* opens the list in place.
+
+### Added
+
+- **Settings has a sections menu:** on a wide window a list of every section
+  sits left of the page, each with a simple icon, the one in view marked;
+  a click scrolls there. Section headings carry the same icons.
+
+### Changed
+
+- **app:** a tab is named by its project — the repo — alone. A second tab of
+  the same project adds its title, faint; the title is in the tooltip.
+- **Now:** *At a glance* — the donuts — comes before *All time*, the exact
+  table: the pictures first, the numbers after.
+- **Feedback is an amber bug** in the header and the sidebar, in place of a
+  grey speech bubble that went unseen.
+- **Now:** the agents folded to icons are twice the size and shrink with the
+  window on one line; hovering one shows a card — its share, spend, turns
+  and cost per turn — instead of a one-line system tooltip.
+- **app:** keys drawn as keys (the deck's *Review changes ⇧⌘G*, the tabs'
+  ⌘1–⌘9) are drawn darker and bolder; the faint chip went unseen.
+
+- **ui:** the Tasks screen says what it is and how to start. One sentence and
+  a worked example (you write the task, a worker does it on its own branch,
+  Caprock runs your checks, you merge), then a gallery of templates — fix
+  failing tests, bump a dependency, add tests for a file, fix lint and type
+  errors, write docs for a module, port a script — that open the form
+  prefilled. Their checks are the commands the repository declares (Makefile
+  targets, package.json scripts, go.mod, Cargo.toml, pytest/ruff/mypy when
+  configured), found by the new `GET /v1/hive/starter`, never guessed. The
+  budget field starts empty with the daemon's own ceiling as the hint.
+- **ui:** the board is one list grouped by what each task needs — Needs you,
+  Working, Waiting to start, Finished — instead of six narrow columns, and
+  each row says what the task is doing now, how its checks went, what it cost
+  against its budget, and its one action (Approve/Reject, Review & merge,
+  Open). A queued task with nothing moving says the orchestrator has to be
+  started, with the button.
+- **A new queue directory starts empty.** It no longer gets an example task
+  in the inbox, which the board showed as waiting and the orchestrator would
+  assign with checks guessed for the repository; the format is in its README.
+
 ### Added
 
 - **app:** the session deck's first cell is now **CI**, the live GitHub
@@ -39,6 +115,9 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   vanishing with no way back from there.
 - **ci:** the PTY resize test waits for the process to report its size
   instead of sleeping, which flaked on a slow macOS runner.
+- **Windows, Linux:** ⇧⌘E (split down) and ⇧⌘0 (reset the interface size)
+  are Ctrl+Alt+Shift+E and Ctrl+Alt+Shift+0 there; as Ctrl+Shift they hit
+  other commands. A test now presses every listed shortcut as each OS spells it.
 
 ## [0.107.6] - 2026-10-11
 

@@ -149,6 +149,32 @@ describe('a file tab', () => {
     expect(screen.getByRole('button', { name: 'Close tab app.md' })).toBeInTheDocument()
   })
 
+  it('names a session tab by its project, adding the title only to tell two apart', () => {
+    const other: Tab = { ...tab('solo'), projectId: 'q' }
+    render(
+      <TabStrip
+        tabs={[tab('one'), tab('two'), other]}
+        activeTabId="one"
+        sessions={new Map()}
+        permissions={new Set()}
+        projectName={(id) => (id === 'p' ? 'caprock' : 'caprock-web')}
+        inspectorOpen={false}
+        sidebarOpen
+        onActivate={() => {}}
+        onDetach={() => {}}
+        onMove={() => {}}
+        onNewAgent={() => {}}
+        onNewShell={() => {}}
+        onToggleInspector={() => {}}
+      />,
+    )
+    const [one, , solo] = screen.getAllByRole("tab") as [HTMLElement, HTMLElement, HTMLElement]
+    expect(one.querySelector('[data-row-title]')?.textContent).toBe('caprock')
+    expect(one.querySelector('[data-tab-subtitle]')?.textContent).toBe('Shell 1')
+    expect(solo.querySelector('[data-row-title]')?.textContent).toBe('caprock-web')
+    expect(solo.querySelector('[data-tab-subtitle]')).toBeNull()
+  })
+
   it('shows what the workspace draws for a file, not a terminal', () => {
     const renderFile = vi.fn((_t: Tab, leaf: { target: { path?: string } }, visible: boolean) => <p>{`${leaf.target.path} ${visible ? 'in front' : 'behind'}`}</p>)
     render(<TerminalStack tabs={[fileTab]} visibleTabId="f" renderFile={renderFile} />)

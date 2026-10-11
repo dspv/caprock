@@ -154,7 +154,10 @@ export const ProjectRow = memo(function ProjectRow({
   // (owner, 2026-10-11, translated: "active sessions should stay expanded,
   // so I don't switch between projects and have the other one fold"). Only
   // projects with nothing going on fold.
-  const open = current || node.live > 0 || node.waiting > 0
+  // Unless folded by hand: the chevron's choice wins over both (owner,
+  // 2026-10-11: "a button to fold, hide").
+  const [folded, setFolded] = useFolded(id)
+  const open = !folded && (current || node.live > 0 || node.waiting > 0)
   const live = useMemo(() => (open ? liveWithoutTab(node) : { own: [], other: [] }), [open, node])
   const [othersOpen, setOthersOpen] = useState(false)
   const [tabMenu, setTabMenu] = useState<(MenuAt & { tabId: string; from: HTMLElement | null }) | null>(null)
@@ -185,6 +188,17 @@ export const ProjectRow = memo(function ProjectRow({
       <div className="group relative">
         <button
           type="button"
+          data-project-fold
+          aria-label={`${folded ? 'Unfold' : 'Fold'} ${p.name}`}
+          title={folded ? 'Unfold: show its tabs and sessions' : 'Fold: one line, what runs in it keeps running'}
+          aria-expanded={!folded}
+          onClick={() => setFolded(!folded)}
+          className="absolute left-0 top-1/2 z-[1] flex h-[22px] w-[16px] -translate-y-1/2 items-center justify-center rounded-[4px] text-fg-faint opacity-60 hover:text-fg hover:opacity-100 group-hover:opacity-100"
+        >
+          <Chevron open={!folded && open} />
+        </button>
+        <button
+          type="button"
           data-nav-row
           data-project-row={id}
           data-current={current || undefined}
@@ -198,10 +212,11 @@ export const ProjectRow = memo(function ProjectRow({
           } : undefined}
           aria-haspopup={menu ? 'menu' : undefined}
           aria-keyshortcuts={menu ? 'Shift+F10' : undefined}
-          className="app-row flex h-[30px] w-full min-w-0 items-center gap-2 rounded-[7px] pl-2.5 pr-2 text-left"
+          className={`app-row flex h-[30px] w-full min-w-0 items-center gap-2 rounded-[7px] pl-[18px] text-left ${isGroup ? 'pr-2' : 'pr-8'}`}
           title={isGroup ? 'Sessions in folders you have not added as a project. Add one with Add project.' : p.root || p.name}
         >
           <span className={`min-w-0 flex-1 truncate text-[13px] ${current ? 'font-semibold text-fg' : 'text-fg-muted'}`}>{p.name}</span>
+          {node.activity && <Spark values={node.activity} working={node.working > 0} />}
           {node.live > 0 && (
             <span className="num inline-flex shrink-0 items-center gap-[4px] text-[11px] text-fg-muted group-hover:invisible" aria-label={runningLabel(node.live)} title={runningLabel(node.live)}>
               <span aria-hidden className="inline-block h-[6px] w-[6px] rounded-full bg-ok" />
@@ -217,6 +232,14 @@ export const ProjectRow = memo(function ProjectRow({
             </span>
           )}
         </button>
+        {/* New agent here, in reach without a hover: the one action asked for
+          * from the row itself (owner, 2026-10-11). The hover strip covers it. */}
+        {!isGroup && (
+          <button type="button" data-project-new aria-label={`New agent in ${p.name}`} title={`New agent in ${p.name}`} onClick={() => onNewAgent(id)}
+            className="absolute right-1 top-1/2 flex h-[22px] w-[22px] -translate-y-1/2 items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-accent group-hover:invisible">
+            <PlusIcon size={13} />
+          </button>
+        )}
         {/* Actions on hover or focus, where the figures sit: the row stays one line. */}
         {!isGroup && (
           <span className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 group-hover:flex group-focus-within:flex">
@@ -462,5 +485,55 @@ function RowAction({ label, title, onClick, popup, children }: { label: string; 
     >
       {children}
     </button>
+  )
+}
+
+const FOLDED_KEY = 'caprock-sidebar-folded'
+
+function readFolded(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(FOLDED_KEY) ?? '[]') as string[]) } catch { return new Set() }
+}
+
+/** A project folded by hand, kept per viewer. */
+function useFolded(id: string): [boolean, (v: boolean) => void] {
+  const [v, setV] = useState(() => readFolded().has(id))
+  const set = (next: boolean) => {
+    setV(next)
+    try {
+      const all = readFolded()
+      if (next) all.add(id); else all.delete(id)
+      localStorage.setItem(FOLDED_KEY, JSON.stringify([...all]))
+    } catch { /* private window: folded for this page only */ }
+  }
+  return [v, set]
+}
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg width="9" height="9" viewBox="0 0 10 10" aria-hidden className={`transition-transform duration-100 motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}>
+      <path d="M3.5 2 7 5 3.5 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/**
+ * The project's last hour as a small area line: turns and tool calls per two
+ * minutes, scaled to its own peak. Amber while something works in it, grey
+ * after. Nothing is drawn for an hour with nothing in it.
+ */
+export function Spark({ values, working }: { values: number[]; working: boolean }) {
+  const peak = Math.max(...values)
+  if (!(peak > 0)) return null
+  const w = 40, h = 12
+  const step = values.length > 1 ? w / (values.length - 1) : w
+  const pts = values.map((v, i) => `${(i * step).toFixed(1)},${(h - 1 - (v / peak) * (h - 2)).toFixed(1)}`)
+  const total = values.reduce((a, b) => a + b, 0)
+  return (
+    <svg data-project-spark width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={`${total} turns and tool calls in the last hour`}
+      className={`shrink-0 group-hover:invisible ${working ? 'text-accent' : 'text-fg-faint'}`}>
+      <title>{`${total} turns and tool calls in the last hour`}</title>
+      <polygon points={`0,${h} ${pts.join(' ')} ${w},${h}`} fill="currentColor" opacity="0.18" />
+      <polyline points={pts.join(' ')} fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+    </svg>
   )
 }

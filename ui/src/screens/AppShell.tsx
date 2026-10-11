@@ -10,6 +10,7 @@
  */
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { api, ApiError, errText, type SessionSummary } from '@/lib/api'
+import { useApi } from '@/lib/useApi'
 import { APP_ROUTE, isMacPlatform, isTauri, isWorkspaceHash } from '@/lib/appmode'
 import { stepUiScale } from '@/lib/uiscale'
 import { installExternalLinks } from '@/lib/externalLinks'
@@ -282,9 +283,12 @@ export function AppShell() {
   }, [toast])
 
   const openSessions = useMemo(() => new Set(ws.tabs.flatMap((t) => leaves(t.root).map((l) => l.target.sessionId))), [ws.tabs])
+  // The sidebar's per-project sparkline: one small query a minute, resting
+  // while the window is hidden.
+  const activity = useApi(() => api.activity(), [], { live: false, intervalMs: 60_000, keepUnchanged: true })
   const model = useMemo(
-    () => buildSidebar({ projects: data.projects, sessions: data.sessions, permissions: data.permissions, costs: data.costs, openSessions }),
-    [data.projects, data.sessions, data.permissions, data.costs, openSessions],
+    () => buildSidebar({ projects: data.projects, sessions: data.sessions, permissions: data.permissions, costs: data.costs, openSessions, activity: activity.data?.sessions }),
+    [data.projects, data.sessions, data.permissions, data.costs, openSessions, activity.data],
   )
   const sessionsById = useMemo(() => new Map(data.sessions.map((s) => [s.session_id, s])), [data.sessions])
   // From the model, so Other folders resolves like a project.

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { UpdateStatus } from '@/lib/api'
 import type { AppUpdateInfo } from '@/lib/appupdate'
-import { VersionPanel, notesPreview } from './VersionPanel'
+import { VersionPanel } from './VersionPanel'
 
 const app: { info?: AppUpdateInfo } = {}
 vi.mock('@/lib/appupdate', async (orig) => ({ ...(await orig<typeof import('@/lib/appupdate')>()), useAppUpdate: () => app.info }))
@@ -12,15 +12,16 @@ afterEach(() => { vi.unstubAllGlobals(); app.info = undefined })
 const base: UpdateStatus = { enabled: true, current: '0.104.0', update_available: false }
 
 describe('the version panel', () => {
-  it('says an update is out, when it last looked, and what changed', () => {
+  it('says an update is out and when it last looked, and leaves the notes to a link', () => {
     const now = Date.now()
     render(<VersionPanel shown="0.104.0" title="" onStatus={() => {}}
       status={{ ...base, latest: 'v0.105.0', update_available: true, checked_at: now - 37 * 60_000, notes: '## Added\n- **The session deck.** Under the terminal.', notes_for: 'v0.105.0' }} />)
     fireEvent.click(screen.getByText('0.104.0'))
     const dlg = screen.getByRole('dialog', { name: 'Caprock version' })
-    expect(dlg.textContent).toMatch(/0\.105\.0 is available/)
-    expect(dlg.querySelector('[data-checked]')?.textContent).toMatch(/Last checked 37m ago/)
-    expect(dlg.querySelector('[data-notes]')?.textContent).toMatch(/The session deck\. Under the terminal\./)
+    expect(dlg.textContent).toMatch(/0\.105\.0 is out/)
+    expect(dlg.querySelector('[data-checked]')?.textContent).toMatch(/Checked 37m ago/)
+    expect(dlg.textContent).not.toMatch(/The session deck/)
+    expect(screen.getByRole('button', { name: 'Release notes →' })).toBeTruthy()
   })
 
   it('says up to date when the latest is the one running', () => {
@@ -52,9 +53,5 @@ describe('the version panel', () => {
     app.info = { version: '0.106.0', supported: true, asked: true, phase: 'idle' }
     render(<VersionPanel shown="0.106.0" title="" onStatus={() => {}} status={{ ...base, current: 'v0.106.0' }} />)
     expect(document.querySelector('[data-version-apart]')).toBeNull()
-  })
-
-  it('previews the first lines of the notes, plain', () => {
-    expect(notesPreview('## Added\n\n- **A.** one\n- B', 2)).toEqual({ text: 'Added\n- A. one', more: true })
   })
 })
