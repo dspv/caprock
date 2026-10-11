@@ -98,5 +98,16 @@ describe('terminal preferences', () => {
     m.applyTerminalChrome({ ...m.DEFAULT_PREFS, theme: 'paper' }, root)
     expect(root.style.getPropertyValue('--app-term-bg')).toBe('#efe7d6')
     expect(root.getAttribute('data-term-tone')).toBe('light')
+    expect(root.hasAttribute('data-term-match')).toBe(false)
+  })
+
+  it('mark Match app, so the slab keeps the app palette’s own ink', async () => {
+    const m = await load()
+    const root = document.createElement('div')
+    document.documentElement.setAttribute('data-dark', 'side')
+    m.applyTerminalChrome({ ...m.DEFAULT_PREFS }, root)
+    expect(root.hasAttribute('data-term-match')).toBe(true)
+    expect(root.style.getPropertyValue('--app-term-bg')).toBe('#181113')
+    document.documentElement.removeAttribute('data-dark')
   })
 })

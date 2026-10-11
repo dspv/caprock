@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { live as liveStore, useLiveLink } from '@/lib/live'
 import { href, type Route } from '@/lib/router'
 import { THEME_MODE_NAME, useThemeMode } from '@/lib/theme'
+import { THEMES } from '@/lib/themes'
 import { ThemeMenu } from './ThemePicker'
 import { api, isPairedDevice, type UpdateStatus } from '@/lib/api'
 import {
@@ -147,7 +148,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
 /** Opens the theme picker: hover a palette to try it, click to keep it. */
 function ThemeToggle() {
   const { mode } = useThemeMode()
-  const light = mode === 'paper' || mode === 'white'
+  const light = THEMES.find((t) => t.id === mode)?.theme === 'light'
   return (
     <ThemeMenu label={`Theme: ${THEME_MODE_NAME[mode]}`} placement="down" className="text-fg-muted hover:text-fg inline-flex items-center">
       {light ? (

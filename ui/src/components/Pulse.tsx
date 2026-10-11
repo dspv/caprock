@@ -396,7 +396,7 @@ export const TIER_TOKEN = {
  * It is deliberately the faintest thing on the track — present, never competing
  * with a real bar — which is a ratio to the panel, not a fixed grey: the old
  * fixed value sat at 1.13 against a white panel and disappeared. */
-export const IDLE_TOKEN = { token: '--color-fg-faint', fallback: '#837f78', alpha: 0.3 } as const
+export const IDLE_TOKEN = { token: '--color-fg-faint', fallback: '#8f8b84', alpha: 0.3 } as const
 
 /** Resolve a design token against an element, with the dark-theme value as the
  * fallback for the brief moment before the stylesheet has applied. */

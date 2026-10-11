@@ -3,8 +3,8 @@
  * strip in one shape — a small scene drawn from the product's own characters,
  * a title in a confident weight, one short line, one button, a quiet dismiss.
  *
- * Colours are theme tokens only, so it holds in Graphite, Slate, Paper and
- * White without a rule per palette. `--bn-tone` is the banner's one colour:
+ * Colours are theme tokens only, so it holds in all seven palettes (lib/themes.ts)
+ * without a rule per palette. `--bn-tone` is the banner's one colour:
  * the accent, ultramarine for Premium, amber-warn or green for a notice.
  */
 .bn-wrap { container-type: inline-size; }

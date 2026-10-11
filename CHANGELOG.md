@@ -7,15 +7,27 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **Seven themes, with plain names:** Dark Warm (once Graphite), Dark Cold
+  (once Slate), Light (once White) and Book (once Paper), plus three new
+  ones — **Light Cold**, a blue-grey white with an electric blue accent and
+  no orange; **Light Side**, pale sand with a blue accent, green for success
+  and a soft glow; and **Dark Side**, near-black with a glowing crimson
+  accent, where danger turns rose-magenta so it never reads as a button. The
+  picker groups them Dark then Light, the switch-theme command walks all
+  seven, and a theme kept under an old name opens as its new one. Each new
+  theme has a terminal palette of its own, also in Settings → Terminal.
+- **Every theme reads at 4.5:1 or better:** faint text was lifted in Dark
+  Warm and Dark Cold and darkened in Light, and Light's accent is a shade
+  deeper, so body and secondary text clear 4.5:1 everywhere.
+
 ### Changed
 
 - **Slate's terminal is cool too:** in Slate, the terminal (app, dashboard and
   phone) takes a neutral ground, a blue cursor and a cool 16-colour set
   instead of graphite's warm one, and follows a theme switch while open. It
   is also a palette of its own in Settings → Terminal.
-
-### Changed
-
 - **Slate** has no orange left: waiting and idle marks read as a cool yellow
   there instead of graphite's amber.
 

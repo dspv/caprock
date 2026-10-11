@@ -41,14 +41,14 @@ const THEME = {
     '--color-ok': '#4fbf6b',
     '--color-accent': '#feb157',
     '--color-accent-strong': '#ffcb85',
-    '--color-fg-faint': '#837f78',
+    '--color-fg-faint': '#8f8b84',
   },
   light: {
     '--color-panel': '#ffffff',
     '--color-ok': '#2e9e4f',
-    '--color-accent': '#b8730d',
-    '--color-accent-strong': '#8f5808',
-    '--color-fg-faint': '#8a8479',
+    '--color-accent': '#99600a',
+    '--color-accent-strong': '#7a4c06',
+    '--color-fg-faint': '#6c675e',
   },
 } as const
 

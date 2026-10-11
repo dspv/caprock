@@ -1,12 +1,18 @@
 /**
- * The four palettes as swatches: hovering one shows it on the whole page,
- * leaving puts back what is kept, and a click keeps it (owner, 2026-10-11:
- * "not just poking — you open it, move across, it changes, and you pick what
- * you like"). Used by the theme buttons' popover and by Settings →
- * Appearance, larger there.
+ * The seven palettes as swatches, in two groups — Dark, then Light: hovering
+ * one shows it on the whole page, leaving puts back what is kept, and a click
+ * keeps it (owner, 2026-10-11: "not just poking — you open it, move across,
+ * it changes, and you pick what you like", translated). Used by the theme
+ * buttons' popover and by Settings → Appearance, larger there.
  */
 import { useEffect, useRef, useState } from 'react'
-import { THEME_MODES, THEME_MODE_NAME, THEME_SWATCH, endThemePreview, previewThemeMode, useThemeMode, type ThemeMode } from '@/lib/theme'
+import { THEME_MODE_NAME, THEME_SWATCH, endThemePreview, previewThemeMode, useThemeMode, type ThemeMode } from '@/lib/theme'
+import { THEMES } from '@/lib/themes'
+
+const GROUPS = [
+  { label: 'Dark', modes: THEMES.filter((t) => t.theme === 'dark').map((t) => t.id) },
+  { label: 'Light', modes: THEMES.filter((t) => t.theme === 'light').map((t) => t.id) },
+] as const
 
 export function ThemePicker({ size = 'menu', onPicked }: { size?: 'menu' | 'cards'; onPicked?: () => void }) {
   const { mode, set } = useThemeMode()
@@ -15,19 +21,25 @@ export function ThemePicker({ size = 'menu', onPicked }: { size?: 'menu' | 'card
   useEffect(() => () => endThemePreview(), [])
   const big = size === 'cards'
   return (
-    <div role="radiogroup" aria-label="Theme" onMouseLeave={endThemePreview}
-      className={`grid ${big ? 'grid-cols-2 gap-3 sm:grid-cols-4' : 'grid-cols-2 gap-2'}`}>
-      {THEME_MODES.map((m) => (
-        <button key={m} type="button" role="radio" aria-checked={mode === m} data-theme-option={m}
-          onMouseEnter={() => previewThemeMode(m)} onFocus={() => previewThemeMode(m)} onBlur={endThemePreview}
-          onClick={() => { set(m); onPicked?.() }}
-          className={`group grid gap-1.5 rounded-[10px] p-1.5 text-left outline-none transition-colors ${mode === m ? 'ring-2 ring-accent' : 'ring-1 ring-[var(--app-hairline-strong,var(--color-border-strong))] hover:ring-fg-faint'} focus-visible:ring-2 focus-visible:ring-accent`}>
-          <Swatch m={m} big={big} />
-          <span className={`flex items-center justify-between px-0.5 ${big ? 'text-[14px]' : 'text-[12.5px]'} ${mode === m ? 'font-semibold text-fg' : 'text-fg-muted'}`}>
-            {THEME_MODE_NAME[m]}
-            {mode === m && <span aria-hidden className="text-accent">✓</span>}
-          </span>
-        </button>
+    <div role="radiogroup" aria-label="Theme" onMouseLeave={endThemePreview} className={`grid ${big ? 'gap-4' : 'gap-2.5'}`}>
+      {GROUPS.map((g) => (
+        <div key={g.label} role="group" aria-label={g.label} className="grid gap-1.5">
+          <div className={`px-0.5 uppercase tracking-[0.1em] text-fg-faint ${big ? 'text-[11.5px]' : 'text-[10.5px]'}`}>{g.label}</div>
+          <div className={`grid ${big ? 'grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4' : 'grid-cols-2 gap-2'}`}>
+            {g.modes.map((m) => (
+              <button key={m} type="button" role="radio" aria-checked={mode === m} data-theme-option={m}
+                onMouseEnter={() => previewThemeMode(m)} onFocus={() => previewThemeMode(m)} onBlur={endThemePreview}
+                onClick={() => { set(m); onPicked?.() }}
+                className={`group grid gap-1.5 rounded-[10px] p-1.5 text-left outline-none transition-colors ${mode === m ? 'ring-2 ring-accent' : 'ring-1 ring-[var(--app-hairline-strong,var(--color-border-strong))] hover:ring-fg-faint'} focus-visible:ring-2 focus-visible:ring-accent`}>
+                <Swatch m={m} big={big} />
+                <span className={`flex items-center justify-between px-0.5 ${big ? 'text-[14px]' : 'text-[12.5px]'} ${mode === m ? 'font-semibold text-fg' : 'text-fg-muted'}`}>
+                  {THEME_MODE_NAME[m]}
+                  {mode === m && <span aria-hidden className="text-accent">✓</span>}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
       ))}
     </div>
   )
@@ -39,7 +51,7 @@ function Swatch({ m, big }: { m: ThemeMode; big: boolean }) {
   return (
     <span aria-hidden className={`flex overflow-hidden rounded-[7px] border border-black/10 ${big ? 'h-[72px]' : 'h-[46px]'}`} style={{ background: c.bg }}>
       <span className="w-[26%]" style={{ background: c.panel }}>
-        <span className="mx-1.5 mt-2 block h-[3px] rounded-full" style={{ background: c.accent }} />
+        <span className="mx-1.5 mt-2 block h-[3px] rounded-full" style={{ background: c.accent2 ?? c.accent }} />
         <span className="mx-1.5 mt-1.5 block h-[3px] w-2/3 rounded-full" style={{ background: c.muted }} />
       </span>
       <span className="flex-1 p-1.5">

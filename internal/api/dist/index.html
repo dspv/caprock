@@ -21,30 +21,43 @@
     <meta name="theme-color" content="#211f1d" />
     <title>Caprock — mission control</title>
     <script>
-      // Set the theme before first paint so a light-preferring user never sees a
-      // dark flash. Mirrors lib/theme.ts: a saved choice wins, else OS preference.
+      // Set the palette before first paint so nobody sees another one flash.
+      // Mirrors resolveMode and THEMES in lib/themes.ts (theme.test.ts runs
+      // this script against them): the kept mode while it agrees with
+      // caprock-theme, else the keys from before the rename, else the OS.
       (function () {
         try {
-          var t = localStorage.getItem('caprock-theme');
-          if (t !== 'dark' && t !== 'light') {
-            t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+          // id: [side, sub-attribute value, panel colour, glow]
+          var M = {
+            'dark-warm': ['dark', 'graphite', '#211f1d', 0],
+            'dark-cold': ['dark', 'slate', '#1f2023', 0],
+            'dark-side': ['dark', 'side', '#181113', 1],
+            'light': ['light', 'white', '#ffffff', 0],
+            'light-cold': ['light', 'cold', '#f5f8fc', 0],
+            'book': ['light', 'paper', '#f4ecdd', 0],
+            'light-side': ['light', 'side', '#f9f6ef', 1]
+          };
+          var ls = localStorage;
+          var t = ls.getItem('caprock-theme');
+          var m = ls.getItem('caprock-theme-mode');
+          if (!M.hasOwnProperty(m) || (M[m][0] !== t && (t === 'dark' || t === 'light'))) {
+            if (t !== 'dark' && t !== 'light') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+            m = t === 'dark'
+              ? (ls.getItem('caprock-dark-tone') === 'slate' ? 'dark-cold' : 'dark-warm')
+              : (ls.getItem('caprock-light-tone') === 'white' ? 'light' : 'book');
           }
-          document.documentElement.setAttribute('data-theme', t);
-          document.documentElement.style.colorScheme = t;
-          // Light palette; the fallback mirrors DEFAULT_TONE in lib/theme.ts.
-          var tone = localStorage.getItem('caprock-light-tone');
-          document.documentElement.setAttribute('data-tone', tone === 'white' ? 'white' : 'paper');
-          var dark = localStorage.getItem('caprock-dark-tone') === 'slate' ? 'slate' : 'graphite';
-          document.documentElement.setAttribute('data-dark', dark);
-          // Mirrors THEME_COLORS in lib/theme.ts: the header's panel colour.
-          var bar = t === 'dark' ? (dark === 'slate' ? '#1f2023' : '#211f1d') : tone === 'white' ? '#ffffff' : '#f4ecdd';
-          document.querySelector('meta[name="theme-color"]').setAttribute('content', bar);
+          var r = M[m], el = document.documentElement;
+          el.setAttribute('data-theme', r[0]);
+          el.style.colorScheme = r[0];
+          el.setAttribute(r[0] === 'dark' ? 'data-dark' : 'data-tone', r[1]);
+          if (r[3]) el.setAttribute('data-glow', '');
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', r[2]);
         } catch (e) {}
       })();
     </script>
-    <script type="module" crossorigin src="/assets/index-yesicbf6.js"></script>
+    <script type="module" crossorigin src="/assets/index-VG8h8xg4.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/jsx-runtime-POIpR70f.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-CVTTtFce.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-Co2AmSMi.css">
   </head>
   <body>
     <div id="root"></div>

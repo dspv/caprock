@@ -20,10 +20,11 @@
   --color-border: #2b2927;
   --color-border-strong: #3a3835;
 
-  /* text — warm whites */
+  /* text — warm whites. Faint ink clears 4.5:1 on every surface (it was
+   * #837f78, 3.9:1 on panel-2, until the contrast pass of 2026-10-11). */
   --color-fg: #e8e6e2;
   --color-fg-muted: #a9a59e;
-  --color-fg-faint: #837f78;
+  --color-fg-faint: #8f8b84;
 
   /* semantic */
   --color-ok: #4fbf6b;      /* working / verified */
@@ -83,17 +84,19 @@
   --color-border: #e6e2db;
   --color-border-strong: #c9c3b8;
 
+  /* Faint ink and the accent were 3.5:1 and 3.6:1 on white; darkened to
+   * clear 4.5:1 on every surface (contrast pass, 2026-10-11). */
   --color-fg: #24211c;
   --color-fg-muted: #5f5a51;
-  --color-fg-faint: #8a8479;
+  --color-fg-faint: #6c675e;
 
   --color-ok: #2e9e4f;
   --color-warn: #9a6700;
   --color-danger: #d64545;
-  --color-info: #b8730d;
+  --color-info: #99600a;
 
-  --color-accent: #b8730d;
-  --color-accent-strong: #8f5808;
+  --color-accent: #99600a;
+  --color-accent-strong: #7a4c06;
 
   /* Darker on white, or ultramarine on a light panel is unreadable. */
   --color-premium: #3341d8;
@@ -103,10 +106,17 @@
 }
 
 /*
- * Slate: a neutral dark with a soft blue accent (owner, 2026-10-11) — for
- * whoever finds the warm charcoal and amber heavy; cooler and flatter, the
- * way Orca reads. Same roles as the default; only the hues move. Its
- * terminal is cool too (SLATE_TERMINAL_THEME in lib/termthemes.ts).
+ * The palettes (lib/themes.ts is the table): Dark Warm is the default above
+ * (`data-dark="graphite"`), Light the `[data-theme="light"]` block (`white`);
+ * each other palette is `data-theme` plus its own `data-dark` or `data-tone`.
+ * Every one keeps body text, faint text included, at 4.5:1 or more on bg,
+ * panel and panel-2, and marks (ok, warn, danger, premium) at 3:1 or more —
+ * the numbers are in .ai/04-ui.md § Themes.
+ *
+ * Dark Cold (once Slate): a neutral dark with a soft blue accent (owner,
+ * 2026-10-11) — for whoever finds the warm charcoal and amber heavy; cooler
+ * and flatter, the way Orca reads. Same roles as the default; only the hues
+ * move. Its terminal is cool too (SLATE_TERMINAL_THEME in lib/termthemes.ts).
  * Applied by <html data-theme="dark" data-dark="slate"> (lib/theme.ts).
  */
 [data-theme="dark"][data-dark="slate"] {
@@ -118,14 +128,16 @@
 
   --color-fg: #e6e7ea;
   --color-fg-muted: #a3a6ad;
-  --color-fg-faint: #7d8088;
+  --color-fg-faint: #8b8e96;
 
   --color-info: #6ea8fe;
-  /* Slate has no orange anywhere (its user asked for none): waiting and idle
+  /* Dark Cold has no orange anywhere (its user asked for none): waiting and idle
    * read as a cool yellow here instead of graphite's amber. */
   --color-warn: #d9c76a;
   --color-accent: #6ea8fe;
   --color-accent-strong: #9cc4ff;
+  /* Lifted a step: the default ultramarine is 2.9:1 on this panel-2. */
+  --color-premium: #5a68f6;
 
   /* The dashboard and phone terminal's ground (components/Terminal.tsx). */
   --color-term-bg: #1a1b1e;
@@ -133,18 +145,124 @@
 
   --shadow-panel: 0 12px 32px -18px rgba(0, 0, 0, 0.7);
 }
-/* The slab around the app terminal, in Slate's neutral ink. */
-[data-app][data-theme="dark"][data-dark="slate"] .app-slab {
-  --color-term-bg: var(--app-term-bg, #1f2023);
-  --color-term-border: var(--app-term-border, #33415a);
-  --color-fg: #e6e7ea;
-  --color-fg-muted: #a3a6ad;
-  --color-fg-faint: #7d8088;
-  --color-panel: #1f2023;
-  --app-hairline: rgba(230, 231, 234, 0.09);
-  --app-hairline-strong: rgba(230, 231, 234, 0.17);
-  --app-row-hover: rgba(230, 231, 234, 0.06);
+
+/*
+ * Dark Side: near-black with a hint of oxblood, a glowing crimson accent
+ * (owner, 2026-10-11). Danger cannot be the accent's red, or every error
+ * would read as a button: it moves to a hot rose-magenta (#ff5fa2), warn
+ * stays amber, and a destructive button is drawn as an outline here (below)
+ * while an accent one is filled and glows. Glow only on the focused field,
+ * the primary button and the tab in front ([data-glow], below).
+ */
+[data-theme="dark"][data-dark="side"] {
+  --color-bg: #110c0d;
+  --color-panel: #181113;
+  --color-panel-2: #20171a;
+  --color-border: #2b1e21;
+  --color-border-strong: #44292e;
+
+  --color-fg: #eee5e5;
+  --color-fg-muted: #b5a6a8;
+  --color-fg-faint: #94838a;
+
+  --color-ok: #4fbf6b;
+  --color-warn: #e8a03c;
+  --color-danger: #ff5fa2;
+  --color-info: #ff7a7a;
+
+  --color-accent: #ff4040;
+  --color-accent-strong: #ff7a7a;
+  --color-premium: #7d88ff;
+  --color-premium-strong: #a0a8ff;
+
+  --color-term-bg: #110c0d;
+  --color-term-border: #4a2027;
+
+  --shadow-panel: 0 12px 32px -18px rgba(0, 0, 0, 0.8);
 }
+[data-theme="dark"][data-dark="side"] button.bg-danger {
+  background: transparent;
+  color: var(--color-danger);
+  box-shadow: inset 0 0 0 1px var(--color-danger);
+}
+
+/*
+ * Light Cold: a cold white — blue-grey ground drifting into blue, blue-grey
+ * borders and an electric blue accent (owner, 2026-10-11). No orange
+ * anywhere, as in Dark Cold: warn is an olive yellow. Its dashboard terminal
+ * is Dark Cold's.
+ */
+[data-theme="light"][data-tone="cold"] {
+  --color-bg: #edf1f7;
+  --color-panel: #f5f8fc;
+  --color-panel-2: #e5ebf4;
+  --color-border: #d3dce9;
+  --color-border-strong: #a9b8cf;
+
+  --color-fg: #121b2a;
+  --color-fg-muted: #3c4a60;
+  --color-fg-faint: #56647b;
+
+  --color-ok: #16804a;
+  --color-warn: #7a6800;
+  --color-danger: #c8233f;
+  --color-info: #0057e0;
+
+  --color-accent: #0057e0;
+  --color-accent-strong: #0045b3;
+
+  --color-term-bg: #1a1b1e;
+  --color-term-border: #33415a;
+
+  --shadow-panel: 0 8px 20px -14px rgba(20, 40, 80, 0.22);
+}
+
+/*
+ * Light Side: a pale sand, like desert robes, with a calm blue accent and a
+ * green for success, both with a soft glow on the few accent elements
+ * ([data-glow], below). Its dashboard terminal is Dark Cold's.
+ */
+[data-theme="light"][data-tone="side"] {
+  --color-bg: #f2eee5;
+  --color-panel: #f9f6ef;
+  --color-panel-2: #ebe5d9;
+  --color-border: #ddd5c5;
+  --color-border-strong: #bfb39c;
+
+  --color-fg: #1d2127;
+  --color-fg-muted: #454a52;
+  --color-fg-faint: #5e636b;
+
+  --color-ok: #137a3f;
+  --color-warn: #8a6200;
+  --color-danger: #c03535;
+  --color-info: #1763cc;
+
+  --color-accent: #1763cc;
+  --color-accent-strong: #0f4fa8;
+
+  --color-term-bg: #1a1b1e;
+  --color-term-border: #33415a;
+
+  --shadow-panel: 0 8px 20px -14px rgba(60, 50, 30, 0.22);
+}
+
+/*
+ * The glow (Dark Side and Light Side, `glow` in lib/themes.ts): a soft neon
+ * on three things only — the focused field, the primary (filled accent)
+ * button and the top edge of the tab in front. Never on text: a dense
+ * dashboard where everything shines is one where nothing does.
+ */
+[data-glow] {
+  --glow-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
+  --glow-soft: color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+[data-glow][data-theme="light"] {
+  --glow-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  --glow-soft: color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+[data-glow] .input:focus { box-shadow: 0 0 0 1px var(--glow-soft), 0 0 12px -2px var(--glow-color); }
+[data-glow] button.bg-accent, [data-glow] a.bg-accent { box-shadow: 0 0 14px -3px var(--glow-color); }
 
 :root {
   color-scheme: dark;
@@ -551,22 +669,26 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
   [data-app] .cockpit-scrub { transition: none; }
   [data-app] .cockpit-fill { transition: none; }
 }
-/* The terminal slab: the terminal palette's ground, dark unless the palette
- * is light, so anything drawn on it (the tab in front, the terminal's own
- * chips) takes graphite's ink, or paper's below. */
+/* The terminal slab: the terminal palette's ground, so anything drawn on it
+ * (the tab in front, the terminal's own chips) reads on it. Under Match app
+ * (`data-term-match`, lib/termprefs.ts) the terminal is the app palette's own
+ * on its own panel, so the slab keeps that palette's ink — Dark Side's tab
+ * is Dark Side's. A named palette takes Dark Warm's ink, or Light's below. */
 [data-app] .app-slab {
   /* The terminal palette's ground (Settings → Terminal, lib/termprefs.ts). */
-  --color-term-bg: var(--app-term-bg, #211f1d);
-  --color-term-border: var(--app-term-border, #3a3835);
+  --color-term-bg: var(--app-term-bg, var(--color-panel));
+  --color-term-border: var(--app-term-border, var(--color-border-strong));
+  background: var(--color-term-bg);
+  color: var(--color-fg);
+}
+[data-app]:not([data-term-match]) .app-slab {
   --color-fg: #e8e6e2;
   --color-fg-muted: #a9a59e;
-  --color-fg-faint: #837f78;
+  --color-fg-faint: #8f8b84;
   --color-panel: #211f1d;
   --app-hairline: rgba(232, 230, 226, 0.09);
   --app-hairline-strong: rgba(232, 230, 226, 0.17);
   --app-row-hover: rgba(232, 230, 226, 0.06);
-  background: var(--color-term-bg);
-  color: var(--color-fg);
 }
 /* The tab strip's hairline is painted under the tabs rather than as a border,
  * so the tab in front, opaque, covers it and opens into what it shows. Its
@@ -579,6 +701,10 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
  * surfaces of their own with a hairline frame, so each reads as a tab and the
  * gaps between them as separators, in both themes. */
 [data-app] .app-tab-front { box-shadow: inset 0 2px 0 var(--color-accent), inset 1px 0 0 var(--app-hairline-strong), inset -1px 0 0 var(--app-hairline-strong); }
+/* The glowing palettes: the tab in front's edge throws a little light down
+ * into the tab, and the sidebar's primary action glows (see [data-glow]). */
+[data-app][data-glow] .app-tab-front { box-shadow: inset 0 2px 0 var(--color-accent), inset 0 6px 8px -6px var(--glow-color), inset 1px 0 0 var(--app-hairline-strong), inset -1px 0 0 var(--app-hairline-strong); }
+[data-app][data-glow] .app-primary { box-shadow: 0 0 12px -3px var(--glow-color); }
 [data-app] .app-tab-back {
   background: color-mix(in srgb, var(--color-fg) 5%, transparent);
   box-shadow: inset 0 1px 0 var(--app-hairline), inset 1px 0 0 var(--app-hairline), inset -1px 0 0 var(--app-hairline);
@@ -597,11 +723,11 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
   content: ""; position: absolute; right: -6px; top: 7px; bottom: 7px; width: 1px;
   background: var(--app-hairline-strong); pointer-events: none;
 }
-/* A light terminal palette (Paper, Match app in the light theme): the slab takes the light theme's ink. */
-[data-app][data-term-tone="light"] .app-slab {
+/* A named light terminal palette (Book, Light Cold, Light Side): the slab takes the Light palette's ink. */
+[data-app][data-term-tone="light"]:not([data-term-match]) .app-slab {
   --color-fg: #24211c;
   --color-fg-muted: #5f5a51;
-  --color-fg-faint: #8a8479;
+  --color-fg-faint: #6c675e;
   --color-panel: #f4ecdd;
   --app-hairline: rgba(36, 33, 28, 0.1);
   --app-hairline-strong: rgba(36, 33, 28, 0.18);

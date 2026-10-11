@@ -14,7 +14,8 @@ import { registerBenchTerminal } from '@/lib/benchhook'
 import { coalescedWriter, writeSliced } from '@/lib/termwrite'
 import { touchScreen } from '@/lib/phone'
 import { attachTerminalLinks } from '@/lib/termlinks'
-import { SLATE_TERMINAL_THEME } from '@/lib/termthemes'
+import { DASH_GROUND, TERMINAL_THEMES } from '@/lib/termthemes'
+import { modeOfRoot, themeRow } from '@/lib/themes'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
@@ -44,14 +45,19 @@ export const TERMINAL_THEME = {
 } as const
 
 /**
- * Slate's dark ground is cool, so its terminal is too (owner, 2026-10-11):
- * the same rule — a dark surface whatever the page — in Slate's palette. Read
- * on mount and again whenever data-dark changes, so a theme switch with a
- * terminal open reaches it.
+ * A cool or a crimson palette gets a terminal in its own temperature (owner,
+ * 2026-10-11): the same rule — a dark surface whatever the page — in the
+ * dark palette the app palette names (`dashTerminal` in lib/themes.ts): this
+ * one for the warm palettes, Dark Cold's for the cool ones, Dark Side's for
+ * Dark Side. Read on mount and again whenever <html>'s palette changes, so a
+ * theme switch with a terminal open reaches it.
  */
-function dashTerminalTheme(): Record<string, string> {
-  const slate = typeof document !== 'undefined' && document.documentElement.getAttribute('data-dark') === 'slate'
-  return slate ? { ...SLATE_TERMINAL_THEME, background: '#1a1b1e', cursorAccent: '#1a1b1e' } : { ...TERMINAL_THEME }
+export function dashTerminalTheme(root: HTMLElement | null = typeof document === 'undefined' ? null : document.documentElement): Record<string, string> {
+  const which = themeRow(modeOfRoot(root))!.dashTerminal
+  if (which === 'caprock') return { ...TERMINAL_THEME }
+  const ground = DASH_GROUND[which]
+  const own = TERMINAL_THEMES.find((t) => t.id === which)!
+  return { ...own.colors, background: ground, cursorAccent: ground }
 }
 /** How long the terminal must have been quiet (no typing) before WebGL is set up. */
 export const WEBGL_QUIET_MS = 1500
@@ -192,7 +198,7 @@ export function TerminalView({
     term.loadAddon(fit)
     term.open(host.current)
     const themeWatch = typeof MutationObserver === 'undefined' ? null : new MutationObserver(() => { term.options.theme = dashTerminalTheme() })
-    themeWatch?.observe(document.documentElement, { attributes: true, attributeFilter: ['data-dark'] })
+    themeWatch?.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-dark', 'data-tone'] })
     const unbench = registerBenchTerminal(sessionId, term)
     // URLs and OSC 8 links open on Cmd/Ctrl+click (lib/termlinks).
     const links = attachTerminalLinks(term)

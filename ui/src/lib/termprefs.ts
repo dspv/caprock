@@ -208,4 +208,8 @@ export function applyTerminalChrome(p: TerminalPrefs, root: HTMLElement = docume
   root.style.setProperty('--app-term-bg', t.colors.background)
   root.style.setProperty('--app-term-border', t.colors.selectionBackground)
   root.setAttribute('data-term-tone', t.tone)
+  // Match app is the app palette's own terminal on its own panel: the slab
+  // keeps that palette's ink instead of a generic dark or light one.
+  if (p.theme === MATCH_APP_THEME) root.setAttribute('data-term-match', '')
+  else root.removeAttribute('data-term-match')
 }

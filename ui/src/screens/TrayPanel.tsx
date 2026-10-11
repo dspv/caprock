@@ -20,6 +20,8 @@ import { AgentGlyph } from '@/components/AgentMarks'
 import { ConnectionState } from '@/components/ConnectionState'
 import { StatusDot, fmtCostShort } from '@/components/ProjectRow'
 import { dotOf } from '@/lib/sidebar'
+import { applySavedThemeMode } from '@/lib/theme'
+import { MODE_KEY, THEME_KEY } from '@/lib/themes'
 
 const DEFAULT_HOTKEY = 'control+alt+super+KeyC'
 const HEADER_H = 40
@@ -57,10 +59,7 @@ export default function TrayPanel() {
     if (isTauri()) root.setAttribute('data-tauri', '')
     // The window's theme follows the main window's choice as it changes.
     const onStorage = (e: StorageEvent) => {
-      if (e.key === 'caprock-theme' && (e.newValue === 'dark' || e.newValue === 'light')) {
-        root.setAttribute('data-theme', e.newValue)
-        root.style.colorScheme = e.newValue
-      }
+      if (e.key === THEME_KEY || e.key === MODE_KEY) applySavedThemeMode()
     }
     const onKey = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape') hide() }
     window.addEventListener('storage', onStorage)

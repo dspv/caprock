@@ -380,14 +380,19 @@ others. Installing it: [install-app.md](install-app.md).
   are installed; the palette and the inspector have *Open in …* too.
   Settings → *Editor* picks the default. Only this computer can do this; a
   paired phone cannot open an editor here.
+- **Themes.** Seven, picked from the sun/moon button at the foot of the
+  sidebar or Settings → *Appearance*: Dark Warm, Dark Cold and Dark Side;
+  Light, Light Cold, Book and Light Side. Point at one to try it on the
+  whole window, click to keep it. Dark Side and Light Side add a soft glow to
+  the focused field, the primary button and the tab in front.
 - **Terminal look.** Settings → *Terminal*: the colours (*Match app*,
-  Caprock, Paper, Catppuccin Mocha, Tokyo Night, Solarized Dark), the font (JetBrains Mono,
+  Dark Warm, Dark Cold, Book, Light Cold, Light Side, Dark Side, Catppuccin
+  Mocha, Tokyo Night, Solarized Dark), the font (JetBrains Mono,
   or SF Mono, Menlo, Fira Code and other monospace fonts you have), size,
   line height and cursor, with a preview. Every open terminal changes as you
-  choose. *Match app*, the default, follows the app's theme: Caprock in the
-  dark theme, Paper on the light window's own colour in the light one, so the
-  terminal reads as part of the window; a palette you pick stays whatever the
-  app shows. The font defaults match the JetBrains IDE terminal: JetBrains
+  choose. *Match app*, the default, follows the app's theme: each theme's
+  own terminal colours on the window's own colour, so the terminal reads as
+  part of the window; a palette you pick stays whatever the app shows. The font defaults match the JetBrains IDE terminal: JetBrains
   Mono, 13 px, line height 1.2, no ligatures.
 - **Permission mode.** A new install starts sessions in *Accept edits · asks
   first*: the agent edits files on its own and asks before running a command.

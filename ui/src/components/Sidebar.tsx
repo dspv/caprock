@@ -33,6 +33,7 @@ import { buildToday } from '@/lib/today'
 import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { THEME_MODE_NAME, useThemeMode } from '@/lib/theme'
+import { THEMES } from '@/lib/themes'
 import { ThemeMenu } from './ThemePicker'
 import { keepsProject, ProjectRow, StatusDot } from './ProjectRow'
 import { ProjectMenu, type ProjectMenuAt } from './ProjectMenu'
@@ -563,7 +564,7 @@ function FooterToggle({ open, onToggle }: { open: boolean; onToggle: () => void 
 /** Opens the theme picker: hover a palette to try it, click to keep it. */
 function ThemeButton() {
   const { mode } = useThemeMode()
-  const light = mode === 'paper' || mode === 'white'
+  const light = THEMES.find((t) => t.id === mode)?.theme === 'light'
   return (
     <ThemeMenu label={`Theme: ${THEME_MODE_NAME[mode]}`} placement="up"
       className="flex h-[26px] w-[26px] items-center justify-center rounded-[6px] text-fg-muted transition-colors hover:bg-[var(--app-row-hover)] hover:text-fg motion-reduce:transition-none">

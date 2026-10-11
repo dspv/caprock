@@ -5,21 +5,32 @@
  *
  * Licences, checked 2026-10-06 — every palette here is MIT:
  *
- * - **Caprock** and **Paper** are ours. Caprock is the dashboard terminal's
- *   ink (TERMINAL_THEME in components/Terminal.tsx, asserted equal in
- *   termthemes.test.ts) on the dark theme's panel, the colour of the tab
- *   strip around it, with a warm 16-colour set; Paper is the light theme's
- *   cream (tokens.css, `[data-tone="paper"]`) with ink dark enough to read on
- *   it.
- * - **Match app** is not a palette but a choice between the two: Caprock in
- *   the dark theme, Paper on the light theme's panel colour in the light one,
- *   so the terminal reads as part of the window rather than a window on top
- *   of it (tester, 2026-10-09). It is the default.
+ * - **Dark Warm** (id `caprock`) and **Book** (id `paper`) are ours. Dark
+ *   Warm is the dashboard terminal's ink (TERMINAL_THEME in
+ *   components/Terminal.tsx, asserted equal in termthemes.test.ts) on the
+ *   Dark Warm panel, the colour of the tab strip around it, with a warm
+ *   16-colour set; Book is the Book palette's cream (tokens.css,
+ *   `[data-tone="paper"]`) with ink dark enough to read on it. The ids are
+ *   the names from before the rename (2026-10-11), kept so a stored choice
+ *   still finds its palette.
+ * - **Dark Cold** (id `slate`), **Light Cold**, **Light Side** and **Dark
+ *   Side** are ours too: each app palette's own ground (its panel, `panel` in
+ *   lib/themes.ts) with a 16-colour set in its temperature — cool for the two
+ *   Colds, blue and green on sand for Light Side, red-leaning on near-black
+ *   for Dark Side, every colour still distinct from the others.
+ * - **Match app** is not a palette but a choice: the app palette's own
+ *   terminal (`terminal` in lib/themes.ts) on that palette's panel colour, so
+ *   the terminal reads as part of the window rather than a window on top of
+ *   it (tester, 2026-10-09). It is the default.
  * - **Catppuccin Mocha** — github.com/catppuccin/alacritty (catppuccin-mocha.toml), MIT.
  * - **Tokyo Night** — github.com/enkia/tokyo-night-vscode-theme, MIT. Bright
  *   black is lifted from its #363b54 (the same as black) so dim text shows.
  * - **Solarized Dark** — github.com/altercation/solarized, MIT (Ethan Schoonover).
  */
+
+import { THEMES, modeOfRoot, themeRow, type ThemeMode } from './themes'
+
+const THEME_COLORS = Object.fromEntries(THEMES.map((t) => [t.id, t.panel])) as Record<ThemeMode, string>
 
 /** The xterm.js theme fields the app sets. */
 export interface TerminalColors {
@@ -55,13 +66,13 @@ export interface TerminalTheme {
 }
 
 /**
- * The panel colour of each app palette (`--color-panel` in design/tokens.css,
- * THEME_COLORS in lib/theme.ts): the tab strip's ground, so a terminal on it
- * has no edge.
+ * The panel colour of the app palettes these terminals sit on
+ * (`--color-panel` in design/tokens.css, `panel` in lib/themes.ts): the tab
+ * strip's ground, so a terminal on it has no edge.
  */
-export const APP_PANEL = { dark: '#211f1d', slate: '#1f2023', paper: '#f4ecdd', white: '#ffffff' } as const
+const APP_PANEL = { dark: THEME_COLORS['dark-warm'], slate: THEME_COLORS['dark-cold'] } as const
 
-/** The app terminal's dark palette since WP-04; what Match app shows in the dark theme. */
+/** The app terminal's dark palette since WP-04; what Match app shows in Dark Warm. */
 export const APP_TERMINAL_THEME: TerminalColors = {
   // The dark panel, not the page's #1b1b1a: one shade darker than the strip
   // above it, the terminal read as a window laid over the app.
@@ -89,9 +100,9 @@ export const APP_TERMINAL_THEME: TerminalColors = {
 }
 
 /**
- * Slate's terminal: the Slate panel with neutral ink, a blue cursor and a
+ * Dark Cold's terminal: its panel with neutral ink, a blue cursor and a
  * cool 16-colour set (owner, 2026-10-11: the terminal should be as cool as the
- * rest of Slate). What Match app shows when the app is dark in Slate.
+ * rest of the palette). What Match app shows in Dark Cold.
  */
 export const SLATE_TERMINAL_THEME: TerminalColors = {
   background: APP_PANEL.slate,
@@ -117,6 +128,35 @@ export const SLATE_TERMINAL_THEME: TerminalColors = {
   brightWhite: '#f2f3f5',
 }
 
+/**
+ * Dark Side's terminal: the near-black panel, a crimson cursor and a
+ * red-leaning 16-colour set — warm reds and roses, but green, blue and cyan
+ * kept clear of them so a diff or a test run still reads.
+ */
+export const DARK_SIDE_TERMINAL_THEME: TerminalColors = {
+  background: '#181113',
+  foreground: '#eee5e5',
+  cursor: '#ff4040',
+  cursorAccent: '#181113',
+  selectionBackground: '#4a2027',
+  black: '#2b1d20',
+  red: '#ff5a5a',
+  green: '#93cf86',
+  yellow: '#f0c27a',
+  blue: '#86a8e6',
+  magenta: '#e683bd',
+  cyan: '#79c6c4',
+  white: '#d9cbcc',
+  brightBlack: '#8f7a7e',
+  brightRed: '#ff8a85',
+  brightGreen: '#b0e2a4',
+  brightYellow: '#f6d7a0',
+  brightBlue: '#a9c3f0',
+  brightMagenta: '#f0a8d2',
+  brightCyan: '#9ddad8',
+  brightWhite: '#f8f1f1',
+}
+
 /** The choice that follows the app's theme rather than naming a palette. */
 export const MATCH_APP_THEME = 'match'
 
@@ -124,11 +164,11 @@ export const MATCH_APP_THEME = 'match'
 export const DEFAULT_TERMINAL_THEME = MATCH_APP_THEME
 
 export const TERMINAL_THEMES: readonly TerminalTheme[] = [
-  { id: 'caprock', name: 'Caprock', tone: 'dark', colors: APP_TERMINAL_THEME },
-  { id: 'slate', name: 'Slate', tone: 'dark', colors: SLATE_TERMINAL_THEME },
+  { id: 'caprock', name: 'Dark Warm', tone: 'dark', colors: APP_TERMINAL_THEME },
+  { id: 'slate', name: 'Dark Cold', tone: 'dark', colors: SLATE_TERMINAL_THEME },
   {
     id: 'paper',
-    name: 'Paper',
+    name: 'Book',
     tone: 'light',
     colors: {
       background: '#efe7d6',
@@ -154,6 +194,63 @@ export const TERMINAL_THEMES: readonly TerminalTheme[] = [
       brightWhite: '#e6dcc8',
     },
   },
+  {
+    id: 'light-cold',
+    name: 'Light Cold',
+    tone: 'light',
+    colors: {
+      background: '#f5f8fc',
+      foreground: '#121b2a',
+      cursor: '#0057e0',
+      cursorAccent: '#f5f8fc',
+      selectionBackground: '#cbdaf0',
+      black: '#121b2a',
+      red: '#c0273d',
+      green: '#167a45',
+      yellow: '#766400',
+      blue: '#0a55cc',
+      magenta: '#8a3cbc',
+      cyan: '#00727f',
+      white: '#a3b0c3',
+      brightBlack: '#56647b',
+      brightRed: '#d6384f',
+      brightGreen: '#1f8c52',
+      brightYellow: '#8a7500',
+      brightBlue: '#2b6fe6',
+      brightMagenta: '#9d52d0',
+      brightCyan: '#078698',
+      brightWhite: '#dce4ef',
+    },
+  },
+  {
+    id: 'light-side',
+    name: 'Light Side',
+    tone: 'light',
+    colors: {
+      background: '#f9f6ef',
+      foreground: '#1d2127',
+      cursor: '#1763cc',
+      cursorAccent: '#f9f6ef',
+      selectionBackground: '#d3def0',
+      black: '#1d2127',
+      red: '#b4302d',
+      green: '#137a3f',
+      yellow: '#806000',
+      blue: '#1a5cbf',
+      magenta: '#86449f',
+      cyan: '#0f767c',
+      white: '#b6ae9e',
+      brightBlack: '#5e636b',
+      brightRed: '#c8423e',
+      brightGreen: '#1a8f4c',
+      brightYellow: '#967000',
+      brightBlue: '#2b74d9',
+      brightMagenta: '#9a58b6',
+      brightCyan: '#178a91',
+      brightWhite: '#e5dfd1',
+    },
+  },
+  { id: 'dark-side', name: 'Dark Side', tone: 'dark', colors: DARK_SIDE_TERMINAL_THEME },
   {
     id: 'catppuccin-mocha',
     name: 'Catppuccin Mocha',
@@ -243,21 +340,14 @@ export const TERMINAL_THEMES: readonly TerminalTheme[] = [
   },
 ]
 
-/** What the app shows: its theme and, when light, which light palette. */
+/** What the app shows: which of its palettes (lib/themes.ts). */
 export interface AppLook {
-  theme: 'dark' | 'light'
-  tone: 'paper' | 'white'
-  /** Which dark palette (data-dark): graphite unless Slate is chosen. */
-  dark?: 'graphite' | 'slate'
+  mode: ThemeMode
 }
 
-/** The app's look, read off <html> (lib/theme.ts sets data-theme and data-tone). */
+/** The app's look, read off <html> (lib/theme.ts sets data-theme with data-tone or data-dark). */
 export function appLook(root: HTMLElement | null = typeof document === 'undefined' ? null : document.documentElement): AppLook {
-  return {
-    theme: root?.getAttribute('data-theme') === 'light' ? 'light' : 'dark',
-    tone: root?.getAttribute('data-tone') === 'white' ? 'white' : 'paper',
-    dark: root?.getAttribute('data-dark') === 'slate' ? 'slate' : 'graphite',
-  }
+  return { mode: modeOfRoot(root) }
 }
 
 /** Every choice Settings → Terminal offers: Match app, then the palettes. */
@@ -273,16 +363,25 @@ export function isTerminalChoice(id: string): boolean {
 
 /**
  * The palette a choice shows. Match app, and an id no longer offered, follow
- * the app: Caprock when it is dark (Slate in Slate), Paper on the light panel when it is light.
+ * the app: its palette's own terminal (`terminal` in lib/themes.ts) on its
+ * panel colour — Caprock in Dark Warm, Paper's ink on white in Light.
  */
 export function terminalTheme(id: string, look: AppLook = appLook()): TerminalTheme {
   const named = TERMINAL_THEMES.find((t) => t.id === id)
   if (named) return named
-  if (look.theme === 'dark') return look.dark === 'slate' ? TERMINAL_THEMES.find((t) => t.id === 'slate')! : TERMINAL_THEMES[0]!
-  const paper = TERMINAL_THEMES.find((t) => t.id === 'paper')!
-  const ground = APP_PANEL[look.tone]
-  return { id: `${MATCH_APP_THEME}-${look.tone}`, name: 'Match app', tone: 'light', colors: { ...paper.colors, background: ground, cursorAccent: ground } }
+  const row = themeRow(look.mode)!
+  const own = TERMINAL_THEMES.find((t) => t.id === row.terminal) ?? TERMINAL_THEMES[0]!
+  if (own.colors.background === row.panel) return own
+  return { id: `${MATCH_APP_THEME}-${row.id}`, name: 'Match app', tone: own.tone, colors: { ...own.colors, background: row.panel, cursorAccent: row.panel } }
 }
+
+/**
+ * The dashboard and phone terminal's ground per dark palette: the page's own
+ * `--color-bg` in that palette (`--color-term-bg` in design/tokens.css). The
+ * terminal there is dark in every theme (components/Terminal.tsx); the app
+ * palette picks which dark (`dashTerminal` in lib/themes.ts).
+ */
+export const DASH_GROUND = { caprock: '#1b1b1a', slate: '#1a1b1e', 'dark-side': '#110c0d' } as const
 
 /** `a` mixed toward `b` by t (0–1), as #rrggbb — what xterm's decorations accept. */
 export function mixHex(a: string, b: string, t: number): string {

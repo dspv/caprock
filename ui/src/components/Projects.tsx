@@ -772,7 +772,7 @@ function SparkCanvas({
       // paint against the element itself.
       const css = getComputedStyle(cv)
       const accent = css.getPropertyValue('--color-accent').trim() || '#feb157'
-      const faint = css.getPropertyValue('--color-fg-faint').trim() || '#837f78'
+      const faint = css.getPropertyValue('--color-fg-faint').trim() || '#8f8b84'
 
       const bw = w / bars.length
       for (let i = 0; i < bars.length; i++) {
