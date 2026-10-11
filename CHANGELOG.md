@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.110.0] - 2026-10-12
+
 ### Added
 
 - **ui:** a *Queue* tab on Tasks (`#/queue`, also in the palette): what each
@@ -16,9 +18,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   *Add to queue* sends to a session, or to whichever of a project's sessions
   is free first. Every estimate is a range from that project's past turns,
   labelled with its basis, and is left out under five turns.
+
 - **daemon:** `GET /v1/queue`, and a finished notification as soon as a
   queued message's turn ends (same switches and limits as the finished
   alert).
+
+
 
 ### Changed
 
@@ -126,11 +131,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   header (*feat/x → main*, with what is not committed or pushed), and the
   release chip sits there too. PRs, Release and Main stay behind one switch.
   The deck lists four PRs (`GET /v1/sessions/{id}/prs`, was three).
+
 - **app:** CI runs and jobs show their time against the median of the same
   workflow's last five successful runs: *4m 45s +18%* (amber past +20%,
   green below −10%), *≈ 3m left* or *+12% over median* while running,
   nothing with fewer than two past runs. Past runs' jobs are read once and
   kept; only while the deck is open (`baseline` on runs and jobs).
+
 - **app:** the session deck's CI cell has a switch: **PR** (as before),
   **Release** and **Main**, remembered per viewer. *Release* is the
   repository's newest release build — found from the run a tag push or a
@@ -142,6 +149,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   default branch, so a red default branch shows at once. While a release
   builds, a chip *Release v1.2.3 · ~6 min* shows from the other views
   (`GET /v1/sessions/{id}/ci/release`, `GET /v1/sessions/{id}/ci/main`).
+
 - **app:** a GitLab-style **mini pipeline** beside each pull request in the
   deck, beside the release tag and beside each default-branch workflow: a
   circle per job (✓ passed, ✗ failed, a turning ring running, hollow
@@ -149,7 +157,78 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   its state and its time; a click opens that job's steps and error in the
   CI cell, turning it to that pull request.
 
+### Changed
+
+- **Dark Side** is neon purple instead of crimson: a near-black violet
+  ground, a glowing purple accent and cursor, neon cyan for premium, and a
+  red of its own for errors. Body text stays at 5.1:1 or more.
+
+- **app:** ⌥⌘N (Ctrl+Alt+Shift+N on Windows and Linux) now asks: it opens the
+  Quick chat chooser with the agent and model you used last already picked,
+  so Enter starts it and Esc cancels. 1–9 pick the agent there too.
+
+- **app:** a subagent in the cockpit opens in place: click its row (or its
+  chip at the top) to read the task the parent gave it, folded to six lines
+  with *Show all*, every call it makes as it makes them, with how long each
+  took and the failed ones marked, what it answered, and its model, time,
+  tokens, cost and costliest tools. Finished subagents open too, and *+N
+  finished* lists them as rows. New `GET
+  /v1/sessions/{id}/subagents/{agent}`; `/subagents` takes `?recent=` (up to
+  30) and lists up to 24 working. A new index (migration 0049) finds a
+  subagent's rows without reading its parent's.
+
+- **app:** the cockpit's subagent chips show up to 24, in groups of four
+  across the cockpit's width (twelve to a row), instead of four and *+N*;
+  *N subagents working* sits right under the state line.
+
+- **daemon:** a subagent's call count includes the calls only its transcript
+  recorded (a call that failed fires no hook result), so the row and the
+  opened subagent agree.
+
+- **app:** the status bar says whose load it shows: *agent cpu 17% ram 2.0
+  GB* is the session's own processes (the agent and what it runs), and a new
+  *caprock 160 MB* beside it is Caprock itself (daemon, app, terminal
+  holders), with the split in its tooltip.
+
+- **ui:** *Settings* in the dashboard header is a framed button with a gear,
+  like *Feedback* beside it, instead of grey text.
+
+- **app:** the agent cockpit puts what people watch first: the agent with a
+  headline figure beside it, then what it and its subagents are doing now,
+  its task list, the context and the plan limits; *Spent this session*
+  follows, folded to one line (*Spent $12.40 · 48 turns · 1h 12m*) until
+  you open it, and stays as you left it.
+
+- **app:** the headline figure is your choice: cost, burn rate (dollars an
+  hour over the last hour of activity), tokens, turns, cache hit rate or
+  time working, picked from the small menu under it and remembered. The
+  cells under *Spent this session* show the others, never the headline
+  again.
+
+- **app:** *Spend over time* is a row that says what it opens and opens in
+  place, as wide as the cockpit, instead of a card over the block.
+
+- **app:** the permission-mode menu is readable: each mode on two lines, its
+  name large with a small mark and what it does under it, the current one
+  marked with an accent bar, and why a row cannot be picked written out.
+
 ### Fixed
+
+- **app:** the cockpit's spend over time stays inside a narrow inspector: a
+  long *peak …* line no longer pushes it past the panel's edge.
+
+- **app:** leaving a quick chat. Once its agent exited (`/exit`), the tab
+  became a login shell in Caprock's own data folder, under the same name, so
+  it still looked like the chat and only a reload got you out. Now the tab
+  says *The chat ended*, with *Close tab* (Enter) and *Start again* on the
+  same agent and model. A line above a new chat says ⌘W closes it and /exit
+  ends it (× hides the line for good).
+
+- **app:** a quick chat's tab, its sidebar row and the inspector read
+  *Quick chat · Opus 5.5*, not *Outside projects* (the group it sits in).
+
+- **app:** the update card no longer stacks on top of the version panel:
+  while the panel is open (it offers the same update), the card steps aside.
 
 - **app:** the Dock shows the new icon after an in-app update. On macOS the
   app sets its Dock tile from its own bundle's icon at every launch, and on
