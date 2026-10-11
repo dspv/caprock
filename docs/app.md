@@ -306,12 +306,15 @@ others. Installing it: [install-app.md](install-app.md).
   changes.
 - **Session deck** (⌘B). A band under the terminal of the agent in front,
   so the prompt sits above the window's edge, nearer the middle of the
-  screen, with the session's live figures in the room it makes: its state
-  and what it is doing now, what it has cost and what its last call cost,
-  how full its context is and what the next call pays to re-read it, your
-  plan's 5-hour and weekly windows, and its last hour as one bar per
-  minute. Taller, it adds its last tool calls and the files changed in its
-  checkout. Drag its top edge to resize it (up to 60% of the pane), or
+  screen, with what is useful while you work in the room it makes: the CI
+  of the session's pull request, its branch with what is not committed or
+  pushed, and its latest pull requests. *CI* lists every GitHub Actions job
+  of the PR's latest commit with its state, OS and time (ticking while it
+  runs) and the runner time so far, measured from GitHub's job times and
+  split per OS — never turned into money. Click a job for its steps and
+  their times; click a failed step for the lines around the error in its
+  log, with a link to the job on GitHub. CI needs GitHub connected (one
+  click, through `gh`). Drag its top edge to resize it (up to 60% of the pane), or
   focus the edge and use ↑ ↓; double-click it for the default height. The
   deck button beside the inspector's, ⌘B and the palette open and close it;
   the app remembers its height and whether it was open. A shell tab has no
@@ -557,7 +560,10 @@ no switch for them. See [Premium](../README.md#premium).
 
 Settings → **GitHub** connects your account. Caprock then talks to
 `api.github.com` from the daemon; the token never reaches the page or your
-phone. Nothing is sent to GitHub until you connect.
+phone. Nothing is sent to GitHub until you connect. The one exception to
+`api.github.com`: when you click a failed CI step in the session deck, the
+job's log is downloaded from the signed address GitHub points to on its log
+storage, without your token.
 
 **Connecting**, easiest first:
 

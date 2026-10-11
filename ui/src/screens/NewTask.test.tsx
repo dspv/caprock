@@ -15,12 +15,12 @@ describe('NewTask', () => {
     const createTask = vi.spyOn(api, 'createTask').mockResolvedValue({} as never)
     render(<NewTask onClose={() => {}} />)
     fireEvent.change(screen.getByPlaceholderText(/healthz/i), { target: { value: 'Do a thing' } })
-    // Clear the criteria the form pre-fills, then try to submit.
-    const criteria = screen.getByRole('textbox', { name: /done criteria/i })
+    // A blank form prefills nothing; make the field whitespace and submit.
+    const criteria = screen.getByRole('textbox', { name: /checks that must pass/i })
     fireEvent.change(criteria, { target: { value: '   \n  \n' } })
     fireEvent.click(screen.getByRole('button', { name: /create task/i }))
     expect(createTask).not.toHaveBeenCalled()
-    expect(screen.getByText(/done criterion is required/i)).toBeTruthy()
+    expect(screen.getByText(/at least one check is required/i)).toBeTruthy()
     createTask.mockRestore()
   })
 
@@ -28,7 +28,7 @@ describe('NewTask', () => {
     const createTask = vi.spyOn(api, 'createTask').mockResolvedValue({} as never)
     render(<NewTask onClose={() => {}} />)
     fireEvent.change(screen.getByPlaceholderText(/healthz/i), { target: { value: 'Do a thing' } })
-    fireEvent.change(screen.getByRole('textbox', { name: /done criteria/i }), { target: { value: 'go test ./...' } })
+    fireEvent.change(screen.getByRole('textbox', { name: /checks that must pass/i }), { target: { value: 'go test ./...' } })
     fireEvent.click(screen.getByRole('button', { name: /create task/i }))
     expect(createTask).toHaveBeenCalledWith(expect.objectContaining({ done_criteria: ['go test ./...'] }))
     createTask.mockRestore()

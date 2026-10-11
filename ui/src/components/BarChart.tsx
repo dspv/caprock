@@ -153,13 +153,15 @@ function AxisMark({ day, on, month }: { day: string; on: boolean; month: boolean
  * day's numbers while a bar is active — placed where the eye already is rather
  * than in a tooltip that has to be waited for.
  */
-export function BarReadout({ bars, active, total }: {
+export function BarReadout({ bars, active, total, fmtTotal = fmtUSD }: {
   bars: Bar[]
   active: string | null
   total: number
+  /** How the total reads when no bar is picked; the exact sum is its tooltip. */
+  fmtTotal?: (v: number) => string
 }) {
   const b = active ? bars.find((x) => x.day === active) : undefined
-  if (!b) return <span className="num">{fmtUSD(total)}</span>
+  if (!b) return <span className="num" title={fmtUSD(total)}>{fmtTotal(total)}</span>
   return (
     <span className="num flex items-baseline gap-2">
       <span className="text-fg-muted" title={b.day}>{dayName(b.day)} · {daysAgo(b.day)}</span>

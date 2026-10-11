@@ -15,10 +15,11 @@
 import { useState } from 'react'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
-import { fmtUSD } from '@/lib/format'
+import { fmtUSD, fmtUSDShort } from '@/lib/format'
 import { markAnswered, usePromptDue, type PromptKind } from '@/lib/prompts'
 import { openExternal, teamEligible, TEAMS_URL, useNudgeSlot } from '@/lib/nudges'
 import { TeamsModal, type TeamsFact } from './TeamsModal'
+import { Banner, BannerButton, BannerDismiss, Fig } from './Banner'
 
 const KIND: PromptKind = 'teams-nudge'
 
@@ -31,36 +32,21 @@ export function TeamsBanner({ fact, now }: { fact: TeamsFact; now: number }) {
   const people = sig.data?.authors ?? 0
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[var(--radius-panel)] border border-border bg-panel-2 px-3 py-2 text-[12px]">
-      <span className="text-fg">
-        Your team runs agents too.
-        <span className="text-fg-muted">
-          {' '}{people} people committed to your repositories in the last 30 days; this machine alone spent{' '}
-          <span className="num text-fg">{fmtUSD(fact.costUSD)}</span> {fact.window}.
-        </span>
-      </span>
-      <span className="text-fg-muted">See everyone&rsquo;s agent spend and cost per PR in one place.</span>
-      <span className="ml-auto flex shrink-0 items-center gap-2">
-        <button
-          type="button"
-          onClick={() => openExternal(TEAMS_URL)}
-          className="rounded-md bg-accent px-2.5 py-1 text-[12px] font-medium text-bg hover:brightness-110"
-        >
-          Caprock for Teams →
-        </button>
-        <button type="button" onClick={() => setOpen(true)} className="text-[11px] text-fg-muted hover:text-fg">
-          what teams get
-        </button>
-        <button
-          type="button"
-          onClick={() => markAnswered(KIND, now)}
-          className="rounded-sm border border-border px-1.5 py-0.5 text-[11px] text-fg-faint hover:text-fg-muted"
-          title="hide this for a month"
-        >
-          not now
-        </button>
-      </span>
+    <Banner
+      id="teams"
+      art="team"
+      title="Your team runs agents too"
+      line={<>
+        <Fig>{people}</Fig> people committed to your repositories in 30 days. This machine alone spent{' '}
+        <Fig title={fmtUSD(fact.costUSD)}>{fmtUSDShort(fact.costUSD)}</Fig> {fact.window}.
+      </>}
+      actions={<>
+        <BannerButton onClick={() => openExternal(TEAMS_URL)}>Caprock for Teams →</BannerButton>
+        <button type="button" onClick={() => setOpen(true)} className="bn-link">What teams get</button>
+        <BannerDismiss onClick={() => markAnswered(KIND, now)} title="Hide this for a month">Not now</BannerDismiss>
+      </>}
+    >
       {open && <TeamsModal fact={fact} onClose={() => setOpen(false)} />}
-    </div>
+    </Banner>
   )
 }
