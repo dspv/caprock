@@ -126,9 +126,17 @@ One window, three regions:
   2026-10-09: "the left has tons of items, which one is active, which to
   pick, unclear … we need a simpler interface", translated; he had landed
   on an old session started in another terminal and understood nothing).
-  A project is one line: name, a green dot with the count of live sessions
-  and shells, the waiting badge — no branch, no ±, no spend. Only the
-  current project is open, with no chevron: under it, exactly its tabs as
+  A project is one line: a fold chevron, the name, a 40×12 line of its last
+  hour (turns and tool calls per two minutes from `GET /v1/activity`, polled
+  once a minute and resting while the window is hidden; amber while something
+  in it works, absent for a quiet hour), a green dot with the count of live
+  sessions and shells, the waiting badge, and a faint **+** (new agent in the
+  project) that needs no hover — no branch, no ±, no spend. The owner asked
+  for the three on 2026-10-11 (translated: "neat small activity charts, a
+  button to fold or hide, a quick button to add something in the same
+  project"); hide, a new shell, the menu and close stay on hover. The current
+  project and any with something live or waiting are open; the chevron folds
+  one by hand, kept per viewer (`caprock-sidebar-folded`). Under an open one, exactly its tabs as
   the strip shows them, same order, same names (`lib/tablabels.ts`; shells
   numbered *Shell 1*, *Shell 2*; a branch only when it is not the
   project's). No worktree or branch rows, and no session that is not in a

@@ -474,6 +474,18 @@ payload rather than in the screen that draws it; a store test asserts it.
 (`lines_added`, `lines_removed`, and `cost_per_merged_pr` / `loop.tax_usd`
 when present). Responses are cached for 30 s per `start`.
 
+### Activity (`GET /v1/activity`)
+
+Each session's turns and tool calls (`turn.assistant`, `tool.pre`; internal
+events left out) over the last hour, in 30 buckets of two minutes, oldest
+first, aligned to the bucket so a poll a minute later moves whole bars. A
+session with nothing in the hour is absent. One range scan on
+`idx_events_ts`; the sidebar sums a project's sessions into its sparkline.
+
+```json
+{ "from": 1791730800000, "bucket_ms": 120000, "buckets": 30, "sessions": { "<session_id>": [0, 2, 5, 0, …] } }
+```
+
 ### At a glance (`GET /v1/glance`)
 
 ```

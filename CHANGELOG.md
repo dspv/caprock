@@ -7,6 +7,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.107.7] - 2026-10-11
+
+### Added
+
+- **app:** each project in the sidebar draws its last hour as a small line —
+  amber while something in it works — and has a **+** for a new agent there
+  without hovering. A chevron folds a project by hand, even one with
+  something running; the choice is kept. `GET /v1/activity` serves the line.
+
 ### Changed
 
 - **Plan limits** is two matching cards, Claude and Codex, each with its
