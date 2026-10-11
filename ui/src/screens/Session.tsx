@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api, ApiError, isPairedDevice, type DiffResult, type Event, type SessionDetail } from '@/lib/api'
 import { useCanControl } from '@/lib/useCanControl'
 import { useApi } from '@/lib/useApi'
-import { live } from '@/lib/live'
+import { live, useLiveLink } from '@/lib/live'
 import { fmtAgo, fmtPct, fmtTokens, fmtUSD, basename } from '@/lib/format'
 import { Badge, Empty, Panel, Skeleton, Sparkline, StaleNote, Stat } from '@/components/ui'
 import { href, navigate } from '@/lib/router'
@@ -29,6 +29,8 @@ import { ChevronIcon } from '@/components/AppIcons'
 import { isAppMode } from '@/lib/appmode'
 import { MoreMenu } from '@/components/MoreMenu'
 import { SubscriptionTag } from '@/components/SubscriptionPicker'
+import { ConnectionState } from '@/components/ConnectionState'
+import { narrowScreen, useFillViewport, useNarrowScreen } from '@/lib/phone'
 
 type Tab = 'chat' | 'timeline' | 'notes' | 'changes' | 'terminal'
 
@@ -86,6 +88,11 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   const [plan] = usePlan()
   // The phone's Chat tab: a compact header, its details behind a toggle.
   const [details, setDetails] = useState(false)
+  // On a phone the chat is the screen, its field at the bottom as in a
+  // messenger, above the keyboard when that is up (lib/phone).
+  const phone = useNarrowScreen()
+  const fillChat = useFillViewport<HTMLDivElement>(phone && active === 'chat')
+  const link = useLiveLink()
   const s = detail.data
   if (detail.error && !s) {
     return <Empty title={detail.error instanceof ApiError && detail.error.status === 404 ? 'Session not found' : 'Cannot load session'}>{detail.error.message}</Empty>
@@ -147,7 +154,10 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   // details toggle) and one row of the session's controls; ids, folder,
   // links, activity and Remove are one tap away under Details. Re-read every
   // render (the clock ticks each second), so turning the phone follows.
-  const compact = active === 'chat' && narrowScreen()
+  // The Terminal tab too (2026-10-11): under the full header the terminal
+  // started two thirds of the way down an iPhone's screen.
+  const talking = active === 'chat' || active === 'terminal'
+  const compact = talking && phone
   const controls = (
     <>
       {!detail.stale && s.owned && s.status !== 'ended' && !reader && <OwnedControls id={id} />}
@@ -158,7 +168,9 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         * agent it was, which was right for 39 of 116 ended Claude Code sessions
         * (FB-036). Caprock never types into a process it did not start
         * (rule 7); a resume starts a second process on the conversation. */}
-      {s.resume && <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={s.status !== 'ended' && !s.detached} resume={s.resume} prominent={app} />}
+      {/* Not in a phone's one-row header: there the chat says it, with a
+        * thumb-sized button, where the field would be (chatFooter). */}
+      {s.resume && !compact && <ContinueSession sessionID={s.session_id} cwd={s.cwd} live={s.status !== 'ended' && !s.detached} resume={s.resume} prominent={app} />}
       {/* A relay: a new session, in any agent, started with a summary of
         * this one that the user reads first — offered next to "continue"
         * because it answers the same wish when continuing cannot (another
@@ -198,8 +210,13 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
               <ChevronIcon size={16} className={`transition-transform motion-reduce:transition-none ${details ? '-rotate-90' : 'rotate-90'}`} />
             </button>
           </div>
-          {/* One row, scrolled sideways if it must: never a second. */}
-          <div className="flex items-center gap-3 overflow-x-auto whitespace-nowrap [scrollbar-width:none] empty:hidden">{controls}</div>
+          {/* One row, scrolled sideways if it must: never a second. The
+            * connection's state rides at its end: the page header that says
+            * it elsewhere is not drawn on a phone's session (Shell). */}
+          <div className="flex items-center gap-3 overflow-x-auto whitespace-nowrap [scrollbar-width:none]">
+            {controls}
+            <ConnectionState link={link} heardAt={live.heardAt} className="ml-auto shrink-0 text-[11px] text-fg-muted" />
+          </div>
         </div>
       )}
       {(!compact || details) && <>
@@ -256,7 +273,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         * how this bar shows "nothing happened yet", so it read as broken
         * rather than as out of scope. Say the one true thing instead. */}
       {unmeasurable ? (
-        <Panel className={active === 'chat' ? 'max-sm:hidden' : ''}>
+        <Panel className={talking ? 'max-sm:hidden' : ''}>
           <div className="px-3 py-2.5 text-[13px] text-fg-muted">
             {waitingOnLink ? (
               <>
@@ -281,7 +298,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         </Panel>
       ) : (
       // On a phone the chat is the page: the figures stay on the other tabs.
-      <Panel className={active === 'chat' ? 'max-sm:hidden' : ''}>
+      <Panel className={talking ? 'max-sm:hidden' : ''}>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-border">
           {/* One of six columns, so the basis cannot fit beside the model
               name without truncating — and it is the basis that would be cut.
@@ -305,19 +322,31 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
       {/* A waiting permission prompt on every tab, not only beside the
         * terminal: a phone opens on Timeline. The Terminal tab draws its own. */}
       {active !== 'terminal' && s.owned && s.status !== 'ended' && <PermissionPrompt sessionId={id} keys={false} />}
+      {phone ? (
+        <PhoneTabs tabs={tabs} active={active} onPick={setTab} />
+      ) : (
       <div className="flex items-center gap-1 border-b border-border">
         {tabs.map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`px-2 sm:px-3 py-1.5 text-[12px] border-b-2 -mb-px ${active === t ? 'border-accent text-fg' : 'border-transparent text-fg-muted hover:text-fg'}`}>
-            {t === 'chat' ? 'Chat' : t === 'timeline' ? 'Timeline' : t === 'notes' ? 'Answers' : t === 'changes' ? 'Changes' : 'Terminal'}
+            {TAB_LABEL[t]}
           </button>
         ))}
         {!s.owned && s.status !== 'ended' && !reader && <span className="ml-auto text-[11px] text-fg-faint pr-1 max-sm:hidden">observe-only — terminal is read/write for spawned sessions only</span>}
       </div>
+      )}
       {/* The timeline starts from the fresh events, never from a kept copy. */}
       {active === 'timeline' && (detail.stale ? <Skeleton rows={6} /> : <Timeline id={id} initial={s.events} now={now} at={at} />)}
       {active === 'chat' && (
         <Panel className="overflow-hidden">
-          <ChatView sessionId={id} canType={!reader && s.owned && s.status !== 'ended' && !s.detached} ended={s.status === 'ended' || !!s.detached} className="h-[70dvh] min-h-[360px]" />
+          <ChatView
+            sessionId={id}
+            canType={!reader && s.owned && s.status !== 'ended' && !s.detached}
+            ended={s.status === 'ended' || !!s.detached}
+            className={phone ? 'h-[70dvh]' : 'h-[70dvh] min-h-[360px]'}
+            phone={phone}
+            boxRef={fillChat}
+            footer={chatFooter(s, reader)}
+          />
         </Panel>
       )}
       {active === 'notes' && <SessionNotes id={id} now={now} />}
@@ -326,6 +355,74 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
       {terminal}
     </div>
   )
+}
+
+const TAB_LABEL: Record<Tab, string> = { chat: 'Chat', timeline: 'Timeline', notes: 'Answers', changes: 'Changes', terminal: 'Terminal' }
+
+/**
+ * A phone's tabs: Chat and Terminal as one two-part switch, first and
+ * thumb-sized, because those are the two ways to talk to the session; the
+ * other three after them. The owner's partner, on an iPhone, did not find the
+ * chat at all behind a row of five 12px words (2026-10-11).
+ */
+function PhoneTabs({ tabs, active, onPick }: { tabs: Tab[]; active: Tab; onPick: (t: Tab) => void }) {
+  const talk = (['chat', 'terminal'] as Tab[]).filter((t) => tabs.includes(t))
+  const rest = (['changes', 'timeline', 'notes'] as Tab[]).filter((t) => tabs.includes(t))
+  return (
+    <div role="tablist" aria-label="Session views" className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
+      <span className="inline-flex shrink-0 rounded-[10px] bg-panel-2 p-0.5">
+        {talk.map((t) => (
+          <button
+            key={t}
+            role="tab"
+            aria-selected={active === t}
+            onClick={() => onPick(t)}
+            className={`min-h-11 rounded-[8px] px-3.5 text-[15px] ${active === t ? 'bg-accent font-medium text-panel' : 'text-fg'}`}
+          >
+            {TAB_LABEL[t]}
+          </button>
+        ))}
+      </span>
+      {rest.map((t) => (
+        <button
+          key={t}
+          role="tab"
+          aria-selected={active === t}
+          onClick={() => onPick(t)}
+          className={`min-h-11 shrink-0 px-2 text-[13px] ${active === t ? 'font-medium text-fg underline decoration-accent decoration-2 underline-offset-[6px]' : 'text-fg-muted'}`}
+        >
+          {TAB_LABEL[t]}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * What the chat says where its field would be. A session with no field is
+ * not broken, and saying nothing read as "there is no access into that
+ * session" (owner's report, 2026-10-11): it is read-only for a reason, and
+ * the reason has a way round it, which is offered right here.
+ */
+function chatFooter(s: SessionDetail, reader: boolean): ReactNode {
+  const ended = s.status === 'ended' || !!s.detached
+  const cont = s.resume?.ok && (
+    <div className="mt-2"><ContinueSession sessionID={s.session_id} cwd={s.cwd} live={!ended} resume={s.resume} big /></div>
+  )
+  if (reader) {
+    return <>This phone can read but not type. On the computer: Settings → <b className="font-medium text-fg">Open Caprock on your phone</b> → <b className="font-medium text-fg">Let it control sessions</b>.</>
+  }
+  if (ended) return <>{s.detached ? 'This session lost its terminal when Caprock restarted.' : 'This session has ended.'}{cont}</>
+  if (!s.owned) {
+    return (
+      <>
+        Started in a terminal outside Caprock, so it can be read here but not typed into — Caprock never types into a process it did not start.
+        {s.resume?.ok && ' Branch it here to carry on from your phone: the original keeps running.'}
+        {cont}
+      </>
+    )
+  }
+  return null
 }
 
 type Filter = 'all' | 'tools' | 'turns'
@@ -442,7 +539,6 @@ function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now:
   )
 }
 
-/** A phone-width window, where a session opens on its chat. */
 /** The resume command, for a terminal of one's own. */
 function CopyCommand({ command }: { command: string }) {
   const [copied, setCopied] = useState(false)
@@ -461,10 +557,6 @@ function CopyCommand({ command }: { command: string }) {
       {copied ? 'Copied' : 'Copy the resume command'}
     </button>
   )
-}
-
-function narrowScreen(): boolean {
-  return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 639px)').matches
 }
 
 /** True when an event falls inside the minute the caller asked to see. */

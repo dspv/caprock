@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { narrowScreen } from '@/lib/phone'
 import { CloseButton, DialogBackdrop } from './Dialog'
 import { DirPicker } from './DirPicker'
 import { AgentPicker, useAgentCatalog, useAgentChoice, useSpawnableAgents, type BuiltinAgent, type SpawnAgent } from './AgentPicker'
@@ -160,7 +161,8 @@ export function SpawnDialog({
   // whose repository is on screen and then asking for the directory again is
   // asking someone to retype what they are looking at.
   initialCwd = '',
-  landOn = 'terminal',
+  // A phone lands on the chat, where its field is; a desktop on the terminal.
+  landOn = narrowScreen() ? 'chat' : 'terminal',
 }: {
   /** Whether Claude Code can be started. Kept for callers that know only
    *  that; the dialog asks the daemon about the other agents itself. */
