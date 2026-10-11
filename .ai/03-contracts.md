@@ -1244,20 +1244,22 @@ state?, repo, head_sha?}` is pull request N when it is among the session's
 latest three (a click on its mini pipeline in the PRs cell), else the
 session's open one among them, else the newest (each read through `github.PullByURL`, so it shares the PRs
 cell's reads). `ci` is `github.CI` for that PR's head commit: `{repo,
-head_sha, state, runs[], runner_ms, by_os[], at, error?}`, `state` one of
+head_sha, state, runs[], runner_ms, by_os[], cost?, at, error?}`, `state` one of
 `running | fail | pass | none`. Each run `{id, name, event?, status,
 conclusion?, attempt?, html_url?, created_at?, updated_at?, started_at?,
-head_branch?, head_sha?, workflow_id?, jobs[]}` (`started_at` is GitHub's
+head_branch?, head_sha?, workflow_id?, jobs[], cost?}` (`started_at` is GitHub's
 `run_started_at`; `head_branch` is the tag for a tag push or a release); each
 job `{id, run_id, name, status, conclusion?, started_at?, completed_at?,
-duration_ms?, labels[], os?, runner_name?, html_url?, steps[]}`; each step
+duration_ms?, labels[], os?, runner_name?, runner_group_name?, html_url?,
+steps[], cost?}`; each step
 `{number, name, status, conclusion?, started_at?, completed_at?,
 duration_ms?}` — times unix ms, durations `completed_at - started_at` from
 GitHub's own stamps and absent until both are known. `os` is read from the
 runner labels: `linux | windows | macos | self-hosted`, absent when they
 name none. `runner_ms` sums the finished jobs and `by_os` `[{os, ms}]`
-splits it, largest first; no billing multiplier is applied anywhere (a
-running job's time is the reader's clock minus `started_at`). Read from
+splits it, largest first, as raw time with no rate applied (a
+running job's time is the reader's clock minus `started_at`). The dollars
+are in `cost` (see **Runner cost** below). Read from
 `GET /repos/{o}/{r}/actions/runs?head_sha=…&per_page=10` and
 `GET …/actions/runs/{id}/jobs?per_page=100` (the latest attempt), kept per
 commit for 10 s while any run or job is unfinished and 2 min once all
@@ -1305,6 +1307,81 @@ Both are kept per repository (and branch) as a commit's CI is: 10 s while a
 run is unfinished, 2 min once settled; a settled run whose `updated_at` and
 attempt are unchanged keeps the jobs read before; a failed read keeps the
 last answer with its `error` set. An unknown session is 404.
+
+**Runner cost** — every `CIJob`, `CIRun` and `CI` above (the PR, Release and
+Main views alike) carries what its GitHub-hosted minutes cost at list rate,
+from the runner rate table `pricing/actions.json` (§ Pricing table;
+`internal/github/runnercost.go`). An estimate, labelled so: it is before a
+private repository's included minutes, which a job cannot know are left.
+
+- **Job `cost`** — `RunnerCost` `{priced, reason?, sku?, display?, match?,
+  larger?, rate_usd_per_min?, minutes_billed, usd, free_public}`.
+  `minutes_billed` is `duration_ms` rounded up to the whole minute, each job
+  on its own, as GitHub bills it; `usd` is `minutes_billed ×
+  rate_usd_per_min`. `free_public` is a standard runner in a public
+  repository: `usd` is 0 and `minutes_billed` still says what it took. A
+  larger runner is charged in a public repository too.
+- **Unpriced, never guessed** — `priced` false with `reason`: `self_hosted`
+  (any label `self-hosted`, whatever else the labels say), `unknown_runner`
+  (no label the table documents and no name that spells a SKU it has),
+  `unfinished` (queued or running; nothing counted yet) or `no_table`.
+- **Finding the SKU** — `match` `label`: a workflow label GitHub documents
+  for standard runners and macOS larger runners, case-insensitive
+  (`ubuntu-latest`, `ubuntu-24.04` → `actions_linux`; `ubuntu-24.04-arm` →
+  `actions_linux_arm`; `windows-latest` → `actions_windows`;
+  `windows-11-arm` → `actions_windows_arm`; `macos-latest`, `macos-14`,
+  `macos-15-intel` → `actions_macos`; `macos-*-large` → `macos_l`;
+  `macos-*-xlarge` → `macos_xl`; the full list is the table's `labels`).
+  `match` `name`: a Linux or Windows larger runner's chosen name, from a
+  label or `runner_name`, that states the OS and the core count
+  (`ubuntu-latest-4-cores` → `linux_4_core`, `linux-8-core-arm` →
+  `linux_8_core_arm`, `windows-16-cores` → `windows_16_core`), used only when
+  that SKU exists in the table and is a larger runner. GPU runners have rows
+  but no label, so a GPU job is `unknown_runner`.
+- **Run and commit `cost`** — `CICost` `{usd, minutes_billed, free_minutes,
+  unpriced_minutes, priced_jobs, unpriced_jobs, unfinished_jobs, partial,
+  visibility, table_version?}` sums the finished jobs: `minutes_billed` and
+  `usd` the charged ones, `free_minutes` the public standard ones,
+  `unpriced_minutes` the finished jobs with no price. `partial` is true when
+  a job is unfinished or unpriced (with minutes), so the sum is short of the
+  whole. `CI.cost` is the commit's — for the PR view, the pull request's
+  head commit's runs.
+- **Visibility** — `public | private | unknown`, the `private` field of
+  `GET /repos/{o}/{r}`, the same read the default branch comes from and kept
+  with it for an hour (`github.RepoVisibility`). An unreadable repository is
+  `unknown`, priced at the list rate, and not asked again for 10 minutes.
+
+**`GET /v1/github/actions-usage`** (`?owner=` optional) → `ActionsUsage`
+`{account, org, year, month, available, reason?, needs?, minutes, gross_usd,
+discount_usd, net_usd, by_sku[], endpoint?, at, error?}`: what GitHub itself
+billed for Actions this month (UTC), read from its billing usage report only
+when this route is asked — never polled — and kept 30 minutes per token,
+account and month.
+
+- **Which report** — the connected account's
+  `GET /users/{username}/settings/billing/usage?year=&month=` when `owner` is
+  absent or the account's login; otherwise the organization's
+  `GET /organizations/{org}/settings/billing/usage?year=&month=` (`org`
+  true). Both are documented as available only on GitHub's enhanced billing
+  platform.
+- **Sums** — rows whose `product` is `actions` (any case); `minutes` sums
+  the rows whose `unitType` is in minutes, the dollars sum every Actions row
+  (storage included); `by_sku[]` `{sku, unit_type, quantity, gross_usd,
+  discount_usd, net_usd}` per SKU and unit, largest gross first. Net is
+  after GitHub's discount, which is how included minutes appear.
+- **Not available is an answer, not an error** — 200 with `available` false
+  and `reason`: `not_connected` (nothing sent), `permission` (403; `needs`
+  is what GitHub's `X-Accepted-GitHub-Permissions` or
+  `X-Accepted-OAuth-Scopes` names, else the documented permission: the
+  "Plan" user permission (read) for a fine-grained token, or for an
+  organization the "Administration" organization permission (read) and
+  being its administrator — docs.github.com/en/rest/billing/usage, read
+  2026-10-12), `not_found` (404: no such account, or not on enhanced
+  billing) or `error` (anything else, with `error`; not kept, so the next
+  ask tries again). A refusal does not mark the GitHub health line. A
+  malformed `owner` is the usual `invalid` failure.
+- **Who** — the machine only: a paired phone gets 403, as billing is the
+  account's spending.
 
 **`GET /v1/sessions/{id}/ci/jobs/{job}/log`** → `CILog` `{job_id, lines[],
 error_line, truncated?}`: the end of one finished job's log, for a job the
@@ -2075,6 +2152,7 @@ DELETE /v1/github/device                   → {device: null}
 GET    /v1/github/owners                   → {owners: [{login, avatar_url?, org}]}
 GET    /v1/github/repos?owner=&q=&page=    → RepoPage
 GET    /v1/github/prs                      → {prs: [PR]}
+GET    /v1/github/actions-usage?owner=     → ActionsUsage (§ Runner cost, under Phase 1 additions)
 GET    /v1/projects/{id}/github[?worktree=]          → WorktreeInfo
 POST   /v1/projects/{id}/github/refresh[?worktree=]  → WorktreeInfo (read now)
 GET    /v1/projects/{id}/github/items[?q=]           → Items (open issues and pull requests)
@@ -2997,6 +3075,36 @@ No DDL change was needed for either fix here, only honest use of the existing co
 - Cache-savings math (ported from Caprock-python `_savings.py`): `billed_with = in + 1.25·cache_write + 0.10·cache_read` in input-token equivalents; `billed_without = in + cache_write + cache_read`; `saved = billed_without − billed_with`; hit-rate reported as `cache_read / (in + cache_read + cache_write)`. Where the transcript reports the 1h-TTL split (`cache_creation.ephemeral_1h_input_tokens`), those tokens are priced at the 1h write price (2×), not 1.25×.
 - **Source of the numbers:** Anthropic first-party pricing page (`platform.claude.com/docs/en/about-claude/pricing`), fetched 2026-08-18. Bedrock/Vertex have separate partner pricing — first-party only across v0.1–v0.3; recorded as [OQ-02](12-risks.md#open-questions).
 - The parity target and its fixture story: [OQ-01](12-risks.md#open-questions).
+
+### Runner rate table (`pricing/actions.json`)
+
+The GitHub Actions counterpart of the model table, with its own `version`
+(first `2026-10-12.1`), embedded as `pricing.ActionsJSON` and parsed once by
+`github.EmbeddedRunnerTable`; there is no user override. It prices CI jobs
+(§ Runner cost under Phase 1 additions) and nothing else.
+
+- **Shape** — `{version, source, fetched_at, currency: "USD", unit:
+  "per_minute", notes[], skus[], labels}`. Each `skus[]` row is `{sku,
+  display, os, arch?, usd_per_min, larger?, gpu?}`, `sku` being GitHub's
+  billing SKU (`actions_linux`, `linux_4_core_arm`, `macos_xl`…); `larger`
+  marks a larger runner, which is never free. `labels` maps a documented
+  workflow label to a SKU. Parsing refuses a missing version, a unit other
+  than USD per minute, no rows, a negative rate, a SKU listed twice and a
+  label naming a SKU with no row.
+- **Source** — GitHub's *Actions runner pricing* reference
+  (`docs.github.com/en/billing/reference/actions-runner-pricing`), read
+  2026-10-12: every standard, x64 larger, arm64 larger and GPU row as
+  listed there. The labels come from the GitHub-hosted runners reference
+  (private-repository table) and the larger runners reference, read the same
+  day. The notes quote the rest with its URL and date: per-job rounding up
+  to the whole minute; GitHub's 2025-12-16 changelog saying the hosted rates
+  from 2026-01-01 include the $0.002 per-minute platform charge (so nothing
+  is added); public repositories free on standard runners; self-hosted usage
+  free per the billing page, with the announced self-hosted charge postponed
+  — a self-hosted job is still reported unpriced, not $0.
+- **Changing it** — a new rate is a new `version` in the same commit as
+  this section and `CHANGELOG.md`, with the date it was read; no rate is
+  written anywhere in Go, tests included (they read the table).
 
 ## Autostart service files
 

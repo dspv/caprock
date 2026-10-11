@@ -24,6 +24,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **github:** what a CI run cost. A new runner rate table,
+  `pricing/actions.json` (version `2026-10-12.1`), holds GitHub's per-minute
+  rates for every hosted runner, larger, arm64 and GPU runners included,
+  copied from GitHub's *Actions runner pricing* page on 2026-10-12 with the
+  source in the file. Each CI job, run and commit the deck reads now carries
+  `cost`: the runner's SKU, its minutes rounded up the way GitHub bills
+  them, and the dollars at list rate. Standard runners in a public
+  repository are free; self-hosted and unrecognised runners say they are
+  unpriced rather than guess. `GET /v1/github/actions-usage` reads the
+  month's Actions usage from GitHub's billing report, only when asked, and
+  names the token permission it lacks when GitHub refuses. Not in the
+  interface yet.
 - **app:** the session deck's CI cell has a switch: **PR** (as before),
   **Release** and **Main**, remembered per viewer. *Release* is the
   repository's newest release build — found from the run a tag push or a

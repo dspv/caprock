@@ -183,6 +183,22 @@ func (s *Server) handleGitHubOwners(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, o)
 }
 
+// handleGitHubActionsUsage is this month's Actions usage as GitHub billed it,
+// for ?owner= (an organization) or the connected account. Read only when
+// asked, kept 30 minutes; a token that may not read billing is an answer
+// with available false and what to grant, not an error.
+func (s *Server) handleGitHubActionsUsage(w http.ResponseWriter, r *http.Request) {
+	if !s.requireGitHub(w) {
+		return
+	}
+	u, e := s.d.GitHub.ActionsUsage(r.Context(), r.URL.Query().Get("owner"))
+	if e != nil {
+		githubFail(w, e)
+		return
+	}
+	writeJSON(w, http.StatusOK, u)
+}
+
 func (s *Server) handleGitHubRepos(w http.ResponseWriter, r *http.Request) {
 	if !s.requireGitHub(w) {
 		return

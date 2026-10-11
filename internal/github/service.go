@@ -157,6 +157,8 @@ type Service struct {
 	ci ciCache
 	// repoCI keeps the release and default-branch CI (release.go).
 	repoCI repoCI
+	// usage keeps the Actions billing usage answers (usage.go).
+	usage usageCache
 }
 
 func (s *Service) init() {
