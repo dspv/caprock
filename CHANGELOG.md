@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.107.7] - 2026-10-11
+
 ### Added
 
 - **app:** each project in the sidebar draws its last hour as a small line —
