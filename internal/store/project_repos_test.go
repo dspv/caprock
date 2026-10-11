@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// Migration 0049: a project's member repositories are stored in
+// Migration 0050: a project's member repositories are stored in
 // sessions.repo_root's form, a repository belongs to one project at a time,
 // and an empty list makes the project an ordinary one again.
 func TestProjectReposMoveAndClear(t *testing.T) {

@@ -1636,7 +1636,7 @@ GET    /v1/shells?project=<id>             → {shells: [Shell]}; every running 
   `project` frame with `removed: true` and only `id` is sent on unlisting.
 - **Multi-repo projects** (2026-10-12, [ADR-055](08-decisions.md);
   `internal/projects/multirepo.go`, `internal/api/multirepo.go`). A folder
-  project with member repositories (`project_repos`, migration 0049); `repos`
+  project with member repositories (`project_repos`, migration 0050); `repos`
   is absent for an ordinary project.
   - **`ScanResult`** — `{root, repo_root?, repos: [{path, name, project_id?,
     project_name?, member_of?}], capped?}`. `repo_root` is set when the folder
@@ -2283,7 +2283,7 @@ separator), so the two join on equality. Cost attribution still uses
 `sessions.repo_root` and `sessions.project`: adding or unlisting a project
 changes no total.
 
-### Project repositories DDL (migration 0049)
+### Project repositories DDL (migration 0050)
 
 ```sql
 CREATE TABLE IF NOT EXISTS project_repos (

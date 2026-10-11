@@ -2,7 +2,7 @@ package projects
 
 // Multi-repo projects (ADR-055): a folder holding several git repositories,
 // listed as one project whose member repositories are named in
-// project_repos (migration 0049).
+// project_repos (migration 0050).
 //
 // Kept light on purpose. Member repositories are never watched: a folder of
 // twelve repositories would otherwise be twelve more fsnotify trees for a

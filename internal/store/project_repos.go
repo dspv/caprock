@@ -11,7 +11,7 @@ import (
 var ErrNotMultiRepo = errors.New("this project is not a multi-repo project")
 
 // ProjectRepos lists the member repositories of every multi-repo project
-// (migration 0049, ADR-055), keyed by project id, each list sorted by path.
+// (migration 0050, ADR-055), keyed by project id, each list sorted by path.
 func ProjectRepos(ctx context.Context, q Querier) (map[int64][]string, error) {
 	rows, err := q.QueryContext(ctx, `SELECT project_id, path FROM project_repos ORDER BY project_id, path`)
 	if err != nil {

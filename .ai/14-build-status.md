@@ -78,7 +78,7 @@ Percentages are deliberately coarse — they answer "is this track started, half
 Add project on a folder holding several git repositories asks once: one
 project of N repositories (default) or N separate projects, with the
 repositories found as checkboxes. A multi-repo project stores its folder and
-its members (migration 0049); sessions in a member count toward it, with a
+its members (migration 0050); sessions in a member count toward it, with a
 per-repository split of today's spend and sessions on the project page, each
 member's branch, changes and open pull requests, and an editor to rename,
 add or remove members, rescan, merge repository projects in and split.

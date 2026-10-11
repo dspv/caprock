@@ -1095,7 +1095,7 @@ there, and worktrees as first-class places to work.
 - **Multi-repo projects** (owner, 2026-10-12, translated: "both monorepo and
   several repos … very important and must be done carefully";
   [ADR-055](08-decisions.md)). A folder holding several repositories is one
-  project with named members (migration 0049): one sidebar row (*work · 3
+  project with named members (migration 0050): one sidebar row (*work · 3
   repos*, the members in its tooltip), its sessions and spend summed, and on
   its page (`ProjectRepos.tsx`) each member's branch, ± changed, ↑↓, open
   pull requests and share of today's spend. *Edit* there

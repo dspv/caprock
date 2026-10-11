@@ -3016,7 +3016,7 @@ What the agents allow was read from their own `--help`, not from memory:
   *One project of N repositories* (the default) or *N separate projects*,
   each repository a checkbox. A folder inside one repository asks nothing.
 - **A multi-repo project is the folder plus named members**
-  (`project_repos`, migration 0049). A repository is a member of one
+  (`project_repos`, migration 0050). A repository is a member of one
   project; a repository listed on its own is folded in (unlisted, its
   sessions now count here). A member's sessions never list it again.
 - **Attribution is by containment, the closest match winning**: a
