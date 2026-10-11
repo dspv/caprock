@@ -36,11 +36,11 @@ function apply(t: Theme) {
  * toolbar take it, so a home-screen Caprock has no stripe of another colour
  * above its header. Mirrored in the inline script in index.html.
  */
-export const THEME_COLORS = { dark: '#211f1d', white: '#ffffff', paper: '#f4ecdd' } as const
+export const THEME_COLORS = { dark: '#211f1d', slate: '#1f2023', white: '#ffffff', paper: '#f4ecdd' } as const
 
 /** The theme-color for what <html> currently shows. */
-export function themeColor(theme: string | null, tone: string | null): string {
-  if (theme !== 'light') return THEME_COLORS.dark
+export function themeColor(theme: string | null, tone: string | null, dark?: string | null): string {
+  if (theme !== 'light') return dark === 'slate' ? THEME_COLORS.slate : THEME_COLORS.dark
   return tone === 'white' ? THEME_COLORS.white : THEME_COLORS.paper
 }
 
@@ -48,7 +48,7 @@ function syncThemeColor() {
   const el = document.documentElement
   document
     .querySelector('meta[name="theme-color"]')
-    ?.setAttribute('content', themeColor(el.getAttribute('data-theme'), el.getAttribute('data-tone')))
+    ?.setAttribute('content', themeColor(el.getAttribute('data-theme'), el.getAttribute('data-tone'), el.getAttribute('data-dark')))
 }
 
 // Every useTheme on the page hears a change made by any other — the header's
@@ -74,13 +74,9 @@ export function useTheme(): [Theme, () => void, (t: Theme) => void] {
     setTheme(t)
     window.dispatchEvent(new CustomEvent<Theme>(THEME_EVENT, { detail: t }))
   }
-  // The toggle walks all three palettes, Graphite → Paper → White (owner,
-  // 2026-10-11: the button only flipped light and dark, Paper was in Settings).
-  const cycle = () => {
-    if (theme === 'dark') { setLightTone('paper'); set('light'); return }
-    if (currentTone() === 'paper') { setLightTone('white'); return }
-    set('dark')
-  }
+  // The palette's Switch theme walks all four: Graphite → Slate → Paper →
+  // White. The buttons open a picker instead (ThemePicker).
+  const cycle = () => setThemeMode(nextMode(currentMode()))
   return [theme, cycle, set]
 }
 
@@ -98,18 +94,102 @@ export function setLightTone(t: LightTone): void {
   window.dispatchEvent(new CustomEvent<LightTone>(TONE_EVENT, { detail: t }))
 }
 
-export type ThemeMode = 'dark' | LightTone
+/**
+ * Which dark palette: `graphite`, the warm charcoal of caprock.dev, or
+ * `slate`, a neutral dark with a soft blue accent (owner, 2026-10-11: a
+ * comfortable theme for someone who finds Orca's cooler look easier).
+ * `data-dark` on <html>; only `slate` is styled, graphite is the default.
+ */
+export type DarkTone = 'graphite' | 'slate'
+const DARK_KEY = 'caprock-dark-tone'
 
-/** What the page shows, as the toggle names it, and what a click shows next. */
-export function useThemeMode(): { mode: ThemeMode; next: ThemeMode; cycle: () => void } {
-  const [theme, cycle] = useTheme()
-  const [tone] = useLightTone()
-  const mode: ThemeMode = theme === 'dark' ? 'dark' : tone
-  const next: ThemeMode = mode === 'dark' ? 'paper' : mode === 'paper' ? 'white' : 'dark'
-  return { mode, next, cycle }
+function initialDark(): DarkTone {
+  try { return localStorage.getItem(DARK_KEY) === 'slate' ? 'slate' : 'graphite' } catch { return 'graphite' }
 }
 
-export const THEME_MODE_NAME: Record<ThemeMode, string> = { dark: 'Graphite', paper: 'Paper', white: 'White' }
+const DARK_EVENT = 'caprock-dark-change'
+
+/** Chooses the dark palette and tells every useThemeMode on the page. */
+export function setDarkTone(t: DarkTone): void {
+  try { localStorage.setItem(DARK_KEY, t) } catch { /* private window */ }
+  document.documentElement.setAttribute('data-dark', t)
+  syncThemeColor()
+  window.dispatchEvent(new CustomEvent<DarkTone>(DARK_EVENT, { detail: t }))
+}
+
+/** The four palettes, as the picker lists them. `dark` is Graphite. */
+export type ThemeMode = 'dark' | 'slate' | LightTone
+export const THEME_MODES: ThemeMode[] = ['dark', 'slate', 'paper', 'white']
+export const THEME_MODE_NAME: Record<ThemeMode, string> = { dark: 'Graphite', slate: 'Slate', paper: 'Paper', white: 'White' }
+
+/** What each palette looks like, for the picker's swatches (design/tokens.css). */
+export const THEME_SWATCH: Record<ThemeMode, { bg: string; panel: string; fg: string; muted: string; accent: string }> = {
+  dark: { bg: '#1b1b1a', panel: '#262422', fg: '#e8e6e2', muted: '#837f78', accent: '#feb157' },
+  slate: { bg: '#1a1b1e', panel: '#26272b', fg: '#e6e7ea', muted: '#7d8088', accent: '#6ea8fe' },
+  paper: { bg: '#efe7d6', panel: '#f4ecdd', fg: '#2b251c', muted: '#665d4f', accent: '#eb9a3e' },
+  white: { bg: '#faf9f7', panel: '#ffffff', fg: '#24211c', muted: '#8a8479', accent: '#b8730d' },
+}
+
+function currentMode(): ThemeMode {
+  const el = document.documentElement
+  if (el.getAttribute('data-theme') !== 'light') return el.getAttribute('data-dark') === 'slate' ? 'slate' : 'dark'
+  return currentTone()
+}
+
+function nextMode(m: ThemeMode): ThemeMode {
+  return THEME_MODES[(THEME_MODES.indexOf(m) + 1) % THEME_MODES.length]!
+}
+
+/** Shows a palette without keeping it: the picker's hover. */
+export function previewThemeMode(m: ThemeMode): void {
+  const el = document.documentElement
+  const dark = m === 'dark' || m === 'slate'
+  el.setAttribute('data-theme', dark ? 'dark' : 'light')
+  el.style.colorScheme = dark ? 'dark' : 'light'
+  if (dark) el.setAttribute('data-dark', m === 'slate' ? 'slate' : 'graphite')
+  else el.setAttribute('data-tone', m)
+  syncThemeColor()
+}
+
+/** Puts back what is saved, after a preview. */
+export function endThemePreview(): void {
+  previewThemeMode(savedMode())
+}
+
+function savedMode(): ThemeMode {
+  const t = initial()
+  if (t === 'dark') return initialDark() === 'slate' ? 'slate' : 'dark'
+  return initialTone()
+}
+
+/** Chooses one of the four palettes and keeps it. */
+export function setThemeMode(m: ThemeMode): void {
+  const dark = m === 'dark' || m === 'slate'
+  if (dark) setDarkTone(m === 'slate' ? 'slate' : 'graphite')
+  else setLightTone(m)
+  const t: Theme = dark ? 'dark' : 'light'
+  try { localStorage.setItem(KEY, t) } catch { /* private window */ }
+  apply(t)
+  window.dispatchEvent(new CustomEvent<Theme>(THEME_EVENT, { detail: t }))
+}
+
+/** What the page shows, as the picker names it, and the next one for the palette's cycle. */
+export function useThemeMode(): { mode: ThemeMode; next: ThemeMode; cycle: () => void; set: (m: ThemeMode) => void } {
+  const [theme, cycle] = useTheme()
+  const [tone] = useLightTone()
+  const [dark, setDark] = useState<DarkTone>(initialDark)
+  useEffect(() => {
+    document.documentElement.setAttribute('data-dark', dark)
+    syncThemeColor()
+  }, [dark])
+  useEffect(() => {
+    const on = (e: Event) => setDark((e as CustomEvent<DarkTone>).detail)
+    window.addEventListener(DARK_EVENT, on)
+    return () => window.removeEventListener(DARK_EVENT, on)
+  }, [])
+  const mode: ThemeMode = theme === 'dark' ? (dark === 'slate' ? 'slate' : 'dark') : tone
+  return { mode, next: nextMode(mode), cycle, set: setThemeMode }
+}
 
 function initialTone(): LightTone {
   const saved = localStorage.getItem(TONE_KEY)

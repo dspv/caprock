@@ -27,9 +27,14 @@ describe('useTheme', () => {
     localStorage.setItem('caprock-theme', 'dark')
     const { result } = renderHook(() => useTheme())
     expect(result.current[0]).toBe('dark') // saved wins over OS=light
+    // Graphite → Slate stays dark; the next step is light.
+    act(() => result.current[1]())
+    expect(result.current[0]).toBe('dark')
     act(() => result.current[1]())
     expect(result.current[0]).toBe('light')
     expect(localStorage.getItem('caprock-theme')).toBe('light')
+    document.documentElement.removeAttribute('data-dark')
+    localStorage.removeItem('caprock-dark-tone')
   })
 })
 

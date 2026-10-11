@@ -18,7 +18,7 @@
  * the machine Caprock runs on (ADR-029), and the daemon refuses them anyway.
  */
 import { useEffect, useRef, useState } from 'react'
-import { useLightTone, useTheme } from '@/lib/theme'
+import { ThemePicker } from '@/components/ThemePicker'
 import { api, isPairedDevice, type Status } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { SettingsNav } from '@/components/SettingsNav'
@@ -223,33 +223,10 @@ function CustomAgentsSection() {
 }
 
 function AppearanceSection() {
-  const [theme, , setTheme] = useTheme()
-  const [tone, setTone] = useLightTone()
   return (
     <Section title="Appearance">
-      <Choice
-        label="Theme"
-        value={theme}
-        options={[
-          { value: 'dark', label: 'Dark' },
-          { value: 'light', label: 'Light' },
-        ]}
-        onChange={setTheme}
-      />
-      <Choice
-        label="Light theme"
-        value={tone}
-        options={[
-          { value: 'paper', label: 'Paper' },
-          { value: 'white', label: 'White' },
-        ]}
-        onChange={(t) => {
-          setTone(t)
-          // Choosing a light tone while dark is showing would change nothing
-          // visible, which reads as a broken control.
-          if (theme !== 'light') setTheme('light')
-        }}
-      />
+      {/* Four palettes as large swatches; hovering one tries it on the page. */}
+      <ThemePicker size="cards" />
       {isTauri() && <InterfaceSize />}
       <p className="text-[12px] text-fg-muted">Saved in this browser only.</p>
     </Section>
