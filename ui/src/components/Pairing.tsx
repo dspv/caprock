@@ -409,6 +409,16 @@ function CodeView({
           <div className="text-[15px] text-fg">Point your phone&apos;s camera at the code.</div>
           <div className="mt-0.5 text-[12px] text-fg-muted">Tap the link it shows. The phone pairs by itself.</div>
         </div>
+        {/* Where the phone will work, in one line beside the code: the owner's
+          * partner paired on the Wi-Fi and found it gone everywhere else
+          * (2026-10-11). Caprock relays nothing, so "anywhere" is Tailscale. */}
+        <div data-testid="pair-reach" className="text-[13px] leading-snug text-fg">
+          {chosen.kind !== 'lan'
+            ? <>Anywhere, as long as Tailscale is on, on both your phone and {thisMachine()}.</>
+            : addresses.some((a) => a.kind !== 'lan')
+              ? <>Only on this Wi-Fi. For anywhere, pick Tailscale above — it has to be on on both devices.</>
+              : <>Only on this Wi-Fi. For anywhere, mobile data too: <a href="https://tailscale.com/download" target="_blank" rel="noreferrer" className="text-accent">Tailscale</a> on both your phone and {thisMachine()} (then turn phone access off and on).</>}
+        </div>
         <div className="grid gap-1">
           <div className="text-[12px] text-fg-muted">
             No camera? Open <span className="mono text-fg select-all break-all">{url}</span> on the phone and type

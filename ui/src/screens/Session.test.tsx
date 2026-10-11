@@ -99,6 +99,20 @@ d('a spawned Codex or OpenCode session', () => {
     vi.unstubAllGlobals()
   })
 
+  it('on a phone: Chat and Terminal lead the tabs, and a session it cannot type into says why', async () => {
+    spawned({ agent: 'claude', owned: false, resume: { ok: true, command: 'claude --resume x' } })
+    const mq = (q: string) => ({ matches: q.includes('max-width: 639px'), media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList
+    vi.stubGlobal('matchMedia', mq)
+    render(<SessionScreen id="cap-1" />)
+    expect(await screen.findByRole('log', { name: 'Conversation' })).toBeInTheDocument()
+    const tabs = screen.getAllByRole('tab').map((t) => t.textContent)
+    expect(tabs.slice(0, 2)).toEqual(['Chat', 'Terminal'])
+    expect(screen.getByRole('tab', { name: 'Chat' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText(/Started in a terminal outside Caprock/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Branch here to type' })).toBeInTheDocument()
+    vi.unstubAllGlobals()
+  })
+
   it("names the agent's own id once linked", async () => {
     spawned({ agent: 'opencode', native_id: 'ses_abc' })
     render(<SessionScreen id="cap-1" tab="timeline" />)

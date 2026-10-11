@@ -33,6 +33,7 @@ import { costBasis, costBasisLong, costLabel } from '@/components/CostBasis'
 import { href } from '@/lib/router'
 import { useEffect, useState } from 'react'
 import { useNow } from '@/lib/useNow'
+import { useNarrowScreen } from '@/lib/phone'
 
 /** How recently a session must have spoken to belong on the Now screen.
  *
@@ -78,6 +79,7 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
   const [agent, setAgent] = useState<AgentFilter>('all')
   const [spawning, setSpawning] = useState(false)
   const canControl = useCanControl()
+  const phone = useNarrowScreen()
   // Finding one ended session among hundreds (FB-035). The search goes to the
   // server, which also reads every prompt typed in a session — not only what
   // is on its card — and the list grows in pages rather than stopping at the
@@ -183,6 +185,8 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
           </span>
         </div>
       )}
+      {/* First on a phone: what someone opens Caprock there for. */}
+      {phone && !inApp && <PhoneSessions sessions={[...working, ...rest]} now={now} />}
       {/* Installing hooks is done on the machine; on a phone the button would only answer 403. */}
       {status.data?.hooks && !isPairedDevice() && <HooksBanner missing={status.data?.hooks?.missing ?? []} settingsPath={status.data?.hooks?.settings_path ?? ''} partial={(status.data?.hooks?.installed?.length ?? 0) > 0} />}
       {/* Only sessions Caprock spawned end with the daemon; the ones the user
@@ -521,6 +525,57 @@ function NewSessionButton({ available, onClick }: { available: boolean | undefin
     >
       + New session{missing ? ' (no agent found)' : ''}
     </button>
+  )
+}
+
+/**
+ * A phone's way into its sessions: the running ones, at the top of Now, one
+ * tap each into the session's chat.
+ *
+ * On a phone the session cards come last, under Today, the pulse, the
+ * pictures and the feed — eight panels of scrolling — and someone who opened
+ * Caprock on an iPhone to talk to a session did not find one (owner's report,
+ * 2026-10-11). These rows are only the way in; the cards below still carry
+ * the figures. A session Caprock did not start says it can only be read, so
+ * the missing field is not a surprise on the other side of the tap.
+ */
+function PhoneSessions({ sessions, now }: { sessions: SessionSummary[]; now: number }) {
+  if (sessions.length === 0) return null
+  const labels = projectLabels(sessions)
+  return (
+    <section aria-label="Running sessions" className="grid gap-1.5">
+      <div className="px-0.5 text-[11px] uppercase tracking-[0.08em] text-fg-faint">Sessions · tap to chat</div>
+      <ul className="grid overflow-hidden rounded-[var(--radius-panel)] border border-border bg-panel">
+        {sessions.map((s) => {
+          const waiting = s.activity?.health === 'waiting-on-you'
+          const typable = s.owned && s.status !== 'ended' && !s.detached
+          // Go's zero time is what a session with no event yet reports.
+          const at = [s.activity.at, s.last_event_at, s.started_at].find((t) => t && !String(t).startsWith('0001-'))
+          return (
+            <li key={s.session_id} className="border-b border-border last:border-b-0">
+              <a
+                href={href({ name: 'session', id: s.session_id, tab: 'chat' })}
+                className={`flex min-h-14 items-center gap-3 px-3 py-2 text-fg no-underline hover:no-underline active:bg-panel-2 ${waiting ? 'bg-warn/10' : ''}`}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="flex min-w-0 items-baseline gap-2">
+                    <span className="truncate text-[15px] font-medium">{labels.get(s.session_id) || s.project || 'unknown project'}</span>
+                    {s.agent && s.agent !== 'claude' && <AgentGlyph agent={s.agent} />}
+                    {!typable && <span className="shrink-0 text-[11px] text-fg-faint">read only</span>}
+                  </span>
+                  <span className={`block truncate text-[13px] ${waiting ? 'text-warn' : 'text-fg-muted'}`}>
+                    {waiting ? 'waiting for you' : s.description || s.activity.phrase}
+                    {at && <span className="ml-2 text-[11px] text-fg-faint num">{fmtAgo(at, now)}</span>}
+                  </span>
+                </span>
+                <Badge health={sessionHealth(s)} />
+                <span aria-hidden className="text-[18px] text-fg-faint">›</span>
+              </a>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
   )
 }
 

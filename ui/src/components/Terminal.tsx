@@ -11,7 +11,8 @@ import { onNetworkWake, type LinkStatus } from '@/lib/reconnect'
 import { ConnectionState } from './ConnectionState'
 import { attachTerminalInput } from '@/lib/xtermInput'
 import { registerBenchTerminal } from '@/lib/benchhook'
-import { writeSliced } from '@/lib/termwrite'
+import { coalescedWriter, writeSliced } from '@/lib/termwrite'
+import { touchScreen } from '@/lib/phone'
 import { attachTerminalLinks } from '@/lib/termlinks'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
@@ -42,6 +43,9 @@ export const TERMINAL_THEME = {
 } as const
 /** How long the terminal must have been quiet (no typing) before WebGL is set up. */
 export const WEBGL_QUIET_MS = 1500
+
+/** Scrollback on a phone's terminal (TerminalView, `light`). */
+export const PHONE_SCROLLBACK = 2000
 
 /** How long a terminal may stay silent before it is reported as not starting. */
 export const START_TIMEOUT_MS = 30_000
@@ -141,6 +145,12 @@ export function TerminalView({
   // the canvas would raise the on-screen keyboard over the very output the
   // person is reading.
   const phone = isPairedDevice()
+  // A touch device gets a light terminal: no WebGL, no blinking cursor, a
+  // shorter scrollback, and output handed over at most ten times a second
+  // (lib/termwrite coalescedWriter). Measured at 390px under a 4x CPU
+  // throttle, a busy session's terminal took a third of the main thread with
+  // WebGL on (.ai/04-ui.md § From a phone). A desktop is unchanged.
+  const [light] = useState(touchScreen)
   // What the Changes tab left for the field ("In <file> around line N: ").
   const [draft] = useState(() => takeDraft(sessionId))
   useEffect(() => {
@@ -158,13 +168,13 @@ export function TerminalView({
       // system monospace. On Cyrillic that fallback is a different face
       // entirely, which is what made the terminal unreadable for the one user
       // who moved onto it full-time.
-      convertEol: false, cursorBlink: true, fontFamily: v('--font-mono', 'monospace'), fontSize: 12,
+      convertEol: false, cursorBlink: !light, fontFamily: v('--font-mono', 'monospace'), fontSize: 12,
       // A copy: xterm keeps the object it is given.
       theme: { ...TERMINAL_THEME },
       // 10k lines: a build log or a long `claude` session scrolls past 5k
       // easily, and losing the start of what you are reading is the moment a
       // terminal stops being one you can work in.
-      scrollback: 10000,
+      scrollback: light ? PHONE_SCROLLBACK : 10000,
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
@@ -214,7 +224,7 @@ export function TerminalView({
     let webglTimer = 0
     const inputSub = term.onData(() => { lastInput = Date.now() })
     const loadWebgl = () => {
-      if (disposed) return
+      if (disposed || light) return
       if (!gotOutput || Date.now() - lastInput < WEBGL_QUIET_MS) {
         webglTimer = window.setTimeout(loadWebgl, WEBGL_QUIET_MS)
         return
@@ -233,7 +243,8 @@ export function TerminalView({
         // is nothing to do and nothing worth telling the user.
       }
     }
-    webglTimer = window.setTimeout(loadWebgl, WEBGL_QUIET_MS)
+    if (!light) webglTimer = window.setTimeout(loadWebgl, WEBGL_QUIET_MS)
+    const out = light ? coalescedWriter(term) : null
     // Terminal protocol v2 (lib/termv2): output arrives with its offsets and
     // input goes numbered, so a reconnect — Caprock restarting, a dropped
     // network, a phone waking — picks up from the last byte this terminal
@@ -260,7 +271,8 @@ export function TerminalView({
         // Never a scroll to the bottom here: someone scrolled back to read
         // stays where they are while output arrives (the scrolling rule).
         write: (data, done) => {
-          writeSliced(term, data, done)
+          if (out) out.write(data, done)
+          else writeSliced(term, data, done)
           if (!gotOutput && data.length > 0) {
             gotOutput = true
             setStart((st) => ({ ...st, phase: 'ready' }))
@@ -270,7 +282,7 @@ export function TerminalView({
             sendSize(term.cols, term.rows)
           }
         },
-        reset: () => term.reset(),
+        reset: () => { out?.drop(); term.reset() },
         open: () => {
           // The PTY was created before this socket existed, so the first
           // thing it hears has to be the size the window actually is.
@@ -359,7 +371,7 @@ export function TerminalView({
       unwake()
       sendRef.current = () => {}
       attachRef.current = async () => {}
-      ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); client.dispose(); unbench(); links.dispose(); unfont(); term.dispose()
+      ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); out?.dispose(); client.dispose(); unbench(); links.dispose(); unfont(); term.dispose()
     }
   }, [sessionId, owned, attempt, phone])
   if (!owned && detached) {

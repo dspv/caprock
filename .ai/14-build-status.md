@@ -73,6 +73,24 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-11 — unreleased: the phone is chat first, with voice
+
+From the owner's report (his partner on an iPhone: a laggy terminal, no chat
+found, no way into a session, Wi-Fi only). Now leads with the running
+sessions on a phone, one tap into the chat; the session screen drops the page
+header there, puts **Chat | Terminal** first as one 44px switch, fills the
+screen with the conversation (field at the bottom, above the keyboard), folds
+the raw keys behind **Keys**, and says why when there is no field, with
+branch or continue. A microphone dictates through the browser's speech
+recognition where the page is https and says to use the keyboard's dictation
+key where it is not (every phone address today; `OQ-12`). A touch device gets
+a lighter terminal: no WebGL, no blink, 2,000 lines, output at most every
+100 ms — measured 3.2 → 0.6 s of main-thread time per 10 s on a synthetic
+busy session (04-ui.md § From a phone). Pairing says beside the code that
+anywhere means Tailscale on both. Verified on a preview stand (fake claude)
+at 390×844 in both themes. Not verified: real iOS Safari, its speech
+recognition, and the keyboard rising over the chat.
+
 ### 2026-10-11 — 0.107.7: a Settings menu, tabs named by their repo
 
 Settings gets a sticky sections menu with icons; a session tab is named by

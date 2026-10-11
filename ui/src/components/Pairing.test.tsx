@@ -137,6 +137,17 @@ describe('Pairing panel', () => {
     expect(await screen.findByText(/Tailscale on your phone and/)).toBeTruthy()
     expect(screen.queryByText(/Not on this Wi-Fi\?/)).toBeNull()
   })
+
+  it('says beside the code where the phone will work: Wi-Fi only, or anywhere with Tailscale on both', async () => {
+    localStorage.removeItem('caprock.pair.address')
+    stubState([{ enabled: true, url: 'http://192.168.1.10:22776', code: '482913', expires_in_sec: 300, devices: [], addresses: [{ url: 'http://192.168.1.10:22776', kind: 'lan' }] }])
+    render(<Pairing />)
+    expect((await screen.findByTestId('pair-reach')).textContent).toMatch(/^Only on this Wi-Fi\. For anywhere.*Tailscale on both your phone/)
+    cleanup()
+    stubState([{ enabled: true, url: 'http://100.101.102.103:22776', tunnelled: true, code: '482913', expires_in_sec: 300, devices: [], addresses: [{ url: 'http://100.101.102.103:22776', kind: 'tailscale' }] }])
+    render(<Pairing />)
+    expect((await screen.findByTestId('pair-reach')).textContent).toMatch(/^Anywhere, as long as Tailscale is on, on both your phone/)
+  })
 })
 
 describe('the name a device offers', () => {

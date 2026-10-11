@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { TermState } from '@/lib/termv2'
 import { useSavedPromptsFor } from '@/lib/saved'
 import { ChatPickerList, useChatPicker } from './ChatPicker'
+import { joinDictation, speechHint, speechSupport, startDictation, type Dictation } from '@/lib/speech'
 
 /** A newline inside the prompt: ESC CR, what a terminal sends for Alt+Enter
  *  (see Terminal.tsx — a bare line feed submits once text is typed). */
@@ -71,7 +72,7 @@ function saveHeld(sessionId: string | undefined, held: readonly Held[]): void {
  * keys are buttons, and the text goes in a field big enough to read what is
  * being sent before sending it, rather than letter by letter into a canvas.
  */
-export function TerminalKeys({ send, attach, initial = '', state, isPromptWaiting, sessionId, chips = false, submitText, pickers = false }: {
+export function TerminalKeys({ send, attach, initial = '', state, isPromptWaiting, sessionId, chips = false, submitText, pickers = false, voice = false, foldKeys = false }: {
   send: (bytes: string) => void
   /** Attaches photos; the paths it returns, if any, go into the field (the chat). */
   attach?: (files: File[]) => Promise<void | readonly string[]>
@@ -89,8 +90,48 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
   submitText?: (text: string) => Promise<boolean>
   /** The `/` and `@` pickers over the field (ADR-053); needs sessionId. */
   pickers?: boolean
+  /** A microphone button that dictates into the field (lib/speech). */
+  voice?: boolean
+  /** The six raw keys behind a Keys button: the phone's chat, where a message
+   *  is the common case and Esc or an arrow the rare one. */
+  foldKeys?: boolean
 }) {
   const [text, setText] = useState(initial)
+  const [keysOpen, setKeysOpen] = useState(!foldKeys)
+  // Dictation (lib/speech): what was in the field when it started, so what is
+  // heard is shown after it, live, and the person reads it before Send.
+  const [listening, setListening] = useState(false)
+  const [voiceNote, setVoiceNote] = useState('')
+  const dictation = useRef<Dictation | null>(null)
+  const beforeVoice = useRef('')
+  useEffect(() => () => dictation.current?.stop(), [])
+  const toggleVoice = () => {
+    if (dictation.current) {
+      dictation.current.stop()
+      return
+    }
+    const why = speechSupport()
+    if (why !== 'ok') {
+      setVoiceNote(speechHint(why))
+      return
+    }
+    beforeVoice.current = text
+    const d = startDictation({
+      onText: (heard) => setText(joinDictation(beforeVoice.current, heard)),
+      onEnd: (err) => {
+        dictation.current = null
+        setListening(false)
+        setVoiceNote(err ? speechHint(err) : '')
+      },
+    })
+    if (!d) {
+      setVoiceNote(speechHint('missing'))
+      return
+    }
+    dictation.current = d
+    setListening(true)
+    setVoiceNote('')
+  }
   const live = state === undefined || state === 'live'
   // The offline queue (.ai/21-app.md § Phone v2): a message sent while the
   // terminal is not live is held and shown as "will send"; on reconnect it is
@@ -213,6 +254,8 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
   }
 
   const submit = () => {
+    dictation.current?.stop()
+    setVoiceNote('')
     if (text && !live) {
       // Sent after the end: a draft at once, never "will send".
       setHeld((list) => [...list, { id: Date.now() + Math.random(), text, ...(finalReason ? { draft: finalReason } : {}) }])
@@ -316,7 +359,26 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
           className="input w-full min-w-0 resize-none overflow-y-auto leading-snug"
           style={{ fontSize: 16, lineHeight: '22px', paddingTop: 10, paddingBottom: 10, maxHeight: FIELD_MAX_PX }}
         />
+        {(listening || voiceNote) && (
+          <div role="status" aria-live="polite" className={`text-[13px] leading-snug ${listening ? 'text-fg' : 'text-fg-muted'}`}>
+            {listening
+              ? <><span className="text-danger">●</span> Listening — tap the mic again to stop, then Send. Your browser&apos;s speech service turns it into text.</>
+              : voiceNote}
+          </div>
+        )}
         <div className="flex items-center justify-end gap-2">
+        {foldKeys && (
+          <button
+            type="button"
+            aria-expanded={keysOpen}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setKeysOpen((v) => !v)}
+            title="Esc, Tab, arrows, Enter and Ctrl+C, for the agent's menus"
+            className={`mr-auto shrink-0 rounded-sm border px-3 py-2 min-h-[44px] text-[14px] hover:border-accent ${keysOpen ? 'border-accent text-fg' : 'border-border-strong text-fg-muted'}`}
+          >
+            Keys
+          </button>
+        )}
         {attach && (
           <>
             {/* No `capture`: with it iOS opens only the camera; without it the
@@ -344,6 +406,19 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
             </button>
           </>
         )}
+        {voice && (
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={toggleVoice}
+            aria-pressed={listening}
+            aria-label={listening ? 'Stop dictating' : 'Dictate'}
+            title={listening ? 'Stop dictating' : 'Dictate: speak, read it in the field, then Send'}
+            className={`flex h-12 w-14 shrink-0 items-center justify-center rounded-sm border ${listening ? 'border-danger bg-danger/15 text-danger' : 'border-border-strong bg-panel-2 text-fg hover:border-accent'}`}
+          >
+            <MicIcon />
+          </button>
+        )}
         <button
           type="button"
           onClick={submit}
@@ -355,7 +430,7 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
       </div>
       {/* Two rows of three below `sm`: in one row of six, "Ctrl+C" filled its
         * button edge to edge even at 390px. */}
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+      {keysOpen && <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
         {KEYS.map(([label, bytes, title]) => (
           <button
             key={label}
@@ -371,8 +446,18 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
             {label}
           </button>
         ))}
-      </div>
+      </div>}
     </div>
+  )
+}
+
+function MicIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0" />
+      <path d="M12 18v3" />
+    </svg>
   )
 }
 

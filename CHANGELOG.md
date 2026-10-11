@@ -68,6 +68,42 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   the plan question and the locked panels all use it, in every theme. Figures
   are short ($16.8k), with the exact sum on hover.
 
+- **Settings is quick to scan:** larger titles, buttons and checkboxes; the
+  explanations are hidden until you turn on *Show explanations* or press a
+  section's **?**; a section's title folds it, and the fold is remembered.
+
+### Fixed
+
+- **app:** Cmd+C in a terminal copies on any keyboard layout and says
+  *Copied · N chars*; on a Russian layout it copied nothing and macOS beeped.
+
+### Added
+
+- **Phone: chat first.** Now on a phone starts with the running sessions,
+  one tap each into that session's chat. A session on a phone is the whole
+  screen: the page header steps aside, **Chat | Terminal** is one large
+  switch, the conversation fills the screen with the field at the bottom
+  (above the keyboard when it is up), and Esc, Tab, the arrows and Ctrl+C
+  fold behind **Keys**. A session that cannot be typed into from here says
+  why where the field would be — started outside Caprock, ended, or this
+  phone is view-only — with **Branch here to type** or **Continue here**
+  when that works.
+- **Voice input in the phone's chat.** A microphone button dictates into
+  the field, live, to read and then send; the browser's own speech
+  recognition does it (Safari sends the audio to Apple's service, and the
+  button says so while it listens), Caprock gets the text. Browsers allow
+  the microphone only on https pages, so over Caprock's plain-http Wi-Fi or
+  Tailscale address it says in one line to use the keyboard's dictation key.
+- **Pairing says where the phone will work**, beside the code: only on this
+  Wi-Fi, or anywhere while Tailscale is on on both devices.
+
+### Changed
+
+- **A lighter terminal on a phone or tablet:** no WebGL, no blinking cursor,
+  2,000 lines of scrollback, and output handed over at most ten times a
+  second. Under a 4x CPU throttle at 390px, a busy synthetic session took
+  0.6 s of main-thread time per 10 s, from 3.2 s. A desktop is unchanged.
+
 ## [0.107.7] - 2026-10-11
 
 ### Added
